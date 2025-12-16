@@ -1,0 +1,35 @@
+.pte-header {
+    display: flex;
+}
+
+.pte-hcell {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+.pte-scroller {
+    overflow: auto;
+    position: relative;
+}
+
+.pte-spacer {
+    position: relative;
+    width: 100%;
+}
+
+.pte-viewport {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    will-change: transform;
+}
+
+.pte-cell {
+    padding: 0 8px;
+    box-sizing: border-box;
+}
