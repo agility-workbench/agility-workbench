@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx } from "./helpers";
-import { ColumnDef, FilterDef, MenuItem, SortDef } from "./types";
+import { ColumnDef, ColumnType, FilterDef, FilterType, MenuItem, SortDef } from "./types";
 import { bool } from "prop-types";
 
 interface TableProps {
@@ -53,6 +53,10 @@ export default class Table {
   _menuColKey: string | null;
   _submenuOverlay: HTMLDivElement;
   _submenuParentId: string | null;
+  _currentSubmenuItems: MenuItem[] | null;
+
+  _filterOverlay: HTMLDivElement;
+  _filterColKey: string | null;
 
   _poolSize: number;
   _rowPool: Array<{
@@ -126,6 +130,7 @@ export default class Table {
     this.spacer.appendChild(this.viewport);
 
     this._initMenuOverlay();
+    this._initFilterOverlay();
 
     // Create a pooled set of row nodes
     this._poolSize = Math.ceil(height / rowHeight) + overscan * 2;
@@ -172,10 +177,7 @@ export default class Table {
 
   setFilters(filters: FilterDef[]) {
     this._filters = filters ?? [];
-    this._filterDirty = true;
-    this._sortDirty = true; // filter affects sort view
-    this._recomputeView();
-    this._updateWindow(true);
+    this._onFilterModelChanged();
   }
 
   setSort(sort: SortDef) {
@@ -487,7 +489,7 @@ export default class Table {
       headerContent.className = "pte-hcell-content";
       header.appendChild(headerContent);
       headerContent.textContent = col.label ?? col.key;
-      const headerMenu = this._getHeaderMenuElement();
+      const headerMenu = this._getHeaderMenuElement(col.key);
       header.appendChild(headerMenu);
 
       const sort = this._sorts.find(s => s.key === col.key);
@@ -500,11 +502,11 @@ export default class Table {
     this._applyColumnWidths();
   }
 
-  _getHeaderMenuElement(): HTMLDivElement {
+  _getHeaderMenuElement(colKey: string): HTMLDivElement {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu";
 
-    const buildMenuItem = (btnClass: string, iconClass: string, flyout: HTMLDivElement) => {
+    const buildMenuItem = (btnClass: string, iconClass: string, flyout: HTMLDivElement | null) => {
       const wrapper = document.createElement("div");
       wrapper.className = "pte-hcell-menu-item";
 
@@ -514,27 +516,25 @@ export default class Table {
       icon.className = iconClass;
       btn.appendChild(icon);
       wrapper.appendChild(btn);
-      wrapper.appendChild(flyout);
+      if (flyout) {
+        const hasFilter = this._filters.find(f => f.key === colKey);
+        if (hasFilter) {
+          btn.classList.add("pte-hcell-menu-filter-active");
+        }
+        wrapper.appendChild(flyout);
+      }
 
       return wrapper;
     };
 
     menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
-    menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", this._getMenuMenuElement()));
+    menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
     return menu;
   }
 
   _getFilterMenuElement(): HTMLDivElement {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu-flyout";
-    menu.textContent = "Filter menu";
-    return menu;
-  }
-
-  _getMenuMenuElement(): HTMLDivElement {
-    const menu = document.createElement("div");
-    menu.className = "pte-hcell-menu-flyout";
-    menu.textContent = "Header menu";
     return menu;
   }
 
@@ -709,6 +709,24 @@ export default class Table {
     document.body.appendChild(this._menuOverlay);
   }
 
+  _initFilterOverlay() {
+    this._filterOverlay = document.createElement("div");
+    this._filterOverlay.className = "pte-filter";
+    this._filterOverlay.style.position = "fixed";
+    this._filterOverlay.style.zIndex = "10000";
+    this._filterOverlay.style.display = "none";
+    document.body.appendChild(this._filterOverlay);
+
+    document.addEventListener("mousedown", (e) => {
+      if (this._filterOverlay.style.display === "none") return;
+      if (!this._filterOverlay.contains(e.target)) this._closeFilter();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this._closeFilter();
+    });
+  }
+
   _wireSubmenuBehaviour(mainItems: MenuItem[]) {
     let openTimer = null;
 
@@ -733,7 +751,7 @@ export default class Table {
       // Delay open to avoid flicker while moving mouse
       clearTimeout(openTimer);
       openTimer = setTimeout(() => {
-        this._openSubmenu(btn, item.subMenu);
+        this._openSubmenu(btn, item.subMenu || []);
         this._submenuParentId = id;
         btn.setAttribute("aria-expanded", "true");
       }, 120);
@@ -780,7 +798,7 @@ export default class Table {
     this._currentSubmenuItems = null;
   }
 
-  _openSubmenu(parentBtnEl: HTMLElement, submenuItems: any[]) {
+  _openSubmenu(parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
     this._currentSubmenuItems = submenuItems;
     this._renderMenuItems(this._submenuOverlay, submenuItems, { isSubmenu: true });
 
@@ -861,11 +879,38 @@ export default class Table {
     this._menuOverlay.style.display = "flex";
   }
 
+  _openColFilter(colKey: string, anchorEl: HTMLElement) {
+    this._filterColKey = colKey;
+
+    // build content
+    const content = this._buildFilterMenuDOM(colKey);
+
+    this._filterOverlay.innerHTML = "";
+    this._filterOverlay.appendChild(content);
+
+    // position
+    const r = anchorEl.getBoundingClientRect();
+    const W = 180, H = 220;
+    this._filterOverlay.style.left = `${Math.min(r.left, window.innerWidth - W - 8)}px`;
+    this._filterOverlay.style.top = `${Math.min(r.bottom + 4, window.innerHeight - H - 8)}px`;
+    this._filterOverlay.style.minWidth = `${W}px`;
+    this._filterOverlay.style.display = "block";
+
+    // focus first control
+    const first = this._filterOverlay.querySelector("[data-focus-first]") ||
+      this._filterOverlay.querySelector("select, input, button, [tabindex]");
+    first?.focus();
+  }
+
   _closeMenu() {
     this._menuColKey = null;
     this._menuOverlay.style.display = "none";
     this._submenuOverlay.style.display = "none";
-    this._submenuParentID = null;
+  }
+
+  _closeFilter() {
+    this._filterColKey = null;
+    this._filterOverlay.style.display = "none";
   }
 
   _getMenuItemsForColumn(colKey: string): MenuItem[] {
@@ -877,67 +922,226 @@ export default class Table {
 
     const sort = this._sorts.find(s => s.key === colKey);
 
-    const items = [];
+    const items: MenuItem[] = [];
     if (!sort) {
-      items.push({ label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
-      items.push({ label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
+      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
+      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
     } else if (sort.dir === "asc") {
-      items.push({ label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
-      items.push({ label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
+      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
+      items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
     } else {
-      items.push({ label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
-      items.push({ label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
+      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
+      items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
     }
-    items.push({ label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ id: '-1', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
     items.push({
+      id: 'toggle-hidden',
       label: isHidden ? "Show Column" : "Hide Column",
       onClick: () => this._toggleColumnHidden(colKey),
-      left: !isHidden ? "icon-col-hide" : undefined,
+      left: !isHidden ? "icon-col-hide" : '',
     });
     items.push({
+      id: 'group-by',
       label: "Group by " + (col.label || col.key),
       onClick: () => this._groupByColumn(colKey),
       left: "icon-group",
     });
     items.push({
+      id: 'pin-col',
       label: "Pin Column",
       subMenu: [
         {
+          id: 'pin-none',
           label: "No pin",
           onClick: () => this._pinColumn(colKey, null),
-          left: !isPinned ? "icon-check" : undefined,
+          left: !isPinned ? "icon-check" : '',
         },
         {
+          id: 'pin-left',
           label: "Pin Left",
           onClick: () => this._pinColumn(colKey, "left"),
-          left: col.pinned === "left" ? "icon-check" : undefined,
+          left: col.pinned === "left" ? "icon-check" : '',
         },
         {
+          id: 'pin-right',
           label: "Pin Right",
           onClick: () => this._pinColumn(colKey, "right"),
-          left: col.pinned === "right" ? "icon-check" : undefined,
+          left: col.pinned === "right" ? "icon-check" : '',
         },
       ]
     });
-    items.push({ label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ id: '-2', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
     items.push({
+      id: 'autosize-col',
       label: "Autosize Column",
       onClick: () => this._updateColumnWidths(this.columns.find(c => c.key === colKey) || null),
     });
     items.push({
+      id: 'autosize-all',
       label: "Autosize All Columns",
       onClick: () => this._updateColumnWidths(),
     });
-    items.push({ label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ id: '-3', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
     items.push({
+      id: 'export-col',
       label: "Export Column",
       subMenu: [
-        { label: "Export as CSV", onClick: () => this._exportColumnCSV(colKey) },
-        { label: "Export as Excel", onClick: () => this._exportColumnJSON(colKey) },
+        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(colKey) },
+        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX(colKey) },
       ]
     });
 
     return items;
+  }
+
+  _buildFilterMenuDOM(colKey: string) {
+    const col = this.columns.find(c => c.key === colKey);
+    if (!col) return;
+    const colType = col.type ?? "string"; // "string" | "number" | "date"
+    const current = this._filters.find(f => f.key == colKey);
+
+    const root = document.createElement("div");
+    root.className = "pte-filter-root";
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-label", `Filter ${col.label ?? col.key}`);
+
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "pte-filter-select";
+    typeSelect.name = "filter-type";
+    typeSelect.setAttribute("data-focus-first", "1");
+
+    const ops = this._getFilterOpsForType(colType);
+    for (const op of ops) {
+      const opt = document.createElement("option");
+      opt.value = op.value;
+      opt.textContent = op.label;
+      typeSelect.appendChild(opt);
+    }
+
+    const valueInput = document.createElement("input");
+    valueInput.className = "pte-filter-input";
+    valueInput.name = "filter-value";
+    valueInput.placeholder = "Filter";
+    valueInput.type = colType === "number" ? "number" : "text";
+    // for date you might want type="date" or "datetime-local" depending on your data
+
+    // hydrate existing filter
+    if (current) {
+      typeSelect.value = current.type;
+      valueInput.value = current.v ?? "";
+    } else {
+      typeSelect.value = ops[0]?.value ?? "contains";
+    }
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "pte-filter-actions";
+
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "pte-filter-btn primary";
+    applyBtn.textContent = "Apply";
+
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "pte-filter-btn";
+    clearBtn.textContent = "Clear";
+
+    btnRow.appendChild(clearBtn);
+    btnRow.appendChild(applyBtn);
+
+    // Apply logic
+    const apply = () => {
+      const type = typeSelect.value as FilterType;
+      const raw = valueInput.value;
+
+      // If empty => clear filter
+      if (raw == null || String(raw).trim() === "") {
+        this._filters = this._filters.filter(f => f.key !== colKey);
+        this._closeFilter();
+        this._onFilterModelChanged();
+        return;
+      }
+
+      const parsed = colType === "number" ? Number(raw) : raw;
+      const filterIdx = this._filters.findIndex(f => f.key === colKey);
+      if (filterIdx >= 0) {
+        this._filters[filterIdx] = { key: colKey, type, v: parsed };
+      } else {
+        this._filters.push({ key: colKey, type, v: parsed });
+      }
+
+      this._closeFilter();
+      this._onFilterModelChanged();
+    };
+
+    const clear = () => {
+      this._filters = this._filters.filter(f => f.key !== colKey);
+      this._closeFilter();
+      this._onFilterModelChanged();
+    };
+
+    applyBtn.addEventListener("click", apply);
+    clearBtn.addEventListener("click", clear);
+
+    // Keyboard UX:
+    // - Enter in input applies
+    // - ArrowDown/ArrowUp moves focus through controls
+    // - Esc handled globally
+    const focusables = () =>
+      Array.from(root.querySelectorAll("select, input, button"))
+        .filter(el => !el.disabled);
+
+    const moveFocus = (dir: number) => {
+      const els = focusables();
+      const i = els.indexOf(document.activeElement);
+      if (i === -1) return;
+      const next = els[(i + dir + els.length) % els.length];
+      next?.focus();
+    };
+
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && document.activeElement === valueInput) {
+        e.preventDefault();
+        apply();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveFocus(+1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveFocus(-1);
+      }
+    });
+
+    // Layout
+    const form = document.createElement("div");
+    form.className = "pte-filter-form";
+
+    form.appendChild(typeSelect);
+    form.appendChild(valueInput);
+
+    root.appendChild(form);
+    root.appendChild(btnRow);
+
+    return root;
+  }
+
+  _getFilterOpsForType(colType: ColumnType): { value: string; label: string }[] {
+    if (colType === "number" || colType === "date" || colType === "currency") {
+      return [
+        { value: "eq", label: "Equal" },
+        { value: "neq", label: "Not equal" },
+        { value: "gt", label: "Greater than" },
+        { value: "gte", label: "Greater than or equal" },
+        { value: "lt", label: "Less than" },
+        { value: "lte", label: "Less than or equal" },
+      ];
+    }
+    // string
+    return [
+      { value: "contains", label: "Contains" },
+      { value: "eq", label: "Equal" },
+      { value: "neq", label: "Not equal" },
+      { value: "startsWith", label: "Starts with" },
+      { value: "endsWith", label: "Ends with" },
+    ];
   }
 
   // ---------------- Event listeners ----------------
@@ -955,6 +1159,8 @@ export default class Table {
       // Based on the btn clicked, render filter/menu UI
       if (!isFilter) {
         this._openColMenu(header.getAttribute("data-sort-key") || "", btn);
+      } else {
+        this._openColFilter(header.getAttribute("data-sort-key") || "", btn);
       }
       // btn.parentNode.classList.add("active");
       console.log("Header menu button clicked", isFilter ? "filter" : "menu");
@@ -992,4 +1198,30 @@ export default class Table {
     // Add 'selected' class to the clicked cell
     cell.classList.add("selected");
   }
+
+  _onFilterModelChanged() {
+    this._filterDirty = true;
+    this._sortDirty = true; // filter affects sort view
+    this._recomputeView();
+    this._updateWindow(true);
+    for (const col of this.columns) {
+      const hasFilter = this._filters.find(f => f.key === col.key);
+      const headerCells = this.header.children;
+      for (let i = 0; i < headerCells.length; i++) {
+        const hcell = headerCells[i];
+        if (hcell.getAttribute("data-sort-key") === col.key) {
+          const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
+          if (menuBtn) {
+            if (hasFilter) {
+              menuBtn.classList.add("active");
+            } else {
+              menuBtn.classList.remove("active");
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
 }

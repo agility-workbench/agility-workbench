@@ -1,3 +1,11 @@
+export enum ColumnType {
+  STRING = "string",
+  NUMBER = "number",
+  DATE = "date",
+  BOOLEAN = "boolean",
+  CURRENCY = "currency"
+}
+
 export interface ColumnDef {
   key: string;
   label: string;
@@ -7,16 +15,28 @@ export interface ColumnDef {
   depth?: number;   // for hierarchical columns
   valueGetter?: (row: any) => any;
   valueFormatter?: (value: any, row: any) => string;
-  type?: "string" | "number" | "date" | "boolean" | "currency";
+  type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children?: ColumnDef[];
   hidden?: boolean;
   pinned?: "left" | "right";
 }
 
+export enum FilterType {
+  CONTAINS = "contains",
+  STARTS_WITH = "startsWith",
+  ENDS_WITH = "endsWith",
+  EQ = "eq",
+  NEQ = "neq",
+  LT = "lt",
+  LTE = "lte",
+  GT = "gt",
+  GTE = "gte"
+}
+
 export interface FilterDef {
   key: string;
-  type: "contains" | "startsWith" | "endsWith" | "eq" | "neq" | "lt" | "lte" | "gt" | "gte";
+  type: FilterType;
   q?: string; // for text filters
   v?: any;   // for eq filter
 }
@@ -32,6 +52,6 @@ export interface MenuItem {
   disabled?: boolean;
   onClick?: () => void;
   subMenu?: MenuItem[];
-  left: string;
-  right: string;
+  left?: string;
+  right?: string;
 }
