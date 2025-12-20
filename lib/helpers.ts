@@ -1,4 +1,4 @@
-import { FilterDef } from "./types";
+import { FilterDef, InternalColumnDef } from "./types";
 
 /**
  * A column-aware filter model:
@@ -7,24 +7,25 @@ import { FilterDef } from "./types";
  *   age:  { type: "gte", value: 30 }
  * }
  */
-export function computeFilteredIdx(rows: any[], filters: FilterDef[]): number[] {
+export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: InternalColumnDef[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;
 
   const active = [];
   for (const f of filters) {
-
+    const col = columns.find(c => c.id === f.key);
+    if (!col) continue;
     // Pre-normalize filter values
     if (f.type === "contains" || f.type === "startsWith" || f.type === "endsWith") {
       active.push({
-        key: f.key,
+        key: col.key,
         type: f.type,
         q: String(f.q ?? "").toLowerCase(),
       });
     } else {
       active.push({
-        key: f.key,
+        key: col.key,
         type: f.type,
         v: f.v,
       });

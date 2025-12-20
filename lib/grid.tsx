@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Table from "./table";
 import "./table.css";
-import { ColumnDef, FilterDef } from "./types";
+import { ColumnDef, FilterDef, getColumnDefs } from "./types";
 
 export interface GridProps {
   data: any[];
@@ -35,7 +35,7 @@ export default function Grid({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const engine = new Table(containerRef.current, { columns });
+    const engine = new Table(containerRef.current, { columns: getColumnDefs(columns) });
     engineRef.current = engine;
 
     // Wire engine events to React callbacks
@@ -44,7 +44,7 @@ export default function Grid({
 
     // initial data
     engine.setData(data);
-    engine.setColumns(columns);
+    // engine.setColumns(columns);
 
     return () => {
       engine.destroy();
@@ -59,7 +59,7 @@ export default function Grid({
   }, [data]);
 
   useEffect(() => {
-    engineRef.current?.setColumns(columns);
+    engineRef.current?.setColumns(getColumnDefs(columns));
   }, [columns]);
 
   return (

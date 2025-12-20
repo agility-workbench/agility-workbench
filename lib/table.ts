@@ -1,10 +1,9 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx } from "./helpers";
-import { ColumnDef, ColumnType, FilterDef, FilterType, MenuItem, SortDef } from "./types";
-import { bool } from "prop-types";
+import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumnDef, MenuItem, SortDef } from "./types";
 
 interface TableProps {
-  columns?: ColumnDef[];
+  columns?: InternalColumnDef[];
   rowHeight?: number;
   height?: number;
   overscan?: number;
@@ -13,11 +12,12 @@ interface TableProps {
 
 export default class Table {
   container: MutableRefObject<null>;
-  columns: ColumnDef[];
+  columns: InternalColumnDef[];
   rowHeight: number;
   height: number;
   overscan: number;
   data: any[];
+  _leafColumns: InternalColumnDef[];
   _filters: FilterDef[];
   _sorts: SortDef[];
 
@@ -26,7 +26,7 @@ export default class Table {
   _filteredIdx: number[];
   _sortedIdx: number[];
   _measureCtx: CanvasRenderingContext2D | null;
-  _columnWidths: Array<{
+  _columnWidths: Map<string, {
     width: number;
     minWidth?: number;
     maxWidth?: number;
@@ -42,9 +42,18 @@ export default class Table {
   _viewRows: any[];          // filtered/sorted view (array of row objects)
   _startIndex: number;
 
+  _selectedRowIdx: Set<number>;
+  _selectedColIDs: Set<string>;
+
   // DOM elements
   root: HTMLDivElement;
+  hScroll: HTMLDivElement;
+  hScroller: HTMLDivElement;
+  vScroll: HTMLDivElement;
+  vScroller: HTMLDivElement;
+  headerWrapper: HTMLDivElement;
   header: HTMLDivElement;
+  body: HTMLDivElement;
   scroller: HTMLDivElement;
   spacer: HTMLDivElement;
   viewport: HTMLDivElement;
@@ -56,7 +65,7 @@ export default class Table {
   _currentSubmenuItems: MenuItem[] | null;
 
   _filterOverlay: HTMLDivElement;
-  _filterColKey: string | null;
+  _filterColID: string | null;
 
   _poolSize: number;
   _rowPool: Array<{
@@ -90,11 +99,12 @@ export default class Table {
     }
 
     // State
+    this._leafColumns = [];
     this._filters = [];
     this._sorts = [];
     this._measureCtx = null;
     this._measureCache = new Map();
-    this._columnWidths = [];
+    this._columnWidths = new Map();
     this._collator = null;
     this._sortComparatorCache = new Map();
 
@@ -112,14 +122,42 @@ export default class Table {
     this.root.className = "pte-root";
     container.appendChild(this.root);
 
+    this.headerWrapper = document.createElement("div");
+    this.headerWrapper.className = "pte-header-wrapper";
+    this.root.appendChild(this.headerWrapper);
     this.header = document.createElement("div");
     this.header.className = "pte-header";
-    this.root.appendChild(this.header);
+    this.headerWrapper.appendChild(this.header);
+
+    this.body = document.createElement("div");
+    this.body.className = "pte-body";
+    this.body.style.height = `${height}px`;
+    this.root.appendChild(this.body);
 
     this.scroller = document.createElement("div");
     this.scroller.className = "pte-scroller";
-    this.scroller.style.height = `${height}px`;
-    this.root.appendChild(this.scroller);
+    this.body.appendChild(this.scroller);
+
+    const hScrollContainer = document.createElement("div");
+    hScrollContainer.className = "pte-scroller-horizontal-container";
+    this.root.appendChild(hScrollContainer);
+    this.hScroll = document.createElement("div");
+    this.hScroll.style.height = "15px";
+    this.hScroll.className = "pte-scroller-horizontal-spacer";
+    hScrollContainer.appendChild(this.hScroll);
+    this.hScroller = document.createElement("div");
+    this.hScroller.className = "pte-scroller-horizontal";
+    this.hScroll.appendChild(this.hScroller);
+
+    const scrollerVContainer = document.createElement("div");
+    scrollerVContainer.className = "pte-scroller-vertical-container";
+    this.body.appendChild(scrollerVContainer);
+    this.vScroll = document.createElement("div");
+    this.vScroll.className = "pte-scroller-vertical-spacer";
+    scrollerVContainer.appendChild(this.vScroll);
+    this.vScroller = document.createElement("div");
+    this.vScroller.className = "pte-scroller-vertical";
+    this.vScroll.appendChild(this.vScroller);
 
     this.spacer = document.createElement("div");
     this.spacer.className = "pte-spacer";
@@ -129,7 +167,18 @@ export default class Table {
     this.viewport.className = "pte-viewport";
     this.spacer.appendChild(this.viewport);
 
+    this._selectedRowIdx = new Set();
+    this._selectedColIDs = new Set();
+
+    this._menuColKey = null;
+    this._submenuParentId = null;
+    this._currentSubmenuItems = null;
+    this._filterColID = null;
+
+    this._menuOverlay = document.createElement("div");
+    this._submenuOverlay = document.createElement("div");
     this._initMenuOverlay();
+    this._filterOverlay = document.createElement("div");
     this._initFilterOverlay();
 
     // Create a pooled set of row nodes
@@ -141,6 +190,15 @@ export default class Table {
     // Events
     this._rafPending = false;
     this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate());
+    this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(true));
+    this.spacer.addEventListener("scroll", () => {
+      this.headerWrapper.scrollLeft = this.spacer.scrollLeft;
+      this.hScroll.scrollLeft = this.spacer.scrollLeft;
+    });
+    this.hScroll.addEventListener("scroll", () => {
+      this.spacer.scrollLeft = this.hScroll.scrollLeft;
+      this.headerWrapper.scrollLeft = this.hScroll.scrollLeft;
+    });
 
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
@@ -159,13 +217,15 @@ export default class Table {
     this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
     this._sortedIdx = this._filteredIdx.slice();
     this._sortComparatorCache.clear();
+    this._columnWidths.clear();
     this._recomputeView();
     this._updateColumnWidths();
     this._updateWindow(true);
   }
 
-  setColumns(columns: ColumnDef[]) {
+  setColumns(columns: InternalColumnDef[]) {
     this.columns = columns ?? [];
+    this._columnWidths.clear();
     this._sortComparatorCache.clear();
     // Structural change -> rebuild header + pool
     this._buildHeaderDOM();
@@ -236,7 +296,7 @@ export default class Table {
     if (this._filterDirty) {
       this._filterDirty = false;
       if (this._filters) {
-        this._filteredIdx = computeFilteredIdx(this.data, this._filters);
+        this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._leafColumns);
       } else {
         this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
       }
@@ -248,9 +308,10 @@ export default class Table {
       this._sortedIdx = this._filteredIdx.slice();
       if (this._sorts && this._sorts.length > 0) {
         for (const sort of this._sorts) {
+          const col = this._leafColumns.find(c => c.id === sort.key);
+          if (!col) continue;
           const { key, dir } = sort;
           const mult = dir === "desc" ? -1 : 1;
-          const col = this.columns.find(c => c.key === key);
           if (!col) continue;
           const cmp = this._getComparatorForColumn(col);
           this._sortedIdx.sort((a, b) => cmp(rows[a], rows[b]) * mult);
@@ -260,7 +321,14 @@ export default class Table {
     }
 
     // Update total scroll height
-    this.spacer.style.height = `${this._sortedIdx.length * this.rowHeight}px`;
+    const verticalSize = this._sortedIdx.length * this.rowHeight;
+    if (verticalSize > this.height) {
+      this.scroller.classList.add("pte-scroller-vscroll");
+    } else {
+      this.scroller.classList.remove("pte-scroller-vscroll");
+    }
+    this.spacer.style.height = `${verticalSize}px`;
+    this.vScroller.style.height = `${verticalSize}px`;
   }
 
   // ---------------- Internals: DOM build ----------------
@@ -290,7 +358,7 @@ export default class Table {
     return this._collator;
   }
 
-  _getComparatorForColumn(col: ColumnDef) {
+  _getComparatorForColumn(col: InternalColumnDef) {
     const key = col?.key;
     if (!key) return () => 0;
 
@@ -342,9 +410,10 @@ export default class Table {
     return comparator;
   }
 
-  _autoSizeColumn(col: ColumnDef, { sampleSize = 64, randomSize = 64, maxWidth = 420 } = {}) {
+  _autoSizeColumn(col: InternalColumnDef, maxWidth: number): number {
     const headerText = col.label ?? col.key;
     let best = this._measureText(headerText) + 84;
+    if (best >= maxWidth) return maxWidth;
 
     // cache per column
     const colCacheKey = `col:${col.key}`;
@@ -354,9 +423,7 @@ export default class Table {
     const rows = this.data; // IMPORTANT: raw data order, not sorted view
     const n = rows.length;
 
-    const measureValue = (v: string, row: any) => {
-      const dv = col.valueFormatter ? col.valueFormatter(v, row) : v;
-      const s = dv == null ? "" : String(dv);
+    const measureValue = (s: string) => {
       const cached = colCache.get(s);
       if (cached != null) return cached;
       const w = this._measureText(s);
@@ -364,83 +431,100 @@ export default class Table {
       return w;
     };
 
-    // 1) first sampleSize rows
-    for (let i = 0; i < Math.min(sampleSize, n); i++) {
-      const w = measureValue(rows[i][col.key], rows[i]);
-      if (w > best) best = w;
-      if (best >= maxWidth) return maxWidth;
+    let longestValue = "";
+    let rowIdx = 0;
+    for (let i = 0; i < n; i++) {
+      const v = getValue(rows[i], col);
+      if (v != null && String(v).length > longestValue.length) {
+        longestValue = String(v);
+        rowIdx = i;
+      }
     }
 
-    // 2) deterministic random sampling across dataset (stable)
-    // Use a simple LCG seeded by col.key length (or a real hash)
-    let seed = 2166136261;
-    for (let i = 0; i < col.key.length; i++) seed = (seed ^ col.key.charCodeAt(i)) * 16777619;
-
-    const pick = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed % n;
-    };
-
-    for (let k = 0; k < Math.min(randomSize, n); k++) {
-      const idx = pick();
-      const w = measureValue(rows[idx][col.key], rows[idx]);
-      if (w > best) best = w;
-      if (best >= maxWidth) return maxWidth;
-    }
-
+    best = Math.max(best, measureValue(formatValue(rows[rowIdx][col.key], rows[rowIdx], col)));
     return Math.min(best, maxWidth);
   }
 
-  _computeColumnWidths(column: ColumnDef | null = null) {
-    const ctx = this._getMeasureContext();
-    this._columnWidths = this.columns.map((col, i) => {
+  _computeColumnWidths(column: InternalColumnDef | null = null) {
+    this._getMeasureContext();
+    const computer = (col: InternalColumnDef, i: number) => {
       if (col.width != null) {
         return { width: col.width, fixed: true };
       }
       if (column && column.key !== col.key) {
-        if (this._columnWidths && !!this._columnWidths[i]) {
-          return this._columnWidths?.[i];
+        if (this._columnWidths.has(col.id)) {
+          return;
         }
       }
 
       const minWidth = Math.max(10, col.minWidth ?? 10);
-      const maxWidth = col.maxWidth ?? 420;
+      let maxWidth = col.maxWidth ?? 420;
 
-      const autoWidth = this._autoSizeColumn(col, { maxWidth });
-      const width = Math.min(Math.max(autoWidth, minWidth), maxWidth);
+      const autoWidth = this._autoSizeColumn(col, maxWidth);
+      let width = Math.min(Math.max(autoWidth, minWidth), maxWidth);
 
-      return { width, minWidth, maxWidth, fixed: false };
-    });
+      if (col.children && col.children.length > 0) {
+        let childrenWidth = 0;
+        for (const child of col.children) {
+          computer(child, i);
+          childrenWidth += this._columnWidths.get(child.id)?.width || 0;
+        }
+        if (childrenWidth > width) {
+          width = childrenWidth;
+          maxWidth = Math.max(maxWidth, width);
+        }
+      }
+
+      this._columnWidths.set(col.id, { width, minWidth, maxWidth, fixed: false });
+    };
+    this.columns.map(computer);
   }
 
   _applyColumnWidths() {
-    if (!this._columnWidths?.length) return;
+    if (!this._columnWidths.size) return;
 
-    const headerCells = this.header.children;
-    for (let i = 0; i < this.columns.length; i++) {
-      const info = this._columnWidths[i];
-      const hcell = headerCells[i];
-      if (!hcell || !info) continue;
-
+    const applyWidthsToChildren = (col: InternalColumnDef, hcell: HTMLElement) => {
+      const info = this._columnWidths.get(col.id);
       hcell.style.flex = "0 0 auto";
-      hcell.style.width = `${info.width}px`;
-      if (!info.fixed) {
-        hcell.style.minWidth = `${info.minWidth}px`;
-        hcell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+      hcell.style.width = `${info?.width}px`;
+      if (!info?.fixed) {
+        hcell.style.minWidth = `${info?.minWidth}px`;
+        hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
       } else {
         hcell.style.minWidth = "";
         hcell.style.maxWidth = "";
       }
+      if (col.children && col.children.length > 0) {
+        for (let i = 0; i < col.children.length; i++) {
+          const child = col.children[i];
+          const childContainer = document.getElementById(child.id) as HTMLDivElement;
+          if (childContainer) {
+            applyWidthsToChildren(child, childContainer);
+          }
+        }
+      }
+    };
+
+    const headerCells = this.header.children;
+    for (let i = 0; i < this.columns.length; i++) {
+      const col = this.columns[i];
+      const info = this._columnWidths.get(col.id);
+      const hcell = headerCells[i];
+      if (!hcell || !info) continue;
+      applyWidthsToChildren(col, hcell as HTMLElement);
     }
 
+    let maxWidth = 0;
     for (const slot of this._rowPool) {
-      for (let c = 0; c < this.columns.length; c++) {
-        const info = this._columnWidths[c];
+      let totalWidth = 0;
+      for (let c = 0; c < this._leafColumns.length; c++) {
+        const info = this._columnWidths.get(this._leafColumns[c].id);
         const cell = slot.cellEls[c];
         if (!cell || !info) continue;
 
         cell.style.flex = "0 0 auto";
         cell.style.width = `${info.width}px`;
+        totalWidth += info.width;
         if (!info.fixed) {
           cell.style.minWidth = `${info.minWidth}px`;
           cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
@@ -449,10 +533,14 @@ export default class Table {
           cell.style.maxWidth = "";
         }
       }
+      slot.rowEl.style.width = `${totalWidth}px`;
+      maxWidth = Math.max(maxWidth, totalWidth);
     }
+    this.hScroller.style.width = `${maxWidth}px`;
+    this.viewport.style.width = `${maxWidth}px`;
   }
 
-  _updateColumnWidths(column: ColumnDef | null = null) {
+  _updateColumnWidths(column: InternalColumnDef | null = null) {
     console.time("computeColumnWidths");
     this._computeColumnWidths(column);
     console.timeEnd("computeColumnWidths");
@@ -460,16 +548,17 @@ export default class Table {
   }
 
   _computeHeaderDepth() {
-    const traverse = (cols: ColumnDef[], depth: number) => {
+    const traverse = (cols: InternalColumnDef[], depth: number) => {
       for (const col of cols) {
         if (col.children && Array.isArray(col.children)) {
           traverse(col.children, depth + 1);
-          col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1);
+          col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
         } else {
-          if (depth > this._maxDepth) {
-            this._maxDepth = depth;
-          }
           col.depth = 1;
+          this._leafColumns.push(col);
+        }
+        if (col.depth > this._maxDepth) {
+          this._maxDepth = col.depth;
         }
       }
     };
@@ -477,32 +566,50 @@ export default class Table {
     traverse(this.columns, 1);
   }
 
+  _buildHeaderCell(col: InternalColumnDef, maxDepth: number): HTMLDivElement {
+    const header = document.createElement("div");
+    header.className = "pte-hcell";
+    const contentHeight = maxDepth / col.depth!;
+    header.style.height = `${this.rowHeight * maxDepth}px`;
+    maxDepth--;
+    header.id = col.id;
+    const headerContainer = document.createElement("div");
+    headerContainer.className = "pte-hcell-container";
+    header.appendChild(headerContainer);
+    const headerContent = document.createElement("div");
+    headerContent.className = "pte-hcell-content";
+    headerContent.style.height = `${this.rowHeight * contentHeight}px`;
+    headerContainer.appendChild(headerContent);
+    headerContent.textContent = col.label ?? col.key;
+    if (col.children && Array.isArray(col.children) && col.children.length > 0) {
+      const children = document.createElement("div");
+      children.className = "pte-hcell-children";
+      header.appendChild(children);
+      for (const child of col.children) {
+        children.append(this._buildHeaderCell(child, maxDepth));
+      }
+    } else {
+      const headerMenu = this._getHeaderMenuElement(col.id);
+      headerContainer.appendChild(headerMenu);
+      const sort = this._sorts.find(s => s.key === col.id);
+      if (sort) {
+        this._addSortIndicatorToHeader(col.id, sort.dir);
+      }
+    }
+    return header;
+  }
+
   _buildHeaderDOM() {
+    this._leafColumns = [];
     this._computeHeaderDepth();
     this.header.innerHTML = "";
     for (const col of this.columns) {
-      const header = document.createElement("div");
-      header.className = "pte-hcell";
-      header.style.height = `${this.rowHeight}px`;
-      header.setAttribute("data-sort-key", col.key);
-      const headerContent = document.createElement("div");
-      headerContent.className = "pte-hcell-content";
-      header.appendChild(headerContent);
-      headerContent.textContent = col.label ?? col.key;
-      const headerMenu = this._getHeaderMenuElement(col.key);
-      header.appendChild(headerMenu);
-
-      const sort = this._sorts.find(s => s.key === col.key);
-      if (sort) {
-        this._addSortIndicatorToHeader(col.key, sort.dir);
-      }
-
-      this.header.appendChild(header);
+      this.header.appendChild(this._buildHeaderCell(col, this._maxDepth));
     }
     this._applyColumnWidths();
   }
 
-  _getHeaderMenuElement(colKey: string): HTMLDivElement {
+  _getHeaderMenuElement(colID: string): HTMLDivElement {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu";
 
@@ -517,7 +624,7 @@ export default class Table {
       btn.appendChild(icon);
       wrapper.appendChild(btn);
       if (flyout) {
-        const hasFilter = this._filters.find(f => f.key === colKey);
+        const hasFilter = this._filters.find(f => f.key === colID);
         if (hasFilter) {
           btn.classList.add("pte-hcell-menu-filter-active");
         }
@@ -549,7 +656,7 @@ export default class Table {
       rowEl.style.display = "flex";
 
       const cellEls = [];
-      for (const col of this.columns) {
+      for (const col of this._leafColumns) {
         const cell = document.createElement("div");
         cell.className = "pte-cell";
         cell.style.flex = "0 0 auto";
@@ -571,38 +678,38 @@ export default class Table {
   }
 
   _addSortIndicatorToHeader(key: string, dir: "asc" | "desc" | '') {
-    const headerCells = this.header.children;
-    for (let i = 0; i < headerCells.length; i++) {
-      const hcell = headerCells[i];
-      if (hcell.getAttribute("data-sort-key") === key) {
-        const hcellContent = hcell.querySelector(".pte-hcell-content");
-        if (!hcellContent) continue;
-        // remove existing
-        // const existing = hcell.querySelector(".pte-sort");
-        // if (existing) existing.remove();
-        hcellContent.classList.remove("pte-sorted-asc", "pte-sorted-desc");
+    const hcell = document.getElementById(key);
+    if (!hcell) return;
+    const hcellContent = hcell.querySelector(".pte-hcell-content");
+    if (!hcellContent) return;
+    // remove existing
+    // const existing = hcell.querySelector(".pte-sort");
+    // if (existing) existing.remove();
+    hcellContent.classList.remove("pte-sorted-asc", "pte-sorted-desc");
 
-        // add new
-        if (dir === '') return;
-        hcellContent.classList.add("pte-sorted-" + dir);
-        break;
-      }
-    }
+    // add new
+    if (dir === '') return;
+    hcellContent.classList.add("pte-sorted-" + dir);
   }
 
   // ---------------- Internals: hot path ----------------
-  _scheduleWindowUpdate() {
+  _scheduleWindowUpdate(scrollbar: boolean = false) {
     if (this._rafPending) return;
     this._rafPending = true;
     requestAnimationFrame(() => {
       this._rafPending = false;
-      this._updateWindow(false);
+      this._updateWindow(false, scrollbar);
     });
   }
 
-  _updateWindow(forcePatch: boolean) {
+  _updateWindow(forcePatch: boolean, scrollbar: boolean = false) {
     const total = this._sortedIdx.length;
-    const scrollTop = this.scroller.scrollTop;
+    const scrollTop = scrollbar ? this.vScroll.scrollTop : this.scroller.scrollTop;
+    if (scrollbar) {
+      this.scroller.scrollTop = scrollTop;
+    } else {
+      this.vScroll.scrollTop = scrollTop;
+    }
 
     const startIndex = Math.max(
       0,
@@ -633,8 +740,8 @@ export default class Table {
       const row = this.data[this._sortedIdx[viewIndex]];
 
       // HOT: write textContent only (no re-render, no diff)
-      for (let c = 0; c < this.columns.length; c++) {
-        const col = this.columns[c];
+      for (let c = 0; c < this._leafColumns.length; c++) {
+        const col = this._leafColumns[c];
         const key = col.key;
         const v = row[key];
         const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
@@ -680,13 +787,11 @@ export default class Table {
 
   // ---------------- Menus ----------------
   _initMenuOverlay() {
-    this._menuOverlay = document.createElement("div");
     this._menuOverlay.className = "pte-menu";
     this._menuOverlay.style.position = "fixed";
     this._menuOverlay.style.zIndex = "9999";
     this._menuOverlay.style.display = "none";
 
-    this._submenuOverlay = document.createElement("div");
     this._submenuOverlay.className = "pte-menu pte-submenu";
     this._submenuOverlay.style.position = "fixed";
     this._submenuOverlay.style.display = "none";
@@ -710,7 +815,6 @@ export default class Table {
   }
 
   _initFilterOverlay() {
-    this._filterOverlay = document.createElement("div");
     this._filterOverlay.className = "pte-filter";
     this._filterOverlay.style.position = "fixed";
     this._filterOverlay.style.zIndex = "10000";
@@ -728,11 +832,11 @@ export default class Table {
   }
 
   _wireSubmenuBehaviour(mainItems: MenuItem[]) {
-    let openTimer = null;
+    let openTimer = 0;
 
-    const getItemById = (id) => mainItems.find(x => x.id === id);
+    const getItemById = (id: string) => mainItems.find(x => x.id === id);
 
-    this._menuOverlay.addEventListener("mousemove", (e) => {
+    const menuMouseMoveListener = (e) => {
       const btn = e.target.closest(".pte-menu-item[data-item-id]");
       if (!btn) return;
 
@@ -755,10 +859,9 @@ export default class Table {
         this._submenuParentId = id;
         btn.setAttribute("aria-expanded", "true");
       }, 120);
-    });
+    };
 
-    // Click handling (main menu)
-    this._menuOverlay.addEventListener("click", (e) => {
+    const menuClickListener = (e) => {
       const btn = e.target.closest(".pte-menu-item[data-item-id]");
       if (!btn) return;
 
@@ -774,12 +877,16 @@ export default class Table {
 
       if (item?.onClick && !item.disabled) {
         this._closeMenu();
+        console.time("menuOnClick");
         item.onClick();
+        console.timeEnd("menuOnClick");
+        this._menuOverlay.removeEventListener("click", menuClickListener);
+        this._menuOverlay.removeEventListener("mousemove", menuMouseMoveListener);
+        this._submenuOverlay.removeEventListener("click", submenuClickListener);
       }
-    });
+    }
 
-    // Click handling (submenu)
-    this._submenuOverlay.addEventListener("click", (e) => {
+    const submenuClickListener = (e) => {
       const btn = e.target.closest(".pte-menu-item[data-item-id]");
       if (!btn) return;
 
@@ -788,11 +895,21 @@ export default class Table {
       if (item?.onClick && !item.disabled) {
         this._closeMenu();
         item.onClick();
+        this._menuOverlay.removeEventListener("click", menuClickListener);
+        this._menuOverlay.removeEventListener("mousemove", menuMouseMoveListener);
+        this._submenuOverlay.removeEventListener("click", submenuClickListener);
       }
-    });
+    };
+
+    // Click handling (main menu)
+    this._menuOverlay.addEventListener("mousemove", menuMouseMoveListener);
+    this._menuOverlay.addEventListener("click", menuClickListener);
+    // Click handling (submenu)
+    this._submenuOverlay.addEventListener("click", submenuClickListener);
   }
 
   _hideSubmenu() {
+    this._submenuOverlay.style.opacity = "0";
     this._submenuOverlay.style.display = "none";
     this._submenuParentId = null;
     this._currentSubmenuItems = null;
@@ -806,16 +923,22 @@ export default class Table {
     const W = 220;
 
     // Default: open to the right
-    let left = r.right + 4;
+    let left = r.right;
     let top = r.top;
 
     // If would overflow right edge, open to the left
     if (left + W > window.innerWidth - 8) {
-      left = r.left - W - 4;
+      left = r.left - W;
     }
 
     // Clamp vertically a bit
-    top = Math.min(top, window.innerHeight - 260);
+    this._submenuOverlay.style.display = "block";
+    const submenuRect = this._submenuOverlay.getBoundingClientRect();
+    this._submenuOverlay.style.opacity = "1";
+
+    if (top + submenuRect.height > window.innerHeight - 8) {
+      top = window.innerHeight - 8 - submenuRect.height;
+    }
 
     this._submenuOverlay.style.left = `${left}px`;
     this._submenuOverlay.style.top = `${top}px`;
@@ -863,10 +986,10 @@ export default class Table {
     }
   }
 
-  _openColMenu(colKey: string, anchorEl: HTMLElement) {
-    this._menuColKey = colKey;
+  _openColMenu(colID: string, anchorEl: HTMLElement) {
+    this._menuColKey = colID;
 
-    const items = this._getMenuItemsForColumn(colKey);
+    const items = this._getMenuItemsForColumn(colID);
 
     this._renderMenuItems(this._menuOverlay, items);
     this._wireSubmenuBehaviour(items);
@@ -879,11 +1002,11 @@ export default class Table {
     this._menuOverlay.style.display = "flex";
   }
 
-  _openColFilter(colKey: string, anchorEl: HTMLElement) {
-    this._filterColKey = colKey;
+  _openColFilter(colID: string, anchorEl: HTMLElement) {
+    this._filterColID = colID;
 
     // build content
-    const content = this._buildFilterMenuDOM(colKey);
+    const content = this._buildFilterMenuDOM(colID);
 
     this._filterOverlay.innerHTML = "";
     this._filterOverlay.appendChild(content);
@@ -909,41 +1032,41 @@ export default class Table {
   }
 
   _closeFilter() {
-    this._filterColKey = null;
+    this._filterColID = null;
     this._filterOverlay.style.display = "none";
   }
 
-  _getMenuItemsForColumn(colKey: string): MenuItem[] {
-    const col = this.columns.find(c => c.key === colKey);
+  _getMenuItemsForColumn(colID: string): MenuItem[] {
+    const col = this._leafColumns.find(c => c.id === colID);
     if (!col) return [];
 
     const isHidden = !!col.hidden;
     const isPinned = col.pinned === "left" || col.pinned === "right";
 
-    const sort = this._sorts.find(s => s.key === colKey);
+    const sort = this._sorts.find(s => s.key === colID);
 
     const items: MenuItem[] = [];
     if (!sort) {
-      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
-      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
+      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
+      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
     } else if (sort.dir === "asc") {
-      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colKey, dir: "desc" }), left: "icon-desc" });
+      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
       items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
     } else {
-      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colKey, dir: "asc" }), left: "icon-asc" });
+      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
       items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
     }
     items.push({ id: '-1', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
     items.push({
       id: 'toggle-hidden',
       label: isHidden ? "Show Column" : "Hide Column",
-      onClick: () => this._toggleColumnHidden(colKey),
+      onClick: () => this._toggleColumnHidden(colID),
       left: !isHidden ? "icon-col-hide" : '',
     });
     items.push({
       id: 'group-by',
       label: "Group by " + (col.label || col.key),
-      onClick: () => this._groupByColumn(colKey),
+      onClick: () => this._groupByColumn(colID),
       left: "icon-group",
     });
     items.push({
@@ -953,19 +1076,19 @@ export default class Table {
         {
           id: 'pin-none',
           label: "No pin",
-          onClick: () => this._pinColumn(colKey, null),
+          onClick: () => this._pinColumn(colID, null),
           left: !isPinned ? "icon-check" : '',
         },
         {
           id: 'pin-left',
           label: "Pin Left",
-          onClick: () => this._pinColumn(colKey, "left"),
+          onClick: () => this._pinColumn(colID, "left"),
           left: col.pinned === "left" ? "icon-check" : '',
         },
         {
           id: 'pin-right',
           label: "Pin Right",
-          onClick: () => this._pinColumn(colKey, "right"),
+          onClick: () => this._pinColumn(colID, "right"),
           left: col.pinned === "right" ? "icon-check" : '',
         },
       ]
@@ -974,7 +1097,7 @@ export default class Table {
     items.push({
       id: 'autosize-col',
       label: "Autosize Column",
-      onClick: () => this._updateColumnWidths(this.columns.find(c => c.key === colKey) || null),
+      onClick: () => this._updateColumnWidths(this.columns.find(c => c.key === colID) || null),
     });
     items.push({
       id: 'autosize-all',
@@ -986,19 +1109,19 @@ export default class Table {
       id: 'export-col',
       label: "Export Column",
       subMenu: [
-        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(colKey) },
-        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX(colKey) },
+        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(colID) },
+        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX(colID) },
       ]
     });
 
     return items;
   }
 
-  _buildFilterMenuDOM(colKey: string) {
-    const col = this.columns.find(c => c.key === colKey);
+  _buildFilterMenuDOM(colID: string) {
+    const col = this._leafColumns.find(c => c.id === colID);
     if (!col) return;
     const colType = col.type ?? "string"; // "string" | "number" | "date"
-    const current = this._filters.find(f => f.key == colKey);
+    const current = this._filters.find(f => f.key == colID);
 
     const root = document.createElement("div");
     root.className = "pte-filter-root";
@@ -1054,18 +1177,18 @@ export default class Table {
 
       // If empty => clear filter
       if (raw == null || String(raw).trim() === "") {
-        this._filters = this._filters.filter(f => f.key !== colKey);
+        this._filters = this._filters.filter(f => f.key !== colID);
         this._closeFilter();
         this._onFilterModelChanged();
         return;
       }
 
       const parsed = colType === "number" ? Number(raw) : raw;
-      const filterIdx = this._filters.findIndex(f => f.key === colKey);
+      const filterIdx = this._filters.findIndex(f => f.key === colID);
       if (filterIdx >= 0) {
-        this._filters[filterIdx] = { key: colKey, type, v: parsed };
+        this._filters[filterIdx] = { key: colID, type, v: parsed };
       } else {
-        this._filters.push({ key: colKey, type, v: parsed });
+        this._filters.push({ key: colID, type, v: parsed });
       }
 
       this._closeFilter();
@@ -1073,7 +1196,7 @@ export default class Table {
     };
 
     const clear = () => {
-      this._filters = this._filters.filter(f => f.key !== colKey);
+      this._filters = this._filters.filter(f => f.key !== colID);
       this._closeFilter();
       this._onFilterModelChanged();
     };
@@ -1146,11 +1269,12 @@ export default class Table {
 
   // ---------------- Event listeners ----------------
   _headerCellClickHandler(e: MouseEvent) {
-    const header = e.target?.closest("[data-sort-key]");
+    const header = e.target?.closest(".pte-hcell");
+    console.log("Header cell clicked", header?.id);
     if (!header) return;
     const headerContent = e.target?.closest(".pte-hcell-content");
     if (headerContent) {
-      this._toggleSort(header.getAttribute("data-sort-key"));
+      this._toggleSort(header.id);
       return;
     }
     const btn = e.target?.closest(".pte-hcell-menu-btn");
@@ -1158,9 +1282,9 @@ export default class Table {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
       // Based on the btn clicked, render filter/menu UI
       if (!isFilter) {
-        this._openColMenu(header.getAttribute("data-sort-key") || "", btn);
+        this._openColMenu(header.id, btn);
       } else {
-        this._openColFilter(header.getAttribute("data-sort-key") || "", btn);
+        this._openColFilter(header.id, btn);
       }
       // btn.parentNode.classList.add("active");
       console.log("Header menu button clicked", isFilter ? "filter" : "menu");
@@ -1181,7 +1305,7 @@ export default class Table {
     const activeMenus = this.root.querySelectorAll(".pte-hcell-menu-item.active");
     activeMenus.forEach(m => m.classList.remove("active"));
 
-    const header = e.target?.closest("[data-sort-key]");
+    const header = e.target?.closest(".pte-hcell");
     if (header) {
       this._headerCellClickHandler(e);
       return;
@@ -1204,21 +1328,17 @@ export default class Table {
     this._sortDirty = true; // filter affects sort view
     this._recomputeView();
     this._updateWindow(true);
-    for (const col of this.columns) {
-      const hasFilter = this._filters.find(f => f.key === col.key);
-      const headerCells = this.header.children;
-      for (let i = 0; i < headerCells.length; i++) {
-        const hcell = headerCells[i];
-        if (hcell.getAttribute("data-sort-key") === col.key) {
-          const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
-          if (menuBtn) {
-            if (hasFilter) {
-              menuBtn.classList.add("active");
-            } else {
-              menuBtn.classList.remove("active");
-            }
+    for (const col of this._leafColumns) {
+      const hasFilter = this._filters.find(f => f.key === col.id);
+      const hcell = document.getElementById(col.id);
+      if (hcell && hcell.id === col.id) {
+        const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
+        if (menuBtn) {
+          if (hasFilter) {
+            menuBtn.classList.add("active");
+          } else {
+            menuBtn.classList.remove("active");
           }
-          break;
         }
       }
     }
