@@ -194,12 +194,12 @@ export default class Table {
     this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate());
     this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(true));
     this.spacer.addEventListener("scroll", () => {
-      this.headerWrapper.scrollLeft = this.spacer.scrollLeft;
+      this.header.scrollLeft = this.spacer.scrollLeft;
       this.hScroll.scrollLeft = this.spacer.scrollLeft;
     });
     this.hScroll.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.hScroll.scrollLeft;
-      this.headerWrapper.scrollLeft = this.hScroll.scrollLeft;
+      this.header.scrollLeft = this.hScroll.scrollLeft;
     });
     this.header.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.header.scrollLeft;
