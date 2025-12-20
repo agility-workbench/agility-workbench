@@ -1,5 +1,16 @@
 import { FilterDef, InternalColumnDef } from "./types";
 
+export function findColumnById(columns: InternalColumnDef[], id: string): InternalColumnDef | undefined {
+  for (const col of columns) {
+    if (col.id === id) return col;
+    if (col.children) {
+      const found = findColumnById(col.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 /**
  * A column-aware filter model:
  * filterModel = {

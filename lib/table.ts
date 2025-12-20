@@ -1,5 +1,5 @@
 import { MutableRefObject } from "react";
-import { computeFilteredIdx } from "./helpers";
+import { computeFilteredIdx, findColumnById } from "./helpers";
 import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumnDef, MenuItem, SortDef } from "./types";
 
 interface TableProps {
@@ -286,6 +286,44 @@ export default class Table {
     this._sortDirty = true;
     this._recomputeView();
     this._addSortIndicatorToHeader(key, curr?.dir || '');
+    this._updateWindow(true);
+  }
+
+  _toggleBatchSort(col: InternalColumnDef) {
+    let curr = this._sorts.find(s => s.key === col.id);
+    const dir = curr ? (curr.dir === "asc" ? "desc" : null) : "asc";
+
+    const addSort = (key: string, dir: "asc" | "desc" | null) => {
+      const curr = this._sorts.find(s => s.key === key);
+      if (curr) {
+        if (dir) {
+          curr.dir = dir;
+        } else {
+          // remove sort
+          this._sorts = this._sorts.filter(s => s.key !== key);
+        }
+      } else if (dir) {
+        this._sorts.push({ key, dir });
+      }
+    };
+
+    const colIDs: string[] = [];
+
+    const traverse = (col: InternalColumnDef) => {
+      colIDs.push(col.id);
+      addSort(col.id, dir);
+      for (const child of col.children || []) {
+        traverse(child);
+      }
+    };
+
+    traverse(col);
+
+    this._sortDirty = true;
+    this._recomputeView();
+    for (const colID of colIDs) {
+      this._addSortIndicatorToHeader(colID, dir || '');
+    }
     this._updateWindow(true);
   }
 
@@ -1270,12 +1308,17 @@ export default class Table {
   // ---------------- Event listeners ----------------
   _headerCellClickHandler(e: MouseEvent) {
     const header = e.target?.closest(".pte-hcell");
-    console.log("Header cell clicked", header?.id);
     if (!header) return;
     const headerContent = e.target?.closest(".pte-hcell-content");
     if (headerContent) {
-      this._toggleSort(header.id);
-      return;
+      let col = this._leafColumns.find(c => c.id === header.id);
+      if (!col) {
+        col = findColumnById(this.columns, header.id);
+        if (!col) return;
+        return this._toggleBatchSort(col);
+      }
+      // Click on header content => toggle sort
+      return this._toggleSort(header.id);
     }
     const btn = e.target?.closest(".pte-hcell-menu-btn");
     if (btn) {
@@ -1286,8 +1329,6 @@ export default class Table {
       } else {
         this._openColFilter(header.id, btn);
       }
-      // btn.parentNode.classList.add("active");
-      console.log("Header menu button clicked", isFilter ? "filter" : "menu");
       return;
     }
   }
