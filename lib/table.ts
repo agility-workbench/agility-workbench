@@ -615,13 +615,22 @@ export default class Table {
   _buildHeaderCell(col: InternalColumnDef, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
+    if (!col.children || col.children.length === 0) {
+      header.classList.add("pte-hcell-leaf");
+    }
     const contentHeight = maxDepth / col.depth!;
     header.style.height = `${this.rowHeight * maxDepth}px`;
     maxDepth--;
     header.id = col.id;
+    const headerWrapper = document.createElement("div");
+    headerWrapper.className = "pte-hcell-wrapper";
+    header.appendChild(headerWrapper);
+    const headerResize = document.createElement("div");
+    headerResize.className = "pte-hcell-resize-handle";
+    headerWrapper.appendChild(headerResize);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
-    header.appendChild(headerContainer);
+    headerWrapper.appendChild(headerContainer);
     const headerContent = document.createElement("div");
     headerContent.className = "pte-hcell-content";
     headerContent.style.height = `${this.rowHeight * contentHeight}px`;

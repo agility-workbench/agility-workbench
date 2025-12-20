@@ -5,6 +5,7 @@
   --pte-font-size: 14px;
   --pte-header-font-weight: 500;
   --pte-header-background-color: #f9fafb;
+  --pte-frame-border-color: #d1d5db;
   --pte-border-color: #e5e7eb;
   --pte-hover-bg-color: #f3f4f6;
   --pte-selected-bg-color: #dbeafe;
@@ -24,6 +25,8 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--pte-frame-border-color);
+  border-radius: 8px;
 }
 
 .pte-header-wrapper {
