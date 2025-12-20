@@ -33,6 +33,8 @@
 .pte-header {
   display: flex;
   background-color: var(--pte-header-background-color);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .pte-body {

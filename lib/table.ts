@@ -199,6 +199,10 @@ export default class Table {
       this.spacer.scrollLeft = this.hScroll.scrollLeft;
       this.headerWrapper.scrollLeft = this.hScroll.scrollLeft;
     });
+    this.header.addEventListener("scroll", () => {
+      this.spacer.scrollLeft = this.header.scrollLeft;
+      this.hScroll.scrollLeft = this.header.scrollLeft;
+    });
 
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
