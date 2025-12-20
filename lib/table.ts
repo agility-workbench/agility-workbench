@@ -47,8 +47,10 @@ export default class Table {
 
   // DOM elements
   root: HTMLDivElement;
+  hScrollParent: HTMLDivElement;
   hScroll: HTMLDivElement;
   hScroller: HTMLDivElement;
+  vScrollParent: HTMLDivElement;
   vScroll: HTMLDivElement;
   vScroller: HTMLDivElement;
   headerWrapper: HTMLDivElement;
@@ -138,23 +140,23 @@ export default class Table {
     this.scroller.className = "pte-scroller";
     this.body.appendChild(this.scroller);
 
-    const hScrollContainer = document.createElement("div");
-    hScrollContainer.className = "pte-scroller-horizontal-container";
-    this.root.appendChild(hScrollContainer);
+    this.hScrollParent = document.createElement("div");
+    this.hScrollParent.className = "pte-scroller-horizontal-container";
+    this.root.appendChild(this.hScrollParent);
     this.hScroll = document.createElement("div");
     this.hScroll.style.height = "15px";
     this.hScroll.className = "pte-scroller-horizontal-spacer";
-    hScrollContainer.appendChild(this.hScroll);
+    this.hScrollParent.appendChild(this.hScroll);
     this.hScroller = document.createElement("div");
     this.hScroller.className = "pte-scroller-horizontal";
     this.hScroll.appendChild(this.hScroller);
 
-    const scrollerVContainer = document.createElement("div");
-    scrollerVContainer.className = "pte-scroller-vertical-container";
-    this.body.appendChild(scrollerVContainer);
+    this.vScrollParent = document.createElement("div");
+    this.vScrollParent.className = "pte-scroller-vertical-container";
+    this.body.appendChild(this.vScrollParent);
     this.vScroll = document.createElement("div");
     this.vScroll.className = "pte-scroller-vertical-spacer";
-    scrollerVContainer.appendChild(this.vScroll);
+    this.vScrollParent.appendChild(this.vScroll);
     this.vScroller = document.createElement("div");
     this.vScroller.className = "pte-scroller-vertical";
     this.vScroll.appendChild(this.vScroller);
@@ -371,6 +373,7 @@ export default class Table {
     }
     this.spacer.style.height = `${verticalSize}px`;
     this.vScroller.style.height = `${verticalSize}px`;
+    this.vScrollParent.style.display = verticalSize > this.body.clientHeight ? "block" : "none";
   }
 
   // ---------------- Internals: DOM build ----------------
@@ -579,6 +582,7 @@ export default class Table {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.hScroller.style.width = `${maxWidth}px`;
+    this.hScrollParent.style.display = maxWidth > this.body.clientWidth ? "block" : "none";
     this.viewport.style.width = `${maxWidth}px`;
   }
 
