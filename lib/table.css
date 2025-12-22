@@ -128,12 +128,15 @@
   scrollbar-width: none;
 }
 
+.pte-viewport-left, .pte-viewport-right, .pte-viewport {
+  will-change: transform;
+}
+
 .pte-viewport {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
-  will-change: transform;
 }
 
 .pte-hcell {
