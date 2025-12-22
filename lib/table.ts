@@ -1,9 +1,9 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
-import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumnDef, MenuItem, RowPoolDef, SortDef } from "./types";
+import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, MenuItem, RowPoolDef, SortDef } from "./types";
 
 interface TableProps {
-  columns?: InternalColumnDef[];
+  columns?: InternalColumn[];
   rowHeight?: number;
   height?: number;
   overscan?: number;
@@ -12,7 +12,7 @@ interface TableProps {
 
 export default class Table {
   container: MutableRefObject<null>;
-  columns: InternalColumnDef[];
+  columns: InternalColumn[];
   rowHeight: number;
   height: number;
   overscan: number;
@@ -67,12 +67,12 @@ export default class Table {
   viewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
 
-  _leftPinnedColumns: InternalColumnDef[];
-  _leftPinnedLeafColumns: InternalColumnDef[];
-  _rightPinnedColumns: InternalColumnDef[];
-  _rightPinnedLeafColumns: InternalColumnDef[];
-  _centerColumns: InternalColumnDef[];
-  _centerLeafColumns: InternalColumnDef[];
+  _leftPinnedColumns: InternalColumn[];
+  _leftPinnedLeafColumns: InternalColumn[];
+  _rightPinnedColumns: InternalColumn[];
+  _rightPinnedLeafColumns: InternalColumn[];
+  _centerColumns: InternalColumn[];
+  _centerLeafColumns: InternalColumn[];
 
   _menuOverlay: HTMLDivElement;
   _menuColKey: string | null;
@@ -285,7 +285,7 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
-  setColumns(columns: InternalColumnDef[]) {
+  setColumns(columns: InternalColumn[]) {
     this.columns = columns ?? [];
     this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
     this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
@@ -354,7 +354,7 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
-  _toggleBatchSort(col: InternalColumnDef) {
+  _toggleBatchSort(col: InternalColumn) {
     let curr = this._sorts.find(s => s.key === col.id);
     const dir = curr ? (curr.dir === "asc" ? "desc" : null) : "asc";
 
@@ -374,7 +374,7 @@ export default class Table {
 
     const colIDs: string[] = [];
 
-    const traverse = (col: InternalColumnDef) => {
+    const traverse = (col: InternalColumn) => {
       colIDs.push(col.id);
       addSort(col.id, dir);
       for (const child of col.children || []) {
@@ -466,7 +466,7 @@ export default class Table {
     return this._collator;
   }
 
-  _getComparatorForColumn(col: InternalColumnDef) {
+  _getComparatorForColumn(col: InternalColumn) {
     const key = col?.key;
     if (!key) return () => 0;
 
@@ -518,7 +518,7 @@ export default class Table {
     return comparator;
   }
 
-  _autoSizeColumn(col: InternalColumnDef, maxWidth: number): number {
+  _autoSizeColumn(col: InternalColumn, maxWidth: number): number {
     const headerText = col.label ?? col.key;
     let best = this._measureText(headerText) + 84;
     if (best >= maxWidth) return maxWidth;
@@ -553,9 +553,9 @@ export default class Table {
     return Math.min(best, maxWidth);
   }
 
-  _computeColumnWidths(column: InternalColumnDef | null = null) {
+  _computeColumnWidths(column: InternalColumn | null = null) {
     this._getMeasureContext();
-    const computer = (col: InternalColumnDef, i: number) => {
+    const computer = (col: InternalColumn, i: number) => {
       if (col.width != null) {
         return { width: col.width, fixed: true };
       }
@@ -588,7 +588,7 @@ export default class Table {
     this.columns.map(computer);
   }
 
-  _applyWidthsToChildren(col: InternalColumnDef, hcell: HTMLElement) {
+  _applyWidthsToChildren(col: InternalColumn, hcell: HTMLElement) {
     const info = this._columnWidths.get(col.id);
     hcell.style.flex = "0 0 auto";
     hcell.style.width = `${info?.width}px`;
@@ -726,7 +726,7 @@ export default class Table {
     }
   }
 
-  _updateColumnWidths(column: InternalColumnDef | null = null) {
+  _updateColumnWidths(column: InternalColumn | null = null) {
     console.time("computeColumnWidths");
     this._computeColumnWidths(column);
     console.timeEnd("computeColumnWidths");
@@ -736,7 +736,7 @@ export default class Table {
   }
 
   _computeHeaderDepth() {
-    const traverse = (cols: InternalColumnDef[], depth: number, appendTo: InternalColumnDef[]) => {
+    const traverse = (cols: InternalColumn[], depth: number, appendTo: InternalColumn[]) => {
       for (const col of cols) {
         if (col.children && Array.isArray(col.children)) {
           traverse(col.children, depth + 1, appendTo);
@@ -756,7 +756,7 @@ export default class Table {
     traverse(this._rightPinnedColumns, 1, this._rightPinnedLeafColumns);
   }
 
-  _buildHeaderCell(col: InternalColumnDef, maxDepth: number): HTMLDivElement {
+  _buildHeaderCell(col: InternalColumn, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
     if (!col.children || col.children.length === 0) {

@@ -22,7 +22,7 @@ export interface Column {
   pinned?: "left" | "right";
 }
 
-export interface InternalColumnDef {
+export interface InternalColumn {
   id: string;
   originalID: string;
   key: string;
@@ -35,16 +35,16 @@ export interface InternalColumnDef {
   valueFormatter?: (value: any, row: any) => string;
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
-  children?: InternalColumnDef[];
+  children?: InternalColumn[];
   hidden?: boolean;
   pinned?: "left" | "right" | null;
 }
 
-export function getColumnDefs(cols: (Column | any)[]): InternalColumnDef[] {
+export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
   return cols.map(getColumnDef);
 }
 
-export function getColumnDef(col: Column | any): InternalColumnDef {
+export function getColumnDef(col: Column | any): InternalColumn {
   const id = crypto.randomUUID();
   return {
     id: id,

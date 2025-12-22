@@ -1,6 +1,6 @@
-import { FilterDef, InternalColumnDef } from "./types";
+import { FilterDef, InternalColumn } from "./types";
 
-export function findColumnById(columns: InternalColumnDef[], id: string): InternalColumnDef | undefined {
+export function findColumnById(columns: InternalColumn[], id: string): InternalColumn | undefined {
   for (const col of columns) {
     if (col.id === id) return col;
     if (col.children) {
@@ -18,7 +18,7 @@ export function findColumnById(columns: InternalColumnDef[], id: string): Intern
  *   age:  { type: "gte", value: 30 }
  * }
  */
-export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: InternalColumnDef[]): number[] {
+export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: InternalColumn[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;
