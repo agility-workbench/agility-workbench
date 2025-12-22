@@ -258,6 +258,7 @@ export default class Table {
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
 
+    this.headerWrapper.addEventListener("contextmenu", (e) => this._headerCellContextMenuHandler(e));
     document.addEventListener("click", (e) => this._cellClickHandler(e));
     this.body.addEventListener("mouseover", (e) => {
       this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
@@ -721,9 +722,7 @@ export default class Table {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.rightViewport.style.width = `${maxWidth}px`;
-    if (maxWidth > 0) {
-      this.rightHeader.style.paddingRight = "15px";
-    }
+    this.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
   }
 
   _updateColumnWidths(column: InternalColumn | null = null) {
@@ -787,13 +786,12 @@ export default class Table {
       for (const child of col.children) {
         children.append(this._buildHeaderCell(child, maxDepth));
       }
-    } else {
-      const headerMenu = this._getHeaderMenuElement(col.id);
-      headerContainer.appendChild(headerMenu);
-      const sort = this._sorts.find(s => s.key === col.id);
-      if (sort) {
-        this._addSortIndicatorToHeader(col.id, sort.dir);
-      }
+    }
+    const headerMenu = this._getHeaderMenuElement(col);
+    headerContainer.appendChild(headerMenu);
+    const sort = this._sorts.find(s => s.key === col.id);
+    if (sort) {
+      this._addSortIndicatorToHeader(col.id, sort.dir);
     }
     return header;
   }
@@ -820,7 +818,7 @@ export default class Table {
     this._applyRightColumnWidths();
   }
 
-  _getHeaderMenuElement(colID: string): HTMLDivElement {
+  _getHeaderMenuElement(col: InternalColumn): HTMLDivElement {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu";
 
@@ -835,7 +833,7 @@ export default class Table {
       btn.appendChild(icon);
       wrapper.appendChild(btn);
       if (flyout) {
-        const hasFilter = this._filters.find(f => f.key === colID);
+        const hasFilter = this._filters.find(f => f.key === col.id);
         if (hasFilter) {
           btn.classList.add("pte-hcell-menu-filter-active");
         }
@@ -845,7 +843,9 @@ export default class Table {
       return wrapper;
     };
 
-    menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
+    if (!col.children || col.children.length === 0) {
+      menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
+    }
     menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
     return menu;
   }
@@ -1275,7 +1275,7 @@ export default class Table {
     }
   }
 
-  _openColMenu(colID: string, anchorEl: HTMLElement) {
+  _openColMenu(colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
     this._menuColKey = colID;
 
     const items = this._getMenuItemsForColumn(colID);
@@ -1284,9 +1284,16 @@ export default class Table {
     this._wireSubmenuBehaviour(items);
 
     // Position near button
-    const r = anchorEl.getBoundingClientRect();
-    this._menuOverlay.style.left = `${Math.min(r.left, window.innerWidth - 240)}px`;
-    this._menuOverlay.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 300)}px`;
+    if (anchorEl) {
+      const r = anchorEl.getBoundingClientRect();
+      left = r.left;
+      top = r.bottom + 4;
+    } else {
+      left = left || 100;
+      top = top || 100;
+    }
+    this._menuOverlay.style.left = `${Math.min(left, window.innerWidth - 240)}px`;
+    this._menuOverlay.style.top = `${Math.min(top, window.innerHeight - 300)}px`;
     this._menuOverlay.style.minWidth = "220px";
     this._menuOverlay.style.display = "flex";
   }
@@ -1326,9 +1333,7 @@ export default class Table {
   }
 
   _getMenuItemsForColumn(colID: string): MenuItem[] {
-    let col = this._centerLeafColumns.find(c => c.id === colID);
-    if (!col) col = this._leftPinnedLeafColumns.find(c => c.id === colID);
-    if (!col) col = this._rightPinnedLeafColumns.find(c => c.id === colID);
+    let col = findColumnById(this.columns, colID);
     if (!col) return [];
 
     const isHidden = !!col.hidden;
@@ -1562,15 +1567,21 @@ export default class Table {
   }
 
   // ---------------- Event listeners ----------------
+  _headerCellContextMenuHandler(e: MouseEvent) {
+    e.preventDefault();
+    const header = e.target?.closest(".pte-hcell");
+    if (!header) return;
+    this._openColMenu(header.id, { left: e.clientX, top: e.clientY });
+  }
+
   _headerCellClickHandler(e: MouseEvent) {
     const header = e.target?.closest(".pte-hcell");
     if (!header) return;
     const headerContent = e.target?.closest(".pte-hcell-content");
     if (headerContent) {
-      let col = this._centerLeafColumns.find(c => c.id === header.id);
-      if (!col) {
-        col = findColumnById(this.columns, header.id);
-        if (!col) return;
+      const col = findColumnById(this.columns, header.id);
+      if (!col) return;
+      if (col.children && Array.isArray(col.children) && col.children.length > 0) {
         return this._toggleBatchSort(col);
       }
       // Click on header content => toggle sort
@@ -1581,7 +1592,7 @@ export default class Table {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
       // Based on the btn clicked, render filter/menu UI
       if (!isFilter) {
-        this._openColMenu(header.id, btn);
+        this._openColMenu(header.id, { anchorEl: btn });
       } else {
         this._openColFilter(header.id, btn);
       }
