@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
-import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumnDef, MenuItem, SortDef } from "./types";
+import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumnDef, MenuItem, RowPoolDef, SortDef } from "./types";
 
 interface TableProps {
   columns?: InternalColumnDef[];
@@ -17,7 +17,6 @@ export default class Table {
   height: number;
   overscan: number;
   data: any[];
-  _leafColumns: InternalColumnDef[];
   _filters: FilterDef[];
   _sorts: SortDef[];
 
@@ -54,11 +53,26 @@ export default class Table {
   vScroll: HTMLDivElement;
   vScroller: HTMLDivElement;
   headerWrapper: HTMLDivElement;
+  leftHeader: HTMLDivElement;
   header: HTMLDivElement;
+  rightHeader: HTMLDivElement;
   body: HTMLDivElement;
+  leftScroller: HTMLDivElement;
   scroller: HTMLDivElement;
+  rightScroller: HTMLDivElement;
+  leftSpacer: HTMLDivElement;
   spacer: HTMLDivElement;
+  rightSpacer: HTMLDivElement;
+  leftViewport: HTMLDivElement;
   viewport: HTMLDivElement;
+  rightViewport: HTMLDivElement;
+
+  _leftPinnedColumns: InternalColumnDef[];
+  _leftPinnedLeafColumns: InternalColumnDef[];
+  _rightPinnedColumns: InternalColumnDef[];
+  _rightPinnedLeafColumns: InternalColumnDef[];
+  _centerColumns: InternalColumnDef[];
+  _centerLeafColumns: InternalColumnDef[];
 
   _menuOverlay: HTMLDivElement;
   _menuColKey: string | null;
@@ -70,10 +84,7 @@ export default class Table {
   _filterColID: string | null;
 
   _poolSize: number;
-  _rowPool: Array<{
-    rowEl: HTMLDivElement;
-    cellEls: HTMLDivElement[];
-  }>;
+  _rowPool: RowPoolDef[];
 
   _rafPending: boolean;
   _measureCache: Map<string, Map<string, number>>;
@@ -101,7 +112,13 @@ export default class Table {
     }
 
     // State
-    this._leafColumns = [];
+    this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
+    this._leftPinnedLeafColumns = [];
+    this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
+    this._rightPinnedLeafColumns = [];
+    this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
+    this._centerLeafColumns = [];
+
     this._filters = [];
     this._sorts = [];
     this._measureCtx = null;
@@ -127,18 +144,32 @@ export default class Table {
     this.headerWrapper = document.createElement("div");
     this.headerWrapper.className = "pte-header-wrapper";
     this.root.appendChild(this.headerWrapper);
+    this.leftHeader = document.createElement("div");
+    this.leftHeader.className = "pte-header-left";
+    this.headerWrapper.appendChild(this.leftHeader);
     this.header = document.createElement("div");
     this.header.className = "pte-header";
     this.headerWrapper.appendChild(this.header);
+    this.rightHeader = document.createElement("div");
+    this.rightHeader.className = "pte-header-right";
+    this.headerWrapper.appendChild(this.rightHeader);
 
     this.body = document.createElement("div");
     this.body.className = "pte-body";
     this.body.style.height = `${height}px`;
     this.root.appendChild(this.body);
 
+    this.leftScroller = document.createElement("div");
+    this.leftScroller.className = "pte-scroller-left";
+    this.body.appendChild(this.leftScroller);
+
     this.scroller = document.createElement("div");
     this.scroller.className = "pte-scroller";
     this.body.appendChild(this.scroller);
+
+    this.rightScroller = document.createElement("div");
+    this.rightScroller.className = "pte-scroller-right";
+    this.body.appendChild(this.rightScroller);
 
     this.hScrollParent = document.createElement("div");
     this.hScrollParent.className = "pte-scroller-horizontal-container";
@@ -161,13 +192,29 @@ export default class Table {
     this.vScroller.className = "pte-scroller-vertical";
     this.vScroll.appendChild(this.vScroller);
 
+    this.leftSpacer = document.createElement("div");
+    this.leftSpacer.className = "pte-spacer-left";
+    this.leftScroller.appendChild(this.leftSpacer);
+
     this.spacer = document.createElement("div");
     this.spacer.className = "pte-spacer";
     this.scroller.appendChild(this.spacer);
 
+    this.rightSpacer = document.createElement("div");
+    this.rightSpacer.className = "pte-spacer-right";
+    this.rightScroller.appendChild(this.rightSpacer);
+
+    this.leftViewport = document.createElement("div");
+    this.leftViewport.className = "pte-viewport-left";
+    this.leftSpacer.appendChild(this.leftViewport);
+
     this.viewport = document.createElement("div");
     this.viewport.className = "pte-viewport";
     this.spacer.appendChild(this.viewport);
+
+    this.rightViewport = document.createElement("div");
+    this.rightViewport.className = "pte-viewport-right";
+    this.rightSpacer.appendChild(this.rightViewport);
 
     this._selectedRowIdx = new Set();
     this._selectedColIDs = new Set();
@@ -191,8 +238,10 @@ export default class Table {
 
     // Events
     this._rafPending = false;
-    this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate());
-    this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(true));
+    this.leftScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.leftScroller));
+    this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.scroller));
+    this.rightScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.rightScroller));
+    this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(this.vScroll));
     this.spacer.addEventListener("scroll", () => {
       this.header.scrollLeft = this.spacer.scrollLeft;
       this.hScroll.scrollLeft = this.spacer.scrollLeft;
@@ -210,11 +259,18 @@ export default class Table {
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
 
     document.addEventListener("click", (e) => this._cellClickHandler(e));
+    this.body.addEventListener("mouseover", (e) => {
+      this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
+      const row = e.target.closest(".pte-row");
+      if (row) {
+        this.body.querySelectorAll(`.pte-row[row-id="${row.getAttribute("row-id")}"]`).forEach(r => r.classList.add("pte-row-hover"));
+      }
+    });
 
     // initial
     this._recomputeView();
     this._updateColumnWidths();
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   // ---------------- Public API ----------------
@@ -226,11 +282,14 @@ export default class Table {
     this._columnWidths.clear();
     this._recomputeView();
     this._updateColumnWidths();
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   setColumns(columns: InternalColumnDef[]) {
     this.columns = columns ?? [];
+    this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
+    this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
+    this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
     this._columnWidths.clear();
     this._sortComparatorCache.clear();
     // Structural change -> rebuild header + pool
@@ -238,7 +297,7 @@ export default class Table {
     this._rebuildRowPool(); // rare operation
     this._recomputeView();
     this._updateColumnWidths();
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   setFilters(filters: FilterDef[]) {
@@ -258,7 +317,7 @@ export default class Table {
     this._sortDirty = true;
     this._recomputeView();
     this._addSortIndicatorToHeader(sort.key, removed ? '' : sort.dir);
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   /** Patch only specific cells if you know what changed */
@@ -292,7 +351,7 @@ export default class Table {
     this._sortDirty = true;
     this._recomputeView();
     this._addSortIndicatorToHeader(key, curr?.dir || '');
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   _toggleBatchSort(col: InternalColumnDef) {
@@ -330,7 +389,7 @@ export default class Table {
     for (const colID of colIDs) {
       this._addSortIndicatorToHeader(colID, dir || '');
     }
-    this._updateWindow(true);
+    this._updateWindow(true, undefined);
   }
 
   _recomputeView() {
@@ -340,7 +399,7 @@ export default class Table {
     if (this._filterDirty) {
       this._filterDirty = false;
       if (this._filters) {
-        this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._leafColumns);
+        this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._centerLeafColumns);
       } else {
         this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
       }
@@ -352,7 +411,7 @@ export default class Table {
       this._sortedIdx = this._filteredIdx.slice();
       if (this._sorts && this._sorts.length > 0) {
         for (const sort of this._sorts) {
-          const col = this._leafColumns.find(c => c.id === sort.key);
+          const col = this._centerLeafColumns.find(c => c.id === sort.key);
           if (!col) continue;
           const { key, dir } = sort;
           const mult = dir === "desc" ? -1 : 1;
@@ -366,14 +425,18 @@ export default class Table {
 
     // Update total scroll height
     const verticalSize = this._sortedIdx.length * this.rowHeight;
-    if (verticalSize > this.height) {
-      this.scroller.classList.add("pte-scroller-vscroll");
-    } else {
-      this.scroller.classList.remove("pte-scroller-vscroll");
-    }
+    this.leftSpacer.style.height = `${verticalSize}px`;
     this.spacer.style.height = `${verticalSize}px`;
+    this.rightSpacer.style.height = `${verticalSize}px`;
     this.vScroller.style.height = `${verticalSize}px`;
     this.vScrollParent.style.display = verticalSize > this.body.clientHeight ? "block" : "none";
+  }
+
+  _pinColumn(colID: string, pin: "left" | "right" | null) {
+    const col = findColumnById(this.columns, colID);
+    if (!col) return;
+    col.pinned = pin;
+    this.setColumns(this.columns);
   }
 
   // ---------------- Internals: DOM build ----------------
@@ -525,45 +588,82 @@ export default class Table {
     this.columns.map(computer);
   }
 
-  _applyColumnWidths() {
-    if (!this._columnWidths.size) return;
-
-    const applyWidthsToChildren = (col: InternalColumnDef, hcell: HTMLElement) => {
-      const info = this._columnWidths.get(col.id);
-      hcell.style.flex = "0 0 auto";
-      hcell.style.width = `${info?.width}px`;
-      if (!info?.fixed) {
-        hcell.style.minWidth = `${info?.minWidth}px`;
-        hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
-      } else {
-        hcell.style.minWidth = "";
-        hcell.style.maxWidth = "";
-      }
-      if (col.children && col.children.length > 0) {
-        for (let i = 0; i < col.children.length; i++) {
-          const child = col.children[i];
-          const childContainer = document.getElementById(child.id) as HTMLDivElement;
-          if (childContainer) {
-            applyWidthsToChildren(child, childContainer);
-          }
+  _applyWidthsToChildren(col: InternalColumnDef, hcell: HTMLElement) {
+    const info = this._columnWidths.get(col.id);
+    hcell.style.flex = "0 0 auto";
+    hcell.style.width = `${info?.width}px`;
+    if (!info?.fixed) {
+      hcell.style.minWidth = `${info?.minWidth}px`;
+      hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
+    } else {
+      hcell.style.minWidth = "";
+      hcell.style.maxWidth = "";
+    }
+    if (col.children && col.children.length > 0) {
+      for (let i = 0; i < col.children.length; i++) {
+        const child = col.children[i];
+        const childContainer = document.getElementById(child.id) as HTMLDivElement;
+        if (childContainer) {
+          this._applyWidthsToChildren(child, childContainer);
         }
       }
-    };
+    }
+  };
 
-    const headerCells = this.header.children;
-    for (let i = 0; i < this.columns.length; i++) {
-      const col = this.columns[i];
+  _applyLeftColumnWidths() {
+    if (!this._columnWidths.size) return;
+
+    const headerCells = this.leftHeader.children;
+    for (let i = 0; i < this._leftPinnedColumns.length; i++) {
+      const col = this._leftPinnedColumns[i];
       const info = this._columnWidths.get(col.id);
       const hcell = headerCells[i];
       if (!hcell || !info) continue;
-      applyWidthsToChildren(col, hcell as HTMLElement);
+      this._applyWidthsToChildren(col, hcell as HTMLElement);
     }
 
     let maxWidth = 0;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
-      for (let c = 0; c < this._leafColumns.length; c++) {
-        const info = this._columnWidths.get(this._leafColumns[c].id);
+      for (let c = 0; c < this._leftPinnedLeafColumns.length; c++) {
+        const info = this._columnWidths.get(this._leftPinnedLeafColumns[c].id);
+        const cell = slot.leftCellEls[c];
+        if (!cell || !info) continue;
+
+        cell.style.flex = "0 0 auto";
+        cell.style.width = `${info.width}px`;
+        totalWidth += info.width;
+        if (!info.fixed) {
+          cell.style.minWidth = `${info.minWidth}px`;
+          cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+        } else {
+          cell.style.minWidth = "";
+          cell.style.maxWidth = "";
+        }
+      }
+      if (slot.leftRowEl) slot.leftRowEl.style.width = `${totalWidth}px`;
+      maxWidth = Math.max(maxWidth, totalWidth);
+    }
+    this.leftViewport.style.width = `${maxWidth}px`;
+  }
+
+  _applyColumnWidths() {
+    if (!this._columnWidths.size) return;
+
+    const headerCells = this.header.children;
+    for (let i = 0; i < this._centerColumns.length; i++) {
+      const col = this._centerColumns[i];
+      const info = this._columnWidths.get(col.id);
+      const hcell = headerCells[i];
+      if (!hcell || !info) continue;
+      this._applyWidthsToChildren(col, hcell as HTMLElement);
+    }
+
+    let maxWidth = 0;
+    for (const slot of this._rowPool) {
+      let totalWidth = 0;
+      for (let c = 0; c < this._centerLeafColumns.length; c++) {
+        const info = this._columnWidths.get(this._centerLeafColumns[c].id);
         const cell = slot.cellEls[c];
         if (!cell || !info) continue;
 
@@ -586,22 +686,64 @@ export default class Table {
     this.viewport.style.width = `${maxWidth}px`;
   }
 
+  _applyRightColumnWidths() {
+    if (!this._columnWidths.size) return;
+
+    const headerCells = this.rightHeader.children;
+    for (let i = 0; i < this._rightPinnedColumns.length; i++) {
+      const col = this._rightPinnedColumns[i];
+      const info = this._columnWidths.get(col.id);
+      const hcell = headerCells[i];
+      if (!hcell || !info) continue;
+      this._applyWidthsToChildren(col, hcell as HTMLElement);
+    }
+
+    let maxWidth = 0;
+    for (const slot of this._rowPool) {
+      let totalWidth = 0;
+      for (let c = 0; c < this._rightPinnedLeafColumns.length; c++) {
+        const info = this._columnWidths.get(this._rightPinnedLeafColumns[c].id);
+        const cell = slot.rightCellEls[c];
+        if (!cell || !info) continue;
+
+        cell.style.flex = "0 0 auto";
+        cell.style.width = `${info.width}px`;
+        totalWidth += info.width;
+        if (!info.fixed) {
+          cell.style.minWidth = `${info.minWidth}px`;
+          cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+        } else {
+          cell.style.minWidth = "";
+          cell.style.maxWidth = "";
+        }
+      }
+      if (slot.rightRowEl) slot.rightRowEl.style.width = `${totalWidth}px`;
+      maxWidth = Math.max(maxWidth, totalWidth);
+    }
+    this.rightViewport.style.width = `${maxWidth}px`;
+    if (maxWidth > 0) {
+      this.rightHeader.style.paddingRight = "15px";
+    }
+  }
+
   _updateColumnWidths(column: InternalColumnDef | null = null) {
     console.time("computeColumnWidths");
     this._computeColumnWidths(column);
     console.timeEnd("computeColumnWidths");
+    this._applyLeftColumnWidths();
     this._applyColumnWidths();
+    this._applyRightColumnWidths();
   }
 
   _computeHeaderDepth() {
-    const traverse = (cols: InternalColumnDef[], depth: number) => {
+    const traverse = (cols: InternalColumnDef[], depth: number, appendTo: InternalColumnDef[]) => {
       for (const col of cols) {
         if (col.children && Array.isArray(col.children)) {
-          traverse(col.children, depth + 1);
+          traverse(col.children, depth + 1, appendTo);
           col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
         } else {
           col.depth = 1;
-          this._leafColumns.push(col);
+          appendTo.push(col);
         }
         if (col.depth > this._maxDepth) {
           this._maxDepth = col.depth;
@@ -609,7 +751,9 @@ export default class Table {
       }
     };
 
-    traverse(this.columns, 1);
+    traverse(this._centerColumns, 1, this._centerLeafColumns);
+    traverse(this._leftPinnedColumns, 1, this._leftPinnedLeafColumns);
+    traverse(this._rightPinnedColumns, 1, this._rightPinnedLeafColumns);
   }
 
   _buildHeaderCell(col: InternalColumnDef, maxDepth: number): HTMLDivElement {
@@ -655,13 +799,25 @@ export default class Table {
   }
 
   _buildHeaderDOM() {
-    this._leafColumns = [];
+    this._centerLeafColumns = [];
+    this._leftPinnedLeafColumns = [];
+    this._rightPinnedLeafColumns = [];
     this._computeHeaderDepth();
+    this.leftHeader.innerHTML = "";
     this.header.innerHTML = "";
-    for (const col of this.columns) {
+    this.rightHeader.innerHTML = "";
+    for (const col of this._leftPinnedColumns) {
+      this.leftHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+    }
+    for (const col of this._centerColumns) {
       this.header.appendChild(this._buildHeaderCell(col, this._maxDepth));
     }
+    for (const col of this._rightPinnedColumns) {
+      this.rightHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+    }
+    this._applyLeftColumnWidths();
     this._applyColumnWidths();
+    this._applyRightColumnWidths();
   }
 
   _getHeaderMenuElement(colID: string): HTMLDivElement {
@@ -701,29 +857,79 @@ export default class Table {
   }
 
   _buildRowPool() {
+    this.leftViewport.innerHTML = "";
     this.viewport.innerHTML = "";
+    this.rightViewport.innerHTML = "";
     this._rowPool = [];
 
     for (let i = 0; i < this._poolSize; i++) {
-      const rowEl = document.createElement("div");
-      rowEl.className = "pte-row";
-      rowEl.style.height = `${this.rowHeight}px`;
-      rowEl.style.display = "flex";
+      const row: RowPoolDef = {
+        rowEl: document.createElement("div"),
+        leftCellEls: [],
+        cellEls: [],
+        rightCellEls: []
+      };
 
-      const cellEls = [];
-      for (const col of this._leafColumns) {
+      if (this._leftPinnedLeafColumns.length > 0) {
+        row.leftRowEl = document.createElement("div");
+        row.leftRowEl.className = "pte-row";
+        row.leftRowEl.style.height = `${this.rowHeight}px`;
+        row.leftRowEl.style.display = "flex";
+
+        for (const col of this._leftPinnedLeafColumns) {
+          const cell = document.createElement("div");
+          cell.className = "pte-cell";
+          cell.style.flex = "0 0 auto";
+          cell.style.whiteSpace = "nowrap";
+          cell.style.overflow = "hidden";
+          cell.style.textOverflow = "ellipsis";
+          row.leftRowEl.appendChild(cell);
+          row.leftCellEls.push(cell);
+        }
+
+        this.leftViewport.appendChild(row.leftRowEl);
+      }
+
+      row.rowEl = document.createElement("div");
+      row.rowEl.className = "pte-row";
+      row.rowEl.style.height = `${this.rowHeight}px`;
+      row.rowEl.style.display = "flex";
+
+      for (const col of this._centerLeafColumns) {
         const cell = document.createElement("div");
         cell.className = "pte-cell";
         cell.style.flex = "0 0 auto";
         cell.style.whiteSpace = "nowrap";
         cell.style.overflow = "hidden";
         cell.style.textOverflow = "ellipsis";
-        rowEl.appendChild(cell);
-        cellEls.push(cell);
+        row.rowEl.appendChild(cell);
+        row.cellEls.push(cell);
       }
 
-      this.viewport.appendChild(rowEl);
-      this._rowPool.push({ rowEl, cellEls });
+      this.viewport.appendChild(row.rowEl);
+
+      if (this._rightPinnedLeafColumns.length > 0) {
+        row.rightRowEl = document.createElement("div");
+        row.rightRowEl.className = "pte-row";
+        row.rightRowEl.style.height = `${this.rowHeight}px`;
+        row.rightRowEl.style.display = "flex";
+
+        row.rightCellEls = [];
+        for (const col of this._rightPinnedLeafColumns) {
+          const cell = document.createElement("div");
+          cell.className = "pte-cell";
+          cell.style.flex = "0 0 auto";
+          cell.style.whiteSpace = "nowrap";
+          cell.style.overflow = "hidden";
+          cell.style.textOverflow = "ellipsis";
+          row.rightRowEl.appendChild(cell);
+          row.rightCellEls.push(cell);
+        }
+
+        this.rightViewport.appendChild(row.rightRowEl);
+      }
+
+      this._rowPool.push(row);
     }
   }
 
@@ -748,23 +954,22 @@ export default class Table {
   }
 
   // ---------------- Internals: hot path ----------------
-  _scheduleWindowUpdate(scrollbar: boolean = false) {
+  _scheduleWindowUpdate(scrollSrc: HTMLDivElement) {
     if (this._rafPending) return;
     this._rafPending = true;
     requestAnimationFrame(() => {
       this._rafPending = false;
-      this._updateWindow(false, scrollbar);
+      this._updateWindow(false, scrollSrc);
     });
   }
 
-  _updateWindow(forcePatch: boolean, scrollbar: boolean = false) {
+  _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const total = this._sortedIdx.length;
-    const scrollTop = scrollbar ? this.vScroll.scrollTop : this.scroller.scrollTop;
-    if (scrollbar) {
-      this.scroller.scrollTop = scrollTop;
-    } else {
-      this.vScroll.scrollTop = scrollTop;
-    }
+    const scrollTop = scrollSrc?.scrollTop || 0;
+    this.leftScroller.scrollTop = scrollTop;
+    this.scroller.scrollTop = scrollTop;
+    this.rightScroller.scrollTop = scrollTop;
+    this.vScroll.scrollTop = scrollTop;
 
     const startIndex = Math.max(
       0,
@@ -779,7 +984,9 @@ export default class Table {
     this._startIndex = startIndex;
 
     const offsetY = startIndex * this.rowHeight;
+    this.leftViewport.style.transform = `translateY(${offsetY}px)`;
     this.viewport.style.transform = `translateY(${offsetY}px)`;
+    this.rightViewport.style.transform = `translateY(${offsetY}px)`;
 
     // Patch pooled rows
     for (let i = 0; i < this._rowPool.length; i++) {
@@ -792,15 +999,42 @@ export default class Table {
       }
 
       slot.rowEl.style.display = "flex";
-      const row = this.data[this._sortedIdx[viewIndex]];
+      const rowIndex = this._sortedIdx[viewIndex];
+      if (this._selectedRowIdx.has(rowIndex)) {
+        slot.rowEl.classList.add("pte-row-selected");
+      } else {
+        slot.rowEl.classList.remove("pte-row-selected");
+      }
+      slot.rowEl.setAttribute("row-id", String(rowIndex));
+      const row = this.data[rowIndex];
 
       // HOT: write textContent only (no re-render, no diff)
-      for (let c = 0; c < this._leafColumns.length; c++) {
-        const col = this._leafColumns[c];
+      if (this._leftPinnedLeafColumns.length > 0 && slot.leftCellEls) {
+        slot.leftRowEl?.setAttribute("row-id", String(rowIndex));
+        for (let c = 0; c < this._leftPinnedLeafColumns.length; c++) {
+          const col = this._leftPinnedLeafColumns[c];
+          const key = col.key;
+          const v = row[key];
+          const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
+          slot.leftCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+        }
+      }
+      for (let c = 0; c < this._centerLeafColumns.length; c++) {
+        const col = this._centerLeafColumns[c];
         const key = col.key;
         const v = row[key];
         const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
         slot.cellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+      }
+      if (this._rightPinnedLeafColumns.length > 0 && slot.rightCellEls) {
+        slot.rightRowEl?.setAttribute("row-id", String(rowIndex));
+        for (let c = 0; c < this._rightPinnedLeafColumns.length; c++) {
+          const col = this._rightPinnedLeafColumns[c];
+          const key = col.key;
+          const v = row[key];
+          const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
+          slot.rightCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+        }
       }
     }
   }
@@ -1092,7 +1326,9 @@ export default class Table {
   }
 
   _getMenuItemsForColumn(colID: string): MenuItem[] {
-    const col = this._leafColumns.find(c => c.id === colID);
+    let col = this._centerLeafColumns.find(c => c.id === colID);
+    if (!col) col = this._leftPinnedLeafColumns.find(c => c.id === colID);
+    if (!col) col = this._rightPinnedLeafColumns.find(c => c.id === colID);
     if (!col) return [];
 
     const isHidden = !!col.hidden;
@@ -1173,9 +1409,12 @@ export default class Table {
   }
 
   _buildFilterMenuDOM(colID: string) {
-    const col = this._leafColumns.find(c => c.id === colID);
+    let col = this._centerLeafColumns.find(c => c.id === colID);
+    if (!col) col = this._leftPinnedLeafColumns.find(c => c.id === colID);
+    if (!col) col = this._rightPinnedLeafColumns.find(c => c.id === colID);
     if (!col) return;
-    const colType = col.type ?? "string"; // "string" | "number" | "date"
+
+    const colType: ColumnType = col.type ?? ColumnType.STRING;
     const current = this._filters.find(f => f.key == colID);
 
     const root = document.createElement("div");
@@ -1328,7 +1567,7 @@ export default class Table {
     if (!header) return;
     const headerContent = e.target?.closest(".pte-hcell-content");
     if (headerContent) {
-      let col = this._leafColumns.find(c => c.id === header.id);
+      let col = this._centerLeafColumns.find(c => c.id === header.id);
       if (!col) {
         col = findColumnById(this.columns, header.id);
         if (!col) return;
@@ -1373,6 +1612,22 @@ export default class Table {
     const cell = e.target?.closest(".pte-cell");
     if (!cell) return;
 
+    const rowId = cell.parentElement?.getAttribute("row-id");
+    if (rowId == null) return;
+
+    const rowIndex = parseInt(rowId, 10);
+    this._selectedRowIdx.add(rowIndex);
+    // const rowData = this.data[rowIndex];
+    // Dispatch custom event 'cellClick' with details
+    // this.dispatchEvent(new CustomEvent("cellClick", {
+    //   detail: {
+    //     rowIndex,
+    //     rowData,
+    //     columnKey: this._centerLeafColumns[cell.cellIndex].key,
+    //     cellElement: cell,
+    //   }
+    // }));
+
     // Remove 'selected' class from all cells
     const allCells = this.root.querySelectorAll(".pte-cell");
     allCells.forEach(c => c.classList.remove("selected"));
@@ -1385,8 +1640,8 @@ export default class Table {
     this._filterDirty = true;
     this._sortDirty = true; // filter affects sort view
     this._recomputeView();
-    this._updateWindow(true);
-    for (const col of this._leafColumns) {
+    this._updateWindow(true, undefined);
+    for (const col of this._centerLeafColumns) {
       const hasFilter = this._filters.find(f => f.key === col.id);
       const hcell = document.getElementById(col.id);
       if (hcell && hcell.id === col.id) {

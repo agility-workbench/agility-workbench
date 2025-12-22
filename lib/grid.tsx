@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import Table from "./table";
 import "./table.css";
-import { ColumnDef, FilterDef, getColumnDefs } from "./types";
+import { Column, FilterDef, getColumnDefs } from "./types";
 
 export interface GridProps {
   data: any[];
-  columns: ColumnDef[];
+  columns: Column[];
   className?: string;
   style?: React.CSSProperties;
 }
@@ -64,16 +64,6 @@ export default function Grid({
 
   return (
     <div className={className} style={style}>
-      {/* optional: React-controlled filter UI */}
-      <div style={{ marginBottom: 8 }}>
-        <input
-          value={filter?.q || ""}
-          onChange={(e) => handleFilterChange(e.target.value)}
-          placeholder="Filter…"
-        />
-      </div>
-
-      {/* engine renders into this div */}
       <div ref={containerRef} />
     </div>
   );

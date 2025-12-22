@@ -6,7 +6,7 @@ export enum ColumnType {
   CURRENCY = "currency"
 }
 
-export interface ColumnDef {
+export interface Column {
   key: string;
   label: string;
   width?: number;    // fixed width
@@ -17,13 +17,14 @@ export interface ColumnDef {
   valueFormatter?: (value: any, row: any) => string;
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
-  children?: ColumnDef[];
+  children?: Column[];
   hidden?: boolean;
   pinned?: "left" | "right";
 }
 
 export interface InternalColumnDef {
   id: string;
+  originalID: string;
   key: string;
   label: string;
   width?: number;    // fixed width
@@ -36,16 +37,18 @@ export interface InternalColumnDef {
   format?: string; // e.g., for date or currency formatting
   children?: InternalColumnDef[];
   hidden?: boolean;
-  pinned?: "left" | "right";
+  pinned?: "left" | "right" | null;
 }
 
-export function getColumnDefs(cols: (ColumnDef | any)[]): InternalColumnDef[] {
+export function getColumnDefs(cols: (Column | any)[]): InternalColumnDef[] {
   return cols.map(getColumnDef);
 }
 
-export function getColumnDef(col: ColumnDef | any): InternalColumnDef {
+export function getColumnDef(col: Column | any): InternalColumnDef {
+  const id = crypto.randomUUID();
   return {
-    id: crypto.randomUUID(),
+    id: id,
+    originalID: id,
     key: col.key,
     label: col.label || col.key,
     width: col.width,
@@ -62,14 +65,14 @@ export function getColumnDef(col: ColumnDef | any): InternalColumnDef {
   };
 }
 
-export function getValue(row: any, col: ColumnDef): any {
+export function getValue(row: any, col: Column): any {
   if (col.valueGetter) {
     return col.valueGetter(row);
   }
   return row[col.key];
 }
 
-export function getFormattedValue(row: any, col: ColumnDef): string {
+export function getFormattedValue(row: any, col: Column): string {
   const value = getValue(row, col);
   if (col.valueFormatter) {
     return col.valueFormatter(value, row);
@@ -80,7 +83,7 @@ export function getFormattedValue(row: any, col: ColumnDef): string {
   return String(value);
 }
 
-export function formatValue(value: any, row: any, col: ColumnDef): string {
+export function formatValue(value: any, row: any, col: Column): string {
   if (col.valueFormatter) {
     return col.valueFormatter(value, row);
   }
@@ -122,4 +125,13 @@ export interface MenuItem {
   subMenu?: MenuItem[];
   left?: string;
   right?: string;
+}
+
+export interface RowPoolDef {
+  leftRowEl?: HTMLDivElement;
+  rowEl: HTMLDivElement;
+  rightRowEl?: HTMLDivElement;
+  leftCellEls: HTMLDivElement[];
+  cellEls: HTMLDivElement[];
+  rightCellEls: HTMLDivElement[];
 }

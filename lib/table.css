@@ -32,19 +32,49 @@
 
 .pte-header-wrapper {
   overflow: hidden;
+  display: flex;
+  background-color: var(--pte-header-background-color);
+  border-bottom: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-header-left {
+  display: flex;
+  border-right: 1px solid var(--pte-frame-border-color);
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
 }
 
 .pte-header {
   display: flex;
-  background-color: var(--pte-header-background-color);
   overflow-x: auto;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--pte-frame-border-color);
   padding-right: 15px;
+  flex: 1 1 auto;
+}
+
+.pte-header-right {
+  display: flex;
+  border-left: 1px solid var(--pte-frame-border-color);
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
 }
 
 .pte-body {
   display: flex;
+}
+
+.pte-scroller-left {
+  overflow: auto;
+  position: relative;
+  scrollbar-width: none;
+  border-right: 1px solid var(--pte-frame-border-color);
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.pte-scroller-right {
+  overflow: auto;
+  position: relative;
+  scrollbar-width: none;
+  border-left: 1px solid var(--pte-frame-border-color);
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
 }
 
 .pte-scroller {
@@ -263,7 +293,7 @@
   box-sizing: border-box;
 }
 
-.pte-row:hover {
+.pte-row-hover {
   background-color: var(--pte-hover-bg-color);
 }
 
