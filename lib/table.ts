@@ -1,6 +1,7 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
 import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, MenuItem, RowPoolDef, SortDef } from "./types";
+import { isTrue } from "./misc";
 
 interface TableProps {
   columns?: InternalColumn[];
@@ -46,9 +47,16 @@ export default class Table {
 
   // DOM elements
   root: HTMLDivElement;
+  hScrollContainer: HTMLDivElement;
+  hScrollLeftParent: HTMLDivElement;
   hScrollParent: HTMLDivElement;
+  hScrollRightParent: HTMLDivElement;
+  hScrollLeft: HTMLDivElement;
   hScroll: HTMLDivElement;
+  hScrollRight: HTMLDivElement;
+  hScrollerLeft: HTMLDivElement;
   hScroller: HTMLDivElement;
+  hScrollerRight: HTMLDivElement;
   vScrollParent: HTMLDivElement;
   vScroll: HTMLDivElement;
   vScroller: HTMLDivElement;
@@ -171,16 +179,39 @@ export default class Table {
     this.rightScroller.className = "pte-scroller-right";
     this.body.appendChild(this.rightScroller);
 
+    this.hScrollContainer = document.createElement("div");
+    this.hScrollContainer.className = "pte-scroller-horizontal-container-wrapper";
+    this.root.appendChild(this.hScrollContainer);
+    this.hScrollLeftParent = document.createElement("div");
+    this.hScrollLeftParent.className = "pte-scroller-horizontal-left-container";
+    this.hScrollContainer.appendChild(this.hScrollLeftParent);
     this.hScrollParent = document.createElement("div");
     this.hScrollParent.className = "pte-scroller-horizontal-container";
-    this.root.appendChild(this.hScrollParent);
+    this.hScrollContainer.appendChild(this.hScrollParent);
+    this.hScrollRightParent = document.createElement("div");
+    this.hScrollRightParent.className = "pte-scroller-horizontal-right-container";
+    this.hScrollContainer.appendChild(this.hScrollRightParent);
+    this.hScrollLeft = document.createElement("div");
+    this.hScrollLeft.style.height = "15px";
+    this.hScrollLeft.className = "pte-scroller-horizontal-spacer";
+    this.hScrollLeftParent.appendChild(this.hScrollLeft);
     this.hScroll = document.createElement("div");
     this.hScroll.style.height = "15px";
     this.hScroll.className = "pte-scroller-horizontal-spacer";
     this.hScrollParent.appendChild(this.hScroll);
+    this.hScrollRight = document.createElement("div");
+    this.hScrollRight.style.height = "15px";
+    this.hScrollRight.className = "pte-scroller-horizontal-spacer";
+    this.hScrollRightParent.appendChild(this.hScrollRight);
+    this.hScrollerLeft = document.createElement("div");
+    this.hScrollerLeft.className = "pte-scroller-horizontal";
+    this.hScrollLeft.appendChild(this.hScrollerLeft);
     this.hScroller = document.createElement("div");
     this.hScroller.className = "pte-scroller-horizontal";
     this.hScroll.appendChild(this.hScroller);
+    this.hScrollerRight = document.createElement("div");
+    this.hScrollerRight.className = "pte-scroller-horizontal";
+    this.hScrollRight.appendChild(this.hScrollerRight);
 
     this.vScrollParent = document.createElement("div");
     this.vScrollParent.className = "pte-scroller-vertical-container";
@@ -236,24 +267,63 @@ export default class Table {
     this._buildHeaderDOM();
     this._buildRowPool();
 
+    const setPinSectionMaxWidths = () => {
+      this.leftHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.hScrollLeftParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.leftScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.rightHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.hScrollRightParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.rightScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+    };
+    setPinSectionMaxWidths();
+
     // Events
     this._rafPending = false;
     this.leftScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.leftScroller));
     this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.scroller));
     this.rightScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.rightScroller));
     this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(this.vScroll));
+    this.leftSpacer.addEventListener("scroll", () => {
+      console.log("left spacer scroll");
+      this.leftHeader.scrollLeft = this.leftSpacer.scrollLeft;
+      this.hScrollLeft.scrollLeft = this.leftSpacer.scrollLeft;
+    });
     this.spacer.addEventListener("scroll", () => {
       this.header.scrollLeft = this.spacer.scrollLeft;
       this.hScroll.scrollLeft = this.spacer.scrollLeft;
+    });
+    this.rightSpacer.addEventListener("scroll", () => {
+      this.rightHeader.scrollLeft = this.rightSpacer.scrollLeft;
+      this.hScrollRight.scrollLeft = this.rightSpacer.scrollLeft;
+    });
+    this.hScrollLeft.addEventListener("scroll", () => {
+      this.leftSpacer.scrollLeft = this.hScrollLeft.scrollLeft;
+      this.leftHeader.scrollLeft = this.hScrollLeft.scrollLeft;
     });
     this.hScroll.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.hScroll.scrollLeft;
       this.header.scrollLeft = this.hScroll.scrollLeft;
     });
+    this.hScrollRight.addEventListener("scroll", () => {
+      this.rightSpacer.scrollLeft = this.hScrollRight.scrollLeft;
+      this.rightHeader.scrollLeft = this.hScrollRight.scrollLeft;
+    });
+    this.leftHeader.addEventListener("scroll", () => {
+      this.leftSpacer.scrollLeft = this.leftHeader.scrollLeft;
+      this.hScrollLeft.scrollLeft = this.leftHeader.scrollLeft;
+    });
     this.header.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.header.scrollLeft;
       this.hScroll.scrollLeft = this.header.scrollLeft;
     });
+    this.rightHeader.addEventListener("scroll", () => {
+      this.rightSpacer.scrollLeft = this.rightHeader.scrollLeft;
+      this.hScrollRight.scrollLeft = this.rightHeader.scrollLeft;
+    });
+    const resizeObserver = new ResizeObserver(entries => {
+      setPinSectionMaxWidths();
+    });
+    resizeObserver.observe(this.root);
 
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
@@ -436,6 +506,8 @@ export default class Table {
   _pinColumn(colID: string, pin: "left" | "right" | null) {
     const col = findColumnById(this.columns, colID);
     if (!col) return;
+    if (pin === col.pinned) return;
+
     col.pinned = pin;
     this.setColumns(this.columns);
   }
@@ -611,8 +683,8 @@ export default class Table {
     }
   };
 
-  _applyLeftColumnWidths() {
-    if (!this._columnWidths.size) return;
+  _applyLeftColumnWidths(): number {
+    if (!this._columnWidths.size) return 0;
 
     const headerCells = this.leftHeader.children;
     for (let i = 0; i < this._leftPinnedColumns.length; i++) {
@@ -646,10 +718,23 @@ export default class Table {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.leftViewport.style.width = `${maxWidth}px`;
+    this.hScrollerLeft.style.width = `${maxWidth}px`;
+    this.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
+    this.leftHeader.style.width = `${maxWidth}px`;
+    this.leftHeader.style.minWidth = `${maxWidth}px`;
+    const totalWidth = maxWidth;
+    if (maxWidth > this.root.clientWidth * 0.35) {
+      maxWidth = this.root.clientWidth * 0.35;
+      this.leftHeader.style.width = `${maxWidth}px`;
+      this.leftHeader.style.minWidth = `${maxWidth}px`;
+    }
+    this.hScrollLeftParent.style.width = `${maxWidth}px`;
+    this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
+    return totalWidth;
   }
 
-  _applyColumnWidths() {
-    if (!this._columnWidths.size) return;
+  _applyColumnWidths(): number {
+    if (!this._columnWidths.size) return 0;
 
     const headerCells = this.header.children;
     for (let i = 0; i < this._centerColumns.length; i++) {
@@ -683,12 +768,15 @@ export default class Table {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.hScroller.style.width = `${maxWidth}px`;
-    this.hScrollParent.style.display = maxWidth > this.body.clientWidth ? "block" : "none";
+    if (maxWidth == 0) {
+      this.hScrollParent.style.flex = "1 1 auto";
+    }
     this.viewport.style.width = `${maxWidth}px`;
+    return maxWidth;
   }
 
-  _applyRightColumnWidths() {
-    if (!this._columnWidths.size) return;
+  _applyRightColumnWidths(): number {
+    if (!this._columnWidths.size) return 0;
 
     const headerCells = this.rightHeader.children;
     for (let i = 0; i < this._rightPinnedColumns.length; i++) {
@@ -723,15 +811,42 @@ export default class Table {
     }
     this.rightViewport.style.width = `${maxWidth}px`;
     this.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
+    this.rightHeader.style.width = `${maxWidth}px`;
+    this.rightHeader.style.minWidth = `${maxWidth}px`;
+    this.hScrollerRight.style.width = `${maxWidth}px`;
+    this.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
+    const totalWidth = maxWidth;
+    if (maxWidth > 0) {
+      this.rightScroller.classList.add("visible");
+      if (maxWidth > this.root.clientWidth * 0.35) {
+        maxWidth = this.root.clientWidth * 0.35;
+      }
+      this.hScrollRightParent.style.width = `${maxWidth}px`;
+      this.rightHeader.style.width = `${maxWidth}px`;
+      this.rightHeader.style.minWidth = `${maxWidth}px`;
+      maxWidth += this.hScrollLeftParent.clientWidth;
+      this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
+    } else {
+      this.rightScroller.classList.remove("visible");
+    }
+    return totalWidth;
   }
 
   _updateColumnWidths(column: InternalColumn | null = null) {
     console.time("computeColumnWidths");
     this._computeColumnWidths(column);
     console.timeEnd("computeColumnWidths");
-    this._applyLeftColumnWidths();
-    this._applyColumnWidths();
-    this._applyRightColumnWidths();
+
+    let totalWidth = 0;
+    totalWidth += this._applyLeftColumnWidths();
+    totalWidth += this._applyColumnWidths();
+    totalWidth += this._applyRightColumnWidths();
+
+    if (totalWidth > this.root.clientWidth) {
+      this.hScrollContainer.style.display = "flex";
+    } else {
+      this.hScrollContainer.style.display = "none";
+    }
   }
 
   _computeHeaderDepth() {
@@ -1240,7 +1355,7 @@ export default class Table {
     let idCounter = 0;
     for (const item of items) {
       item.id = item.id || `menuitem-${Date.now()}-${idCounter++}`;
-      if (item.label === "—") {
+      if (isTrue(item.isSeparator)) {
         const hr = document.createElement("hr");
         hr.className = "pte-menu-separator";
         container.appendChild(hr);
@@ -1352,7 +1467,7 @@ export default class Table {
       items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
       items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
     }
-    items.push({ id: '-1', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ isSeparator: true });
     items.push({
       id: 'toggle-hidden',
       label: isHidden ? "Show Column" : "Hide Column",
@@ -1389,7 +1504,7 @@ export default class Table {
         },
       ]
     });
-    items.push({ id: '-2', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ isSeparator: true });
     items.push({
       id: 'autosize-col',
       label: "Autosize Column",
@@ -1400,7 +1515,7 @@ export default class Table {
       label: "Autosize All Columns",
       onClick: () => this._updateColumnWidths(),
     });
-    items.push({ id: '-3', label: "—", disabled: true, onClick: () => { } }); // separator (or render <hr>)
+    items.push({ isSeparator: true });
     items.push({
       id: 'export-col',
       label: "Export Column",
