@@ -330,7 +330,7 @@ export default class Table {
 
     this.headerWrapper.addEventListener("contextmenu", (e) => this._headerCellContextMenuHandler(e));
     document.addEventListener("click", (e) => this._cellClickHandler(e));
-    this.body.addEventListener("mouseover", (e) => {
+    document.addEventListener("mouseover", (e) => {
       this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
       const row = e.target.closest(".pte-row");
       if (row) {
