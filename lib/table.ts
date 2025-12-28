@@ -524,17 +524,25 @@ export default class Table {
       this._sortDirty = false;
       this._sortedIdx = this._filteredIdx.slice();
       if (this._sorts && this._sorts.length > 0) {
-        console.log(this._sorts);
-        for (const sort of this._sorts) {
-          const { key, dir } = sort;
-          const col = findColumnById(this.columns, key);
-          if (!col) continue;
-          const mult = dir === "desc" ? -1 : 1;
-          const cmp = this._getComparatorForColumn(col);
-          this._sortedIdx.sort((a, b) => cmp(rows[a], rows[b]) * mult);
-        }
-      }
+        const comparators = this._sorts
+          .map(sort => {
+            const { key, dir } = sort;
+            const col = findColumnById(this.columns, key);
+            if (!col) return null;
+            const mult = dir === "desc" ? -1 : 1;
+            const cmp = this._getComparatorForColumn(col);
+            return (a: any, b: any) => cmp(a, b) * mult;
+          })
+          .filter(Boolean) as Array<(a: any, b: any) => number>;
 
+        this._sortedIdx.sort((a, b) => {
+          for (const cmp of comparators) {
+            const result = cmp(rows[a], rows[b]);
+            if (result !== 0) return result;
+          }
+          return 0;
+        });
+      }
     }
 
     // Update total scroll height
