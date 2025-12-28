@@ -524,12 +524,12 @@ export default class Table {
       this._sortDirty = false;
       this._sortedIdx = this._filteredIdx.slice();
       if (this._sorts && this._sorts.length > 0) {
+        console.log(this._sorts);
         for (const sort of this._sorts) {
-          const col = this._centerLeafColumns.find(c => c.id === sort.key);
-          if (!col) continue;
           const { key, dir } = sort;
-          const mult = dir === "desc" ? -1 : 1;
+          const col = findColumnById(this.columns, key);
           if (!col) continue;
+          const mult = dir === "desc" ? -1 : 1;
           const cmp = this._getComparatorForColumn(col);
           this._sortedIdx.sort((a, b) => cmp(rows[a], rows[b]) * mult);
         }
