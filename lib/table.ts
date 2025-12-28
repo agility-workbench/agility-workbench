@@ -499,6 +499,13 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
+  _toggleColumnHidden(colID: string) {
+    const col = findColumnById(this.columns, colID);
+    if (!col) return;
+    col.hidden = !isTrue(col.hidden);
+    this.setColumns(this.columns);
+  }
+
   _recomputeView() {
     // In “psycho mode”, for big data you’d do server-side, not sort/filter here.
     let rows = this.data;
@@ -665,6 +672,7 @@ export default class Table {
   _computeColumnWidths(column: InternalColumn | null = null) {
     this._getMeasureContext();
     const computer = (col: InternalColumn, i: number) => {
+      if (isTrue(col.hidden)) return;
       if (col.width != null) {
         return { width: col.width, fixed: true };
       }
@@ -711,6 +719,7 @@ export default class Table {
     if (col.children && col.children.length > 0) {
       for (let i = 0; i < col.children.length; i++) {
         const child = col.children[i];
+        if (isTrue(child.hidden)) continue;
         const childContainer = document.getElementById(child.id) as HTMLDivElement;
         if (childContainer) {
           this._applyWidthsToChildren(child, childContainer);
@@ -723,10 +732,12 @@ export default class Table {
     if (!this._columnWidths.size) return 0;
 
     const headerCells = this.leftHeader.children;
-    for (let i = 0; i < this._leftPinnedColumns.length; i++) {
-      const col = this._leftPinnedColumns[i];
+    let idx = -1;
+    for (const col of this._leftPinnedColumns) {
+      if (isTrue(col.hidden)) continue;
+      idx++;
       const info = this._columnWidths.get(col.id);
-      const hcell = headerCells[i];
+      const hcell = headerCells[idx];
       if (!hcell || !info) continue;
       this._applyWidthsToChildren(col, hcell as HTMLElement);
     }
@@ -734,8 +745,11 @@ export default class Table {
     let maxWidth = 0;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
-      for (let c = 0; c < this._leftPinnedLeafColumns.length; c++) {
-        const info = this._columnWidths.get(this._leftPinnedLeafColumns[c].id);
+      let c = -1;
+      for (const col of this._leftPinnedLeafColumns) {
+        if (isTrue(col.hidden)) continue;
+        c++;
+        const info = this._columnWidths.get(col.id);
         const cell = slot.leftCellEls[c];
         if (!cell || !info) continue;
 
@@ -780,10 +794,12 @@ export default class Table {
     if (!this._columnWidths.size) return 0;
 
     const headerCells = this.header.children;
-    for (let i = 0; i < this._centerColumns.length; i++) {
-      const col = this._centerColumns[i];
+    let idx = -1;
+    for (const col of this._centerColumns) {
+      if (isTrue(col.hidden)) continue;
+      idx++;
       const info = this._columnWidths.get(col.id);
-      const hcell = headerCells[i];
+      const hcell = headerCells[idx];
       if (!hcell || !info) continue;
       this._applyWidthsToChildren(col, hcell as HTMLElement);
     }
@@ -791,8 +807,11 @@ export default class Table {
     let maxWidth = 0;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
-      for (let c = 0; c < this._centerLeafColumns.length; c++) {
-        const info = this._columnWidths.get(this._centerLeafColumns[c].id);
+      let c = -1;
+      for (const col of this._centerLeafColumns) {
+        if (isTrue(col.hidden)) continue;
+        c++;
+        const info = this._columnWidths.get(col.id);
         const cell = slot.cellEls[c];
         if (!cell || !info) continue;
 
@@ -822,10 +841,12 @@ export default class Table {
     if (!this._columnWidths.size) return 0;
 
     const headerCells = this.rightHeader.children;
-    for (let i = 0; i < this._rightPinnedColumns.length; i++) {
-      const col = this._rightPinnedColumns[i];
+    let idx = -1;
+    for (const col of this._rightPinnedColumns) {
+      if (isTrue(col.hidden)) continue;
+      idx++;
       const info = this._columnWidths.get(col.id);
-      const hcell = headerCells[i];
+      const hcell = headerCells[idx];
       if (!hcell || !info) continue;
       this._applyWidthsToChildren(col, hcell as HTMLElement);
     }
@@ -833,8 +854,11 @@ export default class Table {
     let maxWidth = 0;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
-      for (let c = 0; c < this._rightPinnedLeafColumns.length; c++) {
-        const info = this._columnWidths.get(this._rightPinnedLeafColumns[c].id);
+      let c = -1;
+      for (const col of this._rightPinnedLeafColumns) {
+        if (isTrue(col.hidden)) continue;
+        c++;
+        const info = this._columnWidths.get(col.id);
         const cell = slot.rightCellEls[c];
         if (!cell || !info) continue;
 
@@ -901,6 +925,9 @@ export default class Table {
   _computeHeaderDepth() {
     const traverse = (cols: InternalColumn[], depth: number, appendTo: InternalColumn[]) => {
       for (const col of cols) {
+        if (isTrue(col.hidden)) {
+          continue;
+        }
         if (col.children && Array.isArray(col.children)) {
           traverse(col.children, depth + 1, appendTo);
           col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
@@ -948,7 +975,9 @@ export default class Table {
       children.className = "pte-hcell-children";
       header.appendChild(children);
       for (const child of col.children) {
-        children.append(this._buildHeaderCell(child, maxDepth));
+        if (!isTrue(child.hidden)) {
+          children.append(this._buildHeaderCell(child, maxDepth));
+        }
       }
     }
     const headerMenu = this._getHeaderMenuElement(col);
@@ -980,13 +1009,19 @@ export default class Table {
     this.header.innerHTML = "";
     this.rightHeader.innerHTML = "";
     for (const col of this._leftPinnedColumns) {
-      this.leftHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      if (!isTrue(col.hidden)) {
+        this.leftHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      }
     }
     for (const col of this._centerColumns) {
-      this.header.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      if (!isTrue(col.hidden)) {
+        this.header.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      }
     }
     for (const col of this._rightPinnedColumns) {
-      this.rightHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      if (!isTrue(col.hidden)) {
+        this.rightHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+      }
     }
     this._applyLeftColumnWidths();
     this._applyColumnWidths();
@@ -1052,6 +1087,7 @@ export default class Table {
         row.leftRowEl.style.display = "flex";
 
         for (const col of this._leftPinnedLeafColumns) {
+          if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
           cell.style.flex = "0 0 auto";
@@ -1071,6 +1107,7 @@ export default class Table {
       row.rowEl.style.display = "flex";
 
       for (const col of this._centerLeafColumns) {
+        if (isTrue(col.hidden)) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell";
         cell.style.flex = "0 0 auto";
@@ -1091,6 +1128,7 @@ export default class Table {
 
         row.rightCellEls = [];
         for (const col of this._rightPinnedLeafColumns) {
+          if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
           cell.style.flex = "0 0 auto";
