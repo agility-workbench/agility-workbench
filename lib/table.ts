@@ -854,8 +854,6 @@ export default class Table {
     }
     this.rightViewport.style.width = `${maxWidth}px`;
     this.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
-    this.rightHeader.style.width = `${maxWidth}px`;
-    this.rightHeader.style.minWidth = `${maxWidth}px`;
     this.hScrollerRight.style.width = `${maxWidth}px`;
     this.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
     const totalWidth = maxWidth;
@@ -866,8 +864,8 @@ export default class Table {
         maxWidth = this.root.clientWidth * 0.35;
       }
       this.hScrollRightParent.style.width = `${maxWidth}px`;
-      this.rightHeader.style.width = `${maxWidth}px`;
-      this.rightHeader.style.minWidth = `${maxWidth}px`;
+      this.rightHeader.style.width = `${maxWidth + 15}px`;
+      this.rightHeader.style.minWidth = `${maxWidth + 15}px`;
       maxWidth += this.hScrollLeftParent.clientWidth;
       this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
