@@ -6,16 +6,17 @@ import { isTrue } from "./misc";
 interface TableProps {
   columns?: InternalColumn[];
   rowHeight?: number;
-  height?: number;
   overscan?: number;
   data?: any[];
+  height?: number;
 }
 
 export default class Table {
-  container: MutableRefObject<null>;
+  container: MutableRefObject<HTMLElement | null>;
+  _containerEl: HTMLElement;
   columns: InternalColumn[];
   rowHeight: number;
-  height: number;
+  height?: number;
   overscan: number;
   data: any[];
   _filters: FilterDef[];
@@ -97,14 +98,18 @@ export default class Table {
   _rafPending: boolean;
   _measureCache: Map<string, Map<string, number>>;
 
-  constructor(container: MutableRefObject<null>, {
+  constructor(container: MutableRefObject<HTMLElement | null>, {
     columns = [],
     rowHeight = 43,
-    height = 400,
     overscan = 6,
     data = [],
+    height,
   }: TableProps) {
     this.container = container;
+    if (!container.current) {
+      throw new Error("Table container ref is not attached");
+    }
+    this._containerEl = container.current;
     this.columns = columns;
     this.rowHeight = rowHeight;
     this.height = height;
@@ -147,7 +152,8 @@ export default class Table {
     // DOM skeleton
     this.root = document.createElement("div");
     this.root.className = "pte-root";
-    container.appendChild(this.root);
+    this.root.style.height = height != null ? `${height}px` : "100%";
+    this._containerEl.appendChild(this.root);
 
     this.headerWrapper = document.createElement("div");
     this.headerWrapper.className = "pte-header-wrapper";
@@ -164,7 +170,6 @@ export default class Table {
 
     this.body = document.createElement("div");
     this.body.className = "pte-body";
-    this.body.style.height = `${height}px`;
     this.root.appendChild(this.body);
 
     this.leftScroller = document.createElement("div");
@@ -262,7 +267,7 @@ export default class Table {
     this._initFilterOverlay();
 
     // Create a pooled set of row nodes
-    this._poolSize = Math.ceil(height / rowHeight) + overscan * 2;
+    this._poolSize = this._computePoolSize();
     this._rowPool = []; // [{ rowEl, cellEls[], rowIndexEl? }]
     this._buildHeaderDOM();
     this._buildRowPool();
@@ -322,6 +327,7 @@ export default class Table {
     });
     const resizeObserver = new ResizeObserver(entries => {
       setPinSectionMaxWidths();
+      this._maybeUpdatePoolSize();
     });
     resizeObserver.observe(this.root);
 
@@ -339,8 +345,37 @@ export default class Table {
     });
 
     // initial
+    requestAnimationFrame(() => this._maybeUpdatePoolSize());
     this._recomputeView();
     this._updateColumnWidths();
+    this._updateWindow(true, undefined);
+  }
+
+  _getBodyHeight() {
+    const headerHeight = this.headerWrapper.getBoundingClientRect().height || 0;
+    const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height || 0;
+    const chromeHeight = headerHeight + hScrollHeight;
+
+    const containerHeight = this._containerEl?.clientHeight ?? 0;
+    const fallbackHeight = this.height ?? window.innerHeight ?? 0;
+
+    const availableHeight = Math.max(0, Math.min(Math.max(containerHeight, fallbackHeight), window.innerHeight || fallbackHeight) - chromeHeight);
+    if (availableHeight > 0) return availableHeight;
+
+    return this.rowHeight;
+  }
+
+  _computePoolSize() {
+    const bodyHeight = this._getBodyHeight();
+    return Math.max(1, Math.ceil(bodyHeight / this.rowHeight) + this.overscan * 2);
+  }
+
+  _maybeUpdatePoolSize() {
+    const poolSize = this._computePoolSize();
+    if (poolSize === this._poolSize) return;
+    this._poolSize = poolSize;
+    this._rebuildRowPool();
+    this._updateAllColumnWidths();
     this._updateWindow(true, undefined);
   }
 
@@ -358,6 +393,7 @@ export default class Table {
 
   setColumns(columns: InternalColumn[]) {
     this.columns = columns ?? [];
+    this._maxDepth = 0;
     this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
     this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
     this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
@@ -519,7 +555,7 @@ export default class Table {
       this._measureCtx = canvas.getContext("2d");
     }
 
-    const probe = this.header.querySelector(".pte-hcell") || this.container;
+    const probe = this.header.querySelector(".pte-hcell") || this.container.current;
     const font = getComputedStyle(probe).font || "16px sans-serif";
     if (this._measureCtx && this._measureCtx?.font !== font) {
       this._measureCtx.font = font;
@@ -723,10 +759,17 @@ export default class Table {
     this.leftHeader.style.width = `${maxWidth}px`;
     this.leftHeader.style.minWidth = `${maxWidth}px`;
     const totalWidth = maxWidth;
-    if (maxWidth > this.root.clientWidth * 0.35) {
-      maxWidth = this.root.clientWidth * 0.35;
-      this.leftHeader.style.width = `${maxWidth}px`;
-      this.leftHeader.style.minWidth = `${maxWidth}px`;
+    if (maxWidth > 0) {
+      this.leftScroller.classList.add("visible");
+      this.leftHeader.classList.add("visible");
+      if (maxWidth > this.root.clientWidth * 0.35) {
+        maxWidth = this.root.clientWidth * 0.35;
+        this.leftHeader.style.width = `${maxWidth}px`;
+        this.leftHeader.style.minWidth = `${maxWidth}px`;
+      }
+    } else {
+      this.leftScroller.classList.remove("visible");
+      this.leftHeader.classList.remove("visible");
     }
     this.hScrollLeftParent.style.width = `${maxWidth}px`;
     this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
@@ -818,6 +861,7 @@ export default class Table {
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
       this.rightScroller.classList.add("visible");
+      this.rightHeader.classList.add("visible");
       if (maxWidth > this.root.clientWidth * 0.35) {
         maxWidth = this.root.clientWidth * 0.35;
       }
@@ -828,15 +872,12 @@ export default class Table {
       this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
       this.rightScroller.classList.remove("visible");
+      this.rightHeader.classList.remove("visible");
     }
     return totalWidth;
   }
 
-  _updateColumnWidths(column: InternalColumn | null = null) {
-    console.time("computeColumnWidths");
-    this._computeColumnWidths(column);
-    console.timeEnd("computeColumnWidths");
-
+  _updateAllColumnWidths() {
     let totalWidth = 0;
     totalWidth += this._applyLeftColumnWidths();
     totalWidth += this._applyColumnWidths();
@@ -844,9 +885,19 @@ export default class Table {
 
     if (totalWidth > this.root.clientWidth) {
       this.hScrollContainer.style.display = "flex";
+      this.body.style.height = `calc(100% - ${this.headerWrapper.getBoundingClientRect().height + this.hScrollContainer.getBoundingClientRect().height}px)`;
     } else {
       this.hScrollContainer.style.display = "none";
+      this.body.style.height = `calc(100% - ${this.headerWrapper.getBoundingClientRect().height}px)`;
     }
+  }
+
+  _updateColumnWidths(column: InternalColumn | null = null) {
+    console.time("computeColumnWidths");
+    this._computeColumnWidths(column);
+    console.timeEnd("computeColumnWidths");
+
+    this._updateAllColumnWidths();
   }
 
   _computeHeaderDepth() {
@@ -916,6 +967,17 @@ export default class Table {
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
     this._computeHeaderDepth();
+    const headerHeight = this.rowHeight * this._maxDepth;
+    this.headerWrapper.style.height = `${headerHeight}px`;
+    this.headerWrapper.style.minHeight = `${headerHeight}px`;
+    this.leftHeader.style.height = `${headerHeight}px`;
+    this.leftHeader.style.minHeight = `${headerHeight}px`;
+    this.header.style.height = `${headerHeight}px`;
+    this.header.style.minHeight = `${headerHeight}px`;
+    this.rightHeader.style.height = `${headerHeight}px`;
+    this.rightHeader.style.minHeight = `${headerHeight}px`;
+    this.body.style.height = `calc(100% - ${headerHeight}px`;
+    this.body.style.maxHeight = `calc(100% - ${headerHeight}px`;
     this.leftHeader.innerHTML = "";
     this.header.innerHTML = "";
     this.rightHeader.innerHTML = "";

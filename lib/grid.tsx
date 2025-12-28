@@ -17,7 +17,7 @@ export default function Grid({
   className,
   style,
 }: GridProps) {
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
   const [filter, setFilter] = useState<FilterDef | null>();
 
@@ -35,7 +35,7 @@ export default function Grid({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const engine = new Table(containerRef.current, { columns: getColumnDefs(columns) });
+    const engine = new Table(containerRef, { columns: getColumnDefs(columns) });
     engineRef.current = engine;
 
     // Wire engine events to React callbacks
@@ -51,7 +51,7 @@ export default function Grid({
       engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [containerRef]);
 
   // Sync prop changes → engine
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function Grid({
 
   return (
     <div className={className} style={style}>
-      <div ref={containerRef} />
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }
