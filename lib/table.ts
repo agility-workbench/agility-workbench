@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
-import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, MenuItem, RowPoolDef, SortDef } from "./types";
+import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, isComputableType, MenuItem, RowPoolDef, SortDef } from "./types";
 import { isTrue } from "./misc";
 
 interface TableProps {
@@ -644,7 +644,7 @@ export default class Table {
 
   _autoSizeColumn(col: InternalColumn, maxWidth: number): number {
     const headerText = col.label ?? col.key;
-    let best = this._measureText(headerText) + 84;
+    let best = this._measureText(headerText) + 104;
     if (best >= maxWidth) return maxWidth;
 
     // cache per column
@@ -972,6 +972,9 @@ export default class Table {
     headerWrapper.appendChild(headerResize);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
+    if (isComputableType(col.type)) {
+      headerContainer.classList.add('pte-hcell-computable');
+    }
     headerWrapper.appendChild(headerContainer);
     const headerContent = document.createElement("div");
     headerContent.className = "pte-hcell-content";
@@ -1092,16 +1095,12 @@ export default class Table {
         row.leftRowEl = document.createElement("div");
         row.leftRowEl.className = "pte-row";
         row.leftRowEl.style.height = `${this.rowHeight}px`;
-        row.leftRowEl.style.display = "flex";
 
         for (const col of this._leftPinnedLeafColumns) {
           if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
-          cell.style.flex = "0 0 auto";
-          cell.style.whiteSpace = "nowrap";
-          cell.style.overflow = "hidden";
-          cell.style.textOverflow = "ellipsis";
+          if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
           row.leftRowEl.appendChild(cell);
           row.leftCellEls.push(cell);
         }
@@ -1112,16 +1111,12 @@ export default class Table {
       row.rowEl = document.createElement("div");
       row.rowEl.className = "pte-row";
       row.rowEl.style.height = `${this.rowHeight}px`;
-      row.rowEl.style.display = "flex";
 
       for (const col of this._centerLeafColumns) {
         if (isTrue(col.hidden)) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell";
-        cell.style.flex = "0 0 auto";
-        cell.style.whiteSpace = "nowrap";
-        cell.style.overflow = "hidden";
-        cell.style.textOverflow = "ellipsis";
+        if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
         row.rowEl.appendChild(cell);
         row.cellEls.push(cell);
       }
@@ -1132,17 +1127,13 @@ export default class Table {
         row.rightRowEl = document.createElement("div");
         row.rightRowEl.className = "pte-row";
         row.rightRowEl.style.height = `${this.rowHeight}px`;
-        row.rightRowEl.style.display = "flex";
 
         row.rightCellEls = [];
         for (const col of this._rightPinnedLeafColumns) {
           if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
-          cell.style.flex = "0 0 auto";
-          cell.style.whiteSpace = "nowrap";
-          cell.style.overflow = "hidden";
-          cell.style.textOverflow = "ellipsis";
+          if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
           row.rightRowEl.appendChild(cell);
           row.rightCellEls.push(cell);
         }

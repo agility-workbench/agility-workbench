@@ -254,6 +254,10 @@
   background-color: var(--pte-hover-bg-color);
 }
 
+.pte-hcell-container.pte-hcell-computable {
+  flex-direction: row-reverse;
+}
+
 .pte-hcell-content {
   flex: 1 1 auto;
   overflow: hidden;
@@ -263,6 +267,10 @@
   display: flex;
   align-items: center;
   cursor: pointer;
+}
+
+.pte-hcell-container.pte-hcell-computable .pte-hcell-content {
+  flex-direction: row-reverse;
 }
 
 .pte-hcell-content.pte-sorted-asc::after {
@@ -297,6 +305,10 @@
 .pte-hcell-menu {
   display: flex;
   align-items: center;
+}
+
+.pte-hcell-container.pte-hcell-computable .pte-hcell-menu {
+  flex-direction: row-reverse;
 }
 
 .pte-hcell-menu-item {
@@ -351,6 +363,7 @@
 }
 
 .pte-row {
+  display: flex;
 }
 
 .pte-row-hover {
@@ -368,6 +381,14 @@
   cursor: default;
   border: 1px solid transparent;
   user-select: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pte-cell-right-aligned {
+  justify-content: flex-end;
 }
 
 .pte-row:not(:last-child) {

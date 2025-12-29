@@ -6,6 +6,10 @@ export enum ColumnType {
   CURRENCY = "currency"
 }
 
+export function isComputableType(type: ColumnType | undefined): boolean {
+  return type === ColumnType.NUMBER || type === ColumnType.DATE || type === ColumnType.CURRENCY;
+}
+
 export interface Column {
   key: string;
   label: string;
