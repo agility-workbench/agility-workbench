@@ -14,6 +14,7 @@ function App() {
   const [count, setCount] = useState(50);
   const [toggle, setToggle] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paginate, setPaginate] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,10 +78,13 @@ function App() {
 
   return (
     <div style={{ padding: "8px", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "8px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
         <button type="button" onClick={() => setCategory(category === "wide" ? "compact" : "wide")}>Load {category} Data</button>
-        <input type="number" value={count} min={1} max={100000} onChange={(e) => setCount(e.target.value)} />
-        <button type="button" onClick={() => setToggle(!toggle)}>Fetch</button>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <input type="number" value={count} min={1} max={100000} onChange={(e) => setCount(e.target.value)} />
+          <button type="button" onClick={() => setToggle(!toggle)}>Fetch</button>
+        </div>
+        <button type="button" onClick={() => setPaginate(!paginate)}>{paginate ? "Don't" : ""} Paginate</button>
         {loading && <div>Loading data…</div>}
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
@@ -89,6 +93,7 @@ function App() {
           data={rowData}
           columns={colDefs}
           style={{ width: "100%", height: "100%" }}
+          pagination={paginate}
         />
       </div>
     </div>

@@ -9,6 +9,9 @@ export interface GridProps {
   columns: Column[];
   className?: string;
   style?: React.CSSProperties;
+  pagination?: boolean;
+  paginationPageSize?: number;
+  paginationPageSizes?: number[] | boolean;
 }
 
 export default function Grid({
@@ -16,6 +19,9 @@ export default function Grid({
   columns,
   className,
   style,
+  pagination,
+  paginationPageSize,
+  paginationPageSizes,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
@@ -35,7 +41,15 @@ export default function Grid({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const engine = new Table(containerRef, { columns: getColumnDefs(columns) });
+    const engine = new Table(
+      containerRef,
+      {
+        columns: getColumnDefs(columns),
+        pagination: pagination || false,
+        paginationPageSize: paginationPageSize || 100,
+        paginationPageSizes: paginationPageSizes || true,
+       },
+    );
     engineRef.current = engine;
 
     // Wire engine events to React callbacks
@@ -61,6 +75,10 @@ export default function Grid({
   useEffect(() => {
     engineRef.current?.setColumns(getColumnDefs(columns));
   }, [columns]);
+
+  useEffect(() => {
+    engineRef.current?.togglePagination(pagination || false);
+  }, [pagination]);
 
   return (
     <div className={className} style={style}>

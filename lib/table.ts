@@ -1,7 +1,7 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
 import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, isComputableType, MenuItem, RowPoolDef, SortDef } from "./types";
-import { isTrue } from "./misc";
+import { isTrue, validatePageSizes } from "./misc";
 
 interface TableProps {
   columns?: InternalColumn[];
@@ -9,6 +9,9 @@ interface TableProps {
   overscan?: number;
   data?: any[];
   height?: number;
+  pagination: boolean;
+  paginationPageSize: number;
+  paginationPageSizes: number[] | boolean;
 }
 
 export default class Table {
@@ -41,7 +44,13 @@ export default class Table {
 
   // View state
   _viewRows: any[];          // filtered/sorted view (array of row objects)
+  _viewIdx: number[];
   _startIndex: number;
+  _totalPages: number;
+  _pageIdx: number;
+  _pagination: boolean;
+  _paginationPageSize: number;
+  _paginationPageSizes: number[];
 
   _selectedRowIdx: Set<number>;
   _selectedColIDs: Set<string>;
@@ -76,6 +85,14 @@ export default class Table {
   viewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
 
+  paginator: HTMLDivElement;
+  pageSizeSelect!: HTMLSelectElement;
+  pageSelect!: HTMLSelectElement;
+  firstPageBtn!: HTMLButtonElement;
+  prevPageBtn!: HTMLButtonElement;
+  nextPageBtn!: HTMLButtonElement;
+  lastPageBtn!: HTMLButtonElement;
+
   _leftPinnedColumns: InternalColumn[];
   _leftPinnedLeafColumns: InternalColumn[];
   _rightPinnedColumns: InternalColumn[];
@@ -104,6 +121,9 @@ export default class Table {
     overscan = 6,
     data = [],
     height,
+    pagination = false,
+    paginationPageSize = 100,
+    paginationPageSizes = [20, 50, 100],
   }: TableProps) {
     this.container = container;
     if (!container.current) {
@@ -147,7 +167,15 @@ export default class Table {
 
     // View state
     this._viewRows = [];          // filtered/sorted view (array of row objects)
+    this._viewIdx = [];
     this._startIndex = 0;
+
+    this._pagination = isTrue(pagination);
+    this._paginationPageSize = paginationPageSize || 100;
+    this._paginationPageSizes = validatePageSizes(paginationPageSizes, [20, 50, 100]);
+
+    this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
+    this._pageIdx = 0;
 
     // DOM skeleton
     this.root = document.createElement("div");
@@ -252,6 +280,12 @@ export default class Table {
     this.rightViewport.className = "pte-viewport-right";
     this.rightSpacer.appendChild(this.rightViewport);
 
+    this.paginator = document.createElement("div");
+    this.paginator.className = "pte-pagination-wrapper";
+    this.root.appendChild(this.paginator);
+    if (pagination) this.paginator.classList.add('visible');
+    this._buildPaginationControls();
+
     this._selectedRowIdx = new Set();
     this._selectedColIDs = new Set();
 
@@ -354,7 +388,8 @@ export default class Table {
   _getBodyHeight() {
     const headerHeight = this.headerWrapper.getBoundingClientRect().height || 0;
     const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height || 0;
-    const chromeHeight = headerHeight + hScrollHeight;
+    const paginationHeight = this._pagination ? (this.paginator?.getBoundingClientRect().height || 0) : 0;
+    const chromeHeight = headerHeight + hScrollHeight + paginationHeight;
 
     const containerHeight = this._containerEl?.clientHeight ?? 0;
     const fallbackHeight = this.height ?? window.innerHeight ?? 0;
@@ -380,12 +415,27 @@ export default class Table {
   }
 
   // ---------------- Public API ----------------
+  togglePagination(pagination: boolean) {
+    const next = isTrue(pagination);
+    if (this._pagination === next) return;
+    this._pagination = next;
+    if (!this._pagination) this._pageIdx = 0;
+    this._resetScrollPosition();
+    this._recomputeView();
+    this._updateColumnWidths();
+    this._maybeUpdatePoolSize();
+    this._updateWindow(true, undefined);
+  }
+
   setData(data: any[]) {
     this.data = data ?? [];
     this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
     this._sortedIdx = this._filteredIdx.slice();
     this._sortComparatorCache.clear();
     this._columnWidths.clear();
+    this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
+    this._pageIdx = 0;
+    this._resetScrollPosition();
     this._recomputeView();
     this._updateColumnWidths();
     this._updateWindow(true, undefined);
@@ -545,13 +595,25 @@ export default class Table {
       }
     }
 
+    if (this._pagination) {
+      this._applyPagination();
+    } else {
+      this._viewIdx = this._sortedIdx.slice();
+      this._totalPages = 1;
+      this._pageIdx = 0;
+    }
+
+    this._viewRows = this._viewIdx.map(idx => this.data[idx]);
+
     // Update total scroll height
-    const verticalSize = this._sortedIdx.length * this.rowHeight;
+    const verticalSize = this._viewIdx.length * this.rowHeight;
     this.leftSpacer.style.height = `${verticalSize}px`;
     this.spacer.style.height = `${verticalSize}px`;
     this.rightSpacer.style.height = `${verticalSize}px`;
     this.vScroller.style.height = `${verticalSize}px`;
     this.vScrollParent.style.display = verticalSize > this.body.clientHeight ? "block" : "none";
+
+    this._updatePaginationControls();
   }
 
   _pinColumn(colID: string, pin: "left" | "right" | null) {
@@ -915,11 +977,17 @@ export default class Table {
 
     if (totalWidth > this.root.clientWidth) {
       this.hScrollContainer.style.display = "flex";
-      this.body.style.height = `calc(100% - ${this.headerWrapper.getBoundingClientRect().height + this.hScrollContainer.getBoundingClientRect().height}px)`;
     } else {
       this.hScrollContainer.style.display = "none";
-      this.body.style.height = `calc(100% - ${this.headerWrapper.getBoundingClientRect().height}px)`;
     }
+
+    const headerHeight = this.headerWrapper.getBoundingClientRect().height;
+    const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height;
+    const paginationHeight = this._pagination && this.paginator.classList.contains("visible")
+      ? (this.paginator.getBoundingClientRect().height || 0)
+      : 0;
+    const chromeHeight = headerHeight + (this.hScrollContainer.style.display === "flex" ? hScrollHeight : 0) + paginationHeight;
+    this.body.style.height = `calc(100% - ${chromeHeight}px)`;
   }
 
   _updateColumnWidths(column: InternalColumn | null = null) {
@@ -1037,6 +1105,169 @@ export default class Table {
     this._applyLeftColumnWidths();
     this._applyColumnWidths();
     this._applyRightColumnWidths();
+  }
+
+  _buildPaginationControls() {
+    this.paginator.innerHTML = "";
+
+    if (!this._paginationPageSizes.includes(this._paginationPageSize)) {
+      this._paginationPageSizes = [...this._paginationPageSizes, this._paginationPageSize].sort((a, b) => a - b);
+    }
+
+    const sizeSection = document.createElement("div");
+    sizeSection.className = "pte-pagination-section";
+    const sizeLabel = document.createElement("span");
+    sizeLabel.className = "pte-pagination-label";
+    sizeLabel.textContent = "Rows per page";
+    this.pageSizeSelect = document.createElement("select");
+    this.pageSizeSelect.className = "pte-pagination-select";
+    for (const size of this._paginationPageSizes) {
+      const option = document.createElement("option");
+      option.value = String(size);
+      option.textContent = String(size);
+      this.pageSizeSelect.appendChild(option);
+    }
+    this.pageSizeSelect.value = String(this._paginationPageSize);
+    this.pageSizeSelect.addEventListener("change", (e) => {
+      const next = Number((e.target as HTMLSelectElement).value);
+      if (!Number.isFinite(next) || next <= 0) return;
+      if (next === this._paginationPageSize) return;
+      this._paginationPageSize = next;
+      this._pageIdx = 0;
+      this._resetScrollPosition();
+      this._recomputeView();
+      this._updateWindow(true, undefined);
+    });
+    sizeSection.appendChild(sizeLabel);
+    sizeSection.appendChild(this.pageSizeSelect);
+
+    const navSection = document.createElement("div");
+    navSection.className = "pte-pagination-section pte-pagination-nav";
+
+    this.firstPageBtn = document.createElement("button");
+    this.firstPageBtn.type = "button";
+    this.firstPageBtn.className = "pte-pagination-btn pte-pagination-btn-first";
+    this.firstPageBtn.addEventListener("click", () => this._goToPage(0));
+
+    this.prevPageBtn = document.createElement("button");
+    this.prevPageBtn.type = "button";
+    this.prevPageBtn.className = "pte-pagination-btn pte-pagination-btn-prev";
+    this.prevPageBtn.addEventListener("click", () => this._goToPage(this._pageIdx - 1));
+
+    const pageLabel = document.createElement("span");
+    pageLabel.className = "pte-pagination-label";
+    pageLabel.textContent = "Page";
+
+    this.pageSelect = document.createElement("select");
+    this.pageSelect.className = "pte-pagination-select pte-pagination-page-select";
+    this.pageSelect.addEventListener("change", (e) => {
+      const val = Number((e.target as HTMLSelectElement).value);
+      if (!Number.isFinite(val)) return;
+      this._goToPage(val);
+    });
+
+    this.nextPageBtn = document.createElement("button");
+    this.nextPageBtn.type = "button";
+    this.nextPageBtn.className = "pte-pagination-btn pte-pagination-btn-next";
+    this.nextPageBtn.addEventListener("click", () => this._goToPage(this._pageIdx + 1));
+
+    this.lastPageBtn = document.createElement("button");
+    this.lastPageBtn.type = "button";
+    this.lastPageBtn.className = "pte-pagination-btn pte-pagination-btn-last";
+    this.lastPageBtn.addEventListener("click", () => this._goToPage(this._totalPages - 1));
+
+    navSection.appendChild(this.firstPageBtn);
+    navSection.appendChild(this.prevPageBtn);
+    navSection.appendChild(pageLabel);
+    navSection.appendChild(this.pageSelect);
+    navSection.appendChild(this.nextPageBtn);
+    navSection.appendChild(this.lastPageBtn);
+
+    this.paginator.appendChild(sizeSection);
+    this.paginator.appendChild(navSection);
+    this._populatePageSelect();
+    this._updatePaginationControls();
+  }
+
+  _populatePageSelect() {
+    if (!this.pageSelect) return;
+    const totalPages = Math.max(this._totalPages, 1);
+    if (this.pageSelect.options.length !== totalPages) {
+      this.pageSelect.innerHTML = "";
+      for (let i = 0; i < totalPages; i++) {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = `${i + 1} of ${totalPages}`;
+        this.pageSelect.appendChild(option);
+      }
+    } else {
+      for (let i = 0; i < totalPages; i++) {
+        const option = this.pageSelect.options[i];
+        const desiredText = `${i + 1} of ${totalPages}`;
+        if (option.textContent !== desiredText) {
+          option.textContent = desiredText;
+        }
+      }
+    }
+    this.pageSelect.value = String(Math.min(this._pageIdx, totalPages - 1));
+  }
+
+  _updatePaginationControls() {
+    if (!this._pagination) {
+      this.paginator.classList.remove("visible");
+      return;
+    }
+    this.paginator.classList.add("visible");
+
+    if (this.pageSizeSelect) {
+      this.pageSizeSelect.value = String(this._paginationPageSize);
+    }
+
+    this._populatePageSelect();
+
+    const atFirstPage = this._pageIdx <= 0;
+    const atLastPage = this._pageIdx >= Math.max(this._totalPages - 1, 0);
+    const hasRows = this._viewIdx.length > 0;
+
+    if (this.firstPageBtn) this.firstPageBtn.disabled = atFirstPage || !hasRows;
+    if (this.prevPageBtn) this.prevPageBtn.disabled = atFirstPage || !hasRows;
+    if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
+    if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
+    if (this.pageSelect) this.pageSelect.disabled = this._totalPages <= 1 || !hasRows;
+  }
+
+  _goToPage(pageIdx: number) {
+    if (!this._pagination) return;
+    const totalPages = Math.max(this._totalPages, 1);
+    const clamped = Math.min(Math.max(pageIdx, 0), totalPages - 1);
+    if (clamped === this._pageIdx) return;
+    this._pageIdx = clamped;
+    this._resetScrollPosition();
+    this._recomputeView();
+    this._updateWindow(true, undefined);
+  }
+
+  _resetScrollPosition() {
+    this.leftScroller.scrollTop = 0;
+    this.scroller.scrollTop = 0;
+    this.rightScroller.scrollTop = 0;
+    this.vScroll.scrollTop = 0;
+    this._startIndex = 0;
+  }
+
+  _applyPagination() {
+    const pageSize = Math.max(1, this._paginationPageSize || 1);
+    const totalRows = this._sortedIdx.length;
+    this._totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    const clampedPage = Math.min(Math.max(this._pageIdx, 0), this._totalPages - 1);
+    const pageChanged = clampedPage !== this._pageIdx;
+    this._pageIdx = clampedPage;
+    if (pageChanged) {
+      this._resetScrollPosition();
+    }
+    const start = this._pageIdx * pageSize;
+    const end = start + pageSize;
+    this._viewIdx = this._sortedIdx.slice(start, end);
   }
 
   _getHeaderMenuElement(col: InternalColumn): HTMLDivElement {
@@ -1176,7 +1407,7 @@ export default class Table {
   }
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
-    const total = this._sortedIdx.length;
+    const total = this._viewIdx.length;
     const scrollTop = scrollSrc?.scrollTop || 0;
     this.leftScroller.scrollTop = scrollTop;
     this.scroller.scrollTop = scrollTop;
@@ -1211,7 +1442,7 @@ export default class Table {
       }
 
       slot.rowEl.style.display = "flex";
-      const rowIndex = this._sortedIdx[viewIndex];
+      const rowIndex = this._viewIdx[viewIndex];
       if (this._selectedRowIdx.has(rowIndex)) {
         slot.rowEl.classList.add("pte-row-selected");
       } else {
@@ -1254,7 +1485,7 @@ export default class Table {
   _patchVisibleCells({ rowIds, colKeys } = {}) {
     // Minimal version: patch the currently visible pool.
     // rowIds/colKeys can be used to skip work if you pass them.
-    const total = this._sortedIdx.length;
+    const total = this._viewIdx.length;
     const startIndex = this._startIndex;
 
     const colIndexSet = colKeys
@@ -1265,7 +1496,7 @@ export default class Table {
       const viewIndex = startIndex + i;
       if (viewIndex >= total) continue;
 
-      const row = this.data[this._sortedIdx[viewIndex]];
+      const row = this.data[this._viewIdx[viewIndex]];
       if (rowIds && !rowIds.has?.(row.id) && !rowIds.includes?.(row.id)) continue;
 
       const slot = this._rowPool[i];
