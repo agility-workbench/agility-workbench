@@ -2008,6 +2008,7 @@ export default class Table {
 
     const colType: ColumnType = col.type ?? ColumnType.STRING;
     const current = this._filters.find(f => f.key == colID);
+    const isServerSide = this.rowModel === "serverSide";
 
     const root = document.createElement("div");
     root.className = "pte-filter-root";
@@ -2042,29 +2043,15 @@ export default class Table {
       typeSelect.value = ops[0]?.value ?? "contains";
     }
 
-    const btnRow = document.createElement("div");
-    btnRow.className = "pte-filter-actions";
-
-    const applyBtn = document.createElement("button");
-    applyBtn.className = "pte-filter-btn primary";
-    applyBtn.textContent = "Apply";
-
-    const clearBtn = document.createElement("button");
-    clearBtn.className = "pte-filter-btn";
-    clearBtn.textContent = "Clear";
-
-    btnRow.appendChild(clearBtn);
-    btnRow.appendChild(applyBtn);
-
     // Apply logic
-    const apply = () => {
+    const apply = (closeOverlay = isServerSide) => {
       const type = typeSelect.value as FilterType;
       const raw = valueInput.value;
 
       // If empty => clear filter
       if (raw == null || String(raw).trim() === "") {
         this._filters = this._filters.filter(f => f.key !== colID);
-        this._closeFilter();
+        if (closeOverlay) this._closeFilter();
         this._onFilterModelChanged();
         return;
       }
@@ -2077,18 +2064,38 @@ export default class Table {
         this._filters.push({ key: colID, type, v: parsed });
       }
 
-      this._closeFilter();
+      if (closeOverlay) this._closeFilter();
       this._onFilterModelChanged();
     };
 
-    const clear = () => {
+    const clear = (closeOverlay = isServerSide) => {
       this._filters = this._filters.filter(f => f.key !== colID);
-      this._closeFilter();
+      if (closeOverlay) this._closeFilter();
       this._onFilterModelChanged();
     };
 
-    applyBtn.addEventListener("click", apply);
-    clearBtn.addEventListener("click", clear);
+    let btnRow: HTMLDivElement | null = null;
+    if (isServerSide) {
+      btnRow = document.createElement("div");
+      btnRow.className = "pte-filter-actions";
+
+      const applyBtn = document.createElement("button");
+      applyBtn.className = "pte-filter-btn primary";
+      applyBtn.textContent = "Apply";
+
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "pte-filter-btn";
+      clearBtn.textContent = "Clear";
+
+      btnRow.appendChild(clearBtn);
+      btnRow.appendChild(applyBtn);
+
+      applyBtn.addEventListener("click", () => apply(true));
+      clearBtn.addEventListener("click", () => clear(true));
+    } else {
+      valueInput.addEventListener("input", () => apply(false));
+      typeSelect.addEventListener("change", () => apply(false));
+    }
 
     // Keyboard UX:
     // - Enter in input applies
@@ -2127,7 +2134,7 @@ export default class Table {
     form.appendChild(valueInput);
 
     root.appendChild(form);
-    root.appendChild(btnRow);
+    if (btnRow) root.appendChild(btnRow);
 
     return root;
   }
