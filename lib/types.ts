@@ -114,8 +114,7 @@ export enum FilterType {
 export interface FilterDef {
   key: string;
   type: FilterType;
-  q?: string; // for text filters
-  v?: any;   // for eq filter
+  v: any;
 }
 
 export interface SortDef {
@@ -126,8 +125,7 @@ export interface SortDef {
 export interface ServerSideFilter {
   key: string;
   type: FilterType;
-  q?: string;
-  v?: any;
+  value: any;
 }
 
 export interface ServerSideSort {

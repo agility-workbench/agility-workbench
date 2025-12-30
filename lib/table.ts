@@ -2250,8 +2250,7 @@ export default class Table {
         return {
           key: col.key,
           type: f.type,
-          q: f.q,
-          v: f.v,
+          value: f.v,
         };
       })
       .filter(Boolean) as ServerSideRequest["filters"];
