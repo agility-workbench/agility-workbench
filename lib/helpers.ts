@@ -32,7 +32,7 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
       active.push({
         key: col.key,
         type: f.type,
-        q: String(f.q ?? "").toLowerCase(),
+        q: String(f.v ?? "").toLowerCase(),
       });
     } else {
       active.push({
