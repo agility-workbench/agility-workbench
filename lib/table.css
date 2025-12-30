@@ -8,8 +8,10 @@
   --pte-frame-border-color: #d1d5db;
   --pte-border-color: #e5e7eb;
   --pte-resize-handle-color: #e3e6eb;
+  --pte-selected-resize-handle-color: #84b6fb;
   --pte-hover-bg-color: #f3f4f6;
   --pte-selected-bg-color: #dbeafe;
+  --pte-selected-hover-bg-color: #cfe3ff;
   --pte-selected-border-color: #3b82f6;
   --pte-cell-padding-left: 12px;
   --pte-cell-padding-right: 12px;
@@ -343,6 +345,10 @@
   flex-direction: column;
 }
 
+.pte-hcell.selected {
+  background-color: var(--pte-selected-bg-color);
+}
+
 .pte-hcell-wrapper {
   position: relative;
   width: 100%;
@@ -364,10 +370,14 @@
   content: " ";
   position: absolute;
   top: calc(50% - 40% / 2);
-  right: 0;
+  right: 3px;
   height: 40%;
   width: 2px;
   background-color: var(--pte-resize-handle-color);
+}
+
+.pte-hcell.selected .pte-hcell-resize-handle:after {
+  background-color: var(--pte-selected-resize-handle-color);
 }
 
 .pte-hcell-container {
@@ -378,6 +388,8 @@
   padding-left: var(--pte-cell-padding-left);
   padding-right: var(--pte-cell-padding-right);
   width: 100%;
+  border: 1px solid transparent;
+  border-bottom: none;
 }
 
 .pte-hcell:not(.pte-hcell-leaf) .pte-hcell-container {
@@ -386,6 +398,26 @@
 
 .pte-hcell-container:hover {
   background-color: var(--pte-hover-bg-color);
+}
+
+.pte-hcell.selected .pte-hcell-container:hover {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
+.pte-hcell.selected .pte-hcell-container {
+  background-color: var(--pte-selected-bg-color);
+}
+
+.pte-hcell.selected-top .pte-hcell-container {
+  border-top: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-hcell.selected-left .pte-hcell-container {
+  border-left: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-hcell.selected-right .pte-hcell-container {
+  border-right: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-hcell-container.pte-hcell-computable {
@@ -531,7 +563,23 @@
 
 .pte-cell.selected {
   background-color: var(--pte-selected-bg-color);
-  border: 1px solid var(--pte-selected-border-color);
+  border-color: transparent;
+}
+
+.pte-cell.selected-top {
+  border-top: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-bottom {
+  border-bottom: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-left {
+  border-left: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-right {
+  border-right: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-menu {

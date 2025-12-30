@@ -1,6 +1,20 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
-import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, isComputableType, MenuItem, RowModelType, RowPoolDef, ServerSideDataSource, ServerSideRequest, SortDef } from "./types";
+import {
+  ColumnType,
+  FilterDef,
+  FilterType,
+  formatValue,
+  getValue,
+  InternalColumn,
+  isComputableType,
+  MenuItem,
+  RowModelType,
+  RowPoolDef,
+  ServerSideDataSource,
+  ServerSideRequest,
+  SortDef,
+} from "./types";
 import { isTrue, validatePageSizes } from "./misc";
 
 interface TableProps {
@@ -60,8 +74,17 @@ export default class Table {
   _paginationPageSize: number;
   _paginationPageSizes: number[];
 
-  _selectedRowIdx: Set<number>;
-  _selectedColIDs: Set<string>;
+  _leafColumns: InternalColumn[];
+  _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }>;
+  _leftLeafOrder: number[];
+  _centerLeafOrder: number[];
+  _rightLeafOrder: number[];
+
+  _selectionAnchor: { row: number; colIdx: number } | null;
+  _selectionRange: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
+  _isSelecting: boolean;
+
+  _selectedColumnIDs: Set<string>;
 
   // DOM elements
   root: HTMLDivElement;
@@ -303,8 +326,16 @@ export default class Table {
     if (pagination) this.paginator.classList.add('visible');
     this._buildPaginationControls();
 
-    this._selectedRowIdx = new Set();
-    this._selectedColIDs = new Set();
+    this._leafColumns = [];
+    this._leafColumnLookup = new Map();
+    this._leftLeafOrder = [];
+    this._centerLeafOrder = [];
+    this._rightLeafOrder = [];
+
+    this._selectionAnchor = null;
+    this._selectionRange = null;
+    this._isSelecting = false;
+    this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
     this._submenuParentId = null;
@@ -388,6 +419,9 @@ export default class Table {
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
 
     this.headerWrapper.addEventListener("contextmenu", (e) => this._headerCellContextMenuHandler(e));
+    this.body.addEventListener("mousedown", (e) => this._onCellMouseDown(e));
+    document.addEventListener("mousemove", (e) => this._onCellMouseMove(e));
+    document.addEventListener("mouseup", () => this._onCellMouseUp());
     document.addEventListener("click", (e) => this._cellClickHandler(e));
     document.addEventListener("mouseover", (e) => {
       this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
@@ -490,6 +524,7 @@ export default class Table {
     this._sortedIdx = this._filteredIdx.slice();
     this._sortComparatorCache.clear();
     this._columnWidths.clear();
+    this._clearSelection();
 
     const resetPage = options?.resetPage ?? true;
     if (this.rowModel === "serverSide") {
@@ -520,6 +555,8 @@ export default class Table {
     this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
     this._columnWidths.clear();
     this._sortComparatorCache.clear();
+    this._clearSelection();
+    this._clearColumnSelection();
     // Structural change -> rebuild header + pool
     this._buildHeaderDOM();
     this._rebuildRowPool(); // rare operation
@@ -722,6 +759,7 @@ export default class Table {
     this.vScrollParent.style.display = verticalSize > this.body.clientHeight ? "block" : "none";
 
     this._updatePaginationControls();
+    this._clampSelectionToView();
   }
 
   _pinColumn(colID: string, pin: "left" | "right" | null) {
@@ -824,6 +862,8 @@ export default class Table {
 
     const rows = this.data; // IMPORTANT: raw data order, not sorted view
     const n = rows.length;
+
+    if (n == 0) return best;
 
     const measureValue = (s: string) => {
       const cached = colCache.get(s);
@@ -1130,6 +1170,30 @@ export default class Table {
     traverse(this._rightPinnedColumns, 1, this._rightPinnedLeafColumns);
   }
 
+  _updateLeafColumnLookup() {
+    this._leafColumns = [];
+    this._leafColumnLookup = new Map();
+    this._leftLeafOrder = [];
+    this._centerLeafOrder = [];
+    this._rightLeafOrder = [];
+
+    let globalIndex = 0;
+
+    const addCols = (cols: InternalColumn[], section: "left" | "center" | "right", order: number[]) => {
+      for (const col of cols) {
+        if (isTrue(col.hidden)) continue;
+        this._leafColumns.push(col);
+        this._leafColumnLookup.set(col.id, { section, globalIndex, localIndex: order.length });
+        order.push(globalIndex);
+        globalIndex++;
+      }
+    };
+
+    addCols(this._leftPinnedLeafColumns, "left", this._leftLeafOrder);
+    addCols(this._centerLeafColumns, "center", this._centerLeafOrder);
+    addCols(this._rightPinnedLeafColumns, "right", this._rightLeafOrder);
+  }
+
   _buildHeaderCell(col: InternalColumn, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
@@ -1148,13 +1212,13 @@ export default class Table {
     headerWrapper.appendChild(headerResize);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
+    headerContainer.style.height = `${this.rowHeight * contentHeight}px`;
     if (isComputableType(col.type)) {
       headerContainer.classList.add('pte-hcell-computable');
     }
     headerWrapper.appendChild(headerContainer);
     const headerContent = document.createElement("div");
     headerContent.className = "pte-hcell-content";
-    headerContent.style.height = `${this.rowHeight * contentHeight}px`;
     headerContainer.appendChild(headerContent);
     headerContent.textContent = col.label ?? col.key;
     if (col.children && Array.isArray(col.children) && col.children.length > 0) {
@@ -1181,6 +1245,7 @@ export default class Table {
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
     this._computeHeaderDepth();
+    this._updateLeafColumnLookup();
     const headerHeight = this.rowHeight * this._maxDepth;
     this.headerWrapper.style.height = `${headerHeight}px`;
     this.headerWrapper.style.minHeight = `${headerHeight}px`;
@@ -1213,6 +1278,8 @@ export default class Table {
     this._applyLeftColumnWidths();
     this._applyColumnWidths();
     this._applyRightColumnWidths();
+    this._pruneColumnSelection();
+    this._applyColumnSelectionStyles();
   }
 
   _buildPaginationControls() {
@@ -1430,6 +1497,10 @@ export default class Table {
     this.rightViewport.innerHTML = "";
     this._rowPool = [];
 
+    const leftOrder = this._leftLeafOrder;
+    const centerOrder = this._centerLeafOrder;
+    const rightOrder = this._rightLeafOrder;
+
     for (let i = 0; i < this._poolSize; i++) {
       const row: RowPoolDef = {
         rowEl: document.createElement("div"),
@@ -1443,13 +1514,22 @@ export default class Table {
         row.leftRowEl.className = "pte-row";
         row.leftRowEl.style.height = `${this.rowHeight}px`;
 
+        let leftIdx = 0;
         for (const col of this._leftPinnedLeafColumns) {
           if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
+          const meta = this._leafColumnLookup.get(col.id);
+          if (meta) {
+            cell.dataset.colId = col.id;
+            cell.dataset.colIdx = String(meta.globalIndex);
+          } else if (leftOrder[leftIdx] != null) {
+            cell.dataset.colIdx = String(leftOrder[leftIdx]);
+          }
           if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
           row.leftRowEl.appendChild(cell);
           row.leftCellEls.push(cell);
+          leftIdx++;
         }
 
         this.leftViewport.appendChild(row.leftRowEl);
@@ -1459,13 +1539,22 @@ export default class Table {
       row.rowEl.className = "pte-row";
       row.rowEl.style.height = `${this.rowHeight}px`;
 
+      let centerIdx = 0;
       for (const col of this._centerLeafColumns) {
         if (isTrue(col.hidden)) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell";
+        const meta = this._leafColumnLookup.get(col.id);
+        if (meta) {
+          cell.dataset.colId = col.id;
+          cell.dataset.colIdx = String(meta.globalIndex);
+        } else if (centerOrder[centerIdx] != null) {
+          cell.dataset.colIdx = String(centerOrder[centerIdx]);
+        }
         if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
         row.rowEl.appendChild(cell);
         row.cellEls.push(cell);
+        centerIdx++;
       }
 
       this.viewport.appendChild(row.rowEl);
@@ -1476,13 +1565,22 @@ export default class Table {
         row.rightRowEl.style.height = `${this.rowHeight}px`;
 
         row.rightCellEls = [];
+        let rightIdx = 0;
         for (const col of this._rightPinnedLeafColumns) {
           if (isTrue(col.hidden)) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
+          const meta = this._leafColumnLookup.get(col.id);
+          if (meta) {
+            cell.dataset.colId = col.id;
+            cell.dataset.colIdx = String(meta.globalIndex);
+          } else if (rightOrder[rightIdx] != null) {
+            cell.dataset.colIdx = String(rightOrder[rightIdx]);
+          }
           if (isComputableType(col.type)) cell.classList.add('pte-cell-right-aligned');
           row.rightRowEl.appendChild(cell);
           row.rightCellEls.push(cell);
+          rightIdx++;
         }
 
         this.rightViewport.appendChild(row.rightRowEl);
@@ -1554,18 +1652,26 @@ export default class Table {
 
       if (viewIndex >= total) {
         slot.rowEl.style.display = "none";
+        if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
+        if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
+        this._applySelectionToSlot(slot, null);
         continue;
       }
 
       slot.rowEl.style.display = "flex";
+      if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
+      if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
       const rowIndex = this._viewIdx[viewIndex];
-      if (this._selectedRowIdx.has(rowIndex)) {
-        slot.rowEl.classList.add("pte-row-selected");
-      } else {
-        slot.rowEl.classList.remove("pte-row-selected");
-      }
       slot.rowEl.setAttribute("row-id", String(rowIndex));
+      slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
       const row = this.data[rowIndex];
+
+      if (slot.leftRowEl) {
+        slot.leftRowEl.setAttribute("data-view-idx", String(viewIndex));
+      }
+      if (slot.rightRowEl) {
+        slot.rightRowEl.setAttribute("data-view-idx", String(viewIndex));
+      }
 
       // HOT: write textContent only (no re-render, no diff)
       if (this._leftPinnedLeafColumns.length > 0 && slot.leftCellEls) {
@@ -1595,6 +1701,7 @@ export default class Table {
           slot.rightCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
         }
       }
+      this._applySelectionToSlot(slot, viewIndex);
     }
   }
 
@@ -1631,6 +1738,303 @@ export default class Table {
         }
       }
     }
+  }
+
+  _applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
+    const range = this._selectionRange;
+    const rowSelected = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
+    const firstRow = viewIndex === 0;
+    const lastRow = viewIndex != null ? viewIndex === this._viewIdx.length - 1 : false;
+
+    const apply = (cells: HTMLDivElement[], order: number[]) => {
+      if (!cells) return;
+      for (let i = 0; i < cells.length; i++) {
+        const colIdx = order[i];
+        const leafCol = Number.isFinite(colIdx) ? this._leafColumns[colIdx] : null;
+        const colId = leafCol?.id;
+        const colSelected = colId ? this._selectedColumnIDs.has(colId) : false;
+
+        const rangeSelected = !!rowSelected && range && Number.isFinite(colIdx) && colIdx >= range.colStart && colIdx <= range.colEnd;
+        const selected = rangeSelected || colSelected;
+
+        const prevColIdx = order[i - 1];
+        const nextColIdx = order[i + 1];
+        const prevSelected = (() => {
+          if (Number.isFinite(prevColIdx)) {
+            if (range && prevColIdx >= range.colStart && prevColIdx <= range.colEnd) return true;
+            const prevCol = this._leafColumns[prevColIdx];
+            if (prevCol && this._selectedColumnIDs.has(prevCol.id)) return true;
+          }
+          return false;
+        })();
+        const nextSelected = (() => {
+          if (Number.isFinite(nextColIdx)) {
+            if (range && nextColIdx >= range.colStart && nextColIdx <= range.colEnd) return true;
+            const nextCol = this._leafColumns[nextColIdx];
+            if (nextCol && this._selectedColumnIDs.has(nextCol.id)) return true;
+          }
+          return false;
+        })();
+
+        const isTop = rangeSelected ? (viewIndex === range?.rowStart) : false;
+        const isBottom = rangeSelected ? (viewIndex === range?.rowEnd) : (colSelected && lastRow);
+        const isLeft = rangeSelected
+          ? (colIdx === range?.colStart)
+          : (colSelected && !prevSelected);
+        const isRight = rangeSelected
+          ? (colIdx === range?.colEnd)
+          : (colSelected && !nextSelected);
+
+        const cls = cells[i].classList;
+        cls.toggle("selected", selected);
+        cls.toggle("selected-top", selected && isTop);
+        cls.toggle("selected-bottom", selected && isBottom);
+        cls.toggle("selected-left", selected && isLeft);
+        cls.toggle("selected-right", selected && isRight);
+      }
+    };
+
+    apply(slot.leftCellEls, this._leftLeafOrder);
+    apply(slot.cellEls, this._centerLeafOrder);
+    apply(slot.rightCellEls, this._rightLeafOrder);
+  }
+
+  _refreshSelectionStyles() {
+    const total = this._viewIdx.length;
+    for (let i = 0; i < this._rowPool.length; i++) {
+      const viewIndex = this._startIndex + i;
+      const slot = this._rowPool[i];
+      if (viewIndex >= total) {
+        this._applySelectionToSlot(slot, null);
+        continue;
+      }
+      this._applySelectionToSlot(slot, viewIndex);
+    }
+  }
+
+  _clearSelection() {
+    this._selectionAnchor = null;
+    this._selectionRange = null;
+    this._isSelecting = false;
+    this._refreshSelectionStyles();
+  }
+
+  _clearColumnSelection() {
+    this._selectedColumnIDs.clear();
+    this._applyColumnSelectionStyles();
+    this._refreshSelectionStyles();
+  }
+
+  _pruneColumnSelection() {
+    const keep = new Set<string>();
+    const visit = (cols: InternalColumn[]) => {
+      for (const col of cols) {
+        if (this._selectedColumnIDs.has(col.id)) keep.add(col.id);
+        if (col.children) visit(col.children);
+      }
+    };
+    visit(this.columns);
+
+    this._selectedColumnIDs = keep;
+  }
+
+  _clampSelectionToView() {
+    if (!this._selectionRange) return;
+    if (this._viewIdx.length === 0 || this._leafColumns.length === 0) {
+      this._clearSelection();
+      return;
+    }
+
+    const maxRow = this._viewIdx.length - 1;
+    const maxCol = this._leafColumns.length - 1;
+
+    const rowStart = Math.min(this._selectionRange.rowStart, maxRow);
+    const rowEnd = Math.min(this._selectionRange.rowEnd, maxRow);
+    const colStart = Math.min(this._selectionRange.colStart, maxCol);
+    const colEnd = Math.min(this._selectionRange.colEnd, maxCol);
+
+    this._selectionRange = {
+      rowStart: Math.min(rowStart, rowEnd),
+      rowEnd: Math.max(rowStart, rowEnd),
+      colStart: Math.min(colStart, colEnd),
+      colEnd: Math.max(colStart, colEnd),
+    };
+
+    if (this._selectionAnchor) {
+      this._selectionAnchor = {
+        row: Math.min(Math.max(this._selectionAnchor.row, 0), maxRow),
+        colIdx: Math.min(Math.max(this._selectionAnchor.colIdx, 0), maxCol),
+      };
+    }
+
+    this._refreshSelectionStyles();
+  }
+
+  _getCellLocation(target: EventTarget | null): { viewIdx: number; colIdx: number } | null {
+    const cell = (target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
+    if (!cell || !this.root.contains(cell)) return null;
+
+    const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
+    if (!rowEl) return null;
+
+    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
+    const colIdx = Number(cell.dataset.colIdx);
+    if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
+
+    return { viewIdx, colIdx };
+  }
+
+  _startSelectionFromCell(location: { viewIdx: number; colIdx: number }) {
+    if (location.viewIdx < 0 || location.viewIdx >= this._viewIdx.length) return;
+    if (location.colIdx < 0 || location.colIdx >= this._leafColumns.length) return;
+    this._selectionAnchor = { row: location.viewIdx, colIdx: location.colIdx };
+    this._selectionRange = {
+      rowStart: location.viewIdx,
+      rowEnd: location.viewIdx,
+      colStart: location.colIdx,
+      colEnd: location.colIdx,
+    };
+    this._isSelecting = true;
+    this._refreshSelectionStyles();
+  }
+
+  _updateSelectionRange(endRow: number, endCol: number) {
+    if (!this._selectionAnchor) return;
+    if (this._viewIdx.length === 0 || this._leafColumns.length === 0) {
+      this._clearSelection();
+      return;
+    }
+
+    const maxRow = this._viewIdx.length - 1;
+    const maxCol = this._leafColumns.length - 1;
+
+    const nextRow = Math.min(Math.max(endRow, 0), maxRow);
+    const nextCol = Math.min(Math.max(endCol, 0), maxCol);
+
+    this._selectionRange = {
+      rowStart: Math.min(this._selectionAnchor.row, nextRow),
+      rowEnd: Math.max(this._selectionAnchor.row, nextRow),
+      colStart: Math.min(this._selectionAnchor.colIdx, nextCol),
+      colEnd: Math.max(this._selectionAnchor.colIdx, nextCol),
+    };
+
+    this._refreshSelectionStyles();
+  }
+
+  _onCellMouseDown(e: MouseEvent) {
+    if (e.button !== 0) return;
+    this._clearColumnSelection();
+    const location = this._getCellLocation(e.target);
+    if (!location) return;
+    e.preventDefault();
+    this._startSelectionFromCell(location);
+  }
+
+  _onCellMouseMove(e: MouseEvent) {
+    if (!this._isSelecting || !this._selectionAnchor) return;
+    const location = this._getCellLocation(e.target);
+    if (!location) return;
+    this._updateSelectionRange(location.viewIdx, location.colIdx);
+  }
+
+  _onCellMouseUp() {
+    if (!this._isSelecting) return;
+    this._isSelecting = false;
+  }
+
+  _applyColumnSelectionStyles() {
+    const leafIndexMap = new Map<string, number>();
+    this._leafColumns.forEach((c, idx) => leafIndexMap.set(c.id, idx));
+
+    const selectedLeafIdx = new Set<number>();
+    this._leafColumns.forEach((c, idx) => {
+      if (this._selectedColumnIDs.has(c.id)) selectedLeafIdx.add(idx);
+    });
+
+    const getRange = (col: InternalColumn | null): [number, number] | null => {
+      if (!col) return null;
+      if (isTrue(col.hidden)) return null;
+      if (!col.children || col.children.length === 0) {
+        const idx = leafIndexMap.get(col.id);
+        return idx == null ? null : [idx, idx];
+      }
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      const visit = (c: InternalColumn) => {
+        if (isTrue(c.hidden)) return;
+        if (!c.children || c.children.length === 0) {
+          const idx = leafIndexMap.get(c.id);
+          if (idx == null) return;
+          min = Math.min(min, idx);
+          max = Math.max(max, idx);
+          return;
+        }
+        for (const child of c.children) visit(child);
+      };
+      visit(col);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+      return [min, max];
+    };
+
+    const headers = this.root.querySelectorAll<HTMLElement>(".pte-hcell");
+    headers.forEach(h => {
+      const col = findColumnById(this.columns, h.id);
+      const selected = !!col && this._selectedColumnIDs.has(col.id);
+      const range = col ? getRange(col) : null;
+      const leftSelected = !!range && selectedLeafIdx.has(range[0] - 1);
+      const rightSelected = !!range && selectedLeafIdx.has(range[1] + 1);
+
+      h.classList.toggle("selected", selected);
+      h.classList.toggle("selected-left", selected && !leftSelected);
+      h.classList.toggle("selected-right", selected && !rightSelected);
+      h.classList.toggle("selected-top", selected);
+
+      const content = h.querySelector<HTMLElement>(".pte-hcell-content");
+      if (content) content.classList.toggle("selected", selected);
+    });
+  }
+
+  _toggleColumnSelection(colID: string) {
+    this._clearSelection();
+    const col = findColumnById(this.columns, colID);
+    if (!col) return;
+
+    const collectLeaves = (c: InternalColumn, acc: InternalColumn[]) => {
+      if (isTrue(c.hidden)) return;
+      if (!c.children || c.children.length === 0) {
+        acc.push(c);
+        return;
+      }
+      for (const child of c.children) {
+        collectLeaves(child, acc);
+      }
+    };
+
+    const leaves: InternalColumn[] = [];
+    collectLeaves(col, leaves);
+
+    const hasChildren = leaves.length > 1 || (leaves.length === 1 && leaves[0].id !== col.id);
+
+    if (hasChildren) {
+      const ids = new Set<string>();
+      for (const leaf of leaves) ids.add(leaf.id);
+
+      const allSelected = Array.from(ids).every(id => this._selectedColumnIDs.has(id));
+      if (allSelected) {
+        ids.forEach(id => this._selectedColumnIDs.delete(id));
+      } else {
+        ids.forEach(id => this._selectedColumnIDs.add(id));
+      }
+    } else {
+      if (this._selectedColumnIDs.has(col.id)) {
+        this._selectedColumnIDs.delete(col.id);
+      } else {
+        this._selectedColumnIDs.add(col.id);
+      }
+    }
+
+    this._applyColumnSelectionStyles();
+    this._refreshSelectionStyles();
   }
 
   // ---------------- Menus ----------------
@@ -2175,11 +2579,14 @@ export default class Table {
     if (headerContent) {
       const col = findColumnById(this.columns, header.id);
       if (!col) return;
-      if (col.children && Array.isArray(col.children) && col.children.length > 0) {
-        return this._toggleBatchSort(col);
+      if (e.shiftKey) {
+        if (col.children && Array.isArray(col.children) && col.children.length > 0) {
+          return this._toggleBatchSort(col);
+        }
+        return this._toggleSort(header.id);
       }
-      // Click on header content => toggle sort
-      return this._toggleSort(header.id);
+      this._toggleColumnSelection(header.id);
+      return;
     }
     const btn = e.target?.closest(".pte-hcell-menu-btn");
     if (btn) {
@@ -2212,33 +2619,6 @@ export default class Table {
       this._headerCellClickHandler(e);
       return;
     }
-
-    // Add class 'selected' to a cell when clicked
-    const cell = e.target?.closest(".pte-cell");
-    if (!cell) return;
-
-    const rowId = cell.parentElement?.getAttribute("row-id");
-    if (rowId == null) return;
-
-    const rowIndex = parseInt(rowId, 10);
-    this._selectedRowIdx.add(rowIndex);
-    // const rowData = this.data[rowIndex];
-    // Dispatch custom event 'cellClick' with details
-    // this.dispatchEvent(new CustomEvent("cellClick", {
-    //   detail: {
-    //     rowIndex,
-    //     rowData,
-    //     columnKey: this._centerLeafColumns[cell.cellIndex].key,
-    //     cellElement: cell,
-    //   }
-    // }));
-
-    // Remove 'selected' class from all cells
-    const allCells = this.root.querySelectorAll(".pte-cell");
-    allCells.forEach(c => c.classList.remove("selected"));
-
-    // Add 'selected' class to the clicked cell
-    cell.classList.add("selected");
   }
 
   async _fetchServerSideRows(_reason: string) {
