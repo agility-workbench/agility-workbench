@@ -661,13 +661,16 @@ export default class Table {
       this._sortedIdx = this._filteredIdx.slice();
       this._viewIdx = this._sortedIdx.slice();
     } else {
-      // In “psycho mode”, for big data you’d do server-side, not sort/filter here.
       let rows = this.data;
 
       if (this._filterDirty) {
         this._filterDirty = false;
         if (this._filters) {
-          this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._centerLeafColumns);
+          this._filteredIdx = computeFilteredIdx(this.data, this._filters, [
+            ...this._leftPinnedLeafColumns,
+            ...this._centerLeafColumns,
+            ...this._rightPinnedLeafColumns,
+          ]);
         } else {
           this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
         }
