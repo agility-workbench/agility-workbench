@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Table from "./table";
 import "./table.css";
-import { Column, FilterDef, getColumnDefs } from "./types";
+import { Column, FilterDef, getColumnDefs, RowModelType, ServerSideDataSource } from "./types";
 
 export interface GridProps {
   data: any[];
@@ -12,6 +12,8 @@ export interface GridProps {
   pagination?: boolean;
   paginationPageSize?: number;
   paginationPageSizes?: number[] | boolean;
+  rowModel?: RowModelType;
+  serverSideDataSource?: ServerSideDataSource;
 }
 
 export default function Grid({
@@ -22,6 +24,8 @@ export default function Grid({
   pagination,
   paginationPageSize,
   paginationPageSizes,
+  rowModel,
+  serverSideDataSource,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
@@ -48,6 +52,8 @@ export default function Grid({
         pagination: pagination || false,
         paginationPageSize: paginationPageSize || 100,
         paginationPageSizes: paginationPageSizes || true,
+        rowModel: rowModel || "clientSide",
+        serverSideDataSource,
        },
     );
     engineRef.current = engine;
@@ -57,7 +63,9 @@ export default function Grid({
     // const offFilter = engine.on("filterChanged", (f) => onFilterTextChange?.(f));
 
     // initial data
-    engine.setData(data);
+    if (!(rowModel === "serverSide" && serverSideDataSource)) {
+      engine.setData(data);
+    }
     // engine.setColumns(columns);
 
     return () => {
@@ -69,12 +77,21 @@ export default function Grid({
 
   // Sync prop changes → engine
   useEffect(() => {
+    if (rowModel === "serverSide" && serverSideDataSource) return;
     engineRef.current?.setData(data);
-  }, [data]);
+  }, [data, rowModel, serverSideDataSource]);
 
   useEffect(() => {
     engineRef.current?.setColumns(getColumnDefs(columns));
   }, [columns]);
+
+  useEffect(() => {
+    engineRef.current?.setRowModel(rowModel || "clientSide");
+  }, [rowModel]);
+
+  useEffect(() => {
+    engineRef.current?.setServerSideDataSource(serverSideDataSource);
+  }, [serverSideDataSource]);
 
   useEffect(() => {
     engineRef.current?.togglePagination(pagination || false);

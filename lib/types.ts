@@ -6,6 +6,8 @@ export enum ColumnType {
   CURRENCY = "currency"
 }
 
+export type RowModelType = "clientSide" | "serverSide";
+
 export function isComputableType(type: ColumnType | undefined): boolean {
   return type === ColumnType.NUMBER || type === ColumnType.DATE || type === ColumnType.CURRENCY;
 }
@@ -120,6 +122,32 @@ export interface SortDef {
   key: string;
   dir: "asc" | "desc";
 }
+
+export interface ServerSideFilter {
+  key: string;
+  type: FilterType;
+  q?: string;
+  v?: any;
+}
+
+export interface ServerSideSort {
+  key: string;
+  dir: "asc" | "desc";
+}
+
+export interface ServerSideRequest {
+  filters: ServerSideFilter[];
+  sorts: ServerSideSort[];
+  page: number;
+  pageSize: number;
+}
+
+export interface ServerSideResult {
+  rows: any[];
+  totalRows?: number;
+}
+
+export type ServerSideDataSource = (request: ServerSideRequest) => Promise<ServerSideResult> | ServerSideResult;
 
 export interface MenuItem {
   id?: string;

@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { computeFilteredIdx, findColumnById } from "./helpers";
-import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, isComputableType, MenuItem, RowPoolDef, SortDef } from "./types";
+import { ColumnType, FilterDef, FilterType, formatValue, getColumnDefs, getValue, InternalColumn, isComputableType, MenuItem, RowModelType, RowPoolDef, ServerSideDataSource, ServerSideRequest, SortDef } from "./types";
 import { isTrue, validatePageSizes } from "./misc";
 
 interface TableProps {
@@ -12,6 +12,8 @@ interface TableProps {
   pagination: boolean;
   paginationPageSize: number;
   paginationPageSizes: number[] | boolean;
+  rowModel?: RowModelType;
+  serverSideDataSource?: ServerSideDataSource;
 }
 
 export default class Table {
@@ -22,8 +24,14 @@ export default class Table {
   height?: number;
   overscan: number;
   data: any[];
+  rowModel: RowModelType;
   _filters: FilterDef[];
   _sorts: SortDef[];
+  _serverSideDataSource?: ServerSideDataSource;
+  _serverSideTotalRows: number;
+  _serverRequestSeq: number;
+  _serverLoading: boolean;
+  _loadingOverlay: HTMLDivElement;
 
   _maxDepth: number;
 
@@ -124,6 +132,8 @@ export default class Table {
     pagination = false,
     paginationPageSize = 100,
     paginationPageSizes = [20, 50, 100],
+    rowModel = "clientSide",
+    serverSideDataSource,
   }: TableProps) {
     this.container = container;
     if (!container.current) {
@@ -135,7 +145,13 @@ export default class Table {
     this.height = height;
     this.overscan = overscan;
 
+    this.rowModel = rowModel || "clientSide";
+    this._serverSideDataSource = serverSideDataSource;
+    this._serverRequestSeq = 0;
+    this._serverLoading = false;
+
     this.data = data ?? [];
+    this._serverSideTotalRows = this.data.length;
     if (this.data && this.data.length > 0) {
       this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
       this._sortedIdx = this._filteredIdx;
@@ -180,6 +196,7 @@ export default class Table {
     // DOM skeleton
     this.root = document.createElement("div");
     this.root.className = "pte-root";
+    this.root.style.position = "relative";
     this.root.style.height = height != null ? `${height}px` : "100%";
     this._containerEl.appendChild(this.root);
 
@@ -299,6 +316,8 @@ export default class Table {
     this._initMenuOverlay();
     this._filterOverlay = document.createElement("div");
     this._initFilterOverlay();
+    this._loadingOverlay = document.createElement("div");
+    this._initLoadingOverlay();
 
     // Create a pooled set of row nodes
     this._poolSize = this._computePoolSize();
@@ -383,6 +402,9 @@ export default class Table {
     this._recomputeView();
     this._updateColumnWidths();
     this._updateWindow(true, undefined);
+    if (this.rowModel === "serverSide" && this._serverSideDataSource) {
+      this._fetchServerSideRows("init");
+    }
   }
 
   _getBodyHeight() {
@@ -425,16 +447,65 @@ export default class Table {
     this._updateColumnWidths();
     this._maybeUpdatePoolSize();
     this._updateWindow(true, undefined);
+    if (this.rowModel === "serverSide") {
+      this._fetchServerSideRows("togglePagination");
+    }
   }
 
-  setData(data: any[]) {
+  setRowModel(rowModel: RowModelType) {
+    const next = rowModel || "clientSide";
+    if (this.rowModel === next) return;
+    this.rowModel = next;
+    this._serverSideTotalRows = this.data.length;
+    this._filterDirty = true;
+    this._sortDirty = true;
+    this._pageIdx = 0;
+    this._resetScrollPosition();
+    this._recomputeView();
+    this._updateColumnWidths();
+    this._updateWindow(true, undefined);
+    if (next === "serverSide") {
+      this._fetchServerSideRows("rowModelChanged");
+    } else {
+      this._setServerLoading(false);
+    }
+  }
+
+  setServerSideDataSource(dataSource?: ServerSideDataSource) {
+    if (this._serverSideDataSource === dataSource) return;
+    this._serverSideDataSource = dataSource;
+    if (this.rowModel === "serverSide" && dataSource) {
+      this._fetchServerSideRows("dataSourceChanged");
+    }
+  }
+
+  refreshServerSideData() {
+    if (this.rowModel !== "serverSide") return;
+    this._fetchServerSideRows("manualRefresh");
+  }
+
+  setData(data: any[], options: { resetPage?: boolean; totalRows?: number } = {}) {
     this.data = data ?? [];
     this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
     this._sortedIdx = this._filteredIdx.slice();
     this._sortComparatorCache.clear();
     this._columnWidths.clear();
-    this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
-    this._pageIdx = 0;
+
+    const resetPage = options?.resetPage ?? true;
+    if (this.rowModel === "serverSide") {
+      this._serverSideTotalRows = options?.totalRows ?? this.data.length;
+      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this._serverSideTotalRows / this._paginationPageSize)) : 1;
+    } else {
+      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
+    }
+
+    if (resetPage) {
+      this._pageIdx = 0;
+    } else if (this._pagination) {
+      const totalPages = Math.max(this._totalPages, 1);
+      this._pageIdx = Math.min(Math.max(this._pageIdx, 0), totalPages - 1);
+    }
+
     this._resetScrollPosition();
     this._recomputeView();
     this._updateColumnWidths();
@@ -472,6 +543,11 @@ export default class Table {
       this._sorts.push(sort);
     }
     this._sortDirty = true;
+    if (this.rowModel === "serverSide") {
+      this._addSortIndicatorToHeader(sort.key, removed ? '' : sort.dir);
+      this._fetchServerSideRows("setSort");
+      return;
+    }
     this._recomputeView();
     this._addSortIndicatorToHeader(sort.key, removed ? '' : sort.dir);
     this._updateWindow(true, undefined);
@@ -506,6 +582,11 @@ export default class Table {
       this._sorts.push(curr);
     }
     this._sortDirty = true;
+    if (this.rowModel === "serverSide") {
+      this._addSortIndicatorToHeader(key, curr?.dir || '');
+      this._fetchServerSideRows("sortChanged");
+      return;
+    }
     this._recomputeView();
     this._addSortIndicatorToHeader(key, curr?.dir || '');
     this._updateWindow(true, undefined);
@@ -542,6 +623,13 @@ export default class Table {
     traverse(col);
 
     this._sortDirty = true;
+    if (this.rowModel === "serverSide") {
+      for (const colID of colIDs) {
+        this._addSortIndicatorToHeader(colID, dir || '');
+      }
+      this._fetchServerSideRows("batchSort");
+      return;
+    }
     this._recomputeView();
     for (const colID of colIDs) {
       this._addSortIndicatorToHeader(colID, dir || '');
@@ -557,50 +645,67 @@ export default class Table {
   }
 
   _recomputeView() {
-    // In “psycho mode”, for big data you’d do server-side, not sort/filter here.
-    let rows = this.data;
-
-    if (this._filterDirty) {
-      this._filterDirty = false;
-      if (this._filters) {
-        this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._centerLeafColumns);
+    if (this.rowModel === "serverSide") {
+      const pageSize = Math.max(1, this._paginationPageSize || 1);
+      const totalRows = this._serverSideTotalRows ?? this.data.length;
+      if (this._pagination) {
+        this._totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+        this._pageIdx = Math.min(Math.max(this._pageIdx, 0), this._totalPages - 1);
       } else {
-        this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
+        this._totalPages = 1;
+        this._pageIdx = 0;
       }
-      this._sortDirty = true; // filter affects sort view
-    }
-
-    if (this._sortDirty) {
+      this._filterDirty = false;
       this._sortDirty = false;
+      this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
       this._sortedIdx = this._filteredIdx.slice();
-      if (this._sorts && this._sorts.length > 0) {
-        const comparators = this._sorts
-          .map(sort => {
-            const { key, dir } = sort;
-            const col = findColumnById(this.columns, key);
-            if (!col) return null;
-            const mult = dir === "desc" ? -1 : 1;
-            const cmp = this._getComparatorForColumn(col);
-            return (a: any, b: any) => cmp(a, b) * mult;
-          })
-          .filter(Boolean) as Array<(a: any, b: any) => number>;
-
-        this._sortedIdx.sort((a, b) => {
-          for (const cmp of comparators) {
-            const result = cmp(rows[a], rows[b]);
-            if (result !== 0) return result;
-          }
-          return 0;
-        });
-      }
-    }
-
-    if (this._pagination) {
-      this._applyPagination();
-    } else {
       this._viewIdx = this._sortedIdx.slice();
-      this._totalPages = 1;
-      this._pageIdx = 0;
+    } else {
+      // In “psycho mode”, for big data you’d do server-side, not sort/filter here.
+      let rows = this.data;
+
+      if (this._filterDirty) {
+        this._filterDirty = false;
+        if (this._filters) {
+          this._filteredIdx = computeFilteredIdx(this.data, this._filters, this._centerLeafColumns);
+        } else {
+          this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
+        }
+        this._sortDirty = true; // filter affects sort view
+      }
+
+      if (this._sortDirty) {
+        this._sortDirty = false;
+        this._sortedIdx = this._filteredIdx.slice();
+        if (this._sorts && this._sorts.length > 0) {
+          const comparators = this._sorts
+            .map(sort => {
+              const { key, dir } = sort;
+              const col = findColumnById(this.columns, key);
+              if (!col) return null;
+              const mult = dir === "desc" ? -1 : 1;
+              const cmp = this._getComparatorForColumn(col);
+              return (a: any, b: any) => cmp(a, b) * mult;
+            })
+            .filter(Boolean) as Array<(a: any, b: any) => number>;
+
+          this._sortedIdx.sort((a, b) => {
+            for (const cmp of comparators) {
+              const result = cmp(rows[a], rows[b]);
+              if (result !== 0) return result;
+            }
+            return 0;
+          });
+        }
+      }
+
+      if (this._pagination) {
+        this._applyPagination();
+      } else {
+        this._viewIdx = this._sortedIdx.slice();
+        this._totalPages = 1;
+        this._pageIdx = 0;
+      }
     }
 
     this._viewRows = this._viewIdx.map(idx => this.data[idx]);
@@ -1135,6 +1240,10 @@ export default class Table {
       this._paginationPageSize = next;
       this._pageIdx = 0;
       this._resetScrollPosition();
+      if (this.rowModel === "serverSide") {
+        this._fetchServerSideRows("pageSizeChanged");
+        return;
+      }
       this._recomputeView();
       this._updateWindow(true, undefined);
     });
@@ -1243,6 +1352,10 @@ export default class Table {
     if (clamped === this._pageIdx) return;
     this._pageIdx = clamped;
     this._resetScrollPosition();
+    if (this.rowModel === "serverSide") {
+      this._fetchServerSideRows("pagination");
+      return;
+    }
     this._recomputeView();
     this._updateWindow(true, undefined);
   }
@@ -1561,6 +1674,34 @@ export default class Table {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this._closeFilter();
     });
+  }
+
+  _initLoadingOverlay() {
+    this._loadingOverlay.className = "pte-loading-overlay hidden";
+
+    const spinner = document.createElement("div");
+    spinner.className = "pte-loading-spinner";
+
+    const label = document.createElement("div");
+    label.className = "pte-loading-label";
+    label.textContent = "Loading data…";
+
+    this._loadingOverlay.appendChild(spinner);
+    this._loadingOverlay.appendChild(label);
+
+    this.root.appendChild(this._loadingOverlay);
+  }
+
+  _setServerLoading(isLoading: boolean, requestId?: number) {
+    if (this.rowModel !== "serverSide") return;
+    if (isLoading) {
+      this._serverLoading = true;
+      this._loadingOverlay.classList.remove("hidden");
+    } else {
+      if (requestId != null && requestId !== this._serverRequestSeq) return;
+      this._serverLoading = false;
+      this._loadingOverlay.classList.add("hidden");
+    }
   }
 
   _wireSubmenuBehaviour(mainItems: MenuItem[]) {
@@ -2090,11 +2231,61 @@ export default class Table {
     cell.classList.add("selected");
   }
 
-  _onFilterModelChanged() {
-    this._filterDirty = true;
-    this._sortDirty = true; // filter affects sort view
-    this._recomputeView();
-    this._updateWindow(true, undefined);
+  async _fetchServerSideRows(_reason: string) {
+    if (this.rowModel !== "serverSide") return;
+    if (!this._serverSideDataSource) {
+      console.warn("serverSideDataSource is not configured for serverSide row model.");
+      return;
+    }
+
+    this._setServerLoading(true);
+    const pageSize = this._pagination ? this._paginationPageSize : Math.max(1, this._paginationPageSize || this.data.length || 1);
+    const filters = this._filters
+      .map(f => {
+        const col = findColumnById(this.columns, f.key);
+        if (!col) return null;
+        return {
+          key: col.key,
+          type: f.type,
+          q: f.q,
+          v: f.v,
+        };
+      })
+      .filter(Boolean) as ServerSideRequest["filters"];
+
+    const sorts = this._sorts
+      .map(s => {
+        const col = findColumnById(this.columns, s.key);
+        if (!col) return null;
+        return {
+          key: col.key,
+          dir: s.dir,
+        };
+      })
+      .filter(Boolean) as ServerSideRequest["sorts"];
+
+    const req: ServerSideRequest = {
+      filters,
+      sorts,
+      page: this._pagination ? this._pageIdx : 0,
+      pageSize,
+    };
+
+    const requestId = ++this._serverRequestSeq;
+    try {
+      const result = await this._serverSideDataSource(req);
+      if (requestId !== this._serverRequestSeq) return;
+      const rows = result?.rows ?? [];
+      const totalRows = result?.totalRows ?? rows.length;
+      this.setData(rows, { resetPage: false, totalRows });
+    } catch (err) {
+      console.error("Failed to fetch server-side rows", err);
+    } finally {
+      this._setServerLoading(false, requestId);
+    }
+  }
+
+  _updateFilterIndicators() {
     for (const col of this._centerLeafColumns) {
       const hasFilter = this._filters.find(f => f.key === col.id);
       const hcell = document.getElementById(col.id);
@@ -2109,6 +2300,18 @@ export default class Table {
         }
       }
     }
+  }
+
+  _onFilterModelChanged() {
+    this._filterDirty = true;
+    this._sortDirty = true; // filter affects sort view
+    this._updateFilterIndicators();
+    if (this.rowModel === "serverSide") {
+      this._fetchServerSideRows("filterChanged");
+      return;
+    }
+    this._recomputeView();
+    this._updateWindow(true, undefined);
   }
 
 }
