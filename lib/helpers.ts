@@ -1,3 +1,4 @@
+import { isTrue } from "./misc";
 import { FilterDef, InternalColumn } from "./types";
 
 export function findColumnById(columns: InternalColumn[], id: string): InternalColumn | undefined {
@@ -11,6 +12,21 @@ export function findColumnById(columns: InternalColumn[], id: string): InternalC
   return undefined;
 }
 
+export const collectLeaves = (column: InternalColumn): InternalColumn[] => {
+  let leaves: InternalColumn[] = [];
+  function walker(column: InternalColumn) {
+    if (isTrue(column.hidden)) return;
+    if (!column.children || column.children.length === 0) {
+      leaves.push(column);
+      return;
+    }
+    for (const child of column.children) {
+      walker(child);
+    }
+  }
+  walker(column);
+  return leaves;
+};
 /**
  * A column-aware filter model:
  * filterModel = {

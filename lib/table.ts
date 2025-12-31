@@ -1,5 +1,5 @@
 import { MutableRefObject } from "react";
-import { computeFilteredIdx, findColumnById } from "./helpers";
+import { collectLeaves, computeFilteredIdx, findColumnById } from "./helpers";
 import {
   ColumnType,
   FilterDef,
@@ -16,6 +16,7 @@ import {
   SortDef,
 } from "./types";
 import { isTrue, validatePageSizes } from "./misc";
+import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export";
 
 interface TableProps {
   columns?: InternalColumn[];
@@ -28,6 +29,15 @@ interface TableProps {
   paginationPageSizes: number[] | boolean;
   rowModel?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
+}
+
+type ExportScope = "all" | "selection" | "selectedColumns";
+
+interface ExportOptions {
+  scope?: ExportScope;
+  fileName?: string;
+  columnIds?: string[];
+  includeHeaders?: boolean;
 }
 
 export default class Table {
@@ -595,6 +605,111 @@ export default class Table {
     // For simplicity in this tiny engine, we re-patch visible window only.
     // In a real grid you’d map rowId -> viewIndex and only update those indices.
     this._patchVisibleCells({ rowIds, colKeys });
+  }
+
+  exportCSV(options: ExportOptions = {}) {
+    this._performExport("csv", options);
+  }
+
+  exportExcel(options: ExportOptions = {}) {
+    this._performExport("excel", options);
+  }
+
+  _exportColumnCSV() {
+    const selectedColumns = [...this._selectedColumnIDs];
+    let fileName = "Export";
+    if (selectedColumns.length == 1) {
+      fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
+    }
+    this._performExport("csv", {
+      scope: "all",
+      columnIds: selectedColumns,
+      fileName: fileName,
+    });
+  }
+
+  _exportColumnXLSX() {
+    const selectedColumns = [...this._selectedColumnIDs];
+    let fileName = "Export";
+    if (selectedColumns.length == 1) {
+      fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
+    }
+    this._performExport("excel", {
+      scope: "all",
+      columnIds: selectedColumns,
+      fileName: fileName,
+    });
+  }
+
+  _performExport(format: "csv" | "excel", options: ExportOptions = {}) {
+    const config = this._buildExportConfig(options);
+    if (!config) return;
+
+    const fileName = options.fileName ?? this._defaultExportFileName(format, options);
+    if (format === "csv") {
+      downloadCSV(config, fileName);
+    } else {
+      downloadExcel(config, fileName);
+    }
+  }
+
+  _buildExportConfig(options: ExportOptions): ExportConfig | null {
+    const scope = this._resolveExportScope(options);
+    const columns = this._leafColumns?.length ? this._leafColumns.slice() : [];
+    if (!columns.length) return null;
+
+    let rows: any[] = [];
+    let selectionRange = null;
+    let selectedColumnIDs: Set<string> | undefined;
+
+    if (scope === "selection" && this._selectionRange) {
+      rows = this._viewRows.slice();
+      selectionRange = { ...this._selectionRange };
+    } else if (scope === "selectedColumns") {
+      rows = this._getRowsForExport(true);
+      selectedColumnIDs = this._selectedColumnIDs;
+    } else {
+      rows = this._getRowsForExport(true);
+    }
+
+    if (!rows || rows.length === 0) return null;
+
+    return {
+      rows,
+      columns,
+      selectionRange,
+      selectedColumnIDs,
+      columnIds: options.columnIds,
+      includeHeaders: options.includeHeaders,
+    };
+  }
+
+  _resolveExportScope(options: ExportOptions): ExportScope {
+    if (options.scope) return options.scope;
+    if (options.columnIds && options.columnIds.length > 0) return "all";
+    if (this._selectionRange) return "selection";
+    if (this._selectedColumnIDs.size > 0) return "selectedColumns";
+    return "all";
+  }
+
+  _getRowsForExport(includeAllRows: boolean): any[] {
+    if (includeAllRows && this.rowModel === "clientSide") {
+      const idx = (this._sortedIdx && this._sortedIdx.length > 0) ? this._sortedIdx : this._viewIdx;
+      return idx.map(i => this.data[i]);
+    }
+    return this._viewIdx.map(i => this.data[i]);
+  }
+
+  _defaultExportFileName(format: "csv" | "excel", options: ExportOptions): string {
+    const ext = format === "csv" ? "csv" : "xlsx";
+    if (options.columnIds && options.columnIds.length === 1) {
+      const col = findColumnById(this.columns, options.columnIds[0]);
+      if (col) return `${col.label ?? col.key}.${ext}`;
+    }
+    const scope = this._resolveExportScope(options);
+    if (scope === "selection") return `grid-selection.${ext}`;
+    if (scope === "selectedColumns") return `grid-columns.${ext}`;
+    return `grid-all.${ext}`;
   }
 
   destroy() {
@@ -1999,21 +2114,8 @@ export default class Table {
     const col = findColumnById(this.columns, colID);
     if (!col) return;
 
-    const collectLeaves = (c: InternalColumn, acc: InternalColumn[]) => {
-      if (isTrue(c.hidden)) return;
-      if (!c.children || c.children.length === 0) {
-        acc.push(c);
-        return;
-      }
-      for (const child of c.children) {
-        collectLeaves(child, acc);
-      }
-    };
-
-    const leaves: InternalColumn[] = [];
-    collectLeaves(col, leaves);
-
-    const hasChildren = leaves.length > 1 || (leaves.length === 1 && leaves[0].id !== col.id);
+    const leaves = collectLeaves(col);
+    const hasChildren = col.children && col.children.length > 0;
 
     if (hasChildren) {
       const ids = new Set<string>();
@@ -2396,8 +2498,8 @@ export default class Table {
       id: 'export-col',
       label: "Export Column",
       subMenu: [
-        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(colID) },
-        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX(colID) },
+        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV() },
+        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX() },
       ]
     });
 
@@ -2569,6 +2671,13 @@ export default class Table {
     e.preventDefault();
     const header = e.target?.closest(".pte-hcell");
     if (!header) return;
+    const col = findColumnById(this.columns, header.id);
+    if (!col) return;
+    const leaves = collectLeaves(col);
+    if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length != leaves.length) {
+      this._selectedColumnIDs.clear();
+      this._toggleColumnSelection(col.id);
+    }
     this._openColMenu(header.id, { left: e.clientX, top: e.clientY });
   }
 
