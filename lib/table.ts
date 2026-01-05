@@ -713,6 +713,7 @@ export default class Table {
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
       columnTree: this.columns,
+      columnWidths: this._columnWidths,
     };
   }
 

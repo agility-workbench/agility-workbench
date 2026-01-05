@@ -17,6 +17,7 @@ export interface ExportConfig {
   selectedColumnIDs?: Set<string>;
   columnIds?: string[];
   includeHeaders?: boolean;
+  columnWidths?: Map<string, { width: number; minWidth?: number; maxWidth?: number; fixed?: boolean }>;
 }
 
 interface HeaderCell {
@@ -319,8 +320,10 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
 
     sheet.columns?.forEach((col, idx) => {
       const sourceCol = columns[idx];
-      if (sourceCol?.width) {
-        col.width = Math.max(10, Math.floor(sourceCol.width / 7));
+      const widthInfo = sourceCol ? config.columnWidths?.get(sourceCol.id) : null;
+      const rawWidth = widthInfo?.width ?? sourceCol?.width;
+      if (rawWidth) {
+        col.width = Math.max(10, Math.floor(rawWidth / 7));
       } else if (sourceCol?.label) {
         col.width = Math.max(10, Math.min(40, Math.ceil((sourceCol.label.length + 6))));
       }
