@@ -51,6 +51,7 @@
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
   overflow-x: auto;
   scrollbar-width: none;
+  position: relative;
 }
 
 .pte-header-left.visible {
@@ -71,6 +72,7 @@
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
   overflow-x: auto;
   scrollbar-width: none;
+  position: relative;
 }
 
 .pte-header-right.visible {
