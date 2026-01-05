@@ -681,6 +681,7 @@ export default class Table {
       selectedColumnIDs,
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
+      columnTree: this.columns,
     };
   }
 
