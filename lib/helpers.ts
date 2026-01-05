@@ -27,6 +27,29 @@ export const collectLeaves = (column: InternalColumn): InternalColumn[] => {
   walker(column);
   return leaves;
 };
+
+export function getColumnAncestors(columns: InternalColumn[], id: string): InternalColumn[] {
+  const path: InternalColumn[] = [];
+
+  function helper(cols: InternalColumn[], targetId: string): boolean {
+    for (const col of cols) {
+      if (col.id === targetId) {
+        path.push(col);
+        return true;
+      }
+      if (col.children) {
+        if (helper(col.children, targetId)) {
+          path.push(col);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  helper(columns, id);
+  return path.reverse();
+}
 /**
  * A column-aware filter model:
  * filterModel = {

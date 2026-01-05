@@ -1,5 +1,5 @@
 import { MutableRefObject } from "react";
-import { collectLeaves, computeFilteredIdx, findColumnById } from "./helpers";
+import { collectLeaves, computeFilteredIdx, findColumnById, getColumnAncestors } from "./helpers";
 import {
   ColumnType,
   FilterDef,
@@ -2099,10 +2099,22 @@ export default class Table {
       const leftSelected = !!range && selectedLeafIdx.has(range[0] - 1);
       const rightSelected = !!range && selectedLeafIdx.has(range[1] + 1);
 
+      let parent = false;
+      if (selected) {
+        const tree = getColumnAncestors(this.columns, col.id);
+        const treeLen = tree.length;
+        if (treeLen > 1) {
+          parent = this._selectedColumnIDs.has(tree[treeLen - 2].id);
+        }
+      }
+
       h.classList.toggle("selected", selected);
       h.classList.toggle("selected-left", selected && !leftSelected);
+      h.classList.toggle("not-selected-left", selected && leftSelected);
       h.classList.toggle("selected-right", selected && !rightSelected);
-      h.classList.toggle("selected-top", selected);
+      h.classList.toggle("not-selected-right", selected && rightSelected);
+      h.classList.toggle("selected-top", selected && !parent);
+      h.classList.toggle("not-selected-top", selected && parent);
 
       const content = h.querySelector<HTMLElement>(".pte-hcell-content");
       if (content) content.classList.toggle("selected", selected);
@@ -2132,6 +2144,28 @@ export default class Table {
         this._selectedColumnIDs.delete(col.id);
       } else {
         this._selectedColumnIDs.add(col.id);
+      }
+    }
+
+    const colsWithSelectedChildren = new Map<string,InternalColumn>();
+    for (const selectedColID of this._selectedColumnIDs) {
+      const col = findColumnById(this.columns, selectedColID);
+      if (!col) continue;
+      if (col.children && col.children.length > 0) colsWithSelectedChildren.set(col.id, col);
+      else {
+        const tree = getColumnAncestors(this.columns, selectedColID);
+        if (tree.length > 1) {
+          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.id, e));
+        }
+      }
+    }
+
+    for (const col of colsWithSelectedChildren.values()) {
+      const leaves = collectLeaves(col);
+      if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length == leaves.length) {
+        this._selectedColumnIDs.add(col.id);
+      } else {
+        this._selectedColumnIDs.delete(col.id);
       }
     }
 
