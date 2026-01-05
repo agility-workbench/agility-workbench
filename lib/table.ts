@@ -18,6 +18,8 @@ import {
 import { isTrue, validatePageSizes } from "./misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export";
 
+const MIN_RESIZE_WIDTH = 75;
+
 interface TableProps {
   columns?: InternalColumn[];
   rowHeight?: number;
@@ -93,6 +95,14 @@ export default class Table {
   _selectionAnchor: { row: number; colIdx: number } | null;
   _selectionRange: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
   _isSelecting: boolean;
+
+  _isResizingColumn: boolean;
+  _resizingColumn: InternalColumn | null;
+  _resizeStartX: number;
+  _resizeStartWidth: number;
+  _resizeMinWidth: number;
+  _resizeMaxWidth: number;
+  _suppressHeaderClick: boolean;
 
   _selectedColumnIDs: Set<string>;
 
@@ -345,6 +355,13 @@ export default class Table {
     this._selectionAnchor = null;
     this._selectionRange = null;
     this._isSelecting = false;
+    this._isResizingColumn = false;
+    this._resizingColumn = null;
+    this._resizeStartX = 0;
+    this._resizeStartWidth = 0;
+    this._resizeMinWidth = 0;
+    this._resizeMaxWidth = Number.POSITIVE_INFINITY;
+    this._suppressHeaderClick = false;
     this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
@@ -428,11 +445,25 @@ export default class Table {
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
 
+    this.headerWrapper.addEventListener("mousedown", (e) => this._onHeaderMouseDown(e));
     this.headerWrapper.addEventListener("contextmenu", (e) => this._headerCellContextMenuHandler(e));
+    this.headerWrapper.addEventListener("dblclick", (e) => this._onHeaderDoubleClick(e));
     this.body.addEventListener("mousedown", (e) => this._onCellMouseDown(e));
-    document.addEventListener("mousemove", (e) => this._onCellMouseMove(e));
-    document.addEventListener("mouseup", () => this._onCellMouseUp());
-    document.addEventListener("click", (e) => this._cellClickHandler(e));
+    document.addEventListener("mousemove", (e) => {
+      this._onColumnResizeMouseMove(e);
+      this._onCellMouseMove(e);
+    });
+    document.addEventListener("mouseup", () => {
+      this._onColumnResizeMouseUp();
+      this._onCellMouseUp();
+    });
+    document.addEventListener("click", (e) => {
+      if (this._suppressHeaderClick) {
+        this._suppressHeaderClick = false;
+        return;
+      }
+      this._cellClickHandler(e);
+    });
     document.addEventListener("mouseover", (e) => {
       this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
       const row = e.target.closest(".pte-row");
@@ -1003,21 +1034,33 @@ export default class Table {
     return Math.min(best, maxWidth);
   }
 
-  _computeColumnWidths(column: InternalColumn | null = null) {
+  _computeColumnWidths(column: InternalColumn | null = null, forceRecompute = false) {
     this._getMeasureContext();
-    const computer = (col: InternalColumn, i: number) => {
+    const computer = (col: InternalColumn, inTarget: boolean) => {
       if (isTrue(col.hidden)) return;
-      if (col.width != null) {
-        return { width: col.width, fixed: true };
-      }
-      if (column && column.key !== col.key) {
-        if (this._columnWidths.has(col.id)) {
-          return;
+      const existing = this._columnWidths.get(col.id);
+      const isTarget = inTarget || (!!column && col.id === column.id);
+      const shouldCompute = !column || isTarget;
+
+      if (!shouldCompute) {
+        if (col.children && col.children.length > 0) {
+          for (const child of col.children) computer(child, isTarget);
         }
+        return;
       }
 
-      const minWidth = Math.max(10, col.minWidth ?? 10);
-      let maxWidth = col.maxWidth ?? 420;
+      if (!forceRecompute && !column && existing) return;
+
+      if (col.width != null) {
+        const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? col.width);
+        const maxWidth = col.width;
+        this._columnWidths.set(col.id, { width: col.width, minWidth, maxWidth, fixed: true });
+        return;
+      }
+
+      const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? existing?.minWidth ?? MIN_RESIZE_WIDTH);
+      const defaultMax = col.children && col.children.length > 0 ? Number.POSITIVE_INFINITY : 420;
+      let maxWidth = col.maxWidth ?? existing?.maxWidth ?? defaultMax;
 
       const autoWidth = this._autoSizeColumn(col, maxWidth);
       let width = Math.min(Math.max(autoWidth, minWidth), maxWidth);
@@ -1025,18 +1068,23 @@ export default class Table {
       if (col.children && col.children.length > 0) {
         let childrenWidth = 0;
         for (const child of col.children) {
-          computer(child, i);
-          childrenWidth += this._columnWidths.get(child.id)?.width || 0;
+          computer(child, isTarget);
+          const childInfo = this._columnWidths.get(child.id);
+          if (childInfo) childrenWidth += childInfo.width;
         }
         if (childrenWidth > width) {
           width = childrenWidth;
-          maxWidth = Math.max(maxWidth, width);
+        }
+        if (!Number.isFinite(maxWidth)) {
+          maxWidth = Number.POSITIVE_INFINITY;
         }
       }
 
       this._columnWidths.set(col.id, { width, minWidth, maxWidth, fixed: false });
     };
-    this.columns.map(computer);
+    for (const col of this.columns) {
+      computer(col, column == null ? true : col.id === column.id);
+    }
   }
 
   _applyWidthsToChildren(col: InternalColumn, hcell: HTMLElement) {
@@ -1254,11 +1302,14 @@ export default class Table {
     this.body.style.height = `calc(100% - ${chromeHeight}px)`;
   }
 
-  _updateColumnWidths(column: InternalColumn | null = null) {
+  _updateColumnWidths(column: InternalColumn | null = null, forceRecompute = false) {
     console.time("computeColumnWidths");
-    this._computeColumnWidths(column);
+    this._computeColumnWidths(column, forceRecompute);
     console.timeEnd("computeColumnWidths");
 
+    if (column) {
+      this._updateAncestorWidths(column.id);
+    }
     this._updateAllColumnWidths();
   }
 
@@ -2058,6 +2109,173 @@ export default class Table {
     this._isSelecting = false;
   }
 
+  _onHeaderMouseDown(e: MouseEvent) {
+    if (e.button !== 0) return;
+    const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
+    if (!handle) return;
+    const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
+    if (!header) return;
+    const col = findColumnById(this.columns, header.id);
+    if (!col || isTrue(col.hidden)) return;
+    const info = this._columnWidths.get(col.id);
+    if (info?.fixed) return;
+
+    const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
+    let maxWidth = info?.maxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
+    const headerRect = header.getBoundingClientRect();
+
+    this._isResizingColumn = true;
+    this._resizingColumn = col;
+    this._resizeStartX = e.clientX;
+    this._resizeStartWidth = info?.width ?? headerRect.width;
+    this._resizeMinWidth = minWidth;
+    this._resizeMaxWidth = maxWidth;
+    this._suppressHeaderClick = true;
+    document.body.style.cursor = "col-resize";
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  _onColumnResizeMouseMove(e: MouseEvent) {
+    if (!this._isResizingColumn || !this._resizingColumn) return;
+    const delta = e.clientX - this._resizeStartX;
+    const nextWidth = this._resizeStartWidth + delta;
+    this._applyColumnResize(this._resizingColumn, nextWidth);
+    e.preventDefault();
+  }
+
+  _onColumnResizeMouseUp() {
+    if (!this._isResizingColumn) return;
+    this._isResizingColumn = false;
+    this._resizingColumn = null;
+    this._resizeStartX = 0;
+    this._resizeStartWidth = 0;
+    document.body.style.cursor = "";
+    this._suppressHeaderClick = true;
+    setTimeout(() => { this._suppressHeaderClick = false; }, 0);
+  }
+
+  _onHeaderDoubleClick(e: MouseEvent) {
+    const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
+    if (!handle) return;
+    const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
+    if (!header) return;
+    const col = findColumnById(this.columns, header.id);
+    if (!col || isTrue(col.hidden)) return;
+    const info = this._columnWidths.get(col.id);
+    if (info?.fixed || col.width != null) return;
+    this._suppressHeaderClick = true;
+    this._updateColumnWidths(col, true);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  _applyColumnResize(col: InternalColumn, rawWidth: number) {
+    const info = this._columnWidths.get(col.id);
+    const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? this._resizeMinWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
+    let maxWidth = info?.maxWidth ?? this._resizeMaxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
+    let width = Math.min(Math.max(rawWidth, minWidth), maxWidth);
+
+    if (col.children && col.children.length > 0) {
+      const visibleChildren = col.children.filter(c => !isTrue(c.hidden));
+      if (visibleChildren.length > 0) {
+        const childInfos = visibleChildren.map(child => {
+          const childInfo = this._columnWidths.get(child.id);
+          const childMin = Math.max(MIN_RESIZE_WIDTH, child.minWidth ?? childInfo?.minWidth ?? MIN_RESIZE_WIDTH);
+          let childMax = child.maxWidth ?? childInfo?.maxWidth ?? 420;
+          if (!Number.isFinite(childMax)) childMax = 420;
+          const childWidth = childInfo?.width ?? Math.max(childMin, Math.min(childMax, child.width ?? width / visibleChildren.length));
+          return {
+            col: child,
+            min: childMin,
+            max: childMax,
+            width: childWidth,
+            fixed: childInfo?.fixed ?? child.width != null,
+          };
+        });
+
+        const currentTotal = childInfos.reduce((sum, c) => sum + c.width, 0);
+        const minTotal = childInfos.reduce((sum, c) => sum + c.min, 0);
+        const maxTotal = childInfos.reduce((sum, c) => sum + c.max, 0);
+
+        // Clamp parent width to what children can support.
+        width = Math.min(Math.max(width, minTotal), Math.min(maxWidth, maxTotal));
+
+        let remaining = width - currentTotal;
+        let safety = 0;
+        while (Math.abs(remaining) > 0.5 && safety < 20) {
+          safety++;
+          const grow = remaining > 0;
+          const candidates = childInfos.filter(c => {
+            if (c.fixed) return false;
+            return grow ? c.width < c.max : c.width > c.min;
+          });
+          if (candidates.length === 0) break;
+          const deltaPer = remaining / candidates.length;
+          let applied = 0;
+          for (const c of candidates) {
+            const delta = grow
+              ? Math.min(c.max - c.width, Math.max(1, Math.round(deltaPer)))
+              : Math.max(c.min - c.width, Math.min(-1, Math.round(deltaPer)));
+            c.width += delta;
+            applied += delta;
+          }
+          remaining -= applied;
+        }
+
+        const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
+        for (const c of childInfos) {
+          this._columnWidths.set(c.col.id, {
+            width: c.width,
+            minWidth: c.min,
+            maxWidth: c.max,
+            fixed: c.fixed,
+          });
+        }
+        width = totalWidth;
+      }
+    }
+
+    this._columnWidths.set(col.id, {
+      width,
+      minWidth,
+      maxWidth,
+      fixed: info?.fixed ?? false,
+    });
+    this._updateAncestorWidths(col.id);
+    this._updateAllColumnWidths();
+  }
+
+  _updateAncestorWidths(colID: string) {
+    const ancestors = getColumnAncestors(this.columns, colID);
+    if (ancestors.length <= 1) return;
+
+    for (let i = ancestors.length - 2; i >= 0; i--) {
+      const ancestor = ancestors[i];
+      const ancestorInfo = this._columnWidths.get(ancestor.id);
+      if (ancestorInfo?.fixed) continue;
+      if (!ancestor.children || ancestor.children.length === 0) continue;
+      let totalWidth = 0;
+      for (const child of ancestor.children) {
+        if (isTrue(child.hidden)) continue;
+        const childInfo = this._columnWidths.get(child.id);
+        if (childInfo) totalWidth += childInfo.width;
+      }
+      const minWidth = Math.max(MIN_RESIZE_WIDTH, ancestor.minWidth ?? ancestorInfo?.minWidth ?? MIN_RESIZE_WIDTH);
+      let maxWidth = ancestor.maxWidth ?? ancestorInfo?.maxWidth ?? 420;
+      maxWidth = Math.max(maxWidth, totalWidth);
+      const width = Math.min(Math.max(totalWidth, minWidth), maxWidth);
+      this._columnWidths.set(ancestor.id, {
+        width,
+        minWidth,
+        maxWidth,
+        fixed: false,
+      });
+    }
+  }
+
   _applyColumnSelectionStyles() {
     const leafIndexMap = new Map<string, number>();
     this._leafColumns.forEach((c, idx) => leafIndexMap.set(c.id, idx));
@@ -2521,12 +2739,12 @@ export default class Table {
     items.push({
       id: 'autosize-col',
       label: "Autosize Column",
-      onClick: () => this._updateColumnWidths(this.columns.find(c => c.key === colID) || null),
+      onClick: () => this._updateColumnWidths(findColumnById(this.columns, colID) || null, true),
     });
     items.push({
       id: 'autosize-all',
       label: "Autosize All Columns",
-      onClick: () => this._updateColumnWidths(),
+      onClick: () => this._updateColumnWidths(null, true),
     });
     items.push({ isSeparator: true });
     items.push({
