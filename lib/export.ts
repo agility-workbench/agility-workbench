@@ -39,6 +39,43 @@ interface ValueBundle {
 }
 
 const DEFAULT_CURRENCY_FORMAT = '"$"#,##0.00;[Red]\-"$"#,##0.00';
+const DEFAULT_DATE_FORMAT = "yyyy-mm-dd";
+
+const isDateLikeFormat = (fmt?: string): boolean => {
+  if (!fmt) return false;
+  return /[dmyhs]/i.test(fmt);
+};
+
+const resolveNumberFormat = (col: InternalColumn): string | undefined => {
+  if (col.type === ColumnType.CURRENCY) {
+    // Always prefer a currency-friendly format; ignore date-like formats that might slip in.
+    if (col.format && !isDateLikeFormat(col.format)) {
+      return col.format;
+    }
+    return DEFAULT_CURRENCY_FORMAT;
+  }
+  if (col.type === ColumnType.NUMBER) {
+    if (col.format && !isDateLikeFormat(col.format)) {
+      return col.format;
+    }
+    return undefined;
+  }
+  if (col.type === ColumnType.DATE) {
+    return col.format || DEFAULT_DATE_FORMAT;
+  }
+  return undefined;
+};
+
+const columnNumberToName = (index: number): string => {
+  let n = index;
+  let name = "";
+  while (n > 0) {
+    n--;
+    name = String.fromCharCode(65 + (n % 26)) + name;
+    n = Math.floor(n / 26);
+  }
+  return name || "A";
+};
 
 const ensureExtension = (fileName: string, ext: string): string => {
   if (!fileName.toLowerCase().endsWith(`.${ext}`)) {
@@ -228,6 +265,7 @@ export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") =>
 
 const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalColumn) => {
   const { raw, formatted } = bundle;
+  const fmt = resolveNumberFormat(col);
   if (raw == null) {
     cell.value = null;
     return;
@@ -238,9 +276,7 @@ const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalC
       const num = typeof raw === "number" ? raw : Number(raw);
       if (!Number.isNaN(num)) {
         cell.value = num;
-        if (col.format) {
-          cell.numFmt = col.format;
-        }
+        if (fmt) cell.numFmt = fmt;
       } else {
         cell.value = formatted ?? String(raw);
       }
@@ -250,7 +286,7 @@ const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalC
       const num = typeof raw === "number" ? raw : Number(raw);
       if (!Number.isNaN(num)) {
         cell.value = num;
-        cell.numFmt = col.format || DEFAULT_CURRENCY_FORMAT;
+        cell.numFmt = fmt || DEFAULT_CURRENCY_FORMAT;
       } else {
         cell.value = formatted ?? String(raw);
       }
@@ -260,8 +296,8 @@ const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalC
       const date = raw instanceof Date ? raw : new Date(raw);
       if (!Number.isNaN(date.getTime())) {
         cell.value = date;
-        if (col.format) {
-          cell.numFmt = col.format;
+        if (fmt) {
+          cell.numFmt = fmt;
         }
       } else {
         cell.value = formatted ?? String(raw);
@@ -274,6 +310,7 @@ const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalC
     }
     default: {
       cell.value = formatted ?? String(raw);
+      if (fmt) cell.numFmt = fmt;
     }
   }
 };
@@ -287,6 +324,18 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Export");
+
+    const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
+    const ySplit = includeHeaders ? headerLayout.depth : 0;
+    if (leftPinnedCount > 0 || ySplit > 0) {
+      const topLeftCell = `${columnNumberToName(Math.max(leftPinnedCount, 0) + 1)}${Math.max(ySplit, 0) + 1}`;
+      sheet.views = [{
+        state: "frozen",
+        xSplit: leftPinnedCount || undefined,
+        ySplit: ySplit || undefined,
+        topLeftCell,
+      }];
+    }
 
     if (includeHeaders && headerLayout.depth > 0) {
       headerLayout.cells.forEach((rowCells, rowIdx) => {
@@ -318,15 +367,18 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
       });
     });
 
-    sheet.columns?.forEach((col, idx) => {
-      const sourceCol = columns[idx];
+    sheet.columns = columns.map(sourceCol => {
       const widthInfo = sourceCol ? config.columnWidths?.get(sourceCol.id) : null;
       const rawWidth = widthInfo?.width ?? sourceCol?.width;
-      if (rawWidth) {
-        col.width = Math.max(10, Math.floor(rawWidth / 7));
-      } else if (sourceCol?.label) {
-        col.width = Math.max(10, Math.min(40, Math.ceil((sourceCol.label.length + 6))));
-      }
+      const width = rawWidth
+        ? Math.max(10, Math.floor(rawWidth / 7))
+        : Math.max(10, Math.min(40, Math.ceil((sourceCol?.label?.length ?? sourceCol?.key.length ?? 6) + 6)));
+
+      const numFmt = resolveNumberFormat(sourceCol);
+      return {
+        width,
+        style: numFmt ? { numFmt } : undefined,
+      };
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
