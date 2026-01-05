@@ -19,6 +19,7 @@ import { isTrue, validatePageSizes } from "./misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export";
 
 const MIN_RESIZE_WIDTH = 75;
+const COLUMN_DRAG_THRESHOLD_PX = 4;
 
 interface TableProps {
   columns?: InternalColumn[];
@@ -103,6 +104,16 @@ export default class Table {
   _resizeMinWidth: number;
   _resizeMaxWidth: number;
   _suppressHeaderClick: boolean;
+  _isDraggingColumn: boolean;
+  _draggingColumn: InternalColumn | null;
+  _dragStartX: number;
+  _dragStartY: number;
+  _dragLastX: number;
+  _dragTargetIndex: number;
+  _dragGhostEl: HTMLDivElement | null;
+  _dragIndicatorEl: HTMLDivElement | null;
+  _dragHeaderEl: HTMLDivElement | null;
+  _dragDirection: "left" | "right" | null;
 
   _selectedColumnIDs: Set<string>;
 
@@ -362,6 +373,16 @@ export default class Table {
     this._resizeMinWidth = 0;
     this._resizeMaxWidth = Number.POSITIVE_INFINITY;
     this._suppressHeaderClick = false;
+    this._isDraggingColumn = false;
+    this._draggingColumn = null;
+    this._dragStartX = 0;
+    this._dragStartY = 0;
+    this._dragLastX = 0;
+    this._dragTargetIndex = -1;
+    this._dragGhostEl = null;
+    this._dragIndicatorEl = null;
+    this._dragHeaderEl = null;
+    this._dragDirection = null;
     this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
@@ -451,10 +472,12 @@ export default class Table {
     this.body.addEventListener("mousedown", (e) => this._onCellMouseDown(e));
     document.addEventListener("mousemove", (e) => {
       this._onColumnResizeMouseMove(e);
+       this._onColumnDragMouseMove(e);
       this._onCellMouseMove(e);
     });
     document.addEventListener("mouseup", () => {
       this._onColumnResizeMouseUp();
+      this._onColumnDragMouseUp();
       this._onCellMouseUp();
     });
     document.addEventListener("click", (e) => {
@@ -2113,29 +2136,38 @@ export default class Table {
   _onHeaderMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
     const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
-    if (!handle) return;
-    const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
+    if (handle) {
+      const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
+      if (!header) return;
+      const col = findColumnById(this.columns, header.id);
+      if (!col || isTrue(col.hidden)) return;
+      const info = this._columnWidths.get(col.id);
+      if (info?.fixed) return;
+
+      const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
+      let maxWidth = info?.maxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
+      if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
+      const headerRect = header.getBoundingClientRect();
+
+      this._isResizingColumn = true;
+      this._resizingColumn = col;
+      this._resizeStartX = e.clientX;
+      this._resizeStartWidth = info?.width ?? headerRect.width;
+      this._resizeMinWidth = minWidth;
+      this._resizeMaxWidth = maxWidth;
+      this._suppressHeaderClick = true;
+      document.body.style.cursor = "col-resize";
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    const header = (e.target as HTMLElement | null)?.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
     const col = findColumnById(this.columns, header.id);
     if (!col || isTrue(col.hidden)) return;
-    const info = this._columnWidths.get(col.id);
-    if (info?.fixed) return;
-
-    const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
-    let maxWidth = info?.maxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
-    const headerRect = header.getBoundingClientRect();
-
-    this._isResizingColumn = true;
-    this._resizingColumn = col;
-    this._resizeStartX = e.clientX;
-    this._resizeStartWidth = info?.width ?? headerRect.width;
-    this._resizeMinWidth = minWidth;
-    this._resizeMaxWidth = maxWidth;
-    this._suppressHeaderClick = true;
-    document.body.style.cursor = "col-resize";
-    e.preventDefault();
-    e.stopPropagation();
+    if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
+    this._maybeStartColumnDrag(col, header, e);
   }
 
   _onColumnResizeMouseMove(e: MouseEvent) {
@@ -2155,6 +2187,229 @@ export default class Table {
     document.body.style.cursor = "";
     this._suppressHeaderClick = true;
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
+  }
+
+  _maybeStartColumnDrag(col: InternalColumn, header: HTMLDivElement, e: MouseEvent) {
+    if (!this._isColumnReorderable(col)) return;
+    this._draggingColumn = col;
+    this._dragHeaderEl = header;
+    this._dragStartX = e.clientX;
+    this._dragStartY = e.clientY;
+    this._dragLastX = e.clientX;
+    this._dragTargetIndex = this._getReorderableColumns().findIndex(c => c.id === col.id);
+    this._isDraggingColumn = false;
+    this._dragDirection = null;
+  }
+
+  _beginColumnDrag() {
+    if (!this._draggingColumn) return;
+    this._isDraggingColumn = true;
+    this._setDragCursor(true);
+
+    if (!this._dragGhostEl) {
+      const ghost = document.createElement("div");
+      ghost.className = "pte-column-drag-ghost";
+      ghost.textContent = this._draggingColumn.label ?? this._draggingColumn.key;
+      if (this._dragHeaderEl) {
+        const rect = this._dragHeaderEl.getBoundingClientRect();
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+      }
+      document.body.appendChild(ghost);
+      this._dragGhostEl = ghost;
+    }
+
+    if (!this._dragIndicatorEl) {
+      const indicator = document.createElement("div");
+      indicator.className = "pte-column-drop-indicator";
+      indicator.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
+      this.header.appendChild(indicator);
+      this._dragIndicatorEl = indicator;
+    }
+  }
+
+  _getReorderableColumns(): InternalColumn[] {
+    return this._centerColumns.filter(c => this._isColumnReorderable(c));
+  }
+
+  _getReorderableHeaders(): Array<{ col: InternalColumn; el: HTMLDivElement }> {
+    const headers = Array.from(this.header.children) as HTMLDivElement[];
+    const output: Array<{ col: InternalColumn; el: HTMLDivElement }> = [];
+    for (const el of headers) {
+      if (!el.classList.contains("pte-hcell")) continue;
+      const col = findColumnById(this.columns, el.id);
+      if (col && this._isColumnReorderable(col)) {
+        output.push({ col, el });
+      }
+    }
+    return output;
+  }
+
+  _positionDropIndicator(targetIndex: number, headers: Array<{ col: InternalColumn; el: HTMLDivElement }>) {
+    if (!this._dragIndicatorEl || headers.length === 0) return;
+    if (targetIndex < 0) {
+      this._dragIndicatorEl.style.display = "none";
+      return;
+    }
+    const containerRect = this.header.getBoundingClientRect();
+    const ref = targetIndex >= headers.length ? headers[headers.length - 1] : headers[targetIndex];
+    const rect = ref.el.getBoundingClientRect();
+    const x = targetIndex >= headers.length ? rect.right : rect.left;
+    this._dragIndicatorEl.style.left = `${x - containerRect.left + this.header.scrollLeft}px`;
+    this._dragIndicatorEl.style.display = "block";
+    this._dragIndicatorEl.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
+  }
+
+  _onColumnDragMouseMove(e: MouseEvent) {
+    if (!this._draggingColumn) return;
+    const deltaX = Math.abs(e.clientX - this._dragStartX);
+    const deltaY = Math.abs(e.clientY - this._dragStartY);
+    if (!this._isDraggingColumn) {
+      if (deltaX < COLUMN_DRAG_THRESHOLD_PX && deltaY < COLUMN_DRAG_THRESHOLD_PX) return;
+      this._beginColumnDrag();
+      this._suppressHeaderClick = true;
+    }
+
+    const drift = e.clientX - this._dragStartX;
+    if (Math.abs(drift) >= COLUMN_DRAG_THRESHOLD_PX) {
+      const nextDir = drift >= 0 ? "right" : "left";
+      this._dragDirection = nextDir;
+    }
+
+    if (this._dragGhostEl) {
+      this._dragGhostEl.style.left = `${e.clientX + 8}px`;
+      this._dragGhostEl.style.top = `${e.clientY + 8}px`;
+    }
+
+    const headers = this._getReorderableHeaders();
+    if (headers.length === 0) {
+      this._dragTargetIndex = -1;
+      return;
+    }
+
+    const originRect = this._dragHeaderEl?.getBoundingClientRect();
+    const insideOrigin = originRect
+      && e.clientX >= originRect.left
+      && e.clientX <= originRect.right
+      && e.clientY >= originRect.top
+      && e.clientY <= originRect.bottom;
+    if (insideOrigin) {
+      this._dragTargetIndex = -1;
+      this._positionDropIndicator(-1, headers);
+      this._dragLastX = e.clientX;
+      return;
+    }
+
+    let hoverIndex = headers.findIndex(h => {
+      const rect = h.el.getBoundingClientRect();
+      return e.clientX >= rect.left && e.clientX <= rect.right;
+    });
+
+    let targetIndex: number;
+    const movingRight = this._dragDirection === "right" || (this._dragDirection === null && e.clientX >= this._dragLastX);
+    if (hoverIndex === -1) {
+      // Outside bounds: snap to start/end
+      const firstRect = headers[0].el.getBoundingClientRect();
+      if (e.clientX < firstRect.left) {
+        targetIndex = 0;
+      } else {
+        targetIndex = headers.length;
+      }
+    } else {
+      targetIndex = movingRight ? hoverIndex + 1 : hoverIndex;
+    }
+
+    this._dragLastX = e.clientX;
+    this._dragTargetIndex = targetIndex;
+    this._positionDropIndicator(targetIndex, headers);
+    e.preventDefault();
+  }
+
+  _applyColumnReorder(col: InternalColumn, targetIndex: number) {
+    const reorderable = this._getReorderableColumns();
+    const reorderableIds = reorderable.map(c => c.id);
+    const sourceIndex = reorderableIds.indexOf(col.id);
+    if (sourceIndex === -1) return;
+    if (targetIndex < 0) return;
+
+    const nextOrder = reorderableIds.slice();
+    nextOrder.splice(sourceIndex, 1);
+    const shiftedTarget = targetIndex > sourceIndex ? targetIndex - 1 : targetIndex;
+    const clampedTarget = Math.max(0, Math.min(shiftedTarget, nextOrder.length));
+    nextOrder.splice(clampedTarget, 0, col.id);
+    const unchanged = nextOrder.every((id, idx) => id === reorderableIds[idx]);
+    if (unchanged) return;
+
+    const reorderableLookup = new Map(reorderable.map(c => [c.id, c]));
+    const reorderQueue = nextOrder.map(id => reorderableLookup.get(id)).filter(Boolean) as InternalColumn[];
+    const reorderableIdSet = new Set(nextOrder);
+
+    const newCenter: InternalColumn[] = [];
+    for (const centerCol of this._centerColumns) {
+      if (reorderableIdSet.has(centerCol.id)) {
+        const next = reorderQueue.shift();
+        if (next) newCenter.push(next);
+      } else {
+        newCenter.push(centerCol);
+      }
+    }
+
+    const nextColumns = [
+      ...this._leftPinnedColumns,
+      ...newCenter,
+      ...this._rightPinnedColumns,
+    ];
+    this.setColumns(nextColumns);
+  }
+
+  _teardownColumnDrag() {
+    if (this._dragGhostEl) {
+      this._dragGhostEl.remove();
+      this._dragGhostEl = null;
+    }
+    if (this._dragIndicatorEl) {
+      this._dragIndicatorEl.remove();
+      this._dragIndicatorEl = null;
+    }
+    this._draggingColumn = null;
+    this._dragHeaderEl = null;
+    this._isDraggingColumn = false;
+    this._dragTargetIndex = -1;
+    this._setDragCursor(false);
+  }
+
+  _onColumnDragMouseUp() {
+    if (!this._draggingColumn) return;
+    const col = this._draggingColumn;
+    const targetIndex = this._dragTargetIndex;
+    const performedDrag = this._isDraggingColumn;
+    this._teardownColumnDrag();
+    if (!performedDrag) return;
+    this._applyColumnReorder(col, targetIndex);
+    this._suppressHeaderClick = true;
+    setTimeout(() => { this._suppressHeaderClick = false; }, 0);
+  }
+
+  _isColumnReorderable(col: InternalColumn): boolean {
+    if (!col) return false;
+    if (isTrue(col.hidden)) return false;
+    if (col.pinned === "left" || col.pinned === "right") return false;
+    if (col.children && col.children.length > 0) return false;
+    const ancestors = getColumnAncestors(this.columns, col.id);
+    return ancestors.length === 1;
+  }
+
+  _setDragCursor(active: boolean) {
+    const cursor = active ? "move" : "";
+    document.body.style.setProperty("cursor", cursor, "important");
+    if (this.headerWrapper) {
+      this.headerWrapper.style.setProperty("cursor", cursor, "important");
+    }
+    if (active) {
+      this.root.classList.add("pte-column-dragging");
+    } else {
+      this.root.classList.remove("pte-column-dragging");
+    }
   }
 
   _onHeaderDoubleClick(e: MouseEvent) {
