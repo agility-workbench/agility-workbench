@@ -71,7 +71,7 @@ export function getColumnDef(col: Column | any): InternalColumn {
   };
 }
 
-export function getValue(row: any, col: Column): any {
+export function getValue(row: any, col: Column | InternalColumn): any {
   if (col.valueGetter) {
     return col.valueGetter(row);
   }
@@ -89,7 +89,7 @@ export function getFormattedValue(row: any, col: Column): string {
   return String(value);
 }
 
-export function formatValue(value: any, row: any, col: Column): string {
+export function formatValue(value: any, row: any, col: InternalColumn): string {
   if (col.valueFormatter) {
     return col.valueFormatter(value, row);
   }
