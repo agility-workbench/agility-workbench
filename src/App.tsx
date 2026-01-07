@@ -3,7 +3,7 @@ import "./roboto-font.css";
 import "./style.css";
 
 import { Grid } from "@grid"; // React Data Grid Component
-import { Column, RowModelType, ServerSideDataSource } from "@grid/types";
+import { Column, RowModelType, ServerSideAggregation, ServerSideDataSource } from "@grid/types";
 import { round } from "./helpers";
 
 function App() {
@@ -19,7 +19,7 @@ function App() {
 
   const applyFormatters = (cols: Column[] = []) => {
     const currencyFormatter = (col: Column) => {
-      if (col.type !== "number") return;
+      if (col.type !== "currency") return;
       col.valueFormatter = (value: any, row: any) => {
         if (typeof value === "number") {
           return round(value).toLocaleString("en-US", {
@@ -55,6 +55,7 @@ function App() {
         page_size: request.pageSize,
         sorts: request.sorts,
         filters: request.filters,
+        max: count,
       }),
     });
     if (!response.ok) {
@@ -66,6 +67,25 @@ function App() {
     const totalRows = payload?.totalRows ?? payload?.total ?? rows.length;
     return { rows, totalRows };
   }, [category, count]);
+
+  const serverSideAggregation: ServerSideAggregation = useCallback(async(request) => {
+    console.log("Server-side aggregation request", request);
+
+    const response = await fetch(`http://localhost:8080/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        aggregates: request.aggregates,
+        page: request.page,
+        page_size: request.pageSize,
+        sorts: request.sorts,
+        filters: request.filters,
+        max: count,
+      }),
+    });
+
+    return await response.json();
+  }, [category]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +152,7 @@ function App() {
           pagination={paginate}
           rowModel={rowModel}
           serverSideDataSource={rowModel === "serverSide" ? serverSideDataSource : undefined}
+          serverSideAggregation={rowModel === "serverSide" ? serverSideAggregation : undefined}
         />
       </div>
     </div>
