@@ -156,6 +156,7 @@ export interface MenuItem {
   left?: string;
   right?: string;
   isSeparator?: boolean;
+  extra?: any;
 }
 
 export interface RowPoolDef {
@@ -166,3 +167,45 @@ export interface RowPoolDef {
   cellEls: HTMLDivElement[];
   rightCellEls: HTMLDivElement[];
 }
+
+export enum AggregateType {
+  COUNT = "count",
+  SUM = "sum",
+  AVG = "avg",
+  MIN = "min",
+  MAX = "max",
+  MEDIAN = "median",
+}
+
+export function allAggregateTypes(): AggregateType[] {
+  return [
+    AggregateType.COUNT,
+    AggregateType.SUM,
+    AggregateType.AVG,
+    AggregateType.MIN,
+    AggregateType.MAX,
+    AggregateType.MEDIAN,
+  ];
+}
+
+export type AggregateScope = "none" | "page" | "all";
+
+export interface AggregateRequestItem {
+  key: string;
+  type: AggregateType;
+}
+
+export interface ServerSideAggregationRequest {
+  aggregates: AggregateRequestItem[];
+  filters: ServerSideFilter[];
+  sorts: ServerSideSort[];
+  scope: AggregateScope;
+  page: number;
+  pageSize: number;
+}
+
+export type ServerSideAggregationResult = {
+  values: Record<string, any>;
+} | Record<string, any>;
+
+export type ServerSideAggregation = (request: ServerSideAggregationRequest) => Promise<ServerSideAggregationResult> | ServerSideAggregationResult;

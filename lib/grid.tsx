@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Table from "./table";
 import "./table.css";
-import { Column, FilterDef, getColumnDefs, RowModelType, ServerSideDataSource } from "./types";
+import { Column, FilterDef, getColumnDefs, RowModelType, ServerSideAggregation, ServerSideDataSource } from "./types";
 
 export interface GridProps {
   data: any[];
@@ -14,6 +14,7 @@ export interface GridProps {
   paginationPageSizes?: number[] | boolean;
   rowModel?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
+  serverSideAggregation?: ServerSideAggregation;
 }
 
 export default function Grid({
@@ -26,6 +27,7 @@ export default function Grid({
   paginationPageSizes,
   rowModel,
   serverSideDataSource,
+  serverSideAggregation,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
@@ -54,6 +56,7 @@ export default function Grid({
         paginationPageSizes: paginationPageSizes || true,
         rowModel: rowModel || "clientSide",
         serverSideDataSource,
+        serverSideAggregation,
        },
     );
     engineRef.current = engine;
@@ -92,6 +95,10 @@ export default function Grid({
   useEffect(() => {
     engineRef.current?.setServerSideDataSource(serverSideDataSource);
   }, [serverSideDataSource]);
+
+  useEffect(() => {
+    engineRef.current?.setServerSideAggregation(serverSideAggregation);
+  }, [serverSideAggregation]);
 
   useEffect(() => {
     engineRef.current?.togglePagination(pagination || false);

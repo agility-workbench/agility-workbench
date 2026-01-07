@@ -1,6 +1,10 @@
 import { MutableRefObject } from "react";
 import { collectLeaves, computeFilteredIdx, findColumnById, getColumnAncestors } from "./helpers";
 import {
+  AggregateRequestItem,
+  AggregateScope,
+  AggregateType,
+  allAggregateTypes,
   ColumnType,
   FilterDef,
   FilterType,
@@ -11,6 +15,7 @@ import {
   MenuItem,
   RowModelType,
   RowPoolDef,
+  ServerSideAggregation,
   ServerSideDataSource,
   ServerSideRequest,
   SortDef,
@@ -32,6 +37,7 @@ interface TableProps {
   paginationPageSizes: number[] | boolean;
   rowModel?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
+  serverSideAggregation?: ServerSideAggregation;
 }
 
 type ExportScope = "all" | "selection" | "selectedColumns";
@@ -55,6 +61,7 @@ export default class Table {
   _filters: FilterDef[];
   _sorts: SortDef[];
   _serverSideDataSource?: ServerSideDataSource;
+  _serverSideAggregation?: ServerSideAggregation;
   _serverSideTotalRows: number;
   _serverRequestSeq: number;
   _serverLoading: boolean;
@@ -73,6 +80,13 @@ export default class Table {
   }>;
   _collator: Intl.Collator | null;
   _sortComparatorCache: Map<string, { fn: (a: any, b: any) => number; dataRef: any[] }>;
+
+  _aggregates: Map<string, AggregateType>;
+  _aggregateScope: AggregateScope;
+  _aggregateRemoteValues: Map<string, any> | null;
+  _aggregateRemoteDirty: boolean;
+  _aggregateRequestSeq: number;
+  _aggregateFetchInFlight: boolean;
 
   _filterDirty: boolean;
   _sortDirty: boolean;
@@ -148,6 +162,18 @@ export default class Table {
   leftViewport: HTMLDivElement;
   viewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
+  aggregateRow: HTMLDivElement;
+  aggregateLeft: HTMLDivElement;
+  aggregateCenter: HTMLDivElement;
+  aggregateRight: HTMLDivElement;
+  aggregateLeftRow?: HTMLDivElement;
+  aggregateCenterRow: HTMLDivElement;
+  aggregateRightRow?: HTMLDivElement;
+  aggregateCloseBtn: HTMLButtonElement;
+  _aggregateLeftCells: HTMLDivElement[];
+  _aggregateCells: HTMLDivElement[];
+  _aggregateRightCells: HTMLDivElement[];
+  _aggregateVisible: boolean;
 
   paginator: HTMLDivElement;
   pageSizeSelect!: HTMLSelectElement;
@@ -156,6 +182,8 @@ export default class Table {
   prevPageBtn!: HTMLButtonElement;
   nextPageBtn!: HTMLButtonElement;
   lastPageBtn!: HTMLButtonElement;
+  aggregateScopeSelect!: HTMLSelectElement;
+  aggregateClearBtn!: HTMLButtonElement;
 
   _leftPinnedColumns: InternalColumn[];
   _leftPinnedLeafColumns: InternalColumn[];
@@ -190,6 +218,7 @@ export default class Table {
     paginationPageSizes = [20, 50, 100],
     rowModel = "clientSide",
     serverSideDataSource,
+    serverSideAggregation,
   }: TableProps) {
     this.container = container;
     if (!container.current) {
@@ -203,6 +232,7 @@ export default class Table {
 
     this.rowModel = rowModel || "clientSide";
     this._serverSideDataSource = serverSideDataSource;
+    this._serverSideAggregation = serverSideAggregation;
     this._serverRequestSeq = 0;
     this._serverLoading = false;
 
@@ -231,6 +261,12 @@ export default class Table {
     this._columnWidths = new Map();
     this._collator = null;
     this._sortComparatorCache = new Map();
+    this._aggregates = new Map();
+    this._aggregateScope = "none";
+    this._aggregateRemoteValues = null;
+    this._aggregateRemoteDirty = true;
+    this._aggregateRequestSeq = 0;
+    this._aggregateFetchInFlight = false;
 
     this._maxDepth = 0;
 
@@ -284,6 +320,42 @@ export default class Table {
     this.rightScroller = document.createElement("div");
     this.rightScroller.className = "pte-scroller-right";
     this.body.appendChild(this.rightScroller);
+
+    this.aggregateRow = document.createElement("div");
+    this.aggregateRow.className = "pte-aggregate-row";
+    this.aggregateRow.style.display = "none";
+    this.aggregateRow.style.height = `${this.rowHeight}px`;
+    this.aggregateRow.style.minHeight = `${this.rowHeight}px`;
+    this.aggregateRow.style.maxHeight = `${this.rowHeight}px`;
+    this.aggregateLeft = document.createElement("div");
+    this.aggregateLeft.className = "pte-aggregate-left";
+    this.aggregateCenter = document.createElement("div");
+    this.aggregateCenter.className = "pte-aggregate-center";
+    this.aggregateRight = document.createElement("div");
+    this.aggregateRight.className = "pte-aggregate-right";
+    this.aggregateCloseBtn = document.createElement("button");
+    this.aggregateCloseBtn.type = "button";
+    this.aggregateCloseBtn.className = "pte-aggregate-close";
+    this.aggregateCloseBtn.title = "Hide aggregate row";
+    this.aggregateCloseBtn.setAttribute("aria-label", "Hide aggregate row");
+    this.aggregateCloseBtn.textContent = "x";
+    this.aggregateCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._setAggregateScope("none");
+      if (this.aggregateScopeSelect) {
+        this.aggregateScopeSelect.value = "none";
+      }
+    });
+    this.aggregateCenterRow = document.createElement("div");
+    this._aggregateLeftCells = [];
+    this._aggregateCells = [];
+    this._aggregateRightCells = [];
+    this._aggregateVisible = false;
+    this.aggregateRow.appendChild(this.aggregateLeft);
+    this.aggregateRow.appendChild(this.aggregateCenter);
+    this.aggregateRow.appendChild(this.aggregateRight);
+    this.aggregateRow.appendChild(this.aggregateCloseBtn);
+    this.root.appendChild(this.aggregateRow);
 
     this.hScrollContainer = document.createElement("div");
     this.hScrollContainer.className = "pte-scroller-horizontal-container-wrapper";
@@ -412,9 +484,11 @@ export default class Table {
       this.leftHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
       this.hScrollLeftParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
       this.leftScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.aggregateLeft.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
       this.rightHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
       this.hScrollRightParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
       this.rightScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
+      this.aggregateRight.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
     };
     setPinSectionMaxWidths();
 
@@ -428,38 +502,62 @@ export default class Table {
       console.log("left spacer scroll");
       this.leftHeader.scrollLeft = this.leftSpacer.scrollLeft;
       this.hScrollLeft.scrollLeft = this.leftSpacer.scrollLeft;
+      this.aggregateLeft.scrollLeft = this.leftSpacer.scrollLeft;
     });
     this.spacer.addEventListener("scroll", () => {
       this.header.scrollLeft = this.spacer.scrollLeft;
       this.hScroll.scrollLeft = this.spacer.scrollLeft;
+      this.aggregateCenter.scrollLeft = this.spacer.scrollLeft;
     });
     this.rightSpacer.addEventListener("scroll", () => {
       this.rightHeader.scrollLeft = this.rightSpacer.scrollLeft;
       this.hScrollRight.scrollLeft = this.rightSpacer.scrollLeft;
+      this.aggregateRight.scrollLeft = this.rightSpacer.scrollLeft;
     });
     this.hScrollLeft.addEventListener("scroll", () => {
       this.leftSpacer.scrollLeft = this.hScrollLeft.scrollLeft;
       this.leftHeader.scrollLeft = this.hScrollLeft.scrollLeft;
+      this.aggregateLeft.scrollLeft = this.hScrollLeft.scrollLeft;
     });
     this.hScroll.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.hScroll.scrollLeft;
       this.header.scrollLeft = this.hScroll.scrollLeft;
+      this.aggregateCenter.scrollLeft = this.hScroll.scrollLeft;
     });
     this.hScrollRight.addEventListener("scroll", () => {
       this.rightSpacer.scrollLeft = this.hScrollRight.scrollLeft;
       this.rightHeader.scrollLeft = this.hScrollRight.scrollLeft;
+      this.aggregateRight.scrollLeft = this.hScrollRight.scrollLeft;
     });
     this.leftHeader.addEventListener("scroll", () => {
       this.leftSpacer.scrollLeft = this.leftHeader.scrollLeft;
       this.hScrollLeft.scrollLeft = this.leftHeader.scrollLeft;
+      this.aggregateLeft.scrollLeft = this.leftHeader.scrollLeft;
     });
     this.header.addEventListener("scroll", () => {
       this.spacer.scrollLeft = this.header.scrollLeft;
       this.hScroll.scrollLeft = this.header.scrollLeft;
+      this.aggregateCenter.scrollLeft = this.header.scrollLeft;
     });
     this.rightHeader.addEventListener("scroll", () => {
       this.rightSpacer.scrollLeft = this.rightHeader.scrollLeft;
       this.hScrollRight.scrollLeft = this.rightHeader.scrollLeft;
+      this.aggregateRight.scrollLeft = this.rightHeader.scrollLeft;
+    });
+    this.aggregateLeft.addEventListener("scroll", () => {
+      this.leftSpacer.scrollLeft = this.aggregateLeft.scrollLeft;
+      this.leftHeader.scrollLeft = this.aggregateLeft.scrollLeft;
+      this.hScrollLeft.scrollLeft = this.aggregateLeft.scrollLeft;
+    });
+    this.aggregateCenter.addEventListener("scroll", () => {
+      this.spacer.scrollLeft = this.aggregateCenter.scrollLeft;
+      this.header.scrollLeft = this.aggregateCenter.scrollLeft;
+      this.hScroll.scrollLeft = this.aggregateCenter.scrollLeft;
+    });
+    this.aggregateRight.addEventListener("scroll", () => {
+      this.rightSpacer.scrollLeft = this.aggregateRight.scrollLeft;
+      this.rightHeader.scrollLeft = this.aggregateRight.scrollLeft;
+      this.hScrollRight.scrollLeft = this.aggregateRight.scrollLeft;
     });
     const resizeObserver = new ResizeObserver(entries => {
       setPinSectionMaxWidths();
@@ -476,7 +574,7 @@ export default class Table {
     this.body.addEventListener("mousedown", (e) => this._onCellMouseDown(e));
     document.addEventListener("mousemove", (e) => {
       this._onColumnResizeMouseMove(e);
-       this._onColumnDragMouseMove(e);
+      this._onColumnDragMouseMove(e);
       this._onCellMouseMove(e);
     });
     document.addEventListener("mouseup", () => {
@@ -513,7 +611,8 @@ export default class Table {
     const headerHeight = this.headerWrapper.getBoundingClientRect().height || 0;
     const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height || 0;
     const paginationHeight = this._pagination ? (this.paginator?.getBoundingClientRect().height || 0) : 0;
-    const chromeHeight = headerHeight + hScrollHeight + paginationHeight;
+    const aggregateHeight = this._getAggregateRowHeight();
+    const chromeHeight = headerHeight + hScrollHeight + paginationHeight + aggregateHeight;
 
     const containerHeight = this._containerEl?.clientHeight ?? 0;
     const fallbackHeight = this.height ?? window.innerHeight ?? 0;
@@ -557,6 +656,9 @@ export default class Table {
   setRowModel(rowModel: RowModelType) {
     const next = rowModel || "clientSide";
     if (this.rowModel === next) return;
+    this._aggregateFetchInFlight = false;
+    this._aggregateRequestSeq++;
+    this._aggregateRemoteValues = null;
     this.rowModel = next;
     this._serverSideTotalRows = this.data.length;
     this._filterDirty = true;
@@ -579,6 +681,15 @@ export default class Table {
     if (this.rowModel === "serverSide" && dataSource) {
       this._fetchServerSideRows("dataSourceChanged");
     }
+    this._markAggregatesDirty();
+    this._renderAggregateRow();
+  }
+
+  setServerSideAggregation(aggregation?: ServerSideAggregation) {
+    if (this._serverSideAggregation === aggregation) return;
+    this._serverSideAggregation = aggregation;
+    this._markAggregatesDirty();
+    this._renderAggregateRow();
   }
 
   refreshServerSideData() {
@@ -856,7 +967,354 @@ export default class Table {
     this.setColumns(this.columns);
   }
 
+  _aggregate(colID: string, aggType?: AggregateType) {
+    const prevSize = this._aggregates.size;
+    if (!aggType) {
+      this._aggregates.delete(colID);
+    } else {
+      this._aggregates.set(colID, aggType);
+    }
+    if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
+      this._setAggregateScope("page");
+    }
+    this._markAggregatesDirty();
+    this._renderAggregateRow();
+  }
+
+  _clearAggregates() {
+    if (this._aggregates.size === 0) return;
+    this._aggregates.clear();
+    this._setAggregateScope("none");
+    this._markAggregatesDirty();
+    this._renderAggregateRow();
+  }
+
+  _markAggregatesDirty() {
+    if (this.rowModel !== "serverSide") return;
+    this._aggregateRemoteDirty = true;
+    this._aggregateRemoteValues = null;
+    this._aggregateRequestSeq++;
+    this._aggregateFetchInFlight = false;
+  }
+
+  _setAggregateScope(scope: AggregateScope) {
+    const changed = scope !== this._aggregateScope;
+    this._aggregateScope = scope;
+    if (this.aggregateScopeSelect) {
+      this.aggregateScopeSelect.value = scope;
+    }
+    this._markAggregatesDirty();
+    this._maybeRequestServerAggregates();
+    if (changed) {
+      this._renderAggregateRow();
+    }
+  }
+
+  _pruneAggregates() {
+    if (this._aggregates.size === 0) return;
+    const valid = new Set(this._leafColumns.map(c => c.id));
+    for (const key of Array.from(this._aggregates.keys())) {
+      if (!valid.has(key)) {
+        this._aggregates.delete(key);
+      }
+    }
+  }
+
+  _getAggregateOpForColumn(col: InternalColumn): AggregateType {
+    const explicit = this._aggregates.get(col.id);
+    if (explicit != null) return explicit;
+    return isComputableType(col.type) ? AggregateType.SUM : AggregateType.COUNT;
+  }
+
+  _valueToNumber(value: any): number | null {
+    if (value == null) return null;
+    const num = value instanceof Date ? value.getTime() : Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _calculateAggregate(col: InternalColumn, aggType: AggregateType, rows: any[]): any {
+    if (aggType === AggregateType.COUNT) {
+      return rows.length;
+    }
+
+    const rawValues = rows.map(row => getValue(row, col)).filter(v => v != null);
+    if (rawValues.length === 0) {
+      if (aggType === AggregateType.SUM || aggType === AggregateType.AVG || aggType === AggregateType.MEDIAN) return 0;
+      return "";
+    }
+
+    const collator = this._getCollator();
+    const isNumeric = isComputableType(col.type);
+
+    switch (aggType) {
+      case AggregateType.SUM: {
+        const nums = rawValues
+          .map(v => this._valueToNumber(v))
+          .filter((v): v is number => Number.isFinite(v));
+        return nums.reduce((sum, v) => sum + v, 0);
+      }
+      case AggregateType.AVG: {
+        const nums = rawValues
+          .map(v => this._valueToNumber(v))
+          .filter((v): v is number => Number.isFinite(v));
+        if (nums.length === 0) return 0;
+        const sum = nums.reduce((acc, v) => acc + v, 0);
+        return sum / nums.length;
+      }
+      case AggregateType.MEDIAN: {
+        const nums = rawValues
+          .map(v => this._valueToNumber(v))
+          .filter((v): v is number => Number.isFinite(v))
+          .sort((a, b) => a - b);
+        if (nums.length === 0) return 0;
+        const mid = Math.floor(nums.length / 2);
+        if (nums.length % 2 === 0) {
+          return (nums[mid - 1] + nums[mid]) / 2;
+        }
+        return nums[mid];
+      }
+      case AggregateType.MIN: {
+        let best: any = null;
+        for (const v of rawValues) {
+          if (best == null) {
+            best = v;
+            continue;
+          }
+          if (isNumeric) {
+            const next = this._valueToNumber(v);
+            const prev = this._valueToNumber(best);
+            if (next == null) continue;
+            if (prev == null || next < prev) {
+              best = v;
+            }
+          } else {
+            const cmp = collator.compare(String(v), String(best));
+            if (cmp < 0) best = v;
+          }
+        }
+        return best ?? "";
+      }
+      case AggregateType.MAX: {
+        let best: any = null;
+        for (const v of rawValues) {
+          if (best == null) {
+            best = v;
+            continue;
+          }
+          if (isNumeric) {
+            const next = this._valueToNumber(v);
+            const prev = this._valueToNumber(best);
+            if (next == null) continue;
+            if (prev == null || next > prev) {
+              best = v;
+            }
+          } else {
+            const cmp = collator.compare(String(v), String(best));
+            if (cmp > 0) best = v;
+          }
+        }
+        return best ?? "";
+      }
+      default:
+        return "";
+    }
+  }
+
+  _formatAggregateDisplay(col: InternalColumn, value: any): string {
+    if (value == null) return "";
+    try {
+      return formatValue(value, null as any, col);
+    } catch {
+      return String(value);
+    }
+  }
+
+  _getAggregateRows(): any[] {
+    if (this._aggregateScope === "all" && this.rowModel === "clientSide") {
+      const idx = this._sortedIdx && this._sortedIdx.length > 0 ? this._sortedIdx : this._viewIdx;
+      return idx.map(i => this.data[i]);
+    }
+    return this._viewIdx.map(i => this.data[i]);
+  }
+
+  _maybeRequestServerAggregates() {
+    if (this.rowModel !== "serverSide") return;
+    if (!this._pagination) return;
+    if (this._aggregateScope !== "all") return;
+    if (!this._serverSideAggregation) return;
+    if (this._aggregates.size === 0) return;
+    if (!this._aggregateRemoteDirty && this._aggregateRemoteValues) return;
+    if (this._aggregateFetchInFlight) return;
+
+    const aggregates = Array.from(this._aggregates.entries())
+      .map(([colId, type]) => {
+        const col = findColumnById(this.columns, colId);
+        if (!col) return null;
+        return { key: col.key, type };
+      })
+      .filter(Boolean) as Array<AggregateRequestItem>;
+
+    if (aggregates.length === 0) return;
+
+    if (aggregates.length < this._leafColumns.length) {
+      const missingLeaves = this._leafColumns.filter(l => aggregates.findIndex(f => f.key == l.key) < 0);
+      aggregates.push(...missingLeaves.map(m => ({key: m.key, type: AggregateType.COUNT})) as Array<AggregateRequestItem>);
+    }
+
+    const filters = this._filters
+      .map(f => {
+        const col = findColumnById(this.columns, f.key);
+        if (!col) return null;
+        return {
+          key: col.key,
+          type: f.type,
+          value: f.v,
+        };
+      })
+      .filter(Boolean) as ServerSideRequest["filters"];
+
+    const sorts = this._sorts
+      .map(s => {
+        const col = findColumnById(this.columns, s.key);
+        if (!col) return null;
+        return {
+          key: col.key,
+          dir: s.dir,
+        };
+      })
+      .filter(Boolean) as ServerSideRequest["sorts"];
+
+    this._aggregateFetchInFlight = true;
+    this._aggregateRemoteDirty = false;
+    const requestId = ++this._aggregateRequestSeq;
+    Promise.resolve(this._serverSideAggregation({
+      aggregates,
+      filters,
+      sorts,
+      scope: "all",
+      page: this._pageIdx,
+      pageSize: this._paginationPageSize,
+    }))
+      .then((result) => {
+        if (requestId !== this._aggregateRequestSeq) return;
+        const valuesObj = (result as any)?.values ?? result ?? {};
+        const map = new Map<string, any>();
+        for (const col of this._leafColumns) {
+          const v = valuesObj?.[col.id] ?? valuesObj?.[col.key];
+          if (v != null) {
+            map.set(col.id, v);
+          }
+        }
+        this._aggregateRemoteValues = map;
+        this._aggregateFetchInFlight = false;
+        this._renderAggregateRow();
+      })
+      .catch((err) => {
+        console.error("Failed to fetch server-side aggregates", err);
+        if (requestId !== this._aggregateRequestSeq) return;
+        this._aggregateRemoteValues = null;
+        this._aggregateFetchInFlight = false;
+        this._renderAggregateRow();
+      });
+  }
+
+  _renderAggregateRow() {
+    this._pruneAggregates();
+    const shouldShow = this._aggregateScope !== "none" && this._aggregates.size > 0;
+    const wasVisible = this._aggregateVisible;
+    this._aggregateVisible = shouldShow;
+    if (this.aggregateClearBtn) {
+      this.aggregateClearBtn.disabled = this._aggregates.size === 0;
+    }
+
+    this.aggregateRow.classList.toggle("visible", shouldShow);
+    this.aggregateRow.style.display = shouldShow ? "flex" : "none";
+
+    if (!shouldShow) {
+      if (this.aggregateScopeSelect) {
+        this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+      }
+      if (this.aggregateScopeSelect) {
+        this.aggregateScopeSelect.value = this._aggregateScope;
+      }
+      if (wasVisible !== shouldShow) {
+        this._updateAllColumnWidths();
+        this._maybeUpdatePoolSize();
+      }
+      return;
+    }
+
+    const values = new Map<string, string>();
+    if (this.rowModel === "serverSide" && this._aggregateScope === "all" && this._serverSideAggregation) {
+      this._maybeRequestServerAggregates();
+      const remote = this._aggregateRemoteValues;
+      for (const col of this._leafColumns) {
+        if (isTrue(col.hidden)) continue;
+        const v = remote?.get(col.id);
+        const display = v == null ? "" : this._formatAggregateDisplay(col, v);
+        values.set(col.id, display ?? "");
+      }
+    } else {
+      const rows = this._getAggregateRows();
+      for (const col of this._leafColumns) {
+        if (isTrue(col.hidden)) continue;
+        const op = this._getAggregateOpForColumn(col);
+        const raw = this._calculateAggregate(col, op, rows);
+        const display = this._formatAggregateDisplay(col, raw);
+        values.set(col.id, display ?? "");
+      }
+    }
+
+    const apply = (cells: HTMLDivElement[], cols: InternalColumn[]) => {
+      let idx = -1;
+      for (const col of cols) {
+        if (isTrue(col.hidden)) continue;
+        idx++;
+        const cell = cells[idx];
+        if (!cell) continue;
+        if (cell.children.length > 0) cell.innerHTML = "";
+        const aggFn = this._aggregates.get(col.id) || AggregateType.COUNT;
+        const icon = document.createElement("div");
+        icon.className = "pte-aggregate-icon";
+        let suffix = "";
+        if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
+          suffix = "-" + (isComputableType(col.type) ? "number" : "string");
+        }
+        icon.classList.add("icon-" +  aggFn + suffix);
+        icon.title = aggFn[0].toUpperCase() + aggFn.substring(1);
+        cell.appendChild(icon);
+        const content = document.createElement("div");
+        content.className = "pte-aggregate-cell-content";
+        content.textContent = values.get(col.id) ?? "";
+        cell.appendChild(content);
+        if (content.scrollWidth > content.clientWidth) {
+          content.title = values.get(col.id) ?? "";
+        }
+      }
+    };
+
+    apply(this._aggregateLeftCells, this._leftPinnedLeafColumns);
+    apply(this._aggregateCells, this._centerLeafColumns);
+    apply(this._aggregateRightCells, this._rightPinnedLeafColumns);
+
+    if (this.aggregateScopeSelect) {
+      this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+    }
+
+    if (wasVisible !== shouldShow) {
+      this._updateAllColumnWidths();
+      this._maybeUpdatePoolSize();
+    }
+  }
+
+  _getAggregateRowHeight(): number {
+    return this._aggregateVisible ? this.rowHeight : 0;
+  }
+
   _recomputeView() {
+    if (this.rowModel === "serverSide") {
+      this._markAggregatesDirty();
+    }
     if (this.rowModel === "serverSide") {
       const pageSize = Math.max(1, this._paginationPageSize || 1);
       const totalRows = this._serverSideTotalRows ?? this.data.length;
@@ -935,6 +1393,7 @@ export default class Table {
 
     this._updatePaginationControls();
     this._clampSelectionToView();
+    this._renderAggregateRow();
   }
 
   _pinColumn(colID: string, pin: "left" | "right" | null) {
@@ -981,7 +1440,7 @@ export default class Table {
     if (cacheHit && cacheHit.dataRef === this.data) return cacheHit.fn;
 
     if (typeof col?.compare === "function") {
-      const fn = (a, b) => col.compare(a?.[key], b?.[key], a, b);
+      const fn = (a: any, b: any) => col.compare(a?.[key], b?.[key], a, b);
       this._sortComparatorCache.set(key, { fn, dataRef: this.data });
       return fn;
     }
@@ -1005,14 +1464,14 @@ export default class Table {
 
     const collator = this._getCollator();
     const comparator = numericLikely
-      ? (a, b) => {
+      ? (a: any, b: any) => {
         const av = a?.[key], bv = b?.[key];
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
         return (Number(av) - Number(bv));
       }
-      : (a, b) => {
+      : (a: any, b: any) => {
         const av = a?.[key], bv = b?.[key];
         if (av === bv) return 0;
         if (av == null) return -1;
@@ -1153,6 +1612,30 @@ export default class Table {
     }
 
     let maxWidth = 0;
+    let aggregateWidth = 0;
+    let aggIdx = -1;
+    for (const col of this._leftPinnedLeafColumns) {
+      if (isTrue(col.hidden)) continue;
+      aggIdx++;
+      const info = this._columnWidths.get(col.id);
+      const cell = this._aggregateLeftCells[aggIdx];
+      if (!cell || !info) continue;
+      cell.style.flex = "0 0 auto";
+      cell.style.width = `${info.width}px`;
+      aggregateWidth += info.width;
+      if (!info.fixed) {
+        cell.style.minWidth = `${info.minWidth}px`;
+        cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+      } else {
+        cell.style.minWidth = "";
+        cell.style.maxWidth = "";
+      }
+    }
+    if (this.aggregateLeftRow) {
+      this.aggregateLeftRow.style.width = `${aggregateWidth}px`;
+      this.aggregateLeftRow.style.minWidth = `${aggregateWidth}px`;
+    }
+
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
@@ -1182,6 +1665,8 @@ export default class Table {
     this.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
     this.leftHeader.style.width = `${maxWidth + 1}px`;
     this.leftHeader.style.minWidth = `${maxWidth + 1}px`;
+    this.aggregateLeft.style.width = `${maxWidth + 1}px`;
+    this.aggregateLeft.style.minWidth = `${maxWidth + 1}px`;
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
       this.leftScroller.classList.add("visible");
@@ -1190,10 +1675,14 @@ export default class Table {
         maxWidth = this.root.clientWidth * 0.35;
         this.leftHeader.style.width = `${maxWidth}px`;
         this.leftHeader.style.minWidth = `${maxWidth}px`;
+        this.aggregateLeft.style.width = `${maxWidth}px`;
+        this.aggregateLeft.style.minWidth = `${maxWidth}px`;
       }
+      this.aggregateLeft.style.display = "block";
     } else {
       this.leftScroller.classList.remove("visible");
       this.leftHeader.classList.remove("visible");
+      this.aggregateLeft.style.display = "none";
     }
     this.hScrollLeftParent.style.width = `${maxWidth}px`;
     this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
@@ -1215,6 +1704,31 @@ export default class Table {
     }
 
     let maxWidth = 0;
+    let aggregateWidth = 0;
+    let aggIdx = -1;
+    for (const col of this._centerLeafColumns) {
+      if (isTrue(col.hidden)) continue;
+      aggIdx++;
+      const info = this._columnWidths.get(col.id);
+      const cell = this._aggregateCells[aggIdx];
+      if (!cell || !info) continue;
+
+      cell.style.flex = "0 0 auto";
+      cell.style.width = `${info.width}px`;
+      aggregateWidth += info.width;
+      if (!info.fixed) {
+        cell.style.minWidth = `${info.minWidth}px`;
+        cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+      } else {
+        cell.style.minWidth = "";
+        cell.style.maxWidth = "";
+      }
+    }
+    if (this.aggregateCenterRow) {
+      this.aggregateCenterRow.style.width = `${aggregateWidth}px`;
+      this.aggregateCenterRow.style.minWidth = `${aggregateWidth}px`;
+    }
+
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
@@ -1244,6 +1758,10 @@ export default class Table {
       this.hScrollParent.style.flex = "1 1 auto";
     }
     this.viewport.style.width = `${maxWidth}px`;
+    if (this.aggregateCenterRow) {
+      this.aggregateCenterRow.style.width = `${maxWidth}px`;
+      this.aggregateCenterRow.style.minWidth = `${maxWidth}px`;
+    }
     return maxWidth;
   }
 
@@ -1262,6 +1780,31 @@ export default class Table {
     }
 
     let maxWidth = 0;
+    let aggregateWidth = 0;
+    let aggIdx = -1;
+    for (const col of this._rightPinnedLeafColumns) {
+      if (isTrue(col.hidden)) continue;
+      aggIdx++;
+      const info = this._columnWidths.get(col.id);
+      const cell = this._aggregateRightCells[aggIdx];
+      if (!cell || !info) continue;
+
+      cell.style.flex = "0 0 auto";
+      cell.style.width = `${info.width}px`;
+      aggregateWidth += info.width;
+      if (!info.fixed) {
+        cell.style.minWidth = `${info.minWidth}px`;
+        cell.style.maxWidth = Number.isFinite(info.maxWidth) ? `${info.maxWidth}px` : "";
+      } else {
+        cell.style.minWidth = "";
+        cell.style.maxWidth = "";
+      }
+    }
+    if (this.aggregateRightRow) {
+      this.aggregateRightRow.style.width = `${aggregateWidth}px`;
+      this.aggregateRightRow.style.minWidth = `${aggregateWidth}px`;
+    }
+
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
@@ -1300,11 +1843,15 @@ export default class Table {
       this.hScrollRightParent.style.width = `${maxWidth}px`;
       this.rightHeader.style.width = `${maxWidth + 16}px`;
       this.rightHeader.style.minWidth = `${maxWidth + 16}px`;
+      this.aggregateRight.style.width = `${maxWidth + 1}px`;
+      this.aggregateRight.style.minWidth = `${maxWidth + 1}px`;
+      this.aggregateRight.style.display = "block";
       maxWidth += this.hScrollLeftParent.clientWidth;
       this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
       this.rightScroller.classList.remove("visible");
       this.rightHeader.classList.remove("visible");
+      this.aggregateRight.style.display = "none";
     }
     return totalWidth;
   }
@@ -1323,10 +1870,14 @@ export default class Table {
 
     const headerHeight = this.headerWrapper.getBoundingClientRect().height;
     const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height;
+    const aggregateHeight = this._getAggregateRowHeight();
     const paginationHeight = this._pagination && this.paginator.classList.contains("visible")
       ? (this.paginator.getBoundingClientRect().height || 0)
       : 0;
-    const chromeHeight = headerHeight + (this.hScrollContainer.style.display === "flex" ? hScrollHeight : 0) + paginationHeight;
+    const chromeHeight = headerHeight
+      + (this.hScrollContainer.style.display === "flex" ? hScrollHeight : 0)
+      + paginationHeight
+      + aggregateHeight;
     this.body.style.height = `calc(100% - ${chromeHeight}px)`;
   }
 
@@ -1484,13 +2035,55 @@ export default class Table {
       this._paginationPageSizes = [...this._paginationPageSizes, this._paginationPageSize].sort((a, b) => a - b);
     }
 
+    const aggSection = document.createElement("div");
+    aggSection.className = "pte-pagination-section pte-aggregate-controls";
+    const aggLabel = document.createElement("span");
+    aggLabel.className = "pte-pagination-label";
+    aggLabel.textContent = "Aggregate";
+    this.aggregateScopeSelect = document.createElement("select");
+    this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
+    const aggOptions: Array<{ value: AggregateScope; label: string }> = [
+      { value: "none", label: "None" },
+      { value: "page", label: "Current page" },
+      { value: "all", label: "Entire dataset" },
+    ];
+    for (const optDef of aggOptions) {
+      const opt = document.createElement("option");
+      opt.value = optDef.value;
+      opt.textContent = optDef.label;
+      this.aggregateScopeSelect.appendChild(opt);
+    }
+    this.aggregateScopeSelect.value = this._aggregateScope;
+    this.aggregateScopeSelect.addEventListener("change", (e) => {
+      const next = (e.target as HTMLSelectElement).value as AggregateScope;
+      this._setAggregateScope(next);
+    });
+    this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+
+    this.aggregateClearBtn = document.createElement("button");
+    this.aggregateClearBtn.type = "button";
+    this.aggregateClearBtn.className = "pte-pagination-btn pte-aggregate-clear";
+    this.aggregateClearBtn.title = "Remove aggregate row";
+    this.aggregateClearBtn.textContent = "x";
+    this.aggregateClearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._setAggregateScope("none");
+      if (this.aggregateScopeSelect) {
+        this.aggregateScopeSelect.value = "none";
+      }
+    });
+
+    aggSection.appendChild(aggLabel);
+    aggSection.appendChild(this.aggregateScopeSelect);
+    aggSection.appendChild(this.aggregateClearBtn);
+
     const sizeSection = document.createElement("div");
     sizeSection.className = "pte-pagination-section";
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "pte-pagination-label";
     sizeLabel.textContent = "Rows per page";
     this.pageSizeSelect = document.createElement("select");
-    this.pageSizeSelect.className = "pte-pagination-select";
+    this.pageSizeSelect.className = "pte-select pte-pagination-select";
     for (const size of this._paginationPageSizes) {
       const option = document.createElement("option");
       option.value = String(size);
@@ -1533,7 +2126,7 @@ export default class Table {
     pageLabel.textContent = "Page";
 
     this.pageSelect = document.createElement("select");
-    this.pageSelect.className = "pte-pagination-select pte-pagination-page-select";
+    this.pageSelect.className = "pte-select pte-pagination-select pte-pagination-page-select";
     this.pageSelect.addEventListener("change", (e) => {
       const val = Number((e.target as HTMLSelectElement).value);
       if (!Number.isFinite(val)) return;
@@ -1557,6 +2150,7 @@ export default class Table {
     navSection.appendChild(this.nextPageBtn);
     navSection.appendChild(this.lastPageBtn);
 
+    this.paginator.appendChild(aggSection);
     this.paginator.appendChild(sizeSection);
     this.paginator.appendChild(navSection);
     this._populatePageSelect();
@@ -1595,6 +2189,13 @@ export default class Table {
 
     if (this.pageSizeSelect) {
       this.pageSizeSelect.value = String(this._paginationPageSize);
+    }
+    if (this.aggregateScopeSelect) {
+      this.aggregateScopeSelect.value = this._aggregateScope;
+      this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+    }
+    if (this.aggregateClearBtn) {
+      this.aggregateClearBtn.disabled = this._aggregates.size === 0;
     }
 
     this._populatePageSelect();
@@ -1684,6 +2285,98 @@ export default class Table {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu-flyout";
     return menu;
+  }
+
+  _buildAggregateRow() {
+    this.aggregateLeft.innerHTML = "";
+    this.aggregateCenter.innerHTML = "";
+    this.aggregateRight.innerHTML = "";
+    this._aggregateLeftCells = [];
+    this._aggregateCells = [];
+    this._aggregateRightCells = [];
+
+    const makeRow = () => {
+      const row = document.createElement("div");
+      row.className = "pte-row";
+      row.style.height = `${this.rowHeight}px`;
+      return row;
+    };
+
+    if (this._leftPinnedLeafColumns.length > 0) {
+      const row = makeRow();
+      let leftIdx = 0;
+      for (const col of this._leftPinnedLeafColumns) {
+        if (isTrue(col.hidden)) continue;
+        const cell = document.createElement("div");
+        cell.className = "pte-cell pte-aggregate-cell";
+        const meta = this._leafColumnLookup.get(col.id);
+        if (meta) {
+          cell.dataset.colId = col.id;
+          cell.dataset.colIdx = String(meta.globalIndex);
+        } else {
+          cell.dataset.colIdx = String(leftIdx);
+        }
+        if (isComputableType(col.type)) cell.classList.add("pte-cell-right-aligned");
+        row.appendChild(cell);
+        this._aggregateLeftCells.push(cell);
+        leftIdx++;
+      }
+      this.aggregateLeft.appendChild(row);
+      this.aggregateLeftRow = row;
+    } else {
+      this.aggregateLeftRow = undefined;
+    }
+
+    const centerRow = makeRow();
+    let centerIdx = 0;
+    for (const col of this._centerLeafColumns) {
+      if (isTrue(col.hidden)) continue;
+      const cell = document.createElement("div");
+      cell.className = "pte-cell pte-aggregate-cell";
+      const meta = this._leafColumnLookup.get(col.id);
+      if (meta) {
+        cell.dataset.colId = col.id;
+        cell.dataset.colIdx = String(meta.globalIndex);
+      } else {
+        cell.dataset.colIdx = String(centerIdx);
+      }
+      if (isComputableType(col.type)) cell.classList.add("pte-cell-right-aligned");
+      centerRow.appendChild(cell);
+      this._aggregateCells.push(cell);
+      centerIdx++;
+    }
+    this.aggregateCenter.appendChild(centerRow);
+    this.aggregateCenterRow = centerRow;
+
+    if (this._rightPinnedLeafColumns.length > 0) {
+      const row = makeRow();
+      let rightIdx = 0;
+      for (const col of this._rightPinnedLeafColumns) {
+        if (isTrue(col.hidden)) continue;
+        const cell = document.createElement("div");
+        cell.className = "pte-cell pte-aggregate-cell";
+        const meta = this._leafColumnLookup.get(col.id);
+        if (meta) {
+          cell.dataset.colId = col.id;
+          cell.dataset.colIdx = String(meta.globalIndex);
+        } else {
+          cell.dataset.colIdx = String(rightIdx);
+        }
+        if (isComputableType(col.type)) cell.classList.add("pte-cell-right-aligned");
+        row.appendChild(cell);
+        this._aggregateRightCells.push(cell);
+        rightIdx++;
+      }
+      this.aggregateRight.appendChild(row);
+      this.aggregateRightRow = row;
+    } else {
+      this.aggregateRightRow = undefined;
+    }
+
+    this.aggregateRow.style.height = `${this.rowHeight}px`;
+    this.aggregateRow.style.minHeight = `${this.rowHeight}px`;
+    this.aggregateRow.style.maxHeight = `${this.rowHeight}px`;
+    this._renderAggregateRow();
   }
 
   _buildRowPool() {
@@ -1783,6 +2476,8 @@ export default class Table {
 
       this._rowPool.push(row);
     }
+
+    this._buildAggregateRow();
   }
 
   _rebuildRowPool() {
@@ -1906,8 +2601,8 @@ export default class Table {
     const total = this._viewIdx.length;
     const startIndex = this._startIndex;
 
-    const colIndexSet = colKeys
-      ? new Set(colKeys.map(k => this.columns.findIndex(c => c.key === k)).filter(i => i >= 0))
+    const colIndexSet: Set<number> | null = colKeys
+      ? new Set(colKeys.map((k: string) => this.columns.findIndex(c => c.key === k)).filter((i: number) => i >= 0))
       : null;
 
     for (let i = 0; i < this._rowPool.length; i++) {
@@ -2708,7 +3403,7 @@ export default class Table {
       }
     }
 
-    const colsWithSelectedChildren = new Map<string,InternalColumn>();
+    const colsWithSelectedChildren = new Map<string, InternalColumn>();
     for (const selectedColID of this._selectedColumnIDs) {
       const col = findColumnById(this.columns, selectedColID);
       if (!col) continue;
@@ -2809,7 +3504,7 @@ export default class Table {
   }
 
   _wireSubmenuBehaviour(mainItems: MenuItem[]) {
-    let openTimer = 0;
+    let openTimer: number | NodeJS.Timeout = 0;
 
     const getItemById = (id: string) => mainItems.find(x => x.id === id);
 
@@ -2939,7 +3634,7 @@ export default class Table {
       el.className = "pte-menu-item";
       const text = document.createElement("span");
       text.className = "pte-menu-item-text";
-      text.textContent = item.label;
+      text.textContent = item.label || '';
       el.appendChild(text);
       el.disabled = !!item.disabled;
       if (item.subMenu) {
@@ -3029,6 +3724,59 @@ export default class Table {
 
     const sort = this._sorts.find(s => s.key === colID);
 
+    let aggregateTypes: MenuItem[] = [
+      {
+        id: 'min',
+        label: "Min",
+        onClick: () => this._aggregate(colID, AggregateType.MIN),
+        extra: AggregateType.MIN,
+      },
+      {
+        id: 'max',
+        label: "Max",
+        onClick: () => this._aggregate(colID, AggregateType.MAX),
+        extra: AggregateType.MAX,
+      },
+    ];
+    if (isComputableType(col.type)) {
+      aggregateTypes = [
+        {
+          id: 'sum',
+          label: "Sum",
+          onClick: () => this._aggregate(colID, AggregateType.SUM),
+          extra: AggregateType.SUM,
+        },
+        {
+          id: 'avg',
+          label: "Average",
+          onClick: () => this._aggregate(colID, AggregateType.AVG),
+          extra: AggregateType.AVG,
+        },
+        ...aggregateTypes,
+        {
+          id: 'median',
+          label: "Median",
+          onClick: () => this._aggregate(colID, AggregateType.MEDIAN),
+          extra: AggregateType.MEDIAN,
+        },
+      ]
+    }
+
+    if (this._aggregates.has(col.id)) {
+      aggregateTypes.push(
+        {
+          id: 'remove-agg',
+          label: "Remove Aggregation",
+          onClick: () => this._aggregate(colID, undefined),
+        },
+      )
+    }
+
+    const aggType = this._aggregates.get(col.id);
+    if (aggType) {
+      aggregateTypes.forEach(e => e.disabled = e.extra == aggType);
+    }
+
     const items: MenuItem[] = [];
     if (!sort) {
       items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
@@ -3047,12 +3795,19 @@ export default class Table {
       onClick: () => this._toggleColumnHidden(colID),
       left: !isHidden ? "icon-col-hide" : '',
     });
+    items.push({ isSeparator: true });
     items.push({
       id: 'group-by',
       label: "Group by " + (col.label || col.key),
       onClick: () => this._groupByColumn(colID),
       left: "icon-group",
     });
+    items.push({
+      id: 'agg',
+      label: "Aggregate",
+      subMenu: aggregateTypes,
+    });
+    items.push({ isSeparator: true });
     items.push({
       id: 'pin-col',
       label: "Pin Column",
@@ -3117,7 +3872,7 @@ export default class Table {
     root.setAttribute("aria-label", `Filter ${col.label ?? col.key}`);
 
     const typeSelect = document.createElement("select");
-    typeSelect.className = "pte-filter-select";
+    typeSelect.className = "pte-select pte-filter-select";
     typeSelect.name = "filter-type";
     typeSelect.setAttribute("data-focus-first", "1");
 
