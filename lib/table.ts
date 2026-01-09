@@ -725,13 +725,24 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
-  setColumns(columns: InternalColumn[]) {
+  setColumns(columns: InternalColumn[], options: { preserveWidths?: boolean } = {}) {
+    const prevWidths = options.preserveWidths ? new Map(this._columnWidths) : null;
     this.columns = columns ?? [];
     this._maxDepth = 0;
     this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
     this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
     this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
     this._columnWidths.clear();
+    if (prevWidths) {
+      const walk = (cols: InternalColumn[]) => {
+        for (const col of cols) {
+          const info = prevWidths.get(col.id);
+          if (info) this._columnWidths.set(col.id, info);
+          if (col.children && col.children.length > 0) walk(col.children);
+        }
+      };
+      walk(this.columns);
+    }
     this._sortComparatorCache.clear();
     this._clearSelection();
     this._clearColumnSelection();
@@ -3142,7 +3153,7 @@ export default class Table {
       ...nextCenter,
       ...nextRight,
     ];
-    this.setColumns(nextColumns);
+    this.setColumns(nextColumns, { preserveWidths: true });
   }
 
   _teardownColumnDrag() {
