@@ -499,7 +499,6 @@ export default class Table {
     this.rightScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.rightScroller));
     this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(this.vScroll));
     this.leftSpacer.addEventListener("scroll", () => {
-      console.log("left spacer scroll");
       this.leftHeader.scrollLeft = this.leftSpacer.scrollLeft;
       this.hScrollLeft.scrollLeft = this.leftSpacer.scrollLeft;
       this.aggregateLeft.scrollLeft = this.leftSpacer.scrollLeft;
@@ -1158,7 +1157,7 @@ export default class Table {
 
     if (aggregates.length < this._leafColumns.length) {
       const missingLeaves = this._leafColumns.filter(l => aggregates.findIndex(f => f.key == l.key) < 0);
-      aggregates.push(...missingLeaves.map(m => ({key: m.key, type: AggregateType.COUNT})) as Array<AggregateRequestItem>);
+      aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateRequestItem>);
     }
 
     const filters = this._filters
@@ -1280,7 +1279,7 @@ export default class Table {
         if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
           suffix = "-" + (isComputableType(col.type) ? "number" : "string");
         }
-        icon.classList.add("icon-" +  aggFn + suffix);
+        icon.classList.add("icon-" + aggFn + suffix);
         icon.title = aggFn[0].toUpperCase() + aggFn.substring(1);
         cell.appendChild(icon);
         const content = document.createElement("div");
@@ -1955,6 +1954,7 @@ export default class Table {
     header.appendChild(headerWrapper);
     const headerResize = document.createElement("div");
     headerResize.className = "pte-hcell-resize-handle";
+    if (!col.resizable) headerResize.classList.add("pte-hcell-resize-disabled");
     headerWrapper.appendChild(headerResize);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
@@ -2274,8 +2274,10 @@ export default class Table {
       return wrapper;
     };
 
-    if (!col.children || col.children.length === 0) {
-      menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
+    if (col.filterable) {
+      if (!col.children || col.children.length === 0) {
+        menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
+      }
     }
     menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
     return menu;
@@ -2840,6 +2842,7 @@ export default class Table {
       if (!header) return;
       const col = findColumnById(this.columns, header.id);
       if (!col || isTrue(col.hidden)) return;
+      if (!col.resizable) return;
       const info = this._columnWidths.get(col.id);
       if (info?.fixed) return;
 
@@ -2866,6 +2869,7 @@ export default class Table {
     const col = findColumnById(this.columns, header.id);
     if (!col || isTrue(col.hidden)) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
+    if (!col.movable) return;
     this._maybeStartColumnDrag(col, header, e);
   }
 
@@ -3200,6 +3204,7 @@ export default class Table {
     if (!header) return;
     const col = findColumnById(this.columns, header.id);
     if (!col || isTrue(col.hidden)) return;
+    if (!col.resizable) return;
     const info = this._columnWidths.get(col.id);
     if (info?.fixed || col.width != null) return;
     this._suppressHeaderClick = true;
@@ -3778,17 +3783,19 @@ export default class Table {
     }
 
     const items: MenuItem[] = [];
-    if (!sort) {
-      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
-      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
-    } else if (sort.dir === "asc") {
-      items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
-      items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
-    } else {
-      items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
-      items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
+    if (col.sortable) {
+      if (!sort) {
+        items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
+        items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
+      } else if (sort.dir === "asc") {
+        items.push({ id: 'sort-desc', label: "Sort Desc", onClick: () => this.setSort({ key: colID, dir: "desc" }), left: "icon-desc" });
+        items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
+      } else {
+        items.push({ id: 'sort-asc', label: "Sort Asc", onClick: () => this.setSort({ key: colID, dir: "asc" }), left: "icon-asc" });
+        items.push({ id: 'sort-clear', label: "Clear Sort", onClick: () => this.setSort(sort), left: "icon-clear" });
+      }
+      items.push({ isSeparator: true });
     }
-    items.push({ isSeparator: true });
     items.push({
       id: 'toggle-hidden',
       label: isHidden ? "Show Column" : "Hide Column",
@@ -3796,12 +3803,14 @@ export default class Table {
       left: !isHidden ? "icon-col-hide" : '',
     });
     items.push({ isSeparator: true });
-    items.push({
-      id: 'group-by',
-      label: "Group by " + (col.label || col.key),
-      onClick: () => this._groupByColumn(colID),
-      left: "icon-group",
-    });
+    if (col.groupable) {
+      items.push({
+        id: 'group-by',
+        label: "Group by " + (col.label || col.key),
+        onClick: () => this._groupByColumn(colID),
+        left: "icon-group",
+      });
+    }
     items.push({
       id: 'agg',
       label: "Aggregate",
@@ -3833,17 +3842,19 @@ export default class Table {
       ]
     });
     items.push({ isSeparator: true });
-    items.push({
-      id: 'autosize-col',
-      label: "Autosize Column",
-      onClick: () => this._updateColumnWidths(findColumnById(this.columns, colID) || null, true),
-    });
-    items.push({
-      id: 'autosize-all',
-      label: "Autosize All Columns",
-      onClick: () => this._updateColumnWidths(null, true),
-    });
-    items.push({ isSeparator: true });
+    if (col.resizable) {
+      items.push({
+        id: 'autosize-col',
+        label: "Autosize Column",
+        onClick: () => this._updateColumnWidths(findColumnById(this.columns, colID) || null, true),
+      });
+      items.push({
+        id: 'autosize-all',
+        label: "Autosize All Columns",
+        onClick: () => this._updateColumnWidths(null, true),
+      });
+      items.push({ isSeparator: true });
+    }
     items.push({
       id: 'export-col',
       label: "Export Column",
@@ -4039,6 +4050,7 @@ export default class Table {
       const col = findColumnById(this.columns, header.id);
       if (!col) return;
       if (e.shiftKey) {
+        if (!col.sortable) return;
         if (col.children && Array.isArray(col.children) && col.children.length > 0) {
           return this._toggleBatchSort(col);
         }

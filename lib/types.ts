@@ -26,6 +26,11 @@ export interface Column {
   children?: Column[];
   hidden?: boolean;
   pinned?: "left" | "right";
+  sortable?: boolean;
+  filterable?: boolean;
+  groupable?: boolean;
+  resizable?: boolean;
+  movable?: boolean;
 }
 
 export interface InternalColumn {
@@ -44,6 +49,11 @@ export interface InternalColumn {
   children?: InternalColumn[];
   hidden?: boolean;
   pinned?: "left" | "right" | null;
+  sortable: boolean;
+  filterable: boolean;
+  groupable: boolean;
+  resizable: boolean;
+  movable: boolean;
 }
 
 export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
@@ -68,6 +78,11 @@ export function getColumnDef(col: Column | any): InternalColumn {
     children: col.children ? col.children.map(getColumnDef) : undefined,
     hidden: col.hidden || false,
     pinned: col.pinned,
+    sortable: col.sortable !== false,
+    filterable: col.filterable !== false,
+    groupable: col.groupable !== false,
+    resizable: col.resizable !== false,
+    movable: col.movable !== false,
   };
 }
 

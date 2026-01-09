@@ -463,6 +463,10 @@
   background-color: var(--pte-resize-handle-color);
 }
 
+.pte-hcell-resize-disabled {
+  cursor: default;
+}
+
 .pte-hcell.selected .pte-hcell-resize-handle:after {
   background-color: var(--pte-selected-resize-handle-color);
 }
