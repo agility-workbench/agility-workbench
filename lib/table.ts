@@ -1586,13 +1586,15 @@ export default class Table {
   _applyWidthsToChildren(col: InternalColumn, hcell: HTMLElement) {
     const info = this._columnWidths.get(col.id);
     hcell.style.flex = "0 0 auto";
-    hcell.style.width = `${info?.width}px`;
-    if (!info?.fixed) {
-      hcell.style.minWidth = `${info?.minWidth}px`;
-      hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
-    } else {
-      hcell.style.minWidth = "";
-      hcell.style.maxWidth = "";
+    if (!col.children || col.children.length === 0) {
+      hcell.style.width = `${info?.width}px`;
+      if (!info?.fixed) {
+        hcell.style.minWidth = `${info?.minWidth}px`;
+        hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
+      } else {
+        hcell.style.minWidth = "";
+        hcell.style.maxWidth = "";
+      }
     }
     if (col.children && col.children.length > 0) {
       for (let i = 0; i < col.children.length; i++) {
@@ -3176,7 +3178,7 @@ export default class Table {
       ...nextLeft,
       ...nextCenter,
       ...nextRight,
-    ]);
+    ], { preserveWidths: true });
   }
 
   _teardownColumnDrag() {
