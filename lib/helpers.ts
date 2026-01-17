@@ -50,6 +50,7 @@ export function getColumnAncestors(columns: InternalColumn[], id: string): Inter
   helper(columns, id);
   return path.reverse();
 }
+
 /**
  * A column-aware filter model:
  * filterModel = {
@@ -142,4 +143,114 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
 
   out.length = outLen;
   return out;
+}
+
+export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalColumn): InternalColumn {
+  if (ancestors.length === 0) return col;
+  const newHierarchy: InternalColumn[] = [];
+  let parent: InternalColumn | null = null;
+  let idx = -1;
+  for (const ancestor of ancestors) {
+    if (ancestor.id === col.id) {
+      if (parent) {
+        if (!parent.children) {
+          parent.children = [];
+        }
+        parent.children.push(col);
+      }
+      break;
+    }
+    idx++;
+    const newAncestor: InternalColumn = { ...ancestor, id: crypto.randomUUID(), children: [] };
+    if (newHierarchy.length === 0) {
+      newHierarchy.push(newAncestor);
+    } else {
+      parent!.children!.push(newAncestor);
+    }
+    parent = newAncestor;
+  }
+  ancestors[idx].children = ancestors[idx].children?.filter(c => c.id !== col.id);
+  return newHierarchy[0];
+}
+
+export function splitTreeAtIndex(column: InternalColumn, index: number): [InternalColumn, InternalColumn | null] {
+  const leaves = collectLeaves(column);
+  if (index <= 0 || index >= leaves.length) {
+    return [column, null];
+  }
+
+  const firstLeft = leaves[index];
+
+  let right: InternalColumn | null = null;
+  const ancestors = getColumnAncestors([column], firstLeft.id);
+  let rightChild: InternalColumn = firstLeft;
+  let leftChild: InternalColumn | null = null;
+  let mustSplit = false;
+  for (const level of ancestors.reverse().slice(1)) {
+    const idx = level.children?.findIndex(c => c.originalID == rightChild.originalID) || 0;
+    if (idx > 0 || mustSplit) {
+      const newLevel = { ...level, id: crypto.randomUUID(), children: level.children && level.children.length > 0 ? [...level.children] : [] };
+      level.children = level.children?.slice(0, idx || 1);
+      if (leftChild && level.children) {
+        level.children[idx] = leftChild;
+      }
+      newLevel.children = newLevel.children?.slice(idx);
+      if (rightChild && newLevel.children) {
+        newLevel.children[0] = rightChild;
+      }
+      rightChild = newLevel;
+      leftChild = level;
+      right = newLevel;
+      mustSplit = true;
+    } else {
+      rightChild = level;
+    }
+  }
+
+  return [column, right];
+}
+
+export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
+  const finalColumns: InternalColumn[] = [];
+  const skipIdx: Set<number> = new Set();
+  const addedIDs: Set<string> = new Set();
+  for (let i = 0; i < columns.length - 1; i++) {
+    if (skipIdx.has(i)) continue;
+    const curr = columns[i];
+    let nextIdx = i + 1;
+    for (let j = i + 1; j < columns.length; j++) {
+      if (!skipIdx.has(j)) {
+        nextIdx = j;
+        break;
+      }
+    }
+    const next = columns[nextIdx];
+    if (curr.originalID !== next.originalID) {
+      if (addedIDs.has(curr.id)) continue;
+      finalColumns.push(curr);
+      addedIDs.add(curr.id);
+      if (i == columns.length - 2) finalColumns.push(next);
+      continue;
+    }
+    mergeTrees(curr, next);
+    if (!addedIDs.has(curr.id)) finalColumns.push(curr);
+    addedIDs.add(curr.id);
+    skipIdx.add(nextIdx);
+    i--;
+  }
+  return finalColumns;
+}
+
+export function mergeTrees(left: InternalColumn, right: InternalColumn) {
+  const currChildLen = left.children?.length || 0;
+  const nextChildLen = right.children?.length || 0;
+  if (currChildLen == 0 || nextChildLen == 0) return;
+  if (left.children![currChildLen - 1].originalID != right.children![0].originalID) {
+    left.children?.push(...right.children!);
+    return;
+  }
+  mergeTrees(left.children![currChildLen - 1], right.children![0]);
+  if (nextChildLen > 1) {
+    left.children?.push(...right.children!.slice(1));
+  }
 }
