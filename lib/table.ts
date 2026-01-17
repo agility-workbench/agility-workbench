@@ -1672,10 +1672,10 @@ export default class Table {
     this.leftViewport.style.width = `${maxWidth}px`;
     this.hScrollerLeft.style.width = `${maxWidth}px`;
     this.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
-    this.leftHeader.style.width = `${maxWidth + 1}px`;
-    this.leftHeader.style.minWidth = `${maxWidth + 1}px`;
-    this.aggregateLeft.style.width = `${maxWidth + 1}px`;
-    this.aggregateLeft.style.minWidth = `${maxWidth + 1}px`;
+    this.leftHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.leftHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.aggregateLeft.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.aggregateLeft.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
       this.leftScroller.classList.add("visible");
