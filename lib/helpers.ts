@@ -233,9 +233,10 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
       continue;
     }
     mergeTrees(curr, next);
-    if (!addedIDs.has(curr.id)) finalColumns.push(curr);
-    addedIDs.add(curr.id);
     skipIdx.add(nextIdx);
+    if (addedIDs.has(curr.id)) continue;
+    finalColumns.push(curr);
+    addedIDs.add(curr.id);
     i--;
   }
   return finalColumns;
