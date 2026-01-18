@@ -3099,7 +3099,6 @@ export default class Table {
 
     this._dragLastX = e.clientX;
     this._dragTargetIndex = hoverIndex;
-    console.log("Hover index:", hoverIndex, "Target index:", targetIndex);
     this._positionDropIndicator(targetIndex, hoverIndex, headers);
     e.preventDefault();
   }
@@ -3118,7 +3117,7 @@ export default class Table {
       for (const c of ancestors) {
         if (c.children && c.children.length <= 1) {
           topLevelDrag = c;
-          break;
+          // break;
         }
       }
     }
@@ -3128,47 +3127,53 @@ export default class Table {
       topLevelDrag = newColumnHierarchy(ancestors, topLevelDrag);
     } else {
       const removeFrom = (arr: InternalColumn[]) => {
-        const idx = arr.findIndex(c => c.id === col.id);
+        const idx = arr.findIndex(c => c.id === topLevelDrag.id);
         if (idx >= 0) arr.splice(idx, 1);
       };
       removeFrom(newLeft);
       removeFrom(newCenter);
       removeFrom(newRight);
     }
-    col = { ...topLevelDrag };
 
     const targetArr = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
+    if (col.children && col.children.length > 0) {
+      const colLeaves = collectLeaves(col);
+      const targetLeaves = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedLeafColumns : this._centerLeafColumns;
+      const colLeafIndex = targetLeaves.findIndex(c => c.id === colLeaves[0].id);
+      if (colLeafIndex < targetIndex) {
+        targetIndex -= colLeaves.length - 1;
+      }
+    }
 
     let offset = 0;
     for (let i = 0; i < targetArr.length; i++) {
       const parent = targetArr[i];
       const leaves = collectLeaves(parent);
-      if (leaves.length + offset == targetIndex) {
-        targetIndex = i + 1;
+      const leavesLen = leaves.length;
+      if ((leavesLen == 1 ? 0 : leavesLen) + offset == targetIndex) {
+        targetIndex = i;
         break;
-      } else if (leaves.length + offset > targetIndex) {
-        if (leaves.length == 1) {
+      } else if (leavesLen + offset > targetIndex) {
+        if (leavesLen == 1) {
           targetIndex = i + 1;
           break;
         } else {
           // TODO: Check if we can split this parent
           const [leftColumn, rightColumn] = splitTreeAtIndex(parent, targetIndex - offset);
-          console.log("Splitting", parent, "at", targetIndex - offset, "into", leftColumn, rightColumn);
           targetArr[i] = leftColumn;
           if (rightColumn) {
             targetArr.splice(i + 1, 0, rightColumn);
+            targetIndex = i + 1;
+          } else {
+            targetIndex = i;
           }
-          console.log("New target array:", targetArr);
-          targetIndex = i + 1;
           break;
         }
       }
-      offset += (leaves.length);
+      offset += (leavesLen);
     }
 
-    console.log(targetArr, targetIndex);
-
-    const movedCol: InternalColumn = { ...col, pinned: section === "center" ? null : section };
+    const movedCol: InternalColumn = { ...topLevelDrag, pinned: section === "center" ? null : section };
     targetArr.splice(targetIndex, 0, movedCol);
 
     const nextLeft = mergeColumns(newLeft);

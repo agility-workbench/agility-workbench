@@ -187,7 +187,8 @@ export function splitTreeAtIndex(column: InternalColumn, index: number): [Intern
   let leftChild: InternalColumn | null = null;
   let mustSplit = false;
   for (const level of ancestors.reverse().slice(1)) {
-    const idx = level.children?.findIndex(c => c.originalID == rightChild.originalID) || 0;
+    let idx = level.children?.findIndex(c => c.id == rightChild.id) || 0;
+    if (idx < 0) idx = level.children?.findIndex(c => c.originalID == rightChild.originalID) || 0;;
     if (idx > 0 || mustSplit) {
       const newLevel = { ...level, id: crypto.randomUUID(), children: level.children && level.children.length > 0 ? [...level.children] : [] };
       level.children = level.children?.slice(0, idx || 1);
@@ -211,6 +212,7 @@ export function splitTreeAtIndex(column: InternalColumn, index: number): [Intern
 }
 
 export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
+  if (columns.length <= 1) return columns;
   const finalColumns: InternalColumn[] = [];
   const skipIdx: Set<number> = new Set();
   const addedIDs: Set<string> = new Set();
@@ -226,7 +228,13 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
     }
     const next = columns[nextIdx];
     if (curr.originalID !== next.originalID) {
-      if (addedIDs.has(curr.id)) continue;
+      if (addedIDs.has(curr.id)) {
+        if (nextIdx == columns.length - 1 && !addedIDs.has(next.id)) {
+          finalColumns.push(next);
+          addedIDs.add(next.id);
+        }
+        continue;
+      }
       finalColumns.push(curr);
       addedIDs.add(curr.id);
       if (i == columns.length - 2) finalColumns.push(next);
