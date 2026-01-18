@@ -263,3 +263,22 @@ export function mergeTrees(left: InternalColumn, right: InternalColumn) {
     left.children?.push(...right.children!.slice(1));
   }
 }
+
+export function adjustPinned(cols: InternalColumn[], pinned: "left" | "right" | null) {
+  for (const c of cols) {
+    c.pinned = pinned;
+    if (c.children && c.children.length > 0) {
+      adjustPinned(c.children, pinned);
+    }
+  }
+}
+
+export function adjustCentralPosition(col: InternalColumn, index: number) {
+  if (col.centralPosition === index) return;
+  col.centralPosition = index;
+  if (col.children && col.children.length > 0) {
+    for (let i = 0; i < col.children.length; i++) {
+      adjustCentralPosition(col.children[i], index);
+    }
+  }
+}

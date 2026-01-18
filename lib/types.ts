@@ -54,13 +54,14 @@ export interface InternalColumn {
   groupable: boolean;
   resizable: boolean;
   movable: boolean;
+  centralPosition: number;
 }
 
 export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
-  return cols.map(getColumnDef);
+  return cols.map((c, i) => getColumnDef(c, i));
 }
 
-export function getColumnDef(col: Column | any): InternalColumn {
+export function getColumnDef(col: Column | any, idx: number, topLevel: boolean = true): InternalColumn {
   const id = crypto.randomUUID();
   return {
     id: id,
@@ -75,7 +76,7 @@ export function getColumnDef(col: Column | any): InternalColumn {
     valueFormatter: col.valueFormatter,
     type: col.type,
     format: col.format,
-    children: col.children ? col.children.map(getColumnDef) : undefined,
+    children: col.children ? col.children.map((c: Column | any) => getColumnDef(c, idx, false)) : undefined,
     hidden: col.hidden || false,
     pinned: col.pinned,
     sortable: col.sortable !== false,
@@ -83,6 +84,7 @@ export function getColumnDef(col: Column | any): InternalColumn {
     groupable: col.groupable !== false,
     resizable: col.resizable !== false,
     movable: col.movable !== false,
+    centralPosition: idx,
   };
 }
 
