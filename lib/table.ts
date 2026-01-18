@@ -1,10 +1,9 @@
 import { MutableRefObject } from "react";
-import { collectLeaves, computeFilteredIdx, findColumnById, getColumnAncestors } from "./helpers";
+import { collectLeaves, computeFilteredIdx, findColumnById, getColumnAncestors, mergeColumns, newColumnHierarchy, splitTreeAtIndex } from "./helpers";
 import {
   AggregateRequestItem,
   AggregateScope,
   AggregateType,
-  allAggregateTypes,
   ColumnType,
   FilterDef,
   FilterType,
@@ -1587,13 +1586,15 @@ export default class Table {
   _applyWidthsToChildren(col: InternalColumn, hcell: HTMLElement) {
     const info = this._columnWidths.get(col.id);
     hcell.style.flex = "0 0 auto";
-    hcell.style.width = `${info?.width}px`;
-    if (!info?.fixed) {
-      hcell.style.minWidth = `${info?.minWidth}px`;
-      hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
-    } else {
-      hcell.style.minWidth = "";
-      hcell.style.maxWidth = "";
+    if (!col.children || col.children.length === 0) {
+      hcell.style.width = `${info?.width}px`;
+      if (!info?.fixed) {
+        hcell.style.minWidth = `${info?.minWidth}px`;
+        hcell.style.maxWidth = Number.isFinite(info?.maxWidth) ? `${info?.maxWidth}px` : "";
+      } else {
+        hcell.style.minWidth = "";
+        hcell.style.maxWidth = "";
+      }
     }
     if (col.children && col.children.length > 0) {
       for (let i = 0; i < col.children.length; i++) {
@@ -1673,10 +1674,10 @@ export default class Table {
     this.leftViewport.style.width = `${maxWidth}px`;
     this.hScrollerLeft.style.width = `${maxWidth}px`;
     this.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
-    this.leftHeader.style.width = `${maxWidth + 1}px`;
-    this.leftHeader.style.minWidth = `${maxWidth + 1}px`;
-    this.aggregateLeft.style.width = `${maxWidth + 1}px`;
-    this.aggregateLeft.style.minWidth = `${maxWidth + 1}px`;
+    this.leftHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.leftHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.aggregateLeft.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.aggregateLeft.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
       this.leftScroller.classList.add("visible");
@@ -2990,14 +2991,21 @@ export default class Table {
     for (const el of headers) {
       if (!el.classList.contains("pte-hcell")) continue;
       const col = findColumnById(this.columns, el.id);
-      if (col && this._isColumnReorderable(col)) {
+      if (!col) continue;
+      if (col.children && col.children.length > 0) {
+        const leaves = collectLeaves(col);
+        leaves.forEach(leaf => {
+          output.push({ col: leaf, el: document.getElementById(leaf.id) as HTMLDivElement });
+        });
+        continue;
+      } else if (this._isColumnReorderable(col)) {
         output.push({ col, el });
       }
     }
     return output;
   }
 
-  _positionDropIndicator(targetIndex: number, headers: Array<{ col: InternalColumn; el: HTMLDivElement }>) {
+  _positionDropIndicator(targetIndex: number, hoverIndex: number, headers: Array<{ col: InternalColumn; el: HTMLDivElement }>) {
     if (!this._dragIndicatorEl || headers.length === 0) return;
     if (targetIndex < 0) {
       this._dragIndicatorEl.style.display = "none";
@@ -3005,6 +3013,7 @@ export default class Table {
     }
     const container = this._dragHeaderContainer || this.header;
     const containerRect = container.getBoundingClientRect();
+    const prev = targetIndex >= headers.length ? headers[headers.length - 1] : headers[hoverIndex];
     const ref = targetIndex >= headers.length ? headers[headers.length - 1] : headers[targetIndex];
     const rect = ref.el.getBoundingClientRect();
     const x = targetIndex >= headers.length ? rect.right : rect.left;
@@ -3012,7 +3021,10 @@ export default class Table {
     const clampedX = Math.max(0, Math.min(relativeX, Math.max(0, container.scrollWidth - 2)));
     this._dragIndicatorEl.style.left = `${clampedX}px`;
     this._dragIndicatorEl.style.display = "block";
-    this._dragIndicatorEl.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
+    // this._dragIndicatorEl.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
+    // console.log(ref.el, ref.el.offsetTop, ref.el.getBoundingClientRect().height);
+    this._dragIndicatorEl.style.top = prev.el.offsetTop + "px";
+    this._dragIndicatorEl.style.height = `${prev.el.getBoundingClientRect().height}px`;
   }
 
   _onColumnDragMouseMove(e: MouseEvent) {
@@ -3061,7 +3073,7 @@ export default class Table {
       && e.clientY <= originRect.bottom;
     if (insideOrigin) {
       this._dragTargetIndex = -1;
-      this._positionDropIndicator(-1, headers);
+      this._positionDropIndicator(-1, -1, headers);
       this._dragLastX = e.clientX;
       return;
     }
@@ -3086,74 +3098,92 @@ export default class Table {
     }
 
     this._dragLastX = e.clientX;
-    this._dragTargetIndex = targetIndex;
-    this._positionDropIndicator(targetIndex, headers);
+    this._dragTargetIndex = hoverIndex;
+    this._positionDropIndicator(targetIndex, hoverIndex, headers);
     e.preventDefault();
   }
 
   _applyColumnReorder(col: InternalColumn, targetIndex: number, section: "left" | "center" | "right" = this._dragSection || "center") {
     if (targetIndex < 0) return;
 
-    const originalLeft = [...this._leftPinnedColumns];
-    const originalCenter = [...this._centerColumns];
-    const originalRight = [...this._rightPinnedColumns];
-    const newLeft = [...originalLeft];
-    const newCenter = [...originalCenter];
-    const newRight = [...originalRight];
+    const newLeft = [...this._leftPinnedColumns];
+    const newCenter = [...this._centerColumns];
+    const newRight = [...this._rightPinnedColumns];
 
-    const removeFrom = (arr: InternalColumn[]) => {
-      const idx = arr.findIndex(c => c.id === col.id);
-      if (idx >= 0) arr.splice(idx, 1);
-    };
-    removeFrom(newLeft);
-    removeFrom(newCenter);
-    removeFrom(newRight);
+    const ancestors = getColumnAncestors(this.columns, col.id);
+    let topLevelDrag = col;
+    if (ancestors.length > 1) {
+      // Find the top-level ancestor that is reorderable
+      for (const c of ancestors) {
+        if (c.children && c.children.length <= 1) {
+          topLevelDrag = c;
+          // break;
+        }
+      }
+    }
+    const splitParent = ancestors.length > 1 && ancestors[0].id != topLevelDrag.id;
+
+    if (splitParent) {
+      topLevelDrag = newColumnHierarchy(ancestors, topLevelDrag);
+    } else {
+      const removeFrom = (arr: InternalColumn[]) => {
+        const idx = arr.findIndex(c => c.id === topLevelDrag.id);
+        if (idx >= 0) arr.splice(idx, 1);
+      };
+      removeFrom(newLeft);
+      removeFrom(newCenter);
+      removeFrom(newRight);
+    }
 
     const targetArr = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
-    const originalTarget = section === "left" ? originalLeft : section === "right" ? originalRight : originalCenter;
-    const movedCol: InternalColumn = { ...col, pinned: section === "center" ? null : section };
-
-    const workingArr = originalTarget.some(c => c.id === col.id)
-      ? originalTarget.map(c => c.id === col.id ? movedCol : c)
-      : [...originalTarget, movedCol];
-    const reorderable = workingArr.filter(c => this._isColumnReorderable(c));
-    const reorderableIds = reorderable.map(c => c.id);
-
-    const sourceIndex = reorderableIds.indexOf(col.id);
-    const nextOrder = reorderableIds.slice();
-    if (sourceIndex !== -1) nextOrder.splice(sourceIndex, 1);
-    const clampedTarget = Math.max(0, Math.min(targetIndex, nextOrder.length));
-    nextOrder.splice(clampedTarget, 0, col.id);
-
-    const reorderableLookup = new Map(reorderable.map(c => [c.id, c]));
-    const reorderQueue = nextOrder
-      .map(id => (id === col.id ? movedCol : reorderableLookup.get(id)))
-      .filter(Boolean) as InternalColumn[];
-
-    const rebuiltTarget: InternalColumn[] = [];
-    for (const item of workingArr) {
-      if (this._isColumnReorderable(item)) {
-        const next = reorderQueue.shift();
-        if (next) rebuiltTarget.push(next);
-      } else {
-        rebuiltTarget.push(item);
+    if (col.children && col.children.length > 0) {
+      const colLeaves = collectLeaves(col);
+      const targetLeaves = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedLeafColumns : this._centerLeafColumns;
+      const colLeafIndex = targetLeaves.findIndex(c => c.id === colLeaves[0].id);
+      if (colLeafIndex < targetIndex) {
+        targetIndex -= colLeaves.length - 1;
       }
     }
 
-    const nextLeft = section === "left" ? rebuiltTarget : newLeft;
-    const nextCenter = section === "center" ? rebuiltTarget : newCenter;
-    const nextRight = section === "right" ? rebuiltTarget : newRight;
+    let offset = 0;
+    for (let i = 0; i < targetArr.length; i++) {
+      const parent = targetArr[i];
+      const leaves = collectLeaves(parent);
+      const leavesLen = leaves.length;
+      if ((leavesLen == 1 ? 0 : leavesLen) + offset == targetIndex) {
+        targetIndex = i;
+        break;
+      } else if (leavesLen + offset > targetIndex) {
+        if (leavesLen == 1) {
+          targetIndex = i + 1;
+          break;
+        } else {
+          // TODO: Check if we can split this parent
+          const [leftColumn, rightColumn] = splitTreeAtIndex(parent, targetIndex - offset);
+          targetArr[i] = leftColumn;
+          if (rightColumn) {
+            targetArr.splice(i + 1, 0, rightColumn);
+            targetIndex = i + 1;
+          } else {
+            targetIndex = i;
+          }
+          break;
+        }
+      }
+      offset += (leavesLen);
+    }
 
-    this._leftPinnedColumns = nextLeft;
-    this._centerColumns = nextCenter;
-    this._rightPinnedColumns = nextRight;
+    const movedCol: InternalColumn = { ...topLevelDrag, pinned: section === "center" ? null : section };
+    targetArr.splice(targetIndex, 0, movedCol);
 
-    const nextColumns = [
+    const nextLeft = mergeColumns(newLeft);
+    const nextCenter = mergeColumns(newCenter);
+    const nextRight = mergeColumns(newRight);
+    this.setColumns([
       ...nextLeft,
       ...nextCenter,
       ...nextRight,
-    ];
-    this.setColumns(nextColumns, { preserveWidths: true });
+    ], { preserveWidths: true });
   }
 
   _teardownColumnDrag() {
@@ -3190,6 +3220,7 @@ export default class Table {
   _isColumnReorderable(col: InternalColumn): boolean {
     if (!col) return false;
     if (isTrue(col.hidden)) return false;
+    return true;
     if (col.children && col.children.length > 0) return false;
     const ancestors = getColumnAncestors(this.columns, col.id);
     return ancestors.length === 1;
