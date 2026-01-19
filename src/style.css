@@ -9,8 +9,8 @@ html, body, #root {
 
 body {
   font-family: Roboto, sans-serif;
-  background-color: #f9f9f9;
-  color: #333;
+  background-color: var(--pte-root-bg-color, #f9f9f9);
+  color: var(--pte-text-color, #333);
   height: 100%;
   width: 100%;
   box-sizing: border-box;

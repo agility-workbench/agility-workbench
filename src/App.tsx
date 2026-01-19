@@ -6,6 +6,11 @@ import { Grid } from "@grid"; // React Data Grid Component
 import { Column, RowModelType, ServerSideAggregation, ServerSideDataSource } from "@grid/types";
 import { round } from "./helpers";
 
+const themePresets = [
+  { id: "light", label: "Light", className: "pte-theme-light" },
+  { id: "dark", label: "Dark", className: "pte-theme-dark" },
+];
+
 function App() {
   const [rowData, setRowData] = useState<any[]>([]);
   const [colDefs, setColDefs] = useState<Column[]>([]);
@@ -16,6 +21,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [paginate, setPaginate] = useState(true);
   const [rowModel, setRowModel] = useState<RowModelType>("clientSide");
+  const [themeId, setThemeId] = useState(themePresets[0].id);
 
   const applyFormatters = (cols: Column[] = []) => {
     const currencyFormatter = (col: Column) => {
@@ -136,6 +142,20 @@ function App() {
     };
   }, [category, toggle]);
 
+  useEffect(() => {
+    const themeClasses = themePresets.map((theme) => theme.className);
+    const activeTheme = themePresets.find((theme) => theme.id === themeId) ?? themePresets[0];
+
+    document.body.classList.remove(...themeClasses);
+    document.body.classList.add(activeTheme.className);
+
+    return () => {
+      document.body.classList.remove(activeTheme.className);
+    };
+  }, [themeId]);
+
+  const activeTheme = themePresets.find((theme) => theme.id === themeId) ?? themePresets[0];
+
   return (
     <div style={{ padding: "8px", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "8px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
@@ -148,6 +168,14 @@ function App() {
         <button type="button" onClick={() => setRowModel(rowModel === "clientSide" ? "serverSide" : "clientSide")}>
           Use {rowModel === "clientSide" ? "Server-side" : "Client-side"} Row Model
         </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <label htmlFor="theme-select" style={{ fontSize: "13px" }}>Theme</label>
+          <select id="theme-select" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
+            {themePresets.map((theme) => (
+              <option key={theme.id} value={theme.id}>{theme.label}</option>
+            ))}
+          </select>
+        </div>
         {loading && <div>Loading data…</div>}
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
@@ -155,6 +183,7 @@ function App() {
         <Grid
           data={rowData}
           columns={colDefs}
+          className={activeTheme.className}
           style={{ width: "100%", height: "100%" }}
           pagination={paginate}
           rowModel={rowModel}
