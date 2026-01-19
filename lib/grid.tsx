@@ -31,17 +31,6 @@ export default function Grid({
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
-  const [filter, setFilter] = useState<FilterDef | null>();
-
-  const handleFilterChange = (value: string) => {
-    const f: FilterDef | null = value ? { key: 'email', type: 'contains', q: value } : null;
-    setFilter(f);
-    if (f) {
-      engineRef.current?.setFilters([f]);
-    } else {
-      engineRef.current?.setFilters([]);
-    }
-  };
 
   // Create engine once (mount/unmount)
   useEffect(() => {
