@@ -234,7 +234,8 @@ export default class Table {
     }
     this._containerEl = container.current;
     this.columns = columns;
-    this.rowHeight = rowHeight;
+    const cssRowHeight = this._getCssRowHeight();
+    this.rowHeight = cssRowHeight ?? rowHeight;
     this.height = height;
     this.overscan = overscan;
 
@@ -628,6 +629,13 @@ export default class Table {
     if (availableHeight > 0) return availableHeight;
 
     return this.rowHeight;
+  }
+
+  _getCssRowHeight(): number | null {
+    const raw = getComputedStyle(this._containerEl).getPropertyValue("--pte-row-height");
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
   }
 
   _computePoolSize() {

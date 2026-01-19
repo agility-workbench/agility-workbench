@@ -1,7 +1,8 @@
 :root,
 .pte-theme-light {
   --pte-header-height: 42px;
-  --pte-row-height: 42px;
+  --pte-row-height: 43px;
+  --pte-row-border-size: 1px;
   --pte-font-family: Roboto, sans-serif;
   --pte-font-size: 14px;
   --pte-header-font-weight: 500;
@@ -827,7 +828,7 @@
   padding-bottom: var(--pte-cell-padding-bottom);
   padding-left: var(--pte-cell-padding-left);
   padding-right: var(--pte-cell-padding-right);
-  height: var(--pte-row-height);
+  height: calc(var(--pte-row-height) - var(--pte-row-border-size));
   display: flex;
   align-items: center;
   cursor: default;
@@ -844,7 +845,7 @@
 }
 
 .pte-row:not(:last-child) {
-  border-bottom: 1px solid var(--pte-border-color);
+  border-bottom: var(--pte-row-border-size) solid var(--pte-border-color);
 }
 
 .pte-cell.selected {
