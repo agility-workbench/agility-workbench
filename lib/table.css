@@ -60,7 +60,7 @@
   --pte-border-color: #2a364a;
   --pte-resize-handle-color: #475569;
   --pte-selected-resize-handle-color: #60a5fa;
-  --pte-hover-bg-color: #1e293b;
+  --pte-hover-bg-color: #13223a;
   --pte-selected-bg-color: #1e3a8a;
   --pte-selected-hover-bg-color: #27459b;
   --pte-selected-border-color: #60a5fa;
@@ -923,6 +923,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--pte-text-color);
 }
 
 .pte-menu-item.disabled {
