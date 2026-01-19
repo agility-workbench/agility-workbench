@@ -187,8 +187,8 @@ export function splitTreeAtIndex(column: InternalColumn, index: number): [Intern
   let leftChild: InternalColumn | null = null;
   let mustSplit = false;
   for (const level of ancestors.reverse().slice(1)) {
-    let idx = level.children?.findIndex(c => c.id == rightChild.id) || 0;
-    if (idx < 0) idx = level.children?.findIndex(c => c.originalID == rightChild.originalID) || 0;;
+    let idx = level.children!.findIndex(c => c.id == rightChild.id);
+    if (idx < 0) idx = level.children!.findIndex(c => c.id == leftChild?.id);
     if (idx > 0 || mustSplit) {
       const newLevel = { ...level, id: crypto.randomUUID(), children: level.children && level.children.length > 0 ? [...level.children] : [] };
       level.children = level.children?.slice(0, idx || 1);
@@ -219,6 +219,10 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
   for (let i = 0; i < columns.length - 1; i++) {
     if (skipIdx.has(i)) continue;
     const curr = columns[i];
+    if (curr.children && curr.children.length > 0) {
+      const mergedChildren = mergeColumns(curr.children);
+      curr.children = mergedChildren;
+    }
     let nextIdx = i + 1;
     for (let j = i + 1; j < columns.length; j++) {
       if (!skipIdx.has(j)) {
@@ -269,16 +273,6 @@ export function adjustPinned(cols: InternalColumn[], pinned: "left" | "right" | 
     c.pinned = pinned;
     if (c.children && c.children.length > 0) {
       adjustPinned(c.children, pinned);
-    }
-  }
-}
-
-export function adjustCentralPosition(col: InternalColumn, index: number) {
-  if (col.centralPosition === index) return;
-  col.centralPosition = index;
-  if (col.children && col.children.length > 0) {
-    for (let i = 0; i < col.children.length; i++) {
-      adjustCentralPosition(col.children[i], index);
     }
   }
 }

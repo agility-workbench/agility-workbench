@@ -58,10 +58,10 @@ export interface InternalColumn {
 }
 
 export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
-  return cols.map((c, i) => getColumnDef(c, i));
+  return cols.map(getColumnDef);
 }
 
-export function getColumnDef(col: Column | any, idx: number, topLevel: boolean = true): InternalColumn {
+export function getColumnDef(col: Column | any): InternalColumn {
   const id = crypto.randomUUID();
   return {
     id: id,
@@ -76,15 +76,15 @@ export function getColumnDef(col: Column | any, idx: number, topLevel: boolean =
     valueFormatter: col.valueFormatter,
     type: col.type,
     format: col.format,
-    children: col.children ? col.children.map((c: Column | any) => getColumnDef(c, idx, false)) : undefined,
+    children: col.children ? col.children.map(getColumnDef) : undefined,
     hidden: col.hidden || false,
-    pinned: col.pinned,
+    pinned: col.pinned || null,
     sortable: col.sortable !== false,
     filterable: col.filterable !== false,
     groupable: col.groupable !== false,
     resizable: col.resizable !== false,
     movable: col.movable !== false,
-    centralPosition: idx,
+    centralPosition: 0,
   };
 }
 

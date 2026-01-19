@@ -1,5 +1,14 @@
 import { MutableRefObject } from "react";
-import { adjustCentralPosition, adjustPinned, collectLeaves, computeFilteredIdx, findColumnById, getColumnAncestors, mergeColumns, newColumnHierarchy, splitTreeAtIndex } from "./helpers";
+import {
+  adjustPinned,
+  collectLeaves,
+  computeFilteredIdx,
+  findColumnById,
+  getColumnAncestors,
+  mergeColumns,
+  newColumnHierarchy,
+  splitTreeAtIndex,
+} from "./helpers";
 import {
   AggregateRequestItem,
   AggregateScope,
@@ -1410,7 +1419,16 @@ export default class Table {
     if (!col) return;
     if (pin === col.pinned) return;
 
-    this._applyColumnReorder(col, pin !== null ? Infinity : col.centralPosition, pin || "center");
+    let targetIdx = Infinity;
+    if (pin === null) {
+      targetIdx = col.centralPosition;
+      if (col.children && col.children.length > 0) {
+        const leaves = collectLeaves(col);
+        targetIdx = leaves[0].centralPosition;
+      }
+    }
+
+    this._applyColumnReorder(col, targetIdx, pin || "center");
   }
 
   // ---------------- Internals: DOM build ----------------
@@ -1928,6 +1946,9 @@ export default class Table {
     traverse(this._centerColumns, 1, this._centerLeafColumns);
     traverse(this._leftPinnedColumns, 1, this._leftPinnedLeafColumns);
     traverse(this._rightPinnedColumns, 1, this._rightPinnedLeafColumns);
+    for (let i = 0; i < this._centerLeafColumns.length; i++) {
+      this._centerLeafColumns[i].centralPosition = i;
+    }
   }
 
   _updateLeafColumnLookup() {
@@ -3101,7 +3122,8 @@ export default class Table {
     }
 
     this._dragLastX = e.clientX;
-    this._dragTargetIndex = hoverIndex;
+    const pinnedSection = section === "center" ? null : section === "left" ? "left" : "right";
+    this._dragTargetIndex = pinnedSection !== this._draggingColumn.pinned ? targetIndex : hoverIndex;
     this._positionDropIndicator(targetIndex, hoverIndex, headers);
     e.preventDefault();
   }
@@ -3157,7 +3179,7 @@ export default class Table {
       const leaves = collectLeaves(parent);
       const leavesLen = leaves.length;
       if ((leavesLen == 1 ? 0 : leavesLen) + offset == targetIndex) {
-        targetIndex = i;
+        targetIndex = i + (leavesLen == 1 ? 0 : 1);
         break;
       } else if (leavesLen + offset > targetIndex) {
         if (leavesLen == 1) {
@@ -3188,9 +3210,6 @@ export default class Table {
       // If moving between sections, and has children, we need to adjust the pinned state of children
       const newPinned = section === "center" ? null : section;
       adjustPinned(movedCol.children, newPinned);
-    }
-    if (section === "center") {
-      adjustCentralPosition(movedCol, targetIndex + 1);
     }
 
     const nextLeft = mergeColumns(newLeft);
