@@ -231,6 +231,10 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
       }
     }
     const next = columns[nextIdx];
+    if (next.children && next.children.length > 0) {
+      const mergedChildren = mergeColumns(next.children);
+      next.children = mergedChildren;
+    }
     if (curr.originalID !== next.originalID) {
       if (addedIDs.has(curr.id)) {
         if (nextIdx == columns.length - 1 && !addedIDs.has(next.id)) {
