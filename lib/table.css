@@ -612,11 +612,10 @@
 .pte-column-drag-ghost {
   position: fixed;
   pointer-events: none;
-  background: white;
+  background-color: var(--pte-header-background-color);
   border: 1px solid var(--pte-border-color);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   border-radius: 8px;
-  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -624,6 +623,28 @@
   color: #111827;
   opacity: 0.95;
   z-index: 10000;
+  transition: width 0.2s ease, height 0.2s ease;
+  transition-delay: .3s;
+}
+
+.pte-column-drag-ghost-content {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 25px 25px
+}
+
+.pte-column-drag-ghost-icon {
+  width: 18px;
+  height: 18px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-column-drag-ghost-label {
+  white-space: nowrap;
 }
 
 .pte-column-drop-indicator {
@@ -915,6 +936,11 @@
 
 .icon-median {
   mask-image: url(median.svg);
+  background-color: #6b7280;
+}
+
+.icon-drag {
+  mask-image: url(drag.svg);
   background-color: #6b7280;
 }
 

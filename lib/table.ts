@@ -2952,13 +2952,25 @@ export default class Table {
     if (!this._dragGhostEl) {
       const ghost = document.createElement("div");
       ghost.className = "pte-column-drag-ghost";
-      ghost.textContent = this._draggingColumn.label ?? this._draggingColumn.key;
+      const ghostContent = document.createElement("div");
+      ghostContent.className = "pte-column-drag-ghost-content";
+      const ghostDragIcon = document.createElement("span");
+      ghostDragIcon.className = "pte-column-drag-ghost-icon icon-drag";
+      ghostContent.appendChild(ghostDragIcon);
+      const ghostLabel = document.createElement("span");
+      ghostLabel.className = "pte-column-drag-ghost-label";
+      ghostLabel.textContent = this._draggingColumn.label ?? this._draggingColumn.key;
+      ghostContent.appendChild(ghostLabel);
+      ghost.appendChild(ghostContent);
       if (this._dragHeaderEl) {
         const rect = this._dragHeaderEl.getBoundingClientRect();
         ghost.style.width = `${rect.width}px`;
         ghost.style.height = `${rect.height}px`;
       }
       document.body.appendChild(ghost);
+      const contentRect = ghostContent.getBoundingClientRect();
+      ghost.style.width = `${contentRect.width}px`; // padding
+      ghost.style.height = `${contentRect.height}px`;
       this._dragGhostEl = ghost;
     }
 
