@@ -853,6 +853,10 @@
   border-color: transparent;
 }
 
+.pte-row-hover .pte-cell.selected {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
 .pte-cell.selected-top {
   border-top: 1px solid var(--pte-selected-border-color);
 }
