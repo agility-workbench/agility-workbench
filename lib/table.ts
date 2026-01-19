@@ -213,6 +213,8 @@ export default class Table {
   _rowPool: RowPoolDef[];
 
   _rafPending: boolean;
+  _syncingScrollTargets: Set<HTMLDivElement>;
+  _syncingScrollRaf: number | null;
   _measureCache: Map<string, Map<string, number>>;
 
   constructor(container: MutableRefObject<HTMLElement | null>, {
@@ -503,10 +505,24 @@ export default class Table {
 
     // Events
     this._rafPending = false;
-    this.leftScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.leftScroller));
-    this.scroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.scroller));
-    this.rightScroller.addEventListener("scroll", () => this._scheduleWindowUpdate(this.rightScroller));
-    this.vScroll.addEventListener("scroll", () => this._scheduleWindowUpdate(this.vScroll));
+    this._syncingScrollTargets = new Set();
+    this._syncingScrollRaf = null;
+    this.leftScroller.addEventListener("scroll", () => {
+      if (this._syncingScrollTargets.has(this.leftScroller)) return;
+      this._scheduleWindowUpdate(this.leftScroller);
+    });
+    this.scroller.addEventListener("scroll", () => {
+      if (this._syncingScrollTargets.has(this.scroller)) return;
+      this._scheduleWindowUpdate(this.scroller);
+    });
+    this.rightScroller.addEventListener("scroll", () => {
+      if (this._syncingScrollTargets.has(this.rightScroller)) return;
+      this._scheduleWindowUpdate(this.rightScroller);
+    });
+    this.vScroll.addEventListener("scroll", () => {
+      if (this._syncingScrollTargets.has(this.vScroll)) return;
+      this._scheduleWindowUpdate(this.vScroll);
+    });
     this.leftSpacer.addEventListener("scroll", () => {
       this.leftHeader.scrollLeft = this.leftSpacer.scrollLeft;
       this.hScrollLeft.scrollLeft = this.leftSpacer.scrollLeft;
@@ -2556,13 +2572,40 @@ export default class Table {
     });
   }
 
+  _beginScrollSync(targets: HTMLDivElement[]) {
+    if (targets.length === 0) return;
+    for (const target of targets) {
+      this._syncingScrollTargets.add(target);
+    }
+    if (this._syncingScrollRaf !== null) return;
+    this._syncingScrollRaf = requestAnimationFrame(() => {
+      this._syncingScrollTargets.clear();
+      this._syncingScrollRaf = null;
+    });
+  }
+
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const total = this._viewIdx.length;
     const scrollTop = scrollSrc?.scrollTop || 0;
-    this.leftScroller.scrollTop = scrollTop;
-    this.scroller.scrollTop = scrollTop;
-    this.rightScroller.scrollTop = scrollTop;
-    this.vScroll.scrollTop = scrollTop;
+
+    const syncTargets: HTMLDivElement[] = [];
+    if (scrollSrc !== this.leftScroller && this.leftScroller.scrollTop !== scrollTop) {
+      syncTargets.push(this.leftScroller);
+    }
+    if (scrollSrc !== this.scroller && this.scroller.scrollTop !== scrollTop) {
+      syncTargets.push(this.scroller);
+    }
+    if (scrollSrc !== this.rightScroller && this.rightScroller.scrollTop !== scrollTop) {
+      syncTargets.push(this.rightScroller);
+    }
+    if (scrollSrc !== this.vScroll && this.vScroll.scrollTop !== scrollTop) {
+      syncTargets.push(this.vScroll);
+    }
+
+    this._beginScrollSync(syncTargets);
+    for (const target of syncTargets) {
+      target.scrollTop = scrollTop;
+    }
 
     const startIndex = Math.max(
       0,
