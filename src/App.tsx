@@ -47,7 +47,7 @@ function App() {
   const serverSideDataSource: ServerSideDataSource = useCallback(async (request) => {
     console.log("Server-side request", request);
 
-    const response = await fetch(`http://localhost:8080/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
+    const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -71,7 +71,7 @@ function App() {
   const serverSideAggregation: ServerSideAggregation = useCallback(async(request) => {
     console.log("Server-side aggregation request", request);
 
-    const response = await fetch(`http://localhost:8080/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
+    const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -95,7 +95,7 @@ function App() {
       setError(null);
 
       try {
-        const response = await fetch(`http://localhost:8080/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
+        const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ page_size: count }),
@@ -108,6 +108,13 @@ function App() {
         if (cancelled) return;
 
         applyFormatters(payload.columns ?? []);
+
+        payload.columns.forEach((col: Column) => {
+          if (col.key == "department") col.sortable = false;
+          if (col.key == "country") col.filterable = false;
+          if (col.key == "location") col.resizable = false;
+          if (col.key == "gl_account") col.movable = false;
+        });
 
         setColDefs(payload.columns ?? []);
         setRowData(payload.data ?? []);
