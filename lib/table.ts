@@ -201,10 +201,13 @@ export default class Table {
   _centerLeafColumns: InternalColumn[];
 
   _menuOverlay: HTMLDivElement;
-  _menuColKey: string | null;
   _submenuOverlay: HTMLDivElement;
-  _submenuParentId: string | null;
-  _currentSubmenuItems: MenuItem[] | null;
+  _menuOverlays: HTMLDivElement[];
+  _menuItemsByLevel: MenuItem[][];
+  _menuParentIds: (string | null)[];
+  _menuOpenParentEls: (HTMLElement | null)[];
+  _menuOpenTimers: (number | NodeJS.Timeout)[];
+  _menuColKey: string | null;
 
   _filterOverlay: HTMLDivElement;
   _filterColID: string | null;
@@ -473,8 +476,11 @@ export default class Table {
     this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
-    this._submenuParentId = null;
-    this._currentSubmenuItems = null;
+    this._menuOverlays = [];
+    this._menuItemsByLevel = [];
+    this._menuParentIds = [];
+    this._menuOpenParentEls = [];
+    this._menuOpenTimers = [];
     this._filterColID = null;
 
     this._menuOverlay = document.createElement("div");
@@ -3577,31 +3583,144 @@ export default class Table {
 
   // ---------------- Menus ----------------
   _initMenuOverlay() {
-    this._menuOverlay.className = "pte-menu";
-    this._menuOverlay.style.position = "fixed";
-    this._menuOverlay.style.zIndex = "9999";
-    this._menuOverlay.style.display = "none";
-
-    this._submenuOverlay.className = "pte-menu pte-submenu";
-    this._submenuOverlay.style.position = "fixed";
-    this._submenuOverlay.style.display = "none";
-    this._submenuOverlay.style.zIndex = "10000";
-    document.body.appendChild(this._submenuOverlay);
+    this._menuOverlays = [this._menuOverlay, this._submenuOverlay];
+    this._menuOverlays.forEach((overlay, level) => this._prepareMenuOverlay(overlay, level));
 
     // Close on click outside
     document.addEventListener("mousedown", (e) => {
-      if (this._menuOverlay.style.display === "none") return;
-      const insideMenu = this._menuOverlay.contains(e.target);
-      const insideSubmenu = this._submenuOverlay.contains(e.target);
-      if (!insideMenu && !insideSubmenu) this._closeMenu();
+      const hasOpenMenu = this._menuOverlays.some((overlay) => overlay.style.display !== "none");
+      if (!hasOpenMenu) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      const insideMenu = this._menuOverlays.some((overlay) =>
+        overlay.style.display !== "none" && overlay.contains(target)
+      );
+      if (!insideMenu) this._closeMenu();
     });
 
     // Close on Esc
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this._closeMenu();
     });
+  }
 
-    document.body.appendChild(this._menuOverlay);
+  _prepareMenuOverlay(overlay: HTMLDivElement, level: number) {
+    overlay.className = level === 0 ? "pte-menu" : "pte-menu pte-submenu";
+    overlay.style.position = "fixed";
+    overlay.style.zIndex = `${9999 + level}`;
+    overlay.style.display = "none";
+    overlay.style.visibility = "hidden";
+    this.root.appendChild(overlay);
+    overlay.addEventListener("mousemove", (e) => this._handleMenuMouseMove(level, e));
+    overlay.addEventListener("click", (e) => this._handleMenuClick(level, e));
+  }
+
+  _ensureMenuOverlay(level: number) {
+    if (this._menuOverlays[level]) return this._menuOverlays[level];
+    const overlay = document.createElement("div");
+    this._menuOverlays[level] = overlay;
+    this._prepareMenuOverlay(overlay, level);
+    return overlay;
+  }
+
+  _getMenuBounds() {
+    const r = this.root.getBoundingClientRect();
+    return {
+      left: r.left + 8,
+      top: r.top + 8,
+      right: r.right - 8,
+      bottom: r.bottom - 8,
+    };
+  }
+
+  _getMenuItemById(level: number, id: string | null) {
+    if (!id) return null;
+    return this._menuItemsByLevel[level]?.find(x => x.id === id) || null;
+  }
+
+  _setMenuParentExpanded(level: number, btn: HTMLElement) {
+    const prev = this._menuOpenParentEls[level];
+    if (prev && prev !== btn) prev.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-expanded", "true");
+    this._menuOpenParentEls[level] = btn;
+  }
+
+  _hideMenuLevels(fromLevel: number) {
+    for (let level = fromLevel; level < this._menuOverlays.length; level++) {
+      const overlay = this._menuOverlays[level];
+      if (!overlay) continue;
+      overlay.style.display = "none";
+      overlay.style.opacity = "0";
+      overlay.style.visibility = "hidden";
+    }
+
+    for (let level = fromLevel; level < this._menuOpenTimers.length; level++) {
+      const timer = this._menuOpenTimers[level];
+      if (timer != null) clearTimeout(timer);
+    }
+    this._menuOpenTimers.length = fromLevel;
+
+    const clearFrom = Math.max(0, fromLevel - 1);
+    for (let level = clearFrom; level < this._menuOpenParentEls.length; level++) {
+      const el = this._menuOpenParentEls[level];
+      if (el) el.setAttribute("aria-expanded", "false");
+    }
+    this._menuOpenParentEls.length = clearFrom;
+
+    this._menuItemsByLevel.length = fromLevel;
+    this._menuParentIds.length = fromLevel;
+  }
+
+  _handleMenuMouseMove(level: number, e: MouseEvent) {
+    const overlay = this._menuOverlays[level];
+    if (!overlay || overlay.style.display === "none") return;
+    const target = e.target as HTMLElement | null;
+    const btn = target?.closest(".pte-menu-item[data-item-id]") as HTMLElement | null;
+    if (!btn || !overlay.contains(btn)) return;
+
+    const item = this._getMenuItemById(level, btn.getAttribute("data-item-id"));
+    const nextLevel = level + 1;
+    if (!item || item.disabled || !item.subMenu || item.subMenu.length === 0) {
+      const timer = this._menuOpenTimers[nextLevel];
+      if (timer != null) clearTimeout(timer);
+      this._hideMenuLevels(nextLevel);
+      return;
+    }
+
+    if (this._menuParentIds[nextLevel] === item.id) return;
+
+    const timer = this._menuOpenTimers[nextLevel];
+    if (timer != null) clearTimeout(timer);
+    this._menuOpenTimers[nextLevel] = setTimeout(() => {
+      this._openSubmenu(nextLevel, btn, item.subMenu || []);
+    }, 120);
+  }
+
+  _handleMenuClick(level: number, e: MouseEvent) {
+    const overlay = this._menuOverlays[level];
+    if (!overlay || overlay.style.display === "none") return;
+    const target = e.target as HTMLElement | null;
+    const btn = target?.closest(".pte-menu-item[data-item-id]") as HTMLElement | null;
+    if (!btn || !overlay.contains(btn)) return;
+
+    const item = this._getMenuItemById(level, btn.getAttribute("data-item-id"));
+    if (!item || item.disabled) return;
+
+    if (item.subMenu && item.subMenu.length > 0) {
+      this._openSubmenu(level + 1, btn, item.subMenu);
+      return;
+    }
+
+    if (item.onClick) {
+      this._closeMenu();
+      if (level === 0) {
+        console.time("menuOnClick");
+        item.onClick();
+        console.timeEnd("menuOnClick");
+      } else {
+        item.onClick();
+      }
+    }
   }
 
   _initFilterOverlay() {
@@ -3649,93 +3768,13 @@ export default class Table {
     }
   }
 
-  _wireSubmenuBehaviour(mainItems: MenuItem[]) {
-    let openTimer: number | NodeJS.Timeout = 0;
-
-    const getItemById = (id: string) => mainItems.find(x => x.id === id);
-
-    const menuMouseMoveListener = (e) => {
-      const btn = e.target.closest(".pte-menu-item[data-item-id]");
-      if (!btn) return;
-
-      const id = btn.getAttribute("data-item-id");
-      const item = getItemById(id);
-
-      // If no submenu, close submenu (optional)
-      if (!item?.subMenu) {
-        this._hideSubmenu();
-        return;
-      }
-
-      // If already open for this parent, do nothing
-      if (this._submenuParentId === id) return;
-
-      // Delay open to avoid flicker while moving mouse
-      clearTimeout(openTimer);
-      openTimer = setTimeout(() => {
-        this._openSubmenu(btn, item.subMenu || []);
-        this._submenuParentId = id;
-        btn.setAttribute("aria-expanded", "true");
-      }, 120);
-    };
-
-    const menuClickListener = (e) => {
-      const btn = e.target.closest(".pte-menu-item[data-item-id]");
-      if (!btn) return;
-
-      const id = btn.getAttribute("data-item-id");
-      const item = getItemById(id);
-
-      if (item?.subMenu) {
-        // clicking parent just opens submenu
-        this._openSubmenu(btn, item.subMenu);
-        this._submenuParentId = id;
-        return;
-      }
-
-      if (item?.onClick && !item.disabled) {
-        this._closeMenu();
-        console.time("menuOnClick");
-        item.onClick();
-        console.timeEnd("menuOnClick");
-        this._menuOverlay.removeEventListener("click", menuClickListener);
-        this._menuOverlay.removeEventListener("mousemove", menuMouseMoveListener);
-        this._submenuOverlay.removeEventListener("click", submenuClickListener);
-      }
-    }
-
-    const submenuClickListener = (e) => {
-      const btn = e.target.closest(".pte-menu-item[data-item-id]");
-      if (!btn) return;
-
-      const id = btn.getAttribute("data-item-id");
-      const item = this._currentSubmenuItems?.find(x => x.id === id);
-      if (item?.onClick && !item.disabled) {
-        this._closeMenu();
-        item.onClick();
-        this._menuOverlay.removeEventListener("click", menuClickListener);
-        this._menuOverlay.removeEventListener("mousemove", menuMouseMoveListener);
-        this._submenuOverlay.removeEventListener("click", submenuClickListener);
-      }
-    };
-
-    // Click handling (main menu)
-    this._menuOverlay.addEventListener("mousemove", menuMouseMoveListener);
-    this._menuOverlay.addEventListener("click", menuClickListener);
-    // Click handling (submenu)
-    this._submenuOverlay.addEventListener("click", submenuClickListener);
-  }
-
-  _hideSubmenu() {
-    this._submenuOverlay.style.opacity = "0";
-    this._submenuOverlay.style.display = "none";
-    this._submenuParentId = null;
-    this._currentSubmenuItems = null;
-  }
-
-  _openSubmenu(parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
-    this._currentSubmenuItems = submenuItems;
-    this._renderMenuItems(this._submenuOverlay, submenuItems, { isSubmenu: true });
+  _openSubmenu(level: number, parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
+    const overlay = this._ensureMenuOverlay(level);
+    this._hideMenuLevels(level + 1);
+    this._menuItemsByLevel[level] = submenuItems;
+    this._menuParentIds[level] = parentBtnEl.getAttribute("data-item-id");
+    this._renderMenuItems(overlay, submenuItems, { isSubmenu: true });
+    if (level > 0) this._setMenuParentExpanded(level - 1, parentBtnEl);
 
     const r = parentBtnEl.getBoundingClientRect();
     const W = 220;
@@ -3744,24 +3783,35 @@ export default class Table {
     let left = r.right;
     let top = r.top;
 
+    const bounds = this._getMenuBounds();
+
     // If would overflow right edge, open to the left
-    if (left + W > window.innerWidth - 8) {
+    if (left + W > bounds.right) {
       left = r.left - W;
     }
 
-    // Clamp vertically a bit
-    this._submenuOverlay.style.display = "block";
-    const submenuRect = this._submenuOverlay.getBoundingClientRect();
-    this._submenuOverlay.style.opacity = "1";
+    overlay.style.minWidth = `${W}px`;
+    overlay.style.visibility = "hidden";
+    overlay.style.display = "block";
+    const submenuRect = overlay.getBoundingClientRect();
+    overlay.style.opacity = "1";
 
-    if (top + submenuRect.height > window.innerHeight - 8) {
-      top = window.innerHeight - 8 - submenuRect.height;
+    if (left + submenuRect.width > bounds.right) {
+      left = bounds.right - submenuRect.width;
+    }
+    if (left < bounds.left) {
+      left = bounds.left;
+    }
+    if (top + submenuRect.height > bounds.bottom) {
+      top = bounds.bottom - submenuRect.height;
+    }
+    if (top < bounds.top) {
+      top = bounds.top;
     }
 
-    this._submenuOverlay.style.left = `${left}px`;
-    this._submenuOverlay.style.top = `${top}px`;
-    this._submenuOverlay.style.minWidth = `${W}px`;
-    this._submenuOverlay.style.display = "block";
+    overlay.style.left = `${left}px`;
+    overlay.style.top = `${top}px`;
+    overlay.style.visibility = "visible";
   }
 
   _renderMenuItems(container: HTMLDivElement, items: MenuItem[], { isSubmenu = false } = {}) {
@@ -3852,8 +3902,7 @@ export default class Table {
 
   _closeMenu() {
     this._menuColKey = null;
-    this._menuOverlay.style.display = "none";
-    this._submenuOverlay.style.display = "none";
+    this._hideMenuLevels(0);
   }
 
   _closeFilter() {
