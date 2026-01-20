@@ -1,3 +1,5 @@
+import { isFalse, isTrue } from "./misc";
+
 export enum ColumnType {
   STRING = "string",
   NUMBER = "number",
@@ -31,6 +33,7 @@ export interface Column {
   groupable?: boolean;
   resizable?: boolean;
   movable?: boolean;
+  hideable?: boolean;
 }
 
 export interface InternalColumn {
@@ -54,6 +57,7 @@ export interface InternalColumn {
   groupable: boolean;
   resizable: boolean;
   movable: boolean;
+  hideable?: boolean;
   centralPosition: number;
 }
 
@@ -77,13 +81,14 @@ export function getColumnDef(col: Column | any): InternalColumn {
     type: col.type,
     format: col.format,
     children: col.children ? col.children.map(getColumnDef) : undefined,
-    hidden: col.hidden || false,
+    hidden: isTrue(col.hidden),
     pinned: col.pinned || null,
-    sortable: col.sortable !== false,
-    filterable: col.filterable !== false,
-    groupable: col.groupable !== false,
-    resizable: col.resizable !== false,
-    movable: col.movable !== false,
+    sortable: !isFalse(col.sortable),
+    filterable: !isFalse(col.filterable),
+    groupable: !isFalse(col.groupable),
+    resizable: !isFalse(col.resizable),
+    movable: !isFalse(col.movable),
+    hideable: !isFalse(col.hideable),
     centralPosition: 0,
   };
 }
