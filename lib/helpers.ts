@@ -12,7 +12,7 @@ export function findColumnById(columns: InternalColumn[], id: string): InternalC
   return undefined;
 }
 
-export function getChildren(column: InternalColumn): InternalColumn[] {
+export function getVisibleChildren(column: InternalColumn): InternalColumn[] {
   if (!column.children) return [];
   return column.children.filter(c => c.columnGroupVisible);
 }
@@ -179,41 +179,28 @@ export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalCol
   return newHierarchy[0];
 }
 
-export function splitTreeAtIndex(column: InternalColumn, index: number): [InternalColumn, InternalColumn | null] {
-  const leaves = collectLeaves(column, true);
-  if (index <= 0 || index >= leaves.length) {
-    return [column, null];
-  }
-
-  const firstLeft = leaves[index];
-
+export function splitTreeAtColumn(column: InternalColumn, firstRight: InternalColumn): [InternalColumn, InternalColumn | null] {
+  const ancestors = getColumnAncestors([column], firstRight.id);
   let right: InternalColumn | null = null;
-  const ancestors = getColumnAncestors([column], firstLeft.id);
-  let rightChild: InternalColumn = firstLeft;
+  let rightChild: InternalColumn = firstRight;
   let leftChild: InternalColumn | null = null;
   let mustSplit = false;
   for (const level of ancestors.reverse().slice(1)) {
-    // const visibleChildren = getChildren(level);
-    if (!level.children || level.children.length === 0) continue;
-    let idx = level.children.findIndex(c => c.id == rightChild.id);
-    if (idx < 0) idx = level.children.findIndex(c => c.id == leftChild?.id);
-    if (idx > 0 && !level.children[idx - 1].columnGroupVisible) {
-      let i = idx - 1;
-      while (i >= 0) {
-        if (level.children![i].columnGroupVisible) break;
-        i--;
-      }
-      idx = i < 0 ? 0 : i;
-    }
-
-    if (idx > 0 || mustSplit) {
-      const newLevel = { ...level, id: crypto.randomUUID(), children: level.children && level.children.length > 0 ? [...level.children] : [] };
-      // idx = level.children!.findIndex(c => c.id == rightChild.id);
-      level.children = level.children?.slice(0, idx || 1);
+    const children = level.children;
+    if (!children || children.length === 0) continue;
+    const visibleChildren = children.filter(c => c.columnGroupVisible);
+    if (visibleChildren.length === 0) continue;
+    let visibleIdx = visibleChildren.findIndex(c => c.id == rightChild.id);
+    if (visibleIdx < 0 && leftChild) visibleIdx = visibleChildren.findIndex(c => c.id == leftChild!.id);
+    if (visibleIdx > 0 || mustSplit) {
+      const newLevel = { ...level, id: crypto.randomUUID(), children: [...children] };
+      let idx = children.findIndex(c => c.id == rightChild.id);
+      if (idx < 0 && leftChild) idx = children.findIndex(c => c.id == leftChild!.id);
+      level.children = children.slice(0, idx || 1);
       if (leftChild && level.children) {
         level.children[idx] = leftChild;
       }
-      newLevel.children = newLevel.children?.slice(idx);
+      newLevel.children = children.slice(idx);
       if (rightChild && newLevel.children) {
         newLevel.children[0] = rightChild;
       }
@@ -247,6 +234,14 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
         nextIdx = j;
         break;
       }
+    }
+    if (nextIdx == i + 1 && skipIdx.has(nextIdx)) {
+      // No more columns to process
+      if (!addedIDs.has(curr.id)) {
+        finalColumns.push(curr);
+        addedIDs.add(curr.id);
+      }
+      break;
     }
     const next = columns[nextIdx];
     if (next.children && next.children.length > 0) {

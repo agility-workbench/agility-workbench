@@ -4,11 +4,11 @@ import {
   collectLeaves,
   computeFilteredIdx,
   findColumnById,
-  getChildren,
+  getVisibleChildren,
   getColumnAncestors,
   mergeColumns,
   newColumnHierarchy,
-  splitTreeAtIndex,
+  splitTreeAtColumn,
 } from "./helpers";
 import {
   AggregateRequestItem,
@@ -2134,15 +2134,24 @@ export default class Table {
       const children = document.createElement("div");
       children.className = "pte-hcell-children";
       header.appendChild(children);
+      let groupToggle = "";
       for (const child of col.children) {
         if (!isTrue(child.hidden)) {
-          showExpander = showExpander || !isNullOrUndefined(child.columnGroupShow);
+          if (!isNullOrUndefined(child.columnGroupShow)) {
+            if (groupToggle === "") {
+              groupToggle = child.columnGroupShow || "open";
+            } else if (groupToggle !== child.columnGroupShow) {
+              groupToggle = "mixed";
+            }
+          } else {
+            showExpander = true;
+          }
           if (child.columnGroupVisible) {
             children.append(this._buildHeaderCell(child, maxDepth));
           }
         }
       }
-      showExpander = col.children.length === 1 ? false : showExpander;
+      showExpander = col.children.length === 1 ? false : showExpander ? true : groupToggle === "mixed";
     }
     if (showExpander) {
       const expander = document.createElement("div");
@@ -3302,8 +3311,7 @@ export default class Table {
     }
 
     this._dragLastX = e.clientX;
-    const pinnedSection = section === "center" ? null : section === "left" ? "left" : "right";
-    this._dragTargetIndex = pinnedSection !== this._draggingColumn.pinned ? targetIndex : hoverIndex;
+    this._dragTargetIndex = targetIndex;
     this._positionDropIndicator(targetIndex, hoverIndex, headers);
     e.preventDefault();
   }
@@ -3315,12 +3323,16 @@ export default class Table {
     const newCenter = [...this._centerColumns];
     const newRight = [...this._rightPinnedColumns];
 
+    const targetSection = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
+    let targetArr = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedColumns : this._centerLeafColumns;
+    const firstRight = targetArr[targetIndex];
+
     const ancestors = getColumnAncestors(this.columns, col.id);
     let topLevelDrag = col;
     if (ancestors.length > 1) {
       // Find the top-level ancestor that is reorderable
       for (const c of ancestors) {
-        if ((getChildren(c)).length <= 1) {
+        if ((getVisibleChildren(c)).length <= 1) {
           topLevelDrag = c;
           break;
         }
@@ -3328,69 +3340,40 @@ export default class Table {
     }
     const splitParent = ancestors.length > 1 && ancestors[0].id != topLevelDrag.id;
 
-    const removeFrom = (arr: InternalColumn[]) => {
-      const idx = arr.findIndex(c => c.id === topLevelDrag.id);
-      if (idx >= 0) arr.splice(idx, 1);
-    };
-
     if (splitParent) {
       topLevelDrag = newColumnHierarchy(ancestors, topLevelDrag);
     } else {
-      removeFrom(newLeft);
-      removeFrom(newCenter);
-      removeFrom(newRight);
+      const source = col.pinned === "left" ? newLeft : col.pinned === "right" ? newRight : newCenter;
+      const idx = source.findIndex(c => c.id === topLevelDrag.id);
+      if (idx >= 0) source.splice(idx, 1);
     }
 
-    const targetArr = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
-
-    // Adjust target index if the column being moved has children
-    if (col.children && col.children.length > 0) {
-      const colLeaves = collectLeaves(col, true);
-      const targetLeaves = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedLeafColumns : this._centerLeafColumns;
-      const colLeafIndex = targetLeaves.findIndex(c => c.id === colLeaves[0].id);
-      if (colLeafIndex < targetIndex) {
-        targetIndex -= colLeaves.length - 1;
-      }
-    }
-
-    let offset = 0;
-    for (let i = 0; i < targetArr.length; i++) {
-      const parent = targetArr[i];
-      const leaves = collectLeaves(parent, true);
-      const leavesLen = leaves.length;
-      if ((leavesLen == 1 ? 0 : leavesLen) + offset == targetIndex) {
-        targetIndex = i + (leavesLen == 1 ? 0 : 1);
-        break;
-      } else if (leavesLen + offset > targetIndex) {
-        if (leavesLen == 1) {
-          targetIndex = i + 1;
-          break;
+    targetArr = targetSection.map(c => collectLeaves(c, true)).flat();
+    let moveTo = 0;
+    if (firstRight) {
+      const firstRightAncestors = getColumnAncestors(this.columns, firstRight.id);
+      moveTo = targetSection.findIndex(c => c.id === firstRightAncestors[0].id);
+      if (firstRightAncestors.length > 1) {
+        const [leftTree, rightTree] = splitTreeAtColumn(firstRightAncestors[0], firstRight);
+        if (leftTree) {
+          targetSection[moveTo] = leftTree;
+          moveTo++;
+        }
+        if (rightTree) {
+          targetSection.splice(moveTo, 0, rightTree);
         } else {
-          // TODO: Check if we can split this parent
-          const [leftColumn, rightColumn] = splitTreeAtIndex(parent, targetIndex - offset);
-          targetArr[i] = leftColumn;
-          if (rightColumn) {
-            targetArr.splice(i + 1, 0, rightColumn);
-            targetIndex = i + 1;
-          } else {
-            targetIndex = i;
-          }
-          break;
+          moveTo--;
         }
       }
-      offset += (leavesLen);
     }
 
     const movedCol: InternalColumn = { ...topLevelDrag, pinned: section === "center" ? null : section };
-    if (targetIndex > targetArr.length) {
-      targetIndex = targetArr.length;
-    }
-    targetArr.splice(targetIndex, 0, movedCol);
     if (topLevelDrag.pinned !== movedCol.pinned && movedCol.children && movedCol.children.length > 0) {
       // If moving between sections, and has children, we need to adjust the pinned state of children
       const newPinned = section === "center" ? null : section;
       adjustPinned(movedCol.children, newPinned);
     }
+    targetSection.splice(moveTo, 0, movedCol);
 
     const nextLeft = mergeColumns(newLeft);
     const nextCenter = mergeColumns(newCenter);
