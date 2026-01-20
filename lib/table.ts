@@ -4567,6 +4567,7 @@ export default class Table {
     const btn = e.target?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
+      this._clearColumnSelection();
       // Based on the btn clicked, render filter/menu UI
       if (!isFilter) {
         this._openColMenu(header.id, { anchorEl: btn });
