@@ -1,5 +1,5 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams } from "./formatters";
-import { isFalse, isTrue } from "./misc";
+import { isFalse, isNullOrUndefined, isTrue } from "./misc";
 
 export enum ColumnType {
   STRING = "string",
@@ -37,6 +37,7 @@ export interface Column {
   movable?: boolean;
   hideable?: boolean;
   columnGroupShow?: "open" | "closed";
+  openByDefault?: boolean;
 }
 
 export interface InternalColumn {
@@ -54,7 +55,7 @@ export interface InternalColumn {
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children?: InternalColumn[];
-  hidden?: boolean;
+  hidden: boolean;
   pinned?: "left" | "right" | null;
   sortable: boolean;
   filterable: boolean;
@@ -64,6 +65,9 @@ export interface InternalColumn {
   hideable?: boolean;
   centralPosition: number;
   columnGroupShow?: "open" | "closed";
+  openByDefault: boolean;
+  groupExpandState: "open" | "closed";
+  columnGroupVisible: boolean;
 }
 
 export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
@@ -96,7 +100,10 @@ export function getColumnDef(col: Column | any): InternalColumn {
     movable: !isFalse(col.movable),
     hideable: !isFalse(col.hideable),
     columnGroupShow: col.columnGroupShow,
+    openByDefault: isTrue(col.openByDefault),
     centralPosition: 0,
+    groupExpandState: isTrue(col.openByDefault) ? "open" : "closed",
+    columnGroupVisible: isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed"),
   };
 }
 

@@ -6,6 +6,10 @@ export function isFalse(val: any): boolean {
   return val === false || val === "false" || val === 0 || val === "0";
 }
 
+export function isNullOrUndefined(val: any): boolean {
+  return val === null || val === undefined;
+}
+
 // If the pageSizes is boolean, return defPageSizes.
 // If pageSizes is an array, convert all the elements to numbers if required and
 // return a sorted array. If it is empty, return defPageSizes

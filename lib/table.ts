@@ -4,6 +4,7 @@ import {
   collectLeaves,
   computeFilteredIdx,
   findColumnById,
+  getChildren,
   getColumnAncestors,
   mergeColumns,
   newColumnHierarchy,
@@ -28,7 +29,7 @@ import {
   ServerSideRequest,
   SortDef,
 } from "./types";
-import { isTrue, validatePageSizes } from "./misc";
+import { isNullOrUndefined, isTrue, validatePageSizes } from "./misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export";
 
 const MIN_RESIZE_WIDTH = 75;
@@ -2044,20 +2045,23 @@ export default class Table {
   }
 
   _computeHeaderDepth() {
-    const traverse = (cols: InternalColumn[], depth: number, appendTo: InternalColumn[]) => {
+    const traverse = (cols: InternalColumn[], depth: number, appendTo: InternalColumn[], openState: "open" | "closed" | null = null) => {
       for (const col of cols) {
         if (isTrue(col.hidden)) {
           continue;
         }
-        if (col.children && Array.isArray(col.children)) {
-          traverse(col.children, depth + 1, appendTo);
-          col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
-        } else {
-          col.depth = 1;
-          appendTo.push(col);
-        }
-        if (col.depth > this._maxDepth) {
-          this._maxDepth = col.depth;
+        col.columnGroupVisible = isNullOrUndefined(col.columnGroupShow) || (openState !== null && openState == col.columnGroupShow);
+        if (col.columnGroupVisible) {
+          if (col.children && Array.isArray(col.children)) {
+            traverse(col.children, depth + 1, appendTo, col.groupExpandState);
+            col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
+          } else {
+            col.depth = 1;
+            appendTo.push(col);
+          }
+          if (col.depth > this._maxDepth) {
+            this._maxDepth = col.depth;
+          }
         }
       }
     };
@@ -2121,16 +2125,34 @@ export default class Table {
     const headerContent = document.createElement("div");
     headerContent.className = "pte-hcell-content";
     headerContainer.appendChild(headerContent);
-    headerContent.textContent = col.label ?? col.key;
+    const headerLabel = document.createElement("div");
+    headerLabel.className = "pte-hcell-label";
+    headerLabel.textContent = col.label ?? col.key;
+    headerContent.appendChild(headerLabel);
+    let showExpander = false;
     if (col.children && Array.isArray(col.children) && col.children.length > 0) {
       const children = document.createElement("div");
       children.className = "pte-hcell-children";
       header.appendChild(children);
       for (const child of col.children) {
         if (!isTrue(child.hidden)) {
-          children.append(this._buildHeaderCell(child, maxDepth));
+          showExpander = showExpander || !isNullOrUndefined(child.columnGroupShow);
+          if (child.columnGroupVisible) {
+            children.append(this._buildHeaderCell(child, maxDepth));
+          }
         }
       }
+      showExpander = col.children.length === 1 ? false : showExpander;
+    }
+    if (showExpander) {
+      const expander = document.createElement("div");
+      expander.className = "pte-hcell-expander";
+      if (col.groupExpandState === "open") {
+        expander.classList.add("icon-minus-frame");
+      } else {
+        expander.classList.add("icon-plus-frame");
+      }
+      headerContent.appendChild(expander);
     }
     const headerMenu = this._getHeaderMenuElement(col);
     headerContainer.appendChild(headerMenu);
@@ -2754,7 +2776,7 @@ export default class Table {
           const col = this._leftPinnedLeafColumns[c];
           const key = col.key;
           const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
+          const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
           slot.leftCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
         }
       }
@@ -2762,7 +2784,7 @@ export default class Table {
         const col = this._centerLeafColumns[c];
         const key = col.key;
         const v = row[key];
-        const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
+        const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
         slot.cellEls[c].textContent = displayValue == null ? "" : String(displayValue);
       }
       if (this._rightPinnedLeafColumns.length > 0 && slot.rightCellEls) {
@@ -2771,7 +2793,7 @@ export default class Table {
           const col = this._rightPinnedLeafColumns[c];
           const key = col.key;
           const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
+          const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
           slot.rightCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
         }
       }
@@ -3176,7 +3198,7 @@ export default class Table {
       if (!col) continue;
       if (col.children && col.children.length > 0) {
         const leaves = collectLeaves(col);
-        leaves.forEach(leaf => {
+        leaves.filter(this._isColumnReorderable).forEach(leaf => {
           output.push({ col: leaf, el: document.getElementById(leaf.id) as HTMLDivElement });
         });
         continue;
@@ -3184,7 +3206,7 @@ export default class Table {
         output.push({ col, el });
       }
     }
-    return output;
+    return output.filter(h => h.el != null);
   }
 
   _positionDropIndicator(targetIndex: number, hoverIndex: number, headers: Array<{ col: InternalColumn; el: HTMLDivElement }>) {
@@ -3298,9 +3320,9 @@ export default class Table {
     if (ancestors.length > 1) {
       // Find the top-level ancestor that is reorderable
       for (const c of ancestors) {
-        if (c.children && c.children.length <= 1) {
+        if ((getChildren(c)).length <= 1) {
           topLevelDrag = c;
-          // break;
+          break;
         }
       }
     }
@@ -3323,7 +3345,7 @@ export default class Table {
 
     // Adjust target index if the column being moved has children
     if (col.children && col.children.length > 0) {
-      const colLeaves = collectLeaves(col);
+      const colLeaves = collectLeaves(col, true);
       const targetLeaves = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedLeafColumns : this._centerLeafColumns;
       const colLeafIndex = targetLeaves.findIndex(c => c.id === colLeaves[0].id);
       if (colLeafIndex < targetIndex) {
@@ -3334,7 +3356,7 @@ export default class Table {
     let offset = 0;
     for (let i = 0; i < targetArr.length; i++) {
       const parent = targetArr[i];
-      const leaves = collectLeaves(parent);
+      const leaves = collectLeaves(parent, true);
       const leavesLen = leaves.length;
       if ((leavesLen == 1 ? 0 : leavesLen) + offset == targetIndex) {
         targetIndex = i + (leavesLen == 1 ? 0 : 1);
@@ -3413,7 +3435,7 @@ export default class Table {
 
   _isColumnReorderable(col: InternalColumn): boolean {
     if (!col) return false;
-    if (isTrue(col.hidden)) return false;
+    if (isTrue(col.hidden) || !col.columnGroupVisible) return false;
     return true;
     if (col.children && col.children.length > 0) return false;
     const ancestors = getColumnAncestors(this.columns, col.id);
@@ -3668,6 +3690,17 @@ export default class Table {
 
     this._applyColumnSelectionStyles();
     this._refreshSelectionStyles();
+  }
+
+  _toggleColumnGroupExpanded(colID: string) {
+    const col = findColumnById(this.columns, colID);
+    if (!col || !col.children || col.children.length === 0) return;
+    if (col.groupExpandState == "open") {
+      col.groupExpandState = "closed";
+    } else {
+      col.groupExpandState = "open";
+    }
+    this.setColumns(this.columns, { preserveWidths: true });
   }
 
   // ---------------- Menus ----------------
@@ -4550,6 +4583,11 @@ export default class Table {
   _headerCellClickHandler(e: MouseEvent) {
     const header = e.target?.closest(".pte-hcell");
     if (!header) return;
+    const headerExpand = e.target?.closest(".pte-hcell-expander");
+    if (headerExpand) {
+      this._toggleColumnGroupExpanded(header.id);
+      return;
+    }
     const headerContent = e.target?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = findColumnById(this.columns, header.id);

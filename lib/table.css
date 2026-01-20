@@ -614,6 +614,16 @@
   background-color: var(--pte-hover-bg-color);
 }
 
+.pte-hcell-expander {
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
 .pte-hcell.selected .pte-hcell-container:hover {
   background-color: var(--pte-selected-hover-bg-color);
 }
@@ -1074,6 +1084,16 @@
 
 .icon-drag {
   mask-image: url(drag.svg);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-plus-frame {
+  mask-image: url(plus-frame.svg);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-minus-frame {
+  mask-image: url(minus-frame.svg);
   background-color: var(--pte-icon-color);
 }
 

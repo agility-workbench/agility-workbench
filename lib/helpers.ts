@@ -1,4 +1,4 @@
-import { isTrue } from "./misc";
+import { isNullOrUndefined, isTrue } from "./misc";
 import { FilterDef, InternalColumn } from "./types";
 
 export function findColumnById(columns: InternalColumn[], id: string): InternalColumn | undefined {
@@ -12,10 +12,16 @@ export function findColumnById(columns: InternalColumn[], id: string): InternalC
   return undefined;
 }
 
-export const collectLeaves = (column: InternalColumn): InternalColumn[] => {
+export function getChildren(column: InternalColumn): InternalColumn[] {
+  if (!column.children) return [];
+  return column.children.filter(c => c.columnGroupVisible);
+}
+
+export function collectLeaves(column: InternalColumn, visibleOnly: boolean = false): InternalColumn[] {
   let leaves: InternalColumn[] = [];
   function walker(column: InternalColumn) {
     if (isTrue(column.hidden)) return;
+    if (visibleOnly && !column.columnGroupVisible) return;
     if (!column.children || column.children.length === 0) {
       leaves.push(column);
       return;
@@ -26,7 +32,7 @@ export const collectLeaves = (column: InternalColumn): InternalColumn[] => {
   }
   walker(column);
   return leaves;
-};
+}
 
 export function getColumnAncestors(columns: InternalColumn[], id: string): InternalColumn[] {
   const path: InternalColumn[] = [];
@@ -174,7 +180,7 @@ export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalCol
 }
 
 export function splitTreeAtIndex(column: InternalColumn, index: number): [InternalColumn, InternalColumn | null] {
-  const leaves = collectLeaves(column);
+  const leaves = collectLeaves(column, true);
   if (index <= 0 || index >= leaves.length) {
     return [column, null];
   }
@@ -187,10 +193,22 @@ export function splitTreeAtIndex(column: InternalColumn, index: number): [Intern
   let leftChild: InternalColumn | null = null;
   let mustSplit = false;
   for (const level of ancestors.reverse().slice(1)) {
-    let idx = level.children!.findIndex(c => c.id == rightChild.id);
-    if (idx < 0) idx = level.children!.findIndex(c => c.id == leftChild?.id);
+    // const visibleChildren = getChildren(level);
+    if (!level.children || level.children.length === 0) continue;
+    let idx = level.children.findIndex(c => c.id == rightChild.id);
+    if (idx < 0) idx = level.children.findIndex(c => c.id == leftChild?.id);
+    if (idx > 0 && !level.children[idx - 1].columnGroupVisible) {
+      let i = idx - 1;
+      while (i >= 0) {
+        if (level.children![i].columnGroupVisible) break;
+        i--;
+      }
+      idx = i < 0 ? 0 : i;
+    }
+
     if (idx > 0 || mustSplit) {
       const newLevel = { ...level, id: crypto.randomUUID(), children: level.children && level.children.length > 0 ? [...level.children] : [] };
+      // idx = level.children!.findIndex(c => c.id == rightChild.id);
       level.children = level.children?.slice(0, idx || 1);
       if (leftChild && level.children) {
         level.children[idx] = leftChild;
