@@ -843,8 +843,8 @@ export default class Table {
     this._performExport("excel", options);
   }
 
-  _exportColumnCSV() {
-    const selectedColumns = [...this._selectedColumnIDs];
+  _exportColumnCSV(columnIDs: string[] | null = []) {
+    const selectedColumns = columnIDs || [...this._selectedColumnIDs];
     let fileName = "Export";
     if (selectedColumns.length == 1) {
       fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
@@ -856,8 +856,8 @@ export default class Table {
     });
   }
 
-  _exportColumnXLSX() {
-    const selectedColumns = [...this._selectedColumnIDs];
+  _exportColumnXLSX(columnIDs: string[] | null = []) {
+    const selectedColumns = columnIDs || [...this._selectedColumnIDs];
     let fileName = "Export";
     if (selectedColumns.length == 1) {
       fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
