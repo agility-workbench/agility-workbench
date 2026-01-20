@@ -3,8 +3,9 @@ import "./roboto-font.css";
 import "./style.css";
 
 import { Grid } from "@grid"; // React Data Grid Component
-import { Column, RowModelType, ServerSideAggregation, ServerSideDataSource } from "@grid/types";
+import { Column, RowModelType, ServerSideAggregation, ServerSideDataSource, ValueFormatterParams } from "@grid/types";
 import { round } from "./helpers";
+import { FormatterOptionsParams } from "@grid/formatters";
 
 const themePresets = [
   { id: "light", label: "Light", className: "pte-theme-light" },
@@ -26,15 +27,19 @@ function App() {
   const applyFormatters = (cols: Column[] = []) => {
     const currencyFormatter = (col: Column) => {
       if (col.type !== "currency") return;
-      col.valueFormatter = (value: any, row: any) => {
-        if (typeof value === "number") {
-          return round(value).toLocaleString("en-US", {
-            style: "currency",
-            currency: row.currency || "USD",
-          });
-        }
-        return value;
-      };
+      // col.valueFormatter = (params: ValueFormatterParams) => {
+      //   if (typeof params.value === "number") {
+      //     return round(params.value).toLocaleString("en-US", {
+      //       style: "currency",
+      //       currency: params.row?.currency || "USD",
+      //     });
+      //   }
+      //   return params.value;
+      // };
+      col.formatterOptions = (params: FormatterOptionsParams) => ({
+        currency: params.row?.currency || "USD",
+        locale: "en-US",
+      });
     };
 
     const formatApplier = (inputCols: Column[]) => {
