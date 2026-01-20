@@ -1,3 +1,4 @@
+import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams } from "./formatters";
 import { isFalse, isTrue } from "./misc";
 
 export enum ColumnType {
@@ -22,7 +23,8 @@ export interface Column {
   maxWidth?: number; // maximum width (resizable)
   depth?: number;   // for hierarchical columns
   valueGetter?: (row: any) => any;
-  valueFormatter?: (value: any, row: any) => string;
+  valueFormatter?: (params: ValueFormatterParams) => string;
+  formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children?: Column[];
@@ -34,6 +36,7 @@ export interface Column {
   resizable?: boolean;
   movable?: boolean;
   hideable?: boolean;
+  columnGroupShow?: "open" | "closed";
 }
 
 export interface InternalColumn {
@@ -46,7 +49,8 @@ export interface InternalColumn {
   maxWidth?: number; // maximum width (resizable)
   depth?: number;   // for hierarchical columns
   valueGetter?: (row: any) => any;
-  valueFormatter?: (value: any, row: any) => string;
+  valueFormatter?: (params: ValueFormatterParams) => string;
+  formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children?: InternalColumn[];
@@ -59,6 +63,7 @@ export interface InternalColumn {
   movable: boolean;
   hideable?: boolean;
   centralPosition: number;
+  columnGroupShow?: "open" | "closed";
 }
 
 export function getColumnDefs(cols: (Column | any)[]): InternalColumn[] {
@@ -77,7 +82,8 @@ export function getColumnDef(col: Column | any): InternalColumn {
     maxWidth: col.maxWidth,
     depth: col.depth || 0,
     valueGetter: col.valueGetter,
-    valueFormatter: col.valueFormatter,
+    valueFormatter: col.valueFormatter ? col.valueFormatter : getFormatterByType(col.type) || undefined,
+    formatterOptions: col.formatterOptions,
     type: col.type,
     format: col.format,
     children: col.children ? col.children.map(getColumnDef) : undefined,
@@ -89,6 +95,7 @@ export function getColumnDef(col: Column | any): InternalColumn {
     resizable: !isFalse(col.resizable),
     movable: !isFalse(col.movable),
     hideable: !isFalse(col.hideable),
+    columnGroupShow: col.columnGroupShow,
     centralPosition: 0,
   };
 }
@@ -100,20 +107,9 @@ export function getValue(row: any, col: Column | InternalColumn): any {
   return row[col.key];
 }
 
-export function getFormattedValue(row: any, col: Column): string {
-  const value = getValue(row, col);
-  if (col.valueFormatter) {
-    return col.valueFormatter(value, row);
-  }
-  if (value == null) {
-    return "";
-  }
-  return String(value);
-}
-
 export function formatValue(value: any, row: any, col: InternalColumn): string {
   if (col.valueFormatter) {
-    return col.valueFormatter(value, row);
+    return col.valueFormatter({value, row, col});
   }
   if (value == null) {
     return "";

@@ -2754,7 +2754,7 @@ export default class Table {
           const col = this._leftPinnedLeafColumns[c];
           const key = col.key;
           const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
+          const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
           slot.leftCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
         }
       }
@@ -2762,7 +2762,7 @@ export default class Table {
         const col = this._centerLeafColumns[c];
         const key = col.key;
         const v = row[key];
-        const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
+        const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
         slot.cellEls[c].textContent = displayValue == null ? "" : String(displayValue);
       }
       if (this._rightPinnedLeafColumns.length > 0 && slot.rightCellEls) {
@@ -2771,7 +2771,7 @@ export default class Table {
           const col = this._rightPinnedLeafColumns[c];
           const key = col.key;
           const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter(v, row) : v;
+          const displayValue = col.valueFormatter ? col.valueFormatter({value: v, row, col}) : v;
           slot.rightCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
         }
       }
