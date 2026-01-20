@@ -3986,13 +3986,15 @@ export default class Table {
       }
       items.push({ isSeparator: true });
     }
-    items.push({
-      id: 'toggle-hidden',
-      label: isHidden ? "Show Column" : "Hide Column",
-      onClick: () => this._toggleColumnHidden(colID),
-      left: !isHidden ? "icon-col-hide" : '',
-    });
-    items.push({ isSeparator: true });
+    if (col.hideable) {
+      items.push({
+        id: 'toggle-hidden',
+        label: isHidden ? "Show Column" : "Hide Column",
+        onClick: () => this._toggleColumnHidden(colID),
+        left: !isHidden ? "icon-col-hide" : '',
+      });
+      items.push({ isSeparator: true });
+    }
     if (col.groupable) {
       items.push({
         id: 'group-by',
