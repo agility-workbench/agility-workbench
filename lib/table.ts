@@ -1019,11 +1019,73 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
+  _sortBySelectedColumns(dir: "asc" | "desc") {
+    const selectedCols = Array.from(this._selectedColumnIDs);
+    for (const colID of selectedCols) {
+      const col = findColumnById(this.columns, colID);
+      if (!col) continue;
+      if (col.children && col.children.length > 0) continue; // skip parent columns
+      const existing = this._sorts.find(s => s.key === colID);
+      if (existing) {
+        existing.dir = dir;
+      } else {
+        this._sorts.push({ key: colID, dir });
+      }
+    }
+    this._sortDirty = true;
+    if (this.rowModel === "serverSide") {
+      for (const colID of selectedCols) {
+        this._addSortIndicatorToHeader(colID, dir);
+      }
+      this._fetchServerSideRows("sortBySelectedColumns");
+      return;
+    }
+    this._recomputeView();
+    for (const colID of selectedCols) {
+      this._addSortIndicatorToHeader(colID, dir);
+    }
+    this._updateWindow(true, undefined);
+  }
+
+  _clearSortsForSelectedColumns() {
+    const selectedCols = Array.from(this._selectedColumnIDs);
+    this._sorts = this._sorts.filter(s => !selectedCols.includes(s.key));
+    this._sortDirty = true;
+    if (this.rowModel === "serverSide") {
+      for (const colID of selectedCols) {
+        this._addSortIndicatorToHeader(colID, '');
+      }
+      this._fetchServerSideRows("clearSortsForSelectedColumns");
+      return;
+    }
+    this._recomputeView();
+    for (const colID of selectedCols) {
+      this._addSortIndicatorToHeader(colID, '');
+    }
+    this._updateWindow(true, undefined);
+  }
+
   _toggleColumnHidden(colID: string) {
     const col = findColumnById(this.columns, colID);
     if (!col) return;
     col.hidden = !isTrue(col.hidden);
-    this.setColumns(this.columns);
+    this.setColumns(this.columns, { preserveWidths: true });
+  }
+
+  _hideSelectedColumns() {
+    const selectedCols = Array.from(this._selectedColumnIDs);
+    let changed = false;
+    for (const colID of selectedCols) {
+      const col = findColumnById(this.columns, colID);
+      if (!col) continue;
+      if (isTrue(col.hidden)) continue;
+      col.hidden = true;
+      changed = true;
+    }
+    if (changed) {
+      this.setColumns(this.columns, { preserveWidths: true });
+      this._clearColumnSelection();
+    }
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
@@ -1031,6 +1093,22 @@ export default class Table {
     if (!aggType) {
       this._aggregates.delete(colID);
     } else {
+      this._aggregates.set(colID, aggType);
+    }
+    if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
+      this._setAggregateScope("page");
+    }
+    this._markAggregatesDirty();
+    this._renderAggregateRow();
+  }
+
+  _aggregateSelectedColumns(aggType: AggregateType) {
+    const prevSize = this._aggregates.size;
+    const selectedCols = Array.from(this._selectedColumnIDs);
+    for (const colID of selectedCols) {
+      const col = findColumnById(this.columns, colID);
+      if (!col) continue;
+      if (col.children && col.children.length > 0) continue; // skip parent columns
       this._aggregates.set(colID, aggType);
     }
     if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
@@ -3870,8 +3948,10 @@ export default class Table {
 
     const items = this._getMenuItemsForColumn(colID);
 
+    this._hideMenuLevels(0);
+    this._menuItemsByLevel[0] = items;
+    this._menuParentIds[0] = null;
     this._renderMenuItems(this._menuOverlay, items);
-    this._wireSubmenuBehaviour(items);
 
     // Position near button
     if (anchorEl) {
@@ -3882,10 +3962,233 @@ export default class Table {
       left = left || 100;
       top = top || 100;
     }
-    this._menuOverlay.style.left = `${Math.min(left, window.innerWidth - 240)}px`;
-    this._menuOverlay.style.top = `${Math.min(top, window.innerHeight - 300)}px`;
+    const bounds = this._getMenuBounds();
+    this._menuOverlay.style.visibility = "hidden";
     this._menuOverlay.style.minWidth = "220px";
     this._menuOverlay.style.display = "flex";
+    this._menuOverlay.style.left = `${left}px`;
+    this._menuOverlay.style.top = `${top}px`;
+    const menuRect = this._menuOverlay.getBoundingClientRect();
+    this._menuOverlay.style.opacity = "1";
+    if (left + menuRect.width > bounds.right) {
+      left = bounds.right - menuRect.width;
+    }
+    if (left < bounds.left) {
+      left = bounds.left;
+    }
+    if (top + menuRect.height > bounds.bottom) {
+      top = bounds.bottom - menuRect.height;
+    }
+    if (top < bounds.top) {
+      top = bounds.top;
+    }
+    this._menuOverlay.style.left = `${left}px`;
+    this._menuOverlay.style.top = `${top}px`;
+    this._menuOverlay.style.visibility = "visible";
+  }
+
+  _openMultiColMenu(left: number, top: number) {
+    this._menuColKey = crypto.randomUUID();
+
+    let sortable = true;
+    let groupable = true;
+    let hideable = true;
+    let colTypes: ColumnType | "mixed" | null = null;
+    let sortDir: "asc" | "desc" | "mixed" | null = null;
+    let selectedCount = 0;
+    for (const colID of this._selectedColumnIDs) {
+      const col = findColumnById(this.columns, colID);
+      if (!col) continue;
+      if (col.children && col.children.length > 0) continue;
+      selectedCount++;
+      if (!col.sortable) {
+        sortable = false;
+      } else if (sortDir !== "mixed") {
+        const sort = this._sorts.find(s => s.key === colID);
+        if (sort) {
+          if (!sortDir) {
+            sortDir = sort.dir;
+          } else if (sort.dir !== sortDir) {
+            sortDir = "mixed";
+          }
+        }
+      }
+      if (!col.groupable) groupable = false;
+      if (!col.hideable) hideable = false;
+      const colType = col.type || ColumnType.STRING;
+      console.log(col.label, colType);
+      if (!colTypes) {
+        colTypes = colType;
+      } else if (colTypes == "mixed") {
+        continue;
+      } else if (colType !== colTypes) {
+        colTypes = "mixed";
+      }
+    }
+
+    const items: MenuItem[] = [];
+    items.push({
+      id: 'clear-selection',
+      label: "Clear Column Selection",
+      onClick: () => this._clearColumnSelection(),
+      left: "icon-clear",
+    });
+    items.push({ isSeparator: true });
+    if (sortable) {
+      if (sortDir === "asc") {
+        items.push({
+          id: 'sort-desc',
+          label: "Sort Desc",
+          onClick: () => this._sortBySelectedColumns("desc"),
+          left: "icon-desc",
+        }, {
+          id: 'clear-sorts',
+          label: "Clear Sorts",
+          onClick: () => this._clearSortsForSelectedColumns(),
+          left: "icon-sort-clear",
+        });
+      } else if (sortDir === "desc") {
+        items.push({
+          id: 'sort-asc',
+          label: "Sort Asc",
+          onClick: () => this._sortBySelectedColumns("asc"),
+          left: "icon-asc",
+        }, {
+          id: 'clear-sorts',
+          label: "Clear Sorts",
+          onClick: () => this._clearSortsForSelectedColumns(),
+          left: "icon-sort-clear",
+        });
+      } else {
+        items.push({
+          id: 'sort-asc',
+          label: "Sort Asc",
+          onClick: () => this._sortBySelectedColumns("asc"),
+          left: "icon-asc",
+        });
+        items.push({
+          id: 'sort-desc',
+          label: "Sort Desc",
+          onClick: () => this._sortBySelectedColumns("desc"),
+          left: "icon-desc",
+        });
+      }
+      items.push({ isSeparator: true });
+    }
+    if (hideable) {
+      items.push({
+        id: 'hide-columns',
+        label: "Hide Selected Columns",
+        onClick: () => this._hideSelectedColumns(),
+        left: "icon-col-hide",
+      });
+      items.push({ isSeparator: true });
+    }
+    if (groupable) {
+      items.push({
+        id: 'group-by-columns',
+        label: "Group by Selected Columns",
+        onClick: () => this._groupBySelectedColumns(),
+        left: "icon-group",
+      });
+    }
+    if (colTypes && colTypes !== "mixed") {
+      const item: MenuItem = {
+        id: 'aggregate',
+        label: "Aggregate",
+        subMenu: [],
+      };
+      if (isComputableType(colTypes as ColumnType)) {
+        item.subMenu = [{
+          id: 'sum',
+          label: "Sum",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.SUM),
+          extra: AggregateType.SUM,
+        },
+        {
+          id: 'avg',
+          label: "Average",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.AVG),
+          extra: AggregateType.AVG,
+        },
+        {
+          id: 'min',
+          label: "Min",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.MIN),
+          extra: AggregateType.MIN,
+        },
+        {
+          id: 'max',
+          label: "Max",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.MAX),
+          extra: AggregateType.MAX,
+        },
+        {
+          id: 'median',
+          label: "Median",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.MEDIAN),
+          extra: AggregateType.MEDIAN,
+        }];
+      } else {
+        item.subMenu = [{
+          id: 'min',
+          label: "Min",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.MIN),
+          extra: AggregateType.MIN,
+        },
+        {
+          id: 'max',
+          label: "Max",
+          onClick: () => this._aggregateSelectedColumns(AggregateType.MAX),
+          extra: AggregateType.MAX,
+        }];
+      }
+      items.push(item);
+    }
+    const exportMenuItems = this._getExportMenuItems(true);
+    if (exportMenuItems.length > 0) {
+      items.push({ isSeparator: true });
+      items.push(...exportMenuItems);
+    }
+    if (isComputableType(colTypes as ColumnType) && selectedCount > 1) {
+      items.push({ isSeparator: true });
+      items.push({
+        id: 'sparkline',
+        label: "Show Sparklines",
+        onClick: () => this._showSparklinesForSelectedColumns(),
+        left: "icon-sparkline",
+      });
+    }
+
+    this._hideMenuLevels(0);
+    this._menuItemsByLevel[0] = items;
+    this._menuParentIds[0] = null;
+    this._renderMenuItems(this._menuOverlay, items);
+
+    // Position
+    const bounds = this._getMenuBounds();
+    this._menuOverlay.style.visibility = "hidden";
+    this._menuOverlay.style.minWidth = "220px";
+    this._menuOverlay.style.display = "flex";
+    this._menuOverlay.style.left = `${left}px`;
+    this._menuOverlay.style.top = `${top}px`;
+    const menuRect = this._menuOverlay.getBoundingClientRect();
+    this._menuOverlay.style.opacity = "1";
+    if (left + menuRect.width > bounds.right) {
+      left = bounds.right - menuRect.width;
+    }
+    if (left < bounds.left) {
+      left = bounds.left;
+    }
+    if (top + menuRect.height > bounds.bottom) {
+      top = bounds.bottom - menuRect.height;
+    }
+    if (top < bounds.top) {
+      top = bounds.top;
+    }
+    this._menuOverlay.style.left = `${left}px`;
+    this._menuOverlay.style.top = `${top}px`;
+    this._menuOverlay.style.visibility = "visible";
   }
 
   _openColFilter(colID: string, anchorEl: HTMLElement) {
@@ -4237,6 +4540,9 @@ export default class Table {
     if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length != leaves.length) {
       this._selectedColumnIDs.clear();
       this._toggleColumnSelection(col.id);
+    }
+    if (this._selectedColumnIDs.size > 1) {
+      return this._openMultiColMenu(e.clientX, e.clientY);
     }
     this._openColMenu(header.id, { left: e.clientX, top: e.clientY });
   }
