@@ -120,6 +120,7 @@ function App() {
           if (col.key == "country") col.filterable = false;
           if (col.key == "location") col.resizable = false;
           if (col.key == "gl_account") col.movable = false;
+          if (col.key == "business_unit") col.hideable = false;
         });
 
         setColDefs(payload.columns ?? []);
