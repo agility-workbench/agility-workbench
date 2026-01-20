@@ -46,6 +46,8 @@ interface TableProps {
   rowModel?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
   serverSideAggregation?: ServerSideAggregation;
+  exportAsCSV?: boolean;
+  exportAsExcel?: boolean;
 }
 
 type ExportScope = "all" | "selection" | "selectedColumns";
@@ -220,6 +222,9 @@ export default class Table {
   _syncingScrollRaf: number | null;
   _measureCache: Map<string, Map<string, number>>;
 
+  _exportAsCSV: boolean;
+  _exportAsExcel: boolean;
+
   constructor(container: MutableRefObject<HTMLElement | null>, {
     columns = [],
     rowHeight = 43,
@@ -232,6 +237,8 @@ export default class Table {
     rowModel = "clientSide",
     serverSideDataSource,
     serverSideAggregation,
+    exportAsCSV = true,
+    exportAsExcel = true,
   }: TableProps) {
     this.container = container;
     if (!container.current) {
@@ -483,6 +490,10 @@ export default class Table {
     this._menuOpenTimers = [];
     this._filterColID = null;
 
+    this._exportAsCSV = exportAsCSV;
+    this._exportAsExcel = exportAsExcel;
+
+    // Overlays
     this._menuOverlay = document.createElement("div");
     this._submenuOverlay = document.createElement("div");
     this._initMenuOverlay();
@@ -4047,14 +4058,10 @@ export default class Table {
       });
       items.push({ isSeparator: true });
     }
-    items.push({
-      id: 'export-col',
-      label: "Export Column",
-      subMenu: [
-        { id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV() },
-        { id: 'export-xlsx', label: "Export as Excel", onClick: () => this._exportColumnXLSX() },
-      ]
-    });
+    items.push(...this._getExportMenuItems(col.children && col.children.length > 0, collectLeaves(col).map(l => l.id)));
+    if (items[items.length - 1].isSeparator) {
+      items.pop();
+    }
 
     return items;
   }
@@ -4364,6 +4371,24 @@ export default class Table {
     }
     this._recomputeView();
     this._updateWindow(true, undefined);
+  }
+
+  _getExportMenuItems(plural: boolean = false, columnIDs: string[] | null = null): MenuItem[] {
+    const items: MenuItem[] = [];
+    if (this._exportAsCSV) {
+      items.push({ id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(columnIDs) });
+    }
+    if (this._exportAsExcel) {
+      items.push({ id: 'export-excel', label: "Export as Excel", onClick: () => this._exportColumnXLSX(columnIDs) });
+    }
+    if (items.length === 2) {
+      return [{
+        id: 'export-col',
+        label: "Export Column" + (plural ? "s" : ""),
+        subMenu: items,
+      }];
+    }
+    return items;
   }
 
 }
