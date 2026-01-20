@@ -1,8 +1,8 @@
 // TableReact.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Table from "./table";
 import "./table.css";
-import { Column, FilterDef, getColumnDefs, RowModelType, ServerSideAggregation, ServerSideDataSource } from "./types";
+import { Column, getColumnDefs, RowModelType, ServerSideAggregation, ServerSideDataSource } from "./types";
 
 export interface GridProps {
   data: any[];
@@ -15,6 +15,8 @@ export interface GridProps {
   rowModel?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
   serverSideAggregation?: ServerSideAggregation;
+  allowExportAsCSV?: boolean;
+  allowExportAsExcel?: boolean;
 }
 
 export default function Grid({
@@ -28,6 +30,8 @@ export default function Grid({
   rowModel,
   serverSideDataSource,
   serverSideAggregation,
+  allowExportAsCSV = true,
+  allowExportAsExcel = true,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
@@ -46,6 +50,8 @@ export default function Grid({
         rowModel: rowModel || "clientSide",
         serverSideDataSource,
         serverSideAggregation,
+        exportAsCSV: allowExportAsCSV,
+        exportAsExcel: allowExportAsExcel,
        },
     );
     engineRef.current = engine;
