@@ -8,8 +8,8 @@ import { round } from "./helpers";
 import { FormatterOptionsParams } from "@grid/formatters";
 
 const themePresets = [
-  { id: "light", label: "Light", className: "pte-theme-light" },
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
+  { id: "light", label: "Light", className: "pte-theme-light" },
 ];
 
 function App() {
