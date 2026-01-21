@@ -17,6 +17,7 @@ export interface GridProps {
   serverSideAggregation?: ServerSideAggregation;
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
+  loading?: boolean;
 }
 
 export default function Grid({
@@ -32,6 +33,7 @@ export default function Grid({
   serverSideAggregation,
   allowExportAsCSV = true,
   allowExportAsExcel = true,
+  loading = false,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Table>(null);
@@ -52,6 +54,7 @@ export default function Grid({
         serverSideAggregation,
         exportAsCSV: allowExportAsCSV,
         exportAsExcel: allowExportAsExcel,
+        loading,
        },
     );
     engineRef.current = engine;
@@ -98,6 +101,10 @@ export default function Grid({
   useEffect(() => {
     engineRef.current?.togglePagination(pagination || false);
   }, [pagination]);
+
+  useEffect(() => {
+    engineRef.current?.setLoading(loading);
+  }, [loading]);
 
   return (
     <div className={className} style={style}>

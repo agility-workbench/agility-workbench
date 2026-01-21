@@ -411,6 +411,7 @@
   background: var(--pte-loading-overlay-bg);
   z-index: 9999;
   transition: opacity 0.2s ease;
+  backdrop-filter: blur(2px);
 }
 
 .pte-loading-overlay.hidden {

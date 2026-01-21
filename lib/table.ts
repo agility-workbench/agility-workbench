@@ -49,6 +49,7 @@ interface TableProps {
   serverSideAggregation?: ServerSideAggregation;
   exportAsCSV?: boolean;
   exportAsExcel?: boolean;
+  loading?: boolean;
 }
 
 type ExportScope = "all" | "selection" | "selectedColumns";
@@ -76,6 +77,7 @@ export default class Table {
   _serverSideTotalRows: number;
   _serverRequestSeq: number;
   _serverLoading: boolean;
+  _externalLoading: boolean;
   _loadingOverlay: HTMLDivElement;
 
   _maxDepth: number;
@@ -241,6 +243,7 @@ export default class Table {
     serverSideAggregation,
     exportAsCSV = true,
     exportAsExcel = true,
+    loading = false,
   }: TableProps) {
     this.container = container;
     if (!container.current) {
@@ -258,6 +261,7 @@ export default class Table {
     this._serverSideAggregation = serverSideAggregation;
     this._serverRequestSeq = 0;
     this._serverLoading = false;
+    this._externalLoading = isTrue(loading);
 
     this.data = data ?? [];
     this._serverSideTotalRows = this.data.length;
@@ -504,6 +508,7 @@ export default class Table {
     this._initFilterOverlay();
     this._loadingOverlay = document.createElement("div");
     this._initLoadingOverlay();
+    this._updateLoadingOverlay();
 
     // Create a pooled set of row nodes
     this._poolSize = this._computePoolSize();
@@ -702,6 +707,13 @@ export default class Table {
     if (this.rowModel === "serverSide") {
       this._fetchServerSideRows("togglePagination");
     }
+  }
+
+  setLoading(isLoading: boolean) {
+    const next = isTrue(isLoading);
+    if (this._externalLoading === next) return;
+    this._externalLoading = next;
+    this._updateLoadingOverlay();
   }
 
   setRowModel(rowModel: RowModelType) {
@@ -3912,16 +3924,25 @@ export default class Table {
     this.root.appendChild(this._loadingOverlay);
   }
 
-  _setServerLoading(isLoading: boolean, requestId?: number) {
-    if (this.rowModel !== "serverSide") return;
-    if (isLoading) {
-      this._serverLoading = true;
+  _updateLoadingOverlay() {
+    const shouldShow = this._serverLoading || this._externalLoading;
+    if (shouldShow) {
       this._loadingOverlay.classList.remove("hidden");
     } else {
-      if (requestId != null && requestId !== this._serverRequestSeq) return;
-      this._serverLoading = false;
       this._loadingOverlay.classList.add("hidden");
     }
+  }
+
+  _setServerLoading(isLoading: boolean, requestId?: number) {
+    if (isLoading) {
+      if (this.rowModel !== "serverSide") return;
+      this._serverLoading = true;
+      this._updateLoadingOverlay();
+      return;
+    }
+    if (requestId != null && requestId !== this._serverRequestSeq) return;
+    this._serverLoading = false;
+    this._updateLoadingOverlay();
   }
 
   _openSubmenu(level: number, parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
