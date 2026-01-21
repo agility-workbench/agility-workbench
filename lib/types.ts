@@ -63,7 +63,7 @@ export interface InternalColumn {
   resizable: boolean;
   movable: boolean;
   hideable?: boolean;
-  centralPosition: number;
+  centralPosition?: number;
   columnGroupShow?: "open" | "closed";
   openByDefault: boolean;
   groupExpandState: "open" | "closed";
@@ -101,7 +101,7 @@ export function getColumnDef(col: Column | any): InternalColumn {
     hideable: !isFalse(col.hideable),
     columnGroupShow: col.columnGroupShow,
     openByDefault: isTrue(col.openByDefault),
-    centralPosition: 0,
+    centralPosition: undefined,
     groupExpandState: isTrue(col.openByDefault) ? "open" : "closed",
     columnGroupVisible: isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed"),
   };

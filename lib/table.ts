@@ -1541,10 +1541,14 @@ export default class Table {
 
     let targetIdx = Infinity;
     if (pin === null) {
-      targetIdx = col.centralPosition;
+      if (isNullOrUndefined(col.centralPosition)) {
+        if (col.pinned === "left") targetIdx = 0;
+      } else {
+        targetIdx = col.centralPosition || 0;
+      }
       if (col.children && col.children.length > 0) {
         const leaves = collectLeaves(col);
-        targetIdx = leaves[0].centralPosition;
+        targetIdx = leaves[0].centralPosition || 0;
       }
     }
 
