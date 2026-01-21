@@ -3331,11 +3331,11 @@ export default class Table {
     let topLevelDrag = col;
     if (ancestors.length > 1) {
       // Find the top-level ancestor that is reorderable
-      for (const c of ancestors) {
-        if ((getVisibleChildren(c)).length <= 1) {
-          topLevelDrag = c;
+      for (const c of ancestors.slice().reverse()) {
+        if ((getVisibleChildren(c)).length > 1) {
           break;
         }
+        topLevelDrag = c;
       }
     }
     const splitParent = ancestors.length > 1 && ancestors[0].id != topLevelDrag.id;
