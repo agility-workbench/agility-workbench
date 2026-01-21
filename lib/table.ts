@@ -2005,6 +2005,7 @@ export default class Table {
       this.aggregateRight.style.minWidth = "0px";
       this.aggregateRight.style.display = "none";
     }
+    this.header.style.paddingRight = `${maxWidth > 0 ? 0 : 15}px`;
     return totalWidth;
   }
 
