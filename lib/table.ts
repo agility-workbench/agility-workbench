@@ -3319,9 +3319,9 @@ export default class Table {
   _applyColumnReorder(col: InternalColumn, targetIndex: number, section: "left" | "center" | "right" = this._dragSection || "center") {
     if (targetIndex < 0) return;
 
-    const newLeft = [...this._leftPinnedColumns];
-    const newCenter = [...this._centerColumns];
-    const newRight = [...this._rightPinnedColumns];
+    const newLeft = this._leftPinnedColumns.slice();
+    const newCenter = this._centerColumns.slice();
+    const newRight = this._rightPinnedColumns.slice();
 
     const targetSection = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
     let targetArr = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedColumns : this._centerLeafColumns;
