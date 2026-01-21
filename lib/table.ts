@@ -3428,9 +3428,6 @@ export default class Table {
     if (!col) return false;
     if (isTrue(col.hidden) || !col.columnGroupVisible) return false;
     return true;
-    if (col.children && col.children.length > 0) return false;
-    const ancestors = getColumnAncestors(this.columns, col.id);
-    return ancestors.length === 1;
   }
 
   _setDragCursor(active: boolean) {
