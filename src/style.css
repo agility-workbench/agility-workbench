@@ -16,3 +16,17 @@ body {
   box-sizing: border-box;
   overflow: auto;
 }
+
+.btn {
+  background-color: var(--pte-btn-bg-color, #007bff);
+  color: var(--pte-btn-text-color, #fff);
+  border: none;
+  padding: 6px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn:hover {
+  background-color: var(--pte-btn-hover-bg-color, #0056b3);
+}

@@ -165,13 +165,13 @@ function App() {
   return (
     <div style={{ padding: "8px", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "8px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
-        <button type="button" onClick={() => setCategory(category === "wide" ? "compact" : "wide")}>Load {category} Data</button>
+        <button className="btn" type="button" onClick={() => setCategory(category === "wide" ? "compact" : "wide")}>Load {category} Data</button>
         <div style={{ display: "flex", gap: "12px" }}>
           <input type="number" value={count} min={1} max={100000} onChange={(e) => setCount(Number(e.target.value))} />
-          <button type="button" onClick={() => setToggle(!toggle)}>Fetch</button>
+          <button className="btn" type="button" onClick={() => setToggle(!toggle)}>Fetch</button>
         </div>
-        <button type="button" onClick={() => setPaginate(!paginate)}>{paginate ? "Don't" : ""} Paginate</button>
-        <button type="button" onClick={() => setRowModel(rowModel === "clientSide" ? "serverSide" : "clientSide")}>
+        <button className="btn" type="button" onClick={() => setPaginate(!paginate)}>{paginate ? "Don't" : ""} Paginate</button>
+        <button className="btn" type="button" onClick={() => setRowModel(rowModel === "clientSide" ? "serverSide" : "clientSide")}>
           Use {rowModel === "clientSide" ? "Server-side" : "Client-side"} Row Model
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -182,7 +182,7 @@ function App() {
             ))}
           </select>
         </div>
-        {loading && <div>Loading data…</div>}
+        {/* {loading && <div>Loading data…</div>} */}
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
@@ -193,6 +193,7 @@ function App() {
           style={{ width: "100%", height: "100%" }}
           pagination={paginate}
           rowModel={rowModel}
+          loading={loading}
           serverSideDataSource={rowModel === "serverSide" ? serverSideDataSource : undefined}
           serverSideAggregation={rowModel === "serverSide" ? serverSideAggregation : undefined}
         />
