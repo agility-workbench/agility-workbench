@@ -141,6 +141,7 @@ export default class Table {
   _dragHeaderContainer: HTMLDivElement | null;
   _dragSection: "left" | "center" | "right" | null;
   _dragDirection: "left" | "right" | null;
+  _dragAllowsDrop: boolean;
 
   _selectedColumnIDs: Set<string>;
 
@@ -481,6 +482,7 @@ export default class Table {
     this._dragHeaderContainer = null;
     this._dragSection = null;
     this._dragDirection = null;
+    this._dragAllowsDrop = false;
     this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
@@ -3087,8 +3089,8 @@ export default class Table {
     const col = findColumnById(this.columns, header.id);
     if (!col || isTrue(col.hidden)) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
-    if (!col.movable) return;
-    this._maybeStartColumnDrag(col, header, e);
+    const allowDrop = col.movable;
+    this._maybeStartColumnDrag(col, header, e, allowDrop);
   }
 
   _onColumnResizeMouseMove(e: MouseEvent) {
@@ -3110,18 +3112,22 @@ export default class Table {
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
   }
 
-  _maybeStartColumnDrag(col: InternalColumn, header: HTMLDivElement, e: MouseEvent) {
-    if (!this._isColumnReorderable(col)) return;
+  _maybeStartColumnDrag(col: InternalColumn, header: HTMLDivElement, e: MouseEvent, allowDrop = true) {
+    const reorderable = this._isColumnReorderable(col);
+    if (allowDrop && !reorderable) return;
     this._draggingColumn = col;
     this._dragHeaderEl = header;
     this._dragStartX = e.clientX;
     this._dragStartY = e.clientY;
     this._dragLastX = e.clientX;
+    this._dragAllowsDrop = allowDrop && reorderable;
     const meta = this._leafColumnLookup.get(col.id);
     const section = meta?.section ?? (col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center");
     this._dragSection = section;
     this._dragHeaderContainer = this._getSectionContainer(section);
-    this._dragTargetIndex = this._getReorderableColumns(section).findIndex(c => c.id === col.id);
+    this._dragTargetIndex = this._dragAllowsDrop
+      ? this._getReorderableColumns(section).findIndex(c => c.id === col.id)
+      : -1;
     this._isDraggingColumn = false;
     this._dragDirection = null;
   }
@@ -3129,7 +3135,7 @@ export default class Table {
   _beginColumnDrag() {
     if (!this._draggingColumn) return;
     this._isDraggingColumn = true;
-    this._setDragCursor(true);
+    this._setDragCursor(true, this._dragAllowsDrop);
 
     if (!this._dragGhostEl) {
       const ghost = document.createElement("div");
@@ -3137,7 +3143,12 @@ export default class Table {
       const ghostContent = document.createElement("div");
       ghostContent.className = "pte-column-drag-ghost-content";
       const ghostDragIcon = document.createElement("span");
-      ghostDragIcon.className = "pte-column-drag-ghost-icon icon-drag";
+      ghostDragIcon.className = "pte-column-drag-ghost-icon";
+      if (this._dragAllowsDrop) {
+        ghostDragIcon.classList.add("icon-drag");
+      } else {
+        ghostDragIcon.classList.add("icon-not-allowed");
+      }
       ghostContent.appendChild(ghostDragIcon);
       const ghostLabel = document.createElement("span");
       ghostLabel.className = "pte-column-drag-ghost-label";
@@ -3156,7 +3167,7 @@ export default class Table {
       this._dragGhostEl = ghost;
     }
 
-    if (!this._dragIndicatorEl && this._dragHeaderContainer) {
+    if (this._dragAllowsDrop && !this._dragIndicatorEl && this._dragHeaderContainer) {
       const indicator = document.createElement("div");
       indicator.className = "pte-column-drop-indicator";
       indicator.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
@@ -3264,6 +3275,12 @@ export default class Table {
     if (this._dragGhostEl) {
       this._dragGhostEl.style.left = `${e.clientX + 8}px`;
       this._dragGhostEl.style.top = `${e.clientY + 8}px`;
+    }
+
+    if (!this._dragAllowsDrop) {
+      this._dragTargetIndex = -1;
+      e.preventDefault();
+      return;
     }
 
     const sectionAtPointer = this._getSectionForPoint(e.clientX, e.clientY) || this._dragSection || "center";
@@ -3393,9 +3410,34 @@ export default class Table {
     ], { preserveWidths: true });
   }
 
+  _animateDragGhostReturn(ghost: HTMLDivElement, header: HTMLDivElement | null) {
+    if (!ghost.isConnected) return;
+    if (!header) {
+      ghost.remove();
+      return;
+    }
+    const headerRect = header.getBoundingClientRect();
+    const ghostRect = ghost.getBoundingClientRect();
+    const targetLeft = headerRect.left + (headerRect.width - ghostRect.width) / 2;
+    const targetTop = headerRect.top + (headerRect.height - ghostRect.height) / 2;
+    ghost.style.transition = "left 120ms ease, top 120ms ease";
+    ghost.style.transitionDelay = "0s";
+    ghost.style.left = `${targetLeft}px`;
+    ghost.style.top = `${targetTop}px`;
+    const cleanup = () => {
+      ghost.removeEventListener("transitionend", cleanup);
+      ghost.remove();
+    };
+    ghost.addEventListener("transitionend", cleanup);
+    setTimeout(() => {
+      if (ghost.isConnected) ghost.remove();
+    }, 180);
+  }
+
   _teardownColumnDrag() {
-    if (this._dragGhostEl) {
-      this._dragGhostEl.remove();
+    const ghost = this._dragGhostEl;
+    if (ghost) {
+      this._animateDragGhostReturn(ghost, this._dragHeaderEl);
       this._dragGhostEl = null;
     }
     if (this._dragIndicatorEl) {
@@ -3408,6 +3450,7 @@ export default class Table {
     this._dragSection = null;
     this._isDraggingColumn = false;
     this._dragTargetIndex = -1;
+    this._dragAllowsDrop = false;
     this._setDragCursor(false);
   }
 
@@ -3417,8 +3460,14 @@ export default class Table {
     const targetIndex = this._dragTargetIndex;
     const section = this._dragSection || "center";
     const performedDrag = this._isDraggingColumn;
+    const allowDrop = this._dragAllowsDrop;
     this._teardownColumnDrag();
     if (!performedDrag) return;
+    if (!allowDrop) {
+      this._suppressHeaderClick = true;
+      setTimeout(() => { this._suppressHeaderClick = false; }, 0);
+      return;
+    }
     this._applyColumnReorder(col, targetIndex, section);
     this._suppressHeaderClick = true;
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
@@ -3430,17 +3479,14 @@ export default class Table {
     return true;
   }
 
-  _setDragCursor(active: boolean) {
-    const cursor = active ? "move" : "";
+  _setDragCursor(active: boolean, allowDrop = true) {
+    const cursor = active ? (allowDrop ? "move" : "not-allowed") : "";
     document.body.style.setProperty("cursor", cursor, "important");
     if (this.headerWrapper) {
       this.headerWrapper.style.setProperty("cursor", cursor, "important");
     }
-    if (active) {
-      this.root.classList.add("pte-column-dragging");
-    } else {
-      this.root.classList.remove("pte-column-dragging");
-    }
+    this.root.classList.toggle("pte-column-dragging", active && allowDrop);
+    this.root.classList.toggle("pte-column-dragging-not-allowed", active && !allowDrop);
   }
 
   _onHeaderDoubleClick(e: MouseEvent) {

@@ -49,6 +49,7 @@
   --pte-column-drag-ghost-border-color: #e5e7eb;
   --pte-column-drag-ghost-text-color: #111827;
   --pte-menu-btn-hover-bg: #adb0b3;
+  --pte-not-allowed-icon-color: #ef4444;
 }
 
 .pte-theme-dark {
@@ -91,6 +92,7 @@
   --pte-column-drag-ghost-border-color: #334155;
   --pte-column-drag-ghost-text-color: #e2e8f0;
   --pte-menu-btn-hover-bg: #334155;
+  --pte-not-allowed-icon-color: #f87171;
 }
 
 *[class^="pte-"], *[class*=" pte-"] {
@@ -796,6 +798,11 @@
   cursor: move !important;
 }
 
+.pte-root.pte-column-dragging-not-allowed,
+.pte-root.pte-column-dragging-not-allowed * {
+  cursor: not-allowed !important;
+}
+
 .pte-hcell-menu-btn.active + .pte-hcell-menu-flyout {
   display: block;
 }
@@ -1095,6 +1102,11 @@
 .icon-minus-frame {
   mask-image: url(minus-frame.svg);
   background-color: var(--pte-icon-color);
+}
+
+.icon-not-allowed {
+  mask-image: url(not-allowed.svg);
+  background-color: var(--pte-not-allowed-icon-color);
 }
 
 .pte-select {
