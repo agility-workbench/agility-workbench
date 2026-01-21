@@ -3325,6 +3325,7 @@ export default class Table {
 
     const targetSection = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
     let targetArr = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedColumns : this._centerLeafColumns;
+    const appendAtEnd = targetIndex >= targetArr.length;
     const firstRight = targetArr[targetIndex];
 
     const ancestors = getColumnAncestors(this.columns, col.id);
@@ -3365,6 +3366,8 @@ export default class Table {
           moveTo--;
         }
       }
+    } else if (appendAtEnd) {
+      moveTo = targetSection.length;
     }
 
     const movedCol: InternalColumn = { ...topLevelDrag, pinned: section === "center" ? null : section };
