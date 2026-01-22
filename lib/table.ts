@@ -2836,9 +2836,7 @@ export default class Table {
     const total = this._viewIdx.length;
     const startIndex = this._startIndex;
 
-    const colIndexSet: Set<number> | null = colKeys
-      ? new Set(colKeys.map((k: string) => this.columns.findIndex(c => c.key === k)).filter((i: number) => i >= 0))
-      : null;
+    const colKeySet: Set<string> | null = colKeys ? new Set(colKeys as string[]) : null;
 
     for (let i = 0; i < this._rowPool.length; i++) {
       const viewIndex = startIndex + i;
@@ -2849,19 +2847,19 @@ export default class Table {
 
       const slot = this._rowPool[i];
 
-      if (!colIndexSet) {
-        for (let c = 0; c < this.columns.length; c++) {
-          const key = this.columns[c].key;
-          const v = row[key];
-          slot.cellEls[c].textContent = v == null ? "" : String(v);
+      const apply = (cells: HTMLDivElement[], cols: InternalColumn[]) => {
+        for (let c = 0; c < cols.length; c++) {
+          const col = cols[c];
+          if (colKeySet && !colKeySet.has(col.key)) continue;
+          const cell = cells[c];
+          if (!cell) continue;
+          this._renderCellValue(cell, row, col);
         }
-      } else {
-        for (const c of colIndexSet) {
-          const key = this.columns[c].key;
-          const v = row[key];
-          slot.cellEls[c].textContent = v == null ? "" : String(v);
-        }
-      }
+      };
+
+      apply(slot.leftCellEls, this._leftPinnedLeafColumns);
+      apply(slot.cellEls, this._centerLeafColumns);
+      apply(slot.rightCellEls, this._rightPinnedLeafColumns);
     }
   }
 
