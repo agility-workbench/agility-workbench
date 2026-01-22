@@ -2730,6 +2730,12 @@ export default class Table {
     });
   }
 
+  _renderCellValue(cell: HTMLDivElement, row: any, col: InternalColumn) {
+    const rawValue = getValue(row, col);
+    const displayValue = formatValue(rawValue, row, col);
+    cell.textContent = displayValue == null ? "" : String(displayValue);
+  }
+
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const total = this._viewIdx.length;
     const scrollTop = scrollSrc?.scrollTop || 0;
@@ -2803,27 +2809,18 @@ export default class Table {
         slot.leftRowEl?.setAttribute("row-id", String(rowIndex));
         for (let c = 0; c < this._leftPinnedLeafColumns.length; c++) {
           const col = this._leftPinnedLeafColumns[c];
-          const key = col.key;
-          const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
-          slot.leftCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+          this._renderCellValue(slot.leftCellEls[c], row, col);
         }
       }
       for (let c = 0; c < this._centerLeafColumns.length; c++) {
         const col = this._centerLeafColumns[c];
-        const key = col.key;
-        const v = row[key];
-        const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
-        slot.cellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+        this._renderCellValue(slot.cellEls[c], row, col);
       }
       if (this._rightPinnedLeafColumns.length > 0 && slot.rightCellEls) {
         slot.rightRowEl?.setAttribute("row-id", String(rowIndex));
         for (let c = 0; c < this._rightPinnedLeafColumns.length; c++) {
           const col = this._rightPinnedLeafColumns[c];
-          const key = col.key;
-          const v = row[key];
-          const displayValue = col.valueFormatter ? col.valueFormatter({ value: v, row, col }) : v;
-          slot.rightCellEls[c].textContent = displayValue == null ? "" : String(displayValue);
+          this._renderCellValue(slot.rightCellEls[c], row, col);
         }
       }
       this._applySelectionToSlot(slot, viewIndex);
@@ -4103,7 +4100,6 @@ export default class Table {
       if (!col.groupable) groupable = false;
       if (!col.hideable) hideable = false;
       const colType = col.type || ColumnType.STRING;
-      console.log(col.label, colType);
       if (!colTypes) {
         colTypes = colType;
       } else if (colTypes == "mixed") {
