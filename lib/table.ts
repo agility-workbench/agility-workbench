@@ -18,6 +18,7 @@ import {
   FilterDef,
   FilterType,
   formatValue,
+  getColumnDef,
   getValue,
   InternalColumn,
   isComputableType,
@@ -1133,6 +1134,39 @@ export default class Table {
     }
     this._markAggregatesDirty();
     this._renderAggregateRow();
+  }
+
+  _showSparklinesForSelectedColumns(type: "line" | "bar" | "column") {
+    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.id));
+    const numericLeaves = selectedLeaves.filter(col => isComputableType(col.type));
+    if (numericLeaves.length < 2) return;
+
+    const keyBase = "sparkline";
+    const existingKeys = new Set(this._leafColumns.map(col => col.key));
+    let key = keyBase;
+    let suffix = 1;
+    while (existingKeys.has(key)) {
+      key = `${keyBase}_${suffix}`;
+      suffix += 1;
+    }
+
+    const pinnedSet = new Set(numericLeaves.map(col => col.pinned ?? null));
+    const pinned = pinnedSet.size === 1 ? (Array.from(pinnedSet)[0] as "left" | "right" | null) : null;
+
+    const sparklineCol = getColumnDef({
+      key,
+      label: `Sparkline ${suffix > 1 ? suffix : ''}`,
+      sparklineType: type,
+      pinned: pinned ?? undefined,
+      sortable: false,
+      filterable: false,
+      groupable: false,
+      minWidth: 120,
+      valueGetter: (row: any) => numericLeaves.map(col => getValue(row, col)),
+    });
+
+    this.setColumns([...this.columns, sparklineCol], { preserveWidths: true });
+    this._clearColumnSelection();
   }
 
   _clearAggregates() {
@@ -4238,8 +4272,23 @@ export default class Table {
       items.push({
         id: 'sparkline',
         label: "Show Sparklines",
-        onClick: () => this._showSparklinesForSelectedColumns(),
-        left: "icon-sparkline",
+        subMenu: [
+          {
+            id: 'sparkline-line',
+            label: "Line Sparkline",
+            onClick: () => this._showSparklinesForSelectedColumns("line"),
+          },
+          {
+            id: 'sparkline-bar',
+            label: "Bar Sparkline",
+            onClick: () => this._showSparklinesForSelectedColumns("bar"),
+          },
+          {
+            id: 'sparkline-column',
+            label: "Column Sparkline",
+            onClick: () => this._showSparklinesForSelectedColumns("column"),
+          },
+        ],
       });
     }
 
