@@ -2189,7 +2189,7 @@ export default class Table {
     headerContainer.appendChild(headerMenu);
     const sort = this._sorts.find(s => s.key === col.id);
     if (sort) {
-      this._addSortIndicatorToHeader(col.id, sort.dir);
+      headerContent.classList.add("pte-sorted-" + sort.dir);
     }
     return header;
   }
@@ -2702,10 +2702,7 @@ export default class Table {
     const hcellContent = hcell.querySelector(".pte-hcell-content");
     if (!hcellContent) return;
     // remove existing
-    // const existing = hcell.querySelector(".pte-sort");
-    // if (existing) existing.remove();
     hcellContent.classList.remove("pte-sorted-asc", "pte-sorted-desc");
-
     // add new
     if (dir === '') return;
     hcellContent.classList.add("pte-sorted-" + dir);
