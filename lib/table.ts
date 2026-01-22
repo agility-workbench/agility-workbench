@@ -1606,7 +1606,7 @@ export default class Table {
     if (cacheHit && cacheHit.dataRef === this.data) return cacheHit.fn;
 
     if (typeof col?.compare === "function") {
-      const fn = (a: any, b: any) => col.compare(a?.[key], b?.[key], a, b);
+      const fn = (a: any, b: any) => col.compare(getValue(a, col), getValue(b, col), a, b);
       this._sortComparatorCache.set(key, { fn, dataRef: this.data });
       return fn;
     }
@@ -1614,12 +1614,13 @@ export default class Table {
     const numericPreferred = col?.type === "number";
     const stringPreferred = col?.type === "string";
     let numericLikely = false;
+    const getRowValue = (row: any) => getValue(row, col);
 
     if (!stringPreferred) {
       let seen = 0;
       let numericCount = 0;
       for (let i = 0; i < this.data.length && seen < 64; i++) {
-        const v = this.data[i]?.[key];
+        const v = getRowValue(this.data[i]);
         if (v == null) continue;
         seen++;
         const num = typeof v === "number" ? v : Number(v);
@@ -1631,14 +1632,14 @@ export default class Table {
     const collator = this._getCollator();
     const comparator = numericLikely
       ? (a: any, b: any) => {
-        const av = a?.[key], bv = b?.[key];
+        const av = getRowValue(a), bv = getRowValue(b);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
         return (Number(av) - Number(bv));
       }
       : (a: any, b: any) => {
-        const av = a?.[key], bv = b?.[key];
+        const av = getRowValue(a), bv = getRowValue(b);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
@@ -1683,7 +1684,7 @@ export default class Table {
       }
     }
 
-    best = Math.max(best, measureValue(formatValue(rows[rowIdx][col.key], rows[rowIdx], col)));
+    best = Math.max(best, measureValue(formatValue(getValue(rows[rowIdx], col), rows[rowIdx], col)));
     return Math.min(best, maxWidth);
   }
 
