@@ -2200,6 +2200,7 @@ export default class Table {
     this._rightPinnedLeafColumns = [];
     this._computeHeaderDepth();
     this._updateLeafColumnLookup();
+    this._sorts = this._sorts.filter(s => this._leafColumnLookup.has(s.key));
     const headerHeight = this.rowHeight * this._maxDepth;
     this.headerWrapper.style.height = `${headerHeight}px`;
     this.headerWrapper.style.minHeight = `${headerHeight}px`;
