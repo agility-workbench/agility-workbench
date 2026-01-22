@@ -1,5 +1,5 @@
 import { isNullOrUndefined, isTrue } from "./misc";
-import { FilterDef, InternalColumn } from "./types";
+import { FilterDef, InternalColumn, getValue } from "./types";
 
 export function findColumnById(columns: InternalColumn[], id: string): InternalColumn | undefined {
   for (const col of columns) {
@@ -69,20 +69,20 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
   const out = new Array(n);
   let outLen = 0;
 
-  const active = [];
+  const active: Array<{ col: InternalColumn; type: FilterDef["type"]; q?: string; v?: any }> = [];
   for (const f of filters) {
     const col = columns.find(c => c.id === f.key);
     if (!col) continue;
     // Pre-normalize filter values
     if (f.type === "contains" || f.type === "startsWith" || f.type === "endsWith") {
       active.push({
-        key: col.key,
+        col,
         type: f.type,
         q: String(f.v ?? "").toLowerCase(),
       });
     } else {
       active.push({
-        key: col.key,
+        col,
         type: f.type,
         v: f.v,
       });
@@ -101,7 +101,7 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
 
     for (let j = 0; j < active.length; j++) {
       const f = active[j];
-      const cell = r[f.key];
+      const cell = getValue(r, f.col);
 
       switch (f.type) {
         case "contains": {
