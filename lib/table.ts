@@ -1036,10 +1036,12 @@ export default class Table {
 
   _sortBySelectedColumns(dir: "asc" | "desc") {
     const selectedCols = Array.from(this._selectedColumnIDs);
+    const sortedCols = [];
     for (const colID of selectedCols) {
       const col = findColumnById(this.columns, colID);
       if (!col) continue;
       if (col.children && col.children.length > 0) continue; // skip parent columns
+      sortedCols.push(colID);
       const existing = this._sorts.find(s => s.key === colID);
       if (existing) {
         existing.dir = dir;
@@ -1056,7 +1058,7 @@ export default class Table {
       return;
     }
     this._recomputeView();
-    for (const colID of selectedCols) {
+    for (const colID of sortedCols) {
       this._addSortIndicatorToHeader(colID, dir);
     }
     this._updateWindow(true, undefined);
