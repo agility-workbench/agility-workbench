@@ -993,6 +993,18 @@
   color: var(--pte-text-color);
 }
 
+.pte-filter-input::-webkit-outer-spin-button,
+.pte-filter-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.pte-filter-input[type="number"] {
+  appearance: none;
+  -moz-appearance: textfield;
+}
+
 .pte-filter-actions {
   display: flex;
   justify-content: flex-end;

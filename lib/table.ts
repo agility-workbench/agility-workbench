@@ -4533,7 +4533,14 @@ export default class Table {
     valueInput.className = "pte-filter-input";
     valueInput.name = "filter-value";
     valueInput.placeholder = "Filter";
-    valueInput.type = colType === "number" ? "number" : "text";
+    valueInput.type = "text";
+    if (colType === ColumnType.NUMBER || colType === ColumnType.CURRENCY) {
+      valueInput.type="number";
+    } else if (colType === ColumnType.BOOLEAN) {
+      valueInput.type="checkbox";
+    } else if (colType === ColumnType.DATE) {
+      valueInput.type="date";
+    }
     // for date you might want type="date" or "datetime-local" depending on your data
 
     // hydrate existing filter
@@ -4641,7 +4648,7 @@ export default class Table {
   }
 
   _getFilterOpsForType(colType: ColumnType): { value: string; label: string }[] {
-    if (colType === "number" || colType === "date" || colType === "currency") {
+    if (isComputableType(colType)) {
       return [
         { value: "eq", label: "Equal" },
         { value: "neq", label: "Not equal" },
