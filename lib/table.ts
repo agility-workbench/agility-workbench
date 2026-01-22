@@ -3692,7 +3692,7 @@ export default class Table {
     const col = findColumnById(this.columns, colID);
     if (!col) return;
 
-    const leaves = collectLeaves(col);
+    const leaves = collectLeaves(col, true);
     const hasChildren = col.children && col.children.length > 0;
 
     if (hasChildren) {
@@ -3727,7 +3727,7 @@ export default class Table {
     }
 
     for (const col of colsWithSelectedChildren.values()) {
-      const leaves = collectLeaves(col);
+      const leaves = collectLeaves(col, true);
       if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length == leaves.length) {
         this._selectedColumnIDs.add(col.id);
       } else {
