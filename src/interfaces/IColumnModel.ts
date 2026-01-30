@@ -18,4 +18,6 @@ export interface IColumnModel {
   readonly maxHeaderDepth: number;
   readonly leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
+  resizeColumn(colId: string, widthPx: number): string[];
+  getAncestors(colId: string): Column[];
 }
