@@ -1,5 +1,7 @@
 import { ColDef, GridOptions } from "@grid";
 import { IGridAPI } from "@grid/interfaces/IApi";
+import { ColumnMenuContext } from "@grid/menu";
+import { MenuItem } from "./menu";
 
 export interface GridReactProps {
   /** Optional className/style for the host div */
@@ -22,4 +24,7 @@ export interface GridReactProps {
 
   /* If true, shows loading overlay */
   loading?: boolean;
+
+  /** Hook to customize column menu items */
+  getColumnMenuItems?: (p: { ctx: ColumnMenuContext; items: MenuItem[] }) => MenuItem[];
 }

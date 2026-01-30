@@ -3,7 +3,7 @@ import { IRowModel, RowModelType } from "../../interfaces/IRowModel";
 import { IRowNode } from "../../interfaces/IRowNode";
 import { FilterDef } from "../../interfaces/filter";
 import { SortDef } from "../../interfaces/sort";
-import { AggregateRequestItem, AggregateScope } from "../../interfaces/aggregate";
+import { AggregateModel, AggregateScope } from "../../interfaces/aggregate";
 
 export interface ServerSideRequest {
   filters: FilterDef[];
@@ -20,7 +20,7 @@ export interface ServerSideResult {
 export type ServerSideDataSource = (request: ServerSideRequest) => Promise<ServerSideResult> | ServerSideResult;
 
 export interface ServerSideAggregationRequest {
-  aggregates: AggregateRequestItem[];
+  aggregates: AggregateModel[];
   filters: FilterDef[];
   sorts: SortDef[];
   scope: AggregateScope;

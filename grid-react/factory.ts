@@ -11,7 +11,3 @@ export function createCore(options: GridOptions): IGridCore {
 export function createApi(core: IGridCore): IGridAPI {
   return new GridAPI(core);
 }
-
-export function createRenderer(core: IGridCore): GridRenderer {
-  return new GridRenderer(core as GridCore);
-}

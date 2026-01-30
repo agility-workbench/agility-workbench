@@ -3,8 +3,10 @@ import { GridReactProps } from "./interface";
 import "@grid/theme/table.css";
 import { GridRenderer } from "@grid";
 import { IGridCore } from "@grid/interfaces/iCore";
-import { createApi, createCore, createRenderer } from "./factory";
+import { createApi, createCore } from "./factory";
 import { IGridAPI } from "@grid/interfaces/IApi";
+import { ReactMenuAdapter } from "./MenuAdapter";
+import { initDomRenderer } from "@grid/renderer/dom";
 
 export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
   function GridReact(props, forwardedRef) {
@@ -19,7 +21,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     useImperativeHandle(forwardedRef, () => apiRefLocal.current!, []);
 
     // Expose API via props.apiRef (if provided)
-    useImperativeHandle(props.apiRef ?? null, () => apiRefLocal.current, []);
+    useImperativeHandle(props.apiRef ?? null, () => apiRefLocal.current!, []);
 
     // Decide whether we should recreate on options change.
     // By default, assume options are stable (recommended).
@@ -45,7 +47,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       }
 
       const core = createCore(props.options || {});
-      const renderer = createRenderer(core);
+      const renderer = initDomRenderer(core, new ReactMenuAdapter({getColumnMenuItems: props.getColumnMenuItems}));
       const api = createApi(core);
 
       coreRef.current = core;

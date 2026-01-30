@@ -6,6 +6,8 @@ export interface GridOptions {
   getRowId?: (row: object) => string;
   rowIdKey?: string;
   overscanRowCount?: number;
+  allowExportAsCSV?: boolean;
+  allowExportAsExcel?: boolean;
 }
 
 export interface InternalGridOptions extends GridOptions {
@@ -16,4 +18,6 @@ export interface InternalGridOptions extends GridOptions {
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;
+  allowExportAsCSV: boolean;
+  allowExportAsExcel: boolean;
 }

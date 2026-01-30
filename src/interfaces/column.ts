@@ -36,4 +36,5 @@ export interface ColDef {
   hideable?: boolean;
   columnGroupShow?: "open" | "closed";
   openByDefault?: boolean;
+  exportable?: boolean;
 }

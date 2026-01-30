@@ -5,6 +5,8 @@ import { IRowModel } from "./IRowModel";
 import { IColumnModel } from "./IColumnModel";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionRange } from "../interfaces/selection";
+import { AggregateModel, AggregateScope } from "./aggregate";
+import { GridOptions } from "./GridOptions";
 
 export type GridId = string;
 export type ColId = string;
@@ -58,6 +60,8 @@ export interface IGridCore {
   /** Stable grid id (useful if multiple grids exist). */
   readonly id: string;
 
+  getOptions(): Readonly<GridOptions>;
+
   /** Dispatch an action (from renderer and/or API). */
   dispatch(action: GridAction): void;
 
@@ -88,6 +92,8 @@ export interface IGridCore {
   /* ----- Models via facade getters (optional but handy) ----- */
   getSortModel(): SortDef[];
   getFilterModel(): FilterDef[];
+  getAggregateModel(): AggregateModel[];
+  getAggregateScope(): AggregateScope;
 
   setSortModel(sort: SortDef[]): void;
   setFilterModel(filter: FilterDef[]): void;

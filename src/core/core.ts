@@ -4,7 +4,7 @@ import { Column } from "../column/Column";
 import { ClientSideRowModel } from "./row_model/client_side";
 import { ServerSideDataSource } from "./row_model/server_side";
 import { SortDef } from "../interfaces/sort";
-import { AggregateScope } from "../interfaces/aggregate";
+import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/GridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iCore";
 import { IRowNode } from "../interfaces/IRowNode";
@@ -39,11 +39,12 @@ export class GridCore implements IGridCore {
   private _sorts: SortDef[] = [];
 
   private _aggregateScope: AggregateScope = "all";
+  private _aggregates: AggregateModel[] = [];
 
   private _internalEventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private _eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private _supressEventsUnless: string = "";
-  private _textMeasureParams: TextMeasureParams;
+  private _textMeasureParams!: TextMeasureParams;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
@@ -62,7 +63,13 @@ export class GridCore implements IGridCore {
       overscanRowCount: options.overscanRowCount ?? 10,
       minResizeWidth: 75,
       maxColumnWidth: 420,
+      allowExportAsCSV: options.allowExportAsCSV ?? true,
+      allowExportAsExcel: options.allowExportAsExcel ?? true,
     };
+  }
+
+  getOptions(): Readonly<GridOptions> {
+    return this.options;
   }
 
   getSnapshot(): GridSnapshot {
@@ -271,6 +278,14 @@ export class GridCore implements IGridCore {
 
   getFilterModel(): FilterDef[] {
     return this._filters.slice();
+  }
+
+  getAggregateModel(): AggregateModel[] {
+    return this._aggregates.slice();
+  }
+
+  getAggregateScope(): AggregateScope {
+    return this._aggregateScope;
   }
 
   // Event handling

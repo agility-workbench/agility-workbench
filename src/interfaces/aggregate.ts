@@ -20,7 +20,7 @@ export function allAggregateTypes(): AggregateType[] {
 
 export type AggregateScope = "none" | "page" | "all";
 
-export interface AggregateRequestItem {
+export interface AggregateModel {
   key: string;
   type: AggregateType;
 }

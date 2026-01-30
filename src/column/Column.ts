@@ -37,6 +37,7 @@ export class Column {
   openByDefault: boolean;
   groupExpandState: "open" | "closed";
   columnGroupVisible: boolean;
+  exportable: boolean = true;
   comparator: ComparatorFn | null = null;
   collator?: Intl.Collator | null
   showExpander: boolean = false;
@@ -73,6 +74,7 @@ export class Column {
     this.centralPosition = undefined;
     this.groupExpandState = isTrue(col.openByDefault) ? "open" : "closed";
     this.columnGroupVisible = isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
+    this.exportable = !isFalse(col.exportable);
     this.updateComputedWidth();
   }
 

@@ -1,4 +1,4 @@
-import { MutableRefObject } from "react";
+import { RefObject } from "react";
 import {
   adjustPinned,
   collectLeaves,
@@ -10,13 +10,13 @@ import {
   splitTreeAtColumn,
 } from "./helpers";
 import {
-  AggregateRequestItem,
+  AggregateModel,
   AggregateScope,
   AggregateType,
 } from "../interfaces/aggregate";
 import { ColumnType } from "../interfaces/column";
 import { FilterDef, FilterType } from "../interfaces/filter";
-import { MenuItem } from "../interfaces/menu";
+import { MenuItem } from "../interfaces/Menu";
 import { RowPoolDef } from "../types";
 import { SortDef } from "../interfaces/sort";
 import { isFalse, isNullOrUndefined, isTrue, validatePageSizes } from "../misc";
@@ -29,12 +29,14 @@ import { IRowNode } from "../interfaces/IRowNode";
 import { div } from "./element";
 import { GridCore } from "../core/core";
 import { GridEventColumnsChangedParams, GridEventMap, GridEventRowsChangedParams, GridEventViewportChangedParams } from "@grid/events/events";
+import { MenuCoordinator } from "@grid/menu/coordinator";
+import { MenuRenderer } from "./MenuRenderer";
 
 const MIN_RESIZE_WIDTH = 75;
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
 export class GridRenderer {
-  core: GridCore;
+  _menuRenderer: MenuRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -160,9 +162,7 @@ export class GridRenderer {
   _syncingScrollRaf: number | null;
   _measureCache: Map<string, Map<string, number>>;
 
-  constructor(core: GridCore) {
-    this.core = core;
-
+  constructor(private core: GridCore, private menuCoordinator: MenuCoordinator) {
     this._measureCtx = null;
     this._measureCache = new Map();
     this._columnWidths = new Map();
@@ -170,6 +170,8 @@ export class GridRenderer {
     // DOM skeleton
     this.root = div("pte-root");
     this.root.style.position = "relative";
+
+    this._menuRenderer = new MenuRenderer(this.root);
 
     this.headerWrapper = document.createElement("div");
     this.headerWrapper.className = "pte-header-wrapper";
@@ -504,7 +506,7 @@ export class GridRenderer {
     this.setup();
   }
 
-  attach(container: MutableRefObject<HTMLElement | null>) {
+  attach(container: RefObject<HTMLElement | null>) {
     if (!container.current) {
       throw new Error("Table container ref is not attached");
     }
@@ -1181,13 +1183,13 @@ export class GridRenderer {
         if (!col) return null;
         return { key: col.key, type };
       })
-      .filter(Boolean) as Array<AggregateRequestItem>;
+      .filter(Boolean) as Array<AggregateModel>;
 
     if (aggregates.length === 0) return;
 
     if (aggregates.length < this._leafColumns.length) {
       const missingLeaves = this._leafColumns.filter(l => aggregates.findIndex(f => f.key == l.key) < 0);
-      aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateRequestItem>);
+      aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateModel>);
     }
 
     const filters = this._filters
@@ -2601,7 +2603,7 @@ export class GridRenderer {
 
   _onCellMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
-    this._clearColumnSelection();
+    // this._clearColumnSelection();
     const location = this._getCellLocation(e.target);
     if (!location) return;
     e.preventDefault();
@@ -2630,12 +2632,7 @@ export class GridRenderer {
       if (!col || col.hidden) return;
       if (!col.resizable) return;
 
-      const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? MIN_RESIZE_WIDTH);
-      let maxWidth = col.maxWidth ?? Number.POSITIVE_INFINITY;
-      if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
       const headerRect = header.getBoundingClientRect();
-
-      this._isResizingColumn = true;
       this._resizingColumn = col.instanceID;
       this._resizeStartX = e.clientX;
       this._resizeStartWidth = headerRect.width;
@@ -2648,7 +2645,7 @@ export class GridRenderer {
 
     const header = (e.target as HTMLElement | null)?.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
-    const col = findColumnById(this.columns, header.id);
+    const col = this.core.getColumnModel().getById(header.id);
     if (!col || col.hidden) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
     const allowDrop = col.movable;
@@ -3509,7 +3506,28 @@ export class GridRenderer {
     }
   }
 
-  _openColMenu(colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
+  _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
+    const session = this.menuCoordinator.openColumnMenu({
+      trigger: trigger,
+      targetColId: colID,
+      colIds: this._selectedColumnIDs.size > 1 ? Array.from(this._selectedColumnIDs) : [colID],
+      anchorEl: anchorEl,
+      clientX: left,
+      clientY: top,
+    });
+    this._menuRenderer.open({
+      anchorEl: anchorEl,
+      clientX: left || 100,
+      clientY: top || 100,
+      items: session.items,
+      level: 0,
+      parentId: null,
+      parentEl: null,
+      position: "bottom-left",
+      onItemClick: session.onItemClick,
+      onClose: session.onClose,
+    });
+    return;
     this._menuColKey = colID;
 
     const items = this._getMenuItemsForColumn(colID);
@@ -4159,10 +4177,10 @@ export class GridRenderer {
     const btn = e.target?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
-      this._clearColumnSelection();
+      // this._clearColumnSelection();
       // Based on the btn clicked, render filter/menu UI
       if (!isFilter) {
-        this._openColMenu(header.id, { anchorEl: btn });
+        this._openColMenu("columnMenuButton", header.id, { anchorEl: btn });
       } else {
         this._openColFilter(header.id, btn);
       }
