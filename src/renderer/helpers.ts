@@ -1,9 +1,11 @@
-import { isNullOrUndefined, isTrue } from "./misc";
-import { FilterDef, InternalColumn, getValue } from "./types";
+import { Column } from "../column/Column";
+import { isNullOrUndefined, isTrue } from "../misc";
+import { IRowNode } from "../interfaces/IRowNode";
+import { FilterDef } from "../interfaces/filter";
 
-export function findColumnById(columns: InternalColumn[], id: string): InternalColumn | undefined {
+export function findColumnById(columns: Column[], id: string): Column | undefined {
   for (const col of columns) {
-    if (col.id === id) return col;
+    if (col.instanceID === id) return col;
     if (col.children) {
       const found = findColumnById(col.children, id);
       if (found) return found;
@@ -12,14 +14,14 @@ export function findColumnById(columns: InternalColumn[], id: string): InternalC
   return undefined;
 }
 
-export function getVisibleChildren(column: InternalColumn): InternalColumn[] {
+export function getVisibleChildren(column: Column): Column[] {
   if (!column.children) return [];
   return column.children.filter(c => c.columnGroupVisible);
 }
 
-export function collectLeaves(column: InternalColumn, visibleOnly: boolean = false): InternalColumn[] {
-  let leaves: InternalColumn[] = [];
-  function walker(column: InternalColumn) {
+export function collectLeaves(column: Column, visibleOnly: boolean = false): Column[] {
+  let leaves: Column[] = [];
+  function walker(column: Column) {
     if (isTrue(column.hidden)) return;
     if (visibleOnly && !column.columnGroupVisible) return;
     if (!column.children || column.children.length === 0) {
@@ -34,12 +36,12 @@ export function collectLeaves(column: InternalColumn, visibleOnly: boolean = fal
   return leaves;
 }
 
-export function getColumnAncestors(columns: InternalColumn[], id: string): InternalColumn[] {
-  const path: InternalColumn[] = [];
+export function getColumnAncestors(columns: Column[], id: string): Column[] {
+  const path: Column[] = [];
 
-  function helper(cols: InternalColumn[], targetId: string): boolean {
+  function helper(cols: Column[], targetId: string): boolean {
     for (const col of cols) {
-      if (col.id === targetId) {
+      if (col.instanceID === targetId) {
         path.push(col);
         return true;
       }
@@ -64,25 +66,23 @@ export function getColumnAncestors(columns: InternalColumn[], id: string): Inter
  *   age:  { type: "gte", value: 30 }
  * }
  */
-export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: InternalColumn[]): number[] {
+export function computeFilteredIdx(rows: IRowNode[], filters: FilterDef[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;
 
-  const active: Array<{ col: InternalColumn; type: FilterDef["type"]; q?: string; v?: any }> = [];
+  const active: Array<{ col: Column; type: FilterDef["type"]; q?: string; v?: any }> = [];
   for (const f of filters) {
-    const col = columns.find(c => c.id === f.key);
-    if (!col) continue;
     // Pre-normalize filter values
     if (f.type === "contains" || f.type === "startsWith" || f.type === "endsWith") {
       active.push({
-        col,
+        col: f.col,
         type: f.type,
         q: String(f.v ?? "").toLowerCase(),
       });
     } else {
       active.push({
-        col,
+        col: f.col,
         type: f.type,
         v: f.v,
       });
@@ -96,12 +96,12 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
   }
 
   for (let i = 0; i < n; i++) {
-    const r = rows[i];
+    const r = rows[i].data;
     let ok = true;
 
     for (let j = 0; j < active.length; j++) {
       const f = active[j];
-      const cell = getValue(r, f.col);
+      const cell = f.col.getValue(r);
 
       switch (f.type) {
         case "contains": {
@@ -151,13 +151,13 @@ export function computeFilteredIdx(rows: any[], filters: FilterDef[], columns: I
   return out;
 }
 
-export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalColumn): InternalColumn {
+export function newColumnHierarchy(ancestors: Column[], col: Column): Column {
   if (ancestors.length === 0) return col;
-  const newHierarchy: InternalColumn[] = [];
-  let parent: InternalColumn | null = null;
+  const newHierarchy: Column[] = [];
+  let parent: Column | null = null;
   let idx = -1;
   for (const ancestor of ancestors) {
-    if (ancestor.id === col.id) {
+    if (ancestor.instanceID === col.instanceID) {
       if (parent) {
         if (!parent.children) {
           parent.children = [];
@@ -167,7 +167,7 @@ export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalCol
       break;
     }
     idx++;
-    const newAncestor: InternalColumn = { ...ancestor, id: crypto.randomUUID(), children: [] };
+    const newAncestor: Column = ancestor.duplicate();
     if (newHierarchy.length === 0) {
       newHierarchy.push(newAncestor);
     } else {
@@ -175,27 +175,27 @@ export function newColumnHierarchy(ancestors: InternalColumn[], col: InternalCol
     }
     parent = newAncestor;
   }
-  ancestors[idx].children = ancestors[idx].children?.filter(c => c.id !== col.id);
+  ancestors[idx].children = ancestors[idx].children?.filter(c => c.instanceID !== col.instanceID);
   return newHierarchy[0];
 }
 
-export function splitTreeAtColumn(column: InternalColumn, firstRight: InternalColumn): [InternalColumn, InternalColumn | null] {
-  const ancestors = getColumnAncestors([column], firstRight.id);
-  let right: InternalColumn | null = null;
-  let rightChild: InternalColumn = firstRight;
-  let leftChild: InternalColumn | null = null;
+export function splitTreeAtColumn(column: Column, firstRight: Column): [Column, Column | null] {
+  const ancestors = getColumnAncestors([column], firstRight.instanceID);
+  let right: Column | null = null;
+  let rightChild: Column = firstRight;
+  let leftChild: Column | null = null;
   let mustSplit = false;
   for (const level of ancestors.reverse().slice(1)) {
     const children = level.children;
     if (!children || children.length === 0) continue;
     const visibleChildren = children.filter(c => c.columnGroupVisible);
     if (visibleChildren.length === 0) continue;
-    let visibleIdx = visibleChildren.findIndex(c => c.id == rightChild.id);
-    if (visibleIdx < 0 && leftChild) visibleIdx = visibleChildren.findIndex(c => c.id == leftChild!.id);
+    let visibleIdx = visibleChildren.findIndex(c => c.instanceID == rightChild.instanceID);
+    if (visibleIdx < 0 && leftChild) visibleIdx = visibleChildren.findIndex(c => c.instanceID == leftChild!.instanceID);
     if (visibleIdx > 0 || mustSplit) {
-      const newLevel = { ...level, id: crypto.randomUUID(), children: [...children] };
-      let idx = children.findIndex(c => c.id == rightChild.id);
-      if (idx < 0 && leftChild) idx = children.findIndex(c => c.id == leftChild!.id);
+      const newLevel = level.duplicate();
+      let idx = children.findIndex(c => c.instanceID == rightChild.instanceID);
+      if (idx < 0 && leftChild) idx = children.findIndex(c => c.instanceID == leftChild!.instanceID);
       level.children = children.slice(0, idx || 1);
       if (leftChild && level.children) {
         level.children[idx] = leftChild;
@@ -216,9 +216,9 @@ export function splitTreeAtColumn(column: InternalColumn, firstRight: InternalCo
   return [column, right];
 }
 
-export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
+export function mergeColumns(columns: Column[]): Column[] {
   if (columns.length <= 1) return columns;
-  const finalColumns: InternalColumn[] = [];
+  const finalColumns: Column[] = [];
   const skipIdx: Set<number> = new Set();
   const addedIDs: Set<string> = new Set();
   for (let i = 0; i < columns.length - 1; i++) {
@@ -237,9 +237,9 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
     }
     if (nextIdx == i + 1 && skipIdx.has(nextIdx)) {
       // No more columns to process
-      if (!addedIDs.has(curr.id)) {
+      if (!addedIDs.has(curr.instanceID)) {
         finalColumns.push(curr);
-        addedIDs.add(curr.id);
+        addedIDs.add(curr.instanceID);
       }
       break;
     }
@@ -248,34 +248,34 @@ export function mergeColumns(columns: InternalColumn[]): InternalColumn[] {
       const mergedChildren = mergeColumns(next.children);
       next.children = mergedChildren;
     }
-    if (curr.originalID !== next.originalID) {
-      if (addedIDs.has(curr.id)) {
-        if (nextIdx == columns.length - 1 && !addedIDs.has(next.id)) {
+    if (curr.originalInstanceID !== next.originalInstanceID) {
+      if (addedIDs.has(curr.instanceID)) {
+        if (nextIdx == columns.length - 1 && !addedIDs.has(next.instanceID)) {
           finalColumns.push(next);
-          addedIDs.add(next.id);
+          addedIDs.add(next.instanceID);
         }
         continue;
       }
       finalColumns.push(curr);
-      addedIDs.add(curr.id);
+      addedIDs.add(curr.instanceID);
       if (i == columns.length - 2) finalColumns.push(next);
       continue;
     }
     mergeTrees(curr, next);
     skipIdx.add(nextIdx);
-    if (addedIDs.has(curr.id)) continue;
+    if (addedIDs.has(curr.instanceID)) continue;
     finalColumns.push(curr);
-    addedIDs.add(curr.id);
+    addedIDs.add(curr.instanceID);
     i--;
   }
   return finalColumns;
 }
 
-export function mergeTrees(left: InternalColumn, right: InternalColumn) {
+export function mergeTrees(left: Column, right: Column) {
   const currChildLen = left.children?.length || 0;
   const nextChildLen = right.children?.length || 0;
   if (currChildLen == 0 || nextChildLen == 0) return;
-  if (left.children![currChildLen - 1].originalID != right.children![0].originalID) {
+  if (left.children![currChildLen - 1].originalInstanceID != right.children![0].originalInstanceID) {
     left.children?.push(...right.children!);
     return;
   }
@@ -285,11 +285,17 @@ export function mergeTrees(left: InternalColumn, right: InternalColumn) {
   }
 }
 
-export function adjustPinned(cols: InternalColumn[], pinned: "left" | "right" | null) {
+export function adjustPinned(cols: Column[], pinned: "left" | "right" | null) {
   for (const c of cols) {
     c.pinned = pinned;
     if (c.children && c.children.length > 0) {
       adjustPinned(c.children, pinned);
     }
+  }
+}
+
+export function empty(component: HTMLElement) {
+  while (component.firstChild) {
+    component.removeChild(component.firstChild);
   }
 }

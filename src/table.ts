@@ -2,7 +2,6 @@ import { MutableRefObject } from "react";
 import {
   adjustPinned,
   collectLeaves,
-  computeFilteredIdx,
   findColumnById,
   getVisibleChildren,
   getColumnAncestors,
@@ -17,27 +16,25 @@ import {
   ColumnType,
   FilterDef,
   FilterType,
-  formatValue,
-  getColumnDef,
-  getValue,
-  InternalColumn,
   isComputableType,
   MenuItem,
-  RowModelType,
   RowPoolDef,
-  ServerSideAggregation,
-  ServerSideDataSource,
-  ServerSideRequest,
   SortDef,
 } from "./types";
 import { isNullOrUndefined, isTrue, validatePageSizes } from "./misc";
-import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export";
+import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export/export";
+import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer/renderer";
+import { IRowModel } from "./interfaces/IRowModel";
+import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "./row_model/server_side";
+import { Column } from "./column/Column";
+import { GridAPI } from "./api";
+import { RowNode } from "./row_model/node";
 
 const MIN_RESIZE_WIDTH = 75;
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
 interface TableProps {
-  columns?: InternalColumn[];
+  columns?: Column[];
   rowHeight?: number;
   overscan?: number;
   data?: any[];
@@ -45,9 +42,7 @@ interface TableProps {
   pagination: boolean;
   paginationPageSize: number;
   paginationPageSizes: number[] | boolean;
-  rowModel?: RowModelType;
-  serverSideDataSource?: ServerSideDataSource;
-  serverSideAggregation?: ServerSideAggregation;
+  rowModel: IRowModel;
   exportAsCSV?: boolean;
   exportAsExcel?: boolean;
   loading?: boolean;
@@ -65,26 +60,22 @@ interface ExportOptions {
 export default class Table {
   container: MutableRefObject<HTMLElement | null>;
   _containerEl: HTMLElement;
-  columns: InternalColumn[];
+  columns: Column[];
   rowHeight: number;
   height?: number;
   overscan: number;
-  data: any[];
-  rowModel: RowModelType;
+  rowModel: IRowModel;
   _filters: FilterDef[];
   _sorts: SortDef[];
-  _serverSideDataSource?: ServerSideDataSource;
-  _serverSideAggregation?: ServerSideAggregation;
-  _serverSideTotalRows: number;
   _serverRequestSeq: number;
   _serverLoading: boolean;
   _externalLoading: boolean;
   _loadingOverlay: HTMLDivElement;
 
+  private api = new GridAPI();
+
   _maxDepth: number;
 
-  _filteredIdx: number[];
-  _sortedIdx: number[];
   _measureCtx: CanvasRenderingContext2D | null;
   _columnWidths: Map<string, {
     width: number;
@@ -92,7 +83,6 @@ export default class Table {
     maxWidth?: number;
     fixed?: boolean;
   }>;
-  _collator: Intl.Collator | null;
   _sortComparatorCache: Map<string, { fn: (a: any, b: any) => number; dataRef: any[] }>;
 
   _aggregates: Map<string, AggregateType>;
@@ -115,7 +105,7 @@ export default class Table {
   _paginationPageSize: number;
   _paginationPageSizes: number[];
 
-  _leafColumns: InternalColumn[];
+  _leafColumns: Column[];
   _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }>;
   _leftLeafOrder: number[];
   _centerLeafOrder: number[];
@@ -126,14 +116,14 @@ export default class Table {
   _isSelecting: boolean;
 
   _isResizingColumn: boolean;
-  _resizingColumn: InternalColumn | null;
+  _resizingColumn: Column | null;
   _resizeStartX: number;
   _resizeStartWidth: number;
   _resizeMinWidth: number;
   _resizeMaxWidth: number;
   _suppressHeaderClick: boolean;
   _isDraggingColumn: boolean;
-  _draggingColumn: InternalColumn | null;
+  _draggingColumn: Column | null;
   _dragStartX: number;
   _dragStartY: number;
   _dragLastX: number;
@@ -200,12 +190,12 @@ export default class Table {
   aggregateScopeSelect!: HTMLSelectElement;
   aggregateClearBtn!: HTMLButtonElement;
 
-  _leftPinnedColumns: InternalColumn[];
-  _leftPinnedLeafColumns: InternalColumn[];
-  _rightPinnedColumns: InternalColumn[];
-  _rightPinnedLeafColumns: InternalColumn[];
-  _centerColumns: InternalColumn[];
-  _centerLeafColumns: InternalColumn[];
+  _leftPinnedColumns: Column[];
+  _leftPinnedLeafColumns: Column[];
+  _rightPinnedColumns: Column[];
+  _rightPinnedLeafColumns: Column[];
+  _centerColumns: Column[];
+  _centerLeafColumns: Column[];
 
   _menuOverlay: HTMLDivElement;
   _submenuOverlay: HTMLDivElement;
@@ -239,9 +229,7 @@ export default class Table {
     pagination = false,
     paginationPageSize = 100,
     paginationPageSizes = [20, 50, 100],
-    rowModel = "clientSide",
-    serverSideDataSource,
-    serverSideAggregation,
+    rowModel,
     exportAsCSV = true,
     exportAsExcel = true,
     loading = false,
@@ -257,22 +245,13 @@ export default class Table {
     this.height = height;
     this.overscan = overscan;
 
-    this.rowModel = rowModel || "clientSide";
-    this._serverSideDataSource = serverSideDataSource;
-    this._serverSideAggregation = serverSideAggregation;
+    this.rowModel = rowModel;
+    this.rowModel.setRows(data || []);
     this._serverRequestSeq = 0;
     this._serverLoading = false;
     this._externalLoading = isTrue(loading);
 
-    this.data = data ?? [];
-    this._serverSideTotalRows = this.data.length;
-    if (this.data && this.data.length > 0) {
-      this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
-      this._sortedIdx = this._filteredIdx;
-    } else {
-      this._filteredIdx = [];
-      this._sortedIdx = [];
-    }
+    this.api.applyPagination(pagination, paginationPageSize);
 
     // State
     this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
@@ -287,7 +266,6 @@ export default class Table {
     this._measureCtx = null;
     this._measureCache = new Map();
     this._columnWidths = new Map();
-    this._collator = null;
     this._sortComparatorCache = new Map();
     this._aggregates = new Map();
     this._aggregateScope = "none";
@@ -310,7 +288,7 @@ export default class Table {
     this._paginationPageSize = paginationPageSize || 100;
     this._paginationPageSizes = validatePageSizes(paginationPageSizes, [20, 50, 100]);
 
-    this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
+    this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.rowModel.getRowCount() / this._paginationPageSize)) : 1;
     this._pageIdx = 0;
 
     // DOM skeleton
@@ -457,7 +435,7 @@ export default class Table {
     this.paginator.className = "pte-pagination-wrapper";
     this.root.appendChild(this.paginator);
     if (pagination) this.paginator.classList.add('visible');
-    this._buildPaginationControls();
+    this.buildPaginationControls();
 
     this._leafColumns = [];
     this._leafColumnLookup = new Map();
@@ -652,9 +630,20 @@ export default class Table {
     this._recomputeView();
     this._updateColumnWidths();
     this._updateWindow(true, undefined);
-    if (this.rowModel === "serverSide" && this._serverSideDataSource) {
+    if (this.rowModel.getType() === "serverSide" && this.rowModel.isValid()) {
       this._fetchServerSideRows("init");
     }
+    this.setup();
+  }
+
+  get gridAPI() {
+    return this.api;
+  }
+
+  private setup() {
+    this.api.onColumnsChanged(() => this.onColumnsChanged());
+    this.api.onDataChanged(() => this.onDataChanged());
+    this.api.onRowModelChanged(() => this.onDataChanged());
   }
 
   _getBodyHeight() {
@@ -705,7 +694,7 @@ export default class Table {
     this._updateColumnWidths();
     this._maybeUpdatePoolSize();
     this._updateWindow(true, undefined);
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._fetchServerSideRows("togglePagination");
     }
   }
@@ -717,14 +706,12 @@ export default class Table {
     this._updateLoadingOverlay();
   }
 
-  setRowModel(rowModel: RowModelType) {
-    const next = rowModel || "clientSide";
-    if (this.rowModel === next) return;
+  setRowModel(rowModel: IRowModel) {
+    if (this.rowModel.getType() === rowModel.getType()) return;
     this._aggregateFetchInFlight = false;
     this._aggregateRequestSeq++;
     this._aggregateRemoteValues = null;
-    this.rowModel = next;
-    this._serverSideTotalRows = this.data.length;
+    this.rowModel = rowModel;
     this._filterDirty = true;
     this._sortDirty = true;
     this._pageIdx = 0;
@@ -732,7 +719,7 @@ export default class Table {
     this._recomputeView();
     this._updateColumnWidths();
     this._updateWindow(true, undefined);
-    if (next === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._fetchServerSideRows("rowModelChanged");
     } else {
       this._setServerLoading(false);
@@ -740,41 +727,53 @@ export default class Table {
   }
 
   setServerSideDataSource(dataSource?: ServerSideDataSource) {
-    if (this._serverSideDataSource === dataSource) return;
-    this._serverSideDataSource = dataSource;
-    if (this.rowModel === "serverSide" && dataSource) {
-      this._fetchServerSideRows("dataSourceChanged");
-    }
+    if (this.rowModel.getType() !== "serverSide") return;
+    const rowModel = this.rowModel as ServerSideRowModel;
+    if (rowModel.serverDataSource === dataSource) return;
+    rowModel.serverDataSource = dataSource;
+    this._fetchServerSideRows("dataSourceChanged");
     this._markAggregatesDirty();
     this._renderAggregateRow();
   }
 
-  setServerSideAggregation(aggregation?: ServerSideAggregation) {
-    if (this._serverSideAggregation === aggregation) return;
-    this._serverSideAggregation = aggregation;
+  setServerSideAggregation(aggregation?: ServerSideAggregationSource) {
+    if (this.rowModel.getType() !== "serverSide") return;
+    const rowModel = this.rowModel as ServerSideRowModel;
+    if (rowModel.serverAggregationSource === aggregation) return;
+    rowModel.serverAggregationSource = aggregation;
     this._markAggregatesDirty();
     this._renderAggregateRow();
   }
 
   refreshServerSideData() {
-    if (this.rowModel !== "serverSide") return;
+    if (this.rowModel.getType() !== "serverSide") return;
     this._fetchServerSideRows("manualRefresh");
   }
 
+  onDataChanged() {
+    this._columnWidths.clear();
+    this._clearSelection();
+    this._filterDirty = true;
+    this._sortDirty = true;
+    this._pageIdx = 0;
+    this._resetScrollPosition();
+    this._recomputeView();
+    this._updateColumnWidths();
+    this._updateWindow(true, undefined);
+  }
+
   setData(data: any[], options: { resetPage?: boolean; totalRows?: number } = {}) {
-    this.data = data ?? [];
-    this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
-    this._sortedIdx = this._filteredIdx.slice();
+    this.rowModel.setRows(data || []);
     this._sortComparatorCache.clear();
     this._columnWidths.clear();
     this._clearSelection();
 
     const resetPage = options?.resetPage ?? true;
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._serverSideTotalRows = options?.totalRows ?? this.data.length;
       this._totalPages = this._pagination ? Math.max(1, Math.ceil(this._serverSideTotalRows / this._paginationPageSize)) : 1;
     } else {
-      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.data.length / this._paginationPageSize)) : 1;
+      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.rowModel.getRowCount() / this._paginationPageSize)) : 1;
     }
 
     if (resetPage) {
@@ -790,25 +789,51 @@ export default class Table {
     this._updateWindow(true, undefined);
   }
 
-  setColumns(columns: InternalColumn[], options: { preserveWidths?: boolean } = {}) {
+  onColumnsChanged() {
+    this._columnWidths.clear();
+    this._clearSelection();
+    this._clearColumnSelection();
+    // Structural change -> rebuild header + pool
+    this._buildHeaderDOM();
+    this._rebuildRowPool();
+    this._recomputeView();
+    this._updateColumnWidths();
+    this._updateWindow(true, undefined);
+  }
+
+  onColumnsMoved() {
+    const prevWidths = new Map(this._columnWidths);
+    this._columnWidths.clear();
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        const info = prevWidths.get(col.instanceID);
+        if (info) this._columnWidths.set(col.instanceID, info);
+        if (col.children.length > 0) walk(col.children);
+      }
+    };
+    walk(this.columns);
+    this._clearSelection();
+    this._clearColumnSelection();
+    // Structural change -> rebuild header
+    this._buildHeaderDOM();
+    this._rebuildRowPool();
+    this._updateColumnWidths();
+    this._updateWindow(true, undefined);
+  }
+
+  setColumns(columns: Column[], options: { preserveWidths?: boolean } = {}) {
     const prevWidths = options.preserveWidths ? new Map(this._columnWidths) : null;
-    this.columns = columns ?? [];
-    this._maxDepth = 0;
-    this._leftPinnedColumns = columns.filter(c => c.pinned === "left");
-    this._centerColumns = columns.filter(c => c.pinned !== "left" && c.pinned !== "right");
-    this._rightPinnedColumns = columns.filter(c => c.pinned === "right");
     this._columnWidths.clear();
     if (prevWidths) {
-      const walk = (cols: InternalColumn[]) => {
+      const walk = (cols: Column[]) => {
         for (const col of cols) {
-          const info = prevWidths.get(col.id);
-          if (info) this._columnWidths.set(col.id, info);
-          if (col.children && col.children.length > 0) walk(col.children);
+          const info = prevWidths.get(col.instanceID);
+          if (info) this._columnWidths.set(col.instanceID, info);
+          if (col.children.length > 0) walk(col.children);
         }
       };
       walk(this.columns);
     }
-    this._sortComparatorCache.clear();
     this._clearSelection();
     this._clearColumnSelection();
     // Structural change -> rebuild header + pool
@@ -834,7 +859,7 @@ export default class Table {
       this._sorts.push(sort);
     }
     this._sortDirty = true;
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._addSortIndicatorToHeader(sort.key, removed ? '' : sort.dir);
       this._fetchServerSideRows("setSort");
       return;
@@ -939,8 +964,8 @@ export default class Table {
   }
 
   _getRowsForExport(includeAllRows: boolean): any[] {
-    if (includeAllRows && this.rowModel === "clientSide") {
-      const idx = (this._sortedIdx && this._sortedIdx.length > 0) ? this._sortedIdx : this._viewIdx;
+    if (includeAllRows && this.rowModel.getType() === "clientSide") {
+      const idx = (this.rowModel.sortedIdx && this.rowModel.sortedIdx.length > 0) ? this.rowModel.sortedIdx : this._viewIdx;
       return idx.map(i => this.data[i]);
     }
     return this._viewIdx.map(i => this.data[i]);
@@ -963,69 +988,13 @@ export default class Table {
   }
 
   // ---------------- Internals: view ----------------
-  _toggleSort(key: string) {
-    let curr = this._sorts.find(s => s.key === key);
-    if (curr) {
-      // cycle asc -> desc -> none
-      if (curr.dir === "asc") {
-        curr.dir = "desc";
-      } else {
-        // remove sort
-        curr = undefined;
-        this._sorts = this._sorts.filter(s => s.key !== key);
-      }
-    } else {
-      // add asc sort
-      curr = { key, dir: "asc" }
-      this._sorts.push(curr);
-    }
-    this._sortDirty = true;
-    if (this.rowModel === "serverSide") {
-      this._addSortIndicatorToHeader(key, curr?.dir || '');
-      this._fetchServerSideRows("sortChanged");
-      return;
-    }
-    this._recomputeView();
-    this._addSortIndicatorToHeader(key, curr?.dir || '');
-    this._updateWindow(true, undefined);
-  }
-
-  _toggleBatchSort(col: InternalColumn) {
-    let curr = this._sorts.find(s => s.key === col.id);
-    const dir = curr ? (curr.dir === "asc" ? "desc" : null) : "asc";
-
-    const addSort = (key: string, dir: "asc" | "desc" | null) => {
-      const curr = this._sorts.find(s => s.key === key);
-      if (curr) {
-        if (dir) {
-          curr.dir = dir;
-        } else {
-          // remove sort
-          this._sorts = this._sorts.filter(s => s.key !== key);
-        }
-      } else if (dir) {
-        this._sorts.push({ key, dir });
-      }
-    };
-
-    const colIDs: string[] = [];
-
-    const traverse = (col: InternalColumn) => {
-      colIDs.push(col.id);
-      addSort(col.id, dir);
-      for (const child of col.children || []) {
-        traverse(child);
-      }
-    };
-
-    traverse(col);
-
-    this._sortDirty = true;
-    if (this.rowModel === "serverSide") {
+  async _toggleSort(col: Column) {
+    const { colIDs, dir } = await this.api.toggleSort(col);
+    if (this.rowModel.getType() === "serverSide") {
       for (const colID of colIDs) {
         this._addSortIndicatorToHeader(colID, dir || '');
       }
-      this._fetchServerSideRows("batchSort");
+      this._fetchServerSideRows("sortChanged");
       return;
     }
     this._recomputeView();
@@ -1041,7 +1010,7 @@ export default class Table {
     for (const colID of selectedCols) {
       const col = findColumnById(this.columns, colID);
       if (!col) continue;
-      if (col.children && col.children.length > 0) continue; // skip parent columns
+      if (col.children.length > 0) continue; // skip parent columns
       sortedCols.push(colID);
       const existing = this._sorts.find(s => s.key === colID);
       if (existing) {
@@ -1051,7 +1020,7 @@ export default class Table {
       }
     }
     this._sortDirty = true;
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       for (const colID of selectedCols) {
         this._addSortIndicatorToHeader(colID, dir);
       }
@@ -1069,7 +1038,7 @@ export default class Table {
     const selectedCols = Array.from(this._selectedColumnIDs);
     this._sorts = this._sorts.filter(s => !selectedCols.includes(s.key));
     this._sortDirty = true;
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       for (const colID of selectedCols) {
         this._addSortIndicatorToHeader(colID, '');
       }
@@ -1126,7 +1095,7 @@ export default class Table {
     for (const colID of selectedCols) {
       const col = findColumnById(this.columns, colID);
       if (!col) continue;
-      if (col.children && col.children.length > 0) continue; // skip parent columns
+      if (col.children.length > 0) continue; // skip parent columns
       this._aggregates.set(colID, aggType);
     }
     if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
@@ -1137,7 +1106,7 @@ export default class Table {
   }
 
   _showSparklinesForSelectedColumns(type: "line" | "bar" | "column") {
-    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.id));
+    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.instanceID));
     const numericLeaves = selectedLeaves.filter(col => isComputableType(col.type));
     if (numericLeaves.length < 2) return;
 
@@ -1200,7 +1169,7 @@ export default class Table {
 
   _pruneAggregates() {
     if (this._aggregates.size === 0) return;
-    const valid = new Set(this._leafColumns.map(c => c.id));
+    const valid = new Set(this._leafColumns.map(c => c.instanceID));
     for (const key of Array.from(this._aggregates.keys())) {
       if (!valid.has(key)) {
         this._aggregates.delete(key);
@@ -1208,8 +1177,8 @@ export default class Table {
     }
   }
 
-  _getAggregateOpForColumn(col: InternalColumn): AggregateType {
-    const explicit = this._aggregates.get(col.id);
+  _getAggregateOpForColumn(col: Column): AggregateType {
+    const explicit = this._aggregates.get(col.instanceID);
     if (explicit != null) return explicit;
     return isComputableType(col.type) ? AggregateType.SUM : AggregateType.COUNT;
   }
@@ -1220,7 +1189,7 @@ export default class Table {
     return Number.isFinite(num) ? num : null;
   }
 
-  _calculateAggregate(col: InternalColumn, aggType: AggregateType, rows: any[]): any {
+  _calculateAggregate(col: Column, aggType: AggregateType, rows: any[]): any {
     if (aggType === AggregateType.COUNT) {
       return rows.length;
     }
@@ -1308,7 +1277,7 @@ export default class Table {
     }
   }
 
-  _formatAggregateDisplay(col: InternalColumn, value: any): string {
+  _formatAggregateDisplay(col: Column, value: any): string {
     if (value == null) return "";
     try {
       return formatValue(value, null as any, col);
@@ -1318,8 +1287,8 @@ export default class Table {
   }
 
   _getAggregateRows(): any[] {
-    if (this._aggregateScope === "all" && this.rowModel === "clientSide") {
-      const idx = this._sortedIdx && this._sortedIdx.length > 0 ? this._sortedIdx : this._viewIdx;
+    if (this._aggregateScope === "all" && this.rowModel.getType() === "clientSide") {
+      const idx = this.rowModel.sortedIdx && this.rowModel.sortedIdx.length > 0 ? this.rowModel.sortedIdx : this._viewIdx;
       return idx.map(i => this.data[i]);
     }
     return this._viewIdx.map(i => this.data[i]);
@@ -1388,9 +1357,9 @@ export default class Table {
         const valuesObj = (result as any)?.values ?? result ?? {};
         const map = new Map<string, any>();
         for (const col of this._leafColumns) {
-          const v = valuesObj?.[col.id] ?? valuesObj?.[col.key];
+          const v = valuesObj?.[col.instanceID] ?? valuesObj?.[col.key];
           if (v != null) {
-            map.set(col.id, v);
+            map.set(col.instanceID, v);
           }
         }
         this._aggregateRemoteValues = map;
@@ -1433,14 +1402,14 @@ export default class Table {
     }
 
     const values = new Map<string, string>();
-    if (this.rowModel === "serverSide" && this._aggregateScope === "all" && this._serverSideAggregation) {
+    if (this.rowModel.getType() === "serverSide" && this._aggregateScope === "all" && this._serverSideAggregation) {
       this._maybeRequestServerAggregates();
       const remote = this._aggregateRemoteValues;
       for (const col of this._leafColumns) {
         if (isTrue(col.hidden)) continue;
-        const v = remote?.get(col.id);
+        const v = remote?.get(col.instanceID);
         const display = v == null ? "" : this._formatAggregateDisplay(col, v);
-        values.set(col.id, display ?? "");
+        values.set(col.instanceID, display ?? "");
       }
     } else {
       const rows = this._getAggregateRows();
@@ -1449,11 +1418,11 @@ export default class Table {
         const op = this._getAggregateOpForColumn(col);
         const raw = this._calculateAggregate(col, op, rows);
         const display = this._formatAggregateDisplay(col, raw);
-        values.set(col.id, display ?? "");
+        values.set(col.instanceID, display ?? "");
       }
     }
 
-    const apply = (cells: HTMLDivElement[], cols: InternalColumn[]) => {
+    const apply = (cells: HTMLDivElement[], cols: Column[]) => {
       let idx = -1;
       for (const col of cols) {
         if (isTrue(col.hidden)) continue;
@@ -1461,7 +1430,7 @@ export default class Table {
         const cell = cells[idx];
         if (!cell) continue;
         if (cell.children.length > 0) cell.innerHTML = "";
-        const aggFn = this._aggregates.get(col.id) || AggregateType.COUNT;
+        const aggFn = this._aggregates.get(col.instanceID) || AggregateType.COUNT;
         const icon = document.createElement("div");
         icon.className = "pte-aggregate-icon";
         let suffix = "";
@@ -1473,10 +1442,10 @@ export default class Table {
         cell.appendChild(icon);
         const content = document.createElement("div");
         content.className = "pte-aggregate-cell-content";
-        content.textContent = values.get(col.id) ?? "";
+        content.textContent = values.get(col.instanceID) ?? "";
         cell.appendChild(content);
         if (content.scrollWidth > content.clientWidth) {
-          content.title = values.get(col.id) ?? "";
+          content.title = values.get(col.instanceID) ?? "";
         }
       }
     };
@@ -1500,10 +1469,10 @@ export default class Table {
   }
 
   _recomputeView() {
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._markAggregatesDirty();
     }
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       const pageSize = Math.max(1, this._paginationPageSize || 1);
       const totalRows = this._serverSideTotalRows ?? this.data.length;
       if (this._pagination) {
@@ -1515,64 +1484,31 @@ export default class Table {
       }
       this._filterDirty = false;
       this._sortDirty = false;
-      this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
-      this._sortedIdx = this._filteredIdx.slice();
-      this._viewIdx = this._sortedIdx.slice();
+      this.rowModel.filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
+      this.rowModel.sortedIdx = this.rowModel.filteredIdx.slice();
+      this._viewIdx = this.rowModel.sortedIdx.slice();
     } else {
-      let rows = this.data;
+      // if (this._filterDirty) {
+      //   this._filterDirty = false;
+      //   this.rowModel.setFilters(this._filters);
+      //   this._sortDirty = true; // filter affects sort view
+      // }
 
-      if (this._filterDirty) {
-        this._filterDirty = false;
-        if (this._filters) {
-          this._filteredIdx = computeFilteredIdx(this.data, this._filters, [
-            ...this._leftPinnedLeafColumns,
-            ...this._centerLeafColumns,
-            ...this._rightPinnedLeafColumns,
-          ]);
-        } else {
-          this._filteredIdx = Array.from({ length: this.data.length }, (_, i) => i);
-        }
-        this._sortDirty = true; // filter affects sort view
-      }
+      // if (this._sortDirty) {
+      //   this._sortDirty = false;
+      //   this.rowModel.setSorts(this._sorts);
 
-      if (this._sortDirty) {
-        this._sortDirty = false;
-        this._sortedIdx = this._filteredIdx.slice();
-        if (this._sorts && this._sorts.length > 0) {
-          const comparators = this._sorts
-            .map(sort => {
-              const { key, dir } = sort;
-              const col = findColumnById(this.columns, key);
-              if (!col) return null;
-              const mult = dir === "desc" ? -1 : 1;
-              const cmp = this._getComparatorForColumn(col);
-              return (a: any, b: any) => cmp(a, b) * mult;
-            })
-            .filter(Boolean) as Array<(a: any, b: any) => number>;
+      // }
 
-          this._sortedIdx.sort((a, b) => {
-            for (const cmp of comparators) {
-              const result = cmp(rows[a], rows[b]);
-              if (result !== 0) return result;
-            }
-            return 0;
-          });
-        }
-      }
-
-      if (this._pagination) {
-        this._applyPagination();
-      } else {
-        this._viewIdx = this._sortedIdx.slice();
-        this._totalPages = 1;
-        this._pageIdx = 0;
-      }
+      // // this._viewIdx = this.rowModel.getViewCount();
+      // this._totalPages = 1;
+      // this._pageIdx = 0;
     }
 
-    this._viewRows = this._viewIdx.map(idx => this.data[idx]);
+    // this._viewRows = this._viewIdx.map(idx => this.data[idx]);
 
     // Update total scroll height
-    const verticalSize = this._viewIdx.length * this.rowHeight;
+    const verticalSize = this.api.rowModel.getViewCount() * this.rowHeight;
     this.leftSpacer.style.height = `${verticalSize}px`;
     this.spacer.style.height = `${verticalSize}px`;
     this.rightSpacer.style.height = `${verticalSize}px`;
@@ -1596,7 +1532,7 @@ export default class Table {
       } else {
         targetIdx = col.centralPosition || 0;
       }
-      if (col.children && col.children.length > 0) {
+      if (col.children.length > 0) {
         const leaves = collectLeaves(col);
         targetIdx = leaves[0].centralPosition || 0;
       }
@@ -1625,67 +1561,7 @@ export default class Table {
     return (this._measureCtx?.measureText(text ?? "")?.width || 0) + padding;
   }
 
-  _getCollator() {
-    if (!this._collator) {
-      this._collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-    }
-    return this._collator;
-  }
-
-  _getComparatorForColumn(col: InternalColumn) {
-    const key = col?.key;
-    if (!key) return () => 0;
-
-    const cacheHit = this._sortComparatorCache.get(key);
-    if (cacheHit && cacheHit.dataRef === this.data) return cacheHit.fn;
-
-    if (typeof col?.compare === "function") {
-      const fn = (a: any, b: any) => col.compare(getValue(a, col), getValue(b, col), a, b);
-      this._sortComparatorCache.set(key, { fn, dataRef: this.data });
-      return fn;
-    }
-
-    const numericPreferred = col?.type === "number";
-    const stringPreferred = col?.type === "string";
-    let numericLikely = false;
-    const getRowValue = (row: any) => getValue(row, col);
-
-    if (!stringPreferred) {
-      let seen = 0;
-      let numericCount = 0;
-      for (let i = 0; i < this.data.length && seen < 64; i++) {
-        const v = getRowValue(this.data[i]);
-        if (v == null) continue;
-        seen++;
-        const num = typeof v === "number" ? v : Number(v);
-        if (Number.isFinite(num)) numericCount++;
-      }
-      numericLikely = numericPreferred || (seen > 0 && numericCount === seen);
-    }
-
-    const collator = this._getCollator();
-    const comparator = numericLikely
-      ? (a: any, b: any) => {
-        const av = getRowValue(a), bv = getRowValue(b);
-        if (av === bv) return 0;
-        if (av == null) return -1;
-        if (bv == null) return 1;
-        return (Number(av) - Number(bv));
-      }
-      : (a: any, b: any) => {
-        const av = getRowValue(a), bv = getRowValue(b);
-        if (av === bv) return 0;
-        if (av == null) return -1;
-        if (bv == null) return 1;
-        // Using collator.compare is still faster than localeCompare for mixed case and numbers
-        return collator.compare(String(av), String(bv));
-      };
-
-    this._sortComparatorCache.set(key, { fn: comparator, dataRef: this.data });
-    return comparator;
-  }
-
-  _autoSizeColumn(col: InternalColumn, maxWidth: number): number {
+  _autoSizeColumn(col: Column, maxWidth: number): number {
     const headerText = col.label ?? col.key;
     let best = this._measureText(headerText) + 104;
     if (best >= maxWidth) return maxWidth;
@@ -1695,8 +1571,8 @@ export default class Table {
     let colCache = this._measureCache.get(colCacheKey);
     if (!colCache) { colCache = new Map(); this._measureCache.set(colCacheKey, colCache); }
 
-    const rows = this.data; // IMPORTANT: raw data order, not sorted view
-    const n = rows.length;
+    // const rows = this.data; // IMPORTANT: raw data order, not sorted view
+    const n = this.rowModel.getRowCount();
 
     if (n == 0) return best;
 
@@ -1709,29 +1585,29 @@ export default class Table {
     };
 
     let longestValue = "";
-    let rowIdx = 0;
-    for (let i = 0; i < n; i++) {
-      const v = getValue(rows[i], col);
+    let longestRow = null;
+    this.rowModel.forEachNode((row, i) => {
+      const v = col.getValue(row);
       if (v != null && String(v).length > longestValue.length) {
         longestValue = String(v);
-        rowIdx = i;
+        longestRow = row;
       }
-    }
+    });
 
-    best = Math.max(best, measureValue(formatValue(getValue(rows[rowIdx], col), rows[rowIdx], col)));
+    best = Math.max(best, measureValue(col.formatValue(longestValue, longestRow!)));
     return Math.min(best, maxWidth);
   }
 
-  _computeColumnWidths(column: InternalColumn | null = null, forceRecompute = false) {
+  _computeColumnWidths(column: Column | null = null, forceRecompute = false) {
     this._getMeasureContext();
-    const computer = (col: InternalColumn, inTarget: boolean) => {
-      if (isTrue(col.hidden)) return;
-      const existing = this._columnWidths.get(col.id);
-      const isTarget = inTarget || (!!column && col.id === column.id);
+    const computer = (col: Column, inTarget: boolean) => {
+      if (col.hidden) return;
+      const existing = this._columnWidths.get(col.instanceID);
+      const isTarget = inTarget || (!!column && col.instanceID === column.instanceID);
       const shouldCompute = !column || isTarget;
 
       if (!shouldCompute) {
-        if (col.children && col.children.length > 0) {
+        if (col.children.length > 0) {
           for (const child of col.children) computer(child, isTarget);
         }
         return;
@@ -1742,22 +1618,22 @@ export default class Table {
       if (col.width != null) {
         const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? col.width);
         const maxWidth = col.width;
-        this._columnWidths.set(col.id, { width: col.width, minWidth, maxWidth, fixed: true });
+        this._columnWidths.set(col.instanceID, { width: col.width, minWidth, maxWidth, fixed: true });
         return;
       }
 
       const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? existing?.minWidth ?? MIN_RESIZE_WIDTH);
-      const defaultMax = col.children && col.children.length > 0 ? Number.POSITIVE_INFINITY : 420;
+      const defaultMax = col.children.length > 0 ? Number.POSITIVE_INFINITY : 420;
       let maxWidth = col.maxWidth ?? existing?.maxWidth ?? defaultMax;
 
       const autoWidth = this._autoSizeColumn(col, maxWidth);
       let width = Math.min(Math.max(autoWidth, minWidth), maxWidth);
 
-      if (col.children && col.children.length > 0) {
+      if (col.children.length > 0) {
         let childrenWidth = 0;
         for (const child of col.children) {
           computer(child, isTarget);
-          const childInfo = this._columnWidths.get(child.id);
+          const childInfo = this._columnWidths.get(child.instanceID);
           if (childInfo) childrenWidth += childInfo.width;
         }
         if (childrenWidth > width) {
@@ -1768,15 +1644,15 @@ export default class Table {
         }
       }
 
-      this._columnWidths.set(col.id, { width, minWidth, maxWidth, fixed: false });
+      this._columnWidths.set(col.instanceID, { width, minWidth, maxWidth, fixed: false });
     };
-    for (const col of this.columns) {
-      computer(col, column == null ? true : col.id === column.id);
+    for (const col of this.api.columns) {
+      computer(col, column == null ? true : col.id === column.instanceID);
     }
   }
 
-  _applyWidthsToChildren(col: InternalColumn, hcell: HTMLElement) {
-    const info = this._columnWidths.get(col.id);
+  _applyWidthsToChildren(col: Column, hcell: HTMLElement) {
+    const info = this._columnWidths.get(col.instanceID);
     hcell.style.flex = "0 0 auto";
     if (!col.children || col.children.length === 0) {
       hcell.style.width = `${info?.width}px`;
@@ -1788,11 +1664,11 @@ export default class Table {
         hcell.style.maxWidth = "";
       }
     }
-    if (col.children && col.children.length > 0) {
+    if (col.children.length > 0) {
       for (let i = 0; i < col.children.length; i++) {
         const child = col.children[i];
         if (isTrue(child.hidden)) continue;
-        const childContainer = document.getElementById(child.id) as HTMLDivElement;
+        const childContainer = document.getElementById(child.instanceID) as HTMLDivElement;
         if (childContainer) {
           this._applyWidthsToChildren(child, childContainer);
         }
@@ -1805,8 +1681,8 @@ export default class Table {
 
     const headerCells = this.leftHeader.children;
     let idx = -1;
-    for (const col of this._leftPinnedColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.leftColumns) {
+      if (col.hidden) continue;
       idx++;
       const info = this._columnWidths.get(col.id);
       const hcell = headerCells[idx];
@@ -1817,8 +1693,8 @@ export default class Table {
     let maxWidth = 0;
     let aggregateWidth = 0;
     let aggIdx = -1;
-    for (const col of this._leftPinnedLeafColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.leftLeaves) {
+      if (col.hidden) continue;
       aggIdx++;
       const info = this._columnWidths.get(col.id);
       const cell = this._aggregateLeftCells[aggIdx];
@@ -1842,7 +1718,7 @@ export default class Table {
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
-      for (const col of this._leftPinnedLeafColumns) {
+      for (const col of this.api.leftLeaves) {
         if (isTrue(col.hidden)) continue;
         c++;
         const info = this._columnWidths.get(col.id);
@@ -1897,8 +1773,8 @@ export default class Table {
 
     const headerCells = this.header.children;
     let idx = -1;
-    for (const col of this._centerColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.centerColumns) {
+      if (col.hidden) continue;
       idx++;
       const info = this._columnWidths.get(col.id);
       const hcell = headerCells[idx];
@@ -1909,8 +1785,8 @@ export default class Table {
     let maxWidth = 0;
     let aggregateWidth = 0;
     let aggIdx = -1;
-    for (const col of this._centerLeafColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.centerLeaves) {
+      if (col.hidden) continue;
       aggIdx++;
       const info = this._columnWidths.get(col.id);
       const cell = this._aggregateCells[aggIdx];
@@ -1935,8 +1811,8 @@ export default class Table {
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
-      for (const col of this._centerLeafColumns) {
-        if (isTrue(col.hidden)) continue;
+      for (const col of this.api.centerLeaves) {
+        if (col.hidden) continue;
         c++;
         const info = this._columnWidths.get(col.id);
         const cell = slot.cellEls[c];
@@ -1973,8 +1849,8 @@ export default class Table {
 
     const headerCells = this.rightHeader.children;
     let idx = -1;
-    for (const col of this._rightPinnedColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.rightColumns) {
+      if (col.hidden) continue;
       idx++;
       const info = this._columnWidths.get(col.id);
       const hcell = headerCells[idx];
@@ -1985,8 +1861,8 @@ export default class Table {
     let maxWidth = 0;
     let aggregateWidth = 0;
     let aggIdx = -1;
-    for (const col of this._rightPinnedLeafColumns) {
-      if (isTrue(col.hidden)) continue;
+    for (const col of this.api.rightLeaves) {
+      if (col.hidden) continue;
       aggIdx++;
       const info = this._columnWidths.get(col.id);
       const cell = this._aggregateRightCells[aggIdx];
@@ -2011,8 +1887,8 @@ export default class Table {
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = -1;
-      for (const col of this._rightPinnedLeafColumns) {
-        if (isTrue(col.hidden)) continue;
+      for (const col of this.api.rightLeaves) {
+        if (col.hidden) continue;
         c++;
         const info = this._columnWidths.get(col.id);
         const cell = slot.rightCellEls[c];
@@ -2089,72 +1965,18 @@ export default class Table {
     this.body.style.height = `calc(100% - ${chromeHeight}px)`;
   }
 
-  _updateColumnWidths(column: InternalColumn | null = null, forceRecompute = false) {
+  _updateColumnWidths(column: Column | null = null, forceRecompute = false) {
     console.time("computeColumnWidths");
     this._computeColumnWidths(column, forceRecompute);
     console.timeEnd("computeColumnWidths");
 
     if (column) {
-      this._updateAncestorWidths(column.id);
+      this._updateAncestorWidths(column.instanceID);
     }
     this._updateAllColumnWidths();
   }
 
-  _computeHeaderDepth() {
-    const traverse = (cols: InternalColumn[], depth: number, appendTo: InternalColumn[], openState: "open" | "closed" | null = null) => {
-      for (const col of cols) {
-        if (isTrue(col.hidden)) {
-          continue;
-        }
-        col.columnGroupVisible = isNullOrUndefined(col.columnGroupShow) || (openState !== null && openState == col.columnGroupShow);
-        if (col.columnGroupVisible) {
-          if (col.children && Array.isArray(col.children)) {
-            traverse(col.children, depth + 1, appendTo, col.groupExpandState);
-            col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
-          } else {
-            col.depth = 1;
-            appendTo.push(col);
-          }
-          if (col.depth > this._maxDepth) {
-            this._maxDepth = col.depth;
-          }
-        }
-      }
-    };
-
-    traverse(this._centerColumns, 1, this._centerLeafColumns);
-    traverse(this._leftPinnedColumns, 1, this._leftPinnedLeafColumns);
-    traverse(this._rightPinnedColumns, 1, this._rightPinnedLeafColumns);
-    for (let i = 0; i < this._centerLeafColumns.length; i++) {
-      this._centerLeafColumns[i].centralPosition = i;
-    }
-  }
-
-  _updateLeafColumnLookup() {
-    this._leafColumns = [];
-    this._leafColumnLookup = new Map();
-    this._leftLeafOrder = [];
-    this._centerLeafOrder = [];
-    this._rightLeafOrder = [];
-
-    let globalIndex = 0;
-
-    const addCols = (cols: InternalColumn[], section: "left" | "center" | "right", order: number[]) => {
-      for (const col of cols) {
-        if (isTrue(col.hidden)) continue;
-        this._leafColumns.push(col);
-        this._leafColumnLookup.set(col.id, { section, globalIndex, localIndex: order.length });
-        order.push(globalIndex);
-        globalIndex++;
-      }
-    };
-
-    addCols(this._leftPinnedLeafColumns, "left", this._leftLeafOrder);
-    addCols(this._centerLeafColumns, "center", this._centerLeafOrder);
-    addCols(this._rightPinnedLeafColumns, "right", this._rightLeafOrder);
-  }
-
-  _buildHeaderCell(col: InternalColumn, maxDepth: number): HTMLDivElement {
+  _buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
     if (!col.children || col.children.length === 0) {
@@ -2163,7 +1985,7 @@ export default class Table {
     const contentHeight = maxDepth / col.depth!;
     header.style.height = `${this.rowHeight * maxDepth}px`;
     maxDepth--;
-    header.id = col.id;
+    header.id = col.instanceID;
     const headerWrapper = document.createElement("div");
     headerWrapper.className = "pte-hcell-wrapper";
     header.appendChild(headerWrapper);
@@ -2186,14 +2008,14 @@ export default class Table {
     headerLabel.textContent = col.label ?? col.key;
     headerContent.appendChild(headerLabel);
     let showExpander = false;
-    if (col.children && Array.isArray(col.children) && col.children.length > 0) {
+    if (col.children.length > 0) {
       const children = document.createElement("div");
       children.className = "pte-hcell-children";
       header.appendChild(children);
       let groupToggle = "";
       for (const child of col.children) {
         if (!isTrue(child.hidden)) {
-          if (!isNullOrUndefined(child.columnGroupShow)) {
+          if (child.columnGroupShow !== "always") {
             if (groupToggle === "") {
               groupToggle = child.columnGroupShow || "open";
             } else if (groupToggle !== child.columnGroupShow) {
@@ -2221,7 +2043,7 @@ export default class Table {
     }
     const headerMenu = this._getHeaderMenuElement(col);
     headerContainer.appendChild(headerMenu);
-    const sort = this._sorts.find(s => s.key === col.id);
+    const sort = this._sorts.find(s => s.key === col.instanceID);
     if (sort) {
       headerContent.classList.add("pte-sorted-" + sort.dir);
     }
@@ -2232,10 +2054,8 @@ export default class Table {
     this._centerLeafColumns = [];
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
-    this._computeHeaderDepth();
-    this._updateLeafColumnLookup();
     this._sorts = this._sorts.filter(s => this._leafColumnLookup.has(s.key));
-    const headerHeight = this.rowHeight * this._maxDepth;
+    const headerHeight = this.rowHeight * this.api.maxDepth;
     this.headerWrapper.style.height = `${headerHeight}px`;
     this.headerWrapper.style.minHeight = `${headerHeight}px`;
     this.leftHeader.style.height = `${headerHeight}px`;
@@ -2249,19 +2069,19 @@ export default class Table {
     this.leftHeader.innerHTML = "";
     this.header.innerHTML = "";
     this.rightHeader.innerHTML = "";
-    for (const col of this._leftPinnedColumns) {
-      if (!isTrue(col.hidden)) {
-        this.leftHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+    for (const col of this.api.leftColumns) {
+      if (!col.hidden) {
+        this.leftHeader.appendChild(this._buildHeaderCell(col, this.api.maxDepth));
       }
     }
-    for (const col of this._centerColumns) {
-      if (!isTrue(col.hidden)) {
-        this.header.appendChild(this._buildHeaderCell(col, this._maxDepth));
+    for (const col of this.api.centerColumns) {
+      if (!col.hidden) {
+        this.header.appendChild(this._buildHeaderCell(col, this.api.maxDepth));
       }
     }
-    for (const col of this._rightPinnedColumns) {
-      if (!isTrue(col.hidden)) {
-        this.rightHeader.appendChild(this._buildHeaderCell(col, this._maxDepth));
+    for (const col of this.api.rightColumns) {
+      if (!col.hidden) {
+        this.rightHeader.appendChild(this._buildHeaderCell(col, this.api.maxDepth));
       }
     }
     this._applyLeftColumnWidths();
@@ -2271,13 +2091,7 @@ export default class Table {
     this._applyColumnSelectionStyles();
   }
 
-  _buildPaginationControls() {
-    this.paginator.innerHTML = "";
-
-    if (!this._paginationPageSizes.includes(this._paginationPageSize)) {
-      this._paginationPageSizes = [...this._paginationPageSizes, this._paginationPageSize].sort((a, b) => a - b);
-    }
-
+  private buildAggregationControls() {
     const aggSection = document.createElement("div");
     aggSection.className = "pte-pagination-section pte-aggregate-controls";
     const aggLabel = document.createElement("span");
@@ -2320,6 +2134,16 @@ export default class Table {
     aggSection.appendChild(this.aggregateScopeSelect);
     aggSection.appendChild(this.aggregateClearBtn);
 
+    return aggSection;
+  }
+
+  private buildPaginationControls() {
+    this.paginator.innerHTML = "";
+
+    if (!this._paginationPageSizes.includes(this._paginationPageSize)) {
+      this._paginationPageSizes = [...this._paginationPageSizes, this._paginationPageSize].sort((a, b) => a - b);
+    }
+
     const sizeSection = document.createElement("div");
     sizeSection.className = "pte-pagination-section";
     const sizeLabel = document.createElement("span");
@@ -2341,7 +2165,7 @@ export default class Table {
       this._paginationPageSize = next;
       this._pageIdx = 0;
       this._resetScrollPosition();
-      if (this.rowModel === "serverSide") {
+      if (this.rowModel.getType() === "serverSide") {
         this._fetchServerSideRows("pageSizeChanged");
         return;
       }
@@ -2393,7 +2217,7 @@ export default class Table {
     navSection.appendChild(this.nextPageBtn);
     navSection.appendChild(this.lastPageBtn);
 
-    this.paginator.appendChild(aggSection);
+    this.paginator.appendChild(this.buildAggregationControls());
     this.paginator.appendChild(sizeSection);
     this.paginator.appendChild(navSection);
     this._populatePageSelect();
@@ -2443,25 +2267,23 @@ export default class Table {
 
     this._populatePageSelect();
 
-    const atFirstPage = this._pageIdx <= 0;
-    const atLastPage = this._pageIdx >= Math.max(this._totalPages - 1, 0);
+    const atFirstPage = this.api.currPage <= 0;
+    const atLastPage = this.api.currPage >= Math.max(this.api.totalPages - 1, 0);
     const hasRows = this._viewIdx.length > 0;
+
+    if (this.pageSizeSelect) this.pageSizeSelect.disabled = !hasRows || !this.api.isPaginationEnabled;
 
     if (this.firstPageBtn) this.firstPageBtn.disabled = atFirstPage || !hasRows;
     if (this.prevPageBtn) this.prevPageBtn.disabled = atFirstPage || !hasRows;
     if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
     if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
-    if (this.pageSelect) this.pageSelect.disabled = this._totalPages <= 1 || !hasRows;
+    if (this.pageSelect) this.pageSelect.disabled = this.api.totalPages <= 1 || !hasRows;
   }
 
   _goToPage(pageIdx: number) {
-    if (!this._pagination) return;
-    const totalPages = Math.max(this._totalPages, 1);
-    const clamped = Math.min(Math.max(pageIdx, 0), totalPages - 1);
-    if (clamped === this._pageIdx) return;
-    this._pageIdx = clamped;
+    if (!this.api.goToPage(pageIdx)) return;
     this._resetScrollPosition();
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._fetchServerSideRows("pagination");
       return;
     }
@@ -2477,22 +2299,7 @@ export default class Table {
     this._startIndex = 0;
   }
 
-  _applyPagination() {
-    const pageSize = Math.max(1, this._paginationPageSize || 1);
-    const totalRows = this._sortedIdx.length;
-    this._totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-    const clampedPage = Math.min(Math.max(this._pageIdx, 0), this._totalPages - 1);
-    const pageChanged = clampedPage !== this._pageIdx;
-    this._pageIdx = clampedPage;
-    if (pageChanged) {
-      this._resetScrollPosition();
-    }
-    const start = this._pageIdx * pageSize;
-    const end = start + pageSize;
-    this._viewIdx = this._sortedIdx.slice(start, end);
-  }
-
-  _getHeaderMenuElement(col: InternalColumn): HTMLDivElement {
+  _getHeaderMenuElement(col: Column): HTMLDivElement {
     const menu = document.createElement("div");
     menu.className = "pte-hcell-menu";
 
@@ -2507,7 +2314,7 @@ export default class Table {
       btn.appendChild(icon);
       wrapper.appendChild(btn);
       if (flyout) {
-        const hasFilter = this._filters.find(f => f.key === col.id);
+        const hasFilter = this._filters.find(f => f.key === col.instanceID);
         if (hasFilter) {
           btn.classList.add("pte-hcell-menu-filter-active");
         }
@@ -2554,9 +2361,9 @@ export default class Table {
         if (isTrue(col.hidden)) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.id);
+        const meta = this._leafColumnLookup.get(col.instanceID);
         if (meta) {
-          cell.dataset.colId = col.id;
+          cell.dataset.colId = col.instanceID;
           cell.dataset.colIdx = String(meta.globalIndex);
         } else {
           cell.dataset.colIdx = String(leftIdx);
@@ -2578,9 +2385,9 @@ export default class Table {
       if (isTrue(col.hidden)) continue;
       const cell = document.createElement("div");
       cell.className = "pte-cell pte-aggregate-cell";
-      const meta = this._leafColumnLookup.get(col.id);
+      const meta = this._leafColumnLookup.get(col.instanceID);
       if (meta) {
-        cell.dataset.colId = col.id;
+        cell.dataset.colId = col.instanceID;
         cell.dataset.colIdx = String(meta.globalIndex);
       } else {
         cell.dataset.colIdx = String(centerIdx);
@@ -2600,9 +2407,9 @@ export default class Table {
         if (isTrue(col.hidden)) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.id);
+        const meta = this._leafColumnLookup.get(col.instanceID);
         if (meta) {
-          cell.dataset.colId = col.id;
+          cell.dataset.colId = col.instanceID;
           cell.dataset.colIdx = String(meta.globalIndex);
         } else {
           cell.dataset.colIdx = String(rightIdx);
@@ -2639,20 +2446,21 @@ export default class Table {
         rowEl: document.createElement("div"),
         leftCellEls: [],
         cellEls: [],
-        rightCellEls: []
+        rightCellEls: [],
+        cellRendererInstances: new Map<string, RendererRecord>(),
       };
 
-      if (this._leftPinnedLeafColumns.length > 0) {
+      if (this.api.leftLeaves.length > 0) {
         row.leftRowEl = document.createElement("div");
         row.leftRowEl.className = "pte-row";
         row.leftRowEl.style.height = `${this.rowHeight}px`;
 
         let leftIdx = 0;
-        for (const col of this._leftPinnedLeafColumns) {
-          if (isTrue(col.hidden)) continue;
+        for (const col of this.api.leftLeaves) {
+          if (col.hidden) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
-          const meta = this._leafColumnLookup.get(col.id);
+          const meta = this.api.leafColumnLookup.get(col.id);
           if (meta) {
             cell.dataset.colId = col.id;
             cell.dataset.colIdx = String(meta.globalIndex);
@@ -2673,11 +2481,11 @@ export default class Table {
       row.rowEl.style.height = `${this.rowHeight}px`;
 
       let centerIdx = 0;
-      for (const col of this._centerLeafColumns) {
-        if (isTrue(col.hidden)) continue;
+      for (const col of this.api.centerLeaves) {
+        if (col.hidden) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell";
-        const meta = this._leafColumnLookup.get(col.id);
+        const meta = this.api.leafColumnLookup.get(col.id);
         if (meta) {
           cell.dataset.colId = col.id;
           cell.dataset.colIdx = String(meta.globalIndex);
@@ -2692,18 +2500,18 @@ export default class Table {
 
       this.viewport.appendChild(row.rowEl);
 
-      if (this._rightPinnedLeafColumns.length > 0) {
+      if (this.api.rightLeaves.length > 0) {
         row.rightRowEl = document.createElement("div");
         row.rightRowEl.className = "pte-row";
         row.rightRowEl.style.height = `${this.rowHeight}px`;
 
         row.rightCellEls = [];
         let rightIdx = 0;
-        for (const col of this._rightPinnedLeafColumns) {
-          if (isTrue(col.hidden)) continue;
+        for (const col of this.api.rightLeaves) {
+          if (col.hidden) continue;
           const cell = document.createElement("div");
           cell.className = "pte-cell";
-          const meta = this._leafColumnLookup.get(col.id);
+          const meta = this.api.leafColumnLookup.get(col.id);
           if (meta) {
             cell.dataset.colId = col.id;
             cell.dataset.colIdx = String(meta.globalIndex);
@@ -2764,14 +2572,48 @@ export default class Table {
     });
   }
 
-  _renderCellValue(cell: HTMLDivElement, row: any, col: InternalColumn) {
-    const rawValue = getValue(row, col);
-    const displayValue = formatValue(rawValue, row, col);
-    cell.textContent = displayValue == null ? "" : String(displayValue);
+  _renderCell(cell: HTMLDivElement, row: RowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) {
+    const rawValue = col.getValue(row);
+    const displayValue = col.formatValue(rawValue, row);
+    const renderer = col.cellRenderer;
+    const rendererParams = getCellRendererParams(rawValue, displayValue, row, 0, col, cell, null);
+    if (!renderer) {
+      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+      if (rec) {
+        rec.runtime.destroy();
+        cellRendererMap.delete(col.instanceID);
+      }
+      // text-only update
+      cell.textContent = displayValue;
+      return;
+    }
+
+    const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+    // If renderer changed or missing, (re)create
+    if (!rec || rec.renderer !== renderer) {
+      rec?.runtime.destroy();
+      const runtime = createRendererRuntime(renderer, rendererParams);
+      cell.replaceChildren(runtime.gui);
+      cellRendererMap.set(col.instanceID, { renderer, runtime });// Same renderer instance: refresh
+      return;
+    }
+
+    // Same renderer instance: refresh
+    const ok = rec.runtime.refresh(rendererParams);
+
+    // If refresh says "can't update", recreate
+    if (ok === false) {
+      rec.runtime.destroy();
+
+      const runtime = createRendererRuntime(renderer, rendererParams);
+
+      cell.replaceChildren(runtime.gui);
+      rec.runtime = runtime;
+    }
   }
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
-    const total = this._viewIdx.length;
+    const total = this.api.rowModel.getViewCount();
     const scrollTop = scrollSrc?.scrollTop || 0;
 
     const syncTargets: HTMLDivElement[] = [];
@@ -2826,10 +2668,10 @@ export default class Table {
       slot.rowEl.style.display = "flex";
       if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
       if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
-      const rowIndex = this._viewIdx[viewIndex];
-      slot.rowEl.setAttribute("row-id", String(rowIndex));
+      const row = this.api.rowModel.getRowNodeAt(viewIndex);
+      if (!row) continue;
+      slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
-      const row = this.data[rowIndex];
 
       if (slot.leftRowEl) {
         slot.leftRowEl.setAttribute("data-view-idx", String(viewIndex));
@@ -2839,22 +2681,22 @@ export default class Table {
       }
 
       // HOT: write textContent only (no re-render, no diff)
-      if (this._leftPinnedLeafColumns.length > 0 && slot.leftCellEls) {
-        slot.leftRowEl?.setAttribute("row-id", String(rowIndex));
-        for (let c = 0; c < this._leftPinnedLeafColumns.length; c++) {
-          const col = this._leftPinnedLeafColumns[c];
-          this._renderCellValue(slot.leftCellEls[c], row, col);
+      if (this.api.leftLeaves.length > 0 && slot.leftCellEls) {
+        slot.leftRowEl?.setAttribute("row-id", row.id);
+        for (let c = 0; c < this.api.leftLeaves.length; c++) {
+          const col = this.api.leftLeaves[c];
+          this._renderCell(slot.leftCellEls[c], row, col, slot.cellRendererInstances);
         }
       }
-      for (let c = 0; c < this._centerLeafColumns.length; c++) {
-        const col = this._centerLeafColumns[c];
-        this._renderCellValue(slot.cellEls[c], row, col);
+      for (let c = 0; c < this.api.centerLeaves.length; c++) {
+        const col = this.api.centerLeaves[c];
+        this._renderCell(slot.cellEls[c], row, col, slot.cellRendererInstances);
       }
-      if (this._rightPinnedLeafColumns.length > 0 && slot.rightCellEls) {
-        slot.rightRowEl?.setAttribute("row-id", String(rowIndex));
-        for (let c = 0; c < this._rightPinnedLeafColumns.length; c++) {
-          const col = this._rightPinnedLeafColumns[c];
-          this._renderCellValue(slot.rightCellEls[c], row, col);
+      if (this.api.rightLeaves.length > 0 && slot.rightCellEls) {
+        slot.rightRowEl?.setAttribute("row-id", row.id);
+        for (let c = 0; c < this.api.rightLeaves.length; c++) {
+          const col = this.api.rightLeaves[c];
+          this._renderCell(slot.rightCellEls[c], row, col, slot.cellRendererInstances);
         }
       }
       this._applySelectionToSlot(slot, viewIndex);
@@ -2878,19 +2720,19 @@ export default class Table {
 
       const slot = this._rowPool[i];
 
-      const apply = (cells: HTMLDivElement[], cols: InternalColumn[]) => {
+      const apply = (cells: HTMLDivElement[], cols: Column[]) => {
         for (let c = 0; c < cols.length; c++) {
           const col = cols[c];
           if (colKeySet && !colKeySet.has(col.key)) continue;
           const cell = cells[c];
           if (!cell) continue;
-          this._renderCellValue(cell, row, col);
+          this._renderCell(cell, row, col);
         }
       };
 
-      apply(slot.leftCellEls, this._leftPinnedLeafColumns);
-      apply(slot.cellEls, this._centerLeafColumns);
-      apply(slot.rightCellEls, this._rightPinnedLeafColumns);
+      apply(slot.leftCellEls, this.api.leftLeaves);
+      apply(slot.cellEls, this.api.centerLeaves);
+      apply(slot.rightCellEls, this.api.rightLeaves);
     }
   }
 
@@ -2904,7 +2746,7 @@ export default class Table {
       if (!cells) return;
       for (let i = 0; i < cells.length; i++) {
         const colIdx = order[i];
-        const leafCol = Number.isFinite(colIdx) ? this._leafColumns[colIdx] : null;
+        const leafCol = Number.isFinite(colIdx) ? this.api.leaves[colIdx] : null;
         const colId = leafCol?.id;
         const colSelected = colId ? this._selectedColumnIDs.has(colId) : false;
 
@@ -2916,7 +2758,7 @@ export default class Table {
         const prevSelected = (() => {
           if (Number.isFinite(prevColIdx)) {
             if (range && prevColIdx >= range.colStart && prevColIdx <= range.colEnd) return true;
-            const prevCol = this._leafColumns[prevColIdx];
+            const prevCol = this.api.leaves[prevColIdx];
             if (prevCol && this._selectedColumnIDs.has(prevCol.id)) return true;
           }
           return false;
@@ -2924,7 +2766,7 @@ export default class Table {
         const nextSelected = (() => {
           if (Number.isFinite(nextColIdx)) {
             if (range && nextColIdx >= range.colStart && nextColIdx <= range.colEnd) return true;
-            const nextCol = this._leafColumns[nextColIdx];
+            const nextCol = this.api.leaves[nextColIdx];
             if (nextCol && this._selectedColumnIDs.has(nextCol.id)) return true;
           }
           return false;
@@ -2981,9 +2823,9 @@ export default class Table {
 
   _pruneColumnSelection() {
     const keep = new Set<string>();
-    const visit = (cols: InternalColumn[]) => {
+    const visit = (cols: Column[]) => {
       for (const col of cols) {
-        if (this._selectedColumnIDs.has(col.id)) keep.add(col.id);
+        if (this._selectedColumnIDs.has(col.instanceID)) keep.add(col.instanceID);
         if (col.children) visit(col.children);
       }
     };
@@ -3105,7 +2947,7 @@ export default class Table {
       const col = findColumnById(this.columns, header.id);
       if (!col || isTrue(col.hidden)) return;
       if (!col.resizable) return;
-      const info = this._columnWidths.get(col.id);
+      const info = this._columnWidths.get(col.instanceID);
       if (info?.fixed) return;
 
       const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
@@ -3154,7 +2996,7 @@ export default class Table {
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
   }
 
-  _maybeStartColumnDrag(col: InternalColumn, header: HTMLDivElement, e: MouseEvent, allowDrop = true) {
+  _maybeStartColumnDrag(col: Column, header: HTMLDivElement, e: MouseEvent, allowDrop = true) {
     const reorderable = this._isColumnReorderable(col);
     if (allowDrop && !reorderable) return;
     this._draggingColumn = col;
@@ -3163,12 +3005,12 @@ export default class Table {
     this._dragStartY = e.clientY;
     this._dragLastX = e.clientX;
     this._dragAllowsDrop = allowDrop && reorderable;
-    const meta = this._leafColumnLookup.get(col.id);
+    const meta = this._leafColumnLookup.get(col.instanceID);
     const section = meta?.section ?? (col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center");
     this._dragSection = section;
     this._dragHeaderContainer = this._getSectionContainer(section);
     this._dragTargetIndex = this._dragAllowsDrop
-      ? this._getReorderableColumns(section).findIndex(c => c.id === col.id)
+      ? this._getReorderableColumns(section).findIndex(c => c.instanceID === col.instanceID)
       : -1;
     this._isDraggingColumn = false;
     this._dragDirection = null;
@@ -3242,7 +3084,7 @@ export default class Table {
     return null;
   }
 
-  _getReorderableColumns(section: "left" | "center" | "right" = "center"): InternalColumn[] {
+  _getReorderableColumns(section: "left" | "center" | "right" = "center"): Column[] {
     const source = section === "left"
       ? this._leftPinnedColumns
       : section === "right"
@@ -3251,22 +3093,22 @@ export default class Table {
     return source.filter(c => this._isColumnReorderable(c));
   }
 
-  _getReorderableHeaders(section: "left" | "center" | "right" = "center"): Array<{ col: InternalColumn; el: HTMLDivElement }> {
+  _getReorderableHeaders(section: "left" | "center" | "right" = "center"): Array<{ col: Column; el: HTMLDivElement }> {
     const container = section === "left"
       ? this.leftHeader
       : section === "right"
         ? this.rightHeader
         : this.header;
     const headers = Array.from(container.children) as HTMLDivElement[];
-    const output: Array<{ col: InternalColumn; el: HTMLDivElement }> = [];
+    const output: Array<{ col: Column; el: HTMLDivElement }> = [];
     for (const el of headers) {
       if (!el.classList.contains("pte-hcell")) continue;
       const col = findColumnById(this.columns, el.id);
       if (!col) continue;
-      if (col.children && col.children.length > 0) {
+      if (col.children.length > 0) {
         const leaves = collectLeaves(col);
         leaves.filter(this._isColumnReorderable).forEach(leaf => {
-          output.push({ col: leaf, el: document.getElementById(leaf.id) as HTMLDivElement });
+          output.push({ col: leaf, el: document.getElementById(leaf.instanceID) as HTMLDivElement });
         });
         continue;
       } else if (this._isColumnReorderable(col)) {
@@ -3276,7 +3118,7 @@ export default class Table {
     return output.filter(h => h.el != null);
   }
 
-  _positionDropIndicator(targetIndex: number, hoverIndex: number, headers: Array<{ col: InternalColumn; el: HTMLDivElement }>) {
+  _positionDropIndicator(targetIndex: number, hoverIndex: number, headers: Array<{ col: Column; el: HTMLDivElement }>) {
     if (!this._dragIndicatorEl || headers.length === 0) return;
     if (targetIndex < 0) {
       this._dragIndicatorEl.style.display = "none";
@@ -3380,7 +3222,7 @@ export default class Table {
     e.preventDefault();
   }
 
-  _applyColumnReorder(col: InternalColumn, targetIndex: number, section: "left" | "center" | "right" = this._dragSection || "center") {
+  _applyColumnReorder(col: Column, targetIndex: number, section: "left" | "center" | "right" = this._dragSection || "center") {
     if (targetIndex < 0) return;
 
     const newLeft = this._leftPinnedColumns.slice();
@@ -3392,7 +3234,7 @@ export default class Table {
     const appendAtEnd = targetIndex >= targetArr.length;
     const firstRight = targetArr[targetIndex];
 
-    const ancestors = getColumnAncestors(this.columns, col.id);
+    const ancestors = getColumnAncestors(this.columns, col.instanceID);
     let topLevelDrag = col;
     if (ancestors.length > 1) {
       // Find the top-level ancestor that is reorderable
@@ -3403,21 +3245,21 @@ export default class Table {
         topLevelDrag = c;
       }
     }
-    const splitParent = ancestors.length > 1 && ancestors[0].id != topLevelDrag.id;
+    const splitParent = ancestors.length > 1 && ancestors[0].instanceID != topLevelDrag.instanceID;
 
     if (splitParent) {
       topLevelDrag = newColumnHierarchy(ancestors, topLevelDrag);
     } else {
       const source = col.pinned === "left" ? newLeft : col.pinned === "right" ? newRight : newCenter;
-      const idx = source.findIndex(c => c.id === topLevelDrag.id);
+      const idx = source.findIndex(c => c.instanceID === topLevelDrag.instanceID);
       if (idx >= 0) source.splice(idx, 1);
     }
 
     targetArr = targetSection.map(c => collectLeaves(c, true)).flat();
     let moveTo = 0;
     if (firstRight) {
-      const firstRightAncestors = getColumnAncestors(this.columns, firstRight.id);
-      moveTo = targetSection.findIndex(c => c.id === firstRightAncestors[0].id);
+      const firstRightAncestors = getColumnAncestors(this.columns, firstRight.instanceID);
+      moveTo = targetSection.findIndex(c => c.instanceID === firstRightAncestors[0].instanceID);
       if (firstRightAncestors.length > 1) {
         const [leftTree, rightTree] = splitTreeAtColumn(firstRightAncestors[0], firstRight);
         if (leftTree) {
@@ -3434,8 +3276,8 @@ export default class Table {
       moveTo = targetSection.length;
     }
 
-    const movedCol: InternalColumn = { ...topLevelDrag, pinned: section === "center" ? null : section };
-    if (topLevelDrag.pinned !== movedCol.pinned && movedCol.children && movedCol.children.length > 0) {
+    const movedCol: Column = { ...topLevelDrag, pinned: section === "center" ? null : section };
+    if (topLevelDrag.pinned !== movedCol.pinned && movedmovedCol.children.length > 0) {
       // If moving between sections, and has children, we need to adjust the pinned state of children
       const newPinned = section === "center" ? null : section;
       adjustPinned(movedCol.children, newPinned);
@@ -3515,7 +3357,7 @@ export default class Table {
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
   }
 
-  _isColumnReorderable(col: InternalColumn): boolean {
+  _isColumnReorderable(col: Column): boolean {
     if (!col) return false;
     if (isTrue(col.hidden) || !col.columnGroupVisible) return false;
     return true;
@@ -3539,7 +3381,7 @@ export default class Table {
     const col = findColumnById(this.columns, header.id);
     if (!col || isTrue(col.hidden)) return;
     if (!col.resizable) return;
-    const info = this._columnWidths.get(col.id);
+    const info = this._columnWidths.get(col.instanceID);
     if (info?.fixed || col.width != null) return;
     this._suppressHeaderClick = true;
     this._updateColumnWidths(col, true);
@@ -3547,18 +3389,18 @@ export default class Table {
     e.stopPropagation();
   }
 
-  _applyColumnResize(col: InternalColumn, rawWidth: number) {
-    const info = this._columnWidths.get(col.id);
+  _applyColumnResize(col: Column, rawWidth: number) {
+    const info = this._columnWidths.get(col.instanceID);
     const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? this._resizeMinWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
     let maxWidth = info?.maxWidth ?? this._resizeMaxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
     if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
     let width = Math.min(Math.max(rawWidth, minWidth), maxWidth);
 
-    if (col.children && col.children.length > 0) {
+    if (col.children.length > 0) {
       const visibleChildren = col.children.filter(c => !isTrue(c.hidden));
       if (visibleChildren.length > 0) {
         const childInfos = visibleChildren.map(child => {
-          const childInfo = this._columnWidths.get(child.id);
+          const childInfo = this._columnWidths.get(child.instanceID);
           const childMin = Math.max(MIN_RESIZE_WIDTH, child.minWidth ?? childInfo?.minWidth ?? MIN_RESIZE_WIDTH);
           let childMax = child.maxWidth ?? childInfo?.maxWidth ?? 420;
           if (!Number.isFinite(childMax)) childMax = 420;
@@ -3603,7 +3445,7 @@ export default class Table {
 
         const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
         for (const c of childInfos) {
-          this._columnWidths.set(c.col.id, {
+          this._columnWidths.set(c.col.instanceID, {
             width: c.width,
             minWidth: c.min,
             maxWidth: c.max,
@@ -3614,13 +3456,13 @@ export default class Table {
       }
     }
 
-    this._columnWidths.set(col.id, {
+    this._columnWidths.set(col.instanceID, {
       width,
       minWidth,
       maxWidth,
       fixed: info?.fixed ?? false,
     });
-    this._updateAncestorWidths(col.id);
+    this._updateAncestorWidths(col.instanceID);
     this._updateAllColumnWidths();
   }
 
@@ -3630,20 +3472,20 @@ export default class Table {
 
     for (let i = ancestors.length - 2; i >= 0; i--) {
       const ancestor = ancestors[i];
-      const ancestorInfo = this._columnWidths.get(ancestor.id);
+      const ancestorInfo = this._columnWidths.get(ancestor.instanceID);
       if (ancestorInfo?.fixed) continue;
       if (!ancestor.children || ancestor.children.length === 0) continue;
       let totalWidth = 0;
       for (const child of ancestor.children) {
         if (isTrue(child.hidden)) continue;
-        const childInfo = this._columnWidths.get(child.id);
+        const childInfo = this._columnWidths.get(child.instanceID);
         if (childInfo) totalWidth += childInfo.width;
       }
       const minWidth = Math.max(MIN_RESIZE_WIDTH, ancestor.minWidth ?? ancestorInfo?.minWidth ?? MIN_RESIZE_WIDTH);
       let maxWidth = ancestor.maxWidth ?? ancestorInfo?.maxWidth ?? 420;
       maxWidth = Math.max(maxWidth, totalWidth);
       const width = Math.min(Math.max(totalWidth, minWidth), maxWidth);
-      this._columnWidths.set(ancestor.id, {
+      this._columnWidths.set(ancestor.instanceID, {
         width,
         minWidth,
         maxWidth,
@@ -3654,26 +3496,26 @@ export default class Table {
 
   _applyColumnSelectionStyles() {
     const leafIndexMap = new Map<string, number>();
-    this._leafColumns.forEach((c, idx) => leafIndexMap.set(c.id, idx));
+    this.api.leaves.forEach((c, idx) => leafIndexMap.set(c.id, idx));
 
     const selectedLeafIdx = new Set<number>();
-    this._leafColumns.forEach((c, idx) => {
+    this.api.leaves.forEach((c, idx) => {
       if (this._selectedColumnIDs.has(c.id)) selectedLeafIdx.add(idx);
     });
 
-    const getRange = (col: InternalColumn | null): [number, number] | null => {
+    const getRange = (col: Column | null): [number, number] | null => {
       if (!col) return null;
-      if (isTrue(col.hidden)) return null;
+      if (col.hidden) return null;
       if (!col.children || col.children.length === 0) {
-        const idx = leafIndexMap.get(col.id);
+        const idx = leafIndexMap.get(col.instanceID);
         return idx == null ? null : [idx, idx];
       }
       let min = Number.POSITIVE_INFINITY;
       let max = Number.NEGATIVE_INFINITY;
-      const visit = (c: InternalColumn) => {
+      const visit = (c: Column) => {
         if (isTrue(c.hidden)) return;
         if (!c.children || c.children.length === 0) {
-          const idx = leafIndexMap.get(c.id);
+          const idx = leafIndexMap.get(c.instanceID);
           if (idx == null) return;
           min = Math.min(min, idx);
           max = Math.max(max, idx);
@@ -3688,7 +3530,7 @@ export default class Table {
 
     const headers = this.root.querySelectorAll<HTMLElement>(".pte-hcell");
     headers.forEach(h => {
-      const col = findColumnById(this.columns, h.id);
+      const col = this.api.getColumnById(h.id);
       const selected = !!col && this._selectedColumnIDs.has(col.id);
       const range = col ? getRange(col) : null;
       const leftSelected = !!range && selectedLeafIdx.has(range[0] - 1);
@@ -3696,7 +3538,7 @@ export default class Table {
 
       let parent = false;
       if (selected) {
-        const tree = getColumnAncestors(this.columns, col.id);
+        const tree = this.api.getAncestors(col);
         const treeLen = tree.length;
         if (treeLen > 1) {
           parent = this._selectedColumnIDs.has(tree[treeLen - 2].id);
@@ -3722,11 +3564,11 @@ export default class Table {
     if (!col) return;
 
     const leaves = collectLeaves(col, true);
-    const hasChildren = col.children && col.children.length > 0;
+    const hasChildren = col.children.length > 0;
 
     if (hasChildren) {
       const ids = new Set<string>();
-      for (const leaf of leaves) ids.add(leaf.id);
+      for (const leaf of leaves) ids.add(leaf.instanceID);
 
       const allSelected = Array.from(ids).every(id => this._selectedColumnIDs.has(id));
       if (allSelected) {
@@ -3735,32 +3577,32 @@ export default class Table {
         ids.forEach(id => this._selectedColumnIDs.add(id));
       }
     } else {
-      if (this._selectedColumnIDs.has(col.id)) {
-        this._selectedColumnIDs.delete(col.id);
+      if (this._selectedColumnIDs.has(col.instanceID)) {
+        this._selectedColumnIDs.delete(col.instanceID);
       } else {
-        this._selectedColumnIDs.add(col.id);
+        this._selectedColumnIDs.add(col.instanceID);
       }
     }
 
-    const colsWithSelectedChildren = new Map<string, InternalColumn>();
+    const colsWithSelectedChildren = new Map<string, Column>();
     for (const selectedColID of this._selectedColumnIDs) {
       const col = findColumnById(this.columns, selectedColID);
       if (!col) continue;
-      if (col.children && col.children.length > 0) colsWithSelectedChildren.set(col.id, col);
+      if (col.children.length > 0) colsWithSelectedChildren.set(col.instanceID, col);
       else {
         const tree = getColumnAncestors(this.columns, selectedColID);
         if (tree.length > 1) {
-          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.id, e));
+          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.instanceID, e));
         }
       }
     }
 
     for (const col of colsWithSelectedChildren.values()) {
       const leaves = collectLeaves(col, true);
-      if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length == leaves.length) {
-        this._selectedColumnIDs.add(col.id);
+      if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length == leaves.length) {
+        this._selectedColumnIDs.add(col.instanceID);
       } else {
-        this._selectedColumnIDs.delete(col.id);
+        this._selectedColumnIDs.delete(col.instanceID);
       }
     }
 
@@ -4117,7 +3959,7 @@ export default class Table {
     for (const colID of this._selectedColumnIDs) {
       const col = findColumnById(this.columns, colID);
       if (!col) continue;
-      if (col.children && col.children.length > 0) continue;
+      if (col.children.length > 0) continue;
       selectedCount++;
       if (!col.sortable) {
         sortable = false;
@@ -4403,7 +4245,7 @@ export default class Table {
       ]
     }
 
-    if (this._aggregates.has(col.id)) {
+    if (this._aggregates.has(col.instanceID)) {
       aggregateTypes.push(
         {
           id: 'remove-agg',
@@ -4413,7 +4255,7 @@ export default class Table {
       )
     }
 
-    const aggType = this._aggregates.get(col.id);
+    const aggType = this._aggregates.get(col.instanceID);
     if (aggType) {
       aggregateTypes.forEach(e => e.disabled = e.extra == aggType);
     }
@@ -4493,7 +4335,7 @@ export default class Table {
       });
       items.push({ isSeparator: true });
     }
-    items.push(...this._getExportMenuItems(col.children && col.children.length > 0, collectLeaves(col).map(l => l.id)));
+    items.push(...this._getExportMenuItems(col.children.length > 0, collectLeaves(col).map(l => l.instanceID)));
     if (items[items.length - 1].isSeparator) {
       items.pop();
     }
@@ -4502,14 +4344,14 @@ export default class Table {
   }
 
   _buildFilterMenuDOM(colID: string) {
-    let col = this._centerLeafColumns.find(c => c.id === colID);
-    if (!col) col = this._leftPinnedLeafColumns.find(c => c.id === colID);
-    if (!col) col = this._rightPinnedLeafColumns.find(c => c.id === colID);
+    let col = this._centerLeafColumns.find(c => c.instanceID === colID);
+    if (!col) col = this._leftPinnedLeafColumns.find(c => c.instanceID === colID);
+    if (!col) col = this._rightPinnedLeafColumns.find(c => c.instanceID === colID);
     if (!col) return;
 
     const colType: ColumnType = col.type ?? ColumnType.STRING;
     const current = this._filters.find(f => f.key == colID);
-    const isServerSide = this.rowModel === "serverSide";
+    const isServerSide = this.rowModel.getType() === "serverSide";
 
     const root = document.createElement("div");
     root.className = "pte-filter-root";
@@ -4535,11 +4377,11 @@ export default class Table {
     valueInput.placeholder = "Filter";
     valueInput.type = "text";
     if (colType === ColumnType.NUMBER || colType === ColumnType.CURRENCY) {
-      valueInput.type="number";
+      valueInput.type = "number";
     } else if (colType === ColumnType.BOOLEAN) {
-      valueInput.type="checkbox";
+      valueInput.type = "checkbox";
     } else if (colType === ColumnType.DATE) {
-      valueInput.type="date";
+      valueInput.type = "date";
     }
     // for date you might want type="date" or "datetime-local" depending on your data
 
@@ -4676,9 +4518,9 @@ export default class Table {
     const col = findColumnById(this.columns, header.id);
     if (!col) return;
     const leaves = collectLeaves(col);
-    if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length != leaves.length) {
+    if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
       this._selectedColumnIDs.clear();
-      this._toggleColumnSelection(col.id);
+      this._toggleColumnSelection(col.instanceID);
     }
     if (this._selectedColumnIDs.size > 1) {
       return this._openMultiColMenu(e.clientX, e.clientY);
@@ -4700,10 +4542,10 @@ export default class Table {
       if (!col) return;
       if (e.shiftKey) {
         if (!col.sortable) return;
-        if (col.children && Array.isArray(col.children) && col.children.length > 0) {
-          return this._toggleBatchSort(col);
+        if (Array.isArray(col.children) && col.children.length > 0) {
+          return this._toggleSort(col);
         }
-        return this._toggleSort(header.id);
+        return this._toggleSort(col);
       }
       this._toggleColumnSelection(header.id);
       return;
@@ -4743,63 +4585,23 @@ export default class Table {
   }
 
   async _fetchServerSideRows(_reason: string) {
-    if (this.rowModel !== "serverSide") return;
-    if (!this._serverSideDataSource) {
-      console.warn("serverSideDataSource is not configured for serverSide row model.");
+    if (this.rowModel.getType() !== "serverSide" || !this.rowModel.isValid()) return;
+    const success = await this.rowModel.refreshData();
+    if (!success) {
+      this._setServerLoading(false);
       return;
     }
-
+    this._recomputeView();
+    this._updateWindow(true, undefined);
     this._setServerLoading(true);
-    const pageSize = this._pagination ? this._paginationPageSize : Math.max(1, this._paginationPageSize || this.data.length || 1);
-    const filters = this._filters
-      .map(f => {
-        const col = findColumnById(this.columns, f.key);
-        if (!col) return null;
-        return {
-          key: col.key,
-          type: f.type,
-          value: f.v,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["filters"];
 
-    const sorts = this._sorts
-      .map(s => {
-        const col = findColumnById(this.columns, s.key);
-        if (!col) return null;
-        return {
-          key: col.key,
-          dir: s.dir,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["sorts"];
-
-    const req: ServerSideRequest = {
-      filters,
-      sorts,
-      page: this._pagination ? this._pageIdx : 0,
-      pageSize,
-    };
-
-    const requestId = ++this._serverRequestSeq;
-    try {
-      const result = await this._serverSideDataSource(req);
-      if (requestId !== this._serverRequestSeq) return;
-      const rows = result?.rows ?? [];
-      const totalRows = result?.totalRows ?? rows.length;
-      this.setData(rows, { resetPage: false, totalRows });
-    } catch (err) {
-      console.error("Failed to fetch server-side rows", err);
-    } finally {
-      this._setServerLoading(false, requestId);
-    }
   }
 
   _updateFilterIndicators() {
     for (const col of this._centerLeafColumns) {
-      const hasFilter = this._filters.find(f => f.key === col.id);
-      const hcell = document.getElementById(col.id);
-      if (hcell && hcell.id === col.id) {
+      const hasFilter = this._filters.find(f => f.key === col.instanceID);
+      const hcell = document.getElementById(col.instanceID);
+      if (hcell && hcell.id === col.instanceID) {
         const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
         if (menuBtn) {
           if (hasFilter) {
@@ -4816,7 +4618,7 @@ export default class Table {
     this._filterDirty = true;
     this._sortDirty = true; // filter affects sort view
     this._updateFilterIndicators();
-    if (this.rowModel === "serverSide") {
+    if (this.rowModel.getType() === "serverSide") {
       this._fetchServerSideRows("filterChanged");
       return;
     }

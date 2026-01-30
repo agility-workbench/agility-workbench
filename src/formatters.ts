@@ -1,10 +1,12 @@
 import { l } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
-import { ColumnType, InternalColumn } from "./types";
+import { ColumnType } from "./types";
+import { RowNode } from "./row_model/node";
+import { Column } from "./column/Column";
 
 export interface ValueFormatterParams {
   value: any;
-  row?: any;
-  col?: InternalColumn;
+  row?: RowNode;
+  col?: Column;
 }
 
 export interface FormatterOptions {

@@ -2,10 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import "./roboto-font.css";
 import "./style.css";
 
-import { Grid } from "@grid"; // React Data Grid Component
-import { Column, RowModelType, ServerSideAggregation, ServerSideDataSource, ValueFormatterParams } from "@grid/types";
-import { round } from "./helpers";
-import { FormatterOptionsParams } from "@grid/formatters";
+import { GridReact } from "@grid-react"; // React Data Grid Component
 
 const themePresets = [
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
@@ -55,7 +52,7 @@ function App() {
     return cols;
   };
 
-  const serverSideDataSource: ServerSideDataSource = useCallback(async (request) => {
+  const serverSideDataSource: ServerSideDataSource = useCallback(async (request: ServerSideRequest) => {
     console.log("Server-side request", request);
 
     const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
@@ -79,7 +76,7 @@ function App() {
     return { rows, totalRows };
   }, [category, count]);
 
-  const serverSideAggregation: ServerSideAggregation = useCallback(async(request) => {
+  const serverSideAggregation: ServerSideAggregation = useCallback(async (request: ServerSideAggregationRequest) => {
     console.log("Server-side aggregation request", request);
 
     const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
@@ -186,16 +183,12 @@ function App() {
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <Grid
+        <GridReact
           data={rowData}
-          columns={colDefs}
+          columnDefs={colDefs}
           className={activeTheme.className}
           style={{ width: "100%", height: "100%" }}
-          pagination={paginate}
-          rowModel={rowModel}
           loading={loading}
-          serverSideDataSource={rowModel === "serverSide" ? serverSideDataSource : undefined}
-          serverSideAggregation={rowModel === "serverSide" ? serverSideAggregation : undefined}
         />
       </div>
     </div>

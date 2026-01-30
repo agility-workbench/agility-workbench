@@ -1,23 +1,28 @@
 // TableReact.jsx
-import { useEffect, useRef } from "react";
+import { MutableRefObject, useCallback, useEffect, useRef } from "react";
 import Table from "./table";
 import "./table.css";
-import { Column, getColumnDefs, RowModelType, ServerSideAggregation, ServerSideDataSource } from "./types";
+import { ColDef, getColumnDefs } from "./types";
+import { ClientSideRowModel } from "./row_model/client_side";
+import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRowModel } from "./row_model/server_side";
+import { RowModelType } from "./interfaces/IRowModel";
 
 export interface GridProps {
   data: any[];
-  columns: Column[];
+  columns: ColDef[];
   className?: string;
   style?: React.CSSProperties;
   pagination?: boolean;
   paginationPageSize?: number;
   paginationPageSizes?: number[] | boolean;
-  rowModel?: RowModelType;
+  rowModelType?: RowModelType;
   serverSideDataSource?: ServerSideDataSource;
-  serverSideAggregation?: ServerSideAggregation;
+  serverSideAggregation?: ServerSideAggregationSource;
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
   loading?: boolean;
+  getRowId?: (row: any) => string;
+  rowIdKey?: string;
 }
 
 export default function Grid({
@@ -28,15 +33,24 @@ export default function Grid({
   pagination,
   paginationPageSize,
   paginationPageSizes,
-  rowModel,
+  rowModelType,
   serverSideDataSource,
   serverSideAggregation,
   allowExportAsCSV = true,
   allowExportAsExcel = true,
   loading = false,
+  getRowId,
+  rowIdKey,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<Table>(null);
+  const engineRef: MutableRefObject<Table | null> = useRef<Table>(null);
+
+  const rowModel = useCallback(() => {
+    if (rowModelType === "serverSide") {
+      return new ServerSideRowModel({ getRowId, rowIdKey }, serverSideDataSource, serverSideAggregation);
+    }
+    return new ClientSideRowModel({ getRowId, rowIdKey });
+  }, [rowModelType, getRowId, rowIdKey, serverSideDataSource, serverSideAggregation]);
 
   // Create engine once (mount/unmount)
   useEffect(() => {
@@ -49,13 +63,11 @@ export default function Grid({
         pagination: pagination || false,
         paginationPageSize: paginationPageSize || 100,
         paginationPageSizes: paginationPageSizes || true,
-        rowModel: rowModel || "clientSide",
-        serverSideDataSource,
-        serverSideAggregation,
+        rowModel: rowModel(),
         exportAsCSV: allowExportAsCSV,
         exportAsExcel: allowExportAsExcel,
         loading,
-       },
+      },
     );
     engineRef.current = engine;
 
@@ -64,7 +76,7 @@ export default function Grid({
     // const offFilter = engine.on("filterChanged", (f) => onFilterTextChange?.(f));
 
     // initial data
-    if (!(rowModel === "serverSide" && serverSideDataSource)) {
+    if (!(rowModelType === "serverSide" && serverSideDataSource)) {
       engine.setData(data);
     }
     // engine.setColumns(columns);
@@ -78,20 +90,27 @@ export default function Grid({
 
   // Sync prop changes → engine
   useEffect(() => {
-    if (rowModel === "serverSide" && serverSideDataSource) return;
-    engineRef.current?.setData(data);
-  }, [data, rowModel, serverSideDataSource]);
-
-  useEffect(() => {
-    engineRef.current?.setColumns(getColumnDefs(columns));
+    engineRef.current!.gridAPI.columns = getColumnDefs(columns);
   }, [columns]);
 
   useEffect(() => {
-    engineRef.current?.setRowModel(rowModel || "clientSide");
-  }, [rowModel]);
+    const setRowModel = async () => {
+      await engineRef.current!.gridAPI.setRowModel(rowModel());
+    };
+    setRowModel();
+  }, [rowModelType]);
 
   useEffect(() => {
-    engineRef.current?.setServerSideDataSource(serverSideDataSource);
+    if (rowModelType === "serverSide" && serverSideDataSource) return;
+    engineRef.current!.gridAPI.data = data;
+  }, [data, rowModelType, serverSideDataSource]);
+
+  useEffect(() => {
+    const currRowModel = engineRef.current?.rowModel;
+    if (currRowModel?.getType() !== "serverSide") return;
+    const serverRowModel = currRowModel as ServerSideRowModel;
+    serverRowModel.serverDataSource = serverSideDataSource;
+    engineRef.current?.refreshServerSideData();
   }, [serverSideDataSource]);
 
   useEffect(() => {

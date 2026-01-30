@@ -13,8 +13,11 @@
     "declarationDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@grid/*": ["lib/*"]
+      "@grid": ["src/index"],
+      "@grid/*": ["src/*"],
+      "@grid-react": ["grid-react/index"],
+      "@grid-react/*": ["grid-react/*"]
     }
   },
-  "include": ["src", "lib", "vite.config.ts", "tsup.config.ts"]
+  "include": ["test", "src", "grid-react", "vite.config.ts", "tsup.config.ts"]
 }

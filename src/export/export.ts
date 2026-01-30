@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
-import { getColumnAncestors } from "./helpers";
-import { ColumnType, InternalColumn } from "./types";
+import { getColumnAncestors } from "../renderer/helpers";
+import { Column } from "../column/Column";
+import { ColumnType } from "../interfaces/column";
 
 export interface ExportSelectionRange {
   rowStart: number;
@@ -11,8 +12,8 @@ export interface ExportSelectionRange {
 
 export interface ExportConfig {
   rows: any[];
-  columns: InternalColumn[];
-  columnTree?: InternalColumn[];
+  columns: Column[];
+  columnTree?: Column[];
   selectionRange?: ExportSelectionRange | null;
   selectedColumnIDs?: Set<string>;
   columnIds?: string[];
@@ -30,7 +31,7 @@ interface HeaderCell {
 interface HeaderLayout {
   cells: HeaderCell[][];
   depth: number;
-  paths: InternalColumn[][];
+  paths: Column[][];
 }
 
 interface ValueBundle {
@@ -46,7 +47,7 @@ const isDateLikeFormat = (fmt?: string): boolean => {
   return /[dmyhs]/i.test(fmt);
 };
 
-const resolveNumberFormat = (col: InternalColumn): string | undefined => {
+const resolveNumberFormat = (col: Column): string | undefined => {
   if (col.type === ColumnType.CURRENCY) {
     // Always prefer a currency-friendly format; ignore date-like formats that might slip in.
     if (col.format && !isDateLikeFormat(col.format)) {
@@ -114,7 +115,7 @@ const clampSelection = (
   };
 };
 
-const resolveColumns = (config: ExportConfig): InternalColumn[] => {
+const resolveColumns = (config: ExportConfig): Column[] => {
   const baseCols = config.columns ?? [];
   const range = clampSelection(config.selectionRange, config.rows?.length ?? 0, baseCols.length);
 
@@ -135,7 +136,7 @@ const resolveRows = (config: ExportConfig, colCount: number): any[] => {
   return rows.slice(range.rowStart, range.rowEnd + 1);
 };
 
-const buildPaths = (columns: InternalColumn[], columnTree?: InternalColumn[]): InternalColumn[][] => {
+const buildPaths = (columns: Column[], columnTree?: Column[]): Column[][] => {
   return columns.map(col => {
     if (columnTree && columnTree.length > 0) {
       const ancestors = getColumnAncestors(columnTree, col.id);
@@ -145,7 +146,7 @@ const buildPaths = (columns: InternalColumn[], columnTree?: InternalColumn[]): I
   });
 };
 
-const buildHeaderLayout = (columns: InternalColumn[], columnTree?: InternalColumn[]): HeaderLayout => {
+const buildHeaderLayout = (columns: Column[], columnTree?: Column[]): HeaderLayout => {
   if (!columns.length) {
     return { cells: [], depth: 0, paths: [] };
   }
@@ -211,7 +212,7 @@ const buildHeaderMatrix = (layout: HeaderLayout, columnCount: number): string[][
   return matrix;
 };
 
-const getValueBundle = (row: any, col: InternalColumn): ValueBundle => {
+const getValueBundle = (row: any, col: Column): ValueBundle => {
   const raw = col.valueGetter ? col.valueGetter(row) : row?.[col.key];
   if (col.valueFormatter) {
     return {
@@ -263,7 +264,7 @@ export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") =>
   triggerDownload(blob, ensureExtension(fileName, "csv"));
 };
 
-const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: InternalColumn) => {
+const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: Column) => {
   const { raw, formatted } = bundle;
   const fmt = resolveNumberFormat(col);
   if (raw == null) {

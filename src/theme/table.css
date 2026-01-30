@@ -1,7 +1,6 @@
 :root,
 .pte-theme-light {
-  --pte-header-height: 42px;
-  --pte-row-height: 43px;
+  /* --pte-row-height: 43px; */
   --pte-row-border-size: 1px;
   --pte-font-family: Roboto, sans-serif;
   --pte-font-size: 14px;
@@ -50,6 +49,8 @@
   --pte-column-drag-ghost-text-color: #111827;
   --pte-menu-btn-hover-bg: #adb0b3;
   --pte-not-allowed-icon-color: #ef4444;
+  --pte-sparkline-stroke-color: #0ea5e9;
+  --pte-sparkline-bar-color: #93c5fd;
 }
 
 .pte-theme-dark {
@@ -93,6 +94,8 @@
   --pte-column-drag-ghost-text-color: #e2e8f0;
   --pte-menu-btn-hover-bg: #334155;
   --pte-not-allowed-icon-color: #f87171;
+  --pte-sparkline-stroke-color: #38bdf8;
+  --pte-sparkline-bar-color: #60a5fa;
 }
 
 *[class^="pte-"], *[class*=" pte-"] {
@@ -365,7 +368,7 @@
 }
 
 .pte-pagination-btn-first {
-  mask-image: url(double-left.svg);
+  mask-image: url(icons/double-left.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -374,7 +377,7 @@
 }
 
 .pte-pagination-btn-prev {
-  mask-image: url(left-chevron.svg);
+  mask-image: url(icons/left-chevron.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -383,7 +386,7 @@
 }
 
 .pte-pagination-btn-next {
-  mask-image: url(right-chevron.svg);
+  mask-image: url(icons/right-chevron.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -392,7 +395,7 @@
 }
 
 .pte-pagination-btn-last {
-  mask-image: url(double-right.svg);
+  mask-image: url(icons/double-right.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -682,7 +685,7 @@
   content: " ";
   font-size: 22px;
   margin-left: 4px;
-  mask-image: url(up.svg);
+  mask-image: url(icons/up.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -694,7 +697,7 @@
   content: " ";
   font-size: 22px;
   margin-left: 4px;
-  mask-image: url(down.svg);
+  mask-image: url(icons/down.svg);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -816,7 +819,7 @@
 }
 
 .pte-filter-icon {
-  mask-image: url(filter.svg);
+  mask-image: url(icons/filter.svg);
   background-color: var(--pte-icon-color);
   width: 16px;
   height: 16px;
@@ -825,7 +828,7 @@
 }
 
 .pte-menu-icon {
-  mask-image: url(menu-vertical.svg);
+  mask-image: url(icons/menu-vertical.svg);
   background-color: var(--pte-icon-color);
   width: 16px;
   height: 16px;
@@ -846,7 +849,7 @@
   padding-bottom: var(--pte-cell-padding-bottom);
   padding-left: var(--pte-cell-padding-left);
   padding-right: var(--pte-cell-padding-right);
-  height: calc(var(--pte-row-height) - var(--pte-row-border-size));
+  /* height: calc(var(--pte-row-height) - var(--pte-row-border-size)); */
   display: flex;
   align-items: center;
   cursor: default;
@@ -856,6 +859,31 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.pte-cell-sparkline {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.pte-cell-sparkline .pte-sparkline {
+  width: 100%;
+  height: 60%;
+  min-height: 12px;
+  display: block;
+  pointer-events: none;
+}
+
+.pte-sparkline-path {
+  fill: none;
+  stroke: var(--pte-sparkline-stroke-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pte-sparkline-bar {
+  fill: var(--pte-sparkline-bar-color);
 }
 
 .pte-cell-right-aligned {
@@ -1026,99 +1054,99 @@
 }
 
 .icon-asc {
-  mask-image: url(up.svg);
+  mask-image: url(icons/up.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-desc {
-  mask-image: url(down.svg);
+  mask-image: url(icons/down.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-clear {
-  mask-image: url(down-up.svg);
+  mask-image: url(icons/down-up.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-arrow-right {
-  mask-image: url(right-chevron.svg);
+  mask-image: url(icons/right-chevron.svg);
   background-color: var(--pte-icon-color);
   width: 18px;
   height: 18px;
 }
 
 .icon-check {
-  mask-image: url(check.svg);
+  mask-image: url(icons/check.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-group {
-  mask-image: url(group.svg);
+  mask-image: url(icons/group.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-col-hide {
-  mask-image: url(column-hide.svg);
+  mask-image: url(icons/column-hide.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-count {
-  mask-image: url(count.svg);
+  mask-image: url(icons/count.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-sum {
-  mask-image: url(sum.svg);
+  mask-image: url(icons/sum.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-avg {
-  mask-image: url(avg.svg);
+  mask-image: url(icons/avg.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-min-string {
-  mask-image: url(sort-asc-letters.svg);
+  mask-image: url(icons/sort-asc-letters.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-min-number {
-  mask-image: url(sort-asc-numbers.svg);
+  mask-image: url(icons/sort-asc-numbers.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-max-string {
-  mask-image: url(sort-desc-letters.svg);
+  mask-image: url(icons/sort-desc-letters.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-max-number {
-  mask-image: url(sort-desc-numbers.svg);
+  mask-image: url(icons/sort-desc-numbers.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-median {
-  mask-image: url(median.svg);
+  mask-image: url(icons/median.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-drag {
-  mask-image: url(drag.svg);
+  mask-image: url(icons/drag.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-plus-frame {
-  mask-image: url(plus-frame.svg);
+  mask-image: url(icons/plus-frame.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-minus-frame {
-  mask-image: url(minus-frame.svg);
+  mask-image: url(icons/minus-frame.svg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-not-allowed {
-  mask-image: url(not-allowed.svg);
+  mask-image: url(icons/not-allowed.svg);
   background-color: var(--pte-not-allowed-icon-color);
 }
 
