@@ -61,12 +61,9 @@ export class GridRenderer {
   _selectionRange: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
   _isSelecting: boolean;
 
-  _isResizingColumn: boolean;
-  _resizingColumn: Column | null;
-  _resizeStartX: number;
-  _resizeStartWidth: number;
-  _resizeMinWidth: number;
-  _resizeMaxWidth: number;
+  _resizingColumn: string = "";
+  _resizeStartX: number = 0;
+  _resizeStartWidth: number = 0;
   _suppressHeaderClick: boolean;
   _isDraggingColumn: boolean;
   _draggingColumn: Column | null;
@@ -321,12 +318,8 @@ export class GridRenderer {
     this._selectionAnchor = null;
     this._selectionRange = null;
     this._isSelecting = false;
-    this._isResizingColumn = false;
-    this._resizingColumn = null;
     this._resizeStartX = 0;
     this._resizeStartWidth = 0;
-    this._resizeMinWidth = 0;
-    this._resizeMaxWidth = Number.POSITIVE_INFINITY;
     this._suppressHeaderClick = false;
     this._isDraggingColumn = false;
     this._draggingColumn = null;
@@ -525,7 +518,6 @@ export class GridRenderer {
 
   private setup() {
     this.core.onInternal("overlayShow", (ev: { overlayType: "loading" | "noRows" | "none" }) => {
-      console.log("overlayShow", ev.overlayType);
       this.setLoading(ev.overlayType === "loading" || ev.overlayType === "noRows");
     });
     this.core.onInternal("viewportChanged", (params: GridEventViewportChangedParams) => this._maybeUpdatePoolSize(params));
@@ -560,7 +552,7 @@ export class GridRenderer {
     if (poolSize === this._poolSize) return;
     this._poolSize = poolSize;
     this._rebuildRowPool();
-    this._updateAllColumnWidths();
+    this._updateColumnWidths();
     this._updateWindow(true, undefined);
   }
 
@@ -675,14 +667,10 @@ export class GridRenderer {
     if (params.reason !== "resize" && params.reason !== "state") {
       this._buildHeaderDOM();
       this._buildRowPool();
-    } else if (params.reason === "state") {
-      this._updateColumnWidths();
+    } else {
+      this._updateColumnWidths(params.changedColIds || []);
     }
     // this._recomputeView();
-    if (params.reason === "resize") {
-      this._updateColumnWidths();
-      // this._updateWindow(true, undefined);
-    }
   }
 
   onColumnsMoved() {
@@ -1499,14 +1487,13 @@ export class GridRenderer {
 
   _applyWidthsToChildren(col: Column) {
     const hcell = document.getElementById(col.instanceID) as HTMLDivElement;
-    if (!hcell) console.warn("Header cell not found for column:", col);
     hcell.style.flex = "0 0 auto";
     if (col.children.length === 0) {
       hcell.style.width = `${col.computedWidth}px`;
     }
   };
 
-  _applyLeftColumnWidths(): number {
+  _applyLeftColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
     let first = true;
     for (const slot of this._rowPool) {
@@ -1514,12 +1501,13 @@ export class GridRenderer {
       let c = 0;
       for (const col of this.core.getColumnModel().getLeftLeaves()) {
         if (col.hidden) continue;
-        if (first) this._applyWidthsToChildren(col);
         const cell = slot.leftCellEls[c++];
         if (!cell) continue;
+        totalWidth += col.computedWidth;
+        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
-        totalWidth += col.computedWidth;
       }
       if (slot.leftRowEl) slot.leftRowEl.style.width = `${totalWidth}px`;
       if (first) {
@@ -1556,21 +1544,21 @@ export class GridRenderer {
     return totalWidth;
   }
 
-  _applyColumnWidths(): number {
+  _applyCenterColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
     let first = true;
-    console.log("Applying center column widths: ", this._rowPool.length);
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = 0;
       for (const col of this.core.getColumnModel().getCenterLeaves()) {
         if (col.hidden) continue;
-        if (first) this._applyWidthsToChildren(col);
         const cell = slot.cellEls[c++];
         if (!cell) continue;
+        totalWidth += col.computedWidth;
+        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
-        totalWidth += col.computedWidth;
       }
       slot.rowEl.style.width = `${totalWidth}px`;
       if (first) {
@@ -1590,7 +1578,7 @@ export class GridRenderer {
     return maxWidth;
   }
 
-  _applyRightColumnWidths(): number {
+  _applyRightColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
     let first = true;
     for (const slot of this._rowPool) {
@@ -1598,12 +1586,13 @@ export class GridRenderer {
       let c = 0;
       for (const col of this.core.getColumnModel().getRightLeaves()) {
         if (col.hidden) continue;
-        if (first) this._applyWidthsToChildren(col);
         const cell = slot.rightCellEls[c++];
         if (!cell) continue;
+        totalWidth += col.computedWidth;
+        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
-        totalWidth += col.computedWidth;
       }
       if (slot.rightRowEl) slot.rightRowEl.style.width = `${totalWidth}px`;
       if (first) {
@@ -1643,11 +1632,26 @@ export class GridRenderer {
     return totalWidth;
   }
 
-  _updateAllColumnWidths() {
+  _updateColumnWidths(colIDs: string[] = []) {
     let totalWidth = 0;
-    totalWidth += this._applyLeftColumnWidths();
-    totalWidth += this._applyColumnWidths();
-    totalWidth += this._applyRightColumnWidths();
+    totalWidth += this._applyLeftColumnWidths(colIDs);
+    totalWidth += this._applyCenterColumnWidths(colIDs);
+    totalWidth += this._applyRightColumnWidths(colIDs);
+
+    let allColIDs = new Set();
+    if (colIDs.length > 0) {
+      colIDs.forEach(c => this.core.getColumnModel().getAncestors(c).slice(0, -1).forEach(a => allColIDs.add(a.instanceID)));
+    } else {
+      this.core.getColumnModel().getColumns().map(c => c.instanceID).forEach(c => allColIDs.add(c));
+      this.core.getColumnModel().getLeaves().map(c => c.instanceID).forEach(l => allColIDs.delete(l));
+    }
+    allColIDs.forEach(c => {
+      const col = this.core.getColumnModel().getById(c);
+      if (!col || col.hidden) return;
+      const hcell = document.getElementById(c);
+      if (!hcell) return;
+      hcell.style.width = `${col.computedWidth}px`;
+    })
 
     if (totalWidth > this.root.clientWidth) {
       this.hScrollContainer.style.display = "flex";
@@ -1666,13 +1670,6 @@ export class GridRenderer {
     // + paginationHeight
     // + aggregateHeight;
     this.body.style.height = `calc(100% - ${chromeHeight}px)`;
-  }
-
-  _updateColumnWidths(column: Column | null = null, forceRecompute = false) {
-    if (column) {
-      this._updateAncestorWidths(column.instanceID);
-    }
-    this._updateAllColumnWidths();
   }
 
   _buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
@@ -1710,12 +1707,8 @@ export class GridRenderer {
       const children = document.createElement("div");
       children.className = "pte-hcell-children";
       header.appendChild(children);
-      for (const child of col.children) {
-        if (!isTrue(child.hidden)) {
-          if (child.columnGroupVisible) {
-            children.append(this._buildHeaderCell(child, maxDepth));
-          }
-        }
+      for (const child of col.getVisibleChildren()) {
+        children.append(this._buildHeaderCell(child, maxDepth));
       }
     } else {
       header.style.width = `${col.computedWidth}px`;
@@ -1743,7 +1736,6 @@ export class GridRenderer {
     this._centerLeafColumns = [];
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
-    // this._sorts = this._sorts.filter(s => this._leafColumnLookup.has(s.key));
     const headerHeight = this.core.options.headerHeight * this.core.getColumnModel().maxHeaderDepth;
     this.headerWrapper.style.height = `${headerHeight}px`;
     this.headerWrapper.style.minHeight = `${headerHeight}px`;
@@ -2130,7 +2122,6 @@ export class GridRenderer {
     this.rightViewport.innerHTML = "";
     this._rowPool = [];
 
-    console.trace("Building row pool with size:", this._poolSize);
     for (let i = 0; i < this._poolSize; i++) {
       const row: RowPoolDef = {
         rowEl: document.createElement("div"),
@@ -2341,7 +2332,6 @@ export class GridRenderer {
     this.rightViewport.style.transform = `translateY(${offsetY}px)`;
 
     // Patch pooled rows
-    console.log(this._rowPool);
     for (let i = 0; i < this._rowPool.length; i++) {
       const viewIndex = startIndex + i;
       const slot = this._rowPool[i];
@@ -2358,7 +2348,6 @@ export class GridRenderer {
       if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
       if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
       const row = this.core.getRowModel().getRowNodeAtViewIndex(viewIndex);
-      console.log(row);
       if (!row) continue;
       slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
@@ -2637,23 +2626,19 @@ export class GridRenderer {
     if (handle) {
       const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
       if (!header) return;
-      const col = findColumnById(this.columns, header.id);
+      const col = this.core.getColumnModel().getById(header.id);
       if (!col || col.hidden) return;
       if (!col.resizable) return;
-      const info = this._columnWidths.get(col.id);
-      if (info?.fixed) return;
 
-      const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
-      let maxWidth = info?.maxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
+      const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? MIN_RESIZE_WIDTH);
+      let maxWidth = col.maxWidth ?? Number.POSITIVE_INFINITY;
       if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
       const headerRect = header.getBoundingClientRect();
 
       this._isResizingColumn = true;
-      this._resizingColumn = col;
+      this._resizingColumn = col.instanceID;
       this._resizeStartX = e.clientX;
-      this._resizeStartWidth = info?.width ?? headerRect.width;
-      this._resizeMinWidth = minWidth;
-      this._resizeMaxWidth = maxWidth;
+      this._resizeStartWidth = headerRect.width;
       this._suppressHeaderClick = true;
       document.body.style.cursor = "col-resize";
       e.preventDefault();
@@ -2671,7 +2656,7 @@ export class GridRenderer {
   }
 
   _onColumnResizeMouseMove(e: MouseEvent) {
-    if (!this._isResizingColumn || !this._resizingColumn) return;
+    if (this._resizingColumn === "") return;
     const delta = e.clientX - this._resizeStartX;
     const nextWidth = this._resizeStartWidth + delta;
     this._applyColumnResize(this._resizingColumn, nextWidth);
@@ -3071,92 +3056,20 @@ export class GridRenderer {
     if (!handle) return;
     const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
-    const col = findColumnById(this.columns, header.id);
-    if (!col || col.hidden) return;
-    if (!col.resizable) return;
-    const info = this._columnWidths.get(col.id);
-    if (info?.fixed || col.width != null) return;
-    this._suppressHeaderClick = true;
-    this._updateColumnWidths(col, true);
+    this.core.dispatch({
+      type: "columnAutosize",
+      colId: header.id,
+    });
     e.preventDefault();
     e.stopPropagation();
   }
 
-  _applyColumnResize(col: Column, rawWidth: number) {
-    const info = this._columnWidths.get(col.id);
-    const minWidth = Math.max(MIN_RESIZE_WIDTH, info?.minWidth ?? this._resizeMinWidth ?? col.minWidth ?? MIN_RESIZE_WIDTH);
-    let maxWidth = info?.maxWidth ?? this._resizeMaxWidth ?? col.maxWidth ?? Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
-    let width = Math.min(Math.max(rawWidth, minWidth), maxWidth);
-
-    if (col.children.length > 0) {
-      const visibleChildren = col.children.filter(c => !isTrue(c.hidden));
-      if (visibleChildren.length > 0) {
-        const childInfos = visibleChildren.map(child => {
-          const childInfo = this._columnWidths.get(child.id);
-          const childMin = Math.max(MIN_RESIZE_WIDTH, child.minWidth ?? childInfo?.minWidth ?? MIN_RESIZE_WIDTH);
-          let childMax = child.maxWidth ?? childInfo?.maxWidth ?? 420;
-          if (!Number.isFinite(childMax)) childMax = 420;
-          const childWidth = childInfo?.width ?? Math.max(childMin, Math.min(childMax, child.width ?? width / visibleChildren.length));
-          return {
-            col: child,
-            min: childMin,
-            max: childMax,
-            width: childWidth,
-            fixed: childInfo?.fixed ?? child.width != null,
-          };
-        });
-
-        const currentTotal = childInfos.reduce((sum, c) => sum + c.width, 0);
-        const minTotal = childInfos.reduce((sum, c) => sum + c.min, 0);
-        const maxTotal = childInfos.reduce((sum, c) => sum + c.max, 0);
-
-        // Clamp parent width to what children can support.
-        width = Math.min(Math.max(width, minTotal), Math.min(maxWidth, maxTotal));
-
-        let remaining = width - currentTotal;
-        let safety = 0;
-        while (Math.abs(remaining) > 0.5 && safety < 20) {
-          safety++;
-          const grow = remaining > 0;
-          const candidates = childInfos.filter(c => {
-            if (c.fixed) return false;
-            return grow ? c.width < c.max : c.width > c.min;
-          });
-          if (candidates.length === 0) break;
-          const deltaPer = remaining / candidates.length;
-          let applied = 0;
-          for (const c of candidates) {
-            const delta = grow
-              ? Math.min(c.max - c.width, Math.max(1, Math.round(deltaPer)))
-              : Math.max(c.min - c.width, Math.min(-1, Math.round(deltaPer)));
-            c.width += delta;
-            applied += delta;
-          }
-          remaining -= applied;
-        }
-
-        const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
-        for (const c of childInfos) {
-          this._columnWidths.set(c.col.id, {
-            width: c.width,
-            minWidth: c.min,
-            maxWidth: c.max,
-            fixed: c.fixed,
-          });
-        }
-        width = totalWidth;
-      }
-    }
-
-    this._columnWidths.set(col.id, {
-      width,
-      minWidth,
-      maxWidth,
-      fixed: info?.fixed ?? false,
+  _applyColumnResize(colId: string, rawWidth: number) {
+    this.core.dispatch({
+      type: "columnResize",
+      colId: colId,
+      widthPx: rawWidth,
     });
-    this._updateAncestorWidths(col.id);
-    this._updateAllColumnWidths();
   }
 
   _updateAncestorWidths(colID: string) {
@@ -3174,7 +3087,7 @@ export class GridRenderer {
         const childInfo = this._columnWidths.get(child.id);
         if (childInfo) totalWidth += childInfo.width;
       }
-      const minWidth = Math.max(MIN_RESIZE_WIDTH, ancestor.minWidth ?? ancestorInfo?.minWidth ?? MIN_RESIZE_WIDTH);
+      const minWidth = Math.max(this.core.options.minResizeWidth, ancestor.minWidth ?? ancestorInfo?.minWidth ?? this.core.options.minResizeWidth);
       let maxWidth = ancestor.maxWidth ?? ancestorInfo?.maxWidth ?? 420;
       maxWidth = Math.max(maxWidth, totalWidth);
       const width = Math.min(Math.max(totalWidth, minWidth), maxWidth);
