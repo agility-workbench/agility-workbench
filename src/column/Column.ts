@@ -165,4 +165,21 @@ export class Column {
     return this.type === ColumnType.NUMBER || this.type === ColumnType.CURRENCY;
   }
 
+  getVisibleChildren(): Column[] {
+    return this.children.filter(c => !c.hidden && c.columnGroupVisible);
+  }
+
+  getVisibleLeaves(): Column[] {
+    const leaves: Column[] = [];
+    const walk = (col: Column) => {
+      const visibleChildren = col.getVisibleChildren()
+      if (visibleChildren.length > 0) {
+        for (const child of visibleChildren) walk(child);
+      }
+      leaves.push(col);
+    }
+    walk(this);
+    return leaves;
+  }
+
 }
