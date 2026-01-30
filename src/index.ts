@@ -2,7 +2,7 @@ export type { IGridCore } from "./interfaces/iCore";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/dom_renderer";
 
-export type { GridOptions } from "./interfaces/grid";
+export type { GridOptions } from "./interfaces/GridOptions";
 
 export type { ColDef } from "./interfaces/column";
 
