@@ -14,4 +14,6 @@ export interface InternalGridOptions extends GridOptions {
   parentHeaderHeight: number;
   rowHeight: number;
   overscanRowCount: number;
+  minResizeWidth: number;
+  maxColumnWidth: number;
 }
