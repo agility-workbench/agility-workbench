@@ -5,7 +5,7 @@ import { ClientSideRowModel } from "./row_model/client_side";
 import { ServerSideDataSource } from "./row_model/server_side";
 import { SortDef } from "../interfaces/sort";
 import { AggregateScope } from "../interfaces/aggregate";
-import { GridOptions, InternalGridOptions } from "../interfaces/grid";
+import { GridOptions, InternalGridOptions } from "../interfaces/GridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iCore";
 import { IRowNode } from "../interfaces/IRowNode";
 import {
@@ -26,7 +26,7 @@ export class GridCore implements IGridCore {
 
   readonly options: InternalGridOptions;
 
-  private columnModel: ColumnModel = new ColumnModel([]);
+  private columnModel: ColumnModel;
 
   private rowModel: IRowModel = new ClientSideRowModel({});
 
@@ -43,10 +43,12 @@ export class GridCore implements IGridCore {
   private _internalEventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private _eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private _supressEventsUnless: string = "";
+  private _textMeasureParams: TextMeasureParams;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
     this.id = crypto.randomUUID();
+    this.columnModel = new ColumnModel(this.options);
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -58,6 +60,8 @@ export class GridCore implements IGridCore {
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
       overscanRowCount: options.overscanRowCount ?? 10,
+      minResizeWidth: 75,
+      maxColumnWidth: 420,
     };
   }
 
@@ -80,15 +84,27 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", true, { reason: "defs" });
   }
 
-  private refreshColumns(params: TextMeasureParams = {}, identifyComparators: boolean = true) {
+  private refreshColumns(identifyComparators: boolean = true) {
     const allRows: IRowNode[] = [];
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
-    this.columnModel.computeColumnWidths(this.measureCtx, params, allRows);
+    this.columnModel.computeColumnWidths(this.measureCtx, this._textMeasureParams, allRows);
     if (identifyComparators) {
       this.columnModel.identifyComparators(allRows);
     }
+  }
+
+  private refreshColumn(colID: string): string[] {
+    const col = this.columnModel.getById(colID);
+    if (!col) return [];
+    const allRows: IRowNode[] = [];
+    this.rowModel.forEachNode((node: IRowNode) => {
+      allRows.push(node);
+    });
+    this.columnModel.computeColumnWidth(col, this.measureCtx, this._textMeasureParams, allRows);
+    this.columnModel.updateParentColumnWidth(col);
+    return this.columnModel.getAncestors(colID).map(c => c.instanceID);
   }
 
   getColumnModel(): IColumnModel {
@@ -108,7 +124,7 @@ export class GridCore implements IGridCore {
   setRowData(rows: RowData[]): void {
     this.rowModel.setRows(rows);
     this.applyPagination();
-    this.refreshColumns({}, false);
+    this.refreshColumns();
     this.emit<"columnsChanged">("columnsChanged", true, { reason: "state" });
     this.emit<"rowsChanged">("rowsChanged", true, { reason: "rowData", firstRowIndex: 0, lastRowIndex: 100 });
   }
@@ -309,11 +325,24 @@ export class GridCore implements IGridCore {
         this.emit("overlayShow", true, { overlayType: action.overlayType });
         break;
       case "themeFontSet":
-        this.refreshColumns();
+        this._textMeasureParams = {headerFont: action.headerFont, cellFont: action.cellFont};
+        this.refreshColumns(false);
         this.emit("columnsChanged", true, { reason: "resize" });
         break;
       case "rowDataSet":
         this.setRowData(action.rows);
+        break;
+      case "columnAutosize":
+        const autosizedColIds = this.refreshColumn(action.colId);
+        if (autosizedColIds.length > 0) {
+          this.emit("columnsChanged", true, { reason: "resize", changedColIds: autosizedColIds });
+        }
+        break;
+      case "columnResize":
+        const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
+        if (resizedColIds.length > 0) {
+          this.emit("columnsChanged", true, { reason: "resize", changedColIds: resizedColIds });
+        }
         break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);

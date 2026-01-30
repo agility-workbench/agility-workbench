@@ -51,6 +51,11 @@ export type GridActionColumnStateSet = {
   state: ColumnState[];
 };
 
+export type GridActionColumnAutosize = {
+  type: "columnAutosize";
+  colId: string;
+};
+
 export type GridActionColumnResize = {
   type: "columnResize";
   colId: string;
@@ -164,6 +169,7 @@ export type GridAction =
   | GridActionOverscanSet
   | GridActionColumnDefsSet
   | GridActionColumnStateSet
+  | GridActionColumnAutosize
   | GridActionColumnResize
   | GridActionColumnPin
   | GridActionColumnVisibility
