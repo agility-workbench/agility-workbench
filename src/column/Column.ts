@@ -123,30 +123,7 @@ export class Column {
   }
 
   duplicate(): Column {
-    const dup = new Column({
-      key: this.key,
-      label: this.label,
-      width: this.width,
-      minWidth: this.minWidth,
-      maxWidth: this.maxWidth,
-      depth: this.depth,
-      valueGetter: this.valueGetter,
-      valueFormatter: this.valueFormatter,
-      formatterOptions: this.formatterOptions,
-      cellRenderer: this.cellRenderer,
-      cellRendererParams: this.cellRendererParams,
-      type: this.type,
-      format: this.format,
-      hidden: this.hidden,
-      sortable: this.sortable,
-      filter: this.filter,
-      groupable: this.groupable,
-      resizable: this.resizable,
-      movable: this.movable,
-      hideable: this.hideable,
-      columnGroupShow: this.columnGroupShow === "always" ? undefined : this.columnGroupShow,
-      openByDefault: this.openByDefault,
-    });
+    const dup = new Column({ ...this.col, label: this.label });
     dup.children = this.children.slice();
     dup.originalInstanceID = this.originalInstanceID;
     dup.valueFormatter = this.valueFormatter;
