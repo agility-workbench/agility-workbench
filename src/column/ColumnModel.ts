@@ -4,6 +4,7 @@ import { ITextMeasurer, TextMeasureParams } from "../interfaces/ITextMeasure";
 import { IRowNode } from "../interfaces/IRowNode";
 import { IColumnModel } from "../interfaces/IColumnModel";
 import { ColumnState } from "@grid/interfaces/iCore";
+import { InternalGridOptions } from "@grid/interfaces/GridOptions";
 
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
@@ -27,9 +28,7 @@ export class ColumnModel implements IColumnModel {
 
   private _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }> = new Map();
 
-  constructor(colDefs: ColDef[]) {
-    this.setColumnDefs(colDefs);
-  }
+  constructor(private options: InternalGridOptions) { }
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
@@ -141,6 +140,7 @@ export class ColumnModel implements IColumnModel {
     for (let i = 0; i < this.centerLeaves.length; i++) {
       this.centerLeaves[i].centralPosition = i;
     }
+    this.leaves = [this.leftLeaves, this.centerLeaves, this.rightLeaves].flat();
   }
 
   private setExpanders() {
@@ -205,30 +205,60 @@ export class ColumnModel implements IColumnModel {
     for (const col of this.leaves) {
       this.computeColumnWidth(col, measureCtx, params, rows);
     }
+    this.updateParentColumnWidthsForAll();
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
-    let maxWidth = measureCtx.measure(col.label, params.headerFont || "14px Arial");
-
-    const measureValue = (row: IRowNode) => {
-      const value = col.getValue(row);
-      const displayValue = col.formatValue(value, row);
-      const w = this.measureText(displayValue, measureCtx, params.cellFont || "14px Arial");
-      return w;
-    };
-
-    for (let i = 0; i < rows.length; i++) {
-      const width = measureValue(rows[i]);
-      if (width > maxWidth) {
-        maxWidth = width;
-      }
+    if (col.cellRenderer) {
+      col.computedWidth = col.width || 200;
+      return;
+    }
+    let maxWidth = measureCtx.measure(col.label, params.headerFont || "14px Arial") + 104; // 16px padding + 88px for sort/filter icons
+    if (col.maxWidth && maxWidth > col.maxWidth) {
+      maxWidth = col.maxWidth;
+      return;
     }
 
-    col.computedWidth = maxWidth;
+    let longestText = "";
+    let longestRowIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const value = col.getValue(rows[i]);
+      if (value && String(value).length > longestText.length) {
+        longestText = String(value);
+        longestRowIdx = i;
+      }
+    }
+    if (longestText.length === 0) {
+      col.computedWidth = col.minWidth ? Math.max(maxWidth, col.minWidth) : maxWidth;
+      return;
+    }
+
+    longestText = col.formatValue(col.getValue(rows[longestRowIdx]), rows[longestRowIdx])
+    const longestWidth = this.measureText(longestText, measureCtx, params.cellFont || "14px Arial");
+    if (longestWidth > maxWidth) {
+      maxWidth = longestWidth;
+    }
+
+    col.computedWidth = col.maxWidth ? Math.min(maxWidth, col.maxWidth) : maxWidth;
   }
 
-  private measureText(text: string, measureCtx: ITextMeasurer, font: string): number {
-    const padding = 16; // small breathing room so text is not cramped
+  updateParentColumnWidth(col: Column): void {
+    if (col.children.length === 0) return;
+    let totalWidth = 0;
+    for (const child of col.getVisibleChildren()) {
+      this.updateParentColumnWidth(child);
+      totalWidth += child.computedWidth;
+    }
+    col.computedWidth = totalWidth;
+  }
+
+  updateParentColumnWidthsForAll(): void {
+    for (const col of this.columns) {
+      this.updateParentColumnWidth(col);
+    }
+  }
+
+  private measureText(text: string, measureCtx: ITextMeasurer, font: string, padding: number = 16): number {
     return measureCtx.measure(text ?? "", font) + padding;
   }
 
@@ -287,7 +317,7 @@ export class ColumnModel implements IColumnModel {
     column.setComparator(comparator);
   }
 
-  getAncestors(col: Column): Column[] {
+  getAncestors(colID: string): Column[] {
     const path: Column[] = [];
 
     function helper(cols: Column[], targetId: string): boolean {
@@ -306,7 +336,7 @@ export class ColumnModel implements IColumnModel {
       return false;
     }
 
-    helper(this.columns, col.instanceID);
+    helper(this.columns, colID);
     return path.reverse();
   }
 
@@ -324,5 +354,81 @@ export class ColumnModel implements IColumnModel {
       });
     }
     return state;
+  }
+
+  resizeColumn(colId: string, width: number): string[] {
+    const col = this.getById(colId);
+    if (!col) return [];
+
+    const minWidth = Math.max(this.options.minResizeWidth, col.minWidth ?? this.options.minResizeWidth);
+    let maxWidth = col.maxWidth ?? Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
+    width = Math.min(Math.max(width, minWidth), maxWidth);
+
+    if (col.children.length > 0) {
+      const visibleChildren = col.getVisibleChildren();
+      if (visibleChildren.length > 0) {
+        const childInfos = visibleChildren.map(child => {
+          const childMin = Math.max(this.options.minResizeWidth, child.minWidth ?? this.options.minResizeWidth);
+          let childMax = child.maxWidth ?? this.options.maxColumnWidth;
+          if (!Number.isFinite(childMax)) childMax = this.options.maxColumnWidth;
+          const childWidth = Math.max(childMin, Math.min(childMax, child.width ?? width / visibleChildren.length));
+          return {
+            col: child,
+            min: childMin,
+            max: childMax,
+            width: childWidth,
+          };
+        });
+
+        const currentTotal = childInfos.reduce((sum, c) => sum + c.width, 0);
+        const minTotal = childInfos.reduce((sum, c) => sum + c.min, 0);
+        const maxTotal = childInfos.reduce((sum, c) => sum + c.max, 0);
+
+        // Clamp parent width to what children can support.
+        width = Math.min(Math.max(width, minTotal), Math.min(maxWidth, maxTotal));
+
+        let remaining = width - currentTotal;
+        let safety = 0;
+        while (Math.abs(remaining) > 0.5 && safety < 20) {
+          safety++;
+          const grow = remaining > 0;
+          const candidates = childInfos.filter(c => {
+            return grow ? c.width < c.max : c.width > c.min;
+          });
+          if (candidates.length === 0) break;
+          const deltaPer = remaining / candidates.length;
+          let applied = 0;
+          for (const c of candidates) {
+            const delta = grow
+              ? Math.min(c.max - c.width, Math.max(1, Math.round(deltaPer)))
+              : Math.max(c.min - c.width, Math.min(-1, Math.round(deltaPer)));
+            c.width += delta;
+            applied += delta;
+          }
+          remaining -= applied;
+        }
+
+        const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
+        for (const c of childInfos) {
+          c.col.computedWidth = c.width;
+        }
+        width = totalWidth;
+      }
+    }
+    col.computedWidth = width;
+    const ancestors = this.getAncestors(col.instanceID);
+    if (ancestors.length > 1) {
+      for (let i = ancestors.length - 2; i >= 0; i--) {
+        const ancestor = ancestors[i];
+        if (!ancestor.children || ancestor.children.length === 0) continue;
+        let totalWidth = 0;
+        for (const child of ancestor.getVisibleChildren()) {
+          totalWidth += child.computedWidth;
+        }
+        ancestor.computedWidth = totalWidth;
+      }
+    }
+    return col.getVisibleLeaves().map(c => c.instanceID);
   }
 }
