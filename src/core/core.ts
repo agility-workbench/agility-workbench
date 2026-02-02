@@ -146,9 +146,33 @@ export class GridCore implements IGridCore {
   }
 
   async setSortModel(sorts: SortDef[]) {
-    this._sorts = sorts.slice();
+    sorts = sorts.slice();
+    const changedColIDs: string[] = [];
+    for (const sort of sorts) {
+      const col = this.columnModel.getById(sort.key);
+      if (!col) continue;
+      sort.col = col;
+      const existing = this._sorts.find(s => s.key === sort.key);
+      if (sort.dir === null) {
+        if (existing) {
+          this._sorts = this._sorts.filter(s => s.key !== sort.key);
+          changedColIDs.push(col.instanceID);
+        }
+        continue;
+      } else {
+        if (!existing) {
+          this._sorts.push({ key: sort.key, col, dir: sort.dir });
+          changedColIDs.push(col.instanceID);
+        } else if (existing.dir !== sort.dir) {
+          existing.dir = sort.dir;
+          changedColIDs.push(col.instanceID);
+        }
+      }
+    }
+    if (changedColIDs.length === 0) return;
     await this.rowModel.setSorts(this._sorts);
-    this.emit("sortsChanged", true, this._sorts.slice());
+    this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIDs });
   }
 
   async toggleSort(col: Column) {
@@ -358,6 +382,9 @@ export class GridCore implements IGridCore {
         if (resizedColIds.length > 0) {
           this.emit("columnsChanged", true, { reason: "resize", changedColIds: resizedColIds });
         }
+        break;
+      case "sortModelSet":
+        this.setSortModel(action.sortModel);
         break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
