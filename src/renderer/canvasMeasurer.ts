@@ -1,4 +1,4 @@
-import { ITextMeasurer } from "../interfaces/ITextMeasure";
+import { ITextMeasurer } from "../interfaces/iTextMeasure";
 
 export class CanvasMeasurer implements ITextMeasurer {
   private canvas: HTMLCanvasElement;

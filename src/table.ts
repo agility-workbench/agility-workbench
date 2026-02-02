@@ -24,9 +24,9 @@ import {
 import { isNullOrUndefined, isTrue, validatePageSizes } from "./misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer/renderer";
-import { IRowModel } from "./interfaces/IRowModel";
+import { IRowModel } from "./interfaces/iRowModel";
 import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "./row_model/server_side";
-import { Column } from "./column/Column";
+import { Column } from "./column/column";
 import { GridAPI } from "./api";
 import { RowNode } from "./row_model/node";
 

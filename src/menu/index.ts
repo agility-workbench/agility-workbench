@@ -1,2 +1,2 @@
 export type { ColumnMenuContext } from "./context";
-export { MenuService } from "./service";
+export { ColumnMenuService } from "./columnMenuService";

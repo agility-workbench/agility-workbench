@@ -1,10 +1,10 @@
 import { ColDef } from "../interfaces/column";
-import { Column } from "./Column";
-import { ITextMeasurer, TextMeasureParams } from "../interfaces/ITextMeasure";
-import { IRowNode } from "../interfaces/IRowNode";
-import { IColumnModel } from "../interfaces/IColumnModel";
-import { ColumnState } from "@grid/interfaces/iCore";
-import { InternalGridOptions } from "@grid/interfaces/GridOptions";
+import { Column } from "./column";
+import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
+import { IRowNode } from "../interfaces/iRowNode";
+import { IColumnModel } from "../interfaces/iColumnModel";
+import { ColumnState } from "../interfaces/iGridCore";
+import { InternalGridOptions } from "../interfaces/gridOptions";
 
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
@@ -305,8 +305,8 @@ export class ColumnModel implements IColumnModel {
         if (bv == null) return 1;
         return (Number(av) - Number(bv));
       }
-      : (a: any, b: any) => {
-        const av = column.getValue(a), bv = column.getValue(b);
+      : (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => {
+        const av = column.getValue(nodeA), bv = column.getValue(nodeB);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;

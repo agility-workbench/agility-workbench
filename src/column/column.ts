@@ -1,9 +1,9 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams } from "../formatters";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
-import { IRowNode } from "../interfaces/IRowNode";
+import { IRowNode } from "../interfaces/iRowNode";
 import { ColDef, ColumnType } from "../interfaces/column";
-import { ComparatorFn } from "../interfaces/filter";
+import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 
 export class Column {
   instanceID: string;
@@ -27,7 +27,8 @@ export class Column {
   hidden: boolean;
   pinned?: "left" | "right" | null;
   sortable: boolean;
-  filter?: boolean | string | ((valA: any, valB: any, nodeA: IRowNode, nodeB: IRowNode) => number);
+  filter?: Filter;
+  filterParams?: FilterParams;
   groupable: boolean;
   resizable: boolean;
   movable: boolean;
@@ -65,6 +66,7 @@ export class Column {
     this.pinned = col.pinned || null;
     this.sortable = !isFalse(col.sortable);
     this.filter = col.filter;
+    this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);

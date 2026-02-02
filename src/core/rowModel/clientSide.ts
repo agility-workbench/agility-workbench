@@ -2,8 +2,8 @@ import { FilterDef } from "../../interfaces/filter";
 import { SortDef } from "../../interfaces/sort";
 import { AggregateScope } from "../../interfaces/aggregate";
 import { createRowIdFactory, GridOptions } from "./node";
-import { IRowModel, RowModelType } from "../../interfaces/IRowModel";
-import { IRowNode } from "../../interfaces/IRowNode";
+import { IRowModel, RowModelType } from "../../interfaces/iRowModel";
+import { IRowNode } from "../../interfaces/iRowNode";
 import { computeFilteredIdx } from "../../renderer/helpers";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
@@ -117,24 +117,23 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   setSorts(sorts: SortDef[]): void {
     this.sortedIdx = this.filteredIdx.slice();
-    if (sorts && sorts.length > 0) {
-      const comparators = sorts
-        .map(sort => {
-          const { col, dir } = sort;
-          const mult = dir === "desc" ? -1 : 1;
-          const cmp = col.comparator!;
-          return (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => cmp(a, b, nodeA, nodeB) * mult;
-        })
-        .filter(Boolean) as Array<(a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => number>;
+    const comparators = sorts.filter(s => s.col && s.dir !== null)
+      .map(sort => {
+        const { col, dir } = sort;
+        const mult = dir === "desc" ? -1 : 1;
+        const cmp = col.comparator!;
+        return (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => cmp(a, b, nodeA, nodeB) * mult;
+      })
+      .filter(Boolean) as Array<(a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => number>;
 
-      this.sortedIdx.sort((a, b) => {
-        for (const cmp of comparators) {
-          const result = cmp(this.nodes[a].data, this.nodes[b].data, this.nodes[a], this.nodes[b]);
-          if (result !== 0) return result;
-        }
-        return 0;
-      });
-    }
+    this.sortedIdx.sort((a, b) => {
+      for (const cmp of comparators) {
+        const result = cmp(this.nodes[a].data, this.nodes[b].data, this.nodes[a], this.nodes[b]);
+        if (result !== 0) return result;
+      }
+      return 0;
+    });
+    this.rebuildView();
   }
 
   setFilters(filters: FilterDef[]): void {

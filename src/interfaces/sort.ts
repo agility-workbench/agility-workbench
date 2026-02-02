@@ -1,4 +1,4 @@
-import { Column } from "../column/Column";
+import { Column } from "../column/column";
 
 export type SortDir = "asc" | "desc";
 

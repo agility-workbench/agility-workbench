@@ -1,4 +1,4 @@
-import { ColId, GridId } from "../interfaces/iCore";
+import { ColId, GridId } from "../interfaces/iGridCore";
 
 export type GridEventName =
   | "overlayShow"
@@ -49,7 +49,7 @@ export type GridEventViewportChangedParams = {
 };
 
 export type GridEventColumnsChangedParams = {
-  reason: "defs" | "state" | "resize" | "pin" | "visibility" | "order";
+  reason: "defs" | "state" | "resize" | "pin" | "visibility" | "order" | "sort" | "filter";
   changedColIds?: ColId[];
 };
 

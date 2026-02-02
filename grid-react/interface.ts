@@ -1,5 +1,5 @@
 import { ColDef, GridOptions } from "@grid";
-import { IGridAPI } from "@grid/interfaces/IApi";
+import { IGridAPI } from "@grid/interfaces/iGridAPI";
 import { ColumnMenuContext } from "@grid/menu";
 import { MenuItem } from "./menu";
 

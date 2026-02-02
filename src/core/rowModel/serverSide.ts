@@ -1,6 +1,6 @@
 import { createRowIdFactory, GridOptions } from "./node";
-import { IRowModel, RowModelType } from "../../interfaces/IRowModel";
-import { IRowNode } from "../../interfaces/IRowNode";
+import { IRowModel, RowModelType } from "../../interfaces/iRowModel";
+import { IRowNode } from "../../interfaces/iRowNode";
 import { FilterDef } from "../../interfaces/filter";
 import { SortDef } from "../../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../../interfaces/aggregate";

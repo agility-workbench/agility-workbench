@@ -1,2 +1,3 @@
-export { GridRenderer } from "./dom_renderer";
-export { CanvasMeasurer } from "./CanvasMeasurer";
+export { GridRenderer } from "./domRenderer";
+export { CanvasMeasurer } from "./canvasMeasurer";
+export { initDomRenderer } from "./dom";

@@ -1,11 +1,12 @@
-export type {IMenuAdapter} from "./IMenuAdapter";
-export type {IColumnModel} from "./IColumnModel";
+export type {IMenuAdapter} from "./iMenuAdapter";
+export type {IColumnModel} from "./iColumnModel";
 export type {ColDef} from "./column";
 export type {SortDef} from "./sort";
 export type {FilterDef} from "./filter";
 export type {AggregateModel, AggregateType} from "./aggregate";
-export type {IRowModel, RowModelType} from "./IRowModel";
-export type {IRowNode} from "./IRowNode";
+export type {IRowModel, RowModelType} from "./iRowModel";
+export type {IRowNode} from "./iRowNode";
 export type {CellRef, SelectionRange} from "./selection";
-export type {IGridCore} from "./iCore";
-export type {MenuItem} from "./Menu";
+export type {IGridCore} from "./iGridCore";
+export type {MenuItem} from "./menuItem";
+export type {IGridAPI} from "./iGridAPI";

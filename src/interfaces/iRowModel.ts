@@ -1,6 +1,6 @@
 import { AggregateScope } from "./aggregate";
 import { FilterDef } from "./filter";
-import { IRowNode } from "./IRowNode";
+import { IRowNode } from "./iRowNode";
 import { SortDef } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";

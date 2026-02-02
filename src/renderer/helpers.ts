@@ -1,6 +1,6 @@
-import { Column } from "../column/Column";
-import { isNullOrUndefined, isTrue } from "../misc";
-import { IRowNode } from "../interfaces/IRowNode";
+import { Column } from "../column/column";
+import { isTrue } from "../misc";
+import { IRowNode } from "../interfaces/iRowNode";
 import { FilterDef } from "../interfaces/filter";
 
 export function findColumnById(columns: Column[], id: string): Column | undefined {

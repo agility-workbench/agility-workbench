@@ -1,6 +1,6 @@
 import { ColDef } from "../interfaces/column";
 import { FilterDef } from "../interfaces/filter";
-import { ColumnState } from "../interfaces/iCore";
+import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef, SelectionRange } from "../interfaces/selection";
 import { SortDef } from "../interfaces/sort";
 

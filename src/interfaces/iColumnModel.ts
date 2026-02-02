@@ -1,5 +1,5 @@
-import { Column } from "@grid/column/Column";
-import { ColumnState } from "./iCore";
+import { Column } from "../column/column";
+import { ColumnState } from "./iGridCore";
 
 export interface IColumnModel {
   setColumnDefs(colDefs: any[]): void;

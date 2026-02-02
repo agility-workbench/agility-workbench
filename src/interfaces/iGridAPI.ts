@@ -1,5 +1,5 @@
 import { GridEventMap, GridEventName, Unsubscribe } from "../events/events";
-import { ColumnState, GridId, RowData } from "./iCore";
+import { ColumnState, GridId, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
 

@@ -2,11 +2,11 @@ import React, { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "re
 import { GridReactProps } from "./interface";
 import "@grid/theme/table.css";
 import { GridRenderer } from "@grid";
-import { IGridCore } from "@grid/interfaces/iCore";
+import { IGridCore } from "@grid/interfaces";
 import { createApi, createCore } from "./factory";
-import { IGridAPI } from "@grid/interfaces/IApi";
+import { IGridAPI } from "@grid/interfaces";
 import { ReactMenuAdapter } from "./MenuAdapter";
-import { initDomRenderer } from "@grid/renderer/dom";
+import { initDomRenderer } from "@grid/renderer";
 
 export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
   function GridReact(props, forwardedRef) {

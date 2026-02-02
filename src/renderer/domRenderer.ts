@@ -16,21 +16,21 @@ import {
 } from "../interfaces/aggregate";
 import { ColumnType } from "../interfaces/column";
 import { FilterDef, FilterType } from "../interfaces/filter";
-import { MenuItem } from "../interfaces/Menu";
+import { MenuItem } from "../interfaces/menuItem";
 import { RowPoolDef } from "../types";
 import { SortDef } from "../interfaces/sort";
 import { isFalse, isNullOrUndefined, isTrue, validatePageSizes } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "../export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
-import { IRowModel } from "../interfaces/IRowModel";
-import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../core/row_model/server_side";
-import { Column } from "../column/Column";
-import { IRowNode } from "../interfaces/IRowNode";
+import { IRowModel } from "../interfaces/iRowModel";
+import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../core/rowModel/serverSide";
+import { Column } from "../column/column";
+import { IRowNode } from "../interfaces/iRowNode";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { GridEventColumnsChangedParams, GridEventMap, GridEventRowsChangedParams, GridEventViewportChangedParams } from "@grid/events/events";
-import { MenuCoordinator } from "@grid/menu/coordinator";
-import { MenuRenderer } from "./MenuRenderer";
+import { GridEventColumnsChangedParams, GridEventRowsChangedParams, GridEventViewportChangedParams } from "../events/events";
+import { MenuCoordinator } from "../menu/coordinator";
+import { MenuRenderer } from "./menuRenderer";
 
 const MIN_RESIZE_WIDTH = 75;
 const COLUMN_DRAG_THRESHOLD_PX = 4;
@@ -666,6 +666,14 @@ export class GridRenderer {
     // this._clearSelection();
     // this._clearColumnSelection();
     // Structural change -> rebuild header + pool
+    if (params.reason === "sort") {
+      const sorts = this.core.getSortModel();
+      for (const colID of params.changedColIds || []) {
+        const sort = sorts.find(s => s.key === colID);
+        this._addSortIndicatorToHeader(colID, sort?.dir || '');
+      }
+      return;
+    }
     if (params.reason !== "resize" && params.reason !== "state") {
       this._buildHeaderDOM();
       this._buildRowPool();
@@ -1727,10 +1735,10 @@ export class GridRenderer {
     }
     const headerMenu = this._getHeaderMenuElement(col);
     headerContainer.appendChild(headerMenu);
-    // const sort = this._sorts.find(s => s.key === col.id);
-    // if (sort) {
-    //   headerContent.classList.add("pte-sorted-" + sort.dir);
-    // }
+    const sort = this.core.getSortModel().find(s => s.key === col.instanceID);
+    if (sort) {
+      headerContent.classList.add("pte-sorted-" + sort.dir);
+    }
     return header;
   }
 

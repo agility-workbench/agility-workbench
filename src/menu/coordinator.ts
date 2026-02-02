@@ -1,11 +1,11 @@
-import { MenuItem } from "../interfaces/Menu";
-import { IMenuAdapter } from "../interfaces/IMenuAdapter";
-import { MenuService } from "./service";
+import { MenuItem } from "../interfaces/menuItem";
+import { IMenuAdapter } from "../interfaces/iMenuAdapter";
+import { ColumnMenuService } from "./columnMenuService";
 import { ColumnMenuContext } from "./context";
 
 export class MenuCoordinator {
   constructor(
-    private menuSvc: MenuService,
+    private menuSvc: ColumnMenuService,
     private menuAdapter: IMenuAdapter
   ) {}
 

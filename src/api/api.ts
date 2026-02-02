@@ -1,7 +1,7 @@
-import { GridEventMap } from "@grid/events/events";
-import { ColDef } from "@grid/interfaces/column";
-import { IGridAPI } from "@grid/interfaces/IApi";
-import { ColumnState, GridId, IGridCore, RowData } from "@grid/interfaces/iCore";
+import { GridEventMap } from "../events/events";
+import { ColDef } from "../interfaces/column";
+import { IGridAPI } from "../interfaces/iGridAPI";
+import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 
 export class GridAPI implements IGridAPI {
   constructor(private core: IGridCore) {}

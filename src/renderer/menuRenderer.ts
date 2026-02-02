@@ -1,5 +1,5 @@
-import { MenuItem } from "@grid/interfaces";
-import { isTrue } from "@grid/misc";
+import { MenuItem } from "../interfaces/menuItem";
+import { isTrue } from "../misc";
 
 export interface MenuParams {
   anchorEl?: HTMLElement;
@@ -12,6 +12,7 @@ export interface MenuParams {
   position?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
   onItemClick?: (item: MenuItem) => void;
   onClose?: () => void;
+  contentEl?: HTMLElement;
 }
 
 interface MenuProps {
@@ -45,6 +46,7 @@ export class MenuRenderer {
       position = "bottom-left",
       onItemClick,
       onClose,
+      contentEl,
     } = params;
 
     if (level === 0) {
@@ -60,7 +62,12 @@ export class MenuRenderer {
     this.menuItemsByLevel[level] = items;
     this.menuParentIds[level] = parentId;
     if (parentEl) this.setMenuParentExpanded(level - 1, parentEl);
-    this.renderMenuItems(menuOverlay, items);
+    if (contentEl) {
+      menuOverlay.innerHTML = "";
+      menuOverlay.appendChild(contentEl);
+    } else {
+      this.renderMenuItems(menuOverlay, items);
+    }
 
     let left = clientX;
     let top = clientY;
@@ -123,7 +130,7 @@ export class MenuRenderer {
     menuOverlay.style.top = `${top}px`;
     menuOverlay.style.visibility = "visible";
 
-    this.root.appendChild(menuOverlay);
+    // this.root.appendChild(menuOverlay);
     if (level === 0) {
       this.attachGlobalCloseHandlers();
     }
@@ -358,7 +365,7 @@ export class MenuRenderer {
       if (!target) return;
 
       // If click is within any menu element, ignore
-      if (target.closest(".grid-menu")) return;
+      if (target.closest(".pte-menu")) return;
 
       this.close(0);
     };

@@ -1,12 +1,12 @@
-import { GridEventHandler, GridEventMap, GridEventName, Unsubscribe } from "../events/events";
+import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
 import { SortDef } from "./sort";
 import { FilterDef } from "./filter";
-import { IRowModel } from "./IRowModel";
-import { IColumnModel } from "./IColumnModel";
+import { IRowModel } from "./iRowModel";
+import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
-import { CellRef, SelectionRange } from "../interfaces/selection";
+import { CellRef, SelectionRange } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
-import { GridOptions } from "./GridOptions";
+import { GridOptions } from "./gridOptions";
 
 export type GridId = string;
 export type ColId = string;

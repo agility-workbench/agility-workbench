@@ -1,5 +1,5 @@
 import { ColumnType } from "../interfaces/column";
-import { MenuItem } from "../interfaces/Menu";
+import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
 
@@ -15,7 +15,7 @@ type CapSummary = {
   exportable: boolean;
 };
 
-export class MenuService {
+export class ColumnMenuService {
   constructor(private core: IGridCore) { }
 
   buildDefaultColumnMenu(ctx: ColumnMenuContext): MenuItem[] {
@@ -75,9 +75,9 @@ export class MenuService {
           id: "sparklines",
           label: "Show Sparklines",
           subMenu: [
-            { id: "sparklinesBar", label: "Bar Sparklines", command: "column.setSparklineTypeMany", payload: { cols: colIDs, type: "bar" } },
-            { id: "sparklinesLine", label: "Line Sparklines", command: "column.setSparklineTypeMany", payload: { cols: colIDs, type: "line" } },
-            { id: "sparklinesArea", label: "Area Sparklines", command: "column.setSparklineTypeMany", payload: { cols: colIDs, type: "area" } },
+            { id: "sparklinesBar", label: "Bar Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "bar" } },
+            { id: "sparklinesLine", label: "Line Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "line" } },
+            { id: "sparklinesArea", label: "Area Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "area" } },
           ]
         });
       }
@@ -93,7 +93,7 @@ export class MenuService {
 
     switch (item.command) {
       case "sort.setMany":
-        return this.core.dispatch({ type: "sortModelSet", sortModel: item.payload.cols.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
+        return this.core.dispatch({ type: "sortModelSet", sortModel: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
 
       // filter.open / filter.clear / pin / hide etc
 

@@ -1,7 +1,7 @@
-import { GridCore, GridOptions, GridRenderer } from "@grid";
+import { GridCore, GridOptions } from "@grid";
 import { IGridCore } from "@grid";
-import { GridAPI } from "@grid/api/api";
-import { IGridAPI } from "@grid/interfaces/IApi";
+import { GridAPI } from "@grid/api";
+import { IGridAPI } from "@grid/interfaces";
 import { CanvasMeasurer } from "@grid/renderer";
 
 export function createCore(options: GridOptions): IGridCore {

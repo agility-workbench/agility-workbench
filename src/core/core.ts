@@ -1,13 +1,13 @@
 import { FilterDef } from "../interfaces/filter";
-import { IRowModel } from "../interfaces/IRowModel";
-import { Column } from "../column/Column";
-import { ClientSideRowModel } from "./row_model/client_side";
-import { ServerSideDataSource } from "./row_model/server_side";
+import { IRowModel } from "../interfaces/iRowModel";
+import { Column } from "../column/column";
+import { ClientSideRowModel } from "./rowModel/clientSide";
+import { ServerSideDataSource } from "./rowModel/serverSide";
 import { SortDef } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { GridOptions, InternalGridOptions } from "../interfaces/GridOptions";
-import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iCore";
-import { IRowNode } from "../interfaces/IRowNode";
+import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
+import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
+import { IRowNode } from "../interfaces/iRowNode";
 import {
   GridEventHandler,
   GridEventMap,
@@ -16,9 +16,9 @@ import {
 } from "../events/events";
 import { isNullOrUndefined } from "../misc";
 import { ColDef } from "@grid/interfaces/column";
-import { ITextMeasurer, TextMeasureParams } from "@grid/interfaces/ITextMeasure";
-import { ColumnModel } from "@grid/column/ColumnModel";
-import { IColumnModel } from "@grid/interfaces/IColumnModel";
+import { ITextMeasurer, TextMeasureParams } from "@grid/interfaces/iTextMeasure";
+import { ColumnModel } from "@grid/column/columnModel";
+import { IColumnModel } from "@grid/interfaces/iColumnModel";
 import { GridAction } from "@grid/events/action";
 
 export class GridCore implements IGridCore {
@@ -289,7 +289,7 @@ export class GridCore implements IGridCore {
   }
 
   // Event handling
-  onInternal<E extends GridEventName>(event: E, handler: (ev: GridEventMap[E]) => void): Unsubscribe {
+  onInternal<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
     if (!this._internalEventHandlers.has(event)) {
       this._internalEventHandlers.set(event, []);
     }
@@ -299,7 +299,7 @@ export class GridCore implements IGridCore {
     };
   }
 
-  on<E extends GridEventName>(event: E, handler: (ev: GridEventMap[E]) => void): Unsubscribe {
+  on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
     if (!this._eventHandlers.has(event)) {
       this._eventHandlers.set(event, []);
     }

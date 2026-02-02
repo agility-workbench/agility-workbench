@@ -1,7 +1,7 @@
 import { l } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
 import { ColumnType } from "./types";
 import { RowNode } from "./row_model/node";
-import { Column } from "./column/Column";
+import { Column } from "./column/column";
 
 export interface ValueFormatterParams {
   value: any;

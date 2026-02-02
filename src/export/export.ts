@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { getColumnAncestors } from "../renderer/helpers";
-import { Column } from "../column/Column";
+import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 
 export interface ExportSelectionRange {
