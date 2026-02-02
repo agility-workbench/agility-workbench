@@ -14,4 +14,4 @@ export type {
 export type {
   FormatterOptionsParams,
   ValueFormatterParams,
-} from "./formatters";
+} from "./column/formatters";

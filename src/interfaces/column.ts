@@ -1,4 +1,4 @@
-import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams } from "../formatters";
+import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
 import { IRowNode } from "./IRowNode";
 

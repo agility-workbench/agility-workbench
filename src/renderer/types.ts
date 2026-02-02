@@ -1,3 +1,5 @@
+import { RendererRecord } from "./renderer";
+
 export interface RowPoolDef {
   leftRowEl?: HTMLDivElement;
   rowEl: HTMLDivElement;

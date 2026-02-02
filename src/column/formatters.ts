@@ -1,11 +1,10 @@
-import { l } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
-import { ColumnType } from "./types";
-import { RowNode } from "./row_model/node";
-import { Column } from "./column/column";
+import { ColumnType } from "../interfaces/column";
+import { IRowNode } from "../interfaces/iRowNode";
+import { Column } from "./column";
 
 export interface ValueFormatterParams {
   value: any;
-  row?: RowNode;
+  row?: IRowNode;
   col?: Column;
 }
 

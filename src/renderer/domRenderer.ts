@@ -17,7 +17,7 @@ import {
 import { ColumnType } from "../interfaces/column";
 import { FilterDef, FilterType } from "../interfaces/filter";
 import { MenuItem } from "../interfaces/menuItem";
-import { RowPoolDef } from "../types";
+import { RowPoolDef } from "./types";
 import { SortDef } from "../interfaces/sort";
 import { isFalse, isNullOrUndefined, isTrue, validatePageSizes } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "../export/export";

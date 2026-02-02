@@ -20,7 +20,7 @@ import {
   MenuItem,
   RowPoolDef,
   SortDef,
-} from "./types";
+} from "./renderer/types";
 import { isNullOrUndefined, isTrue, validatePageSizes } from "./misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "./export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer/renderer";
