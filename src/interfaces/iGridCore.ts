@@ -1,6 +1,6 @@
 import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
 import { SortDef } from "./sort";
-import { FilterDef } from "./filter";
+import { FilterModel } from "./filter";
 import { IRowModel } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
@@ -91,12 +91,12 @@ export interface IGridCore {
 
   /* ----- Models via facade getters (optional but handy) ----- */
   getSortModel(): SortDef[];
-  getFilterModel(): FilterDef[];
+  getFilterModel(): FilterModel[];
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
 
   setSortModel(sort: SortDef[]): void;
-  setFilterModel(filter: FilterDef[]): void;
+  setFilterModel(filter: FilterModel[]): void;
 
   /** Ensure core releases resources (timers, subscriptions). Renderer/React calls on unmount. */
   destroy(): void;

@@ -10,6 +10,7 @@ export type GridEventName =
   | "selectionChanged"
   | "focusChanged"
   | "editingChanged"
+  | "paginationChanged"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -92,6 +93,15 @@ export type GridEventEditingChangedParams = {
   value?: unknown;
 };
 
+export type GridEventPaginationChangedParams = {
+  paginationEnabled: boolean;
+  pageIndex: number;
+  pageSize: number;
+  totalRowCount: number;
+  totalPageCount: number;
+  pageSizes: number[];
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -108,6 +118,7 @@ export interface GridEventMap {
   selectionChanged: GridEventSelectionChangedParams;
   focusChanged: GridEventFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
+  paginationChanged: GridEventPaginationChangedParams;
   error: GridEventErrorParams;
 }
 

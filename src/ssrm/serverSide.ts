@@ -1,12 +1,12 @@
-import { createRowIdFactory, GridOptions } from "./node";
-import { IRowModel, RowModelType } from "../../interfaces/iRowModel";
-import { IRowNode } from "../../interfaces/iRowNode";
-import { FilterDef } from "../../interfaces/filter";
-import { SortDef } from "../../interfaces/sort";
-import { AggregateModel, AggregateScope } from "../../interfaces/aggregate";
+import { IRowModel, RowModelType } from "../interfaces/iRowModel";
+import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
+import { FilterModel } from "../interfaces/filter";
+import { SortDef } from "../interfaces/sort";
+import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
+import { GridOptions } from "@grid/interfaces/gridOptions";
 
 export interface ServerSideRequest {
-  filters: FilterDef[];
+  filters: FilterModel[];
   sorts: SortDef[];
   page: number;
   pageSize: number;
@@ -21,7 +21,7 @@ export type ServerSideDataSource = (request: ServerSideRequest) => Promise<Serve
 
 export interface ServerSideAggregationRequest {
   aggregates: AggregateModel[];
-  filters: FilterDef[];
+  filters: FilterModel[];
   sorts: SortDef[];
   scope: AggregateScope;
   page: number;
@@ -43,7 +43,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   viewIdx: number[] = [];
 
   sorts: SortDef[] = [];
-  filters: FilterDef[] = [];
+  filters: FilterModel[] = [];
 
   serverDataSource?: ServerSideDataSource;
   serverAggregationSource?: ServerSideAggregationSource;
@@ -56,7 +56,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   private getId: (row: Row) => string;
 
-  constructor(opts: GridOptions<Row>, serverDataSource?: ServerSideDataSource, serverAggregationSource?: ServerSideAggregationSource) {
+  constructor(opts: GridOptions, serverDataSource?: ServerSideDataSource, serverAggregationSource?: ServerSideAggregationSource) {
     this.getId = createRowIdFactory(opts);
     this.serverDataSource = serverDataSource;
     this.serverAggregationSource = serverAggregationSource;
@@ -195,7 +195,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     await this.refreshData();
   }
 
-  setFilters(filters: FilterDef[]): void {
+  applyFilters(filters: FilterModel[]): void {
     this.filters = filters;
   }
 

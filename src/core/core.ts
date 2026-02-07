@@ -1,8 +1,8 @@
-import { FilterDef } from "../interfaces/filter";
+import { FilterModel } from "../interfaces/filter";
 import { IRowModel } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
-import { ClientSideRowModel } from "./rowModel/clientSide";
-import { ServerSideDataSource } from "./rowModel/serverSide";
+import { ClientSideRowModel } from "../csrm/clientSide";
+import { ServerSideDataSource } from "../ssrm/serverSide";
 import { SortDef } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
@@ -15,11 +15,11 @@ import {
   Unsubscribe,
 } from "../events/events";
 import { isNullOrUndefined } from "../misc";
-import { ColDef } from "@grid/interfaces/column";
-import { ITextMeasurer, TextMeasureParams } from "@grid/interfaces/iTextMeasure";
-import { ColumnModel } from "@grid/column/columnModel";
-import { IColumnModel } from "@grid/interfaces/iColumnModel";
-import { GridAction } from "@grid/events/action";
+import { ColDef } from "../interfaces/column";
+import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
+import { ColumnModel } from "../column/columnModel";
+import { IColumnModel } from "../interfaces/iColumnModel";
+import { GridAction } from "../events/action";
 
 export class GridCore implements IGridCore {
   readonly id: string;
@@ -28,28 +28,29 @@ export class GridCore implements IGridCore {
 
   private columnModel: ColumnModel;
 
-  private rowModel: IRowModel = new ClientSideRowModel({});
+  private rowModel: IRowModel;
 
-  private _paginationEnabled: boolean = false;
-  private _pageIdx: number = 0;
-  private _pageSize: number = 100;
-  private _totalPages: number = 1;
+  private paginationEnabled: boolean = false;
+  private pageIdx: number = 0;
+  private pageSize: number = 100;
+  private totalPages: number = 1;
 
-  private _filters: FilterDef[] = [];
-  private _sorts: SortDef[] = [];
+  private filters: FilterModel[] = [];
+  private sorts: SortDef[] = [];
 
-  private _aggregateScope: AggregateScope = "all";
-  private _aggregates: AggregateModel[] = [];
+  private aggregateScope: AggregateScope = "all";
+  private aggregates: AggregateModel[] = [];
 
-  private _internalEventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
-  private _eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
-  private _supressEventsUnless: string = "";
-  private _textMeasureParams!: TextMeasureParams;
+  private internalEventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
+  private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
+  private supressEventsUnless: string = "";
+  private textMeasureParams!: TextMeasureParams;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
     this.id = crypto.randomUUID();
     this.columnModel = new ColumnModel(this.options);
+    this.rowModel = new ClientSideRowModel(options);
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -96,7 +97,7 @@ export class GridCore implements IGridCore {
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
-    this.columnModel.computeColumnWidths(this.measureCtx, this._textMeasureParams, allRows);
+    this.columnModel.computeColumnWidths(this.measureCtx, this.textMeasureParams, allRows);
     if (identifyComparators) {
       this.columnModel.identifyComparators(allRows);
     }
@@ -109,7 +110,7 @@ export class GridCore implements IGridCore {
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
-    this.columnModel.computeColumnWidth(col, this.measureCtx, this._textMeasureParams, allRows);
+    this.columnModel.computeColumnWidth(col, this.measureCtx, this.textMeasureParams, allRows);
     this.columnModel.updateParentColumnWidth(col);
     return this.columnModel.getAncestors(colID).map(c => c.instanceID);
   }
@@ -140,9 +141,34 @@ export class GridCore implements IGridCore {
     throw new Error("Method not implemented.");
   }
 
-  async setFilterModel(filters: FilterDef[]) {
-    this._filters = filters.slice();
-    await this.rowModel.setFilters(this._filters);
+  async addFilterModel(filter: FilterModel) {
+    const idx = this.filters.findIndex(f => f.key === filter.key);
+    if (idx >= 0) {
+      this.filters[idx] = filter;
+    } else {
+      this.filters.push(filter);
+    }
+    await this.applyFilters([filter.col.instanceID]);
+  }
+
+  async removeFilterModel(col: Column) {
+    const idx = this.filters.findIndex(f => f.col.instanceID === col.instanceID);
+    if (idx >= 0) {
+      this.filters.splice(idx, 1);
+    }
+    await this.applyFilters([col.instanceID]);
+  }
+
+  async setFilterModel(filters: FilterModel[]) {
+    this.filters = filters;
+    await this.applyFilters(filters.map(f => f.col.instanceID));
+  }
+
+  private async applyFilters(changedColIds: string[]) {
+    await this.rowModel.applyFilters(this.filters);
+    await this.rowModel.setSorts(this.sorts);
+    this.emit("rowsChanged", true, { reason: "filter", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("columnsChanged", true, { reason: "filter", changedColIds })
   }
 
   async setSortModel(sorts: SortDef[]) {
@@ -152,16 +178,16 @@ export class GridCore implements IGridCore {
       const col = this.columnModel.getById(sort.key);
       if (!col) continue;
       sort.col = col;
-      const existing = this._sorts.find(s => s.key === sort.key);
+      const existing = this.sorts.find(s => s.key === sort.key);
       if (sort.dir === null) {
         if (existing) {
-          this._sorts = this._sorts.filter(s => s.key !== sort.key);
+          this.sorts = this.sorts.filter(s => s.key !== sort.key);
           changedColIDs.push(col.instanceID);
         }
         continue;
       } else {
         if (!existing) {
-          this._sorts.push({ key: sort.key, col, dir: sort.dir });
+          this.sorts.push({ key: sort.key, col, dir: sort.dir });
           changedColIDs.push(col.instanceID);
         } else if (existing.dir !== sort.dir) {
           existing.dir = sort.dir;
@@ -170,28 +196,28 @@ export class GridCore implements IGridCore {
       }
     }
     if (changedColIDs.length === 0) return;
-    await this.rowModel.setSorts(this._sorts);
+    await this.rowModel.setSorts(this.sorts);
     this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIDs });
   }
 
   async toggleSort(col: Column) {
-    let curr = this._sorts.find(s => s.col.instanceID === col.instanceID);
+    let curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
     const dir = curr ? (curr.dir === "asc" ? "desc" : null) : "asc";
     const overwrite = col.children.length > 0;
 
     const addSort = (col: Column, dir: "asc" | "desc" | null) => {
-      const curr = this._sorts.find(s => s.col.instanceID === col.instanceID);
+      const curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
       if (curr) {
         dir = overwrite ? dir : (curr.dir === "asc" ? "desc" : null);
         if (dir) {
           curr.dir = dir;
         } else {
           // remove sort
-          this._sorts = this._sorts.filter(s => s.col.instanceID !== col.instanceID);
+          this.sorts = this.sorts.filter(s => s.col.instanceID !== col.instanceID);
         }
       } else if (dir) {
-        this._sorts.push({ col, key: col.key, dir });
+        this.sorts.push({ col, key: col.key, dir });
       }
     };
 
@@ -203,50 +229,53 @@ export class GridCore implements IGridCore {
     };
 
     traverse(col);
-    await this.rowModel.setSorts(this._sorts);
-    this.emit("sortsChanged", true, this._sorts.slice());
+    await this.rowModel.setSorts(this.sorts);
+    this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
   get isPaginationEnabled(): boolean {
-    return this._paginationEnabled;
+    return this.paginationEnabled;
   }
 
   get currPage(): number {
-    return this._pageIdx;
+    return this.pageIdx;
   }
 
-  get totalPages(): number {
-    return this._totalPages;
-  }
-
-  async applyPagination(paginationEnabled: boolean = this._paginationEnabled, pageSize: number = this._pageSize, pageIdx: number = this._pageIdx) {
-    if (this._paginationEnabled == paginationEnabled && this._pageSize == pageSize && this._pageIdx == pageIdx) {
+  async applyPagination(paginationEnabled: boolean = this.paginationEnabled, pageSize: number = this.pageSize, pageIdx: number = this.pageIdx) {
+    if (this.paginationEnabled == paginationEnabled && this.pageSize == pageSize && this.pageIdx == pageIdx) {
       const totalRows = this.rowModel.getRowCount();
-      this._totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
+      this.totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
       return;
     }
-    let pageChanged = this._paginationEnabled !== paginationEnabled;
-    this._paginationEnabled = paginationEnabled;
+    let pageChanged = this.paginationEnabled !== paginationEnabled;
+    this.paginationEnabled = paginationEnabled;
     pageSize = Math.max(1, pageSize);
-    this._pageSize = paginationEnabled ? pageSize : this.rowModel.getRowCount();
+    this.pageSize = paginationEnabled ? pageSize : this.rowModel.getRowCount();
     const totalRows = this.rowModel.getRowCount();
-    this._totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
-    const clampedPage = Math.min(Math.max(pageIdx, 0), this._totalPages - 1);
-    pageChanged = pageChanged || clampedPage !== this._pageIdx;
-    this._pageIdx = clampedPage;
+    this.totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
+    const clampedPage = Math.min(Math.max(pageIdx, 0), this.totalPages - 1);
+    pageChanged = pageChanged || clampedPage !== this.pageIdx;
+    this.pageIdx = clampedPage;
     if (pageChanged) {
-      await this.rowModel.setPagination(this._paginationEnabled, this._pageSize, this._pageIdx);
+      await this.rowModel.setPagination(this.paginationEnabled, this.pageSize, this.pageIdx);
     }
-    this.emit("paginationChanged", true, { paginationEnabled, pageChanged, pageIdx: clampedPage, pageSize: this._pageSize, totalPages: this._totalPages });
+    this.emit("paginationChanged", true, {
+      paginationEnabled,
+      pageIndex: clampedPage,
+      pageSize: this.pageSize,
+      totalRowCount: 0,
+      totalPageCount: this.totalPages,
+      pageSizes: [25, 50, 100, 250, 500, 1000],
+    });
   }
 
   async goToPage(pageIdx: number) {
-    if (!this._paginationEnabled) return false;
-    const clampedPage = Math.min(Math.max(pageIdx, 0), this._totalPages - 1);
-    if (clampedPage === this._pageIdx) return false;
-    this._pageIdx = clampedPage;
-    await this.rowModel.setPage(this._pageSize, this._pageIdx);
-    this.emit("pageChanged", true, { pageChanged: true, pageIndex: this._pageIdx, pageSize: this._pageSize });
+    if (!this.paginationEnabled) return false;
+    const clampedPage = Math.min(Math.max(pageIdx, 0), this.totalPages - 1);
+    if (clampedPage === this.pageIdx) return false;
+    this.pageIdx = clampedPage;
+    await this.rowModel.setPage(this.pageSize, this.pageIdx);
+    this.emit("rowsChanged", true, { reason: "rowData", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
   async setServerSideDataSource(callback: ServerSideDataSource | null) {
@@ -268,7 +297,7 @@ export class GridCore implements IGridCore {
   }
 
   async setAggregateScope(scope: AggregateScope) {
-    if (this._aggregateScope === scope) return;
+    if (this.aggregateScope === scope) return;
     this.rowModel.setAggregateScope(scope);
     await this.rowModel.reAggregate();
   }
@@ -297,45 +326,45 @@ export class GridCore implements IGridCore {
   }
 
   getSortModel(): SortDef[] {
-    return this._sorts.slice();
+    return this.sorts.slice();
   }
 
-  getFilterModel(): FilterDef[] {
-    return this._filters.slice();
+  getFilterModel(): FilterModel[] {
+    return this.filters.slice();
   }
 
   getAggregateModel(): AggregateModel[] {
-    return this._aggregates.slice();
+    return this.aggregates.slice();
   }
 
   getAggregateScope(): AggregateScope {
-    return this._aggregateScope;
+    return this.aggregateScope;
   }
 
   // Event handling
   onInternal<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
-    if (!this._internalEventHandlers.has(event)) {
-      this._internalEventHandlers.set(event, []);
+    if (!this.internalEventHandlers.has(event)) {
+      this.internalEventHandlers.set(event, []);
     }
-    this._internalEventHandlers.get(event)!.push(handler);
+    this.internalEventHandlers.get(event)!.push(handler);
     return () => {
       this.off(event, handler);
     };
   }
 
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
-    if (!this._eventHandlers.has(event)) {
-      this._eventHandlers.set(event, []);
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, []);
     }
-    this._eventHandlers.get(event)!.push(handler);
+    this.eventHandlers.get(event)!.push(handler);
     return () => {
       this.off(event, handler);
     };
   }
 
   off(eventType: string, handler: Function) {
-    if (!this._eventHandlers.has(eventType)) return;
-    const handlers = this._eventHandlers.get(eventType)!;
+    if (!this.eventHandlers.has(eventType)) return;
+    const handlers = this.eventHandlers.get(eventType)!;
     const idx = handlers.indexOf(handler);
     if (idx >= 0) {
       handlers.splice(idx, 1);
@@ -364,7 +393,7 @@ export class GridCore implements IGridCore {
         this.emit("overlayShow", true, { overlayType: action.overlayType });
         break;
       case "themeFontSet":
-        this._textMeasureParams = {headerFont: action.headerFont, cellFont: action.cellFont};
+        this.textMeasureParams = {headerFont: action.headerFont, cellFont: action.cellFont};
         this.refreshColumns(false);
         this.emit("columnsChanged", true, { reason: "resize" });
         break;
@@ -392,16 +421,16 @@ export class GridCore implements IGridCore {
   }
 
   emit<E extends GridEventName>(eventType: GridEventName, isInternal: boolean, args: GridEventMap[E]): void {
-    if (this._supressEventsUnless !== "" && this._supressEventsUnless !== eventType) {
+    if (this.supressEventsUnless !== "" && this.supressEventsUnless !== eventType) {
       return;
     }
-    this._supressEventsUnless = "";
+    this.supressEventsUnless = "";
     return isInternal ? this.emitInternal(eventType, args) : this.emitExternal(eventType, args);
   }
 
   emitInternal<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]) {
-    if (!this._internalEventHandlers.has(eventType)) return;
-    const handlers = this._internalEventHandlers.get(eventType)!;
+    if (!this.internalEventHandlers.has(eventType)) return;
+    const handlers = this.internalEventHandlers.get(eventType)!;
     for (const handler of handlers) {
       this.rowModel.getViewCount();
       handler(args);
@@ -409,8 +438,8 @@ export class GridCore implements IGridCore {
   }
 
   emitExternal<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]) {
-    if (!this._eventHandlers.has(eventType)) return;
-    const handlers = this._eventHandlers.get(eventType)!;
+    if (!this.eventHandlers.has(eventType)) return;
+    const handlers = this.eventHandlers.get(eventType)!;
     for (const handler of handlers) {
       this.rowModel.getViewCount();
       handler(args);

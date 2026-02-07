@@ -11,6 +11,7 @@ export interface MenuParams {
   parentEl?: HTMLElement | null;
   position?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
   onItemClick?: (item: MenuItem) => void;
+  onOpen?: (renderer: MenuRenderer) => void;
   onClose?: () => void;
   contentEl?: HTMLElement;
 }
@@ -45,6 +46,7 @@ export class MenuRenderer {
       parentEl = null,
       position = "bottom-left",
       onItemClick,
+      onOpen,
       onClose,
       contentEl,
     } = params;
@@ -133,6 +135,10 @@ export class MenuRenderer {
     // this.root.appendChild(menuOverlay);
     if (level === 0) {
       this.attachGlobalCloseHandlers();
+    }
+
+    if (onOpen) {
+      onOpen(this);
     }
   }
 

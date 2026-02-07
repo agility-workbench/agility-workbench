@@ -1,10 +1,10 @@
-import { FilterDef } from "../../interfaces/filter";
-import { SortDef } from "../../interfaces/sort";
-import { AggregateScope } from "../../interfaces/aggregate";
-import { createRowIdFactory, GridOptions } from "./node";
-import { IRowModel, RowModelType } from "../../interfaces/iRowModel";
-import { IRowNode } from "../../interfaces/iRowNode";
-import { computeFilteredIdx } from "../../renderer/helpers";
+import { FilterModel } from "../interfaces/filter";
+import { SortDef } from "../interfaces/sort";
+import { AggregateScope } from "../interfaces/aggregate";
+import { IRowModel, RowModelType } from "../interfaces/iRowModel";
+import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
+import { performFilter } from "../csrm/filter";
+import { GridOptions } from "../interfaces/gridOptions";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -20,7 +20,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   private getId: (row: Row) => string;
 
-  constructor(opts: GridOptions<Row>) {
+  constructor(opts: GridOptions) {
     this.getId = createRowIdFactory(opts);
   }
 
@@ -136,12 +136,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.rebuildView();
   }
 
-  setFilters(filters: FilterDef[]): void {
-    if (filters.length > 0) {
-      this.filteredIdx = computeFilteredIdx(this.nodes, filters);
-    } else {
-      this.filteredIdx = Array.from({ length: this.nodes.length }, (_, i) => i);
-    }
+  applyFilters(filters: FilterModel[]): void {
+    this.filteredIdx = performFilter(filters, this.nodes);
   }
 
   setAggregateScope(scope: AggregateScope): void {
