@@ -3,6 +3,7 @@ import "./roboto-font.css";
 import "./style.css";
 
 import { GridReact } from "@grid-react"; // React Data Grid Component
+import { ColDef, FormatterOptionsParams } from "@grid";
 
 const themePresets = [
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
@@ -11,7 +12,7 @@ const themePresets = [
 
 function App() {
   const [rowData, setRowData] = useState<any[]>([]);
-  const [colDefs, setColDefs] = useState<Column[]>([]);
+  const [colDefs, setColDefs] = useState<ColDef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState("compact");
   const [count, setCount] = useState(50000);
@@ -21,8 +22,8 @@ function App() {
   const [rowModel, setRowModel] = useState<RowModelType>("clientSide");
   const [themeId, setThemeId] = useState(themePresets[0].id);
 
-  const applyFormatters = (cols: Column[] = []) => {
-    const currencyFormatter = (col: Column) => {
+  const applyFormatters = (cols: ColDef[] = []) => {
+    const currencyFormatter = (col: ColDef) => {
       if (col.type !== "currency") return;
       // col.valueFormatter = (params: ValueFormatterParams) => {
       //   if (typeof params.value === "number") {
@@ -39,11 +40,18 @@ function App() {
       });
     };
 
-    const formatApplier = (inputCols: Column[]) => {
+    const formatApplier = (inputCols: ColDef[]) => {
       for (const col of inputCols) {
         currencyFormatter(col);
         if (col.children && col.children.length > 0) {
           formatApplier(col.children);
+        }
+
+        if (col.key == "fy2026") {
+          col.filterParams = {
+            maxFilterItems: 7,
+            buttons: ["apply", "cancel", "clear", "reset"],
+          }
         }
       }
     };
@@ -117,10 +125,13 @@ function App() {
 
         applyFormatters(payload.columns ?? []);
 
-        payload.columns.forEach((col: Column) => {
+        payload.columns.forEach((col: ColDef) => {
           if (col.key == "department") col.sortable = false;
-          if (col.key == "country") col.filterable = false;
-          if (col.key == "location") col.resizable = false;
+          if (col.key == "country") col.filter = false;
+          if (col.key == "location") {
+            col.resizable = false;
+            col.filter = "set";
+          }
           if (col.key == "gl_account") col.movable = false;
           if (col.key == "business_unit") col.hideable = false;
         });
