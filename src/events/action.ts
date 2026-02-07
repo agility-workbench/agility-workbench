@@ -1,5 +1,5 @@
 import { ColDef } from "../interfaces/column";
-import { FilterDef } from "../interfaces/filter";
+import { FilterModel } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef, SelectionRange } from "../interfaces/selection";
 import { SortDef } from "../interfaces/sort";
@@ -107,7 +107,7 @@ export type GridActionSortModelSet = {
 
 export type GridActionFilterModelSet = {
   type: "filterModelSet";
-  filterModel: FilterDef[];
+  filterModel: FilterModel[];
 };
 
 // Focus/Selection actions

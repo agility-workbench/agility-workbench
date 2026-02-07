@@ -1,5 +1,5 @@
 import { AggregateScope } from "./aggregate";
-import { FilterDef } from "./filter";
+import { FilterModel } from "./filter";
 import { IRowNode } from "./iRowNode";
 import { SortDef } from "./sort";
 
@@ -28,7 +28,7 @@ export interface IRowModel<Row = any> {
 
   // operations the grid triggers
   setSorts(sorts: SortDef[]): void | Promise<void>;
-  setFilters(filters: FilterDef[]): void | Promise<void>;
+  applyFilters(filters: FilterModel[]): void | Promise<void>;
   setPagination(paginate: boolean, pageSize: number, pageIndex: number): void | Promise<void>;
   setPage(pageSize: number, pageIndex: number): void | Promise<void>;
 

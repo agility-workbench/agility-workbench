@@ -1,0 +1,45 @@
+import { GridCore } from "../core/core";
+import { ColumnFilterContext } from "./context";
+import { ColumnFilterMenuService } from "./filterMenuService";
+import { FilterController } from "./filterMenuController";
+import { FilterRenderer } from "../renderer/filter/filterRenderer";
+import { MenuRenderer } from "@grid/renderer/menuRenderer";
+
+export class FilterMenuCoordinator {
+  constructor(private core: GridCore, private filterMenuService: ColumnFilterMenuService) { }
+
+  openFilterMenu(ctx: ColumnFilterContext): {
+    contentEl: HTMLElement,
+    onOpen?: (renderer: MenuRenderer) => void,
+    onClose: () => void,
+  } {
+    const panelSpec = this.filterMenuService.buildFilterMenu(ctx);
+
+    const rowModel = this.core.getRowModel();
+
+    const ctrl = new FilterController(
+      panelSpec,
+      this.core.getFilterModel().find(f => f.key === ctx.targetCol.key) || null,
+      {
+        applyModel: (colId, model, meta) => {
+          console.log(model);
+          if (model === null) {
+            this.core.removeFilterModel(colId);
+            return;
+          }
+          this.core.addFilterModel(model);
+        },
+        getAllRows: this.core.getRowModel().forEachNode.bind(rowModel),        // for setFilter fromRows
+      },
+    );
+
+    const renderer = new FilterRenderer(ctrl, panelSpec);
+
+    return {
+      contentEl: renderer.getUi(),
+      onOpen: (r) => renderer.onOpen(),
+      onClose: () => renderer.destroy(),
+    };
+  }
+
+}

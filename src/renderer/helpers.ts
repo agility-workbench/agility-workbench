@@ -1,7 +1,7 @@
 import { Column } from "../column/column";
 import { isTrue } from "../misc";
 import { IRowNode } from "../interfaces/iRowNode";
-import { FilterDef } from "../interfaces/filter";
+import { FilterModel } from "../interfaces/filter";
 
 export function findColumnById(columns: Column[], id: string): Column | undefined {
   for (const col of columns) {
@@ -66,12 +66,12 @@ export function getColumnAncestors(columns: Column[], id: string): Column[] {
  *   age:  { type: "gte", value: 30 }
  * }
  */
-export function computeFilteredIdx(rows: IRowNode[], filters: FilterDef[]): number[] {
+export function computeFilteredIdx(rows: IRowNode[], filters: FilterModel[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;
 
-  const active: Array<{ col: Column; type: FilterDef["type"]; q?: string; v?: any }> = [];
+  const active: Array<{ col: Column; type: FilterModel["type"]; q?: string; v?: any }> = [];
   for (const f of filters) {
     // Pre-normalize filter values
     if (f.type === "contains" || f.type === "startsWith" || f.type === "endsWith") {

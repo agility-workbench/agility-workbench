@@ -1,6 +1,6 @@
 import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
-import { IRowNode } from "./IRowNode";
+import { Filter, FilterParams } from "./filter";
 
 export enum ColumnType {
   STRING = "string",
@@ -29,7 +29,8 @@ export interface ColDef {
   hidden?: boolean;
   pinned?: "left" | "right";
   sortable?: boolean;
-  filter?: boolean | string | ((valA: any, valB: any, nodeA: IRowNode, nodeB: IRowNode) => number);
+  filter?: Filter;
+  filterParams?: FilterParams;
   groupable?: boolean;
   resizable?: boolean;
   movable?: boolean;

@@ -15,7 +15,7 @@ import {
   AggregateType,
 } from "../interfaces/aggregate";
 import { ColumnType } from "../interfaces/column";
-import { FilterDef, FilterType } from "../interfaces/filter";
+import { FilterModel, FilterType } from "../interfaces/filter";
 import { MenuItem } from "../interfaces/menuItem";
 import { RowPoolDef } from "./types";
 import { SortDef } from "../interfaces/sort";
@@ -31,6 +31,7 @@ import { GridCore } from "../core/core";
 import { GridEventColumnsChangedParams, GridEventRowsChangedParams, GridEventViewportChangedParams } from "../events/events";
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
+import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 
 const MIN_RESIZE_WIDTH = 75;
 const COLUMN_DRAG_THRESHOLD_PX = 4;
@@ -162,7 +163,11 @@ export class GridRenderer {
   _syncingScrollRaf: number | null;
   _measureCache: Map<string, Map<string, number>>;
 
-  constructor(private core: GridCore, private menuCoordinator: MenuCoordinator) {
+  constructor(
+    private core: GridCore,
+    private menuCoordinator: MenuCoordinator,
+    private filterMenuCoordinator: FilterMenuCoordinator,
+  ) {
     this._measureCtx = null;
     this._measureCache = new Map();
     this._columnWidths = new Map();
@@ -673,6 +678,9 @@ export class GridRenderer {
         this._addSortIndicatorToHeader(colID, sort?.dir || '');
       }
       return;
+    } else if (params.reason === "filter") {
+      this._setFilterIndicators();
+      return;
     }
     if (params.reason !== "resize" && params.reason !== "state") {
       this._buildHeaderDOM();
@@ -726,7 +734,7 @@ export class GridRenderer {
     this._updateWindow(true, undefined);
   }
 
-  setFilters(filters: FilterDef[]) {
+  setFilters(filters: FilterModel[]) {
     this._filters = filters ?? [];
     this._onFilterModelChanged();
   }
@@ -3798,26 +3806,23 @@ export class GridRenderer {
   }
 
   _openColFilter(colID: string, anchorEl: HTMLElement) {
-    this._filterColID = colID;
-
-    // build content
-    const content = this._buildFilterMenuDOM(colID);
-
-    this._filterOverlay.innerHTML = "";
-    this._filterOverlay.appendChild(content);
-
-    // position
-    const r = anchorEl.getBoundingClientRect();
-    const W = 180, H = 220;
-    this._filterOverlay.style.left = `${Math.min(r.left, window.innerWidth - W - 8)}px`;
-    this._filterOverlay.style.top = `${Math.min(r.bottom + 4, window.innerHeight - H - 8)}px`;
-    this._filterOverlay.style.minWidth = `${W}px`;
-    this._filterOverlay.style.display = "block";
-
-    // focus first control
-    const first = this._filterOverlay.querySelector("[data-focus-first]") ||
-      this._filterOverlay.querySelector("select, input, button, [tabindex]");
-    first?.focus();
+    const col = this.core.getColumnModel().getById(colID);
+    if (!col) return;
+    const session = this.filterMenuCoordinator.openFilterMenu({
+      trigger: "filterButton",
+      targetCol: col,
+      anchorEl: anchorEl,
+    });
+    this._menuRenderer.open({
+      anchorEl: anchorEl,
+      clientX: anchorEl.getBoundingClientRect().left,
+      clientY: anchorEl.getBoundingClientRect().bottom + 4,
+      contentEl: session.contentEl,
+      onOpen: session.onOpen,
+      onClose: session.onClose,
+      items: [],
+    });
+    return;
   }
 
   _closeMenu() {
@@ -4243,6 +4248,17 @@ export class GridRenderer {
           }
         }
       }
+    }
+  }
+
+  _setFilterIndicators() {
+    const filteredCols = new Set(this.core.getFilterModel().map(f => f.col.instanceID));
+    for (const col of this.core.getColumnModel().getLeaves()) {
+      const hcell = document.getElementById(col.instanceID);
+      if (!hcell) continue;
+      const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
+      if (!menuBtn) continue;
+      menuBtn.classList.toggle("active", filteredCols.has(col.instanceID));
     }
   }
 
