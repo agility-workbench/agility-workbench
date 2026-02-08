@@ -1058,7 +1058,12 @@
 
 .pte-set-filter-option {
   cursor: pointer;
-  padding: 4px 0;
+  padding: 4px;
+  border: 1px solid transparent;
+}
+
+.pte-set-filter-option.focused {
+  border: 1px solid var(--pte-select-border-color);
 }
 
 .pte-filter-condition-row {

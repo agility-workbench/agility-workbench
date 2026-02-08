@@ -127,10 +127,19 @@ export class FilterController implements IFilterController {
     this.maybeCommit("ui");
   }
 
-  toggleSetValue(condIndex: number, type: SetFilterOptionType, value: any, selected: boolean): void {
+  toggleSetValue(condIndex: number, optionIdx: number, selected: boolean): void {
     if (this.disposed) return;
     const id = this.getCondId(condIndex);
     if (!id) return;
+
+    const ui = this.state.ui[id];
+    if (!ui) return;
+    const option = (ui.options ?? [])[optionIdx];
+    if (!option) return;
+
+    ui.selectedIdx = optionIdx;
+    const type = option.type;
+    let value = option.raw;
 
     const d = this.state.draft[id];
     // default type for set filter should be "notIn"
@@ -160,7 +169,6 @@ export class FilterController implements IFilterController {
           return k !== value;
         });
       }
-      const option = this.state.ui[id].options?.find(o => o.key === value);
       if (d.type === FilterType.IN && d.values.length == this.state.ui[id].options?.length) {
         d.type = FilterType.NOT_IN;
         d.values = [];

@@ -109,6 +109,7 @@ export interface FilterRuntimeState {
       error?: string;
       valid?: boolean;
       miniFilter?: string;
+      selectedIdx?: number;
     }
   >;
 }
@@ -122,7 +123,7 @@ export interface IFilterController {
   setValue(condIndex: number, valueIndex: number, value: any): void;
 
   // convenience for set-filter selection: store selected raw keys/values as values array
-  toggleSetValue(condIndex: number, type: SetFilterOptionType, value: any, selected: boolean): void;
+  toggleSetValue(condIndex: number, optionIdx: number, selected: boolean): void;
   filterOptions(condIndex: number, filter: string): void;
   applyMiniFilter(condIndex: number): void;
 

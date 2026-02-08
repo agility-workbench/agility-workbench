@@ -39,7 +39,10 @@ export class SetFilterRenderer implements IFilterRenderer {
       this.conditionContainer.innerHTML = "";
       return;
     }
-    if (uiState.loading) {
+    if (uiState.error) {
+      this.conditionContainer.innerHTML = `<div class="pte-set-filter-error">Error loading values</div>`;
+      return;
+    } else if (uiState.loading) {
       if (!this.loader) {
         this.loader = new Overlay("Loading values…");
         this.conditionContainer.appendChild(this.loader.getUi());
@@ -47,11 +50,9 @@ export class SetFilterRenderer implements IFilterRenderer {
       this.loader.show();
     } else if (uiState.loading === false) {
       if (this.loader) this.loader.hide();
-    } else if (uiState.error) {
-        this.conditionContainer.innerHTML = `<div class="pte-set-filter-error">Error loading values</div>`;
     }
     if (uiState.options && uiState.options.length > 0) {
-      this.createOptionRows(uiState.options);
+      this.createOptionRows(uiState.options, uiState.selectedIdx);
     }
   }
 
@@ -84,14 +85,63 @@ export class SetFilterRenderer implements IFilterRenderer {
     this.conditionContainer = div("pte-set-filter-options");
     container.appendChild(this.conditionContainer);
     this.root.appendChild(container);
+    this.root.tabIndex = 0; // make root focusable to capture keyboard events
+    this.root.addEventListener("keydown", (e) => {
+      // Toggle through options with arrow keys and space/enter
+      const focusableOptions = this.conditionContainer.querySelectorAll<HTMLLabelElement>("label.pte-set-filter-option");
+      if (focusableOptions.length === 0) return;
+
+      const activeElement = document.activeElement as HTMLElement;
+      let currentIndex = Array.from(focusableOptions).findIndex(opt => opt === activeElement);
+      if (currentIndex === -1) {
+        console.log(e.key);
+        if (e.key === "Tab") {
+          // if focus is not on an option, start from the first one
+          focusableOptions[0].classList.add("focused");
+          focusableOptions[0].focus();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        focusableOptions[currentIndex].classList.remove("focused");
+        const nextIndex = (currentIndex + 1) % focusableOptions.length;
+        focusableOptions[nextIndex].classList.add("focused");
+        focusableOptions[nextIndex].focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        focusableOptions[currentIndex].classList.remove("focused");
+        const prevIndex = (currentIndex - 1 + focusableOptions.length) % focusableOptions.length;
+        focusableOptions[prevIndex].classList.add("focused");
+        focusableOptions[prevIndex].focus();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        focusableOptions[currentIndex].classList.remove("focused");
+        focusableOptions[0].classList.add("focused");
+        focusableOptions[0].focus();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        focusableOptions[currentIndex].classList.remove("focused");
+        focusableOptions[focusableOptions.length - 1].classList.add("focused");
+        focusableOptions[focusableOptions.length - 1].focus();
+      } else if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        focusableOptions[currentIndex].click();
+      }
+    });
   }
 
-  private createOptionRows(options: SetFilterOption[]) {
+  private createOptionRows(options: SetFilterOption[], selectedIdx?: number) {
     this.conditionContainer.innerHTML = "";
-    for (const option of options) {
+    for (let i = 0; i < options.length; i++) {
+      const option = options[i];
       if (option.hidden) continue;
       const row = createElement("label", "pte-set-filter-option");
+      row.tabIndex = -1; // make label focusable for keyboard navigation
       const checkbox = createElement("input");
+      checkbox.tabIndex = -1; // exclude checkbox from tab order, we will handle focus on the label
       checkbox.name = `pte-set-filter-option-checkbox-${option.key}`;
       checkbox.type = "checkbox";
       if (option.type === "select_all") {
@@ -99,11 +149,11 @@ export class SetFilterRenderer implements IFilterRenderer {
       } else if (option.type === "blanks") {
         checkbox.setAttribute("aria-label", "Include blank values");
       }
-      const {selected, indeterminate} = this.controller.getSetOptionState(0, option.type, option.raw);
+      const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
       checkbox.checked = selected;
       checkbox.indeterminate = indeterminate;
       checkbox.addEventListener("change", () => {
-        this.controller.toggleSetValue(0, option.type, option.raw, checkbox.checked);
+        this.controller.toggleSetValue(0, i, checkbox.checked);
       });
       row.appendChild(checkbox);
 
@@ -113,6 +163,11 @@ export class SetFilterRenderer implements IFilterRenderer {
       row.appendChild(label);
 
       this.conditionContainer.appendChild(row);
+
+      if (selectedIdx === i) {
+        row.classList.add("focused");
+        row.focus();
+      }
     }
   }
 
