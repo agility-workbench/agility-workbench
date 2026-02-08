@@ -298,8 +298,8 @@ export class ColumnModel implements IColumnModel {
 
     const collator = column.getCollator();
     const comparator = numericLikely
-      ? (a: any, b: any) => {
-        const av = column.getValue(a), bv = column.getValue(b);
+      ? (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => {
+        const av = column.getValue(nodeA), bv = column.getValue(nodeB);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
