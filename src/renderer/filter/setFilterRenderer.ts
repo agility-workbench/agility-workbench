@@ -45,7 +45,7 @@ export class SetFilterRenderer implements IFilterRenderer {
     } else if (uiState.loading) {
       if (!this.loader) {
         this.loader = new Overlay("Loading values…");
-        this.conditionContainer.appendChild(this.loader.getUi());
+        this.root.appendChild(this.loader.getUi());
       }
       this.loader.show();
     } else if (uiState.loading === false) {

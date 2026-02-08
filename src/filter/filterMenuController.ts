@@ -1,5 +1,5 @@
 import { FilterModel, IRowNode } from "../interfaces";
-import { FilterApplyReason, IFilterController, FilterControllerHooks, FilterPanelSpec, FilterRuntimeState, FilterValueSource, SetFilterOptions, SetFilterOptionType } from "./types";
+import { FilterApplyReason, IFilterController, FilterControllerHooks, FilterPanelSpec, FilterRuntimeState, FilterValueSource, SetFilterOptions, SetFilterOptionType, FilterValueAsyncSourceParamsImpl } from "./types";
 import { FilterDef, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { isNullOrUndefined } from "@grid/misc";
 
@@ -420,29 +420,22 @@ export class FilterController implements IFilterController {
       this.emit();
     };
 
-    (async () => {
-      try {
-        let rawValues: any[] = [];
+    const res = new FilterValueAsyncSourceParamsImpl(this.spec.column.col, abort.signal);
+    res.onSuccess((values) => {
+      if (abort.signal.aborted) return;
+      finalize(this.mapToOptions(values), undefined);
+    });
+    res.onError((err) => {
+      finalize(undefined, err?.message ?? "Failed to load values");
+    });
 
-        if (source.kind === "static") {
-          rawValues = source.values ?? [];
-        } else if (source.kind === "fromRows") {
-          rawValues = this.computeUniqueValuesFromRows();
-        } else if (source.kind === "async") {
-          const res = await source.load({ colId: this.spec.column.key, signal: abort.signal });
-          rawValues = res.values ?? [];
-        }
-
-        if (abort.signal.aborted) return;
-
-        // Apply maxFilterItems / initial count at UI layer? We'll keep full list; renderer can show first N.
-        const options = this.mapToOptions(rawValues);
-        finalize(options, undefined);
-      } catch (e: any) {
-        if (abort.signal.aborted) return;
-        finalize(undefined, e?.message ?? "Failed to load values");
-      }
-    })();
+    if (source.kind === "static") {
+      res.success(source.values ?? []);
+    } else if (source.kind === "fromRows") {
+      res.success(this.computeUniqueValuesFromRows());
+    } else if (source.kind === "async") {
+      source.load(res);
+    }
   }
 
   private abortOptionsLoad(): void {

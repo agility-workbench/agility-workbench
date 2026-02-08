@@ -1,3 +1,4 @@
+import { FilterValueAsyncSource } from "@grid/filter/types";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
 
@@ -53,7 +54,7 @@ export interface FilterParams {
   filterOptions?: FilterOption[];
   maxFilterItems?: number;
   initialFilterItemsCount?: number;
-  filterValues?: any[]; // for set filter; if not specified, will be derived from rows
+  filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
   textFormatter?: (value: any) => string;
   filterFunction?: (type: FilterType, filterValues: any[], cellValue: any, caseSensitive?: boolean, trimValues?: boolean) => boolean;
 }

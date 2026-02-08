@@ -8,6 +8,7 @@ import {
   FilterDef,
 } from "../interfaces/filter";
 import { Column } from "../column/column";
+import { ColDef } from "@grid/interfaces";
 
 export type FilterKind = "text" | "number" | "date" | "set" | "boolean";
 
@@ -32,10 +33,19 @@ export function getFilterKindForFilterType(inputType: FilterInputType): FilterKi
   }
 }
 
+export interface FilterValueAsyncSourceParams {
+  colDef: ColDef;
+  signal: AbortSignal;
+  success: (values: any[]) => void;
+  error: (err: any) => void;
+}
+
+export type FilterValueAsyncSource = (params: FilterValueAsyncSourceParams) => void | Promise<void>;
+
 export type FilterValueSource =
   | { kind: "static"; values: any[] }
   | { kind: "fromRows" }
-  | { kind: "async"; load: (ctx: { colId: string; signal: AbortSignal }) => Promise<{ values: any[] }> };
+  | { kind: "async"; load: FilterValueAsyncSource };
 
 
 export interface FilterConditionSpec {
@@ -134,4 +144,31 @@ export interface IFilterController {
   cancel(): void;
 
   dispose(): void;
+}
+
+export class FilterValueAsyncSourceParamsImpl implements FilterValueAsyncSourceParams {
+  private successCallback!: (values: any[]) => void;
+  private errorCallback!: (err: any) => void;
+
+  constructor(public colDef: ColDef, public signal: AbortSignal) { }
+
+  onSuccess(callback: (values: any[]) => void): void {
+    this.successCallback = callback;
+  }
+
+  onError(callback: (err: any) => void): void {
+    this.errorCallback = callback;
+  }
+
+  success(values: any[]): void {
+    if (this.successCallback) {
+      this.successCallback(values);
+    }
+  }
+
+  error(err: any): void {
+    if (this.errorCallback) {
+      this.errorCallback(err);
+    }
+  }
 }
