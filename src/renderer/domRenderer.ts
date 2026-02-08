@@ -674,7 +674,7 @@ export class GridRenderer {
     if (params.reason === "sort") {
       const sorts = this.core.getSortModel();
       for (const colID of params.changedColIds || []) {
-        const sort = sorts.find(s => s.key === colID);
+        const sort = sorts.find(s => s.col.instanceID === colID);
         this._addSortIndicatorToHeader(colID, sort?.dir || '');
       }
       return;
