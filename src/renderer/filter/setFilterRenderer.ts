@@ -71,8 +71,8 @@ export class SetFilterRenderer implements IFilterRenderer {
     this.miniFilterInput.addEventListener("input", () => {
       this.controller.filterOptions(0, this.miniFilterInput.value);
     });
-    this.miniFilterInput.addEventListener("change", () => {
-      console.log("apply mini filter", this.miniFilterInput.value);
+    this.miniFilterInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
       this.controller.applyMiniFilter(0);
     });
     filterContainer.appendChild(this.miniFilterInput);

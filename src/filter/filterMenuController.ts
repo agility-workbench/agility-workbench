@@ -224,9 +224,9 @@ export class FilterController implements IFilterController {
     if (!id) return;
 
     const ui = this.state.ui[id];
-    if (!ui.miniFilter || ui.miniFilter === "") return;
-
-    console.log(this.state.draft[id], ui.miniFilter);
+    // This check is not needed because input.change is only called when enter is pressed,
+    // so empty mini-filter is a valid request.
+    // if (!ui.miniFilter || ui.miniFilter === "") return;
 
     this.maybeCommit("ui");
   }
