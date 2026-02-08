@@ -143,10 +143,6 @@ export class FilterController implements IFilterController {
         d.type = FilterType.IN;
         d.values = [];
       }
-      this.state.ui[id].options?.forEach(o => {
-        o.selected = selected;
-        o.indeterminate = false;
-      });
     } else {
       d.values = d.values ?? [];
       const insert = d.type === FilterType.IN && selected || d.type === FilterType.NOT_IN && !selected;
@@ -165,7 +161,6 @@ export class FilterController implements IFilterController {
         });
       }
       const option = this.state.ui[id].options?.find(o => o.key === value);
-      if (option) option.selected = selected;
       if (d.type === FilterType.IN && d.values.length == this.state.ui[id].options?.length) {
         d.type = FilterType.NOT_IN;
         d.values = [];
@@ -173,14 +168,44 @@ export class FilterController implements IFilterController {
         d.type = FilterType.IN;
         d.values = [];
       }
-      this.state.ui[id].options![0].selected = d.values.length == 0;
-      this.state.ui[id].options![0].indeterminate = d.values.length != 0;
     }
     this.normalizeAfterEdit({ reason: "setValueToggle" });
 
     this.emit();
     // set filter does NOT use debounce
     this.maybeCommit("ui");
+  }
+
+  getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): { selected: boolean, indeterminate: boolean } {
+    let selected = false, indeterminate = false;
+    const id = this.getCondId(condIndex);
+    if (!id) return { selected, indeterminate };
+
+    const d = this.state.draft[id];
+    if (!d.type) d.type = this.spec.defaultOp ?? FilterType.NOT_IN;
+
+    const ui = this.state.ui[id];
+    if (!ui || !ui.options) return { selected, indeterminate };
+
+    if (type === "select_all") {
+      selected = d.type === FilterType.NOT_IN && d.values?.length === 0;
+      indeterminate = d.values ? d.values.length > 0 : false;
+      if ((ui.miniFilter || "").length > 0) {
+        // If mini-filter is active, "select all" only applies to filtered options, so we need to check if all filtered options are selected.
+        const filteredOptionValues = new Set(ui.options.filter(o => !o.hidden && o.type === "value").map(o => o.raw));
+        const selectedCount = d.values?.filter((v: any) => filteredOptionValues.has(v)).length ?? 0;
+        selected = d.type === FilterType.NOT_IN ? selectedCount === 0 : selectedCount === filteredOptionValues.size;
+        indeterminate = selectedCount > 0 && selectedCount < filteredOptionValues.size;
+      }
+    } else {
+      if (type === "blanks") {
+        const blankOption = this.state.ui[id]?.options?.find(o => o.key === "" || isNullOrUndefined(o.key));
+        if (!blankOption) return { selected, indeterminate };
+        value = blankOption.raw;
+      }
+      selected = (d.type === FilterType.IN) ? d.values?.includes(value) : !d.values?.includes(value);
+    }
+    return { selected, indeterminate };
   }
 
   filterOptions(condIndex: number, filter: string): void {
@@ -196,11 +221,9 @@ export class FilterController implements IFilterController {
     for (const o of ui.options) {
       if (o.label.toLowerCase().includes(filterLc)) {
         o.hidden = false;
-        o.selected = true;
         filteredOptions.push(o);
       } else {
         o.hidden = o.type !== "select_all";
-        o.selected = o.type === "select_all";
       }
     }
     const filteredValues = new Set(filteredOptions.map(f => f.key));
@@ -212,6 +235,10 @@ export class FilterController implements IFilterController {
       }
     } else if (d.type === FilterType.NOT_IN) {
       d.values = ui.options.filter((v: SetFilterOptions) => !filteredValues.has(v.key)).map((o: any) => o.raw);
+    }
+    if (d.values.length === ui.options.length) {
+      d.type = d.type === FilterType.IN ? FilterType.NOT_IN : FilterType.IN;
+      d.values = [];
     }
     ui.miniFilter = filter;
     this.normalizeAfterEdit({ reason: "setValueToggle" });
@@ -372,8 +399,9 @@ export class FilterController implements IFilterController {
     const finalize = (options?: SetFilterOptions[], error?: string) => {
       if (this.disposed) return;
       if (requestId !== this.optionsRequestId) return; // stale
+      const availableOptionValues = new Set(options?.map(o => o.raw));
       for (const id of this.state.conditionOrder) {
-        this.state.draft[id].values = []; // clear any existing selections since options changed
+        this.state.draft[id].values = (this.state.draft[id].values ?? []).filter((v: any) => availableOptionValues.has(v));
         this.state.ui[id] = {
           ...(this.state.ui[id] ?? {}),
           loading: false,
@@ -452,42 +480,24 @@ export class FilterController implements IFilterController {
     const keyFn = this.spec.valueKey ?? defaultValueKey;
     const labelFn = this.spec.valueLabel ?? ((x: any) => String(x));
 
-    let selectedOptions = new Set();
-    if (this.initialModelSnapshot === null) {
-      selectedOptions = new Set(values.slice());
-    } else {
-      for (const cond of this.initialModelSnapshot.filters) {
-        if (cond.type !== "in" && cond.type !== "notIn") continue;
-        for (const v of cond.values) {
-          selectedOptions.add(v);
-        }
-      }
-    }
-
     const options: SetFilterOptions[] = [
-      { type: "select_all", key: "__select_all__", label: "(Select All)", raw: "__select_all__", selected: false, indeterminate: false, hidden: false },
+      { type: "select_all", key: "__select_all__", label: "(Select All)", raw: "__select_all__", hidden: false },
     ];
     const seen = new Set<string>(["__select_all__"]);
 
     let hasBlanks = false;
-    let blanksSelected = false;
 
     for (const v of values ?? []) {
       const key = keyFn(v);
       if (key === "" || isNullOrUndefined(key)) {
         // we'll add a single "(Blanks)" option later if there are any blank/undefined/null keys; for now just track that we have blanks
         hasBlanks = true;
-        blanksSelected = blanksSelected || selectedOptions.has(v);
         continue;
       }
       if (seen.has(key)) continue;
       seen.add(key);
-      const selected = selectedOptions.has(v);
-      options.push({ type: "value", key, label: labelFn(v), raw: v, selected: selected, indeterminate: false, hidden: false });
+      options.push({ type: "value", key, label: labelFn(v), raw: v, hidden: false });
     }
-
-    options[0].selected = selectedOptions.size == values.length;
-    options[0].indeterminate = !options[0].selected && selectedOptions.size > 0;
 
     if (hasBlanks) {
       options.splice(1, 0, {
@@ -495,8 +505,6 @@ export class FilterController implements IFilterController {
         key: "__blanks__",
         label: "(Blanks)",
         raw: null,
-        selected: blanksSelected,
-        indeterminate: false,
         hidden: false,
       });
     }

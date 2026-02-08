@@ -51,7 +51,7 @@ export class SetFilterRenderer implements IFilterRenderer {
         this.conditionContainer.innerHTML = `<div class="pte-set-filter-error">Error loading values</div>`;
     }
     if (uiState.options && uiState.options.length > 0) {
-      this.createOptionRows(state, uiState.options);
+      this.createOptionRows(uiState.options);
     }
   }
 
@@ -86,7 +86,7 @@ export class SetFilterRenderer implements IFilterRenderer {
     this.root.appendChild(container);
   }
 
-  private createOptionRows(state: FilterRuntimeState, options: SetFilterOption[]) {
+  private createOptionRows(options: SetFilterOption[]) {
     this.conditionContainer.innerHTML = "";
     for (const option of options) {
       if (option.hidden) continue;
@@ -94,8 +94,14 @@ export class SetFilterRenderer implements IFilterRenderer {
       const checkbox = createElement("input");
       checkbox.name = `pte-set-filter-option-checkbox-${option.key}`;
       checkbox.type = "checkbox";
-      checkbox.checked = option.selected;
-      checkbox.indeterminate = option.indeterminate;
+      if (option.type === "select_all") {
+        checkbox.setAttribute("aria-label", "Select all values");
+      } else if (option.type === "blanks") {
+        checkbox.setAttribute("aria-label", "Include blank values");
+      }
+      const {selected, indeterminate} = this.controller.getSetOptionState(0, option.type, option.raw);
+      checkbox.checked = selected;
+      checkbox.indeterminate = indeterminate;
       checkbox.addEventListener("change", () => {
         this.controller.toggleSetValue(0, option.type, option.raw, checkbox.checked);
       });

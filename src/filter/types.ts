@@ -88,8 +88,6 @@ export interface SetFilterOptions {
   key: string;
   label: string;
   raw: any;
-  selected: boolean;
-  indeterminate: boolean;
   hidden: boolean;
 }
 
