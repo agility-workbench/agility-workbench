@@ -23,7 +23,7 @@ export class Column {
   cellRendererParams?: any;
   type: ColumnType;
   format?: string; // e.g., for date or currency formatting
-  children: Column[];
+  children: Column[] = [];
   hidden: boolean;
   pinned?: "left" | "right" | null;
   sortable: boolean;
@@ -61,7 +61,6 @@ export class Column {
     this.cellRendererParams = col.cellRendererParams;
     this.type = col.type || ColumnType.STRING;
     this.format = col.format;
-    this.children = col.children ? col.children.map((c, i) => new Column(c, `${idx}.${i}`)) : [];
     this.hidden = isTrue(col.hidden);
     this.pinned = col.pinned || null;
     this.sortable = !isFalse(col.sortable);

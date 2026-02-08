@@ -32,10 +32,7 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    const cols = this.originalColDefs.map((c, i) => {
-      c.colId = c.colId || c.key || `col_${this.colIdSeq++}`;
-      return new Column(c, `${i + 1}`);
-    });
+    const cols = this.buildColumns(colDefs);
     this.columns = cols;
     this.leftColumns = cols.filter((c) => c.pinned === "left");
     this.rightColumns = cols.filter((c) => c.pinned === "right");
@@ -53,6 +50,20 @@ export class ColumnModel implements IColumnModel {
     this.computeHeaderDepth();
     this.updateLeafColumnLookup();
     this.setExpanders();
+  }
+
+  private buildColumns(colDefs: ColDef[], parentCol?: Column, idxPrefix: string = ""): Column[] {
+    return colDefs.map((colDef, i) => {
+      colDef.colId = colDef.colId || colDef.key || `col_${this.colIdSeq++}`;
+      const col = new Column(colDef, `${idxPrefix}${i + 1}`);
+      if (parentCol) {
+        parentCol.children.push(col);
+      }
+      if (colDef.children && colDef.children.length > 0) {
+        this.buildColumns(colDef.children, col, `${idxPrefix}${i + 1}.`);
+      }
+      return col;
+    });
   }
 
   reset(): void {
