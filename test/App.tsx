@@ -126,7 +126,18 @@ function App() {
         applyFormatters(payload.columns ?? []);
 
         payload.columns.forEach((col: ColDef) => {
-          if (col.key == "department") col.sortable = false;
+          if (col.key == "department") {
+            col.sortable = false;
+            col.filter = "set";
+            col.filterParams = {
+              filterValues: (params) => {
+                setTimeout(() => {
+                  console.log("Loading filter values for department column", params);
+                  params.success(["Sales", "Engineering", "HR", "Marketing"])
+                }, 1000);
+              }
+            }
+          }
           if (col.key == "country") col.filter = false;
           if (col.key == "location") {
             col.resizable = false;
