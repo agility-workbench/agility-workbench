@@ -221,16 +221,18 @@ export class GridCore implements IGridCore {
       }
     };
 
-    const traverse = (col: Column) => {
-      addSort(col, dir);
-      for (const child of col.children || []) {
+    const traverse = (column: Column) => {
+      addSort(column, dir);
+      for (const child of column.getVisibleLeaves()) {
         traverse(child);
       }
     };
 
     traverse(col);
+    const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
     await this.rowModel.setSorts(this.sorts);
     this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIds });
   }
 
   get isPaginationEnabled(): boolean {

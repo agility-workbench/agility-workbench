@@ -5,6 +5,7 @@ import { IRowModel, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter } from "../csrm/filter";
 import { GridOptions } from "../interfaces/gridOptions";
+import { isNullOrUndefined } from "../misc";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -117,7 +118,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   setSorts(sorts: SortDef[]): void {
     this.sortedIdx = this.filteredIdx.slice();
-    const comparators = sorts.filter(s => s.col && s.dir !== null)
+    const comparators = sorts.filter(s => s.col && !isNullOrUndefined(s.col.comparator) && s.dir !== null)
       .map(sort => {
         const { col, dir } = sort;
         const mult = dir === "desc" ? -1 : 1;
