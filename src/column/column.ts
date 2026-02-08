@@ -152,14 +152,17 @@ export class Column {
 
   getVisibleLeaves(): Column[] {
     const leaves: Column[] = [];
-    const walk = (col: Column) => {
-      const visibleChildren = col.getVisibleChildren()
-      if (visibleChildren.length > 0) {
-        for (const child of visibleChildren) walk(child);
+    const walk = (cols: Column[]) => {
+      if (cols.length === 0) return;
+      for (const col of cols) {
+        if (col.children.length === 0) {
+          if (!col.hidden) leaves.push(col);
+        } else {
+          walk(col.getVisibleChildren());
+        }
       }
-      leaves.push(col);
-    }
-    walk(this);
+    };
+    walk(this.getVisibleChildren());
     return leaves;
   }
 
