@@ -14,16 +14,13 @@ import {
   AggregateScope,
   AggregateType,
 } from "../interfaces/aggregate";
-import { ColumnType } from "../interfaces/column";
-import { FilterModel, FilterType } from "../interfaces/filter";
 import { MenuItem } from "../interfaces/menuItem";
 import { RowPoolDef } from "./types";
-import { SortDef } from "../interfaces/sort";
-import { isFalse, isNullOrUndefined, isTrue, validatePageSizes } from "../misc";
+import { isFalse, isTrue } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "../export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
 import { IRowModel } from "../interfaces/iRowModel";
-import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../core/rowModel/serverSide";
+import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../ssrm/serverSide";
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { div } from "./element";
@@ -681,6 +678,10 @@ export class GridRenderer {
     } else if (params.reason === "filter") {
       this._setFilterIndicators();
       return;
+    } else if (params.reason === "visibility") {
+      this._buildRowPool();
+      this._buildHeaderDOM(params.reason);
+      return;
     }
     if (params.reason !== "resize" && params.reason !== "state") {
       this._buildRowPool();
@@ -848,77 +849,6 @@ export class GridRenderer {
   // ---------------- Internals: view ----------------
   async _toggleSort(col: Column) {
     await this.core.toggleSort(col);
-  }
-
-  _sortBySelectedColumns(dir: "asc" | "desc") {
-    const selectedCols = Array.from(this._selectedColumnIDs);
-    const sortedCols = [];
-    for (const colID of selectedCols) {
-      const col = findColumnById(this.columns, colID);
-      if (!col) continue;
-      if (col.children.length > 0) continue; // skip parent columns
-      sortedCols.push(colID);
-      const existing = this._sorts.find(s => s.key === colID);
-      if (existing) {
-        existing.dir = dir;
-      } else {
-        this._sorts.push({ key: colID, dir });
-      }
-    }
-    this._sortDirty = true;
-    if (this.rowModel.getType() === "serverSide") {
-      for (const colID of selectedCols) {
-        this._addSortIndicatorToHeader(colID, dir);
-      }
-      this._fetchServerSideRows("sortBySelectedColumns");
-      return;
-    }
-    this._recomputeView();
-    for (const colID of sortedCols) {
-      this._addSortIndicatorToHeader(colID, dir);
-    }
-    this._updateWindow(true, undefined);
-  }
-
-  _clearSortsForSelectedColumns() {
-    const selectedCols = Array.from(this._selectedColumnIDs);
-    this._sorts = this._sorts.filter(s => !selectedCols.includes(s.key));
-    this._sortDirty = true;
-    if (this.rowModel.getType() === "serverSide") {
-      for (const colID of selectedCols) {
-        this._addSortIndicatorToHeader(colID, '');
-      }
-      this._fetchServerSideRows("clearSortsForSelectedColumns");
-      return;
-    }
-    this._recomputeView();
-    for (const colID of selectedCols) {
-      this._addSortIndicatorToHeader(colID, '');
-    }
-    this._updateWindow(true, undefined);
-  }
-
-  _toggleColumnHidden(colID: string) {
-    const col = findColumnById(this.columns, colID);
-    if (!col) return;
-    col.hidden = !col.hidden;
-    this.setColumns(this.columns, { preserveWidths: true });
-  }
-
-  _hideSelectedColumns() {
-    const selectedCols = Array.from(this._selectedColumnIDs);
-    let changed = false;
-    for (const colID of selectedCols) {
-      const col = findColumnById(this.columns, colID);
-      if (!col) continue;
-      if (col.hidden) continue;
-      col.hidden = true;
-      changed = true;
-    }
-    if (changed) {
-      this.setColumns(this.columns, { preserveWidths: true });
-      this._clearColumnSelection();
-    }
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
@@ -1328,137 +1258,7 @@ export class GridRenderer {
     // this._renderAggregateRow();
   }
 
-  _pinColumn(colID: string, pin: "left" | "right" | null) {
-    const col = findColumnById(this.columns, colID);
-    if (!col) return;
-    if (pin === col.pinned) return;
-
-    let targetIdx = Infinity;
-    if (pin === null) {
-      if (isNullOrUndefined(col.centralPosition)) {
-        if (col.pinned === "left") targetIdx = 0;
-      } else {
-        targetIdx = col.centralPosition || 0;
-      }
-      if (col.children.length > 0) {
-        const leaves = collectLeaves(col);
-        targetIdx = leaves[0].centralPosition || 0;
-      }
-    }
-
-    this._applyColumnReorder(col, targetIdx, pin || "center");
-  }
-
   // ---------------- Internals: DOM build ----------------
-  _getMeasureContext(): CanvasRenderingContext2D | null {
-    if (!this._measureCtx) {
-      const canvas = document.createElement("canvas");
-      this._measureCtx = canvas.getContext("2d");
-    }
-
-    const probe = this.header.querySelector(".pte-hcell") || this._containerEl;
-    const font = getComputedStyle(probe).font || "16px sans-serif";
-    if (this._measureCtx && this._measureCtx?.font !== font) {
-      this._measureCtx.font = font;
-    }
-    return this._measureCtx;
-  }
-
-  _measureText(text: string) {
-    const padding = 16; // small breathing room so text is not cramped
-    return (this._measureCtx?.measureText(text ?? "")?.width || 0) + padding;
-  }
-
-  _autoSizeColumn(col: Column, maxWidth: number): number {
-    const headerText = col.label ?? col.key;
-    let best = this._measureText(headerText) + 104;
-    if (best >= maxWidth) return maxWidth;
-
-    // cache per column
-    const colCacheKey = `col:${col.key}`;
-    let colCache = this._measureCache.get(colCacheKey);
-    if (!colCache) { colCache = new Map(); this._measureCache.set(colCacheKey, colCache); }
-
-    // const rows = this.data; // IMPORTANT: raw data order, not sorted view
-    const n = this.rowModel.getRowCount();
-
-    if (n == 0) return best;
-
-    const measureValue = (s: string) => {
-      const cached = colCache.get(s);
-      if (cached != null) return cached;
-      const w = this._measureText(s);
-      colCache.set(s, w);
-      return w;
-    };
-
-    let longestValue = "";
-    let longestRow = null;
-    this.rowModel.forEachNode((row, i) => {
-      const v = col.getValue(row);
-      if (v != null && String(v).length > longestValue.length) {
-        longestValue = String(v);
-        longestRow = row;
-      }
-    });
-
-    best = Math.max(best, measureValue(col.formatValue(longestValue, longestRow!)));
-    return Math.min(best, maxWidth);
-  }
-
-  _computeColumnWidths(column: Column | null = null, forceRecompute = false) {
-    this._getMeasureContext();
-    const computer = (col: Column, inTarget: boolean) => {
-      if (col.hidden) return;
-      const existing = this._columnWidths.get(col.id);
-      const isTarget = inTarget || (!!column && col.id === column.id);
-      const shouldCompute = !column || isTarget;
-
-      if (!shouldCompute) {
-        if (col.children.length > 0) {
-          for (const child of col.children) computer(child, isTarget);
-        }
-        return;
-      }
-
-      if (!forceRecompute && !column && existing) return;
-
-      if (col.width != null) {
-        const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? col.width);
-        const maxWidth = col.width;
-        this._columnWidths.set(col.id, { width: col.width, minWidth, maxWidth, fixed: true });
-        return;
-      }
-
-      const minWidth = Math.max(MIN_RESIZE_WIDTH, col.minWidth ?? existing?.minWidth ?? MIN_RESIZE_WIDTH);
-      const defaultMax = col.children.length > 0 ? Number.POSITIVE_INFINITY : 420;
-      let maxWidth = col.maxWidth ?? existing?.maxWidth ?? defaultMax;
-
-      const autoWidth = this._autoSizeColumn(col, maxWidth);
-      let width = Math.min(Math.max(autoWidth, minWidth), maxWidth);
-
-      if (col.children.length > 0) {
-        let childrenWidth = 0;
-        for (const child of col.children) {
-          computer(child, isTarget);
-          const childInfo = this._columnWidths.get(child.id);
-          if (childInfo) childrenWidth += childInfo.width;
-        }
-        if (childrenWidth > width) {
-          width = childrenWidth;
-        }
-        if (!Number.isFinite(maxWidth)) {
-          maxWidth = Number.POSITIVE_INFINITY;
-        }
-      }
-
-      this._columnWidths.set(col.id, { width, minWidth, maxWidth, fixed: false });
-    };
-    for (const col of this.core.columns) {
-      computer(col, column == null ? true : col.id === column.id);
-    }
-  }
-
   _applyWidthsToChildren(col: Column) {
     const hcell = document.getElementById(col.instanceID) as HTMLDivElement;
     hcell.style.flex = "0 0 auto";
