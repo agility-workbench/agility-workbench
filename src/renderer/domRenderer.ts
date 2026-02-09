@@ -2600,9 +2600,8 @@ export class GridRenderer {
   }
 
   _onColumnResizeMouseUp() {
-    if (!this._isResizingColumn) return;
-    this._isResizingColumn = false;
-    this._resizingColumn = null;
+    if (this._resizingColumn === "") return;
+    this._resizingColumn = "";
     this._resizeStartX = 0;
     this._resizeStartWidth = 0;
     document.body.style.cursor = "";
