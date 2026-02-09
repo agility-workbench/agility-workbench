@@ -91,6 +91,22 @@ export class Column {
     }
   }
 
+  /* The following props are derived from children and should not be set directly on group columns
+    * - sortable
+    * - groupable
+    * - resizable
+    * - movable
+    * - hideable
+   */
+  updatePropsByChildren() {
+    if (this.children.length === 0) return;
+    this.sortable = this.children.every(c => c.sortable);
+    this.groupable = this.children.every(c => c.groupable);
+    this.resizable = this.children.every(c => c.resizable);
+    this.movable = this.children.every(c => c.movable);
+    this.hideable = this.children.every(c => c.hideable);
+  }
+
   getComparator(): ComparatorFn | null {
     return this.comparator;
   }
