@@ -5,6 +5,8 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { ColumnState } from "../interfaces/iGridCore";
 import { InternalGridOptions } from "../interfaces/gridOptions";
+import { isNullOrUndefined } from "../misc";
+import { ColumnMove } from "./columnMove";
 
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
@@ -32,7 +34,10 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    const cols = this.buildColumns(colDefs);
+    this.updateColumns(this.buildColumns(colDefs));
+  }
+
+  private updateColumns(cols: Column[]) {
     this.columns = cols;
     this.leftColumns = cols.filter((c) => c.pinned === "left");
     this.rightColumns = cols.filter((c) => c.pinned === "right");
@@ -442,4 +447,57 @@ export class ColumnModel implements IColumnModel {
     }
     return col.getVisibleLeaves().map(c => c.instanceID);
   }
+
+  moveColumnTo(colId: string, targetIndex: number, section: "left" | "center" | "right"): boolean {
+    const col = this.getById(colId);
+    if (!col) return false;
+    const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
+    if (moveResult.length === 0) return false;
+    this.updateColumns(moveResult);
+    this.updateParentColumnWidthsForAll();
+    return true;
+  }
+
+  setPinned(colId: string, pin: "left" | "right" | null): boolean {
+    const col = this.getById(colId);
+    if (!col) return false;
+
+    if (col.pinned === pin) return false;
+
+    let targetIdx = Infinity;
+    if (pin === null) {
+      if (isNullOrUndefined(col.centralPosition)) {
+        if (col.pinned === "left") targetIdx = 0;
+      } else {
+        targetIdx = col.centralPosition || 0;
+      }
+      if (col.children.length > 0) {
+        const leaves = col.getVisibleLeaves();
+        targetIdx = leaves[0].centralPosition || 0;
+      }
+    }
+
+    return this.moveColumnTo(colId, targetIdx, pin || "center");
+  }
+
+  setPinneds(colIds: string[], pin: "left" | "right" | null): string[] {
+    const affectedCols = new Set<string>();
+    for (const colId of colIds) {
+      if (this.setPinned(colId, pin)) affectedCols.add(colId);
+    }
+    return Array.from(affectedCols);
+  }
+
+  toggleVisibility(colIds: string[], hidden: boolean): string[] {
+    const affectedCols = new Set<Column>();
+    for (const colId of colIds) {
+      const col = this.getById(colId);
+      if (!col) continue;
+      col.hidden = hidden;
+      affectedCols.add(col);
+    }
+    this.updateColumns(this.columns);
+    return Array.from(affectedCols).map(c => c.instanceID);
+  }
+
 }
