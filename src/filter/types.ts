@@ -8,7 +8,7 @@ import {
   FilterDef,
 } from "../interfaces/filter";
 import { Column } from "../column/column";
-import { ColDef } from "@grid/interfaces";
+import { ColDef } from "../interfaces";
 
 export type FilterKind = "text" | "number" | "date" | "set" | "boolean";
 

@@ -3,7 +3,7 @@ import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { FilterModel } from "../interfaces/filter";
 import { SortDef } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { GridOptions } from "@grid/interfaces/gridOptions";
+import { GridOptions } from "../interfaces/gridOptions";
 
 export interface ServerSideRequest {
   filters: FilterModel[];

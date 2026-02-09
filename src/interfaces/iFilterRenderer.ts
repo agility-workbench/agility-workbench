@@ -1,4 +1,4 @@
-import { FilterRuntimeState } from "@grid/filter/types";
+import { FilterRuntimeState } from "../filter/types";
 
 export interface IFilterRenderer {
   renderState(state: FilterRuntimeState): void;

@@ -2,7 +2,7 @@ import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState } from "../../filter/types";
 import { createElement, div } from "../element";
 import { FilterDef, FilterType, valuesNeededFor } from "../../interfaces/filter";
-import { IFilterRenderer } from "@grid/interfaces/iFilterRenderer";
+import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 
 export class BasicFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;

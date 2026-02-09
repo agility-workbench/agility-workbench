@@ -1,6 +1,6 @@
-import { FilterController } from "@grid/filter/filterMenuController";
-import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "@grid/filter/types";
-import { IFilterRenderer } from "@grid/interfaces/iFilterRenderer";
+import { FilterController } from "../../filter/filterMenuController";
+import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "../../filter/types";
+import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
 import { Overlay } from "../overlay";
 

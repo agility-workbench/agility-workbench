@@ -3,7 +3,7 @@ import { ColumnFilterContext } from "./context";
 import { ColumnFilterMenuService } from "./filterMenuService";
 import { FilterController } from "./filterMenuController";
 import { FilterRenderer } from "../renderer/filter/filterRenderer";
-import { MenuRenderer } from "@grid/renderer/menuRenderer";
+import { MenuRenderer } from "../renderer/menuRenderer";
 
 export class FilterMenuCoordinator {
   constructor(private core: GridCore, private filterMenuService: ColumnFilterMenuService) { }

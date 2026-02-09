@@ -1,7 +1,7 @@
 import { FilterModel, IRowNode } from "../interfaces";
 import { FilterApplyReason, IFilterController, FilterControllerHooks, FilterPanelSpec, FilterRuntimeState, FilterValueSource, SetFilterOptions, SetFilterOptionType, FilterValueAsyncSourceParamsImpl } from "./types";
 import { FilterDef, FilterType, valuesNeededFor } from "../interfaces/filter";
-import { isNullOrUndefined } from "@grid/misc";
+import { isNullOrUndefined } from "../misc";
 
 export class FilterController implements IFilterController {
   private spec: FilterPanelSpec;

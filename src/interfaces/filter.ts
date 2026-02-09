@@ -1,4 +1,4 @@
-import { FilterValueAsyncSource } from "@grid/filter/types";
+import { FilterValueAsyncSource } from "../filter/types";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
 
