@@ -458,6 +458,11 @@ export class GridCore implements IGridCore {
         this.emit("columnsChanged", true, { reason: "visibility", changedColIds: action.colIds });
         this.emit("rowsChanged", true, { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "columnMove":
+        this.columnModel.moveColumnTo(action.colId, action.toIndex, action.toSection);
+        this.emit("columnsChanged", true, { reason: "order", changedColIds: [action.colId] });
+        this.emit("rowsChanged", true, { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }

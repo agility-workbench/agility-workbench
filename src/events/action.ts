@@ -78,6 +78,7 @@ export type GridActionColumnMove = {
   type: "columnMove";
   colId: string;
   toIndex: number;
+  toSection: "left" | "center" | "right";
 };
 
 export type GridActionThemeFontSet = {
