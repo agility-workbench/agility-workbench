@@ -39,6 +39,7 @@ export class ColumnModel implements IColumnModel {
 
   private updateColumns(cols: Column[]) {
     this.columns = cols;
+    this.columns.forEach(c => c.updatePropsByChildren());
     this.leftColumns = cols.filter((c) => c.pinned === "left");
     this.rightColumns = cols.filter((c) => c.pinned === "right");
     this.centerColumns = cols.filter((c) => c.pinned == null);

@@ -104,6 +104,7 @@ export class Column {
    */
   updatePropsByChildren() {
     if (this.children.length === 0) return;
+    this.children.forEach(c => c.updatePropsByChildren());
     this.sortable = this.children.every(c => c.sortable);
     this.groupable = this.children.every(c => c.groupable);
     this.resizable = this.children.every(c => c.resizable);
