@@ -2,11 +2,13 @@ import { ColumnType } from "../interfaces/column";
 import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
+import { Column } from "../column/column";
 
 type CapSummary = {
   sortable: boolean;
   groupable: boolean;
   hideable: boolean;
+  pinning: "left" | "right" | "mixed" | null;
   sortDir: "asc" | "desc" | "mixed" | null;
   filtered: boolean;
   aggType: string;
@@ -25,12 +27,16 @@ export class ColumnMenuService {
     const colIDs = [ctx.targetColId, ...ctx.colIds.filter(id => id !== ctx.targetColId)];
 
     if (cap.sortable) {
-      if (cap.sortDir === "asc") items.push({ id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
-      else if (cap.sortDir === "desc") items.push({ id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
-      else items.push(
-        { id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
-        { id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
-      );
+      if (cap.sortDir === "asc") {
+        items.push({ id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
+      } else if (cap.sortDir === "desc") {
+        items.push({ id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
+      } else {
+        items.push(
+          { id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
+          { id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
+        );
+      }
       if (cap.sortDir !== null) items.push({ id: "sortClear", label: "Clear Sort", command: "sort.setMany", payload: { colIDs, dir: null } });
       items.push({ isSeparator: true });
     }
@@ -60,6 +66,21 @@ export class ColumnMenuService {
         item.subMenu!.push({ id: "aggClear", label: "Clear Aggregation", command: "aggregate.setMany", payload: { colIDs, agg: null } });
       }
       items.push(item);
+    }
+    if (cap.pinning !== "mixed") {
+      items.push({ isSeparator: true });
+      const pinMenus: MenuItem[] = [];
+      if (cap.pinning === "left") {
+        pinMenus.push({ id: "unpinColumns", label: "Unpin Column(s)", command: "column.pinMany", payload: { colIDs, pinned: null } });
+      } else {
+        pinMenus.push({ id: "pinLeft", label: "Pin Left", command: "column.pinMany", payload: { colIDs, pinned: "left" } });
+      }
+      if (cap.pinning === "right") {
+        pinMenus.push({ id: "unpinColumns", label: "Unpin Column(s)", command: "column.pinMany", payload: { colIDs, pinned: null } });
+      } else {
+        pinMenus.push({ id: "pinRight", label: "Pin Right", command: "column.pinMany", payload: { colIDs, pinned: "right" } });
+      }
+      items.push({ id: "pinning", label: "Pin Column", subMenu: pinMenus });
     }
     if (cap.exportable) {
       if (items.length > 0) items.push({ isSeparator: true });
@@ -91,10 +112,16 @@ export class ColumnMenuService {
     if (item.disabled) return;
     if (item.onClick) return item.onClick();
 
+    console.log("Executing column menu item", item);
+
     switch (item.command) {
       case "sort.setMany":
         return this.core.dispatch({ type: "sortModelSet", sortModel: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
-
+      case "column.hideMany":
+        return this.core.dispatch({ type: "columnVisibility", colIds: item.payload.colIDs, hidden: true });
+      case "column.pinMany":
+        console.log("Pinning columns", item.payload.colIDs, "to", item.payload.pinned);
+        return this.core.dispatch({ type: "columnPin", colIds: item.payload.colIDs, pinned: item.payload.pinned });
       // filter.open / filter.clear / pin / hide etc
 
       default:
@@ -111,28 +138,23 @@ export class ColumnMenuService {
     let hideable = true;
     let colTypes: ColumnType | "mixed" | null = null;
     let sortDir: "asc" | "desc" | "mixed" | null = null;
-    let selectedCount = 0;
+    let pinning: "left" | "right" | "mixed" | null = null;
     let exportable = true;
     const sorts: Record<string, "asc" | "desc"> = {};
     for (const sort of this.core.getSortModel()) {
-      if (colIDs.includes(sort.key)) {
-        sorts[sort.key] = sort.dir;
-      }
+      sorts[sort.col.instanceID] = sort.dir;
     }
     for (const colID of colIDs) {
       const col = this.core.getColumnModel().getById(colID);
       if (!col) continue;
-      if (col.children.length > 0) continue;
-      selectedCount++;
       if (!col.sortable) {
         sortable = false;
       } else if (sortDir !== "mixed") {
-        if (sorts[colID]) {
-          if (!sortDir) {
-            sortDir = sorts[colID];
-          } else if (sorts[colID] !== sortDir) {
-            sortDir = "mixed";
-          }
+        const colSortDir = this.identifySortDir(col, sorts);
+        if (!sortDir) {
+          sortDir = colSortDir;
+        } else if (colSortDir !== sortDir) {
+          sortDir = "mixed";
         }
       }
       if (!col.groupable) groupable = false;
@@ -146,6 +168,11 @@ export class ColumnMenuService {
         colTypes = "mixed";
       }
       if (!col.exportable) exportable = false;
+      if (!pinning) {
+        pinning = col.pinned || null;
+      } else if (col.pinned !== pinning) {
+        pinning = "mixed";
+      }
     }
 
     let aggType = "";
@@ -157,6 +184,8 @@ export class ColumnMenuService {
       }
     }
 
+    if (sortDir === "mixed") sortable = false;
+
     const filtered = this.core.getFilterModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
     const aggregated = this.core.getAggregateModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
 
@@ -166,6 +195,7 @@ export class ColumnMenuService {
       filtered,
       sortDir,
       hideable,
+      pinning,
       aggType,
       aggregated,
       colType: colTypes === "mixed" ? undefined : (colTypes as ColumnType),
@@ -176,12 +206,22 @@ export class ColumnMenuService {
   private getExportMenuItems(colIDs: string[]): MenuItem[] {
     const items: MenuItem[] = [];
     if (this.core.getOptions().allowExportAsCSV) {
-      items.push({ id: "exportCSV", label: "Export as CSV", command: "export.csv", payload: { colIDs} });
+      items.push({ id: "exportCSV", label: "Export as CSV", command: "export.csv", payload: { colIDs } });
     }
     if (this.core.getOptions().allowExportAsExcel) {
-      items.push({ id: "exportExcel", label: "Export as Excel", command: "export.excel", payload: { colIDs} });
+      items.push({ id: "exportExcel", label: "Export as Excel", command: "export.excel", payload: { colIDs } });
     }
     return items;
+  }
+
+  // Identify sort dir based on the first visible child with sort applied on. If no child has sort applied, return null.
+  private identifySortDir(col: Column, sorts: Record<string, "asc" | "desc" | null>): "asc" | "desc" | "mixed" | null {
+    if (col.children.length === 0) return sorts[col.instanceID] || null;
+    for (const child of col.getVisibleLeaves()) {
+      const childDir = this.identifySortDir(child, sorts);
+      if (childDir) return childDir;
+    }
+    return null;
   }
 
 }
