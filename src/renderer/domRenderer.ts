@@ -1,15 +1,5 @@
 import { RefObject } from "react";
 import {
-  adjustPinned,
-  collectLeaves,
-  findColumnById,
-  getVisibleChildren,
-  getColumnAncestors,
-  mergeColumns,
-  newColumnHierarchy,
-  splitTreeAtColumn,
-} from "./helpers";
-import {
   AggregateModel,
   AggregateScope,
   AggregateType,
@@ -17,7 +7,7 @@ import {
 import { MenuItem } from "../interfaces/menuItem";
 import { RowPoolDef } from "./types";
 import { isFalse, isTrue } from "../misc";
-import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig } from "../export/export";
+import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
 import { IRowModel } from "../interfaces/iRowModel";
 import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../ssrm/serverSide";
@@ -30,7 +20,6 @@ import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 
-const MIN_RESIZE_WIDTH = 75;
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
 export class GridRenderer {
@@ -491,7 +480,7 @@ export class GridRenderer {
     });
     document.addEventListener("mouseover", (e) => {
       this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
-      const row = e.target.closest(".pte-row");
+      const row = (e.target as HTMLElement)?.closest(".pte-row");
       if (row) {
         this.body.querySelectorAll(`.pte-row[row-id="${row.getAttribute("row-id")}"]`).forEach(r => r.classList.add("pte-row-hover"));
       }
@@ -583,26 +572,6 @@ export class GridRenderer {
     this._updateLoadingOverlay();
   }
 
-  setRowModel(rowModel: IRowModel) {
-    if (this.rowModel.getType() === rowModel.getType()) return;
-    this._aggregateFetchInFlight = false;
-    this._aggregateRequestSeq++;
-    this._aggregateRemoteValues = null;
-    this.rowModel = rowModel;
-    this._filterDirty = true;
-    this._sortDirty = true;
-    this._pageIdx = 0;
-    this._resetScrollPosition();
-    this._recomputeView();
-    this._updateColumnWidths();
-    this._updateWindow(true, undefined);
-    if (this.rowModel.getType() === "serverSide") {
-      this._fetchServerSideRows("rowModelChanged");
-    } else {
-      this._setServerLoading(false);
-    }
-  }
-
   setServerSideDataSource(dataSource?: ServerSideDataSource) {
     if (this.rowModel.getType() !== "serverSide") return;
     const rowModel = this.rowModel as ServerSideRowModel;
@@ -634,40 +603,13 @@ export class GridRenderer {
     this._recomputeView();
     // this._updateColumnWidths();
     this._updateWindow(true, undefined, params);
-  }
-
-  setData(data: any[], options: { resetPage?: boolean; totalRows?: number } = {}) {
-    this.rowModel.setRows(data || []);
-    this._sortComparatorCache.clear();
-    this._columnWidths.clear();
-    this._clearSelection();
-
-    const resetPage = options?.resetPage ?? true;
-    if (this.rowModel.getType() === "serverSide") {
-      this._serverSideTotalRows = options?.totalRows ?? this.data.length;
-      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this._serverSideTotalRows / this._paginationPageSize)) : 1;
-    } else {
-      this._totalPages = this._pagination ? Math.max(1, Math.ceil(this.rowModel.getRowCount() / this._paginationPageSize)) : 1;
-    }
-
-    if (resetPage) {
-      this._pageIdx = 0;
-    } else if (this._pagination) {
-      const totalPages = Math.max(this._totalPages, 1);
-      this._pageIdx = Math.min(Math.max(this._pageIdx, 0), totalPages - 1);
-    }
-
     this._resetScrollPosition();
-    this._recomputeView();
-    this._updateColumnWidths();
-    this._updateWindow(true, undefined);
   }
 
   onColumnsChanged(params: GridEventColumnsChangedParams) {
     console.log(params);
     // this._clearSelection();
     // this._clearColumnSelection();
-    // Structural change -> rebuild header + pool
     if (params.reason === "sort") {
       const sorts = this.core.getSortModel();
       for (const colID of params.changedColIds || []) {
@@ -689,50 +631,6 @@ export class GridRenderer {
     } else {
       this._updateColumnWidths(params.changedColIds || []);
     }
-    // this._recomputeView();
-  }
-
-  onColumnsMoved() {
-    const prevWidths = new Map(this._columnWidths);
-    this._columnWidths.clear();
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        const info = prevWidths.get(col.id);
-        if (info) this._columnWidths.set(col.id, info);
-        if (col.children.length > 0) walk(col.children);
-      }
-    };
-    walk(this.columns);
-    this._clearSelection();
-    this._clearColumnSelection();
-    // Structural change -> rebuild header
-    this._buildHeaderDOM();
-    this._rebuildRowPool();
-    this._updateColumnWidths();
-    this._updateWindow(true, undefined);
-  }
-
-  setColumns(columns: Column[], options: { preserveWidths?: boolean } = {}) {
-    const prevWidths = options.preserveWidths ? new Map(this._columnWidths) : null;
-    this._columnWidths.clear();
-    if (prevWidths) {
-      const walk = (cols: Column[]) => {
-        for (const col of cols) {
-          const info = prevWidths.get(col.id);
-          if (info) this._columnWidths.set(col.id, info);
-          if (col.children.length > 0) walk(col.children);
-        }
-      };
-      walk(this.columns);
-    }
-    this._clearSelection();
-    this._clearColumnSelection();
-    // Structural change -> rebuild header + pool
-    this._buildHeaderDOM();
-    this._rebuildRowPool(); // rare operation
-    this._recomputeView();
-    this._updateColumnWidths();
-    this._updateWindow(true, undefined);
   }
 
   exportCSV(options: ExportOptions = {}) {
@@ -747,7 +645,7 @@ export class GridRenderer {
     const selectedColumns = columnIDs || [...this._selectedColumnIDs];
     let fileName = "Export";
     if (selectedColumns.length == 1) {
-      fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
+      fileName = this.core.getColumnModel().getById(selectedColumns[0])?.label || fileName;
     }
     this._performExport("csv", {
       scope: "all",
@@ -760,7 +658,7 @@ export class GridRenderer {
     const selectedColumns = columnIDs || [...this._selectedColumnIDs];
     let fileName = "Export";
     if (selectedColumns.length == 1) {
-      fileName = findColumnById(this.columns, selectedColumns[0])?.label || fileName;
+      fileName = this.core.getColumnModel().getById(selectedColumns[0])?.label || fileName;
     }
     this._performExport("excel", {
       scope: "all",
@@ -833,7 +731,7 @@ export class GridRenderer {
   _defaultExportFileName(format: "csv" | "excel", options: ExportOptions): string {
     const ext = format === "csv" ? "csv" : "xlsx";
     if (options.columnIds && options.columnIds.length === 1) {
-      const col = findColumnById(this.columns, options.columnIds[0]);
+      const col = this.core.getColumnModel().getById(options.columnIds[0]);
       if (col) return `${col.label ?? col.key}.${ext}`;
     }
     const scope = this._resolveExportScope(options);
@@ -869,7 +767,7 @@ export class GridRenderer {
     const prevSize = this._aggregates.size;
     const selectedCols = Array.from(this._selectedColumnIDs);
     for (const colID of selectedCols) {
-      const col = findColumnById(this.columns, colID);
+      const col = this.core.getColumnModel().getById(colID);
       if (!col) continue;
       if (col.children.length > 0) continue; // skip parent columns
       this._aggregates.set(colID, aggType);
@@ -1081,7 +979,7 @@ export class GridRenderer {
 
     const aggregates = Array.from(this._aggregates.entries())
       .map(([colId, type]) => {
-        const col = findColumnById(this.columns, colId);
+        const col = this.core.getColumnModel().getById(colId);
         if (!col) return null;
         return { key: col.key, type };
       })
@@ -1096,7 +994,7 @@ export class GridRenderer {
 
     const filters = this._filters
       .map(f => {
-        const col = findColumnById(this.columns, f.key);
+        const col = this.core.getColumnModel().getById(f.key);
         if (!col) return null;
         return {
           key: col.key,
@@ -1108,7 +1006,7 @@ export class GridRenderer {
 
     const sorts = this._sorts
       .map(s => {
-        const col = findColumnById(this.columns, s.key);
+        const col = this.core.getColumnModel().getById(s.key);
         if (!col) return null;
         return {
           key: col.key,
@@ -1756,7 +1654,6 @@ export class GridRenderer {
     this.scroller.scrollTop = 0;
     this.rightScroller.scrollTop = 0;
     this.vScroll.scrollTop = 0;
-    this._startIndex = 0;
   }
 
   _getHeaderMenuElement(col: Column): HTMLDivElement {
@@ -2419,12 +2316,12 @@ export class GridRenderer {
     this._dragStartY = e.clientY;
     this._dragLastX = e.clientX;
     this._dragAllowsDrop = allowDrop && reorderable;
-    const meta = this._leafColumnLookup.get(col.id);
+    const meta = this._leafColumnLookup.get(col.instanceID);
     const section = meta?.section ?? (col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center");
     this._dragSection = section;
     this._dragHeaderContainer = this._getSectionContainer(section);
     this._dragTargetIndex = this._dragAllowsDrop
-      ? this._getReorderableColumns(section).findIndex(c => c.id === col.id)
+      ? this._getReorderableColumns(section).findIndex(c => c.instanceID === col.instanceID)
       : -1;
     this._isDraggingColumn = false;
     this._dragDirection = null;
@@ -2500,10 +2397,10 @@ export class GridRenderer {
 
   _getReorderableColumns(section: "left" | "center" | "right" = "center"): Column[] {
     const source = section === "left"
-      ? this._leftPinnedColumns
+      ? this.core.getColumnModel().getLeftColumns()
       : section === "right"
-        ? this._rightPinnedColumns
-        : this._centerColumns;
+        ? this.core.getColumnModel().getRightColumns()
+        : this.core.getColumnModel().getCenterColumns();
     return source.filter(c => this._isColumnReorderable(c));
   }
 
@@ -2517,12 +2414,12 @@ export class GridRenderer {
     const output: Array<{ col: Column; el: HTMLDivElement }> = [];
     for (const el of headers) {
       if (!el.classList.contains("pte-hcell")) continue;
-      const col = findColumnById(this.columns, el.id);
+      const col = this.core.getColumnModel().getById(el.id);
       if (!col) continue;
       if (col.children.length > 0) {
-        const leaves = collectLeaves(col);
+        const leaves = col.getLeaves();
         leaves.filter(this._isColumnReorderable).forEach(leaf => {
-          output.push({ col: leaf, el: document.getElementById(leaf.id) as HTMLDivElement });
+          output.push({ col: leaf, el: document.getElementById(leaf.instanceID) as HTMLDivElement });
         });
         continue;
       } else if (this._isColumnReorderable(col)) {
@@ -2636,78 +2533,6 @@ export class GridRenderer {
     e.preventDefault();
   }
 
-  _applyColumnReorder(col: Column, targetIndex: number, section: "left" | "center" | "right" = this._dragSection || "center") {
-    if (targetIndex < 0) return;
-
-    const newLeft = this._leftPinnedColumns.slice();
-    const newCenter = this._centerColumns.slice();
-    const newRight = this._rightPinnedColumns.slice();
-
-    const targetSection = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
-    let targetArr = section === "left" ? this._leftPinnedLeafColumns : section === "right" ? this._rightPinnedColumns : this._centerLeafColumns;
-    const appendAtEnd = targetIndex >= targetArr.length;
-    const firstRight = targetArr[targetIndex];
-
-    const ancestors = getColumnAncestors(this.columns, col.id);
-    let topLevelDrag = col;
-    if (ancestors.length > 1) {
-      // Find the top-level ancestor that is reorderable
-      for (const c of ancestors.slice().reverse()) {
-        if ((getVisibleChildren(c)).length > 1) {
-          break;
-        }
-        topLevelDrag = c;
-      }
-    }
-    const splitParent = ancestors.length > 1 && ancestors[0].id != topLevelDrag.id;
-
-    if (splitParent) {
-      topLevelDrag = newColumnHierarchy(ancestors, topLevelDrag);
-    } else {
-      const source = col.pinned === "left" ? newLeft : col.pinned === "right" ? newRight : newCenter;
-      const idx = source.findIndex(c => c.id === topLevelDrag.id);
-      if (idx >= 0) source.splice(idx, 1);
-    }
-
-    targetArr = targetSection.map(c => collectLeaves(c, true)).flat();
-    let moveTo = 0;
-    if (firstRight) {
-      const firstRightAncestors = getColumnAncestors(this.columns, firstRight.id);
-      moveTo = targetSection.findIndex(c => c.id === firstRightAncestors[0].id);
-      if (firstRightAncestors.length > 1) {
-        const [leftTree, rightTree] = splitTreeAtColumn(firstRightAncestors[0], firstRight);
-        if (leftTree) {
-          targetSection[moveTo] = leftTree;
-          moveTo++;
-        }
-        if (rightTree) {
-          targetSection.splice(moveTo, 0, rightTree);
-        } else {
-          moveTo--;
-        }
-      }
-    } else if (appendAtEnd) {
-      moveTo = targetSection.length;
-    }
-
-    const movedCol: Column = { ...topLevelDrag, pinned: section === "center" ? null : section };
-    if (topLevelDrag.pinned !== movedCol.pinned && movedmovedCol.children.length > 0) {
-      // If moving between sections, and has children, we need to adjust the pinned state of children
-      const newPinned = section === "center" ? null : section;
-      adjustPinned(movedCol.children, newPinned);
-    }
-    targetSection.splice(moveTo, 0, movedCol);
-
-    const nextLeft = mergeColumns(newLeft);
-    const nextCenter = mergeColumns(newCenter);
-    const nextRight = mergeColumns(newRight);
-    this.setColumns([
-      ...nextLeft,
-      ...nextCenter,
-      ...nextRight,
-    ], { preserveWidths: true });
-  }
-
   _animateDragGhostReturn(ghost: HTMLDivElement, header: HTMLDivElement | null) {
     if (!ghost.isConnected) return;
     if (!header) {
@@ -2766,15 +2591,14 @@ export class GridRenderer {
       setTimeout(() => { this._suppressHeaderClick = false; }, 0);
       return;
     }
-    this._applyColumnReorder(col, targetIndex, section);
+    this.core.dispatch({ type: "columnMove", colId: col.instanceID, toIndex: targetIndex, toSection: section });
     this._suppressHeaderClick = true;
     setTimeout(() => { this._suppressHeaderClick = false; }, 0);
   }
 
   _isColumnReorderable(col: Column): boolean {
     if (!col) return false;
-    if (col.hidden || !col.columnGroupVisible) return false;
-    return true;
+    return col.isVisible() && col.movable;
   }
 
   _setDragCursor(active: boolean, allowDrop = true) {
@@ -2809,25 +2633,25 @@ export class GridRenderer {
   }
 
   _updateAncestorWidths(colID: string) {
-    const ancestors = getColumnAncestors(this.columns, colID);
+    const ancestors = this.core.getColumnModel().getAncestors(colID);
     if (ancestors.length <= 1) return;
 
     for (let i = ancestors.length - 2; i >= 0; i--) {
       const ancestor = ancestors[i];
-      const ancestorInfo = this._columnWidths.get(ancestor.id);
+      const ancestorInfo = this._columnWidths.get(ancestor.instanceID);
       if (ancestorInfo?.fixed) continue;
       if (!ancestor.children || ancestor.children.length === 0) continue;
       let totalWidth = 0;
       for (const child of ancestor.children) {
         if (isTrue(child.hidden)) continue;
-        const childInfo = this._columnWidths.get(child.id);
+        const childInfo = this._columnWidths.get(child.instanceID);
         if (childInfo) totalWidth += childInfo.width;
       }
       const minWidth = Math.max(this.core.options.minResizeWidth, ancestor.minWidth ?? ancestorInfo?.minWidth ?? this.core.options.minResizeWidth);
       let maxWidth = ancestor.maxWidth ?? ancestorInfo?.maxWidth ?? 420;
       maxWidth = Math.max(maxWidth, totalWidth);
       const width = Math.min(Math.max(totalWidth, minWidth), maxWidth);
-      this._columnWidths.set(ancestor.id, {
+      this._columnWidths.set(ancestor.instanceID, {
         width,
         minWidth,
         maxWidth,
@@ -2902,15 +2726,15 @@ export class GridRenderer {
 
   _toggleColumnSelection(colID: string) {
     this._clearSelection();
-    const col = findColumnById(this.columns, colID);
+    const col = this.core.getColumnModel().getById(colID);
     if (!col) return;
 
-    const leaves = collectLeaves(col, true);
+    const leaves = col.getVisibleLeaves();
     const hasChildren = col.children.length > 0;
 
     if (hasChildren) {
       const ids = new Set<string>();
-      for (const leaf of leaves) ids.add(leaf.id);
+      for (const leaf of leaves) ids.add(leaf.instanceID);
 
       const allSelected = Array.from(ids).every(id => this._selectedColumnIDs.has(id));
       if (allSelected) {
@@ -2919,32 +2743,32 @@ export class GridRenderer {
         ids.forEach(id => this._selectedColumnIDs.add(id));
       }
     } else {
-      if (this._selectedColumnIDs.has(col.id)) {
-        this._selectedColumnIDs.delete(col.id);
+      if (this._selectedColumnIDs.has(col.instanceID)) {
+        this._selectedColumnIDs.delete(col.instanceID);
       } else {
-        this._selectedColumnIDs.add(col.id);
+        this._selectedColumnIDs.add(col.instanceID);
       }
     }
 
     const colsWithSelectedChildren = new Map<string, Column>();
     for (const selectedColID of this._selectedColumnIDs) {
-      const col = findColumnById(this.columns, selectedColID);
+      const col = this.core.getColumnModel().getById(selectedColID);
       if (!col) continue;
-      if (col.children.length > 0) colsWithSelectedChildren.set(col.id, col);
+      if (col.children.length > 0) colsWithSelectedChildren.set(col.instanceID, col);
       else {
-        const tree = getColumnAncestors(this.columns, selectedColID);
+        const tree = this.core.getColumnModel().getAncestors(selectedColID);
         if (tree.length > 1) {
-          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.id, e));
+          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.instanceID, e));
         }
       }
     }
 
     for (const col of colsWithSelectedChildren.values()) {
-      const leaves = collectLeaves(col, true);
-      if (leaves.filter(l => this._selectedColumnIDs.has(l.id)).length == leaves.length) {
-        this._selectedColumnIDs.add(col.id);
+      const leaves = col.getVisibleLeaves();
+      if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length == leaves.length) {
+        this._selectedColumnIDs.add(col.instanceID);
       } else {
-        this._selectedColumnIDs.delete(col.id);
+        this._selectedColumnIDs.delete(col.instanceID);
       }
     }
 
@@ -2953,7 +2777,7 @@ export class GridRenderer {
   }
 
   _toggleColumnGroupExpanded(colID: string) {
-    const col = findColumnById(this.columns, colID);
+    const col = this.core.getColumnModel().getById(colID);
     if (!col || !col.children || col.children.length === 0) return;
     if (col.groupExpandState == "open") {
       col.groupExpandState = "closed";
@@ -3301,11 +3125,11 @@ export class GridRenderer {
   // ---------------- Event listeners ----------------
   _headerCellContextMenuHandler(e: MouseEvent) {
     e.preventDefault();
-    const header = e.target?.closest(".pte-hcell");
+    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
     const col = this.core.getColumnModel().getById(header.id);
     if (!col) return;
-    const leaves = collectLeaves(col);
+    const leaves = col.getLeaves();
     if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
       this._selectedColumnIDs.clear();
       this._toggleColumnSelection(col.instanceID);
@@ -3314,14 +3138,14 @@ export class GridRenderer {
   }
 
   _headerCellClickHandler(e: MouseEvent) {
-    const header = e.target?.closest(".pte-hcell");
+    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
-    const headerExpand = e.target?.closest(".pte-hcell-expander");
+    const headerExpand = (e.target as HTMLElement)?.closest(".pte-hcell-expander");
     if (headerExpand) {
       this._toggleColumnGroupExpanded(header.id);
       return;
     }
-    const headerContent = e.target?.closest(".pte-hcell-content");
+    const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = this.core.getColumnModel().getById(header.id);
       if (!col) return;
@@ -3332,7 +3156,7 @@ export class GridRenderer {
       this._toggleColumnSelection(header.id);
       return;
     }
-    const btn = e.target?.closest(".pte-hcell-menu-btn");
+    const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
       // this._clearColumnSelection();
@@ -3347,9 +3171,9 @@ export class GridRenderer {
   }
 
   _cellClickHandler(e: MouseEvent) {
-    const btn = e.target?.closest(".pte-hcell-menu-btn");
+    const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
     if (btn) {
-      if (btn.parentNode.classList.contains("active")) {
+      if ((btn.parentNode as HTMLElement)?.classList?.contains("active")) {
         const activeMenus = this.root.querySelectorAll(".pte-hcell-menu-item.active");
         activeMenus.forEach(m => m != btn.parentNode && m.classList.remove("active"));
         return;
@@ -3359,7 +3183,7 @@ export class GridRenderer {
     const activeMenus = this.root.querySelectorAll(".pte-hcell-menu-item.active");
     activeMenus.forEach(m => m.classList.remove("active"));
 
-    const header = e.target?.closest(".pte-hcell");
+    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (header) {
       this._headerCellClickHandler(e);
       return;

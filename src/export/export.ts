@@ -1,7 +1,15 @@
 import ExcelJS from "exceljs";
-import { getColumnAncestors } from "../renderer/helpers";
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
+
+export type ExportScope = "all" | "selection" | "selectedColumns";
+
+export interface ExportOptions {
+  scope?: ExportScope;
+  fileName?: string;
+  columnIds?: string[];
+  includeHeaders?: boolean;
+}
 
 export interface ExportSelectionRange {
   rowStart: number;
