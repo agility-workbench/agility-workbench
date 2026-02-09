@@ -64,13 +64,13 @@ export type GridActionColumnResize = {
 
 export type GridActionColumnPin = {
   type: "columnPin";
-  colId: string;
+  colIds: string[];
   pinned: "left" | "right" | null;
 };
 
 export type GridActionColumnVisibility = {
   type: "columnVisibility";
-  colId: string;
+  colIds: string[];
   hidden: boolean;
 };
 
