@@ -88,11 +88,11 @@ export class GridCore implements IGridCore {
 
   setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
-    this.refreshColumns();
+    this.autosizeColumns();
     this.emit("columnsChanged", true, { reason: "defs" });
   }
 
-  private refreshColumns(identifyComparators: boolean = true) {
+  private autosizeColumns(identifyComparators: boolean = true) {
     const allRows: IRowNode[] = [];
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
@@ -103,16 +103,31 @@ export class GridCore implements IGridCore {
     }
   }
 
-  private refreshColumn(colID: string): string[] {
+  private autosizeParentColumn(column: Column) {
+    const allRows: IRowNode[] = [];
+    this.rowModel.forEachNode((node: IRowNode) => {
+      allRows.push(node);
+    });
+    for (const child of column.getVisibleLeaves()) {
+      this.columnModel.computeColumnWidth(child, this.measureCtx, this.textMeasureParams, allRows);
+    }
+    this.columnModel.updateParentColumnWidth(column);
+  }
+
+  private autosizeColumn(colID: string): string[] {
     const col = this.columnModel.getById(colID);
     if (!col) return [];
+    if (col.children.length > 0) {
+      this.autosizeParentColumn(col);
+      return col.getVisibleLeaves().map(c => c.instanceID);
+    }
     const allRows: IRowNode[] = [];
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
     this.columnModel.computeColumnWidth(col, this.measureCtx, this.textMeasureParams, allRows);
-    this.columnModel.updateParentColumnWidth(col);
-    return this.columnModel.getAncestors(colID).map(c => c.instanceID);
+    this.columnModel.updateParentColumnWidth(this.columnModel.getAncestors(colID)[0]);
+    return col.getVisibleLeaves().map(c => c.instanceID);
   }
 
   getColumnModel(): IColumnModel {
@@ -132,7 +147,7 @@ export class GridCore implements IGridCore {
   setRowData(rows: RowData[]): void {
     this.rowModel.setRows(rows);
     this.applyPagination();
-    this.refreshColumns();
+    this.autosizeColumns();
     this.emit<"columnsChanged">("columnsChanged", true, { reason: "state" });
     this.emit<"rowsChanged">("rowsChanged", true, { reason: "rowData", firstRowIndex: 0, lastRowIndex: 100 });
   }
@@ -404,7 +419,7 @@ export class GridCore implements IGridCore {
         this.setRowData(action.rows);
         break;
       case "columnAutosize":
-        const autosizedColIds = this.refreshColumn(action.colId);
+        const autosizedColIds = this.autosizeColumn(action.colId);
         if (autosizedColIds.length > 0) {
           this.emit("columnsChanged", true, { reason: "resize", changedColIds: autosizedColIds });
         }
@@ -417,6 +432,17 @@ export class GridCore implements IGridCore {
         break;
       case "sortModelSet":
         this.setSortModel(action.sortModel);
+        break;
+      case "columnPin":
+        this.columnModel.setPinneds(action.colIds, action.pinned);
+        this.emit("columnsChanged", true, { reason: "pin", changedColIds: action.colIds });
+        this.emit("rowsChanged", true, { reason: "pin", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        break;
+      case "columnVisibility":
+        this.columnModel.toggleVisibility(action.colIds, action.hidden);
+        this.columnModel.updateParentColumnWidthsForAll();
+        this.emit("columnsChanged", true, { reason: "visibility", changedColIds: action.colIds });
+        this.emit("rowsChanged", true, { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
