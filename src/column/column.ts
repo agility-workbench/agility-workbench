@@ -165,19 +165,17 @@ export class Column {
     return this.children.filter(c => !c.hidden && c.columnGroupVisible);
   }
 
+  // Get all visible leaf columns under this column (including itself if it's a leaf)
   getVisibleLeaves(): Column[] {
     const leaves: Column[] = [];
-    const walk = (cols: Column[]) => {
-      if (cols.length === 0) return;
-      for (const col of cols) {
-        if (col.children.length === 0) {
-          if (!col.hidden) leaves.push(col);
-        } else {
-          walk(col.getVisibleChildren());
-        }
+    const walk = (col: Column) => {
+      if (col.hidden || !col.columnGroupVisible) return;
+      if (col.children.length === 0) leaves.push(col);
+      for (const child of col.children) {
+        walk(child);
       }
     };
-    walk(this.getVisibleChildren());
+    walk(this);
     return leaves;
   }
 
