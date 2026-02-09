@@ -27,7 +27,7 @@ export class MenuRenderer {
   private menuParentIds: (string | null)[] = [];
   private menuOpenTimers: (number | NodeJS.Timeout)[] = [];
   private menuOpenParentEls: (HTMLElement | null)[] = [];
-  private menuPropsByLevel: MenuProps[] = [];
+  private menuProps: {onItemClick?: ((item: MenuItem) => void), onClose?: (() => void)} = {};
 
   private docPointerDownCapture?: (e: PointerEvent) => void;
   private docKeyDownCapture?: (e: KeyboardEvent) => void;
@@ -55,7 +55,7 @@ export class MenuRenderer {
       this.hideMenuLevels(0);
     }
 
-    this.menuPropsByLevel[level] = {
+    this.menuProps = {
       onItemClick,
       onClose,
     };
@@ -207,7 +207,9 @@ export class MenuRenderer {
 
     this.menuItemsByLevel.length = fromLevel;
     this.menuParentIds.length = fromLevel;
-    this.menuPropsByLevel.length = fromLevel;
+    if (fromLevel === 0) {
+      this.menuProps = {};
+    }
   }
 
   private openSubmenu(level: number, parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
@@ -300,12 +302,12 @@ export class MenuRenderer {
       return;
     }
 
-    const props = this.menuPropsByLevel[level];
-    if (props?.onClose) {
+    const props = { ...this.menuProps };
+    if (props.onClose) {
       props.onClose();
     }
     this.closeMenu();
-    if (props?.onItemClick) {
+    if (props.onItemClick) {
       props.onItemClick(item);
     }
   }
