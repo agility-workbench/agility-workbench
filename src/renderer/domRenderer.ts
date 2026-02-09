@@ -683,8 +683,8 @@ export class GridRenderer {
       return;
     }
     if (params.reason !== "resize" && params.reason !== "state") {
-      this._buildHeaderDOM();
       this._buildRowPool();
+      this._buildHeaderDOM(params.reason);
     } else {
       this._updateColumnWidths(params.changedColIds || []);
     }
@@ -1706,7 +1706,7 @@ export class GridRenderer {
     return header;
   }
 
-  _buildHeaderDOM() {
+  _buildHeaderDOM(reason: string) {
     this._centerLeafColumns = [];
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
@@ -1745,6 +1745,7 @@ export class GridRenderer {
       type: "themeFontSet",
       headerFont: `${headerProbe.fontWeight} ${headerProbe.fontSize} ${headerProbe.fontFamily}`,
       cellFont: `${cellProbe.fontWeight} ${cellProbe.fontSize} ${cellProbe.fontFamily}`,
+      reason: reason,
     });
     // this._pruneColumnSelection();
     // this._applyColumnSelectionStyles();

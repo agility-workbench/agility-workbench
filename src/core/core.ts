@@ -395,8 +395,9 @@ export class GridCore implements IGridCore {
         this.emit("overlayShow", true, { overlayType: action.overlayType });
         break;
       case "themeFontSet":
-        this.textMeasureParams = {headerFont: action.headerFont, cellFont: action.cellFont};
-        this.refreshColumns(false);
+        console.log("Setting theme fonts", "Reason:", action.reason);
+        this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
+        if (action.reason !== "visibility" && action.reason !== "pin") this.autosizeColumns(false);
         this.emit("columnsChanged", true, { reason: "resize" });
         break;
       case "rowDataSet":

@@ -84,6 +84,7 @@ export type GridActionThemeFontSet = {
   type: "themeFontSet";
   headerFont: string;
   cellFont: string;
+  reason: string;
 };
 
 // Data actions
