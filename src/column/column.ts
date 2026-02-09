@@ -91,6 +91,10 @@ export class Column {
     }
   }
 
+  isVisible(): boolean {
+    return !this.hidden && this.columnGroupVisible;
+  }
+
   /* The following props are derived from children and should not be set directly on group columns
     * - sortable
     * - groupable
@@ -163,6 +167,18 @@ export class Column {
 
   getVisibleChildren(): Column[] {
     return this.children.filter(c => !c.hidden && c.columnGroupVisible);
+  }
+
+  getLeaves(): Column[] {
+    const leaves: Column[] = [];
+    const walk = (col: Column) => {
+      if (col.children.length === 0) leaves.push(col);
+      for (const child of col.children) {
+        walk(child);
+      }
+    };
+    walk(this);
+    return leaves;
   }
 
   // Get all visible leaf columns under this column (including itself if it's a leaf)
