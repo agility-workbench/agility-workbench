@@ -192,23 +192,9 @@ export class GridCore implements IGridCore {
     for (const sort of sorts) {
       const col = this.columnModel.getById(sort.key);
       if (!col) continue;
-      sort.col = col;
-      const existing = this.sorts.find(s => s.key === sort.key);
-      if (sort.dir === null) {
-        if (existing) {
-          this.sorts = this.sorts.filter(s => s.key !== sort.key);
-          changedColIDs.push(col.instanceID);
-        }
-        continue;
-      } else {
-        if (!existing) {
-          this.sorts.push({ key: sort.key, col, dir: sort.dir });
-          changedColIDs.push(col.instanceID);
-        } else if (existing.dir !== sort.dir) {
-          existing.dir = sort.dir;
-          changedColIDs.push(col.instanceID);
-        }
-      }
+      if (!col.sortable) continue;
+      this.setSortModelForCol(col, sort.dir);
+      changedColIDs.push(...col.getVisibleLeaves().map(c => c.instanceID));
     }
     if (changedColIDs.length === 0) return;
     await this.rowModel.setSorts(this.sorts);
@@ -216,15 +202,11 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIDs });
   }
 
-  async toggleSort(col: Column) {
-    let curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
-    const dir = curr ? (curr.dir === "asc" ? "desc" : null) : "asc";
-    const overwrite = col.children.length > 0;
-
+  private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc") {
     const addSort = (col: Column, dir: "asc" | "desc" | null) => {
+      if (!col.sortable) return;
       const curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
       if (curr) {
-        dir = overwrite ? dir : (curr.dir === "asc" ? "desc" : null);
         if (dir) {
           curr.dir = dir;
         } else {
@@ -238,12 +220,44 @@ export class GridCore implements IGridCore {
 
     const traverse = (column: Column) => {
       addSort(column, dir);
+      if (column.children.length === 0) return;
       for (const child of column.getVisibleLeaves()) {
         traverse(child);
       }
     };
 
     traverse(col);
+
+    // Clean up any parent columns that are present in the sort model but shouldn't be since their children are now sorted individually
+    const parentCols = new Set<string>();
+    for (const sort of this.sorts) {
+      if (sort.col.children.length > 0) {
+        parentCols.add(sort.col.instanceID);
+      }
+    }
+    this.sorts = this.sorts.filter(s => !parentCols.has(s.col.instanceID));
+  }
+
+  async toggleSort(col: Column) {
+    if (!col.sortable) return;
+    let curr: SortDef | undefined;
+    if (col.children.length > 0) {
+      // Find the first child that has a sort applied on and use its dir as reference.
+      const children = col.getVisibleLeaves();
+      for (const child of children) {
+        for (const sort of this.sorts) {
+          if (sort.col.instanceID === child.instanceID) {
+            curr = sort;
+            break;
+          }
+        }
+        if (curr) break;
+      }
+    } else {
+      curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
+    }
+
+    this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc");
     const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
     await this.rowModel.setSorts(this.sorts);
     this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });

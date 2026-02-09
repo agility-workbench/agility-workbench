@@ -118,7 +118,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   setSorts(sorts: SortDef[]): void {
     this.sortedIdx = this.filteredIdx.slice();
-    const comparators = sorts.filter(s => s.col && !isNullOrUndefined(s.col.comparator) && s.dir !== null)
+    const comparators = sorts.filter(s => s.col && s.dir !== null)
       .map(sort => {
         const { col, dir } = sort;
         const mult = dir === "desc" ? -1 : 1;
