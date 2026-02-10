@@ -2598,7 +2598,7 @@ export class GridRenderer {
 
   _isColumnReorderable(col: Column): boolean {
     if (!col) return false;
-    return col.isVisible() && col.movable;
+    return col.isVisible();
   }
 
   _setDragCursor(active: boolean, allowDrop = true) {
