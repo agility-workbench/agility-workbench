@@ -12,14 +12,16 @@ import {
   GridEventHandler,
   GridEventMap,
   GridEventName,
+  GridEventPaginationChangedParams,
   Unsubscribe,
 } from "../events/events";
-import { isNullOrUndefined } from "../misc";
+import { isNullOrUndefined, isTrue } from "../misc";
 import { ColDef } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { GridAction } from "../events/action";
+import { IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 
 export class GridCore implements IGridCore {
   readonly id: string;
@@ -29,11 +31,13 @@ export class GridCore implements IGridCore {
   private columnModel: ColumnModel;
 
   private rowModel: IRowModel;
+  private requestIdCounter: number = 0;
 
   private paginationEnabled: boolean = false;
-  private pageIdx: number = 0;
-  private pageSize: number = 100;
+  private pageStartIdx: number = 0;
+  private pageEndIdx: number = 100;
   private totalPages: number = 1;
+  private pageSizes: number[] = [25, 50, 100];
 
   private filters: FilterModel[] = [];
   private sorts: SortDef[] = [];
@@ -50,7 +54,10 @@ export class GridCore implements IGridCore {
     this.options = this.initializeGridOptions(options);
     this.id = crypto.randomUUID();
     this.columnModel = new ColumnModel(this.options);
-    this.rowModel = new ClientSideRowModel(options);
+    this.rowModel = new ClientSideRowModel(options, this);
+    this.paginationEnabled = this.options.pagination;
+    this.pageEndIdx = this.options.pageSize;
+    this.pageSizes = this.options.pageSizes;
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -66,6 +73,9 @@ export class GridCore implements IGridCore {
       maxColumnWidth: 420,
       allowExportAsCSV: options.allowExportAsCSV ?? true,
       allowExportAsExcel: options.allowExportAsExcel ?? true,
+      pagination: isTrue(options.pagination),
+      pageSize: options.pageSize ?? 100,
+      pageSizes: options.pageSizes ?? [25, 50, 100],
     };
   }
 
@@ -138,55 +148,76 @@ export class GridCore implements IGridCore {
     return this.rowModel;
   }
 
-  async setRowModel(rowModel: IRowModel): Promise<void> {
+  setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
-    await this.rowModel.refreshData();
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "init",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: this.resetPageBlocks(),
+      aggregateScope: this.aggregateScope,
+    });
     this.emit<"modelUpdated">("modelUpdated", true, { reason: "init", step: "all" });
   }
 
   setRowData(rows: RowData[]): void {
     this.rowModel.setRows(rows);
-    this.applyPagination();
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "refresh",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: this.resetPageBlocks(),
+      aggregateScope: this.aggregateScope,
+    })
     this.autosizeColumns();
     this.emit<"columnsChanged">("columnsChanged", true, { reason: "state" });
-    this.emit<"rowsChanged">("rowsChanged", true, { reason: "rowData", firstRowIndex: 0, lastRowIndex: 100 });
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
     throw new Error("Method not implemented.");
   }
 
-  async addFilterModel(filter: FilterModel) {
+  addFilterModel(filter: FilterModel) {
     const idx = this.filters.findIndex(f => f.key === filter.key);
     if (idx >= 0) {
       this.filters[idx] = filter;
     } else {
       this.filters.push(filter);
     }
-    await this.applyFilters([filter.col.instanceID]);
+    this.applyFilters([filter.col.instanceID]);
   }
 
-  async removeFilterModel(col: Column) {
+  removeFilterModel(col: Column) {
     const idx = this.filters.findIndex(f => f.col.instanceID === col.instanceID);
     if (idx >= 0) {
       this.filters.splice(idx, 1);
     }
-    await this.applyFilters([col.instanceID]);
+    this.applyFilters([col.instanceID]);
   }
 
-  async setFilterModel(filters: FilterModel[]) {
+  setFilterModel(filters: FilterModel[]) {
     this.filters = filters;
-    await this.applyFilters(filters.map(f => f.col.instanceID));
+    this.applyFilters(filters.map(f => f.col.instanceID));
   }
 
-  private async applyFilters(changedColIds: string[]) {
-    await this.rowModel.applyFilters(this.filters);
-    await this.rowModel.setSorts(this.sorts);
-    this.emit("rowsChanged", true, { reason: "filter", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+  private applyFilters(changedColIds: string[]) {
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "filter",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: this.resetPageBlocks(),
+      aggregateScope: this.aggregateScope,
+    })
     this.emit("columnsChanged", true, { reason: "filter", changedColIds })
   }
 
-  async setSortModel(sorts: SortDef[]) {
+  setSortModel(sorts: SortDef[]) {
     sorts = sorts.slice();
     const changedColIDs: string[] = [];
     for (const sort of sorts) {
@@ -197,8 +228,15 @@ export class GridCore implements IGridCore {
       changedColIDs.push(...col.getVisibleLeaves().map(c => c.instanceID));
     }
     if (changedColIDs.length === 0) return;
-    await this.rowModel.setSorts(this.sorts);
-    this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "sort",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      aggregateScope: this.aggregateScope,
+    });
     this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIDs });
   }
 
@@ -238,7 +276,7 @@ export class GridCore implements IGridCore {
     this.sorts = this.sorts.filter(s => !parentCols.has(s.col.instanceID));
   }
 
-  async toggleSort(col: Column) {
+  toggleSort(col: Column) {
     if (!col.sortable) return;
     let curr: SortDef | undefined;
     if (col.children.length > 0) {
@@ -259,54 +297,51 @@ export class GridCore implements IGridCore {
 
     this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc");
     const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
-    await this.rowModel.setSorts(this.sorts);
-    this.emit("rowsChanged", true, { reason: "sort", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "sort",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      aggregateScope: this.aggregateScope,
+    });
     this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIds });
   }
 
-  get isPaginationEnabled(): boolean {
-    return this.paginationEnabled;
-  }
-
-  get currPage(): number {
-    return this.pageIdx;
-  }
-
-  async applyPagination(paginationEnabled: boolean = this.paginationEnabled, pageSize: number = this.pageSize, pageIdx: number = this.pageIdx) {
-    if (this.paginationEnabled == paginationEnabled && this.pageSize == pageSize && this.pageIdx == pageIdx) {
-      const totalRows = this.rowModel.getRowCount();
-      this.totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
-      return;
-    }
-    let pageChanged = this.paginationEnabled !== paginationEnabled;
-    this.paginationEnabled = paginationEnabled;
-    pageSize = Math.max(1, pageSize);
-    this.pageSize = paginationEnabled ? pageSize : this.rowModel.getRowCount();
-    const totalRows = this.rowModel.getRowCount();
-    this.totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
-    const clampedPage = Math.min(Math.max(pageIdx, 0), this.totalPages - 1);
-    pageChanged = pageChanged || clampedPage !== this.pageIdx;
-    this.pageIdx = clampedPage;
-    if (pageChanged) {
-      await this.rowModel.setPagination(this.paginationEnabled, this.pageSize, this.pageIdx);
-    }
-    this.emit("paginationChanged", true, {
-      paginationEnabled,
-      pageIndex: clampedPage,
-      pageSize: this.pageSize,
-      totalRowCount: 0,
+  getPaginationInfo(): GridEventPaginationChangedParams {
+    const pageSize = this.pageEndIdx - this.pageStartIdx;
+    const totalRowCount = this.rowModel.getRowCount();
+    this.totalPages = pageSize > 0 ? Math.ceil(totalRowCount / pageSize) : 1;
+    return {
+      paginationEnabled: this.paginationEnabled,
+      pageIndex: pageSize <= 0 ? 0 : this.pageStartIdx / pageSize,
+      pageSize: pageSize,
+      totalRowCount: totalRowCount,
       totalPageCount: this.totalPages,
-      pageSizes: [25, 50, 100, 250, 500, 1000],
-    });
+      pageSizes: this.pageSizes,
+    };
   }
 
-  async goToPage(pageIdx: number) {
-    if (!this.paginationEnabled) return false;
-    const clampedPage = Math.min(Math.max(pageIdx, 0), this.totalPages - 1);
-    if (clampedPage === this.pageIdx) return false;
-    this.pageIdx = clampedPage;
-    await this.rowModel.setPage(this.pageSize, this.pageIdx);
-    this.emit("rowsChanged", true, { reason: "rowData", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+  private resetPageBlocks(): { start: number, end: number } {
+    const pageSize = this.pageEndIdx - this.pageStartIdx;
+    this.pageStartIdx = 0;
+    this.pageEndIdx = this.pageStartIdx + pageSize;
+    return { start: this.pageStartIdx, end: this.pageEndIdx };
+  }
+
+  applyPagination(pageIdx: number, pageSize: number) {
+    this.pageStartIdx = pageIdx * pageSize;
+    this.pageEndIdx = this.pageStartIdx + pageSize;
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason: "pagination",
+      sortModels: this.sorts,
+      filterModels: this.filters,
+      paginate: this.paginationEnabled,
+      range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      aggregateScope: this.aggregateScope,
+    });
   }
 
   async setServerSideDataSource(callback: ServerSideDataSource | null) {
@@ -463,6 +498,9 @@ export class GridCore implements IGridCore {
         this.emit("columnsChanged", true, { reason: "order", changedColIds: [action.colId] });
         this.emit("rowsChanged", true, { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "paginationSet":
+        this.applyPagination(action.pageIndex, action.pageSize);
+        break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }
@@ -493,6 +531,38 @@ export class GridCore implements IGridCore {
       handler(args);
     }
   }
+
+  onLoadingStart(id: number) {
+    if (this.requestIdCounter - id > 1) {
+      // This means a newer request has already been made, so we can ignore this loading start.
+      return;
+    }
+    this.emit("overlayShow", true, { overlayType: "loading" });
+  }
+
+  onRows(id: number, params: IRowModelOnRowsParams) {
+    if (this.requestIdCounter - id > 1) {
+      // This means a newer request has already been made, so we can ignore these rows.
+      return;
+    }
+    this.emit("rowsChanged", true, {
+      reason: params.reason,
+      firstRowIndex: params.visibleStart,
+      lastRowIndex: params.visibleEnd,
+      rowCount: params.rowCount,
+    });
+    this.emit("paginationChanged", true, this.getPaginationInfo());
+  }
+
+  onLoadingEnd(id: number) {
+    if (this.requestIdCounter - id > 1) {
+      // This means a newer request has already been made, so we can ignore this loading end.
+      return;
+    }
+    this.emit("overlayShow", true, { overlayType: "none" });
+  }
+
+  onError() { }
 
   destroy(): void {
     // Clean up resources if needed

@@ -1,3 +1,4 @@
+import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
 
 export type GridEventName =
@@ -55,10 +56,11 @@ export type GridEventColumnsChangedParams = {
 };
 
 export type GridEventRowsChangedParams = {
-  reason: "rowData" | "transaction" | "sort" | "filter" | "group" | "viewport";
+  reason: "rowData" | "transaction" | "group" | "viewport" | RowDataChangeReason;
   // displayed indices impacted (optional optimization)
   firstRowIndex?: number;
   lastRowIndex?: number;
+  rowCount?: number;
   // row IDs impacted (optional optimization)
   changedRowIds?: GridId[];
 };

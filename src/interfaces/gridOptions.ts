@@ -8,6 +8,9 @@ export interface GridOptions {
   overscanRowCount?: number;
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
+  pagination?: boolean;
+  pageSize?: number;
+  pageSizes?: number[];
 }
 
 export interface InternalGridOptions extends GridOptions {
@@ -20,4 +23,7 @@ export interface InternalGridOptions extends GridOptions {
   maxColumnWidth: number;
   allowExportAsCSV: boolean;
   allowExportAsExcel: boolean;
+  pagination: boolean;
+  pageSize: number;
+  pageSizes: number[];
 }

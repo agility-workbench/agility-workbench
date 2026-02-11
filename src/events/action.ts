@@ -101,6 +101,14 @@ export type GridActionTransactionApply = {
   remove?: string[];
 };
 
+// Pagination actions
+export type GridActionPaginationSet = {
+  type: "paginationSet";
+  enabled: boolean;
+  pageIndex: number;
+  pageSize: number;
+};
+
 // Sort/Filter actions
 export type GridActionSortModelSet = {
   type: "sortModelSet";
@@ -179,6 +187,7 @@ export type GridAction =
   | GridActionThemeFontSet
   | GridActionRowDataSet
   | GridActionTransactionApply
+  | GridActionPaginationSet
   | GridActionSortModelSet
   | GridActionFilterModelSet
   | GridActionFocusSet

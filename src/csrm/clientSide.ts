@@ -1,11 +1,11 @@
 import { FilterModel } from "../interfaces/filter";
 import { SortDef } from "../interfaces/sort";
 import { AggregateScope } from "../interfaces/aggregate";
-import { IRowModel, RowModelType } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter } from "../csrm/filter";
 import { GridOptions } from "../interfaces/gridOptions";
-import { isNullOrUndefined } from "../misc";
+import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -16,12 +16,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private viewIdx: number[] = [];
 
   paginate: boolean = false;
-  pageIndex = 0;
-  pageSize = 100;
+  startIdx = 0;
+  endIdx = 100;
 
   private getId: (row: Row) => string;
 
-  constructor(opts: GridOptions) {
+  constructor(opts: GridOptions, readonly listener: IRowModelListener) {
     this.getId = createRowIdFactory(opts);
   }
 
@@ -55,34 +55,23 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     // by default sortedIdx = filteredIdx (stable)
     this.sortedIdx = this.filteredIdx.slice();
 
-    this.rebuildView();
-  }
-
-  refreshData(): boolean {
-    return true;
+    // Refresh or init must be called upon setting rows.
+    // this.rebuildView();
   }
 
   getRowCount(): number {
     return this.nodes.length;
   }
 
-  setPagination(paginate: boolean, pageSize: number, pageIndex: number) {
+  private setPagination(paginate: boolean, startIdx: number, endIdx: number) {
     this.paginate = paginate;
-    this.pageIndex = pageIndex;
-    this.pageSize = pageSize;
-    this.rebuildView();
+    this.startIdx = startIdx;
+    this.endIdx = endIdx;
   }
 
-  setPage(pageIndex: number, pageSize: number) {
-    this.pageIndex = pageIndex;
-    this.pageSize = pageSize;
-    this.rebuildView();
-  }
-
-  rebuildView() {
-    const start = this.paginate ? this.pageIndex * this.pageSize : 0;
-    const end = this.paginate ? Math.min(start + this.pageSize, this.sortedIdx.length) : undefined;
-    this.viewIdx = this.sortedIdx.slice(start, end);
+  private rebuildView() {
+    const end = this.paginate ? this.endIdx : undefined;
+    this.viewIdx = this.sortedIdx.slice(this.startIdx, end);
     for (let i = 0; i < this.viewIdx.length; i++) {
       const nodeIdx = this.viewIdx[i];
       this.nodes[nodeIdx].viewIndex = i;
@@ -116,7 +105,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
   }
 
-  setSorts(sorts: SortDef[]): void {
+  private setSorts(sorts: SortDef[]): void {
     this.sortedIdx = this.filteredIdx.slice();
     const comparators = sorts.filter(s => s.col && s.dir !== null)
       .map(sort => {
@@ -134,10 +123,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       }
       return 0;
     });
-    this.rebuildView();
   }
 
-  applyFilters(filters: FilterModel[]): void {
+  private applyFilters(filters: FilterModel[]): void {
     this.filteredIdx = performFilter(filters, this.nodes);
   }
 
@@ -149,8 +137,36 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     return;
   }
 
+  applyRequest(params: IRowModelRequestParams): void {
+    const { id, sortModels, filterModels, paginate, range, aggregateScope } = params;
+    this.listener.onLoadingStart(id);
+    if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModels);
+    if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModels);
+    this.setPagination(paginate, range.start, range.end);
+    this.rebuildView();
+    this.listener.onRows(id, {
+      reason: params.reason,
+      rows: this.viewIdx.map(i => this.nodes[i]),
+      rowCount: this.filteredIdx.length,
+      visibleStart: range.start,
+      visibleEnd: range.end,
+    });
+    this.listener.onLoadingEnd(id);
+  }
+
   destroy(): void {
     this.nodesMap.clear();
   }
 
+  private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {
+    switch (reason) {
+      case "filter": return step === "init" || step === "refresh" || step === "filter";
+      case "sort": return step === "init" || step === "refresh" || step === "filter" || step === "sort";
+      case "page":
+      case "pagination":
+      case "aggregateScope":
+        return false;
+    }
+    return true;
+  }
 }
