@@ -111,7 +111,7 @@ function App() {
       setError(null);
 
       try {
-        const response = await fetch(`http://localhost:8008/dept_loc_exp?wide=${category === "wide" ? "0" : "1"}`, {
+        const response = await fetch(`http://localhost:8008/agg/flat?wide=${category === "wide" ? "0" : "1"}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ page_size: count }),
@@ -211,6 +211,7 @@ function App() {
           className={activeTheme.className}
           style={{ width: "100%", height: "100%" }}
           loading={loading}
+          pagination={paginate}
         />
       </div>
     </div>
