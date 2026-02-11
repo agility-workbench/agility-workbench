@@ -1,9 +1,9 @@
-import React, { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import { GridReactProps } from "./interface";
 import "@grid/theme/table.css";
-import { GridRenderer } from "@grid";
+import { GridOptions, GridRenderer } from "@grid";
 import { IGridCore } from "@grid/interfaces";
-import { createApi, createCore } from "./factory";
+import { createApi, createCore, getGridOptions } from "./factory";
 import { IGridAPI } from "@grid/interfaces";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@grid/renderer";
@@ -23,11 +23,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     // Expose API via props.apiRef (if provided)
     useImperativeHandle(props.apiRef ?? null, () => apiRefLocal.current!, []);
 
-    // Decide whether we should recreate on options change.
-    // By default, assume options are stable (recommended).
-    const optionsKey = props.recreateOnOptionsChange ? props.options : null;
-
-    // Create instances (core/renderer/api) exactly once (or when optionsKey changes if enabled).
+    // Create instances (core/renderer/api) exactly once.
     // useMemo is fine because we attach/destroy in layout effect; instances are stored in refs.
     useMemo(() => {
       // cleanup old instances if recreating
@@ -46,7 +42,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
         } catch { }
       }
 
-      const core = createCore(props.options || {});
+      const core = createCore(getGridOptions(props));
       const renderer = initDomRenderer(core, new ReactMenuAdapter({getColumnMenuItems: props.getColumnMenuItems}));
       const api = createApi(core);
 
@@ -54,13 +50,13 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       rendererRef.current = renderer;
       apiRefLocal.current = api;
 
+      core.dispatch({ type: "init" });
+
       // Fire onGridReady synchronously on creation (before attach is also ok).
       props.onGridReady?.(api);
 
-      core.dispatch({ type: "init" });
-
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [optionsKey]);
+    }, []);
 
     // Attach renderer to DOM host on mount, detach on unmount.
     useLayoutEffect(() => {
@@ -76,17 +72,12 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
           renderer.detach();
         } catch { }
       };
-    }, [optionsKey]);
+    }, []);
 
     // Forward data / columnDefs to core on change (NOT on scroll).
     useLayoutEffect(() => {
       const core = coreRef.current;
       if (!core) return;
-
-      // if (props.columnDefs && core.setColumnDefs) {
-      //   core.setColumnDefs(props.columnDefs);
-      // }
-      // If you use dispatch instead:
       core.dispatch({ type: "columnDefsSet", defs: props.columnDefs || [] });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,11 +86,6 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     useLayoutEffect(() => {
       const core = coreRef.current;
       if (!core) return;
-
-      // if (props.data && core.setRowData) {
-      //   core.setRowData(props.data);
-      // }
-      // If you use dispatch instead:
       core.dispatch?.({ type: "rowDataSet", rows: props.data || [] });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +127,6 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
         ref={hostRef}
         className={props.className}
         style={{
-          // ensure the host can size properly for your renderer
           position: "relative",
           width: "100%",
           height: "100%",
