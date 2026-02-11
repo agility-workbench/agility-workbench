@@ -499,6 +499,8 @@ export class ColumnModel implements IColumnModel {
     if (!col || col.children.length === 0) return false;
     col.groupExpandState = col.groupExpandState === "open" ? "closed" : "open";
     this.updateColumns(this.columns);
+    const ancestors = this.getAncestors(colId);
+    this.updateParentColumnWidth(ancestors[0]);
     return true;
   }
 
