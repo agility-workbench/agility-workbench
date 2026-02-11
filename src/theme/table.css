@@ -100,7 +100,8 @@
   --pte-sparkline-bar-color: #60a5fa;
 }
 
-*[class^="pte-"], *[class*=" pte-"] {
+*[class^="pte-"],
+*[class*=" pte-"] {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -154,7 +155,10 @@
   background: var(--pte-scrollbar-thumb-hover-color);
 }
 
-*[class^="pte-"]:focus, *[class*=" pte-"]:focus, *[class^="pte-"]:focus-visible, *[class*=" pte-"]:focus-visible {
+*[class^="pte-"]:focus,
+*[class*=" pte-"]:focus,
+*[class^="pte-"]:focus-visible,
+*[class*=" pte-"]:focus-visible {
   outline: none;
 }
 
@@ -440,8 +444,13 @@
 }
 
 @keyframes pte-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .pte-scroller-left {
@@ -541,7 +550,9 @@
   scrollbar-width: none;
 }
 
-.pte-viewport-left, .pte-viewport-right, .pte-viewport {
+.pte-viewport-left,
+.pte-viewport-right,
+.pte-viewport {
   will-change: transform;
 }
 
@@ -622,16 +633,6 @@
   background-color: var(--pte-hover-bg-color);
 }
 
-.pte-hcell-expander {
-  width: 16px;
-  height: 16px;
-  margin-left: 8px;
-  cursor: pointer;
-  flex-shrink: 0;
-  mask-size: contain;
-  mask-repeat: no-repeat;
-}
-
 .pte-hcell.selected .pte-hcell-container:hover {
   background-color: var(--pte-selected-hover-bg-color);
 }
@@ -677,6 +678,19 @@
   display: flex;
   align-items: center;
   cursor: pointer;
+  gap: 8px;
+}
+
+.pte-hcell-expander {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pte-hcell-expander-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
 }
 
 .pte-hcell-container.pte-hcell-computable .pte-hcell-content {
@@ -809,7 +823,7 @@
   cursor: not-allowed !important;
 }
 
-.pte-hcell-menu-btn.active + .pte-hcell-menu-flyout {
+.pte-hcell-menu-btn.active+.pte-hcell-menu-flyout {
   display: block;
 }
 
@@ -1251,7 +1265,8 @@
   color: var(--pte-text-color);
 }
 
-.pte-select:focus, .pte-select:focus-visible {
+.pte-select:focus,
+.pte-select:focus-visible {
   border: 1px solid var(--pte-select-border-color);
 }
 

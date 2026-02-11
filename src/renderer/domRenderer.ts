@@ -1395,11 +1395,13 @@ export class GridRenderer {
     }
     if (col.showExpander) {
       const expander = document.createElement("div");
-      expander.className = "pte-hcell-expander";
+      expander.className = "pte-hcell-menu-btn pte-hcell-expander";
+      const span = createElement("span", "pte-hcell-expander-icon");
+      expander.appendChild(span);
       if (col.groupExpandState === "open") {
-        expander.classList.add("icon-minus-frame");
+        span.classList.add("icon-minus-frame");
       } else {
-        expander.classList.add("icon-plus-frame");
+        span.classList.add("icon-plus-frame");
       }
       headerContent.appendChild(expander);
     }
