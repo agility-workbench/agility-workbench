@@ -14,7 +14,12 @@ import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { createElement, div } from "./element";
 import { GridCore } from "../core/core";
-import { GridEventColumnsChangedParams, GridEventPaginationChangedParams, GridEventRowsChangedParams, GridEventViewportChangedParams } from "../events/events";
+import {
+  GridEventColumnsChangedParams,
+  GridEventPaginationChangedParams,
+  GridEventRowsChangedParams,
+  GridEventViewportChangedParams,
+} from "../events/events";
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
@@ -632,7 +637,7 @@ export class GridRenderer {
     } else if (params.reason === "state") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
-      this._updateColumnWidths([]);
+      this._updateColumnWidths();
     } else if (params.reason !== "resize") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
@@ -1160,17 +1165,8 @@ export class GridRenderer {
   }
 
   // ---------------- Internals: DOM build ----------------
-  _applyWidthsToChildren(col: Column) {
-    const hcell = document.getElementById(col.instanceID) as HTMLDivElement;
-    hcell.style.flex = "0 0 auto";
-    if (col.children.length === 0) {
-      hcell.style.width = `${col.computedWidth}px`;
-    }
-  };
-
   _applyLeftColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
-    let first = true;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = 0;
@@ -1180,15 +1176,11 @@ export class GridRenderer {
         if (!cell) continue;
         totalWidth += col.computedWidth;
         if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
       if (slot.leftRowEl) slot.leftRowEl.style.width = `${totalWidth}px`;
-      if (first) {
-        maxWidth = Math.max(maxWidth, totalWidth);
-        first = false;
-      }
+      maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.leftViewport.style.width = `${maxWidth}px`;
     this.hScrollerLeft.style.width = `${maxWidth}px`;
@@ -1221,7 +1213,6 @@ export class GridRenderer {
 
   _applyCenterColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
-    let first = true;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = 0;
@@ -1231,15 +1222,11 @@ export class GridRenderer {
         if (!cell) continue;
         totalWidth += col.computedWidth;
         if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
       slot.rowEl.style.width = `${totalWidth}px`;
-      if (first) {
-        maxWidth = Math.max(maxWidth, totalWidth);
-        first = false;
-      }
+      maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.hScroller.style.width = `${maxWidth}px`;
     if (maxWidth == 0) {
@@ -1255,7 +1242,6 @@ export class GridRenderer {
 
   _applyRightColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
-    let first = true;
     for (const slot of this._rowPool) {
       let totalWidth = 0;
       let c = 0;
@@ -1265,15 +1251,11 @@ export class GridRenderer {
         if (!cell) continue;
         totalWidth += col.computedWidth;
         if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        if (first) this._applyWidthsToChildren(col);
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
       if (slot.rightRowEl) slot.rightRowEl.style.width = `${totalWidth}px`;
-      if (first) {
-        maxWidth = Math.max(maxWidth, totalWidth);
-        first = false;
-      }
+      maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.rightViewport.style.width = `${maxWidth}px`;
     this.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
@@ -1313,17 +1295,10 @@ export class GridRenderer {
     totalWidth += this._applyCenterColumnWidths(colIDs);
     totalWidth += this._applyRightColumnWidths(colIDs);
 
-    let allColIDs = new Set();
-    if (colIDs.length > 0) {
-      colIDs.forEach(c => this.core.getColumnModel().getAncestors(c).slice(0, -1).forEach(a => allColIDs.add(a.instanceID)));
-    } else {
-      this.core.getColumnModel().getColumns().map(c => c.instanceID).forEach(c => allColIDs.add(c));
-      this.core.getColumnModel().getLeaves().map(c => c.instanceID).forEach(l => allColIDs.delete(l));
-    }
-    allColIDs.forEach(c => {
-      const col = this.core.getColumnModel().getById(c);
-      if (!col || col.hidden) return;
-      const hcell = document.getElementById(c);
+    const allColIDs: Column[] = [];
+    this.core.getColumnModel().walkColumns(c => c.isVisible() && allColIDs.push(c));
+    allColIDs.forEach(col => {
+      const hcell = document.getElementById(col.instanceID);
       if (!hcell) return;
       hcell.style.width = `${col.computedWidth}px`;
     })
