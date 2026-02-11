@@ -509,16 +509,16 @@ export class GridRenderer {
   }
 
   private setup() {
-    this.core.onInternal("overlayShow", (ev: { overlayType: "loading" | "noRows" | "none" }) => {
+    this.core.on("overlayShow", (ev: { overlayType: "loading" | "noRows" | "none" }) => {
       this.setLoading(ev.overlayType === "loading" || ev.overlayType === "noRows");
     });
-    this.core.onInternal("modelUpdated", () => {
+    this.core.on("modelUpdated", () => {
       this.buildPaginationControls();
     });
-    this.core.onInternal("viewportChanged", (params: GridEventViewportChangedParams) => this._maybeUpdatePoolSize(params));
-    this.core.onInternal("columnsChanged", (params: GridEventColumnsChangedParams) => this.onColumnsChanged(params));
-    this.core.onInternal("rowsChanged", (params: GridEventRowsChangedParams) => this.onDataChanged(params));
-    this.core.onInternal("paginationChanged", (params: GridEventPaginationChangedParams) => this._updatePaginationControls(params));
+    this.core.on("viewportChanged", (params: GridEventViewportChangedParams) => this._maybeUpdatePoolSize(params));
+    this.core.on("columnsChanged", (params: GridEventColumnsChangedParams) => this.onColumnsChanged(params));
+    this.core.on("rowsChanged", (params: GridEventRowsChangedParams) => this.onDataChanged(params));
+    this.core.on("paginationChanged", (params: GridEventPaginationChangedParams) => this._updatePaginationControls(params));
   }
 
   _getBodyHeight() {

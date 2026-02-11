@@ -65,9 +65,7 @@ export interface IGridCore {
   /** Dispatch an action (from renderer and/or API). */
   dispatch(action: GridAction): void;
 
-  /** Subscribe to core events (renderer uses). */
-  onInternal<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe;
-  /** Subscribe to core events (API uses this). */
+  /** Subscribe to core events. */
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe;
 
   /** Read-only snapshot (useful to renderer to initialize). */

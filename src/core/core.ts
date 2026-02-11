@@ -45,9 +45,7 @@ export class GridCore implements IGridCore {
   private aggregateScope: AggregateScope = "all";
   private aggregates: AggregateModel[] = [];
 
-  private internalEventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
-  private supressEventsUnless: string = "";
   private textMeasureParams!: TextMeasureParams;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
@@ -99,7 +97,7 @@ export class GridCore implements IGridCore {
   setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
     this.autosizeColumns();
-    this.emit("columnsChanged", true, { reason: "defs" });
+    this.emit("columnsChanged", { reason: "defs" });
   }
 
   private autosizeColumns(identifyComparators: boolean = true) {
@@ -159,7 +157,7 @@ export class GridCore implements IGridCore {
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
     });
-    this.emit<"modelUpdated">("modelUpdated", true, { reason: "init", step: "all" });
+    this.emit("modelUpdated", { reason: "init", step: "all" });
   }
 
   setRowData(rows: RowData[]): void {
@@ -174,7 +172,7 @@ export class GridCore implements IGridCore {
       aggregateScope: this.aggregateScope,
     })
     this.autosizeColumns();
-    this.emit<"columnsChanged">("columnsChanged", true, { reason: "state" });
+    this.emit("columnsChanged", { reason: "state" });
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
@@ -214,7 +212,7 @@ export class GridCore implements IGridCore {
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
     })
-    this.emit("columnsChanged", true, { reason: "filter", changedColIds })
+    this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
   setSortModel(sorts: SortDef[]) {
@@ -237,7 +235,7 @@ export class GridCore implements IGridCore {
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
       aggregateScope: this.aggregateScope,
     });
-    this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIDs });
+    this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
   }
 
   private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc") {
@@ -306,7 +304,7 @@ export class GridCore implements IGridCore {
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
       aggregateScope: this.aggregateScope,
     });
-    this.emit("columnsChanged", true, { reason: "sort", changedColIds: changedColIds });
+    this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
   }
 
   getPaginationInfo(): GridEventPaginationChangedParams {
@@ -350,7 +348,7 @@ export class GridCore implements IGridCore {
     }
     (this.rowModel as any).serverDataSource = callback;
     await this.rowModel.refreshData();
-    this.emit("serverSideDataSourceChanged", true, { dataSourceSet: !isNullOrUndefined(callback) });
+    this.emit("serverSideDataSourceChanged", { dataSourceSet: !isNullOrUndefined(callback) });
   }
 
   async setServerSideAggregationSource(callback: ServerSideDataSource | null) {
@@ -359,7 +357,7 @@ export class GridCore implements IGridCore {
     }
     (this.rowModel as any).serverAggregationSource = callback;
     await this.rowModel.refreshData();
-    this.emit("serverSideAggregationSourceChanged", true, { aggregationSourceSet: !isNullOrUndefined(callback) });
+    this.emit("serverSideAggregationSourceChanged", { aggregationSourceSet: !isNullOrUndefined(callback) });
   }
 
   async setAggregateScope(scope: AggregateScope) {
@@ -408,16 +406,6 @@ export class GridCore implements IGridCore {
   }
 
   // Event handling
-  onInternal<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
-    if (!this.internalEventHandlers.has(event)) {
-      this.internalEventHandlers.set(event, []);
-    }
-    this.internalEventHandlers.get(event)!.push(handler);
-    return () => {
-      this.off(event, handler);
-    };
-  }
-
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
@@ -440,7 +428,7 @@ export class GridCore implements IGridCore {
   dispatch(action: GridAction): void {
     switch (action.type) {
       case "init":
-        this.emit("viewportChanged", true, {
+        this.emit("viewportChanged", {
           scrollTopPx: 0,
           scrollLeftPx: 0,
           rowHeightPx: this.options.rowHeight,
@@ -456,13 +444,13 @@ export class GridCore implements IGridCore {
         break;
       // Handle other action types as needed
       case "overlayShow":
-        this.emit("overlayShow", true, { overlayType: action.overlayType });
+        this.emit("overlayShow", { overlayType: action.overlayType });
         break;
       case "themeFontSet":
         console.log("Setting theme fonts", "Reason:", action.reason);
         this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
         if (action.reason !== "visibility" && action.reason !== "pin") this.autosizeColumns(false);
-        this.emit("columnsChanged", true, { reason: "resize" });
+        this.emit("columnsChanged", { reason: "resize" });
         break;
       case "rowDataSet":
         this.setRowData(action.rows);
@@ -470,13 +458,13 @@ export class GridCore implements IGridCore {
       case "columnAutosize":
         const autosizedColIds = this.autosizeColumn(action.colId);
         if (autosizedColIds.length > 0) {
-          this.emit("columnsChanged", true, { reason: "resize", changedColIds: autosizedColIds });
+          this.emit("columnsChanged", { reason: "resize", changedColIds: autosizedColIds });
         }
         break;
       case "columnResize":
         const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
         if (resizedColIds.length > 0) {
-          this.emit("columnsChanged", true, { reason: "resize", changedColIds: resizedColIds });
+          this.emit("columnsChanged", { reason: "resize", changedColIds: resizedColIds });
         }
         break;
       case "sortModelSet":
@@ -484,19 +472,19 @@ export class GridCore implements IGridCore {
         break;
       case "columnPin":
         this.columnModel.setPinneds(action.colIds, action.pinned);
-        this.emit("columnsChanged", true, { reason: "pin", changedColIds: action.colIds });
-        this.emit("rowsChanged", true, { reason: "pin", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        this.emit("columnsChanged", { reason: "pin", changedColIds: action.colIds });
+        this.emit("rowsChanged", { reason: "pin", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "columnVisibility":
         this.columnModel.toggleVisibility(action.colIds, action.hidden);
         this.columnModel.updateParentColumnWidthsForAll();
-        this.emit("columnsChanged", true, { reason: "visibility", changedColIds: action.colIds });
-        this.emit("rowsChanged", true, { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        this.emit("columnsChanged", { reason: "visibility", changedColIds: action.colIds });
+        this.emit("rowsChanged", { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "columnMove":
         this.columnModel.moveColumnTo(action.colId, action.toIndex, action.toSection);
-        this.emit("columnsChanged", true, { reason: "order", changedColIds: [action.colId] });
-        this.emit("rowsChanged", true, { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
+        this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "paginationSet":
         this.applyPagination(action.pageIndex, action.pageSize);
@@ -506,24 +494,7 @@ export class GridCore implements IGridCore {
     }
   }
 
-  emit<E extends GridEventName>(eventType: GridEventName, isInternal: boolean, args: GridEventMap[E]): void {
-    if (this.supressEventsUnless !== "" && this.supressEventsUnless !== eventType) {
-      return;
-    }
-    this.supressEventsUnless = "";
-    return isInternal ? this.emitInternal(eventType, args) : this.emitExternal(eventType, args);
-  }
-
-  emitInternal<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]) {
-    if (!this.internalEventHandlers.has(eventType)) return;
-    const handlers = this.internalEventHandlers.get(eventType)!;
-    for (const handler of handlers) {
-      this.rowModel.getViewCount();
-      handler(args);
-    }
-  }
-
-  emitExternal<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]) {
+  emit<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]): void {
     if (!this.eventHandlers.has(eventType)) return;
     const handlers = this.eventHandlers.get(eventType)!;
     for (const handler of handlers) {
@@ -537,7 +508,7 @@ export class GridCore implements IGridCore {
       // This means a newer request has already been made, so we can ignore this loading start.
       return;
     }
-    this.emit("overlayShow", true, { overlayType: "loading" });
+    this.emit("overlayShow", { overlayType: "loading" });
   }
 
   onRows(id: number, params: IRowModelOnRowsParams) {
@@ -545,13 +516,13 @@ export class GridCore implements IGridCore {
       // This means a newer request has already been made, so we can ignore these rows.
       return;
     }
-    this.emit("rowsChanged", true, {
+    this.emit("rowsChanged", {
       reason: params.reason,
       firstRowIndex: params.visibleStart,
       lastRowIndex: params.visibleEnd,
       rowCount: params.rowCount,
     });
-    this.emit("paginationChanged", true, this.getPaginationInfo());
+    this.emit("paginationChanged", this.getPaginationInfo());
   }
 
   onLoadingEnd(id: number) {
@@ -559,7 +530,7 @@ export class GridCore implements IGridCore {
       // This means a newer request has already been made, so we can ignore this loading end.
       return;
     }
-    this.emit("overlayShow", true, { overlayType: "none" });
+    this.emit("overlayShow", { overlayType: "none" });
   }
 
   onError() { }
