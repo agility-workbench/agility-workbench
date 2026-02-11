@@ -230,7 +230,7 @@ export class ColumnModel implements IColumnModel {
       col.computedWidth = col.width || 200;
       return;
     }
-    let maxWidth = measureCtx.measure(col.label, params.headerFont || "14px Arial") + 104; // 16px padding + 88px for sort/filter icons
+    let maxWidth = measureCtx.measure(col.label, params.headerFont ?? "14px Arial") + 104; // 16px padding + 88px for sort/filter icons
     if (col.maxWidth && maxWidth > col.maxWidth) {
       maxWidth = col.maxWidth;
       return;
@@ -251,7 +251,7 @@ export class ColumnModel implements IColumnModel {
     }
 
     longestText = col.formatValue(col.getValue(rows[longestRowIdx]), rows[longestRowIdx])
-    const longestWidth = this.measureText(longestText, measureCtx, params.cellFont || "14px Arial");
+    const longestWidth = this.measureText(longestText, measureCtx, params.cellFont ?? "14px Arial");
     if (longestWidth > maxWidth) {
       maxWidth = longestWidth;
     }
