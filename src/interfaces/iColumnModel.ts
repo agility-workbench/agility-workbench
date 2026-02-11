@@ -20,4 +20,6 @@ export interface IColumnModel {
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
   getAncestors(colId: string): Column[];
+  walkColumns(callback: (col: Column) => void): void;
+  toggleGroupExpansion(colId: string): boolean;
 }
