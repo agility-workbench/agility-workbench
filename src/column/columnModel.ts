@@ -498,7 +498,16 @@ export class ColumnModel implements IColumnModel {
       affectedCols.add(col);
     }
     this.updateColumns(this.columns);
+    this.updateParentColumnWidthsForAll();
     return Array.from(affectedCols).map(c => c.instanceID);
+  }
+
+  toggleGroupExpansion(colId: string): boolean {
+    const col = this.getById(colId);
+    if (!col || col.children.length === 0) return false;
+    col.groupExpandState = col.groupExpandState === "open" ? "closed" : "open";
+    this.updateColumns(this.columns);
+    return true;
   }
 
 }

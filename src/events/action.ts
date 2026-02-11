@@ -131,6 +131,12 @@ export type GridActionSelectionClear = {
   type: "selectionClear";
 };
 
+export type GridActionHeaderAction = {
+  type: "headerAction";
+  colId: string;
+  action: string;
+};
+
 export type GridActionRowSelectSet = {
   type: "rowSelectSet";
   rowId: string;
@@ -191,6 +197,7 @@ export type GridAction =
   | GridActionSortModelSet
   | GridActionFilterModelSet
   | GridActionFocusSet
+  | GridActionHeaderAction
   | GridActionSelectionClear
   | GridActionRowSelectSet
   | GridActionRangeSelectSet

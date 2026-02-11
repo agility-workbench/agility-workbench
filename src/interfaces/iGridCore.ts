@@ -19,6 +19,7 @@ export interface ColumnState {
   pinned?: "left" | "right" | null;
   hidden?: boolean;
   order?: number; // leaf order
+  selected?: boolean; // for column selection (e.g. for menu)
 }
 
 /* ---------- Read-only view of derived state for renderer ---------- */

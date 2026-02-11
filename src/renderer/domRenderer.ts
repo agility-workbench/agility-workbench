@@ -12,7 +12,7 @@ import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./
 import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../ssrm/serverSide";
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
-import { div } from "./element";
+import { createElement, div } from "./element";
 import { GridCore } from "../core/core";
 import { GridEventColumnsChangedParams, GridEventPaginationChangedParams, GridEventRowsChangedParams, GridEventViewportChangedParams } from "../events/events";
 import { MenuCoordinator } from "../menu/coordinator";
@@ -624,16 +624,16 @@ export class GridRenderer {
         const sort = sorts.find(s => s.col.instanceID === colID);
         this._addSortIndicatorToHeader(colID, sort?.dir || '');
       }
-      return;
     } else if (params.reason === "filter") {
       this._setFilterIndicators();
-      return;
     } else if (params.reason === "visibility") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
-      return;
-    }
-    if (params.reason !== "resize" && params.reason !== "state") {
+    } else if (params.reason === "state") {
+      this._buildRowPool();
+      this._buildHeaderDOM(params.reason);
+      this._updateColumnWidths([]);
+    } else if (params.reason !== "resize") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
     } else {
@@ -750,11 +750,6 @@ export class GridRenderer {
 
   destroy() {
     this.root.remove();
-  }
-
-  // ---------------- Internals: view ----------------
-  async _toggleSort(col: Column) {
-    await this.core.toggleSort(col);
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
@@ -3157,25 +3152,24 @@ export class GridRenderer {
     if (!header) return;
     const headerExpand = (e.target as HTMLElement)?.closest(".pte-hcell-expander");
     if (headerExpand) {
-      this._toggleColumnGroupExpanded(header.id);
-      return;
+      return this.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });
     }
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = this.core.getColumnModel().getById(header.id);
       if (!col) return;
       if (e.shiftKey) {
-        if (!col.sortable) return;
-        return this._toggleSort(col);
+        return this.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
       }
       this._toggleColumnSelection(header.id);
-      return;
+      return this.core.dispatch({ type: "headerAction", action: "click", colId: header.id });
     }
     const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
       // this._clearColumnSelection();
       // Based on the btn clicked, render filter/menu UI
+      this.core.dispatch({ type: "headerAction", action: (isFilter ? "filter" : "menu") + "Click", colId: header.id });
       if (!isFilter) {
         this._openColMenu("columnMenuButton", header.id, { anchorEl: btn });
       } else {

@@ -106,6 +106,7 @@ export class GridCore implements IGridCore {
       allRows.push(node);
     });
     this.columnModel.computeColumnWidths(this.measureCtx, this.textMeasureParams, allRows);
+    this.columnModel.updateParentColumnWidthsForAll();
     if (identifyComparators) {
       this.columnModel.identifyComparators(allRows);
     }
@@ -170,9 +171,7 @@ export class GridCore implements IGridCore {
       paginate: this.paginationEnabled,
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
-    })
-    this.autosizeColumns();
-    this.emit("columnsChanged", { reason: "state" });
+    });
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
@@ -477,7 +476,6 @@ export class GridCore implements IGridCore {
         break;
       case "columnVisibility":
         this.columnModel.toggleVisibility(action.colIds, action.hidden);
-        this.columnModel.updateParentColumnWidthsForAll();
         this.emit("columnsChanged", { reason: "visibility", changedColIds: action.colIds });
         this.emit("rowsChanged", { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
@@ -488,6 +486,31 @@ export class GridCore implements IGridCore {
         break;
       case "paginationSet":
         this.applyPagination(action.pageIndex, action.pageSize);
+        break;
+      case "headerAction":
+        const col = this.columnModel.getById(action.colId);
+        if (!col) return;
+        switch (action.action) {
+          case "toggleSort":
+            this.toggleSort(col);
+            break;
+          case "filterClick":
+          case "menuClick":
+            // Clear column selection on header action clicks to avoid confusion with shift+click multi-selection
+            // this._clearColumnSelection();
+            // Based on the action, render filter/menu UI (handled in renderer via events)
+            break;
+          case "click":
+            // this._toggleColumnSelection(col.instanceID);
+            break;
+          case "toggleGroupExpand":
+            if (this.columnModel.toggleGroupExpansion(col.instanceID)) {
+              this.autosizeColumn(col.instanceID);
+              this.emit("columnsChanged", { reason: "state", changedColIds: [col.instanceID] });
+              this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+            }
+            break;
+        }
         break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
@@ -515,6 +538,10 @@ export class GridCore implements IGridCore {
     if (this.requestIdCounter - id > 1) {
       // This means a newer request has already been made, so we can ignore these rows.
       return;
+    }
+    if (params.reason === "init" || params.reason === "refresh") {
+      this.autosizeColumns();
+      this.emit("columnsChanged", { reason: "state" });
     }
     this.emit("rowsChanged", {
       reason: params.reason,
