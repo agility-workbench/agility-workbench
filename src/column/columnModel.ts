@@ -147,6 +147,8 @@ export class ColumnModel implements IColumnModel {
           if (col.depth > this.maxDepth) {
             this.maxDepth = col.depth;
           }
+        } else {
+          col.depth = 0;
         }
       }
     };
