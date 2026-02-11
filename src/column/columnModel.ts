@@ -384,70 +384,60 @@ export class ColumnModel implements IColumnModel {
     if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
     width = Math.min(Math.max(width, minWidth), maxWidth);
 
-    if (col.children.length > 0) {
-      const visibleChildren = col.getVisibleChildren();
-      if (visibleChildren.length > 0) {
-        const childInfos = visibleChildren.map(child => {
-          const childMin = Math.max(this.options.minResizeWidth, child.minWidth ?? this.options.minResizeWidth);
-          let childMax = child.maxWidth ?? this.options.maxColumnWidth;
-          if (!Number.isFinite(childMax)) childMax = this.options.maxColumnWidth;
-          const childWidth = Math.max(childMin, Math.min(childMax, child.width ?? width / visibleChildren.length));
-          return {
-            col: child,
-            min: childMin,
-            max: childMax,
-            width: childWidth,
-          };
+    const visibleLeaves = col.getVisibleLeaves();
+    if (visibleLeaves.length > 0) {
+      const childInfos = visibleLeaves.map(child => {
+        const childMin = Math.max(this.options.minResizeWidth, child.minWidth ?? this.options.minResizeWidth);
+        let childMax = child.maxWidth ?? this.options.maxColumnWidth;
+        if (!Number.isFinite(childMax)) childMax = this.options.maxColumnWidth;
+        const childWidth = Math.max(childMin, Math.min(childMax, child.width ?? width / visibleLeaves.length));
+        return {
+          col: child,
+          min: childMin,
+          max: childMax,
+          width: childWidth,
+        };
+      });
+
+      const currentTotal = childInfos.reduce((sum, c) => sum + c.width, 0);
+      const minTotal = childInfos.reduce((sum, c) => sum + c.min, 0);
+      const maxTotal = childInfos.reduce((sum, c) => sum + c.max, 0);
+
+      // Clamp parent width to what children can support.
+      width = Math.min(Math.max(width, minTotal), Math.min(maxWidth, maxTotal));
+
+      let remaining = width - currentTotal;
+      let safety = 0;
+      while (Math.abs(remaining) > 0.5 && safety < 20) {
+        safety++;
+        const grow = remaining > 0;
+        const candidates = childInfos.filter(c => {
+          return grow ? c.width < c.max : c.width > c.min;
         });
-
-        const currentTotal = childInfos.reduce((sum, c) => sum + c.width, 0);
-        const minTotal = childInfos.reduce((sum, c) => sum + c.min, 0);
-        const maxTotal = childInfos.reduce((sum, c) => sum + c.max, 0);
-
-        // Clamp parent width to what children can support.
-        width = Math.min(Math.max(width, minTotal), Math.min(maxWidth, maxTotal));
-
-        let remaining = width - currentTotal;
-        let safety = 0;
-        while (Math.abs(remaining) > 0.5 && safety < 20) {
-          safety++;
-          const grow = remaining > 0;
-          const candidates = childInfos.filter(c => {
-            return grow ? c.width < c.max : c.width > c.min;
-          });
-          if (candidates.length === 0) break;
-          const deltaPer = remaining / candidates.length;
-          let applied = 0;
-          for (const c of candidates) {
-            const delta = grow
-              ? Math.min(c.max - c.width, Math.max(1, Math.round(deltaPer)))
-              : Math.max(c.min - c.width, Math.min(-1, Math.round(deltaPer)));
-            c.width += delta;
-            applied += delta;
-          }
-          remaining -= applied;
+        if (candidates.length === 0) break;
+        const deltaPer = remaining / candidates.length;
+        let applied = 0;
+        for (const c of candidates) {
+          const delta = grow
+            ? Math.min(c.max - c.width, Math.max(1, Math.round(deltaPer)))
+            : Math.max(c.min - c.width, Math.min(-1, Math.round(deltaPer)));
+          c.width += delta;
+          applied += delta;
         }
-
-        const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
-        for (const c of childInfos) {
-          c.col.computedWidth = c.width;
-        }
-        width = totalWidth;
+        remaining -= applied;
       }
+
+      // const totalWidth = childInfos.reduce((sum, c) => sum + c.width, 0);
+      let totalWidth = 0;
+      for (const c of childInfos) {
+        c.col.computedWidth = c.width;
+        totalWidth += c.width;
+      }
+      width = totalWidth;
     }
     col.computedWidth = width;
     const ancestors = this.getAncestors(col.instanceID);
-    if (ancestors.length > 1) {
-      for (let i = ancestors.length - 2; i >= 0; i--) {
-        const ancestor = ancestors[i];
-        if (!ancestor.children || ancestor.children.length === 0) continue;
-        let totalWidth = 0;
-        for (const child of ancestor.getVisibleChildren()) {
-          totalWidth += child.computedWidth;
-        }
-        ancestor.computedWidth = totalWidth;
-      }
-    }
+    this.updateParentColumnWidth(ancestors[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
   }
 
