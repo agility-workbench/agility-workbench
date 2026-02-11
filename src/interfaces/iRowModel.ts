@@ -1,17 +1,30 @@
 import { AggregateScope } from "./aggregate";
 import { FilterModel } from "./filter";
+import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortDef } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "aggregateScope";
+
+export interface IRowModelRequestParams {
+  readonly id: number;
+  readonly reason: RowDataChangeReason;
+  readonly sortModels: SortDef[];
+  readonly filterModels: FilterModel[];
+  readonly paginate: boolean;
+  readonly range: { start: number; end: number };
+  readonly aggregateScope: AggregateScope;
+}
 
 export interface IRowModel<Row = any> {
+  readonly listener: IRowModelListener;
+
   getType(): RowModelType;
   isValid(): boolean;
 
   // data update
   setRows(rows: any[]): void;
-  refreshData(): boolean | Promise<boolean>;
 
   // accessors for what the viewport needs
   getRowCount(): number;                    // total displayed (may be estimate)
@@ -26,11 +39,7 @@ export interface IRowModel<Row = any> {
   // identity
   getRowNode(id: string): IRowNode<Row> | undefined;
 
-  // operations the grid triggers
-  setSorts(sorts: SortDef[]): void | Promise<void>;
-  applyFilters(filters: FilterModel[]): void | Promise<void>;
-  setPagination(paginate: boolean, pageSize: number, pageIndex: number): void | Promise<void>;
-  setPage(pageSize: number, pageIndex: number): void | Promise<void>;
+  applyRequest(params: IRowModelRequestParams): void;
 
   // aggregation
   setAggregateScope(scope: AggregateScope): void | Promise<void>;
