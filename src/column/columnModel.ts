@@ -504,4 +504,16 @@ export class ColumnModel implements IColumnModel {
     return true;
   }
 
+  walkColumns(callback: (col: Column) => void): void {
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        callback(col);
+        if (col.children.length > 0) {
+          walk(col.children);
+        }
+      }
+    };
+    walk(this.columns);
+  }
+
 }
