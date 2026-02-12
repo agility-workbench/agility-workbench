@@ -8,6 +8,11 @@ import { InternalGridOptions } from "../interfaces/gridOptions";
 import { isNullOrUndefined } from "../misc";
 import { ColumnMove } from "./columnMove";
 
+interface BaselineWidthDef {
+  width: number;
+  totalChildrenWidth: number;
+}
+
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
 
@@ -29,6 +34,8 @@ export class ColumnModel implements IColumnModel {
   private maxDepth: number = 1;
 
   private _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }> = new Map();
+
+  private baselineWidths: Map<string, BaselineWidthDef> = new Map();
 
   constructor(private options: InternalGridOptions) { }
 
@@ -220,11 +227,47 @@ export class ColumnModel implements IColumnModel {
     return copy;
   }
 
+  private computeBaselineWidths(measureCtx: ITextMeasurer, params: TextMeasureParams): void {
+    const walk = (columns: Column[]): number => {
+      let totalWidth = 0;
+      for (const col of columns) {
+        if (col.children.length === 0) {
+          totalWidth += col.computedWidth;
+          continue;
+        }
+        const totalChildrenWidth = walk(col.getVisibleChildren());
+        col.computedWidth = this.getColumnContentWidth(col, measureCtx, params);
+        const colWidth = Math.max(col.computedWidth, totalChildrenWidth);
+        this.baselineWidths.set(col.instanceID, { width: col.computedWidth, totalChildrenWidth });
+        totalWidth += colWidth;
+      }
+      return totalWidth;
+    }
+    walk(this.columns);
+  }
+
   computeColumnWidths(measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
     for (const col of this.leaves) {
       this.computeColumnWidth(col, measureCtx, params, rows);
     }
+    this.computeBaselineWidths(measureCtx, params);
+    const walk = (columns: Column[]) => {
+      for (const col of columns) {
+        if (col.children.length === 0) continue;
+        walk(col.getVisibleChildren());
+        const baselineWidth = this.baselineWidths.get(col.instanceID);
+        if (!baselineWidth) continue;
+        if (baselineWidth.width > baselineWidth.totalChildrenWidth) {
+          this.resizeActualColumn(col, baselineWidth.width);
+        }
+      }
+    }
+    walk(this.columns);
     this.updateParentColumnWidthsForAll();
+  }
+
+  private getColumnContentWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams): number {
+    return measureCtx.measure(col.label, params.headerFont ?? "500 14px Arial") + 104; // 16px padding + 88px for sort/filter icons
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
@@ -232,7 +275,8 @@ export class ColumnModel implements IColumnModel {
       col.computedWidth = col.width || 200;
       return;
     }
-    let maxWidth = measureCtx.measure(col.label, params.headerFont ?? "14px Arial") + 104; // 16px padding + 88px for sort/filter icons
+
+    let maxWidth = this.getColumnContentWidth(col, measureCtx, params);
     if (col.maxWidth && maxWidth > col.maxWidth) {
       maxWidth = col.maxWidth;
       return;
