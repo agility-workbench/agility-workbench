@@ -16,11 +16,6 @@ export interface MenuParams {
   contentEl?: HTMLElement;
 }
 
-interface MenuProps {
-  onItemClick?: (item: MenuItem) => void;
-  onClose?: () => void;
-}
-
 export class MenuRenderer {
   private menuOverlays: HTMLDivElement[] = [];
   private menuItemsByLevel: MenuItem[][] = [];
