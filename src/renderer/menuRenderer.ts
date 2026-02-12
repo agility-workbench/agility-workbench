@@ -207,6 +207,7 @@ export class MenuRenderer {
 
     this.menuItemsByLevel.length = fromLevel;
     this.menuParentIds.length = fromLevel;
+    this.menuOverlays.length = fromLevel;
     if (fromLevel === 0) {
       this.menuProps = {};
     }
