@@ -94,9 +94,6 @@ export interface IGridCore {
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
 
-  setSortModel(sort: SortDef[]): void;
-  setFilterModel(filter: FilterModel[]): void;
-
   /** Ensure core releases resources (timers, subscriptions). Renderer/React calls on unmount. */
   destroy(): void;
 }
