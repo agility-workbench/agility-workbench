@@ -1,6 +1,6 @@
 import { MenuCoordinator } from "../menu/coordinator";
 import { GridCore } from "../core/core";
-import { GridRenderer } from "./domRenderer";
+import { GridRenderer } from "./gridRenderer";
 import { ColumnMenuService } from "../menu/columnMenuService";
 import type { IMenuAdapter } from "../interfaces";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";

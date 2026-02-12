@@ -1,6 +1,6 @@
 export type { IGridCore } from "./interfaces/iGridCore";
 export { GridCore } from "./core/core";
-export { GridRenderer } from "./renderer/domRenderer";
+export { GridRenderer } from "./renderer/gridRenderer";
 
 export type { GridOptions } from "./interfaces/gridOptions";
 
