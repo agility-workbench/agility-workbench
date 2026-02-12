@@ -375,10 +375,7 @@ export class ColumnModel implements IColumnModel {
     return state;
   }
 
-  resizeColumn(colId: string, width: number): string[] {
-    const col = this.getById(colId);
-    if (!col) return [];
-
+  private resizeActualColumn(col: Column, width: number): string[] {
     const minWidth = Math.max(this.options.minResizeWidth, col.minWidth ?? this.options.minResizeWidth);
     let maxWidth = col.maxWidth ?? Number.POSITIVE_INFINITY;
     if (!Number.isFinite(maxWidth)) maxWidth = Number.POSITIVE_INFINITY;
@@ -439,6 +436,12 @@ export class ColumnModel implements IColumnModel {
     const ancestors = this.getAncestors(col.instanceID);
     this.updateParentColumnWidth(ancestors[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
+  }
+
+  resizeColumn(colId: string, width: number): string[] {
+    const col = this.getById(colId);
+    if (!col) return [];
+    return this.resizeActualColumn(col, width);
   }
 
   moveColumnTo(colId: string, targetIndex: number, section: "left" | "center" | "right"): boolean {
