@@ -71,16 +71,16 @@ export class ColumnMenuService {
       items.push({ isSeparator: true });
       const pinMenus: MenuItem[] = [];
       if (cap.pinning === "left") {
-        pinMenus.push({ id: "unpinColumns", label: "Unpin Column(s)", command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: "Unpin Column" + (colIDs.length > 1 ? "s" : ""), command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
         pinMenus.push({ id: "pinLeft", label: "Pin Left", command: "column.pinMany", payload: { colIDs, pinned: "left" } });
       }
       if (cap.pinning === "right") {
-        pinMenus.push({ id: "unpinColumns", label: "Unpin Column(s)", command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: "Unpin Column" + (colIDs.length > 1 ? "s" : ""), command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
         pinMenus.push({ id: "pinRight", label: "Pin Right", command: "column.pinMany", payload: { colIDs, pinned: "right" } });
       }
-      items.push({ id: "pinning", label: "Pin Column", subMenu: pinMenus });
+      items.push({ id: "pinning", label: "Pin Column" + (colIDs.length > 1 ? "s" : ""), subMenu: pinMenus });
     }
     if (cap.exportable) {
       if (items.length > 0) items.push({ isSeparator: true });
