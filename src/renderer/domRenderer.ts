@@ -2034,7 +2034,7 @@ export class GridRenderer {
       if (rightLeaves.length > 0 && slot.rightCellEls) {
         slot.rightRowEl?.setAttribute("row-id", row.id);
         for (let c = 0; c < rightLeaves.length; c++) {
-          const col = this.core.rightLeaves[c];
+          const col = rightLeaves[c];
           this._renderCell(slot.rightCellEls[c], row, col, slot.cellRendererInstances);
         }
       }
