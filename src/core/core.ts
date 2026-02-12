@@ -3,7 +3,7 @@ import { IRowModel } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideDataSource } from "../ssrm/serverSide";
-import { SortDef } from "../interfaces/sort";
+import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -40,7 +40,7 @@ export class GridCore implements IGridCore {
   private pageSizes: number[] = [25, 50, 100];
 
   private filters: FilterModel[] = [];
-  private sorts: SortDef[] = [];
+  private sorts: SortModel[] = [];
 
   private aggregateScope: AggregateScope = "all";
   private aggregates: AggregateModel[] = [];
@@ -214,7 +214,7 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
-  setSortModel(sorts: SortDef[]) {
+  setSortModel(sorts: SortModel[]) {
     sorts = sorts.slice();
     const changedColIDs: string[] = [];
     for (const sort of sorts) {
@@ -275,7 +275,7 @@ export class GridCore implements IGridCore {
 
   toggleSort(col: Column) {
     if (!col.sortable) return;
-    let curr: SortDef | undefined;
+    let curr: SortModel | undefined;
     if (col.children.length > 0) {
       // Find the first child that has a sort applied on and use its dir as reference.
       const children = col.getVisibleLeaves();
@@ -388,7 +388,7 @@ export class GridCore implements IGridCore {
     return col.formatValue(value, row);
   }
 
-  getSortModel(): SortDef[] {
+  getSortModel(): SortModel[] {
     return this.sorts.slice();
   }
 

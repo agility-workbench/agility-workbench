@@ -1,5 +1,5 @@
 import { FilterModel } from "../interfaces/filter";
-import { SortDef } from "../interfaces/sort";
+import { SortModel } from "../interfaces/sort";
 import { AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
@@ -105,7 +105,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
   }
 
-  private setSorts(sorts: SortDef[]): void {
+  private setSorts(sorts: SortModel[]): void {
     this.sortedIdx = this.filteredIdx.slice();
     const comparators = sorts.filter(s => s.col && s.dir !== null)
       .map(sort => {

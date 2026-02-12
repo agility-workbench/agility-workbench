@@ -2,7 +2,7 @@ import { AggregateScope } from "./aggregate";
 import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
-import { SortDef } from "./sort";
+import { SortModel } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
 export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "aggregateScope";
@@ -10,7 +10,7 @@ export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagi
 export interface IRowModelRequestParams {
   readonly id: number;
   readonly reason: RowDataChangeReason;
-  readonly sortModels: SortDef[];
+  readonly sortModels: SortModel[];
   readonly filterModels: FilterModel[];
   readonly paginate: boolean;
   readonly range: { start: number; end: number };

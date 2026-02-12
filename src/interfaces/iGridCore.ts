@@ -1,5 +1,5 @@
 import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
-import { SortDef } from "./sort";
+import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
 import { IRowModel } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
@@ -89,7 +89,7 @@ export interface IGridCore {
   getCellDisplayValue(rowId: GridId, colId: ColId): string;
 
   /* ----- Models via facade getters (optional but handy) ----- */
-  getSortModel(): SortDef[];
+  getSortModel(): SortModel[];
   getFilterModel(): FilterModel[];
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;

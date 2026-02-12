@@ -1,13 +1,13 @@
 import { IRowModel, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { FilterModel } from "../interfaces/filter";
-import { SortDef } from "../interfaces/sort";
+import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions } from "../interfaces/gridOptions";
 
 export interface ServerSideRequest {
   filters: FilterModel[];
-  sorts: SortDef[];
+  sorts: SortModel[];
   page: number;
   pageSize: number;
 }
@@ -22,7 +22,7 @@ export type ServerSideDataSource = (request: ServerSideRequest) => Promise<Serve
 export interface ServerSideAggregationRequest {
   aggregates: AggregateModel[];
   filters: FilterModel[];
-  sorts: SortDef[];
+  sorts: SortModel[];
   scope: AggregateScope;
   page: number;
   pageSize: number;
@@ -42,7 +42,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   sortedIdx: number[] = [];
   viewIdx: number[] = [];
 
-  sorts: SortDef[] = [];
+  sorts: SortModel[] = [];
   filters: FilterModel[] = [];
 
   serverDataSource?: ServerSideDataSource;
@@ -190,7 +190,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return this.nodesMap.get(id);
   }
 
-  async setSorts(sorts: SortDef[]): Promise<void> {
+  async setSorts(sorts: SortModel[]): Promise<void> {
     this.sorts = sorts;
     await this.refreshData();
   }
