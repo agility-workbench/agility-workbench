@@ -21,6 +21,7 @@ export class ColumnHierarchy {
       }
       idx++;
       const newAncestor: Column = ancestor.duplicate();
+      newAncestor.children = [];
       if (newHierarchy.length === 0) {
         newHierarchy.push(newAncestor);
       } else {
