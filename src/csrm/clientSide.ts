@@ -160,8 +160,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {
     switch (reason) {
-      case "filter": return step === "init" || step === "refresh" || step === "filter";
-      case "sort": return step === "init" || step === "refresh" || step === "filter" || step === "sort";
+      case "filter": return step === "filter" || step === "sort";
+      case "sort": return step === "sort";
       case "page":
       case "pagination":
       case "aggregateScope":
