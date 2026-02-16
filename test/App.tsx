@@ -133,7 +133,7 @@ function App() {
               filterValues: (params) => {
                 setTimeout(() => {
                   console.log("Loading filter values for department column", params);
-                  params.success(["Sales", "Engineering", "HR", "Marketing"])
+                  params.success(payload.data.map(r => r.department));
                 }, 1000);
               }
             }
