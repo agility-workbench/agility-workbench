@@ -1,4 +1,4 @@
-import { AggregateScope } from "./aggregate";
+import { AggregateModel, AggregateScope } from "./aggregate";
 import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
@@ -15,6 +15,7 @@ export interface IRowModelRequestParams {
   readonly paginate: boolean;
   readonly range: { start: number; end: number };
   readonly aggregateScope: AggregateScope;
+  readonly aggregates: AggregateModel[];
 }
 
 export interface IRowModel<Row = any> {

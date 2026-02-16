@@ -4,35 +4,7 @@ import { FilterModel } from "../interfaces/filter";
 import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions } from "../interfaces/gridOptions";
-
-export interface ServerSideRequest {
-  filters: FilterModel[];
-  sorts: SortModel[];
-  page: number;
-  pageSize: number;
-}
-
-export interface ServerSideResult {
-  rows: any[];
-  totalRows?: number;
-}
-
-export type ServerSideDataSource = (request: ServerSideRequest) => Promise<ServerSideResult> | ServerSideResult;
-
-export interface ServerSideAggregationRequest {
-  aggregates: AggregateModel[];
-  filters: FilterModel[];
-  sorts: SortModel[];
-  scope: AggregateScope;
-  page: number;
-  pageSize: number;
-}
-
-export type ServerSideAggregationResult = {
-  values: Record<string, any>;
-} | Record<string, any>;
-
-export type ServerSideAggregationSource = (request: ServerSideAggregationRequest) => Promise<ServerSideAggregationResult> | ServerSideAggregationResult;
+import { IServerSideDataSource } from "@grid/interfaces/serverSide";
 
 export class ServerSideRowModel<Row extends object = any> implements IRowModel<Row> {
   nodes: IRowNode<Row>[] = [];
@@ -45,9 +17,6 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   sorts: SortModel[] = [];
   filters: FilterModel[] = [];
 
-  serverDataSource?: ServerSideDataSource;
-  serverAggregationSource?: ServerSideAggregationSource;
-
   paginate: boolean = false;
   pageIndex = 0;
   pageSize = 100;
@@ -56,10 +25,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   private getId: (row: Row) => string;
 
-  constructor(opts: GridOptions, serverDataSource?: ServerSideDataSource, serverAggregationSource?: ServerSideAggregationSource) {
+  constructor(opts: GridOptions, private serverDataSource?: IServerSideDataSource) {
     this.getId = createRowIdFactory(opts);
-    this.serverDataSource = serverDataSource;
-    this.serverAggregationSource = serverAggregationSource;
   }
 
   getType(): RowModelType {
