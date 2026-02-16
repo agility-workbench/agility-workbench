@@ -624,7 +624,7 @@ export class GridRenderer {
     // this._clearSelection();
     // this._clearColumnSelection();
     if (params.reason === "sort") {
-      const sorts = this.core.getSortModel();
+      const sorts = this.core.getSortModel().items;
       for (const colID of params.changedColIds || []) {
         const sort = sorts.find(s => s.col.instanceID === colID);
         this._addSortIndicatorToHeader(colID, sort?.dir || '');
@@ -1377,7 +1377,7 @@ export class GridRenderer {
     }
     const headerMenu = this._getHeaderMenuElement(col);
     headerContainer.appendChild(headerMenu);
-    const sort = this.core.getSortModel().find(s => s.key === col.instanceID);
+    const sort = this.core.getSortModel().items.find(s => s.col.instanceID === col.instanceID);
     if (sort) {
       headerContent.classList.add("pte-sorted-" + sort.dir);
     }
@@ -1656,7 +1656,7 @@ export class GridRenderer {
       btn.appendChild(icon);
       wrapper.appendChild(btn);
       if (flyout) {
-        const hasFilter = this.core.getFilterModel().find(f => f.key === col.instanceID);
+        const hasFilter = this.core.getFilterModel().items.find(f => f.key === col.instanceID);
         if (hasFilter) {
           btn.classList.add("pte-hcell-menu-filter-active");
         }
@@ -3205,7 +3205,7 @@ export class GridRenderer {
   }
 
   _setFilterIndicators() {
-    const filteredCols = new Set(this.core.getFilterModel().map(f => f.col.instanceID));
+    const filteredCols = new Set(this.core.getFilterModel().items.map(f => f.col.instanceID));
     for (const col of this.core.getColumnModel().getLeaves()) {
       const hcell = document.getElementById(col.instanceID);
       if (!hcell) continue;

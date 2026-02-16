@@ -1,6 +1,16 @@
-import { FilterModel, IRowNode } from "../interfaces";
-import { FilterApplyReason, IFilterController, FilterControllerHooks, FilterPanelSpec, FilterRuntimeState, FilterValueSource, SetFilterOptions, SetFilterOptionType, FilterValueAsyncSourceParamsImpl } from "./types";
-import { FilterDef, FilterType, valuesNeededFor } from "../interfaces/filter";
+import { IRowNode } from "../interfaces/iRowNode";
+import {
+  FilterApplyReason,
+  IFilterController,
+  FilterControllerHooks,
+  FilterPanelSpec,
+  FilterRuntimeState,
+  FilterValueSource,
+  SetFilterOptions,
+  SetFilterOptionType,
+  FilterValueAsyncSourceParamsImpl,
+} from "./types";
+import { FilterDef, FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { isNullOrUndefined } from "../misc";
 
 export class FilterController implements IFilterController {
@@ -11,7 +21,7 @@ export class FilterController implements IFilterController {
 
   private state: FilterRuntimeState;
 
-  private initialModelSnapshot: FilterModel | null;
+  private initialModelSnapshot: FilterItem | null;
 
   private disposed = false;
 
@@ -22,7 +32,7 @@ export class FilterController implements IFilterController {
   private optionsAbort: AbortController | null = null;
   private optionsRequestId = 0;
 
-  constructor(spec: FilterPanelSpec, currentModel: FilterModel | null, hooks: FilterControllerHooks) {
+  constructor(spec: FilterPanelSpec, currentModel: FilterItem | null, hooks: FilterControllerHooks) {
     this.spec = spec;
     this.hooks = hooks;
     this.initialModelSnapshot = currentModel ? deepCloneModel(currentModel) : null;
@@ -685,7 +695,7 @@ export class FilterController implements IFilterController {
   // Draft -> Model
   // --------------------------
 
-  private computeModelFromDraft(): FilterModel | null {
+  private computeModelFromDraft(): FilterItem | null {
     const filters: FilterDef[] = [];
 
     for (const id of this.state.conditionOrder) {
@@ -716,7 +726,7 @@ export class FilterController implements IFilterController {
   // Helpers: model loading / reset
   // --------------------------
 
-  private loadModelIntoDraft(model: FilterModel): void {
+  private loadModelIntoDraft(model: FilterItem): void {
     const count = model.filters.length;
     this.state.join = model.join ?? "and";
 
@@ -804,7 +814,7 @@ function isEmptyScalar(v: any): boolean {
   return v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 }
 
-function deepCloneModel(m: FilterModel): FilterModel {
+function deepCloneModel(m: FilterItem): FilterItem {
   return {
     col: m.col,
     key: m.key,

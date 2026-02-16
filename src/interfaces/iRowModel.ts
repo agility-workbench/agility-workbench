@@ -10,8 +10,8 @@ export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagi
 export interface IRowModelRequestParams {
   readonly id: number;
   readonly reason: RowDataChangeReason;
-  readonly sortModels: SortModel[];
-  readonly filterModels: FilterModel[];
+  readonly sortModel: SortModel;
+  readonly filterModel: FilterModel;
   readonly paginate: boolean;
   readonly range: { start: number; end: number };
   readonly aggregateScope: AggregateScope;

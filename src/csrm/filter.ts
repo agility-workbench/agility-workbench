@@ -1,8 +1,8 @@
 import { Column } from "../column/column";
-import { FilterModel, IRowNode } from "../interfaces";
-import { FilterType, valuesNeededFor } from "../interfaces/filter";
+import { IRowNode } from "../interfaces/iRowNode";
+import { FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
 
-export function performFilter(filters: FilterModel[], rows: IRowNode[]): number[] {
+export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;

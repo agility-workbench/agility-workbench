@@ -30,12 +30,49 @@ export interface FilterDef {
   values: any;
 }
 
-export interface FilterModel {
+export interface FilterItem {
   col: Column
   key: string;
   filters: FilterDef[];
   // AND/OR between filters
   join?: "and" | "or";
+}
+
+export class FilterModel {
+  public id: string;
+
+  constructor(public items: FilterItem[] = []) {
+    this.id = crypto.randomUUID();
+    this.items = items;
+  }
+
+  addItem(item: FilterItem) {
+    const idx = this.items.findIndex(f => f.col.instanceID === item.col.instanceID);
+    if (idx >= 0) {
+      this.items[idx] = item;
+    } else {
+      this.items.push(item);
+    }
+    this.id = crypto.randomUUID();
+  }
+
+  removeItem(colID: string): boolean {
+    const idx = this.items.findIndex(f => f.col.instanceID === colID);
+    if (idx < 0) return false;
+    this.items.splice(idx, 1);
+    this.id = crypto.randomUUID();
+    return true;
+  }
+
+  setItems(items: FilterItem[]) {
+    this.items = items;
+    this.id = crypto.randomUUID();
+  }
+
+  clear() {
+    this.items = [];
+    this.id = crypto.randomUUID();
+  }
 }
 
 export type FilterAction = "apply" | "clear" | "reset" | "cancel";

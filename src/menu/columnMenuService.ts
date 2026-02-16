@@ -115,7 +115,7 @@ export class ColumnMenuService {
 
     switch (item.command) {
       case "sort.setMany":
-        return this.core.dispatch({ type: "sortModelSet", sortModel: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
+        return this.core.dispatch({ type: "sortModelSet", sortItems: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
       case "column.hideMany":
         return this.core.dispatch({ type: "columnVisibility", colIds: item.payload.colIDs, hidden: true });
       case "column.pinMany":
@@ -140,7 +140,7 @@ export class ColumnMenuService {
     let pinning: "left" | "right" | "mixed" | null = null;
     let exportable = true;
     const sorts: Record<string, "asc" | "desc"> = {};
-    for (const sort of this.core.getSortModel()) {
+    for (const sort of this.core.getSortModel().items) {
       sorts[sort.col.instanceID] = sort.dir;
     }
     for (const colID of colIDs) {

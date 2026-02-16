@@ -19,7 +19,7 @@ export class FilterMenuCoordinator {
 
     const ctrl = new FilterController(
       panelSpec,
-      this.core.getFilterModel().find(f => f.key === ctx.targetCol.key) || null,
+      this.core.getFilterModel().items.find(f => f.key === ctx.targetCol.key) || null,
       {
         applyModel: (colId, model, meta) => {
           console.log(model);

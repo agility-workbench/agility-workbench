@@ -105,9 +105,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
   }
 
-  private setSorts(sorts: SortModel[]): void {
+  private setSorts(sort: SortModel): void {
     this.sortedIdx = this.filteredIdx.slice();
-    const comparators = sorts.filter(s => s.col && s.dir !== null)
+    const comparators = sort.items.filter(s => s.col && s.dir !== null)
       .map(sort => {
         const { col, dir } = sort;
         const mult = dir === "desc" ? -1 : 1;
@@ -125,8 +125,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     });
   }
 
-  private applyFilters(filters: FilterModel[]): void {
-    this.filteredIdx = performFilter(filters, this.nodes);
+  private applyFilters(filter: FilterModel): void {
+    this.filteredIdx = performFilter(filter.items, this.nodes);
   }
 
   setAggregateScope(scope: AggregateScope): void {
@@ -138,10 +138,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   applyRequest(params: IRowModelRequestParams): void {
-    const { id, sortModels, filterModels, paginate, range, aggregateScope } = params;
+    const { id, sortModel, filterModel, paginate, range, aggregateScope } = params;
     this.listener.onLoadingStart(id);
-    if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModels);
-    if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModels);
+    if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModel);
+    if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModel);
     this.setPagination(paginate, range.start, range.end);
     this.rebuildView();
     this.listener.onRows(id, {

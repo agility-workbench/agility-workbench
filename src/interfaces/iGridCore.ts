@@ -89,8 +89,8 @@ export interface IGridCore {
   getCellDisplayValue(rowId: GridId, colId: ColId): string;
 
   /* ----- Models via facade getters (optional but handy) ----- */
-  getSortModel(): SortModel[];
-  getFilterModel(): FilterModel[];
+  getSortModel(): SortModel;
+  getFilterModel(): FilterModel;
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
 

@@ -1,9 +1,8 @@
-import { FilterModel } from "../interfaces/filter";
+import { FilterItem, FilterModel } from "../interfaces/filter";
 import { IRowModel } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
-import { ServerSideDataSource } from "../ssrm/serverSide";
-import { SortModel } from "../interfaces/sort";
+import { SortItem, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -39,8 +38,8 @@ export class GridCore implements IGridCore {
   private totalPages: number = 1;
   private pageSizes: number[] = [25, 50, 100];
 
-  private filters: FilterModel[] = [];
-  private sorts: SortModel[] = [];
+  private filters: FilterModel = new FilterModel();
+  private sorts: SortModel = new SortModel();
 
   private aggregateScope: AggregateScope = "all";
   private aggregates: AggregateModel[] = [];
@@ -152,11 +151,12 @@ export class GridCore implements IGridCore {
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "init",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     });
     this.emit("modelUpdated", { reason: "init", step: "all" });
   }
@@ -166,11 +166,12 @@ export class GridCore implements IGridCore {
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "refresh",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     });
   }
 
@@ -178,26 +179,18 @@ export class GridCore implements IGridCore {
     throw new Error("Method not implemented.");
   }
 
-  addFilterModel(filter: FilterModel) {
-    const idx = this.filters.findIndex(f => f.key === filter.key);
-    if (idx >= 0) {
-      this.filters[idx] = filter;
-    } else {
-      this.filters.push(filter);
-    }
+  addFilterModel(filter: FilterItem) {
+    this.filters.addItem(filter);
     this.applyFilters([filter.col.instanceID]);
   }
 
   removeFilterModel(col: Column) {
-    const idx = this.filters.findIndex(f => f.col.instanceID === col.instanceID);
-    if (idx >= 0) {
-      this.filters.splice(idx, 1);
-    }
+    if (!this.filters.removeItem(col.instanceID)) return;
     this.applyFilters([col.instanceID]);
   }
 
-  setFilterModel(filters: FilterModel[]) {
-    this.filters = filters;
+  setFilterModel(filters: FilterItem[]) {
+    this.filters.setItems(filters);
     this.applyFilters(filters.map(f => f.col.instanceID));
   }
 
@@ -205,22 +198,23 @@ export class GridCore implements IGridCore {
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "filter",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: this.resetPageBlocks(),
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     })
     this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
-  setSortModel(sorts: SortModel[]) {
+  setSortModel(sorts: SortItem[]) {
     sorts = sorts.slice();
     const changedColIDs: string[] = [];
     for (const sort of sorts) {
-      const col = this.columnModel.getById(sort.key);
-      if (!col) continue;
-      if (!col.sortable) continue;
+      const col = sort.col || this.columnModel.getById(sort.key);
+      if (!col || !col.sortable) continue;
+      sort.col = col;
       this.setSortModelForCol(col, sort.dir);
       changedColIDs.push(...col.getVisibleLeaves().map(c => c.instanceID));
     }
@@ -228,33 +222,20 @@ export class GridCore implements IGridCore {
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "sort",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     });
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
   }
 
-  private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc") {
-    const addSort = (col: Column, dir: "asc" | "desc" | null) => {
-      if (!col.sortable) return;
-      const curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
-      if (curr) {
-        if (dir) {
-          curr.dir = dir;
-        } else {
-          // remove sort
-          this.sorts = this.sorts.filter(s => s.col.instanceID !== col.instanceID);
-        }
-      } else if (dir) {
-        this.sorts.push({ col, key: col.key, dir });
-      }
-    };
-
+  private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc"): boolean {
+    const currSortID = this.sorts.id;
     const traverse = (column: Column) => {
-      addSort(column, dir);
+      if (column.sortable) this.sorts.updateItem(column, dir);
       if (column.children.length === 0) return;
       for (const child of column.getVisibleLeaves()) {
         traverse(child);
@@ -264,23 +245,24 @@ export class GridCore implements IGridCore {
     traverse(col);
 
     // Clean up any parent columns that are present in the sort model but shouldn't be since their children are now sorted individually
-    const parentCols = new Set<string>();
-    for (const sort of this.sorts) {
+    const parentCols = new Set<Column>();
+    for (const sort of this.sorts.items) {
       if (sort.col.children.length > 0) {
-        parentCols.add(sort.col.instanceID);
+        parentCols.add(sort.col);
       }
     }
-    this.sorts = this.sorts.filter(s => !parentCols.has(s.col.instanceID));
+    this.sorts.bulkUpdate([...parentCols], null);
+    return this.sorts.id !== currSortID;
   }
 
   toggleSort(col: Column) {
     if (!col.sortable) return;
-    let curr: SortModel | undefined;
+    let curr: SortItem | undefined;
     if (col.children.length > 0) {
       // Find the first child that has a sort applied on and use its dir as reference.
       const children = col.getVisibleLeaves();
       for (const child of children) {
-        for (const sort of this.sorts) {
+        for (const sort of this.sorts.items) {
           if (sort.col.instanceID === child.instanceID) {
             curr = sort;
             break;
@@ -289,19 +271,21 @@ export class GridCore implements IGridCore {
         if (curr) break;
       }
     } else {
-      curr = this.sorts.find(s => s.col.instanceID === col.instanceID);
+      curr = this.sorts.items.find(s => s.col.instanceID === col.instanceID);
     }
 
-    this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc");
+    if (!this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc")) return;
+
     const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "sort",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     });
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
   }
@@ -333,11 +317,12 @@ export class GridCore implements IGridCore {
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "pagination",
-      sortModels: this.sorts,
-      filterModels: this.filters,
+      sortModel: this.sorts,
+      filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
       aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
     });
   }
 
@@ -388,12 +373,12 @@ export class GridCore implements IGridCore {
     return col.formatValue(value, row);
   }
 
-  getSortModel(): SortModel[] {
-    return this.sorts.slice();
+  getSortModel(): SortModel {
+    return this.sorts;
   }
 
-  getFilterModel(): FilterModel[] {
-    return this.filters.slice();
+  getFilterModel(): FilterModel {
+    return this.filters;
   }
 
   getAggregateModel(): AggregateModel[] {
@@ -467,7 +452,7 @@ export class GridCore implements IGridCore {
         }
         break;
       case "sortModelSet":
-        this.setSortModel(action.sortModel);
+        this.setSortModel(action.sortItems);
         break;
       case "columnPin":
         this.columnModel.setPinneds(action.colIds, action.pinned);

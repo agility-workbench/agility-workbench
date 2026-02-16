@@ -1,11 +1,11 @@
 import { IRowNode } from "../interfaces/iRowNode";
 import {
-  FilterModel,
   FilterInputType,
   FilterOption,
   FilterParams,
   FilterType,
   FilterDef,
+  FilterItem,
 } from "../interfaces/filter";
 import { Column } from "../column/column";
 import { ColDef } from "../interfaces";
@@ -85,7 +85,7 @@ export type FilterApplyReason =
 
 export interface FilterControllerHooks {
   // commit to grid filtering pipeline (client filter or SSRM refresh)
-  applyModel: (col: Column, model: FilterModel | null, meta: { reason: FilterApplyReason }) => void;
+  applyModel: (col: Column, model: FilterItem | null, meta: { reason: FilterApplyReason }) => void;
 
   // for set filter fromRows
   getAllRows: (callback: (node: IRowNode, idx: number) => void) => void;
