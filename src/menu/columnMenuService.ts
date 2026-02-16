@@ -10,7 +10,6 @@ type CapSummary = {
   hideable: boolean;
   pinning: "left" | "right" | "mixed" | null;
   sortDir: "asc" | "desc" | "mixed" | null;
-  filtered: boolean;
   aggType: string;
   aggregated: boolean;
   colType?: ColumnType;
@@ -186,13 +185,11 @@ export class ColumnMenuService {
 
     if (sortDir === "mixed") sortable = false;
 
-    const filtered = this.core.getFilterModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
     const aggregated = this.core.getAggregateModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
 
     return {
       sortable,
       groupable,
-      filtered,
       sortDir,
       hideable,
       pinning,
