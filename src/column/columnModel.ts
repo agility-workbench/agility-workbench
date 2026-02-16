@@ -325,6 +325,15 @@ export class ColumnModel implements IColumnModel {
     return measureCtx.measure(text ?? "", font) + padding;
   }
 
+  identifyComparatorsFor(columns: Column[], rows: IRowNode[]): void {
+    for (const col of columns) {
+      const visibleLeaves = col.getVisibleLeaves();
+      for (const child of visibleLeaves) {
+        this.identifyComparator(child, rows);
+      }
+    }
+  }
+
   identifyComparators(rows: IRowNode[]): void {
     for (const col of this.leaves) {
       this.identifyComparator(col, rows);

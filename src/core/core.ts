@@ -506,6 +506,11 @@ export class GridCore implements IGridCore {
           case "toggleGroupExpand":
             if (this.columnModel.toggleGroupExpansion(col.instanceID)) {
               this.autosizeColumn(col.instanceID);
+              const allRows: IRowNode[] = [];
+              this.rowModel.forEachNode((node: IRowNode) => {
+                allRows.push(node);
+              });
+              this.columnModel.identifyComparatorsFor([col], allRows);
               this.emit("columnsChanged", { reason: "state", changedColIds: [col.instanceID] });
               this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
             }
