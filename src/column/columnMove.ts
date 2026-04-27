@@ -24,7 +24,7 @@ export class ColumnMove {
     let topLevelDrag = col;
     if (ancestors.length > 1) {
       // Find the top-level ancestor that is reorderable
-      for (const c of ancestors.slice().reverse()) {
+      for (const c of ancestors.slice(0, -1).reverse()) {
         if (c.getVisibleChildren().length > 1) {
           break;
         }
