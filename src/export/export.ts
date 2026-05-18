@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
+import { IRowNode } from "../interfaces/iRowNode";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -130,9 +131,9 @@ const resolveColumns = (config: ExportConfig): Column[] => {
   let cols = range ? baseCols.slice(range.colStart, range.colEnd + 1) : baseCols.slice();
   if (config.columnIds && config.columnIds.length > 0) {
     const allowed = new Set(config.columnIds);
-    cols = cols.filter(c => allowed.has(c.id));
+    cols = cols.filter(c => allowed.has(c.instanceID) || allowed.has(c.colId) || allowed.has(c.key));
   } else if (config.selectedColumnIDs && config.selectedColumnIDs.size > 0) {
-    cols = cols.filter(c => config.selectedColumnIDs?.has(c.id));
+    cols = cols.filter(c => config.selectedColumnIDs?.has(c.instanceID));
   }
   return cols;
 };
@@ -144,10 +145,24 @@ const resolveRows = (config: ExportConfig, colCount: number): any[] => {
   return rows.slice(range.rowStart, range.rowEnd + 1);
 };
 
+const getColumnAncestors = (columnTree: Column[], colId: string): Column[] => {
+  const visit = (cols: Column[], path: Column[]): Column[] => {
+    for (const col of cols) {
+      const nextPath = [...path, col];
+      if (col.instanceID === colId) return nextPath;
+      const found = visit(col.children, nextPath);
+      if (found.length > 0) return found;
+    }
+    return [];
+  };
+
+  return visit(columnTree, []);
+};
+
 const buildPaths = (columns: Column[], columnTree?: Column[]): Column[][] => {
   return columns.map(col => {
     if (columnTree && columnTree.length > 0) {
-      const ancestors = getColumnAncestors(columnTree, col.id);
+      const ancestors = getColumnAncestors(columnTree, col.instanceID);
       if (ancestors.length > 0) return ancestors;
     }
     return [col];
@@ -181,7 +196,7 @@ const buildHeaderLayout = (columns: Column[], columnTree?: Column[]): HeaderLayo
 
         let same = true;
         for (let d = 0; d <= level; d++) {
-          if (otherPath[d]?.id !== path[d]?.id) {
+          if (otherPath[d]?.instanceID !== path[d]?.instanceID) {
             same = false;
             break;
           }
@@ -221,13 +236,12 @@ const buildHeaderMatrix = (layout: HeaderLayout, columnCount: number): string[][
 };
 
 const getValueBundle = (row: any, col: Column): ValueBundle => {
-  const raw = col.valueGetter ? col.valueGetter(row) : row?.[col.key];
-  if (col.valueFormatter) {
-    return {
-      raw,
-      formatted: col.valueFormatter(raw, row),
-    };
-  }
+  const rowNode = row && typeof row === "object" && "data" in row
+    ? row as IRowNode
+    : { data: row } as IRowNode;
+  const raw = col.getValue(rowNode);
+  const formatted = col.formatValue(raw, rowNode);
+  if (formatted !== String(raw ?? "")) return { raw, formatted };
   if (raw == null) {
     return { raw, formatted: "" };
   }
@@ -237,7 +251,7 @@ const getValueBundle = (row: any, col: Column): ValueBundle => {
       return { raw: date, formatted: date.toISOString() };
     }
   }
-  return { raw, formatted: String(raw) };
+  return { raw, formatted };
 };
 
 const escapeCSVValue = (value: string): string => {
@@ -377,7 +391,7 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
     });
 
     sheet.columns = columns.map(sourceCol => {
-      const widthInfo = sourceCol ? config.columnWidths?.get(sourceCol.id) : null;
+      const widthInfo = sourceCol ? config.columnWidths?.get(sourceCol.instanceID) : null;
       const rawWidth = widthInfo?.width ?? sourceCol?.width;
       const width = rawWidth
         ? Math.max(10, Math.floor(rawWidth / 7))
