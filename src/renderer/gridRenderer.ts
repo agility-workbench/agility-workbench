@@ -5,11 +5,13 @@ import {
   AggregateType,
 } from "../interfaces/aggregate";
 import { MenuItem } from "../interfaces/menuItem";
+import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
 import { isFalse, isTrue } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
-import { ServerSideAggregationSource, ServerSideDataSource, ServerSideRequest, ServerSideRowModel } from "../ssrm/serverSide";
+import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
+import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { createElement, div } from "./element";
@@ -32,6 +34,8 @@ export class GridRenderer {
   rowHeight: number = 43;
   height?: number;
   _externalLoading: boolean = false;
+  _exportAsCSV: boolean = true;
+  _exportAsExcel: boolean = true;
   _loadingOverlay: HTMLDivElement;
 
   _maxDepth: number = 1;
@@ -146,7 +150,17 @@ export class GridRenderer {
   _filterColID: string | null;
 
   _poolSize: number = 0;
+  _startIndex: number = 0;
   _rowPool: RowPoolDef[];
+  private _aggregateRemoteValues: Map<string, any> | null = null;
+  private _aggregateRemoteDirty = true;
+  private _aggregateRequestSeq = 0;
+  private _aggregateFetchInFlight = false;
+  private _serverSidePendingRangeKeys: Set<string> = new Set();
+
+  private get rowModel() {
+    return this.core.getRowModel();
+  }
 
   _rafPending: boolean;
   _syncingScrollTargets: Set<HTMLDivElement>;
@@ -543,14 +557,16 @@ export class GridRenderer {
     return this.rowHeight;
   }
 
-  _computePoolSize(params: GridEventViewportChangedParams) {
+  _computePoolSize(rowHeightPx: number, overscanRowCount: number) {
     const bodyHeight = this._getBodyHeight();
-    return Math.max(1, Math.ceil(bodyHeight / params.rowHeightPx) + params.overscanRowCount * 2);
+    return Math.max(1, Math.ceil(bodyHeight / rowHeightPx) + overscanRowCount * 2);
   }
 
-  _maybeUpdatePoolSize(params: GridEventViewportChangedParams) {
-    this.rowHeight = params.rowHeightPx;
-    const poolSize = this._computePoolSize(params);
+  _maybeUpdatePoolSize(params?: GridEventViewportChangedParams) {
+    const rowHeightPx = params?.rowHeightPx ?? this.core.getOptions().rowHeight ?? this.rowHeight;
+    const overscanRowCount = params?.overscanRowCount ?? this.core.getOptions().overscanRowCount ?? 0;
+    this.rowHeight = rowHeightPx;
+    const poolSize = this._computePoolSize(rowHeightPx, overscanRowCount);
     if (poolSize === this._poolSize) return;
     this._poolSize = poolSize;
     this._rebuildRowPool();
@@ -561,18 +577,16 @@ export class GridRenderer {
 
   // ---------------- Public API ----------------
   togglePagination(pagination: boolean) {
+    const current = this.core.getPaginationInfo();
     const next = isTrue(pagination);
-    if (this._pagination === next) return;
-    this._pagination = next;
-    if (!this._pagination) this._pageIdx = 0;
+    if (current.paginationEnabled === next) return;
     this._resetScrollPosition();
-    this._recomputeView();
-    this._updateColumnWidths();
-    this._maybeUpdatePoolSize();
-    this._updateWindow(true, undefined);
-    if (this.rowModel.getType() === "serverSide") {
-      this._fetchServerSideRows("togglePagination");
-    }
+    this.core.dispatch({
+      type: "paginationSet",
+      enabled: next,
+      pageIndex: 0,
+      pageSize: current.pageSize,
+    });
   }
 
   setLoading(isLoading: boolean) {
@@ -582,40 +596,40 @@ export class GridRenderer {
     this._updateLoadingOverlay();
   }
 
-  setServerSideDataSource(dataSource?: ServerSideDataSource) {
-    if (this.rowModel.getType() !== "serverSide") return;
-    const rowModel = this.rowModel as ServerSideRowModel;
-    if (rowModel.serverDataSource === dataSource) return;
-    rowModel.serverDataSource = dataSource;
-    this._fetchServerSideRows("dataSourceChanged");
+  setServerSideDataSource(dataSource?: IServerSideDataSource) {
+    this.core.setServerSideDataSource(dataSource ?? null);
     this._markAggregatesDirty();
     this._renderAggregateRow();
   }
 
   setServerSideAggregation(aggregation?: ServerSideAggregationSource) {
-    if (this.rowModel.getType() !== "serverSide") return;
-    const rowModel = this.rowModel as ServerSideRowModel;
-    if (rowModel.serverAggregationSource === aggregation) return;
-    rowModel.serverAggregationSource = aggregation;
+    this.core.setServerSideAggregationSource(aggregation ?? null);
     this._markAggregatesDirty();
     this._renderAggregateRow();
   }
 
   refreshServerSideData() {
-    if (this.rowModel.getType() !== "serverSide") return;
-    this._fetchServerSideRows("manualRefresh");
+    if (this.core.getRowModel().getType() !== "serverSide") return;
+    this.core.refreshRows("refresh");
   }
 
   onDataChanged(params: GridEventRowsChangedParams) {
     // this._clearSelection();
     // this._resetScrollPosition();
     console.log(params);
+    if (params.reason === "viewport") {
+      this._serverSidePendingRangeKeys.delete(`${params.firstRowIndex}:${params.lastRowIndex}`);
+    } else {
+      this._serverSidePendingRangeKeys.clear();
+    }
     if (params.reason !== "sort") {
       this._recomputeView();
     }
     // this._updateColumnWidths();
     this._updateWindow(true, undefined, params);
-    this._resetScrollPosition();
+    if (this.rowModel.getType() !== "serverSide" || (params.reason !== "viewport" && params.firstRowIndex === 0)) {
+      this._resetScrollPosition();
+    }
     this._updatePaginationControls();
   }
 
@@ -623,6 +637,7 @@ export class GridRenderer {
     console.log(params);
     // this._clearSelection();
     // this._clearColumnSelection();
+    let rebuiltRows = false;
     if (params.reason === "sort") {
       const sorts = this.core.getSortModel().items;
       for (const colID of params.changedColIds || []) {
@@ -634,15 +649,21 @@ export class GridRenderer {
     } else if (params.reason === "visibility") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
+      rebuiltRows = true;
     } else if (params.reason === "state") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
       this._updateColumnWidths();
+      rebuiltRows = true;
     } else if (params.reason !== "resize") {
       this._buildRowPool();
       this._buildHeaderDOM(params.reason);
+      rebuiltRows = true;
     } else {
       this._updateColumnWidths(params.changedColIds || []);
+    }
+    if (rebuiltRows) {
+      this._updateWindow(true, undefined);
     }
   }
 
@@ -702,7 +723,7 @@ export class GridRenderer {
     let selectedColumnIDs: Set<string> | undefined;
 
     if (scope === "selection" && this._selectionRange) {
-      rows = this._viewRows.slice();
+      rows = this._getRowsForSelectionExport();
       selectionRange = { ...this._selectionRange };
     } else if (scope === "selectedColumns") {
       rows = this._getRowsForExport(true);
@@ -720,7 +741,7 @@ export class GridRenderer {
       selectedColumnIDs,
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
-      columnTree: this.columns,
+      columnTree: this.core.getColumnModel().getColumns(),
       columnWidths: this._columnWidths,
     };
   }
@@ -734,11 +755,31 @@ export class GridRenderer {
   }
 
   _getRowsForExport(includeAllRows: boolean): any[] {
-    if (includeAllRows && this.rowModel.getType() === "clientSide") {
-      const idx = (this.rowModel.sortedIdx && this.rowModel.sortedIdx.length > 0) ? this.rowModel.sortedIdx : this._viewIdx;
-      return idx.map(i => this.data[i]);
+    const rows: any[] = [];
+    if (includeAllRows) {
+      this.core.getRowModel().forEachNodeAfterFilterAndSort((node) => {
+        rows.push(node.data);
+      });
+      return rows;
     }
-    return this._viewIdx.map(i => this.data[i]);
+
+    for (let i = 0; i < this.core.getRowModel().getViewCount(); i++) {
+      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
+      if (node) rows.push(node.data);
+    }
+    return rows;
+  }
+
+  _getRowsForSelectionExport(): any[] {
+    if (!this._selectionRange) return [];
+    const rows: any[] = [];
+    const rowStart = Math.max(0, this._selectionRange.rowStart);
+    const rowEnd = Math.min(this.core.getRowModel().getViewCount() - 1, this._selectionRange.rowEnd);
+    for (let i = rowStart; i <= rowEnd; i++) {
+      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
+      if (node) rows.push(node.data);
+    }
+    return rows;
   }
 
   _defaultExportFileName(format: "csv" | "excel", options: ExportOptions): string {
@@ -758,13 +799,15 @@ export class GridRenderer {
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
-    const prevSize = this._aggregates.size;
+    const aggregates = this._getAggregateMap();
+    const prevSize = aggregates.size;
     if (!aggType) {
-      this._aggregates.delete(colID);
+      aggregates.delete(colID);
     } else {
-      this._aggregates.set(colID, aggType);
+      aggregates.set(colID, aggType);
     }
-    if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
+    this._setAggregateMap(aggregates);
+    if (prevSize === 0 && aggregates.size > 0 && this.core.getAggregateScope() === "none") {
       this._setAggregateScope("page");
     }
     this._markAggregatesDirty();
@@ -772,15 +815,17 @@ export class GridRenderer {
   }
 
   _aggregateSelectedColumns(aggType: AggregateType) {
-    const prevSize = this._aggregates.size;
+    const aggregates = this._getAggregateMap();
+    const prevSize = aggregates.size;
     const selectedCols = Array.from(this._selectedColumnIDs);
     for (const colID of selectedCols) {
       const col = this.core.getColumnModel().getById(colID);
       if (!col) continue;
       if (col.children.length > 0) continue; // skip parent columns
-      this._aggregates.set(colID, aggType);
+      aggregates.set(colID, aggType);
     }
-    if (prevSize === 0 && this._aggregates.size > 0 && this._aggregateScope === "none") {
+    this._setAggregateMap(aggregates);
+    if (prevSize === 0 && aggregates.size > 0 && this.core.getAggregateScope() === "none") {
       this._setAggregateScope("page");
     }
     this._markAggregatesDirty();
@@ -788,7 +833,7 @@ export class GridRenderer {
   }
 
   _showSparklinesForSelectedColumns(type: "line" | "bar" | "column") {
-    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.id));
+    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.instanceID));
     const numericLeaves = selectedLeaves.filter(col => col.isComputableType());
     if (numericLeaves.length < 2) return;
 
@@ -804,32 +849,34 @@ export class GridRenderer {
     const pinnedSet = new Set(numericLeaves.map(col => col.pinned ?? null));
     const pinned = pinnedSet.size === 1 ? (Array.from(pinnedSet)[0] as "left" | "right" | null) : null;
 
-    const sparklineCol = getColumnDef({
+    const sparklineCol: ColDef = {
       key,
       label: `Sparkline ${suffix > 1 ? suffix : ''}`,
       sparklineType: type,
       pinned: pinned ?? undefined,
       sortable: false,
-      filterable: false,
       groupable: false,
       minWidth: 120,
-      valueGetter: (row: any) => numericLeaves.map(col => getValue(row, col)),
-    });
+      valueGetter: (row: any) => numericLeaves.map(col => this._getRawCellValue(row, col)),
+    };
 
-    this.setColumns([...this.columns, sparklineCol], { preserveWidths: true });
+    this.core.dispatch({
+      type: "columnDefsSet",
+      defs: [...this.core.getColumnModel().getColumns().map(col => col.col), sparklineCol],
+    });
     this._clearColumnSelection();
   }
 
   _clearAggregates() {
-    if (this._aggregates.size === 0) return;
-    this._aggregates.clear();
+    if (this.core.getAggregateModel().length === 0) return;
+    this.core.setAggregateModel([]);
     this._setAggregateScope("none");
     this._markAggregatesDirty();
     this._renderAggregateRow();
   }
 
   _markAggregatesDirty() {
-    if (this.rowModel !== "serverSide") return;
+    if (this.rowModel.getType() !== "serverSide") return;
     this._aggregateRemoteDirty = true;
     this._aggregateRemoteValues = null;
     this._aggregateRequestSeq++;
@@ -837,8 +884,8 @@ export class GridRenderer {
   }
 
   _setAggregateScope(scope: AggregateScope) {
-    const changed = scope !== this._aggregateScope;
-    this._aggregateScope = scope;
+    const changed = scope !== this.core.getAggregateScope();
+    this.core.setAggregateScope(scope);
     if (this.aggregateScopeSelect) {
       this.aggregateScopeSelect.value = scope;
     }
@@ -850,19 +897,29 @@ export class GridRenderer {
   }
 
   _pruneAggregates() {
-    if (this._aggregates.size === 0) return;
-    const valid = new Set(this._leafColumns.map(c => c.id));
-    for (const key of Array.from(this._aggregates.keys())) {
+    const aggregates = this._getAggregateMap();
+    if (aggregates.size === 0) return;
+    const valid = new Set(this._leafColumns.map(c => c.instanceID));
+    for (const key of Array.from(aggregates.keys())) {
       if (!valid.has(key)) {
-        this._aggregates.delete(key);
+        aggregates.delete(key);
       }
     }
+    this._setAggregateMap(aggregates);
   }
 
   _getAggregateOpForColumn(col: Column): AggregateType {
-    const explicit = this._aggregates.get(col.id);
+    const explicit = this._getAggregateMap().get(col.instanceID);
     if (explicit != null) return explicit;
     return col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT;
+  }
+
+  private _getAggregateMap(): Map<string, AggregateType> {
+    return new Map(this.core.getAggregateModel().map(a => [a.key, a.type]));
+  }
+
+  private _setAggregateMap(aggregates: Map<string, AggregateType>) {
+    this.core.setAggregateModel(Array.from(aggregates.entries()).map(([key, type]) => ({ key, type })));
   }
 
   _valueToNumber(value: any): number | null {
@@ -876,13 +933,13 @@ export class GridRenderer {
       return rows.length;
     }
 
-    const rawValues = rows.map(row => getValue(row, col)).filter(v => v != null);
+    const rawValues = rows.map(row => this._getRawCellValue(row, col)).filter(v => v != null);
     if (rawValues.length === 0) {
       if (aggType === AggregateType.SUM || aggType === AggregateType.AVG || aggType === AggregateType.MEDIAN) return 0;
       return "";
     }
 
-    const collator = this._getCollator();
+    const collator = col.getCollator();
     const isNumeric = col.isComputableType();
 
     switch (aggType) {
@@ -962,30 +1019,39 @@ export class GridRenderer {
   _formatAggregateDisplay(col: Column, value: any): string {
     if (value == null) return "";
     try {
-      return formatValue(value, null as any, col);
+      return col.formatValue(value, { data: null } as IRowNode);
     } catch {
       return String(value);
     }
   }
 
-  _getAggregateRows(): any[] {
-    if (this._aggregateScope === "all" && this.rowModel.getType() === "clientSide") {
-      const idx = this.rowModel.sortedIdx && this.rowModel.sortedIdx.length > 0 ? this.rowModel.sortedIdx : this._viewIdx;
-      return idx.map(i => this.data[i]);
+  private _getRawCellValue(row: any, col: Column): any {
+    if (row && typeof row === "object" && "data" in row) {
+      return col.getValue(row as IRowNode);
     }
-    return this._viewIdx.map(i => this.data[i]);
+    return col.getValue({ data: row } as IRowNode);
+  }
+
+  _getAggregateRows(): any[] {
+    if (this.core.getAggregateScope() === "all") {
+      const rows: any[] = [];
+      this.core.getRowModel().forEachNodeAfterFilterAndSort((node) => rows.push(node.data));
+      return rows;
+    }
+    return this._getRowsForExport(false);
   }
 
   _maybeRequestServerAggregates() {
-    if (this.rowModel !== "serverSide") return;
-    if (!this._pagination) return;
-    if (this._aggregateScope !== "all") return;
-    if (!this._serverSideAggregation) return;
-    if (this._aggregates.size === 0) return;
+    if (this.rowModel.getType() !== "serverSide") return;
+    if (this.core.getAggregateScope() !== "all") return;
+    const serverAggregationSource = (this.rowModel as any).serverAggregationSource as ServerSideAggregationSource | undefined;
+    if (!serverAggregationSource) return;
+    const aggregateMap = this._getAggregateMap();
+    if (aggregateMap.size === 0) return;
     if (!this._aggregateRemoteDirty && this._aggregateRemoteValues) return;
     if (this._aggregateFetchInFlight) return;
 
-    const aggregates = Array.from(this._aggregates.entries())
+    const aggregates = Array.from(aggregateMap.entries())
       .map(([colId, type]) => {
         const col = this.core.getColumnModel().getById(colId);
         if (!col) return null;
@@ -1000,48 +1066,49 @@ export class GridRenderer {
       aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateModel>);
     }
 
-    const filters = this._filters
-      .map(f => {
-        const col = this.core.getColumnModel().getById(f.key);
-        if (!col) return null;
-        return {
-          key: col.key,
-          type: f.type,
-          value: f.v,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["filters"];
+    const filters: ServerSideRequest["filters"] = this.core.getFilterModel().items.map(item => ({
+      key: item.col.key,
+      filters: item.filters.map(filter => ({ type: filter.type, values: filter.values })),
+      join: item.join,
+    }));
 
-    const sorts = this._sorts
-      .map(s => {
-        const col = this.core.getColumnModel().getById(s.key);
-        if (!col) return null;
-        return {
-          key: col.key,
-          dir: s.dir,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["sorts"];
+    const sorts: ServerSideRequest["sorts"] = this.core.getSortModel().items.map(item => ({
+      key: item.col.key,
+      dir: item.dir,
+    }));
 
     this._aggregateFetchInFlight = true;
     this._aggregateRemoteDirty = false;
     const requestId = ++this._aggregateRequestSeq;
-    Promise.resolve(this._serverSideAggregation({
-      aggregates,
-      filters,
-      sorts,
-      scope: "all",
-      page: this._pageIdx,
-      pageSize: this._paginationPageSize,
-    }))
+    new Promise<any>((resolve, reject) => {
+      const maybePromise = serverAggregationSource({
+        request: {
+          aggregates,
+          aggregateScope: "all",
+          filters,
+          sorts,
+          startRow: undefined,
+          endRow: undefined,
+        },
+        success: resolve,
+        error: reject,
+      });
+      Promise.resolve(maybePromise)
+        .then((maybeResult) => {
+          if (maybeResult && typeof maybeResult === "object") {
+            resolve(maybeResult);
+          }
+        })
+        .catch(reject);
+    })
       .then((result) => {
         if (requestId !== this._aggregateRequestSeq) return;
         const valuesObj = (result as any)?.values ?? result ?? {};
         const map = new Map<string, any>();
         for (const col of this._leafColumns) {
-          const v = valuesObj?.[col.id] ?? valuesObj?.[col.key];
+          const v = valuesObj?.[col.instanceID] ?? valuesObj?.[col.key];
           if (v != null) {
-            map.set(col.id, v);
+            map.set(col.instanceID, v);
           }
         }
         this._aggregateRemoteValues = map;
@@ -1059,11 +1126,13 @@ export class GridRenderer {
 
   _renderAggregateRow() {
     this._pruneAggregates();
-    const shouldShow = this._aggregateScope !== "none" && this._aggregates.size > 0;
+    const aggregateMap = this._getAggregateMap();
+    const aggregateScope = this.core.getAggregateScope();
+    const shouldShow = aggregateScope !== "none" && aggregateMap.size > 0;
     const wasVisible = this._aggregateVisible;
     this._aggregateVisible = shouldShow;
     if (this.aggregateClearBtn) {
-      this.aggregateClearBtn.disabled = this._aggregates.size === 0;
+      this.aggregateClearBtn.disabled = aggregateMap.size === 0;
     }
 
     this.aggregateRow.classList.toggle("visible", shouldShow);
@@ -1071,27 +1140,28 @@ export class GridRenderer {
 
     if (!shouldShow) {
       if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+        this.aggregateScopeSelect.disabled = aggregateMap.size === 0;
       }
       if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.value = this._aggregateScope;
+        this.aggregateScopeSelect.value = aggregateScope;
       }
       if (wasVisible !== shouldShow) {
-        this._updateAllColumnWidths();
+        this._updateColumnWidths();
         this._maybeUpdatePoolSize();
       }
       return;
     }
 
     const values = new Map<string, string>();
-    if (this.rowModel.getType() === "serverSide" && this._aggregateScope === "all" && this._serverSideAggregation) {
+    const serverAggregationSource = (this.rowModel as any).serverAggregationSource as ServerSideAggregationSource | undefined;
+    if (this.rowModel.getType() === "serverSide" && aggregateScope === "all" && serverAggregationSource) {
       this._maybeRequestServerAggregates();
       const remote = this._aggregateRemoteValues;
       for (const col of this._leafColumns) {
         if (col.hidden) continue;
-        const v = remote?.get(col.id);
+        const v = remote?.get(col.instanceID);
         const display = v == null ? "" : this._formatAggregateDisplay(col, v);
-        values.set(col.id, display ?? "");
+        values.set(col.instanceID, display ?? "");
       }
     } else {
       const rows = this._getAggregateRows();
@@ -1100,7 +1170,7 @@ export class GridRenderer {
         const op = this._getAggregateOpForColumn(col);
         const raw = this._calculateAggregate(col, op, rows);
         const display = this._formatAggregateDisplay(col, raw);
-        values.set(col.id, display ?? "");
+        values.set(col.instanceID, display ?? "");
       }
     }
 
@@ -1112,7 +1182,7 @@ export class GridRenderer {
         const cell = cells[idx];
         if (!cell) continue;
         if (cell.children.length > 0) cell.innerHTML = "";
-        const aggFn = this._aggregates.get(col.id) || AggregateType.COUNT;
+        const aggFn = aggregateMap.get(col.instanceID) || AggregateType.COUNT;
         const icon = document.createElement("div");
         icon.className = "pte-aggregate-icon";
         let suffix = "";
@@ -1124,10 +1194,10 @@ export class GridRenderer {
         cell.appendChild(icon);
         const content = document.createElement("div");
         content.className = "pte-aggregate-cell-content";
-        content.textContent = values.get(col.id) ?? "";
+        content.textContent = values.get(col.instanceID) ?? "";
         cell.appendChild(content);
         if (content.scrollWidth > content.clientWidth) {
-          content.title = values.get(col.id) ?? "";
+          content.title = values.get(col.instanceID) ?? "";
         }
       }
     };
@@ -1137,11 +1207,11 @@ export class GridRenderer {
     apply(this._aggregateRightCells, this._rightPinnedLeafColumns);
 
     if (this.aggregateScopeSelect) {
-      this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+      this.aggregateScopeSelect.disabled = aggregateMap.size === 0;
     }
 
     if (wasVisible !== shouldShow) {
-      this._updateAllColumnWidths();
+      this._updateColumnWidths();
       this._maybeUpdatePoolSize();
     }
   }
@@ -1448,12 +1518,12 @@ export class GridRenderer {
       opt.textContent = optDef.label;
       this.aggregateScopeSelect.appendChild(opt);
     }
-    this.aggregateScopeSelect.value = this._aggregateScope;
+    this.aggregateScopeSelect.value = this.core.getAggregateScope();
     this.aggregateScopeSelect.addEventListener("change", (e) => {
       const next = (e.target as HTMLSelectElement).value as AggregateScope;
       this._setAggregateScope(next);
     });
-    this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+    this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
 
     this.aggregateClearBtn = document.createElement("button");
     this.aggregateClearBtn.type = "button";
@@ -1505,6 +1575,7 @@ export class GridRenderer {
       const next = Number((e.target as HTMLSelectElement).value);
       if (!Number.isFinite(next) || next <= 0) return;
       if (next === this.core.getPaginationInfo().pageSize) return;
+      this._resetScrollPosition();
       this.core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 0, pageSize: next });
     });
     sizeSection.appendChild(sizeLabel);
@@ -1608,11 +1679,11 @@ export class GridRenderer {
       this.pageSizeSelect.value = String(pageSize);
     }
     if (this.aggregateScopeSelect) {
-      this.aggregateScopeSelect.value = this._aggregateScope;
-      this.aggregateScopeSelect.disabled = this._aggregates.size === 0;
+      this.aggregateScopeSelect.value = this.core.getAggregateScope();
+      this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
     }
     if (this.aggregateClearBtn) {
-      this.aggregateClearBtn.disabled = this._aggregates.size === 0;
+      this.aggregateClearBtn.disabled = this.core.getAggregateModel().length === 0;
     }
 
     this._populatePageSelect(pageIndex, totalPageCount);
@@ -1631,6 +1702,7 @@ export class GridRenderer {
   }
 
   _goToPage(pageIdx: number) {
+    this._resetScrollPosition();
     this.core.dispatch({ type: "paginationSet", enabled: true, pageIndex: pageIdx, pageSize: this.core.getPaginationInfo().pageSize });
   }
 
@@ -1703,9 +1775,9 @@ export class GridRenderer {
         if (col.hidden) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.id);
+        const meta = this._leafColumnLookup.get(col.instanceID);
         if (meta) {
-          cell.dataset.colId = col.id;
+          cell.dataset.colId = col.instanceID;
           cell.dataset.colIdx = String(meta.globalIndex);
         } else {
           cell.dataset.colIdx = String(leftIdx);
@@ -1727,9 +1799,9 @@ export class GridRenderer {
       if (col.hidden) continue;
       const cell = document.createElement("div");
       cell.className = "pte-cell pte-aggregate-cell";
-      const meta = this._leafColumnLookup.get(col.id);
+      const meta = this._leafColumnLookup.get(col.instanceID);
       if (meta) {
-        cell.dataset.colId = col.id;
+        cell.dataset.colId = col.instanceID;
         cell.dataset.colIdx = String(meta.globalIndex);
       } else {
         cell.dataset.colIdx = String(centerIdx);
@@ -1749,9 +1821,9 @@ export class GridRenderer {
         if (col.hidden) continue;
         const cell = document.createElement("div");
         cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.id);
+        const meta = this._leafColumnLookup.get(col.instanceID);
         if (meta) {
-          cell.dataset.colId = col.id;
+          cell.dataset.colId = col.instanceID;
           cell.dataset.colIdx = String(meta.globalIndex);
         } else {
           cell.dataset.colIdx = String(rightIdx);
@@ -1850,7 +1922,7 @@ export class GridRenderer {
           cell.className = "pte-cell";
           const meta = this.core.getColumnModel().leafColumnLookup.get(col.instanceID);
           if (meta) {
-            cell.dataset.colId = col.id;
+            cell.dataset.colId = col.instanceID;
             cell.dataset.colIdx = String(meta.globalIndex);
           }
           if (col.isComputableType()) cell.classList.add('pte-cell-right-aligned');
@@ -1907,29 +1979,29 @@ export class GridRenderer {
     });
   }
 
-  _renderCell(cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<IRowNode>) {
+  _renderCell(cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) {
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     const renderer = col.cellRenderer;
     const rendererParams = getCellRendererParams(rawValue, displayValue, row, 0, col, cell, null);
     if (!renderer) {
-      const rec: RendererRecord | undefined = cellRendererMap.get(col.id);
+      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
       if (rec) {
         rec.runtime.destroy();
-        cellRendererMap.delete(col.id);
+        cellRendererMap.delete(col.instanceID);
       }
       // text-only update
       cell.textContent = displayValue;
       return;
     }
 
-    const rec: RendererRecord | undefined = cellRendererMap.get(col.id);
+    const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
     // If renderer changed or missing, (re)create
     if (!rec || rec.renderer !== renderer) {
       rec?.runtime.destroy();
       const runtime = createRendererRuntime(renderer, rendererParams);
       cell.replaceChildren(runtime.gui);
-      cellRendererMap.set(col.id, { renderer, runtime });// Same renderer instance: refresh
+      cellRendererMap.set(col.instanceID, { renderer, runtime });// Same renderer instance: refresh
       return;
     }
 
@@ -1949,7 +2021,7 @@ export class GridRenderer {
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
     const total = this.core.getRowModel().getViewCount();
-    const scrollTop = scrollSrc?.scrollTop || 0;
+    const scrollTop = scrollSrc?.scrollTop ?? this.scroller.scrollTop ?? this.vScroll.scrollTop ?? 0;
 
     const syncTargets: HTMLDivElement[] = [];
     if (scrollSrc !== this.leftScroller && this.leftScroller.scrollTop !== scrollTop) {
@@ -1974,6 +2046,28 @@ export class GridRenderer {
       0,
       Math.floor(scrollTop / this.core.options.rowHeight) - this.core.options.overscanRowCount
     );
+    const endIndex = Math.min(total, startIndex + this._rowPool.length);
+
+    if (this.rowModel.getType() === "serverSide" && endIndex > startIndex) {
+      let firstMissingRow = -1;
+      for (let i = startIndex; i < endIndex; i++) {
+        if (!this.core.getRowModel().getRowNodeAtViewIndex(i)) {
+          firstMissingRow = i;
+          break;
+        }
+      }
+
+      if (firstMissingRow >= 0) {
+        const blockSize = Math.max(1, this.core.options.serverSideBlockSize);
+        const blockStart = Math.floor(firstMissingRow / blockSize) * blockSize;
+        const blockEnd = Math.min(total, blockStart + blockSize);
+        const key = `${blockStart}:${blockEnd}`;
+        if (!this._serverSidePendingRangeKeys.has(key)) {
+          this._serverSidePendingRangeKeys.add(key);
+          this.core.refreshRows("viewport", { start: blockStart, end: blockEnd });
+        }
+      }
+    }
 
     const startIdx = params?.firstRowIndex ?? -1;
     if (!forcePatch && startIndex === startIdx) {
@@ -1981,7 +2075,7 @@ export class GridRenderer {
       return;
     }
 
-    // this._startIndex = startIndex;
+    this._startIndex = startIndex;
 
     const offsetY = startIndex * this.rowHeight;
     this.leftViewport.style.transform = `translateY(${offsetY}px)`;
@@ -2005,7 +2099,13 @@ export class GridRenderer {
       if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
       if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
       const row = this.core.getRowModel().getRowNodeAtViewIndex(viewIndex);
-      if (!row) continue;
+      if (!row) {
+        slot.rowEl.style.display = "none";
+        if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
+        if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
+        this._applySelectionToSlot(slot, null);
+        continue;
+      }
       slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
 
@@ -2046,14 +2146,15 @@ export class GridRenderer {
     const range = this._selectionRange;
     const rowSelected = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const firstRow = viewIndex === 0;
-    const lastRow = viewIndex != null ? viewIndex === this._viewIdx.length - 1 : false;
+    const lastRow = viewIndex != null ? viewIndex === this.core.getRowModel().getViewCount() - 1 : false;
 
     const apply = (cells: HTMLDivElement[], order: number[]) => {
       if (!cells) return;
       for (let i = 0; i < cells.length; i++) {
         const colIdx = order[i];
-        const leafCol = Number.isFinite(colIdx) ? this.core.leaves[colIdx] : null;
-        const colId = leafCol?.id;
+        const leaves = this.core.getColumnModel().getLeaves();
+        const leafCol = Number.isFinite(colIdx) ? leaves[colIdx] : null;
+        const colId = leafCol?.instanceID;
         const colSelected = colId ? this._selectedColumnIDs.has(colId) : false;
 
         const rangeSelected = !!rowSelected && range && Number.isFinite(colIdx) && colIdx >= range.colStart && colIdx <= range.colEnd;
@@ -2064,16 +2165,16 @@ export class GridRenderer {
         const prevSelected = (() => {
           if (Number.isFinite(prevColIdx)) {
             if (range && prevColIdx >= range.colStart && prevColIdx <= range.colEnd) return true;
-            const prevCol = this.core.leaves[prevColIdx];
-            if (prevCol && this._selectedColumnIDs.has(prevCol.id)) return true;
+            const prevCol = leaves[prevColIdx];
+            if (prevCol && this._selectedColumnIDs.has(prevCol.instanceID)) return true;
           }
           return false;
         })();
         const nextSelected = (() => {
           if (Number.isFinite(nextColIdx)) {
             if (range && nextColIdx >= range.colStart && nextColIdx <= range.colEnd) return true;
-            const nextCol = this.core.leaves[nextColIdx];
-            if (nextCol && this._selectedColumnIDs.has(nextCol.id)) return true;
+            const nextCol = leaves[nextColIdx];
+            if (nextCol && this._selectedColumnIDs.has(nextCol.instanceID)) return true;
           }
           return false;
         })();
@@ -2102,7 +2203,7 @@ export class GridRenderer {
   }
 
   _refreshSelectionStyles() {
-    const total = this.core.rowModel.getViewCount();
+    const total = this.core.getRowModel().getViewCount();
     for (let i = 0; i < this._rowPool.length; i++) {
       const viewIndex = this._startIndex + i;
       const slot = this._rowPool[i];
@@ -2131,23 +2232,24 @@ export class GridRenderer {
     const keep = new Set<string>();
     const visit = (cols: Column[]) => {
       for (const col of cols) {
-        if (this._selectedColumnIDs.has(col.id)) keep.add(col.id);
+        if (this._selectedColumnIDs.has(col.instanceID)) keep.add(col.instanceID);
         if (col.children) visit(col.children);
       }
     };
-    visit(this.core.columns);
+    visit(this.core.getColumnModel().getColumns());
 
     this._selectedColumnIDs = keep;
   }
 
   _clampSelectionToView() {
     if (!this._selectionRange) return;
-    if (this._viewIdx.length === 0 || this._leafColumns.length === 0) {
+    const viewCount = this.core.getRowModel().getViewCount();
+    if (viewCount === 0 || this._leafColumns.length === 0) {
       this._clearSelection();
       return;
     }
 
-    const maxRow = this._viewIdx.length - 1;
+    const maxRow = viewCount - 1;
     const maxCol = this._leafColumns.length - 1;
 
     const rowStart = Math.min(this._selectionRange.rowStart, maxRow);
@@ -2187,7 +2289,7 @@ export class GridRenderer {
   }
 
   _startSelectionFromCell(location: { viewIdx: number; colIdx: number }) {
-    if (location.viewIdx < 0 || location.viewIdx >= this._viewIdx.length) return;
+    if (location.viewIdx < 0 || location.viewIdx >= this.core.getRowModel().getViewCount()) return;
     if (location.colIdx < 0 || location.colIdx >= this._leafColumns.length) return;
     this._selectionAnchor = { row: location.viewIdx, colIdx: location.colIdx };
     this._selectionRange = {
@@ -2202,12 +2304,13 @@ export class GridRenderer {
 
   _updateSelectionRange(endRow: number, endCol: number) {
     if (!this._selectionAnchor) return;
-    if (this._viewIdx.length === 0 || this._leafColumns.length === 0) {
+    const viewCount = this.core.getRowModel().getViewCount();
+    if (viewCount === 0 || this._leafColumns.length === 0) {
       this._clearSelection();
       return;
     }
 
-    const maxRow = this._viewIdx.length - 1;
+    const maxRow = viewCount - 1;
     const maxCol = this._leafColumns.length - 1;
 
     const nextRow = Math.min(Math.max(endRow, 0), maxRow);
@@ -2647,18 +2750,18 @@ export class GridRenderer {
 
   _applyColumnSelectionStyles() {
     const leafIndexMap = new Map<string, number>();
-    this.core.leaves.forEach((c, idx) => leafIndexMap.set(c.id, idx));
+    this.core.getColumnModel().getLeaves().forEach((c, idx) => leafIndexMap.set(c.instanceID, idx));
 
     const selectedLeafIdx = new Set<number>();
-    this.core.leaves.forEach((c, idx) => {
-      if (this._selectedColumnIDs.has(c.id)) selectedLeafIdx.add(idx);
+    this.core.getColumnModel().getLeaves().forEach((c, idx) => {
+      if (this._selectedColumnIDs.has(c.instanceID)) selectedLeafIdx.add(idx);
     });
 
     const getRange = (col: Column | null): [number, number] | null => {
       if (!col) return null;
       if (col.hidden) return null;
       if (!col.children || col.children.length === 0) {
-        const idx = leafIndexMap.get(col.id);
+        const idx = leafIndexMap.get(col.instanceID);
         return idx == null ? null : [idx, idx];
       }
       let min = Number.POSITIVE_INFINITY;
@@ -2666,7 +2769,7 @@ export class GridRenderer {
       const visit = (c: Column) => {
         if (isTrue(c.hidden)) return;
         if (!c.children || c.children.length === 0) {
-          const idx = leafIndexMap.get(c.id);
+          const idx = leafIndexMap.get(c.instanceID);
           if (idx == null) return;
           min = Math.min(min, idx);
           max = Math.max(max, idx);
@@ -2681,18 +2784,18 @@ export class GridRenderer {
 
     const headers = this.root.querySelectorAll<HTMLElement>(".pte-hcell");
     headers.forEach(h => {
-      const col = this.core.getColumnById(h.id);
-      const selected = !!col && this._selectedColumnIDs.has(col.id);
+      const col = this.core.getColumnModel().getById(h.id);
+      const selected = !!col && this._selectedColumnIDs.has(col.instanceID);
       const range = col ? getRange(col) : null;
       const leftSelected = !!range && selectedLeafIdx.has(range[0] - 1);
       const rightSelected = !!range && selectedLeafIdx.has(range[1] + 1);
 
       let parent = false;
       if (selected) {
-        const tree = this.core.getAncestors(col);
+        const tree = this.core.getColumnModel().getAncestors(col.instanceID);
         const treeLen = tree.length;
         if (treeLen > 1) {
-          parent = this._selectedColumnIDs.has(tree[treeLen - 2].id);
+          parent = this._selectedColumnIDs.has(tree[treeLen - 2].instanceID);
         }
       }
 
@@ -2762,14 +2865,7 @@ export class GridRenderer {
   }
 
   _toggleColumnGroupExpanded(colID: string) {
-    const col = this.core.getColumnModel().getById(colID);
-    if (!col || !col.children || col.children.length === 0) return;
-    if (col.groupExpandState == "open") {
-      col.groupExpandState = "closed";
-    } else {
-      col.groupExpandState = "open";
-    }
-    this.setColumns(this.columns, { preserveWidths: true });
+    this.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: colID });
   }
 
   // ---------------- Menus ----------------
@@ -2923,7 +3019,8 @@ export class GridRenderer {
 
     document.addEventListener("mousedown", (e) => {
       if (this._filterOverlay.style.display === "none") return;
-      if (!this._filterOverlay.contains(e.target)) this._closeFilter();
+      const target = e.target as Node | null;
+      if (!this._filterOverlay.contains(target)) this._closeFilter();
     });
 
     document.addEventListener("keydown", (e) => {
@@ -2948,7 +3045,7 @@ export class GridRenderer {
   }
 
   _updateLoadingOverlay() {
-    const shouldShow = this._serverLoading || this._externalLoading;
+    const shouldShow = this._externalLoading;
     if (shouldShow) {
       this._loadingOverlay.classList.remove("hidden");
     } else {
@@ -2957,14 +3054,7 @@ export class GridRenderer {
   }
 
   _setServerLoading(isLoading: boolean, requestId?: number) {
-    if (isLoading) {
-      if (this.rowModel !== "serverSide") return;
-      this._serverLoading = true;
-      this._updateLoadingOverlay();
-      return;
-    }
-    if (requestId != null && requestId !== this._serverRequestSeq) return;
-    this._serverLoading = false;
+    this._externalLoading = isLoading;
     this._updateLoadingOverlay();
   }
 
@@ -3176,32 +3266,11 @@ export class GridRenderer {
 
   async _fetchServerSideRows(_reason: string) {
     if (this.rowModel.getType() !== "serverSide" || !this.rowModel.isValid()) return;
-    const success = await this.rowModel.refreshData();
-    if (!success) {
-      this._setServerLoading(false);
-      return;
-    }
-    this._recomputeView();
-    this._updateWindow(true, undefined);
-    this._setServerLoading(true);
-
+    this.core.refreshRows("refresh");
   }
 
   _updateFilterIndicators() {
-    for (const col of this._centerLeafColumns) {
-      const hasFilter = this._filters.find(f => f.key === col.id);
-      const hcell = document.getElementById(col.id);
-      if (hcell && hcell.id === col.id) {
-        const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
-        if (menuBtn) {
-          if (hasFilter) {
-            menuBtn.classList.add("active");
-          } else {
-            menuBtn.classList.remove("active");
-          }
-        }
-      }
-    }
+    this._setFilterIndicators();
   }
 
   _setFilterIndicators() {
@@ -3216,9 +3285,7 @@ export class GridRenderer {
   }
 
   _onFilterModelChanged() {
-    this._filterDirty = true;
-    this._sortDirty = true; // filter affects sort view
-    this._updateFilterIndicators();
+    this._setFilterIndicators();
     if (this.rowModel.getType() === "serverSide") {
       this._fetchServerSideRows("filterChanged");
       return;

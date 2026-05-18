@@ -5,7 +5,7 @@ import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "aggregateScope";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope";
 
 export interface IRowModelRequestParams {
   readonly id: number;
@@ -14,6 +14,7 @@ export interface IRowModelRequestParams {
   readonly filterModel: FilterModel;
   readonly paginate: boolean;
   readonly range: { start: number; end: number };
+  readonly loadRange?: { start: number; end: number };
   readonly aggregateScope: AggregateScope;
   readonly aggregates: AggregateModel[];
 }

@@ -25,5 +25,9 @@ export function getGridOptions(props: GridReactProps): GridOptions {
   if (props.pagination) options.pagination = props.pagination;
   if (props.pageSize) options.pageSize = props.pageSize;
   if (props.pageSizes) options.pageSizes = props.pageSizes;
+  if (props.serverSideBlockSize) options.serverSideBlockSize = props.serverSideBlockSize;
+  if (props.rowModelType) options.rowModelType = props.rowModelType;
+  if (props.serverSideDataSource) options.serverSideDataSource = props.serverSideDataSource;
+  if (props.serverSideAggregationSource) options.serverSideAggregationSource = props.serverSideAggregationSource;
   return options;
 }

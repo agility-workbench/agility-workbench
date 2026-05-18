@@ -1,3 +1,6 @@
+import { RowModelType } from "./iRowModel";
+import { IServerSideDataSource } from "./serverSide";
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -11,6 +14,10 @@ export interface GridOptions {
   pagination?: boolean;
   pageSize?: number;
   pageSizes?: number[];
+  serverSideBlockSize?: number;
+  rowModelType?: RowModelType;
+  serverSideDataSource?: IServerSideDataSource;
+  serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
 }
 
 export interface InternalGridOptions extends GridOptions {
@@ -26,4 +33,5 @@ export interface InternalGridOptions extends GridOptions {
   pagination: boolean;
   pageSize: number;
   pageSizes: number[];
+  serverSideBlockSize: number;
 }

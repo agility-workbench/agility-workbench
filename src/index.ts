@@ -12,6 +12,20 @@ export type {
 } from "./interfaces/iRowModel";
 
 export type {
+  IServerSideAggregationParams,
+  IServerSideAggregationRequest,
+  IServerSideAggregationResult,
+  IServerSideDataSource,
+  IServerSideFilter,
+  IServerSideGetRowsParams,
+  IServerSideRequest,
+  IServerSideResult,
+  IServerSideSort,
+} from "./interfaces/serverSide";
+
+export { ServerSideRowModel } from "./ssrm/serverSide";
+
+export type {
   FormatterOptionsParams,
   ValueFormatterParams,
 } from "./column/formatters";

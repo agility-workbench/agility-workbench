@@ -1,10 +1,24 @@
 import { AggregateModel, AggregateScope } from "./aggregate";
-import { FilterModel } from "./filter";
-import { SortModel } from "./sort";
+import { FilterType } from "./filter";
+import { SortDir } from "./sort";
+
+export interface IServerSideFilter {
+  key: string;
+  filters: Array<{
+    type: FilterType;
+    values: any;
+  }>;
+  join?: "and" | "or";
+}
+
+export interface IServerSideSort {
+  key: string;
+  dir: SortDir;
+}
 
 export interface IServerSideRequest {
-  filters: FilterModel[];
-  sorts: SortModel[];
+  filters: IServerSideFilter[];
+  sorts: IServerSideSort[];
   startRow: number | undefined;
   endRow: number | undefined;
 }
@@ -17,8 +31,8 @@ export interface IServerSideResult {
 export interface IServerSideAggregationRequest {
   aggregates: AggregateModel[];
   aggregateScope: AggregateScope;
-  filters: FilterModel[];
-  sorts: SortModel[];
+  filters: IServerSideFilter[];
+  sorts: IServerSideSort[];
   startRow: number | undefined;
   endRow: number | undefined;
 }
@@ -42,7 +56,7 @@ export interface IServerSideAggregationParams {
 }
 
 export interface IServerSideDataSource {
-  getRows: (request: IServerSideGetRowsParams) => void;
+  getRows: (request: IServerSideGetRowsParams) => void | IServerSideResult | Promise<void | IServerSideResult>;
 
-  getAggregates?: (request: IServerSideAggregationParams) => void;
+  getAggregates?: (request: IServerSideAggregationParams) => void | IServerSideAggregationResult | Promise<void | IServerSideAggregationResult>;
 }

@@ -1,7 +1,8 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel } from "../interfaces/iRowModel";
+import { IRowModel, RowDataChangeReason } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
+import { ServerSideRowModel } from "../ssrm/serverSide";
 import { SortItem, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
@@ -14,13 +15,14 @@ import {
   GridEventPaginationChangedParams,
   Unsubscribe,
 } from "../events/events";
-import { isNullOrUndefined, isTrue } from "../misc";
+import { isTrue } from "../misc";
 import { ColDef } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { GridAction } from "../events/action";
 import { IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
+import { IServerSideDataSource } from "../interfaces/serverSide";
 
 export class GridCore implements IGridCore {
   readonly id: string;
@@ -51,7 +53,9 @@ export class GridCore implements IGridCore {
     this.options = this.initializeGridOptions(options);
     this.id = crypto.randomUUID();
     this.columnModel = new ColumnModel(this.options);
-    this.rowModel = new ClientSideRowModel(options, this);
+    this.rowModel = options.rowModelType === "serverSide"
+      ? new ServerSideRowModel(options, this, options.serverSideDataSource, options.serverSideAggregationSource)
+      : new ClientSideRowModel(options, this);
     this.paginationEnabled = this.options.pagination;
     this.pageEndIdx = this.options.pageSize;
     this.pageSizes = this.options.pageSizes;
@@ -73,6 +77,7 @@ export class GridCore implements IGridCore {
       pagination: isTrue(options.pagination),
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
+      serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
     };
   }
 
@@ -148,13 +153,15 @@ export class GridCore implements IGridCore {
 
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
+    const range = this.resetPageBlocks();
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "init",
       sortModel: this.sorts,
       filterModel: this.filters,
       paginate: this.paginationEnabled,
-      range: this.resetPageBlocks(),
+      range,
+      loadRange: this.getInitialServerSideLoadRange(),
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     });
@@ -163,13 +170,15 @@ export class GridCore implements IGridCore {
 
   setRowData(rows: RowData[]): void {
     this.rowModel.setRows(rows);
+    const range = this.resetPageBlocks();
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "refresh",
       sortModel: this.sorts,
       filterModel: this.filters,
       paginate: this.paginationEnabled,
-      range: this.resetPageBlocks(),
+      range,
+      loadRange: this.getInitialServerSideLoadRange(),
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     });
@@ -195,13 +204,15 @@ export class GridCore implements IGridCore {
   }
 
   private applyFilters(changedColIds: string[]) {
+    const range = this.resetPageBlocks();
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "filter",
       sortModel: this.sorts,
       filterModel: this.filters,
       paginate: this.paginationEnabled,
-      range: this.resetPageBlocks(),
+      range,
+      loadRange: this.getInitialServerSideLoadRange(),
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     })
@@ -226,6 +237,7 @@ export class GridCore implements IGridCore {
       filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      loadRange: this.getInitialServerSideLoadRange(),
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     });
@@ -284,6 +296,7 @@ export class GridCore implements IGridCore {
       filterModel: this.filters,
       paginate: this.paginationEnabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      loadRange: this.getInitialServerSideLoadRange(),
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     });
@@ -311,43 +324,105 @@ export class GridCore implements IGridCore {
     return { start: this.pageStartIdx, end: this.pageEndIdx };
   }
 
-  applyPagination(pageIdx: number, pageSize: number) {
+  applyPagination(pageIdx: number, pageSize: number, enabled: boolean = this.paginationEnabled) {
+    this.paginationEnabled = enabled;
     this.pageStartIdx = pageIdx * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
+    const loadRange = this.getInitialServerSideLoadRange();
     this.rowModel.applyRequest({
       id: this.requestIdCounter++,
       reason: "pagination",
       sortModel: this.sorts,
       filterModel: this.filters,
-      paginate: this.paginationEnabled,
+      paginate: enabled,
       range: { start: this.pageStartIdx, end: this.pageEndIdx },
+      loadRange,
       aggregateScope: this.aggregateScope,
       aggregates: this.aggregates,
     });
   }
 
-  async setServerSideDataSource(callback: ServerSideDataSource | null) {
+  refreshRows(reason: RowDataChangeReason = "refresh", range: { start: number; end: number } = { start: this.pageStartIdx, end: this.pageEndIdx }) {
+    const requestRange = this.paginationEnabled && reason === "viewport"
+      ? { start: this.pageStartIdx + range.start, end: this.pageStartIdx + range.end }
+      : range;
+    const loadRange = reason === "viewport"
+      ? this.getServerSideBlockRange(requestRange)
+      : this.getInitialServerSideLoadRange();
+    this.rowModel.applyRequest({
+      id: this.requestIdCounter++,
+      reason,
+      sortModel: this.sorts,
+      filterModel: this.filters,
+      paginate: this.paginationEnabled,
+      range: requestRange,
+      loadRange,
+      aggregateScope: this.aggregateScope,
+      aggregates: this.aggregates,
+    });
+  }
+
+  private getInitialServerSideLoadRange(): { start: number; end: number } | undefined {
+    if (this.rowModel.getType() !== "serverSide") return undefined;
+    if (!this.paginationEnabled) return undefined;
+    const blockSize = Math.max(1, this.options.serverSideBlockSize);
+    return {
+      start: this.pageStartIdx,
+      end: Math.min(this.pageEndIdx, this.pageStartIdx + blockSize),
+    };
+  }
+
+  private getServerSideBlockRange(range: { start: number; end: number }): { start: number; end: number } | undefined {
+    if (this.rowModel.getType() !== "serverSide") return undefined;
+    const blockSize = Math.max(1, this.options.serverSideBlockSize);
+    if (!this.paginationEnabled) {
+      const blockStart = Math.floor(range.start / blockSize) * blockSize;
+      const blockEnd = Math.ceil(Math.max(range.end, blockStart + 1) / blockSize) * blockSize;
+      return { start: blockStart, end: blockEnd };
+    }
+
+    const pageOffset = Math.max(0, range.start - this.pageStartIdx);
+    const blockStart = this.pageStartIdx + Math.floor(pageOffset / blockSize) * blockSize;
+    const blockEnd = this.pageStartIdx + Math.ceil(
+      Math.max(range.end - this.pageStartIdx, pageOffset + 1) / blockSize
+    ) * blockSize;
+    return {
+      start: blockStart,
+      end: Math.min(this.pageEndIdx, blockEnd),
+    };
+  }
+
+  setServerSideDataSource(callback: IServerSideDataSource | null) {
     if (this.rowModel.getType() !== "serverSide") {
       console.warn("Setting server-side data source on 'clientSide' row model has no effect.");
+      return;
     }
     (this.rowModel as any).serverDataSource = callback;
-    await this.rowModel.refreshData();
-    this.emit("serverSideDataSourceChanged", { dataSourceSet: !isNullOrUndefined(callback) });
+    this.refreshRows("refresh");
+    this.emit("modelUpdated", { reason: "api", step: "all" });
   }
 
-  async setServerSideAggregationSource(callback: ServerSideDataSource | null) {
+  setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null) {
     if (this.rowModel.getType() !== "serverSide") {
       console.warn("Setting server-side aggregation source on 'clientSide' row model has no effect.");
+      return;
     }
     (this.rowModel as any).serverAggregationSource = callback;
-    await this.rowModel.refreshData();
-    this.emit("serverSideAggregationSourceChanged", { aggregationSourceSet: !isNullOrUndefined(callback) });
+    this.emit("modelUpdated", { reason: "api", step: "all" });
   }
 
-  async setAggregateScope(scope: AggregateScope) {
+  setAggregateScope(scope: AggregateScope) {
     if (this.aggregateScope === scope) return;
+    this.aggregateScope = scope;
     this.rowModel.setAggregateScope(scope);
-    await this.rowModel.reAggregate();
+    void this.rowModel.reAggregate();
+    this.emit("modelUpdated", { reason: "api", step: "all" });
+  }
+
+  setAggregateModel(aggregates: AggregateModel[]) {
+    this.aggregates = aggregates.slice();
+    void this.rowModel.reAggregate();
+    this.emit("modelUpdated", { reason: "api", step: "all" });
   }
 
   getRowIdAtViewIndex(displayedIndex: number): GridId | null {
@@ -394,16 +469,16 @@ export class GridCore implements IGridCore {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
-    this.eventHandlers.get(event)!.push(handler);
+    this.eventHandlers.get(event)!.push(handler as GridEventHandler<GridEventName>);
     return () => {
       this.off(event, handler);
     };
   }
 
-  off(eventType: string, handler: Function) {
+  off<E extends GridEventName>(eventType: E, handler: GridEventHandler<E>) {
     if (!this.eventHandlers.has(eventType)) return;
     const handlers = this.eventHandlers.get(eventType)!;
-    const idx = handlers.indexOf(handler);
+    const idx = handlers.indexOf(handler as GridEventHandler<GridEventName>);
     if (idx >= 0) {
       handlers.splice(idx, 1);
     }
@@ -470,7 +545,7 @@ export class GridCore implements IGridCore {
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "paginationSet":
-        this.applyPagination(action.pageIndex, action.pageSize);
+        this.applyPagination(action.pageIndex, action.pageSize, action.enabled);
         break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
@@ -525,7 +600,7 @@ export class GridCore implements IGridCore {
   }
 
   onRows(id: number, params: IRowModelOnRowsParams) {
-    if (this.requestIdCounter - id > 1) {
+    if (params.reason !== "viewport" && this.requestIdCounter - id > 1) {
       // This means a newer request has already been made, so we can ignore these rows.
       return;
     }
@@ -550,7 +625,17 @@ export class GridCore implements IGridCore {
     this.emit("overlayShow", { overlayType: "none" });
   }
 
-  onError() { }
+  onError(id: number, err: unknown) {
+    if (this.requestIdCounter - id > 1) {
+      return;
+    }
+    this.emit("overlayShow", { overlayType: "none" });
+    this.emit("error", {
+      code: "row_model_error",
+      message: err instanceof Error ? err.message : "Row model request failed.",
+      details: err,
+    });
+  }
 
   destroy(): void {
     // Clean up resources if needed

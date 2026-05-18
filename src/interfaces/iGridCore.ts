@@ -1,12 +1,13 @@
 import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel } from "./iRowModel";
+import { IRowModel, RowDataChangeReason } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionRange } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
 import { GridOptions } from "./gridOptions";
+import { IServerSideDataSource } from "./serverSide";
 
 export type GridId = string;
 export type ColId = string;
@@ -93,6 +94,13 @@ export interface IGridCore {
   getFilterModel(): FilterModel;
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
+  setAggregateModel(aggregates: AggregateModel[]): void;
+  setAggregateScope(scope: AggregateScope): void;
+
+  refreshRows(reason?: RowDataChangeReason, range?: { start: number; end: number }): void;
+
+  setServerSideDataSource(callback: IServerSideDataSource | null): void;
+  setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;
 
   /** Ensure core releases resources (timers, subscriptions). Renderer/React calls on unmount. */
   destroy(): void;

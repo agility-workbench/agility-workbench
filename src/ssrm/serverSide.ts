@@ -1,31 +1,45 @@
-import { IRowModel, RowModelType } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
-import { FilterModel } from "../interfaces/filter";
-import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions } from "../interfaces/gridOptions";
-import { IServerSideDataSource } from "@grid/interfaces/serverSide";
+import { IRowModelListener } from "../interfaces/iRowModelListener";
+import {
+  IServerSideAggregationRequest,
+  IServerSideDataSource,
+  IServerSideFilter,
+  IServerSideRequest,
+  IServerSideResult,
+  IServerSideSort,
+} from "../interfaces/serverSide";
+
+export type ServerSideRequest = IServerSideRequest;
+export type ServerSideResult = IServerSideResult;
+export type ServerSideDataSource = IServerSideDataSource;
+export type ServerSideAggregationRequest = IServerSideAggregationRequest;
+export type ServerSideAggregationSource = NonNullable<IServerSideDataSource["getAggregates"]>;
 
 export class ServerSideRowModel<Row extends object = any> implements IRowModel<Row> {
-  nodes: IRowNode<Row>[] = [];
-  nodesMap: Map<string, IRowNode<Row>> = new Map();
+  private nodes: IRowNode<Row>[] = [];
+  private nodesMap: Map<string, IRowNode<Row>> = new Map();
+  private nodesByRowIndex: Map<number, IRowNode<Row>> = new Map();
 
-  filteredIdx: number[] = [];
-  sortedIdx: number[] = [];
-  viewIdx: number[] = [];
+  private rowCount = 0;
+  private viewStartRow = 0;
+  private viewEndRow = 0;
+  private paginate = false;
 
-  sorts: SortModel[] = [];
-  filters: FilterModel[] = [];
-
-  paginate: boolean = false;
-  pageIndex = 0;
-  pageSize = 100;
-
-  private serverRequestSeq = 0;
+  private activeRequestId = -1;
+  private requestGeneration = 0;
+  private lastRequestParams: IRowModelRequestParams | null = null;
 
   private getId: (row: Row) => string;
 
-  constructor(opts: GridOptions, private serverDataSource?: IServerSideDataSource) {
+  constructor(
+    opts: GridOptions,
+    readonly listener: IRowModelListener,
+    public serverDataSource?: IServerSideDataSource,
+    public serverAggregationSource?: IServerSideDataSource["getAggregates"],
+  ) {
     this.getId = createRowIdFactory(opts);
   }
 
@@ -34,78 +48,48 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   isValid(): boolean {
-    return this.serverDataSource != null;
+    return this.serverDataSource?.getRows != null;
   }
 
-  setRows(rows: Row[], totalRows: number = 0) {
-    this.nodes = rows.map((r, i) => ({
-      id: this.getId(r),
-      data: r,
-      rowIndex: i,
-      selected: false,
-      level: 0,
-      isGroup: false,
-      expanded: false,
-      type: "leaf",
-      isExpanded: false,
-    }));
+  setRows(rows: Row[], totalRows: number = rows.length, startRow: number = 0, replace: boolean = true) {
+    this.rowCount = totalRows;
+    if (replace) {
+      this.nodesMap.clear();
+      this.nodesByRowIndex.clear();
+    }
+    const viewOffset = this.paginate ? this.viewStartRow : 0;
+    rows.forEach((r, i) => {
+      const rowIndex = startRow + i;
+      const existing = this.nodesByRowIndex.get(rowIndex);
+      if (existing) {
+        this.nodesMap.delete(existing.id);
+      }
 
-    // initial: no filter, no sort
-    const n = this.nodes.length;
-    this.filteredIdx = new Array(n);
-    for (let i = 0; i < n; i++) this.filteredIdx[i] = i;
-
-    // by default sortedIdx = filteredIdx (stable)
-    this.sortedIdx = this.filteredIdx.slice();
-
-    this.rebuildView();
+      const node: IRowNode<Row> = {
+        id: this.getId(r),
+        data: r,
+        selected: existing?.selected ?? false,
+        level: 0,
+        isGroup: false,
+        type: "leaf",
+        isExpanded: false,
+        viewIndex: rowIndex - viewOffset,
+      };
+      this.nodesByRowIndex.set(rowIndex, node);
+      this.nodesMap.set(node.id, node);
+    });
+    this.nodes = Array.from(this.nodesByRowIndex.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([, node]) => node);
   }
 
   async refreshData(): Promise<boolean> {
-    const filters = this.filters
-      .map(f => {
-        return {
-          key: f.key,
-          type: f.type,
-          v: f.v,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["filters"];
-
-    const sorts = this.sorts
-      .map(s => {
-        return {
-          key: s.key,
-          dir: s.dir,
-        };
-      })
-      .filter(Boolean) as ServerSideRequest["sorts"];
-
-    const pageSize = this.paginate ? this.pageSize : Math.max(1, this.pageSize || this.nodes.length || 1);
-
-    const req: ServerSideRequest = {
-      filters,
-      sorts,
-      page: this.paginate ? this.pageIndex : 0,
-      pageSize: pageSize,
-    };
-
-    const requestId = ++this.serverRequestSeq;
-    try {
-      const result = await this.serverDataSource?.(req);
-      if (requestId !== this.serverRequestSeq) return false; // outdated
-      const rows = result?.rows ?? [];
-      const totalRows = result?.totalRows ?? rows.length;
-      this.setRows(rows, totalRows);
-    } catch (err) {
-      console.error("Failed to fetch server-side rows", err);
-      return false;
-    }
-    return true;
+    if (!this.lastRequestParams) return false;
+    return this.requestRows(this.lastRequestParams);
   }
 
   getRowCount(): number {
-    return this.nodes.length;
+    return this.rowCount;
   }
 
   forEachNode(callback: (node: IRowNode, idx: number) => void): void {
@@ -113,69 +97,135 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void {
-    this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
-  }
-
-  setPagination(paginate: boolean, pageSize: number, pageIndex: number) {
-    this.paginate = paginate;
-    this.pageIndex = pageIndex;
-    this.pageSize = pageSize;
-    this.rebuildView();
-  }
-
-  setPage(pageSize: number, pageIndex: number) {
-    this.pageIndex = pageIndex;
-    this.pageSize = pageSize;
-    this.rebuildView();
-  }
-
-  rebuildView() {
-    const start = this.pageIndex * this.pageSize;
-    const end = Math.min(start + this.pageSize, this.sortedIdx.length);
-    this.viewIdx = this.sortedIdx.slice(start, end);
-
-    // optionally update rowIndex to "view row index" if you want
-    // but I'd keep node.rowIndex as index within displayed list or source list
+    this.nodes.forEach(callback);
   }
 
   getViewCount() {
-    return this.viewIdx.length;
+    if (!this.paginate) return this.rowCount;
+    return Math.max(0, Math.min(this.rowCount, this.viewEndRow) - this.viewStartRow);
   }
 
   getRowNodeAt(index: number): IRowNode<Row> | undefined {
-    if (index < 0 || index >= this.nodes.length) return undefined;
-    return this.nodes[index];
+    return this.getRowNodeAtViewIndex(index);
   }
 
   getRowNodeAtViewIndex(viewRowIndex: number): IRowNode<Row> | undefined {
-    const nodeIdx = this.viewIdx[viewRowIndex];
-    if (nodeIdx == null) return undefined;
-    return this.nodes[nodeIdx];
+    const absoluteRowIndex = this.paginate ? this.viewStartRow + viewRowIndex : viewRowIndex;
+    return this.nodesByRowIndex.get(absoluteRowIndex);
   }
 
   getRowNode(id: string): IRowNode<Row> | undefined {
     return this.nodesMap.get(id);
   }
 
-  async setSorts(sorts: SortModel[]): Promise<void> {
-    this.sorts = sorts;
-    await this.refreshData();
+  applyRequest(params: IRowModelRequestParams): void {
+    if (params.reason !== "viewport") {
+      this.lastRequestParams = params;
+    }
+    void this.requestRows(params);
   }
 
-  applyFilters(filters: FilterModel[]): void {
-    this.filters = filters;
-  }
-
-  async setAggregateScope(scope: AggregateScope): Promise<void> {
+  setAggregateScope(scope: AggregateScope): void {
     console.warn("Setting server-side aggregation scope on 'serverSide' row model is not implemented yet.");
   }
 
-  async reAggregate(): Promise<void> {
+  reAggregate(): void {
     console.warn("Re-aggregating server-side aggregation on 'serverSide' row model is not implemented yet.");
   }
 
   destroy(): void {
     this.nodesMap.clear();
+    this.nodesByRowIndex.clear();
   }
 
+  private async requestRows(params: IRowModelRequestParams): Promise<boolean> {
+    if (!this.isValid()) {
+      this.listener.onError(params.id, new Error("Server-side row model requires a data source."));
+      return false;
+    }
+
+    const requestId = params.id;
+    const replaceRows = params.reason !== "viewport";
+    if (replaceRows) {
+      this.activeRequestId = requestId;
+      this.requestGeneration++;
+    }
+    const requestGeneration = this.requestGeneration;
+    this.paginate = params.paginate;
+    if (replaceRows) {
+      this.viewStartRow = params.paginate ? params.range.start : 0;
+      this.viewEndRow = params.paginate ? params.range.end : Number.MAX_SAFE_INTEGER;
+    }
+    this.listener.onLoadingStart(requestId);
+
+    const request = this.createRequest(params);
+
+    try {
+      const result = await new Promise<IServerSideResult>((resolve, reject) => {
+        const maybePromise = this.serverDataSource!.getRows({
+          request,
+          success: resolve,
+          error: reject,
+        });
+        Promise.resolve(maybePromise)
+          .then((maybeResult) => {
+            if (maybeResult && typeof maybeResult === "object") {
+              resolve(maybeResult);
+            }
+          })
+          .catch(reject);
+      });
+
+      if (requestGeneration !== this.requestGeneration) return false;
+      if (replaceRows && requestId !== this.activeRequestId) return false;
+
+      const rows = (result?.rows ?? []) as Row[];
+      const startRow = request.startRow ?? 0;
+      const totalRows = result?.totalRows ?? startRow + rows.length;
+      this.setRows(rows, totalRows, startRow, replaceRows);
+      this.listener.onRows(requestId, {
+        reason: params.reason,
+        rows: this.nodes,
+        rowCount: this.rowCount,
+        visibleStart: this.paginate ? Math.max(0, startRow - this.viewStartRow) : startRow,
+        visibleEnd: this.paginate ? Math.max(0, startRow + rows.length - this.viewStartRow) : startRow + rows.length,
+      });
+      this.listener.onLoadingEnd(requestId);
+      return true;
+    } catch (err) {
+      if (requestGeneration !== this.requestGeneration) return false;
+      if (replaceRows && requestId !== this.activeRequestId) return false;
+      this.listener.onError(requestId, err);
+      this.listener.onLoadingEnd(requestId);
+      return false;
+    }
+  }
+
+  private createRequest(params: IRowModelRequestParams): IServerSideRequest {
+    const loadRange = params.loadRange ?? params.range;
+    return {
+      filters: this.serializeFilters(params.filterModel),
+      sorts: this.serializeSorts(params.sortModel),
+      startRow: loadRange?.start,
+      endRow: loadRange?.end,
+    };
+  }
+
+  private serializeFilters(filterModel: IRowModelRequestParams["filterModel"]): IServerSideFilter[] {
+    return filterModel.items.map(item => ({
+      key: item.col.key,
+      filters: item.filters.map(filter => ({
+        type: filter.type,
+        values: filter.values,
+      })),
+      join: item.join,
+    }));
+  }
+
+  private serializeSorts(sortModel: IRowModelRequestParams["sortModel"]): IServerSideSort[] {
+    return sortModel.items.map(item => ({
+      key: item.col.key,
+      dir: item.dir,
+    }));
+  }
 }

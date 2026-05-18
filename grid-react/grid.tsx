@@ -86,10 +86,27 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     useLayoutEffect(() => {
       const core = coreRef.current;
       if (!core) return;
+      if (props.rowModelType === "serverSide") return;
       core.dispatch?.({ type: "rowDataSet", rows: props.data || [] });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.data]);
+    }, [props.data, props.rowModelType]);
+
+    useLayoutEffect(() => {
+      const core = coreRef.current;
+      if (!core) return;
+      core.setServerSideDataSource(props.serverSideDataSource ?? null);
+
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.serverSideDataSource]);
+
+    useLayoutEffect(() => {
+      const core = coreRef.current;
+      if (!core) return;
+      core.setServerSideAggregationSource(props.serverSideAggregationSource ?? null);
+
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.serverSideAggregationSource]);
 
     useLayoutEffect(() => {
       const core = coreRef.current;
