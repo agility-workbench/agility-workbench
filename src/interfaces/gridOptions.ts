@@ -1,5 +1,6 @@
 import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
+import { GridIconMap } from "../theme/icons";
 
 export interface GridOptions {
   headerHeight?: number;
@@ -18,6 +19,11 @@ export interface GridOptions {
   rowModelType?: RowModelType;
   serverSideDataSource?: IServerSideDataSource;
   serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
+  /**
+   * Named icon overrides. Values may be a URL, data URI, CSS image value
+   * like `url(...)`, or inline SVG markup.
+   */
+  icons?: GridIconMap;
 }
 
 export interface InternalGridOptions extends GridOptions {
@@ -34,4 +40,5 @@ export interface InternalGridOptions extends GridOptions {
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;
+  icons?: GridIconMap;
 }

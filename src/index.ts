@@ -3,6 +3,8 @@ export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
 
 export type { GridOptions } from "./interfaces/gridOptions";
+export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
+export { getIconClassName } from "./theme/icons";
 
 export type { ColDef } from "./interfaces/column";
 

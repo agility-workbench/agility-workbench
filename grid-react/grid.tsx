@@ -117,6 +117,10 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.loading]);
 
+    useLayoutEffect(() => {
+      rendererRef.current?.setIcons(props.icons);
+    }, [props.icons]);
+
     // Full teardown on unmount (core + renderer + api)
     useLayoutEffect(() => {
       return () => {

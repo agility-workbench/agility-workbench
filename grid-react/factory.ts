@@ -29,5 +29,6 @@ export function getGridOptions(props: GridReactProps): GridOptions {
   if (props.rowModelType) options.rowModelType = props.rowModelType;
   if (props.serverSideDataSource) options.serverSideDataSource = props.serverSideDataSource;
   if (props.serverSideAggregationSource) options.serverSideAggregationSource = props.serverSideAggregationSource;
+  if (props.icons) options.icons = props.icons;
   return options;
 }

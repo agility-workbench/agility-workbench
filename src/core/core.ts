@@ -78,6 +78,7 @@ export class GridCore implements IGridCore {
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
+      icons: options.icons,
     };
   }
 

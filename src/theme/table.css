@@ -25,6 +25,31 @@
   --pte-cell-padding-bottom: 0px;
   --pte-hcell-filter-active-color: #3b82f6;
   --pte-icon-color: #6b7280;
+  --pte-icon-first-page: url(icons/double-left.svg);
+  --pte-icon-previous-page: url(icons/left-chevron.svg);
+  --pte-icon-next-page: url(icons/right-chevron.svg);
+  --pte-icon-last-page: url(icons/double-right.svg);
+  --pte-icon-sort-asc: url(icons/up.svg);
+  --pte-icon-sort-desc: url(icons/down.svg);
+  --pte-icon-sort-clear: url(icons/down-up.svg);
+  --pte-icon-submenu: url(icons/right-chevron.svg);
+  --pte-icon-check: url(icons/check.svg);
+  --pte-icon-group: url(icons/group.svg);
+  --pte-icon-column-hide: url(icons/column-hide.svg);
+  --pte-icon-count: url(icons/count.svg);
+  --pte-icon-sum: url(icons/sum.svg);
+  --pte-icon-avg: url(icons/avg.svg);
+  --pte-icon-min-string: url(icons/sort-asc-letters.svg);
+  --pte-icon-min-number: url(icons/sort-asc-numbers.svg);
+  --pte-icon-max-string: url(icons/sort-desc-letters.svg);
+  --pte-icon-max-number: url(icons/sort-desc-numbers.svg);
+  --pte-icon-median: url(icons/median.svg);
+  --pte-icon-drag: url(icons/drag.svg);
+  --pte-icon-plus-frame: url(icons/plus-frame.svg);
+  --pte-icon-minus-frame: url(icons/minus-frame.svg);
+  --pte-icon-not-allowed: url(icons/not-allowed.svg);
+  --pte-icon-filter: url(icons/filter.svg);
+  --pte-icon-menu: url(icons/menu-vertical.svg);
   --pte-shadow-color: rgba(0, 0, 0, 0.1);
   --pte-overlay-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   --pte-drag-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
@@ -374,7 +399,7 @@
 }
 
 .pte-pagination-btn-first {
-  mask-image: url(icons/double-left.svg);
+  mask-image: var(--pte-icon-first-page);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -383,7 +408,7 @@
 }
 
 .pte-pagination-btn-prev {
-  mask-image: url(icons/left-chevron.svg);
+  mask-image: var(--pte-icon-previous-page);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -392,7 +417,7 @@
 }
 
 .pte-pagination-btn-next {
-  mask-image: url(icons/right-chevron.svg);
+  mask-image: var(--pte-icon-next-page);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -401,7 +426,7 @@
 }
 
 .pte-pagination-btn-last {
-  mask-image: url(icons/double-right.svg);
+  mask-image: var(--pte-icon-last-page);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -701,7 +726,7 @@
   content: " ";
   font-size: 22px;
   margin-left: 4px;
-  mask-image: url(icons/up.svg);
+  mask-image: var(--pte-icon-sort-asc);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -713,7 +738,7 @@
   content: " ";
   font-size: 22px;
   margin-left: 4px;
-  mask-image: url(icons/down.svg);
+  mask-image: var(--pte-icon-sort-desc);
   mask-size: contain;
   mask-repeat: no-repeat;
   background-color: var(--pte-icon-color);
@@ -835,7 +860,7 @@
 }
 
 .pte-filter-icon {
-  mask-image: url(icons/filter.svg);
+  mask-image: var(--pte-icon-filter);
   background-color: var(--pte-icon-color);
   width: 16px;
   height: 16px;
@@ -844,7 +869,7 @@
 }
 
 .pte-menu-icon {
-  mask-image: url(icons/menu-vertical.svg);
+  mask-image: var(--pte-icon-menu);
   background-color: var(--pte-icon-color);
   width: 16px;
   height: 16px;
@@ -1164,99 +1189,100 @@
 }
 
 .icon-asc {
-  mask-image: url(icons/up.svg);
+  mask-image: var(--pte-icon-sort-asc);
   background-color: var(--pte-icon-color);
 }
 
 .icon-desc {
-  mask-image: url(icons/down.svg);
+  mask-image: var(--pte-icon-sort-desc);
   background-color: var(--pte-icon-color);
 }
 
-.icon-clear {
-  mask-image: url(icons/down-up.svg);
+.icon-clear,
+.icon-sort-clear {
+  mask-image: var(--pte-icon-sort-clear);
   background-color: var(--pte-icon-color);
 }
 
 .icon-arrow-right {
-  mask-image: url(icons/right-chevron.svg);
+  mask-image: var(--pte-icon-submenu);
   background-color: var(--pte-icon-color);
   width: 18px;
   height: 18px;
 }
 
 .icon-check {
-  mask-image: url(icons/check.svg);
+  mask-image: var(--pte-icon-check);
   background-color: var(--pte-icon-color);
 }
 
 .icon-group {
-  mask-image: url(icons/group.svg);
+  mask-image: var(--pte-icon-group);
   background-color: var(--pte-icon-color);
 }
 
 .icon-col-hide {
-  mask-image: url(icons/column-hide.svg);
+  mask-image: var(--pte-icon-column-hide);
   background-color: var(--pte-icon-color);
 }
 
 .icon-count {
-  mask-image: url(icons/count.svg);
+  mask-image: var(--pte-icon-count);
   background-color: var(--pte-icon-color);
 }
 
 .icon-sum {
-  mask-image: url(icons/sum.svg);
+  mask-image: var(--pte-icon-sum);
   background-color: var(--pte-icon-color);
 }
 
 .icon-avg {
-  mask-image: url(icons/avg.svg);
+  mask-image: var(--pte-icon-avg);
   background-color: var(--pte-icon-color);
 }
 
 .icon-min-string {
-  mask-image: url(icons/sort-asc-letters.svg);
+  mask-image: var(--pte-icon-min-string);
   background-color: var(--pte-icon-color);
 }
 
 .icon-min-number {
-  mask-image: url(icons/sort-asc-numbers.svg);
+  mask-image: var(--pte-icon-min-number);
   background-color: var(--pte-icon-color);
 }
 
 .icon-max-string {
-  mask-image: url(icons/sort-desc-letters.svg);
+  mask-image: var(--pte-icon-max-string);
   background-color: var(--pte-icon-color);
 }
 
 .icon-max-number {
-  mask-image: url(icons/sort-desc-numbers.svg);
+  mask-image: var(--pte-icon-max-number);
   background-color: var(--pte-icon-color);
 }
 
 .icon-median {
-  mask-image: url(icons/median.svg);
+  mask-image: var(--pte-icon-median);
   background-color: var(--pte-icon-color);
 }
 
 .icon-drag {
-  mask-image: url(icons/drag.svg);
+  mask-image: var(--pte-icon-drag);
   background-color: var(--pte-icon-color);
 }
 
 .icon-plus-frame {
-  mask-image: url(icons/plus-frame.svg);
+  mask-image: var(--pte-icon-plus-frame);
   background-color: var(--pte-icon-color);
 }
 
 .icon-minus-frame {
-  mask-image: url(icons/minus-frame.svg);
+  mask-image: var(--pte-icon-minus-frame);
   background-color: var(--pte-icon-color);
 }
 
 .icon-not-allowed {
-  mask-image: url(icons/not-allowed.svg);
+  mask-image: var(--pte-icon-not-allowed);
   background-color: var(--pte-not-allowed-icon-color);
 }
 
