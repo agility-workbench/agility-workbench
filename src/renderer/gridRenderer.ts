@@ -1156,10 +1156,14 @@ export class GridRenderer {
       join: item.join,
     }));
 
-    const sorts: ServerSideRequest["sorts"] = this.core.getSortModel().items.map(item => ({
-      key: item.col.key,
-      dir: item.dir,
-    }));
+    const sortsByKey = new Map<string, ServerSideRequest["sorts"][number]>();
+    for (const item of this.core.getSortModel().items) {
+      sortsByKey.set(item.col.key, {
+        key: item.col.key,
+        dir: item.dir,
+      });
+    }
+    const sorts: ServerSideRequest["sorts"] = Array.from(sortsByKey.values());
 
     this._aggregateFetchInFlight = true;
     this._aggregateRemoteDirty = false;

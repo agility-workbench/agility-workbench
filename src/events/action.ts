@@ -2,7 +2,7 @@ import { ColDef } from "../interfaces/column";
 import { FilterModel } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef, SelectionRange } from "../interfaces/selection";
-import { SortItem, SortModel } from "../interfaces/sort";
+import { SortItemUpdate, SortModel } from "../interfaces/sort";
 
 export type GridActionInit = {
   type: "init";
@@ -112,7 +112,7 @@ export type GridActionPaginationSet = {
 // Sort/Filter actions
 export type GridActionSortModelSet = {
   type: "sortModelSet";
-  sortItems: SortItem[];
+  sortItems: SortItemUpdate[];
 };
 
 export type GridActionFilterModelSet = {

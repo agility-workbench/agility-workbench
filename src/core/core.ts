@@ -3,7 +3,7 @@ import { IRowModel, RowDataChangeReason } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
-import { SortItem, SortModel } from "../interfaces/sort";
+import { SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -101,8 +101,59 @@ export class GridCore implements IGridCore {
 
   setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
+    const changedSortColIds = this.reconcileSortModelColumns();
     this.autosizeColumns();
     this.emit("columnsChanged", { reason: "defs" });
+    if (changedSortColIds.length > 0) {
+      this.emit("columnsChanged", { reason: "sort", changedColIds: changedSortColIds });
+    }
+  }
+
+  private reconcileSortModelColumns(): string[] {
+    const nextItems: SortItem[] = [];
+    const changedColIds: string[] = [];
+    const seenColIds = new Set<string>();
+    let changed = false;
+
+    for (const item of this.sorts.items) {
+      const col = this.resolveSortColumn(item);
+      if (!col || !col.sortable) {
+        changed = true;
+        continue;
+      }
+
+      if (seenColIds.has(col.instanceID)) {
+        changed = true;
+        continue;
+      }
+
+      seenColIds.add(col.instanceID);
+      changedColIds.push(col.instanceID);
+      if (item.col !== col || item.key !== col.key) changed = true;
+      nextItems.push({ col, key: col.key, dir: item.dir });
+    }
+
+    if (changed) {
+      this.sorts = new SortModel(nextItems);
+    }
+
+    return changedColIds;
+  }
+
+  private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
+    if (sort.col) {
+      const colById = this.columnModel.getById(sort.col.instanceID);
+      if (colById) return colById;
+      const colByColId = this.columnModel.getByColId(sort.col.colId);
+      if (colByColId) return colByColId;
+      const colByKey = this.columnModel.getByKey(sort.col.key);
+      if (colByKey) return colByKey;
+    }
+
+    if (!sort.key) return undefined;
+    return this.columnModel.getById(sort.key)
+      ?? this.columnModel.getByColId(sort.key)
+      ?? this.columnModel.getByKey(sort.key);
   }
 
   private autosizeColumns(identifyComparators: boolean = true) {
@@ -220,15 +271,15 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
-  setSortModel(sorts: SortItem[]) {
+  setSortModel(sorts: SortItemUpdate[]) {
     sorts = sorts.slice();
     const changedColIDs: string[] = [];
     for (const sort of sorts) {
-      const col = sort.col || this.columnModel.getById(sort.key);
+      const col = this.resolveSortColumn(sort);
       if (!col || !col.sortable) continue;
-      sort.col = col;
-      this.setSortModelForCol(col, sort.dir);
-      changedColIDs.push(...col.getVisibleLeaves().map(c => c.instanceID));
+      if (this.setSortModelForCol(col, sort.dir)) {
+        changedColIDs.push(...col.getVisibleLeaves().map(c => c.instanceID));
+      }
     }
     if (changedColIDs.length === 0) return;
     this.rowModel.applyRequest({

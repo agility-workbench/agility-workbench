@@ -223,9 +223,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private serializeSorts(sortModel: IRowModelRequestParams["sortModel"]): IServerSideSort[] {
-    return sortModel.items.map(item => ({
-      key: item.col.key,
-      dir: item.dir,
-    }));
+    const sortsByKey = new Map<string, IServerSideSort>();
+    for (const item of sortModel.items) {
+      sortsByKey.set(item.col.key, {
+        key: item.col.key,
+        dir: item.dir,
+      });
+    }
+    return Array.from(sortsByKey.values());
   }
 }

@@ -139,17 +139,13 @@ export class ColumnMenuService {
     let sortDir: "asc" | "desc" | "mixed" | null = null;
     let pinning: "left" | "right" | "mixed" | null = null;
     let exportable = true;
-    const sorts: Record<string, "asc" | "desc"> = {};
-    for (const sort of this.core.getSortModel().items) {
-      sorts[sort.col.instanceID] = sort.dir;
-    }
     for (const colID of colIDs) {
       const col = this.core.getColumnModel().getById(colID);
       if (!col) continue;
       if (!col.sortable) {
         sortable = false;
       } else if (sortDir !== "mixed") {
-        const colSortDir = this.identifySortDir(col, sorts);
+        const colSortDir = this.identifySortDir(col);
         if (!sortDir) {
           sortDir = colSortDir;
         } else if (colSortDir !== sortDir) {
@@ -212,13 +208,24 @@ export class ColumnMenuService {
   }
 
   // Identify sort dir based on the first visible child with sort applied on. If no child has sort applied, return null.
-  private identifySortDir(col: Column, sorts: Record<string, "asc" | "desc" | null>): "asc" | "desc" | "mixed" | null {
-    if (col.children.length === 0) return sorts[col.instanceID] || null;
+  private identifySortDir(col: Column): "asc" | "desc" | "mixed" | null {
+    if (col.children.length === 0) return this.getSortDirForColumn(col);
     for (const child of col.getVisibleLeaves()) {
-      const childDir = this.identifySortDir(child, sorts);
+      const childDir = this.identifySortDir(child);
       if (childDir) return childDir;
     }
     return null;
+  }
+
+  private getSortDirForColumn(col: Column): "asc" | "desc" | null {
+    const sort = this.core.getSortModel().items.find(item =>
+      item.col.instanceID === col.instanceID
+      || item.col.colId === col.colId
+      || item.col.key === col.key
+      || item.key === col.colId
+      || item.key === col.key
+    );
+    return sort?.dir ?? null;
   }
 
 }
