@@ -36,6 +36,7 @@ import { BodyRowPoolRenderer } from "./body/rowPool";
 import { createBodyWrapper } from "./body/wrapper";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
+import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { createLoadingOverlay } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
@@ -82,6 +83,7 @@ export class GridRenderer {
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
+  _columnLayoutRenderer: ColumnLayoutRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -311,6 +313,31 @@ export class GridRenderer {
       leftViewport: this.leftViewport,
       centerViewport: this.viewport,
       rightViewport: this.rightViewport,
+    });
+    this._columnLayoutRenderer = new ColumnLayoutRenderer({
+      core: this.core,
+      root: this.root,
+      body: this.body,
+      rowPool: () => this._rowPool,
+      leftViewport: this.leftViewport,
+      centerViewport: this.viewport,
+      rightViewport: this.rightViewport,
+      leftScroller: this.leftScroller,
+      rightScroller: this.rightScroller,
+      leftHeader: this.leftHeader,
+      centerHeader: this.header,
+      rightHeader: this.rightHeader,
+      headerWrapper: this.headerWrapper,
+      hScrollContainer: this.hScrollContainer,
+      hScrollLeftParent: this.hScrollLeftParent,
+      hScrollParent: this.hScrollParent,
+      hScrollRightParent: this.hScrollRightParent,
+      hScrollerLeft: this.hScrollerLeft,
+      hScroller: this.hScroller,
+      hScrollerRight: this.hScrollerRight,
+      aggregateLeft: this.aggregateLeft,
+      aggregateCenterRow: () => this.aggregateCenterRow,
+      aggregateRight: this.aggregateRight,
     });
 
     this.paginator = createPaginationWrapper();
@@ -1284,160 +1311,19 @@ export class GridRenderer {
 
   // ---------------- Internals: DOM build ----------------
   _applyLeftColumnWidths(colIDs: string[] = []): number {
-    let maxWidth = 0;
-    for (const slot of this._rowPool) {
-      let totalWidth = 0;
-      let c = 0;
-      for (const col of this.core.getColumnModel().getLeftLeaves()) {
-        if (col.hidden) continue;
-        const cell = slot.leftCellEls[c++];
-        if (!cell) continue;
-        totalWidth += col.computedWidth;
-        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        cell.style.flex = "0 0 auto";
-        cell.style.width = `${col.computedWidth}px`;
-      }
-      if (slot.leftRowEl) slot.leftRowEl.style.width = `${totalWidth}px`;
-      maxWidth = Math.max(maxWidth, totalWidth);
-    }
-    this.leftViewport.style.width = `${maxWidth}px`;
-    this.hScrollerLeft.style.width = `${maxWidth}px`;
-    this.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
-    this.leftHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.leftHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.aggregateLeft.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.aggregateLeft.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    const totalWidth = maxWidth;
-    if (maxWidth > 0) {
-      this.leftScroller.classList.add("visible");
-      this.leftHeader.classList.add("visible");
-      if (maxWidth > this.root.clientWidth * 0.35) {
-        maxWidth = this.root.clientWidth * 0.35;
-        this.leftHeader.style.width = `${maxWidth}px`;
-        this.leftHeader.style.minWidth = `${maxWidth}px`;
-        this.aggregateLeft.style.width = `${maxWidth}px`;
-        this.aggregateLeft.style.minWidth = `${maxWidth}px`;
-      }
-      this.aggregateLeft.style.display = "block";
-    } else {
-      this.leftScroller.classList.remove("visible");
-      this.leftHeader.classList.remove("visible");
-      this.aggregateLeft.style.display = "none";
-    }
-    this.hScrollLeftParent.style.width = `${maxWidth}px`;
-    this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
-    return totalWidth;
+    return this._columnLayoutRenderer.applyLeftColumnWidths(colIDs);
   }
 
   _applyCenterColumnWidths(colIDs: string[] = []): number {
-    let maxWidth = 0;
-    for (const slot of this._rowPool) {
-      let totalWidth = 0;
-      let c = 0;
-      for (const col of this.core.getColumnModel().getCenterLeaves()) {
-        if (col.hidden) continue;
-        const cell = slot.cellEls[c++];
-        if (!cell) continue;
-        totalWidth += col.computedWidth;
-        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        cell.style.flex = "0 0 auto";
-        cell.style.width = `${col.computedWidth}px`;
-      }
-      slot.rowEl.style.width = `${totalWidth}px`;
-      maxWidth = Math.max(maxWidth, totalWidth);
-    }
-    this.hScroller.style.width = `${maxWidth}px`;
-    if (maxWidth == 0) {
-      this.hScrollParent.style.flex = "1 1 auto";
-    }
-    this.viewport.style.width = `${maxWidth}px`;
-    if (this.aggregateCenterRow) {
-      this.aggregateCenterRow.style.width = `${maxWidth}px`;
-      this.aggregateCenterRow.style.minWidth = `${maxWidth}px`;
-    }
-    return maxWidth;
+    return this._columnLayoutRenderer.applyCenterColumnWidths(colIDs);
   }
 
   _applyRightColumnWidths(colIDs: string[] = []): number {
-    let maxWidth = 0;
-    for (const slot of this._rowPool) {
-      let totalWidth = 0;
-      let c = 0;
-      for (const col of this.core.getColumnModel().getRightLeaves()) {
-        if (col.hidden) continue;
-        const cell = slot.rightCellEls[c++];
-        if (!cell) continue;
-        totalWidth += col.computedWidth;
-        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
-        cell.style.flex = "0 0 auto";
-        cell.style.width = `${col.computedWidth}px`;
-      }
-      if (slot.rightRowEl) slot.rightRowEl.style.width = `${totalWidth}px`;
-      maxWidth = Math.max(maxWidth, totalWidth);
-    }
-    this.rightViewport.style.width = `${maxWidth}px`;
-    this.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
-    this.hScrollerRight.style.width = `${maxWidth}px`;
-    this.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
-    const totalWidth = maxWidth;
-    if (maxWidth > 0) {
-      this.rightScroller.classList.add("visible");
-      this.rightHeader.classList.add("visible");
-      if (maxWidth > this.root.clientWidth * 0.35) {
-        maxWidth = this.root.clientWidth * 0.35;
-      }
-      this.hScrollRightParent.style.width = `${maxWidth}px`;
-      this.rightHeader.style.width = `${maxWidth + 16}px`;
-      this.rightHeader.style.minWidth = `${maxWidth + 16}px`;
-      this.aggregateRight.style.width = `${maxWidth + 1}px`;
-      this.aggregateRight.style.minWidth = `${maxWidth + 1}px`;
-      this.aggregateRight.style.display = "block";
-      maxWidth += this.hScrollLeftParent.clientWidth;
-      this.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
-    } else {
-      this.rightScroller.classList.remove("visible");
-      this.rightHeader.style.width = "0px";
-      this.rightHeader.style.minWidth = "0px";
-      this.rightHeader.classList.remove("visible");
-      this.aggregateRight.style.width = "0px";
-      this.aggregateRight.style.minWidth = "0px";
-      this.aggregateRight.style.display = "none";
-    }
-    this.header.style.paddingRight = `${maxWidth > 0 ? 0 : 15}px`;
-    return totalWidth;
+    return this._columnLayoutRenderer.applyRightColumnWidths(colIDs);
   }
 
   _updateColumnWidths(colIDs: string[] = []) {
-    let totalWidth = 0;
-    totalWidth += this._applyLeftColumnWidths(colIDs);
-    totalWidth += this._applyCenterColumnWidths(colIDs);
-    totalWidth += this._applyRightColumnWidths(colIDs);
-
-    const allColIDs: Column[] = [];
-    this.core.getColumnModel().walkColumns(c => c.isVisible() && allColIDs.push(c));
-    allColIDs.forEach(col => {
-      const hcell = document.getElementById(col.instanceID);
-      if (!hcell) return;
-      hcell.style.width = `${col.computedWidth}px`;
-    })
-
-    if (totalWidth > this.root.clientWidth) {
-      this.hScrollContainer.style.display = "flex";
-    } else {
-      this.hScrollContainer.style.display = "none";
-    }
-
-    const headerHeight = this.headerWrapper.getBoundingClientRect().height;
-    const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height;
-    // const aggregateHeight = this._getAggregateRowHeight();
-    // const paginationHeight = this._pagination && this.paginator.classList.contains("visible")
-    //   ? (this.paginator.getBoundingClientRect().height || 0)
-    //   : 0;
-    const chromeHeight = headerHeight
-      + (this.hScrollContainer.style.display === "flex" ? hScrollHeight : 0)
-    // + paginationHeight
-    // + aggregateHeight;
-    this.body.style.height = `calc(100% - ${chromeHeight}px)`;
+    this._columnLayoutRenderer.updateColumnWidths(colIDs);
   }
 
   _buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
