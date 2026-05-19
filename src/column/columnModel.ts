@@ -319,7 +319,7 @@ export class ColumnModel implements IColumnModel {
   }
 
   private getColumnContentWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams): number {
-    return measureCtx.measure(col.label, params.headerFont ?? "500 14px Arial") + 104; // 16px padding + 88px for sort/filter icons
+    return measureCtx.measure(col.label, params?.headerFont ?? "500 14px Arial") + 104; // 16px padding + 88px for sort/filter icons
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
