@@ -31,6 +31,7 @@ import {
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
+import { createHeaderWrapper } from "./header/wrapper";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
@@ -228,18 +229,12 @@ export class GridRenderer {
 
     this._menuRenderer = new MenuRenderer(this.root);
 
-    this.headerWrapper = document.createElement("div");
-    this.headerWrapper.className = "pte-header-wrapper";
+    const headerWrapper = createHeaderWrapper();
+    this.headerWrapper = headerWrapper.wrapper;
     this.root.appendChild(this.headerWrapper);
-    this.leftHeader = document.createElement("div");
-    this.leftHeader.className = "pte-header-left";
-    this.headerWrapper.appendChild(this.leftHeader);
-    this.header = document.createElement("div");
-    this.header.className = "pte-header";
-    this.headerWrapper.appendChild(this.header);
-    this.rightHeader = document.createElement("div");
-    this.rightHeader.className = "pte-header-right";
-    this.headerWrapper.appendChild(this.rightHeader);
+    this.leftHeader = headerWrapper.left;
+    this.header = headerWrapper.center;
+    this.rightHeader = headerWrapper.right;
 
     this.body = document.createElement("div");
     this.body.className = "pte-body";
