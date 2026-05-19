@@ -30,6 +30,7 @@ import { createAggregateRow } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
+import { BodyWindowRenderer } from "./body/window";
 import { createBodyWrapper } from "./body/wrapper";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderRenderer } from "./header/renderer";
@@ -50,6 +51,7 @@ export class GridRenderer {
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _bodyViewportRenderer: BodyViewportRenderer;
+  _bodyWindowRenderer: BodyWindowRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
@@ -328,6 +330,25 @@ export class GridRenderer {
       aggregateCenter: this.aggregateCenter,
       aggregateRight: this.aggregateRight,
       onWindowUpdate: (scrollSrc) => this._updateWindow(false, scrollSrc),
+    });
+    this._bodyWindowRenderer = new BodyWindowRenderer({
+      core: this.core,
+      rowHeight: () => this.rowHeight,
+      rowPool: () => this._rowPool,
+      leftScroller: this.leftScroller,
+      centerScroller: this.scroller,
+      rightScroller: this.rightScroller,
+      vScroll: this.vScroll,
+      leftViewport: this.leftViewport,
+      centerViewport: this.viewport,
+      rightViewport: this.rightViewport,
+      serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
+      beginScrollSync: (targets) => this._beginScrollSync(targets),
+      setStartIndex: (startIndex) => {
+        this._startIndex = startIndex;
+      },
+      renderCell: (cell, row, col, cellRendererMap) => this._renderCell(cell, row, col, cellRendererMap),
+      applySelectionToSlot: (slot, viewIndex) => this._applySelectionToSlot(slot, viewIndex),
     });
 
     this.paginator = createPaginationWrapper();
@@ -1402,126 +1423,7 @@ export class GridRenderer {
   }
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
-    const total = this.core.getRowModel().getViewCount();
-    const scrollTop = scrollSrc?.scrollTop ?? this.scroller.scrollTop ?? this.vScroll.scrollTop ?? 0;
-
-    const syncTargets: HTMLDivElement[] = [];
-    if (scrollSrc !== this.leftScroller && this.leftScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.leftScroller);
-    }
-    if (scrollSrc !== this.scroller && this.scroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.scroller);
-    }
-    if (scrollSrc !== this.rightScroller && this.rightScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.rightScroller);
-    }
-    if (scrollSrc !== this.vScroll && this.vScroll.scrollTop !== scrollTop) {
-      syncTargets.push(this.vScroll);
-    }
-
-    this._beginScrollSync(syncTargets);
-    for (const target of syncTargets) {
-      target.scrollTop = scrollTop;
-    }
-
-    const startIndex = Math.max(
-      0,
-      Math.floor(scrollTop / this.core.options.rowHeight) - this.core.options.overscanRowCount
-    );
-    const endIndex = Math.min(total, startIndex + this._rowPool.length);
-
-    if (this.rowModel.getType() === "serverSide" && endIndex > startIndex) {
-      let firstMissingRow = -1;
-      for (let i = startIndex; i < endIndex; i++) {
-        if (!this.core.getRowModel().getRowNodeAtViewIndex(i)) {
-          firstMissingRow = i;
-          break;
-        }
-      }
-
-      if (firstMissingRow >= 0) {
-        const blockSize = Math.max(1, this.core.options.serverSideBlockSize);
-        const blockStart = Math.floor(firstMissingRow / blockSize) * blockSize;
-        const blockEnd = Math.min(total, blockStart + blockSize);
-        const key = `${blockStart}:${blockEnd}`;
-        if (!this._serverSidePendingRangeKeys.has(key)) {
-          this._serverSidePendingRangeKeys.add(key);
-          this.core.refreshRows("viewport", { start: blockStart, end: blockEnd });
-        }
-      }
-    }
-
-    const startIdx = params?.firstRowIndex ?? -1;
-    if (!forcePatch && startIndex === startIdx) {
-      // only translate to avoid jitter? typically not needed; startIndex stable means nothing to do.
-      return;
-    }
-
-    this._startIndex = startIndex;
-
-    const offsetY = startIndex * this.rowHeight;
-    this.leftViewport.style.transform = `translateY(${offsetY}px)`;
-    this.viewport.style.transform = `translateY(${offsetY}px)`;
-    this.rightViewport.style.transform = `translateY(${offsetY}px)`;
-
-    // Patch pooled rows
-    for (let i = 0; i < this._rowPool.length; i++) {
-      const viewIndex = startIndex + i;
-      const slot = this._rowPool[i];
-
-      if (viewIndex >= total) {
-        slot.rowEl.style.display = "none";
-        if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
-        if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
-        this._applySelectionToSlot(slot, null);
-        continue;
-      }
-
-      slot.rowEl.style.display = "flex";
-      if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
-      if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
-      const row = this.core.getRowModel().getRowNodeAtViewIndex(viewIndex);
-      if (!row) {
-        slot.rowEl.style.display = "none";
-        if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
-        if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
-        this._applySelectionToSlot(slot, null);
-        continue;
-      }
-      slot.rowEl.setAttribute("row-id", row.id);
-      slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
-
-      if (slot.leftRowEl) {
-        slot.leftRowEl.setAttribute("data-view-idx", String(viewIndex));
-      }
-      if (slot.rightRowEl) {
-        slot.rightRowEl.setAttribute("data-view-idx", String(viewIndex));
-      }
-
-      // HOT: write textContent only (no re-render, no diff)
-      const leftLeaves = this.core.getColumnModel().getLeftLeaves();
-      if (leftLeaves.length > 0 && slot.leftCellEls) {
-        slot.leftRowEl?.setAttribute("row-id", row.id);
-        for (let c = 0; c < leftLeaves.length; c++) {
-          const col = leftLeaves[c];
-          this._renderCell(slot.leftCellEls[c], row, col, slot.cellRendererInstances);
-        }
-      }
-      const centerLeaves = this.core.getColumnModel().getCenterLeaves();
-      for (let c = 0; c < centerLeaves.length; c++) {
-        const col = centerLeaves[c];
-        this._renderCell(slot.cellEls[c], row, col, slot.cellRendererInstances);
-      }
-      const rightLeaves = this.core.getColumnModel().getRightLeaves();
-      if (rightLeaves.length > 0 && slot.rightCellEls) {
-        slot.rightRowEl?.setAttribute("row-id", row.id);
-        for (let c = 0; c < rightLeaves.length; c++) {
-          const col = rightLeaves[c];
-          this._renderCell(slot.rightCellEls[c], row, col, slot.cellRendererInstances);
-        }
-      }
-      // this._applySelectionToSlot(slot, viewIndex);
-    }
+    this._bodyWindowRenderer.update(forcePatch, scrollSrc, params);
   }
 
   _applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
