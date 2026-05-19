@@ -34,6 +34,7 @@ import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { createBodyWrapper } from "./body/wrapper";
 import { createHeaderWrapper } from "./header/wrapper";
+import { createLoadingOverlay } from "./overlay/loading";
 import { createHorizontalScroll } from "./scroll/horizontal";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
@@ -337,8 +338,8 @@ export class GridRenderer {
     this._initMenuOverlay();
     this._filterOverlay = document.createElement("div");
     this._initFilterOverlay();
-    this._loadingOverlay = document.createElement("div");
-    this._initLoadingOverlay();
+    this._loadingOverlay = createLoadingOverlay();
+    this.root.appendChild(this._loadingOverlay);
     this._updateLoadingOverlay();
 
     // Create a pooled set of row nodes
@@ -3045,22 +3046,6 @@ export class GridRenderer {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this._closeFilter();
     });
-  }
-
-  _initLoadingOverlay() {
-    this._loadingOverlay.className = "pte-loading-overlay hidden";
-
-    const spinner = document.createElement("div");
-    spinner.className = "pte-loading-spinner";
-
-    const label = document.createElement("div");
-    label.className = "pte-loading-label";
-    label.textContent = "Loading data…";
-
-    this._loadingOverlay.appendChild(spinner);
-    this._loadingOverlay.appendChild(label);
-
-    this.root.appendChild(this._loadingOverlay);
   }
 
   _updateLoadingOverlay() {
