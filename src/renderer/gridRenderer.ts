@@ -48,6 +48,7 @@ import { FilterOverlayRenderer } from "./overlay/filter";
 import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
+import { RootAttachmentRenderer } from "./rootAttachment";
 import { createHorizontalScroll } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { LegacyMenuOverlayRenderer } from "./menuOverlay";
@@ -74,8 +75,8 @@ export class GridRenderer {
   _interactionEventBinder: GridInteractionEventBinder;
   _filterOverlayRenderer: FilterOverlayRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
+  _rootAttachmentRenderer: RootAttachmentRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
-  _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
   _exportAsCSV: boolean = true;
@@ -191,6 +192,7 @@ export class GridRenderer {
     this.root = div("pte-root");
     this.root.dataset.pteGridId = this.core.id;
     this.root.style.position = "relative";
+    this._rootAttachmentRenderer = new RootAttachmentRenderer(this.root);
     this._iconRenderer = new IconRenderer(this.root, this.core.id);
     this.setIcons(this.core.getOptions().icons);
 
@@ -256,7 +258,7 @@ export class GridRenderer {
       centerHeader: this.header,
       rightHeader: this.rightHeader,
       body: this.body,
-      getContainerEl: () => this._containerEl,
+      getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
     });
 
     const aggregateRow = createAggregateRow(this.rowHeight, (e) => {
@@ -433,7 +435,7 @@ export class GridRenderer {
       core: this.core,
       rowHeight: () => this.rowHeight,
       height: () => this.height,
-      getContainerEl: () => this._containerEl,
+      getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       headerWrapper: this.headerWrapper,
       hScrollContainer: this.hScrollContainer,
       paginator: this.paginator,
@@ -487,15 +489,11 @@ export class GridRenderer {
   }
 
   attach(container: RefObject<HTMLElement | null>) {
-    if (!container.current) {
-      throw new Error("Table container ref is not attached");
-    }
-    this._containerEl = container.current;
-    this._containerEl.appendChild(this.root);
+    this._rootAttachmentRenderer.attach(container);
   }
 
   detach() {
-    this._containerEl = document.createElement("div");
+    this._rootAttachmentRenderer.detach();
   }
 
   _computePoolSize(rowHeightPx: number, overscanRowCount: number) {
@@ -578,7 +576,7 @@ export class GridRenderer {
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
-    this.root.remove();
+    this._rootAttachmentRenderer.destroy();
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
