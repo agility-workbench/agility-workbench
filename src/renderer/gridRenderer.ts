@@ -47,9 +47,11 @@ import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
+import { LegacyMenuOverlayRenderer } from "./menuOverlay";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
+  _legacyMenuOverlayRenderer: LegacyMenuOverlayRenderer;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -155,15 +157,6 @@ export class GridRenderer {
   _centerColumns: Column[] = [];
   _centerLeafColumns: Column[] = [];
 
-  _menuOverlay: HTMLDivElement;
-  _submenuOverlay: HTMLDivElement;
-  _menuOverlays: HTMLDivElement[];
-  _menuItemsByLevel: MenuItem[][];
-  _menuParentIds: (string | null)[];
-  _menuOpenParentEls: (HTMLElement | null)[];
-  _menuOpenTimers: (number | NodeJS.Timeout)[];
-  _menuColKey: string | null;
-
   _poolSize: number = 0;
   _startIndex: number = 0;
   _rowPool: RowPoolDef[];
@@ -196,6 +189,7 @@ export class GridRenderer {
     this.setIcons(this.core.getOptions().icons);
 
     this._menuRenderer = new MenuRenderer(this.root);
+    this._legacyMenuOverlayRenderer = new LegacyMenuOverlayRenderer(this.root);
     this._bodyCellRenderer = new BodyCellRenderer();
 
     const headerWrapper = createHeaderWrapper();
@@ -416,20 +410,11 @@ export class GridRenderer {
     this._isSelecting = false;
     this._selectedColumnIDs = new Set();
 
-    this._menuColKey = null;
-    this._menuOverlays = [];
-    this._menuItemsByLevel = [];
-    this._menuParentIds = [];
-    this._menuOpenParentEls = [];
-    this._menuOpenTimers = [];
-
     // this._exportAsCSV = exportAsCSV;
     // this._exportAsExcel = exportAsExcel;
 
     // Overlays
-    this._menuOverlay = document.createElement("div");
-    this._submenuOverlay = document.createElement("div");
-    this._initMenuOverlay();
+    this._legacyMenuOverlayRenderer.bind();
     this._filterOverlayRenderer = new FilterOverlayRenderer();
     this._filterOverlayRenderer.bind();
     this._loadingOverlay = createLoadingOverlay();
@@ -730,6 +715,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._legacyMenuOverlayRenderer.destroy();
     this._filterOverlayRenderer.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
@@ -1794,148 +1780,6 @@ export class GridRenderer {
     this.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: colID });
   }
 
-  // ---------------- Menus ----------------
-  _initMenuOverlay() {
-    this._menuOverlays = [this._menuOverlay, this._submenuOverlay];
-    this._menuOverlays.forEach((overlay, level) => this._prepareMenuOverlay(overlay, level));
-
-    // Close on click outside
-    document.addEventListener("mousedown", (e) => {
-      const hasOpenMenu = this._menuOverlays.some((overlay) => overlay.style.display !== "none");
-      if (!hasOpenMenu) return;
-      const target = e.target as Node | null;
-      if (!target) return;
-      const insideMenu = this._menuOverlays.some((overlay) =>
-        overlay.style.display !== "none" && overlay.contains(target)
-      );
-      if (!insideMenu) this._closeMenu();
-    });
-
-    // Close on Esc
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") this._closeMenu();
-    });
-  }
-
-  _prepareMenuOverlay(overlay: HTMLDivElement, level: number) {
-    overlay.className = level === 0 ? "pte-menu" : "pte-menu pte-submenu";
-    overlay.style.position = "fixed";
-    overlay.style.zIndex = `${9999 + level}`;
-    overlay.style.display = "none";
-    overlay.style.visibility = "hidden";
-    this.root.appendChild(overlay);
-    overlay.addEventListener("mousemove", (e) => this._handleMenuMouseMove(level, e));
-    overlay.addEventListener("click", (e) => this._handleMenuClick(level, e));
-  }
-
-  _ensureMenuOverlay(level: number) {
-    if (this._menuOverlays[level]) return this._menuOverlays[level];
-    const overlay = document.createElement("div");
-    this._menuOverlays[level] = overlay;
-    this._prepareMenuOverlay(overlay, level);
-    return overlay;
-  }
-
-  _getMenuBounds() {
-    const r = this.root.getBoundingClientRect();
-    return {
-      left: r.left + 8,
-      top: r.top + 8,
-      right: r.right - 8,
-      bottom: r.bottom - 8,
-    };
-  }
-
-  _getMenuItemById(level: number, id: string | null) {
-    if (!id) return null;
-    return this._menuItemsByLevel[level]?.find(x => x.id === id) || null;
-  }
-
-  _setMenuParentExpanded(level: number, btn: HTMLElement) {
-    const prev = this._menuOpenParentEls[level];
-    if (prev && prev !== btn) prev.setAttribute("aria-expanded", "false");
-    btn.setAttribute("aria-expanded", "true");
-    this._menuOpenParentEls[level] = btn;
-  }
-
-  _hideMenuLevels(fromLevel: number) {
-    for (let level = fromLevel; level < this._menuOverlays.length; level++) {
-      const overlay = this._menuOverlays[level];
-      if (!overlay) continue;
-      overlay.style.display = "none";
-      overlay.style.opacity = "0";
-      overlay.style.visibility = "hidden";
-    }
-
-    for (let level = fromLevel; level < this._menuOpenTimers.length; level++) {
-      const timer = this._menuOpenTimers[level];
-      if (timer != null) clearTimeout(timer);
-    }
-    this._menuOpenTimers.length = fromLevel;
-
-    const clearFrom = Math.max(0, fromLevel - 1);
-    for (let level = clearFrom; level < this._menuOpenParentEls.length; level++) {
-      const el = this._menuOpenParentEls[level];
-      if (el) el.setAttribute("aria-expanded", "false");
-    }
-    this._menuOpenParentEls.length = clearFrom;
-
-    this._menuItemsByLevel.length = fromLevel;
-    this._menuParentIds.length = fromLevel;
-  }
-
-  _handleMenuMouseMove(level: number, e: MouseEvent) {
-    const overlay = this._menuOverlays[level];
-    if (!overlay || overlay.style.display === "none") return;
-    const target = e.target as HTMLElement | null;
-    const btn = target?.closest(".pte-menu-item[data-item-id]") as HTMLElement | null;
-    if (!btn || !overlay.contains(btn)) return;
-
-    const item = this._getMenuItemById(level, btn.getAttribute("data-item-id"));
-    const nextLevel = level + 1;
-    if (!item || item.disabled || !item.subMenu || item.subMenu.length === 0) {
-      const timer = this._menuOpenTimers[nextLevel];
-      if (timer != null) clearTimeout(timer);
-      this._hideMenuLevels(nextLevel);
-      return;
-    }
-
-    if (this._menuParentIds[nextLevel] === item.id) return;
-
-    const timer = this._menuOpenTimers[nextLevel];
-    if (timer != null) clearTimeout(timer);
-    this._menuOpenTimers[nextLevel] = setTimeout(() => {
-      this._openSubmenu(nextLevel, btn, item.subMenu || []);
-    }, 120);
-  }
-
-  _handleMenuClick(level: number, e: MouseEvent) {
-    const overlay = this._menuOverlays[level];
-    if (!overlay || overlay.style.display === "none") return;
-    const target = e.target as HTMLElement | null;
-    const btn = target?.closest(".pte-menu-item[data-item-id]") as HTMLElement | null;
-    if (!btn || !overlay.contains(btn)) return;
-
-    const item = this._getMenuItemById(level, btn.getAttribute("data-item-id"));
-    if (!item || item.disabled) return;
-
-    if (item.subMenu && item.subMenu.length > 0) {
-      this._openSubmenu(level + 1, btn, item.subMenu);
-      return;
-    }
-
-    if (item.onClick) {
-      this._closeMenu();
-      if (level === 0) {
-        console.time("menuOnClick");
-        item.onClick();
-        console.timeEnd("menuOnClick");
-      } else {
-        item.onClick();
-      }
-    }
-  }
-
   _updateLoadingOverlay() {
     this._loadingOverlayRenderer.setLoading(this._externalLoading);
   }
@@ -1943,92 +1787,6 @@ export class GridRenderer {
   _setServerLoading(isLoading: boolean, requestId?: number) {
     this._externalLoading = isLoading;
     this._updateLoadingOverlay();
-  }
-
-  _openSubmenu(level: number, parentBtnEl: HTMLElement, submenuItems: MenuItem[]) {
-    const overlay = this._ensureMenuOverlay(level);
-    this._hideMenuLevels(level + 1);
-    this._menuItemsByLevel[level] = submenuItems;
-    this._menuParentIds[level] = parentBtnEl.getAttribute("data-item-id");
-    this._renderMenuItems(overlay, submenuItems, { isSubmenu: true });
-    if (level > 0) this._setMenuParentExpanded(level - 1, parentBtnEl);
-
-    const r = parentBtnEl.getBoundingClientRect();
-    const W = 220;
-
-    // Default: open to the right
-    let left = r.right;
-    let top = r.top;
-
-    const bounds = this._getMenuBounds();
-
-    // If would overflow right edge, open to the left
-    if (left + W > bounds.right) {
-      left = r.left - W;
-    }
-
-    overlay.style.minWidth = `${W}px`;
-    overlay.style.visibility = "hidden";
-    overlay.style.display = "block";
-    const submenuRect = overlay.getBoundingClientRect();
-    overlay.style.opacity = "1";
-
-    if (left + submenuRect.width > bounds.right) {
-      left = bounds.right - submenuRect.width;
-    }
-    if (left < bounds.left) {
-      left = bounds.left;
-    }
-    if (top + submenuRect.height > bounds.bottom) {
-      top = bounds.bottom - submenuRect.height;
-    }
-    if (top < bounds.top) {
-      top = bounds.top;
-    }
-
-    overlay.style.left = `${left}px`;
-    overlay.style.top = `${top}px`;
-    overlay.style.visibility = "visible";
-  }
-
-  _renderMenuItems(container: HTMLDivElement, items: MenuItem[], { isSubmenu = false } = {}) {
-    container.innerHTML = "";
-    let idCounter = 0;
-    for (const item of items) {
-      item.id = item.id || `menuitem-${Date.now()}-${idCounter++}`;
-      if (isTrue(item.isSeparator)) {
-        const hr = document.createElement("hr");
-        hr.className = "pte-menu-separator";
-        container.appendChild(hr);
-        continue;
-      }
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = "pte-menu-item";
-      const text = document.createElement("span");
-      text.className = "pte-menu-item-text";
-      text.textContent = item.label || '';
-      el.appendChild(text);
-      el.disabled = !!item.disabled;
-      if (item.subMenu) {
-        el.classList.add("has-submenu");
-        el.setAttribute("aria-haspopup", "menu");
-        el.setAttribute("aria-expanded", "false");
-        item.right = "icon-arrow-right";
-      }
-      if (item.left) {
-        const left = document.createElement("span");
-        left.className = `pte-menu-item-icon pte-menu-item-icon-left ${item.left}`;
-        el.prepend(left);
-      }
-      if (item.right) {
-        const right = document.createElement("span");
-        right.className = `pte-menu-item-icon pte-menu-item-icon-right ${item.right}`;
-        el.appendChild(right);
-      }
-      el.setAttribute("data-item-id", item.id);
-      container.appendChild(el);
-    }
   }
 
   _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
@@ -2075,8 +1833,7 @@ export class GridRenderer {
   }
 
   _closeMenu() {
-    this._menuColKey = null;
-    this._hideMenuLevels(0);
+    this._legacyMenuOverlayRenderer.close();
   }
 
   _closeFilter() {
