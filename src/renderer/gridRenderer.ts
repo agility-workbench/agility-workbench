@@ -18,6 +18,7 @@ import { div } from "./element";
 import { GridCore } from "../core/core";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { GridIconMap } from "../theme/icons";
+import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
   GridEventColumnsChangedParams,
   GridEventPaginationChangedParams,
@@ -54,6 +55,7 @@ export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _legacyMenuOverlayRenderer: LegacyMenuOverlayRenderer;
   _coreEventBinder: GridRendererCoreEventBinder;
+  _modelChangeHandler: GridModelChangeHandler;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -200,6 +202,19 @@ export class GridRenderer {
       onColumnsChanged: (params) => this.onColumnsChanged(params),
       onDataChanged: (params) => this.onDataChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
+    });
+    this._modelChangeHandler = new GridModelChangeHandler({
+      core: this.core,
+      serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
+      recomputeView: () => this._recomputeView(),
+      updateWindow: (forcePatch, scrollSrc, params) => this._updateWindow(forcePatch, scrollSrc, params),
+      resetScrollPosition: () => this._resetScrollPosition(),
+      updatePaginationControls: () => this._updatePaginationControls(),
+      addSortIndicatorToHeader: (colID, dir) => this._addSortIndicatorToHeader(colID, dir),
+      setFilterIndicators: () => this._setFilterIndicators(),
+      buildRowPool: () => this._buildRowPool(),
+      buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
+      updateColumnWidths: (colIDs) => this._updateColumnWidths(colIDs),
     });
     this._bodyCellRenderer = new BodyCellRenderer();
 
@@ -532,57 +547,11 @@ export class GridRenderer {
   }
 
   onDataChanged(params: GridEventRowsChangedParams) {
-    // this._clearSelection();
-    // this._resetScrollPosition();
-    console.log(params);
-    if (params.reason === "viewport") {
-      this._serverSidePendingRangeKeys.delete(`${params.firstRowIndex}:${params.lastRowIndex}`);
-    } else {
-      this._serverSidePendingRangeKeys.clear();
-    }
-    if (params.reason !== "sort") {
-      this._recomputeView();
-    }
-    // this._updateColumnWidths();
-    this._updateWindow(true, undefined, params);
-    if (this.rowModel.getType() !== "serverSide" || (params.reason !== "viewport" && params.firstRowIndex === 0)) {
-      this._resetScrollPosition();
-    }
-    this._updatePaginationControls();
+    this._modelChangeHandler.onDataChanged(params);
   }
 
   onColumnsChanged(params: GridEventColumnsChangedParams) {
-    console.log(params);
-    // this._clearSelection();
-    // this._clearColumnSelection();
-    let rebuiltRows = false;
-    if (params.reason === "sort") {
-      const sorts = this.core.getSortModel().items;
-      for (const colID of params.changedColIds || []) {
-        const sort = sorts.find(s => s.col.instanceID === colID);
-        this._addSortIndicatorToHeader(colID, sort?.dir || '');
-      }
-    } else if (params.reason === "filter") {
-      this._setFilterIndicators();
-    } else if (params.reason === "visibility") {
-      this._buildRowPool();
-      this._buildHeaderDOM(params.reason);
-      rebuiltRows = true;
-    } else if (params.reason === "state") {
-      this._buildRowPool();
-      this._buildHeaderDOM(params.reason);
-      this._updateColumnWidths();
-      rebuiltRows = true;
-    } else if (params.reason !== "resize") {
-      this._buildRowPool();
-      this._buildHeaderDOM(params.reason);
-      rebuiltRows = true;
-    } else {
-      this._updateColumnWidths(params.changedColIds || []);
-    }
-    if (rebuiltRows) {
-      this._updateWindow(true, undefined);
-    }
+    this._modelChangeHandler.onColumnsChanged(params);
   }
 
   exportCSV(options: ExportOptions = {}) {
