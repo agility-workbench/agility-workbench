@@ -33,6 +33,7 @@ import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { BodyRowPoolRenderer } from "./body/rowPool";
+import { BodyViewportRenderer } from "./body/viewport";
 import { createBodyWrapper } from "./body/wrapper";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
@@ -83,6 +84,7 @@ export class GridRenderer {
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
+  _bodyViewportRenderer: BodyViewportRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
@@ -313,6 +315,16 @@ export class GridRenderer {
       leftViewport: this.leftViewport,
       centerViewport: this.viewport,
       rightViewport: this.rightViewport,
+    });
+    this._bodyViewportRenderer = new BodyViewportRenderer({
+      core: this.core,
+      rowHeight: () => this.rowHeight,
+      body: this.body,
+      leftSpacer: this.leftSpacer,
+      centerSpacer: this.spacer,
+      rightSpacer: this.rightSpacer,
+      vScrollParent: this.vScrollParent,
+      vScroller: this.vScroller,
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -1296,13 +1308,7 @@ export class GridRenderer {
   }
 
   _recomputeView() {
-    // Update total scroll height
-    const verticalSize = this.core.getRowModel().getViewCount() * this.rowHeight;
-    this.leftSpacer.style.height = `${verticalSize}px`;
-    this.spacer.style.height = `${verticalSize}px`;
-    this.rightSpacer.style.height = `${verticalSize}px`;
-    this.vScroller.style.height = `${verticalSize}px`;
-    this.vScrollParent.style.display = verticalSize > this.body.clientHeight ? "block" : "none";
+    this._bodyViewportRenderer.recomputeView();
 
     // this._updatePaginationControls();
     // this._clampSelectionToView();
