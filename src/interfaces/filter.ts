@@ -47,19 +47,16 @@ export class FilterModel {
   }
 
   addItem(item: FilterItem) {
-    const idx = this.items.findIndex(f => f.col.instanceID === item.col.instanceID);
-    if (idx >= 0) {
-      this.items[idx] = item;
-    } else {
-      this.items.push(item);
-    }
+    const nextItems = this.items.filter(f => !this.matchesColumn(f, item.col));
+    nextItems.push({ ...item, key: item.col.key });
+    this.items = nextItems;
     this.id = crypto.randomUUID();
   }
 
-  removeItem(colID: string): boolean {
-    const idx = this.items.findIndex(f => f.col.instanceID === colID);
-    if (idx < 0) return false;
-    this.items.splice(idx, 1);
+  removeItem(col: Column): boolean {
+    const nextItems = this.items.filter(f => !this.matchesColumn(f, col));
+    if (nextItems.length === this.items.length) return false;
+    this.items = nextItems;
     this.id = crypto.randomUUID();
     return true;
   }
@@ -72,6 +69,14 @@ export class FilterModel {
   clear() {
     this.items = [];
     this.id = crypto.randomUUID();
+  }
+
+  private matchesColumn(item: FilterItem, col: Column): boolean {
+    return item.col.instanceID === col.instanceID
+      || item.col.colId === col.colId
+      || item.col.key === col.key
+      || item.key === col.colId
+      || item.key === col.key;
   }
 }
 

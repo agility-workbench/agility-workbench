@@ -1150,11 +1150,15 @@ export class GridRenderer {
       aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateModel>);
     }
 
-    const filters: ServerSideRequest["filters"] = this.core.getFilterModel().items.map(item => ({
-      key: item.col.key,
-      filters: item.filters.map(filter => ({ type: filter.type, values: filter.values })),
-      join: item.join,
-    }));
+    const filtersByKey = new Map<string, ServerSideRequest["filters"][number]>();
+    for (const item of this.core.getFilterModel().items) {
+      filtersByKey.set(item.col.key, {
+        key: item.col.key,
+        filters: item.filters.map(filter => ({ type: filter.type, values: filter.values })),
+        join: item.join,
+      });
+    }
+    const filters: ServerSideRequest["filters"] = Array.from(filtersByKey.values());
 
     const sortsByKey = new Map<string, ServerSideRequest["sorts"][number]>();
     for (const item of this.core.getSortModel().items) {
@@ -1816,7 +1820,7 @@ export class GridRenderer {
       btn.appendChild(icon);
       wrapper.appendChild(btn);
       if (flyout) {
-        const hasFilter = this.core.getFilterModel().items.find(f => f.key === col.instanceID);
+        const hasFilter = this.core.getFilterModel().items.find(f => this._filterMatchesColumn(f, col));
         if (hasFilter) {
           btn.classList.add("pte-hcell-menu-filter-active");
         }
@@ -3362,14 +3366,22 @@ export class GridRenderer {
   }
 
   _setFilterIndicators() {
-    const filteredCols = new Set(this.core.getFilterModel().items.map(f => f.col.instanceID));
+    const filters = this.core.getFilterModel().items;
     for (const col of this.core.getColumnModel().getLeaves()) {
       const hcell = document.getElementById(col.instanceID);
       if (!hcell) continue;
       const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
       if (!menuBtn) continue;
-      menuBtn.classList.toggle("active", filteredCols.has(col.instanceID));
+      menuBtn.classList.toggle("active", filters.some(f => this._filterMatchesColumn(f, col)));
     }
+  }
+
+  private _filterMatchesColumn(filter: { col: Column; key: string }, col: Column): boolean {
+    return filter.col.instanceID === col.instanceID
+      || filter.col.colId === col.colId
+      || filter.col.key === col.key
+      || filter.key === col.colId
+      || filter.key === col.key;
   }
 
   _onFilterModelChanged() {

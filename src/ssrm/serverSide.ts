@@ -212,14 +212,18 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private serializeFilters(filterModel: IRowModelRequestParams["filterModel"]): IServerSideFilter[] {
-    return filterModel.items.map(item => ({
-      key: item.col.key,
-      filters: item.filters.map(filter => ({
-        type: filter.type,
-        values: filter.values,
-      })),
-      join: item.join,
-    }));
+    const filtersByKey = new Map<string, IServerSideFilter>();
+    for (const item of filterModel.items) {
+      filtersByKey.set(item.col.key, {
+        key: item.col.key,
+        filters: item.filters.map(filter => ({
+          type: filter.type,
+          values: filter.values,
+        })),
+        join: item.join,
+      });
+    }
+    return Array.from(filtersByKey.values());
   }
 
   private serializeSorts(sortModel: IRowModelRequestParams["sortModel"]): IServerSideSort[] {

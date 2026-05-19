@@ -102,11 +102,46 @@ export class GridCore implements IGridCore {
   setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
     const changedSortColIds = this.reconcileSortModelColumns();
+    const changedFilterColIds = this.reconcileFilterModelColumns();
     this.autosizeColumns();
     this.emit("columnsChanged", { reason: "defs" });
+    if (changedFilterColIds.length > 0) {
+      this.emit("columnsChanged", { reason: "filter", changedColIds: changedFilterColIds });
+    }
     if (changedSortColIds.length > 0) {
       this.emit("columnsChanged", { reason: "sort", changedColIds: changedSortColIds });
     }
+  }
+
+  private reconcileFilterModelColumns(): string[] {
+    const nextItems: FilterItem[] = [];
+    const changedColIds: string[] = [];
+    const seenColIds = new Set<string>();
+    let changed = false;
+
+    for (const item of this.filters.items) {
+      const col = this.resolveModelColumn(item);
+      if (!col) {
+        changed = true;
+        continue;
+      }
+
+      if (seenColIds.has(col.instanceID)) {
+        changed = true;
+        continue;
+      }
+
+      seenColIds.add(col.instanceID);
+      changedColIds.push(col.instanceID);
+      if (item.col !== col || item.key !== col.key) changed = true;
+      nextItems.push({ ...item, col, key: col.key });
+    }
+
+    if (changed) {
+      this.filters.setItems(nextItems);
+    }
+
+    return changedColIds;
   }
 
   private reconcileSortModelColumns(): string[] {
@@ -141,19 +176,23 @@ export class GridCore implements IGridCore {
   }
 
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
-    if (sort.col) {
-      const colById = this.columnModel.getById(sort.col.instanceID);
+    return this.resolveModelColumn(sort);
+  }
+
+  private resolveModelColumn(item: { col?: Column; key?: string }): Column | undefined {
+    if (item.col) {
+      const colById = this.columnModel.getById(item.col.instanceID);
       if (colById) return colById;
-      const colByColId = this.columnModel.getByColId(sort.col.colId);
+      const colByColId = this.columnModel.getByColId(item.col.colId);
       if (colByColId) return colByColId;
-      const colByKey = this.columnModel.getByKey(sort.col.key);
+      const colByKey = this.columnModel.getByKey(item.col.key);
       if (colByKey) return colByKey;
     }
 
-    if (!sort.key) return undefined;
-    return this.columnModel.getById(sort.key)
-      ?? this.columnModel.getByColId(sort.key)
-      ?? this.columnModel.getByKey(sort.key);
+    if (!item.key) return undefined;
+    return this.columnModel.getById(item.key)
+      ?? this.columnModel.getByColId(item.key)
+      ?? this.columnModel.getByKey(item.key);
   }
 
   private autosizeColumns(identifyComparators: boolean = true) {
@@ -241,18 +280,30 @@ export class GridCore implements IGridCore {
   }
 
   addFilterModel(filter: FilterItem) {
-    this.filters.addItem(filter);
-    this.applyFilters([filter.col.instanceID]);
+    const col = this.resolveModelColumn(filter);
+    if (!col) return;
+    this.filters.addItem({ ...filter, col, key: col.key });
+    this.applyFilters([col.instanceID]);
   }
 
   removeFilterModel(col: Column) {
-    if (!this.filters.removeItem(col.instanceID)) return;
+    if (!this.filters.removeItem(col)) return;
     this.applyFilters([col.instanceID]);
   }
 
   setFilterModel(filters: FilterItem[]) {
-    this.filters.setItems(filters);
-    this.applyFilters(filters.map(f => f.col.instanceID));
+    const nextItems: FilterItem[] = [];
+    const changedColIds: string[] = [];
+    const seenColIds = new Set<string>();
+    for (const filter of filters) {
+      const col = this.resolveModelColumn(filter);
+      if (!col || seenColIds.has(col.instanceID)) continue;
+      seenColIds.add(col.instanceID);
+      changedColIds.push(col.instanceID);
+      nextItems.push({ ...filter, col, key: col.key });
+    }
+    this.filters.setItems(nextItems);
+    this.applyFilters(changedColIds);
   }
 
   private applyFilters(changedColIds: string[]) {
