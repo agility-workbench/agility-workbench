@@ -36,6 +36,7 @@ import { createBodyWrapper } from "./body/wrapper";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { createLoadingOverlay } from "./overlay/loading";
+import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
 
@@ -78,6 +79,7 @@ function cssEscape(value: string): string {
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _headerRenderer: HeaderRenderer;
+  _paginationRenderer: PaginationRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -304,6 +306,11 @@ export class GridRenderer {
 
     this.paginator = createPaginationWrapper();
     this.root.appendChild(this.paginator);
+    this._paginationRenderer = new PaginationRenderer({
+      core: this.core,
+      paginator: this.paginator,
+      resetScrollPosition: () => this._resetScrollPosition(),
+    });
     // this.buildPaginationControls();
 
     this._leafColumns = [];
@@ -1484,138 +1491,18 @@ export class GridRenderer {
   }
 
   private buildPaginationControls() {
-    this.paginator.innerHTML = "";
-    const {
-      paginationEnabled,
-      pageIndex,
-      pageSize,
-      totalRowCount,
-      totalPageCount,
-      pageSizes,
-    } = this.core.getPaginationInfo();
-    if (!paginationEnabled) return;
-
-    const sizeSection = document.createElement("div");
-    sizeSection.className = "pte-pagination-section";
-    const sizeLabel = document.createElement("span");
-    sizeLabel.className = "pte-pagination-label";
-    sizeLabel.textContent = "Rows per page";
-    this.pageSizeSelect = document.createElement("select");
-    this.pageSizeSelect.className = "pte-select pte-pagination-select";
-    for (const size of pageSizes) {
-      const option = document.createElement("option");
-      option.value = String(size);
-      option.textContent = String(size);
-      this.pageSizeSelect.appendChild(option);
-    }
-    this.pageSizeSelect.value = String(pageSize);
-    this.pageSizeSelect.addEventListener("change", (e) => {
-      const next = Number((e.target as HTMLSelectElement).value);
-      if (!Number.isFinite(next) || next <= 0) return;
-      if (next === this.core.getPaginationInfo().pageSize) return;
-      this._resetScrollPosition();
-      this.core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 0, pageSize: next });
-    });
-    sizeSection.appendChild(sizeLabel);
-    sizeSection.appendChild(this.pageSizeSelect);
-
-    const navSection = document.createElement("div");
-    navSection.className = "pte-pagination-section pte-pagination-nav";
-
-    this.firstPageBtn = document.createElement("button");
-    this.firstPageBtn.type = "button";
-    this.firstPageBtn.className = "pte-pagination-btn pte-pagination-btn-first";
-    this.firstPageBtn.addEventListener("click", () => this._goToPage(0));
-
-    this.prevPageBtn = document.createElement("button");
-    this.prevPageBtn.type = "button";
-    this.prevPageBtn.className = "pte-pagination-btn pte-pagination-btn-prev";
-    this.prevPageBtn.addEventListener("click", () => {
-      this._goToPage(this.core.getPaginationInfo().pageIndex - 1);
-    });
-
-    const pageLabel = document.createElement("span");
-    pageLabel.className = "pte-pagination-label";
-    pageLabel.textContent = "Page";
-
-    this.pageSelect = document.createElement("select");
-    this.pageSelect.className = "pte-select pte-pagination-select pte-pagination-page-select";
-    this.pageSelect.name = "pte-page-select";
-    this.pageSelect.addEventListener("change", (e) => {
-      const val = Number((e.target as HTMLSelectElement).value);
-      if (!Number.isFinite(val)) return;
-      this._goToPage(val);
-    });
-
-    this.nextPageBtn = document.createElement("button");
-    this.nextPageBtn.type = "button";
-    this.nextPageBtn.className = "pte-pagination-btn pte-pagination-btn-next";
-    this.nextPageBtn.addEventListener("click", () => {
-      this._goToPage(this.core.getPaginationInfo().pageIndex + 1);
-    });
-
-    this.lastPageBtn = document.createElement("button");
-    this.lastPageBtn.type = "button";
-    this.lastPageBtn.className = "pte-pagination-btn pte-pagination-btn-last";
-    this.lastPageBtn.addEventListener("click", () => {
-      this._goToPage(this.core.getPaginationInfo().totalPageCount - 1);
-    });
-
-    navSection.appendChild(this.firstPageBtn);
-    navSection.appendChild(this.prevPageBtn);
-    navSection.appendChild(pageLabel);
-    navSection.appendChild(this.pageSelect);
-    navSection.appendChild(this.nextPageBtn);
-    navSection.appendChild(this.lastPageBtn);
-
-    // this.paginator.appendChild(this.buildAggregationControls());
-    this.paginator.appendChild(sizeSection);
-    this.paginator.appendChild(navSection);
-    this._populatePageSelect(pageIndex, totalPageCount);
-    this._updatePaginationControls();
+    this._paginationRenderer.buildControls();
+    this._syncPaginationControlRefs();
   }
 
   _populatePageSelect(pageIndex: number, totalPageCount: number) {
-    if (!this.pageSelect) return;
-    const totalPages = Math.max(totalPageCount, 1);
-    if (this.pageSelect.options.length !== totalPages) {
-      this.pageSelect.innerHTML = "";
-      for (let i = 0; i < totalPages; i++) {
-        const option = document.createElement("option");
-        option.value = String(i);
-        option.textContent = `${i + 1} of ${totalPages}`;
-        this.pageSelect.appendChild(option);
-      }
-    } else {
-      for (let i = 0; i < totalPages; i++) {
-        const option = this.pageSelect.options[i];
-        const desiredText = `${i + 1} of ${totalPages}`;
-        if (option.textContent !== desiredText) {
-          option.textContent = desiredText;
-        }
-      }
-    }
-    this.pageSelect.value = String(Math.min(pageIndex, totalPages - 1));
+    this._paginationRenderer.populatePageSelect(pageIndex, totalPageCount);
+    this._syncPaginationControlRefs();
   }
 
   _updatePaginationControls(params?: GridEventPaginationChangedParams) {
-    const {
-      paginationEnabled,
-      pageIndex,
-      pageSize,
-      totalRowCount,
-      totalPageCount,
-      pageSizes,
-    } = params || this.core.getPaginationInfo();
-    if (!paginationEnabled) {
-      this.paginator.classList.remove("visible");
-      return;
-    }
-    this.paginator.classList.add("visible");
-
-    if (this.pageSizeSelect) {
-      this.pageSizeSelect.value = String(pageSize);
-    }
+    this._paginationRenderer.updateControls(params);
+    this._syncPaginationControlRefs();
     if (this.aggregateScopeSelect) {
       this.aggregateScopeSelect.value = this.core.getAggregateScope();
       this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
@@ -1623,25 +1510,19 @@ export class GridRenderer {
     if (this.aggregateClearBtn) {
       this.aggregateClearBtn.disabled = this.core.getAggregateModel().length === 0;
     }
-
-    this._populatePageSelect(pageIndex, totalPageCount);
-
-    const atFirstPage = pageIndex <= 0;
-    const atLastPage = pageIndex >= Math.max(totalPageCount - 1, 0);
-    const hasRows = totalRowCount > 0;
-
-    if (this.pageSizeSelect) this.pageSizeSelect.disabled = !hasRows || !paginationEnabled;
-
-    if (this.firstPageBtn) this.firstPageBtn.disabled = atFirstPage || !hasRows;
-    if (this.prevPageBtn) this.prevPageBtn.disabled = atFirstPage || !hasRows;
-    if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
-    if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
-    if (this.pageSelect) this.pageSelect.disabled = totalPageCount <= 1 || !hasRows;
   }
 
   _goToPage(pageIdx: number) {
-    this._resetScrollPosition();
-    this.core.dispatch({ type: "paginationSet", enabled: true, pageIndex: pageIdx, pageSize: this.core.getPaginationInfo().pageSize });
+    this._paginationRenderer.goToPage(pageIdx);
+  }
+
+  private _syncPaginationControlRefs() {
+    if (this._paginationRenderer.pageSizeSelect) this.pageSizeSelect = this._paginationRenderer.pageSizeSelect;
+    if (this._paginationRenderer.pageSelect) this.pageSelect = this._paginationRenderer.pageSelect;
+    if (this._paginationRenderer.firstPageBtn) this.firstPageBtn = this._paginationRenderer.firstPageBtn;
+    if (this._paginationRenderer.prevPageBtn) this.prevPageBtn = this._paginationRenderer.prevPageBtn;
+    if (this._paginationRenderer.nextPageBtn) this.nextPageBtn = this._paginationRenderer.nextPageBtn;
+    if (this._paginationRenderer.lastPageBtn) this.lastPageBtn = this._paginationRenderer.lastPageBtn;
   }
 
   _resetScrollPosition() {
