@@ -13,6 +13,12 @@ interface BaselineWidthDef {
   totalChildrenWidth: number;
 }
 
+interface ColumnReuseContext {
+  byColId: Map<string, Column[]>;
+  byKey: Map<string, Column[]>;
+  used: Set<Column>;
+}
+
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
 
@@ -30,7 +36,6 @@ export class ColumnModel implements IColumnModel {
   private rightLeaves: Column[] = [];
   private centerLeaves: Column[] = [];
 
-  private colIdSeq: number = 0;
   private maxDepth: number = 1;
 
   private _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }> = new Map();
@@ -41,7 +46,7 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    this.updateColumns(this.buildColumns(colDefs));
+    this.updateColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext()));
   }
 
   private updateColumns(cols: Column[]) {
@@ -65,18 +70,65 @@ export class ColumnModel implements IColumnModel {
     this.setExpanders();
   }
 
-  private buildColumns(colDefs: ColDef[], parentCol?: Column, idxPrefix: string = ""): Column[] {
+  private buildColumns(colDefs: ColDef[], parentCol?: Column, idxPrefix: string = "", reuseContext?: ColumnReuseContext): Column[] {
     return colDefs.map((colDef, i) => {
-      colDef.colId = colDef.colId || colDef.key || `col_${this.colIdSeq++}`;
-      const col = new Column(colDef, `${idxPrefix}${i + 1}`);
+      const idx = `${idxPrefix}${i + 1}`;
+      colDef.colId = colDef.colId || colDef.key || `col_${idx}`;
+      const col = this.claimReusableColumn(colDef, reuseContext);
+      if (col) {
+        col.children = [];
+        col.updateFromColDef(colDef, idx);
+      }
+      const nextCol = col || new Column(colDef, idx);
       if (parentCol) {
-        parentCol.children.push(col);
+        parentCol.children.push(nextCol);
       }
       if (colDef.children && colDef.children.length > 0) {
-        this.buildColumns(colDef.children, col, `${idxPrefix}${i + 1}.`);
+        this.buildColumns(colDef.children, nextCol, `${idxPrefix}${i + 1}.`, reuseContext);
       }
-      return col;
+      return nextCol;
     });
+  }
+
+  private createReuseContext(): ColumnReuseContext {
+    const context: ColumnReuseContext = {
+      byColId: new Map(),
+      byKey: new Map(),
+      used: new Set(),
+    };
+
+    this.walkColumns((col) => {
+      this.addReusableColumn(context.byColId, col.colId, col);
+      this.addReusableColumn(context.byKey, col.key, col);
+    });
+
+    return context;
+  }
+
+  private addReusableColumn(map: Map<string, Column[]>, key: string | undefined, col: Column): void {
+    if (!key) return;
+    const cols = map.get(key);
+    if (cols) {
+      cols.push(col);
+    } else {
+      map.set(key, [col]);
+    }
+  }
+
+  private claimReusableColumn(colDef: ColDef, context?: ColumnReuseContext): Column | undefined {
+    if (!context) return undefined;
+    return this.claimReusableColumnFromMap(context.byColId, colDef.colId, context.used)
+      ?? this.claimReusableColumnFromMap(context.byKey, colDef.key, context.used);
+  }
+
+  private claimReusableColumnFromMap(map: Map<string, Column[]>, key: string | undefined, used: Set<Column>): Column | undefined {
+    if (!key) return undefined;
+    const cols = map.get(key);
+    if (!cols) return undefined;
+    const col = cols.find(candidate => !used.has(candidate));
+    if (!col) return undefined;
+    used.add(col);
+    return col;
   }
 
   reset(): void {

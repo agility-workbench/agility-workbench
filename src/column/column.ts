@@ -47,6 +47,28 @@ export class Column {
     const id = crypto.randomUUID();
     this.instanceID = id;
     this.originalInstanceID = id;
+    this.colId = "";
+    this.key = "";
+    this.label = "";
+    this.type = ColumnType.STRING;
+    this.hidden = false;
+    this.sortable = true;
+    this.groupable = true;
+    this.resizable = true;
+    this.movable = true;
+    this.columnGroupShow = "always";
+    this.openByDefault = false;
+    this.groupExpandState = "closed";
+    this.columnGroupVisible = true;
+    this.updateFromColDef(col, idx, false);
+  }
+
+  updateFromColDef(col: ColDef, idx: string = '', preserveRuntimeState: boolean = true) {
+    const previousComputedWidth = this.computedWidth;
+    const previousGroupExpandState = this.groupExpandState;
+    const previousColumnGroupVisible = this.columnGroupVisible;
+
+    this.col = col;
     this.colId = col.colId!;
     this.key = col.key || '';
     this.label = col.label || col.key || `Column ${idx}`;
@@ -73,10 +95,15 @@ export class Column {
     this.columnGroupShow = col.columnGroupShow === "open" ? "open" : col.columnGroupShow === "closed" ? "closed" : "always";
     this.openByDefault = isTrue(col.openByDefault);
     this.centralPosition = undefined;
-    this.groupExpandState = isTrue(col.openByDefault) ? "open" : "closed";
-    this.columnGroupVisible = isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
+    this.groupExpandState = preserveRuntimeState ? previousGroupExpandState : (isTrue(col.openByDefault) ? "open" : "closed");
+    this.columnGroupVisible = preserveRuntimeState
+      ? previousColumnGroupVisible
+      : isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
     this.exportable = !isFalse(col.exportable);
     this.updateComputedWidth();
+    if (preserveRuntimeState && col.width == null) {
+      this.computedWidth = previousComputedWidth;
+    }
   }
 
   private updateComputedWidth() {
