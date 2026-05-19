@@ -33,6 +33,7 @@ import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createBodyWrapper } from "./body/wrapper";
 import { createHeaderWrapper } from "./header/wrapper";
+import { createHorizontalScroll } from "./scroll/horizontal";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
@@ -280,39 +281,18 @@ export class GridRenderer {
     this.aggregateRow.appendChild(this.aggregateCloseBtn);
     this.root.appendChild(this.aggregateRow);
 
-    this.hScrollContainer = document.createElement("div");
-    this.hScrollContainer.className = "pte-scroller-horizontal-container-wrapper";
+    const horizontalScroll = createHorizontalScroll();
+    this.hScrollContainer = horizontalScroll.container;
     this.root.appendChild(this.hScrollContainer);
-    this.hScrollLeftParent = document.createElement("div");
-    this.hScrollLeftParent.className = "pte-scroller-horizontal-left-container";
-    this.hScrollContainer.appendChild(this.hScrollLeftParent);
-    this.hScrollParent = document.createElement("div");
-    this.hScrollParent.className = "pte-scroller-horizontal-container";
-    this.hScrollContainer.appendChild(this.hScrollParent);
-    this.hScrollRightParent = document.createElement("div");
-    this.hScrollRightParent.className = "pte-scroller-horizontal-right-container";
-    this.hScrollContainer.appendChild(this.hScrollRightParent);
-    this.hScrollLeft = document.createElement("div");
-    this.hScrollLeft.style.height = "15px";
-    this.hScrollLeft.className = "pte-scroller-horizontal-spacer";
-    this.hScrollLeftParent.appendChild(this.hScrollLeft);
-    this.hScroll = document.createElement("div");
-    this.hScroll.style.height = "15px";
-    this.hScroll.className = "pte-scroller-horizontal-spacer";
-    this.hScrollParent.appendChild(this.hScroll);
-    this.hScrollRight = document.createElement("div");
-    this.hScrollRight.style.height = "15px";
-    this.hScrollRight.className = "pte-scroller-horizontal-spacer";
-    this.hScrollRightParent.appendChild(this.hScrollRight);
-    this.hScrollerLeft = document.createElement("div");
-    this.hScrollerLeft.className = "pte-scroller-horizontal";
-    this.hScrollLeft.appendChild(this.hScrollerLeft);
-    this.hScroller = document.createElement("div");
-    this.hScroller.className = "pte-scroller-horizontal";
-    this.hScroll.appendChild(this.hScroller);
-    this.hScrollerRight = document.createElement("div");
-    this.hScrollerRight.className = "pte-scroller-horizontal";
-    this.hScrollRight.appendChild(this.hScrollerRight);
+    this.hScrollLeftParent = horizontalScroll.leftParent;
+    this.hScrollParent = horizontalScroll.centerParent;
+    this.hScrollRightParent = horizontalScroll.rightParent;
+    this.hScrollLeft = horizontalScroll.leftSpacer;
+    this.hScroll = horizontalScroll.centerSpacer;
+    this.hScrollRight = horizontalScroll.rightSpacer;
+    this.hScrollerLeft = horizontalScroll.leftScroller;
+    this.hScroller = horizontalScroll.centerScroller;
+    this.hScrollerRight = horizontalScroll.rightScroller;
 
     this.vScrollParent = bodyWrapper.vScrollParent;
     this.vScroll = bodyWrapper.vScroll;
