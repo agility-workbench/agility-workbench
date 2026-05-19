@@ -24,6 +24,8 @@ import { GridAction } from "../events/action";
 import { IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 
+type SchemaSource = "auto" | "props" | "server";
+
 export class GridCore implements IGridCore {
   readonly id: string;
 
@@ -45,6 +47,9 @@ export class GridCore implements IGridCore {
 
   private aggregateScope: AggregateScope = "all";
   private aggregates: AggregateModel[] = [];
+  private schemaSource: SchemaSource = "auto";
+  private serverSchemaVersion: string | undefined;
+  private serverSchemaSignature: string | undefined;
 
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private textMeasureParams!: TextMeasureParams;
@@ -99,7 +104,28 @@ export class GridCore implements IGridCore {
     };
   }
 
-  setColumnDefs(colDefs: ColDef[]) {
+  setColumnDefsFromProps(colDefs?: ColDef[] | null): void {
+    if (colDefs == null) {
+      if (this.schemaSource === "props") {
+        this.schemaSource = "auto";
+      }
+      return;
+    }
+
+    if (colDefs.length > 0) {
+      this.schemaSource = "props";
+      this.serverSchemaVersion = undefined;
+      this.serverSchemaSignature = undefined;
+      this.setColumnDefs(colDefs);
+      return;
+    }
+
+    if (this.schemaSource === "props") {
+      this.setColumnDefs([]);
+    }
+  }
+
+  private setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
     const changedSortColIds = this.reconcileSortModelColumns();
     const changedFilterColIds = this.reconcileFilterModelColumns();
@@ -111,6 +137,42 @@ export class GridCore implements IGridCore {
     if (changedSortColIds.length > 0) {
       this.emit("columnsChanged", { reason: "sort", changedColIds: changedSortColIds });
     }
+  }
+
+  private applyServerSideColumnDefs(colDefs: ColDef[], schemaVersion?: string): void {
+    if (colDefs.length === 0 || this.schemaSource === "props") return;
+
+    const schemaSignature = this.createSchemaSignature(colDefs);
+    if (this.schemaSource === "server") {
+      if (schemaVersion && schemaVersion === this.serverSchemaVersion) return;
+      if (!schemaVersion && schemaSignature === this.serverSchemaSignature) return;
+    }
+
+    this.schemaSource = "server";
+    this.serverSchemaVersion = schemaVersion;
+    this.serverSchemaSignature = schemaSignature;
+    this.setColumnDefs(colDefs);
+  }
+
+  private createSchemaSignature(colDefs: ColDef[]): string {
+    const normalize = (defs: ColDef[]): unknown[] => defs.map(def => ({
+      colId: def.colId,
+      key: def.key,
+      label: def.label,
+      type: def.type,
+      hidden: def.hidden,
+      pinned: def.pinned,
+      sortable: def.sortable,
+      filter: typeof def.filter === "function" ? "function" : def.filter,
+      groupable: def.groupable,
+      resizable: def.resizable,
+      movable: def.movable,
+      hideable: def.hideable,
+      columnGroupShow: def.columnGroupShow,
+      openByDefault: def.openByDefault,
+      children: def.children ? normalize(def.children) : undefined,
+    }));
+    return JSON.stringify(normalize(colDefs));
   }
 
   private reconcileFilterModelColumns(): string[] {
@@ -700,6 +762,13 @@ export class GridCore implements IGridCore {
       return;
     }
     this.emit("overlayShow", { overlayType: "loading" });
+  }
+
+  onServerSideSchema(id: number, params: { columns: ColDef[]; schemaVersion?: string }) {
+    if (this.requestIdCounter - id > 1) {
+      return;
+    }
+    this.applyServerSideColumnDefs(params.columns, params.schemaVersion);
   }
 
   onRows(id: number, params: IRowModelOnRowsParams) {

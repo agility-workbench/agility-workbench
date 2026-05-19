@@ -22,6 +22,8 @@ type GridServerFilter = {
 
 type GridServerPayload = {
   aggregates?: Array<{ key: string; type: string }>;
+  columns?: ColDef[];
+  schemaVersion?: string;
   filters?: GridServerFilter[];
   sorts?: Array<{ key: string; dir: "asc" | "desc" }>;
   page?: number;
@@ -139,11 +141,12 @@ function App() {
         const rows = payload?.data ?? [];
         const totalRows = payload?.totalRows ?? payload?.total ?? rows.length;
 
-        if (payload?.columns?.length) {
-          setColDefs(applyFormatters(payload.columns));
-        }
-
-        return { rows, totalRows };
+        return {
+          rows,
+          totalRows,
+          columns: payload?.columns?.length ? applyFormatters(payload.columns) : undefined,
+          schemaVersion: payload?.schemaVersion,
+        };
       },
       getAggregates: async ({ request }) => {
         console.log("Server-side aggregation request", request);
@@ -160,6 +163,8 @@ function App() {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+
+      console.log("Are we here??");
 
       try {
         const response = await fetch(`${GRID_SERVER_URL}/agg/flat`, {
@@ -214,7 +219,7 @@ function App() {
       }
     };
 
-    fetchData();
+    // fetchData();
 
     return () => {
       cancelled = true;

@@ -10,7 +10,7 @@ export interface GridReactProps extends GridOptions{
 
   /** Optional initial data/columns; wrapper will forward after init and on change */
   data?: unknown[];
-  columnDefs?: ColDef[];
+  columnDefs?: ColDef[] | null;
 
   /** Expose API (AG Grid style) */
   apiRef?: React.Ref<IGridAPI | null>;

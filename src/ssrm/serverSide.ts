@@ -179,6 +179,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       if (requestGeneration !== this.requestGeneration) return false;
       if (replaceRows && requestId !== this.activeRequestId) return false;
 
+      if (result?.columns?.length) {
+        this.listener.onServerSideSchema?.(requestId, {
+          columns: result.columns,
+          schemaVersion: result.schemaVersion,
+        });
+      }
+
       const rows = (result?.rows ?? []) as Row[];
       const startRow = request.startRow ?? 0;
       const totalRows = result?.totalRows ?? startRow + rows.length;

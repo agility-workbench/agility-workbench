@@ -1,5 +1,6 @@
 import { RowDataChangeReason } from "./iRowModel";
 import { IRowNode } from "./iRowNode";
+import { ColDef } from "./column";
 
 export interface IRowModelOnRowsParams {
   reason: RowDataChangeReason;
@@ -12,6 +13,7 @@ export interface IRowModelOnRowsParams {
 
 export type IRowModelListener = {
   onLoadingStart: (id: number) => void;
+  onServerSideSchema?: (id: number, payload: { columns: ColDef[]; schemaVersion?: string }) => void;
   onRows: (id: number, payload: IRowModelOnRowsParams) => void;
   onLoadingEnd: (id: number) => void;
   onError: (id: number, err: unknown) => void;

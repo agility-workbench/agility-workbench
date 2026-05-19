@@ -78,7 +78,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     useLayoutEffect(() => {
       const core = coreRef.current;
       if (!core) return;
-      core.dispatch({ type: "columnDefsSet", defs: props.columnDefs || [] });
+      core.setColumnDefsFromProps(props.columnDefs);
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.columnDefs]);

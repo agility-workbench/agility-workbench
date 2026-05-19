@@ -1,4 +1,5 @@
 import { AggregateModel, AggregateScope } from "./aggregate";
+import { ColDef } from "./column";
 import { FilterType } from "./filter";
 import { SortDir } from "./sort";
 
@@ -26,6 +27,8 @@ export interface IServerSideRequest {
 export interface IServerSideResult {
   rows: any[];
   totalRows?: number;
+  columns?: ColDef[];
+  schemaVersion?: string;
 }
 
 export interface IServerSideAggregationRequest {

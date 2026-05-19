@@ -8,6 +8,7 @@ import { CellRef, SelectionRange } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
 import { GridOptions } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
+import { ColDef } from "./column";
 
 export type GridId = string;
 export type ColId = string;
@@ -72,6 +73,8 @@ export interface IGridCore {
 
   /** Read-only snapshot (useful to renderer to initialize). */
   getSnapshot(): GridSnapshot;
+
+  setColumnDefsFromProps(colDefs?: ColDef[] | null): void;
 
   /* ----- Derived read APIs renderer will need (hot paths) ----- */
   getRowModel(): IRowModel;
