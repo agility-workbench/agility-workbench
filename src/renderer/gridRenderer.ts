@@ -38,7 +38,7 @@ import { createBodyWrapper } from "./body/wrapper";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
-import { createLoadingOverlay } from "./overlay/loading";
+import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
@@ -86,6 +86,7 @@ export class GridRenderer {
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _bodyViewportRenderer: BodyViewportRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
+  _loadingOverlayRenderer: LoadingOverlayRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -407,6 +408,7 @@ export class GridRenderer {
     this._initFilterOverlay();
     this._loadingOverlay = createLoadingOverlay();
     this.root.appendChild(this._loadingOverlay);
+    this._loadingOverlayRenderer = new LoadingOverlayRenderer(this._loadingOverlay);
     this._updateLoadingOverlay();
 
     // Create a pooled set of row nodes
@@ -2612,12 +2614,7 @@ export class GridRenderer {
   }
 
   _updateLoadingOverlay() {
-    const shouldShow = this._externalLoading;
-    if (shouldShow) {
-      this._loadingOverlay.classList.remove("hidden");
-    } else {
-      this._loadingOverlay.classList.add("hidden");
-    }
+    this._loadingOverlayRenderer.setLoading(this._externalLoading);
   }
 
   _setServerLoading(isLoading: boolean, requestId?: number) {

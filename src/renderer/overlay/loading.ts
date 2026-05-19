@@ -14,3 +14,26 @@ export function createLoadingOverlay(): HTMLDivElement {
 
   return overlay;
 }
+
+export class LoadingOverlayRenderer {
+  private isLoading = false;
+
+  constructor(private overlay: HTMLDivElement) {}
+
+  setLoading(isLoading: boolean) {
+    this.isLoading = isLoading;
+    this.update();
+  }
+
+  getLoading() {
+    return this.isLoading;
+  }
+
+  update() {
+    if (this.isLoading) {
+      this.overlay.classList.remove("hidden");
+    } else {
+      this.overlay.classList.add("hidden");
+    }
+  }
+}
