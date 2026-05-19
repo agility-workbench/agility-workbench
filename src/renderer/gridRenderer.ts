@@ -9,7 +9,7 @@ import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
-import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
+import { RendererRecord } from "./renderer";
 import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
@@ -27,6 +27,7 @@ import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
+import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { createBodyWrapper } from "./body/wrapper";
@@ -44,6 +45,7 @@ const COLUMN_DRAG_THRESHOLD_PX = 4;
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _iconRenderer: IconRenderer;
+  _bodyCellRenderer: BodyCellRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -204,6 +206,7 @@ export class GridRenderer {
     this.setIcons(this.core.getOptions().icons);
 
     this._menuRenderer = new MenuRenderer(this.root);
+    this._bodyCellRenderer = new BodyCellRenderer();
 
     const headerWrapper = createHeaderWrapper();
     this.headerWrapper = headerWrapper.wrapper;
@@ -1491,43 +1494,7 @@ export class GridRenderer {
   }
 
   _renderCell(cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) {
-    const rawValue = col.getValue(row);
-    const displayValue = col.formatValue(rawValue, row);
-    const renderer = col.cellRenderer;
-    const rendererParams = getCellRendererParams(rawValue, displayValue, row, 0, col, cell, null);
-    if (!renderer) {
-      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
-      if (rec) {
-        rec.runtime.destroy();
-        cellRendererMap.delete(col.instanceID);
-      }
-      // text-only update
-      cell.textContent = displayValue;
-      return;
-    }
-
-    const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
-    // If renderer changed or missing, (re)create
-    if (!rec || rec.renderer !== renderer) {
-      rec?.runtime.destroy();
-      const runtime = createRendererRuntime(renderer, rendererParams);
-      cell.replaceChildren(runtime.gui);
-      cellRendererMap.set(col.instanceID, { renderer, runtime });// Same renderer instance: refresh
-      return;
-    }
-
-    // Same renderer instance: refresh
-    const ok = rec.runtime.refresh(rendererParams);
-
-    // If refresh says "can't update", recreate
-    if (ok === false) {
-      rec.runtime.destroy();
-
-      const runtime = createRendererRuntime(renderer, rendererParams);
-
-      cell.replaceChildren(runtime.gui);
-      rec.runtime = runtime;
-    }
+    this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap);
   }
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
