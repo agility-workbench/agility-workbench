@@ -78,7 +78,6 @@ export class GridRenderer {
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
-  _externalLoading: boolean = false;
   _exportAsCSV: boolean = true;
   _exportAsExcel: boolean = true;
   _loadingOverlay: HTMLDivElement;
@@ -463,7 +462,6 @@ export class GridRenderer {
     this._loadingOverlay = createLoadingOverlay();
     this.root.appendChild(this._loadingOverlay);
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this._loadingOverlay);
-    this._updateLoadingOverlay();
 
     // Create a pooled set of row nodes
     // this._poolSize = this._computePoolSize();
@@ -533,9 +531,8 @@ export class GridRenderer {
 
   setLoading(isLoading: boolean) {
     const next = isTrue(isLoading);
-    if (this._externalLoading === next) return;
-    this._externalLoading = next;
-    this._updateLoadingOverlay();
+    if (this._loadingOverlayRenderer.getLoading() === next) return;
+    this._loadingOverlayRenderer.setLoading(next);
   }
 
   setIcons(icons?: GridIconMap) {
@@ -1584,10 +1581,6 @@ export class GridRenderer {
 
     this._applyColumnSelectionStyles();
     this._refreshSelectionStyles();
-  }
-
-  _updateLoadingOverlay() {
-    this._loadingOverlayRenderer.setLoading(this._externalLoading);
   }
 
   _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
