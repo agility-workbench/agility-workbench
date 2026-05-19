@@ -38,6 +38,7 @@ import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { IconRenderer } from "./iconRenderer";
+import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
@@ -60,6 +61,7 @@ export class GridRenderer {
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
+  _interactionEventBinder: GridInteractionEventBinder;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _containerEl!: HTMLElement;
@@ -294,6 +296,22 @@ export class GridRenderer {
       rightScroller: this.rightScroller,
       leafColumnLookup: () => this._leafColumnLookup,
     });
+    this._interactionEventBinder = new GridInteractionEventBinder({
+      headerWrapper: this.headerWrapper,
+      body: this.body,
+      onHeaderMouseDown: (e) => this._onHeaderMouseDown(e),
+      onHeaderContextMenu: (e) => this._headerCellContextMenuHandler(e),
+      onHeaderDoubleClick: (e) => this._onHeaderDoubleClick(e),
+      onCellMouseDown: (e) => this._onCellMouseDown(e),
+      onColumnResizeMouseMove: (e) => this._onColumnResizeMouseMove(e),
+      onColumnDragMouseMove: (e) => this._onColumnDragMouseMove(e),
+      onCellMouseMove: (e) => this._onCellMouseMove(e),
+      onColumnResizeMouseUp: () => this._onColumnResizeMouseUp(),
+      onColumnDragMouseUp: () => this._onColumnDragMouseUp(),
+      onCellMouseUp: () => this._onCellMouseUp(),
+      shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
+      onClick: (e) => this._cellClickHandler(e),
+    });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
       root: this.root,
@@ -430,28 +448,7 @@ export class GridRenderer {
     // Events
     this._pinnedSectionLayoutRenderer.bind();
     this._scrollSyncRenderer.bind();
-
-    // header sort click delegation
-    // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
-
-    this.headerWrapper.addEventListener("mousedown", (e) => this._onHeaderMouseDown(e));
-    this.headerWrapper.addEventListener("contextmenu", (e) => this._headerCellContextMenuHandler(e));
-    this.headerWrapper.addEventListener("dblclick", (e) => this._onHeaderDoubleClick(e));
-    this.body.addEventListener("mousedown", (e) => this._onCellMouseDown(e));
-    document.addEventListener("mousemove", (e) => {
-      this._onColumnResizeMouseMove(e);
-      this._onColumnDragMouseMove(e);
-      this._onCellMouseMove(e);
-    });
-    document.addEventListener("mouseup", () => {
-      this._onColumnResizeMouseUp();
-      this._onColumnDragMouseUp();
-      this._onCellMouseUp();
-    });
-    document.addEventListener("click", (e) => {
-      if (this._columnInteractionRenderer.consumeSuppressClick()) return;
-      this._cellClickHandler(e);
-    });
+    this._interactionEventBinder.bind();
     this._bodyRowHoverRenderer.bind();
 
     // initial
@@ -735,6 +732,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this.root.remove();
