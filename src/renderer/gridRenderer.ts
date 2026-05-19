@@ -8,7 +8,7 @@ import { MenuItem } from "../interfaces/menuItem";
 import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
-import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
+import { ExportOptions } from "../export/export";
 import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
@@ -16,6 +16,7 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { div } from "./element";
 import { GridCore } from "../core/core";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
+import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
@@ -55,6 +56,7 @@ export class GridRenderer {
   _legacyMenuOverlayRenderer: LegacyMenuOverlayRenderer;
   _coreEventBinder: GridRendererCoreEventBinder;
   _modelChangeHandler: GridModelChangeHandler;
+  _exportRenderer: ExportRenderer;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -214,6 +216,13 @@ export class GridRenderer {
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
       updateColumnWidths: (colIDs) => this._updateColumnWidths(colIDs),
+    });
+    this._exportRenderer = new ExportRenderer({
+      core: this.core,
+      leafColumns: () => this._leafColumns,
+      columnWidths: () => this._columnWidths,
+      selectionRange: () => this._selectionRange,
+      selectedColumnIDs: () => this._selectedColumnIDs,
     });
     this._bodyCellRenderer = new BodyCellRenderer();
 
@@ -550,130 +559,19 @@ export class GridRenderer {
   }
 
   exportCSV(options: ExportOptions = {}) {
-    this._performExport("csv", options);
+    this._exportRenderer.exportCSV(options);
   }
 
   exportExcel(options: ExportOptions = {}) {
-    this._performExport("excel", options);
+    this._exportRenderer.exportExcel(options);
   }
 
   _exportColumnCSV(columnIDs: string[] | null = []) {
-    const selectedColumns = columnIDs || [...this._selectedColumnIDs];
-    let fileName = "Export";
-    if (selectedColumns.length == 1) {
-      fileName = this.core.getColumnModel().getById(selectedColumns[0])?.label || fileName;
-    }
-    this._performExport("csv", {
-      scope: "all",
-      columnIds: selectedColumns,
-      fileName: fileName,
-    });
+    this._exportRenderer.exportColumnCSV(columnIDs);
   }
 
   _exportColumnXLSX(columnIDs: string[] | null = []) {
-    const selectedColumns = columnIDs || [...this._selectedColumnIDs];
-    let fileName = "Export";
-    if (selectedColumns.length == 1) {
-      fileName = this.core.getColumnModel().getById(selectedColumns[0])?.label || fileName;
-    }
-    this._performExport("excel", {
-      scope: "all",
-      columnIds: selectedColumns,
-      fileName: fileName,
-    });
-  }
-
-  _performExport(format: "csv" | "excel", options: ExportOptions = {}) {
-    const config = this._buildExportConfig(options);
-    if (!config) return;
-
-    const fileName = options.fileName ?? this._defaultExportFileName(format, options);
-    if (format === "csv") {
-      downloadCSV(config, fileName);
-    } else {
-      downloadExcel(config, fileName);
-    }
-  }
-
-  _buildExportConfig(options: ExportOptions): ExportConfig | null {
-    const scope = this._resolveExportScope(options);
-    const columns = this._leafColumns?.length ? this._leafColumns.slice() : [];
-    if (!columns.length) return null;
-
-    let rows: any[] = [];
-    let selectionRange = null;
-    let selectedColumnIDs: Set<string> | undefined;
-
-    if (scope === "selection" && this._selectionRange) {
-      rows = this._getRowsForSelectionExport();
-      selectionRange = { ...this._selectionRange };
-    } else if (scope === "selectedColumns") {
-      rows = this._getRowsForExport(true);
-      selectedColumnIDs = this._selectedColumnIDs;
-    } else {
-      rows = this._getRowsForExport(true);
-    }
-
-    if (!rows || rows.length === 0) return null;
-
-    return {
-      rows,
-      columns,
-      selectionRange,
-      selectedColumnIDs,
-      columnIds: options.columnIds,
-      includeHeaders: options.includeHeaders,
-      columnTree: this.core.getColumnModel().getColumns(),
-      columnWidths: this._columnWidths,
-    };
-  }
-
-  _resolveExportScope(options: ExportOptions): ExportScope {
-    if (options.scope) return options.scope;
-    if (options.columnIds && options.columnIds.length > 0) return "all";
-    if (this._selectionRange) return "selection";
-    if (this._selectedColumnIDs.size > 0) return "selectedColumns";
-    return "all";
-  }
-
-  _getRowsForExport(includeAllRows: boolean): any[] {
-    const rows: any[] = [];
-    if (includeAllRows) {
-      this.core.getRowModel().forEachNodeAfterFilterAndSort((node) => {
-        rows.push(node.data);
-      });
-      return rows;
-    }
-
-    for (let i = 0; i < this.core.getRowModel().getViewCount(); i++) {
-      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
-      if (node) rows.push(node.data);
-    }
-    return rows;
-  }
-
-  _getRowsForSelectionExport(): any[] {
-    if (!this._selectionRange) return [];
-    const rows: any[] = [];
-    const rowStart = Math.max(0, this._selectionRange.rowStart);
-    const rowEnd = Math.min(this.core.getRowModel().getViewCount() - 1, this._selectionRange.rowEnd);
-    for (let i = rowStart; i <= rowEnd; i++) {
-      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
-      if (node) rows.push(node.data);
-    }
-    return rows;
-  }
-
-  _defaultExportFileName(format: "csv" | "excel", options: ExportOptions): string {
-    const ext = format === "csv" ? "csv" : "xlsx";
-    if (options.columnIds && options.columnIds.length === 1) {
-      const col = this.core.getColumnModel().getById(options.columnIds[0]);
-      if (col) return `${col.label ?? col.key}.${ext}`;
-    }
-    const scope = this._resolveExportScope(options);
-    if (scope === "selection") return `grid-selection.${ext}`;
-    if (scope === "selectedColumns") return `grid-columns.${ext}`;
-    return `grid-all.${ext}`;
+    this._exportRenderer.exportColumnXLSX(columnIDs);
   }
 
   destroy() {
@@ -926,7 +824,12 @@ export class GridRenderer {
       this.core.getRowModel().forEachNodeAfterFilterAndSort((node) => rows.push(node.data));
       return rows;
     }
-    return this._getRowsForExport(false);
+    const rows: any[] = [];
+    for (let i = 0; i < this.core.getRowModel().getViewCount(); i++) {
+      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
+      if (node) rows.push(node.data);
+    }
+    return rows;
   }
 
   _maybeRequestServerAggregates() {
