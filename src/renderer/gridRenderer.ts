@@ -35,6 +35,7 @@ import { createAggregateRow } from "./aggregate/wrapper";
 import { createBodyWrapper } from "./body/wrapper";
 import { createHeaderWrapper } from "./header/wrapper";
 import { createLoadingOverlay } from "./overlay/loading";
+import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
@@ -289,8 +290,7 @@ export class GridRenderer {
     this.viewport = bodyWrapper.centerViewport;
     this.rightViewport = bodyWrapper.rightViewport;
 
-    this.paginator = document.createElement("div");
-    this.paginator.className = "pte-pagination-wrapper";
+    this.paginator = createPaginationWrapper();
     this.root.appendChild(this.paginator);
     // this.buildPaginationControls();
 
