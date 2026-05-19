@@ -40,6 +40,7 @@ import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading"
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
+import { GridScrollSyncRenderer } from "./scroll/sync";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
@@ -52,6 +53,7 @@ export class GridRenderer {
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
+  _scrollSyncRenderer: GridScrollSyncRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -166,9 +168,6 @@ export class GridRenderer {
     return this.core.getRowModel();
   }
 
-  _rafPending: boolean;
-  _syncingScrollTargets: Set<HTMLDivElement>;
-  _syncingScrollRaf: number | null;
   _measureCache: Map<string, Map<string, number>>;
 
   constructor(
@@ -311,6 +310,25 @@ export class GridRenderer {
       aggregateCenterRow: () => this.aggregateCenterRow,
       aggregateRight: this.aggregateRight,
     });
+    this._scrollSyncRenderer = new GridScrollSyncRenderer({
+      leftScroller: this.leftScroller,
+      centerScroller: this.scroller,
+      rightScroller: this.rightScroller,
+      vScroll: this.vScroll,
+      leftSpacer: this.leftSpacer,
+      centerSpacer: this.spacer,
+      rightSpacer: this.rightSpacer,
+      hScrollLeft: this.hScrollLeft,
+      hScrollCenter: this.hScroll,
+      hScrollRight: this.hScrollRight,
+      leftHeader: this.leftHeader,
+      centerHeader: this.header,
+      rightHeader: this.rightHeader,
+      aggregateLeft: this.aggregateLeft,
+      aggregateCenter: this.aggregateCenter,
+      aggregateRight: this.aggregateRight,
+      onWindowUpdate: (scrollSrc) => this._updateWindow(false, scrollSrc),
+    });
 
     this.paginator = createPaginationWrapper();
     this.root.appendChild(this.paginator);
@@ -373,85 +391,7 @@ export class GridRenderer {
     setPinSectionMaxWidths();
 
     // Events
-    this._rafPending = false;
-    this._syncingScrollTargets = new Set();
-    this._syncingScrollRaf = null;
-    this.leftScroller.addEventListener("scroll", () => {
-      if (this._syncingScrollTargets.has(this.leftScroller)) return;
-      this._scheduleWindowUpdate(this.leftScroller);
-    });
-    this.scroller.addEventListener("scroll", () => {
-      if (this._syncingScrollTargets.has(this.scroller)) return;
-      this._scheduleWindowUpdate(this.scroller);
-    });
-    this.rightScroller.addEventListener("scroll", () => {
-      if (this._syncingScrollTargets.has(this.rightScroller)) return;
-      this._scheduleWindowUpdate(this.rightScroller);
-    });
-    this.vScroll.addEventListener("scroll", () => {
-      if (this._syncingScrollTargets.has(this.vScroll)) return;
-      this._scheduleWindowUpdate(this.vScroll);
-    });
-    this.leftSpacer.addEventListener("scroll", () => {
-      this.leftHeader.scrollLeft = this.leftSpacer.scrollLeft;
-      this.hScrollLeft.scrollLeft = this.leftSpacer.scrollLeft;
-      this.aggregateLeft.scrollLeft = this.leftSpacer.scrollLeft;
-    });
-    this.spacer.addEventListener("scroll", () => {
-      this.header.scrollLeft = this.spacer.scrollLeft;
-      this.hScroll.scrollLeft = this.spacer.scrollLeft;
-      this.aggregateCenter.scrollLeft = this.spacer.scrollLeft;
-    });
-    this.rightSpacer.addEventListener("scroll", () => {
-      this.rightHeader.scrollLeft = this.rightSpacer.scrollLeft;
-      this.hScrollRight.scrollLeft = this.rightSpacer.scrollLeft;
-      this.aggregateRight.scrollLeft = this.rightSpacer.scrollLeft;
-    });
-    this.hScrollLeft.addEventListener("scroll", () => {
-      this.leftSpacer.scrollLeft = this.hScrollLeft.scrollLeft;
-      this.leftHeader.scrollLeft = this.hScrollLeft.scrollLeft;
-      this.aggregateLeft.scrollLeft = this.hScrollLeft.scrollLeft;
-    });
-    this.hScroll.addEventListener("scroll", () => {
-      this.spacer.scrollLeft = this.hScroll.scrollLeft;
-      this.header.scrollLeft = this.hScroll.scrollLeft;
-      this.aggregateCenter.scrollLeft = this.hScroll.scrollLeft;
-    });
-    this.hScrollRight.addEventListener("scroll", () => {
-      this.rightSpacer.scrollLeft = this.hScrollRight.scrollLeft;
-      this.rightHeader.scrollLeft = this.hScrollRight.scrollLeft;
-      this.aggregateRight.scrollLeft = this.hScrollRight.scrollLeft;
-    });
-    this.leftHeader.addEventListener("scroll", () => {
-      this.leftSpacer.scrollLeft = this.leftHeader.scrollLeft;
-      this.hScrollLeft.scrollLeft = this.leftHeader.scrollLeft;
-      this.aggregateLeft.scrollLeft = this.leftHeader.scrollLeft;
-    });
-    this.header.addEventListener("scroll", () => {
-      this.spacer.scrollLeft = this.header.scrollLeft;
-      this.hScroll.scrollLeft = this.header.scrollLeft;
-      this.aggregateCenter.scrollLeft = this.header.scrollLeft;
-    });
-    this.rightHeader.addEventListener("scroll", () => {
-      this.rightSpacer.scrollLeft = this.rightHeader.scrollLeft;
-      this.hScrollRight.scrollLeft = this.rightHeader.scrollLeft;
-      this.aggregateRight.scrollLeft = this.rightHeader.scrollLeft;
-    });
-    this.aggregateLeft.addEventListener("scroll", () => {
-      this.leftSpacer.scrollLeft = this.aggregateLeft.scrollLeft;
-      this.leftHeader.scrollLeft = this.aggregateLeft.scrollLeft;
-      this.hScrollLeft.scrollLeft = this.aggregateLeft.scrollLeft;
-    });
-    this.aggregateCenter.addEventListener("scroll", () => {
-      this.spacer.scrollLeft = this.aggregateCenter.scrollLeft;
-      this.header.scrollLeft = this.aggregateCenter.scrollLeft;
-      this.hScroll.scrollLeft = this.aggregateCenter.scrollLeft;
-    });
-    this.aggregateRight.addEventListener("scroll", () => {
-      this.rightSpacer.scrollLeft = this.aggregateRight.scrollLeft;
-      this.rightHeader.scrollLeft = this.aggregateRight.scrollLeft;
-      this.hScrollRight.scrollLeft = this.aggregateRight.scrollLeft;
-    });
+    this._scrollSyncRenderer.bind();
     const resizeObserver = new ResizeObserver(entries => {
       setPinSectionMaxWidths();
       // this._maybeUpdatePoolSize();
@@ -1450,24 +1390,11 @@ export class GridRenderer {
 
   // ---------------- Internals: hot path ----------------
   _scheduleWindowUpdate(scrollSrc: HTMLDivElement) {
-    if (this._rafPending) return;
-    this._rafPending = true;
-    requestAnimationFrame(() => {
-      this._rafPending = false;
-      this._updateWindow(false, scrollSrc);
-    });
+    this._scrollSyncRenderer.scheduleWindowUpdate(scrollSrc);
   }
 
   _beginScrollSync(targets: HTMLDivElement[]) {
-    if (targets.length === 0) return;
-    for (const target of targets) {
-      this._syncingScrollTargets.add(target);
-    }
-    if (this._syncingScrollRaf !== null) return;
-    this._syncingScrollRaf = requestAnimationFrame(() => {
-      this._syncingScrollTargets.clear();
-      this._syncingScrollRaf = null;
-    });
+    this._scrollSyncRenderer.beginScrollSync(targets);
   }
 
   _renderCell(cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) {
