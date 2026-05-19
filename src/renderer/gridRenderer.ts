@@ -36,6 +36,7 @@ import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
 import { createBodyWrapper } from "./body/wrapper";
+import { ColumnMenuOpener } from "./columnMenuOpener";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
@@ -57,6 +58,7 @@ export class GridRenderer {
   _coreEventBinder: GridRendererCoreEventBinder;
   _modelChangeHandler: GridModelChangeHandler;
   _exportRenderer: ExportRenderer;
+  _columnMenuOpener: ColumnMenuOpener;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -179,8 +181,8 @@ export class GridRenderer {
 
   constructor(
     private core: GridCore,
-    private menuCoordinator: MenuCoordinator,
-    private filterMenuCoordinator: FilterMenuCoordinator,
+    menuCoordinator: MenuCoordinator,
+    filterMenuCoordinator: FilterMenuCoordinator,
   ) {
     this._measureCtx = null;
     this._measureCache = new Map();
@@ -222,6 +224,13 @@ export class GridRenderer {
       leafColumns: () => this._leafColumns,
       columnWidths: () => this._columnWidths,
       selectionRange: () => this._selectionRange,
+      selectedColumnIDs: () => this._selectedColumnIDs,
+    });
+    this._columnMenuOpener = new ColumnMenuOpener({
+      core: this.core,
+      menuCoordinator,
+      filterMenuCoordinator,
+      menuRenderer: this._menuRenderer,
       selectedColumnIDs: () => this._selectedColumnIDs,
     });
     this._bodyCellRenderer = new BodyCellRenderer();
@@ -1582,46 +1591,11 @@ export class GridRenderer {
   }
 
   _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
-    const session = this.menuCoordinator.openColumnMenu({
-      trigger: trigger,
-      targetColId: colID,
-      colIds: this._selectedColumnIDs.size > 1 ? Array.from(this._selectedColumnIDs) : [colID],
-      anchorEl: anchorEl,
-      clientX: left,
-      clientY: top,
-    });
-    this._menuRenderer.open({
-      anchorEl: anchorEl,
-      clientX: left || 100,
-      clientY: top || 100,
-      items: session.items,
-      level: 0,
-      parentId: null,
-      parentEl: null,
-      position: "bottom-left",
-      onItemClick: session.onItemClick,
-      onClose: session.onClose,
-    });
+    this._columnMenuOpener.openColumnMenu(trigger, colID, { anchorEl, left, top });
   }
 
   _openColFilter(colID: string, anchorEl: HTMLElement) {
-    const col = this.core.getColumnModel().getById(colID);
-    if (!col) return;
-    const session = this.filterMenuCoordinator.openFilterMenu({
-      trigger: "filterButton",
-      targetCol: col,
-      anchorEl: anchorEl,
-    });
-    this._menuRenderer.open({
-      anchorEl: anchorEl,
-      clientX: anchorEl.getBoundingClientRect().left,
-      clientY: anchorEl.getBoundingClientRect().bottom + 4,
-      contentEl: session.contentEl,
-      onOpen: session.onOpen,
-      onClose: session.onClose,
-      items: [],
-    });
-    return;
+    this._columnMenuOpener.openFilterMenu(colID, anchorEl);
   }
 
   // ---------------- Event listeners ----------------
