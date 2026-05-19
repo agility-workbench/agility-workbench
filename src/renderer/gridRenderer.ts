@@ -31,6 +31,7 @@ import {
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
+import { createBodyWrapper } from "./body/wrapper";
 import { createHeaderWrapper } from "./header/wrapper";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
@@ -236,21 +237,12 @@ export class GridRenderer {
     this.header = headerWrapper.center;
     this.rightHeader = headerWrapper.right;
 
-    this.body = document.createElement("div");
-    this.body.className = "pte-body";
+    const bodyWrapper = createBodyWrapper();
+    this.body = bodyWrapper.body;
     this.root.appendChild(this.body);
-
-    this.leftScroller = document.createElement("div");
-    this.leftScroller.className = "pte-scroller-left";
-    this.body.appendChild(this.leftScroller);
-
-    this.scroller = document.createElement("div");
-    this.scroller.className = "pte-scroller";
-    this.body.appendChild(this.scroller);
-
-    this.rightScroller = document.createElement("div");
-    this.rightScroller.className = "pte-scroller-right";
-    this.body.appendChild(this.rightScroller);
+    this.leftScroller = bodyWrapper.leftScroller;
+    this.scroller = bodyWrapper.centerScroller;
+    this.rightScroller = bodyWrapper.rightScroller;
 
     this.aggregateRow = document.createElement("div");
     this.aggregateRow.className = "pte-aggregate-row";
@@ -322,39 +314,15 @@ export class GridRenderer {
     this.hScrollerRight.className = "pte-scroller-horizontal";
     this.hScrollRight.appendChild(this.hScrollerRight);
 
-    this.vScrollParent = document.createElement("div");
-    this.vScrollParent.className = "pte-scroller-vertical-container";
-    this.body.appendChild(this.vScrollParent);
-    this.vScroll = document.createElement("div");
-    this.vScroll.className = "pte-scroller-vertical-spacer";
-    this.vScrollParent.appendChild(this.vScroll);
-    this.vScroller = document.createElement("div");
-    this.vScroller.className = "pte-scroller-vertical";
-    this.vScroll.appendChild(this.vScroller);
-
-    this.leftSpacer = document.createElement("div");
-    this.leftSpacer.className = "pte-spacer-left";
-    this.leftScroller.appendChild(this.leftSpacer);
-
-    this.spacer = document.createElement("div");
-    this.spacer.className = "pte-spacer";
-    this.scroller.appendChild(this.spacer);
-
-    this.rightSpacer = document.createElement("div");
-    this.rightSpacer.className = "pte-spacer-right";
-    this.rightScroller.appendChild(this.rightSpacer);
-
-    this.leftViewport = document.createElement("div");
-    this.leftViewport.className = "pte-viewport-left";
-    this.leftSpacer.appendChild(this.leftViewport);
-
-    this.viewport = document.createElement("div");
-    this.viewport.className = "pte-viewport";
-    this.spacer.appendChild(this.viewport);
-
-    this.rightViewport = document.createElement("div");
-    this.rightViewport.className = "pte-viewport-right";
-    this.rightSpacer.appendChild(this.rightViewport);
+    this.vScrollParent = bodyWrapper.vScrollParent;
+    this.vScroll = bodyWrapper.vScroll;
+    this.vScroller = bodyWrapper.vScroller;
+    this.leftSpacer = bodyWrapper.leftSpacer;
+    this.spacer = bodyWrapper.centerSpacer;
+    this.rightSpacer = bodyWrapper.rightSpacer;
+    this.leftViewport = bodyWrapper.leftViewport;
+    this.viewport = bodyWrapper.centerViewport;
+    this.rightViewport = bodyWrapper.rightViewport;
 
     this.paginator = document.createElement("div");
     this.paginator.className = "pte-pagination-wrapper";
