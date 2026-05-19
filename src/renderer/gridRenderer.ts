@@ -41,6 +41,7 @@ import { IconRenderer } from "./iconRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
+import { FilterOverlayRenderer } from "./overlay/filter";
 import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
@@ -62,6 +63,7 @@ export class GridRenderer {
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
+  _filterOverlayRenderer: FilterOverlayRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _containerEl!: HTMLElement;
@@ -161,9 +163,6 @@ export class GridRenderer {
   _menuOpenParentEls: (HTMLElement | null)[];
   _menuOpenTimers: (number | NodeJS.Timeout)[];
   _menuColKey: string | null;
-
-  _filterOverlay: HTMLDivElement;
-  _filterColID: string | null;
 
   _poolSize: number = 0;
   _startIndex: number = 0;
@@ -423,7 +422,6 @@ export class GridRenderer {
     this._menuParentIds = [];
     this._menuOpenParentEls = [];
     this._menuOpenTimers = [];
-    this._filterColID = null;
 
     // this._exportAsCSV = exportAsCSV;
     // this._exportAsExcel = exportAsExcel;
@@ -432,8 +430,8 @@ export class GridRenderer {
     this._menuOverlay = document.createElement("div");
     this._submenuOverlay = document.createElement("div");
     this._initMenuOverlay();
-    this._filterOverlay = document.createElement("div");
-    this._initFilterOverlay();
+    this._filterOverlayRenderer = new FilterOverlayRenderer();
+    this._filterOverlayRenderer.bind();
     this._loadingOverlay = createLoadingOverlay();
     this.root.appendChild(this._loadingOverlay);
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this._loadingOverlay);
@@ -732,6 +730,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._filterOverlayRenderer.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
@@ -1937,24 +1936,6 @@ export class GridRenderer {
     }
   }
 
-  _initFilterOverlay() {
-    this._filterOverlay.className = "pte-filter";
-    this._filterOverlay.style.position = "fixed";
-    this._filterOverlay.style.zIndex = "10000";
-    this._filterOverlay.style.display = "none";
-    document.body.appendChild(this._filterOverlay);
-
-    document.addEventListener("mousedown", (e) => {
-      if (this._filterOverlay.style.display === "none") return;
-      const target = e.target as Node | null;
-      if (!this._filterOverlay.contains(target)) this._closeFilter();
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") this._closeFilter();
-    });
-  }
-
   _updateLoadingOverlay() {
     this._loadingOverlayRenderer.setLoading(this._externalLoading);
   }
@@ -2099,8 +2080,7 @@ export class GridRenderer {
   }
 
   _closeFilter() {
-    this._filterColID = null;
-    this._filterOverlay.style.display = "none";
+    this._filterOverlayRenderer.close();
   }
 
   // ---------------- Event listeners ----------------
