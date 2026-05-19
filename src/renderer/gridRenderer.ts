@@ -37,6 +37,7 @@ import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { IconRenderer } from "./iconRenderer";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
+import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
@@ -54,6 +55,7 @@ export class GridRenderer {
   _bodyWindowRenderer: BodyWindowRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
+  _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _containerEl!: HTMLElement;
@@ -312,6 +314,17 @@ export class GridRenderer {
       aggregateCenterRow: () => this.aggregateCenterRow,
       aggregateRight: this.aggregateRight,
     });
+    this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
+      root: this.root,
+      leftHeader: this.leftHeader,
+      rightHeader: this.rightHeader,
+      hScrollLeftParent: this.hScrollLeftParent,
+      hScrollRightParent: this.hScrollRightParent,
+      leftScroller: this.leftScroller,
+      rightScroller: this.rightScroller,
+      aggregateLeft: this.aggregateLeft,
+      aggregateRight: this.aggregateRight,
+    });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
       leftScroller: this.leftScroller,
       centerScroller: this.scroller,
@@ -399,25 +412,9 @@ export class GridRenderer {
     // this._buildHeaderDOM();
     // this._buildRowPool();
 
-    const setPinSectionMaxWidths = () => {
-      this.leftHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.hScrollLeftParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.leftScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.aggregateLeft.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.rightHeader.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.hScrollRightParent.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.rightScroller.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-      this.aggregateRight.style.maxWidth = `${this.root.clientWidth * 0.35}px`;
-    };
-    setPinSectionMaxWidths();
-
     // Events
+    this._pinnedSectionLayoutRenderer.bind();
     this._scrollSyncRenderer.bind();
-    const resizeObserver = new ResizeObserver(entries => {
-      setPinSectionMaxWidths();
-      // this._maybeUpdatePoolSize();
-    });
-    resizeObserver.observe(this.root);
 
     // header sort click delegation
     // this.header.addEventListener("click", (e) => this._headerCellClickHandler(e));
@@ -743,6 +740,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._pinnedSectionLayoutRenderer.destroy();
     this.root.remove();
   }
 
