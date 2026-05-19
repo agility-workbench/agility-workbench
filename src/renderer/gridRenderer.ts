@@ -16,6 +16,7 @@ import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { div } from "./element";
 import { GridCore } from "../core/core";
+import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { GridIconMap } from "../theme/icons";
 import {
   GridEventColumnsChangedParams,
@@ -52,6 +53,7 @@ import { LegacyMenuOverlayRenderer } from "./menuOverlay";
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _legacyMenuOverlayRenderer: LegacyMenuOverlayRenderer;
+  _coreEventBinder: GridRendererCoreEventBinder;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -190,6 +192,15 @@ export class GridRenderer {
 
     this._menuRenderer = new MenuRenderer(this.root);
     this._legacyMenuOverlayRenderer = new LegacyMenuOverlayRenderer(this.root);
+    this._coreEventBinder = new GridRendererCoreEventBinder({
+      core: this.core,
+      setLoading: (isLoading) => this.setLoading(isLoading),
+      buildPaginationControls: () => this.buildPaginationControls(),
+      maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
+      onColumnsChanged: (params) => this.onColumnsChanged(params),
+      onDataChanged: (params) => this.onDataChanged(params),
+      updatePaginationControls: (params) => this._updatePaginationControls(params),
+    });
     this._bodyCellRenderer = new BodyCellRenderer();
 
     const headerWrapper = createHeaderWrapper();
@@ -442,7 +453,7 @@ export class GridRenderer {
     // if (this.rowModel.getType() === "serverSide" && this.rowModel.isValid()) {
     //   this._fetchServerSideRows("init");
     // }
-    this.setup();
+    this._coreEventBinder.bind();
   }
 
   attach(container: RefObject<HTMLElement | null>) {
@@ -455,19 +466,6 @@ export class GridRenderer {
 
   detach() {
     this._containerEl = document.createElement("div");
-  }
-
-  private setup() {
-    this.core.on("overlayShow", (ev: { overlayType: "loading" | "noRows" | "none" }) => {
-      this.setLoading(ev.overlayType === "loading" || ev.overlayType === "noRows");
-    });
-    this.core.on("modelUpdated", () => {
-      this.buildPaginationControls();
-    });
-    this.core.on("viewportChanged", (params: GridEventViewportChangedParams) => this._maybeUpdatePoolSize(params));
-    this.core.on("columnsChanged", (params: GridEventColumnsChangedParams) => this.onColumnsChanged(params));
-    this.core.on("rowsChanged", (params: GridEventRowsChangedParams) => this.onDataChanged(params));
-    this.core.on("paginationChanged", (params: GridEventPaginationChangedParams) => this._updatePaginationControls(params));
   }
 
   _getBodyHeight() {
@@ -715,6 +713,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._coreEventBinder.destroy();
     this._legacyMenuOverlayRenderer.destroy();
     this._filterOverlayRenderer.destroy();
     this._interactionEventBinder.destroy();
