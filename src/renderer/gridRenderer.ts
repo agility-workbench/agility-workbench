@@ -28,6 +28,7 @@ import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
+import { BodyPoolSizer } from "./body/poolSizer";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -48,6 +49,7 @@ export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
+  _bodyPoolSizer: BodyPoolSizer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -371,6 +373,16 @@ export class GridRenderer {
       paginator: this.paginator,
       resetScrollPosition: () => this._resetScrollPosition(),
     });
+    this._bodyPoolSizer = new BodyPoolSizer({
+      core: this.core,
+      rowHeight: () => this.rowHeight,
+      height: () => this.height,
+      getContainerEl: () => this._containerEl,
+      headerWrapper: this.headerWrapper,
+      hScrollContainer: this.hScrollContainer,
+      paginator: this.paginator,
+      getAggregateRowHeight: () => this._getAggregateRowHeight(),
+    });
     // this.buildPaginationControls();
 
     this._leafColumns = [];
@@ -482,25 +494,11 @@ export class GridRenderer {
   }
 
   _getBodyHeight() {
-    const { paginationEnabled } = this.core.getPaginationInfo();
-    const headerHeight = this.headerWrapper.getBoundingClientRect().height || 0;
-    const hScrollHeight = this.hScrollContainer.getBoundingClientRect().height || 0;
-    const paginationHeight = paginationEnabled ? (this.paginator?.getBoundingClientRect().height || 0) : 0;
-    const aggregateHeight = this._getAggregateRowHeight();
-    const chromeHeight = headerHeight + hScrollHeight + paginationHeight + aggregateHeight;
-
-    const containerHeight = this._containerEl?.clientHeight ?? 0;
-    const fallbackHeight = this.height ?? window.innerHeight ?? 0;
-
-    const availableHeight = Math.max(0, Math.min(Math.max(containerHeight, fallbackHeight), window.innerHeight || fallbackHeight) - chromeHeight);
-    if (availableHeight > 0) return availableHeight;
-
-    return this.rowHeight;
+    return this._bodyPoolSizer.getBodyHeight();
   }
 
   _computePoolSize(rowHeightPx: number, overscanRowCount: number) {
-    const bodyHeight = this._getBodyHeight();
-    return Math.max(1, Math.ceil(bodyHeight / rowHeightPx) + overscanRowCount * 2);
+    return this._bodyPoolSizer.computePoolSize(rowHeightPx, overscanRowCount);
   }
 
   _maybeUpdatePoolSize(params?: GridEventViewportChangedParams) {
