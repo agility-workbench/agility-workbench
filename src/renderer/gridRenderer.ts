@@ -32,6 +32,7 @@ import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
+import { BodyRowPoolRenderer } from "./body/rowPool";
 import { createBodyWrapper } from "./body/wrapper";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
@@ -80,6 +81,7 @@ export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
+  _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -303,6 +305,13 @@ export class GridRenderer {
     this.leftViewport = bodyWrapper.leftViewport;
     this.viewport = bodyWrapper.centerViewport;
     this.rightViewport = bodyWrapper.rightViewport;
+    this._bodyRowPoolRenderer = new BodyRowPoolRenderer({
+      core: this.core,
+      rowHeight: () => this.rowHeight,
+      leftViewport: this.leftViewport,
+      centerViewport: this.viewport,
+      rightViewport: this.rightViewport,
+    });
 
     this.paginator = createPaginationWrapper();
     this.root.appendChild(this.paginator);
@@ -1625,96 +1634,7 @@ export class GridRenderer {
   }
 
   _buildRowPool() {
-    this.leftViewport.innerHTML = "";
-    this.viewport.innerHTML = "";
-    this.rightViewport.innerHTML = "";
-    this._rowPool = [];
-
-    for (let i = 0; i < this._poolSize; i++) {
-      const row: RowPoolDef = {
-        rowEl: document.createElement("div"),
-        leftCellEls: [],
-        cellEls: [],
-        rightCellEls: [],
-        cellRendererInstances: new Map<string, RendererRecord>(),
-      };
-
-      const leftLeaves = this.core.getColumnModel().getLeftLeaves();
-      const centerLeaves = this.core.getColumnModel().getCenterLeaves();
-      const rightLeaves = this.core.getColumnModel().getRightLeaves();
-      if (leftLeaves.length > 0) {
-        row.leftRowEl = document.createElement("div");
-        row.leftRowEl.className = "pte-row";
-        row.leftRowEl.style.height = `${this.rowHeight}px`;
-
-        let leftIdx = 0;
-        for (const col of leftLeaves) {
-          if (col.hidden) continue;
-          const cell = document.createElement("div");
-          cell.className = "pte-cell";
-          const meta = this.core.getColumnModel().leafColumnLookup.get(col.instanceID);
-          if (meta) {
-            cell.dataset.colId = col.instanceID;
-            cell.dataset.colIdx = String(meta.globalIndex);
-          }
-          if (col.isComputableType()) cell.classList.add('pte-cell-right-aligned');
-          row.leftRowEl.appendChild(cell);
-          row.leftCellEls.push(cell);
-          leftIdx++;
-        }
-
-        this.leftViewport.appendChild(row.leftRowEl);
-      }
-
-      row.rowEl = document.createElement("div");
-      row.rowEl.className = "pte-row";
-      row.rowEl.style.height = `${this.rowHeight}px`;
-
-      let centerIdx = 0;
-      for (const col of centerLeaves) {
-        if (col.hidden) continue;
-        const cell = document.createElement("div");
-        cell.className = "pte-cell";
-        const meta = this.core.getColumnModel().leafColumnLookup.get(col.instanceID);
-        if (meta) {
-          cell.dataset.colId = col.instanceID;
-          cell.dataset.colIdx = String(meta.globalIndex);
-        }
-        if (col.isComputableType()) cell.classList.add('pte-cell-right-aligned');
-        row.rowEl.appendChild(cell);
-        row.cellEls.push(cell);
-        centerIdx++;
-      }
-
-      this.viewport.appendChild(row.rowEl);
-
-      if (rightLeaves.length > 0) {
-        row.rightRowEl = document.createElement("div");
-        row.rightRowEl.className = "pte-row";
-        row.rightRowEl.style.height = `${this.rowHeight}px`;
-
-        row.rightCellEls = [];
-        let rightIdx = 0;
-        for (const col of rightLeaves) {
-          if (col.hidden) continue;
-          const cell = document.createElement("div");
-          cell.className = "pte-cell";
-          const meta = this.core.getColumnModel().leafColumnLookup.get(col.instanceID);
-          if (meta) {
-            cell.dataset.colId = col.instanceID;
-            cell.dataset.colIdx = String(meta.globalIndex);
-          }
-          if (col.isComputableType()) cell.classList.add('pte-cell-right-aligned');
-          row.rightRowEl.appendChild(cell);
-          row.rightCellEls.push(cell);
-          rightIdx++;
-        }
-
-        this.rightViewport.appendChild(row.rightRowEl);
-      }
-
-      this._rowPool.push(row);
-    }
+    this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
 
     // this._buildAggregateRow();
   }
