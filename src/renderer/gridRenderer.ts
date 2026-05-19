@@ -31,6 +31,7 @@ import {
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
+import { createAggregateRow } from "./aggregate/wrapper";
 import { createBodyWrapper } from "./body/wrapper";
 import { createHeaderWrapper } from "./header/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
@@ -245,40 +246,23 @@ export class GridRenderer {
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
 
-    this.aggregateRow = document.createElement("div");
-    this.aggregateRow.className = "pte-aggregate-row";
-    this.aggregateRow.style.display = "none";
-    this.aggregateRow.style.height = `${this.rowHeight}px`;
-    this.aggregateRow.style.minHeight = `${this.rowHeight}px`;
-    this.aggregateRow.style.maxHeight = `${this.rowHeight}px`;
-    this.aggregateLeft = document.createElement("div");
-    this.aggregateLeft.className = "pte-aggregate-left";
-    this.aggregateCenter = document.createElement("div");
-    this.aggregateCenter.className = "pte-aggregate-center";
-    this.aggregateRight = document.createElement("div");
-    this.aggregateRight.className = "pte-aggregate-right";
-    this.aggregateCloseBtn = document.createElement("button");
-    this.aggregateCloseBtn.type = "button";
-    this.aggregateCloseBtn.className = "pte-aggregate-close";
-    this.aggregateCloseBtn.title = "Hide aggregate row";
-    this.aggregateCloseBtn.setAttribute("aria-label", "Hide aggregate row");
-    this.aggregateCloseBtn.textContent = "x";
-    this.aggregateCloseBtn.addEventListener("click", (e) => {
+    const aggregateRow = createAggregateRow(this.rowHeight, (e) => {
       e.stopPropagation();
       this._setAggregateScope("none");
       if (this.aggregateScopeSelect) {
         this.aggregateScopeSelect.value = "none";
       }
     });
-    this.aggregateCenterRow = document.createElement("div");
+    this.aggregateRow = aggregateRow.row;
+    this.aggregateLeft = aggregateRow.left;
+    this.aggregateCenter = aggregateRow.center;
+    this.aggregateRight = aggregateRow.right;
+    this.aggregateCloseBtn = aggregateRow.closeButton;
+    this.aggregateCenterRow = aggregateRow.centerRow;
     this._aggregateLeftCells = [];
     this._aggregateCells = [];
     this._aggregateRightCells = [];
     this._aggregateVisible = false;
-    this.aggregateRow.appendChild(this.aggregateLeft);
-    this.aggregateRow.appendChild(this.aggregateCenter);
-    this.aggregateRow.appendChild(this.aggregateRight);
-    this.aggregateRow.appendChild(this.aggregateCloseBtn);
     this.root.appendChild(this.aggregateRow);
 
     const horizontalScroll = createHorizontalScroll();
