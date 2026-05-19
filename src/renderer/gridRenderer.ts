@@ -9,7 +9,6 @@ import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
-import { RendererRecord } from "./renderer";
 import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
@@ -402,7 +401,7 @@ export class GridRenderer {
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
-      renderCell: (cell, row, col, cellRendererMap) => this._renderCell(cell, row, col, cellRendererMap),
+      renderCell: (cell, row, col, cellRendererMap) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap),
       applySelectionToSlot: (slot, viewIndex) => this._applySelectionToSlot(slot, viewIndex),
     });
 
@@ -1130,24 +1129,8 @@ export class GridRenderer {
   }
 
   // ---------------- Internals: DOM build ----------------
-  _applyLeftColumnWidths(colIDs: string[] = []): number {
-    return this._columnLayoutRenderer.applyLeftColumnWidths(colIDs);
-  }
-
-  _applyCenterColumnWidths(colIDs: string[] = []): number {
-    return this._columnLayoutRenderer.applyCenterColumnWidths(colIDs);
-  }
-
-  _applyRightColumnWidths(colIDs: string[] = []): number {
-    return this._columnLayoutRenderer.applyRightColumnWidths(colIDs);
-  }
-
   _updateColumnWidths(colIDs: string[] = []) {
     this._columnLayoutRenderer.updateColumnWidths(colIDs);
-  }
-
-  _buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
-    return this._headerRenderer.buildHeaderCell(col, maxDepth);
   }
 
   _buildHeaderDOM(reason: string) {
@@ -1210,11 +1193,6 @@ export class GridRenderer {
     this._syncPaginationControlRefs();
   }
 
-  _populatePageSelect(pageIndex: number, totalPageCount: number) {
-    this._paginationRenderer.populatePageSelect(pageIndex, totalPageCount);
-    this._syncPaginationControlRefs();
-  }
-
   _updatePaginationControls(params?: GridEventPaginationChangedParams) {
     this._paginationRenderer.updateControls(params);
     this._syncPaginationControlRefs();
@@ -1225,10 +1203,6 @@ export class GridRenderer {
     if (this.aggregateClearBtn) {
       this.aggregateClearBtn.disabled = this.core.getAggregateModel().length === 0;
     }
-  }
-
-  _goToPage(pageIdx: number) {
-    this._paginationRenderer.goToPage(pageIdx);
   }
 
   private _syncPaginationControlRefs() {
@@ -1361,10 +1335,6 @@ export class GridRenderer {
 
   _beginScrollSync(targets: HTMLDivElement[]) {
     this._scrollSyncRenderer.beginScrollSync(targets);
-  }
-
-  _renderCell(cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) {
-    this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap);
   }
 
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
@@ -1744,17 +1714,8 @@ export class GridRenderer {
     this._refreshSelectionStyles();
   }
 
-  _toggleColumnGroupExpanded(colID: string) {
-    this.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: colID });
-  }
-
   _updateLoadingOverlay() {
     this._loadingOverlayRenderer.setLoading(this._externalLoading);
-  }
-
-  _setServerLoading(isLoading: boolean, requestId?: number) {
-    this._externalLoading = isLoading;
-    this._updateLoadingOverlay();
   }
 
   _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
@@ -1798,14 +1759,6 @@ export class GridRenderer {
       items: [],
     });
     return;
-  }
-
-  _closeMenu() {
-    this._legacyMenuOverlayRenderer.close();
-  }
-
-  _closeFilter() {
-    this._filterOverlayRenderer.close();
   }
 
   // ---------------- Event listeners ----------------
