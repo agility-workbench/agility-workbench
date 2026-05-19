@@ -7,14 +7,14 @@ import {
 import { MenuItem } from "../interfaces/menuItem";
 import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
-import { isFalse, isTrue } from "../misc";
+import { isTrue } from "../misc";
 import { exportCSV as downloadCSV, exportExcel as downloadExcel, ExportConfig, ExportOptions, ExportScope } from "../export/export";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "./renderer";
 import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
-import { createElement, div } from "./element";
+import { div } from "./element";
 import { GridCore } from "../core/core";
 import {
   getIconClassName,
@@ -33,6 +33,7 @@ import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { createBodyWrapper } from "./body/wrapper";
+import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { createLoadingOverlay } from "./overlay/loading";
 import { createPaginationWrapper } from "./pagination/wrapper";
@@ -76,6 +77,7 @@ function cssEscape(value: string): string {
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
+  _headerRenderer: HeaderRenderer;
   _containerEl!: HTMLElement;
   rowHeight: number = 43;
   height?: number;
@@ -247,6 +249,16 @@ export class GridRenderer {
     this.leftScroller = bodyWrapper.leftScroller;
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
+    this._headerRenderer = new HeaderRenderer({
+      core: this.core,
+      rowHeight: () => this.rowHeight,
+      headerWrapper: this.headerWrapper,
+      leftHeader: this.leftHeader,
+      centerHeader: this.header,
+      rightHeader: this.rightHeader,
+      body: this.body,
+      getContainerEl: () => this._containerEl,
+    });
 
     const aggregateRow = createAggregateRow(this.rowHeight, (e) => {
       e.stopPropagation();
@@ -1413,108 +1425,14 @@ export class GridRenderer {
   }
 
   _buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
-    const header = document.createElement("div");
-    header.className = "pte-hcell";
-    if (col.children.length === 0) {
-      header.classList.add("pte-hcell-leaf");
-    }
-    const contentHeight = maxDepth / col.depth!;
-    header.style.height = `${this.rowHeight * maxDepth}px`;
-    maxDepth--;
-    header.id = col.instanceID;
-    const headerWrapper = document.createElement("div");
-    headerWrapper.className = "pte-hcell-wrapper";
-    header.appendChild(headerWrapper);
-    const headerResize = document.createElement("div");
-    headerResize.className = "pte-hcell-resize-handle";
-    if (!col.resizable) headerResize.classList.add("pte-hcell-resize-disabled");
-    headerWrapper.appendChild(headerResize);
-    const headerContainer = document.createElement("div");
-    headerContainer.className = "pte-hcell-container";
-    headerContainer.style.height = `${this.rowHeight * contentHeight}px`;
-    if (col.isComputableType()) {
-      headerContainer.classList.add('pte-hcell-computable');
-    }
-    headerWrapper.appendChild(headerContainer);
-    const headerContent = document.createElement("div");
-    headerContent.className = "pte-hcell-content";
-    headerContainer.appendChild(headerContent);
-    const headerLabel = document.createElement("div");
-    headerLabel.className = "pte-hcell-label";
-    headerLabel.textContent = col.label ?? col.key;
-    headerContent.appendChild(headerLabel);
-    if (col.children.length > 0) {
-      const children = document.createElement("div");
-      children.className = "pte-hcell-children";
-      header.appendChild(children);
-      for (const child of col.getVisibleChildren()) {
-        children.append(this._buildHeaderCell(child, maxDepth));
-      }
-    } else {
-      header.style.width = `${col.computedWidth}px`;
-    }
-    if (col.showExpander) {
-      const expander = document.createElement("div");
-      expander.className = "pte-hcell-menu-btn pte-hcell-expander";
-      const span = createElement("span", "pte-hcell-expander-icon");
-      expander.appendChild(span);
-      if (col.groupExpandState === "open") {
-        span.classList.add("icon-minus-frame");
-      } else {
-        span.classList.add("icon-plus-frame");
-      }
-      headerContent.appendChild(expander);
-    }
-    const headerMenu = this._getHeaderMenuElement(col);
-    headerContainer.appendChild(headerMenu);
-    const sort = this.core.getSortModel().items.find(s => s.col.instanceID === col.instanceID);
-    if (sort) {
-      headerContent.classList.add("pte-sorted-" + sort.dir);
-    }
-    return header;
+    return this._headerRenderer.buildHeaderCell(col, maxDepth);
   }
 
   _buildHeaderDOM(reason: string) {
     this._centerLeafColumns = [];
     this._leftPinnedLeafColumns = [];
     this._rightPinnedLeafColumns = [];
-    const headerHeight = this.core.options.headerHeight * this.core.getColumnModel().maxHeaderDepth;
-    this.headerWrapper.style.height = `${headerHeight}px`;
-    this.headerWrapper.style.minHeight = `${headerHeight}px`;
-    this.leftHeader.style.height = `${headerHeight}px`;
-    this.leftHeader.style.minHeight = `${headerHeight}px`;
-    this.header.style.height = `${headerHeight}px`;
-    this.header.style.minHeight = `${headerHeight}px`;
-    this.rightHeader.style.height = `${headerHeight}px`;
-    this.rightHeader.style.minHeight = `${headerHeight}px`;
-    this.body.style.height = `calc(100% - ${headerHeight}px`;
-    this.body.style.maxHeight = `calc(100% - ${headerHeight}px`;
-    this.leftHeader.innerHTML = "";
-    this.header.innerHTML = "";
-    this.rightHeader.innerHTML = "";
-    for (const col of this.core.getColumnModel().getLeftColumns()) {
-      if (!col.hidden) {
-        this.leftHeader.appendChild(this._buildHeaderCell(col, this.core.getColumnModel().maxHeaderDepth));
-      }
-    }
-    for (const col of this.core.getColumnModel().getCenterColumns()) {
-      if (!col.hidden) {
-        this.header.appendChild(this._buildHeaderCell(col, this.core.getColumnModel().maxHeaderDepth));
-      }
-    }
-    for (const col of this.core.getColumnModel().getRightColumns()) {
-      if (!col.hidden) {
-        this.rightHeader.appendChild(this._buildHeaderCell(col, this.core.getColumnModel().maxHeaderDepth));
-      }
-    }
-    const headerProbe = getComputedStyle(this.header.querySelector(".pte-hcell") || this._containerEl);
-    const cellProbe = getComputedStyle(this.body.querySelector(".pte-cell") || this._containerEl);
-    this.core.dispatch({
-      type: "themeFontSet",
-      headerFont: `${headerProbe.fontWeight} ${headerProbe.fontSize} ${headerProbe.fontFamily}`,
-      cellFont: `${cellProbe.fontWeight} ${cellProbe.fontSize} ${cellProbe.fontFamily}`,
-      reason: reason,
-    });
+    this._headerRenderer.buildDOM(reason);
     // this._pruneColumnSelection();
     // this._applyColumnSelectionStyles();
   }
@@ -1733,46 +1651,6 @@ export class GridRenderer {
     this.vScroll.scrollTop = 0;
   }
 
-  _getHeaderMenuElement(col: Column): HTMLDivElement {
-    const menu = document.createElement("div");
-    menu.className = "pte-hcell-menu";
-
-    const buildMenuItem = (btnClass: string, iconClass: string, flyout: HTMLDivElement | null) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "pte-hcell-menu-item";
-
-      const btn = document.createElement("div");
-      btn.className = `pte-hcell-menu-btn ${btnClass}`;
-      const icon = document.createElement("span");
-      icon.className = iconClass;
-      btn.appendChild(icon);
-      wrapper.appendChild(btn);
-      if (flyout) {
-        const hasFilter = this.core.getFilterModel().items.find(f => this._filterMatchesColumn(f, col));
-        if (hasFilter) {
-          btn.classList.add("pte-hcell-menu-filter-active");
-        }
-        wrapper.appendChild(flyout);
-      }
-
-      return wrapper;
-    };
-
-    if (!isFalse(col.filter)) {
-      if (col.children.length === 0) {
-        menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this._getFilterMenuElement()));
-      }
-    }
-    menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
-    return menu;
-  }
-
-  _getFilterMenuElement(): HTMLDivElement {
-    const menu = document.createElement("div");
-    menu.className = "pte-hcell-menu-flyout";
-    return menu;
-  }
-
   _buildAggregateRow() {
     this.aggregateLeft.innerHTML = "";
     this.aggregateCenter.innerHTML = "";
@@ -1966,15 +1844,7 @@ export class GridRenderer {
   }
 
   _addSortIndicatorToHeader(key: string, dir: "asc" | "desc" | '') {
-    const hcell = document.getElementById(key);
-    if (!hcell) return;
-    const hcellContent = hcell.querySelector(".pte-hcell-content");
-    if (!hcellContent) return;
-    // remove existing
-    hcellContent.classList.remove("pte-sorted-asc", "pte-sorted-desc");
-    // add new
-    if (dir === '') return;
-    hcellContent.classList.add("pte-sorted-" + dir);
+    this._headerRenderer.addSortIndicatorToHeader(key, dir);
   }
 
   // ---------------- Internals: hot path ----------------
@@ -3278,22 +3148,7 @@ export class GridRenderer {
   }
 
   _setFilterIndicators() {
-    const filters = this.core.getFilterModel().items;
-    for (const col of this.core.getColumnModel().getLeaves()) {
-      const hcell = document.getElementById(col.instanceID);
-      if (!hcell) continue;
-      const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
-      if (!menuBtn) continue;
-      menuBtn.classList.toggle("active", filters.some(f => this._filterMatchesColumn(f, col)));
-    }
-  }
-
-  private _filterMatchesColumn(filter: { col: Column; key: string }, col: Column): boolean {
-    return filter.col.instanceID === col.instanceID
-      || filter.col.colId === col.colId
-      || filter.col.key === col.key
-      || filter.key === col.colId
-      || filter.key === col.key;
+    this._headerRenderer.setFilterIndicators();
   }
 
   _onFilterModelChanged() {
