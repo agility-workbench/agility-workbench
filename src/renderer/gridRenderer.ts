@@ -31,6 +31,7 @@ import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { createBodyWrapper } from "./body/wrapper";
+import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { IconRenderer } from "./iconRenderer";
@@ -40,8 +41,6 @@ import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { createHorizontalScroll } from "./scroll/horizontal";
 
-const COLUMN_DRAG_THRESHOLD_PX = 4;
-
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
   _iconRenderer: IconRenderer;
@@ -50,6 +49,7 @@ export class GridRenderer {
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _bodyViewportRenderer: BodyViewportRenderer;
+  _columnInteractionRenderer: ColumnInteractionRenderer;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _containerEl!: HTMLElement;
@@ -79,24 +79,6 @@ export class GridRenderer {
   _selectionAnchor: { row: number; colIdx: number } | null;
   _selectionRange: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
   _isSelecting: boolean;
-
-  _resizingColumn: string = "";
-  _resizeStartX: number = 0;
-  _resizeStartWidth: number = 0;
-  _suppressHeaderClick: boolean;
-  _isDraggingColumn: boolean;
-  _draggingColumn: Column | null;
-  _dragStartX: number;
-  _dragStartY: number;
-  _dragLastX: number;
-  _dragTargetIndex: number;
-  _dragGhostEl: HTMLDivElement | null;
-  _dragIndicatorEl: HTMLDivElement | null;
-  _dragHeaderEl: HTMLDivElement | null;
-  _dragHeaderContainer: HTMLDivElement | null;
-  _dragSection: "left" | "center" | "right" | null;
-  _dragDirection: "left" | "right" | null;
-  _dragAllowsDrop: boolean;
 
   _selectedColumnIDs: Set<string>;
 
@@ -290,6 +272,20 @@ export class GridRenderer {
       vScrollParent: this.vScrollParent,
       vScroller: this.vScroller,
     });
+    this._columnInteractionRenderer = new ColumnInteractionRenderer({
+      core: this.core,
+      root: this.root,
+      rowHeight: () => this.rowHeight,
+      maxDepth: () => this._maxDepth,
+      headerWrapper: this.headerWrapper,
+      leftHeader: this.leftHeader,
+      centerHeader: this.header,
+      rightHeader: this.rightHeader,
+      leftScroller: this.leftScroller,
+      centerScroller: this.scroller,
+      rightScroller: this.rightScroller,
+      leafColumnLookup: () => this._leafColumnLookup,
+    });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
       root: this.root,
@@ -334,22 +330,6 @@ export class GridRenderer {
     this._selectionAnchor = null;
     this._selectionRange = null;
     this._isSelecting = false;
-    this._resizeStartX = 0;
-    this._resizeStartWidth = 0;
-    this._suppressHeaderClick = false;
-    this._isDraggingColumn = false;
-    this._draggingColumn = null;
-    this._dragStartX = 0;
-    this._dragStartY = 0;
-    this._dragLastX = 0;
-    this._dragTargetIndex = -1;
-    this._dragGhostEl = null;
-    this._dragIndicatorEl = null;
-    this._dragHeaderEl = null;
-    this._dragHeaderContainer = null;
-    this._dragSection = null;
-    this._dragDirection = null;
-    this._dragAllowsDrop = false;
     this._selectedColumnIDs = new Set();
 
     this._menuColKey = null;
@@ -496,10 +476,7 @@ export class GridRenderer {
       this._onCellMouseUp();
     });
     document.addEventListener("click", (e) => {
-      if (this._suppressHeaderClick) {
-        this._suppressHeaderClick = false;
-        return;
-      }
+      if (this._columnInteractionRenderer.consumeSuppressClick()) return;
       this._cellClickHandler(e);
     });
     document.addEventListener("mouseover", (e) => {
@@ -1826,376 +1803,27 @@ export class GridRenderer {
   }
 
   _onHeaderMouseDown(e: MouseEvent) {
-    if (e.button !== 0) return;
-    const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
-    if (handle) {
-      const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
-      if (!header) return;
-      const col = this.core.getColumnModel().getById(header.id);
-      if (!col || col.hidden) return;
-      if (!col.resizable) return;
-
-      const headerRect = header.getBoundingClientRect();
-      this._resizingColumn = col.instanceID;
-      this._resizeStartX = e.clientX;
-      this._resizeStartWidth = headerRect.width;
-      this._suppressHeaderClick = true;
-      document.body.style.cursor = "col-resize";
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-
-    const header = (e.target as HTMLElement | null)?.closest(".pte-hcell") as HTMLDivElement | null;
-    if (!header) return;
-    const col = this.core.getColumnModel().getById(header.id);
-    if (!col || col.hidden) return;
-    if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
-    const allowDrop = col.movable;
-    this._maybeStartColumnDrag(col, header, e, allowDrop);
+    this._columnInteractionRenderer.onHeaderMouseDown(e);
   }
 
   _onColumnResizeMouseMove(e: MouseEvent) {
-    if (this._resizingColumn === "") return;
-    const delta = e.clientX - this._resizeStartX;
-    const nextWidth = this._resizeStartWidth + delta;
-    this._applyColumnResize(this._resizingColumn, nextWidth);
-    e.preventDefault();
+    this._columnInteractionRenderer.onColumnResizeMouseMove(e);
   }
 
   _onColumnResizeMouseUp() {
-    if (this._resizingColumn === "") return;
-    this._resizingColumn = "";
-    this._resizeStartX = 0;
-    this._resizeStartWidth = 0;
-    document.body.style.cursor = "";
-    this._suppressHeaderClick = true;
-    setTimeout(() => { this._suppressHeaderClick = false; }, 0);
-  }
-
-  _maybeStartColumnDrag(col: Column, header: HTMLDivElement, e: MouseEvent, allowDrop = true) {
-    const reorderable = this._isColumnReorderable(col);
-    if (allowDrop && !reorderable) return;
-    this._draggingColumn = col;
-    this._dragHeaderEl = header;
-    this._dragStartX = e.clientX;
-    this._dragStartY = e.clientY;
-    this._dragLastX = e.clientX;
-    this._dragAllowsDrop = allowDrop && reorderable;
-    const meta = this._leafColumnLookup.get(col.instanceID);
-    const section = meta?.section ?? (col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center");
-    this._dragSection = section;
-    this._dragHeaderContainer = this._getSectionContainer(section);
-    this._dragTargetIndex = this._dragAllowsDrop
-      ? this._getReorderableColumns(section).findIndex(c => c.instanceID === col.instanceID)
-      : -1;
-    this._isDraggingColumn = false;
-    this._dragDirection = null;
-  }
-
-  _beginColumnDrag() {
-    if (!this._draggingColumn) return;
-    this._isDraggingColumn = true;
-    this._setDragCursor(true, this._dragAllowsDrop);
-
-    if (!this._dragGhostEl) {
-      const ghost = document.createElement("div");
-      ghost.className = "pte-column-drag-ghost";
-      const ghostContent = document.createElement("div");
-      ghostContent.className = "pte-column-drag-ghost-content";
-      const ghostDragIcon = document.createElement("span");
-      ghostDragIcon.className = "pte-column-drag-ghost-icon";
-      if (this._dragAllowsDrop) {
-        ghostDragIcon.classList.add("icon-drag");
-      } else {
-        ghostDragIcon.classList.add("icon-not-allowed");
-      }
-      ghostContent.appendChild(ghostDragIcon);
-      const ghostLabel = document.createElement("span");
-      ghostLabel.className = "pte-column-drag-ghost-label";
-      ghostLabel.textContent = this._draggingColumn.label ?? this._draggingColumn.key;
-      ghostContent.appendChild(ghostLabel);
-      ghost.appendChild(ghostContent);
-      if (this._dragHeaderEl) {
-        const rect = this._dragHeaderEl.getBoundingClientRect();
-        ghost.style.width = `${rect.width}px`;
-        ghost.style.height = `${rect.height}px`;
-      }
-      document.body.appendChild(ghost);
-      const contentRect = ghostContent.getBoundingClientRect();
-      ghost.style.width = `${contentRect.width}px`; // padding
-      ghost.style.height = `${contentRect.height}px`;
-      this._dragGhostEl = ghost;
-    }
-
-    if (this._dragAllowsDrop && !this._dragIndicatorEl && this._dragHeaderContainer) {
-      const indicator = document.createElement("div");
-      indicator.className = "pte-column-drop-indicator";
-      indicator.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
-      this._dragHeaderContainer.appendChild(indicator);
-      this._dragIndicatorEl = indicator;
-    }
-  }
-
-  _getSectionContainer(section: "left" | "center" | "right") {
-    if (section === "left") return this.leftHeader;
-    if (section === "right") return this.rightHeader;
-    return this.header;
-  }
-
-  _getSectionForPoint(x: number, y: number): "left" | "center" | "right" | null {
-    const candidates: Array<{ section: "left" | "center" | "right"; el: HTMLElement }> = [
-      { section: "left", el: this.leftHeader },
-      { section: "center", el: this.header },
-      { section: "right", el: this.rightHeader },
-      { section: "left", el: this.leftScroller },
-      { section: "center", el: this.scroller },
-      { section: "right", el: this.rightScroller },
-    ];
-    for (const { section, el } of candidates) {
-      const rect = el.getBoundingClientRect();
-      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        return section;
-      }
-    }
-    return null;
-  }
-
-  _getReorderableColumns(section: "left" | "center" | "right" = "center"): Column[] {
-    const source = section === "left"
-      ? this.core.getColumnModel().getLeftColumns()
-      : section === "right"
-        ? this.core.getColumnModel().getRightColumns()
-        : this.core.getColumnModel().getCenterColumns();
-    return source.filter(c => this._isColumnReorderable(c));
-  }
-
-  _getReorderableHeaders(section: "left" | "center" | "right" = "center"): Array<{ col: Column; el: HTMLDivElement }> {
-    const container = section === "left"
-      ? this.leftHeader
-      : section === "right"
-        ? this.rightHeader
-        : this.header;
-    const headers = Array.from(container.children) as HTMLDivElement[];
-    const output: Array<{ col: Column; el: HTMLDivElement }> = [];
-    for (const el of headers) {
-      if (!el.classList.contains("pte-hcell")) continue;
-      const col = this.core.getColumnModel().getById(el.id);
-      if (!col) continue;
-      if (col.children.length > 0) {
-        const leaves = col.getLeaves();
-        leaves.filter(this._isColumnReorderable).forEach(leaf => {
-          output.push({ col: leaf, el: document.getElementById(leaf.instanceID) as HTMLDivElement });
-        });
-        continue;
-      } else if (this._isColumnReorderable(col)) {
-        output.push({ col, el });
-      }
-    }
-    return output.filter(h => h.el != null);
-  }
-
-  _positionDropIndicator(targetIndex: number, hoverIndex: number, headers: Array<{ col: Column; el: HTMLDivElement }>) {
-    if (!this._dragIndicatorEl || headers.length === 0) return;
-    if (targetIndex < 0) {
-      this._dragIndicatorEl.style.display = "none";
-      return;
-    }
-    const container = this._dragHeaderContainer || this.header;
-    const containerRect = container.getBoundingClientRect();
-    const prev = targetIndex >= headers.length ? headers[headers.length - 1] : headers[hoverIndex];
-    const ref = targetIndex >= headers.length ? headers[headers.length - 1] : headers[targetIndex];
-    const rect = ref.el.getBoundingClientRect();
-    const x = targetIndex >= headers.length ? rect.right : rect.left;
-    const relativeX = x - containerRect.left + container.scrollLeft;
-    const clampedX = Math.max(0, Math.min(relativeX, Math.max(0, container.scrollWidth - 2)));
-    this._dragIndicatorEl.style.left = `${clampedX}px`;
-    this._dragIndicatorEl.style.display = "block";
-    // this._dragIndicatorEl.style.height = `${this.headerWrapper.getBoundingClientRect().height || this.rowHeight * this._maxDepth}px`;
-    // console.log(ref.el, ref.el.offsetTop, ref.el.getBoundingClientRect().height);
-    this._dragIndicatorEl.style.top = prev.el.offsetTop + "px";
-    this._dragIndicatorEl.style.height = `${prev.el.getBoundingClientRect().height}px`;
+    this._columnInteractionRenderer.onColumnResizeMouseUp();
   }
 
   _onColumnDragMouseMove(e: MouseEvent) {
-    if (!this._draggingColumn) return;
-    const deltaX = Math.abs(e.clientX - this._dragStartX);
-    const deltaY = Math.abs(e.clientY - this._dragStartY);
-    if (!this._isDraggingColumn) {
-      if (deltaX < COLUMN_DRAG_THRESHOLD_PX && deltaY < COLUMN_DRAG_THRESHOLD_PX) return;
-      this._beginColumnDrag();
-      this._suppressHeaderClick = true;
-    }
-
-    const drift = e.clientX - this._dragStartX;
-    if (Math.abs(drift) >= COLUMN_DRAG_THRESHOLD_PX) {
-      const nextDir = drift >= 0 ? "right" : "left";
-      this._dragDirection = nextDir;
-    }
-
-    if (this._dragGhostEl) {
-      this._dragGhostEl.style.left = `${e.clientX + 8}px`;
-      this._dragGhostEl.style.top = `${e.clientY + 8}px`;
-    }
-
-    if (!this._dragAllowsDrop) {
-      this._dragTargetIndex = -1;
-      e.preventDefault();
-      return;
-    }
-
-    const sectionAtPointer = this._getSectionForPoint(e.clientX, e.clientY) || this._dragSection || "center";
-    if (sectionAtPointer !== this._dragSection) {
-      this._dragSection = sectionAtPointer;
-      this._dragHeaderContainer = this._getSectionContainer(sectionAtPointer);
-      if (this._dragIndicatorEl && this._dragHeaderContainer && this._dragIndicatorEl.parentElement !== this._dragHeaderContainer) {
-        this._dragIndicatorEl.remove();
-        this._dragHeaderContainer.appendChild(this._dragIndicatorEl);
-      }
-    }
-
-    const section = this._dragSection || "center";
-    const headers = this._getReorderableHeaders(section);
-    if (headers.length === 0) {
-      this._dragTargetIndex = -1;
-      return;
-    }
-
-    const originRect = this._dragHeaderEl?.getBoundingClientRect();
-    const insideOrigin = originRect
-      && e.clientX >= originRect.left
-      && e.clientX <= originRect.right
-      && e.clientY >= originRect.top
-      && e.clientY <= originRect.bottom;
-    if (insideOrigin) {
-      this._dragTargetIndex = -1;
-      this._positionDropIndicator(-1, -1, headers);
-      this._dragLastX = e.clientX;
-      return;
-    }
-
-    let hoverIndex = headers.findIndex(h => {
-      const rect = h.el.getBoundingClientRect();
-      return e.clientX >= rect.left && e.clientX <= rect.right;
-    });
-
-    let targetIndex: number;
-    const movingRight = this._dragDirection === "right" || (this._dragDirection === null && e.clientX >= this._dragLastX);
-    if (hoverIndex === -1) {
-      // Outside bounds: snap to start/end
-      const firstRect = headers[0].el.getBoundingClientRect();
-      if (e.clientX < firstRect.left) {
-        targetIndex = 0;
-      } else {
-        targetIndex = headers.length;
-      }
-    } else {
-      targetIndex = movingRight ? hoverIndex + 1 : hoverIndex;
-    }
-
-    this._dragLastX = e.clientX;
-    this._dragTargetIndex = targetIndex;
-    this._positionDropIndicator(targetIndex, hoverIndex, headers);
-    e.preventDefault();
-  }
-
-  _animateDragGhostReturn(ghost: HTMLDivElement, header: HTMLDivElement | null) {
-    if (!ghost.isConnected) return;
-    if (!header) {
-      ghost.remove();
-      return;
-    }
-    const headerRect = header.getBoundingClientRect();
-    const ghostRect = ghost.getBoundingClientRect();
-    const targetLeft = headerRect.left + (headerRect.width - ghostRect.width) / 2;
-    const targetTop = headerRect.top + (headerRect.height - ghostRect.height) / 2;
-    ghost.style.transition = "left 120ms ease, top 120ms ease";
-    ghost.style.transitionDelay = "0s";
-    ghost.style.left = `${targetLeft}px`;
-    ghost.style.top = `${targetTop}px`;
-    const cleanup = () => {
-      ghost.removeEventListener("transitionend", cleanup);
-      ghost.remove();
-    };
-    ghost.addEventListener("transitionend", cleanup);
-    setTimeout(() => {
-      if (ghost.isConnected) ghost.remove();
-    }, 180);
-  }
-
-  _teardownColumnDrag() {
-    const ghost = this._dragGhostEl;
-    if (ghost) {
-      this._animateDragGhostReturn(ghost, this._dragHeaderEl);
-      this._dragGhostEl = null;
-    }
-    if (this._dragIndicatorEl) {
-      this._dragIndicatorEl.remove();
-      this._dragIndicatorEl = null;
-    }
-    this._draggingColumn = null;
-    this._dragHeaderEl = null;
-    this._dragHeaderContainer = null;
-    this._dragSection = null;
-    this._isDraggingColumn = false;
-    this._dragTargetIndex = -1;
-    this._dragAllowsDrop = false;
-    this._setDragCursor(false);
+    this._columnInteractionRenderer.onColumnDragMouseMove(e);
   }
 
   _onColumnDragMouseUp() {
-    if (!this._draggingColumn) return;
-    const col = this._draggingColumn;
-    const targetIndex = this._dragTargetIndex;
-    const section = this._dragSection || "center";
-    const performedDrag = this._isDraggingColumn;
-    const allowDrop = this._dragAllowsDrop;
-    this._teardownColumnDrag();
-    if (!performedDrag) return;
-    if (!allowDrop) {
-      this._suppressHeaderClick = true;
-      setTimeout(() => { this._suppressHeaderClick = false; }, 0);
-      return;
-    }
-    this.core.dispatch({ type: "columnMove", colId: col.instanceID, toIndex: targetIndex, toSection: section });
-    this._suppressHeaderClick = true;
-    setTimeout(() => { this._suppressHeaderClick = false; }, 0);
-  }
-
-  _isColumnReorderable(col: Column): boolean {
-    if (!col) return false;
-    return col.isVisible();
-  }
-
-  _setDragCursor(active: boolean, allowDrop = true) {
-    const cursor = active ? (allowDrop ? "move" : "not-allowed") : "";
-    document.body.style.setProperty("cursor", cursor, "important");
-    if (this.headerWrapper) {
-      this.headerWrapper.style.setProperty("cursor", cursor, "important");
-    }
-    this.root.classList.toggle("pte-column-dragging", active && allowDrop);
-    this.root.classList.toggle("pte-column-dragging-not-allowed", active && !allowDrop);
+    this._columnInteractionRenderer.onColumnDragMouseUp();
   }
 
   _onHeaderDoubleClick(e: MouseEvent) {
-    const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
-    if (!handle) return;
-    const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
-    if (!header) return;
-    this.core.dispatch({
-      type: "columnAutosize",
-      colId: header.id,
-    });
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  _applyColumnResize(colId: string, rawWidth: number) {
-    this.core.dispatch({
-      type: "columnResize",
-      colId: colId,
-      widthPx: rawWidth,
-    });
+    this._columnInteractionRenderer.onHeaderDoubleClick(e);
   }
 
   _updateAncestorWidths(colID: string) {
