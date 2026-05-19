@@ -29,6 +29,7 @@ import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyPoolSizer } from "./body/poolSizer";
+import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -50,6 +51,7 @@ export class GridRenderer {
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
+  _bodyRowHoverRenderer: BodyRowHoverRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -205,6 +207,7 @@ export class GridRenderer {
     const bodyWrapper = createBodyWrapper();
     this.body = bodyWrapper.body;
     this.root.appendChild(this.body);
+    this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.body);
     this.leftScroller = bodyWrapper.leftScroller;
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
@@ -449,13 +452,7 @@ export class GridRenderer {
       if (this._columnInteractionRenderer.consumeSuppressClick()) return;
       this._cellClickHandler(e);
     });
-    document.addEventListener("mouseover", (e) => {
-      this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
-      const row = (e.target as HTMLElement)?.closest(".pte-row");
-      if (row) {
-        this.body.querySelectorAll(`.pte-row[row-id="${row.getAttribute("row-id")}"]`).forEach(r => r.classList.add("pte-row-hover"));
-      }
-    });
+    this._bodyRowHoverRenderer.bind();
 
     // initial
     // requestAnimationFrame(() => this._maybeUpdatePoolSize());
@@ -738,6 +735,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    this._bodyRowHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this.root.remove();
   }
