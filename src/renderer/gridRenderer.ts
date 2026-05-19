@@ -517,16 +517,7 @@ export class GridRenderer {
 
   // ---------------- Public API ----------------
   togglePagination(pagination: boolean) {
-    const current = this.core.getPaginationInfo();
-    const next = isTrue(pagination);
-    if (current.paginationEnabled === next) return;
-    this._resetScrollPosition();
-    this.core.dispatch({
-      type: "paginationSet",
-      enabled: next,
-      pageIndex: 0,
-      pageSize: current.pageSize,
-    });
+    this._paginationRenderer.togglePagination(pagination);
   }
 
   setLoading(isLoading: boolean) {

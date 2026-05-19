@@ -1,5 +1,6 @@
 import { GridCore } from "../../core/core";
 import { GridEventPaginationChangedParams } from "../../events/events";
+import { isTrue } from "../../misc";
 
 interface PaginationRendererParams {
   core: GridCore;
@@ -162,6 +163,19 @@ export class PaginationRenderer {
     if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
     if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
     if (this.pageSelect) this.pageSelect.disabled = totalPageCount <= 1 || !hasRows;
+  }
+
+  togglePagination(pagination: boolean) {
+    const current = this.params.core.getPaginationInfo();
+    const next = isTrue(pagination);
+    if (current.paginationEnabled === next) return;
+    this.params.resetScrollPosition();
+    this.params.core.dispatch({
+      type: "paginationSet",
+      enabled: next,
+      pageIndex: 0,
+      pageSize: current.pageSize,
+    });
   }
 
   goToPage(pageIdx: number) {
