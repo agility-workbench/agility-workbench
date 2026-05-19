@@ -397,7 +397,7 @@ export class GridRenderer {
       centerViewport: this.viewport,
       rightViewport: this.rightViewport,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
-      beginScrollSync: (targets) => this._beginScrollSync(targets),
+      beginScrollSync: (targets) => this._scrollSyncRenderer.beginScrollSync(targets),
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
@@ -480,10 +480,6 @@ export class GridRenderer {
 
   detach() {
     this._containerEl = document.createElement("div");
-  }
-
-  _getBodyHeight() {
-    return this._bodyPoolSizer.getBodyHeight();
   }
 
   _computePoolSize(rowHeightPx: number, overscanRowCount: number) {
@@ -1329,14 +1325,6 @@ export class GridRenderer {
   }
 
   // ---------------- Internals: hot path ----------------
-  _scheduleWindowUpdate(scrollSrc: HTMLDivElement) {
-    this._scrollSyncRenderer.scheduleWindowUpdate(scrollSrc);
-  }
-
-  _beginScrollSync(targets: HTMLDivElement[]) {
-    this._scrollSyncRenderer.beginScrollSync(targets);
-  }
-
   _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
     this._bodyWindowRenderer.update(forcePatch, scrollSrc, params);
   }
@@ -1568,34 +1556,6 @@ export class GridRenderer {
 
   _onHeaderDoubleClick(e: MouseEvent) {
     this._columnInteractionRenderer.onHeaderDoubleClick(e);
-  }
-
-  _updateAncestorWidths(colID: string) {
-    const ancestors = this.core.getColumnModel().getAncestors(colID);
-    if (ancestors.length <= 1) return;
-
-    for (let i = ancestors.length - 2; i >= 0; i--) {
-      const ancestor = ancestors[i];
-      const ancestorInfo = this._columnWidths.get(ancestor.instanceID);
-      if (ancestorInfo?.fixed) continue;
-      if (!ancestor.children || ancestor.children.length === 0) continue;
-      let totalWidth = 0;
-      for (const child of ancestor.children) {
-        if (isTrue(child.hidden)) continue;
-        const childInfo = this._columnWidths.get(child.instanceID);
-        if (childInfo) totalWidth += childInfo.width;
-      }
-      const minWidth = Math.max(this.core.options.minResizeWidth, ancestor.minWidth ?? ancestorInfo?.minWidth ?? this.core.options.minResizeWidth);
-      let maxWidth = ancestor.maxWidth ?? ancestorInfo?.maxWidth ?? 420;
-      maxWidth = Math.max(maxWidth, totalWidth);
-      const width = Math.min(Math.max(totalWidth, minWidth), maxWidth);
-      this._columnWidths.set(ancestor.instanceID, {
-        width,
-        minWidth,
-        maxWidth,
-        fixed: false,
-      });
-    }
   }
 
   _applyColumnSelectionStyles() {
