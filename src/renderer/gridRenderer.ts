@@ -139,9 +139,6 @@ export class GridRenderer {
   _aggregateRightCells: HTMLDivElement[];
   _aggregateVisible: boolean;
 
-  aggregateScopeSelect!: HTMLSelectElement;
-  aggregateClearBtn!: HTMLButtonElement;
-
   _leftPinnedColumns: Column[] = [];
   _leftPinnedLeafColumns: Column[] = [];
   _rightPinnedColumns: Column[] = [];
@@ -262,9 +259,6 @@ export class GridRenderer {
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._setAggregateScope("none");
-      if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.value = "none";
-      }
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeftCells = [];
@@ -592,9 +586,6 @@ export class GridRenderer {
   _setAggregateScope(scope: AggregateScope) {
     const changed = scope !== this.core.getAggregateScope();
     this.core.setAggregateScope(scope);
-    if (this.aggregateScopeSelect) {
-      this.aggregateScopeSelect.value = scope;
-    }
     this._markAggregatesDirty();
     this._aggregateServerFetcher.maybeRequest();
     if (changed) {
@@ -649,19 +640,10 @@ export class GridRenderer {
     const shouldShow = aggregateScope !== "none" && aggregateMap.size > 0;
     const wasVisible = this._aggregateVisible;
     this._aggregateVisible = shouldShow;
-    if (this.aggregateClearBtn) {
-      this.aggregateClearBtn.disabled = aggregateMap.size === 0;
-    }
 
     this._aggregateRowRenderer.setVisible(shouldShow);
 
     if (!shouldShow) {
-      if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.disabled = aggregateMap.size === 0;
-      }
-      if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.value = aggregateScope;
-      }
       if (wasVisible !== shouldShow) {
         this._columnLayoutRenderer.updateColumnWidths();
         this._maybeUpdatePoolSize();
@@ -695,10 +677,6 @@ export class GridRenderer {
     this._aggregateRowRenderer.renderCells(this._aggregateCells, this._centerLeafColumns, aggregateMap, values);
     this._aggregateRowRenderer.renderCells(this._aggregateRightCells, this._rightPinnedLeafColumns, aggregateMap, values);
 
-    if (this.aggregateScopeSelect) {
-      this.aggregateScopeSelect.disabled = aggregateMap.size === 0;
-    }
-
     if (wasVisible !== shouldShow) {
       this._columnLayoutRenderer.updateColumnWidths();
       this._maybeUpdatePoolSize();
@@ -719,65 +697,12 @@ export class GridRenderer {
     // this._applyColumnSelectionStyles();
   }
 
-  private buildAggregationControls() {
-    const aggSection = document.createElement("div");
-    aggSection.className = "pte-pagination-section pte-aggregate-controls";
-    const aggLabel = document.createElement("span");
-    aggLabel.className = "pte-pagination-label";
-    aggLabel.textContent = "Aggregate";
-    this.aggregateScopeSelect = document.createElement("select");
-    this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
-    const aggOptions: Array<{ value: AggregateScope; label: string }> = [
-      { value: "none", label: "None" },
-      { value: "page", label: "Current page" },
-      { value: "all", label: "Entire dataset" },
-    ];
-    for (const optDef of aggOptions) {
-      const opt = document.createElement("option");
-      opt.value = optDef.value;
-      opt.textContent = optDef.label;
-      this.aggregateScopeSelect.appendChild(opt);
-    }
-    this.aggregateScopeSelect.value = this.core.getAggregateScope();
-    this.aggregateScopeSelect.addEventListener("change", (e) => {
-      const next = (e.target as HTMLSelectElement).value as AggregateScope;
-      this._setAggregateScope(next);
-    });
-    this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
-
-    this.aggregateClearBtn = document.createElement("button");
-    this.aggregateClearBtn.type = "button";
-    this.aggregateClearBtn.className = "pte-pagination-btn pte-aggregate-clear";
-    this.aggregateClearBtn.title = "Remove aggregate row";
-    this.aggregateClearBtn.textContent = "x";
-    this.aggregateClearBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this._setAggregateScope("none");
-      if (this.aggregateScopeSelect) {
-        this.aggregateScopeSelect.value = "none";
-      }
-    });
-
-    aggSection.appendChild(aggLabel);
-    aggSection.appendChild(this.aggregateScopeSelect);
-    aggSection.appendChild(this.aggregateClearBtn);
-
-    return aggSection;
-  }
-
   private buildPaginationControls() {
     this._paginationRenderer.buildControls();
   }
 
   _updatePaginationControls(params?: GridEventPaginationChangedParams) {
     this._paginationRenderer.updateControls(params);
-    if (this.aggregateScopeSelect) {
-      this.aggregateScopeSelect.value = this.core.getAggregateScope();
-      this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
-    }
-    if (this.aggregateClearBtn) {
-      this.aggregateClearBtn.disabled = this.core.getAggregateModel().length === 0;
-    }
   }
 
   _resetScrollPosition() {
