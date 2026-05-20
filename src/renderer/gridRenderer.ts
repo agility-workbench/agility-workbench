@@ -1,18 +1,14 @@
 import { RefObject } from "react";
 import {
-  AggregateModel,
   AggregateScope,
   AggregateType,
 } from "../interfaces/aggregate";
-import { MenuItem } from "../interfaces/menuItem";
-import { ColDef } from "../interfaces/column";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
-import { ServerSideAggregationSource, ServerSideRequest } from "../ssrm/serverSide";
+import { ServerSideAggregationSource } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
-import { IRowNode } from "../interfaces/iRowNode";
 import { div } from "./element";
 import { GridCore } from "../core/core";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
@@ -20,14 +16,15 @@ import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
-  GridEventColumnsChangedParams,
   GridEventPaginationChangedParams,
-  GridEventRowsChangedParams,
   GridEventViewportChangedParams,
 } from "../events/events";
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
+import { AggregateCalculator } from "./aggregate/calculator";
+import { AggregateRowBuilder } from "./aggregate/rowBuilder";
+import { AggregateServerFetcher } from "./aggregate/serverFetcher";
 import { createAggregateRow } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyPoolSizer } from "./body/poolSizer";
@@ -38,10 +35,12 @@ import { BodyWindowRenderer } from "./body/window";
 import { createBodyWrapper } from "./body/wrapper";
 import { ColumnMenuOpener } from "./columnMenuOpener";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
+import { HeaderInteractionHandler } from "./header/interactionHandler";
 import { HeaderRenderer } from "./header/renderer";
 import { createHeaderWrapper } from "./header/wrapper";
 import { IconRenderer } from "./iconRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
+import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { FilterOverlayRenderer } from "./overlay/filter";
@@ -51,15 +50,19 @@ import { createPaginationWrapper } from "./pagination/wrapper";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { createHorizontalScroll } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
-import { LegacyMenuOverlayRenderer } from "./menuOverlay";
+import { ServerSideController } from "./serverSideController";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
-  _legacyMenuOverlayRenderer: LegacyMenuOverlayRenderer;
   _coreEventBinder: GridRendererCoreEventBinder;
   _modelChangeHandler: GridModelChangeHandler;
   _exportRenderer: ExportRenderer;
   _columnMenuOpener: ColumnMenuOpener;
+  _filterUpdateHandler: FilterUpdateHandler;
+  _aggregateCalculator: AggregateCalculator;
+  _aggregateRowBuilder: AggregateRowBuilder;
+  _aggregateServerFetcher: AggregateServerFetcher;
+  _serverSideController: ServerSideController;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
@@ -70,6 +73,7 @@ export class GridRenderer {
   _bodyViewportRenderer: BodyViewportRenderer;
   _bodyWindowRenderer: BodyWindowRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
+  _headerInteractionHandler: HeaderInteractionHandler;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
@@ -79,8 +83,6 @@ export class GridRenderer {
   _scrollSyncRenderer: GridScrollSyncRenderer;
   rowHeight: number = 43;
   height?: number;
-  _exportAsCSV: boolean = true;
-  _exportAsExcel: boolean = true;
   _loadingOverlay: HTMLDivElement;
 
   _maxDepth: number = 1;
@@ -167,10 +169,6 @@ export class GridRenderer {
   _poolSize: number = 0;
   _startIndex: number = 0;
   _rowPool: RowPoolDef[];
-  private _aggregateRemoteValues: Map<string, any> | null = null;
-  private _aggregateRemoteDirty = true;
-  private _aggregateRequestSeq = 0;
-  private _aggregateFetchInFlight = false;
   private _serverSidePendingRangeKeys: Set<string> = new Set();
 
   private get rowModel() {
@@ -197,28 +195,27 @@ export class GridRenderer {
     this.setIcons(this.core.getOptions().icons);
 
     this._menuRenderer = new MenuRenderer(this.root);
-    this._legacyMenuOverlayRenderer = new LegacyMenuOverlayRenderer(this.root);
     this._coreEventBinder = new GridRendererCoreEventBinder({
       core: this.core,
       setLoading: (isLoading) => this.setLoading(isLoading),
       buildPaginationControls: () => this.buildPaginationControls(),
       maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
-      onColumnsChanged: (params) => this.onColumnsChanged(params),
-      onDataChanged: (params) => this.onDataChanged(params),
+      onColumnsChanged: (params) => this._modelChangeHandler.onColumnsChanged(params),
+      onDataChanged: (params) => this._modelChangeHandler.onDataChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
     });
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
-      recomputeView: () => this._recomputeView(),
-      updateWindow: (forcePatch, scrollSrc, params) => this._updateWindow(forcePatch, scrollSrc, params),
+      recomputeView: () => this._bodyViewportRenderer.recomputeView(),
+      updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
       resetScrollPosition: () => this._resetScrollPosition(),
       updatePaginationControls: () => this._updatePaginationControls(),
-      addSortIndicatorToHeader: (colID, dir) => this._addSortIndicatorToHeader(colID, dir),
-      setFilterIndicators: () => this._setFilterIndicators(),
+      addSortIndicatorToHeader: (colID, dir) => this._headerRenderer.addSortIndicatorToHeader(colID, dir),
+      setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
-      updateColumnWidths: (colIDs) => this._updateColumnWidths(colIDs),
+      updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,
@@ -233,6 +230,24 @@ export class GridRenderer {
       filterMenuCoordinator,
       menuRenderer: this._menuRenderer,
       selectedColumnIDs: () => this._selectedColumnIDs,
+    });
+    this._filterUpdateHandler = new FilterUpdateHandler({
+      core: this.core,
+      setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
+      recomputeView: () => this._bodyViewportRenderer.recomputeView(),
+      updateWindow: (forcePatch, scrollSrc) => this._bodyWindowRenderer.update(forcePatch, scrollSrc),
+    });
+    this._aggregateCalculator = new AggregateCalculator();
+    this._aggregateServerFetcher = new AggregateServerFetcher({
+      core: this.core,
+      leafColumns: () => this._leafColumns,
+      getAggregateMap: () => this._getAggregateMap(),
+      renderAggregateRow: () => this._renderAggregateRow(),
+    });
+    this._serverSideController = new ServerSideController({
+      core: this.core,
+      markAggregatesDirty: () => this._markAggregatesDirty(),
+      renderAggregateRow: () => this._renderAggregateRow(),
     });
     this._bodyCellRenderer = new BodyCellRenderer();
 
@@ -279,6 +294,17 @@ export class GridRenderer {
     this._aggregateRightCells = [];
     this._aggregateVisible = false;
     this.root.appendChild(this.aggregateRow);
+    this._aggregateRowBuilder = new AggregateRowBuilder({
+      rowHeight: () => this.rowHeight,
+      leafColumnLookup: () => this._leafColumnLookup,
+      aggregateRow: this.aggregateRow,
+      aggregateLeft: this.aggregateLeft,
+      aggregateCenter: this.aggregateCenter,
+      aggregateRight: this.aggregateRight,
+      leftPinnedLeafColumns: () => this._leftPinnedLeafColumns,
+      centerLeafColumns: () => this._centerLeafColumns,
+      rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
+    });
 
     const horizontalScroll = createHorizontalScroll();
     this.hScrollContainer = horizontalScroll.container;
@@ -333,21 +359,29 @@ export class GridRenderer {
       rightScroller: this.rightScroller,
       leafColumnLookup: () => this._leafColumnLookup,
     });
+    this._headerInteractionHandler = new HeaderInteractionHandler({
+      core: this.core,
+      root: this.root,
+      selectedColumnIDs: () => this._selectedColumnIDs,
+      toggleColumnSelection: (colID) => this._toggleColumnSelection(colID),
+      openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
+      openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
+    });
     this._interactionEventBinder = new GridInteractionEventBinder({
       headerWrapper: this.headerWrapper,
       body: this.body,
-      onHeaderMouseDown: (e) => this._onHeaderMouseDown(e),
-      onHeaderContextMenu: (e) => this._headerCellContextMenuHandler(e),
-      onHeaderDoubleClick: (e) => this._onHeaderDoubleClick(e),
+      onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
+      onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
+      onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
       onCellMouseDown: (e) => this._onCellMouseDown(e),
-      onColumnResizeMouseMove: (e) => this._onColumnResizeMouseMove(e),
-      onColumnDragMouseMove: (e) => this._onColumnDragMouseMove(e),
+      onColumnResizeMouseMove: (e) => this._columnInteractionRenderer.onColumnResizeMouseMove(e),
+      onColumnDragMouseMove: (e) => this._columnInteractionRenderer.onColumnDragMouseMove(e),
       onCellMouseMove: (e) => this._onCellMouseMove(e),
-      onColumnResizeMouseUp: () => this._onColumnResizeMouseUp(),
-      onColumnDragMouseUp: () => this._onColumnDragMouseUp(),
+      onColumnResizeMouseUp: () => this._columnInteractionRenderer.onColumnResizeMouseUp(),
+      onColumnDragMouseUp: () => this._columnInteractionRenderer.onColumnDragMouseUp(),
       onCellMouseUp: () => this._onCellMouseUp(),
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
-      onClick: (e) => this._cellClickHandler(e),
+      onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -402,7 +436,7 @@ export class GridRenderer {
       aggregateLeft: this.aggregateLeft,
       aggregateCenter: this.aggregateCenter,
       aggregateRight: this.aggregateRight,
-      onWindowUpdate: (scrollSrc) => this._updateWindow(false, scrollSrc),
+      onWindowUpdate: (scrollSrc) => this._bodyWindowRenderer.update(false, scrollSrc),
     });
     this._bodyWindowRenderer = new BodyWindowRenderer({
       core: this.core,
@@ -454,11 +488,7 @@ export class GridRenderer {
     this._isSelecting = false;
     this._selectedColumnIDs = new Set();
 
-    // this._exportAsCSV = exportAsCSV;
-    // this._exportAsExcel = exportAsExcel;
-
     // Overlays
-    this._legacyMenuOverlayRenderer.bind();
     this._filterOverlayRenderer = new FilterOverlayRenderer();
     this._filterOverlayRenderer.bind();
     this._loadingOverlay = createLoadingOverlay();
@@ -466,7 +496,7 @@ export class GridRenderer {
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this._loadingOverlay);
 
     // Create a pooled set of row nodes
-    // this._poolSize = this._computePoolSize();
+    // this._poolSize = this._bodyPoolSizer.computePoolSize(...);
     this._rowPool = []; // [{ rowEl, cellEls[], rowIndexEl? }]
     // this._buildHeaderDOM();
     // this._buildRowPool();
@@ -479,11 +509,11 @@ export class GridRenderer {
 
     // initial
     // requestAnimationFrame(() => this._maybeUpdatePoolSize());
-    // this._recomputeView();
-    // this._updateColumnWidths();
-    // this._updateWindow(true, undefined);
+    // this._bodyViewportRenderer.recomputeView();
+    // this._columnLayoutRenderer.updateColumnWidths();
+    // this._bodyWindowRenderer.update(true, undefined);
     // if (this.rowModel.getType() === "serverSide" && this.rowModel.isValid()) {
-    //   this._fetchServerSideRows("init");
+    //   this._filterUpdateHandler.fetchServerSideRows("init");
     // }
     this._coreEventBinder.bind();
   }
@@ -496,20 +526,16 @@ export class GridRenderer {
     this._rootAttachmentRenderer.detach();
   }
 
-  _computePoolSize(rowHeightPx: number, overscanRowCount: number) {
-    return this._bodyPoolSizer.computePoolSize(rowHeightPx, overscanRowCount);
-  }
-
   _maybeUpdatePoolSize(params?: GridEventViewportChangedParams) {
     const rowHeightPx = params?.rowHeightPx ?? this.core.getOptions().rowHeight ?? this.rowHeight;
     const overscanRowCount = params?.overscanRowCount ?? this.core.getOptions().overscanRowCount ?? 0;
     this.rowHeight = rowHeightPx;
-    const poolSize = this._computePoolSize(rowHeightPx, overscanRowCount);
+    const poolSize = this._bodyPoolSizer.computePoolSize(rowHeightPx, overscanRowCount);
     if (poolSize === this._poolSize) return;
     this._poolSize = poolSize;
     this._rebuildRowPool();
-    this._updateColumnWidths();
-    this._updateWindow(true, undefined);
+    this._columnLayoutRenderer.updateColumnWidths();
+    this._bodyWindowRenderer.update(true, undefined);
     this.buildPaginationControls();
   }
 
@@ -529,28 +555,15 @@ export class GridRenderer {
   }
 
   setServerSideDataSource(dataSource?: IServerSideDataSource) {
-    this.core.setServerSideDataSource(dataSource ?? null);
-    this._markAggregatesDirty();
-    this._renderAggregateRow();
+    this._serverSideController.setDataSource(dataSource);
   }
 
   setServerSideAggregation(aggregation?: ServerSideAggregationSource) {
-    this.core.setServerSideAggregationSource(aggregation ?? null);
-    this._markAggregatesDirty();
-    this._renderAggregateRow();
+    this._serverSideController.setAggregation(aggregation);
   }
 
   refreshServerSideData() {
-    if (this.core.getRowModel().getType() !== "serverSide") return;
-    this.core.refreshRows("refresh");
-  }
-
-  onDataChanged(params: GridEventRowsChangedParams) {
-    this._modelChangeHandler.onDataChanged(params);
-  }
-
-  onColumnsChanged(params: GridEventColumnsChangedParams) {
-    this._modelChangeHandler.onColumnsChanged(params);
+    this._serverSideController.refreshData();
   }
 
   exportCSV(options: ExportOptions = {}) {
@@ -561,17 +574,8 @@ export class GridRenderer {
     this._exportRenderer.exportExcel(options);
   }
 
-  _exportColumnCSV(columnIDs: string[] | null = []) {
-    this._exportRenderer.exportColumnCSV(columnIDs);
-  }
-
-  _exportColumnXLSX(columnIDs: string[] | null = []) {
-    this._exportRenderer.exportColumnXLSX(columnIDs);
-  }
-
   destroy() {
     this._coreEventBinder.destroy();
-    this._legacyMenuOverlayRenderer.destroy();
     this._filterOverlayRenderer.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
@@ -613,41 +617,6 @@ export class GridRenderer {
     this._renderAggregateRow();
   }
 
-  _showSparklinesForSelectedColumns(type: "line" | "bar" | "column") {
-    const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.instanceID));
-    const numericLeaves = selectedLeaves.filter(col => col.isComputableType());
-    if (numericLeaves.length < 2) return;
-
-    const keyBase = "sparkline";
-    const existingKeys = new Set(this._leafColumns.map(col => col.key));
-    let key = keyBase;
-    let suffix = 1;
-    while (existingKeys.has(key)) {
-      key = `${keyBase}_${suffix}`;
-      suffix += 1;
-    }
-
-    const pinnedSet = new Set(numericLeaves.map(col => col.pinned ?? null));
-    const pinned = pinnedSet.size === 1 ? (Array.from(pinnedSet)[0] as "left" | "right" | null) : null;
-
-    const sparklineCol: ColDef = {
-      key,
-      label: `Sparkline ${suffix > 1 ? suffix : ''}`,
-      sparklineType: type,
-      pinned: pinned ?? undefined,
-      sortable: false,
-      groupable: false,
-      minWidth: 120,
-      valueGetter: (row: any) => numericLeaves.map(col => this._getRawCellValue(row, col)),
-    };
-
-    this.core.dispatch({
-      type: "columnDefsSet",
-      defs: [...this.core.getColumnModel().getColumns().map(col => col.col), sparklineCol],
-    });
-    this._clearColumnSelection();
-  }
-
   _clearAggregates() {
     if (this.core.getAggregateModel().length === 0) return;
     this.core.setAggregateModel([]);
@@ -657,11 +626,7 @@ export class GridRenderer {
   }
 
   _markAggregatesDirty() {
-    if (this.rowModel.getType() !== "serverSide") return;
-    this._aggregateRemoteDirty = true;
-    this._aggregateRemoteValues = null;
-    this._aggregateRequestSeq++;
-    this._aggregateFetchInFlight = false;
+    this._aggregateServerFetcher.markDirty();
   }
 
   _setAggregateScope(scope: AggregateScope) {
@@ -671,7 +636,7 @@ export class GridRenderer {
       this.aggregateScopeSelect.value = scope;
     }
     this._markAggregatesDirty();
-    this._maybeRequestServerAggregates();
+    this._aggregateServerFetcher.maybeRequest();
     if (changed) {
       this._renderAggregateRow();
     }
@@ -703,116 +668,6 @@ export class GridRenderer {
     this.core.setAggregateModel(Array.from(aggregates.entries()).map(([key, type]) => ({ key, type })));
   }
 
-  _valueToNumber(value: any): number | null {
-    if (value == null) return null;
-    const num = value instanceof Date ? value.getTime() : Number(value);
-    return Number.isFinite(num) ? num : null;
-  }
-
-  _calculateAggregate(col: Column, aggType: AggregateType, rows: any[]): any {
-    if (aggType === AggregateType.COUNT) {
-      return rows.length;
-    }
-
-    const rawValues = rows.map(row => this._getRawCellValue(row, col)).filter(v => v != null);
-    if (rawValues.length === 0) {
-      if (aggType === AggregateType.SUM || aggType === AggregateType.AVG || aggType === AggregateType.MEDIAN) return 0;
-      return "";
-    }
-
-    const collator = col.getCollator();
-    const isNumeric = col.isComputableType();
-
-    switch (aggType) {
-      case AggregateType.SUM: {
-        const nums = rawValues
-          .map(v => this._valueToNumber(v))
-          .filter((v): v is number => Number.isFinite(v));
-        return nums.reduce((sum, v) => sum + v, 0);
-      }
-      case AggregateType.AVG: {
-        const nums = rawValues
-          .map(v => this._valueToNumber(v))
-          .filter((v): v is number => Number.isFinite(v));
-        if (nums.length === 0) return 0;
-        const sum = nums.reduce((acc, v) => acc + v, 0);
-        return sum / nums.length;
-      }
-      case AggregateType.MEDIAN: {
-        const nums = rawValues
-          .map(v => this._valueToNumber(v))
-          .filter((v): v is number => Number.isFinite(v))
-          .sort((a, b) => a - b);
-        if (nums.length === 0) return 0;
-        const mid = Math.floor(nums.length / 2);
-        if (nums.length % 2 === 0) {
-          return (nums[mid - 1] + nums[mid]) / 2;
-        }
-        return nums[mid];
-      }
-      case AggregateType.MIN: {
-        let best: any = null;
-        for (const v of rawValues) {
-          if (best == null) {
-            best = v;
-            continue;
-          }
-          if (isNumeric) {
-            const next = this._valueToNumber(v);
-            const prev = this._valueToNumber(best);
-            if (next == null) continue;
-            if (prev == null || next < prev) {
-              best = v;
-            }
-          } else {
-            const cmp = collator.compare(String(v), String(best));
-            if (cmp < 0) best = v;
-          }
-        }
-        return best ?? "";
-      }
-      case AggregateType.MAX: {
-        let best: any = null;
-        for (const v of rawValues) {
-          if (best == null) {
-            best = v;
-            continue;
-          }
-          if (isNumeric) {
-            const next = this._valueToNumber(v);
-            const prev = this._valueToNumber(best);
-            if (next == null) continue;
-            if (prev == null || next > prev) {
-              best = v;
-            }
-          } else {
-            const cmp = collator.compare(String(v), String(best));
-            if (cmp > 0) best = v;
-          }
-        }
-        return best ?? "";
-      }
-      default:
-        return "";
-    }
-  }
-
-  _formatAggregateDisplay(col: Column, value: any): string {
-    if (value == null) return "";
-    try {
-      return col.formatValue(value, { data: null } as IRowNode);
-    } catch {
-      return String(value);
-    }
-  }
-
-  private _getRawCellValue(row: any, col: Column): any {
-    if (row && typeof row === "object" && "data" in row) {
-      return col.getValue(row as IRowNode);
-    }
-    return col.getValue({ data: row } as IRowNode);
-  }
-
   _getAggregateRows(): any[] {
     if (this.core.getAggregateScope() === "all") {
       const rows: any[] = [];
@@ -825,97 +680,6 @@ export class GridRenderer {
       if (node) rows.push(node.data);
     }
     return rows;
-  }
-
-  _maybeRequestServerAggregates() {
-    if (this.rowModel.getType() !== "serverSide") return;
-    if (this.core.getAggregateScope() !== "all") return;
-    const serverAggregationSource = (this.rowModel as any).serverAggregationSource as ServerSideAggregationSource | undefined;
-    if (!serverAggregationSource) return;
-    const aggregateMap = this._getAggregateMap();
-    if (aggregateMap.size === 0) return;
-    if (!this._aggregateRemoteDirty && this._aggregateRemoteValues) return;
-    if (this._aggregateFetchInFlight) return;
-
-    const aggregates = Array.from(aggregateMap.entries())
-      .map(([colId, type]) => {
-        const col = this.core.getColumnModel().getById(colId);
-        if (!col) return null;
-        return { key: col.key, type };
-      })
-      .filter(Boolean) as Array<AggregateModel>;
-
-    if (aggregates.length === 0) return;
-
-    if (aggregates.length < this._leafColumns.length) {
-      const missingLeaves = this._leafColumns.filter(l => aggregates.findIndex(f => f.key == l.key) < 0);
-      aggregates.push(...missingLeaves.map(m => ({ key: m.key, type: AggregateType.COUNT })) as Array<AggregateModel>);
-    }
-
-    const filtersByKey = new Map<string, ServerSideRequest["filters"][number]>();
-    for (const item of this.core.getFilterModel().items) {
-      filtersByKey.set(item.col.key, {
-        key: item.col.key,
-        filters: item.filters.map(filter => ({ type: filter.type, values: filter.values })),
-        join: item.join,
-      });
-    }
-    const filters: ServerSideRequest["filters"] = Array.from(filtersByKey.values());
-
-    const sortsByKey = new Map<string, ServerSideRequest["sorts"][number]>();
-    for (const item of this.core.getSortModel().items) {
-      sortsByKey.set(item.col.key, {
-        key: item.col.key,
-        dir: item.dir,
-      });
-    }
-    const sorts: ServerSideRequest["sorts"] = Array.from(sortsByKey.values());
-
-    this._aggregateFetchInFlight = true;
-    this._aggregateRemoteDirty = false;
-    const requestId = ++this._aggregateRequestSeq;
-    new Promise<any>((resolve, reject) => {
-      const maybePromise = serverAggregationSource({
-        request: {
-          aggregates,
-          aggregateScope: "all",
-          filters,
-          sorts,
-          startRow: undefined,
-          endRow: undefined,
-        },
-        success: resolve,
-        error: reject,
-      });
-      Promise.resolve(maybePromise)
-        .then((maybeResult) => {
-          if (maybeResult && typeof maybeResult === "object") {
-            resolve(maybeResult);
-          }
-        })
-        .catch(reject);
-    })
-      .then((result) => {
-        if (requestId !== this._aggregateRequestSeq) return;
-        const valuesObj = (result as any)?.values ?? result ?? {};
-        const map = new Map<string, any>();
-        for (const col of this._leafColumns) {
-          const v = valuesObj?.[col.instanceID] ?? valuesObj?.[col.key];
-          if (v != null) {
-            map.set(col.instanceID, v);
-          }
-        }
-        this._aggregateRemoteValues = map;
-        this._aggregateFetchInFlight = false;
-        this._renderAggregateRow();
-      })
-      .catch((err) => {
-        console.error("Failed to fetch server-side aggregates", err);
-        if (requestId !== this._aggregateRequestSeq) return;
-        this._aggregateRemoteValues = null;
-        this._aggregateFetchInFlight = false;
-        this._renderAggregateRow();
-      });
   }
 
   _renderAggregateRow() {
@@ -940,7 +704,7 @@ export class GridRenderer {
         this.aggregateScopeSelect.value = aggregateScope;
       }
       if (wasVisible !== shouldShow) {
-        this._updateColumnWidths();
+        this._columnLayoutRenderer.updateColumnWidths();
         this._maybeUpdatePoolSize();
       }
       return;
@@ -949,12 +713,12 @@ export class GridRenderer {
     const values = new Map<string, string>();
     const serverAggregationSource = (this.rowModel as any).serverAggregationSource as ServerSideAggregationSource | undefined;
     if (this.rowModel.getType() === "serverSide" && aggregateScope === "all" && serverAggregationSource) {
-      this._maybeRequestServerAggregates();
-      const remote = this._aggregateRemoteValues;
+      this._aggregateServerFetcher.maybeRequest();
+      const remote = this._aggregateServerFetcher.getRemoteValues();
       for (const col of this._leafColumns) {
         if (col.hidden) continue;
         const v = remote?.get(col.instanceID);
-        const display = v == null ? "" : this._formatAggregateDisplay(col, v);
+        const display = v == null ? "" : this._aggregateCalculator.formatAggregateDisplay(col, v);
         values.set(col.instanceID, display ?? "");
       }
     } else {
@@ -962,8 +726,8 @@ export class GridRenderer {
       for (const col of this._leafColumns) {
         if (col.hidden) continue;
         const op = this._getAggregateOpForColumn(col);
-        const raw = this._calculateAggregate(col, op, rows);
-        const display = this._formatAggregateDisplay(col, raw);
+        const raw = this._aggregateCalculator.calculateAggregate(col, op, rows);
+        const display = this._aggregateCalculator.formatAggregateDisplay(col, raw);
         values.set(col.instanceID, display ?? "");
       }
     }
@@ -1005,7 +769,7 @@ export class GridRenderer {
     }
 
     if (wasVisible !== shouldShow) {
-      this._updateColumnWidths();
+      this._columnLayoutRenderer.updateColumnWidths();
       this._maybeUpdatePoolSize();
     }
   }
@@ -1014,19 +778,7 @@ export class GridRenderer {
     return this._aggregateVisible ? this.rowHeight : 0;
   }
 
-  _recomputeView() {
-    this._bodyViewportRenderer.recomputeView();
-
-    // this._updatePaginationControls();
-    // this._clampSelectionToView();
-    // this._renderAggregateRow();
-  }
-
   // ---------------- Internals: DOM build ----------------
-  _updateColumnWidths(colIDs: string[] = []) {
-    this._columnLayoutRenderer.updateColumnWidths(colIDs);
-  }
-
   _buildHeaderDOM(reason: string) {
     this._centerLeafColumns = [];
     this._leftPinnedLeafColumns = [];
@@ -1116,94 +868,13 @@ export class GridRenderer {
   }
 
   _buildAggregateRow() {
-    this.aggregateLeft.innerHTML = "";
-    this.aggregateCenter.innerHTML = "";
-    this.aggregateRight.innerHTML = "";
-    this._aggregateLeftCells = [];
-    this._aggregateCells = [];
-    this._aggregateRightCells = [];
-
-    const makeRow = () => {
-      const row = document.createElement("div");
-      row.className = "pte-row";
-      row.style.height = `${this.rowHeight}px`;
-      return row;
-    };
-
-    if (this._leftPinnedLeafColumns.length > 0) {
-      const row = makeRow();
-      let leftIdx = 0;
-      for (const col of this._leftPinnedLeafColumns) {
-        if (col.hidden) continue;
-        const cell = document.createElement("div");
-        cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.instanceID);
-        if (meta) {
-          cell.dataset.colId = col.instanceID;
-          cell.dataset.colIdx = String(meta.globalIndex);
-        } else {
-          cell.dataset.colIdx = String(leftIdx);
-        }
-        if (col.isComputableType()) cell.classList.add("pte-cell-right-aligned");
-        row.appendChild(cell);
-        this._aggregateLeftCells.push(cell);
-        leftIdx++;
-      }
-      this.aggregateLeft.appendChild(row);
-      this.aggregateLeftRow = row;
-    } else {
-      this.aggregateLeftRow = undefined;
-    }
-
-    const centerRow = makeRow();
-    let centerIdx = 0;
-    for (const col of this._centerLeafColumns) {
-      if (col.hidden) continue;
-      const cell = document.createElement("div");
-      cell.className = "pte-cell pte-aggregate-cell";
-      const meta = this._leafColumnLookup.get(col.instanceID);
-      if (meta) {
-        cell.dataset.colId = col.instanceID;
-        cell.dataset.colIdx = String(meta.globalIndex);
-      } else {
-        cell.dataset.colIdx = String(centerIdx);
-      }
-      if (col.isComputableType()) cell.classList.add("pte-cell-right-aligned");
-      centerRow.appendChild(cell);
-      this._aggregateCells.push(cell);
-      centerIdx++;
-    }
-    this.aggregateCenter.appendChild(centerRow);
-    this.aggregateCenterRow = centerRow;
-
-    if (this._rightPinnedLeafColumns.length > 0) {
-      const row = makeRow();
-      let rightIdx = 0;
-      for (const col of this._rightPinnedLeafColumns) {
-        if (col.hidden) continue;
-        const cell = document.createElement("div");
-        cell.className = "pte-cell pte-aggregate-cell";
-        const meta = this._leafColumnLookup.get(col.instanceID);
-        if (meta) {
-          cell.dataset.colId = col.instanceID;
-          cell.dataset.colIdx = String(meta.globalIndex);
-        } else {
-          cell.dataset.colIdx = String(rightIdx);
-        }
-        if (col.isComputableType()) cell.classList.add("pte-cell-right-aligned");
-        row.appendChild(cell);
-        this._aggregateRightCells.push(cell);
-        rightIdx++;
-      }
-      this.aggregateRight.appendChild(row);
-      this.aggregateRightRow = row;
-    } else {
-      this.aggregateRightRow = undefined;
-    }
-
-    this.aggregateRow.style.height = `${this.rowHeight}px`;
-    this.aggregateRow.style.minHeight = `${this.rowHeight}px`;
-    this.aggregateRow.style.maxHeight = `${this.rowHeight}px`;
+    const result = this._aggregateRowBuilder.build();
+    this._aggregateLeftCells = result.leftCells;
+    this._aggregateCells = result.centerCells;
+    this._aggregateRightCells = result.rightCells;
+    this.aggregateLeftRow = result.leftRow;
+    this.aggregateCenterRow = result.centerRow;
+    this.aggregateRightRow = result.rightRow;
     this._renderAggregateRow();
   }
 
@@ -1218,15 +889,7 @@ export class GridRenderer {
     this._buildRowPool();
   }
 
-  _addSortIndicatorToHeader(key: string, dir: "asc" | "desc" | '') {
-    this._headerRenderer.addSortIndicatorToHeader(key, dir);
-  }
-
   // ---------------- Internals: hot path ----------------
-  _updateWindow(forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) {
-    this._bodyWindowRenderer.update(forcePatch, scrollSrc, params);
-  }
-
   _applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
     const range = this._selectionRange;
     const rowSelected = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
@@ -1432,30 +1095,6 @@ export class GridRenderer {
     this._isSelecting = false;
   }
 
-  _onHeaderMouseDown(e: MouseEvent) {
-    this._columnInteractionRenderer.onHeaderMouseDown(e);
-  }
-
-  _onColumnResizeMouseMove(e: MouseEvent) {
-    this._columnInteractionRenderer.onColumnResizeMouseMove(e);
-  }
-
-  _onColumnResizeMouseUp() {
-    this._columnInteractionRenderer.onColumnResizeMouseUp();
-  }
-
-  _onColumnDragMouseMove(e: MouseEvent) {
-    this._columnInteractionRenderer.onColumnDragMouseMove(e);
-  }
-
-  _onColumnDragMouseUp() {
-    this._columnInteractionRenderer.onColumnDragMouseUp();
-  }
-
-  _onHeaderDoubleClick(e: MouseEvent) {
-    this._columnInteractionRenderer.onHeaderDoubleClick(e);
-  }
-
   _applyColumnSelectionStyles() {
     const leafIndexMap = new Map<string, number>();
     this.core.getColumnModel().getLeaves().forEach((c, idx) => leafIndexMap.set(c.instanceID, idx));
@@ -1570,122 +1209,6 @@ export class GridRenderer {
 
     this._applyColumnSelectionStyles();
     this._refreshSelectionStyles();
-  }
-
-  _openColMenu(trigger: "columnMenuButton" | "headerContextMenu", colID: string, { anchorEl, left, top }: { anchorEl?: HTMLElement, left?: number, top?: number }) {
-    this._columnMenuOpener.openColumnMenu(trigger, colID, { anchorEl, left, top });
-  }
-
-  _openColFilter(colID: string, anchorEl: HTMLElement) {
-    this._columnMenuOpener.openFilterMenu(colID, anchorEl);
-  }
-
-  // ---------------- Event listeners ----------------
-  _headerCellContextMenuHandler(e: MouseEvent) {
-    e.preventDefault();
-    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
-    if (!header) return;
-    const col = this.core.getColumnModel().getById(header.id);
-    if (!col) return;
-    const leaves = col.getLeaves();
-    if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
-      this._selectedColumnIDs.clear();
-      this._toggleColumnSelection(col.instanceID);
-    }
-    this._openColMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
-  }
-
-  _headerCellClickHandler(e: MouseEvent) {
-    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
-    if (!header) return;
-    const headerExpand = (e.target as HTMLElement)?.closest(".pte-hcell-expander");
-    if (headerExpand) {
-      return this.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });
-    }
-    const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
-    if (headerContent) {
-      const col = this.core.getColumnModel().getById(header.id);
-      if (!col) return;
-      if (e.shiftKey) {
-        return this.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
-      }
-      this._toggleColumnSelection(header.id);
-      return this.core.dispatch({ type: "headerAction", action: "click", colId: header.id });
-    }
-    const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
-    if (btn) {
-      const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
-      // this._clearColumnSelection();
-      // Based on the btn clicked, render filter/menu UI
-      this.core.dispatch({ type: "headerAction", action: (isFilter ? "filter" : "menu") + "Click", colId: header.id });
-      if (!isFilter) {
-        this._openColMenu("columnMenuButton", header.id, { anchorEl: btn });
-      } else {
-        this._openColFilter(header.id, btn);
-      }
-      return;
-    }
-  }
-
-  _cellClickHandler(e: MouseEvent) {
-    const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
-    if (btn) {
-      if ((btn.parentNode as HTMLElement)?.classList?.contains("active")) {
-        const activeMenus = this.root.querySelectorAll(".pte-hcell-menu-item.active");
-        activeMenus.forEach(m => m != btn.parentNode && m.classList.remove("active"));
-        return;
-      }
-    }
-    // close any other active menus
-    const activeMenus = this.root.querySelectorAll(".pte-hcell-menu-item.active");
-    activeMenus.forEach(m => m.classList.remove("active"));
-
-    const header = (e.target as HTMLElement)?.closest(".pte-hcell");
-    if (header) {
-      this._headerCellClickHandler(e);
-      return;
-    }
-  }
-
-  async _fetchServerSideRows(_reason: string) {
-    if (this.rowModel.getType() !== "serverSide" || !this.rowModel.isValid()) return;
-    this.core.refreshRows("refresh");
-  }
-
-  _updateFilterIndicators() {
-    this._setFilterIndicators();
-  }
-
-  _setFilterIndicators() {
-    this._headerRenderer.setFilterIndicators();
-  }
-
-  _onFilterModelChanged() {
-    this._setFilterIndicators();
-    if (this.rowModel.getType() === "serverSide") {
-      this._fetchServerSideRows("filterChanged");
-      return;
-    }
-    this._recomputeView();
-    this._updateWindow(true, undefined);
-  }
-
-  _getExportMenuItems(plural: boolean = false, columnIDs: string[] | null = null): MenuItem[] {
-    const items: MenuItem[] = [];
-    if (this._exportAsCSV) {
-      items.push({ id: 'export-csv', label: "Export as CSV", onClick: () => this._exportColumnCSV(columnIDs) });
-    }
-    if (this._exportAsExcel) {
-      items.push({ id: 'export-excel', label: "Export as Excel", onClick: () => this._exportColumnXLSX(columnIDs) });
-    }
-    if (items.length === 2) {
-      return [{
-        id: 'export-col',
-        label: "Export Column" + (plural ? "s" : ""),
-        subMenu: items,
-      }];
-    }
-    return items;
   }
 
 }
