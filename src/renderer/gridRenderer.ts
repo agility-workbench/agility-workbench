@@ -1,8 +1,5 @@
 import { RefObject } from "react";
-import {
-  AggregateScope,
-  AggregateType,
-} from "../interfaces/aggregate";
+import { AggregateType } from "../interfaces/aggregate";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
@@ -23,6 +20,7 @@ import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { AggregateCalculator } from "./aggregate/calculator";
+import { AggregateModelController } from "./aggregate/modelController";
 import { AggregateRowBuilder } from "./aggregate/rowBuilder";
 import { AggregateServerFetcher } from "./aggregate/serverFetcher";
 import { AggregateRowRenderer } from "./aggregate/wrapper";
@@ -57,6 +55,7 @@ export class GridRenderer {
   _columnMenuOpener: ColumnMenuOpener;
   _filterUpdateHandler: FilterUpdateHandler;
   _aggregateCalculator: AggregateCalculator;
+  _aggregateModelController: AggregateModelController;
   _aggregateRowBuilder: AggregateRowBuilder;
   _aggregateRowRenderer: AggregateRowRenderer;
   _aggregateServerFetcher: AggregateServerFetcher;
@@ -191,10 +190,18 @@ export class GridRenderer {
       updateWindow: (forcePatch, scrollSrc) => this._bodyWindowRenderer.update(forcePatch, scrollSrc),
     });
     this._aggregateCalculator = new AggregateCalculator();
+    this._aggregateModelController = new AggregateModelController({
+      core: this.core,
+      leafColumns: () => this._leafColumns,
+      selectedColumnIDs: () => this._selectedColumnIDs,
+      markAggregatesDirty: () => this._markAggregatesDirty(),
+      requestServerAggregates: () => this._aggregateServerFetcher.maybeRequest(),
+      renderAggregateRow: () => this._renderAggregateRow(),
+    });
     this._aggregateServerFetcher = new AggregateServerFetcher({
       core: this.core,
       leafColumns: () => this._leafColumns,
-      getAggregateMap: () => this._getAggregateMap(),
+      getAggregateMap: () => this._aggregateModelController.getAggregateMap(),
       renderAggregateRow: () => this._renderAggregateRow(),
     });
     this._serverSideController = new ServerSideController({
@@ -222,7 +229,7 @@ export class GridRenderer {
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
-      this._setAggregateScope("none");
+      this._aggregateModelController.setAggregateScope("none");
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeftCells = [];
@@ -483,104 +490,24 @@ export class GridRenderer {
   }
 
   _aggregate(colID: string, aggType?: AggregateType) {
-    const aggregates = this._getAggregateMap();
-    const prevSize = aggregates.size;
-    if (!aggType) {
-      aggregates.delete(colID);
-    } else {
-      aggregates.set(colID, aggType);
-    }
-    this._setAggregateMap(aggregates);
-    if (prevSize === 0 && aggregates.size > 0 && this.core.getAggregateScope() === "none") {
-      this._setAggregateScope("page");
-    }
-    this._markAggregatesDirty();
-    this._renderAggregateRow();
+    this._aggregateModelController.aggregate(colID, aggType);
   }
 
   _aggregateSelectedColumns(aggType: AggregateType) {
-    const aggregates = this._getAggregateMap();
-    const prevSize = aggregates.size;
-    const selectedCols = Array.from(this._selectedColumnIDs);
-    for (const colID of selectedCols) {
-      const col = this.core.getColumnModel().getById(colID);
-      if (!col) continue;
-      if (col.children.length > 0) continue; // skip parent columns
-      aggregates.set(colID, aggType);
-    }
-    this._setAggregateMap(aggregates);
-    if (prevSize === 0 && aggregates.size > 0 && this.core.getAggregateScope() === "none") {
-      this._setAggregateScope("page");
-    }
-    this._markAggregatesDirty();
-    this._renderAggregateRow();
+    this._aggregateModelController.aggregateSelectedColumns(aggType);
   }
 
   _clearAggregates() {
-    if (this.core.getAggregateModel().length === 0) return;
-    this.core.setAggregateModel([]);
-    this._setAggregateScope("none");
-    this._markAggregatesDirty();
-    this._renderAggregateRow();
+    this._aggregateModelController.clearAggregates();
   }
 
   _markAggregatesDirty() {
     this._aggregateServerFetcher.markDirty();
   }
 
-  _setAggregateScope(scope: AggregateScope) {
-    const changed = scope !== this.core.getAggregateScope();
-    this.core.setAggregateScope(scope);
-    this._markAggregatesDirty();
-    this._aggregateServerFetcher.maybeRequest();
-    if (changed) {
-      this._renderAggregateRow();
-    }
-  }
-
-  _pruneAggregates() {
-    const aggregates = this._getAggregateMap();
-    if (aggregates.size === 0) return;
-    const valid = new Set(this._leafColumns.map(c => c.instanceID));
-    for (const key of Array.from(aggregates.keys())) {
-      if (!valid.has(key)) {
-        aggregates.delete(key);
-      }
-    }
-    this._setAggregateMap(aggregates);
-  }
-
-  _getAggregateOpForColumn(col: Column): AggregateType {
-    const explicit = this._getAggregateMap().get(col.instanceID);
-    if (explicit != null) return explicit;
-    return col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT;
-  }
-
-  private _getAggregateMap(): Map<string, AggregateType> {
-    return new Map(this.core.getAggregateModel().map(a => [a.key, a.type]));
-  }
-
-  private _setAggregateMap(aggregates: Map<string, AggregateType>) {
-    this.core.setAggregateModel(Array.from(aggregates.entries()).map(([key, type]) => ({ key, type })));
-  }
-
-  _getAggregateRows(): any[] {
-    if (this.core.getAggregateScope() === "all") {
-      const rows: any[] = [];
-      this.core.getRowModel().forEachNodeAfterFilterAndSort((node) => rows.push(node.data));
-      return rows;
-    }
-    const rows: any[] = [];
-    for (let i = 0; i < this.core.getRowModel().getViewCount(); i++) {
-      const node = this.core.getRowModel().getRowNodeAtViewIndex(i);
-      if (node) rows.push(node.data);
-    }
-    return rows;
-  }
-
   _renderAggregateRow() {
-    this._pruneAggregates();
-    const aggregateMap = this._getAggregateMap();
+    this._aggregateModelController.pruneAggregates();
+    const aggregateMap = this._aggregateModelController.getAggregateMap();
     const aggregateScope = this.core.getAggregateScope();
     const shouldShow = aggregateScope !== "none" && aggregateMap.size > 0;
     const wasVisible = this._aggregateVisible;
@@ -608,10 +535,10 @@ export class GridRenderer {
         values.set(col.instanceID, display ?? "");
       }
     } else {
-      const rows = this._getAggregateRows();
+      const rows = this._aggregateModelController.getAggregateRows();
       for (const col of this._leafColumns) {
         if (col.hidden) continue;
-        const op = this._getAggregateOpForColumn(col);
+        const op = this._aggregateModelController.getAggregateOpForColumn(col);
         const raw = this._aggregateCalculator.calculateAggregate(col, op, rows);
         const display = this._aggregateCalculator.formatAggregateDisplay(col, raw);
         values.set(col.instanceID, display ?? "");
