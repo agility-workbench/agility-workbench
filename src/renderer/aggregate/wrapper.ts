@@ -64,6 +64,17 @@ export class AggregateRowRenderer {
     return this.elements;
   }
 
+  setVisible(visible: boolean) {
+    this.elements.row.classList.toggle("visible", visible);
+    this.elements.row.style.display = visible ? "flex" : "none";
+  }
+
+  setHeight(rowHeight: number) {
+    this.elements.row.style.height = `${rowHeight}px`;
+    this.elements.row.style.minHeight = `${rowHeight}px`;
+    this.elements.row.style.maxHeight = `${rowHeight}px`;
+  }
+
   renderCells(
     cells: HTMLDivElement[],
     columns: Column[],

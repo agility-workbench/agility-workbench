@@ -295,6 +295,7 @@ export class GridRenderer {
     this._aggregateRowBuilder = new AggregateRowBuilder({
       rowHeight: () => this.rowHeight,
       leafColumnLookup: () => this._leafColumnLookup,
+      aggregateRowRenderer: this._aggregateRowRenderer,
       aggregateRow: this.aggregateRow,
       aggregateLeft: this.aggregateLeft,
       aggregateCenter: this.aggregateCenter,
@@ -678,8 +679,7 @@ export class GridRenderer {
       this.aggregateClearBtn.disabled = aggregateMap.size === 0;
     }
 
-    this.aggregateRow.classList.toggle("visible", shouldShow);
-    this.aggregateRow.style.display = shouldShow ? "flex" : "none";
+    this._aggregateRowRenderer.setVisible(shouldShow);
 
     if (!shouldShow) {
       if (this.aggregateScopeSelect) {

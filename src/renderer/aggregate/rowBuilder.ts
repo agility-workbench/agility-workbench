@@ -1,4 +1,5 @@
 import { Column } from "../../column/column";
+import { AggregateRowRenderer } from "./wrapper";
 
 type LeafColumnMeta = {
   section: "left" | "center" | "right";
@@ -9,6 +10,7 @@ type LeafColumnMeta = {
 type AggregateRowBuilderParams = {
   rowHeight: () => number;
   leafColumnLookup: () => Map<string, LeafColumnMeta>;
+  aggregateRowRenderer: AggregateRowRenderer;
   aggregateRow: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
   aggregateCenter: HTMLDivElement;
@@ -71,9 +73,7 @@ export class AggregateRowBuilder {
       rightRow = row;
     }
 
-    aggregateRow.style.height = `${this.params.rowHeight()}px`;
-    aggregateRow.style.minHeight = `${this.params.rowHeight()}px`;
-    aggregateRow.style.maxHeight = `${this.params.rowHeight()}px`;
+    this.params.aggregateRowRenderer.setHeight(this.params.rowHeight());
 
     return {
       leftCells,
