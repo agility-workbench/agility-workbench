@@ -717,37 +717,9 @@ export class GridRenderer {
       }
     }
 
-    const apply = (cells: HTMLDivElement[], cols: Column[]) => {
-      let idx = -1;
-      for (const col of cols) {
-        if (col.hidden) continue;
-        idx++;
-        const cell = cells[idx];
-        if (!cell) continue;
-        if (cell.children.length > 0) cell.innerHTML = "";
-        const aggFn = aggregateMap.get(col.instanceID) || AggregateType.COUNT;
-        const icon = document.createElement("div");
-        icon.className = "pte-aggregate-icon";
-        let suffix = "";
-        if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
-          suffix = "-" + (col.isComputableType() ? "number" : "string");
-        }
-        icon.classList.add("icon-" + aggFn + suffix);
-        icon.title = aggFn[0].toUpperCase() + aggFn.substring(1);
-        cell.appendChild(icon);
-        const content = document.createElement("div");
-        content.className = "pte-aggregate-cell-content";
-        content.textContent = values.get(col.instanceID) ?? "";
-        cell.appendChild(content);
-        if (content.scrollWidth > content.clientWidth) {
-          content.title = values.get(col.instanceID) ?? "";
-        }
-      }
-    };
-
-    apply(this._aggregateLeftCells, this._leftPinnedLeafColumns);
-    apply(this._aggregateCells, this._centerLeafColumns);
-    apply(this._aggregateRightCells, this._rightPinnedLeafColumns);
+    this._aggregateRowRenderer.renderCells(this._aggregateLeftCells, this._leftPinnedLeafColumns, aggregateMap, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateCells, this._centerLeafColumns, aggregateMap, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateRightCells, this._rightPinnedLeafColumns, aggregateMap, values);
 
     if (this.aggregateScopeSelect) {
       this.aggregateScopeSelect.disabled = aggregateMap.size === 0;

@@ -1,3 +1,6 @@
+import { Column } from "../../column/column";
+import { AggregateType } from "../../interfaces/aggregate";
+
 export interface AggregateRowElements {
   row: HTMLDivElement;
   left: HTMLDivElement;
@@ -59,5 +62,38 @@ export class AggregateRowRenderer {
 
   getRefs() {
     return this.elements;
+  }
+
+  renderCells(
+    cells: HTMLDivElement[],
+    columns: Column[],
+    aggregateMap: Map<string, AggregateType>,
+    values: Map<string, string>,
+  ) {
+    let idx = -1;
+    for (const col of columns) {
+      if (col.hidden) continue;
+      idx++;
+      const cell = cells[idx];
+      if (!cell) continue;
+      if (cell.children.length > 0) cell.innerHTML = "";
+      const aggFn = aggregateMap.get(col.instanceID) || AggregateType.COUNT;
+      const icon = document.createElement("div");
+      icon.className = "pte-aggregate-icon";
+      let suffix = "";
+      if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
+        suffix = "-" + (col.isComputableType() ? "number" : "string");
+      }
+      icon.classList.add("icon-" + aggFn + suffix);
+      icon.title = aggFn[0].toUpperCase() + aggFn.substring(1);
+      cell.appendChild(icon);
+      const content = document.createElement("div");
+      content.className = "pte-aggregate-cell-content";
+      content.textContent = values.get(col.instanceID) ?? "";
+      cell.appendChild(content);
+      if (content.scrollWidth > content.clientWidth) {
+        content.title = values.get(col.instanceID) ?? "";
+      }
+    }
   }
 }
