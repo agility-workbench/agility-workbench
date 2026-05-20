@@ -1,3 +1,4 @@
+import { AggregateModel } from "@grid/interfaces";
 import { ColDef } from "../interfaces/column";
 import { FilterModel } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
@@ -120,6 +121,11 @@ export type GridActionFilterModelSet = {
   filterModel: FilterModel[];
 };
 
+export type GridActionAggregateModelSet = {
+  type: "aggregateModelSet";
+  aggregateModels: AggregateModel[];
+}
+
 // Focus/Selection actions
 export type GridActionFocusSet = {
   type: "focusSet";
@@ -196,6 +202,7 @@ export type GridAction =
   | GridActionPaginationSet
   | GridActionSortModelSet
   | GridActionFilterModelSet
+  | GridActionAggregateModelSet
   | GridActionFocusSet
   | GridActionHeaderAction
   | GridActionSelectionClear

@@ -712,6 +712,9 @@ export class GridCore implements IGridCore {
       case "paginationSet":
         this.applyPagination(action.pageIndex, action.pageSize, action.enabled);
         break;
+      case "aggregateModelSet":
+        this.setAggregateModel(action.aggregateModels);
+        break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
         if (!col) return;

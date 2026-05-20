@@ -122,9 +122,11 @@ export class ColumnMenuService {
         console.log("Pinning columns", item.payload.colIDs, "to", item.payload.pinned);
         return this.core.dispatch({ type: "columnPin", colIds: item.payload.colIDs, pinned: item.payload.pinned });
       // filter.open / filter.clear / pin / hide etc
-
+      case "aggregate.setMany":
+        return this.core.dispatch({ type: "aggregateModelSet", aggregateModels: item.payload.colIDs.map((colId: string) => ({ key: colId, type: item.payload.agg })) });
       default:
         // unknown command -> ignore (or warn in dev)
+        console.error(`Command ${item.command} is unhandled...`);
         return;
     }
   }
