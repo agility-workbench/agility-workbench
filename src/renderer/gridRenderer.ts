@@ -107,16 +107,6 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
-  hScrollContainer: HTMLDivElement;
-  hScrollLeftParent: HTMLDivElement;
-  hScrollParent: HTMLDivElement;
-  hScrollRightParent: HTMLDivElement;
-  hScrollLeft: HTMLDivElement;
-  hScroll: HTMLDivElement;
-  hScrollRight: HTMLDivElement;
-  hScrollerLeft: HTMLDivElement;
-  hScroller: HTMLDivElement;
-  hScrollerRight: HTMLDivElement;
   vScrollParent: HTMLDivElement;
   vScroll: HTMLDivElement;
   vScroller: HTMLDivElement;
@@ -276,16 +266,6 @@ export class GridRenderer {
 
     this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
     const horizontalScroll = this._horizontalScrollRenderer.getRefs();
-    this.hScrollContainer = horizontalScroll.container;
-    this.hScrollLeftParent = horizontalScroll.leftParent;
-    this.hScrollParent = horizontalScroll.centerParent;
-    this.hScrollRightParent = horizontalScroll.rightParent;
-    this.hScrollLeft = horizontalScroll.leftSpacer;
-    this.hScroll = horizontalScroll.centerSpacer;
-    this.hScrollRight = horizontalScroll.rightSpacer;
-    this.hScrollerLeft = horizontalScroll.leftScroller;
-    this.hScroller = horizontalScroll.centerScroller;
-    this.hScrollerRight = horizontalScroll.rightScroller;
 
     this.vScrollParent = bodyWrapper.vScrollParent;
     this.vScroll = bodyWrapper.vScroll;
@@ -355,13 +335,13 @@ export class GridRenderer {
       centerHeader: this.header,
       rightHeader: this.rightHeader,
       headerWrapper: this.headerWrapper,
-      hScrollContainer: this.hScrollContainer,
-      hScrollLeftParent: this.hScrollLeftParent,
-      hScrollParent: this.hScrollParent,
-      hScrollRightParent: this.hScrollRightParent,
-      hScrollerLeft: this.hScrollerLeft,
-      hScroller: this.hScroller,
-      hScrollerRight: this.hScrollerRight,
+      hScrollContainer: horizontalScroll.container,
+      hScrollLeftParent: horizontalScroll.leftParent,
+      hScrollParent: horizontalScroll.centerParent,
+      hScrollRightParent: horizontalScroll.rightParent,
+      hScrollerLeft: horizontalScroll.leftScroller,
+      hScroller: horizontalScroll.centerScroller,
+      hScrollerRight: horizontalScroll.rightScroller,
       aggregateLeft: aggregateRefs.left,
       aggregateCenterRow: () => this._aggregateRowRenderer.getCenterRow(),
       aggregateRight: aggregateRefs.right,
@@ -370,8 +350,8 @@ export class GridRenderer {
       root: this.root,
       leftHeader: this.leftHeader,
       rightHeader: this.rightHeader,
-      hScrollLeftParent: this.hScrollLeftParent,
-      hScrollRightParent: this.hScrollRightParent,
+      hScrollLeftParent: horizontalScroll.leftParent,
+      hScrollRightParent: horizontalScroll.rightParent,
       leftScroller: this.leftScroller,
       rightScroller: this.rightScroller,
       aggregateLeft: aggregateRefs.left,
@@ -385,9 +365,9 @@ export class GridRenderer {
       leftSpacer: this.leftSpacer,
       centerSpacer: this.spacer,
       rightSpacer: this.rightSpacer,
-      hScrollLeft: this.hScrollLeft,
-      hScrollCenter: this.hScroll,
-      hScrollRight: this.hScrollRight,
+      hScrollLeft: horizontalScroll.leftSpacer,
+      hScrollCenter: horizontalScroll.centerSpacer,
+      hScrollRight: horizontalScroll.rightSpacer,
       leftHeader: this.leftHeader,
       centerHeader: this.header,
       rightHeader: this.rightHeader,
@@ -427,7 +407,7 @@ export class GridRenderer {
       height: () => this.height,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       headerWrapper: this.headerWrapper,
-      hScrollContainer: this.hScrollContainer,
+      hScrollContainer: horizontalScroll.container,
       paginator: this._paginationRenderer.getElement(),
       getAggregateRowHeight: () => this._getAggregateRowHeight(),
     });
