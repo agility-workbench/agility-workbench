@@ -44,7 +44,6 @@ import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { FilterOverlayRenderer } from "./overlay/filter";
 import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
-import { createPaginationWrapper } from "./pagination/wrapper";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
@@ -447,13 +446,12 @@ export class GridRenderer {
       applySelectionToSlot: (slot, viewIndex) => this._applySelectionToSlot(slot, viewIndex),
     });
 
-    this.paginator = createPaginationWrapper();
-    this.root.appendChild(this.paginator);
     this._paginationRenderer = new PaginationRenderer({
       core: this.core,
-      paginator: this.paginator,
+      root: this.root,
       resetScrollPosition: () => this._resetScrollPosition(),
     });
+    this.paginator = this._paginationRenderer.getElement();
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
       rowHeight: () => this.rowHeight,

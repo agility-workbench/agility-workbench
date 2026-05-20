@@ -1,10 +1,11 @@
 import { GridCore } from "../../core/core";
 import { GridEventPaginationChangedParams } from "../../events/events";
 import { isTrue } from "../../misc";
+import { createPaginationWrapper } from "./wrapper";
 
 interface PaginationRendererParams {
   core: GridCore;
-  paginator: HTMLDivElement;
+  root: HTMLElement;
   resetScrollPosition: () => void;
 }
 
@@ -15,11 +16,20 @@ export class PaginationRenderer {
   prevPageBtn!: HTMLButtonElement;
   nextPageBtn!: HTMLButtonElement;
   lastPageBtn!: HTMLButtonElement;
+  private paginator: HTMLDivElement;
 
-  constructor(private params: PaginationRendererParams) {}
+  constructor(private params: PaginationRendererParams) {
+    this.paginator = createPaginationWrapper();
+    this.params.root.appendChild(this.paginator);
+  }
+
+  getElement() {
+    return this.paginator;
+  }
 
   buildControls() {
-    const { core, paginator } = this.params;
+    const { core } = this.params;
+    const paginator = this.paginator;
     paginator.innerHTML = "";
     const {
       paginationEnabled,
@@ -141,10 +151,10 @@ export class PaginationRenderer {
       totalPageCount,
     } = params || this.params.core.getPaginationInfo();
     if (!paginationEnabled) {
-      this.params.paginator.classList.remove("visible");
+      this.paginator.classList.remove("visible");
       return;
     }
-    this.params.paginator.classList.add("visible");
+    this.paginator.classList.add("visible");
 
     if (this.pageSizeSelect) {
       this.pageSizeSelect.value = String(pageSize);
