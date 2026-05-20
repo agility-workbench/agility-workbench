@@ -139,13 +139,6 @@ export class GridRenderer {
   _aggregateRightCells: HTMLDivElement[];
   _aggregateVisible: boolean;
 
-  paginator: HTMLDivElement;
-  pageSizeSelect!: HTMLSelectElement;
-  pageSelect!: HTMLSelectElement;
-  firstPageBtn!: HTMLButtonElement;
-  prevPageBtn!: HTMLButtonElement;
-  nextPageBtn!: HTMLButtonElement;
-  lastPageBtn!: HTMLButtonElement;
   aggregateScopeSelect!: HTMLSelectElement;
   aggregateClearBtn!: HTMLButtonElement;
 
@@ -434,7 +427,6 @@ export class GridRenderer {
       root: this.root,
       resetScrollPosition: () => this._resetScrollPosition(),
     });
-    this.paginator = this._paginationRenderer.getElement();
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
       rowHeight: () => this.rowHeight,
@@ -442,7 +434,7 @@ export class GridRenderer {
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       headerWrapper: this.headerWrapper,
       hScrollContainer: this.hScrollContainer,
-      paginator: this.paginator,
+      paginator: this._paginationRenderer.getElement(),
       getAggregateRowHeight: () => this._getAggregateRowHeight(),
     });
     // this.buildPaginationControls();
@@ -775,12 +767,10 @@ export class GridRenderer {
 
   private buildPaginationControls() {
     this._paginationRenderer.buildControls();
-    this._syncPaginationControlRefs();
   }
 
   _updatePaginationControls(params?: GridEventPaginationChangedParams) {
     this._paginationRenderer.updateControls(params);
-    this._syncPaginationControlRefs();
     if (this.aggregateScopeSelect) {
       this.aggregateScopeSelect.value = this.core.getAggregateScope();
       this.aggregateScopeSelect.disabled = this.core.getAggregateModel().length === 0;
@@ -788,15 +778,6 @@ export class GridRenderer {
     if (this.aggregateClearBtn) {
       this.aggregateClearBtn.disabled = this.core.getAggregateModel().length === 0;
     }
-  }
-
-  private _syncPaginationControlRefs() {
-    if (this._paginationRenderer.pageSizeSelect) this.pageSizeSelect = this._paginationRenderer.pageSizeSelect;
-    if (this._paginationRenderer.pageSelect) this.pageSelect = this._paginationRenderer.pageSelect;
-    if (this._paginationRenderer.firstPageBtn) this.firstPageBtn = this._paginationRenderer.firstPageBtn;
-    if (this._paginationRenderer.prevPageBtn) this.prevPageBtn = this._paginationRenderer.prevPageBtn;
-    if (this._paginationRenderer.nextPageBtn) this.nextPageBtn = this._paginationRenderer.nextPageBtn;
-    if (this._paginationRenderer.lastPageBtn) this.lastPageBtn = this._paginationRenderer.lastPageBtn;
   }
 
   _resetScrollPosition() {
