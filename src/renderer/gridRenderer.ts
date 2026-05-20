@@ -107,9 +107,7 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
-  vScrollParent: HTMLDivElement;
   vScroll: HTMLDivElement;
-  vScroller: HTMLDivElement;
   headerWrapper: HTMLDivElement;
   leftHeader: HTMLDivElement;
   header: HTMLDivElement;
@@ -118,12 +116,6 @@ export class GridRenderer {
   leftScroller: HTMLDivElement;
   scroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
-  leftSpacer: HTMLDivElement;
-  spacer: HTMLDivElement;
-  rightSpacer: HTMLDivElement;
-  leftViewport: HTMLDivElement;
-  viewport: HTMLDivElement;
-  rightViewport: HTMLDivElement;
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
   _aggregateRightCells: HTMLDivElement[];
@@ -267,21 +259,13 @@ export class GridRenderer {
     this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
     const horizontalScroll = this._horizontalScrollRenderer.getRefs();
 
-    this.vScrollParent = bodyWrapper.vScrollParent;
     this.vScroll = bodyWrapper.vScroll;
-    this.vScroller = bodyWrapper.vScroller;
-    this.leftSpacer = bodyWrapper.leftSpacer;
-    this.spacer = bodyWrapper.centerSpacer;
-    this.rightSpacer = bodyWrapper.rightSpacer;
-    this.leftViewport = bodyWrapper.leftViewport;
-    this.viewport = bodyWrapper.centerViewport;
-    this.rightViewport = bodyWrapper.rightViewport;
     this._bodyRowPoolRenderer = new BodyRowPoolRenderer({
       core: this.core,
       rowHeight: () => this.rowHeight,
-      leftViewport: this.leftViewport,
-      centerViewport: this.viewport,
-      rightViewport: this.rightViewport,
+      leftViewport: bodyWrapper.leftViewport,
+      centerViewport: bodyWrapper.centerViewport,
+      rightViewport: bodyWrapper.rightViewport,
     });
     this._columnInteractionRenderer = new ColumnInteractionRenderer({
       core: this.core,
@@ -326,9 +310,9 @@ export class GridRenderer {
       root: this.root,
       body: this.body,
       rowPool: () => this._rowPool,
-      leftViewport: this.leftViewport,
-      centerViewport: this.viewport,
-      rightViewport: this.rightViewport,
+      leftViewport: bodyWrapper.leftViewport,
+      centerViewport: bodyWrapper.centerViewport,
+      rightViewport: bodyWrapper.rightViewport,
       leftScroller: this.leftScroller,
       rightScroller: this.rightScroller,
       leftHeader: this.leftHeader,
@@ -362,9 +346,9 @@ export class GridRenderer {
       centerScroller: this.scroller,
       rightScroller: this.rightScroller,
       vScroll: this.vScroll,
-      leftSpacer: this.leftSpacer,
-      centerSpacer: this.spacer,
-      rightSpacer: this.rightSpacer,
+      leftSpacer: bodyWrapper.leftSpacer,
+      centerSpacer: bodyWrapper.centerSpacer,
+      rightSpacer: bodyWrapper.rightSpacer,
       hScrollLeft: horizontalScroll.leftSpacer,
       hScrollCenter: horizontalScroll.centerSpacer,
       hScrollRight: horizontalScroll.rightSpacer,
@@ -384,9 +368,9 @@ export class GridRenderer {
       centerScroller: this.scroller,
       rightScroller: this.rightScroller,
       vScroll: this.vScroll,
-      leftViewport: this.leftViewport,
-      centerViewport: this.viewport,
-      rightViewport: this.rightViewport,
+      leftViewport: bodyWrapper.leftViewport,
+      centerViewport: bodyWrapper.centerViewport,
+      rightViewport: bodyWrapper.rightViewport,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
       beginScrollSync: (targets) => this._scrollSyncRenderer.beginScrollSync(targets),
       setStartIndex: (startIndex) => {
