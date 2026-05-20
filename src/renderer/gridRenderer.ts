@@ -108,11 +108,6 @@ export class GridRenderer {
   // DOM elements
   root: HTMLDivElement;
   vScroll: HTMLDivElement;
-  headerWrapper: HTMLDivElement;
-  leftHeader: HTMLDivElement;
-  header: HTMLDivElement;
-  rightHeader: HTMLDivElement;
-  body: HTMLDivElement;
   leftScroller: HTMLDivElement;
   scroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
@@ -217,14 +212,10 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       rowHeight: () => this.rowHeight,
-      getBody: () => this.body,
+      getBody: () => this._bodyViewportRenderer.getRefs().body,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
     });
     const headerRefs = this._headerRenderer.getRefs();
-    this.headerWrapper = headerRefs.wrapper;
-    this.leftHeader = headerRefs.left;
-    this.header = headerRefs.center;
-    this.rightHeader = headerRefs.right;
 
     this._bodyViewportRenderer = new BodyViewportRenderer({
       core: this.core,
@@ -232,8 +223,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
-    this.body = bodyWrapper.body;
-    this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.body);
+    this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
     this.leftScroller = bodyWrapper.leftScroller;
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
@@ -272,10 +262,10 @@ export class GridRenderer {
       root: this.root,
       rowHeight: () => this.rowHeight,
       maxDepth: () => this._maxDepth,
-      headerWrapper: this.headerWrapper,
-      leftHeader: this.leftHeader,
-      centerHeader: this.header,
-      rightHeader: this.rightHeader,
+      headerWrapper: headerRefs.wrapper,
+      leftHeader: headerRefs.left,
+      centerHeader: headerRefs.center,
+      rightHeader: headerRefs.right,
       leftScroller: this.leftScroller,
       centerScroller: this.scroller,
       rightScroller: this.rightScroller,
@@ -290,8 +280,8 @@ export class GridRenderer {
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
     this._interactionEventBinder = new GridInteractionEventBinder({
-      headerWrapper: this.headerWrapper,
-      body: this.body,
+      headerWrapper: headerRefs.wrapper,
+      body: bodyWrapper.body,
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
@@ -308,17 +298,17 @@ export class GridRenderer {
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
       root: this.root,
-      body: this.body,
+      body: bodyWrapper.body,
       rowPool: () => this._rowPool,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
       leftScroller: this.leftScroller,
       rightScroller: this.rightScroller,
-      leftHeader: this.leftHeader,
-      centerHeader: this.header,
-      rightHeader: this.rightHeader,
-      headerWrapper: this.headerWrapper,
+      leftHeader: headerRefs.left,
+      centerHeader: headerRefs.center,
+      rightHeader: headerRefs.right,
+      headerWrapper: headerRefs.wrapper,
       hScrollContainer: horizontalScroll.container,
       hScrollLeftParent: horizontalScroll.leftParent,
       hScrollParent: horizontalScroll.centerParent,
@@ -332,8 +322,8 @@ export class GridRenderer {
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
-      leftHeader: this.leftHeader,
-      rightHeader: this.rightHeader,
+      leftHeader: headerRefs.left,
+      rightHeader: headerRefs.right,
       hScrollLeftParent: horizontalScroll.leftParent,
       hScrollRightParent: horizontalScroll.rightParent,
       leftScroller: this.leftScroller,
@@ -352,9 +342,9 @@ export class GridRenderer {
       hScrollLeft: horizontalScroll.leftSpacer,
       hScrollCenter: horizontalScroll.centerSpacer,
       hScrollRight: horizontalScroll.rightSpacer,
-      leftHeader: this.leftHeader,
-      centerHeader: this.header,
-      rightHeader: this.rightHeader,
+      leftHeader: headerRefs.left,
+      centerHeader: headerRefs.center,
+      rightHeader: headerRefs.right,
       aggregateLeft: aggregateRefs.left,
       aggregateCenter: aggregateRefs.center,
       aggregateRight: aggregateRefs.right,
@@ -390,7 +380,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       height: () => this.height,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
-      headerWrapper: this.headerWrapper,
+      headerWrapper: headerRefs.wrapper,
       hScrollContainer: horizontalScroll.container,
       paginator: this._paginationRenderer.getElement(),
       getAggregateRowHeight: () => this._getAggregateRowHeight(),
