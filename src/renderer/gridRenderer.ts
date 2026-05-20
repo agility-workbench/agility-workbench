@@ -32,7 +32,6 @@ import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
-import { createBodyWrapper } from "./body/wrapper";
 import { ColumnMenuOpener } from "./columnMenuOpener";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderInteractionHandler } from "./header/interactionHandler";
@@ -263,9 +262,13 @@ export class GridRenderer {
     this.header = headerRefs.center;
     this.rightHeader = headerRefs.right;
 
-    const bodyWrapper = createBodyWrapper();
+    this._bodyViewportRenderer = new BodyViewportRenderer({
+      core: this.core,
+      root: this.root,
+      rowHeight: () => this.rowHeight,
+    });
+    const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this.body = bodyWrapper.body;
-    this.root.appendChild(this.body);
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.body);
     this.leftScroller = bodyWrapper.leftScroller;
     this.scroller = bodyWrapper.centerScroller;
@@ -329,16 +332,6 @@ export class GridRenderer {
       leftViewport: this.leftViewport,
       centerViewport: this.viewport,
       rightViewport: this.rightViewport,
-    });
-    this._bodyViewportRenderer = new BodyViewportRenderer({
-      core: this.core,
-      rowHeight: () => this.rowHeight,
-      body: this.body,
-      leftSpacer: this.leftSpacer,
-      centerSpacer: this.spacer,
-      rightSpacer: this.rightSpacer,
-      vScrollParent: this.vScrollParent,
-      vScroller: this.vScroller,
     });
     this._columnInteractionRenderer = new ColumnInteractionRenderer({
       core: this.core,
