@@ -224,7 +224,7 @@ export class GridRenderer {
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
-      this._aggregateModelController.clearAggregates();
+      this._aggregateModelController.setAggregateScope("none");
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeftCells = [];
@@ -370,7 +370,7 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
-      clearAggregates: () => this._aggregateModelController.clearAggregates(),
+      setAggregateScope: (scope) => this._aggregateModelController.setAggregateScope(scope),
     });
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,

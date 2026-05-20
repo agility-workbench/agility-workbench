@@ -8,7 +8,7 @@ interface PaginationRendererParams {
   core: GridCore;
   root: HTMLElement;
   resetScrollPosition: () => void;
-  clearAggregates: () => void;
+  setAggregateScope: (scope: AggregateScope) => void;
 }
 
 export class PaginationRenderer {
@@ -152,18 +152,18 @@ export class PaginationRenderer {
     }
     this.aggregateScopeSelect.addEventListener("change", (e) => {
       const next = (e.target as HTMLSelectElement).value as AggregateScope;
-      this.params.core.setAggregateScope(next);
+      this.params.setAggregateScope(next);
     });
 
     this.aggregateClearBtn = document.createElement("button");
     this.aggregateClearBtn.type = "button";
     this.aggregateClearBtn.className = "pte-pagination-btn pte-aggregate-clear";
-    this.aggregateClearBtn.title = "Remove aggregate row";
-    this.aggregateClearBtn.setAttribute("aria-label", "Remove aggregate row");
+    this.aggregateClearBtn.title = "Hide aggregate row";
+    this.aggregateClearBtn.setAttribute("aria-label", "Hide aggregate row");
     this.aggregateClearBtn.textContent = "x";
     this.aggregateClearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.params.clearAggregates();
+      this.params.setAggregateScope("none");
     });
 
     aggSection.appendChild(aggLabel);

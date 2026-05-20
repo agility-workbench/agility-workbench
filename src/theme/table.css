@@ -307,15 +307,21 @@
   transform: translateY(-50%);
   border: 1px solid var(--pte-border-color);
   background: var(--pte-surface-bg-color);
+  color: var(--pte-text-color);
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .pte-aggregate-row:hover .pte-aggregate-close {
   opacity: 1;
+}
+
+.pte-aggregate-close:hover {
+  background: var(--pte-hover-bg-color);
+  border-color: var(--pte-control-border-color);
 }
 
 .pte-aggregate-close:focus-visible {
