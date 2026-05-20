@@ -48,3 +48,16 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
     closeButton,
   };
 }
+
+export class AggregateRowRenderer {
+  private elements: AggregateRowElements;
+
+  constructor(root: HTMLElement, rowHeight: number, onClose: (event: MouseEvent) => void) {
+    this.elements = createAggregateRow(rowHeight, onClose);
+    root.appendChild(this.elements.row);
+  }
+
+  getRefs() {
+    return this.elements;
+  }
+}

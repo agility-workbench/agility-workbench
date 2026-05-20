@@ -25,7 +25,7 @@ import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { AggregateCalculator } from "./aggregate/calculator";
 import { AggregateRowBuilder } from "./aggregate/rowBuilder";
 import { AggregateServerFetcher } from "./aggregate/serverFetcher";
-import { createAggregateRow } from "./aggregate/wrapper";
+import { AggregateRowRenderer } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyPoolSizer } from "./body/poolSizer";
 import { BodyRowHoverRenderer } from "./body/rowHover";
@@ -58,6 +58,7 @@ export class GridRenderer {
   _filterUpdateHandler: FilterUpdateHandler;
   _aggregateCalculator: AggregateCalculator;
   _aggregateRowBuilder: AggregateRowBuilder;
+  _aggregateRowRenderer: AggregateRowRenderer;
   _aggregateServerFetcher: AggregateServerFetcher;
   _serverSideController: ServerSideController;
   _iconRenderer: IconRenderer;
@@ -273,13 +274,14 @@ export class GridRenderer {
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
 
-    const aggregateRow = createAggregateRow(this.rowHeight, (e) => {
+    this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._setAggregateScope("none");
       if (this.aggregateScopeSelect) {
         this.aggregateScopeSelect.value = "none";
       }
     });
+    const aggregateRow = this._aggregateRowRenderer.getRefs();
     this.aggregateRow = aggregateRow.row;
     this.aggregateLeft = aggregateRow.left;
     this.aggregateCenter = aggregateRow.center;
@@ -290,7 +292,6 @@ export class GridRenderer {
     this._aggregateCells = [];
     this._aggregateRightCells = [];
     this._aggregateVisible = false;
-    this.root.appendChild(this.aggregateRow);
     this._aggregateRowBuilder = new AggregateRowBuilder({
       rowHeight: () => this.rowHeight,
       leafColumnLookup: () => this._leafColumnLookup,
