@@ -1102,6 +1102,11 @@
   background-color: var(--pte-icon-color);
 }
 
+.icon-distinct_count {
+  mask-image: url(count.svg);
+  background-color: var(--pte-icon-color);
+}
+
 .icon-sum {
   mask-image: url(sum.svg);
   background-color: var(--pte-icon-color);

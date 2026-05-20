@@ -61,6 +61,9 @@ export class ColumnMenuService {
           { id: "aggMin", label: "Min", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
           { id: "aggMax", label: "Max", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
         ];
+        if (cap.colType === ColumnType.STRING) {
+          item.subMenu.splice(1, 0, { id: "aggDistinctCount", label: "Distinct Count", command: "aggregate.setMany", payload: { colIDs, agg: "distinct_count" } });
+        }
       }
       if (cap.aggregated) {
         item.subMenu!.push({ id: "aggClear", label: "Clear Aggregation", command: "aggregate.setMany", payload: { colIDs, agg: null } });

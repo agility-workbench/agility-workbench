@@ -31,6 +31,9 @@ export class AggregateCalculator {
     }
 
     const rawValues = rows.map(row => this.getRawCellValue(row, col)).filter(v => v != null);
+    if (aggType === AggregateType.DISTINCT_COUNT) {
+      return new Set(rawValues.map(v => String(v))).size;
+    }
     if (rawValues.length === 0) {
       if (aggType === AggregateType.SUM || aggType === AggregateType.AVG || aggType === AggregateType.MEDIAN) return 0;
       return "";

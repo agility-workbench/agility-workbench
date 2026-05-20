@@ -104,7 +104,7 @@ export class AggregateRowRenderer {
         suffix = "-" + (col.isComputableType() ? "number" : "string");
       }
       icon.classList.add("icon-" + aggFn + suffix);
-      icon.title = aggFn[0].toUpperCase() + aggFn.substring(1);
+      icon.title = aggFn === AggregateType.DISTINCT_COUNT ? "Distinct Count" : aggFn[0].toUpperCase() + aggFn.substring(1);
       cell.appendChild(icon);
       const content = document.createElement("div");
       content.className = "pte-aggregate-cell-content";

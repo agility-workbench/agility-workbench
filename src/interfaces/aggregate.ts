@@ -1,5 +1,6 @@
 export enum AggregateType {
   COUNT = "count",
+  DISTINCT_COUNT = "distinct_count",
   SUM = "sum",
   AVG = "avg",
   MIN = "min",
@@ -10,6 +11,7 @@ export enum AggregateType {
 export function allAggregateTypes(): AggregateType[] {
   return [
     AggregateType.COUNT,
+    AggregateType.DISTINCT_COUNT,
     AggregateType.SUM,
     AggregateType.AVG,
     AggregateType.MIN,

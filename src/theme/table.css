@@ -1237,6 +1237,11 @@
   background-color: var(--pte-icon-color);
 }
 
+.icon-distinct_count {
+  mask-image: var(--pte-icon-count);
+  background-color: var(--pte-icon-color);
+}
+
 .icon-sum {
   mask-image: var(--pte-icon-sum);
   background-color: var(--pte-icon-color);
