@@ -46,7 +46,7 @@ import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading"
 import { PaginationRenderer } from "./pagination/renderer";
 import { createPaginationWrapper } from "./pagination/wrapper";
 import { RootAttachmentRenderer } from "./rootAttachment";
-import { createHorizontalScroll } from "./scroll/horizontal";
+import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { ServerSideController } from "./serverSideController";
 
@@ -78,6 +78,7 @@ export class GridRenderer {
   _filterOverlayRenderer: FilterOverlayRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _rootAttachmentRenderer: RootAttachmentRenderer;
+  _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   rowHeight: number = 43;
   height?: number;
@@ -304,9 +305,9 @@ export class GridRenderer {
       rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
     });
 
-    const horizontalScroll = createHorizontalScroll();
+    this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
+    const horizontalScroll = this._horizontalScrollRenderer.getRefs();
     this.hScrollContainer = horizontalScroll.container;
-    this.root.appendChild(this.hScrollContainer);
     this.hScrollLeftParent = horizontalScroll.leftParent;
     this.hScrollParent = horizontalScroll.centerParent;
     this.hScrollRightParent = horizontalScroll.rightParent;

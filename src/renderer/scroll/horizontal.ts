@@ -11,6 +11,19 @@ export interface HorizontalScrollElements {
   rightScroller: HTMLDivElement;
 }
 
+export class HorizontalScrollRenderer {
+  private elements: HorizontalScrollElements;
+
+  constructor(root: HTMLElement) {
+    this.elements = createHorizontalScroll();
+    root.appendChild(this.elements.container);
+  }
+
+  getRefs() {
+    return this.elements;
+  }
+}
+
 export function createHorizontalScroll(): HorizontalScrollElements {
   const container = document.createElement("div");
   container.className = "pte-scroller-horizontal-container-wrapper";
