@@ -219,7 +219,7 @@ function App() {
       }
     };
 
-    // fetchData();
+    if (rowModel == "clientSide") fetchData();
 
     return () => {
       cancelled = true;
