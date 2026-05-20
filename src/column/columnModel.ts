@@ -303,8 +303,9 @@ export class ColumnModel implements IColumnModel {
   }
 
   private withInternalColumns(cols: Column[]): Column[] {
-    const rowNumberColumn = this.getRowNumberColumn();
     const userColumns = cols.filter((col) => !col.isRowNumberColumn());
+    if (!this.options.rowNumbers) return userColumns;
+    const rowNumberColumn = this.getRowNumberColumn();
     rowNumberColumn.pinned = "left";
     rowNumberColumn.hidden = false;
     return [rowNumberColumn, ...userColumns];

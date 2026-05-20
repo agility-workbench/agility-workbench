@@ -109,6 +109,7 @@ function App() {
   const [toggle, setToggle] = useState(false);
   const [loading, setLoading] = useState(true);
   const [paginate, setPaginate] = useState(true);
+  const [rowNumbers, setRowNumbers] = useState(false);
   const [rowModel, setRowModel] = useState<RowModelType>("clientSide");
   const [serverSideBlockSize, setServerSideBlockSize] = useState(100);
   const [themeId, setThemeId] = useState(themePresets[0].id);
@@ -316,6 +317,9 @@ function App() {
           <button className="btn" type="button" onClick={() => setToggle(!toggle)}>Fetch</button>
         </div>
         <button className="btn" type="button" onClick={() => setPaginate(!paginate)}>{paginate ? "Don't" : ""} Paginate</button>
+        <button className="btn" type="button" onClick={() => setRowNumbers(!rowNumbers)}>
+          {rowNumbers ? "Hide" : "Show"} Row Numbers
+        </button>
         <button className="btn" type="button" onClick={() => setRowModel(rowModel === "clientSide" ? "serverSide" : "clientSide")}>
           Use {rowModel === "clientSide" ? "Server-side" : "Client-side"} Row Model
         </button>
@@ -340,13 +344,14 @@ function App() {
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <GridReact
-          key={`${rowModel}-${serverSideBlockSize}`}
+          key={`${rowModel}-${serverSideBlockSize}-${rowNumbers ? "row-numbers" : "no-row-numbers"}`}
           data={rowData}
           columnDefs={colDefs}
           className={activeTheme.className}
           style={{ width: "100%", height: "100%" }}
           loading={loading}
           pagination={paginate}
+          rowNumbers={rowNumbers}
           rowModelType={rowModel}
           serverSideDataSource={serverSideDataSource}
           serverSideAggregationSource={serverSideDataSource.getAggregates}
