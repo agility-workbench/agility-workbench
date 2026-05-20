@@ -2,30 +2,39 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isFalse } from "../../misc";
 import { createElement } from "../element";
+import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
 
 interface HeaderRendererParams {
   core: GridCore;
+  root: HTMLElement;
   rowHeight: () => number;
-  headerWrapper: HTMLDivElement;
-  leftHeader: HTMLDivElement;
-  centerHeader: HTMLDivElement;
-  rightHeader: HTMLDivElement;
-  body: HTMLDivElement;
+  getBody: () => HTMLDivElement;
   getContainerEl: () => HTMLElement;
 }
 
 export class HeaderRenderer {
-  constructor(private params: HeaderRendererParams) {}
+  private elements: HeaderWrapperElements;
+
+  constructor(private params: HeaderRendererParams) {
+    this.elements = createHeaderWrapper();
+    this.params.root.appendChild(this.elements.wrapper);
+  }
+
+  getRefs() {
+    return this.elements;
+  }
 
   buildDOM(reason: string) {
     const {
       core,
-      headerWrapper,
-      leftHeader,
-      centerHeader,
-      rightHeader,
-      body,
     } = this.params;
+    const {
+      wrapper: headerWrapper,
+      left: leftHeader,
+      center: centerHeader,
+      right: rightHeader,
+    } = this.elements;
+    const body = this.params.getBody();
     const headerHeight = core.options.headerHeight * core.getColumnModel().maxHeaderDepth;
     headerWrapper.style.height = `${headerHeight}px`;
     headerWrapper.style.minHeight = `${headerHeight}px`;

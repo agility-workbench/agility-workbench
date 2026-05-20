@@ -37,7 +37,6 @@ import { ColumnMenuOpener } from "./columnMenuOpener";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderInteractionHandler } from "./header/interactionHandler";
 import { HeaderRenderer } from "./header/renderer";
-import { createHeaderWrapper } from "./header/wrapper";
 import { IconRenderer } from "./iconRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
@@ -251,12 +250,18 @@ export class GridRenderer {
     });
     this._bodyCellRenderer = new BodyCellRenderer();
 
-    const headerWrapper = createHeaderWrapper();
-    this.headerWrapper = headerWrapper.wrapper;
-    this.root.appendChild(this.headerWrapper);
-    this.leftHeader = headerWrapper.left;
-    this.header = headerWrapper.center;
-    this.rightHeader = headerWrapper.right;
+    this._headerRenderer = new HeaderRenderer({
+      core: this.core,
+      root: this.root,
+      rowHeight: () => this.rowHeight,
+      getBody: () => this.body,
+      getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
+    });
+    const headerRefs = this._headerRenderer.getRefs();
+    this.headerWrapper = headerRefs.wrapper;
+    this.leftHeader = headerRefs.left;
+    this.header = headerRefs.center;
+    this.rightHeader = headerRefs.right;
 
     const bodyWrapper = createBodyWrapper();
     this.body = bodyWrapper.body;
@@ -265,16 +270,6 @@ export class GridRenderer {
     this.leftScroller = bodyWrapper.leftScroller;
     this.scroller = bodyWrapper.centerScroller;
     this.rightScroller = bodyWrapper.rightScroller;
-    this._headerRenderer = new HeaderRenderer({
-      core: this.core,
-      rowHeight: () => this.rowHeight,
-      headerWrapper: this.headerWrapper,
-      leftHeader: this.leftHeader,
-      centerHeader: this.header,
-      rightHeader: this.rightHeader,
-      body: this.body,
-      getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
-    });
 
     const aggregateRow = createAggregateRow(this.rowHeight, (e) => {
       e.stopPropagation();
