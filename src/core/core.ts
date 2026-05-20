@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, RowDataChangeReason } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -21,7 +21,7 @@ import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { GridAction } from "../events/action";
-import { IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
+import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 
 type SchemaSource = "auto" | "props" | "server";
@@ -45,7 +45,7 @@ export class GridCore implements IGridCore {
   private filters: FilterModel = new FilterModel();
   private sorts: SortModel = new SortModel();
 
-  private aggregateScope: AggregateScope = "all";
+  private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
   private schemaSource: SchemaSource = "auto";
   private serverSchemaVersion: string | undefined;
@@ -129,7 +129,11 @@ export class GridCore implements IGridCore {
     this.columnModel.setColumnDefs(colDefs);
     const changedSortColIds = this.reconcileSortModelColumns();
     const changedFilterColIds = this.reconcileFilterModelColumns();
+    this.reconcileAggregateModelColumns();
     this.autosizeColumns();
+    if (this.aggregates.length > 0) {
+      this.applyAggregateRequest("aggregateModel", "columns");
+    }
     this.emit("columnsChanged", { reason: "defs" });
     if (changedFilterColIds.length > 0) {
       this.emit("columnsChanged", { reason: "filter", changedColIds: changedFilterColIds });
@@ -237,6 +241,11 @@ export class GridCore implements IGridCore {
     return changedColIds;
   }
 
+  private reconcileAggregateModelColumns(): void {
+    if (this.aggregates.length === 0) return;
+    this.aggregates = this.resolveAggregateModels(this.aggregates);
+  }
+
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
     return this.resolveModelColumn(sort);
   }
@@ -255,6 +264,27 @@ export class GridCore implements IGridCore {
     return this.columnModel.getById(item.key)
       ?? this.columnModel.getByColId(item.key)
       ?? this.columnModel.getByKey(item.key);
+  }
+
+  private resolveAggregateModels(aggregates: AggregateModel[]): AggregateModel[] {
+    const next: AggregateModel[] = [];
+    const seenColIds = new Set<string>();
+
+    for (const aggregate of aggregates) {
+      const col = this.columnModel.getById(aggregate.key)
+        ?? this.columnModel.getByColId(aggregate.key)
+        ?? this.columnModel.getByKey(aggregate.key);
+      if (!col) continue;
+
+      const leaves = col.children.length > 0 ? col.getVisibleLeaves() : [col];
+      for (const leaf of leaves) {
+        if (seenColIds.has(leaf.instanceID)) continue;
+        seenColIds.add(leaf.instanceID);
+        next.push({ key: leaf.instanceID, type: aggregate.type });
+      }
+    }
+
+    return next;
   }
 
   private autosizeColumns(identifyComparators: boolean = true) {
@@ -304,37 +334,44 @@ export class GridCore implements IGridCore {
     return this.rowModel;
   }
 
+  private createRowModelRequest(
+    reason: RowDataChangeReason,
+    range: { start: number; end: number },
+    loadRange?: { start: number; end: number },
+    paginate: boolean = this.paginationEnabled,
+    aggregateReason?: IRowModelOnAggregatesParams["reason"],
+  ): IRowModelRequestParams {
+    const aggregateScope = this.normalizeAggregateScope(this.aggregateScope);
+    if (aggregateScope !== this.aggregateScope) {
+      this.aggregateScope = aggregateScope;
+      this.rowModel.setAggregateScope(aggregateScope);
+    }
+    return {
+      id: this.requestIdCounter++,
+      reason,
+      sortModel: this.sorts,
+      filterModel: this.filters,
+      paginate,
+      range,
+      loadRange,
+      aggregateScope,
+      aggregates: this.aggregates,
+      aggregateReason,
+      leafColumns: this.columnModel.getLeaves(),
+    };
+  }
+
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
     const range = this.resetPageBlocks();
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "init",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range,
-      loadRange: this.getInitialServerSideLoadRange(),
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
     this.emit("modelUpdated", { reason: "init", step: "all" });
   }
 
   setRowData(rows: RowData[]): void {
     this.rowModel.setRows(rows);
     const range = this.resetPageBlocks();
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "refresh",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range,
-      loadRange: this.getInitialServerSideLoadRange(),
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
@@ -370,17 +407,7 @@ export class GridCore implements IGridCore {
 
   private applyFilters(changedColIds: string[]) {
     const range = this.resetPageBlocks();
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "filter",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range,
-      loadRange: this.getInitialServerSideLoadRange(),
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    })
+    this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
     this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
@@ -395,17 +422,7 @@ export class GridCore implements IGridCore {
       }
     }
     if (changedColIDs.length === 0) return;
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "sort",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range: { start: this.pageStartIdx, end: this.pageEndIdx },
-      loadRange: this.getInitialServerSideLoadRange(),
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
   }
 
@@ -454,17 +471,7 @@ export class GridCore implements IGridCore {
     if (!this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc")) return;
 
     const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "sort",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range: { start: this.pageStartIdx, end: this.pageEndIdx },
-      loadRange: this.getInitialServerSideLoadRange(),
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
   }
 
@@ -494,17 +501,7 @@ export class GridCore implements IGridCore {
     this.pageStartIdx = pageIdx * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     const loadRange = this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason: "pagination",
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: enabled,
-      range: { start: this.pageStartIdx, end: this.pageEndIdx },
-      loadRange,
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
   }
 
   refreshRows(reason: RowDataChangeReason = "refresh", range: { start: number; end: number } = { start: this.pageStartIdx, end: this.pageEndIdx }) {
@@ -514,17 +511,7 @@ export class GridCore implements IGridCore {
     const loadRange = reason === "viewport"
       ? this.getServerSideBlockRange(requestRange)
       : this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest({
-      id: this.requestIdCounter++,
-      reason,
-      sortModel: this.sorts,
-      filterModel: this.filters,
-      paginate: this.paginationEnabled,
-      range: requestRange,
-      loadRange,
-      aggregateScope: this.aggregateScope,
-      aggregates: this.aggregates,
-    });
+    this.rowModel.applyRequest(this.createRowModelRequest(reason, requestRange, loadRange));
   }
 
   private getInitialServerSideLoadRange(): { start: number; end: number } | undefined {
@@ -573,21 +560,56 @@ export class GridCore implements IGridCore {
       return;
     }
     (this.rowModel as any).serverAggregationSource = callback;
-    this.emit("modelUpdated", { reason: "api", step: "all" });
+    if (!callback && this.aggregateScope === "all") {
+      this.aggregateScope = "page";
+      this.rowModel.setAggregateScope(this.aggregateScope);
+    }
+    this.applyAggregateRequest("aggregateModel", "dataSource");
   }
 
   setAggregateScope(scope: AggregateScope) {
+    scope = this.normalizeAggregateScope(scope);
     if (this.aggregateScope === scope) return;
     this.aggregateScope = scope;
     this.rowModel.setAggregateScope(scope);
-    void this.rowModel.reAggregate();
+    this.applyAggregateRequest("aggregateScope", "scope");
     this.emit("modelUpdated", { reason: "api", step: "all" });
   }
 
   setAggregateModel(aggregates: AggregateModel[]) {
-    this.aggregates = aggregates.slice();
-    void this.rowModel.reAggregate();
-    this.emit("modelUpdated", { reason: "api", step: "all" });
+    this.aggregates = this.resolveAggregateModels(aggregates);
+    if (this.aggregates.length > 0 && this.aggregateScope === "none") {
+      this.aggregateScope = this.normalizeAggregateScope("page");
+      this.rowModel.setAggregateScope(this.aggregateScope);
+    }
+    this.applyAggregateRequest("aggregateModel", "model");
+  }
+
+  private applyAggregateRequest(
+    reason: "aggregateScope" | "aggregateModel",
+    aggregateReason?: IRowModelOnAggregatesParams["reason"],
+  ): void {
+    const normalizedScope = this.normalizeAggregateScope(this.aggregateScope);
+    if (normalizedScope !== this.aggregateScope) {
+      this.aggregateScope = normalizedScope;
+      this.rowModel.setAggregateScope(normalizedScope);
+    }
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      reason,
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      undefined,
+      this.paginationEnabled,
+      aggregateReason,
+    ));
+  }
+
+  isAggregateScopeLockedToPage(): boolean {
+    return this.rowModel.getType() === "serverSide" && !(this.rowModel as any).serverAggregationSource;
+  }
+
+  private normalizeAggregateScope(scope: AggregateScope): AggregateScope {
+    if (scope === "all" && this.isAggregateScopeLockedToPage()) return "page";
+    return scope;
   }
 
   getRowIdAtViewIndex(displayedIndex: number): GridId | null {
@@ -739,6 +761,9 @@ export class GridCore implements IGridCore {
                 allRows.push(node);
               });
               this.columnModel.identifyComparatorsFor([col], allRows);
+              if (this.aggregates.length > 0) {
+                this.applyAggregateRequest("aggregateModel", "columns");
+              }
               this.emit("columnsChanged", { reason: "state", changedColIds: [col.instanceID] });
               this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
             }
@@ -790,6 +815,15 @@ export class GridCore implements IGridCore {
       rowCount: params.rowCount,
     });
     this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  onAggregates(_id: number, params: IRowModelOnAggregatesParams) {
+    this.emit("aggregateChanged", {
+      reason: params.reason,
+      scope: params.scope,
+      aggregateModel: params.aggregateModel,
+      valuesAvailable: params.valuesAvailable,
+    });
   }
 
   onLoadingEnd(id: number) {

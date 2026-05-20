@@ -1,11 +1,12 @@
 import { AggregateModel, AggregateScope } from "./aggregate";
+import { Column } from "../column/column";
 import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel";
 
 export interface IRowModelRequestParams {
   readonly id: number;
@@ -17,6 +18,8 @@ export interface IRowModelRequestParams {
   readonly loadRange?: { start: number; end: number };
   readonly aggregateScope: AggregateScope;
   readonly aggregates: AggregateModel[];
+  readonly aggregateReason?: "model" | "scope" | "rows" | "columns" | "dataSource";
+  readonly leafColumns: Column[];
 }
 
 export interface IRowModel<Row = any> {
@@ -45,7 +48,7 @@ export interface IRowModel<Row = any> {
 
   // aggregation
   setAggregateScope(scope: AggregateScope): void | Promise<void>;
-  reAggregate(): void | Promise<void>;
+  getAggregateValues(): Map<string, any>;
 
   // lifecycle
   destroy(): void;

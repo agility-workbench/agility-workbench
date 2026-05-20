@@ -1,5 +1,6 @@
 import { GridCore } from "../../core/core";
-import { GridEventPaginationChangedParams } from "../../events/events";
+import { GridEventAggregateChangedParams, GridEventPaginationChangedParams } from "../../events/events";
+import { AggregateScope } from "../../interfaces/aggregate";
 import { isTrue } from "../../misc";
 import { createPaginationWrapper } from "./wrapper";
 
@@ -7,6 +8,7 @@ interface PaginationRendererParams {
   core: GridCore;
   root: HTMLElement;
   resetScrollPosition: () => void;
+  clearAggregates: () => void;
 }
 
 export class PaginationRenderer {
@@ -16,6 +18,8 @@ export class PaginationRenderer {
   prevPageBtn!: HTMLButtonElement;
   nextPageBtn!: HTMLButtonElement;
   lastPageBtn!: HTMLButtonElement;
+  aggregateScopeSelect!: HTMLSelectElement;
+  aggregateClearBtn!: HTMLButtonElement;
   private paginator: HTMLDivElement;
 
   constructor(private params: PaginationRendererParams) {
@@ -38,7 +42,13 @@ export class PaginationRenderer {
       totalPageCount,
       pageSizes,
     } = core.getPaginationInfo();
-    if (!paginationEnabled) return;
+
+    paginator.appendChild(this.buildAggregationControls());
+
+    if (!paginationEnabled) {
+      this.updateControls();
+      return;
+    }
 
     const sizeSection = document.createElement("div");
     sizeSection.className = "pte-pagination-section";
@@ -119,6 +129,50 @@ export class PaginationRenderer {
     this.updateControls();
   }
 
+  private buildAggregationControls() {
+    const aggSection = document.createElement("div");
+    aggSection.className = "pte-pagination-section pte-aggregate-controls";
+
+    const aggLabel = document.createElement("span");
+    aggLabel.className = "pte-pagination-label";
+    aggLabel.textContent = "Aggregate";
+
+    this.aggregateScopeSelect = document.createElement("select");
+    this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
+    const aggOptions: Array<{ value: AggregateScope; label: string }> = [
+      { value: "none", label: "None" },
+      { value: "page", label: "Current page" },
+      { value: "all", label: "Entire dataset" },
+    ];
+    for (const optDef of aggOptions) {
+      const opt = document.createElement("option");
+      opt.value = optDef.value;
+      opt.textContent = optDef.label;
+      this.aggregateScopeSelect.appendChild(opt);
+    }
+    this.aggregateScopeSelect.addEventListener("change", (e) => {
+      const next = (e.target as HTMLSelectElement).value as AggregateScope;
+      this.params.core.setAggregateScope(next);
+    });
+
+    this.aggregateClearBtn = document.createElement("button");
+    this.aggregateClearBtn.type = "button";
+    this.aggregateClearBtn.className = "pte-pagination-btn pte-aggregate-clear";
+    this.aggregateClearBtn.title = "Remove aggregate row";
+    this.aggregateClearBtn.setAttribute("aria-label", "Remove aggregate row");
+    this.aggregateClearBtn.textContent = "x";
+    this.aggregateClearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.params.clearAggregates();
+    });
+
+    aggSection.appendChild(aggLabel);
+    aggSection.appendChild(this.aggregateScopeSelect);
+    aggSection.appendChild(this.aggregateClearBtn);
+
+    return aggSection;
+  }
+
   populatePageSelect(pageIndex: number, totalPageCount: number) {
     if (!this.pageSelect) return;
     const totalPages = Math.max(totalPageCount, 1);
@@ -151,10 +205,12 @@ export class PaginationRenderer {
       totalPageCount,
     } = params || this.params.core.getPaginationInfo();
     if (!paginationEnabled) {
-      this.paginator.classList.remove("visible");
+      this.updateAggregateControls();
+      this.paginator.classList.toggle("visible", this.params.core.getAggregateModel().length > 0);
       return;
     }
     this.paginator.classList.add("visible");
+    this.updateAggregateControls();
 
     if (this.pageSizeSelect) {
       this.pageSizeSelect.value = String(pageSize);
@@ -173,6 +229,18 @@ export class PaginationRenderer {
     if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
     if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
     if (this.pageSelect) this.pageSelect.disabled = totalPageCount <= 1 || !hasRows;
+  }
+
+  updateAggregateControls(_params?: GridEventAggregateChangedParams) {
+    if (!this.aggregateScopeSelect || !this.aggregateClearBtn) return;
+    const aggregateCount = this.params.core.getAggregateModel().length;
+    const lockedToPage = this.params.core.isAggregateScopeLockedToPage();
+    this.aggregateScopeSelect.value = lockedToPage ? "page" : this.params.core.getAggregateScope();
+    this.aggregateScopeSelect.disabled = aggregateCount === 0 || lockedToPage;
+    this.aggregateClearBtn.disabled = aggregateCount === 0;
+
+    const paginationEnabled = this.params.core.getPaginationInfo().paginationEnabled;
+    this.paginator.classList.toggle("visible", paginationEnabled || aggregateCount > 0);
   }
 
   togglePagination(pagination: boolean) {

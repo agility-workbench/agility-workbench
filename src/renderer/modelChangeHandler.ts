@@ -1,6 +1,7 @@
 import { GridCore } from "../core/core";
 import {
   GridEventColumnsChangedParams,
+  GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
 } from "../events/events";
 
@@ -10,7 +11,7 @@ interface GridModelChangeHandlerParams {
   recomputeView: () => void;
   updateWindow: (forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) => void;
   resetScrollPosition: () => void;
-  updatePaginationControls: () => void;
+  updatePaginationControls: (params?: GridEventPaginationChangedParams) => void;
   addSortIndicatorToHeader: (colID: string, dir: "asc" | "desc" | "") => void;
   setFilterIndicators: () => void;
   buildRowPool: () => void;

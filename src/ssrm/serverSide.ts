@@ -1,8 +1,10 @@
 import { IRowModel, IRowModelRequestParams, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
-import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
+import { AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
 import { GridOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
+import { AggregateCalculator } from "../aggregate/calculator";
+import { Column } from "../column/column";
 import {
   IServerSideAggregationRequest,
   IServerSideDataSource,
@@ -27,6 +29,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   private viewStartRow = 0;
   private viewEndRow = 0;
   private paginate = false;
+  private aggregateScope: AggregateScope = "all";
+  private aggregates: AggregateModel[] = [];
+  private leafColumns: Column[] = [];
+  private aggregateValues: Map<string, any> = new Map();
+  private aggregateCalculator = new AggregateCalculator();
+  private aggregateRequestSeq = 0;
 
   private activeRequestId = -1;
   private requestGeneration = 0;
@@ -122,15 +130,49 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     if (params.reason !== "viewport") {
       this.lastRequestParams = params;
     }
+    this.aggregateScope = this.normalizeAggregateScope(params.aggregateScope);
+    this.aggregates = params.aggregates.slice();
+    this.leafColumns = params.leafColumns.slice();
+    if (params.reason === "aggregateScope" || params.reason === "aggregateModel") {
+      void this.reAggregate(params.id, params.reason, params.aggregateReason);
+      return;
+    }
+    if (this.aggregates.length > 0) {
+      this.aggregateRequestSeq++;
+    }
     void this.requestRows(params);
   }
 
   setAggregateScope(scope: AggregateScope): void {
-    console.warn("Setting server-side aggregation scope on 'serverSide' row model is not implemented yet.");
+    this.aggregateScope = this.normalizeAggregateScope(scope);
   }
 
-  reAggregate(): void {
-    console.warn("Re-aggregating server-side aggregation on 'serverSide' row model is not implemented yet.");
+  private async reAggregate(
+    requestId: number,
+    reason: "aggregateScope" | "aggregateModel" = "aggregateModel",
+    aggregateReason?: IRowModelRequestParams["aggregateReason"],
+  ): Promise<void> {
+    this.aggregateValues.clear();
+    const requestSeq = ++this.aggregateRequestSeq;
+    if (this.aggregateScope !== "none" && this.aggregates.length > 0) {
+      if (this.aggregateScope === "all" && this.serverAggregationSource) {
+        await this.requestServerAggregates(requestSeq);
+      } else {
+        this.calculateLocalAggregates();
+      }
+    }
+
+    if (requestSeq !== this.aggregateRequestSeq) return;
+    this.listener.onAggregates(requestId, {
+      reason: aggregateReason ?? (reason === "aggregateScope" ? "scope" : "model"),
+      scope: this.aggregateScope,
+      aggregateModel: this.aggregates.slice(),
+      valuesAvailable: this.aggregateValues.size > 0,
+    });
+  }
+
+  getAggregateValues(): Map<string, any> {
+    return new Map(this.aggregateValues);
   }
 
   destroy(): void {
@@ -197,6 +239,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         visibleStart: this.paginate ? Math.max(0, startRow - this.viewStartRow) : startRow,
         visibleEnd: this.paginate ? Math.max(0, startRow + rows.length - this.viewStartRow) : startRow + rows.length,
       });
+      void this.reAggregate(requestId, "aggregateModel", params.aggregateReason ?? "rows");
       this.listener.onLoadingEnd(requestId);
       return true;
     } catch (err) {
@@ -242,5 +285,81 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       });
     }
     return Array.from(sortsByKey.values());
+  }
+
+  private calculateLocalAggregates(): void {
+    const rows = this.getAggregateRows();
+    this.aggregateValues = this.aggregateCalculator.calculateAggregates(this.leafColumns, this.aggregates, rows);
+  }
+
+  private getAggregateRows(): IRowNode<Row>[] {
+    if (this.aggregateScope === "all") return this.nodes.slice();
+    const rows: IRowNode<Row>[] = [];
+    for (let i = 0; i < this.getViewCount(); i++) {
+      const node = this.getRowNodeAtViewIndex(i);
+      if (node) rows.push(node);
+    }
+    return rows;
+  }
+
+  private async requestServerAggregates(requestSeq: number): Promise<void> {
+    if (!this.serverAggregationSource) return;
+    const aggregates = this.buildServerAggregateRequest();
+    if (aggregates.length === 0) return;
+    const params = this.lastRequestParams;
+
+    try {
+      const result = await new Promise<any>((resolve, reject) => {
+        const maybePromise = this.serverAggregationSource!({
+          request: {
+            aggregates,
+            aggregateScope: "all",
+            filters: params ? this.serializeFilters(params.filterModel) : [],
+            sorts: params ? this.serializeSorts(params.sortModel) : [],
+            startRow: undefined,
+            endRow: undefined,
+          },
+          success: resolve,
+          error: reject,
+        });
+        Promise.resolve(maybePromise)
+          .then((maybeResult) => {
+            if (maybeResult && typeof maybeResult === "object") {
+              resolve(maybeResult);
+            }
+          })
+          .catch(reject);
+      });
+
+      if (requestSeq !== this.aggregateRequestSeq) return;
+      const valuesObj = result?.values ?? result ?? {};
+      for (const col of this.leafColumns) {
+        const value = valuesObj?.[col.instanceID] ?? valuesObj?.[col.key];
+        if (value != null) this.aggregateValues.set(col.instanceID, value);
+      }
+    } catch (err) {
+      if (requestSeq !== this.aggregateRequestSeq) return;
+      this.aggregateValues.clear();
+      console.error("Failed to fetch server-side aggregates", err);
+    }
+  }
+
+  private buildServerAggregateRequest(): AggregateModel[] {
+    const aggregateMap = new Map(this.aggregates.map(a => [a.key, a.type]));
+    const aggregates: AggregateModel[] = [];
+    for (const col of this.leafColumns) {
+      const type = aggregateMap.get(col.instanceID) ?? this.getDefaultAggregateOp(col);
+      aggregates.push({ key: col.key, type });
+    }
+    return aggregates;
+  }
+
+  private getDefaultAggregateOp(col: { isComputableType(): boolean }): AggregateType {
+    return this.aggregateCalculator.getDefaultAggregateOp(col);
+  }
+
+  private normalizeAggregateScope(scope: AggregateScope): AggregateScope {
+    if (scope === "all" && !this.serverAggregationSource) return "page";
+    return scope;
   }
 }

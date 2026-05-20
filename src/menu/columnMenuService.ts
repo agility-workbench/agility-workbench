@@ -1,4 +1,5 @@
 import { ColumnType } from "../interfaces/column";
+import { AggregateModel, AggregateType } from "../interfaces/aggregate";
 import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
@@ -123,7 +124,10 @@ export class ColumnMenuService {
         return this.core.dispatch({ type: "columnPin", colIds: item.payload.colIDs, pinned: item.payload.pinned });
       // filter.open / filter.clear / pin / hide etc
       case "aggregate.setMany":
-        return this.core.dispatch({ type: "aggregateModelSet", aggregateModels: item.payload.colIDs.map((colId: string) => ({ key: colId, type: item.payload.agg })) });
+        return this.core.dispatch({
+          type: "aggregateModelSet",
+          aggregateModels: this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
+        });
       default:
         // unknown command -> ignore (or warn in dev)
         console.error(`Command ${item.command} is unhandled...`);
@@ -207,6 +211,33 @@ export class ColumnMenuService {
       items.push({ id: "exportExcel", label: "Export as Excel", command: "export.excel", payload: { colIDs } });
     }
     return items;
+  }
+
+  private getNextAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
+    const targetIds = this.expandAggregateColumnIds(colIDs);
+    const selectedIds = new Set(targetIds);
+    const next = this.core.getAggregateModel().filter(item => !selectedIds.has(item.key));
+    if (agg == null) return next;
+    next.push(...targetIds.map(key => ({ key, type: agg })));
+    return next;
+  }
+
+  private expandAggregateColumnIds(colIDs: string[]): string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+
+    for (const colID of colIDs) {
+      const col = this.core.getColumnModel().getById(colID);
+      if (!col) continue;
+      const leaves = col.children.length > 0 ? col.getVisibleLeaves() : [col];
+      for (const leaf of leaves) {
+        if (seen.has(leaf.instanceID)) continue;
+        seen.add(leaf.instanceID);
+        ids.push(leaf.instanceID);
+      }
+    }
+
+    return ids;
   }
 
   // Identify sort dir based on the first visible child with sort applied on. If no child has sort applied, return null.

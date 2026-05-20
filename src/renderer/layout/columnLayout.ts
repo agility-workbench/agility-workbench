@@ -24,8 +24,11 @@ interface ColumnLayoutRendererParams {
   hScroller: HTMLDivElement;
   hScrollerRight: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
+  aggregateLeftCells: () => HTMLDivElement[];
   aggregateCenterRow?: () => HTMLDivElement | undefined;
+  aggregateCenterCells: () => HTMLDivElement[];
   aggregateRight: HTMLDivElement;
+  aggregateRightCells: () => HTMLDivElement[];
 }
 
 export class ColumnLayoutRenderer {
@@ -49,6 +52,7 @@ export class ColumnLayoutRenderer {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.params.leftViewport.style.width = `${maxWidth}px`;
+    this.applyAggregateColumnWidths(this.params.aggregateLeftCells(), this.params.core.getColumnModel().getLeftLeaves(), colIDs);
     this.params.hScrollerLeft.style.width = `${maxWidth}px`;
     this.params.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
     this.params.leftHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
@@ -95,6 +99,7 @@ export class ColumnLayoutRenderer {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.params.hScroller.style.width = `${maxWidth}px`;
+    this.applyAggregateColumnWidths(this.params.aggregateCenterCells(), this.params.core.getColumnModel().getCenterLeaves(), colIDs);
     if (maxWidth == 0) {
       this.params.hScrollParent.style.flex = "1 1 auto";
     }
@@ -125,6 +130,7 @@ export class ColumnLayoutRenderer {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.params.rightViewport.style.width = `${maxWidth}px`;
+    this.applyAggregateColumnWidths(this.params.aggregateRightCells(), this.params.core.getColumnModel().getRightLeaves(), colIDs);
     this.params.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
     this.params.hScrollerRight.style.width = `${maxWidth}px`;
     this.params.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
@@ -181,5 +187,17 @@ export class ColumnLayoutRenderer {
     const chromeHeight = headerHeight
       + (this.params.hScrollContainer.style.display === "flex" ? hScrollHeight : 0);
     this.params.body.style.height = `calc(100% - ${chromeHeight}px)`;
+  }
+
+  private applyAggregateColumnWidths(cells: HTMLDivElement[], columns: Column[], colIDs: string[]): void {
+    let c = 0;
+    for (const col of columns) {
+      if (col.hidden) continue;
+      const cell = cells[c++];
+      if (!cell) continue;
+      if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+      cell.style.flex = "0 0 auto";
+      cell.style.width = `${col.computedWidth}px`;
+    }
   }
 }

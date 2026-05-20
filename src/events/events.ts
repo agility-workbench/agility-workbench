@@ -1,3 +1,4 @@
+import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
 
@@ -8,6 +9,7 @@ export type GridEventName =
   | "columnsChanged"
   | "cellsChanged"
   | "rowsChanged"
+  | "aggregateChanged"
   | "selectionChanged"
   | "focusChanged"
   | "editingChanged"
@@ -65,6 +67,13 @@ export type GridEventRowsChangedParams = {
   changedRowIds?: GridId[];
 };
 
+export type GridEventAggregateChangedParams = {
+  reason: "model" | "scope" | "rows" | "columns" | "dataSource";
+  scope: AggregateScope;
+  aggregateModel: AggregateModel[];
+  valuesAvailable: boolean;
+};
+
 export type GridEventCellsChangedParams = {
   reason: "data" | "format" | "style" | "editCommit" | "refresh";
   rowIds: GridId[];
@@ -116,6 +125,7 @@ export interface GridEventMap {
   viewportChanged: GridEventViewportChangedParams;
   columnsChanged: GridEventColumnsChangedParams;
   rowsChanged: GridEventRowsChangedParams;
+  aggregateChanged: GridEventAggregateChangedParams;
   cellsChanged: GridEventCellsChangedParams;
   selectionChanged: GridEventSelectionChangedParams;
   focusChanged: GridEventFocusChangedParams;

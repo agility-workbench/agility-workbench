@@ -1,6 +1,7 @@
 import { GridCore } from "../core/core";
 import {
   GridEventColumnsChangedParams,
+  GridEventAggregateChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
   GridEventViewportChangedParams,
@@ -14,7 +15,9 @@ interface GridRendererCoreEventBinderParams {
   maybeUpdatePoolSize: (params: GridEventViewportChangedParams) => void;
   onColumnsChanged: (params: GridEventColumnsChangedParams) => void;
   onDataChanged: (params: GridEventRowsChangedParams) => void;
+  onAggregateChanged: (params: GridEventAggregateChangedParams) => void;
   updatePaginationControls: (params: GridEventPaginationChangedParams) => void;
+  renderAggregateRow: () => void;
 }
 
 export class GridRendererCoreEventBinder {
@@ -29,6 +32,7 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("modelUpdated", () => {
         this.params.buildPaginationControls();
+        this.params.renderAggregateRow();
       }),
       this.params.core.on("viewportChanged", (params: GridEventViewportChangedParams) => {
         this.params.maybeUpdatePoolSize(params);
@@ -38,6 +42,9 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("rowsChanged", (params: GridEventRowsChangedParams) => {
         this.params.onDataChanged(params);
+      }),
+      this.params.core.on("aggregateChanged", (params: GridEventAggregateChangedParams) => {
+        this.params.onAggregateChanged(params);
       }),
       this.params.core.on("paginationChanged", (params: GridEventPaginationChangedParams) => {
         this.params.updatePaginationControls(params);

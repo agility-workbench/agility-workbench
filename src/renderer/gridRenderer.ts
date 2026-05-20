@@ -13,6 +13,7 @@ import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
+  GridEventAggregateChangedParams,
   GridEventPaginationChangedParams,
   GridEventViewportChangedParams,
 } from "../events/events";
@@ -22,7 +23,6 @@ import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
 import { AggregateCalculator } from "./aggregate/calculator";
 import { AggregateModelController } from "./aggregate/modelController";
 import { AggregateRowBuilder } from "./aggregate/rowBuilder";
-import { AggregateServerFetcher } from "./aggregate/serverFetcher";
 import { AggregateRowRenderer } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
 import { BodyPoolSizer } from "./body/poolSizer";
@@ -58,7 +58,6 @@ export class GridRenderer {
   _aggregateModelController: AggregateModelController;
   _aggregateRowBuilder: AggregateRowBuilder;
   _aggregateRowRenderer: AggregateRowRenderer;
-  _aggregateServerFetcher: AggregateServerFetcher;
   _serverSideController: ServerSideController;
   _iconRenderer: IconRenderer;
   _bodyCellRenderer: BodyCellRenderer;
@@ -154,7 +153,9 @@ export class GridRenderer {
       maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
       onColumnsChanged: (params) => this._modelChangeHandler.onColumnsChanged(params),
       onDataChanged: (params) => this._modelChangeHandler.onDataChanged(params),
+      onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
+      renderAggregateRow: () => this._renderAggregateRow(),
     });
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
@@ -162,7 +163,7 @@ export class GridRenderer {
       recomputeView: () => this._bodyViewportRenderer.recomputeView(),
       updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
-      updatePaginationControls: () => this._updatePaginationControls(),
+      updatePaginationControls: (params?: GridEventPaginationChangedParams) => this._updatePaginationControls(params),
       addSortIndicatorToHeader: (colID, dir) => this._headerRenderer.addSortIndicatorToHeader(colID, dir),
       setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
       buildRowPool: () => this._buildRowPool(),
@@ -195,13 +196,7 @@ export class GridRenderer {
       leafColumns: () => this._leafColumns,
       selectedColumnIDs: () => this._selectedColumnIDs,
       markAggregatesDirty: () => this._markAggregatesDirty(),
-      requestServerAggregates: () => this._aggregateServerFetcher.maybeRequest(),
-      renderAggregateRow: () => this._renderAggregateRow(),
-    });
-    this._aggregateServerFetcher = new AggregateServerFetcher({
-      core: this.core,
-      leafColumns: () => this._leafColumns,
-      getAggregateMap: () => this._aggregateModelController.getAggregateMap(),
+      requestServerAggregates: () => undefined,
       renderAggregateRow: () => this._renderAggregateRow(),
     });
     this._serverSideController = new ServerSideController({
@@ -229,7 +224,7 @@ export class GridRenderer {
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
-      this._aggregateModelController.setAggregateScope("none");
+      this._aggregateModelController.clearAggregates();
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeftCells = [];
@@ -315,8 +310,11 @@ export class GridRenderer {
       hScroller: horizontalScroll.centerScroller,
       hScrollerRight: horizontalScroll.rightScroller,
       aggregateLeft: aggregateRefs.left,
+      aggregateLeftCells: () => this._aggregateLeftCells,
       aggregateCenterRow: () => this._aggregateRowRenderer.getCenterRow(),
+      aggregateCenterCells: () => this._aggregateCells,
       aggregateRight: aggregateRefs.right,
+      aggregateRightCells: () => this._aggregateRightCells,
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
@@ -372,6 +370,7 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
+      clearAggregates: () => this._aggregateModelController.clearAggregates(),
     });
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
@@ -502,10 +501,18 @@ export class GridRenderer {
   }
 
   _markAggregatesDirty() {
-    this._aggregateServerFetcher.markDirty();
+    return;
+  }
+
+  _onAggregateChanged(params: GridEventAggregateChangedParams) {
+    this._updatePaginationControls();
+    this._paginationRenderer.updateAggregateControls(params);
+    this._ensureAggregateRowBuilt();
+    this._renderAggregateRow();
   }
 
   _renderAggregateRow() {
+    this._syncLeafColumns();
     this._aggregateModelController.pruneAggregates();
     const aggregateMap = this._aggregateModelController.getAggregateMap();
     const aggregateScope = this.core.getAggregateScope();
@@ -524,25 +531,12 @@ export class GridRenderer {
     }
 
     const values = new Map<string, string>();
-    const serverAggregationSource = (this.rowModel as any).serverAggregationSource as ServerSideAggregationSource | undefined;
-    if (this.rowModel.getType() === "serverSide" && aggregateScope === "all" && serverAggregationSource) {
-      this._aggregateServerFetcher.maybeRequest();
-      const remote = this._aggregateServerFetcher.getRemoteValues();
-      for (const col of this._leafColumns) {
-        if (col.hidden) continue;
-        const v = remote?.get(col.instanceID);
-        const display = v == null ? "" : this._aggregateCalculator.formatAggregateDisplay(col, v);
-        values.set(col.instanceID, display ?? "");
-      }
-    } else {
-      const rows = this._aggregateModelController.getAggregateRows();
-      for (const col of this._leafColumns) {
-        if (col.hidden) continue;
-        const op = this._aggregateModelController.getAggregateOpForColumn(col);
-        const raw = this._aggregateCalculator.calculateAggregate(col, op, rows);
-        const display = this._aggregateCalculator.formatAggregateDisplay(col, raw);
-        values.set(col.instanceID, display ?? "");
-      }
+    const rawValues = this.rowModel.getAggregateValues();
+    for (const col of this._leafColumns) {
+      if (col.hidden) continue;
+      const raw = rawValues.get(col.instanceID);
+      const display = raw == null ? "" : this._aggregateCalculator.formatAggregateDisplay(col, raw);
+      values.set(col.instanceID, display ?? "");
     }
 
     this._aggregateRowRenderer.renderCells(this._aggregateLeftCells, this._leftPinnedLeafColumns, aggregateMap, values);
@@ -561,9 +555,7 @@ export class GridRenderer {
 
   // ---------------- Internals: DOM build ----------------
   _buildHeaderDOM(reason: string) {
-    this._centerLeafColumns = [];
-    this._leftPinnedLeafColumns = [];
-    this._rightPinnedLeafColumns = [];
+    this._syncLeafColumns();
     this._headerRenderer.buildDOM(reason);
     // this._pruneColumnSelection();
     // this._applyColumnSelectionStyles();
@@ -578,17 +570,42 @@ export class GridRenderer {
   }
 
   _buildAggregateRow() {
+    this._syncLeafColumns();
     const result = this._aggregateRowBuilder.build();
     this._aggregateLeftCells = result.leftCells;
     this._aggregateCells = result.centerCells;
     this._aggregateRightCells = result.rightCells;
+    this._columnLayoutRenderer.updateColumnWidths();
     this._renderAggregateRow();
   }
 
+  private _ensureAggregateRowBuilt() {
+    this._syncLeafColumns();
+    if (
+      this._aggregateLeftCells.length > 0
+      || this._aggregateCells.length > 0
+      || this._aggregateRightCells.length > 0
+      || this._leafColumns.length === 0
+    ) {
+      return;
+    }
+    this._buildAggregateRow();
+  }
+
+  private _syncLeafColumns() {
+    const columnModel = this.core.getColumnModel();
+    this._leafColumns = columnModel.getLeaves();
+    this._leafColumnLookup = columnModel.leafColumnLookup;
+    this._leftPinnedLeafColumns = columnModel.getLeftLeaves();
+    this._centerLeafColumns = columnModel.getCenterLeaves();
+    this._rightPinnedLeafColumns = columnModel.getRightLeaves();
+  }
+
   _buildRowPool() {
+    this._syncLeafColumns();
     this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
 
-    // this._buildAggregateRow();
+    this._buildAggregateRow();
   }
 
   _rebuildRowPool() {

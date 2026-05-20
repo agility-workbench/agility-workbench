@@ -20,10 +20,10 @@ export class BodyPoolSizer {
   }
 
   getBodyHeight() {
-    const { paginationEnabled } = this.params.core.getPaginationInfo();
     const headerHeight = this.params.headerWrapper.getBoundingClientRect().height || 0;
     const hScrollHeight = this.params.hScrollContainer.getBoundingClientRect().height || 0;
-    const paginationHeight = paginationEnabled ? (this.params.paginator?.getBoundingClientRect().height || 0) : 0;
+    const paginationVisible = this.params.paginator?.classList.contains("visible");
+    const paginationHeight = paginationVisible ? (this.params.paginator?.getBoundingClientRect().height || 0) : 0;
     const aggregateHeight = this.params.getAggregateRowHeight();
     const chromeHeight = headerHeight + hScrollHeight + paginationHeight + aggregateHeight;
 

@@ -1,11 +1,13 @@
 import { FilterModel } from "../interfaces/filter";
 import { SortModel } from "../interfaces/sort";
-import { AggregateScope } from "../interfaces/aggregate";
+import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter } from "../csrm/filter";
 import { GridOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
+import { AggregateCalculator } from "../aggregate/calculator";
+import { Column } from "../column/column";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -14,6 +16,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private filteredIdx: number[] = [];
   private sortedIdx: number[] = [];
   private viewIdx: number[] = [];
+  private aggregateScope: AggregateScope = "all";
+  private aggregates: AggregateModel[] = [];
+  private leafColumns: Column[] = [];
+  private aggregateValues: Map<string, any> = new Map();
+  private aggregateCalculator = new AggregateCalculator();
 
   paginate: boolean = false;
   startIdx = 0;
@@ -130,28 +137,49 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   setAggregateScope(scope: AggregateScope): void {
-    return;
+    this.aggregateScope = scope;
   }
 
-  reAggregate(): void {
-    return;
+  private reAggregate(): void {
+    this.aggregateValues.clear();
+    if (this.aggregateScope === "none" || this.aggregates.length === 0) return;
+
+    const rows = this.getAggregateRows();
+    this.aggregateValues = this.aggregateCalculator.calculateAggregates(this.leafColumns, this.aggregates, rows);
+  }
+
+  getAggregateValues(): Map<string, any> {
+    return new Map(this.aggregateValues);
   }
 
   applyRequest(params: IRowModelRequestParams): void {
     const { id, sortModel, filterModel, paginate, range, aggregateScope } = params;
-    this.listener.onLoadingStart(id);
+    const aggregateOnly = params.reason === "aggregateScope" || params.reason === "aggregateModel";
+    if (!aggregateOnly) this.listener.onLoadingStart(id);
+    this.aggregateScope = aggregateScope;
+    this.aggregates = params.aggregates.slice();
+    this.leafColumns = params.leafColumns.slice();
     if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModel);
     if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModel);
     this.setPagination(paginate, range.start, range.end);
     this.rebuildView();
-    this.listener.onRows(id, {
-      reason: params.reason,
-      rows: this.viewIdx.map(i => this.nodes[i]),
-      rowCount: this.filteredIdx.length,
-      visibleStart: range.start,
-      visibleEnd: range.end,
+    this.reAggregate();
+    if (!aggregateOnly) {
+      this.listener.onRows(id, {
+        reason: params.reason,
+        rows: this.viewIdx.map(i => this.nodes[i]),
+        rowCount: this.filteredIdx.length,
+        visibleStart: range.start,
+        visibleEnd: range.end,
+      });
+    }
+    this.listener.onAggregates(id, {
+      reason: params.aggregateReason ?? (aggregateOnly ? (params.reason === "aggregateScope" ? "scope" : "model") : "rows"),
+      scope: this.aggregateScope,
+      aggregateModel: this.aggregates.slice(),
+      valuesAvailable: this.aggregateValues.size > 0,
     });
-    this.listener.onLoadingEnd(id);
+    if (!aggregateOnly) this.listener.onLoadingEnd(id);
   }
 
   destroy(): void {
@@ -165,8 +193,15 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       case "page":
       case "pagination":
       case "aggregateScope":
+      case "aggregateModel":
         return false;
     }
     return true;
   }
+
+  private getAggregateRows(): IRowNode<Row>[] {
+    const indexes = this.aggregateScope === "all" ? this.sortedIdx : this.viewIdx;
+    return indexes.map(i => this.nodes[i]).filter(Boolean);
+  }
+
 }

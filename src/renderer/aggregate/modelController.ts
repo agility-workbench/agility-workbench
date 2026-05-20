@@ -67,15 +67,7 @@ export class AggregateModelController {
   }
 
   pruneAggregates() {
-    const aggregates = this.getAggregateMap();
-    if (aggregates.size === 0) return;
-    const valid = new Set(this.params.leafColumns().map(c => c.instanceID));
-    for (const key of Array.from(aggregates.keys())) {
-      if (!valid.has(key)) {
-        aggregates.delete(key);
-      }
-    }
-    this.setAggregateMap(aggregates);
+    return;
   }
 
   getAggregateOpForColumn(col: Column): AggregateType {
