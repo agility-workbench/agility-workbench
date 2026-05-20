@@ -7,6 +7,7 @@ import { createApi, createCore, getGridOptions } from "./factory";
 import { IGridAPI } from "@grid/interfaces";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@grid/renderer";
+import { isFalse } from "@grid/misc";
 
 export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
   function GridReact(props, forwardedRef) {
@@ -43,7 +44,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       }
 
       const core = createCore(getGridOptions(props));
-      const renderer = initDomRenderer(core, new ReactMenuAdapter({getColumnMenuItems: props.getColumnMenuItems}));
+      const renderer = initDomRenderer(core, new ReactMenuAdapter({ getColumnMenuItems: props.getColumnMenuItems }));
       const api = createApi(core);
 
       coreRef.current = core;
@@ -116,6 +117,13 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.loading]);
+
+    useLayoutEffect(() => {
+      const core = coreRef.current;
+      if (!core) return;
+
+      core.dispatch({ type: "paginationSet", enabled: !isFalse(props.pagination), pageIndex: 0, pageSize: 100 });
+    }, [props.pagination]);
 
     useLayoutEffect(() => {
       rendererRef.current?.setIcons(props.icons);
