@@ -20,7 +20,6 @@ export type AggregateRowBuildResult = {
   leftCells: HTMLDivElement[];
   centerCells: HTMLDivElement[];
   rightCells: HTMLDivElement[];
-  centerRow: HTMLDivElement;
 };
 
 export class AggregateRowBuilder {
@@ -55,6 +54,7 @@ export class AggregateRowBuilder {
     const centerRow = makeRow();
     this.appendCells(centerRow, this.params.centerLeafColumns(), centerCells);
     aggregateCenter.appendChild(centerRow);
+    this.params.aggregateRowRenderer.setCenterRow(centerRow);
 
     if (this.params.rightPinnedLeafColumns().length > 0) {
       const row = makeRow();
@@ -68,7 +68,6 @@ export class AggregateRowBuilder {
       leftCells,
       centerCells,
       rightCells,
-      centerRow,
     };
   }
 

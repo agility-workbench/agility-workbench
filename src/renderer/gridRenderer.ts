@@ -134,10 +134,6 @@ export class GridRenderer {
   leftViewport: HTMLDivElement;
   viewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
-  aggregateLeft: HTMLDivElement;
-  aggregateCenter: HTMLDivElement;
-  aggregateRight: HTMLDivElement;
-  aggregateCenterRow: HTMLDivElement;
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
   _aggregateRightCells: HTMLDivElement[];
@@ -277,11 +273,7 @@ export class GridRenderer {
         this.aggregateScopeSelect.value = "none";
       }
     });
-    const aggregateRow = this._aggregateRowRenderer.getRefs();
-    this.aggregateLeft = aggregateRow.left;
-    this.aggregateCenter = aggregateRow.center;
-    this.aggregateRight = aggregateRow.right;
-    this.aggregateCenterRow = aggregateRow.centerRow;
+    const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeftCells = [];
     this._aggregateCells = [];
     this._aggregateRightCells = [];
@@ -383,9 +375,9 @@ export class GridRenderer {
       hScrollerLeft: this.hScrollerLeft,
       hScroller: this.hScroller,
       hScrollerRight: this.hScrollerRight,
-      aggregateLeft: this.aggregateLeft,
-      aggregateCenterRow: () => this.aggregateCenterRow,
-      aggregateRight: this.aggregateRight,
+      aggregateLeft: aggregateRefs.left,
+      aggregateCenterRow: () => this._aggregateRowRenderer.getCenterRow(),
+      aggregateRight: aggregateRefs.right,
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
@@ -395,8 +387,8 @@ export class GridRenderer {
       hScrollRightParent: this.hScrollRightParent,
       leftScroller: this.leftScroller,
       rightScroller: this.rightScroller,
-      aggregateLeft: this.aggregateLeft,
-      aggregateRight: this.aggregateRight,
+      aggregateLeft: aggregateRefs.left,
+      aggregateRight: aggregateRefs.right,
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
       leftScroller: this.leftScroller,
@@ -412,9 +404,9 @@ export class GridRenderer {
       leftHeader: this.leftHeader,
       centerHeader: this.header,
       rightHeader: this.rightHeader,
-      aggregateLeft: this.aggregateLeft,
-      aggregateCenter: this.aggregateCenter,
-      aggregateRight: this.aggregateRight,
+      aggregateLeft: aggregateRefs.left,
+      aggregateCenter: aggregateRefs.center,
+      aggregateRight: aggregateRefs.right,
       onWindowUpdate: (scrollSrc) => this._bodyWindowRenderer.update(false, scrollSrc),
     });
     this._bodyWindowRenderer = new BodyWindowRenderer({
@@ -819,7 +811,6 @@ export class GridRenderer {
     this._aggregateLeftCells = result.leftCells;
     this._aggregateCells = result.centerCells;
     this._aggregateRightCells = result.rightCells;
-    this.aggregateCenterRow = result.centerRow;
     this._renderAggregateRow();
   }
 

@@ -64,6 +64,14 @@ export class AggregateRowRenderer {
     return this.elements;
   }
 
+  getCenterRow() {
+    return this.elements.centerRow;
+  }
+
+  setCenterRow(row: HTMLDivElement) {
+    this.elements.centerRow = row;
+  }
+
   setVisible(visible: boolean) {
     this.elements.row.classList.toggle("visible", visible);
     this.elements.row.style.display = visible ? "flex" : "none";
