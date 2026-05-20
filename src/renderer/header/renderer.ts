@@ -78,6 +78,10 @@ export class HeaderRenderer {
   buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
+    const isRowNumberColumn = col.isRowNumberColumn();
+    if (isRowNumberColumn) {
+      header.classList.add("pte-hcell-row-number");
+    }
     if (col.children.length === 0) {
       header.classList.add("pte-hcell-leaf");
     }
@@ -91,7 +95,9 @@ export class HeaderRenderer {
     const headerResize = document.createElement("div");
     headerResize.className = "pte-hcell-resize-handle";
     if (!col.resizable) headerResize.classList.add("pte-hcell-resize-disabled");
-    headerWrapper.appendChild(headerResize);
+    if (!isRowNumberColumn) {
+      headerWrapper.appendChild(headerResize);
+    }
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
     headerContainer.style.height = `${this.params.rowHeight() * contentHeight}px`;
@@ -104,7 +110,7 @@ export class HeaderRenderer {
     headerContainer.appendChild(headerContent);
     const headerLabel = document.createElement("div");
     headerLabel.className = "pte-hcell-label";
-    headerLabel.textContent = col.label ?? col.key;
+    headerLabel.textContent = isRowNumberColumn ? "" : col.label ?? col.key;
     headerContent.appendChild(headerLabel);
     if (col.children.length > 0) {
       const children = document.createElement("div");
@@ -128,8 +134,10 @@ export class HeaderRenderer {
       }
       headerContent.appendChild(expander);
     }
-    const headerMenu = this.getHeaderMenuElement(col);
-    headerContainer.appendChild(headerMenu);
+    if (!isRowNumberColumn) {
+      const headerMenu = this.getHeaderMenuElement(col);
+      headerContainer.appendChild(headerMenu);
+    }
     const sort = this.params.core.getSortModel().items.find(s => s.col.instanceID === col.instanceID);
     if (sort) {
       headerContent.classList.add("pte-sorted-" + sort.dir);

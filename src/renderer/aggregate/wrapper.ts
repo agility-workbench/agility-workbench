@@ -96,6 +96,10 @@ export class AggregateRowRenderer {
       const cell = cells[idx];
       if (!cell) continue;
       if (cell.children.length > 0) cell.innerHTML = "";
+      if (col.isRowNumberColumn()) {
+        cell.textContent = "";
+        continue;
+      }
       const aggFn = aggregateMap.get(col.instanceID) || (col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT);
       const icon = document.createElement("div");
       icon.className = "pte-aggregate-icon";

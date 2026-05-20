@@ -77,6 +77,9 @@ export class AggregateRowBuilder {
       if (col.hidden) continue;
       const cell = document.createElement("div");
       cell.className = "pte-cell pte-aggregate-cell";
+      if (col.isRowNumberColumn()) {
+        cell.classList.add("pte-row-number-cell", "pte-aggregate-row-number-cell");
+      }
       const meta = this.params.leafColumnLookup().get(col.instanceID);
       if (meta) {
         cell.dataset.colId = col.instanceID;

@@ -54,7 +54,7 @@ export class ColumnInteractionRenderer {
       const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
       if (!header) return;
       const col = this.params.core.getColumnModel().getById(header.id);
-      if (!col || col.hidden) return;
+      if (!col || col.hidden || col.isInternal()) return;
       if (!col.resizable) return;
 
       const headerRect = header.getBoundingClientRect();
@@ -71,7 +71,7 @@ export class ColumnInteractionRenderer {
     const header = (e.target as HTMLElement | null)?.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
     const col = this.params.core.getColumnModel().getById(header.id);
-    if (!col || col.hidden) return;
+    if (!col || col.hidden || col.isInternal()) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
     const allowDrop = col.movable;
     this.maybeStartColumnDrag(col, header, e, allowDrop);
@@ -200,6 +200,8 @@ export class ColumnInteractionRenderer {
     if (!handle) return;
     const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
+    const col = this.params.core.getColumnModel().getById(header.id);
+    if (!col || col.isInternal()) return;
     this.params.core.dispatch({
       type: "columnAutosize",
       colId: header.id,
@@ -392,7 +394,7 @@ export class ColumnInteractionRenderer {
 
   private isColumnReorderable(col: Column): boolean {
     if (!col) return false;
-    return col.isVisible();
+    return !col.isInternal() && col.movable && col.isVisible();
   }
 
   private setDragCursor(active: boolean, allowDrop = true) {

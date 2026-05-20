@@ -19,8 +19,28 @@ interface ColumnReuseContext {
   used: Set<Column>;
 }
 
+const ROW_NUMBER_COL_ID = "__pte_row_number__";
+const ROW_NUMBER_COLUMN_DEF = {
+  colId: ROW_NUMBER_COL_ID,
+  key: ROW_NUMBER_COL_ID,
+  label: "",
+  width: 52,
+  minWidth: 52,
+  maxWidth: 52,
+  pinned: "left",
+  sortable: false,
+  filter: false,
+  groupable: false,
+  resizable: false,
+  movable: false,
+  hideable: false,
+  exportable: false,
+  __internalRole: "rowNumber",
+} satisfies ColDef & { __internalRole: "rowNumber" };
+
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
+  private rowNumberColumn?: Column;
 
   private columnsById: Map<string, Column> = new Map();
   private columnsByColId: Map<string, Column> = new Map();
@@ -46,15 +66,15 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    this.updateColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext()));
+    this.updateColumns(this.withInternalColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext())));
   }
 
   private updateColumns(cols: Column[]) {
-    this.columns = cols;
+    this.columns = this.withInternalColumns(cols);
     this.columns.forEach(c => c.updatePropsByChildren());
-    this.leftColumns = cols.filter((c) => c.pinned === "left");
-    this.rightColumns = cols.filter((c) => c.pinned === "right");
-    this.centerColumns = cols.filter((c) => c.pinned == null);
+    this.leftColumns = this.columns.filter((c) => c.pinned === "left");
+    this.rightColumns = this.columns.filter((c) => c.pinned === "right");
+    this.centerColumns = this.columns.filter((c) => c.pinned == null);
 
     this.leaves = [];
     this.leftLeaves = [];
@@ -98,6 +118,7 @@ export class ColumnModel implements IColumnModel {
     };
 
     this.walkColumns((col) => {
+      if (col.isInternal()) return;
       this.addReusableColumn(context.byColId, col.colId, col);
       this.addReusableColumn(context.byKey, col.key, col);
     });
@@ -191,8 +212,10 @@ export class ColumnModel implements IColumnModel {
     const traverse = (cols: Column[], depth: number, appendTo: Column[], openState: "open" | "closed" | null = null) => {
       for (const col of cols) {
         this.columnsById.set(col.instanceID, col);
-        this.columnsByColId.set(col.colId, col);
-        this.columnsByKey.set(col.key, col);
+        if (!col.isInternal()) {
+          this.columnsByColId.set(col.colId, col);
+          this.columnsByKey.set(col.key, col);
+        }
         if (col.hidden) continue;
         col.columnGroupVisible = col.columnGroupShow === "always" || (openState !== null && openState == col.columnGroupShow);
         if (col.columnGroupVisible) {
@@ -279,6 +302,23 @@ export class ColumnModel implements IColumnModel {
     return copy;
   }
 
+  private withInternalColumns(cols: Column[]): Column[] {
+    const rowNumberColumn = this.getRowNumberColumn();
+    const userColumns = cols.filter((col) => !col.isRowNumberColumn());
+    rowNumberColumn.pinned = "left";
+    rowNumberColumn.hidden = false;
+    return [rowNumberColumn, ...userColumns];
+  }
+
+  private getRowNumberColumn(): Column {
+    if (this.rowNumberColumn) {
+      this.rowNumberColumn.updateFromColDef({ ...ROW_NUMBER_COLUMN_DEF }, "row-number");
+      return this.rowNumberColumn;
+    }
+    this.rowNumberColumn = new Column({ ...ROW_NUMBER_COLUMN_DEF }, "row-number");
+    return this.rowNumberColumn;
+  }
+
   private computeBaselineWidths(measureCtx: ITextMeasurer, params: TextMeasureParams): void {
     const walk = (columns: Column[]): number => {
       let totalWidth = 0;
@@ -323,6 +363,11 @@ export class ColumnModel implements IColumnModel {
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
+    if (col.isInternal()) {
+      col.computedWidth = col.width || col.computedWidth;
+      return;
+    }
+
     if (col.cellRenderer) {
       col.computedWidth = col.width || 200;
       return;
@@ -469,6 +514,7 @@ export class ColumnModel implements IColumnModel {
     const leaves = this.getLeaves();
     for (let i = 0; i < leaves.length; i++) {
       const col = leaves[i];
+      if (col.isInternal()) continue;
       state.push({
         colId: col.colId,
         widthPx: col.computedWidth,
@@ -545,13 +591,13 @@ export class ColumnModel implements IColumnModel {
 
   resizeColumn(colId: string, width: number): string[] {
     const col = this.getById(colId);
-    if (!col) return [];
+    if (!col || col.isInternal()) return [];
     return this.resizeActualColumn(col, width);
   }
 
   moveColumnTo(colId: string, targetIndex: number, section: "left" | "center" | "right"): boolean {
     const col = this.getById(colId);
-    if (!col) return false;
+    if (!col || col.isInternal()) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
     if (moveResult.length === 0) return false;
     this.updateColumns(moveResult);
@@ -561,7 +607,7 @@ export class ColumnModel implements IColumnModel {
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.getById(colId);
-    if (!col) return false;
+    if (!col || col.isInternal()) return false;
 
     if (col.pinned === pin) return false;
 
@@ -593,7 +639,7 @@ export class ColumnModel implements IColumnModel {
     const affectedCols = new Set<Column>();
     for (const colId of colIds) {
       const col = this.getById(colId);
-      if (!col) continue;
+      if (!col || col.isInternal()) continue;
       col.hidden = hidden;
       affectedCols.add(col);
     }
@@ -604,7 +650,7 @@ export class ColumnModel implements IColumnModel {
 
   toggleGroupExpansion(colId: string): boolean {
     const col = this.getById(colId);
-    if (!col || col.children.length === 0) return false;
+    if (!col || col.isInternal() || col.children.length === 0) return false;
     col.groupExpandState = col.groupExpandState === "open" ? "closed" : "open";
     this.updateColumns(this.columns);
     const ancestors = this.getAncestors(colId);

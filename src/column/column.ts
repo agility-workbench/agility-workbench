@@ -5,6 +5,9 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 
+type InternalColumnRole = "rowNumber";
+type InternalColDef = ColDef & { __internalRole?: InternalColumnRole };
+
 export class Column {
   instanceID: string;
   originalInstanceID: string;
@@ -42,6 +45,7 @@ export class Column {
   comparator: ComparatorFn | null = null;
   collator?: Intl.Collator | null
   showExpander: boolean = false;
+  internalRole?: InternalColumnRole;
 
   constructor(public col: ColDef, idx: string = '') {
     const id = crypto.randomUUID();
@@ -71,7 +75,7 @@ export class Column {
     this.col = col;
     this.colId = col.colId!;
     this.key = col.key || '';
-    this.label = col.label || col.key || `Column ${idx}`;
+    this.label = col.label ?? col.key ?? `Column ${idx}`;
     this.width = col.width;
     this.minWidth = col.minWidth;
     this.maxWidth = col.maxWidth;
@@ -100,6 +104,7 @@ export class Column {
       ? previousColumnGroupVisible
       : isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
     this.exportable = !isFalse(col.exportable);
+    this.internalRole = (col as InternalColDef).__internalRole;
     this.updateComputedWidth();
     if (preserveRuntimeState && col.width == null) {
       this.computedWidth = previousComputedWidth;
@@ -120,6 +125,14 @@ export class Column {
 
   isVisible(): boolean {
     return !this.hidden && this.columnGroupVisible;
+  }
+
+  isInternal(): boolean {
+    return this.internalRole != null;
+  }
+
+  isRowNumberColumn(): boolean {
+    return this.internalRole === "rowNumber";
   }
 
   /* The following props are derived from children and should not be set directly on group columns

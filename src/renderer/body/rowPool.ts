@@ -85,6 +85,10 @@ export class BodyRowPoolRenderer {
   private createCell(colId: string, isRightAligned: boolean) {
     const cell = document.createElement("div");
     cell.className = "pte-cell";
+    const col = this.params.core.getColumnModel().getById(colId);
+    if (col?.isRowNumberColumn()) {
+      cell.classList.add("pte-row-number-cell");
+    }
     const meta = this.params.core.getColumnModel().leafColumnLookup.get(colId);
     if (meta) {
       cell.dataset.colId = colId;

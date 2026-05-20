@@ -21,7 +21,7 @@ export class HeaderInteractionHandler {
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
     const col = this.params.core.getColumnModel().getById(header.id);
-    if (!col) return;
+    if (!col || col.isInternal()) return;
     const selectedColumnIDs = this.params.selectedColumnIDs();
     const leaves = col.getLeaves();
     if (leaves.filter(l => selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
@@ -41,7 +41,7 @@ export class HeaderInteractionHandler {
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = this.params.core.getColumnModel().getById(header.id);
-      if (!col) return;
+      if (!col || col.isInternal()) return;
       if (e.shiftKey) {
         return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
       }

@@ -129,6 +129,7 @@ const resolveColumns = (config: ExportConfig): Column[] => {
   const range = clampSelection(config.selectionRange, config.rows?.length ?? 0, baseCols.length);
 
   let cols = range ? baseCols.slice(range.colStart, range.colEnd + 1) : baseCols.slice();
+  cols = cols.filter(c => !c.isInternal() && c.exportable);
   if (config.columnIds && config.columnIds.length > 0) {
     const allowed = new Set(config.columnIds);
     cols = cols.filter(c => allowed.has(c.instanceID) || allowed.has(c.colId) || allowed.has(c.key));

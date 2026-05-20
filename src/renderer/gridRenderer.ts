@@ -362,7 +362,7 @@ export class GridRenderer {
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
-      renderCell: (cell, row, col, cellRendererMap) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap),
+      renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap, viewIndex, rowNumber),
       applySelectionToSlot: (slot, viewIndex) => this._applySelectionToSlot(slot, viewIndex),
     });
 
@@ -749,6 +749,7 @@ export class GridRenderer {
   _getCellLocation(target: EventTarget | null): { viewIdx: number; colIdx: number } | null {
     const cell = (target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.root.contains(cell)) return null;
+    if (cell.classList.contains("pte-row-number-cell")) return null;
 
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return null;

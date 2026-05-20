@@ -664,6 +664,13 @@
   background-color: var(--pte-hover-bg-color);
 }
 
+.pte-hcell-row-number .pte-hcell-container,
+.pte-hcell-row-number .pte-hcell-container:hover {
+  justify-content: center;
+  background-color: var(--pte-header-background-color);
+  cursor: default;
+}
+
 .pte-hcell.selected .pte-hcell-container:hover {
   background-color: var(--pte-selected-hover-bg-color);
 }
@@ -935,6 +942,17 @@
 
 .pte-cell-right-aligned {
   justify-content: flex-end;
+}
+
+.pte-row-number-cell {
+  justify-content: center;
+  color: var(--pte-muted-text-color);
+  background-color: var(--pte-header-background-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.pte-aggregate-row-number-cell {
+  color: transparent;
 }
 
 .pte-row:not(:last-child) {

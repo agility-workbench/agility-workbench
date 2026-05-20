@@ -100,7 +100,7 @@ export class GridCore implements IGridCore {
         overscanRowCount: this.options.overscanRowCount,
       },
       displayedRowCount: this.rowModel.getViewCount(),
-      visibleLeafColIds: this.columnModel.getLeaves().filter(c => !c.hidden).map(c => c.instanceID),
+      visibleLeafColIds: this.columnModel.getLeaves().filter(c => !c.hidden && !c.isInternal()).map(c => c.instanceID),
     };
   }
 
@@ -357,7 +357,7 @@ export class GridCore implements IGridCore {
       aggregateScope,
       aggregates: this.aggregates,
       aggregateReason,
-      leafColumns: this.columnModel.getLeaves(),
+      leafColumns: this.columnModel.getLeaves().filter(col => !col.isInternal()),
     };
   }
 
@@ -487,6 +487,10 @@ export class GridCore implements IGridCore {
       totalPageCount: this.totalPages,
       pageSizes: this.pageSizes,
     };
+  }
+
+  getRowNumberForViewIndex(viewIndex: number): number {
+    return (this.paginationEnabled ? this.pageStartIdx : 0) + viewIndex + 1;
   }
 
   private resetPageBlocks(): { start: number, end: number } {
@@ -739,7 +743,7 @@ export class GridCore implements IGridCore {
         break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
-        if (!col) return;
+        if (!col || col.isInternal()) return;
         switch (action.action) {
           case "toggleSort":
             this.toggleSort(col);

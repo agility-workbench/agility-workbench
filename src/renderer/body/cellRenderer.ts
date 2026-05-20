@@ -8,11 +8,23 @@ export class BodyCellRenderer {
     row: IRowNode,
     col: Column,
     cellRendererMap: Map<string, RendererRecord>,
+    viewIndex: number = row.viewIndex,
+    rowNumber: number = viewIndex + 1,
   ) {
+    if (col.isRowNumberColumn()) {
+      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+      if (rec) {
+        rec.runtime.destroy();
+        cellRendererMap.delete(col.instanceID);
+      }
+      cell.textContent = String(rowNumber);
+      return;
+    }
+
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     const renderer = col.cellRenderer;
-    const rendererParams = getCellRendererParams(rawValue, displayValue, row, 0, col, cell, null);
+    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, null);
     if (!renderer) {
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
       if (rec) {

@@ -19,7 +19,7 @@ interface BodyWindowRendererParams {
   serverSidePendingRangeKeys: Set<string>;
   beginScrollSync: (targets: HTMLDivElement[]) => void;
   setStartIndex: (startIndex: number) => void;
-  renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>) => void;
+  renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number) => void;
   applySelectionToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
 }
 
@@ -133,7 +133,7 @@ export class BodyWindowRenderer {
         slot.rightRowEl.setAttribute("data-view-idx", String(viewIndex));
       }
 
-      this.patchCells(slot, row);
+      this.patchCells(slot, row, viewIndex, this.params.core.getRowNumberForViewIndex(viewIndex));
     }
   }
 
@@ -149,21 +149,21 @@ export class BodyWindowRenderer {
     if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
   }
 
-  private patchCells(slot: RowPoolDef, row: IRowNode) {
+  private patchCells(slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number) {
     const columnModel = this.params.core.getColumnModel();
     const leftLeaves = columnModel.getLeftLeaves();
     if (leftLeaves.length > 0 && slot.leftCellEls) {
       slot.leftRowEl?.setAttribute("row-id", row.id);
       for (let c = 0; c < leftLeaves.length; c++) {
         const col = leftLeaves[c];
-        this.params.renderCell(slot.leftCellEls[c], row, col, slot.cellRendererInstances);
+        this.params.renderCell(slot.leftCellEls[c], row, col, slot.cellRendererInstances, viewIndex, rowNumber);
       }
     }
 
     const centerLeaves = columnModel.getCenterLeaves();
     for (let c = 0; c < centerLeaves.length; c++) {
       const col = centerLeaves[c];
-      this.params.renderCell(slot.cellEls[c], row, col, slot.cellRendererInstances);
+      this.params.renderCell(slot.cellEls[c], row, col, slot.cellRendererInstances, viewIndex, rowNumber);
     }
 
     const rightLeaves = columnModel.getRightLeaves();
@@ -171,7 +171,7 @@ export class BodyWindowRenderer {
       slot.rightRowEl?.setAttribute("row-id", row.id);
       for (let c = 0; c < rightLeaves.length; c++) {
         const col = rightLeaves[c];
-        this.params.renderCell(slot.rightCellEls[c], row, col, slot.cellRendererInstances);
+        this.params.renderCell(slot.rightCellEls[c], row, col, slot.cellRendererInstances, viewIndex, rowNumber);
       }
     }
   }
