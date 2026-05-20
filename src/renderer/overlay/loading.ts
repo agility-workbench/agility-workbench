@@ -17,8 +17,12 @@ export function createLoadingOverlay(): HTMLDivElement {
 
 export class LoadingOverlayRenderer {
   private isLoading = false;
+  private overlay: HTMLDivElement;
 
-  constructor(private overlay: HTMLDivElement) {}
+  constructor(root: HTMLElement) {
+    this.overlay = createLoadingOverlay();
+    root.appendChild(this.overlay);
+  }
 
   setLoading(isLoading: boolean) {
     this.isLoading = isLoading;

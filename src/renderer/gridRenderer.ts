@@ -42,7 +42,7 @@ import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { FilterOverlayRenderer } from "./overlay/filter";
-import { createLoadingOverlay, LoadingOverlayRenderer } from "./overlay/loading";
+import { LoadingOverlayRenderer } from "./overlay/loading";
 import { PaginationRenderer } from "./pagination/renderer";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
@@ -81,7 +81,6 @@ export class GridRenderer {
   _scrollSyncRenderer: GridScrollSyncRenderer;
   rowHeight: number = 43;
   height?: number;
-  _loadingOverlay: HTMLDivElement;
 
   _maxDepth: number = 1;
 
@@ -478,9 +477,7 @@ export class GridRenderer {
     // Overlays
     this._filterOverlayRenderer = new FilterOverlayRenderer();
     this._filterOverlayRenderer.bind();
-    this._loadingOverlay = createLoadingOverlay();
-    this.root.appendChild(this._loadingOverlay);
-    this._loadingOverlayRenderer = new LoadingOverlayRenderer(this._loadingOverlay);
+    this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root);
 
     // Create a pooled set of row nodes
     // this._poolSize = this._bodyPoolSizer.computePoolSize(...);
