@@ -134,14 +134,10 @@ export class GridRenderer {
   leftViewport: HTMLDivElement;
   viewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
-  aggregateRow: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
   aggregateCenter: HTMLDivElement;
   aggregateRight: HTMLDivElement;
-  aggregateLeftRow?: HTMLDivElement;
   aggregateCenterRow: HTMLDivElement;
-  aggregateRightRow?: HTMLDivElement;
-  aggregateCloseBtn: HTMLButtonElement;
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
   _aggregateRightCells: HTMLDivElement[];
@@ -282,11 +278,9 @@ export class GridRenderer {
       }
     });
     const aggregateRow = this._aggregateRowRenderer.getRefs();
-    this.aggregateRow = aggregateRow.row;
     this.aggregateLeft = aggregateRow.left;
     this.aggregateCenter = aggregateRow.center;
     this.aggregateRight = aggregateRow.right;
-    this.aggregateCloseBtn = aggregateRow.closeButton;
     this.aggregateCenterRow = aggregateRow.centerRow;
     this._aggregateLeftCells = [];
     this._aggregateCells = [];
@@ -296,10 +290,6 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       leafColumnLookup: () => this._leafColumnLookup,
       aggregateRowRenderer: this._aggregateRowRenderer,
-      aggregateRow: this.aggregateRow,
-      aggregateLeft: this.aggregateLeft,
-      aggregateCenter: this.aggregateCenter,
-      aggregateRight: this.aggregateRight,
       leftPinnedLeafColumns: () => this._leftPinnedLeafColumns,
       centerLeafColumns: () => this._centerLeafColumns,
       rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
@@ -829,9 +819,7 @@ export class GridRenderer {
     this._aggregateLeftCells = result.leftCells;
     this._aggregateCells = result.centerCells;
     this._aggregateRightCells = result.rightCells;
-    this.aggregateLeftRow = result.leftRow;
     this.aggregateCenterRow = result.centerRow;
-    this.aggregateRightRow = result.rightRow;
     this._renderAggregateRow();
   }
 

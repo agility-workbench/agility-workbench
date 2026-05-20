@@ -11,10 +11,6 @@ type AggregateRowBuilderParams = {
   rowHeight: () => number;
   leafColumnLookup: () => Map<string, LeafColumnMeta>;
   aggregateRowRenderer: AggregateRowRenderer;
-  aggregateRow: HTMLDivElement;
-  aggregateLeft: HTMLDivElement;
-  aggregateCenter: HTMLDivElement;
-  aggregateRight: HTMLDivElement;
   leftPinnedLeafColumns: () => Column[];
   centerLeafColumns: () => Column[];
   rightPinnedLeafColumns: () => Column[];
@@ -24,9 +20,7 @@ export type AggregateRowBuildResult = {
   leftCells: HTMLDivElement[];
   centerCells: HTMLDivElement[];
   rightCells: HTMLDivElement[];
-  leftRow?: HTMLDivElement;
   centerRow: HTMLDivElement;
-  rightRow?: HTMLDivElement;
 };
 
 export class AggregateRowBuilder {
@@ -34,11 +28,10 @@ export class AggregateRowBuilder {
 
   build(): AggregateRowBuildResult {
     const {
-      aggregateRow,
-      aggregateLeft,
-      aggregateCenter,
-      aggregateRight,
-    } = this.params;
+      left: aggregateLeft,
+      center: aggregateCenter,
+      right: aggregateRight,
+    } = this.params.aggregateRowRenderer.getRefs();
     aggregateLeft.innerHTML = "";
     aggregateCenter.innerHTML = "";
     aggregateRight.innerHTML = "";
@@ -53,24 +46,20 @@ export class AggregateRowBuilder {
       return row;
     };
 
-    let leftRow: HTMLDivElement | undefined;
     if (this.params.leftPinnedLeafColumns().length > 0) {
       const row = makeRow();
       this.appendCells(row, this.params.leftPinnedLeafColumns(), leftCells);
       aggregateLeft.appendChild(row);
-      leftRow = row;
     }
 
     const centerRow = makeRow();
     this.appendCells(centerRow, this.params.centerLeafColumns(), centerCells);
     aggregateCenter.appendChild(centerRow);
 
-    let rightRow: HTMLDivElement | undefined;
     if (this.params.rightPinnedLeafColumns().length > 0) {
       const row = makeRow();
       this.appendCells(row, this.params.rightPinnedLeafColumns(), rightCells);
       aggregateRight.appendChild(row);
-      rightRow = row;
     }
 
     this.params.aggregateRowRenderer.setHeight(this.params.rowHeight());
@@ -79,9 +68,7 @@ export class AggregateRowBuilder {
       leftCells,
       centerCells,
       rightCells,
-      leftRow,
       centerRow,
-      rightRow,
     };
   }
 
