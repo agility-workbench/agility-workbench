@@ -1,6 +1,7 @@
 import { ColDef, GridOptions } from "@grid";
 import { IGridAPI } from "@grid/interfaces/iGridAPI";
 import { ColumnMenuContext } from "@grid/menu";
+import { ReactColDef } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
 export interface GridReactProps extends GridOptions{
@@ -10,7 +11,7 @@ export interface GridReactProps extends GridOptions{
 
   /** Optional initial data/columns; wrapper will forward after init and on change */
   data?: unknown[];
-  columnDefs?: ColDef[] | null;
+  columnDefs?: ReactColDef[] | ColDef[] | null;
 
   /** Expose API (AG Grid style) */
   apiRef?: React.Ref<IGridAPI | null>;

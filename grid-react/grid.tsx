@@ -8,6 +8,7 @@ import { IGridAPI } from "@grid/interfaces";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@grid/renderer";
 import { isFalse } from "@grid/misc";
+import { adaptReactColumnDefs } from "./cellRenderer";
 
 export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
   function GridReact(props, forwardedRef) {
@@ -79,7 +80,7 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
     useLayoutEffect(() => {
       const core = coreRef.current;
       if (!core) return;
-      core.setColumnDefsFromProps(props.columnDefs);
+      core.setColumnDefsFromProps(adaptReactColumnDefs(props.columnDefs));
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.columnDefs]);

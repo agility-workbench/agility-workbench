@@ -3,6 +3,7 @@ import "./roboto-font.css";
 import "./style.css";
 
 import { GridReact } from "@grid-react"; // React Data Grid Component
+import type { ReactColDef } from "@grid-react";
 import type {
   ColDef,
   FormatterOptionsParams,
@@ -11,6 +12,7 @@ import type {
   IServerSideRequest,
   RowModelType,
 } from "@grid";
+import type { CellRendererParams } from "@grid/renderer/renderer";
 
 const GRID_SERVER_URL = "http://localhost:8008";
 
@@ -37,20 +39,82 @@ const themePresets = [
   { id: "light", label: "Light", className: "pte-theme-light" },
 ];
 
+const cityRegions: Record<string, { region: string; tone: string; icon: string }> = {
+  "new york": { region: "Northeast", tone: "blue", icon: "NY" },
+  boston: { region: "Northeast", tone: "blue", icon: "BE" },
+  philadelphia: { region: "Northeast", tone: "blue", icon: "PH" },
+  chicago: { region: "Midwest", tone: "green", icon: "CH" },
+  detroit: { region: "Midwest", tone: "green", icon: "DT" },
+  minneapolis: { region: "Midwest", tone: "green", icon: "MS" },
+  "san francisco": { region: "West", tone: "violet", icon: "SF" },
+  "los angeles": { region: "West", tone: "violet", icon: "LA" },
+  seattle: { region: "West", tone: "violet", icon: "SE" },
+  portland: { region: "West", tone: "violet", icon: "PD" },
+  denver: { region: "Mountain", tone: "amber", icon: "DN" },
+  phoenix: { region: "Southwest", tone: "amber", icon: "PX" },
+  dallas: { region: "South", tone: "rose", icon: "DL" },
+  austin: { region: "South", tone: "rose", icon: "AT" },
+  houston: { region: "South", tone: "rose", icon: "HS" },
+  miami: { region: "Southeast", tone: "teal", icon: "MI" },
+  atlanta: { region: "Southeast", tone: "teal", icon: "AL" },
+  charlotte: { region: "Southeast", tone: "teal", icon: "CL" },
+};
+
+const toneCycle = ["blue", "green", "violet", "amber", "rose", "teal"];
+
+function getCityMeta(city: string) {
+  const key = city.trim().toLowerCase();
+  const known = cityRegions[key];
+  if (known) return known;
+
+  const hash = Array.from(key).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return {
+    region: "US City",
+    tone: toneCycle[hash % toneCycle.length],
+    icon: city
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase())
+      .join("") || "US",
+  };
+}
+
+function LocationCellRenderer(params: CellRendererParams) {
+  const city = String(params.valueFormatted ?? params.value ?? "");
+  if (!city) return null;
+
+  const meta = getCityMeta(city);
+  return (
+    <span className={`location-cell location-cell-${meta.tone}`} title={`${city} · ${meta.region}`}>
+      <span className="location-cell-mark" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="location-cell-main">
+        <span className="location-cell-city">{city}</span>
+        <span className="location-cell-region">{meta.region}</span>
+      </span>
+      <span className="location-cell-code">{meta.icon}</span>
+    </span>
+  );
+}
+
 function App() {
   const [rowData, setRowData] = useState<any[]>([]);
-  const [colDefs, setColDefs] = useState<ColDef[]>([]);
+  const [colDefs, setColDefs] = useState<ReactColDef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(50000);
   const [toggle, setToggle] = useState(false);
   const [loading, setLoading] = useState(true);
   const [paginate, setPaginate] = useState(true);
-  const [rowModel, setRowModel] = useState<RowModelType>("serverSide");
+  const [rowModel, setRowModel] = useState<RowModelType>("clientSide");
   const [serverSideBlockSize, setServerSideBlockSize] = useState(100);
   const [themeId, setThemeId] = useState(themePresets[0].id);
 
-  const applyFormatters = (cols: ColDef[] = []) => {
-    const currencyFormatter = (col: ColDef) => {
+  const applyDemoColumnConfig = (cols: ReactColDef[] = []) => {
+    const currencyFormatter = (col: ReactColDef) => {
       if (col.type !== "currency") return;
       // col.valueFormatter = (params: ValueFormatterParams) => {
       //   if (typeof params.value === "number") {
@@ -67,7 +131,7 @@ function App() {
       });
     };
 
-    const formatApplier = (inputCols: ColDef[]) => {
+    const formatApplier = (inputCols: ReactColDef[]) => {
       for (const col of inputCols) {
         currencyFormatter(col);
         if (col.children && col.children.length > 0) {
@@ -79,6 +143,10 @@ function App() {
             maxFilterItems: 7,
             buttons: ["apply", "cancel", "clear", "reset"],
           }
+        }
+
+        if (col.key == "location") {
+          col.cellRenderer = LocationCellRenderer;
         }
       }
     };
@@ -144,7 +212,7 @@ function App() {
         return {
           rows,
           totalRows,
-          columns: payload?.columns?.length ? applyFormatters(payload.columns) : undefined,
+          columns: payload?.columns?.length ? applyDemoColumnConfig(payload.columns as ReactColDef[]) as ColDef[] : undefined,
           schemaVersion: payload?.schemaVersion,
         };
       },
@@ -182,7 +250,7 @@ function App() {
         const payload = await response.json();
         if (cancelled) return;
 
-        applyFormatters(payload.columns ?? []);
+        applyDemoColumnConfig(payload.columns ?? []);
 
         payload.columns.forEach((col: ColDef) => {
           if (col.key == "department") {
