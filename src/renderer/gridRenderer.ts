@@ -107,10 +107,6 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
-  vScroll: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  scroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
   _aggregateRightCells: HTMLDivElement[];
@@ -166,7 +162,7 @@ export class GridRenderer {
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
       recomputeView: () => this._bodyViewportRenderer.recomputeView(),
       updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
-      resetScrollPosition: () => this._resetScrollPosition(),
+      resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       updatePaginationControls: () => this._updatePaginationControls(),
       addSortIndicatorToHeader: (colID, dir) => this._headerRenderer.addSortIndicatorToHeader(colID, dir),
       setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
@@ -224,10 +220,6 @@ export class GridRenderer {
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
-    this.leftScroller = bodyWrapper.leftScroller;
-    this.scroller = bodyWrapper.centerScroller;
-    this.rightScroller = bodyWrapper.rightScroller;
-
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._setAggregateScope("none");
@@ -249,7 +241,6 @@ export class GridRenderer {
     this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
     const horizontalScroll = this._horizontalScrollRenderer.getRefs();
 
-    this.vScroll = bodyWrapper.vScroll;
     this._bodyRowPoolRenderer = new BodyRowPoolRenderer({
       core: this.core,
       rowHeight: () => this.rowHeight,
@@ -266,9 +257,9 @@ export class GridRenderer {
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
       rightHeader: headerRefs.right,
-      leftScroller: this.leftScroller,
-      centerScroller: this.scroller,
-      rightScroller: this.rightScroller,
+      leftScroller: bodyWrapper.leftScroller,
+      centerScroller: bodyWrapper.centerScroller,
+      rightScroller: bodyWrapper.rightScroller,
       leafColumnLookup: () => this._leafColumnLookup,
     });
     this._headerInteractionHandler = new HeaderInteractionHandler({
@@ -303,8 +294,8 @@ export class GridRenderer {
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
-      leftScroller: this.leftScroller,
-      rightScroller: this.rightScroller,
+      leftScroller: bodyWrapper.leftScroller,
+      rightScroller: bodyWrapper.rightScroller,
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
       rightHeader: headerRefs.right,
@@ -326,16 +317,16 @@ export class GridRenderer {
       rightHeader: headerRefs.right,
       hScrollLeftParent: horizontalScroll.leftParent,
       hScrollRightParent: horizontalScroll.rightParent,
-      leftScroller: this.leftScroller,
-      rightScroller: this.rightScroller,
+      leftScroller: bodyWrapper.leftScroller,
+      rightScroller: bodyWrapper.rightScroller,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
-      leftScroller: this.leftScroller,
-      centerScroller: this.scroller,
-      rightScroller: this.rightScroller,
-      vScroll: this.vScroll,
+      leftScroller: bodyWrapper.leftScroller,
+      centerScroller: bodyWrapper.centerScroller,
+      rightScroller: bodyWrapper.rightScroller,
+      vScroll: bodyWrapper.vScroll,
       leftSpacer: bodyWrapper.leftSpacer,
       centerSpacer: bodyWrapper.centerSpacer,
       rightSpacer: bodyWrapper.rightSpacer,
@@ -354,10 +345,10 @@ export class GridRenderer {
       core: this.core,
       rowHeight: () => this.rowHeight,
       rowPool: () => this._rowPool,
-      leftScroller: this.leftScroller,
-      centerScroller: this.scroller,
-      rightScroller: this.rightScroller,
-      vScroll: this.vScroll,
+      leftScroller: bodyWrapper.leftScroller,
+      centerScroller: bodyWrapper.centerScroller,
+      rightScroller: bodyWrapper.rightScroller,
+      vScroll: bodyWrapper.vScroll,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
@@ -373,7 +364,7 @@ export class GridRenderer {
     this._paginationRenderer = new PaginationRenderer({
       core: this.core,
       root: this.root,
-      resetScrollPosition: () => this._resetScrollPosition(),
+      resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
     });
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
@@ -657,13 +648,6 @@ export class GridRenderer {
 
   _updatePaginationControls(params?: GridEventPaginationChangedParams) {
     this._paginationRenderer.updateControls(params);
-  }
-
-  _resetScrollPosition() {
-    this.leftScroller.scrollTop = 0;
-    this.scroller.scrollTop = 0;
-    this.rightScroller.scrollTop = 0;
-    this.vScroll.scrollTop = 0;
   }
 
   _buildAggregateRow() {

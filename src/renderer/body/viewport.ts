@@ -27,4 +27,11 @@ export class BodyViewportRenderer {
     this.elements.vScroller.style.height = `${verticalSize}px`;
     this.elements.vScrollParent.style.display = verticalSize > this.elements.body.clientHeight ? "block" : "none";
   }
+
+  resetScrollPosition() {
+    this.elements.leftScroller.scrollTop = 0;
+    this.elements.centerScroller.scrollTop = 0;
+    this.elements.rightScroller.scrollTop = 0;
+    this.elements.vScroll.scrollTop = 0;
+  }
 }
