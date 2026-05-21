@@ -59,7 +59,7 @@
   --pte-scrollbar-size: 10px;
   --pte-scrollbar-radius: 10px;
   --pte-checkbox-accent-color: #3b82f6;
-  --pte-aggregate-row-bg-color: #f9fafb;
+  --pte-aggregate-row-bg-color: #f3f4f6;
   --pte-aggregate-cell-bg-color: #f3f4f6;
   --pte-surface-bg-color: #ffffff;
   --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
@@ -105,7 +105,7 @@
   --pte-scrollbar-size: 10px;
   --pte-scrollbar-radius: 10px;
   --pte-checkbox-accent-color: #60a5fa;
-  --pte-aggregate-row-bg-color: #111827;
+  --pte-aggregate-row-bg-color: #1e293b;
   --pte-aggregate-cell-bg-color: #1e293b;
   --pte-surface-bg-color: #0f172a;
   --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
@@ -253,6 +253,7 @@
   display: none;
   flex: 0 0 auto;
   position: relative;
+  background: var(--pte-aggregate-row-bg-color);
   border-top: 1px solid var(--pte-frame-border-color);
   padding-right: 15px;
 }
@@ -267,13 +268,12 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  background: var(--pte-aggregate-row-bg-color);
+  background: transparent;
 }
 
 .pte-aggregate-left,
 .pte-aggregate-right {
   flex: 0 0 auto;
-  background: var(--pte-surface-bg-color);
   box-shadow: 2px 0 5px var(--pte-shadow-color);
   border-right: 1px solid var(--pte-frame-border-color);
 }
@@ -293,7 +293,6 @@
 }
 
 .pte-aggregate-cell {
-  background-color: var(--pte-aggregate-cell-bg-color);
   font-weight: 600;
   border-top: 1px solid var(--pte-border-color);
   display: flex !important;
