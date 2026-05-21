@@ -1,8 +1,10 @@
 interface GridScrollSyncRendererParams {
+  leadingScroller: HTMLDivElement;
   leftScroller: HTMLDivElement;
   centerScroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
   vScroll: HTMLDivElement;
+  leadingSpacer: HTMLDivElement;
   leftSpacer: HTMLDivElement;
   centerSpacer: HTMLDivElement;
   rightSpacer: HTMLDivElement;
@@ -26,6 +28,7 @@ export class GridScrollSyncRenderer {
   constructor(private params: GridScrollSyncRendererParams) { }
 
   bind() {
+    this.bindWindowScroll(this.params.leadingScroller);
     this.bindWindowScroll(this.params.leftScroller);
     this.bindWindowScroll(this.params.centerScroller);
     this.bindWindowScroll(this.params.rightScroller);

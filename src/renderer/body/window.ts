@@ -9,10 +9,12 @@ interface BodyWindowRendererParams {
   core: GridCore;
   rowHeight: () => number;
   rowPool: () => RowPoolDef[];
+  leadingScroller: HTMLDivElement;
   leftScroller: HTMLDivElement;
   centerScroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
   vScroll: HTMLDivElement;
+  leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
@@ -54,6 +56,9 @@ export class BodyWindowRenderer {
 
   private syncScrollTop(scrollSrc: HTMLDivElement | undefined, scrollTop: number) {
     const syncTargets: HTMLDivElement[] = [];
+    if (scrollSrc !== this.params.leadingScroller && this.params.leadingScroller.scrollTop !== scrollTop) {
+      syncTargets.push(this.params.leadingScroller);
+    }
     if (scrollSrc !== this.params.leftScroller && this.params.leftScroller.scrollTop !== scrollTop) {
       syncTargets.push(this.params.leftScroller);
     }
@@ -98,6 +103,7 @@ export class BodyWindowRenderer {
 
   private translateViewports(startIndex: number) {
     const offsetY = startIndex * this.params.rowHeight();
+    this.params.leadingViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.leftViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.centerViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.rightViewport.style.transform = `translateY(${offsetY}px)`;
@@ -126,6 +132,9 @@ export class BodyWindowRenderer {
       slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
 
+      if (slot.leadingRowEl) {
+        slot.leadingRowEl.setAttribute("data-view-idx", String(viewIndex));
+      }
       if (slot.leftRowEl) {
         slot.leftRowEl.setAttribute("data-view-idx", String(viewIndex));
       }
@@ -139,18 +148,29 @@ export class BodyWindowRenderer {
 
   private hideSlot(slot: RowPoolDef) {
     slot.rowEl.style.display = "none";
+    if (slot.leadingRowEl) slot.leadingRowEl.style.display = "none";
     if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
     if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
   }
 
   private showSlot(slot: RowPoolDef) {
     slot.rowEl.style.display = "flex";
+    if (slot.leadingRowEl) slot.leadingRowEl.style.display = "flex";
     if (slot.leftRowEl) slot.leftRowEl.style.display = "flex";
     if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
   }
 
   private patchCells(slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number) {
     const columnModel = this.params.core.getColumnModel();
+    const leadingLeaves = columnModel.getLeadingLeaves();
+    if (leadingLeaves.length > 0 && slot.leadingCellEls) {
+      slot.leadingRowEl?.setAttribute("row-id", row.id);
+      for (let c = 0; c < leadingLeaves.length; c++) {
+        const col = leadingLeaves[c];
+        this.params.renderCell(slot.leadingCellEls[c], row, col, slot.cellRendererInstances, viewIndex, rowNumber);
+      }
+    }
+
     const leftLeaves = columnModel.getLeftLeaves();
     if (leftLeaves.length > 0 && slot.leftCellEls) {
       slot.leftRowEl?.setAttribute("row-id", row.id);

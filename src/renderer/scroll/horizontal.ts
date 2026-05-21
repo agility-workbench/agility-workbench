@@ -1,5 +1,6 @@
 export interface HorizontalScrollElements {
   container: HTMLDivElement;
+  leadingParent: HTMLDivElement;
   leftParent: HTMLDivElement;
   centerParent: HTMLDivElement;
   rightParent: HTMLDivElement;
@@ -27,6 +28,10 @@ export class HorizontalScrollRenderer {
 export function createHorizontalScroll(): HorizontalScrollElements {
   const container = document.createElement("div");
   container.className = "pte-scroller-horizontal-container-wrapper";
+
+  const leadingParent = document.createElement("div");
+  leadingParent.className = "pte-scroller-horizontal-leading-container";
+  container.appendChild(leadingParent);
 
   const leftParent = document.createElement("div");
   leftParent.className = "pte-scroller-horizontal-left-container";
@@ -60,6 +65,7 @@ export function createHorizontalScroll(): HorizontalScrollElements {
 
   return {
     container,
+    leadingParent,
     leftParent,
     centerParent,
     rightParent,

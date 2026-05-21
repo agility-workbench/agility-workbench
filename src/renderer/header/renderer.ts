@@ -30,6 +30,7 @@ export class HeaderRenderer {
     } = this.params;
     const {
       wrapper: headerWrapper,
+      leading: leadingHeader,
       left: leftHeader,
       center: centerHeader,
       right: rightHeader,
@@ -38,6 +39,8 @@ export class HeaderRenderer {
     const headerHeight = core.options.headerHeight * core.getColumnModel().maxHeaderDepth;
     headerWrapper.style.height = `${headerHeight}px`;
     headerWrapper.style.minHeight = `${headerHeight}px`;
+    leadingHeader.style.height = `${headerHeight}px`;
+    leadingHeader.style.minHeight = `${headerHeight}px`;
     leftHeader.style.height = `${headerHeight}px`;
     leftHeader.style.minHeight = `${headerHeight}px`;
     centerHeader.style.height = `${headerHeight}px`;
@@ -46,9 +49,15 @@ export class HeaderRenderer {
     rightHeader.style.minHeight = `${headerHeight}px`;
     body.style.height = `calc(100% - ${headerHeight}px`;
     body.style.maxHeight = `calc(100% - ${headerHeight}px`;
+    leadingHeader.innerHTML = "";
     leftHeader.innerHTML = "";
     centerHeader.innerHTML = "";
     rightHeader.innerHTML = "";
+    for (const col of core.getColumnModel().getLeadingColumns()) {
+      if (!col.hidden) {
+        leadingHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
+      }
+    }
     for (const col of core.getColumnModel().getLeftColumns()) {
       if (!col.hidden) {
         leftHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));

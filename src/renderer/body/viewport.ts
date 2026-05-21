@@ -21,6 +21,7 @@ export class BodyViewportRenderer {
 
   recomputeView() {
     const verticalSize = this.params.core.getRowModel().getViewCount() * this.params.rowHeight();
+    this.elements.leadingSpacer.style.height = `${verticalSize}px`;
     this.elements.leftSpacer.style.height = `${verticalSize}px`;
     this.elements.centerSpacer.style.height = `${verticalSize}px`;
     this.elements.rightSpacer.style.height = `${verticalSize}px`;
@@ -29,6 +30,7 @@ export class BodyViewportRenderer {
   }
 
   resetScrollPosition() {
+    this.elements.leadingScroller.scrollTop = 0;
     this.elements.leftScroller.scrollTop = 0;
     this.elements.centerScroller.scrollTop = 0;
     this.elements.rightScroller.scrollTop = 0;

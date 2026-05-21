@@ -47,11 +47,13 @@ export class ColumnModel implements IColumnModel {
   private columnsByKey: Map<string, Column> = new Map();
 
   private columns: Column[] = [];
+  private leadingColumns: Column[] = [];
   private leftColumns: Column[] = [];
   private rightColumns: Column[] = [];
   private centerColumns: Column[] = [];
 
   private leaves: Column[] = [];
+  private leadingLeaves: Column[] = [];
   private leftLeaves: Column[] = [];
   private rightLeaves: Column[] = [];
   private centerLeaves: Column[] = [];
@@ -72,11 +74,13 @@ export class ColumnModel implements IColumnModel {
   private updateColumns(cols: Column[]) {
     this.columns = this.withInternalColumns(cols);
     this.columns.forEach(c => c.updatePropsByChildren());
-    this.leftColumns = this.columns.filter((c) => c.pinned === "left");
+    this.leadingColumns = this.columns.filter((c) => c.isRowNumberColumn());
+    this.leftColumns = this.columns.filter((c) => c.pinned === "left" && !c.isRowNumberColumn());
     this.rightColumns = this.columns.filter((c) => c.pinned === "right");
     this.centerColumns = this.columns.filter((c) => c.pinned == null);
 
     this.leaves = [];
+    this.leadingLeaves = [];
     this.leftLeaves = [];
     this.centerLeaves = [];
     this.rightLeaves = [];
@@ -176,6 +180,10 @@ export class ColumnModel implements IColumnModel {
     return this.leaves;
   }
 
+  getLeadingColumns(): Column[] {
+    return this.leadingColumns;
+  }
+
   getLeftColumns(): Column[] {
     return this.leftColumns;
   }
@@ -186,6 +194,10 @@ export class ColumnModel implements IColumnModel {
 
   getRightColumns(): Column[] {
     return this.rightColumns;
+  }
+
+  getLeadingLeaves(): Column[] {
+    return this.leadingLeaves;
   }
 
   getLeftLeaves(): Column[] {
@@ -235,13 +247,14 @@ export class ColumnModel implements IColumnModel {
       }
     };
 
+    traverse(this.leadingColumns, 1, this.leadingLeaves);
     traverse(this.centerColumns, 1, this.centerLeaves);
     traverse(this.leftColumns, 1, this.leftLeaves);
     traverse(this.rightColumns, 1, this.rightLeaves);
     for (let i = 0; i < this.centerLeaves.length; i++) {
       this.centerLeaves[i].centralPosition = i;
     }
-    this.leaves = [this.leftLeaves, this.centerLeaves, this.rightLeaves].flat();
+    this.leaves = [this.leadingLeaves, this.leftLeaves, this.centerLeaves, this.rightLeaves].flat();
   }
 
   private setExpanders() {
@@ -287,6 +300,8 @@ export class ColumnModel implements IColumnModel {
 
     let globalIndex = 0;
     let localIndex = 0;
+    addCols(this.leadingLeaves, "left");
+    localIndex = 0;
     addCols(this.leftLeaves, "left");
     localIndex = 0;
     addCols(this.centerLeaves, "center");

@@ -11,12 +11,14 @@ type AggregateRowBuilderParams = {
   rowHeight: () => number;
   leafColumnLookup: () => Map<string, LeafColumnMeta>;
   aggregateRowRenderer: AggregateRowRenderer;
+  leadingLeafColumns: () => Column[];
   leftPinnedLeafColumns: () => Column[];
   centerLeafColumns: () => Column[];
   rightPinnedLeafColumns: () => Column[];
 };
 
 export type AggregateRowBuildResult = {
+  leadingCells: HTMLDivElement[];
   leftCells: HTMLDivElement[];
   centerCells: HTMLDivElement[];
   rightCells: HTMLDivElement[];
@@ -27,13 +29,16 @@ export class AggregateRowBuilder {
 
   build(): AggregateRowBuildResult {
     const {
+      leading: aggregateLeading,
       left: aggregateLeft,
       center: aggregateCenter,
       right: aggregateRight,
     } = this.params.aggregateRowRenderer.getRefs();
+    aggregateLeading.innerHTML = "";
     aggregateLeft.innerHTML = "";
     aggregateCenter.innerHTML = "";
     aggregateRight.innerHTML = "";
+    const leadingCells: HTMLDivElement[] = [];
     const leftCells: HTMLDivElement[] = [];
     const centerCells: HTMLDivElement[] = [];
     const rightCells: HTMLDivElement[] = [];
@@ -44,6 +49,12 @@ export class AggregateRowBuilder {
       row.style.height = `${this.params.rowHeight()}px`;
       return row;
     };
+
+    if (this.params.leadingLeafColumns().length > 0) {
+      const row = makeRow();
+      this.appendCells(row, this.params.leadingLeafColumns(), leadingCells);
+      aggregateLeading.appendChild(row);
+    }
 
     if (this.params.leftPinnedLeafColumns().length > 0) {
       const row = makeRow();
@@ -65,6 +76,7 @@ export class AggregateRowBuilder {
     this.params.aggregateRowRenderer.setHeight(this.params.rowHeight());
 
     return {
+      leadingCells,
       leftCells,
       centerCells,
       rightCells,

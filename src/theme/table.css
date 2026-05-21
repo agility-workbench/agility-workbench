@@ -209,6 +209,18 @@
   border-bottom: 1px solid var(--pte-frame-border-color);
 }
 
+.pte-header-leading {
+  display: flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--pte-header-background-color);
+}
+
+.pte-header-leading.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
 .pte-header-left {
   display: flex;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
@@ -262,6 +274,7 @@
   display: flex;
 }
 
+.pte-aggregate-leading,
 .pte-aggregate-left,
 .pte-aggregate-center,
 .pte-aggregate-right {
@@ -269,6 +282,12 @@
   overflow-y: hidden;
   scrollbar-width: none;
   background: transparent;
+}
+
+.pte-aggregate-leading {
+  flex: 0 0 auto;
+  background: var(--pte-aggregate-row-bg-color);
+  border-right: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-aggregate-left,
@@ -490,6 +509,18 @@
   box-shadow: 2px 0 5px var(--pte-shadow-color);
 }
 
+.pte-scroller-leading {
+  overflow: hidden auto;
+  position: relative;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+  background-color: var(--pte-header-background-color);
+}
+
+.pte-scroller-leading.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
 .pte-scroller-left.visible {
   border-right: 1px solid var(--pte-frame-border-color);
 }
@@ -532,18 +563,28 @@
 }
 
 .pte-scroller-horizontal-left-container {
+  flex: 0 0 auto;
+  height: 15px;
+  min-height: 15px;
+  z-index: 1;
+}
+
+.pte-scroller-horizontal-leading-container {
+  flex: 0 0 auto;
   height: 15px;
   min-height: 15px;
   z-index: 1;
 }
 
 .pte-scroller-horizontal-container {
+  flex: 1 1 auto;
   height: 15px;
   z-index: 1;
   width: 100%;
 }
 
 .pte-scroller-horizontal-right-container {
+  flex: 0 0 auto;
   height: 15px;
   z-index: 1;
 }
@@ -566,6 +607,12 @@
   scrollbar-width: none;
 }
 
+.pte-spacer-leading {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
 .pte-spacer {
   position: relative;
   width: 100%;
@@ -580,6 +627,7 @@
   scrollbar-width: none;
 }
 
+.pte-viewport-leading,
 .pte-viewport-left,
 .pte-viewport-right,
 .pte-viewport {

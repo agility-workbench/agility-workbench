@@ -3,6 +3,7 @@ import { AggregateType } from "../../interfaces/aggregate";
 
 export interface AggregateRowElements {
   row: HTMLDivElement;
+  leading: HTMLDivElement;
   left: HTMLDivElement;
   center: HTMLDivElement;
   right: HTMLDivElement;
@@ -17,6 +18,9 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
   row.style.height = `${rowHeight}px`;
   row.style.minHeight = `${rowHeight}px`;
   row.style.maxHeight = `${rowHeight}px`;
+
+  const leading = document.createElement("div");
+  leading.className = "pte-aggregate-leading";
 
   const left = document.createElement("div");
   left.className = "pte-aggregate-left";
@@ -37,6 +41,7 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
 
   const centerRow = document.createElement("div");
 
+  row.appendChild(leading);
   row.appendChild(left);
   row.appendChild(center);
   row.appendChild(right);
@@ -44,6 +49,7 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
 
   return {
     row,
+    leading,
     left,
     center,
     right,

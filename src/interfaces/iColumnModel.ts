@@ -9,9 +9,11 @@ export interface IColumnModel {
   getColumnState(): ColumnState[];
   getColumns(): Column[];
   getLeaves(): Column[];
+  getLeadingColumns(): Column[];
   getLeftColumns(): Column[];
   getCenterColumns(): Column[];
   getRightColumns(): Column[];
+  getLeadingLeaves(): Column[];
   getLeftLeaves(): Column[];
   getCenterLeaves(): Column[];
   getRightLeaves(): Column[];

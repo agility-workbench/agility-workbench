@@ -105,11 +105,13 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
+  _aggregateLeadingCells: HTMLDivElement[];
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
   _aggregateRightCells: HTMLDivElement[];
   _aggregateVisible: boolean;
 
+  _leadingLeafColumns: Column[] = [];
   _leftPinnedColumns: Column[] = [];
   _leftPinnedLeafColumns: Column[] = [];
   _rightPinnedColumns: Column[] = [];
@@ -227,6 +229,7 @@ export class GridRenderer {
       this._aggregateModelController.setAggregateScope("none");
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
+    this._aggregateLeadingCells = [];
     this._aggregateLeftCells = [];
     this._aggregateCells = [];
     this._aggregateRightCells = [];
@@ -235,6 +238,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       leafColumnLookup: () => this._leafColumnLookup,
       aggregateRowRenderer: this._aggregateRowRenderer,
+      leadingLeafColumns: () => this._leadingLeafColumns,
       leftPinnedLeafColumns: () => this._leftPinnedLeafColumns,
       centerLeafColumns: () => this._centerLeafColumns,
       rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
@@ -246,6 +250,7 @@ export class GridRenderer {
     this._bodyRowPoolRenderer = new BodyRowPoolRenderer({
       core: this.core,
       rowHeight: () => this.rowHeight,
+      leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
@@ -293,22 +298,28 @@ export class GridRenderer {
       root: this.root,
       body: bodyWrapper.body,
       rowPool: () => this._rowPool,
+      leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
+      leadingScroller: bodyWrapper.leadingScroller,
       leftScroller: bodyWrapper.leftScroller,
       rightScroller: bodyWrapper.rightScroller,
+      leadingHeader: headerRefs.leading,
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
       rightHeader: headerRefs.right,
       headerWrapper: headerRefs.wrapper,
       hScrollContainer: horizontalScroll.container,
+      hScrollLeadingParent: horizontalScroll.leadingParent,
       hScrollLeftParent: horizontalScroll.leftParent,
       hScrollParent: horizontalScroll.centerParent,
       hScrollRightParent: horizontalScroll.rightParent,
       hScrollerLeft: horizontalScroll.leftScroller,
       hScroller: horizontalScroll.centerScroller,
       hScrollerRight: horizontalScroll.rightScroller,
+      aggregateLeading: aggregateRefs.leading,
+      aggregateLeadingCells: () => this._aggregateLeadingCells,
       aggregateLeft: aggregateRefs.left,
       aggregateLeftCells: () => this._aggregateLeftCells,
       aggregateCenterRow: () => this._aggregateRowRenderer.getCenterRow(),
@@ -328,10 +339,12 @@ export class GridRenderer {
       aggregateRight: aggregateRefs.right,
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
+      leadingScroller: bodyWrapper.leadingScroller,
       leftScroller: bodyWrapper.leftScroller,
       centerScroller: bodyWrapper.centerScroller,
       rightScroller: bodyWrapper.rightScroller,
       vScroll: bodyWrapper.vScroll,
+      leadingSpacer: bodyWrapper.leadingSpacer,
       leftSpacer: bodyWrapper.leftSpacer,
       centerSpacer: bodyWrapper.centerSpacer,
       rightSpacer: bodyWrapper.rightSpacer,
@@ -350,10 +363,12 @@ export class GridRenderer {
       core: this.core,
       rowHeight: () => this.rowHeight,
       rowPool: () => this._rowPool,
+      leadingScroller: bodyWrapper.leadingScroller,
       leftScroller: bodyWrapper.leftScroller,
       centerScroller: bodyWrapper.centerScroller,
       rightScroller: bodyWrapper.rightScroller,
       vScroll: bodyWrapper.vScroll,
+      leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
@@ -539,6 +554,7 @@ export class GridRenderer {
       values.set(col.instanceID, display ?? "");
     }
 
+    this._aggregateRowRenderer.renderCells(this._aggregateLeadingCells, this._leadingLeafColumns, aggregateMap, values);
     this._aggregateRowRenderer.renderCells(this._aggregateLeftCells, this._leftPinnedLeafColumns, aggregateMap, values);
     this._aggregateRowRenderer.renderCells(this._aggregateCells, this._centerLeafColumns, aggregateMap, values);
     this._aggregateRowRenderer.renderCells(this._aggregateRightCells, this._rightPinnedLeafColumns, aggregateMap, values);
@@ -572,6 +588,7 @@ export class GridRenderer {
   _buildAggregateRow() {
     this._syncLeafColumns();
     const result = this._aggregateRowBuilder.build();
+    this._aggregateLeadingCells = result.leadingCells;
     this._aggregateLeftCells = result.leftCells;
     this._aggregateCells = result.centerCells;
     this._aggregateRightCells = result.rightCells;
@@ -582,7 +599,8 @@ export class GridRenderer {
   private _ensureAggregateRowBuilt() {
     this._syncLeafColumns();
     if (
-      this._aggregateLeftCells.length > 0
+      this._aggregateLeadingCells.length > 0
+      || this._aggregateLeftCells.length > 0
       || this._aggregateCells.length > 0
       || this._aggregateRightCells.length > 0
       || this._leafColumns.length === 0
@@ -596,6 +614,7 @@ export class GridRenderer {
     const columnModel = this.core.getColumnModel();
     this._leafColumns = columnModel.getLeaves();
     this._leafColumnLookup = columnModel.leafColumnLookup;
+    this._leadingLeafColumns = columnModel.getLeadingLeaves();
     this._leftPinnedLeafColumns = columnModel.getLeftLeaves();
     this._centerLeafColumns = columnModel.getCenterLeaves();
     this._rightPinnedLeafColumns = columnModel.getRightLeaves();

@@ -1,14 +1,17 @@
 export interface BodyWrapperElements {
   body: HTMLDivElement;
+  leadingScroller: HTMLDivElement;
   leftScroller: HTMLDivElement;
   centerScroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
   vScrollParent: HTMLDivElement;
   vScroll: HTMLDivElement;
   vScroller: HTMLDivElement;
+  leadingSpacer: HTMLDivElement;
   leftSpacer: HTMLDivElement;
   centerSpacer: HTMLDivElement;
   rightSpacer: HTMLDivElement;
+  leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
@@ -17,6 +20,10 @@ export interface BodyWrapperElements {
 export function createBodyWrapper(): BodyWrapperElements {
   const body = document.createElement("div");
   body.className = "pte-body";
+
+  const leadingScroller = document.createElement("div");
+  leadingScroller.className = "pte-scroller-leading";
+  body.appendChild(leadingScroller);
 
   const leftScroller = document.createElement("div");
   leftScroller.className = "pte-scroller-left";
@@ -42,6 +49,10 @@ export function createBodyWrapper(): BodyWrapperElements {
   vScroller.className = "pte-scroller-vertical";
   vScroll.appendChild(vScroller);
 
+  const leadingSpacer = document.createElement("div");
+  leadingSpacer.className = "pte-spacer-leading";
+  leadingScroller.appendChild(leadingSpacer);
+
   const leftSpacer = document.createElement("div");
   leftSpacer.className = "pte-spacer-left";
   leftScroller.appendChild(leftSpacer);
@@ -53,6 +64,10 @@ export function createBodyWrapper(): BodyWrapperElements {
   const rightSpacer = document.createElement("div");
   rightSpacer.className = "pte-spacer-right";
   rightScroller.appendChild(rightSpacer);
+
+  const leadingViewport = document.createElement("div");
+  leadingViewport.className = "pte-viewport-leading";
+  leadingSpacer.appendChild(leadingViewport);
 
   const leftViewport = document.createElement("div");
   leftViewport.className = "pte-viewport-left";
@@ -68,15 +83,18 @@ export function createBodyWrapper(): BodyWrapperElements {
 
   return {
     body,
+    leadingScroller,
     leftScroller,
     centerScroller,
     rightScroller,
     vScrollParent,
     vScroll,
     vScroller,
+    leadingSpacer,
     leftSpacer,
     centerSpacer,
     rightSpacer,
+    leadingViewport,
     leftViewport,
     centerViewport,
     rightViewport,

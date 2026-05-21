@@ -7,22 +7,28 @@ interface ColumnLayoutRendererParams {
   root: HTMLDivElement;
   body: HTMLDivElement;
   rowPool: () => RowPoolDef[];
+  leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
+  leadingScroller: HTMLDivElement;
   leftScroller: HTMLDivElement;
   rightScroller: HTMLDivElement;
+  leadingHeader: HTMLDivElement;
   leftHeader: HTMLDivElement;
   centerHeader: HTMLDivElement;
   rightHeader: HTMLDivElement;
   headerWrapper: HTMLDivElement;
   hScrollContainer: HTMLDivElement;
+  hScrollLeadingParent: HTMLDivElement;
   hScrollLeftParent: HTMLDivElement;
   hScrollParent: HTMLDivElement;
   hScrollRightParent: HTMLDivElement;
   hScrollerLeft: HTMLDivElement;
   hScroller: HTMLDivElement;
   hScrollerRight: HTMLDivElement;
+  aggregateLeading: HTMLDivElement;
+  aggregateLeadingCells: () => HTMLDivElement[];
   aggregateLeft: HTMLDivElement;
   aggregateLeftCells: () => HTMLDivElement[];
   aggregateCenterRow?: () => HTMLDivElement | undefined;
@@ -33,6 +39,49 @@ interface ColumnLayoutRendererParams {
 
 export class ColumnLayoutRenderer {
   constructor(private params: ColumnLayoutRendererParams) {}
+
+  applyLeadingColumnWidths(colIDs: string[] = []): number {
+    let maxWidth = 0;
+    for (const slot of this.params.rowPool()) {
+      let totalWidth = 0;
+      let c = 0;
+      for (const col of this.params.core.getColumnModel().getLeadingLeaves()) {
+        if (col.hidden) continue;
+        const cell = slot.leadingCellEls?.[c++];
+        if (!cell) continue;
+        totalWidth += col.computedWidth;
+        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+        cell.style.flex = "0 0 auto";
+        cell.style.width = `${col.computedWidth}px`;
+      }
+      if (slot.leadingRowEl) slot.leadingRowEl.style.width = `${totalWidth}px`;
+      maxWidth = Math.max(maxWidth, totalWidth);
+    }
+
+    this.params.leadingViewport.style.width = `${maxWidth}px`;
+    this.applyAggregateColumnWidths(this.params.aggregateLeadingCells(), this.params.core.getColumnModel().getLeadingLeaves(), colIDs);
+    this.params.leadingScroller.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.leadingScroller.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.leadingHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.leadingHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.aggregateLeading.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.aggregateLeading.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.hScrollLeadingParent.style.width = `${maxWidth}px`;
+    this.params.hScrollLeadingParent.style.minWidth = `${maxWidth}px`;
+    this.params.hScrollLeadingParent.style.display = maxWidth > 0 ? "block" : "none";
+
+    if (maxWidth > 0) {
+      this.params.leadingScroller.classList.add("visible");
+      this.params.leadingHeader.classList.add("visible");
+      this.params.aggregateLeading.style.display = "block";
+    } else {
+      this.params.leadingScroller.classList.remove("visible");
+      this.params.leadingHeader.classList.remove("visible");
+      this.params.aggregateLeading.style.display = "none";
+    }
+
+    return maxWidth;
+  }
 
   applyLeftColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
@@ -77,7 +126,8 @@ export class ColumnLayoutRenderer {
       this.params.aggregateLeft.style.display = "none";
     }
     this.params.hScrollLeftParent.style.width = `${maxWidth}px`;
-    this.params.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
+    this.params.hScrollLeftParent.style.minWidth = `${maxWidth}px`;
+    this.params.hScrollParent.style.width = `calc(100% - ${this.params.hScrollLeadingParent.clientWidth + maxWidth}px)`;
     return totalWidth;
   }
 
@@ -142,18 +192,21 @@ export class ColumnLayoutRenderer {
         maxWidth = this.params.root.clientWidth * 0.35;
       }
       this.params.hScrollRightParent.style.width = `${maxWidth}px`;
+      this.params.hScrollRightParent.style.minWidth = `${maxWidth}px`;
       this.params.rightHeader.style.width = `${maxWidth + 16}px`;
       this.params.rightHeader.style.minWidth = `${maxWidth + 16}px`;
       this.params.aggregateRight.style.width = `${maxWidth + 1}px`;
       this.params.aggregateRight.style.minWidth = `${maxWidth + 1}px`;
       this.params.aggregateRight.style.display = "block";
-      maxWidth += this.params.hScrollLeftParent.clientWidth;
+      maxWidth += this.params.hScrollLeadingParent.clientWidth + this.params.hScrollLeftParent.clientWidth;
       this.params.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
       this.params.rightScroller.classList.remove("visible");
       this.params.rightHeader.style.width = "0px";
       this.params.rightHeader.style.minWidth = "0px";
       this.params.rightHeader.classList.remove("visible");
+      this.params.hScrollRightParent.style.width = "0px";
+      this.params.hScrollRightParent.style.minWidth = "0px";
       this.params.aggregateRight.style.width = "0px";
       this.params.aggregateRight.style.minWidth = "0px";
       this.params.aggregateRight.style.display = "none";
@@ -163,10 +216,11 @@ export class ColumnLayoutRenderer {
   }
 
   updateColumnWidths(colIDs: string[] = []) {
-    let totalWidth = 0;
-    totalWidth += this.applyLeftColumnWidths(colIDs);
-    totalWidth += this.applyCenterColumnWidths(colIDs);
-    totalWidth += this.applyRightColumnWidths(colIDs);
+    const leadingWidth = this.applyLeadingColumnWidths(colIDs);
+    const leftWidth = this.applyLeftColumnWidths(colIDs);
+    const centerWidth = this.applyCenterColumnWidths(colIDs);
+    const rightWidth = this.applyRightColumnWidths(colIDs);
+    const totalWidth = leadingWidth + leftWidth + centerWidth + rightWidth;
 
     const allColIDs: Column[] = [];
     this.params.core.getColumnModel().walkColumns(c => c.isVisible() && allColIDs.push(c));
@@ -176,7 +230,11 @@ export class ColumnLayoutRenderer {
       hcell.style.width = `${col.computedWidth}px`;
     });
 
-    if (totalWidth > this.params.root.clientWidth) {
+    const needsSectionScroll =
+      leftWidth > this.params.hScrollLeftParent.clientWidth
+      || centerWidth > this.params.hScrollParent.clientWidth
+      || rightWidth > this.params.hScrollRightParent.clientWidth;
+    if (totalWidth > this.params.root.clientWidth || needsSectionScroll) {
       this.params.hScrollContainer.style.display = "flex";
     } else {
       this.params.hScrollContainer.style.display = "none";
