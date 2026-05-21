@@ -3,6 +3,8 @@ import { IRowNode } from "../../interfaces/iRowNode";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
 
 export class BodyCellRenderer {
+  private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
+
   renderCell(
     cell: HTMLDivElement,
     row: IRowNode,
@@ -12,6 +14,7 @@ export class BodyCellRenderer {
     rowNumber: number = viewIndex + 1,
   ) {
     if (col.isRowNumberColumn()) {
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
       if (rec) {
         rec.runtime.destroy();
@@ -26,6 +29,7 @@ export class BodyCellRenderer {
     const renderer = col.cellRenderer;
     const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, null);
     if (!renderer) {
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
       if (rec) {
         rec.runtime.destroy();
@@ -34,6 +38,8 @@ export class BodyCellRenderer {
       cell.textContent = displayValue;
       return;
     }
+
+    cell.classList.add(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
 
     const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
     if (!rec || rec.renderer !== renderer) {

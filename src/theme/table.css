@@ -915,6 +915,10 @@
   text-overflow: ellipsis;
 }
 
+.pte-cell.pte-cell-custom-renderer {
+  padding: 0;
+}
+
 .pte-cell-sparkline {
   padding-left: 8px;
   padding-right: 8px;
