@@ -172,6 +172,7 @@ export class GridRenderer {
       updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
       clearSelection: () => this._selectionRenderer?.clearSelection(),
       clearColumnSelection: () => this._selectionRenderer?.clearColumnSelection(),
+      clearRowSelection: () => this._selectionRenderer?.clearRowSelection(),
     });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,

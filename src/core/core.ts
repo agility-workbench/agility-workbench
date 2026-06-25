@@ -622,7 +622,7 @@ export class GridCore implements IGridCore {
   }
 
   getViewIndexForRowId(rowId: GridId): number | null {
-    return this.rowModel.getRowNode(rowId)?.viewIndex || null;
+    return this.rowModel.getRowNode(rowId)?.viewIndex ?? null;
   }
 
   getCellValue(rowId: GridId, colId: ColId): unknown {

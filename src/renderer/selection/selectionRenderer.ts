@@ -28,6 +28,8 @@ export class SelectionRenderer {
   private selectionRange: SelectionRange | null = null;
   private isSelecting = false;
   private selectedColumnIDs: Set<string> = new Set();
+  private selectedRowIDs: Set<string> = new Set();
+  private rowSelectionAnchorViewIdx: number | null = null;
 
   constructor(private params: SelectionRendererParams) { }
 
@@ -40,12 +42,23 @@ export class SelectionRenderer {
     return this.selectedColumnIDs;
   }
 
+  getSelectedRowIDs(): Set<string> {
+    return this.selectedRowIDs;
+  }
+
   // ---------------- Hot path: per-row styling ----------------
   applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
     const range = this.selectionRange;
-    const rowSelected = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
+    const rangeRow = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
     const leaves = this.params.leafColumns();
+
+    const rowId = viewIndex != null
+      ? this.params.core.getRowIdAtViewIndex(viewIndex)
+      : null;
+    const rowSelected = !!rowId && this.selectedRowIDs.has(rowId);
+    const prevRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex - 1 : null);
+    const nextRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex + 1 : null);
 
     const apply = (cells: HTMLDivElement[] | undefined) => {
       if (!cells) return;
@@ -57,21 +70,33 @@ export class SelectionRenderer {
         const colId = leafCol?.instanceID;
         const colSelected = colId ? this.selectedColumnIDs.has(colId) : false;
 
-        const rangeSelected = !!rowSelected && !!range && Number.isFinite(colIdx)
+        const rangeSelected = !!rangeRow && !!range && Number.isFinite(colIdx)
           && colIdx >= range.colStart && colIdx <= range.colEnd;
-        const selected = rangeSelected || colSelected;
+        const selected = rangeSelected || colSelected || rowSelected;
 
-        const prevSelected = this.neighborSelected(leaves, range, colIdx - 1);
-        const nextSelected = this.neighborSelected(leaves, range, colIdx + 1);
+        const prevColSelected = this.neighborSelected(leaves, range, colIdx - 1);
+        const nextColSelected = this.neighborSelected(leaves, range, colIdx + 1);
 
-        const isTop = rangeSelected ? (viewIndex === range?.rowStart) : false;
-        const isBottom = rangeSelected ? (viewIndex === range?.rowEnd) : (colSelected && lastRow);
+        const isTop = rangeSelected
+          ? (viewIndex === range?.rowStart)
+          : rowSelected
+            ? !prevRowSelected
+            : false;
+        const isBottom = rangeSelected
+          ? (viewIndex === range?.rowEnd)
+          : rowSelected
+            ? !nextRowSelected
+            : (colSelected && lastRow);
         const isLeft = rangeSelected
           ? (colIdx === range?.colStart)
-          : (colSelected && !prevSelected);
+          : rowSelected
+            ? colIdx === 0
+            : (colSelected && !prevColSelected);
         const isRight = rangeSelected
           ? (colIdx === range?.colEnd)
-          : (colSelected && !nextSelected);
+          : rowSelected
+            ? colIdx === leaves.length - 1
+            : (colSelected && !nextColSelected);
 
         const cls = cell.classList;
         cls.toggle("selected", selected);
@@ -86,6 +111,12 @@ export class SelectionRenderer {
     apply(slot.leftCellEls);
     apply(slot.cellEls);
     apply(slot.rightCellEls);
+  }
+
+  private isViewIndexRowSelected(viewIndex: number | null): boolean {
+    if (viewIndex == null || viewIndex < 0) return false;
+    const id = this.params.core.getRowIdAtViewIndex(viewIndex);
+    return !!id && this.selectedRowIDs.has(id);
   }
 
   private neighborSelected(leaves: Column[], range: SelectionRange | null, colIdx: number): boolean {
@@ -114,6 +145,7 @@ export class SelectionRenderer {
   startSelectionFromCell(location: { viewIdx: number; colIdx: number }) {
     if (location.viewIdx < 0 || location.viewIdx >= this.params.core.getRowModel().getViewCount()) return;
     if (location.colIdx < 0 || location.colIdx >= this.params.leafColumns().length) return;
+    this.clearRowSelection();
     this.selectionAnchor = { row: location.viewIdx, colIdx: location.colIdx };
     this.selectionRange = {
       rowStart: location.viewIdx,
@@ -199,6 +231,7 @@ export class SelectionRenderer {
   // ---------------- Column selection ----------------
   toggleColumnSelection(colID: string, mode: "replace" | "toggle" = "toggle") {
     this.clearSelection();
+    this.clearRowSelection();
     const columnModel = this.params.core.getColumnModel();
     const col = columnModel.getById(colID);
     if (!col || col.isInternal()) return;
@@ -234,6 +267,77 @@ export class SelectionRenderer {
     this.selectedColumnIDs.clear();
     this.applyColumnSelectionStyles();
     this.refreshSelectionStyles();
+  }
+
+  // ---------------- Row selection ----------------
+  toggleRowSelection(viewIdx: number, mode: "replace" | "toggle" | "range") {
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    if (!rowId) return;
+
+    if (mode === "range" && this.rowSelectionAnchorViewIdx != null) {
+      const anchorIdx = this.rowSelectionAnchorViewIdx;
+      const start = Math.min(anchorIdx, viewIdx);
+      const end = Math.max(anchorIdx, viewIdx);
+      this.selectedRowIDs.clear();
+      for (let i = start; i <= end; i++) {
+        const id = this.params.core.getRowIdAtViewIndex(i);
+        if (id) this.selectedRowIDs.add(id);
+      }
+      this.clearSelectionRange();
+      this.clearColumnSelectionState();
+      this.refreshSelectionStyles();
+      this.applyColumnSelectionStyles();
+      return;
+    }
+
+    if (mode === "toggle") {
+      if (this.selectedRowIDs.has(rowId)) {
+        this.selectedRowIDs.delete(rowId);
+      } else {
+        this.selectedRowIDs.add(rowId);
+      }
+      this.rowSelectionAnchorViewIdx = viewIdx;
+      this.clearSelectionRange();
+      this.clearColumnSelectionState();
+      this.refreshSelectionStyles();
+      this.applyColumnSelectionStyles();
+      return;
+    }
+
+    this.replaceRowSelection(rowId, viewIdx);
+  }
+
+  private replaceRowSelection(rowId: string, viewIdx: number) {
+    const wasOnlySelected = this.selectedRowIDs.size === 1 && this.selectedRowIDs.has(rowId);
+    this.selectedRowIDs.clear();
+    if (!wasOnlySelected) {
+      this.selectedRowIDs.add(rowId);
+      this.rowSelectionAnchorViewIdx = viewIdx;
+    } else {
+      this.rowSelectionAnchorViewIdx = null;
+    }
+    this.clearSelectionRange();
+    this.clearColumnSelectionState();
+    this.refreshSelectionStyles();
+    this.applyColumnSelectionStyles();
+  }
+
+  clearRowSelection() {
+    if (this.selectedRowIDs.size === 0 && this.rowSelectionAnchorViewIdx == null) return;
+    this.selectedRowIDs.clear();
+    this.rowSelectionAnchorViewIdx = null;
+    this.refreshSelectionStyles();
+  }
+
+  private clearSelectionRange() {
+    this.selectionAnchor = null;
+    this.selectionRange = null;
+    this.isSelecting = false;
+  }
+
+  private clearColumnSelectionState() {
+    if (this.selectedColumnIDs.size === 0) return;
+    this.selectedColumnIDs.clear();
   }
 
   pruneColumnSelection() {
@@ -358,6 +462,22 @@ export class SelectionRenderer {
   // ---------------- Mouse handlers ----------------
   onCellMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
+
+    const rowNumberCell = (e.target as HTMLElement | null)?.closest(".pte-row-number-cell") as HTMLDivElement | null;
+    if (rowNumberCell && this.params.root.contains(rowNumberCell)) {
+      const rowEl = rowNumberCell.closest(".pte-row") as HTMLDivElement | null;
+      const viewIdx = rowEl ? Number(rowEl.getAttribute("data-view-idx")) : NaN;
+      if (!Number.isFinite(viewIdx)) return;
+      e.preventDefault();
+      const mode: "replace" | "toggle" | "range" = e.shiftKey
+        ? "range"
+        : (e.ctrlKey || e.metaKey)
+          ? "toggle"
+          : "replace";
+      this.toggleRowSelection(viewIdx, mode);
+      return;
+    }
+
     this.clearColumnSelection();
     const location = this.getCellLocation(e.target);
     if (!location) return;

@@ -19,6 +19,7 @@ interface GridModelChangeHandlerParams {
   updateColumnWidths: (colIDs?: string[]) => void;
   clearSelection: () => void;
   clearColumnSelection: () => void;
+  clearRowSelection: () => void;
 }
 
 export class GridModelChangeHandler {
@@ -31,6 +32,9 @@ export class GridModelChangeHandler {
     } else {
       this.params.serverSidePendingRangeKeys.clear();
       this.params.clearSelection();
+      if (params.reason === "rowData" || params.reason === "init" || params.reason === "refresh") {
+        this.params.clearRowSelection();
+      }
     }
     if (params.reason !== "sort") {
       this.params.recomputeView();
