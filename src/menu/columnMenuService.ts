@@ -25,6 +25,8 @@ export class ColumnMenuService {
     const items: MenuItem[] = [];
 
     const colIDs = [ctx.targetColId, ...ctx.colIds.filter(id => id !== ctx.targetColId)];
+    const multi = colIDs.length > 1;
+    const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
 
     if (cap.sortable) {
       if (cap.sortDir === "asc") {
@@ -37,14 +39,14 @@ export class ColumnMenuService {
           { id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
         );
       }
-      if (cap.sortDir !== null) items.push({ id: "sortClear", label: "Clear Sort", command: "sort.setMany", payload: { colIDs, dir: null } });
+      if (cap.sortDir !== null) items.push({ id: "sortClear", label: `Clear ${s("Sort")}`, command: "sort.setMany", payload: { colIDs, dir: null } });
       items.push({ isSeparator: true });
     }
     if (cap.hideable) {
-      items.push({ id: "hideColumns", label: "Hide Column", command: "column.hideMany", payload: { colIDs } });
+      items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, command: "column.hideMany", payload: { colIDs } });
       items.push({ isSeparator: true });
     }
-    if (cap.groupable) items.push({ id: "groupColumns", label: "Group by Column", command: "group.setMany", payload: { colIDs } });
+    if (cap.groupable) items.push({ id: "groupColumns", label: `Group by ${s("Column")}`, command: "group.setMany", payload: { colIDs } });
     if (cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
@@ -66,7 +68,7 @@ export class ColumnMenuService {
         }
       }
       if (cap.aggregated) {
-        item.subMenu!.push({ id: "aggClear", label: "Clear Aggregation", command: "aggregate.setMany", payload: { colIDs, agg: null } });
+        item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
       }
       items.push(item);
     }
@@ -74,16 +76,16 @@ export class ColumnMenuService {
       items.push({ isSeparator: true });
       const pinMenus: MenuItem[] = [];
       if (cap.pinning === "left") {
-        pinMenus.push({ id: "unpinColumns", label: "Unpin Column" + (colIDs.length > 1 ? "s" : ""), command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: `Unpin ${s("Column")}`, command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
         pinMenus.push({ id: "pinLeft", label: "Pin Left", command: "column.pinMany", payload: { colIDs, pinned: "left" } });
       }
       if (cap.pinning === "right") {
-        pinMenus.push({ id: "unpinColumns", label: "Unpin Column" + (colIDs.length > 1 ? "s" : ""), command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: `Unpin ${s("Column")}`, command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
         pinMenus.push({ id: "pinRight", label: "Pin Right", command: "column.pinMany", payload: { colIDs, pinned: "right" } });
       }
-      items.push({ id: "pinning", label: "Pin Column" + (colIDs.length > 1 ? "s" : ""), subMenu: pinMenus });
+      items.push({ id: "pinning", label: `Pin ${s("Column")}`, subMenu: pinMenus });
     }
     if (cap.exportable) {
       if (items.length > 0) items.push({ isSeparator: true });

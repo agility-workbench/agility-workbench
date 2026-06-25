@@ -4,7 +4,7 @@ type HeaderInteractionHandlerParams = {
   core: GridCore;
   root: HTMLElement;
   selectedColumnIDs: () => Set<string>;
-  toggleColumnSelection: (colID: string) => void;
+  toggleColumnSelection: (colID: string, mode: "replace" | "toggle") => void;
   openColumnMenu: (
     trigger: "columnMenuButton" | "headerContextMenu",
     colID: string,
@@ -26,7 +26,7 @@ export class HeaderInteractionHandler {
     const leaves = col.getLeaves();
     if (leaves.filter(l => selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
       selectedColumnIDs.clear();
-      this.params.toggleColumnSelection(col.instanceID);
+      this.params.toggleColumnSelection(col.instanceID, "replace");
     }
     this.params.openColumnMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
   }
@@ -45,7 +45,8 @@ export class HeaderInteractionHandler {
       if (e.shiftKey) {
         return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
       }
-      this.params.toggleColumnSelection(header.id);
+      const additive = e.ctrlKey || e.metaKey;
+      this.params.toggleColumnSelection(header.id, additive ? "toggle" : "replace");
       return this.params.core.dispatch({ type: "headerAction", action: "click", colId: header.id });
     }
     const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");

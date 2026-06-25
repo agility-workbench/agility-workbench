@@ -17,6 +17,8 @@ interface GridModelChangeHandlerParams {
   buildRowPool: () => void;
   buildHeaderDOM: (reason: string) => void;
   updateColumnWidths: (colIDs?: string[]) => void;
+  clearSelection: () => void;
+  clearColumnSelection: () => void;
 }
 
 export class GridModelChangeHandler {
@@ -28,6 +30,7 @@ export class GridModelChangeHandler {
       this.params.serverSidePendingRangeKeys.delete(`${params.firstRowIndex}:${params.lastRowIndex}`);
     } else {
       this.params.serverSidePendingRangeKeys.clear();
+      this.params.clearSelection();
     }
     if (params.reason !== "sort") {
       this.params.recomputeView();
@@ -42,6 +45,10 @@ export class GridModelChangeHandler {
   onColumnsChanged(params: GridEventColumnsChangedParams) {
     console.log(params);
     let rebuiltRows = false;
+    if (params.reason === "visibility" || params.reason === "state" || params.reason === "order" || params.reason === "defs") {
+      this.params.clearSelection();
+      this.params.clearColumnSelection();
+    }
     if (params.reason === "sort") {
       const sorts = this.params.core.getSortModel().items;
       for (const colID of params.changedColIds || []) {

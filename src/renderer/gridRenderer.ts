@@ -45,6 +45,7 @@ import { PaginationRenderer } from "./pagination/renderer";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
+import { SelectionRenderer } from "./selection/selectionRenderer";
 import { ServerSideController } from "./serverSideController";
 
 export class GridRenderer {
@@ -78,6 +79,7 @@ export class GridRenderer {
   _rootAttachmentRenderer: RootAttachmentRenderer;
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
+  _selectionRenderer: SelectionRenderer;
   rowHeight: number = 43;
   height?: number;
 
@@ -96,12 +98,6 @@ export class GridRenderer {
   _leftLeafOrder: number[];
   _centerLeafOrder: number[];
   _rightLeafOrder: number[];
-
-  _selectionAnchor: { row: number; colIdx: number } | null;
-  _selectionRange: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
-  _isSelecting: boolean;
-
-  _selectedColumnIDs: Set<string>;
 
   // DOM elements
   root: HTMLDivElement;
@@ -162,7 +158,10 @@ export class GridRenderer {
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
-      recomputeView: () => this._bodyViewportRenderer.recomputeView(),
+      recomputeView: () => {
+        this._bodyViewportRenderer.recomputeView();
+        this._selectionRenderer?.clampSelectionToView();
+      },
       updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       updatePaginationControls: (params?: GridEventPaginationChangedParams) => this._updatePaginationControls(params),
@@ -171,20 +170,29 @@ export class GridRenderer {
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
       updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
+      clearSelection: () => this._selectionRenderer?.clearSelection(),
+      clearColumnSelection: () => this._selectionRenderer?.clearColumnSelection(),
+    });
+    this._selectionRenderer = new SelectionRenderer({
+      core: this.core,
+      root: this.root,
+      rowPool: () => this._rowPool,
+      startIndex: () => this._startIndex,
+      leafColumns: () => this._leafColumns,
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,
       leafColumns: () => this._leafColumns,
       columnWidths: () => this._columnWidths,
-      selectionRange: () => this._selectionRange,
-      selectedColumnIDs: () => this._selectedColumnIDs,
+      selectionRange: () => this._selectionRenderer.getSelectionRange(),
+      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
     });
     this._columnMenuOpener = new ColumnMenuOpener({
       core: this.core,
       menuCoordinator,
       filterMenuCoordinator,
       menuRenderer: this._menuRenderer,
-      selectedColumnIDs: () => this._selectedColumnIDs,
+      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
     });
     this._filterUpdateHandler = new FilterUpdateHandler({
       core: this.core,
@@ -196,7 +204,7 @@ export class GridRenderer {
     this._aggregateModelController = new AggregateModelController({
       core: this.core,
       leafColumns: () => this._leafColumns,
-      selectedColumnIDs: () => this._selectedColumnIDs,
+      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
       markAggregatesDirty: () => this._markAggregatesDirty(),
       requestServerAggregates: () => undefined,
       renderAggregateRow: () => this._renderAggregateRow(),
@@ -272,8 +280,8 @@ export class GridRenderer {
     this._headerInteractionHandler = new HeaderInteractionHandler({
       core: this.core,
       root: this.root,
-      selectedColumnIDs: () => this._selectedColumnIDs,
-      toggleColumnSelection: (colID) => this._toggleColumnSelection(colID),
+      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
+      toggleColumnSelection: (colID, mode) => this._selectionRenderer.toggleColumnSelection(colID, mode),
       openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
@@ -283,13 +291,13 @@ export class GridRenderer {
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
-      onCellMouseDown: (e) => this._onCellMouseDown(e),
+      onCellMouseDown: (e) => this._selectionRenderer.onCellMouseDown(e),
       onColumnResizeMouseMove: (e) => this._columnInteractionRenderer.onColumnResizeMouseMove(e),
       onColumnDragMouseMove: (e) => this._columnInteractionRenderer.onColumnDragMouseMove(e),
-      onCellMouseMove: (e) => this._onCellMouseMove(e),
+      onCellMouseMove: (e) => this._selectionRenderer.onCellMouseMove(e),
       onColumnResizeMouseUp: () => this._columnInteractionRenderer.onColumnResizeMouseUp(),
       onColumnDragMouseUp: () => this._columnInteractionRenderer.onColumnDragMouseUp(),
-      onCellMouseUp: () => this._onCellMouseUp(),
+      onCellMouseUp: () => this._selectionRenderer.onCellMouseUp(),
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
     });
@@ -378,7 +386,7 @@ export class GridRenderer {
         this._startIndex = startIndex;
       },
       renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap, viewIndex, rowNumber),
-      applySelectionToSlot: (slot, viewIndex) => this._applySelectionToSlot(slot, viewIndex),
+      applySelectionToSlot: (slot, viewIndex) => this._selectionRenderer.applySelectionToSlot(slot, viewIndex),
     });
 
     this._paginationRenderer = new PaginationRenderer({
@@ -404,11 +412,6 @@ export class GridRenderer {
     this._leftLeafOrder = [];
     this._centerLeafOrder = [];
     this._rightLeafOrder = [];
-
-    this._selectionAnchor = null;
-    this._selectionRange = null;
-    this._isSelecting = false;
-    this._selectedColumnIDs = new Set();
 
     // Overlays
     this._filterOverlayRenderer = new FilterOverlayRenderer();
@@ -573,8 +576,8 @@ export class GridRenderer {
   _buildHeaderDOM(reason: string) {
     this._syncLeafColumns();
     this._headerRenderer.buildDOM(reason);
-    // this._pruneColumnSelection();
-    // this._applyColumnSelectionStyles();
+    this._selectionRenderer.pruneColumnSelection();
+    this._selectionRenderer.applyColumnSelectionStyles();
   }
 
   private buildPaginationControls() {
@@ -630,329 +633,6 @@ export class GridRenderer {
   _rebuildRowPool() {
     // If columns change frequently, you’d do smarter diffing.
     this._buildRowPool();
-  }
-
-  // ---------------- Internals: hot path ----------------
-  _applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
-    const range = this._selectionRange;
-    const rowSelected = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
-    const firstRow = viewIndex === 0;
-    const lastRow = viewIndex != null ? viewIndex === this.core.getRowModel().getViewCount() - 1 : false;
-
-    const apply = (cells: HTMLDivElement[], order: number[]) => {
-      if (!cells) return;
-      for (let i = 0; i < cells.length; i++) {
-        const colIdx = order[i];
-        const leaves = this.core.getColumnModel().getLeaves();
-        const leafCol = Number.isFinite(colIdx) ? leaves[colIdx] : null;
-        const colId = leafCol?.instanceID;
-        const colSelected = colId ? this._selectedColumnIDs.has(colId) : false;
-
-        const rangeSelected = !!rowSelected && range && Number.isFinite(colIdx) && colIdx >= range.colStart && colIdx <= range.colEnd;
-        const selected = rangeSelected || colSelected;
-
-        const prevColIdx = order[i - 1];
-        const nextColIdx = order[i + 1];
-        const prevSelected = (() => {
-          if (Number.isFinite(prevColIdx)) {
-            if (range && prevColIdx >= range.colStart && prevColIdx <= range.colEnd) return true;
-            const prevCol = leaves[prevColIdx];
-            if (prevCol && this._selectedColumnIDs.has(prevCol.instanceID)) return true;
-          }
-          return false;
-        })();
-        const nextSelected = (() => {
-          if (Number.isFinite(nextColIdx)) {
-            if (range && nextColIdx >= range.colStart && nextColIdx <= range.colEnd) return true;
-            const nextCol = leaves[nextColIdx];
-            if (nextCol && this._selectedColumnIDs.has(nextCol.instanceID)) return true;
-          }
-          return false;
-        })();
-
-        const isTop = rangeSelected ? (viewIndex === range?.rowStart) : false;
-        const isBottom = rangeSelected ? (viewIndex === range?.rowEnd) : (colSelected && lastRow);
-        const isLeft = rangeSelected
-          ? (colIdx === range?.colStart)
-          : (colSelected && !prevSelected);
-        const isRight = rangeSelected
-          ? (colIdx === range?.colEnd)
-          : (colSelected && !nextSelected);
-
-        const cls = cells[i].classList;
-        cls.toggle("selected", selected);
-        cls.toggle("selected-top", selected && isTop);
-        cls.toggle("selected-bottom", selected && isBottom);
-        cls.toggle("selected-left", selected && isLeft);
-        cls.toggle("selected-right", selected && isRight);
-      }
-    };
-
-    apply(slot.leftCellEls, this._leftLeafOrder);
-    apply(slot.cellEls, this._centerLeafOrder);
-    apply(slot.rightCellEls, this._rightLeafOrder);
-  }
-
-  _refreshSelectionStyles() {
-    const total = this.core.getRowModel().getViewCount();
-    for (let i = 0; i < this._rowPool.length; i++) {
-      const viewIndex = this._startIndex + i;
-      const slot = this._rowPool[i];
-      if (viewIndex >= total) {
-        this._applySelectionToSlot(slot, null);
-        continue;
-      }
-      this._applySelectionToSlot(slot, viewIndex);
-    }
-  }
-
-  _clearSelection() {
-    this._selectionAnchor = null;
-    this._selectionRange = null;
-    this._isSelecting = false;
-    this._refreshSelectionStyles();
-  }
-
-  _clearColumnSelection() {
-    this._selectedColumnIDs.clear();
-    this._applyColumnSelectionStyles();
-    this._refreshSelectionStyles();
-  }
-
-  _pruneColumnSelection() {
-    const keep = new Set<string>();
-    const visit = (cols: Column[]) => {
-      for (const col of cols) {
-        if (this._selectedColumnIDs.has(col.instanceID)) keep.add(col.instanceID);
-        if (col.children) visit(col.children);
-      }
-    };
-    visit(this.core.getColumnModel().getColumns());
-
-    this._selectedColumnIDs = keep;
-  }
-
-  _clampSelectionToView() {
-    if (!this._selectionRange) return;
-    const viewCount = this.core.getRowModel().getViewCount();
-    if (viewCount === 0 || this._leafColumns.length === 0) {
-      this._clearSelection();
-      return;
-    }
-
-    const maxRow = viewCount - 1;
-    const maxCol = this._leafColumns.length - 1;
-
-    const rowStart = Math.min(this._selectionRange.rowStart, maxRow);
-    const rowEnd = Math.min(this._selectionRange.rowEnd, maxRow);
-    const colStart = Math.min(this._selectionRange.colStart, maxCol);
-    const colEnd = Math.min(this._selectionRange.colEnd, maxCol);
-
-    this._selectionRange = {
-      rowStart: Math.min(rowStart, rowEnd),
-      rowEnd: Math.max(rowStart, rowEnd),
-      colStart: Math.min(colStart, colEnd),
-      colEnd: Math.max(colStart, colEnd),
-    };
-
-    if (this._selectionAnchor) {
-      this._selectionAnchor = {
-        row: Math.min(Math.max(this._selectionAnchor.row, 0), maxRow),
-        colIdx: Math.min(Math.max(this._selectionAnchor.colIdx, 0), maxCol),
-      };
-    }
-
-    this._refreshSelectionStyles();
-  }
-
-  _getCellLocation(target: EventTarget | null): { viewIdx: number; colIdx: number } | null {
-    const cell = (target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
-    if (!cell || !this.root.contains(cell)) return null;
-    if (cell.classList.contains("pte-row-number-cell")) return null;
-
-    const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
-    if (!rowEl) return null;
-
-    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
-    const colIdx = Number(cell.dataset.colIdx);
-    if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
-
-    return { viewIdx, colIdx };
-  }
-
-  _startSelectionFromCell(location: { viewIdx: number; colIdx: number }) {
-    if (location.viewIdx < 0 || location.viewIdx >= this.core.getRowModel().getViewCount()) return;
-    if (location.colIdx < 0 || location.colIdx >= this._leafColumns.length) return;
-    this._selectionAnchor = { row: location.viewIdx, colIdx: location.colIdx };
-    this._selectionRange = {
-      rowStart: location.viewIdx,
-      rowEnd: location.viewIdx,
-      colStart: location.colIdx,
-      colEnd: location.colIdx,
-    };
-    this._isSelecting = true;
-    this._refreshSelectionStyles();
-  }
-
-  _updateSelectionRange(endRow: number, endCol: number) {
-    if (!this._selectionAnchor) return;
-    const viewCount = this.core.getRowModel().getViewCount();
-    if (viewCount === 0 || this._leafColumns.length === 0) {
-      this._clearSelection();
-      return;
-    }
-
-    const maxRow = viewCount - 1;
-    const maxCol = this._leafColumns.length - 1;
-
-    const nextRow = Math.min(Math.max(endRow, 0), maxRow);
-    const nextCol = Math.min(Math.max(endCol, 0), maxCol);
-
-    this._selectionRange = {
-      rowStart: Math.min(this._selectionAnchor.row, nextRow),
-      rowEnd: Math.max(this._selectionAnchor.row, nextRow),
-      colStart: Math.min(this._selectionAnchor.colIdx, nextCol),
-      colEnd: Math.max(this._selectionAnchor.colIdx, nextCol),
-    };
-
-    this._refreshSelectionStyles();
-  }
-
-  _onCellMouseDown(e: MouseEvent) {
-    if (e.button !== 0) return;
-    // this._clearColumnSelection();
-    const location = this._getCellLocation(e.target);
-    if (!location) return;
-    e.preventDefault();
-    this._startSelectionFromCell(location);
-  }
-
-  _onCellMouseMove(e: MouseEvent) {
-    if (!this._isSelecting || !this._selectionAnchor) return;
-    const location = this._getCellLocation(e.target);
-    if (!location) return;
-    this._updateSelectionRange(location.viewIdx, location.colIdx);
-  }
-
-  _onCellMouseUp() {
-    if (!this._isSelecting) return;
-    this._isSelecting = false;
-  }
-
-  _applyColumnSelectionStyles() {
-    const leafIndexMap = new Map<string, number>();
-    this.core.getColumnModel().getLeaves().forEach((c, idx) => leafIndexMap.set(c.instanceID, idx));
-
-    const selectedLeafIdx = new Set<number>();
-    this.core.getColumnModel().getLeaves().forEach((c, idx) => {
-      if (this._selectedColumnIDs.has(c.instanceID)) selectedLeafIdx.add(idx);
-    });
-
-    const getRange = (col: Column | null): [number, number] | null => {
-      if (!col) return null;
-      if (col.hidden) return null;
-      if (!col.children || col.children.length === 0) {
-        const idx = leafIndexMap.get(col.instanceID);
-        return idx == null ? null : [idx, idx];
-      }
-      let min = Number.POSITIVE_INFINITY;
-      let max = Number.NEGATIVE_INFINITY;
-      const visit = (c: Column) => {
-        if (isTrue(c.hidden)) return;
-        if (!c.children || c.children.length === 0) {
-          const idx = leafIndexMap.get(c.instanceID);
-          if (idx == null) return;
-          min = Math.min(min, idx);
-          max = Math.max(max, idx);
-          return;
-        }
-        for (const child of c.children) visit(child);
-      };
-      visit(col);
-      if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-      return [min, max];
-    };
-
-    const headers = this.root.querySelectorAll<HTMLElement>(".pte-hcell");
-    headers.forEach(h => {
-      const col = this.core.getColumnModel().getById(h.id);
-      const selected = !!col && this._selectedColumnIDs.has(col.instanceID);
-      const range = col ? getRange(col) : null;
-      const leftSelected = !!range && selectedLeafIdx.has(range[0] - 1);
-      const rightSelected = !!range && selectedLeafIdx.has(range[1] + 1);
-
-      let parent = false;
-      if (selected) {
-        const tree = this.core.getColumnModel().getAncestors(col.instanceID);
-        const treeLen = tree.length;
-        if (treeLen > 1) {
-          parent = this._selectedColumnIDs.has(tree[treeLen - 2].instanceID);
-        }
-      }
-
-      h.classList.toggle("selected", selected);
-      h.classList.toggle("selected-left", selected && !leftSelected);
-      h.classList.toggle("not-selected-left", selected && leftSelected);
-      h.classList.toggle("selected-right", selected && !rightSelected);
-      h.classList.toggle("not-selected-right", selected && rightSelected);
-      h.classList.toggle("selected-top", selected && !parent);
-      h.classList.toggle("not-selected-top", selected && parent);
-
-      const content = h.querySelector<HTMLElement>(".pte-hcell-content");
-      if (content) content.classList.toggle("selected", selected);
-    });
-  }
-
-  _toggleColumnSelection(colID: string) {
-    this._clearSelection();
-    const col = this.core.getColumnModel().getById(colID);
-    if (!col) return;
-
-    const leaves = col.getVisibleLeaves();
-    const hasChildren = col.children.length > 0;
-
-    if (hasChildren) {
-      const ids = new Set<string>();
-      for (const leaf of leaves) ids.add(leaf.instanceID);
-
-      const allSelected = Array.from(ids).every(id => this._selectedColumnIDs.has(id));
-      if (allSelected) {
-        ids.forEach(id => this._selectedColumnIDs.delete(id));
-      } else {
-        ids.forEach(id => this._selectedColumnIDs.add(id));
-      }
-    } else {
-      if (this._selectedColumnIDs.has(col.instanceID)) {
-        this._selectedColumnIDs.delete(col.instanceID);
-      } else {
-        this._selectedColumnIDs.add(col.instanceID);
-      }
-    }
-
-    const colsWithSelectedChildren = new Map<string, Column>();
-    for (const selectedColID of this._selectedColumnIDs) {
-      const col = this.core.getColumnModel().getById(selectedColID);
-      if (!col) continue;
-      if (col.children.length > 0) colsWithSelectedChildren.set(col.instanceID, col);
-      else {
-        const tree = this.core.getColumnModel().getAncestors(selectedColID);
-        if (tree.length > 1) {
-          tree.slice(0, -1).forEach(e => colsWithSelectedChildren.set(e.instanceID, e));
-        }
-      }
-    }
-
-    for (const col of colsWithSelectedChildren.values()) {
-      const leaves = col.getVisibleLeaves();
-      if (leaves.filter(l => this._selectedColumnIDs.has(l.instanceID)).length == leaves.length) {
-        this._selectedColumnIDs.add(col.instanceID);
-      } else {
-        this._selectedColumnIDs.delete(col.instanceID);
-      }
-    }
-
-    this._applyColumnSelectionStyles();
-    this._refreshSelectionStyles();
   }
 
 }
