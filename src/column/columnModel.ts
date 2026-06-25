@@ -1,4 +1,4 @@
-import { ColDef } from "../interfaces/column";
+import { ColDef, ColumnSection } from "../interfaces/column";
 import { Column } from "./column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { IRowNode } from "../interfaces/iRowNode";
@@ -60,7 +60,7 @@ export class ColumnModel implements IColumnModel {
 
   private maxDepth: number = 1;
 
-  private _leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }> = new Map();
+  private _leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }> = new Map();
 
   private baselineWidths: Map<string, BaselineWidthDef> = new Map();
 
@@ -212,11 +212,17 @@ export class ColumnModel implements IColumnModel {
     return this.rightLeaves;
   }
 
+  getLeavesBySection(section: ColumnSection): Column[] {
+    if (section == "left") return this.getLeftLeaves();
+    if (section == "center") return this.getCenterLeaves();
+    return this.getRightLeaves();
+  }
+
   get maxHeaderDepth(): number {
     return this.maxDepth;
   }
 
-  get leafColumnLookup(): Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }> {
+  get leafColumnLookup(): Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }> {
     return this._leafColumnLookup;
   }
 
@@ -289,7 +295,7 @@ export class ColumnModel implements IColumnModel {
   private updateLeafColumnLookup() {
     this._leafColumnLookup = new Map();
 
-    const addCols = (cols: Column[], section: "left" | "center" | "right") => {
+    const addCols = (cols: Column[], section: ColumnSection) => {
       for (const col of cols) {
         if (col.hidden) continue;
         this._leafColumnLookup.set(col.instanceID, { section, globalIndex, localIndex: localIndex });
@@ -611,7 +617,7 @@ export class ColumnModel implements IColumnModel {
     return this.resizeActualColumn(col, width);
   }
 
-  moveColumnTo(colId: string, targetIndex: number, section: "left" | "center" | "right"): boolean {
+  moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {
     const col = this.getById(colId);
     if (!col || col.isInternal()) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);

@@ -1,4 +1,5 @@
 import { Column } from "../column/column";
+import { ColumnSection } from "./column";
 import { ColumnState } from "./iGridCore";
 
 export interface IColumnModel {
@@ -17,8 +18,9 @@ export interface IColumnModel {
   getLeftLeaves(): Column[];
   getCenterLeaves(): Column[];
   getRightLeaves(): Column[];
+  getLeavesBySection(section: ColumnSection): Column[];
   readonly maxHeaderDepth: number;
-  readonly leafColumnLookup: Map<string, { section: "left" | "center" | "right"; globalIndex: number; localIndex: number }>;
+  readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
   getAncestors(colId: string): Column[];

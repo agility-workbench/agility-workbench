@@ -10,6 +10,8 @@ export enum ColumnType {
   CURRENCY = "currency",
 }
 
+export type ColumnSection = "left" | "center" | "right";
+
 export interface ColDef {
   colId?: string;
   key?: string;
