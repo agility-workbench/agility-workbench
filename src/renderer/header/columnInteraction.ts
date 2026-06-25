@@ -1,9 +1,8 @@
+import { ColumnSection } from "../../interfaces/column";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
-
-type ColumnSection = "left" | "center" | "right";
 
 interface ColumnInteractionRendererParams {
   core: GridCore;
@@ -133,7 +132,7 @@ export class ColumnInteractionRenderer {
     }
 
     const section = this.dragSection || "center";
-    const headers = this.getReorderableHeaders(section);
+    const headers = this.getDropAnchorHeaders(section);
     if (headers.length === 0) {
       this.dragTargetIndex = -1;
       return;
@@ -211,20 +210,20 @@ export class ColumnInteractionRenderer {
   }
 
   private maybeStartColumnDrag(col: Column, header: HTMLDivElement, e: MouseEvent, allowDrop = true) {
-    const reorderable = this.isColumnReorderable(col);
-    if (allowDrop && !reorderable) return;
+    const draggable = this.isDragSource(col);
+    if (allowDrop && !draggable) return;
     this.draggingColumn = col;
     this.dragHeaderEl = header;
     this.dragStartX = e.clientX;
     this.dragStartY = e.clientY;
     this.dragLastX = e.clientX;
-    this.dragAllowsDrop = allowDrop && reorderable;
+    this.dragAllowsDrop = allowDrop && draggable;
     const meta = this.params.leafColumnLookup().get(col.instanceID);
     const section = meta?.section ?? (col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center");
     this.dragSection = section;
     this.dragHeaderContainer = this.getSectionContainer(section);
     this.dragTargetIndex = this.dragAllowsDrop
-      ? this.getReorderableColumns(section).findIndex(c => c.instanceID === col.instanceID)
+      ? this.getDropAnchorLeaves(section).findIndex(c => c.instanceID === col.instanceID)
       : -1;
     this.isDraggingColumn = false;
     this.dragDirection = null;
@@ -298,16 +297,13 @@ export class ColumnInteractionRenderer {
     return null;
   }
 
-  private getReorderableColumns(section: ColumnSection = "center"): Column[] {
-    const source = section === "left"
-      ? this.params.core.getColumnModel().getLeftColumns()
-      : section === "right"
-        ? this.params.core.getColumnModel().getRightColumns()
-        : this.params.core.getColumnModel().getCenterColumns();
-    return source.filter(c => this.isColumnReorderable(c));
+  private getDropAnchorLeaves(section: ColumnSection = "center"): Column[] {
+    const model = this.params.core.getColumnModel();
+    const leaves = model.getLeavesBySection(section);
+    return leaves.filter(c => this.isDropAnchor(c));
   }
 
-  private getReorderableHeaders(section: ColumnSection = "center"): Array<{ col: Column; el: HTMLDivElement }> {
+  private getDropAnchorHeaders(section: ColumnSection = "center"): Array<{ col: Column; el: HTMLDivElement }> {
     const container = this.getSectionContainer(section);
     const headers = Array.from(container.children) as HTMLDivElement[];
     const output: Array<{ col: Column; el: HTMLDivElement }> = [];
@@ -317,11 +313,11 @@ export class ColumnInteractionRenderer {
       if (!col) continue;
       if (col.children.length > 0) {
         const leaves = col.getLeaves();
-        leaves.filter(c => this.isColumnReorderable(c)).forEach(leaf => {
+        leaves.filter(c => this.isDropAnchor(c)).forEach(leaf => {
           output.push({ col: leaf, el: document.getElementById(leaf.instanceID) as HTMLDivElement });
         });
         continue;
-      } else if (this.isColumnReorderable(col)) {
+      } else if (this.isDropAnchor(col)) {
         output.push({ col, el });
       }
     }
@@ -392,9 +388,14 @@ export class ColumnInteractionRenderer {
     this.setDragCursor(false);
   }
 
-  private isColumnReorderable(col: Column): boolean {
+  private isDragSource(col: Column): boolean {
     if (!col) return false;
     return !col.isInternal() && col.movable && col.isVisible();
+  }
+
+  private isDropAnchor(col: Column): boolean {
+    if (!col) return false;
+    return !col.isInternal() && col.isVisible();
   }
 
   private setDragCursor(active: boolean, allowDrop = true) {
