@@ -5,6 +5,7 @@ import { GridOptions, GridRenderer } from "@grid";
 import { IGridCore } from "@grid/interfaces";
 import { createApi, createCore, getGridOptions } from "./factory";
 import { IGridAPI } from "@grid/interfaces";
+import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@grid/renderer";
 import { isFalse } from "@grid/misc";
@@ -45,7 +46,11 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       }
 
       const core = createCore(getGridOptions(props));
-      const renderer = initDomRenderer(core, new ReactMenuAdapter({ getColumnMenuItems: props.getColumnMenuItems }));
+      const renderer = initDomRenderer(
+        core,
+        new ReactMenuAdapter({ getColumnMenuItems: props.getColumnMenuItems }),
+        new ReactBodyMenuAdapter({ getBodyMenuItems: props.getBodyMenuItems }),
+      );
       const api = createApi(core);
 
       coreRef.current = core;

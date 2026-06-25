@@ -1,6 +1,6 @@
 import { ColDef, GridOptions } from "@grid";
 import { IGridAPI } from "@grid/interfaces/iGridAPI";
-import { ColumnMenuContext } from "@grid/menu";
+import { BodyMenuContext, ColumnMenuContext } from "@grid/menu";
 import { ReactColDef } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
@@ -22,4 +22,7 @@ export interface GridReactProps extends GridOptions{
 
   /** Hook to customize column menu items */
   getColumnMenuItems?: (p: { ctx: ColumnMenuContext; items: MenuItem[] }) => MenuItem[];
+
+  /** Hook to customize body context menu items (right-click anywhere in the body, including row-number cells) */
+  getBodyMenuItems?: (p: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 }

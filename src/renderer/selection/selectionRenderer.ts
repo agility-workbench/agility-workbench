@@ -46,6 +46,25 @@ export class SelectionRenderer {
     return this.selectedRowIDs;
   }
 
+  // ---------------- Context-menu helpers ----------------
+  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
+    if (this.selectionRange) {
+      const r = this.selectionRange;
+      if (viewIdx >= r.rowStart && viewIdx <= r.rowEnd && colIdx >= r.colStart && colIdx <= r.colEnd) return true;
+    }
+    if (this.selectedRowIDs.has(rowId)) return true;
+    if (this.selectedColumnIDs.has(colId)) return true;
+    return false;
+  }
+
+  selectSingleCell(viewIdx: number, colIdx: number) {
+    this.clearRowSelection();
+    this.clearColumnSelectionState();
+    this.startSelectionFromCell({ viewIdx, colIdx });
+    this.isSelecting = false;
+    this.applyColumnSelectionStyles();
+  }
+
   // ---------------- Hot path: per-row styling ----------------
   applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
     const range = this.selectionRange;

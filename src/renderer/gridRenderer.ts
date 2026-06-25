@@ -30,6 +30,7 @@ import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
+import { BodyMenuOpener } from "./bodyMenuOpener";
 import { ColumnMenuOpener } from "./columnMenuOpener";
 import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderInteractionHandler } from "./header/interactionHandler";
@@ -54,6 +55,7 @@ export class GridRenderer {
   _modelChangeHandler: GridModelChangeHandler;
   _exportRenderer: ExportRenderer;
   _columnMenuOpener: ColumnMenuOpener;
+  _bodyMenuOpener: BodyMenuOpener | null = null;
   _filterUpdateHandler: FilterUpdateHandler;
   _aggregateCalculator: AggregateCalculator;
   _aggregateModelController: AggregateModelController;
@@ -130,6 +132,10 @@ export class GridRenderer {
     private core: GridCore,
     menuCoordinator: MenuCoordinator,
     filterMenuCoordinator: FilterMenuCoordinator,
+    createBodyMenuCoordinator?: (
+      exporter: import("../menu/bodyMenuService").BodyMenuExportTarget,
+      clipboard: import("../menu/bodyMenuService").BodyMenuClipboardTarget,
+    ) => import("../menu/bodyMenuCoordinator").BodyMenuCoordinator,
   ) {
     this._measureCtx = null;
     this._measureCache = new Map();
@@ -195,6 +201,24 @@ export class GridRenderer {
       menuRenderer: this._menuRenderer,
       selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
     });
+    if (createBodyMenuCoordinator) {
+      const bodyMenuCoordinator = createBodyMenuCoordinator(
+        {
+          exportCSV: (opts) => this._exportRenderer.exportCSV(opts),
+          exportExcel: (opts) => this._exportRenderer.exportExcel(opts),
+        },
+        {
+          copySelection: ({ includeHeaders, ctx }) => this._copySelectionToClipboard({ includeHeaders, ctx }),
+        },
+      );
+      this._bodyMenuOpener = new BodyMenuOpener({
+        core: this.core,
+        root: this.root,
+        bodyMenuCoordinator,
+        menuRenderer: this._menuRenderer,
+        selectionRenderer: this._selectionRenderer,
+      });
+    }
     this._filterUpdateHandler = new FilterUpdateHandler({
       core: this.core,
       setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
@@ -293,6 +317,7 @@ export class GridRenderer {
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
       onCellMouseDown: (e) => this._selectionRenderer.onCellMouseDown(e),
+      onBodyContextMenu: (e) => this._bodyMenuOpener?.onBodyContextMenu(e),
       onColumnResizeMouseMove: (e) => this._columnInteractionRenderer.onColumnResizeMouseMove(e),
       onColumnDragMouseMove: (e) => this._columnInteractionRenderer.onColumnDragMouseMove(e),
       onCellMouseMove: (e) => this._selectionRenderer.onCellMouseMove(e),
@@ -634,6 +659,91 @@ export class GridRenderer {
   _rebuildRowPool() {
     // If columns change frequently, you’d do smarter diffing.
     this._buildRowPool();
+  }
+
+  private _copySelectionToClipboard({ includeHeaders, ctx }: {
+    includeHeaders: boolean;
+    ctx: import("../menu/bodyContext").BodyMenuContext;
+  }) {
+    const tsv = this._buildClipboardTSV(includeHeaders, ctx);
+    if (!tsv) return;
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(tsv).catch(err => {
+        console.error("Failed to write to clipboard", err);
+      });
+      return;
+    }
+
+    const ta = document.createElement("textarea");
+    ta.value = tsv;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (err) { console.error("Failed to copy to clipboard", err); }
+    document.body.removeChild(ta);
+  }
+
+  private _buildClipboardTSV(includeHeaders: boolean, ctx: import("../menu/bodyContext").BodyMenuContext): string {
+    const columnModel = this.core.getColumnModel();
+    const allLeaves = columnModel.getLeaves().filter(c => !c.isInternal() && !c.hidden);
+    const rowModel = this.core.getRowModel();
+
+    let cols = allLeaves;
+    let viewIdxRange: { start: number; end: number };
+
+    if (ctx.selection.range) {
+      const r = ctx.selection.range;
+      cols = allLeaves.filter((_, idx) => {
+        const globalIdx = columnModel.getLeaves().indexOf(allLeaves[idx]);
+        return globalIdx >= r.colStart && globalIdx <= r.colEnd;
+      });
+      viewIdxRange = { start: r.rowStart, end: r.rowEnd };
+    } else if (ctx.selection.rowIds.length > 0) {
+      const rowIdSet = new Set(ctx.selection.rowIds);
+      const viewIdxs: number[] = [];
+      for (let i = 0; i < rowModel.getViewCount(); i++) {
+        const id = this.core.getRowIdAtViewIndex(i);
+        if (id && rowIdSet.has(id)) viewIdxs.push(i);
+      }
+      if (viewIdxs.length === 0) return "";
+      return this.serializeRowsToTSV(cols, viewIdxs, includeHeaders);
+    } else if (ctx.selection.colIds.length > 0) {
+      cols = allLeaves.filter(c => ctx.selection.colIds.includes(c.instanceID));
+      viewIdxRange = { start: 0, end: rowModel.getViewCount() - 1 };
+    } else {
+      cols = allLeaves.filter(c => c.instanceID === ctx.colId);
+      viewIdxRange = { start: ctx.viewIdx, end: ctx.viewIdx };
+    }
+
+    const viewIdxs: number[] = [];
+    for (let i = viewIdxRange.start; i <= viewIdxRange.end; i++) viewIdxs.push(i);
+    return this.serializeRowsToTSV(cols, viewIdxs, includeHeaders);
+  }
+
+  private serializeRowsToTSV(cols: import("../column/column").Column[], viewIdxs: number[], includeHeaders: boolean): string {
+    const rowModel = this.core.getRowModel();
+    const lines: string[] = [];
+    if (includeHeaders) {
+      lines.push(cols.map(c => this.escapeTSV(c.label ?? c.key ?? "")).join("\t"));
+    }
+    for (const viewIdx of viewIdxs) {
+      const node = rowModel.getRowNodeAtViewIndex(viewIdx);
+      if (!node) continue;
+      const cells = cols.map(col => this.escapeTSV(col.formatValue(col.getValue(node), node)));
+      lines.push(cells.join("\t"));
+    }
+    return lines.join("\n");
+  }
+
+  private escapeTSV(value: unknown): string {
+    if (value == null) return "";
+    const s = String(value);
+    if (s.includes("\t") || s.includes("\n") || s.includes("\r") || s.includes('"')) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
   }
 
 }
