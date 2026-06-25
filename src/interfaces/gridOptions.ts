@@ -14,6 +14,7 @@ export interface GridOptions {
   allowExportAsExcel?: boolean;
   pagination?: boolean;
   rowNumbers?: boolean;
+  rowSelection?: boolean;
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
@@ -39,6 +40,7 @@ export interface InternalGridOptions extends GridOptions {
   allowExportAsExcel: boolean;
   pagination: boolean;
   rowNumbers: boolean;
+  rowSelection: boolean;
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;

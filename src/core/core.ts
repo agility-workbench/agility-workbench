@@ -81,6 +81,7 @@ export class GridCore implements IGridCore {
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
       rowNumbers: isTrue(options.rowNumbers),
+      rowSelection: options.rowSelection ?? isTrue(options.rowNumbers),
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,

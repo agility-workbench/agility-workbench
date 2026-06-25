@@ -464,7 +464,7 @@ export class SelectionRenderer {
     if (e.button !== 0) return;
 
     const rowNumberCell = (e.target as HTMLElement | null)?.closest(".pte-row-number-cell") as HTMLDivElement | null;
-    if (rowNumberCell && this.params.root.contains(rowNumberCell)) {
+    if (rowNumberCell && this.params.root.contains(rowNumberCell) && this.params.core.options.rowSelection) {
       const rowEl = rowNumberCell.closest(".pte-row") as HTMLDivElement | null;
       const viewIdx = rowEl ? Number(rowEl.getAttribute("data-view-idx")) : NaN;
       if (!Number.isFinite(viewIdx)) return;
