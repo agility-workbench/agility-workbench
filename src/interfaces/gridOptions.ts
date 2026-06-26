@@ -22,6 +22,13 @@ export interface GridOptions {
   serverSideDataSource?: IServerSideDataSource;
   serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
   /**
+   * When true, every data refresh (after the first) recomputes column widths
+   * from the new data and updates affected widths in place. When false, column
+   * widths are computed only on the first data load and stay fixed thereafter.
+   * Defaults to true for server-side row models, false for client-side.
+   */
+  autosizeColumnsOnDataChange?: boolean;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -44,5 +51,6 @@ export interface InternalGridOptions extends GridOptions {
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;
+  autosizeColumnsOnDataChange: boolean;
   icons?: GridIconMap;
 }

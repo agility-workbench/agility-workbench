@@ -35,6 +35,7 @@ export class GridCore implements IGridCore {
 
   private rowModel: IRowModel;
   private requestIdCounter: number = 0;
+  private firstRefreshSeen: boolean = false;
 
   private paginationEnabled: boolean = false;
   private pageStartIdx: number = 0;
@@ -85,6 +86,7 @@ export class GridCore implements IGridCore {
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
+      autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       icons: options.icons,
     };
   }
@@ -376,6 +378,7 @@ export class GridCore implements IGridCore {
 
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
+    this.firstRefreshSeen = false;
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
     this.emit("modelUpdated", { reason: "init", step: "all" });
@@ -822,9 +825,14 @@ export class GridCore implements IGridCore {
       return;
     }
     if (params.reason === "init" || params.reason === "refresh") {
-      const changedColIds = this.autosizeColumns();
-      if (changedColIds.length > 0) {
-        this.emit("columnsChanged", { reason: "resize", changedColIds });
+      const isFirstRefresh = params.reason === "init" || !this.firstRefreshSeen;
+      if (params.reason === "refresh") this.firstRefreshSeen = true;
+      const shouldAutosize = isFirstRefresh || this.options.autosizeColumnsOnDataChange;
+      if (shouldAutosize) {
+        const changedColIds = this.autosizeColumns();
+        if (changedColIds.length > 0) {
+          this.emit("columnsChanged", { reason: "resize", changedColIds });
+        }
       }
     }
     this.emit("rowsChanged", {
