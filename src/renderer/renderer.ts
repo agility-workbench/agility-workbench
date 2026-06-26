@@ -4,6 +4,7 @@ export interface CellRendererParams {
   value: any;
   valueFormatted?: any;
   data: any;
+  rowId: string;
   rowIndex: number;
   colDef: Column;
   api: any;
@@ -123,6 +124,7 @@ export function getCellRendererParams(
     value: value,
     valueFormatted: formattedValue,
     data: row,
+    rowId: String(row?.id ?? rowIndex),
     rowIndex: rowIndex,
     colDef: col,
     api: api,

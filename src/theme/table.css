@@ -77,6 +77,9 @@
   --pte-not-allowed-icon-color: #ef4444;
   --pte-sparkline-stroke-color: #0ea5e9;
   --pte-sparkline-bar-color: #93c5fd;
+  --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
+  --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
+  --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
 }
 
 .pte-theme-dark {
@@ -123,6 +126,9 @@
   --pte-not-allowed-icon-color: #f87171;
   --pte-sparkline-stroke-color: #38bdf8;
   --pte-sparkline-bar-color: #60a5fa;
+  --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
+  --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
+  --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
 }
 
 *[class^="pte-"],
@@ -989,6 +995,35 @@
 
 .pte-sparkline-bar {
   fill: var(--pte-sparkline-bar-color);
+}
+
+.pte-cell-flash {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  box-sizing: border-box;
+}
+
+.pte-cell-flash-up {
+  background-color: var(--pte-cell-flash-up-bg-color);
+}
+
+.pte-cell-flash-down {
+  background-color: var(--pte-cell-flash-down-bg-color);
+}
+
+.pte-cell-flash-neutral {
+  background-color: var(--pte-cell-flash-neutral-bg-color);
+}
+
+.pte-cell-flash-fading.pte-cell-flash-up,
+.pte-cell-flash-fading.pte-cell-flash-down,
+.pte-cell-flash-fading.pte-cell-flash-neutral {
+  background-color: transparent;
+  transition: background-color var(--pte-cell-flash-fade-duration, 1000ms) ease-out;
 }
 
 .pte-cell-right-aligned {

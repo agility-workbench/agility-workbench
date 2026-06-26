@@ -31,3 +31,6 @@ export type {
   FormatterOptionsParams,
   ValueFormatterParams,
 } from "./column/formatters";
+
+export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
+export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
