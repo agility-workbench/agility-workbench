@@ -289,16 +289,27 @@ export class GridCore implements IGridCore {
     return next;
   }
 
-  private autosizeColumns(identifyComparators: boolean = true) {
+  private autosizeColumns(identifyComparators: boolean = true): string[] {
     const allRows: IRowNode[] = [];
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
+    });
+    const previousWidths = new Map<string, number>();
+    this.columnModel.walkColumns((col) => {
+      previousWidths.set(col.instanceID, col.computedWidth);
     });
     this.columnModel.computeColumnWidths(this.measureCtx, this.textMeasureParams, allRows);
     this.columnModel.updateParentColumnWidthsForAll();
     if (identifyComparators) {
       this.columnModel.identifyComparators(allRows);
     }
+    const changedColIds: string[] = [];
+    this.columnModel.walkColumns((col) => {
+      if (previousWidths.get(col.instanceID) !== col.computedWidth) {
+        changedColIds.push(col.instanceID);
+      }
+    });
+    return changedColIds;
   }
 
   private autosizeParentColumn(column: Column) {
@@ -811,8 +822,10 @@ export class GridCore implements IGridCore {
       return;
     }
     if (params.reason === "init" || params.reason === "refresh") {
-      this.autosizeColumns();
-      this.emit("columnsChanged", { reason: "state" });
+      const changedColIds = this.autosizeColumns();
+      if (changedColIds.length > 0) {
+        this.emit("columnsChanged", { reason: "resize", changedColIds });
+      }
     }
     this.emit("rowsChanged", {
       reason: params.reason,
