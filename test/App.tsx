@@ -13,6 +13,7 @@ import type {
   RowModelType,
 } from "@grid";
 import type { CellRendererParams } from "@grid/renderer/renderer";
+import { ChangeFlashCellRenderer } from "@grid";
 
 const GRID_SERVER_URL = "http://localhost:8008";
 
@@ -98,6 +99,137 @@ function LocationCellRenderer(params: CellRendererParams) {
       </span>
       <span className="location-cell-code">{meta.icon}</span>
     </span>
+  );
+}
+
+const TRADING_SYMBOLS = [
+  { symbol: "AAPL", name: "Apple Inc.", base: 192.34 },
+  { symbol: "MSFT", name: "Microsoft Corp.", base: 418.55 },
+  { symbol: "NVDA", name: "NVIDIA Corp.", base: 928.10 },
+  { symbol: "GOOGL", name: "Alphabet Inc.", base: 174.21 },
+  { symbol: "AMZN", name: "Amazon.com Inc.", base: 186.77 },
+  { symbol: "META", name: "Meta Platforms", base: 502.18 },
+  { symbol: "TSLA", name: "Tesla Inc.", base: 248.94 },
+  { symbol: "AMD", name: "Adv. Micro Devices", base: 162.05 },
+  { symbol: "NFLX", name: "Netflix Inc.", base: 632.42 },
+  { symbol: "INTC", name: "Intel Corp.", base: 32.18 },
+  { symbol: "ORCL", name: "Oracle Corp.", base: 138.55 },
+  { symbol: "CRM", name: "Salesforce Inc.", base: 290.31 },
+  { symbol: "ADBE", name: "Adobe Inc.", base: 524.87 },
+  { symbol: "PYPL", name: "PayPal Holdings", base: 64.22 },
+  { symbol: "UBER", name: "Uber Technologies", base: 71.13 },
+  { symbol: "SHOP", name: "Shopify Inc.", base: 65.47 },
+];
+
+type TradingRow = {
+  symbol: string;
+  name: string;
+  ltp: number;
+  bid: number;
+  ask: number;
+  change: number;
+  changePct: number;
+  volume: number;
+};
+
+function buildInitialTradingRows(): TradingRow[] {
+  return TRADING_SYMBOLS.map(({ symbol, name, base }) => ({
+    symbol,
+    name,
+    ltp: base,
+    bid: +(base - 0.05).toFixed(2),
+    ask: +(base + 0.05).toFixed(2),
+    change: 0,
+    changePct: 0,
+    volume: Math.floor(500_000 + Math.random() * 4_500_000),
+  }));
+}
+
+function TradingGrid() {
+  const [rows, setRows] = useState<TradingRow[]>(() => buildInitialTradingRows());
+  const basePrices = useMemo(() => {
+    const map = new Map<string, number>();
+    TRADING_SYMBOLS.forEach((s) => map.set(s.symbol, s.base));
+    return map;
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setRows((current) => {
+        const updatesPerTick = Math.max(1, Math.floor(current.length * 0.4));
+        const next = current.slice();
+        for (let i = 0; i < updatesPerTick; i++) {
+          const idx = Math.floor(Math.random() * next.length);
+          const row = next[idx];
+          const drift = (Math.random() - 0.5) * row.ltp * 0.004;
+          const newLtp = +Math.max(0.01, row.ltp + drift).toFixed(2);
+          const base = basePrices.get(row.symbol) ?? newLtp;
+          const change = +(newLtp - base).toFixed(2);
+          const changePct = +((change / base) * 100).toFixed(2);
+          next[idx] = {
+            ...row,
+            ltp: newLtp,
+            bid: +(newLtp - 0.05).toFixed(2),
+            ask: +(newLtp + 0.05).toFixed(2),
+            change,
+            changePct,
+            volume: row.volume + Math.floor(Math.random() * 5000),
+          };
+        }
+        return next;
+      });
+    }, 600);
+    return () => window.clearInterval(id);
+  }, [basePrices]);
+
+  const columnDefs = useMemo<ReactColDef[]>(() => [
+    { colId: "symbol", key: "symbol", label: "Symbol", width: 90 },
+    { colId: "name", key: "name", label: "Name", width: 180 },
+    {
+      colId: "ltp", key: "ltp", label: "LTP", width: 110,
+      cellRenderer: ChangeFlashCellRenderer,
+      cellRendererParams: { cellFlashDuration: 400, cellFadeDuration: 900 },
+    },
+    {
+      colId: "bid", key: "bid", label: "Bid", width: 100,
+      cellRenderer: ChangeFlashCellRenderer,
+      cellRendererParams: { cellFlashDuration: 300, cellFadeDuration: 700 },
+    },
+    {
+      colId: "ask", key: "ask", label: "Ask", width: 100,
+      cellRenderer: ChangeFlashCellRenderer,
+      cellRendererParams: { cellFlashDuration: 300, cellFadeDuration: 700 },
+    },
+    {
+      colId: "change", key: "change", label: "Chg", width: 90,
+      cellRenderer: ChangeFlashCellRenderer,
+      cellRendererParams: {
+        cellFlashDuration: 400,
+        cellFadeDuration: 900,
+        direction: (_prev: any, next: any) =>
+          next > 0 ? "up" : next < 0 ? "down" : "neutral",
+      },
+    },
+    {
+      colId: "changePct", key: "changePct", label: "Chg %", width: 100,
+      cellRenderer: ChangeFlashCellRenderer,
+      cellRendererParams: {
+        cellFlashDuration: 400,
+        cellFadeDuration: 900,
+        direction: (_prev: any, next: any) =>
+          next > 0 ? "up" : next < 0 ? "down" : "neutral",
+      },
+    },
+    { colId: "volume", key: "volume", label: "Volume", width: 120 },
+  ], []);
+
+  return (
+    <GridReact
+      data={rows}
+      columnDefs={columnDefs}
+      rowIdKey="symbol"
+      style={{ width: "100%", height: "100%" }}
+    />
   );
 }
 
@@ -342,7 +474,8 @@ function App() {
         {/* {loading && <div>Loading data…</div>} */}
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ flex: 1, minHeight: 0 }}>
         <GridReact
           key={`${rowModel}-${serverSideBlockSize}-${rowNumbers ? "row-numbers" : "no-row-numbers"}`}
           data={rowData}
@@ -359,6 +492,16 @@ function App() {
           pageSize={100}
           pageSizes={[25, 50, 100, 250, 500, 1000]}
         />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <strong style={{ fontSize: "13px" }}>Trading terminal</strong>
+          <span style={{ fontSize: "12px", color: "#6b7280" }}>
+            (live tick simulation — green/red flashes show up/down LTP, bid, ask, change moves)
+          </span>
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }} className={activeTheme.className}>
+          <TradingGrid />
+        </div>
       </div>
     </div>
   );
