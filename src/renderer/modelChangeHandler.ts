@@ -1,6 +1,7 @@
 import { GridCore } from "../core/core";
 import {
   GridEventColumnsChangedParams,
+  GridEventColumnWidthsChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
 } from "../events/events";
@@ -70,15 +71,17 @@ export class GridModelChangeHandler {
       this.params.buildHeaderDOM(params.reason);
       this.params.updateColumnWidths();
       rebuiltRows = true;
-    } else if (params.reason !== "resize") {
+    } else {
       this.params.buildRowPool();
       this.params.buildHeaderDOM(params.reason);
       rebuiltRows = true;
-    } else {
-      this.params.updateColumnWidths(params.changedColIds || []);
     }
     if (rebuiltRows) {
       this.params.updateWindow(true, undefined);
     }
+  }
+
+  onColumnWidthsChanged(params: GridEventColumnWidthsChangedParams) {
+    this.params.updateColumnWidths(params.changedColIds);
   }
 }

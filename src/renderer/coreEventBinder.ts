@@ -1,6 +1,7 @@
 import { GridCore } from "../core/core";
 import {
   GridEventColumnsChangedParams,
+  GridEventColumnWidthsChangedParams,
   GridEventAggregateChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
@@ -14,6 +15,7 @@ interface GridRendererCoreEventBinderParams {
   buildPaginationControls: () => void;
   maybeUpdatePoolSize: (params: GridEventViewportChangedParams) => void;
   onColumnsChanged: (params: GridEventColumnsChangedParams) => void;
+  onColumnWidthsChanged: (params: GridEventColumnWidthsChangedParams) => void;
   onDataChanged: (params: GridEventRowsChangedParams) => void;
   onAggregateChanged: (params: GridEventAggregateChangedParams) => void;
   updatePaginationControls: (params: GridEventPaginationChangedParams) => void;
@@ -39,6 +41,9 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("columnsChanged", (params: GridEventColumnsChangedParams) => {
         this.params.onColumnsChanged(params);
+      }),
+      this.params.core.on("columnWidthsChanged", (params: GridEventColumnWidthsChangedParams) => {
+        this.params.onColumnWidthsChanged(params);
       }),
       this.params.core.on("rowsChanged", (params: GridEventRowsChangedParams) => {
         this.params.onDataChanged(params);

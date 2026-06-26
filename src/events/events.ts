@@ -7,6 +7,7 @@ export type GridEventName =
   | "modelUpdated"
   | "viewportChanged"
   | "columnsChanged"
+  | "columnWidthsChanged"
   | "cellsChanged"
   | "rowsChanged"
   | "aggregateChanged"
@@ -53,8 +54,13 @@ export type GridEventViewportChangedParams = {
 };
 
 export type GridEventColumnsChangedParams = {
-  reason: "defs" | "state" | "resize" | "pin" | "visibility" | "order" | "sort" | "filter";
+  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter";
   changedColIds?: ColId[];
+};
+
+export type GridEventColumnWidthsChangedParams = {
+  /** Columns whose computedWidth changed. Empty array means "all visible columns". */
+  changedColIds: ColId[];
 };
 
 export type GridEventRowsChangedParams = {
@@ -124,6 +130,7 @@ export interface GridEventMap {
   modelUpdated: GridEventModelUpdatedParams;
   viewportChanged: GridEventViewportChangedParams;
   columnsChanged: GridEventColumnsChangedParams;
+  columnWidthsChanged: GridEventColumnWidthsChangedParams;
   rowsChanged: GridEventRowsChangedParams;
   aggregateChanged: GridEventAggregateChangedParams;
   cellsChanged: GridEventCellsChangedParams;

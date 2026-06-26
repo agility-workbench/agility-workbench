@@ -156,6 +156,7 @@ export class GridRenderer {
       buildPaginationControls: () => this.buildPaginationControls(),
       maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
       onColumnsChanged: (params) => this._modelChangeHandler.onColumnsChanged(params),
+      onColumnWidthsChanged: (params) => this._modelChangeHandler.onColumnWidthsChanged(params),
       onDataChanged: (params) => this._modelChangeHandler.onDataChanged(params),
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),

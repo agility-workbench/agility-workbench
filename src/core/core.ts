@@ -715,8 +715,11 @@ export class GridCore implements IGridCore {
       case "themeFontSet":
         console.log("Setting theme fonts", "Reason:", action.reason);
         this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
-        if (action.reason !== "visibility" && action.reason !== "pin") this.autosizeColumns(false);
-        this.emit("columnsChanged", { reason: "resize" });
+        let themeFontChangedColIds: string[] = [];
+        if (action.reason !== "visibility" && action.reason !== "pin") {
+          themeFontChangedColIds = this.autosizeColumns(false);
+        }
+        this.emit("columnWidthsChanged", { changedColIds: themeFontChangedColIds });
         break;
       case "rowDataSet":
         this.setRowData(action.rows);
@@ -724,13 +727,13 @@ export class GridCore implements IGridCore {
       case "columnAutosize":
         const autosizedColIds = this.autosizeColumn(action.colId);
         if (autosizedColIds.length > 0) {
-          this.emit("columnsChanged", { reason: "resize", changedColIds: autosizedColIds });
+          this.emit("columnWidthsChanged", { changedColIds: autosizedColIds });
         }
         break;
       case "columnResize":
         const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
         if (resizedColIds.length > 0) {
-          this.emit("columnsChanged", { reason: "resize", changedColIds: resizedColIds });
+          this.emit("columnWidthsChanged", { changedColIds: resizedColIds });
         }
         break;
       case "sortModelSet":
@@ -831,7 +834,7 @@ export class GridCore implements IGridCore {
       if (shouldAutosize) {
         const changedColIds = this.autosizeColumns();
         if (changedColIds.length > 0) {
-          this.emit("columnsChanged", { reason: "resize", changedColIds });
+          this.emit("columnWidthsChanged", { changedColIds });
         }
       }
     }
