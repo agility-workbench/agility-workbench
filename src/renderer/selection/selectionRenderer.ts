@@ -8,6 +8,7 @@ export interface SelectionRange {
   rowEnd: number;
   colStart: number;
   colEnd: number;
+  pageStartIdx: number;
 }
 
 export interface SelectionAnchor {
@@ -35,6 +36,8 @@ export class SelectionRenderer {
 
   // ---------------- Public accessors ----------------
   getSelectionRange(): SelectionRange | null {
+    if (!this.selectionRange) return null;
+    if (this.selectionRange.pageStartIdx !== this.params.core.getPageStartIdx()) return null;
     return this.selectionRange;
   }
 
@@ -48,8 +51,8 @@ export class SelectionRenderer {
 
   // ---------------- Context-menu helpers ----------------
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
-    if (this.selectionRange) {
-      const r = this.selectionRange;
+    const r = this.selectionRange;
+    if (r && r.pageStartIdx === this.params.core.getPageStartIdx()) {
       if (viewIdx >= r.rowStart && viewIdx <= r.rowEnd && colIdx >= r.colStart && colIdx <= r.colEnd) return true;
     }
     if (this.selectedRowIDs.has(rowId)) return true;
@@ -67,7 +70,10 @@ export class SelectionRenderer {
 
   // ---------------- Hot path: per-row styling ----------------
   applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
-    const range = this.selectionRange;
+    const storedRange = this.selectionRange;
+    const range = storedRange && storedRange.pageStartIdx === this.params.core.getPageStartIdx()
+      ? storedRange
+      : null;
     const rangeRow = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
     const leaves = this.params.leafColumns();
@@ -171,6 +177,7 @@ export class SelectionRenderer {
       rowEnd: location.viewIdx,
       colStart: location.colIdx,
       colEnd: location.colIdx,
+      pageStartIdx: this.params.core.getPageStartIdx(),
     };
     this.isSelecting = true;
     this.refreshSelectionStyles();
@@ -195,6 +202,7 @@ export class SelectionRenderer {
       rowEnd: Math.max(this.selectionAnchor.row, nextRow),
       colStart: Math.min(this.selectionAnchor.colIdx, nextCol),
       colEnd: Math.max(this.selectionAnchor.colIdx, nextCol),
+      pageStartIdx: this.params.core.getPageStartIdx(),
     };
     this.refreshSelectionStyles();
   }
@@ -216,6 +224,7 @@ export class SelectionRenderer {
 
   clampSelectionToView() {
     if (!this.selectionRange) return;
+    if (this.selectionRange.pageStartIdx !== this.params.core.getPageStartIdx()) return;
     const viewCount = this.params.core.getRowModel().getViewCount();
     const leafCount = this.params.leafColumns().length;
     if (viewCount === 0 || leafCount === 0) {
@@ -235,6 +244,7 @@ export class SelectionRenderer {
       rowEnd: Math.max(rowStart, rowEnd),
       colStart: Math.min(colStart, colEnd),
       colEnd: Math.max(colStart, colEnd),
+      pageStartIdx: this.selectionRange.pageStartIdx,
     };
 
     if (this.selectionAnchor) {

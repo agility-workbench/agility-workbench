@@ -180,6 +180,7 @@ export class GridRenderer {
       clearSelection: () => this._selectionRenderer?.clearSelection(),
       clearColumnSelection: () => this._selectionRenderer?.clearColumnSelection(),
       clearRowSelection: () => this._selectionRenderer?.clearRowSelection(),
+      refreshSelectionStyles: () => this._selectionRenderer?.refreshSelectionStyles(),
     });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,

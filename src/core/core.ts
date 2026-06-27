@@ -491,6 +491,10 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
   }
 
+  getPageStartIdx(): number {
+    return this.paginationEnabled ? this.pageStartIdx : 0;
+  }
+
   getPaginationInfo(): GridEventPaginationChangedParams {
     const pageSize = this.pageEndIdx - this.pageStartIdx;
     const totalRowCount = this.rowModel.getRowCount();

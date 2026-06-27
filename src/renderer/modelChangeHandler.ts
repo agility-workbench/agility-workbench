@@ -21,19 +21,23 @@ interface GridModelChangeHandlerParams {
   clearSelection: () => void;
   clearColumnSelection: () => void;
   clearRowSelection: () => void;
+  refreshSelectionStyles: () => void;
 }
 
 export class GridModelChangeHandler {
   constructor(private params: GridModelChangeHandlerParams) { }
 
   onDataChanged(params: GridEventRowsChangedParams) {
-    console.log(params);
+    const wipesSelection = params.reason === "sort" || params.reason === "filter";
+    const isPageChange = params.reason === "page" || params.reason === "pagination";
+    const resetsScroll = wipesSelection || isPageChange;
+
     if (params.reason === "viewport") {
       this.params.serverSidePendingRangeKeys.delete(`${params.firstRowIndex}:${params.lastRowIndex}`);
     } else {
       this.params.serverSidePendingRangeKeys.clear();
-      this.params.clearSelection();
-      if (params.reason === "rowData" || params.reason === "init" || params.reason === "refresh") {
+      if (wipesSelection) {
+        this.params.clearSelection();
         this.params.clearRowSelection();
       }
     }
@@ -41,7 +45,12 @@ export class GridModelChangeHandler {
       this.params.recomputeView();
     }
     this.params.updateWindow(true, undefined, params);
-    if (this.params.core.getRowModel().getType() !== "serverSide" || (params.reason !== "viewport" && params.firstRowIndex === 0)) {
+    if (isPageChange) {
+      this.params.refreshSelectionStyles();
+    }
+    if (resetsScroll
+      && (this.params.core.getRowModel().getType() !== "serverSide"
+        || (params.reason !== "viewport" && params.firstRowIndex === 0))) {
       this.params.resetScrollPosition();
     }
     this.params.updatePaginationControls();
