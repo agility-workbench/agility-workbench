@@ -87,6 +87,7 @@ export class GridCore implements IGridCore {
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
+      clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       icons: options.icons,
     };
   }

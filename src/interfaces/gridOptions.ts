@@ -29,6 +29,12 @@ export interface GridOptions {
    */
   autosizeColumnsOnDataChange?: boolean;
   /**
+   * When true, clicking inside the grid body but outside any row clears the
+   * current selection (cell range, row selection, and column selection).
+   * Defaults to true.
+   */
+  clearSelectionOnBodyClick?: boolean;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -52,5 +58,6 @@ export interface InternalGridOptions extends GridOptions {
   pageSizes: number[];
   serverSideBlockSize: number;
   autosizeColumnsOnDataChange: boolean;
+  clearSelectionOnBodyClick: boolean;
   icons?: GridIconMap;
 }

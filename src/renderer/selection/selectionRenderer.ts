@@ -509,7 +509,13 @@ export class SelectionRenderer {
 
     this.clearColumnSelection();
     const location = this.getCellLocation(e.target);
-    if (!location) return;
+    if (!location) {
+      if (this.params.core.options.clearSelectionOnBodyClick) {
+        this.clearSelection();
+        this.clearRowSelection();
+      }
+      return;
+    }
     e.preventDefault();
     this.startSelectionFromCell(location);
   }
