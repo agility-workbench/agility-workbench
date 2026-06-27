@@ -143,6 +143,7 @@ export class BodyWindowRenderer {
       }
 
       this.patchCells(slot, row, viewIndex, this.params.core.getRowNumberForViewIndex(viewIndex));
+      this.params.applySelectionToSlot(slot, viewIndex);
     }
   }
 
