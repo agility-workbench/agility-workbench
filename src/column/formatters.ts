@@ -8,6 +8,15 @@ export interface ValueFormatterParams {
   col?: Column;
 }
 
+export interface ValueParserParams {
+  // The raw text the user typed into the cell editor.
+  value: string;
+  // The current (pre-edit) stored value of the cell.
+  oldValue: any;
+  row?: IRowNode;
+  col?: Column;
+}
+
 export interface FormatterOptions {
   currency?: string;
   locale?: string;

@@ -2,7 +2,7 @@ import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
 import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
-import { SelectionSnapshot } from "../interfaces/selection";
+import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 
 export class GridAPI implements IGridAPI {
   constructor(private core: IGridCore) {}
@@ -83,6 +83,31 @@ export class GridAPI implements IGridAPI {
     // Always resolve range row/column ids for API consumers — they typically want record
     // identity, not view indices.
     return this.core.getSelectionSnapshot(true);
+  }
+
+  // ---------------- Editing ----------------
+  startEditingCell(cell: CellRef): void {
+    this.core.dispatch({ type: "editStart", cell, source: "api" });
+  }
+
+  stopEditing(value: unknown): void {
+    const cell = this.core.getEditingCell();
+    if (!cell) return;
+    this.core.dispatch({ type: "editCommit", cell, value });
+  }
+
+  cancelEditing(): void {
+    const cell = this.core.getEditingCell();
+    if (!cell) return;
+    this.core.dispatch({ type: "editCancel", cell });
+  }
+
+  getEditingCell(): CellRef | null {
+    return this.core.getEditingCell();
+  }
+
+  setCellValue(cell: CellRef, value: unknown): void {
+    this.core.dispatch({ type: "editCommit", cell, value });
   }
 
   destroy(): void {

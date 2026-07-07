@@ -24,7 +24,7 @@ import { GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel } from "./selectionModel";
-import { CellPos, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
+import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
 
 type SchemaSource = "auto" | "props" | "server";
@@ -59,6 +59,9 @@ export class GridCore implements IGridCore {
   private textMeasureParams!: TextMeasureParams;
 
   private selectionModel: SelectionModel;
+
+  // The cell currently being edited (inline editor open), or null when not editing.
+  private editingCell: CellRef | null = null;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
@@ -707,6 +710,10 @@ export class GridCore implements IGridCore {
     return this.selectionModel.getActiveCell();
   }
 
+  getEditingCell(): CellRef | null {
+    return this.editingCell;
+  }
+
   getSelectedColumnIds(): Set<string> {
     return this.selectionModel.getSelectedColumnIds();
   }
@@ -915,6 +922,41 @@ export class GridCore implements IGridCore {
         }
         this.emitSelectionChanged("api");
         break;
+      case "editStart": {
+        const col = this.columnModel.getById(action.cell.colId);
+        const row = this.rowModel.getRowNode(action.cell.rowId);
+        if (!col || !row || !col.isCellEditable(row)) break;
+        this.editingCell = action.cell;
+        this.emit("editingChanged", { state: "started", cell: action.cell });
+        break;
+      }
+      case "editCommit": {
+        const col = this.columnModel.getById(action.cell.colId);
+        const row = this.rowModel.getRowNode(action.cell.rowId);
+        this.editingCell = null;
+        if (!col || !row) {
+          this.emit("editingChanged", { state: "stopped", cell: action.cell });
+          break;
+        }
+        const oldValue = col.getValue(row);
+        const newValue = col.parseValue(String(action.value ?? ""), row, oldValue);
+        this.rowModel.setCellValue(action.cell.rowId, col.key, newValue);
+        // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
+        // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
+        // first would detach the focused input and drop keyboard focus to <body>.
+        this.emit("editingChanged", { state: "committed", cell: action.cell, value: newValue });
+        this.emit("cellsChanged", {
+          reason: "editCommit",
+          rowIds: [action.cell.rowId],
+          colIds: [col.instanceID],
+        });
+        break;
+      }
+      case "editCancel": {
+        this.editingCell = null;
+        this.emit("editingChanged", { state: "cancelled", cell: action.cell });
+        break;
+      }
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }

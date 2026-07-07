@@ -1,7 +1,7 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
-import { SelectionRange } from "../../interfaces/selection";
+import { CellRef, SelectionRange } from "../../interfaces/selection";
 import { RowPoolDef } from "../types";
 
 interface SelectionRendererParams {
@@ -221,7 +221,22 @@ export class SelectionRenderer {
 
   // ---------------- Input handlers (translate → dispatch) ----------------
   onKeyDown(e: KeyboardEvent) {
+    // While a cell editor is open it owns the keyboard (Enter/Tab/Escape/arrows); the editor
+    // input stops propagation for the keys it handles, but guard here too so navigation never
+    // runs underneath an open editor.
+    if (this.params.core.getEditingCell()) return;
+
     const ctrl = e.ctrlKey || e.metaKey;
+
+    // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
+    if (e.key === "F2" || e.key === "Enter") {
+      const cell = this.activeCellRef();
+      if (cell) {
+        e.preventDefault();
+        this.params.core.dispatch({ type: "editStart", cell, source: "keyboard" });
+      }
+      return;
+    }
 
     // Ctrl/Cmd+A — select all.
     if (ctrl && (e.key === "a" || e.key === "A")) {
@@ -314,6 +329,30 @@ export class SelectionRenderer {
       mode: "start",
     });
     this.params.root.focus();
+  }
+
+  onCellDoubleClick(e: MouseEvent) {
+    if (e.button !== 0) return;
+    const location = this.getCellLocation(e.target);
+    if (!location) return;
+    const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);
+    if (!cell) return;
+    e.preventDefault();
+    this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
+  }
+
+  // Resolve a view-index/leaf-index cell position to a stable { rowId, colId } reference.
+  private cellRefFromLocation(viewIdx: number, colIdx: number): CellRef | null {
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    const col = this.params.leafColumns()[colIdx];
+    if (!rowId || !col) return null;
+    return { rowId, colId: col.instanceID };
+  }
+
+  private activeCellRef(): CellRef | null {
+    const active = this.params.core.getActiveCell();
+    if (!active) return null;
+    return this.cellRefFromLocation(active.row, active.colIdx);
   }
 
   onCellMouseMove(e: MouseEvent) {

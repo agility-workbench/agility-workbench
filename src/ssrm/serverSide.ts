@@ -126,6 +126,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return this.nodesMap.get(id);
   }
 
+  setCellValue(rowId: string, key: string, value: any): boolean {
+    const node = this.nodesMap.get(rowId);
+    if (!node) return false;
+    (node.data as any)[key] = value;
+    return true;
+  }
+
   applyRequest(params: IRowModelRequestParams): void {
     if (params.reason !== "viewport") {
       this.lastRequestParams = params;

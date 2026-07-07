@@ -1,4 +1,4 @@
-import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams } from "../column/formatters";
+import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValueParserParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
 import { Filter, FilterParams } from "./filter";
 
@@ -22,6 +22,11 @@ export interface ColDef {
   depth?: number;   // for hierarchical columns
   valueGetter?: (row: any) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
+  // When true, cells in this column can be edited (e.g. via double-click). Defaults to false.
+  editable?: boolean;
+  // Converts the raw string the user typed into the stored cell value. When omitted, the
+  // typed text is stored verbatim.
+  valueParser?: (params: ValueParserParams) => any;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;

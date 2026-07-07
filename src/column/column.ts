@@ -1,4 +1,4 @@
-import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams } from "./formatters";
+import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { IRowNode } from "../interfaces/iRowNode";
@@ -21,6 +21,8 @@ export class Column {
   computedWidth: number = 200; // computed width (after layout)
   valueGetter?: (row: any) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
+  valueParser?: (params: ValueParserParams) => any;
+  editable: boolean = false;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
@@ -82,6 +84,8 @@ export class Column {
     this.depth = col.depth || 0;
     this.valueGetter = col.valueGetter;
     this.valueFormatter = col.valueFormatter ? col.valueFormatter : getFormatterByType(col.type || ColumnType.STRING) || undefined;
+    this.valueParser = col.valueParser;
+    this.editable = isTrue(col.editable);
     this.formatterOptions = col.formatterOptions;
     this.cellRenderer = col.cellRenderer;
     this.cellRendererParams = col.cellRendererParams;
@@ -184,11 +188,28 @@ export class Column {
     return String(value);
   }
 
+  // Convert the raw text typed into a cell editor into the value to store. Uses the column's
+  // valueParser when provided; otherwise the text is stored verbatim.
+  parseValue(text: string, row: IRowNode, oldValue: any): any {
+    if (this.valueParser) {
+      return this.valueParser({ value: text, oldValue, row, col: this });
+    }
+    return text;
+  }
+
+  // Whether a cell in this column may be edited. Internal columns (e.g. row numbers) are never
+  // editable regardless of the editable flag.
+  isCellEditable(_row?: IRowNode): boolean {
+    return this.editable && !this.isInternal();
+  }
+
   duplicate(): Column {
     const dup = new Column({ ...this.col, label: this.label });
     dup.children = this.children.slice();
     dup.originalInstanceID = this.originalInstanceID;
     dup.valueFormatter = this.valueFormatter;
+    dup.valueParser = this.valueParser;
+    dup.editable = this.editable;
     dup.collator = this.collator;
     dup.comparator = this.comparator;
     dup.groupExpandState = this.groupExpandState;

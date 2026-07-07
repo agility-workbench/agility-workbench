@@ -128,11 +128,19 @@ export function SelectionDemo() {
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
-    { colId: "name", key: "name", label: "Name", width: 150 },
-    { colId: "department", key: "department", label: "Department", width: 130 },
+    // Double-click (or press F2) to edit. Enter/Tab commit, Esc cancels.
+    { colId: "name", key: "name", label: "Name", width: 150, editable: true },
+    { colId: "department", key: "department", label: "Department", width: 130, editable: true },
     { colId: "title", key: "title", label: "Title", width: 110 },
-    { colId: "city", key: "city", label: "City", width: 120 },
-    { colId: "salary", key: "salary", label: "Salary", width: 110 },
+    { colId: "city", key: "city", label: "City", width: 120, editable: true },
+    // Editable numeric column: valueParser coerces the typed text to a number and rejects NaN.
+    {
+      colId: "salary", key: "salary", label: "Salary", width: 110, editable: true,
+      valueParser: ({ value, oldValue }) => {
+        const n = Number(String(value).replace(/[^0-9.-]/g, ""));
+        return Number.isNaN(n) ? oldValue : n;
+      },
+    },
     { colId: "bonus", key: "bonus", label: "Bonus", width: 100 },
     { colId: "rating", key: "rating", label: "Rating", width: 90 },
     { colId: "projects", key: "projects", label: "Projects", width: 100 },

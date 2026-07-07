@@ -3,6 +3,8 @@ import {
   GridEventColumnsChangedParams,
   GridEventColumnWidthsChangedParams,
   GridEventAggregateChangedParams,
+  GridEventCellsChangedParams,
+  GridEventEditingChangedParams,
   GridEventFocusChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
@@ -24,6 +26,8 @@ interface GridRendererCoreEventBinderParams {
   renderAggregateRow: () => void;
   onSelectionChanged: (params: GridEventSelectionChangedParams) => void;
   onFocusChanged: (params: GridEventFocusChangedParams) => void;
+  onEditingChanged: (params: GridEventEditingChangedParams) => void;
+  onCellsChanged: (params: GridEventCellsChangedParams) => void;
 }
 
 export class GridRendererCoreEventBinder {
@@ -63,6 +67,12 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("focusChanged", (params: GridEventFocusChangedParams) => {
         this.params.onFocusChanged(params);
+      }),
+      this.params.core.on("editingChanged", (params: GridEventEditingChangedParams) => {
+        this.params.onEditingChanged(params);
+      }),
+      this.params.core.on("cellsChanged", (params: GridEventCellsChangedParams) => {
+        this.params.onCellsChanged(params);
       }),
     );
   }

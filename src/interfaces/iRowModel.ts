@@ -44,6 +44,9 @@ export interface IRowModel<Row = any> {
   // identity
   getRowNode(id: string): IRowNode<Row> | undefined;
 
+  // in-place cell edit: mutate a single field of a row's data. Returns true if the row exists.
+  setCellValue(rowId: string, key: string, value: any): boolean;
+
   applyRequest(params: IRowModelRequestParams): void;
 
   // aggregation

@@ -973,6 +973,28 @@
   padding: 0;
 }
 
+.pte-cell.pte-cell-editing {
+  padding: 0;
+  /* Drop the cell's 1px border so the input's content box spans the full cell (border-box). */
+  border: none;
+  overflow: visible;
+}
+
+.pte-cell-editor-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  /* Match the cell's own padding so text stays put when the editor opens. */
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+}
+
 .pte-cell-sparkline {
   padding-left: 8px;
   padding-right: 8px;

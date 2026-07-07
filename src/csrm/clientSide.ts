@@ -54,6 +54,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       viewIndex: -1,
     }));
 
+    // Index nodes by id so getRowNode / setCellValue can resolve rows by their stable id.
+    this.nodesMap.clear();
+    for (const node of this.nodes) {
+      this.nodesMap.set(node.id, node);
+    }
+
     // initial: no filter, no sort
     const n = this.nodes.length;
     this.filteredIdx = new Array(n);
@@ -102,6 +108,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   getRowNode(id: string): IRowNode<Row> | undefined {
     return this.nodesMap.get(id);
+  }
+
+  setCellValue(rowId: string, key: string, value: any): boolean {
+    const node = this.nodesMap.get(rowId);
+    if (!node) return false;
+    (node.data as any)[key] = value;
+    return true;
   }
 
   forEachNode(callback: (node: IRowNode, idx: number) => void): void {

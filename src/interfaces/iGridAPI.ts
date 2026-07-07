@@ -2,7 +2,7 @@ import { GridEventMap, GridEventName, Unsubscribe } from "../events/events";
 import { ColumnState, GridId, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
-import { SelectionSnapshot } from "./selection";
+import { CellRef, SelectionSnapshot } from "./selection";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -46,6 +46,18 @@ export interface IGridAPI {
   clearSelection(what?: "all" | "range" | "rows" | "columns"): void;
   /** Read the current selection snapshot. */
   getSelection(): SelectionSnapshot;
+
+  /* ----- Editing ----- */
+  /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */
+  startEditingCell(cell: CellRef): void;
+  /** Commit the current edit with the given raw value (passed through the column's valueParser). */
+  stopEditing(value: unknown): void;
+  /** Cancel the current edit without changing the cell value. */
+  cancelEditing(): void;
+  /** The cell currently being edited, or null when not editing. */
+  getEditingCell(): CellRef | null;
+  /** Set a cell's value directly (bypasses the inline editor; runs the column's valueParser). */
+  setCellValue(cell: CellRef, value: unknown): void;
 
   destroy(): void;
 }

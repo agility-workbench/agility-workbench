@@ -14,6 +14,7 @@ import { GridIconMap } from "../theme/icons";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
   GridEventAggregateChangedParams,
+  GridEventCellsChangedParams,
   GridEventPaginationChangedParams,
   GridEventViewportChangedParams,
 } from "../events/events";
@@ -47,6 +48,7 @@ import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { SelectionRenderer } from "./selection/selectionRenderer";
+import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ServerSideController } from "./serverSideController";
 
 export class GridRenderer {
@@ -82,6 +84,7 @@ export class GridRenderer {
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _selectionRenderer: SelectionRenderer;
+  _cellEditRenderer: CellEditRenderer;
   rowHeight: number = 43;
   height?: number;
 
@@ -164,6 +167,8 @@ export class GridRenderer {
       renderAggregateRow: () => this._renderAggregateRow(),
       onSelectionChanged: () => this._selectionRenderer.onSelectionChanged(),
       onFocusChanged: (params) => this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx),
+      onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
+      onCellsChanged: (params) => this._onCellsChanged(params),
     });
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
@@ -193,6 +198,16 @@ export class GridRenderer {
         const h = this._bodyViewportRenderer.getRefs().body.clientHeight;
         return Math.max(1, Math.floor(h / this.rowHeight));
       },
+    });
+    this._cellEditRenderer = new CellEditRenderer({
+      core: this.core,
+      root: this.root,
+      rowPool: () => this._rowPool,
+      startIndex: () => this._startIndex,
+      leafColumnLookup: () => this._leafColumnLookup,
+      leafColumns: () => this._leafColumns,
+      ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
+      repaintCell: (rowId, colId) => this._repaintCell(rowId, colId),
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,
@@ -324,6 +339,7 @@ export class GridRenderer {
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
       onCellMouseDown: (e) => this._selectionRenderer.onCellMouseDown(e),
+      onCellDoubleClick: (e) => this._selectionRenderer.onCellDoubleClick(e),
       onBodyContextMenu: (e) => this._bodyMenuOpener?.onBodyContextMenu(e),
       onColumnResizeMouseMove: (e) => this._columnInteractionRenderer.onColumnResizeMouseMove(e),
       onColumnDragMouseMove: (e) => this._columnInteractionRenderer.onColumnDragMouseMove(e),
@@ -655,6 +671,33 @@ export class GridRenderer {
     this._leftPinnedLeafColumns = columnModel.getLeftLeaves();
     this._centerLeafColumns = columnModel.getCenterLeaves();
     this._rightPinnedLeafColumns = columnModel.getRightLeaves();
+  }
+
+  // Re-render a single cell's content in place from the current row data. Used to reflect a
+  // committed edit and to restore a cell when its editor is torn down.
+  _repaintCell(rowId: string, colId: string) {
+    const viewIdx = this.core.getViewIndexForRowId(rowId);
+    const lookup = this._leafColumnLookup.get(colId);
+    if (viewIdx == null || !lookup) return;
+    const slot = this._rowPool[viewIdx - this._startIndex];
+    if (!slot) return;
+    const col = this.core.getColumnModel().getById(colId);
+    const row = this.core.getRowModel().getRowNode(rowId);
+    if (!col || !row) return;
+    const cells = lookup.section === "left" ? slot.leftCellEls
+      : lookup.section === "right" ? slot.rightCellEls
+        : slot.cellEls;
+    const cell = cells?.[lookup.localIndex];
+    if (!cell) return;
+    this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx);
+  }
+
+  _onCellsChanged(params: GridEventCellsChangedParams) {
+    for (const rowId of params.rowIds) {
+      for (const colId of params.colIds) {
+        this._repaintCell(rowId, colId);
+      }
+    }
   }
 
   _ensureCellVisible(viewIdx: number, colIdx: number) {

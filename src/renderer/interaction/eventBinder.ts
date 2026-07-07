@@ -6,6 +6,7 @@ interface GridInteractionEventBinderParams {
   onHeaderContextMenu: (e: MouseEvent) => void;
   onHeaderDoubleClick: (e: MouseEvent) => void;
   onCellMouseDown: (e: MouseEvent) => void;
+  onCellDoubleClick: (e: MouseEvent) => void;
   onBodyContextMenu: (e: MouseEvent) => void;
   onColumnResizeMouseMove: (e: MouseEvent) => void;
   onColumnDragMouseMove: (e: MouseEvent) => void;
@@ -33,6 +34,10 @@ export class GridInteractionEventBinder {
 
   private handleCellMouseDown = (e: MouseEvent) => {
     this.params.onCellMouseDown(e);
+  };
+
+  private handleCellDoubleClick = (e: MouseEvent) => {
+    this.params.onCellDoubleClick(e);
   };
 
   private handleBodyContextMenu = (e: MouseEvent) => {
@@ -67,6 +72,7 @@ export class GridInteractionEventBinder {
     this.params.headerWrapper.addEventListener("contextmenu", this.handleHeaderContextMenu);
     this.params.headerWrapper.addEventListener("dblclick", this.handleHeaderDoubleClick);
     this.params.body.addEventListener("mousedown", this.handleCellMouseDown);
+    this.params.body.addEventListener("dblclick", this.handleCellDoubleClick);
     this.params.body.addEventListener("contextmenu", this.handleBodyContextMenu);
     document.addEventListener("mousemove", this.handleDocumentMouseMove);
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
@@ -79,6 +85,7 @@ export class GridInteractionEventBinder {
     this.params.headerWrapper.removeEventListener("contextmenu", this.handleHeaderContextMenu);
     this.params.headerWrapper.removeEventListener("dblclick", this.handleHeaderDoubleClick);
     this.params.body.removeEventListener("mousedown", this.handleCellMouseDown);
+    this.params.body.removeEventListener("dblclick", this.handleCellDoubleClick);
     this.params.body.removeEventListener("contextmenu", this.handleBodyContextMenu);
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);
