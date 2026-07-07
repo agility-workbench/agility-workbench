@@ -2,11 +2,13 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
+import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
 import { RowPoolDef } from "../types";
 
 interface SelectionRendererParams {
   core: GridCore;
   root: HTMLDivElement;
+  clipboard: () => ClipboardRenderer;
   rowPool: () => RowPoolDef[];
   startIndex: () => number;
   leafColumns: () => Column[];
@@ -242,6 +244,23 @@ export class SelectionRenderer {
     if (ctrl && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
       this.params.core.dispatch({ type: "selectAll" });
+      return;
+    }
+
+    // Ctrl/Cmd+C / X / V — clipboard copy / cut / paste over the current selection.
+    if (ctrl && (e.key === "c" || e.key === "C")) {
+      e.preventDefault();
+      this.params.clipboard().copy();
+      return;
+    }
+    if (ctrl && (e.key === "x" || e.key === "X")) {
+      e.preventDefault();
+      this.params.clipboard().cut();
+      return;
+    }
+    if (ctrl && (e.key === "v" || e.key === "V")) {
+      e.preventDefault();
+      void this.params.clipboard().paste();
       return;
     }
 

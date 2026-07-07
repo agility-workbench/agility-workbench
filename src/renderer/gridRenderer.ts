@@ -49,6 +49,8 @@ import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { SelectionRenderer } from "./selection/selectionRenderer";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
+import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
+import { serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 
 export class GridRenderer {
@@ -85,6 +87,7 @@ export class GridRenderer {
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _selectionRenderer: SelectionRenderer;
   _cellEditRenderer: CellEditRenderer;
+  _clipboardRenderer: ClipboardRenderer;
   rowHeight: number = 43;
   height?: number;
 
@@ -187,9 +190,13 @@ export class GridRenderer {
       updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
       refreshSelectionStyles: () => this._selectionRenderer?.refreshSelectionStyles(),
     });
+    this._clipboardRenderer = new ClipboardRenderer({
+      core: this.core,
+    });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
       root: this.root,
+      clipboard: () => this._clipboardRenderer,
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
@@ -808,27 +815,7 @@ export class GridRenderer {
   }
 
   private serializeRowsToTSV(cols: import("../column/column").Column[], viewIdxs: number[], includeHeaders: boolean): string {
-    const rowModel = this.core.getRowModel();
-    const lines: string[] = [];
-    if (includeHeaders) {
-      lines.push(cols.map(c => this.escapeTSV(c.label ?? c.key ?? "")).join("\t"));
-    }
-    for (const viewIdx of viewIdxs) {
-      const node = rowModel.getRowNodeAtViewIndex(viewIdx);
-      if (!node) continue;
-      const cells = cols.map(col => this.escapeTSV(col.formatValue(col.getValue(node), node)));
-      lines.push(cells.join("\t"));
-    }
-    return lines.join("\n");
-  }
-
-  private escapeTSV(value: unknown): string {
-    if (value == null) return "";
-    const s = String(value);
-    if (s.includes("\t") || s.includes("\n") || s.includes("\r") || s.includes('"')) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
+    return serializeRowsToTSV(this.core.getRowModel(), cols, viewIdxs, includeHeaders);
   }
 
 }

@@ -59,5 +59,13 @@ export interface IGridAPI {
   /** Set a cell's value directly (bypasses the inline editor; runs the column's valueParser). */
   setCellValue(cell: CellRef, value: unknown): void;
 
+  /* ----- Clipboard ----- */
+  /** Copy the current selection to the clipboard as TSV. */
+  copySelection(): void;
+  /** Copy the current selection as TSV, then clear its editable cells. */
+  cutSelection(): void;
+  /** Paste the clipboard's first cell into the active cell (runs the column's valueParser). */
+  paste(): Promise<void>;
+
   destroy(): void;
 }

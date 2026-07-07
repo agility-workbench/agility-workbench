@@ -3,8 +3,11 @@ import { ColDef } from "../interfaces/column";
 import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
+import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
 export class GridAPI implements IGridAPI {
+  private _clipboard?: ClipboardRenderer;
+
   constructor(private core: IGridCore) {}
 
   getCore(): IGridCore {
@@ -108,6 +111,24 @@ export class GridAPI implements IGridAPI {
 
   setCellValue(cell: CellRef, value: unknown): void {
     this.core.dispatch({ type: "editCommit", cell, value });
+  }
+
+  // ---------------- Clipboard ----------------
+  private clipboard(): ClipboardRenderer {
+    if (!this._clipboard) this._clipboard = new ClipboardRenderer({ core: this.core });
+    return this._clipboard;
+  }
+
+  copySelection(): void {
+    this.clipboard().copy();
+  }
+
+  cutSelection(): void {
+    this.clipboard().cut();
+  }
+
+  paste(): Promise<void> {
+    return this.clipboard().paste();
   }
 
   destroy(): void {
