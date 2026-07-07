@@ -33,7 +33,7 @@ export interface IGridAPI {
   /** Extend the current range's active corner to a cell. */
   extendRangeTo(viewIdx: number, colIdx: number): void;
   /** Move the selection by keyboard-style navigation. */
-  navigate(dir: NavDir, opts?: { extend?: boolean; jump?: "edge" | "block" }): void;
+  navigate(dir: NavDir, opts?: { extend?: boolean; jump?: "edge" | "block" | "page"; pageRows?: number }): void;
   /** Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End). */
   navigateToCorner(corner: "topLeft" | "bottomRight", opts?: { extend?: boolean }): void;
   /** Select the entire grid. */

@@ -862,6 +862,7 @@ export class GridCore implements IGridCore {
         const active = this.selectionModel.navigate(action.dir, {
           extend: !!action.extend,
           jump: action.jump,
+          pageRows: action.pageRows,
         });
         this.emitSelectionChanged("keyboard");
         this.emitFocusChanged(active, "keyboard");

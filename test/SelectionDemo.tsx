@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { GridReact } from "@grid-react";
 import type { ReactColDef } from "@grid-react";
@@ -91,6 +91,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Shift + Arrow", "Extend range by one cell"],
   ["Ctrl + Arrow", "Jump across data block (Excel-style)"],
   ["Ctrl + Shift + Arrow", "Extend range across block"],
+  ["PageUp / PageDown", "Move up / down one viewport"],
   ["Home / End", "Jump to first / last column"],
   ["Ctrl + Home / End", "Jump to top-left / bottom-right"],
   ["Ctrl + A", "Select all"],
@@ -158,6 +159,8 @@ export function SelectionDemo() {
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigateToCorner("bottomRight")}>Go bottom-right (API)</button>
+          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("up", {jump: "page", pageRows: 10})}>Move 10 rows up</button>
+          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("down", {jump: "page", pageRows: 10})}>Move 10 rows down</button>
         </div>
       </div>
 

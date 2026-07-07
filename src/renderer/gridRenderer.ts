@@ -189,6 +189,10 @@ export class GridRenderer {
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
       ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
+      viewportRows: () => {
+        const h = this._bodyViewportRenderer.getRefs().body.clientHeight;
+        return Math.max(1, Math.floor(h / this.rowHeight));
+      },
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,

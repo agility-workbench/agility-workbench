@@ -185,12 +185,14 @@ export type GridActionEditCancel = {
 
 // Keyboard navigation action.
 // jump: undefined = one cell (Arrow); "edge" = hard first/last (Home/End);
-// "block" = Excel-style data-block jump (Ctrl+Arrow).
+// "block" = Excel-style data-block jump (Ctrl+Arrow); "page" = one viewport of rows
+// (PageUp/PageDown) — pageRows is supplied by the renderer, which knows the viewport height.
 export type GridActionKeyboardNavigate = {
   type: "navigate";
   dir: "up" | "down" | "left" | "right";
   extend?: boolean;
-  jump?: "edge" | "block";
+  jump?: "edge" | "block" | "page";
+  pageRows?: number;
 };
 
 // Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End)

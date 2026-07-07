@@ -181,6 +181,39 @@ describe('SelectionModel — jump: "edge" (Home/End) ignores cell contents', () 
   });
 });
 
+describe('SelectionModel — jump: "page" (PageUp/PageDown)', () => {
+  const grid = Array.from({ length: 20 }, (_, i) => [`r${i}`]); // 20 rows, one data col (colIdx 1)
+
+  it("moves down by pageRows and clamps at the last row", () => {
+    const m = makeModel(grid);
+    m.selectSingleCell(0, 1);
+    expect(m.navigate("down", { extend: false, jump: "page", pageRows: 8 })).toEqual({ row: 8, colIdx: 1 });
+    expect(m.navigate("down", { extend: false, jump: "page", pageRows: 8 })).toEqual({ row: 16, colIdx: 1 });
+    expect(m.navigate("down", { extend: false, jump: "page", pageRows: 8 })).toEqual({ row: 19, colIdx: 1 }); // clamp
+  });
+
+  it("moves up by pageRows and clamps at the first row", () => {
+    const m = makeModel(grid);
+    m.selectSingleCell(10, 1);
+    expect(m.navigate("up", { extend: false, jump: "page", pageRows: 8 })).toEqual({ row: 2, colIdx: 1 });
+    expect(m.navigate("up", { extend: false, jump: "page", pageRows: 8 })).toEqual({ row: 0, colIdx: 1 }); // clamp
+  });
+
+  it("keeps the column and extends the range with shift", () => {
+    const m = makeModel(grid);
+    m.selectSingleCell(2, 1);
+    m.navigate("down", { extend: true, jump: "page", pageRows: 5 });
+    expect(m.getSelectionRange()).toMatchObject({ rowStart: 2, rowEnd: 7, colStart: 1, colEnd: 1 });
+    expect(m.getActiveCell()).toEqual({ row: 7, colIdx: 1 });
+  });
+
+  it("defaults to a single-row step when pageRows is missing", () => {
+    const m = makeModel(grid);
+    m.selectSingleCell(4, 1);
+    expect(m.navigate("down", { extend: false, jump: "page" })).toEqual({ row: 5, colIdx: 1 });
+  });
+});
+
 describe("SelectionModel — plain arrow navigation", () => {
   const grid = [["a", "b"], ["c", "d"], ["e", "f"]]; // 3 rows, data cols 1..2
 

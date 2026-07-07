@@ -11,6 +11,8 @@ interface SelectionRendererParams {
   startIndex: () => number;
   leafColumns: () => Column[];
   ensureCellVisible: (viewIdx: number, colIdx: number) => void;
+  // Number of fully-visible rows in the viewport — used to size PageUp/PageDown moves.
+  viewportRows: () => number;
 }
 
 type NavDir = "up" | "down" | "left" | "right";
@@ -245,6 +247,19 @@ export class SelectionRenderer {
           jump: "edge",
         });
       }
+      return;
+    }
+
+    // PageUp / PageDown — move by one viewport of rows.
+    if (e.key === "PageUp" || e.key === "PageDown") {
+      e.preventDefault();
+      this.params.core.dispatch({
+        type: "navigate",
+        dir: e.key === "PageUp" ? "up" : "down",
+        extend: e.shiftKey,
+        jump: "page",
+        pageRows: this.params.viewportRows(),
+      });
       return;
     }
 

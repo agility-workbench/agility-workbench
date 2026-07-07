@@ -55,8 +55,8 @@ export class GridAPI implements IGridAPI {
     this.core.dispatch({ type: "rangeSelectSet", viewIdx, colIdx, mode: "extend" });
   }
 
-  navigate(dir: NavDir, opts?: { extend?: boolean; jump?: "edge" | "block" }): void {
-    this.core.dispatch({ type: "navigate", dir, extend: opts?.extend, jump: opts?.jump });
+  navigate(dir: NavDir, opts?: { extend?: boolean; jump?: "edge" | "block" | "page"; pageRows?: number }): void {
+    this.core.dispatch({ type: "navigate", dir, extend: opts?.extend, jump: opts?.jump, pageRows: opts?.pageRows });
   }
 
   navigateToCorner(corner: "topLeft" | "bottomRight", opts?: { extend?: boolean }): void {

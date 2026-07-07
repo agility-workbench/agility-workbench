@@ -5,8 +5,14 @@ import { IRowModel } from "../interfaces/iRowModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 
 export type NavDir = "up" | "down" | "left" | "right";
-/** Step size for navigate(): "edge" = hard first/last (Home/End), "block" = Excel data jump (Ctrl+Arrow). */
-export type NavJump = "edge" | "block";
+/**
+ * Step size for navigate():
+ *  - "edge"  = hard first/last (Home/End)
+ *  - "block" = Excel data jump (Ctrl+Arrow)
+ *  - "page"  = one viewport of rows (PageUp/PageDown); the row count is supplied by the renderer
+ *              via opts.pageRows since only the renderer knows the viewport height.
+ */
+export type NavJump = "edge" | "block" | "page";
 
 interface SelectionModelDeps {
   getRowModel: () => IRowModel;
@@ -267,8 +273,10 @@ export class SelectionModel {
    *  - undefined → move one cell (plain Arrow).
    *  - "edge"    → hard edge, ignoring cell contents (Home/End): first/last column or top/bottom row.
    *  - "block"   → Excel-style data-block jump (Ctrl+Arrow), see blockJump.
+   *  - "page"    → move by opts.pageRows rows (PageUp/PageDown); horizontal dirs fall back to
+   *                a single-cell step. Column is unchanged.
    */
-  navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump }): CellPos | null {
+  navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump; pageRows?: number }): CellPos | null {
     const firstCol = this.firstSelectableColIdx();
     const lastCol = this.lastColIdx();
     const maxRow = this.maxRow();
@@ -297,6 +305,16 @@ export class SelectionModel {
         case "right": nextCol = lastCol; break;
         case "up": nextRow = 0; break;
         case "down": nextRow = maxRow; break;
+      }
+    } else if (opts.jump === "page") {
+      // PageUp/PageDown: move by one viewport of rows (supplied by the renderer). Horizontal
+      // directions have no natural "page", so fall back to a single-cell step.
+      const pageRows = Math.max(1, opts.pageRows ?? 1);
+      switch (dir) {
+        case "up": nextRow = Math.max(0, from.row - pageRows); break;
+        case "down": nextRow = Math.min(maxRow, from.row + pageRows); break;
+        case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
+        case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
       }
     } else {
       switch (dir) {
