@@ -178,7 +178,7 @@ function TradingGrid() {
         }
         return next;
       });
-    }, 600);
+    }, 300);
     return () => window.clearInterval(id);
   }, [basePrices]);
 

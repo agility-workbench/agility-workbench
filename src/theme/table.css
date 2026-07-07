@@ -206,6 +206,7 @@
   overflow: hidden;
   position: relative;
   background-color: var(--pte-root-bg-color);
+  outline: none;
 }
 
 .pte-header-wrapper {

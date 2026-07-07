@@ -145,6 +145,7 @@ export class GridRenderer {
     this.root = div("pte-root");
     this.root.dataset.pteGridId = this.core.id;
     this.root.style.position = "relative";
+    this.root.tabIndex = 0;
     this._rootAttachmentRenderer = new RootAttachmentRenderer(this.root);
     this._iconRenderer = new IconRenderer(this.root, this.core.id);
     this.setIcons(this.core.getOptions().icons);
@@ -188,6 +189,7 @@ export class GridRenderer {
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
+      ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,
@@ -313,6 +315,7 @@ export class GridRenderer {
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
     this._interactionEventBinder = new GridInteractionEventBinder({
+      root: this.root,
       headerWrapper: headerRefs.wrapper,
       body: bodyWrapper.body,
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
@@ -328,6 +331,7 @@ export class GridRenderer {
       onCellMouseUp: () => this._selectionRenderer.onCellMouseUp(),
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
+      onKeyDown: (e) => this._selectionRenderer.onKeyDown(e),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -649,6 +653,40 @@ export class GridRenderer {
     this._leftPinnedLeafColumns = columnModel.getLeftLeaves();
     this._centerLeafColumns = columnModel.getCenterLeaves();
     this._rightPinnedLeafColumns = columnModel.getRightLeaves();
+  }
+
+  _ensureCellVisible(viewIdx: number, colIdx: number) {
+    const refs = this._bodyViewportRenderer.getRefs();
+
+    // Vertical: scroll centerScroller so the row is fully in view.
+    const rowTop = viewIdx * this.rowHeight;
+    const viewH = refs.body.clientHeight;
+    const st = refs.centerScroller.scrollTop;
+    if (rowTop < st) {
+      refs.centerScroller.scrollTop = rowTop;
+    } else if (rowTop + this.rowHeight > st + viewH) {
+      refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
+    }
+
+    // Horizontal: only center-section columns scroll; leading/pinned are always visible.
+    const col = this._leafColumns[colIdx];
+    if (!col) return;
+    const meta = this._leafColumnLookup.get(col.instanceID);
+    if (!meta || meta.section !== "center" || col.centralPosition == null) return;
+
+    const centerLeaves = this.core.getColumnModel().getCenterLeaves();
+    let colLeft = 0;
+    for (let i = 0; i < col.centralPosition; i++) {
+      colLeft += centerLeaves[i].computedWidth;
+    }
+    const colWidth = col.computedWidth;
+    const viewW = refs.centerSpacer.clientWidth;
+    const sl = refs.centerSpacer.scrollLeft;
+    if (colLeft < sl) {
+      refs.centerSpacer.scrollLeft = colLeft;
+    } else if (colLeft + colWidth > sl + viewW) {
+      refs.centerSpacer.scrollLeft = colLeft + colWidth - viewW;
+    }
   }
 
   _buildRowPool() {

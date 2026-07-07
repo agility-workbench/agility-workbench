@@ -1,4 +1,5 @@
 interface GridInteractionEventBinderParams {
+  root: HTMLDivElement;
   headerWrapper: HTMLDivElement;
   body: HTMLDivElement;
   onHeaderMouseDown: (e: MouseEvent) => void;
@@ -14,6 +15,7 @@ interface GridInteractionEventBinderParams {
   onCellMouseUp: () => void;
   shouldSuppressClick: () => boolean;
   onClick: (e: MouseEvent) => void;
+  onKeyDown: (e: KeyboardEvent) => void;
 }
 
 export class GridInteractionEventBinder {
@@ -54,6 +56,10 @@ export class GridInteractionEventBinder {
     this.params.onClick(e);
   };
 
+  private handleKeyDown = (e: KeyboardEvent) => {
+    this.params.onKeyDown(e);
+  };
+
   constructor(private params: GridInteractionEventBinderParams) { }
 
   bind() {
@@ -65,6 +71,7 @@ export class GridInteractionEventBinder {
     document.addEventListener("mousemove", this.handleDocumentMouseMove);
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
     document.addEventListener("click", this.handleDocumentClick);
+    this.params.root.addEventListener("keydown", this.handleKeyDown);
   }
 
   destroy() {
@@ -76,5 +83,6 @@ export class GridInteractionEventBinder {
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);
     document.removeEventListener("click", this.handleDocumentClick);
+    this.params.root.removeEventListener("keydown", this.handleKeyDown);
   }
 }

@@ -22,10 +22,14 @@ interface SelectionRendererParams {
   rowPool: () => RowPoolDef[];
   startIndex: () => number;
   leafColumns: () => Column[];
+  ensureCellVisible: (viewIdx: number, colIdx: number) => void;
 }
+
+type NavDir = "up" | "down" | "left" | "right";
 
 export class SelectionRenderer {
   private selectionAnchor: SelectionAnchor | null = null;
+  private activeCell: SelectionAnchor | null = null;
   private selectionRange: SelectionRange | null = null;
   private isSelecting = false;
   private selectedColumnIDs: Set<string> = new Set();
@@ -172,6 +176,7 @@ export class SelectionRenderer {
     if (location.colIdx < 0 || location.colIdx >= this.params.leafColumns().length) return;
     this.clearRowSelection();
     this.selectionAnchor = { row: location.viewIdx, colIdx: location.colIdx };
+    this.activeCell = { row: location.viewIdx, colIdx: location.colIdx };
     this.selectionRange = {
       rowStart: location.viewIdx,
       rowEnd: location.viewIdx,
@@ -197,6 +202,7 @@ export class SelectionRenderer {
     const nextRow = Math.min(Math.max(endRow, 0), maxRow);
     const nextCol = Math.min(Math.max(endCol, 0), maxCol);
 
+    this.activeCell = { row: nextRow, colIdx: nextCol };
     this.selectionRange = {
       rowStart: Math.min(this.selectionAnchor.row, nextRow),
       rowEnd: Math.max(this.selectionAnchor.row, nextRow),
@@ -217,6 +223,7 @@ export class SelectionRenderer {
 
   clearSelection() {
     this.selectionAnchor = null;
+    this.activeCell = null;
     this.selectionRange = null;
     this.isSelecting = false;
     this.refreshSelectionStyles();
@@ -251,6 +258,13 @@ export class SelectionRenderer {
       this.selectionAnchor = {
         row: Math.min(Math.max(this.selectionAnchor.row, 0), maxRow),
         colIdx: Math.min(Math.max(this.selectionAnchor.colIdx, 0), maxCol),
+      };
+    }
+
+    if (this.activeCell) {
+      this.activeCell = {
+        row: Math.min(Math.max(this.activeCell.row, 0), maxRow),
+        colIdx: Math.min(Math.max(this.activeCell.colIdx, 0), maxCol),
       };
     }
 
@@ -360,6 +374,7 @@ export class SelectionRenderer {
 
   private clearSelectionRange() {
     this.selectionAnchor = null;
+    this.activeCell = null;
     this.selectionRange = null;
     this.isSelecting = false;
   }
@@ -488,6 +503,99 @@ export class SelectionRenderer {
     return { viewIdx, colIdx };
   }
 
+  // ---------------- Keyboard navigation ----------------
+  onKeyDown(e: KeyboardEvent) {
+    let dir: NavDir | null = null;
+    switch (e.key) {
+      case "ArrowUp": dir = "up"; break;
+      case "ArrowDown": dir = "down"; break;
+      case "ArrowLeft": dir = "left"; break;
+      case "ArrowRight": dir = "right"; break;
+      default: return;
+    }
+    e.preventDefault();
+    this.moveSelection(dir, { extend: e.shiftKey, toEdge: e.ctrlKey || e.metaKey });
+  }
+
+  private firstSelectableColIdx(): number {
+    return this.params.core.getColumnModel().getLeadingLeaves().length;
+  }
+
+  private lastColIdx(): number {
+    return this.params.leafColumns().length - 1;
+  }
+
+  private maxRow(): number {
+    return this.params.core.getRowModel().getViewCount() - 1;
+  }
+
+  // Last loaded contiguous row in the given vertical direction. For client-side
+  // rows getRowNodeAtViewIndex is always defined, so this resolves to 0 / maxRow.
+  private verticalEdge(fromRow: number, dir: "up" | "down"): number {
+    const rowModel = this.params.core.getRowModel();
+    if (dir === "up") {
+      let edge = fromRow;
+      while (edge - 1 >= 0 && rowModel.getRowNodeAtViewIndex(edge - 1)) edge--;
+      return edge;
+    }
+    const maxRow = this.maxRow();
+    let edge = fromRow;
+    while (edge + 1 <= maxRow && rowModel.getRowNodeAtViewIndex(edge + 1)) edge++;
+    return edge;
+  }
+
+  private moveSelection(dir: NavDir, opts: { extend: boolean; toEdge: boolean }) {
+    const firstCol = this.firstSelectableColIdx();
+    const lastCol = this.lastColIdx();
+    const maxRow = this.maxRow();
+    if (lastCol < firstCol || maxRow < 0) return;
+
+    // Nothing selected yet: select the first data cell.
+    if (!this.activeCell || !this.selectionRange) {
+      this.clearRowSelection();
+      this.clearColumnSelectionState();
+      this.startSelectionFromCell({ viewIdx: 0, colIdx: firstCol });
+      this.isSelecting = false;
+      this.params.ensureCellVisible(0, firstCol);
+      this.applyColumnSelectionStyles();
+      return;
+    }
+
+    const from = this.activeCell;
+    let nextRow = from.row;
+    let nextCol = from.colIdx;
+
+    switch (dir) {
+      case "left":
+        nextCol = opts.toEdge ? firstCol : Math.max(firstCol, from.colIdx - 1);
+        break;
+      case "right":
+        nextCol = opts.toEdge ? lastCol : Math.min(lastCol, from.colIdx + 1);
+        break;
+      case "up":
+        nextRow = opts.toEdge ? this.verticalEdge(from.row, "up") : Math.max(0, from.row - 1);
+        break;
+      case "down":
+        nextRow = opts.toEdge ? this.verticalEdge(from.row, "down") : Math.min(maxRow, from.row + 1);
+        break;
+    }
+
+    if (opts.extend) {
+      if (!this.selectionAnchor) {
+        this.selectionAnchor = { row: from.row, colIdx: from.colIdx };
+      }
+      this.updateSelectionRange(nextRow, nextCol);
+    } else {
+      this.clearRowSelection();
+      this.clearColumnSelectionState();
+      this.startSelectionFromCell({ viewIdx: nextRow, colIdx: nextCol });
+      this.isSelecting = false;
+      this.applyColumnSelectionStyles();
+    }
+
+    this.params.ensureCellVisible(nextRow, nextCol);
+  }
+
   // ---------------- Mouse handlers ----------------
   onCellMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
@@ -518,6 +626,7 @@ export class SelectionRenderer {
     }
     e.preventDefault();
     this.startSelectionFromCell(location);
+    this.params.root.focus();
   }
 
   onCellMouseMove(e: MouseEvent) {
