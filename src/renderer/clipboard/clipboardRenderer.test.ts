@@ -97,3 +97,76 @@ describe("ClipboardRenderer", () => {
     expect(data(core, "1").locked).toBe("L1");
   });
 });
+
+describe("ClipboardRenderer multi-cell paste", () => {
+  let core: GridCore;
+
+  beforeEach(() => {
+    core = makeGrid();
+  });
+
+  it("spills an R×C block down/right from the anchor", async () => {
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 }); // anchor at name/row0
+    reads.value = "x\t11\ny\t22";
+    await clip.paste();
+    expect(data(core, "1").name).toBe("x");
+    expect(data(core, "1").qty).toBe(11);
+    expect(data(core, "2").name).toBe("y");
+    expect(data(core, "2").qty).toBe(22);
+  });
+
+  it("keeps positional alignment across a non-editable column, skipping it", async () => {
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 }); // anchor at name
+    // 3 wide: name (editable) | locked (skipped) | (past end → clipped). Only name gets written;
+    // the locked slot is consumed, not shifted onto qty.
+    reads.value = "N\tSKIP\tEXTRA";
+    await clip.paste();
+    expect(data(core, "1").name).toBe("N");
+    expect(data(core, "1").locked).toBe("L1"); // untouched
+    expect(data(core, "1").qty).toBe(3); // NOT overwritten by "SKIP"
+  });
+
+  it("fills the whole selected range from a 1×1 clipboard", async () => {
+    const { clip, reads } = makeClip(core);
+    // Select name+qty across both rows (2×2).
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 1, mode: "extend" });
+    reads.value = "5";
+    await clip.paste();
+    expect(data(core, "1").name).toBe("5");
+    expect(data(core, "1").qty).toBe(5);
+    expect(data(core, "2").name).toBe("5");
+    expect(data(core, "2").qty).toBe(5);
+  });
+
+  it("clips cells that spill past the last row", async () => {
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 1, colIdx: 0 }); // last row
+    reads.value = "p\nq\nr"; // 3 rows from the last row → 2 clipped
+    await clip.paste();
+    expect(data(core, "2").name).toBe("p");
+    // Grid only has 2 rows; nothing crashes, extras dropped.
+    expect(core.getRowModel().getViewCount()).toBe(2);
+  });
+
+  it("emits a single cellsChanged for the whole block", async () => {
+    const { clip, reads } = makeClip(core);
+    const events: number[] = [];
+    core.on("cellsChanged", (e) => events.push(e.rowIds.length));
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+    reads.value = "x\t11\ny\t22";
+    await clip.paste();
+    expect(events).toEqual([2]); // one event covering both rows
+  });
+
+  it("selects the pasted rectangle afterwards", async () => {
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+    reads.value = "x\t11\ny\t22";
+    await clip.paste();
+    const range = core.getSelectionRange()!;
+    expect(range).toMatchObject({ rowStart: 0, rowEnd: 1, colStart: 0, colEnd: 1 });
+  });
+});

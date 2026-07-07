@@ -183,6 +183,14 @@ export type GridActionEditCancel = {
   cell: CellRef;
 };
 
+// Batch-commit many cells in one shot (e.g. multi-cell paste / cut-clear). Each value runs
+// through its column's valueParser, and a single cellsChanged is emitted for the whole batch.
+export type GridActionCellsCommit = {
+  type: "cellsCommit";
+  edits: { cell: CellRef; value: unknown }[];
+  reason?: "paste" | "cut" | "api";
+};
+
 // Keyboard navigation action.
 // jump: undefined = one cell (Arrow); "edge" = hard first/last (Home/End);
 // "block" = Excel-style data-block jump (Ctrl+Arrow); "page" = one viewport of rows
@@ -239,6 +247,7 @@ export type GridAction =
   | GridActionEditStart
   | GridActionEditCommit
   | GridActionEditCancel
+  | GridActionCellsCommit
   | GridActionKeyboardNavigate
   | GridActionNavigateCorner
   | GridActionSelectAll;

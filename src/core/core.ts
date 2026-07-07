@@ -957,6 +957,29 @@ export class GridCore implements IGridCore {
         this.emit("editingChanged", { state: "cancelled", cell: action.cell });
         break;
       }
+      case "cellsCommit": {
+        const changedRowIds = new Set<string>();
+        const changedColIds = new Set<string>();
+        for (const edit of action.edits) {
+          const col = this.columnModel.getById(edit.cell.colId);
+          const row = this.rowModel.getRowNode(edit.cell.rowId);
+          if (!col || !row) continue;
+          const oldValue = col.getValue(row);
+          const newValue = col.parseValue(String(edit.value ?? ""), row, oldValue);
+          if (this.rowModel.setCellValue(edit.cell.rowId, col.key, newValue)) {
+            changedRowIds.add(edit.cell.rowId);
+            changedColIds.add(col.instanceID);
+          }
+        }
+        if (changedRowIds.size > 0) {
+          this.emit("cellsChanged", {
+            reason: "editCommit",
+            rowIds: [...changedRowIds],
+            colIds: [...changedColIds],
+          });
+        }
+        break;
+      }
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }

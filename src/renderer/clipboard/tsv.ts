@@ -35,28 +35,73 @@ export function serializeRowsToTSV(
 }
 
 /**
- * Parse the first cell out of a TSV/plain-text clipboard payload — the first field of the first
- * non-empty line, unescaping a surrounding pair of quotes. Used for single-cell paste until
- * multi-cell paste lands.
+ * Parse a TSV/plain-text clipboard payload into a 2D grid of strings (rows × fields). Handles
+ * quoted fields ("...") whose content may contain tabs, newlines and escaped quotes (""), and
+ * treats CRLF / CR / LF all as row separators. Rows may be ragged (different field counts).
+ *
+ * A trailing newline does not produce an extra empty row; an empty input yields [].
  */
-export function firstCellFromTSV(text: string): string {
-  if (!text) return "";
+export function parseTSV(text: string): string[][] {
+  if (!text) return [];
 
-  // Quoted field: consume until the closing quote, treating "" as an escaped quote. A quoted
-  // field may itself contain tabs and newlines, so this must run before any tab/line splitting.
-  if (text[0] === '"') {
-    let out = "";
-    for (let i = 1; i < text.length; i++) {
-      if (text[i] === '"') {
-        if (text[i + 1] === '"') { out += '"'; i++; continue; }
-        break; // closing quote
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let started = false; // whether the current row has any content/fields yet
+
+  const endField = () => {
+    row.push(field);
+    field = "";
+  };
+  const endRow = () => {
+    endField();
+    rows.push(row);
+    row = [];
+    started = false;
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    started = true;
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
       }
-      out += text[i];
+      continue;
     }
-    return out;
+
+    if (ch === '"' && field === "") {
+      inQuotes = true;
+    } else if (ch === "\t") {
+      endField();
+    } else if (ch === "\r") {
+      if (text[i + 1] === "\n") i++; // CRLF → one separator
+      endRow();
+    } else if (ch === "\n") {
+      endRow();
+    } else {
+      field += ch;
+    }
   }
 
-  // Unquoted: the first field ends at the first tab or line break.
-  const end = text.search(/[\t\r\n]/);
-  return end === -1 ? text : text.slice(0, end);
+  // Flush the final field/row unless the input ended exactly on a row separator.
+  if (started || field !== "" || row.length > 0) {
+    endField();
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Parse the first cell out of a clipboard payload — the first field of the first row.
+ * Convenience wrapper over parseTSV for single-cell paste.
+ */
+export function firstCellFromTSV(text: string): string {
+  return parseTSV(text)[0]?.[0] ?? "";
 }
