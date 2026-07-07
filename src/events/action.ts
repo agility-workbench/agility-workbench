@@ -183,12 +183,14 @@ export type GridActionEditCancel = {
   cell: CellRef;
 };
 
-// Keyboard navigation action
+// Keyboard navigation action.
+// jump: undefined = one cell (Arrow); "edge" = hard first/last (Home/End);
+// "block" = Excel-style data-block jump (Ctrl+Arrow).
 export type GridActionKeyboardNavigate = {
   type: "navigate";
   dir: "up" | "down" | "left" | "right";
   extend?: boolean;
-  toEdge?: boolean;
+  jump?: "edge" | "block";
 };
 
 // Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End)

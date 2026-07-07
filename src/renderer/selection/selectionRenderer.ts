@@ -242,7 +242,7 @@ export class SelectionRenderer {
           type: "navigate",
           dir: e.key === "Home" ? "left" : "right",
           extend: e.shiftKey,
-          toEdge: true,
+          jump: "edge",
         });
       }
       return;
@@ -261,7 +261,7 @@ export class SelectionRenderer {
       type: "navigate",
       dir,
       extend: e.shiftKey,
-      toEdge: ctrl,
+      jump: ctrl ? "block" : undefined,
     });
   }
 

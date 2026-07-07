@@ -55,8 +55,8 @@ export class GridAPI implements IGridAPI {
     this.core.dispatch({ type: "rangeSelectSet", viewIdx, colIdx, mode: "extend" });
   }
 
-  navigate(dir: NavDir, opts?: { extend?: boolean; toEdge?: boolean }): void {
-    this.core.dispatch({ type: "navigate", dir, extend: opts?.extend, toEdge: opts?.toEdge });
+  navigate(dir: NavDir, opts?: { extend?: boolean; jump?: "edge" | "block" }): void {
+    this.core.dispatch({ type: "navigate", dir, extend: opts?.extend, jump: opts?.jump });
   }
 
   navigateToCorner(corner: "topLeft" | "bottomRight", opts?: { extend?: boolean }): void {

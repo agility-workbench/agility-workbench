@@ -5,6 +5,8 @@ import { IRowModel } from "../interfaces/iRowModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 
 export type NavDir = "up" | "down" | "left" | "right";
+/** Step size for navigate(): "edge" = hard first/last (Home/End), "block" = Excel data jump (Ctrl+Arrow). */
+export type NavJump = "edge" | "block";
 
 interface SelectionModelDeps {
   getRowModel: () => IRowModel;
@@ -185,23 +187,88 @@ export class SelectionModel {
     this.range = null;
   }
 
-  // Last loaded contiguous row in the given vertical direction. For client-side rows
-  // getRowNodeAtViewIndex is always defined, so this resolves to 0 / maxRow.
-  private verticalEdge(fromRow: number, dir: "up" | "down"): number {
-    const rowModel = this.deps.getRowModel();
-    if (dir === "up") {
-      let edge = fromRow;
-      while (edge - 1 >= 0 && rowModel.getRowNodeAtViewIndex(edge - 1)) edge--;
-      return edge;
-    }
-    const maxRow = this.maxRow();
-    let edge = fromRow;
-    while (edge + 1 <= maxRow && rowModel.getRowNodeAtViewIndex(edge + 1)) edge++;
-    return edge;
+  // A cell is empty when its value is null/undefined/"". 0 and false are real values.
+  // A cell whose row is not currently loaded (server-side sparse data) is treated as empty
+  // AND as a hard boundary for block scanning (see blockJump).
+  private isEmptyCell(row: number, colIdx: number): boolean {
+    const node = this.deps.getRowModel().getRowNodeAtViewIndex(row);
+    if (!node) return true;
+    const col = this.leafColumns()[colIdx];
+    if (!col) return true;
+    const v = col.getValue(node);
+    return v == null || v === "";
   }
 
-  /** Arrow-key navigation. Returns the new active cell, or null if nothing changed. */
-  navigate(dir: NavDir, opts: { extend: boolean; toEdge: boolean }): CellPos | null {
+  // Whether a row is loaded — an unloaded row is a hard stop for block scanning so the jump
+  // never crosses into (or past) the unloaded region for server-side data.
+  private isRowLoaded(row: number): boolean {
+    return !!this.deps.getRowModel().getRowNodeAtViewIndex(row);
+  }
+
+  /**
+   * Excel-style Ctrl+Arrow block jump from (fromRow, fromCol) along (dRow, dCol) — exactly one of
+   * the deltas is non-zero. Bounded by [0, maxRow] × [firstCol, lastCol]. Rules, based on the
+   * current cell and its immediate neighbor:
+   *  - current filled, neighbor filled → last filled cell of the contiguous run.
+   *  - current filled, neighbor empty  → next filled cell across the gap (or the edge if none).
+   *  - current empty                   → first filled cell ahead (or the edge if none).
+   * For server-side data, an unloaded row is a hard boundary: the scan stops at the last loaded
+   * cell before it, so the effective edge is the first/last loaded row.
+   */
+  private blockJump(fromRow: number, fromCol: number, dRow: number, dCol: number): { row: number; col: number } {
+    const minCol = this.firstSelectableColIdx();
+    const maxCol = this.lastColIdx();
+    const maxRow = this.maxRow();
+    const inBounds = (r: number, c: number) => r >= 0 && r <= maxRow && c >= minCol && c <= maxCol;
+
+    const next = (r: number, c: number) => ({ r: r + dRow, c: c + dCol });
+    // A step is traversable only when its target row is loaded (vertical scans); horizontal
+    // scans stay on one row, so loading only needs checking once.
+    const loadedAt = (r: number) => (dRow !== 0 ? this.isRowLoaded(r) : true);
+
+    let r = fromRow;
+    let c = fromCol;
+    const startEmpty = this.isEmptyCell(r, c);
+
+    // First hop must be to a loaded, in-bounds cell; otherwise we're already at the edge.
+    let step = next(r, c);
+    if (!inBounds(step.r, step.c) || !loadedAt(step.r)) {
+      return { row: r, col: c };
+    }
+
+    const neighborEmpty = this.isEmptyCell(step.r, step.c);
+
+    if (!startEmpty && !neighborEmpty) {
+      // Run: advance while the NEXT cell stays filled and loaded → stop at end of the run.
+      while (true) {
+        const ahead = next(r, c);
+        if (!inBounds(ahead.r, ahead.c) || !loadedAt(ahead.r) || this.isEmptyCell(ahead.r, ahead.c)) break;
+        r = ahead.r; c = ahead.c;
+      }
+      return { row: r, col: c };
+    }
+
+    // Gap / start-on-empty: advance to the first filled, loaded cell ahead. If none exists,
+    // land on the last in-bounds loaded cell (the edge).
+    let lastReachable = { row: r, col: c };
+    while (true) {
+      const ahead = next(r, c);
+      if (!inBounds(ahead.r, ahead.c) || !loadedAt(ahead.r)) break;
+      r = ahead.r; c = ahead.c;
+      lastReachable = { row: r, col: c };
+      if (!this.isEmptyCell(r, c)) return { row: r, col: c };
+    }
+    return lastReachable;
+  }
+
+  /**
+   * Arrow-key navigation. Returns the new active cell, or null if nothing changed.
+   * `jump` controls the step size:
+   *  - undefined → move one cell (plain Arrow).
+   *  - "edge"    → hard edge, ignoring cell contents (Home/End): first/last column or top/bottom row.
+   *  - "block"   → Excel-style data-block jump (Ctrl+Arrow), see blockJump.
+   */
+  navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump }): CellPos | null {
     const firstCol = this.firstSelectableColIdx();
     const lastCol = this.lastColIdx();
     const maxRow = this.maxRow();
@@ -217,19 +284,27 @@ export class SelectionModel {
     let nextRow = from.row;
     let nextCol = from.colIdx;
 
-    switch (dir) {
-      case "left":
-        nextCol = opts.toEdge ? firstCol : Math.max(firstCol, from.colIdx - 1);
-        break;
-      case "right":
-        nextCol = opts.toEdge ? lastCol : Math.min(lastCol, from.colIdx + 1);
-        break;
-      case "up":
-        nextRow = opts.toEdge ? this.verticalEdge(from.row, "up") : Math.max(0, from.row - 1);
-        break;
-      case "down":
-        nextRow = opts.toEdge ? this.verticalEdge(from.row, "down") : Math.min(maxRow, from.row + 1);
-        break;
+    if (opts.jump === "block") {
+      // Excel-style Ctrl+Arrow: jump across data blocks based on cell contents.
+      const delta = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] }[dir];
+      const jumped = this.blockJump(from.row, from.colIdx, delta[0], delta[1]);
+      nextRow = jumped.row;
+      nextCol = jumped.col;
+    } else if (opts.jump === "edge") {
+      // Home/End: hard edge, regardless of cell contents.
+      switch (dir) {
+        case "left": nextCol = firstCol; break;
+        case "right": nextCol = lastCol; break;
+        case "up": nextRow = 0; break;
+        case "down": nextRow = maxRow; break;
+      }
+    } else {
+      switch (dir) {
+        case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
+        case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
+        case "up": nextRow = Math.max(0, from.row - 1); break;
+        case "down": nextRow = Math.min(maxRow, from.row + 1); break;
+      }
     }
 
     return this.moveActiveTo(nextRow, nextCol, opts.extend);

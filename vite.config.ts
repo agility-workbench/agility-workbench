@@ -11,7 +11,19 @@ export default defineConfig({
       "@grid-react": path.resolve(__dirname, "grid-react")
     }
   },
-  server: { port: 5173 },
+  server: {
+    port: 5176,
+    watch: {
+      usePolling: true,
+      interval: 500,
+      ignored: [
+        "**/.git/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/dist-demo/**"
+      ]
+    }
+  },
   build: {
     outDir: "dist-demo",
     emptyOutDir: true
