@@ -1,5 +1,6 @@
 import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValueParserParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
+import { CellEditor } from "../renderer/editing/cellEditor";
 import { Filter, FilterParams } from "./filter";
 
 export enum ColumnType {
@@ -27,6 +28,13 @@ export interface ColDef {
   // Converts the raw string the user typed into the stored cell value. When omitted, the
   // typed text is stored verbatim.
   valueParser?: (params: ValueParserParams) => any;
+  // The editor used when a cell in this column is edited. A built-in alias ("text" | "number" |
+  // "date" | "boolean" | "select" | "textarea"), a custom editor class, or a factory function.
+  // When omitted, a default is chosen from `type` (number→number, date→date, boolean→boolean,
+  // else text).
+  cellEditor?: CellEditor;
+  // Config passed to the editor (e.g. { values } for the select editor).
+  cellEditorParams?: any;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;

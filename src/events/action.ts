@@ -176,6 +176,10 @@ export type GridActionEditCommit = {
   type: "editCommit";
   cell: CellRef;
   value: unknown;
+  // When true, `value` is already the final typed value and the column's valueParser is skipped
+  // (typed editors like number/date/boolean/select produce their own value). Defaults to false,
+  // where `value` is treated as raw text and run through valueParser.
+  parsed?: boolean;
 };
 
 export type GridActionEditCancel = {

@@ -2,8 +2,11 @@ import { useMemo, useRef, useState } from "react";
 
 import { GridReact } from "@grid-react";
 import type { ReactColDef } from "@grid-react";
+import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
+import { ValueFormatterParams, ValueParserParams } from "@grid";
+import { formatDate } from "./helpers";
 
 /**
  * Demonstrates the core-owned selection + keyboard navigation feature:
@@ -49,6 +52,18 @@ function mulberry32(seed: number) {
   };
 }
 
+function getRandomDate(start?: Date, end?: Date): Date {
+  const startDate = start ? start.getTime() : Date.now() - 10 * 365 * 24 * 60 * 60 * 1000;
+  const endDate = end ? end.getTime() : Date.now();
+
+  if (startDate > endDate) {
+    throw new Error("Start date must be before or equal to the end date.");
+  }
+
+  const randomTimestamp = Math.floor(Math.random() * (endDate - startDate + 1)) + startDate;
+  return new Date(randomTimestamp);
+}
+
 function buildRows(count: number): EmployeeRow[] {
   const rand = mulberry32(42);
   const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
@@ -67,6 +82,7 @@ function buildRows(count: number): EmployeeRow[] {
     rating: maybe(+(1 + rand() * 4).toFixed(1)),
     projects: maybe(Math.floor(rand() * 25)),
     active: maybe(rand() > 0.2 ? "Yes" : "No") as string,
+    joinedOn: getRandomDate(new Date(2000, 0, 0), new Date(2026, 55, 0)),
   }));
 
   // Guarantee a couple of obvious, fully-blank horizontal bands and a blank vertical run so the
@@ -128,23 +144,34 @@ export function SelectionDemo() {
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
-    // Double-click (or press F2) to edit. Enter/Tab commit, Esc cancels.
+    // Double-click (or press F2 / Enter) to edit. Enter/Tab commit, Esc cancels.
+    // Default text editor.
     { colId: "name", key: "name", label: "Name", width: 150, editable: true },
-    { colId: "department", key: "department", label: "Department", width: 130, editable: true },
-    { colId: "title", key: "title", label: "Title", width: 110 },
-    { colId: "city", key: "city", label: "City", width: 120, editable: true },
-    // Editable numeric column: valueParser coerces the typed text to a number and rejects NaN.
+    // Dropdown populated from the distinct values already in this column.
     {
-      colId: "salary", key: "salary", label: "Salary", width: 110, editable: true,
-      valueParser: ({ value, oldValue }) => {
-        const n = Number(String(value).replace(/[^0-9.-]/g, ""));
-        return Number.isNaN(n) ? oldValue : n;
-      },
+      colId: "department", key: "department", label: "Department", width: 130,
+      editable: true, cellEditor: "select", cellEditorParams: { values: "fromRows" },
     },
+    // Dropdown from a static list.
+    {
+      colId: "title", key: "title", label: "Title", width: 140,
+      editable: true, cellEditor: "select",
+      cellEditorParams: { values: ["Engineer", "Senior Engineer", "Manager", "Director", "VP"] },
+    },
+    { colId: "city", key: "city", label: "City", width: 120, editable: true },
+    // Numeric editor (<input type=number>) — commits a real number, no valueParser needed.
+    { colId: "salary", key: "salary", label: "Salary", width: 110, editable: true, type: ColumnType.NUMBER },
     { colId: "bonus", key: "bonus", label: "Bonus", width: 100 },
-    { colId: "rating", key: "rating", label: "Rating", width: 90 },
+    { colId: "rating", key: "rating", label: "Rating", width: 90, editable: true, type: ColumnType.NUMBER },
     { colId: "projects", key: "projects", label: "Projects", width: 100 },
-    { colId: "active", key: "active", label: "Active", width: 90 },
+    { colId: "joinedOn", key: "joinedOn", label: "Joined On", editable: true, type: ColumnType.DATE,
+      valueFormatter: (params: ValueFormatterParams) => formatDate(params.value),
+     },
+    // Yes/No dropdown.
+    {
+      colId: "active", key: "active", label: "Active", width: 90,
+      editable: true, cellEditor: "select", cellEditorParams: { values: ["Yes", "No"] },
+    },
   ], []);
 
   const handleReady = (api: IGridAPI) => {
@@ -167,8 +194,8 @@ export function SelectionDemo() {
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigateToCorner("bottomRight")}>Go bottom-right (API)</button>
-          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("up", {jump: "page", pageRows: 10})}>Move 10 rows up</button>
-          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("down", {jump: "page", pageRows: 10})}>Move 10 rows down</button>
+          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("up", { jump: "page", pageRows: 10 })}>Move 10 rows up</button>
+          <button className="btn" type="button" onClick={() => apiRef.current?.navigate("down", { jump: "page", pageRows: 10 })}>Move 10 rows down</button>
         </div>
       </div>
 

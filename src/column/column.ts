@@ -1,6 +1,7 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
+import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
@@ -22,6 +23,8 @@ export class Column {
   valueGetter?: (row: any) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
   valueParser?: (params: ValueParserParams) => any;
+  cellEditor?: CellEditor;
+  cellEditorParams?: any;
   editable: boolean = false;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
@@ -85,6 +88,8 @@ export class Column {
     this.valueGetter = col.valueGetter;
     this.valueFormatter = col.valueFormatter ? col.valueFormatter : getFormatterByType(col.type || ColumnType.STRING) || undefined;
     this.valueParser = col.valueParser;
+    this.cellEditor = col.cellEditor;
+    this.cellEditorParams = col.cellEditorParams;
     this.editable = isTrue(col.editable);
     this.formatterOptions = col.formatterOptions;
     this.cellRenderer = col.cellRenderer;
@@ -209,6 +214,8 @@ export class Column {
     dup.originalInstanceID = this.originalInstanceID;
     dup.valueFormatter = this.valueFormatter;
     dup.valueParser = this.valueParser;
+    dup.cellEditor = this.cellEditor;
+    dup.cellEditorParams = this.cellEditorParams;
     dup.editable = this.editable;
     dup.collator = this.collator;
     dup.comparator = this.comparator;

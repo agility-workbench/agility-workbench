@@ -995,6 +995,47 @@
   background: var(--pte-input-bg-color, #fff);
 }
 
+/* Select / dropdown editor — fills the cell like the text input. */
+.pte-cell-editor-select {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+}
+
+/* Multi-line textarea editor — overlays the cell without forcing the row taller. */
+.pte-cell-editor-textarea {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+  resize: none;
+}
+
+/* Boolean (checkbox) editor — center the checkbox within the cell. */
+.pte-cell-editor-boolean {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--pte-input-bg-color, #fff);
+}
+
 .pte-cell-sparkline {
   padding-left: 8px;
   padding-right: 8px;

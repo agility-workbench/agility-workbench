@@ -939,7 +939,9 @@ export class GridCore implements IGridCore {
           break;
         }
         const oldValue = col.getValue(row);
-        const newValue = col.parseValue(String(action.value ?? ""), row, oldValue);
+        const newValue = action.parsed
+          ? action.value
+          : col.parseValue(String(action.value ?? ""), row, oldValue);
         this.rowModel.setCellValue(action.cell.rowId, col.key, newValue);
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it

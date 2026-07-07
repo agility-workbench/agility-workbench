@@ -86,6 +86,15 @@ describe("GridCore editing", () => {
     expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 99 });
   });
 
+  it("stores the value directly and skips valueParser when parsed=true", () => {
+    const cId = colId(core, "qty");
+    const cell = { rowId: "2", colId: cId };
+    // A typed editor commits a real number with parsed:true — valueParser must not run.
+    core.dispatch({ type: "editCommit", cell, value: 123, parsed: true });
+    expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(123);
+    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 123 });
+  });
+
   it("cancels an edit without changing the value", () => {
     const cId = colId(core, "name");
     const cell = { rowId: "1", colId: cId };

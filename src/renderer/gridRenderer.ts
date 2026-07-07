@@ -215,6 +215,7 @@ export class GridRenderer {
       leafColumns: () => this._leafColumns,
       ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
       repaintCell: (rowId, colId) => this._repaintCell(rowId, colId),
+      api: () => null,
     });
     this._exportRenderer = new ExportRenderer({
       core: this.core,

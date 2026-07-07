@@ -34,6 +34,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.19",
+    "happy-dom": "^20.10.6",
     "postcss": "^8.4.38",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

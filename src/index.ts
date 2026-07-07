@@ -30,7 +30,21 @@ export { ServerSideRowModel } from "./ssrm/serverSide";
 export type {
   FormatterOptionsParams,
   ValueFormatterParams,
+  ValueParserParams,
 } from "./column/formatters";
+
+export type {
+  CellEditor,
+  CellEditorAlias,
+  CellEditorClass,
+  ICellEditor,
+  ICellEditorFn,
+  ICellEditorParams,
+  SelectCellEditorParams,
+  SelectEditorOption,
+  SelectValueSource,
+  SelectValueAsyncParams,
+} from "./renderer/editing/cellEditor";
 
 export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
 export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
