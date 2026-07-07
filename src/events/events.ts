@@ -1,6 +1,7 @@
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
+import { SelectionSnapshot } from "../interfaces/selection";
 
 export type GridEventName =
   | "overlayShow"
@@ -89,16 +90,17 @@ export type GridEventCellsChangedParams = {
 };
 
 export type GridEventSelectionChangedParams = {
-  mode: "single" | "multiple" | "range";
-  addedRowIds: GridId[];
-  removedRowIds: GridId[];
-  // current selection snapshot (optional; can be expensive)
-  selectedRowIds?: GridId[];
+  // full current selection snapshot (see snapshot.kind for the active selection kind)
+  snapshot: SelectionSnapshot;
+  reason?: "mouse" | "keyboard" | "api" | "model";
 };
 
 export type GridEventFocusChangedParams = {
   prev?: { rowId: GridId; colId: ColId };
   next?: { rowId: GridId; colId: ColId };
+  // active cell position in view-index space (for scroll-into-view; survives unloaded rows)
+  viewIdx?: number;
+  colIdx?: number;
   // if focus moved due to keyboard navigation
   reason?: "mouse" | "keyboard" | "api";
 };

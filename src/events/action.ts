@@ -2,8 +2,8 @@ import { AggregateModel } from "@grid/interfaces";
 import { ColDef } from "../interfaces/column";
 import { FilterModel } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
-import { CellRef, SelectionRange } from "../interfaces/selection";
-import { SortItemUpdate, SortModel } from "../interfaces/sort";
+import { CellRef } from "../interfaces/selection";
+import { SortItemUpdate } from "../interfaces/sort";
 
 export type GridActionInit = {
   type: "init";
@@ -129,12 +129,14 @@ export type GridActionAggregateModelSet = {
 // Focus/Selection actions
 export type GridActionFocusSet = {
   type: "focusSet";
-  cell?: CellRef;
+  viewIdx: number;
+  colIdx: number;
   reason?: "mouse" | "keyboard" | "api";
 };
 
 export type GridActionSelectionClear = {
   type: "selectionClear";
+  what?: "all" | "range" | "rows" | "columns";
 };
 
 export type GridActionHeaderAction = {
@@ -145,15 +147,22 @@ export type GridActionHeaderAction = {
 
 export type GridActionRowSelectSet = {
   type: "rowSelectSet";
-  rowId: string;
-  selected: boolean;
-  multi?: boolean;
+  viewIdx: number;
+  mode: "replace" | "toggle" | "range";
+};
+
+export type GridActionColumnSelectSet = {
+  type: "columnSelectSet";
+  colId: string;
+  mode?: "replace" | "toggle";
 };
 
 export type GridActionRangeSelectSet = {
   type: "rangeSelectSet";
-  range: SelectionRange;
-  mode?: "replace" | "extend";
+  // Start a fresh range at this cell, or extend the current range's active corner to it.
+  viewIdx: number;
+  colIdx: number;
+  mode: "start" | "extend";
 };
 
 // Editing actions
@@ -177,7 +186,21 @@ export type GridActionEditCancel = {
 // Keyboard navigation action
 export type GridActionKeyboardNavigate = {
   type: "navigate";
-  dir: "up" | "down" | "left" | "right" | "pageUp" | "pageDown" | "home" | "end";
+  dir: "up" | "down" | "left" | "right";
+  extend?: boolean;
+  toEdge?: boolean;
+};
+
+// Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End)
+export type GridActionNavigateCorner = {
+  type: "navigateCorner";
+  corner: "topLeft" | "bottomRight";
+  extend?: boolean;
+};
+
+// Select the entire grid (Ctrl+A)
+export type GridActionSelectAll = {
+  type: "selectAll";
 };
 
 // Union type of all actions
@@ -207,8 +230,11 @@ export type GridAction =
   | GridActionHeaderAction
   | GridActionSelectionClear
   | GridActionRowSelectSet
+  | GridActionColumnSelectSet
   | GridActionRangeSelectSet
   | GridActionEditStart
   | GridActionEditCommit
   | GridActionEditCancel
-  | GridActionKeyboardNavigate;
+  | GridActionKeyboardNavigate
+  | GridActionNavigateCorner
+  | GridActionSelectAll;

@@ -3,8 +3,10 @@ import {
   GridEventColumnsChangedParams,
   GridEventColumnWidthsChangedParams,
   GridEventAggregateChangedParams,
+  GridEventFocusChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
+  GridEventSelectionChangedParams,
   GridEventViewportChangedParams,
   Unsubscribe,
 } from "../events/events";
@@ -20,6 +22,8 @@ interface GridRendererCoreEventBinderParams {
   onAggregateChanged: (params: GridEventAggregateChangedParams) => void;
   updatePaginationControls: (params: GridEventPaginationChangedParams) => void;
   renderAggregateRow: () => void;
+  onSelectionChanged: (params: GridEventSelectionChangedParams) => void;
+  onFocusChanged: (params: GridEventFocusChangedParams) => void;
 }
 
 export class GridRendererCoreEventBinder {
@@ -53,6 +57,12 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("paginationChanged", (params: GridEventPaginationChangedParams) => {
         this.params.updatePaginationControls(params);
+      }),
+      this.params.core.on("selectionChanged", (params: GridEventSelectionChangedParams) => {
+        this.params.onSelectionChanged(params);
+      }),
+      this.params.core.on("focusChanged", (params: GridEventFocusChangedParams) => {
+        this.params.onFocusChanged(params);
       }),
     );
   }

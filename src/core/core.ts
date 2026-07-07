@@ -23,6 +23,9 @@ import { IColumnModel } from "../interfaces/iColumnModel";
 import { GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
+import { SelectionModel } from "./selectionModel";
+import { CellPos, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
+import { GridEventFocusChangedParams } from "../events/events";
 
 type SchemaSource = "auto" | "props" | "server";
 
@@ -55,6 +58,8 @@ export class GridCore implements IGridCore {
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
   private textMeasureParams!: TextMeasureParams;
 
+  private selectionModel: SelectionModel;
+
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
     this.id = crypto.randomUUID();
@@ -65,6 +70,12 @@ export class GridCore implements IGridCore {
     this.paginationEnabled = this.options.pagination;
     this.pageEndIdx = this.options.pageSize;
     this.pageSizes = this.options.pageSizes;
+    this.selectionModel = new SelectionModel({
+      getRowModel: () => this.rowModel,
+      getColumnModel: () => this.columnModel,
+      getRowIdAtViewIndex: (viewIdx) => this.getRowIdAtViewIndex(viewIdx),
+      getPageStartIdx: () => this.getPageStartIdx(),
+    });
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -139,6 +150,7 @@ export class GridCore implements IGridCore {
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
+    this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "defs" });
     if (changedFilterColIds.length > 0) {
       this.emit("columnsChanged", { reason: "filter", changedColIds: changedFilterColIds });
@@ -425,6 +437,9 @@ export class GridCore implements IGridCore {
   private applyFilters(changedColIds: string[]) {
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
+    this.selectionModel.clearRange();
+    this.selectionModel.clearRows();
+    this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "filter", changedColIds })
   }
 
@@ -440,6 +455,9 @@ export class GridCore implements IGridCore {
     }
     if (changedColIDs.length === 0) return;
     this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    this.selectionModel.clearRange();
+    this.selectionModel.clearRows();
+    this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
   }
 
@@ -676,6 +694,45 @@ export class GridCore implements IGridCore {
     return this.aggregateScope;
   }
 
+  // ---------------- Selection reads ----------------
+  getSelectionRange(): SelectionRange | null {
+    return this.selectionModel.getSelectionRange();
+  }
+
+  getSelectionAnchor(): CellPos | null {
+    return this.selectionModel.getAnchor();
+  }
+
+  getActiveCell(): CellPos | null {
+    return this.selectionModel.getActiveCell();
+  }
+
+  getSelectedColumnIds(): Set<string> {
+    return this.selectionModel.getSelectedColumnIds();
+  }
+
+  getSelectedRowIds(): Set<string> {
+    return this.selectionModel.getSelectedRowIds();
+  }
+
+  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
+    return this.selectionModel.isCellInActiveSelection(viewIdx, colIdx, rowId, colId);
+  }
+
+  getSelectionSnapshot(resolveIds = false): SelectionSnapshot {
+    return this.selectionModel.getSnapshot(resolveIds);
+  }
+
+  /** Prune column selection to still-existing columns (called after column model rebuilds). */
+  pruneColumnSelection() {
+    this.selectionModel.pruneColumns();
+  }
+
+  /** Clamp the active range/anchor to the current view bounds (called after view recompute). */
+  clampSelectionToView() {
+    this.selectionModel.clampToView();
+  }
+
   // Event handling
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe {
     if (!this.eventHandlers.has(event)) {
@@ -751,11 +808,13 @@ export class GridCore implements IGridCore {
         break;
       case "columnVisibility":
         this.columnModel.toggleVisibility(action.colIds, action.hidden);
+        this.clearSelectionForColumnChange();
         this.emit("columnsChanged", { reason: "visibility", changedColIds: action.colIds });
         this.emit("rowsChanged", { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "columnMove":
         this.columnModel.moveColumnTo(action.colId, action.toIndex, action.toSection);
+        this.clearSelectionForColumnChange();
         this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
@@ -792,15 +851,97 @@ export class GridCore implements IGridCore {
               if (this.aggregates.length > 0) {
                 this.applyAggregateRequest("aggregateModel", "columns");
               }
+              this.clearSelectionForColumnChange();
               this.emit("columnsChanged", { reason: "state", changedColIds: [col.instanceID] });
               this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
             }
             break;
         }
         break;
+      case "navigate": {
+        const active = this.selectionModel.navigate(action.dir, {
+          extend: !!action.extend,
+          toEdge: !!action.toEdge,
+        });
+        this.emitSelectionChanged("keyboard");
+        this.emitFocusChanged(active, "keyboard");
+        break;
+      }
+      case "navigateCorner": {
+        const active = this.selectionModel.navigateToCorner(action.corner, !!action.extend);
+        this.emitSelectionChanged("keyboard");
+        this.emitFocusChanged(active, "keyboard");
+        break;
+      }
+      case "selectAll": {
+        const active = this.selectionModel.selectAll();
+        this.emitSelectionChanged("keyboard");
+        this.emitFocusChanged(active, "keyboard");
+        break;
+      }
+      case "focusSet": {
+        const ok = this.selectionModel.selectSingleCell(action.viewIdx, action.colIdx);
+        if (ok) {
+          this.emitSelectionChanged(action.reason ?? "api");
+          this.emitFocusChanged(this.selectionModel.getActiveCell(), action.reason ?? "api");
+        }
+        break;
+      }
+      case "rangeSelectSet": {
+        if (action.mode === "extend") {
+          this.selectionModel.updateRange(action.viewIdx, action.colIdx);
+        } else {
+          this.selectionModel.startFromCell({ viewIdx: action.viewIdx, colIdx: action.colIdx });
+        }
+        this.emitSelectionChanged("mouse");
+        this.emitFocusChanged(this.selectionModel.getActiveCell(), "mouse");
+        break;
+      }
+      case "rowSelectSet":
+        this.selectionModel.toggleRow(action.viewIdx, action.mode);
+        this.emitSelectionChanged("mouse");
+        break;
+      case "columnSelectSet":
+        this.selectionModel.toggleColumn(action.colId, action.mode ?? "toggle");
+        this.emitSelectionChanged("mouse");
+        break;
+      case "selectionClear":
+        switch (action.what ?? "all") {
+          case "range": this.selectionModel.clearRange(); break;
+          case "rows": this.selectionModel.clearRows(); break;
+          case "columns": this.selectionModel.clearColumns(); break;
+          default: this.selectionModel.clearAll(); break;
+        }
+        this.emitSelectionChanged("api");
+        break;
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }
+  }
+
+  private emitSelectionChanged(reason: "mouse" | "keyboard" | "api" | "model"): void {
+    this.emit("selectionChanged", {
+      snapshot: this.selectionModel.getSnapshot(),
+      reason,
+    });
+  }
+
+  private clearSelectionForColumnChange(): void {
+    this.selectionModel.clearRange();
+    this.selectionModel.clearColumns();
+    this.emitSelectionChanged("model");
+  }
+
+  private emitFocusChanged(active: CellPos | null, reason: "mouse" | "keyboard" | "api"): void {
+    const params: GridEventFocusChangedParams = { reason };
+    if (active) {
+      params.viewIdx = active.row;
+      params.colIdx = active.colIdx;
+      const rowId = this.getRowIdAtViewIndex(active.row);
+      const col = this.columnModel.getLeaves()[active.colIdx];
+      if (rowId && col) params.next = { rowId, colId: col.instanceID };
+    }
+    this.emit("focusChanged", params);
   }
 
   emit<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]): void {

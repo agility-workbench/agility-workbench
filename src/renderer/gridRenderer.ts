@@ -162,13 +162,15 @@ export class GridRenderer {
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
       renderAggregateRow: () => this._renderAggregateRow(),
+      onSelectionChanged: () => this._selectionRenderer.onSelectionChanged(),
+      onFocusChanged: (params) => this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx),
     });
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
       recomputeView: () => {
         this._bodyViewportRenderer.recomputeView();
-        this._selectionRenderer?.clampSelectionToView();
+        this.core.clampSelectionToView();
       },
       updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
@@ -178,9 +180,6 @@ export class GridRenderer {
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
       updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
-      clearSelection: () => this._selectionRenderer?.clearSelection(),
-      clearColumnSelection: () => this._selectionRenderer?.clearColumnSelection(),
-      clearRowSelection: () => this._selectionRenderer?.clearRowSelection(),
       refreshSelectionStyles: () => this._selectionRenderer?.refreshSelectionStyles(),
     });
     this._selectionRenderer = new SelectionRenderer({
@@ -195,15 +194,15 @@ export class GridRenderer {
       core: this.core,
       leafColumns: () => this._leafColumns,
       columnWidths: () => this._columnWidths,
-      selectionRange: () => this._selectionRenderer.getSelectionRange(),
-      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
+      selectionRange: () => this.core.getSelectionRange(),
+      selectedColumnIDs: () => this.core.getSelectedColumnIds(),
     });
     this._columnMenuOpener = new ColumnMenuOpener({
       core: this.core,
       menuCoordinator,
       filterMenuCoordinator,
       menuRenderer: this._menuRenderer,
-      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
+      selectedColumnIDs: () => this.core.getSelectedColumnIds(),
     });
     if (createBodyMenuCoordinator) {
       const bodyMenuCoordinator = createBodyMenuCoordinator(
@@ -220,7 +219,6 @@ export class GridRenderer {
         root: this.root,
         bodyMenuCoordinator,
         menuRenderer: this._menuRenderer,
-        selectionRenderer: this._selectionRenderer,
       });
     }
     this._filterUpdateHandler = new FilterUpdateHandler({
@@ -233,7 +231,7 @@ export class GridRenderer {
     this._aggregateModelController = new AggregateModelController({
       core: this.core,
       leafColumns: () => this._leafColumns,
-      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
+      selectedColumnIDs: () => this.core.getSelectedColumnIds(),
       markAggregatesDirty: () => this._markAggregatesDirty(),
       requestServerAggregates: () => undefined,
       renderAggregateRow: () => this._renderAggregateRow(),
@@ -309,8 +307,8 @@ export class GridRenderer {
     this._headerInteractionHandler = new HeaderInteractionHandler({
       core: this.core,
       root: this.root,
-      selectedColumnIDs: () => this._selectionRenderer.getSelectedColumnIDs(),
-      toggleColumnSelection: (colID, mode) => this._selectionRenderer.toggleColumnSelection(colID, mode),
+      selectedColumnIDs: () => this.core.getSelectedColumnIds(),
+      toggleColumnSelection: (colID, mode) => this.core.dispatch({ type: "columnSelectSet", colId: colID, mode }),
       openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
@@ -608,7 +606,7 @@ export class GridRenderer {
   _buildHeaderDOM(reason: string) {
     this._syncLeafColumns();
     this._headerRenderer.buildDOM(reason);
-    this._selectionRenderer.pruneColumnSelection();
+    this.core.pruneColumnSelection();
     this._selectionRenderer.applyColumnSelectionStyles();
   }
 

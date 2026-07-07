@@ -1,7 +1,8 @@
 import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
-import { IGridAPI } from "../interfaces/iGridAPI";
+import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
+import { SelectionSnapshot } from "../interfaces/selection";
 
 export class GridAPI implements IGridAPI {
   constructor(private core: IGridCore) {}
@@ -39,6 +40,49 @@ export class GridAPI implements IGridAPI {
     remove?: GridId[];
   }): void {
     this.dispatch({ type: "APPLY_TRANSACTION", transaction: tx });
+  }
+
+  // ---------------- Selection ----------------
+  setFocusedCell(viewIdx: number, colIdx: number): void {
+    this.core.dispatch({ type: "focusSet", viewIdx, colIdx, reason: "api" });
+  }
+
+  selectRange(viewIdx: number, colIdx: number): void {
+    this.core.dispatch({ type: "rangeSelectSet", viewIdx, colIdx, mode: "start" });
+  }
+
+  extendRangeTo(viewIdx: number, colIdx: number): void {
+    this.core.dispatch({ type: "rangeSelectSet", viewIdx, colIdx, mode: "extend" });
+  }
+
+  navigate(dir: NavDir, opts?: { extend?: boolean; toEdge?: boolean }): void {
+    this.core.dispatch({ type: "navigate", dir, extend: opts?.extend, toEdge: opts?.toEdge });
+  }
+
+  navigateToCorner(corner: "topLeft" | "bottomRight", opts?: { extend?: boolean }): void {
+    this.core.dispatch({ type: "navigateCorner", corner, extend: opts?.extend });
+  }
+
+  selectAll(): void {
+    this.core.dispatch({ type: "selectAll" });
+  }
+
+  selectRow(viewIdx: number, mode: "replace" | "toggle" | "range" = "replace"): void {
+    this.core.dispatch({ type: "rowSelectSet", viewIdx, mode });
+  }
+
+  selectColumn(colId: string, mode: "replace" | "toggle" = "replace"): void {
+    this.core.dispatch({ type: "columnSelectSet", colId, mode });
+  }
+
+  clearSelection(what: "all" | "range" | "rows" | "columns" = "all"): void {
+    this.core.dispatch({ type: "selectionClear", what });
+  }
+
+  getSelection(): SelectionSnapshot {
+    // Always resolve range row/column ids for API consumers — they typically want record
+    // identity, not view indices.
+    return this.core.getSelectionSnapshot(true);
   }
 
   destroy(): void {

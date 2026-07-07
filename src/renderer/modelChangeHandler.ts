@@ -18,9 +18,6 @@ interface GridModelChangeHandlerParams {
   buildRowPool: () => void;
   buildHeaderDOM: (reason: string) => void;
   updateColumnWidths: (colIDs?: string[]) => void;
-  clearSelection: () => void;
-  clearColumnSelection: () => void;
-  clearRowSelection: () => void;
   refreshSelectionStyles: () => void;
 }
 
@@ -36,10 +33,8 @@ export class GridModelChangeHandler {
       this.params.serverSidePendingRangeKeys.delete(`${params.firstRowIndex}:${params.lastRowIndex}`);
     } else {
       this.params.serverSidePendingRangeKeys.clear();
-      if (wipesSelection) {
-        this.params.clearSelection();
-        this.params.clearRowSelection();
-      }
+      // Selection clearing on sort/filter is now owned by the core (it emits selectionChanged);
+      // the renderer only needs to repaint, which happens via updateWindow below.
     }
     if (params.reason !== "sort") {
       this.params.recomputeView();
@@ -59,10 +54,8 @@ export class GridModelChangeHandler {
   onColumnsChanged(params: GridEventColumnsChangedParams) {
     console.log(params);
     let rebuiltRows = false;
-    if (params.reason === "visibility" || params.reason === "state" || params.reason === "order" || params.reason === "defs") {
-      this.params.clearSelection();
-      this.params.clearColumnSelection();
-    }
+    // Selection clearing on column visibility/state/order/defs changes is owned by the core
+    // (it emits selectionChanged); the renderer only rebuilds/repaints below.
     if (params.reason === "sort") {
       const sorts = this.params.core.getSortModel().items;
       for (const colID of params.changedColIds || []) {

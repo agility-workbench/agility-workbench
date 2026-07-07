@@ -4,7 +4,7 @@ import { FilterModel } from "./filter";
 import { IRowModel, RowDataChangeReason } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
-import { CellRef, SelectionRange } from "./selection";
+import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
 import { GridOptions } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
@@ -99,6 +99,17 @@ export interface IGridCore {
   getAggregateScope(): AggregateScope;
   setAggregateModel(aggregates: AggregateModel[]): void;
   setAggregateScope(scope: AggregateScope): void;
+
+  /* ----- Selection reads (owned by core) ----- */
+  getSelectionRange(): SelectionRange | null;
+  getSelectionAnchor(): CellPos | null;
+  getActiveCell(): CellPos | null;
+  getSelectedColumnIds(): Set<string>;
+  getSelectedRowIds(): Set<string>;
+  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;
+  getSelectionSnapshot(resolveIds?: boolean): SelectionSnapshot;
+  pruneColumnSelection(): void;
+  clampSelectionToView(): void;
 
   refreshRows(reason?: RowDataChangeReason, range?: { start: number; end: number }): void;
 

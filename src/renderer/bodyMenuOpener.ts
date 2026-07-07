@@ -2,14 +2,12 @@ import { GridCore } from "../core/core";
 import { BodyMenuCoordinator } from "../menu/bodyMenuCoordinator";
 import { BodyMenuContext, BodyMenuSelectionSnapshot } from "../menu/bodyContext";
 import { MenuRenderer } from "./menuRenderer";
-import { SelectionRenderer } from "./selection/selectionRenderer";
 
 interface BodyMenuOpenerParams {
   core: GridCore;
   root: HTMLDivElement;
   bodyMenuCoordinator: BodyMenuCoordinator;
   menuRenderer: MenuRenderer;
-  selectionRenderer: SelectionRenderer;
 }
 
 export class BodyMenuOpener {
@@ -35,8 +33,8 @@ export class BodyMenuOpener {
 
     e.preventDefault();
 
-    if (!this.params.selectionRenderer.isCellInActiveSelection(viewIdx, colIdx, rowId, colId)) {
-      this.params.selectionRenderer.selectSingleCell(viewIdx, colIdx);
+    if (!this.params.core.isCellInActiveSelection(viewIdx, colIdx, rowId, colId)) {
+      this.params.core.dispatch({ type: "focusSet", viewIdx, colIdx, reason: "mouse" });
     }
 
     this.open({
@@ -81,10 +79,10 @@ export class BodyMenuOpener {
   }
 
   private snapshotSelection(): BodyMenuSelectionSnapshot {
-    const range = this.params.selectionRenderer.getSelectionRange();
+    const range = this.params.core.getSelectionRange();
     return {
-      rowIds: Array.from(this.params.selectionRenderer.getSelectedRowIDs()),
-      colIds: Array.from(this.params.selectionRenderer.getSelectedColumnIDs()),
+      rowIds: Array.from(this.params.core.getSelectedRowIds()),
+      colIds: Array.from(this.params.core.getSelectedColumnIds()),
       range: range ? { ...range } : null,
     };
   }
