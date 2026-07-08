@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -12,6 +12,7 @@ import type {
   IServerSideRequest,
   RowModelType,
 } from "@grid";
+import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { CellRendererParams } from "@grid/renderer/renderer";
 import { ChangeFlashCellRenderer } from "@grid";
 
@@ -132,8 +133,19 @@ type TradingRow = {
   volume: number;
 };
 
-function buildInitialTradingRows(): TradingRow[] {
-  return TRADING_SYMBOLS.map(({ symbol, name, base }) => ({
+// Extra symbols that aren't seeded initially — the "Add symbol" button streams these in via
+// applyTransaction so you can watch a brand-new row appear without a full data reload.
+const EXTRA_SYMBOLS = [
+  { symbol: "IBM", name: "IBM Corp.", base: 168.90 },
+  { symbol: "QCOM", name: "Qualcomm Inc.", base: 171.44 },
+  { symbol: "AVGO", name: "Broadcom Inc.", base: 1342.10 },
+  { symbol: "TXN", name: "Texas Instruments", base: 196.33 },
+  { symbol: "MU", name: "Micron Technology", base: 118.72 },
+  { symbol: "SNOW", name: "Snowflake Inc.", base: 128.51 },
+];
+
+function makeRow(symbol: string, name: string, base: number): TradingRow {
+  return {
     symbol,
     name,
     ltp: base,
@@ -142,45 +154,101 @@ function buildInitialTradingRows(): TradingRow[] {
     change: 0,
     changePct: 0,
     volume: Math.floor(500_000 + Math.random() * 4_500_000),
-  }));
+  };
+}
+
+function buildInitialTradingRows(): TradingRow[] {
+  return TRADING_SYMBOLS.map(({ symbol, name, base }) => makeRow(symbol, name, base));
 }
 
 function TradingGrid() {
-  const [rows, setRows] = useState<TradingRow[]>(() => buildInitialTradingRows());
+  // Initial rows are passed to <GridReact data> exactly ONCE (constant reference). Every subsequent
+  // change is streamed through api.applyTransaction — no full setRowData, so edit history is kept
+  // and only the touched cells repaint (which is what lets ChangeFlashCellRenderer flash deltas).
+  const initialRows = useMemo(() => buildInitialTradingRows(), []);
+  const apiRef = useRef<IGridAPI | null>(null);
+
+  // Live working set, keyed by symbol. Held in a ref so the ticker reads/writes without re-rendering.
+  const rowsRef = useRef<Map<string, TradingRow>>(
+    new Map(initialRows.map((r) => [r.symbol, r])),
+  );
   const basePrices = useMemo(() => {
     const map = new Map<string, number>();
-    TRADING_SYMBOLS.forEach((s) => map.set(s.symbol, s.base));
+    [...TRADING_SYMBOLS, ...EXTRA_SYMBOLS].forEach((s) => map.set(s.symbol, s.base));
     return map;
   }, []);
 
+  const [streaming, setStreaming] = useState(true);
+  const [rowCount, setRowCount] = useState(initialRows.length);
+  const nextExtraIdx = useRef(0);
+
   useEffect(() => {
+    if (!streaming) return;
     const id = window.setInterval(() => {
-      setRows((current) => {
-        const updatesPerTick = Math.max(1, Math.floor(current.length * 0.4));
-        const next = current.slice();
-        for (let i = 0; i < updatesPerTick; i++) {
-          const idx = Math.floor(Math.random() * next.length);
-          const row = next[idx];
-          const drift = (Math.random() - 0.5) * row.ltp * 0.004;
-          const newLtp = +Math.max(0.01, row.ltp + drift).toFixed(2);
-          const base = basePrices.get(row.symbol) ?? newLtp;
-          const change = +(newLtp - base).toFixed(2);
-          const changePct = +((change / base) * 100).toFixed(2);
-          next[idx] = {
-            ...row,
-            ltp: newLtp,
-            bid: +(newLtp - 0.05).toFixed(2),
-            ask: +(newLtp + 0.05).toFixed(2),
-            change,
-            changePct,
-            volume: row.volume + Math.floor(Math.random() * 5000),
-          };
-        }
-        return next;
-      });
+      const api = apiRef.current;
+      if (!api) return;
+
+      const symbols = [...rowsRef.current.keys()];
+      if (symbols.length === 0) return;
+
+      const updatesPerTick = Math.max(1, Math.floor(symbols.length * 0.4));
+      const update: { rowId: string; row: TradingRow }[] = [];
+      const touched = new Set<string>();
+      for (let i = 0; i < updatesPerTick; i++) {
+        const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+        if (touched.has(symbol)) continue;
+        touched.add(symbol);
+        const row = rowsRef.current.get(symbol)!;
+        const drift = (Math.random() - 0.5) * row.ltp * 0.004;
+        const newLtp = +Math.max(0.01, row.ltp + drift).toFixed(2);
+        const base = basePrices.get(symbol) ?? newLtp;
+        const change = +(newLtp - base).toFixed(2);
+        const changePct = +((change / base) * 100).toFixed(2);
+        const nextRow: TradingRow = {
+          ...row,
+          ltp: newLtp,
+          bid: +(newLtp - 0.05).toFixed(2),
+          ask: +(newLtp + 0.05).toFixed(2),
+          change,
+          changePct,
+          volume: row.volume + Math.floor(Math.random() * 5000),
+        };
+        rowsRef.current.set(symbol, nextRow);
+        update.push({ rowId: symbol, row: nextRow });
+      }
+
+      if (update.length > 0) api.applyTransaction({ update });
     }, 300);
     return () => window.clearInterval(id);
-  }, [basePrices]);
+  }, [streaming, basePrices]);
+
+  const addSymbol = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    // Find the next extra symbol not already present.
+    for (let n = 0; n < EXTRA_SYMBOLS.length; n++) {
+      const idx = (nextExtraIdx.current + n) % EXTRA_SYMBOLS.length;
+      const { symbol, name, base } = EXTRA_SYMBOLS[idx];
+      if (rowsRef.current.has(symbol)) continue;
+      const row = makeRow(symbol, name, base);
+      rowsRef.current.set(symbol, row);
+      nextExtraIdx.current = idx + 1;
+      api.applyTransaction({ add: [row] });
+      setRowCount(rowsRef.current.size);
+      return;
+    }
+  };
+
+  const removeLast = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    const symbols = [...rowsRef.current.keys()];
+    if (symbols.length === 0) return;
+    const symbol = symbols[symbols.length - 1];
+    rowsRef.current.delete(symbol);
+    api.applyTransaction({ remove: [symbol] });
+    setRowCount(rowsRef.current.size);
+  };
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "symbol", key: "symbol", label: "Symbol", width: 90 },
@@ -224,12 +292,27 @@ function TradingGrid() {
   ], []);
 
   return (
-    <GridReact
-      data={rows}
-      columnDefs={columnDefs}
-      rowIdKey="symbol"
-      style={{ width: "100%", height: "100%" }}
-    />
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button className="btn" type="button" onClick={() => setStreaming((s) => !s)}>
+          {streaming ? "Pause" : "Resume"} ticks
+        </button>
+        <button className="btn" type="button" onClick={addSymbol}>Add symbol</button>
+        <button className="btn" type="button" onClick={removeLast}>Remove last</button>
+        <span style={{ fontSize: "12px", color: "#6b7280" }}>
+          {rowCount} rows · streaming via applyTransaction (add / update / remove)
+        </span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <GridReact
+          apiRef={apiRef}
+          data={initialRows}
+          columnDefs={columnDefs}
+          rowIdKey="symbol"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -496,7 +579,8 @@ function App() {
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <strong style={{ fontSize: "13px" }}>Trading terminal</strong>
           <span style={{ fontSize: "12px", color: "#6b7280" }}>
-            (live tick simulation — green/red flashes show up/down LTP, bid, ask, change moves)
+            (live applyTransaction stream — green/red flashes show up/down LTP, bid, ask, change moves;
+            use Add / Remove to stream structural changes)
           </span>
         </div>
         <div style={{ flex: 1, minHeight: 0 }} className={activeTheme.className}>
