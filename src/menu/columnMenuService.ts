@@ -101,9 +101,9 @@ export class ColumnMenuService {
           id: "sparklines",
           label: "Show Sparklines",
           subMenu: [
-            { id: "sparklinesBar", label: "Bar Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "bar" } },
-            { id: "sparklinesLine", label: "Line Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "line" } },
-            { id: "sparklinesArea", label: "Area Sparklines", command: "columns.newSparklineCol", payload: { cols: colIDs, type: "area" } },
+            { id: "sparklinesBar", label: "Bar Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "bar" } },
+            { id: "sparklinesLine", label: "Line Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "line" } },
+            { id: "sparklinesArea", label: "Area Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "area" } },
           ]
         });
       }
@@ -121,17 +121,33 @@ export class ColumnMenuService {
 
     switch (item.command) {
       case "sort.setMany":
-        return this.core.dispatch({ type: "sortModelSet", sortItems: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })) });
+        return this.core.dispatch({
+          type: "sortModelSet",
+          sortItems: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })),
+        });
       case "column.hideMany":
-        return this.core.dispatch({ type: "columnVisibility", colIds: item.payload.colIDs, hidden: true });
+        return this.core.dispatch({
+          type: "columnVisibility",
+          colIds: item.payload.colIDs,
+          hidden: true,
+        });
       case "column.pinMany":
-        console.log("Pinning columns", item.payload.colIDs, "to", item.payload.pinned);
-        return this.core.dispatch({ type: "columnPin", colIds: item.payload.colIDs, pinned: item.payload.pinned });
+        return this.core.dispatch({
+          type: "columnPin",
+          colIds: item.payload.colIDs,
+          pinned: item.payload.pinned,
+        });
       // filter.open / filter.clear / pin / hide etc
       case "aggregate.setMany":
         return this.core.dispatch({
           type: "aggregateModelSet",
           aggregateModels: this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
+        });
+      case "columns.newSparklineCol":
+        return this.core.dispatch({
+          type: "addSparklineColumn",
+          colIds: item.payload.colIDs,
+          sparklineType: item.payload.type,
         });
       default:
         // unknown command -> ignore (or warn in dev)

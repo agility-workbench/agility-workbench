@@ -55,7 +55,7 @@ export type GridEventViewportChangedParams = {
 };
 
 export type GridEventColumnsChangedParams = {
-  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter";
+  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "add";
   changedColIds?: ColId[];
 };
 
@@ -65,7 +65,7 @@ export type GridEventColumnWidthsChangedParams = {
 };
 
 export type GridEventRowsChangedParams = {
-  reason: "rowData" | "transaction" | "group" | "viewport" | RowDataChangeReason;
+  reason: "rowData" | "transaction" | "group" | "viewport" | "add" | RowDataChangeReason;
   // displayed indices impacted (optional optimization)
   firstRowIndex?: number;
   lastRowIndex?: number;

@@ -27,6 +27,7 @@ import { SelectionModel } from "./selectionModel";
 import { CellEdit, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
+import { SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 
 type SchemaSource = "auto" | "props" | "server";
 
@@ -847,6 +848,28 @@ export class GridCore implements IGridCore {
         this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "addSparklineColumn": {
+        const colId = action.newColId || `sparkline_${crypto.randomUUID()}`;
+        const colDef: ColDef = {
+          colId,
+          label: "Sparkline",
+          width: 120,
+          sortable: false,
+          filter: false,
+          groupable: false,
+          resizable: true,
+          movable: true,
+          hideable: true,
+          cellRenderer: SparklineRenderer,
+          cellRendererParams: { colIds: action.colIds, type: action.sparklineType },
+        };
+        const allRows: IRowNode[] = [];
+        this.rowModel.forEachNode((node: IRowNode) => allRows.push(node));
+        const instanceID = this.columnModel.addColumnDef(colDef, "center", this.measureCtx, this.textMeasureParams, allRows);
+        this.emit("columnsChanged", { reason: "add", changedColIds: [instanceID] });
+        this.emit("rowsChanged", { reason: "add", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        break;
+      }
       case "paginationSet":
         this.applyPagination(action.pageIndex, action.pageSize, action.enabled);
         break;

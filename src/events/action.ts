@@ -82,6 +82,13 @@ export type GridActionColumnMove = {
   toSection: "left" | "center" | "right";
 };
 
+export type GridActionAddSparklineColumn = {
+  type: "addSparklineColumn";
+  colIds: string[];
+  sparklineType: "line" | "bar" | "area";
+  newColId?: string;
+};
+
 export type GridActionThemeFontSet = {
   type: "themeFontSet";
   headerFont: string;
@@ -242,6 +249,7 @@ export type GridAction =
   | GridActionColumnPin
   | GridActionColumnVisibility
   | GridActionColumnMove
+  | GridActionAddSparklineColumn
   | GridActionThemeFontSet
   | GridActionRowDataSet
   | GridActionTransactionApply
