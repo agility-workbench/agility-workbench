@@ -15,9 +15,11 @@ export interface ICellEditorParams {
   // Distinct non-null values of this column across the loaded rows (in first-seen order). Used by
   // the select editor's "fromRows" value source; computed lazily by the host.
   getDistinctColumnValues: () => any[];
-  // True when the edit was started by typing a character (edit-on-typing); the editor may seed
-  // itself with `charPress`. Currently always false — reserved for a later edit-on-typing feature.
+  // True when this edit session was freshly started (edit begins on this cell), as opposed to a
+  // refresh. Set on every mount today.
   cellStartedEdit?: boolean;
+  // The printable character that opened the editor via edit-on-typing, or null when the edit was
+  // started by double-click / F2 / Enter. Text-like editors seed themselves with it.
   charPress?: string | null;
 }
 
