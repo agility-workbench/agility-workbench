@@ -1,4 +1,4 @@
-import { IRowModel, IRowModelRequestParams, RowModelType } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
 import { GridOptions } from "../interfaces/gridOptions";
@@ -53,6 +53,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   getType(): RowModelType {
     return "serverSide";
+  }
+
+  applyTransaction(_tx: RowTransaction<Row>): RowTransactionResult {
+    // The server owns its dataset; incremental client-side transactions aren't applied here.
+    // The core guards this path and warns, so this is an unreachable safety net.
+    return { added: 0, updated: 0, removed: 0 };
   }
 
   isValid(): boolean {

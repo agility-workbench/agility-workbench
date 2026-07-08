@@ -418,7 +418,38 @@ export class GridCore implements IGridCore {
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
-    throw new Error("Method not implemented.");
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
+      return;
+    }
+
+    // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
+    // id and remain valid for rows that still exist.
+    const result = this.rowModel.applyTransaction(tx);
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
+
+    const structural = result.added > 0 || result.removed > 0;
+    // Structural changes always reflow the view (membership + position). Pure updates only reorder
+    // when reevaluateOnEdit is set; otherwise values change in place and rows keep their positions.
+    const reevaluate = structural || this.options.reevaluateOnEdit;
+
+    if (reevaluate) {
+      this.rowModel.applyRequest(this.createRowModelRequest(
+        "transaction",
+        { start: this.pageStartIdx, end: this.pageEndIdx },
+        this.getInitialServerSideLoadRange(),
+      ));
+      this.emit("rowsChanged", { reason: "transaction" });
+      this.emit("paginationChanged", this.getPaginationInfo());
+    } else if (tx.update?.length) {
+      // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
+      const colIds = this.columnModel.getLeaves().filter(c => !c.isInternal()).map(c => c.instanceID);
+      this.emit("cellsChanged", {
+        reason: "data",
+        rowIds: tx.update.map(u => u.rowId),
+        colIds,
+      });
+    }
   }
 
   addFilterModel(filter: FilterItem) {
@@ -815,6 +846,13 @@ export class GridCore implements IGridCore {
         break;
       case "rowDataSet":
         this.setRowData(action.rows);
+        break;
+      case "rowTransactionApply":
+        this.applyTransaction({
+          add: action.add as RowData[] | undefined,
+          update: action.update as { rowId: GridId; row: RowData }[] | undefined,
+          remove: action.remove as GridId[] | undefined,
+        });
         break;
       case "columnAutosize":
         const autosizedColIds = this.autosizeColumn(action.colId);

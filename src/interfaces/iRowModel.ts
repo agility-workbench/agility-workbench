@@ -6,7 +6,19 @@ import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction";
+
+export interface RowTransaction<Row = any> {
+  add?: Row[];
+  update?: { rowId: string; row: Row }[];
+  remove?: string[];
+}
+
+export interface RowTransactionResult {
+  added: number;
+  updated: number;
+  removed: number;
+}
 
 export interface IRowModelRequestParams {
   readonly id: number;
@@ -30,6 +42,11 @@ export interface IRowModel<Row = any> {
 
   // data update
   setRows(rows: any[]): void;
+
+  // Incremental add / update / remove of rows without a full data replacement. Node identity is
+  // preserved for updated rows so renderers (e.g. change-flash) can detect deltas. Returns counts
+  // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards.
+  applyTransaction(tx: RowTransaction): RowTransactionResult;
 
   // accessors for what the viewport needs
   getRowCount(): number;                    // total displayed (may be estimate)

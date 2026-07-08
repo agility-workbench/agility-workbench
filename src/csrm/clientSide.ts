@@ -1,7 +1,7 @@
 import { FilterModel } from "../interfaces/filter";
 import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter } from "../csrm/filter";
 import { GridOptions } from "../interfaces/gridOptions";
@@ -40,19 +40,21 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     return true;
   }
 
-  setRows(rows: Row[]) {
-    this.nodes = rows.map((r, i) => ({
-      id: this.getId(r),
-      data: r,
-      rowIndex: i,
+  private createNode(row: Row): IRowNode<Row> {
+    return {
+      id: this.getId(row),
+      data: row,
       selected: false,
       level: 0,
       isGroup: false,
-      expanded: false,
       type: "leaf",
       isExpanded: false,
       viewIndex: -1,
-    }));
+    };
+  }
+
+  setRows(rows: Row[]) {
+    this.nodes = rows.map((r) => this.createNode(r));
 
     // Index nodes by id so getRowNode / setCellValue can resolve rows by their stable id.
     this.nodesMap.clear();
@@ -70,6 +72,56 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
     // Refresh or init must be called upon setting rows.
     // this.rebuildView();
+  }
+
+  // Apply an incremental add / update / remove against the current node set. This only mutates the
+  // node store; the caller re-derives filter/sort/view via applyRequest afterwards. Removes are
+  // applied first, then updates (data replaced in place, node identity kept), then adds appended.
+  applyTransaction(tx: RowTransaction<Row>): RowTransactionResult {
+    let removed = 0;
+    if (tx.remove?.length) {
+      const removeIds = new Set(tx.remove);
+      const kept: IRowNode<Row>[] = [];
+      for (const node of this.nodes) {
+        if (removeIds.has(node.id) && this.nodesMap.delete(node.id)) {
+          removed++;
+        } else {
+          kept.push(node);
+        }
+      }
+      if (removed > 0) this.nodes = kept;
+    }
+
+    let updated = 0;
+    if (tx.update?.length) {
+      for (const { rowId, row } of tx.update) {
+        const node = this.nodesMap.get(rowId);
+        if (!node) continue;
+        // Replace data in place so the node object (and its identity) is preserved — renderers that
+        // diff against the previous node/value (change-flash, sparklines) keep working.
+        node.data = row;
+        updated++;
+      }
+    }
+
+    let added = 0;
+    if (tx.add?.length) {
+      for (const row of tx.add) {
+        const node = this.createNode(row);
+        if (this.nodesMap.has(node.id)) {
+          // An id collision with an existing row is treated as an update rather than a duplicate.
+          const existing = this.nodesMap.get(node.id)!;
+          existing.data = row;
+          updated++;
+          continue;
+        }
+        this.nodes.push(node);
+        this.nodesMap.set(node.id, node);
+        added++;
+      }
+    }
+
+    return { added, updated, removed };
   }
 
   getRowCount(): number {
