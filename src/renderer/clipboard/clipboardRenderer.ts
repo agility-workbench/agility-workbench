@@ -42,9 +42,25 @@ export class ClipboardRenderer {
     const tsv = serializeRowsToTSV(this.params.core.getRowModel(), block.cols, block.viewIdxs, false);
     void this.write(tsv);
 
-    // Clear only the editable cells in the block; leave locked cells untouched. Committing "" runs
-    // the column's valueParser (so e.g. numeric columns decide what an empty value becomes). One
-    // cellsCommit → one repaint for the whole block.
+    // Clear the copied cells (cut = copy + clear).
+    const edits = this.buildClearEdits(block);
+    if (edits.length) this.params.core.dispatch({ type: "cellsCommit", edits, reason: "cut" });
+  }
+
+  /**
+   * Clear the editable cells of the current selection (Delete/Backspace). Like cut without the
+   * copy: one cellsCommit → one undoable step, one repaint. No-op when nothing editable is selected.
+   */
+  clearContents(): void {
+    const block = this.resolveSelectionBlock();
+    if (!block) return;
+    const edits = this.buildClearEdits(block);
+    if (edits.length) this.params.core.dispatch({ type: "cellsCommit", edits, reason: "clear" });
+  }
+
+  // Build the "" commit for every editable cell in the block; locked cells are left untouched.
+  // Committing "" runs the column's valueParser (so e.g. numeric columns decide the empty result).
+  private buildClearEdits(block: SelectionBlock): { cell: CellRef; value: unknown }[] {
     const core = this.params.core;
     const edits: { cell: CellRef; value: unknown }[] = [];
     for (const viewIdx of block.viewIdxs) {
@@ -56,7 +72,7 @@ export class ClipboardRenderer {
         edits.push({ cell: { rowId, colId: col.instanceID }, value: "" });
       }
     }
-    if (edits.length) core.dispatch({ type: "cellsCommit", edits, reason: "cut" });
+    return edits;
   }
 
   async paste(): Promise<void> {

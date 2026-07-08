@@ -170,6 +170,9 @@ export type GridActionEditStart = {
   type: "editStart";
   cell: CellRef;
   source?: "mouse" | "keyboard" | "api";
+  // When editing was triggered by typing a printable character, that character — the editor seeds
+  // itself with it (edit-on-typing) and places the caret at the end.
+  charPress?: string;
 };
 
 export type GridActionEditCommit = {
@@ -192,7 +195,7 @@ export type GridActionEditCancel = {
 export type GridActionCellsCommit = {
   type: "cellsCommit";
   edits: { cell: CellRef; value: unknown }[];
-  reason?: "paste" | "cut" | "api";
+  reason?: "paste" | "cut" | "clear" | "api";
 };
 
 // Undo / redo the last recorded cell-edit step.

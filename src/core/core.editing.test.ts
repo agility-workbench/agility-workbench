@@ -57,6 +57,12 @@ describe("GridCore editing", () => {
     expect(editingEvents).toEqual([{ state: "started", cell }]);
   });
 
+  it("forwards charPress on the started event (edit-on-typing)", () => {
+    const cell = { rowId: "1", colId: colId(core, "name") };
+    core.dispatch({ type: "editStart", cell, source: "keyboard", charPress: "q" });
+    expect(editingEvents.at(-1)).toMatchObject({ state: "started", cell, charPress: "q" });
+  });
+
   it("refuses to start editing a non-editable column", () => {
     const cell = { rowId: "1", colId: colId(core, "locked") };
     core.dispatch({ type: "editStart", cell });

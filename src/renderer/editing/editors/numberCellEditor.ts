@@ -10,6 +10,7 @@ const INPUT_CLASS = "pte-cell-editor-input";
  */
 export class NumberCellEditor implements ICellEditor {
   private input!: HTMLInputElement;
+  private charSeeded = false;
 
   init(params: ICellEditorParams): void {
     const input = document.createElement("input");
@@ -19,8 +20,9 @@ export class NumberCellEditor implements ICellEditor {
     if (p.min != null) input.min = String(p.min);
     if (p.max != null) input.max = String(p.max);
     if (p.step != null) input.step = String(p.step);
-    const seed = params.charPress ?? (params.value == null ? "" : String(params.value));
-    input.value = seed;
+    this.charSeeded = params.charPress != null;
+    // type=number rejects a non-numeric charPress (value becomes ""), which is the right outcome.
+    input.value = this.charSeeded ? params.charPress! : (params.value == null ? "" : String(params.value));
     this.input = input;
   }
 
@@ -41,6 +43,8 @@ export class NumberCellEditor implements ICellEditor {
 
   focus(): void {
     this.input.focus();
-    this.input.select();
+    // Don't select() when char-seeded so the next keystroke appends. (type=number doesn't support
+    // setSelectionRange, so the caret naturally sits at the end after focus.)
+    if (!this.charSeeded) this.input.select();
   }
 }

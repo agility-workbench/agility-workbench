@@ -36,6 +36,23 @@ describe("built-in editors", () => {
     expect(e.isParsed?.()).toBe(false);
   });
 
+  it("seeds the text editor from charPress instead of the cell value (edit-on-typing)", () => {
+    const e = mount(new TextCellEditor(), { value: "old", charPress: "z", col: col({}) });
+    expect((e.getGui() as HTMLInputElement).value).toBe("z");
+    expect(e.getValue()).toBe("z");
+  });
+
+  it("seeds the number editor from charPress", () => {
+    const e = mount(new NumberCellEditor(), { value: 5, charPress: "7", col: col({ type: ColumnType.NUMBER }) });
+    expect((e.getGui() as HTMLInputElement).value).toBe("7");
+    expect(e.getValue()).toBe(7);
+  });
+
+  it("seeds the textarea editor from charPress", () => {
+    const e = mount(new TextareaCellEditor(), { value: "old", charPress: "a", col: col({}) });
+    expect((e.getGui() as HTMLTextAreaElement).value).toBe("a");
+  });
+
   it("NumberCellEditor returns a number and is parsed; blank → null", () => {
     const e = mount(new NumberCellEditor(), { value: 5, col: col({ type: ColumnType.NUMBER }) });
     const input = e.getGui() as HTMLInputElement;

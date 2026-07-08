@@ -52,14 +52,14 @@ export class CellEditRenderer {
 
   onEditingChanged(params: GridEventEditingChangedParams) {
     if (params.state === "started") {
-      if (params.cell) this.mount(params.cell);
+      if (params.cell) this.mount(params.cell, params.charPress ?? null);
       return;
     }
     // committed / cancelled / stopped — tear the editor down.
     this.teardown();
   }
 
-  private mount(cell: CellRef) {
+  private mount(cell: CellRef, charPress: string | null) {
     this.teardown();
 
     const core = this.params.core;
@@ -86,7 +86,7 @@ export class CellEditRenderer {
       api: this.params.api(),
       getDistinctColumnValues: () => this.distinctColumnValues(col),
       cellStartedEdit: true,
-      charPress: null,
+      charPress,
     });
 
     if (editor.isCancelBeforeStart?.()) {

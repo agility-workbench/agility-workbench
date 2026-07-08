@@ -170,3 +170,51 @@ describe("ClipboardRenderer multi-cell paste", () => {
     expect(range).toMatchObject({ rowStart: 0, rowEnd: 1, colStart: 0, colEnd: 1 });
   });
 });
+
+describe("ClipboardRenderer clearContents (Delete)", () => {
+  let core: GridCore;
+
+  beforeEach(() => {
+    core = makeGrid();
+  });
+
+  it("clears editable cells in the selection, leaving locked cells untouched", () => {
+    const { clip } = makeClip(core);
+    // Range over name (editable), qty (editable), locked (not) on row 0.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 2, mode: "extend" });
+    clip.clearContents();
+    expect(data(core, "1").name).toBe("");
+    expect(data(core, "1").qty).toBe(0); // numeric valueParser: "" → 0
+    expect(data(core, "1").locked).toBe("L1");
+  });
+
+  it("does not write to the clipboard (unlike cut)", () => {
+    const { clip, writes } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+    clip.clearContents();
+    expect(writes).toEqual([]);
+  });
+
+  it("is one undoable step that restores the original values", () => {
+    const { clip } = makeClip(core);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 0, mode: "extend" }); // name, both rows
+    clip.clearContents();
+    expect(data(core, "1").name).toBe("");
+    expect(data(core, "2").name).toBe("");
+
+    core.dispatch({ type: "undo" });
+    expect(data(core, "1").name).toBe("alice");
+    expect(data(core, "2").name).toBe("bob");
+    expect(core.canUndo()).toBe(false); // exactly one step
+  });
+
+  it("no-ops when only non-editable cells are selected", () => {
+    const { clip } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 2 }); // locked
+    clip.clearContents();
+    expect(data(core, "1").locked).toBe("L1");
+    expect(core.canUndo()).toBe(false);
+  });
+});

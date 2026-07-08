@@ -9,13 +9,15 @@ const TEXTAREA_CLASS = "pte-cell-editor-textarea";
  */
 export class TextareaCellEditor implements ICellEditor {
   private textarea!: HTMLTextAreaElement;
+  private charSeeded = false;
 
   init(params: ICellEditorParams): void {
     const ta = document.createElement("textarea");
     ta.className = TEXTAREA_CLASS;
     const rows = params.editorParams?.rows;
     if (typeof rows === "number") ta.rows = rows;
-    ta.value = params.charPress ?? (params.value == null ? "" : String(params.value));
+    this.charSeeded = params.charPress != null;
+    ta.value = this.charSeeded ? params.charPress! : (params.value == null ? "" : String(params.value));
     this.textarea = ta;
   }
 
@@ -33,6 +35,11 @@ export class TextareaCellEditor implements ICellEditor {
 
   focus(): void {
     this.textarea.focus();
-    this.textarea.select();
+    if (this.charSeeded) {
+      const end = this.textarea.value.length;
+      this.textarea.setSelectionRange(end, end);
+    } else {
+      this.textarea.select();
+    }
   }
 }

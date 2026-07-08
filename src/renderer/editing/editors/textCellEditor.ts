@@ -8,13 +8,16 @@ const INPUT_CLASS = "pte-cell-editor-input";
  */
 export class TextCellEditor implements ICellEditor {
   private input!: HTMLInputElement;
+  // Edit-on-typing: seeded from a keystroke → caret at end so the next key appends. Otherwise
+  // select-all so a first keystroke replaces the existing value (spreadsheet behavior).
+  private charSeeded = false;
 
   init(params: ICellEditorParams): void {
     const input = document.createElement("input");
     input.type = "text";
     input.className = INPUT_CLASS;
-    const seed = params.charPress ?? (params.value == null ? "" : String(params.value));
-    input.value = seed;
+    this.charSeeded = params.charPress != null;
+    input.value = this.charSeeded ? params.charPress! : (params.value == null ? "" : String(params.value));
     this.input = input;
   }
 
@@ -32,6 +35,11 @@ export class TextCellEditor implements ICellEditor {
 
   focus(): void {
     this.input.focus();
-    this.input.select();
+    if (this.charSeeded) {
+      const end = this.input.value.length;
+      this.input.setSelectionRange(end, end);
+    } else {
+      this.input.select();
+    }
   }
 }

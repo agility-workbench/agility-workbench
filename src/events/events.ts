@@ -110,6 +110,9 @@ export type GridEventEditingChangedParams = {
   cell?: { rowId: GridId; colId: ColId };
   // committed value (only for committed)
   value?: unknown;
+  // For state "started" via edit-on-typing: the printable character that opened the editor, so
+  // the renderer can seed the editor with it.
+  charPress?: string;
 };
 
 export type GridEventPaginationChangedParams = {

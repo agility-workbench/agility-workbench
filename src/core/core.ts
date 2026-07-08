@@ -945,7 +945,7 @@ export class GridCore implements IGridCore {
         const row = this.rowModel.getRowNode(action.cell.rowId);
         if (!col || !row || !col.isCellEditable(row)) break;
         this.editingCell = action.cell;
-        this.emit("editingChanged", { state: "started", cell: action.cell });
+        this.emit("editingChanged", { state: "started", cell: action.cell, charPress: action.charPress });
         break;
       }
       case "editCommit": {
@@ -997,7 +997,10 @@ export class GridCore implements IGridCore {
           }
         }
         if (!this.applyingHistory && recorded.length > 0) {
-          this.history.push({ label: action.reason === "cut" ? "cut" : "paste", edits: recorded });
+          const label = action.reason === "cut" ? "cut"
+            : action.reason === "clear" ? "clear"
+              : "paste";
+          this.history.push({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {
           this.emit("cellsChanged", {

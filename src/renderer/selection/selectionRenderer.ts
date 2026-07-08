@@ -276,6 +276,13 @@ export class SelectionRenderer {
       return;
     }
 
+    // Delete / Backspace — clear the editable cells in the current selection.
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      this.params.clipboard().clearContents();
+      return;
+    }
+
     // Home / End — horizontal edge; with Ctrl/Cmd — jump to a grid corner.
     if (e.key === "Home" || e.key === "End") {
       e.preventDefault();
@@ -315,7 +322,17 @@ export class SelectionRenderer {
       case "ArrowDown": dir = "down"; break;
       case "ArrowLeft": dir = "left"; break;
       case "ArrowRight": dir = "right"; break;
-      default: return;
+      default:
+        // Edit-on-typing: a printable character on the focused cell opens the editor seeded with
+        // that character. (Modifier combos and non-printing keys fall through untouched.)
+        if (!ctrl && !e.altKey && isPrintableKey(e.key)) {
+          const cell = this.activeCellRef();
+          if (cell) {
+            e.preventDefault();
+            this.params.core.dispatch({ type: "editStart", cell, source: "keyboard", charPress: e.key });
+          }
+        }
+        return;
     }
     e.preventDefault();
     this.params.core.dispatch({
@@ -402,4 +419,11 @@ export class SelectionRenderer {
     if (!this.isSelecting) return;
     this.isSelecting = false;
   }
+}
+
+// A KeyboardEvent.key that represents a single printable character (letters, digits, punctuation,
+// space). Named keys like "Enter", "Tab", "ArrowUp" are multi-character, so length === 1 excludes
+// them; space (" ") is treated as printable so it can seed/replace a cell value.
+function isPrintableKey(key: string): boolean {
+  return key.length === 1;
 }
