@@ -1,4 +1,5 @@
 import { Column } from "../column/column";
+import { IGridAPI } from "../interfaces/iGridAPI";
 
 export interface CellRendererParams {
   value: any;
@@ -7,7 +8,7 @@ export interface CellRendererParams {
   rowId: string;
   rowIndex: number;
   colDef: Column;
-  api: any;
+  api: IGridAPI;
   eCell: HTMLElement;
 }
 
@@ -118,7 +119,7 @@ export function createRendererRuntime(r: CellRenderer, p: CellRendererParams): R
 }
 
 export function getCellRendererParams(
-  value: any, formattedValue: any, row: any, rowIndex: number, col: Column, eCell: HTMLElement, api: any,
+  value: any, formattedValue: any, row: any, rowIndex: number, col: Column, eCell: HTMLElement, api: IGridAPI,
 ): CellRendererParams {
   return {
     value: value,

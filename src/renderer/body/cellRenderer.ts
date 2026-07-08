@@ -1,9 +1,12 @@
 import { Column } from "../../column/column";
+import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
+
+  constructor(private api: IGridAPI) {}
 
   renderCell(
     cell: HTMLDivElement,
@@ -27,7 +30,7 @@ export class BodyCellRenderer {
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     const renderer = col.cellRenderer;
-    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, null);
+    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, this.api);
     if (!renderer) {
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);

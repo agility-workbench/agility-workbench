@@ -1,5 +1,6 @@
 import { MenuCoordinator } from "../menu/coordinator";
 import { GridCore } from "../core/core";
+import { GridAPI } from "../api";
 import { GridRenderer } from "./gridRenderer";
 import { ColumnMenuService } from "../menu/columnMenuService";
 import type { IBodyMenuAdapter, IMenuAdapter } from "../interfaces";
@@ -16,11 +17,15 @@ export function initDomRenderer(
   core: GridCore,
   adapter: IMenuAdapter,
   bodyAdapter: IBodyMenuAdapter = noopBodyAdapter,
-): GridRenderer {
+): { renderer: GridRenderer; api: GridAPI } {
   const menuSvc = new ColumnMenuService(core);
   const filterSvc = new ColumnFilterMenuService(core);
+  // Single API instance for the grid: injected into the renderer (cell renderers
+  // receive it via CellRendererParams) and returned to the host wrapper.
+  const api = new GridAPI(core);
   const renderer = new GridRenderer(
     core as GridCore,
+    api,
     new MenuCoordinator(menuSvc, adapter),
     new FilterMenuCoordinator(core as GridCore, filterSvc),
     (exporter, clipboard) => new BodyMenuCoordinator(
@@ -28,5 +33,5 @@ export function initDomRenderer(
       bodyAdapter,
     ),
   );
-  return renderer;
+  return { renderer, api };
 }

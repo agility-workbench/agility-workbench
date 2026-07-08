@@ -8,6 +8,7 @@ import { IServerSideDataSource } from "../interfaces/serverSide";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
+import { IGridAPI } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -136,6 +137,7 @@ export class GridRenderer {
 
   constructor(
     private core: GridCore,
+    private api: IGridAPI,
     menuCoordinator: MenuCoordinator,
     filterMenuCoordinator: FilterMenuCoordinator,
     createBodyMenuCoordinator?: (
@@ -268,7 +270,7 @@ export class GridRenderer {
       markAggregatesDirty: () => this._markAggregatesDirty(),
       renderAggregateRow: () => this._renderAggregateRow(),
     });
-    this._bodyCellRenderer = new BodyCellRenderer();
+    this._bodyCellRenderer = new BodyCellRenderer(this.api);
 
     this._headerRenderer = new HeaderRenderer({
       core: this.core,
