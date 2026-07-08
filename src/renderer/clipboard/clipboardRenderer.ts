@@ -22,9 +22,11 @@ interface SelectionBlock {
  * cellsCommit action so each cell's column valueParser runs and the grid repaints once per action.
  *
  * Paste positions the clipboard block from a top-left anchor (the selection's top-left, or the
- * active cell) and spills down/right. A 1×1 clipboard fills the whole selected range. Non-editable
- * target cells are skipped but still consume their grid slot so alignment is preserved. Cells that
- * would fall outside the grid are clipped (no rows/columns are created).
+ * active cell). When the selection span is an exact multiple of the source block in both
+ * dimensions, the block tiles (repeats) to fill the selection — so a 1×1 block fills the whole
+ * range and a 1×2 block repeats down a 3×2 selection; otherwise the block spills once from the
+ * anchor. Non-editable target cells are skipped but still consume their grid slot so alignment is
+ * preserved. Cells that would fall outside the grid are clipped (no rows/columns are created).
  */
 export class ClipboardRenderer {
   constructor(private params: ClipboardRendererParams) { }
@@ -95,10 +97,17 @@ export class ClipboardRenderer {
     const rowModel = core.getRowModel();
     const viewCount = rowModel.getViewCount();
 
-    // A 1×1 clipboard fills the whole selected range; otherwise spill the block from the anchor.
-    const single = grid.length === 1 && grid[0].length === 1;
-    const targetRows = single ? anchor.rowSpan : grid.length;
-    const targetCols = single ? anchor.colSpan : grid[0].length;
+    const blockRows = grid.length;
+    const blockCols = grid[0].length;
+
+    // Tile when the selection span is an exact multiple of the source block in BOTH dimensions
+    // (and at least as large) — e.g. a 1×2 block into a 3×2 selection repeats 3× down; a 1×1
+    // block into any selection fills it. Otherwise spill the block once from the anchor.
+    const tile =
+      anchor.rowSpan >= blockRows && anchor.rowSpan % blockRows === 0 &&
+      anchor.colSpan >= blockCols && anchor.colSpan % blockCols === 0;
+    const targetRows = tile ? anchor.rowSpan : blockRows;
+    const targetCols = tile ? anchor.colSpan : blockCols;
 
     const edits: { cell: CellRef; value: unknown }[] = [];
     let clipped = 0;
@@ -109,8 +118,8 @@ export class ClipboardRenderer {
       const rowId = core.getRowIdAtViewIndex(viewIdx);
       if (!rowId) { clipped += targetCols; continue; }
       const row = rowModel.getRowNode(rowId);
-      // Ragged rows: fall back to an empty string for missing source fields.
-      const srcRow = single ? grid[0] : (grid[r] ?? []);
+      // Source row wraps for tiling; ragged rows fall back to "" for missing fields.
+      const srcRow = grid[r % blockRows] ?? [];
 
       for (let c = 0; c < targetCols; c++) {
         const colIdx = anchor.colStart + c;
@@ -118,7 +127,7 @@ export class ClipboardRenderer {
         if (!col || col.isInternal() || col.hidden) { clipped++; continue; }
         // Skip non-editable targets but keep their positional slot (already advanced by c).
         if (!col.isCellEditable(row)) continue;
-        const value = single ? srcRow[0] : (srcRow[c] ?? "");
+        const value = srcRow[c % blockCols] ?? "";
         edits.push({ cell: { rowId, colId: col.instanceID }, value });
       }
     }

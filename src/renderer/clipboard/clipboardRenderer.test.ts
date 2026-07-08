@@ -218,3 +218,59 @@ describe("ClipboardRenderer clearContents (Delete)", () => {
     expect(core.canUndo()).toBe(false);
   });
 });
+
+// Tiling needs more rows/cols than the 2-row default grid.
+function makeTileGrid() {
+  const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+  core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+  core.setRowData([
+    { id: "1", a: "a1", b: "b1" },
+    { id: "2", a: "a2", b: "b2" },
+    { id: "3", a: "a3", b: "b3" },
+    { id: "4", a: "a4", b: "b4" },
+  ]);
+  core.setColumnDefsFromProps([
+    { colId: "a", key: "a", label: "A", editable: true },
+    { colId: "b", key: "b", label: "B", editable: true },
+  ]);
+  return core;
+}
+
+describe("ClipboardRenderer paste tiling", () => {
+  let core: GridCore;
+  beforeEach(() => { core = makeTileGrid(); });
+
+  it("tiles a 1×2 block down a 3×2 selection (exact multiple)", async () => {
+    const { clip, reads } = makeClip(core);
+    // Select rows 0..2 across both columns.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: 1, mode: "extend" });
+    reads.value = "X\tY"; // one row, two cols → repeats down 3 rows
+    await clip.paste();
+    expect([data(core, "1").a, data(core, "1").b]).toEqual(["X", "Y"]);
+    expect([data(core, "2").a, data(core, "2").b]).toEqual(["X", "Y"]);
+    expect([data(core, "3").a, data(core, "3").b]).toEqual(["X", "Y"]);
+    expect([data(core, "4").a, data(core, "4").b]).toEqual(["a4", "b4"]); // untouched
+  });
+
+  it("tiles a 2×1 block down a 4×1 selection, wrapping the source rows", async () => {
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 3, colIdx: 0, mode: "extend" });
+    reads.value = "P\nQ"; // two rows → P,Q,P,Q
+    await clip.paste();
+    expect([data(core, "1").a, data(core, "2").a, data(core, "3").a, data(core, "4").a])
+      .toEqual(["P", "Q", "P", "Q"]);
+  });
+
+  it("spills once (no tiling) when the selection is not an exact multiple", async () => {
+    const { clip, reads } = makeClip(core);
+    // 2-row selection with a 1×1... use a non-multiple: 3-row selection, 2-row block.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: 0, mode: "extend" }); // span 3
+    reads.value = "P\nQ"; // block 2 rows; 3 % 2 !== 0 → spill once from anchor
+    await clip.paste();
+    expect([data(core, "1").a, data(core, "2").a, data(core, "3").a])
+      .toEqual(["P", "Q", "a3"]); // only 2 written, third untouched
+  });
+});
