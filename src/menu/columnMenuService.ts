@@ -165,13 +165,15 @@ export class ColumnMenuService {
       }
       if (!col.groupable) groupable = false;
       if (!col.hideable) hideable = false;
-      const colType = col.type || ColumnType.STRING;
-      if (!colTypes) {
-        colTypes = colType;
-      } else if (colTypes == "mixed") {
-        continue;
-      } else if (colType !== colTypes) {
-        colTypes = "mixed";
+      if (col.children.length == 0) {
+        const colType = col.type || ColumnType.STRING;
+        if (!colTypes) {
+          colTypes = colType;
+        } else if (colTypes == "mixed") {
+          continue;
+        } else if (colType !== colTypes) {
+          colTypes = "mixed";
+        }
       }
       if (!col.exportable) exportable = false;
       if (!pinning) {
