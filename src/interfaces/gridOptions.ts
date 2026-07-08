@@ -41,6 +41,13 @@ export interface GridOptions {
    */
   undoLimit?: number;
   /**
+   * When true (default), committing a cell edit re-runs the active sort and/or filter if the
+   * edited column participates in them — so an edited row moves to its correct sorted position or
+   * drops out of a filtered view. Set to false to keep edited rows in place until the next
+   * explicit sort/filter. Client-side row model only (no-op for server-side).
+   */
+  reevaluateOnEdit?: boolean;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -66,5 +73,6 @@ export interface InternalGridOptions extends GridOptions {
   autosizeColumnsOnDataChange: boolean;
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
+  reevaluateOnEdit: boolean;
   icons?: GridIconMap;
 }

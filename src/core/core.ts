@@ -108,6 +108,7 @@ export class GridCore implements IGridCore {
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
+      reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       icons: options.icons,
     };
   }
@@ -973,6 +974,7 @@ export class GridCore implements IGridCore {
           rowIds: [action.cell.rowId],
           colIds: [col.instanceID],
         });
+        if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
         break;
       }
       case "editCancel": {
@@ -1008,6 +1010,7 @@ export class GridCore implements IGridCore {
             rowIds: [...changedRowIds],
             colIds: [...changedColIds],
           });
+          if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
         }
         break;
       }
@@ -1053,6 +1056,8 @@ export class GridCore implements IGridCore {
       rowIds: [...changedRowIds],
       colIds: [...changedColIds],
     });
+    // Re-sort/re-filter first (rows may move), then place selection using the new view indices.
+    this.reevaluateAfterEdit(changedColIds, false);
     this.selectHistoryCells(edits);
   }
 
@@ -1077,6 +1082,53 @@ export class GridCore implements IGridCore {
     }
     this.emitSelectionChanged("api");
     this.emitFocusChanged(this.selectionModel.getActiveCell(), "api");
+  }
+
+  /**
+   * After a cell edit commits, re-run the active sort and/or filter if any edited column
+   * participates in them, so an edited row moves to its correct sorted position or drops out of a
+   * filtered view. Gated by the reevaluateOnEdit option and client-side row model only.
+   *
+   * Selection follows the active cell's row: its view index is re-resolved after the re-eval and
+   * the active cell is re-selected (scrolls into view). If that row was filtered out, the range is
+   * cleared instead.
+   */
+  private reevaluateAfterEdit(changedColIds: Set<string>, followSelection = true): boolean {
+    if (!this.options.reevaluateOnEdit) return false;
+    if (this.rowModel.getType() !== "clientSide") return false;
+
+    const inFilter = this.filters.items.some(i => changedColIds.has(i.col.instanceID));
+    const inSort = this.sorts.items.some(i => changedColIds.has(i.col.instanceID));
+    if (!inFilter && !inSort) return false;
+
+    // Remember which row the active cell is on so we can follow it to its new position.
+    const active = followSelection ? this.selectionModel.getActiveCell() : null;
+    const activeColIdx = active?.colIdx ?? null;
+    const activeRowId = active ? this.getRowIdAtViewIndex(active.row) : null;
+
+    // "filter" re-runs both filter and sort; "sort" re-runs sort only.
+    const reason = inFilter ? "filter" : "sort";
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      reason,
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+    ));
+    this.emit("rowsChanged", { reason });
+
+    // Re-place selection on the edited row's new view index, or clear it if the row left the view.
+    // Skipped when followSelection is false (undo/redo restores its own multi-cell selection after).
+    if (followSelection && activeRowId != null && activeColIdx != null) {
+      const newViewIdx = this.getViewIndexForRowId(activeRowId);
+      if (newViewIdx != null) {
+        this.selectionModel.selectSingleCell(newViewIdx, activeColIdx);
+        this.emitSelectionChanged("model");
+        this.emitFocusChanged(this.selectionModel.getActiveCell(), "api");
+      } else {
+        this.selectionModel.clearRange();
+        this.emitSelectionChanged("model");
+      }
+    }
+    return true;
   }
 
   private emitSelectionChanged(reason: "mouse" | "keyboard" | "api" | "model"): void {
