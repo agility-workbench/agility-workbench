@@ -195,6 +195,10 @@ export type GridActionCellsCommit = {
   reason?: "paste" | "cut" | "api";
 };
 
+// Undo / redo the last recorded cell-edit step.
+export type GridActionUndo = { type: "undo" };
+export type GridActionRedo = { type: "redo" };
+
 // Keyboard navigation action.
 // jump: undefined = one cell (Arrow); "edge" = hard first/last (Home/End);
 // "block" = Excel-style data-block jump (Ctrl+Arrow); "page" = one viewport of rows
@@ -252,6 +256,8 @@ export type GridAction =
   | GridActionEditCommit
   | GridActionEditCancel
   | GridActionCellsCommit
+  | GridActionUndo
+  | GridActionRedo
   | GridActionKeyboardNavigate
   | GridActionNavigateCorner
   | GridActionSelectAll;

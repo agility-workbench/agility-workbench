@@ -105,6 +105,9 @@ export interface IGridCore {
   getSelectionAnchor(): CellPos | null;
   getActiveCell(): CellPos | null;
   getEditingCell(): CellRef | null;
+  canUndo(): boolean;
+  canRedo(): boolean;
+  clearHistory(): void;
   getSelectedColumnIds(): Set<string>;
   getSelectedRowIds(): Set<string>;
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;

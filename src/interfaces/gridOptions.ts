@@ -35,6 +35,12 @@ export interface GridOptions {
    */
   clearSelectionOnBodyClick?: boolean;
   /**
+   * Maximum number of undoable edit steps kept in history (one step = one edit / paste / cut).
+   * Older steps are dropped once the limit is exceeded. Defaults to 100. Set to 0 to disable
+   * undo/redo entirely. Negative or undefined falls back to the default.
+   */
+  undoLimit?: number;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -59,5 +65,6 @@ export interface InternalGridOptions extends GridOptions {
   serverSideBlockSize: number;
   autosizeColumnsOnDataChange: boolean;
   clearSelectionOnBodyClick: boolean;
+  undoLimit: number;
   icons?: GridIconMap;
 }

@@ -264,6 +264,18 @@ export class SelectionRenderer {
       return;
     }
 
+    // Undo / redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y to redo.
+    if (ctrl && (e.key === "z" || e.key === "Z")) {
+      e.preventDefault();
+      this.params.core.dispatch({ type: e.shiftKey ? "redo" : "undo" });
+      return;
+    }
+    if (ctrl && (e.key === "y" || e.key === "Y")) {
+      e.preventDefault();
+      this.params.core.dispatch({ type: "redo" });
+      return;
+    }
+
     // Home / End — horizontal edge; with Ctrl/Cmd — jump to a grid corner.
     if (e.key === "Home" || e.key === "End") {
       e.preventDefault();

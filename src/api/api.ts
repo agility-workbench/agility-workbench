@@ -131,6 +131,27 @@ export class GridAPI implements IGridAPI {
     return this.clipboard().paste();
   }
 
+  // ---------------- Undo / redo ----------------
+  undo(): void {
+    this.core.dispatch({ type: "undo" });
+  }
+
+  redo(): void {
+    this.core.dispatch({ type: "redo" });
+  }
+
+  canUndo(): boolean {
+    return this.core.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.core.canRedo();
+  }
+
+  clearHistory(): void {
+    this.core.clearHistory();
+  }
+
   destroy(): void {
     // Cleanup if necessary
   }

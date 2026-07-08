@@ -24,6 +24,7 @@ import { GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel } from "./selectionModel";
+import { CellEdit, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
 
@@ -59,12 +60,16 @@ export class GridCore implements IGridCore {
   private textMeasureParams!: TextMeasureParams;
 
   private selectionModel: SelectionModel;
+  private history: HistoryModel;
 
   // The cell currently being edited (inline editor open), or null when not editing.
   private editingCell: CellRef | null = null;
+  // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
+  private applyingHistory = false;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
+    this.history = new HistoryModel(this.options.undoLimit);
     this.id = crypto.randomUUID();
     this.columnModel = new ColumnModel(this.options);
     this.rowModel = options.rowModelType === "serverSide"
@@ -102,6 +107,7 @@ export class GridCore implements IGridCore {
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
+      undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       icons: options.icons,
     };
   }
@@ -714,6 +720,18 @@ export class GridCore implements IGridCore {
     return this.editingCell;
   }
 
+  canUndo(): boolean {
+    return this.history.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.history.canRedo();
+  }
+
+  clearHistory(): void {
+    this.history.clear();
+  }
+
   getSelectedColumnIds(): Set<string> {
     return this.selectionModel.getSelectedColumnIds();
   }
@@ -943,6 +961,9 @@ export class GridCore implements IGridCore {
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
         this.rowModel.setCellValue(action.cell.rowId, col.key, newValue);
+        if (!this.applyingHistory) {
+          this.history.push({ label: "edit", edits: [{ cell: action.cell, oldValue, newValue }] });
+        }
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
         // first would detach the focused input and drop keyboard focus to <body>.
@@ -962,6 +983,7 @@ export class GridCore implements IGridCore {
       case "cellsCommit": {
         const changedRowIds = new Set<string>();
         const changedColIds = new Set<string>();
+        const recorded: CellEdit[] = [];
         for (const edit of action.edits) {
           const col = this.columnModel.getById(edit.cell.colId);
           const row = this.rowModel.getRowNode(edit.cell.rowId);
@@ -971,7 +993,11 @@ export class GridCore implements IGridCore {
           if (this.rowModel.setCellValue(edit.cell.rowId, col.key, newValue)) {
             changedRowIds.add(edit.cell.rowId);
             changedColIds.add(col.instanceID);
+            recorded.push({ cell: edit.cell, oldValue, newValue });
           }
+        }
+        if (!this.applyingHistory && recorded.length > 0) {
+          this.history.push({ label: action.reason === "cut" ? "cut" : "paste", edits: recorded });
         }
         if (changedRowIds.size > 0) {
           this.emit("cellsChanged", {
@@ -982,9 +1008,72 @@ export class GridCore implements IGridCore {
         }
         break;
       }
+      case "undo": {
+        const entry = this.history.popUndo();
+        if (entry) this.applyHistoryEdits(entry.edits, "undo");
+        break;
+      }
+      case "redo": {
+        const entry = this.history.popRedo();
+        if (entry) this.applyHistoryEdits(entry.edits, "redo");
+        break;
+      }
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }
+  }
+
+  // Apply an undo (write oldValue) or redo (write newValue) step: write each cell directly (no
+  // re-parse — the recorded values are already the stored form), emit one cellsChanged, and select
+  // the affected cells so the change is visible. Guarded so these writes aren't re-recorded.
+  private applyHistoryEdits(edits: CellEdit[], dir: "undo" | "redo"): void {
+    this.applyingHistory = true;
+    const changedRowIds = new Set<string>();
+    const changedColIds = new Set<string>();
+    try {
+      for (const edit of edits) {
+        const col = this.columnModel.getById(edit.cell.colId);
+        if (!col) continue;
+        const value = dir === "undo" ? edit.oldValue : edit.newValue;
+        if (this.rowModel.setCellValue(edit.cell.rowId, col.key, value)) {
+          changedRowIds.add(edit.cell.rowId);
+          changedColIds.add(col.instanceID);
+        }
+      }
+    } finally {
+      this.applyingHistory = false;
+    }
+    if (changedRowIds.size === 0) return;
+
+    this.emit("cellsChanged", {
+      reason: "editCommit",
+      rowIds: [...changedRowIds],
+      colIds: [...changedColIds],
+    });
+    this.selectHistoryCells(edits);
+  }
+
+  // Select the bounding rectangle of the affected cells (single cell → a 1×1 selection) so an
+  // undo/redo scrolls into view and is visibly highlighted. Cells not currently in view (filtered
+  // out / unloaded) are skipped; if none are resolvable, selection is left unchanged.
+  private selectHistoryCells(edits: CellEdit[]): void {
+    const leaves = this.columnModel.getLeaves();
+    let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+    for (const edit of edits) {
+      const viewIdx = this.getViewIndexForRowId(edit.cell.rowId);
+      const colIdx = leaves.findIndex(c => c.instanceID === edit.cell.colId);
+      if (viewIdx == null || colIdx < 0) continue;
+      minRow = Math.min(minRow, viewIdx); maxRow = Math.max(maxRow, viewIdx);
+      minCol = Math.min(minCol, colIdx); maxCol = Math.max(maxCol, colIdx);
+    }
+    if (!Number.isFinite(minRow)) return;
+
+    this.selectionModel.startFromCell({ viewIdx: minRow, colIdx: minCol });
+    if (maxRow > minRow || maxCol > minCol) {
+      this.selectionModel.updateRange(maxRow, maxCol);
+    }
+    this.emitSelectionChanged("api");
+    this.emitFocusChanged(this.selectionModel.getActiveCell(), "api");
   }
 
   private emitSelectionChanged(reason: "mouse" | "keyboard" | "api" | "model"): void {

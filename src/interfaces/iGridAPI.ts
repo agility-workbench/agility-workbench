@@ -67,5 +67,17 @@ export interface IGridAPI {
   /** Paste the clipboard's first cell into the active cell (runs the column's valueParser). */
   paste(): Promise<void>;
 
+  /* ----- Undo / redo ----- */
+  /** Undo the last cell-edit step (single edit, paste, or cut). */
+  undo(): void;
+  /** Redo the last undone step. */
+  redo(): void;
+  /** Whether there is a step to undo. */
+  canUndo(): boolean;
+  /** Whether there is a step to redo. */
+  canRedo(): boolean;
+  /** Clear the undo/redo history. */
+  clearHistory(): void;
+
   destroy(): void;
 }
