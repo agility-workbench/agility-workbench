@@ -408,6 +408,9 @@ export class GridCore implements IGridCore {
   }
 
   setRowData(rows: RowData[]): void {
+    // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
+    // exist, so discard the edit history.
+    this.history.clear();
     this.rowModel.setRows(rows);
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
