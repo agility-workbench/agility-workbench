@@ -2,6 +2,7 @@ import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
 import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
+import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
@@ -35,6 +36,10 @@ export class GridAPI implements IGridAPI {
 
   getColumnState(): ColumnState[] {
     return this.core.getColumnModel().getColumnState();
+  }
+
+  getColumnModel(): IColumnModel {
+    return this.core.getColumnModel();
   }
 
   applyTransaction(tx: {

@@ -3,6 +3,7 @@ import { ColumnState, GridId, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
+import { IColumnModel } from "./iColumnModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -15,6 +16,9 @@ export interface IGridAPI {
 
   /** Get the current column state. */
   getColumnState(): ColumnState[];
+
+  /** Read-only access to the column model (columns, leaves, lookups). */
+  getColumnModel(): IColumnModel;
 
   /** Set the column definitions. */
   setColumnDefs(defs: ColDef[]): void;
