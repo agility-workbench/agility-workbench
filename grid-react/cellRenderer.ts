@@ -8,13 +8,16 @@ import type {
   ICellRenderer,
 } from "@grid/renderer/renderer";
 import { isClassRenderer } from "@grid/renderer/renderer";
+import type { CellEditor } from "@grid/renderer/editing/cellEditor";
+import { adaptCellEditor, ReactCellEditor } from "./cellEditor";
 
 export type ReactCellRenderer =
   | React.ComponentType<CellRendererParams>
   | React.ExoticComponent<CellRendererParams>;
 
-export type ReactColDef = Omit<ColDef, "cellRenderer" | "children"> & {
+export type ReactColDef = Omit<ColDef, "cellRenderer" | "cellEditor" | "children"> & {
   cellRenderer?: CellRenderer | ReactCellRenderer;
+  cellEditor?: CellEditor | ReactCellEditor;
   children?: ReactColDef[];
 };
 
@@ -87,6 +90,7 @@ export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[
     const next: ColDef = {
       ...colDef,
       cellRenderer: adaptCellRenderer(colDef.cellRenderer),
+      cellEditor: adaptCellEditor(colDef.cellEditor),
       children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
     };
     return next;

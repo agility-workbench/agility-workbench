@@ -1,12 +1,56 @@
-import { useMemo, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { GridReact } from "@grid-react";
-import type { ReactColDef } from "@grid-react";
+import type { ReactCellEditorHandle, ReactColDef } from "@grid-react";
 import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
+import type { ICellEditorParams } from "@grid";
 import { ValueFormatterParams, ValueParserParams } from "@grid";
 import { formatDate } from "./helpers";
+
+/**
+ * A React component cell editor: a 1–5 star picker. It receives ICellEditorParams as props and
+ * exposes { getValue, isParsed, focus } via useImperativeHandle so the grid can read the committed
+ * value synchronously. Arrow keys / number keys adjust the rating; the grid handles Enter/Esc.
+ */
+const StarRatingEditor = forwardRef<ReactCellEditorHandle, ICellEditorParams>(
+  function StarRatingEditor(params, ref) {
+    const initial = typeof params.value === "number" ? Math.round(params.value) : 0;
+    const [stars, setStars] = useState(Math.min(5, Math.max(0, initial)));
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useImperativeHandle(ref, () => ({
+      getValue: () => stars,
+      isParsed: () => true, // commit the number directly, no valueParser
+      focus: () => rootRef.current?.focus(),
+    }), [stars]);
+
+    return (
+      <div
+        ref={rootRef}
+        tabIndex={0}
+        className="star-rating-editor"
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") { setStars((s) => Math.min(5, s + 1)); e.stopPropagation(); }
+          else if (e.key === "ArrowLeft" || e.key === "ArrowDown") { setStars((s) => Math.max(0, s - 1)); e.stopPropagation(); }
+          else if (/^[0-5]$/.test(e.key)) { setStars(Number(e.key)); e.stopPropagation(); }
+        }}
+        style={{ display: "flex", alignItems: "center", height: "100%", padding: "0 8px", gap: 2, cursor: "pointer", outline: "none" }}
+      >
+        {[1, 2, 3, 4, 5].map((n) => (
+          <span
+            key={n}
+            onMouseDown={(e) => { e.preventDefault(); setStars(n); }}
+            style={{ color: n <= stars ? "#f5a623" : "#ccc", fontSize: 16, lineHeight: 1 }}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  },
+);
 
 /**
  * Demonstrates the core-owned selection + keyboard navigation feature:
@@ -27,6 +71,7 @@ type EmployeeRow = {
   rating: number | "";
   projects: number | "";
   active: string;
+  joinedOn: Date;
 };
 
 const FIRST_NAMES = [
@@ -162,7 +207,8 @@ export function SelectionDemo() {
     // Numeric editor (<input type=number>) — commits a real number, no valueParser needed.
     { colId: "salary", key: "salary", label: "Salary", width: 110, editable: true, type: ColumnType.NUMBER },
     { colId: "bonus", key: "bonus", label: "Bonus", width: 100 },
-    { colId: "rating", key: "rating", label: "Rating", width: 90, editable: true, type: ColumnType.NUMBER },
+    // React component editor: a star picker exposing getValue via useImperativeHandle.
+    { colId: "rating", key: "rating", label: "Rating", width: 120, editable: true, type: ColumnType.NUMBER, cellEditor: StarRatingEditor },
     { colId: "projects", key: "projects", label: "Projects", width: 100 },
     { colId: "joinedOn", key: "joinedOn", label: "Joined On", editable: true, type: ColumnType.DATE,
       valueFormatter: (params: ValueFormatterParams) => formatDate(params.value),

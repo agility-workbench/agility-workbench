@@ -9,9 +9,10 @@ export default defineConfig({
     },
   },
   test: {
-    // Unit tests live next to the source they cover (src/**/*.test.ts). The demo app under
-    // test/ is a Vite app, not a test suite, so it is excluded from discovery.
-    include: ["src/**/*.test.ts"],
+    // Unit tests live next to the source they cover (src/**/*.test.ts and the React wrapper's
+    // grid-react/**/*.test.{ts,tsx}). The demo app under test/ is a Vite app, not a test suite,
+    // so it is excluded from discovery.
+    include: ["src/**/*.test.ts", "grid-react/**/*.test.{ts,tsx}"],
     environment: "node",
   },
 });
