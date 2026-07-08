@@ -4,6 +4,7 @@ import { ColumnState } from "./iGridCore";
 
 export interface IColumnModel {
   setColumnDefs(colDefs: any[]): void;
+  addColumnDef(colDef: any, section?: ColumnSection, measureCtx?: any, params?: any, rows?: any[]): string;
   getById(id: string): Column | undefined;
   getByColId(colId: string): Column | undefined;
   getByKey(key: string): Column | undefined;

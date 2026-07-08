@@ -71,6 +71,79 @@ export class ColumnModel implements IColumnModel {
     this.updateColumns(this.withInternalColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext())));
   }
 
+  /**
+   * Append a single column (or group subtree) to the model without re-evaluating
+   * every existing column. Only the new subtree is measured, comparator-prepared,
+   * and registered; existing columns are untouched.
+   *
+   * The added column is transient: it lives in `this.columns` (so it survives
+   * imperative mutations like hide/move/reorder) but is NOT written to
+   * `originalColDefs`, so `reset()` and any subsequent `setColumnDefs()` drop it.
+   * This is intended for user-added derived columns such as sparklines.
+   *
+   * When `measureCtx`/`params`/`rows` are supplied, the new leaves are sized to
+   * their content and given comparators so they are immediately sortable.
+   */
+  addColumnDef(colDef: ColDef, section: ColumnSection = "center", measureCtx?: ITextMeasurer, params?: TextMeasureParams, rows: IRowNode[] = []): string {
+    // Normalize colId
+    colDef.colId = colDef.colId || colDef.key || `col_${crypto.randomUUID()}`;
+
+    // Dedup: if a column with this colId already exists, return it rather than
+    // adding a duplicate (which would clobber the lookup maps and double up leaves).
+    const existing = this.columnsByColId.get(colDef.colId);
+    if (existing) return existing.instanceID;
+
+    const col = new Column(colDef, colDef.colId);
+    if (colDef.children && colDef.children.length > 0) {
+      this.buildColumns(colDef.children, col, `${colDef.colId}.`);
+    }
+
+    // Append to the top-level columns list and section list
+    this.columns.push(col);
+    const sectionArray = this.getSectionArray(section);
+    sectionArray.push(col);
+
+    // Register the new subtree into the existing leaves array
+    const sectionLeaves = this.getSectionLeavesArray(section);
+    this.registerColumns(sectionArray.slice(-1), sectionLeaves, section == "center");
+
+    // Rebuild the flat leaves array
+    this.leaves = [this.leadingLeaves, this.leftLeaves, this.centerLeaves, this.rightLeaves].flat();
+
+    // Update leaf lookup (global indices may have shifted for later columns)
+    this.updateLeafColumnLookup();
+
+    // Propagate properties from children to parent
+    col.updatePropsByChildren();
+
+    // Set expanders on the new subtree
+    this.setExpandersForColumns([col]);
+
+    // Prepare the new subtree's leaves. Only the new column is evaluated — existing
+    // columns keep their widths and comparators.
+    const newLeaves = col.getLeaves();
+
+    // Comparators only need row data, so identify them whenever rows are available
+    // (mirrors identifyComparators over the full leaf set).
+    for (const leaf of newLeaves) {
+      this.identifyComparator(leaf, rows);
+    }
+
+    // Content-based width requires a measurement context.
+    if (measureCtx && params) {
+      for (const leaf of newLeaves) {
+        this.computeColumnWidth(leaf, measureCtx, params, rows);
+      }
+    }
+
+    // Roll leaf widths up into the group header. No-op for a plain leaf.
+    if (col.children.length > 0) {
+      this.updateParentColumnWidth(col);
+    }
+
+    return col.instanceID;
+  }
+
   private updateColumns(cols: Column[]) {
     this.columns = this.withInternalColumns(cols);
     this.columns.forEach(c => c.updatePropsByChildren());
@@ -92,6 +165,61 @@ export class ColumnModel implements IColumnModel {
     this.computeHeaderDepth();
     this.updateLeafColumnLookup();
     this.setExpanders();
+  }
+
+  private getSectionArray(section: ColumnSection): Column[] {
+    if (section === "left") return this.leftColumns;
+    if (section === "right") return this.rightColumns;
+    return this.centerColumns;
+  }
+
+  private getSectionLeavesArray(section: ColumnSection): Column[] {
+    if (section === "left") return this.leftLeaves;
+    if (section === "right") return this.rightLeaves;
+    return this.centerLeaves;
+  }
+
+  /**
+   * Register columns into an existing leaves array (append mode).
+   * Updates lookup maps, resolves visibility, computes depth, and assigns centralPosition.
+   */
+  private registerColumns(cols: Column[], appendTo: Column[], reassignCentralColumns: boolean = false): void {
+    const traverse = (col: Column, depth: number, openState: "open" | "closed" | null = null) => {
+      this.columnsById.set(col.instanceID, col);
+      if (!col.isInternal()) {
+        this.columnsByColId.set(col.colId, col);
+        this.columnsByKey.set(col.key, col);
+      }
+      if (col.hidden) return;
+      col.columnGroupVisible = col.columnGroupShow === "always" || (openState !== null && openState === col.columnGroupShow);
+      if (col.columnGroupVisible) {
+        if (col.children.length > 0) {
+          for (const child of col.children) {
+            traverse(child, depth + 1, col.groupExpandState);
+          }
+          col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
+        } else {
+          col.depth = 1;
+          appendTo.push(col);
+        }
+        if (col.depth > this.maxDepth) {
+          this.maxDepth = col.depth;
+        }
+      } else {
+        col.depth = 0;
+      }
+    };
+
+    for (const col of cols) {
+      traverse(col, 1);
+    }
+
+    // Reassign centralPosition for center leaves
+    if (reassignCentralColumns) {
+      for (let i = 0; i < this.centerLeaves.length; i++) {
+        this.centerLeaves[i].centralPosition = i;
+      }
+    }
   }
 
   private buildColumns(colDefs: ColDef[], parentCol?: Column, idxPrefix: string = "", reuseContext?: ColumnReuseContext): Column[] {
@@ -227,43 +355,14 @@ export class ColumnModel implements IColumnModel {
   }
 
   private computeHeaderDepth() {
-    const traverse = (cols: Column[], depth: number, appendTo: Column[], openState: "open" | "closed" | null = null) => {
-      for (const col of cols) {
-        this.columnsById.set(col.instanceID, col);
-        if (!col.isInternal()) {
-          this.columnsByColId.set(col.colId, col);
-          this.columnsByKey.set(col.key, col);
-        }
-        if (col.hidden) continue;
-        col.columnGroupVisible = col.columnGroupShow === "always" || (openState !== null && openState == col.columnGroupShow);
-        if (col.columnGroupVisible) {
-          if (col.children.length > 0) {
-            traverse(col.children, depth + 1, appendTo, col.groupExpandState);
-            col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
-          } else {
-            col.depth = 1;
-            appendTo.push(col);
-          }
-          if (col.depth > this.maxDepth) {
-            this.maxDepth = col.depth;
-          }
-        } else {
-          col.depth = 0;
-        }
-      }
-    };
-
-    traverse(this.leadingColumns, 1, this.leadingLeaves);
-    traverse(this.centerColumns, 1, this.centerLeaves);
-    traverse(this.leftColumns, 1, this.leftLeaves);
-    traverse(this.rightColumns, 1, this.rightLeaves);
-    for (let i = 0; i < this.centerLeaves.length; i++) {
-      this.centerLeaves[i].centralPosition = i;
-    }
+    this.registerColumns(this.leadingColumns, this.leadingLeaves);
+    this.registerColumns(this.centerColumns, this.centerLeaves, true);
+    this.registerColumns(this.leftColumns, this.leftLeaves);
+    this.registerColumns(this.rightColumns, this.rightLeaves);
     this.leaves = [this.leadingLeaves, this.leftLeaves, this.centerLeaves, this.rightLeaves].flat();
   }
 
-  private setExpanders() {
+  private setExpandersForColumns(cols: Column[]) {
     const setExpanderRec = (col: Column) => {
       col.showExpander = false;
       if (col.children.length > 0) {
@@ -287,9 +386,13 @@ export class ColumnModel implements IColumnModel {
       }
     };
 
-    for (const col of this.columns) {
+    for (const col of cols) {
       setExpanderRec(col);
     }
+  }
+
+  private setExpanders() {
+    this.setExpandersForColumns(this.columns);
   }
 
   private updateLeafColumnLookup() {
