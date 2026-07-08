@@ -27,11 +27,11 @@ export class GridAPI implements IGridAPI {
   }
 
   setColumnDefs(defs: ColDef[]): void {
-    this.dispatch({ type: "SET_COLUMN_DEFS", columnDefs: defs });
+    this.dispatch({ type: "columnDefsSet", defs });
   }
 
   setRowData(rows: RowData[]): void {
-    this.dispatch({ type: "SET_ROW_DATA", rows });
+    this.dispatch({ type: "rowDataSet", rows });
   }
 
   getColumnState(): ColumnState[] {
@@ -47,7 +47,7 @@ export class GridAPI implements IGridAPI {
     update?: { rowId: GridId; row: RowData }[];
     remove?: GridId[];
   }): void {
-    this.dispatch({ type: "APPLY_TRANSACTION", transaction: tx });
+    this.dispatch({ type: "rowTransactionApply", add: tx.add, update: tx.update, remove: tx.remove });
   }
 
   // ---------------- Selection ----------------
