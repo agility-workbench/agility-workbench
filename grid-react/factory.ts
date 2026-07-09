@@ -25,6 +25,9 @@ export function getGridOptions(props: GridReactProps): GridOptions {
   if (props.rowModelType) options.rowModelType = props.rowModelType;
   if (props.undoLimit != null) options.undoLimit = props.undoLimit;
   if (props.reevaluateOnEdit != null) options.reevaluateOnEdit = props.reevaluateOnEdit;
+  if (props.groupDisplayType) options.groupDisplayType = props.groupDisplayType;
+  if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
+  if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.serverSideDataSource) options.serverSideDataSource = props.serverSideDataSource;
   if (props.serverSideAggregationSource) options.serverSideAggregationSource = props.serverSideAggregationSource;
   if (props.icons) options.icons = props.icons;

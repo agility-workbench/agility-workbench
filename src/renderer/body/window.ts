@@ -142,8 +142,21 @@ export class BodyWindowRenderer {
         slot.rightRowEl.setAttribute("data-view-idx", String(viewIndex));
       }
 
+      this.markGroupRow(slot, row);
       this.patchCells(slot, row, viewIndex, this.params.core.getRowNumberForViewIndex(viewIndex));
       this.params.applySelectionToSlot(slot, viewIndex);
+    }
+  }
+
+  // Mark a slot as a group row (or clear the mark) across all four section row elements, and stamp
+  // the group id so the chevron click handler can resolve which group to toggle.
+  private markGroupRow(slot: RowPoolDef, row: IRowNode) {
+    const isGroup = !!row.isGroup;
+    for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (!el) continue;
+      el.classList.toggle("pte-group-row", isGroup);
+      if (isGroup) el.setAttribute("data-group-id", row.id);
+      else el.removeAttribute("data-group-id");
     }
   }
 

@@ -6,8 +6,8 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 
-type InternalColumnRole = "rowNumber";
-type InternalColDef = ColDef & { __internalRole?: InternalColumnRole };
+type InternalColumnRole = "rowNumber" | "autoGroup";
+type InternalColDef = ColDef & { __internalRole?: InternalColumnRole; __groupLevel?: number };
 
 export class Column {
   instanceID: string;
@@ -51,6 +51,9 @@ export class Column {
   collator?: Intl.Collator | null
   showExpander: boolean = false;
   internalRole?: InternalColumnRole;
+  // For a "multipleColumns" auto-group column: the grouping level (0-based) this column represents.
+  // Undefined for the "singleColumn" auto-group column and all non-group columns.
+  groupLevel?: number;
 
   constructor(public col: ColDef, idx: string = '') {
     const id = crypto.randomUUID();
@@ -114,6 +117,7 @@ export class Column {
       : isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
     this.exportable = !isFalse(col.exportable);
     this.internalRole = (col as InternalColDef).__internalRole;
+    this.groupLevel = (col as InternalColDef).__groupLevel;
     this.updateComputedWidth();
     if (preserveRuntimeState && col.width == null) {
       this.computedWidth = previousComputedWidth;
@@ -142,6 +146,10 @@ export class Column {
 
   isRowNumberColumn(): boolean {
     return this.internalRole === "rowNumber";
+  }
+
+  isAutoGroupColumn(): boolean {
+    return this.internalRole === "autoGroup";
   }
 
   /* The following props are derived from children and should not be set directly on group columns

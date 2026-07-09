@@ -8,6 +8,7 @@ import { GridOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
+import { buildGroupTree, flattenGroupTree } from "./rowGroup";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -22,6 +23,17 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private aggregateValues: Map<string, any> = new Map();
   private aggregateCalculator = new AggregateCalculator();
 
+  // Row grouping state. When groupColumns is non-empty the model derives a group tree from the
+  // filtered+sorted leaves and exposes a flat display list (group headers + visible leaves) via
+  // viewNodes; the flat viewIdx path is bypassed. Synthetic group nodes never enter nodes[].
+  private groupColumns: Column[] = [];
+  private groupExpansion: Map<string, boolean> = new Map();
+  private groupRoots: IRowNode<Row>[] = [];
+  private groupNodesMap: Map<string, IRowNode<Row>> = new Map();
+  private groupedFlatAll: IRowNode<Row>[] = [];
+  private viewNodes: IRowNode<Row>[] = [];
+  private readonly groupDefaultExpanded: number;
+
   paginate: boolean = false;
   startIdx = 0;
   endIdx = 100;
@@ -30,6 +42,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   constructor(opts: GridOptions, readonly listener: IRowModelListener) {
     this.getId = createRowIdFactory(opts);
+    this.groupDefaultExpanded = opts.groupDefaultExpanded ?? 0;
+  }
+
+  private get grouped(): boolean {
+    return this.groupColumns.length > 0;
   }
 
   getType(): RowModelType {
@@ -125,7 +142,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   getRowCount(): number {
-    return this.nodes.length;
+    // While grouping, pagination pages over the flat display list (group headers + visible
+    // leaves), so report that count. Otherwise the raw leaf-node total.
+    return this.grouped ? this.groupedFlatAll.length : this.nodes.length;
   }
 
   private setPagination(paginate: boolean, startIdx: number, endIdx: number) {
@@ -143,8 +162,55 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
+  // Rebuild the group tree from the current filtered+sorted leaves. Group buckets are ordered by
+  // the grouping column's comparator; leaves keep their sorted order within each bucket. Per-group
+  // aggregate values are computed over each group's full leaf-descendant set (only when aggregates
+  // are configured). Expansion state is read from groupExpansion, falling back to the default depth.
+  private rebuildGroupTree() {
+    const leaves = this.sortedIdx.map(i => this.nodes[i]);
+    // Only compute per-group totals for columns with an aggregate explicitly configured. Unlike the
+    // footer aggregate row (which fills every column via a default op), group rows show a value only
+    // where one was asked for — otherwise every column reads as aggregated and the grid looks cluttered.
+    const aggregatedKeys = new Set(this.aggregates.map(a => a.key));
+    const aggregatedColumns = this.leafColumns.filter(col => aggregatedKeys.has(col.instanceID));
+    const computeAggregates = aggregatedColumns.length > 0
+      ? (groupLeaves: IRowNode<Row>[]) => {
+          const map = this.aggregateCalculator.calculateAggregates(aggregatedColumns, this.aggregates, groupLeaves);
+          const obj: { [key: string]: any } = {};
+          map.forEach((value, key) => { obj[key] = value; });
+          return obj;
+        }
+      : undefined;
+
+    const { roots, groupNodesById } = buildGroupTree<Row>({
+      leaves,
+      groupColumns: this.groupColumns,
+      expansion: this.groupExpansion,
+      defaultExpanded: this.groupDefaultExpanded,
+      computeAggregates,
+    });
+    this.groupRoots = roots;
+    this.groupNodesMap = groupNodesById;
+
+    // Drop expansion entries for groups that no longer exist to bound memory growth.
+    if (this.groupExpansion.size > 0) {
+      for (const id of Array.from(this.groupExpansion.keys())) {
+        if (!groupNodesById.has(id)) this.groupExpansion.delete(id);
+      }
+    }
+  }
+
+  // Flatten the group tree into the display list (pre-order, collapsed subtrees skipped), then apply
+  // pagination. groupedFlatAll is the full flat list (used for pagination totals); viewNodes is the
+  // paginated slice the viewport renders.
+  private rebuildGroupedView() {
+    this.groupedFlatAll = flattenGroupTree(this.groupRoots);
+    const end = this.paginate ? this.endIdx : undefined;
+    this.viewNodes = this.groupedFlatAll.slice(this.startIdx, end);
+  }
+
   getViewCount() {
-    return this.viewIdx.length;
+    return this.grouped ? this.viewNodes.length : this.viewIdx.length;
   }
 
   getRowNodeAt(index: number): IRowNode<Row> | undefined {
@@ -153,13 +219,14 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   getRowNodeAtViewIndex(viewRowIndex: number): IRowNode<Row> | undefined {
+    if (this.grouped) return this.viewNodes[viewRowIndex];
     const nodeIdx = this.viewIdx[viewRowIndex];
     if (nodeIdx == null) return undefined;
     return this.nodes[nodeIdx];
   }
 
   getRowNode(id: string): IRowNode<Row> | undefined {
-    return this.nodesMap.get(id);
+    return this.nodesMap.get(id) ?? this.groupNodesMap.get(id);
   }
 
   setCellValue(rowId: string, key: string, value: any): boolean {
@@ -175,6 +242,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void {
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
+  }
+
+  getGroupNodes(): IRowNode<Row>[] {
+    return this.grouped ? Array.from(this.groupNodesMap.values()) : [];
   }
 
   private setSorts(sort: SortModel): void {
@@ -224,16 +295,48 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateScope = aggregateScope;
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
-    if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModel);
-    if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModel);
-    this.setPagination(paginate, range.start, range.end);
-    this.rebuildView();
-    this.reAggregate();
-    if (!aggregateOnly) {
+    this.groupColumns = params.groupColumns.slice();
+
+    // A pure expand/collapse toggle: update expansion state and re-flatten only — no filter, sort,
+    // or tree rebuild.
+    const expansionOnly = params.groupExpansion != null;
+    if (expansionOnly) {
+      const { groupId, expanded } = params.groupExpansion!;
+      const node = this.groupNodesMap.get(groupId);
+      if (node) {
+        const next = expanded ?? !node.isExpanded;
+        node.isExpanded = next;
+        this.groupExpansion.set(groupId, next);
+      }
+      this.setPagination(paginate, range.start, range.end);
+      this.rebuildGroupedView();
+    } else {
+      if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModel);
+      if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModel);
+      this.setPagination(paginate, range.start, range.end);
+      if (this.grouped) {
+        this.rebuildGroupTree();
+        this.rebuildGroupedView();
+      } else {
+        this.groupRoots = [];
+        this.groupNodesMap = new Map();
+        this.groupedFlatAll = [];
+        this.viewNodes = [];
+        this.rebuildView();
+      }
+      this.reAggregate();
+    }
+
+    // An aggregate-only request normally skips the row repaint (only the footer aggregate row
+    // changes). But while grouping, per-group totals live on the group rows themselves, so those
+    // rows must repaint too.
+    const emitRows = !aggregateOnly || (this.grouped && !expansionOnly);
+    if (emitRows) {
+      const rows = this.grouped ? this.viewNodes : this.viewIdx.map(i => this.nodes[i]);
       this.listener.onRows(id, {
         reason: params.reason,
-        rows: this.viewIdx.map(i => this.nodes[i]),
-        rowCount: this.filteredIdx.length,
+        rows,
+        rowCount: this.grouped ? this.groupedFlatAll.length : this.filteredIdx.length,
         visibleStart: range.start,
         visibleEnd: range.end,
       });
@@ -249,6 +352,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   destroy(): void {
     this.nodesMap.clear();
+    this.groupNodesMap.clear();
+    this.groupExpansion.clear();
   }
 
   private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {

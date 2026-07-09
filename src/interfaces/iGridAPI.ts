@@ -1,5 +1,5 @@
 import { GridEventMap, GridEventName, Unsubscribe } from "../events/events";
-import { ColumnState, GridId, RowData } from "./iGridCore";
+import { ColumnState, GridId, IGridCore, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
@@ -8,6 +8,9 @@ import { IColumnModel } from "./iColumnModel";
 export type NavDir = "up" | "down" | "left" | "right";
 
 export interface IGridAPI {
+  /** The underlying grid core (state + dispatch + event emission). */
+  getCore(): IGridCore;
+
   /** Dispatch an action to the core. */
   dispatch(action: GridAction): void;
 

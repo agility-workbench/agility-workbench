@@ -114,6 +114,11 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.nodes.forEach(callback);
   }
 
+  getGroupNodes(): IRowNode[] {
+    // Row grouping is client-side only.
+    return [];
+  }
+
   getViewCount() {
     if (!this.paginate) return this.rowCount;
     return Math.max(0, Math.min(this.rowCount, this.viewEndRow) - this.viewStartRow);

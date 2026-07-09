@@ -38,9 +38,34 @@ const ROW_NUMBER_COLUMN_DEF = {
   __internalRole: "rowNumber",
 } satisfies ColDef & { __internalRole: "rowNumber" };
 
+const AUTO_GROUP_COL_ID = "__pte_group__";
+// Base def for a synthesized auto-group column (shown in "singleColumn"/"multipleColumns" modes).
+// The chevron + indented label are painted by the body cell renderer, which branches on
+// col.isAutoGroupColumn() + row.isGroup — the column itself carries no cellRenderer so the core
+// stays free of any renderer dependency.
+const AUTO_GROUP_COLUMN_DEF = {
+  colId: AUTO_GROUP_COL_ID,
+  key: AUTO_GROUP_COL_ID,
+  label: "Group",
+  width: 240,
+  minWidth: 120,
+  pinned: "left",
+  sortable: false,
+  filter: false,
+  groupable: false,
+  resizable: true,
+  movable: false,
+  hideable: false,
+  exportable: false,
+  __internalRole: "autoGroup",
+} satisfies ColDef & { __internalRole: "autoGroup" };
+
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
   private rowNumberColumn?: Column;
+  // Synthesized auto-group columns, in grouping-level order. Empty unless grouping is active in
+  // "singleColumn" (one column) or "multipleColumns" (one per level) display mode.
+  private autoGroupColumns: Column[] = [];
 
   private columnsById: Map<string, Column> = new Map();
   private columnsByColId: Map<string, Column> = new Map();
@@ -427,12 +452,46 @@ export class ColumnModel implements IColumnModel {
   }
 
   private withInternalColumns(cols: Column[]): Column[] {
-    const userColumns = cols.filter((col) => !col.isRowNumberColumn());
-    if (!this.options.rowNumbers) return userColumns;
-    const rowNumberColumn = this.getRowNumberColumn();
-    rowNumberColumn.pinned = "left";
-    rowNumberColumn.hidden = false;
-    return [rowNumberColumn, ...userColumns];
+    const userColumns = cols.filter((col) => !col.isRowNumberColumn() && !col.isAutoGroupColumn());
+    const leading: Column[] = [];
+    if (this.options.rowNumbers) {
+      const rowNumberColumn = this.getRowNumberColumn();
+      rowNumberColumn.pinned = "left";
+      rowNumberColumn.hidden = false;
+      leading.push(rowNumberColumn);
+    }
+    for (const groupCol of this.autoGroupColumns) {
+      groupCol.pinned = "left";
+      groupCol.hidden = false;
+    }
+    return [...leading, ...this.autoGroupColumns, ...userColumns];
+  }
+
+  // Reconfigure the columns for the current grouping, then rebuild the column layout so sections /
+  // leaf lookup / widths stay consistent. `groupColumns` is the ordered list of user columns being
+  // grouped by; `mode` selects how the group label is surfaced:
+  //  - "singleColumn": one synthesized auto column renders every level (indented). Default.
+  //  - "multipleColumns": no synthesized column — each real grouped column shows the group value in
+  //    place, tagged with its grouping level.
+  //  - "groupRows": no auto column (the label spans the row).
+  setRowGroupColumns(groupColumns: Column[], mode: "singleColumn" | "multipleColumns" | "groupRows"): void {
+    // Clear any prior per-column group-level tags before re-tagging for the new grouping.
+    this.walkColumns((c) => { if (!c.isAutoGroupColumn()) c.groupLevel = undefined; });
+
+    const next: Column[] = [];
+    if (groupColumns.length > 0 && mode === "singleColumn") {
+      next.push(new Column({ ...AUTO_GROUP_COLUMN_DEF }, "auto-group"));
+    } else if (groupColumns.length > 0 && mode === "multipleColumns") {
+      // Tag the real grouped columns so the renderer shows each level's value under its own column.
+      groupColumns.forEach((gc, level) => { gc.groupLevel = level; });
+    }
+    this.autoGroupColumns = next;
+    // Rebuild from the current user columns (drops any previous auto columns, re-adds the new set).
+    this.updateColumns(this.columns.filter((c) => !c.isAutoGroupColumn() && !c.isRowNumberColumn()));
+  }
+
+  getAutoGroupColumns(): Column[] {
+    return this.autoGroupColumns;
   }
 
   private getRowNumberColumn(): Column {
@@ -505,26 +564,34 @@ export class ColumnModel implements IColumnModel {
     }
 
     let longestText = "";
-    let longestRowIdx = -1;
+    let longestRow: IRowNode | undefined;
     for (let i = 0; i < rows.length; i++) {
-      const value = col.getValue(rows[i]);
+      const value = this.cellValueForWidth(col, rows[i]);
       if (value && String(value).length > longestText.length) {
         longestText = String(value);
-        longestRowIdx = i;
+        longestRow = rows[i];
       }
     }
-    if (longestText.length === 0) {
+    if (longestText.length === 0 || !longestRow) {
       col.computedWidth = col.minWidth ? Math.max(maxWidth, col.minWidth) : maxWidth;
       return;
     }
 
-    longestText = col.formatValue(col.getValue(rows[longestRowIdx]), rows[longestRowIdx])
+    longestText = col.formatValue(this.cellValueForWidth(col, longestRow), longestRow);
     const longestWidth = this.measureText(longestText, measureCtx, params.cellFont ?? "14px Arial");
     if (longestWidth > maxWidth) {
       maxWidth = longestWidth;
     }
 
     col.computedWidth = col.maxWidth ? Math.min(maxWidth, col.maxWidth) : maxWidth;
+  }
+
+  // The value a cell in this column would display for width measurement. Group rows show their
+  // per-group aggregate value for the column (not the column's raw value, which is absent on the
+  // synthetic group node) so aggregate totals get room to fit.
+  private cellValueForWidth(col: Column, row: IRowNode): any {
+    if (row.isGroup) return row.aggregateValues?.[col.instanceID];
+    return col.getValue(row);
   }
 
   updateParentColumnWidth(col: Column): void {

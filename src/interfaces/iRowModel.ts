@@ -6,7 +6,7 @@ import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
 
 export type RowModelType = "clientSide" | "serverSide";
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
 
 export interface RowTransaction<Row = any> {
   add?: Row[];
@@ -32,6 +32,11 @@ export interface IRowModelRequestParams {
   readonly aggregates: AggregateModel[];
   readonly aggregateReason?: "model" | "scope" | "rows" | "columns" | "dataSource";
   readonly leafColumns: Column[];
+  // Columns the rows are grouped by, in grouping-level order. Empty = no grouping.
+  readonly groupColumns: Column[];
+  // When present, this request is a pure expand/collapse of a single group node — the model
+  // updates its expansion state and re-flattens the view without rebuilding the group tree.
+  readonly groupExpansion?: { groupId: string; expanded?: boolean };
 }
 
 export interface IRowModel<Row = any> {
@@ -57,6 +62,10 @@ export interface IRowModel<Row = any> {
   // iteration
   forEachNode(callback: (node: IRowNode, idx: number) => void): void;
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void;
+
+  // All synthetic group nodes in the current grouping (empty when not grouping). Used e.g. to size
+  // columns to their per-group aggregate values.
+  getGroupNodes(): IRowNode<Row>[];
 
   // identity
   getRowNode(id: string): IRowNode<Row> | undefined;

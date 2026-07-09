@@ -246,7 +246,9 @@ export function SelectionDemo() {
       </div>
 
       <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-        <div style={{ flex: 1, minHeight: 0 }}>
+        {/* minWidth:0 lets this flex item shrink below its content's intrinsic width; without it,
+            widening the grid (e.g. a pinned auto-group column) would stretch the whole layout. */}
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <GridReact
             data={rows}
             columnDefs={columnDefs}

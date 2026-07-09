@@ -53,6 +53,8 @@ function makeHarness(
     getColumnModel: () => columnModel as any,
     getRowIdAtViewIndex: (i: number) => (state.grid[i] == null ? null : `r${i}`),
     getPageStartIdx: () => state.pageStart,
+    // No group rows in these tests — every row is selectable.
+    isRowSelectable: () => true,
   });
 
   return { model, state };

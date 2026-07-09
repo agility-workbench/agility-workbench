@@ -213,6 +213,11 @@ export class SelectionRenderer {
 
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return null;
+    // Group-row cells are only selectable when groupRowsSelectable is enabled. When disabled,
+    // clicking a group cell resolves to no location (the click clears/keeps selection like empty
+    // space). The chevron toggle is handled earlier in onCellMouseDown either way. Editing is
+    // always blocked on group rows in the core's editStart.
+    if (!this.params.core.options.groupRowsSelectable && rowEl.classList.contains("pte-group-row")) return null;
 
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
@@ -345,6 +350,19 @@ export class SelectionRenderer {
 
   onCellMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
+
+    // Clicking a group row's expand/collapse chevron toggles that group and consumes the event so
+    // it doesn't also start a cell-range selection.
+    const toggle = (e.target as HTMLElement | null)?.closest(".pte-group-toggle") as HTMLElement | null;
+    if (toggle && this.params.root.contains(toggle)) {
+      const groupId = toggle.getAttribute("data-group-id")
+        ?? (toggle.closest(".pte-row") as HTMLElement | null)?.getAttribute("data-group-id");
+      if (groupId) {
+        e.preventDefault();
+        this.params.core.dispatch({ type: "groupToggleExpand", groupId });
+        return;
+      }
+    }
 
     const rowNumberCell = (e.target as HTMLElement | null)?.closest(".pte-row-number-cell") as HTMLDivElement | null;
     if (rowNumberCell && this.params.root.contains(rowNumberCell) && this.params.core.options.rowSelection) {

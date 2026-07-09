@@ -2,6 +2,16 @@ import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
 import { GridIconMap } from "../theme/icons";
 
+/**
+ * How grouped rows are displayed:
+ * - "singleColumn": one auto-generated group column holds the expand/collapse chevron and the
+ *   indented group label for every grouping level.
+ * - "multipleColumns": one auto-generated group column per grouped field; each shows its label
+ *   only on the group rows at its own level.
+ * - "groupRows": no auto-group column — the group label spans the row (sticky to the left edge).
+ */
+export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -48,6 +58,24 @@ export interface GridOptions {
    */
   reevaluateOnEdit?: boolean;
   /**
+   * How grouped rows are laid out. Defaults to "singleColumn". Client-side row model only.
+   */
+  groupDisplayType?: GroupDisplayType;
+  /**
+   * Depth to which groups start expanded when a grouping is first applied. 0 (default) leaves all
+   * groups collapsed; a value of N expands the first N levels; -1 expands all levels. Per-group
+   * expansion state set by the user afterwards takes precedence.
+   */
+  groupDefaultExpanded?: number;
+  /**
+   * Whether group (summary) rows participate in cell selection, keyboard navigation, and clipboard
+   * copy/cut. When false (default), group rows are skipped: clicking a group cell selects nothing,
+   * arrow/block navigation jumps over group rows to the nearest leaf, and copy/cut omits group
+   * rows. When true, group cells behave like ordinary cells for selection/nav/clipboard (editing is
+   * always blocked on group rows regardless). Client-side row model only.
+   */
+  groupRowsSelectable?: boolean;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -74,5 +102,8 @@ export interface InternalGridOptions extends GridOptions {
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
   reevaluateOnEdit: boolean;
+  groupDisplayType: GroupDisplayType;
+  groupDefaultExpanded: number;
+  groupRowsSelectable: boolean;
   icons?: GridIconMap;
 }

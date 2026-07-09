@@ -19,6 +19,9 @@ interface SelectionModelDeps {
   getColumnModel: () => ColumnModel;
   getRowIdAtViewIndex: (viewIdx: number) => GridId | null;
   getPageStartIdx: () => number;
+  // Whether a view-index row can hold a cell selection / be a navigation target (group rows are
+  // skipped unless groupRowsSelectable is enabled).
+  isRowSelectable: (viewIdx: number) => boolean;
 }
 
 /**
@@ -282,9 +285,9 @@ export class SelectionModel {
     const maxRow = this.maxRow();
     if (lastCol < firstCol || maxRow < 0) return null;
 
-    // Nothing selected yet: select the first data cell.
+    // Nothing selected yet: select the first selectable data cell.
     if (!this.active || !this.range) {
-      this.selectSingleCell(0, firstCol);
+      this.selectSingleCell(this.nearestSelectableRow(0, 1), firstCol);
       return this.active;
     }
 
@@ -325,6 +328,11 @@ export class SelectionModel {
       }
     }
 
+    // Skip over non-selectable (group) rows. Prefer the direction of travel; for horizontal moves
+    // (row unchanged) prefer moving down, then up.
+    const preferDir: 1 | -1 = nextRow < from.row ? -1 : 1;
+    nextRow = this.nearestSelectableRow(nextRow, preferDir);
+
     return this.moveActiveTo(nextRow, nextCol, opts.extend);
   }
 
@@ -335,7 +343,9 @@ export class SelectionModel {
     const maxRow = this.maxRow();
     if (lastCol < firstCol || maxRow < 0) return null;
 
-    const nextRow = corner === "topLeft" ? 0 : maxRow;
+    const nextRow = corner === "topLeft"
+      ? this.nearestSelectableRow(0, 1)
+      : this.nearestSelectableRow(maxRow, -1);
     const nextCol = corner === "topLeft" ? firstCol : lastCol;
     return this.moveActiveTo(nextRow, nextCol, extend);
   }
@@ -359,6 +369,23 @@ export class SelectionModel {
       pageStartIdx: this.deps.getPageStartIdx(),
     };
     return this.active;
+  }
+
+  // Resolve a target row to the nearest selectable row, skipping non-selectable (e.g. group) rows.
+  // Scans in `preferDir` first (+1 down / -1 up), then the opposite direction as a fallback, so a
+  // move never lands on a skipped row and never gets stuck. Returns the original row if nothing is
+  // selectable (degenerate — all rows skipped).
+  private nearestSelectableRow(target: number, preferDir: 1 | -1): number {
+    const maxRow = this.maxRow();
+    if (maxRow < 0) return target;
+    const clamped = Math.min(Math.max(target, 0), maxRow);
+    if (this.deps.isRowSelectable(clamped)) return clamped;
+    for (const dir of [preferDir, -preferDir as 1 | -1]) {
+      for (let r = clamped + dir; r >= 0 && r <= maxRow; r += dir) {
+        if (this.deps.isRowSelectable(r)) return r;
+      }
+    }
+    return clamped;
   }
 
   // Move the active cell to (row, col): extend the range from the existing anchor, or collapse

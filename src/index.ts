@@ -2,7 +2,7 @@ export type { IGridCore } from "./interfaces/iGridCore";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
 
-export type { GridOptions } from "./interfaces/gridOptions";
+export type { GridOptions, GroupDisplayType } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 

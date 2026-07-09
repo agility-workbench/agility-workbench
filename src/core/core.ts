@@ -53,6 +53,8 @@ export class GridCore implements IGridCore {
 
   private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
+  // Columns the rows are grouped by, in grouping-level order. Empty = no grouping. Client-side only.
+  private groupColumns: Column[] = [];
   private schemaSource: SchemaSource = "auto";
   private serverSchemaVersion: string | undefined;
   private serverSchemaSignature: string | undefined;
@@ -84,6 +86,7 @@ export class GridCore implements IGridCore {
       getColumnModel: () => this.columnModel,
       getRowIdAtViewIndex: (viewIdx) => this.getRowIdAtViewIndex(viewIdx),
       getPageStartIdx: () => this.getPageStartIdx(),
+      isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
     });
   }
 
@@ -110,6 +113,9 @@ export class GridCore implements IGridCore {
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
+      groupDisplayType: options.groupDisplayType ?? "singleColumn",
+      groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
+      groupRowsSelectable: options.groupRowsSelectable ?? false,
       icons: options.icons,
     };
   }
@@ -157,6 +163,7 @@ export class GridCore implements IGridCore {
     const changedSortColIds = this.reconcileSortModelColumns();
     const changedFilterColIds = this.reconcileFilterModelColumns();
     this.reconcileAggregateModelColumns();
+    this.reconcileGroupModelColumns();
     this.autosizeColumns();
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
@@ -274,6 +281,22 @@ export class GridCore implements IGridCore {
     this.aggregates = this.resolveAggregateModels(this.aggregates);
   }
 
+  // Re-resolve grouped columns against the rebuilt column set (colDef replacement creates new
+  // Column instances) and re-synthesize the auto-group columns so grouping survives a colDef swap.
+  private reconcileGroupModelColumns(): void {
+    if (this.groupColumns.length === 0) return;
+    const resolved: Column[] = [];
+    const seen = new Set<string>();
+    for (const col of this.groupColumns) {
+      const next = this.resolveModelColumn({ col });
+      if (!next || !next.groupable || seen.has(next.instanceID)) continue;
+      seen.add(next.instanceID);
+      resolved.push(next);
+    }
+    this.groupColumns = resolved;
+    this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType);
+  }
+
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
     return this.resolveModelColumn(sort);
   }
@@ -320,6 +343,8 @@ export class GridCore implements IGridCore {
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
+    // Include group nodes so columns are sized to fit their per-group aggregate values too.
+    allRows.push(...this.rowModel.getGroupNodes());
     const previousWidths = new Map<string, number>();
     this.columnModel.walkColumns((col) => {
       previousWidths.set(col.instanceID, col.computedWidth);
@@ -379,6 +404,7 @@ export class GridCore implements IGridCore {
     loadRange?: { start: number; end: number },
     paginate: boolean = this.paginationEnabled,
     aggregateReason?: IRowModelOnAggregatesParams["reason"],
+    groupExpansion?: { groupId: string; expanded?: boolean },
   ): IRowModelRequestParams {
     const aggregateScope = this.normalizeAggregateScope(this.aggregateScope);
     if (aggregateScope !== this.aggregateScope) {
@@ -397,6 +423,8 @@ export class GridCore implements IGridCore {
       aggregates: this.aggregates,
       aggregateReason,
       leafColumns: this.columnModel.getLeaves().filter(col => !col.isInternal()),
+      groupColumns: this.groupColumns.slice(),
+      groupExpansion,
     };
   }
 
@@ -504,6 +532,59 @@ export class GridCore implements IGridCore {
     this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
+  }
+
+  // Replace the set of columns rows are grouped by (order = grouping level). An empty list clears
+  // grouping. Client-side row model only. Synthesizes/removes auto-group columns per the configured
+  // groupDisplayType, re-derives the grouped view, and clears selection (view indices shift).
+  setRowGroupModel(colIds: string[]): void {
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("Row grouping is only supported on the 'clientSide' row model.");
+      return;
+    }
+    const resolved: Column[] = [];
+    const seen = new Set<string>();
+    for (const colId of colIds) {
+      const col = this.resolveModelColumn({ key: colId });
+      if (!col || !col.groupable || col.isInternal()) continue;
+      if (seen.has(col.instanceID)) continue;
+      seen.add(col.instanceID);
+      resolved.push(col);
+    }
+    this.groupColumns = resolved;
+    this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType);
+    // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
+    // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "defs" });
+    this.rowModel.applyRequest(this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
+    // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
+    // live on the group nodes built during applyRequest).
+    const changedColIds = this.autosizeColumns();
+    if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
+    this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  // Expand or collapse a single group node, then re-flatten the grouped view (no filter/sort/tree
+  // rebuild). When `expanded` is omitted the node's state is toggled.
+  toggleGroupExpand(groupId: string, expanded?: boolean): void {
+    if (this.groupColumns.length === 0) return;
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "group",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+      this.paginationEnabled,
+      undefined,
+      { groupId, expanded },
+    ));
+    this.clearSelectionForColumnChange();
+    this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  getRowGroupColumns(): Column[] {
+    return this.groupColumns.slice();
   }
 
   private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc"): boolean {
@@ -702,6 +783,14 @@ export class GridCore implements IGridCore {
 
   getRowIdAtViewIndex(displayedIndex: number): GridId | null {
     return this.rowModel.getRowNodeAtViewIndex(displayedIndex)?.id || null;
+  }
+
+  // Whether the row at a view index can hold a cell selection / be a navigation target. Group rows
+  // are skipped unless groupRowsSelectable is enabled; all leaf rows are selectable.
+  private isViewRowSelectable(viewIdx: number): boolean {
+    if (this.options.groupRowsSelectable) return true;
+    const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    return !node || !node.isGroup;
   }
 
   getViewIndexForRowId(rowId: GridId): number | null {
@@ -914,6 +1003,12 @@ export class GridCore implements IGridCore {
       case "aggregateModelSet":
         this.setAggregateModel(action.aggregateModels);
         break;
+      case "rowGroupSet":
+        this.setRowGroupModel(action.colIds);
+        break;
+      case "groupToggleExpand":
+        this.toggleGroupExpand(action.groupId, action.expanded);
+        break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
         if (!col || col.isInternal()) return;
@@ -1008,7 +1103,7 @@ export class GridCore implements IGridCore {
       case "editStart": {
         const col = this.columnModel.getById(action.cell.colId);
         const row = this.rowModel.getRowNode(action.cell.rowId);
-        if (!col || !row || !col.isCellEditable(row)) break;
+        if (!col || !row || row.isGroup || !col.isCellEditable(row)) break;
         this.editingCell = action.cell;
         this.emit("editingChanged", { state: "started", cell: action.cell, charPress: action.charPress });
         break;
@@ -1258,6 +1353,12 @@ export class GridCore implements IGridCore {
         if (changedColIds.length > 0) {
           this.emit("columnWidthsChanged", { changedColIds });
         }
+      }
+    } else if (params.reason === "aggregateModel" && this.groupColumns.length > 0) {
+      // Aggregate model changed while grouping: re-fit columns to the new per-group totals.
+      const changedColIds = this.autosizeColumns();
+      if (changedColIds.length > 0) {
+        this.emit("columnWidthsChanged", { changedColIds });
       }
     }
     this.emit("rowsChanged", {

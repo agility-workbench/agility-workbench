@@ -7,6 +7,7 @@ import type { ReactColDef } from "@grid-react";
 import type {
   ColDef,
   FormatterOptionsParams,
+  GroupDisplayType,
   IServerSideDataSource,
   IServerSideFilter,
   IServerSideRequest,
@@ -328,6 +329,10 @@ function App() {
   const [rowModel, setRowModel] = useState<RowModelType>("clientSide");
   const [serverSideBlockSize, setServerSideBlockSize] = useState(100);
   const [themeId, setThemeId] = useState(themePresets[0].id);
+  // Row grouping (client-side only) demo controls.
+  const gridApiRef = useRef<IGridAPI | null>(null);
+  const [groupDisplayType, setGroupDisplayType] = useState<GroupDisplayType>("singleColumn");
+  const [groupByColId, setGroupByColId] = useState<string>("");
 
   const applyDemoColumnConfig = (cols: ReactColDef[] = []) => {
     const currencyFormatter = (col: ReactColDef) => {
@@ -554,13 +559,43 @@ function App() {
             ))}
           </select>
         </div>
+        {rowModel === "clientSide" && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <label htmlFor="group-display" style={{ fontSize: "13px" }}>Group display</label>
+            <select
+              id="group-display"
+              value={groupDisplayType}
+              onChange={(e) => setGroupDisplayType(e.target.value as GroupDisplayType)}
+            >
+              <option value="singleColumn">Single column</option>
+              <option value="multipleColumns">Multiple columns</option>
+              <option value="groupRows">Group rows</option>
+            </select>
+            <label htmlFor="group-by" style={{ fontSize: "13px" }}>Group by</label>
+            <select
+              id="group-by"
+              value={groupByColId}
+              onChange={(e) => {
+                const colId = e.target.value;
+                setGroupByColId(colId);
+                gridApiRef.current?.dispatch({ type: "rowGroupSet", colIds: colId ? [colId] : [] });
+              }}
+            >
+              <option value="">(none)</option>
+              {colDefs.filter((c) => c.key && !c.children?.length).map((c) => (
+                <option key={c.colId ?? c.key} value={c.colId ?? c.key}>{c.label ?? c.key}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {/* {loading && <div>Loading data…</div>} */}
         {error && <div style={{ color: "red" }}>Error: {error}</div>}
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ flex: 1, minHeight: 0 }}>
         <GridReact
-          key={`${rowModel}-${serverSideBlockSize}-${rowNumbers ? "row-numbers" : "no-row-numbers"}`}
+          key={`${rowModel}-${serverSideBlockSize}-${rowNumbers ? "row-numbers" : "no-row-numbers"}-${groupDisplayType}`}
+          apiRef={gridApiRef}
           data={rowData}
           columnDefs={colDefs}
           className={activeTheme.className}
@@ -569,6 +604,7 @@ function App() {
           pagination={paginate}
           rowNumbers={rowNumbers}
           rowModelType={rowModel}
+          groupDisplayType={groupDisplayType}
           serverSideDataSource={serverSideDataSource}
           serverSideAggregationSource={serverSideDataSource.getAggregates}
           serverSideBlockSize={serverSideBlockSize}

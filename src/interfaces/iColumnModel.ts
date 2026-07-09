@@ -27,4 +27,6 @@ export interface IColumnModel {
   getAncestors(colId: string): Column[];
   walkColumns(callback: (col: Column) => void): void;
   toggleGroupExpansion(colId: string): boolean;
+  setRowGroupColumns(groupColumns: Column[], mode: "singleColumn" | "multipleColumns" | "groupRows"): void;
+  getAutoGroupColumns(): Column[];
 }

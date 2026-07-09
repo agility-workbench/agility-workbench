@@ -149,6 +149,11 @@ export class ColumnMenuService {
           colIds: item.payload.colIDs,
           sparklineType: item.payload.type,
         });
+      case "group.setMany":
+        return this.core.dispatch({
+          type: "rowGroupSet",
+          colIds: item.payload.colIDs,
+        });
       default:
         // unknown command -> ignore (or warn in dev)
         console.error(`Command ${item.command} is unhandled...`);

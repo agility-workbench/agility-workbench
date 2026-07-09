@@ -161,8 +161,8 @@ export class ClipboardRenderer {
         const globalIdx = leaves.indexOf(c);
         return globalIdx >= range.colStart && globalIdx <= range.colEnd;
       });
-      const viewIdxs = rangeToViewIdxs(range.rowStart, range.rowEnd);
-      return cols.length ? { cols, viewIdxs } : null;
+      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(range.rowStart, range.rowEnd));
+      return cols.length && viewIdxs.length ? { cols, viewIdxs } : null;
     }
 
     const selectedRowIds = core.getSelectedRowIds();
@@ -172,17 +172,27 @@ export class ClipboardRenderer {
         const id = core.getRowIdAtViewIndex(i);
         if (id && selectedRowIds.has(id)) viewIdxs.push(i);
       }
-      return viewIdxs.length ? { cols: visibleLeaves, viewIdxs } : null;
+      const copyable = this.filterCopyableRows(viewIdxs);
+      return copyable.length ? { cols: visibleLeaves, viewIdxs: copyable } : null;
     }
 
     const selectedColIds = core.getSelectedColumnIds();
     if (selectedColIds.size > 0) {
       const cols = visibleLeaves.filter(c => selectedColIds.has(c.instanceID));
-      const viewIdxs = rangeToViewIdxs(0, rowModel.getViewCount() - 1);
-      return cols.length ? { cols, viewIdxs } : null;
+      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(0, rowModel.getViewCount() - 1));
+      return cols.length && viewIdxs.length ? { cols, viewIdxs } : null;
     }
 
     return null;
+  }
+
+  // Drop group (summary) rows from a copy/cut set unless groupRowsSelectable is enabled. Group
+  // cells hold labels/aggregate totals rather than real values, so including them in TSV output is
+  // usually noise; the option lets callers opt into copying them.
+  private filterCopyableRows(viewIdxs: number[]): number[] {
+    if (this.params.core.getOptions().groupRowsSelectable) return viewIdxs;
+    const rowModel = this.params.core.getRowModel();
+    return viewIdxs.filter(i => !rowModel.getRowNodeAtViewIndex(i)?.isGroup);
   }
 
   // The top-left cell paste starts from, plus the selected span (used to fill a 1×1 clipboard).

@@ -274,3 +274,45 @@ describe("ClipboardRenderer paste tiling", () => {
       .toEqual(["P", "Q", "a3"]); // only 2 written, third untouched
   });
 });
+
+describe("ClipboardRenderer with row grouping", () => {
+  // Region-grouped, fully expanded: group headers interleave with leaf rows.
+  function makeGroupedGrid(groupRowsSelectable = false) {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide", groupDefaultExpanded: -1, groupRowsSelectable });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData([
+      { id: "1", region: "EMEA", name: "alice" },
+      { id: "2", region: "EMEA", name: "bob" },
+    ]);
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "name", key: "name", label: "Name" },
+    ]);
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    return core;
+  }
+
+  // Leaf columns in singleColumn mode: autoGroup(pinned left)=0, region=1, name=2.
+  const REGION_COL = 1;
+
+  it("omits group rows from a copied range by default", () => {
+    const core = makeGroupedGrid();
+    // View: [EMEA header, alice, bob]. Select the Region column top-to-bottom.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: REGION_COL, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: REGION_COL, mode: "extend" });
+    const { clip, writes } = makeClip(core);
+    clip.copy();
+    // Only the two leaf rows' region values — the group header row is skipped.
+    expect(writes).toEqual(["EMEA\nEMEA"]);
+  });
+
+  it("includes group rows in the copy when groupRowsSelectable is enabled", () => {
+    const core = makeGroupedGrid(true);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: REGION_COL, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: REGION_COL, mode: "extend" });
+    const { clip, writes } = makeClip(core);
+    clip.copy();
+    // Group header row is included → 3 lines (the header cell is blank in the region column).
+    expect(writes[0]?.split("\n").length).toBe(3);
+  });
+});

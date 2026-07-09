@@ -61,6 +61,7 @@
   --pte-checkbox-accent-color: #3b82f6;
   --pte-aggregate-row-bg-color: #f3f4f6;
   --pte-aggregate-cell-bg-color: #f3f4f6;
+  --pte-group-row-bg-color: #f8fafc;
   --pte-surface-bg-color: #ffffff;
   --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
   --pte-control-border-color: rgba(0, 0, 0, 0.15);
@@ -110,6 +111,7 @@
   --pte-checkbox-accent-color: #60a5fa;
   --pte-aggregate-row-bg-color: #1e293b;
   --pte-aggregate-cell-bg-color: #1e293b;
+  --pte-group-row-bg-color: #1e293b;
   --pte-surface-bg-color: #0f172a;
   --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
   --pte-control-border-color: rgba(148, 163, 184, 0.35);
@@ -971,6 +973,43 @@
 
 .pte-cell.pte-cell-custom-renderer {
   padding: 0;
+}
+
+/* Row grouping */
+.pte-row.pte-group-row {
+  background-color: var(--pte-group-row-bg-color);
+  font-weight: 600;
+}
+
+.pte-cell.pte-group-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pte-group-toggle {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  cursor: pointer;
+}
+
+.pte-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "groupRows" mode: the label rides in the first center column but stays pinned to the left edge
+   while the body scrolls horizontally. */
+.pte-cell.pte-group-cell-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--pte-group-row-bg-color);
 }
 
 .pte-cell.pte-cell-editing {

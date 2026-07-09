@@ -133,6 +133,21 @@ export type GridActionAggregateModelSet = {
   aggregateModels: AggregateModel[];
 }
 
+// Row-grouping actions
+// Replace the set of columns the rows are grouped by (order = grouping level). An empty array
+// clears grouping. Client-side row model only.
+export type GridActionRowGroupSet = {
+  type: "rowGroupSet";
+  colIds: string[];
+};
+
+// Expand or collapse a single group node. When `expanded` is omitted the node's state is toggled.
+export type GridActionGroupToggleExpand = {
+  type: "groupToggleExpand";
+  groupId: string;
+  expanded?: boolean;
+};
+
 // Focus/Selection actions
 export type GridActionFocusSet = {
   type: "focusSet";
@@ -257,6 +272,8 @@ export type GridAction =
   | GridActionSortModelSet
   | GridActionFilterModelSet
   | GridActionAggregateModelSet
+  | GridActionRowGroupSet
+  | GridActionGroupToggleExpand
   | GridActionFocusSet
   | GridActionHeaderAction
   | GridActionSelectionClear
