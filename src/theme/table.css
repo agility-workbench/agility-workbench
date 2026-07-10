@@ -61,7 +61,6 @@
   --pte-checkbox-accent-color: #3b82f6;
   --pte-aggregate-row-bg-color: #f3f4f6;
   --pte-aggregate-cell-bg-color: #f3f4f6;
-  --pte-group-row-bg-color: #f8fafc;
   --pte-surface-bg-color: #ffffff;
   --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
   --pte-control-border-color: rgba(0, 0, 0, 0.15);
@@ -111,7 +110,6 @@
   --pte-checkbox-accent-color: #60a5fa;
   --pte-aggregate-row-bg-color: #1e293b;
   --pte-aggregate-cell-bg-color: #1e293b;
-  --pte-group-row-bg-color: #1e293b;
   --pte-surface-bg-color: #0f172a;
   --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
   --pte-control-border-color: rgba(148, 163, 184, 0.35);
@@ -977,7 +975,6 @@
 
 /* Row grouping */
 .pte-row.pte-group-row {
-  background-color: var(--pte-group-row-bg-color);
   font-weight: 600;
 }
 
