@@ -11,7 +11,7 @@ export const INDENT_PER_LEVEL = 20;
 // The DOM is rebuilt each call (cheap: three elements) rather than diffed — the body row pool
 // recycles cells across unrelated rows, so a stable structure can't be assumed.
 export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
-  cell.style.paddingLeft = `${row.level * INDENT_PER_LEVEL}px`;
+  cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
 
   const toggle = document.createElement("span");
   toggle.className = "pte-group-toggle " + (row.isExpanded ? "icon-minus-frame" : "icon-plus-frame");
