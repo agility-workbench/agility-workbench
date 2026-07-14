@@ -16,6 +16,7 @@ import {
 interface GridRendererCoreEventBinderParams {
   core: GridCore;
   setLoading: (isLoading: boolean) => void;
+  setEmpty: (isEmpty: boolean) => void;
   buildPaginationControls: () => void;
   maybeUpdatePoolSize: (params: GridEventViewportChangedParams) => void;
   onColumnsChanged: (params: GridEventColumnsChangedParams) => void;
@@ -38,7 +39,11 @@ export class GridRendererCoreEventBinder {
   bind() {
     this.unsubscribers.push(
       this.params.core.on("overlayShow", (ev: { overlayType: "loading" | "noRows" | "none" }) => {
-        this.params.setLoading(ev.overlayType === "loading" || ev.overlayType === "noRows");
+        // Loading spinner responds only to the loading state. The empty ("noRows") state is driven
+        // separately from the actual row count in rowsChanged, so a load-in-progress hides the
+        // empty overlay until the data arrives.
+        this.params.setLoading(ev.overlayType === "loading");
+        if (ev.overlayType === "loading") this.params.setEmpty(false);
       }),
       this.params.core.on("modelUpdated", () => {
         this.params.buildPaginationControls();
@@ -55,6 +60,7 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("rowsChanged", (params: GridEventRowsChangedParams) => {
         this.params.onDataChanged(params);
+        this.params.setEmpty(params.rowCount === 0);
       }),
       this.params.core.on("aggregateChanged", (params: GridEventAggregateChangedParams) => {
         this.params.onAggregateChanged(params);

@@ -4,6 +4,7 @@ import { FilterModel } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
+import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 
 export type GridActionInit = {
   type: "init";
@@ -126,6 +127,13 @@ export type GridActionSortModelSet = {
 export type GridActionFilterModelSet = {
   type: "filterModelSet";
   filterModel: FilterModel[];
+};
+
+export type GridActionQuickFilterSet = {
+  type: "quickFilterSet";
+  text: string;
+  matchMode?: QuickFilterMatchMode;
+  caseSensitive?: boolean;
 };
 
 export type GridActionAggregateModelSet = {
@@ -271,6 +279,7 @@ export type GridAction =
   | GridActionPaginationSet
   | GridActionSortModelSet
   | GridActionFilterModelSet
+  | GridActionQuickFilterSet
   | GridActionAggregateModelSet
   | GridActionRowGroupSet
   | GridActionGroupToggleExpand

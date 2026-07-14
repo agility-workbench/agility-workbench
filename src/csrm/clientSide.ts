@@ -3,8 +3,8 @@ import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
-import { performFilter } from "../csrm/filter";
-import { GridOptions } from "../interfaces/gridOptions";
+import { performFilter, performQuickFilter } from "../csrm/filter";
+import { GridOptions, QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
@@ -22,6 +22,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private leafColumns: Column[] = [];
   private aggregateValues: Map<string, any> = new Map();
   private aggregateCalculator = new AggregateCalculator();
+
+  // Quick-filter (global search) state. Applied as a second predicate ANDed with the column filters
+  // inside applyFilters, so both the flat and grouped view paths pick it up. Empty text is a no-op.
+  private quickFilterText = "";
+  private quickFilterMatchMode: QuickFilterMatchMode = "multiTerm";
+  private quickFilterCaseSensitive = false;
 
   // Row grouping state. When groupColumns is non-empty the model derives a group tree from the
   // filtered+sorted leaves and exposes a flat display list (group headers + visible leaves) via
@@ -269,7 +275,20 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private applyFilters(filter: FilterModel): void {
-    this.filteredIdx = performFilter(filter.items, this.nodes);
+    const columnFiltered = performFilter(filter.items, this.nodes);
+    this.filteredIdx = this.quickFilterText.trim() === ""
+      ? columnFiltered
+      : performQuickFilter(
+          {
+            text: this.quickFilterText,
+            matchMode: this.quickFilterMatchMode,
+            caseSensitive: this.quickFilterCaseSensitive,
+            // leafColumns is the set of visible, non-internal leaves supplied on the request.
+            columns: this.leafColumns,
+          },
+          this.nodes,
+          columnFiltered,
+        );
   }
 
   setAggregateScope(scope: AggregateScope): void {
@@ -296,6 +315,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
     this.groupColumns = params.groupColumns.slice();
+    if (params.quickFilter) {
+      this.quickFilterText = params.quickFilter.text;
+      this.quickFilterMatchMode = params.quickFilter.matchMode;
+      this.quickFilterCaseSensitive = params.quickFilter.caseSensitive;
+    }
 
     // A pure expand/collapse toggle: update expansion state and re-flatten only — no filter, sort,
     // or tree rebuild.
@@ -358,7 +382,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {
     switch (reason) {
-      case "filter": return step === "filter" || step === "sort";
+      case "filter":
+      case "quickFilter":
+        return step === "filter" || step === "sort";
       case "sort": return step === "sort";
       case "page":
       case "pagination":

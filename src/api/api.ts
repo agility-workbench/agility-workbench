@@ -4,6 +4,7 @@ import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
+import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
 export class GridAPI implements IGridAPI {
@@ -48,6 +49,14 @@ export class GridAPI implements IGridAPI {
     remove?: GridId[];
   }): void {
     this.dispatch({ type: "rowTransactionApply", add: tx.add, update: tx.update, remove: tx.remove });
+  }
+
+  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
+    this.dispatch({ type: "quickFilterSet", text, matchMode: opts?.matchMode, caseSensitive: opts?.caseSensitive });
+  }
+
+  getQuickFilterText(): string {
+    return this.core.getQuickFilterText();
   }
 
   // ---------------- Selection ----------------

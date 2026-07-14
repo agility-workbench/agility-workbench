@@ -605,6 +605,7 @@ function App() {
           rowNumbers={rowNumbers}
           rowModelType={rowModel}
           groupDisplayType={groupDisplayType}
+          quickFilter
           serverSideDataSource={serverSideDataSource}
           serverSideAggregationSource={serverSideDataSource.getAggregates}
           serverSideBlockSize={serverSideBlockSize}

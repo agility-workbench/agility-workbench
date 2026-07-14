@@ -509,6 +509,205 @@
   }
 }
 
+/* ---------------- No-rows (empty) overlay ---------------- */
+.pte-norows-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Sit below the header so it doesn't cover column headers; header height varies, so keep it a
+     modest top inset that clears a single-row header and reads fine for taller ones. */
+  padding-top: 43px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pte-norows-overlay.hidden {
+  display: none;
+}
+
+.pte-norows-label {
+  color: var(--pte-muted-text-color);
+  font-size: var(--pte-font-size);
+  font-weight: 500;
+  padding: 10px 16px;
+}
+
+/* ---------------- Quick filter (global search) ---------------- */
+.pte-quick-filter {
+  position: absolute;
+  top: 6px;
+  /* Clear the vertical scrollbar gutter so the widget never sits over the scrollbar thumb. */
+  right: calc(var(--pte-scrollbar-size, 10px) + 8px);
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  padding: 6px 8px;
+  /* Tinted chrome so the white input field and the buttons on it read as distinct roles. */
+  background: var(--pte-header-background-color);
+  border: 1px solid var(--pte-overlay-border-color);
+  border-radius: 8px;
+  box-shadow: var(--pte-overlay-shadow);
+  font-family: var(--pte-font-family);
+  font-size: var(--pte-font-size);
+}
+
+.pte-quick-filter.pte-quick-filter-open {
+  display: inline-flex;
+}
+
+/* The search row: [ field ] options close. */
+.pte-quick-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The text-entry field: search icon + input + clear, on a plain input background with a border,
+   so it stands out against the tinted container. */
+.pte-quick-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  padding: 3px 6px;
+  background: var(--pte-input-bg-color);
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+}
+
+.pte-quick-filter-field:focus-within {
+  border-color: var(--pte-select-border-color);
+}
+
+.pte-quick-filter-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-filter);
+  background-color: var(--pte-icon-color);
+}
+
+.pte-quick-filter-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--pte-text-color);
+  font: inherit;
+  width: 220px;
+  padding: 2px 2px;
+}
+
+.pte-quick-filter-input::placeholder {
+  color: var(--pte-muted-text-color);
+}
+
+/* Shared base for the icon/glyph buttons in the row (clear, options, close). */
+.pte-quick-filter-clear,
+.pte-quick-filter-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--pte-muted-text-color);
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+/* Only reveal the clear button when there's text — but keep its box laid out (visibility, not
+   display) so the widget's width doesn't shift as the button appears/disappears. visibility:hidden
+   also removes it from the pointer-event target set, so the invisible button is inert. */
+.pte-quick-filter-clear[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}
+
+.pte-quick-filter-clear,
+.pte-quick-filter-close {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.pte-quick-filter-clear:hover,
+.pte-quick-filter-btn:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+/* The options button's own background is the hover highlight; its icon lives in a child span so the
+   hover background never overwrites the icon's mask fill (the previous bug that made it vanish). */
+.pte-quick-filter-options-icon {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-menu);
+  background-color: var(--pte-icon-color);
+}
+
+.pte-quick-filter-options[aria-expanded="true"] {
+  background: var(--pte-hover-bg-color);
+}
+
+/* Options panel revealed inline below the search row when the widget is expanded. */
+.pte-quick-filter-options-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 2px 4px;
+  margin-top: 6px;
+  border-top: 1px solid var(--pte-border-color);
+}
+
+.pte-quick-filter-options-panel[hidden] {
+  display: none;
+}
+
+.pte-quick-filter-option-row {
+  display: flex;
+  align-items: center;
+}
+
+.pte-quick-filter-option-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pte-text-color);
+  font-size: var(--pte-font-size);
+  width: 100%;
+  justify-content: space-between;
+}
+
+/* Match the grid's other selects (e.g. the pagination page-size select). */
+.pte-quick-filter-option-select {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font: inherit;
+}
+
+.pte-quick-filter-option-select:focus,
+.pte-quick-filter-option-select:focus-visible {
+  outline: none;
+  border-color: var(--pte-select-border-color);
+}
+
 .pte-scroller-left {
   overflow: auto;
   position: relative;

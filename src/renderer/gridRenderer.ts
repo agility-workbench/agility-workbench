@@ -44,6 +44,8 @@ import { ColumnLayoutRenderer } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { FilterOverlayRenderer } from "./overlay/filter";
 import { LoadingOverlayRenderer } from "./overlay/loading";
+import { NoRowsOverlayRenderer } from "./overlay/noRows";
+import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
 import { PaginationRenderer } from "./pagination/renderer";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
@@ -83,6 +85,8 @@ export class GridRenderer {
   _interactionEventBinder: GridInteractionEventBinder;
   _filterOverlayRenderer: FilterOverlayRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
+  _noRowsOverlayRenderer: NoRowsOverlayRenderer;
+  _quickFilterWidget?: QuickFilterWidget;
   _rootAttachmentRenderer: RootAttachmentRenderer;
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
@@ -162,6 +166,7 @@ export class GridRenderer {
     this._coreEventBinder = new GridRendererCoreEventBinder({
       core: this.core,
       setLoading: (isLoading) => this.setLoading(isLoading),
+      setEmpty: (isEmpty) => this.setEmpty(isEmpty),
       buildPaginationControls: () => this.buildPaginationControls(),
       maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
       onColumnsChanged: (params) => this._modelChangeHandler.onColumnsChanged(params),
@@ -359,7 +364,7 @@ export class GridRenderer {
       onCellMouseUp: () => this._selectionRenderer.onCellMouseUp(),
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
-      onKeyDown: (e) => this._selectionRenderer.onKeyDown(e),
+      onKeyDown: (e) => this._onKeyDown(e),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -477,6 +482,19 @@ export class GridRenderer {
     this._filterOverlayRenderer = new FilterOverlayRenderer();
     this._filterOverlayRenderer.bind();
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root);
+    this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
+
+    // Quick filter (global search). Only mounted when enabled and the model is client-side.
+    const quickFilterWidget = new QuickFilterWidget({
+      core: this.core,
+      root: this.root,
+      topOffset: () => headerRefs.wrapper.offsetHeight + 6,
+    });
+    if (quickFilterWidget.isEnabled() && this.core.getRowModel().getType() !== "serverSide") {
+      this._quickFilterWidget = quickFilterWidget;
+    } else {
+      quickFilterWidget.destroy();
+    }
 
     // Create a pooled set of row nodes
     // this._poolSize = this._bodyPoolSizer.computePoolSize(...);
@@ -527,10 +545,40 @@ export class GridRenderer {
     this._paginationRenderer.togglePagination(pagination);
   }
 
+  // Grid-level keydown. The listener is bound to the grid root (see GridInteractionEventBinder), so
+  // this only fires when focus is inside the grid — the same rule that lets selection preempt Ctrl+A.
+  // Ctrl/Cmd+F is claimed here (preventing the browser's native find) to summon the quick filter,
+  // then everything else falls through to selection/keyboard navigation.
+  _onKeyDown(e: KeyboardEvent) {
+    if (this._quickFilterWidget && (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      this._quickFilterWidget.show();
+      return;
+    }
+    this._selectionRenderer.onKeyDown(e);
+  }
+
   setLoading(isLoading: boolean) {
     const next = isTrue(isLoading);
     if (this._loadingOverlayRenderer.getLoading() === next) return;
     this._loadingOverlayRenderer.setLoading(next);
+  }
+
+  setEmpty(isEmpty: boolean) {
+    if (this._noRowsOverlayRenderer.getEmpty() === isEmpty) return;
+    if (isEmpty) {
+      // Tailor the message: an active search/filter reads differently from a genuinely empty dataset.
+      const quick = this.core.getQuickFilterText().trim();
+      const hasColumnFilter = this.core.getFilterModel().items.length > 0;
+      if (quick !== "") {
+        this._noRowsOverlayRenderer.setMessage(`No rows match "${quick}"`);
+      } else if (hasColumnFilter) {
+        this._noRowsOverlayRenderer.setMessage("No rows match the current filters");
+      } else {
+        this._noRowsOverlayRenderer.setMessage("No rows to show");
+      }
+    }
+    this._noRowsOverlayRenderer.setEmpty(isEmpty);
   }
 
   setIcons(icons?: GridIconMap) {
@@ -560,6 +608,7 @@ export class GridRenderer {
   destroy() {
     this._coreEventBinder.destroy();
     this._filterOverlayRenderer.destroy();
+    this._quickFilterWidget?.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();

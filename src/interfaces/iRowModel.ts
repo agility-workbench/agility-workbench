@@ -4,9 +4,10 @@ import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
+import { QuickFilterMatchMode } from "./gridOptions";
 
 export type RowModelType = "clientSide" | "serverSide";
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
 
 export interface RowTransaction<Row = any> {
   add?: Row[];
@@ -37,6 +38,15 @@ export interface IRowModelRequestParams {
   // When present, this request is a pure expand/collapse of a single group node — the model
   // updates its expansion state and re-flattens the view without rebuilding the group tree.
   readonly groupExpansion?: { groupId: string; expanded?: boolean };
+  // Quick-filter (global search) state. Applied by the client-side model as a second predicate
+  // ANDed with the column filters. Empty text disables it. Ignored by the server-side model.
+  readonly quickFilter?: QuickFilterState;
+}
+
+export interface QuickFilterState {
+  readonly text: string;
+  readonly matchMode: QuickFilterMatchMode;
+  readonly caseSensitive: boolean;
 }
 
 export interface IRowModel<Row = any> {

@@ -4,6 +4,7 @@ import { ColDef } from "./column";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
+import { QuickFilterMatchMode } from "./gridOptions";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -31,6 +32,11 @@ export interface IGridAPI {
 
   /** Apply a transaction to the row data. */
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): void;
+
+  /** Set the quick-filter (global search) text. Client-side row model only. */
+  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
+  /** Current quick-filter text ("" when inactive). */
+  getQuickFilterText(): string;
 
   /* ----- Selection ----- */
   /** Focus a single cell (view index + global leaf column index). */

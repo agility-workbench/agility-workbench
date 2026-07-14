@@ -12,6 +12,55 @@ import { GridIconMap } from "../theme/icons";
  */
 export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
 
+/** How the quick-filter search string is matched against each row. */
+export type QuickFilterMatchMode = "substring" | "multiTerm";
+
+/**
+ * Quick filter (global search) configuration.
+ * - `mode`: "onDemand" (default) hides the widget until summoned with Ctrl/Cmd+F; "always" keeps it
+ *   pinned open under the header.
+ * - `matchMode`: "multiTerm" (default) splits the search on whitespace and requires every token to
+ *   match somewhere in the row; "substring" matches the whole string as one contiguous run.
+ * - `caseSensitive`: false by default.
+ * - `debounceMs`: delay before a keystroke triggers a refilter. Defaults to 150.
+ * - `showOptions`: whether the widget exposes the match-mode / match-case popover to end users.
+ *   Defaults to true. When false the configured defaults are fixed.
+ * These are the *initial* defaults; end-user changes made in the widget popover are sticky for the
+ * session (they are not written back to grid options). Client-side row model only.
+ */
+export interface QuickFilterOptions {
+  mode?: "always" | "onDemand";
+  matchMode?: QuickFilterMatchMode;
+  caseSensitive?: boolean;
+  debounceMs?: number;
+  showOptions?: boolean;
+}
+
+/** Fully-resolved quick-filter configuration (all defaults applied). `enabled` is false when the
+ * `quickFilter` option was omitted or set to false. */
+export interface ResolvedQuickFilterOptions {
+  enabled: boolean;
+  mode: "always" | "onDemand";
+  matchMode: QuickFilterMatchMode;
+  caseSensitive: boolean;
+  debounceMs: number;
+  showOptions: boolean;
+}
+
+export function resolveQuickFilterOptions(
+  opt: boolean | QuickFilterOptions | undefined,
+): ResolvedQuickFilterOptions {
+  const o = typeof opt === "object" && opt !== null ? opt : {};
+  return {
+    enabled: opt === true || (typeof opt === "object" && opt !== null),
+    mode: o.mode ?? "onDemand",
+    matchMode: o.matchMode ?? "multiTerm",
+    caseSensitive: o.caseSensitive ?? false,
+    debounceMs: o.debounceMs != null && o.debounceMs >= 0 ? o.debounceMs : 150,
+    showOptions: o.showOptions ?? true,
+  };
+}
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -76,6 +125,12 @@ export interface GridOptions {
    */
   groupRowsSelectable?: boolean;
   /**
+   * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
+   * or an options object to customise. Omitted/false disables the feature. Client-side row model
+   * only (server-side ignores it).
+   */
+  quickFilter?: boolean | QuickFilterOptions;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup.
    */
@@ -105,5 +160,6 @@ export interface InternalGridOptions extends GridOptions {
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;
   groupRowsSelectable: boolean;
+  quickFilter: boolean | QuickFilterOptions;
   icons?: GridIconMap;
 }

@@ -5,7 +5,7 @@ import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { GridOptions, InternalGridOptions } from "../interfaces/gridOptions";
+import { GridOptions, InternalGridOptions, QuickFilterMatchMode, resolveQuickFilterOptions } from "../interfaces/gridOptions";
 import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
@@ -51,6 +51,12 @@ export class GridCore implements IGridCore {
   private filters: FilterModel = new FilterModel();
   private sorts: SortModel = new SortModel();
 
+  // Quick-filter (global search) state. Resolved match-mode / case-sensitivity default from the
+  // quickFilter grid option; the widget may override them at runtime. Client-side row model only.
+  private quickFilterText = "";
+  private quickFilterMatchMode: QuickFilterMatchMode;
+  private quickFilterCaseSensitive: boolean;
+
   private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
   // Columns the rows are grouped by, in grouping-level order. Empty = no grouping. Client-side only.
@@ -81,6 +87,9 @@ export class GridCore implements IGridCore {
     this.paginationEnabled = this.options.pagination;
     this.pageEndIdx = this.options.pageSize;
     this.pageSizes = this.options.pageSizes;
+    const qf = resolveQuickFilterOptions(this.options.quickFilter);
+    this.quickFilterMatchMode = qf.matchMode;
+    this.quickFilterCaseSensitive = qf.caseSensitive;
     this.selectionModel = new SelectionModel({
       getRowModel: () => this.rowModel,
       getColumnModel: () => this.columnModel,
@@ -116,6 +125,7 @@ export class GridCore implements IGridCore {
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupRowsSelectable: options.groupRowsSelectable ?? false,
+      quickFilter: options.quickFilter ?? false,
       icons: options.icons,
     };
   }
@@ -425,6 +435,11 @@ export class GridCore implements IGridCore {
       leafColumns: this.columnModel.getLeaves().filter(col => !col.isInternal()),
       groupColumns: this.groupColumns.slice(),
       groupExpansion,
+      quickFilter: {
+        text: this.quickFilterText,
+        matchMode: this.quickFilterMatchMode,
+        caseSensitive: this.quickFilterCaseSensitive,
+      },
     };
   }
 
@@ -514,6 +529,34 @@ export class GridCore implements IGridCore {
     this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "filter", changedColIds })
+  }
+
+  /**
+   * Set the quick-filter (global search) state. `text` is the raw search string; the optional
+   * `matchMode` / `caseSensitive` override the resolved defaults (the widget passes them so the
+   * user's popover choices take effect). Resets to page 1 and clears the selection (which may point
+   * at rows about to be hidden). No-op for the server-side row model.
+   */
+  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
+    if (this.rowModel.getType() === "serverSide") return;
+    const nextMode = opts?.matchMode ?? this.quickFilterMatchMode;
+    const nextCase = opts?.caseSensitive ?? this.quickFilterCaseSensitive;
+    if (text === this.quickFilterText && nextMode === this.quickFilterMatchMode && nextCase === this.quickFilterCaseSensitive) {
+      return;
+    }
+    this.quickFilterText = text;
+    this.quickFilterMatchMode = nextMode;
+    this.quickFilterCaseSensitive = nextCase;
+    const range = this.resetPageBlocks();
+    this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
+    this.selectionModel.clearRange();
+    this.selectionModel.clearRows();
+    this.emitSelectionChanged("model");
+    this.emit("modelUpdated", { reason: "filter", step: "all" });
+  }
+
+  getQuickFilterText(): string {
+    return this.quickFilterText;
   }
 
   setSortModel(sorts: SortItemUpdate[]) {
@@ -957,6 +1000,9 @@ export class GridCore implements IGridCore {
         break;
       case "sortModelSet":
         this.setSortModel(action.sortItems);
+        break;
+      case "quickFilterSet":
+        this.setQuickFilter(action.text, { matchMode: action.matchMode, caseSensitive: action.caseSensitive });
         break;
       case "columnPin":
         this.columnModel.setPinneds(action.colIds, action.pinned);

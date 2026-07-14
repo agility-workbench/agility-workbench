@@ -254,6 +254,7 @@ export function SelectionDemo() {
             columnDefs={columnDefs}
             rowIdKey="id"
             rowNumbers
+            quickFilter
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />

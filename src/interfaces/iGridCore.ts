@@ -95,6 +95,8 @@ export interface IGridCore {
   /* ----- Models via facade getters (optional but handy) ----- */
   getSortModel(): SortModel;
   getFilterModel(): FilterModel;
+  /** Current quick-filter (global search) text. Empty string when inactive. */
+  getQuickFilterText(): string;
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
   setAggregateModel(aggregates: AggregateModel[]): void;

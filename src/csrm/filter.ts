@@ -1,6 +1,63 @@
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
+import { QuickFilterMatchMode } from "../interfaces/gridOptions";
+
+export interface QuickFilterSpec {
+  // The raw search text as typed by the user (may contain leading/trailing/inner whitespace).
+  text: string;
+  // "multiTerm" splits on whitespace and requires every token to match somewhere in the row;
+  // "substring" matches the whole (trimmed) text as one contiguous run.
+  matchMode: QuickFilterMatchMode;
+  caseSensitive: boolean;
+  // Columns whose formatted values are searched. Callers pass only visible, non-internal leaves.
+  columns: Column[];
+}
+
+// Narrow an existing list of row indices (already passing the column filters) to those that also
+// match the quick-filter search text. Matching is against each column's *formatted display value*
+// so the user searches what they see (e.g. "$1,200"), joined by a tab so tokens can't bridge two
+// adjacent columns. Returns `candidateIdx` unchanged when the search text is empty.
+export function performQuickFilter(
+  spec: QuickFilterSpec,
+  rows: IRowNode[],
+  candidateIdx: number[],
+): number[] {
+  const raw = spec.text.trim();
+  if (raw === "" || spec.columns.length === 0) return candidateIdx;
+
+  const fold = (s: string) => (spec.caseSensitive ? s : s.toLowerCase());
+  const needle = fold(raw);
+  // In multiTerm mode every whitespace-separated token must be found; in substring mode the whole
+  // string is a single term.
+  const terms = spec.matchMode === "multiTerm" ? needle.split(/\s+/).filter(Boolean) : [needle];
+  if (terms.length === 0) return candidateIdx;
+
+  const out: number[] = [];
+  for (let k = 0; k < candidateIdx.length; k++) {
+    const i = candidateIdx[k];
+    const node = rows[i];
+    // Group nodes carry synthetic data; skip them here — the grouped path rebuilds groups from the
+    // surviving leaves, so a group's visibility follows from its children.
+    if (node.isGroup) continue;
+    let haystack = "";
+    for (let c = 0; c < spec.columns.length; c++) {
+      const col = spec.columns[c];
+      const formatted = col.formatValue(col.getValue(node), node);
+      if (formatted) haystack += (haystack ? "\t" : "") + formatted;
+    }
+    const folded = fold(haystack);
+    let matchedAll = true;
+    for (let t = 0; t < terms.length; t++) {
+      if (!folded.includes(terms[t])) {
+        matchedAll = false;
+        break;
+      }
+    }
+    if (matchedAll) out.push(i);
+  }
+  return out;
+}
 
 export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[] {
   const n = rows.length;
