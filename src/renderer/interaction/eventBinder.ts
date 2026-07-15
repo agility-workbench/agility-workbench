@@ -76,7 +76,7 @@ export class GridInteractionEventBinder {
     this.params.body.addEventListener("contextmenu", this.handleBodyContextMenu);
     document.addEventListener("mousemove", this.handleDocumentMouseMove);
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
-    document.addEventListener("click", this.handleDocumentClick);
+    this.params.root.addEventListener("click", this.handleDocumentClick);
     this.params.root.addEventListener("keydown", this.handleKeyDown);
   }
 
@@ -89,7 +89,7 @@ export class GridInteractionEventBinder {
     this.params.body.removeEventListener("contextmenu", this.handleBodyContextMenu);
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);
-    document.removeEventListener("click", this.handleDocumentClick);
+    this.params.root.removeEventListener("click", this.handleDocumentClick);
     this.params.root.removeEventListener("keydown", this.handleKeyDown);
   }
 }
