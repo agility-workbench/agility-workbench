@@ -547,6 +547,13 @@ export class ColumnModel implements IColumnModel {
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
+    // A user-set width wins over content measurement so hand-sized columns don't snap back on the
+    // implicit recomputes triggered by column-state actions. Explicit "fit to content" clears this.
+    if (col.resizedWidth != null) {
+      col.computedWidth = col.resizedWidth;
+      return;
+    }
+
     if (col.isInternal()) {
       col.computedWidth = col.width || col.computedWidth;
       return;
@@ -784,7 +791,15 @@ export class ColumnModel implements IColumnModel {
   resizeColumn(colId: string, width: number): string[] {
     const col = this.getById(colId);
     if (!col || col.isInternal()) return [];
-    return this.resizeActualColumn(col, width);
+    const resizedLeafIds = this.resizeActualColumn(col, width);
+    // Record the user-set width on each affected leaf so it survives later auto-size recomputes
+    // (grouping, move, aggregate change, data refresh). Stamped here in the public entry — not in
+    // resizeActualColumn, which is also used by the internal baseline rollup (not a user action).
+    for (const leafId of resizedLeafIds) {
+      const leaf = this.getById(leafId);
+      if (leaf) leaf.resizedWidth = leaf.computedWidth;
+    }
+    return resizedLeafIds;
   }
 
   moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {

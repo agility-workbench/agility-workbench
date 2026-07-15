@@ -20,6 +20,10 @@ export class Column {
   maxWidth?: number; // maximum width (resizable)
   depth?: number;   // for hierarchical columns
   computedWidth: number = 200; // computed width (after layout)
+  // Width set by an explicit user resize. When present it overrides content-based auto-measurement
+  // so a hand-sized column survives grouping/move/aggregate/data-refresh recomputes. Cleared by an
+  // explicit "fit to content" autosize. Undefined until the user actually drags a resize handle.
+  resizedWidth?: number;
   valueGetter?: (row: any) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
   valueParser?: (params: ValueParserParams) => any;
@@ -77,6 +81,7 @@ export class Column {
 
   updateFromColDef(col: ColDef, idx: string = '', preserveRuntimeState: boolean = true) {
     const previousComputedWidth = this.computedWidth;
+    const previousResizedWidth = this.resizedWidth;
     const previousGroupExpandState = this.groupExpandState;
     const previousColumnGroupVisible = this.columnGroupVisible;
 
@@ -119,7 +124,12 @@ export class Column {
     this.internalRole = (col as InternalColDef).__internalRole;
     this.groupLevel = (col as InternalColDef).__groupLevel;
     this.updateComputedWidth();
-    if (preserveRuntimeState && col.width == null) {
+    // Preserve a prior user resize across rebuilds that reuse this instance (grouping/move); a full
+    // reset (preserveRuntimeState=false, e.g. setColumnDefs/reset) drops it back to auto-sizing.
+    this.resizedWidth = preserveRuntimeState ? previousResizedWidth : undefined;
+    if (preserveRuntimeState && this.resizedWidth != null) {
+      this.computedWidth = this.resizedWidth;
+    } else if (preserveRuntimeState && col.width == null) {
       this.computedWidth = previousComputedWidth;
     }
   }
@@ -230,6 +240,7 @@ export class Column {
     dup.groupExpandState = this.groupExpandState;
     dup.columnGroupVisible = this.columnGroupVisible;
     dup.computedWidth = this.computedWidth;
+    dup.resizedWidth = this.resizedWidth;
     dup.showExpander = this.showExpander;
     return dup;
   }

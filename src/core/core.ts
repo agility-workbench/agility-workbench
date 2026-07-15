@@ -379,6 +379,8 @@ export class GridCore implements IGridCore {
       allRows.push(node);
     });
     for (const child of column.getVisibleLeaves()) {
+      // Explicit fit-to-content: drop any prior manual width so measurement takes over.
+      child.resizedWidth = undefined;
       this.columnModel.computeColumnWidth(child, this.measureCtx, this.textMeasureParams, allRows);
     }
     this.columnModel.updateParentColumnWidth(column);
@@ -395,6 +397,8 @@ export class GridCore implements IGridCore {
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
+    // Explicit fit-to-content: drop any prior manual width so measurement takes over.
+    col.resizedWidth = undefined;
     this.columnModel.computeColumnWidth(col, this.measureCtx, this.textMeasureParams, allRows);
     this.columnModel.updateParentColumnWidth(this.columnModel.getAncestors(colID)[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
