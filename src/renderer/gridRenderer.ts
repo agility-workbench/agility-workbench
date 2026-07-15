@@ -27,6 +27,7 @@ import { AggregateModelController } from "./aggregate/modelController";
 import { AggregateRowBuilder } from "./aggregate/rowBuilder";
 import { AggregateRowRenderer } from "./aggregate/wrapper";
 import { BodyCellRenderer } from "./body/cellRenderer";
+import { CellRefreshReason } from "./renderer";
 import { BodyPoolSizer } from "./body/poolSizer";
 import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyRowPoolRenderer } from "./body/rowPool";
@@ -195,6 +196,7 @@ export class GridRenderer {
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),
       updateColumnWidths: (colIDs) => this._columnLayoutRenderer.updateColumnWidths(colIDs),
+      refreshCellsForColumns: (colIDs, reason) => this._refreshCellsForColumns(colIDs, reason),
       refreshSelectionStyles: () => this._selectionRenderer?.refreshSelectionStyles(),
     });
     this._clipboardRenderer = new ClipboardRenderer({
@@ -755,6 +757,47 @@ export class GridRenderer {
     for (const rowId of params.rowIds) {
       for (const colId of params.colIds) {
         this._repaintCell(rowId, colId);
+      }
+    }
+  }
+
+  // Re-invoke the cell renderer for every visible cell of the given columns, telling each renderer
+  // *why* (e.g. "resize") so it can decide whether it needs to redraw. The grid is renderer-agnostic
+  // — it can't know a resize is a no-op for plain text but matters to a pixel-drawing renderer like
+  // the sparkline — so it just reports the reason and lets the renderer opt in.
+  //
+  // An empty `changedColIds` means "all columns" (matching the columnWidthsChanged convention), so
+  // fall back to re-rendering every visible cell in that case.
+  _refreshCellsForColumns(changedColIds: string[], reason: CellRefreshReason) {
+    const changed = changedColIds.length > 0 ? new Set(changedColIds) : null;
+    const columnModel = this.core.getColumnModel();
+    const rowModel = this.core.getRowModel();
+    const sections: { leaves: Column[]; cells: (slot: RowPoolDef) => HTMLDivElement[] | undefined }[] = [
+      { leaves: columnModel.getLeadingLeaves(), cells: (s) => s.leadingCellEls },
+      { leaves: columnModel.getLeftLeaves(), cells: (s) => s.leftCellEls },
+      { leaves: columnModel.getCenterLeaves(), cells: (s) => s.cellEls },
+      { leaves: columnModel.getRightLeaves(), cells: (s) => s.rightCellEls },
+    ];
+
+    for (let i = 0; i < this._rowPool.length; i++) {
+      const viewIdx = this._startIndex + i;
+      const slot = this._rowPool[i];
+      const row = rowModel.getRowNodeAtViewIndex(viewIdx);
+      if (!row) continue;
+      const rowNumber = this.core.getRowNumberForViewIndex(viewIdx);
+
+      for (const section of sections) {
+        const cells = section.cells(slot);
+        if (!cells) continue;
+        // Cell arrays only hold non-hidden leaves, in order — mirror that alignment.
+        let c = 0;
+        for (const col of section.leaves) {
+          if (col.hidden) continue;
+          const cell = cells[c++];
+          if (!cell) continue;
+          if (changed && !changed.has(col.instanceID)) continue;
+          this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason);
+        }
       }
     }
   }

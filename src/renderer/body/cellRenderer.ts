@@ -2,7 +2,7 @@ import { Column } from "../../column/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { INDENT_PER_LEVEL, renderGroupCell } from "./groupCellRenderer";
-import { createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
+import { CellRefreshReason, createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
@@ -16,6 +16,7 @@ export class BodyCellRenderer {
     cellRendererMap: Map<string, RendererRecord>,
     viewIndex: number = row.viewIndex,
     rowNumber: number = viewIndex + 1,
+    refreshReason: CellRefreshReason = "data",
   ) {
     if (col.isRowNumberColumn()) {
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
@@ -49,7 +50,7 @@ export class BodyCellRenderer {
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     const renderer = col.cellRenderer;
-    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, this.api);
+    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, this.api, refreshReason);
     if (!renderer) {
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);

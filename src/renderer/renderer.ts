@@ -1,6 +1,15 @@
 import { Column } from "../column/column";
 import { IGridAPI } from "../interfaces/iGridAPI";
 
+/**
+ * Why refresh() is being called. The grid is renderer-agnostic, so it cannot
+ * decide whether a given change matters to a renderer — it just reports the
+ * reason and each renderer opts in as needed. "data" covers value/row changes;
+ * "resize" is fired when the cell's column width changed (e.g. a renderer that
+ * draws to pixel dimensions must remeasure).
+ */
+export type CellRefreshReason = "data" | "resize";
+
 export interface CellRendererParams {
   value: any;
   valueFormatted?: any;
@@ -10,6 +19,8 @@ export interface CellRendererParams {
   colDef: Column;
   api: IGridAPI;
   eCell: HTMLElement;
+  /** Why the renderer is being (re)invoked. Defaults to "data". */
+  refreshReason?: CellRefreshReason;
 }
 
 export type CellRendererFn = (p: CellRendererParams) =>
@@ -120,6 +131,7 @@ export function createRendererRuntime(r: CellRenderer, p: CellRendererParams): R
 
 export function getCellRendererParams(
   value: any, formattedValue: any, row: any, rowIndex: number, col: Column, eCell: HTMLElement, api: IGridAPI,
+  refreshReason: CellRefreshReason = "data",
 ): CellRendererParams {
   return {
     value: value,
@@ -129,6 +141,7 @@ export function getCellRendererParams(
     rowIndex: rowIndex,
     colDef: col,
     api: api,
-    eCell: eCell
+    eCell: eCell,
+    refreshReason: refreshReason,
   };
 }

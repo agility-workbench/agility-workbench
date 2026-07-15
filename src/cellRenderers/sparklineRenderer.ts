@@ -117,6 +117,11 @@ export class SparklineRenderer implements ICellRenderer {
 
     if (chartWidth <= 0 || chartHeight <= 0) return;
 
+    // Map the SVG's user-coordinate space to the current pixel box so the drawn geometry rescales
+    // with the cell (e.g. on column resize) rather than staying frozen at the width it was first
+    // measured at. The svg element itself is width/height:100%, so it always fills the cell.
+    this.svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;

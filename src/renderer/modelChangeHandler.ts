@@ -18,6 +18,7 @@ interface GridModelChangeHandlerParams {
   buildRowPool: () => void;
   buildHeaderDOM: (reason: string) => void;
   updateColumnWidths: (colIDs?: string[]) => void;
+  refreshCellsForColumns: (colIDs: string[], reason: "data" | "resize") => void;
   refreshSelectionStyles: () => void;
 }
 
@@ -84,6 +85,10 @@ export class GridModelChangeHandler {
   }
 
   onColumnWidthsChanged(params: GridEventColumnWidthsChangedParams) {
+    // Apply the new widths to the cell/header boxes first, then let renderers remeasure: a
+    // pixel-drawing renderer (e.g. the sparkline) reads its cell's box in refresh(), so the box
+    // must already be resized before we invoke it.
     this.params.updateColumnWidths(params.changedColIds);
+    this.params.refreshCellsForColumns(params.changedColIds, "resize");
   }
 }
