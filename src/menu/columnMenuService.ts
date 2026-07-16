@@ -24,7 +24,8 @@ export class ColumnMenuService {
     const cap = this.summarize(ctx);
     const items: MenuItem[] = [];
 
-    const colIDs = [ctx.targetColId, ...ctx.colIds.filter(id => id !== ctx.targetColId)];
+    const colIDs = [...ctx.colIds];
+    if (!colIDs.includes(ctx.targetColId)) colIDs.push(ctx.targetColId);
     const multi = colIDs.length > 1;
     const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
 
