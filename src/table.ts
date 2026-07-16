@@ -1105,7 +1105,7 @@ export default class Table {
     this._renderAggregateRow();
   }
 
-  _showSparklinesForSelectedColumns(type: "line" | "bar" | "column") {
+  _showSparklinesForSelectedColumns(type: "line" | "bar" | "area") {
     const selectedLeaves = this._leafColumns.filter(col => this._selectedColumnIDs.has(col.instanceID));
     const numericLeaves = selectedLeaves.filter(col => isComputableType(col.type));
     if (numericLeaves.length < 2) return;
@@ -4126,9 +4126,9 @@ export default class Table {
             onClick: () => this._showSparklinesForSelectedColumns("bar"),
           },
           {
-            id: 'sparkline-column',
-            label: "Column Sparkline",
-            onClick: () => this._showSparklinesForSelectedColumns("column"),
+            id: 'sparkline-area',
+            label: "Area Sparkline",
+            onClick: () => this._showSparklinesForSelectedColumns("area"),
           },
         ],
       });

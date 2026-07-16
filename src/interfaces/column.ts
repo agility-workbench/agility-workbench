@@ -38,7 +38,7 @@ export interface ColDef {
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
-  sparklineType?: "line" | "bar" | "column";
+  sparklineType?: "line" | "bar" | "area";
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children?: ColDef[];
