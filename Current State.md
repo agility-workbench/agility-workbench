@@ -1,9 +1,11 @@
 # Grid — Technical Architecture & Feature Reference
 
-> **Doc status:** Refreshed 2026-07-14 against branch `renderer-split`. Since the original draft,
+> **Doc status:** Refreshed 2026-07-16 against branch `renderer-split`. Since the original draft,
 > **row grouping**, the **sparkline renderer**, and **`addColumnDef`** (transient columns) have all
 > been implemented — they are no longer TODOs. `columnHierarchy.ts` and `filterMenuService.ts` are
-> full implementations, not stubs. See §10 for the current (much shorter) gap list.
+> full implementations, not stubs. **All Tier-1 gaps are now closed**: `applyColumnState`
+> (merge / exact restore, order-field-driven), the row-selection API + row-number-header select-all,
+> and the `sparklineType` type fix. See §10 for the current (much shorter) gap list.
 
 ## 1. Overview
 
@@ -348,8 +350,8 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Column type system (string/number/date/boolean/currency) | ✅ Complete | `interfaces/column.ts` → `ColumnType` enum |
 | Value getter/formatter/parser | ✅ Complete | `column/formatters.ts`, `column/column.ts` |
 | Add transient column at runtime (`addColumnDef`) | ✅ Complete | `column/columnModel.ts` → `addColumnDef` (used for on-demand sparkline columns) |
-| Read column state (`getColumnState`) | ✅ Complete | `column/columnModel.ts` → `getColumnState` |
-| **Restore column state (`applyColumnState`)** | ❌ Missing | No re-apply path — see §10 |
+| Read column state (`getColumnState`) | ✅ Complete | `column/columnModel.ts` → `getColumnState` (includes hidden columns) |
+| Restore column state (`applyColumnState`) | ✅ Complete | `column/columnModel.ts` → `applyColumnState`; merge by default, `{ defaultState }` for exact restore; order-field-driven repositioning |
 
 ### 5.2 Row Model Features
 
@@ -402,7 +404,9 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Feature | Status | Location |
 |---------|--------|----------|
 | Cell range selection (click + drag, Shift+click) | ✅ Complete | `core/selectionModel.ts` |
-| Row selection (click on row number / Ctrl+click) | ✅ Complete | `core/selectionModel.ts` → `toggleRow` |
+| Row selection (click on row number / Ctrl+click / Shift+range) | ✅ Complete | `core/selectionModel.ts` → `toggleRow`; opt-in via `rowSelection` (default false) |
+| Select-all rows on row-number header click | ✅ Complete | `core/selectionModel.ts` → `selectAllRows` / `areAllRowsSelected`; opt-in via `selectAllRowsOnHeaderClick` (default false) |
+| Row selection API (`getSelectedRows` / `getSelectedNodes` / `selectAllRows` / `deselectAllRows`) | ✅ Complete | `api/api.ts`, `core/core.ts` |
 | Column selection (click on header) | ✅ Complete | `core/selectionModel.ts` → `toggleColumn` |
 | Keyboard navigation (arrows, Home/End, PageUp/Down) | ✅ Complete | `core/selectionModel.ts` → `navigate` |
 | Ctrl+Arrow block jump (Excel-style data region) | ✅ Complete | `core/selectionModel.ts` → `blockJump` |
@@ -636,12 +640,12 @@ filter-menu-service / grouping are stubs" notes are **obsolete** — all of thos
 
 ### Genuine gaps (no implementation)
 
-**Tier 1 — finishing already-shipped features:**
-- **`applyColumnState`** — `getColumnState()` exists but there is no restore/re-apply path (persist layout is impossible).
-- **Row selection API** — `rowSelection` works only via row-number-cell clicks; no checkbox column, no header select-all, and no `getSelectedRows()` / `getSelectedNodes()` (only `getSelection().selectedRowIds`).
-- **`sparklineType` mismatch** — `ColDef.sparklineType` is typed `"line" | "bar" | "column"` (`interfaces/column.ts:41`) but the renderer handles `"line" | "bar" | "area"`; `"column"` never renders and `"area"` isn't typed.
+**Tier 1 — all cleared.** The three remaining Tier-1 gaps are now implemented (see "Recently completed" below).
 
 **Recently completed (were Tier 1 gaps):**
+- **`applyColumnState`** ✅ — `column/columnModel.ts` → `applyColumnState`, wired through `columnStateSet` action → `core` → `api.applyColumnState(state, opts?)`. Default is a **merge** (unknown colIds ignored; columns absent from state keep their place). `opts.defaultState` (e.g. `{ hidden: true }`) applies a fallback to absent columns for an **exact restore**, hiding anything not in the saved view (including columns added since capture). Ordering is driven by each entry's explicit **`order` field** (not array position): entries with `order` reposition via remove-then-insert (ties keep array order); entries without `order` don't move. `getColumnState()` now also includes hidden columns so a layout round-trips. Tests: `src/column/columnModel.applyColumnState.test.ts`, `grid-react/rowSelection.smoke.test.tsx`; demo: `test/ColumnStateDemo.tsx`.
+- **Row selection API + select-all** ✅ — `api.getSelectedRows()` / `getSelectedNodes()` / `selectAllRows()` / `deselectAllRows()` / `areAllRowsSelected()` (`api/api.ts`, `core/core.ts`, `core/selectionModel.ts`). Two independent, opt-in options (both default **false**): `rowSelection` (select via row-number-cell click / Ctrl+click / Shift+range) and `selectAllRowsOnHeaderClick` (clicking the row-number header toggles all rows, consistent with other header clicks — no separate checkbox column). `rowSelectAll` action. Tests: `src/core/selectionModel.test.ts`, `grid-react/rowSelection.smoke.test.tsx`; demo: `test/SelectionDemo.tsx`.
+- **`sparklineType` type fixed** ✅ — `ColDef.sparklineType` is now `"line" | "bar" | "area"` (`interfaces/column.ts`), matching the renderer and the column menu (line/bar/area).
 - **Quick filter / global search** ✅ — `quickFilter` grid option; floating widget (`renderer/quickFilter/quickFilterWidget.ts`) summoned with Ctrl/Cmd+F, multiTerm/substring + case-sensitivity options, debounced, matches formatted values across visible columns, ANDs with column filters. Predicate: `csrm/filter.ts` → `performQuickFilter`. API: `api.setQuickFilter()` / `getQuickFilterText()`. CSRM only. Tests: `src/csrm/quickFilter.test.ts`, `src/core/core.quickFilter.test.ts`, `grid-react/quickFilter.smoke.test.tsx`.
 - **No-rows / empty overlay** ✅ — distinct empty-state overlay (`renderer/overlay/noRows.ts`), decoupled from the loading spinner in `coreEventBinder.ts`, driven from the actual row count, with a filter/search-aware message.
 
