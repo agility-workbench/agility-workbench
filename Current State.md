@@ -5,7 +5,28 @@
 > been implemented — they are no longer TODOs. `columnHierarchy.ts` and `filterMenuService.ts` are
 > full implementations, not stubs. **All Tier-1 gaps are now closed**: `applyColumnState`
 > (merge / exact restore, order-field-driven), the row-selection API + row-number-header select-all,
-> and the `sparklineType` type fix. See §10 for the current (much shorter) gap list.
+> and the `sparklineType` type fix. **Excel export is now a hand-rolled, zero-dependency OOXML
+> writer** (`src/export/xlsx/`) — exceljs has been dropped from the runtime path (kept only as a
+> dev-time verifier in tests). The writer adds live aggregate formulas, native row-group outlines
+> with `SUBTOTAL` subtotals, DEFLATE compression, and selection-aware grouped export. See §5.9 and
+> §10 for details.
+
+## 0. What's new in export (this branch)
+
+- **Hand-rolled `.xlsx` writer** (`src/export/xlsx/`): `zip.ts` (CRC-32 + STORE/DEFLATE via the
+  platform `CompressionStream`), `xml.ts` (escaping, A1 refs, Excel date serials), `styleRegistry.ts`
+  (index-deduped `styles.xml`), `writeXlsx.ts` (OOXML part assembler). No runtime dependency; ~10×
+  smaller than uncompressed and on par with exceljs's output size.
+- **Aggregate footer as live formulas**: `SUM/AVERAGE/MEDIAN/MIN/MAX/COUNTA` over the data range,
+  with the grid's own computed value cached; static fallback for text MIN/MAX and distinct-count.
+- **Row grouping → Excel outline levels**: group-header + per-group `SUBTOTAL(code,…)` rows (codes
+  1–11 so nested subtotals never double-count), collapsed groups exported hidden, `summaryBelow=0`.
+- **`groupDisplayType`-aware headings**: singleColumn prepends a "Group" column; multipleColumns puts
+  each level's heading under its own column; groupRows uses the first column.
+- **Selection-aware grouped export**: selecting group rows / a cell range prunes the exported tree;
+  the range's column span is honored; a body-menu submenu offers "Export with row groups" vs "Export
+  leaf rows" (the former disabled with a tooltip when the range excludes the heading column).
+- **Column-header menu export** ("Export as CSV/Excel") is now wired to actually run.
 
 ## 1. Overview
 
@@ -15,7 +36,7 @@
 - **React wrapper:** `@grid-react`
 - **Build:** `tsup` (ESM + CJS), dev server via `vite`
 - **Testing:** `vitest` with `happy-dom` for DOM tests
-- **Exports:** Excel (via `exceljs`)
+- **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
 
@@ -109,7 +130,14 @@ src/
 │   └── events.ts              GridEventMap, event parameter types, GridEventHandler
 │
 ├── export/                    CSV & Excel export
-│   └── export.ts              exportCSV / exportExcel with column selection, headers, formatting
+│   ├── export.ts              exportCSV / exportExcel: ExportConfig → CSV text or a SheetModel; header
+│   │                          layout, value bundling, aggregate footer, grouped body (outline +
+│   │                          SUBTOTAL), flat leaf body, groupDisplayType heading placement
+│   └── xlsx/                  Hand-rolled OOXML (.xlsx) writer — zero runtime deps
+│       ├── zip.ts             ZIP container: CRC-32 + STORE/DEFLATE (CompressionStream) per entry
+│       ├── xml.ts             XML escaping, A1 cell refs, JS Date → Excel serial (1899-12-30 epoch)
+│       ├── styleRegistry.ts   Index-deduped numFmts/fonts/alignment → styles.xml
+│       └── writeXlsx.ts       SheetModel → OOXML parts (sheetData, cols, merges, panes, outline) → bytes
 │
 ├── filter/                    Filter UI & controller
 │   ├── context.ts             Filter context (fromRows value resolution)
@@ -164,7 +192,8 @@ src/
 │   ├── bodyMenuOpener.ts      Opens body context menu
 │   ├── filterUpdateHandler.ts Routes filter changes → core → renderer refresh
 │   ├── overlay.ts             Overlay base
-│   ├── exportRenderer.ts      ExportRenderer — calls exportCSV/exportExcel with current state
+│   ├── exportRenderer.ts      ExportRenderer — builds ExportConfig from current state; resolves scope,
+│   │                          prunes the group tree to the selection, maps a range's column span
 │   ├── serverSideController.ts SSRM data source / aggregation wiring
 │   │
 │   ├── aggregate/             Aggregate row rendering
@@ -458,10 +487,28 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Feature | Status | Location |
 |---------|--------|----------|
 | CSV export (scope: all/selection/selectedColumns) | ✅ Complete | `export/export.ts` → `exportCSV` |
-| Excel export (via exceljs, with formatting) | ✅ Complete | `export/export.ts` → `exportExcel` |
-| Hierarchical headers in export | ✅ Complete | `buildHeaderLayout` / `buildHeaderMatrix` |
-| Frozen panes in Excel (pinned cols + header) | ✅ Complete | Excel export sets `xSplit`/`ySplit` |
-| Currency/date/number formatting in Excel | ✅ Complete | `resolveNumberFormat`, `applyExcelValue` |
+| Excel export — hand-rolled OOXML, **zero runtime deps** | ✅ Complete | `export/export.ts` → `exportExcel` + `export/xlsx/` |
+| DEFLATE compression (CompressionStream, STORE fallback) | ✅ Complete | `export/xlsx/zip.ts` |
+| Hierarchical merged headers in export | ✅ Complete | `buildHeaderLayout` / `buildHeaderMatrix` |
+| Frozen panes in Excel (pinned cols + header) | ✅ Complete | `writeXlsx.ts` → `<pane>` xSplit/ySplit |
+| Currency/date/number formatting in Excel | ✅ Complete | `resolveNumberFormat`, `toCellValue`, `styleRegistry` |
+| Aggregate footer as **live formulas** (SUM/AVG/MEDIAN/MIN/MAX/COUNTA) | ✅ Complete | `export.ts` → `buildAggregateFooter` / `aggregateCell` |
+| Row grouping → **Excel outline levels + per-group SUBTOTAL** | ✅ Complete | `export.ts` → `buildGroupedBody`; `writeXlsx.ts` `RowMeta`/`<outlinePr>` |
+| SUBTOTAL codes 1–11 (nested subtotals don't double-count) | ✅ Complete | `export.ts` → `subtotalCode` |
+| `groupDisplayType`-aware heading placement | ✅ Complete | `export.ts` → `buildGroupedBody` label column per mode |
+| Selection-aware grouped export (prune tree by row/range selection) | ✅ Complete | `renderer/exportRenderer.ts` → `buildGroupedExportConfig` / `pruneGroupTree` |
+| Flat "leaf rows" grouped export (with full group path) | ✅ Complete | `export.ts` → `buildFlatLeafBody`; `groupMode: "leaves"` |
+| Range column-span honored in grouped export | ✅ Complete | `exportRenderer.ts` → `resolveGroupedSelection` |
+| Body context-menu export (single item, or grouped submenu) | ✅ Complete | `menu/bodyMenuService.ts` → `buildExcelExportItem` |
+| Column-header menu export (CSV/Excel) | ✅ Complete | `menu/columnMenuService.ts` + `MenuCoordinator.setExportTarget` |
+
+**Notes.** The Excel path is Excel-valid OOXML verified by round-tripping through exceljs in tests
+(`src/export/export.excel.test.ts`, `src/renderer/exportRenderer.grouped.test.ts`,
+`exportRenderer.range.test.ts`, `menu/bodyMenuService.grouped.test.ts`,
+`menu/columnMenuService.export.test.ts`). Ops without an Excel-function equivalent (text MIN/MAX,
+distinct-count, MEDIAN in a SUBTOTAL context) fall back to the grid's precomputed static value.
+A grouped grid always drives export from the group tree; a plain cell-range export slices rows +
+columns once, in `resolveRows`/`resolveColumns`.
 
 ### 5.10 Rendering Features
 
@@ -600,6 +647,11 @@ Tests use **vitest** with `happy-dom` for DOM environment simulation. Test files
 - `src/renderer/editing/editors/editors.test.ts` — editor instances
 - `src/renderer/clipboard/clipboardRenderer.test.ts` — copy/paste
 - `src/renderer/clipboard/tsv.test.ts` — TSV parsing
+- `src/export/export.excel.test.ts` — hand-rolled xlsx: value types, formats, merges, panes, DEFLATE, aggregate formulas, grouping/outline (read back with exceljs)
+- `src/renderer/exportRenderer.grouped.test.ts` — grouped export: groupDisplayType placement, selection pruning, collapsed groups, group-column-in-range gating
+- `src/renderer/exportRenderer.range.test.ts` — ungrouped range export includes the first selected row (double-slice regression)
+- `src/menu/bodyMenuService.grouped.test.ts` — body-menu Excel submenu detection + disable-with-tooltip + command routing
+- `src/menu/columnMenuService.export.test.ts` — column-header menu export items build and route to the exporter
 - `grid-react/cellEditor.test.tsx` — React editor integration
 - `grid-react/applyTransaction.smoke.test.tsx` — end-to-end transaction stream through the React wrapper (mounts real renderer)
 
@@ -665,3 +717,5 @@ filter-menu-service / grouping are stubs" notes are **obsolete** — all of thos
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.
 - **Server-side row model** does not distinguish `forEachNodeAfterFilterAndSort` from `forEachNode` (identical implementations).
+- **Zero runtime dependencies** — `package.json` `dependencies` is now empty (`react`/`react-dom` are peer deps). `exceljs` (test-only read-back verifier) and `@vitejs/plugin-react` (Vite build/demo config) both moved to `devDependencies`, so installing the package pulls in nothing but the peers.
+- **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.
