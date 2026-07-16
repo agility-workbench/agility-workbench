@@ -1,7 +1,8 @@
-import ExcelJS from "exceljs";
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
+import { CellStyle } from "./xlsx/styleRegistry";
+import { CellValue, MergeRange, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -74,17 +75,6 @@ const resolveNumberFormat = (col: Column): string | undefined => {
     return col.format || DEFAULT_DATE_FORMAT;
   }
   return undefined;
-};
-
-const columnNumberToName = (index: number): string => {
-  let n = index;
-  let name = "";
-  while (n > 0) {
-    n--;
-    name = String.fromCharCode(65 + (n % 26)) + name;
-    n = Math.floor(n / 26);
-  }
-  return name || "A";
 };
 
 const ensureExtension = (fileName: string, ext: string): string => {
@@ -287,56 +277,47 @@ export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") =>
   triggerDownload(blob, ensureExtension(fileName, "csv"));
 };
 
-const applyExcelValue = (cell: ExcelJS.Cell, bundle: ValueBundle, col: Column) => {
+/**
+ * Map a grid value bundle to a typed sheet cell value. Mirrors the previous exceljs mapping: numeric
+ * and date columns are written as real numbers/dates (so Excel can format/aggregate them), with the
+ * formatted string as a fallback when the raw value isn't coercible.
+ */
+const toCellValue = (bundle: ValueBundle, col: Column): CellValue => {
   const { raw, formatted } = bundle;
-  const fmt = resolveNumberFormat(col);
-  if (raw == null) {
-    cell.value = null;
-    return;
-  }
+  if (raw == null) return { kind: "empty" };
 
   switch (col.type) {
-    case ColumnType.NUMBER: {
-      const num = typeof raw === "number" ? raw : Number(raw);
-      if (!Number.isNaN(num)) {
-        cell.value = num;
-        if (fmt) cell.numFmt = fmt;
-      } else {
-        cell.value = formatted ?? String(raw);
-      }
-      break;
-    }
+    case ColumnType.NUMBER:
     case ColumnType.CURRENCY: {
       const num = typeof raw === "number" ? raw : Number(raw);
-      if (!Number.isNaN(num)) {
-        cell.value = num;
-        cell.numFmt = fmt || DEFAULT_CURRENCY_FORMAT;
-      } else {
-        cell.value = formatted ?? String(raw);
-      }
-      break;
+      if (!Number.isNaN(num)) return { kind: "number", value: num };
+      return { kind: "string", value: formatted ?? String(raw) };
     }
     case ColumnType.DATE: {
       const date = raw instanceof Date ? raw : new Date(raw);
-      if (!Number.isNaN(date.getTime())) {
-        cell.value = date;
-        if (fmt) {
-          cell.numFmt = fmt;
-        }
-      } else {
-        cell.value = formatted ?? String(raw);
-      }
-      break;
+      if (!Number.isNaN(date.getTime())) return { kind: "date", value: date };
+      return { kind: "string", value: formatted ?? String(raw) };
     }
-    case ColumnType.BOOLEAN: {
-      cell.value = Boolean(raw);
-      break;
-    }
-    default: {
-      cell.value = formatted ?? String(raw);
-      if (fmt) cell.numFmt = fmt;
-    }
+    case ColumnType.BOOLEAN:
+      return { kind: "boolean", value: Boolean(raw) };
+    default:
+      return { kind: "string", value: formatted ?? String(raw) };
   }
+};
+
+/** Body-cell style for a column: just its number format (dates always get a format). */
+const bodyCellStyle = (col: Column): CellStyle | undefined => {
+  const fmt = resolveNumberFormat(col);
+  if (fmt) return { numFmt: fmt };
+  return undefined;
+};
+
+/** Excel character-unit width from the grid's pixel width (roughly 7px per character). */
+const toExcelWidth = (col: Column, config: ExportConfig): number => {
+  const widthInfo = config.columnWidths?.get(col.instanceID);
+  const rawWidth = widthInfo?.width ?? col.width;
+  if (rawWidth) return Math.max(10, Math.floor(rawWidth / 7));
+  return Math.max(10, Math.min(40, Math.ceil((col.label?.length ?? col.key.length ?? 6) + 6)));
 };
 
 export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
@@ -344,69 +325,70 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
     const columns = resolveColumns(config);
     const rows = resolveRows(config, columns.length);
     const includeHeaders = config.includeHeaders !== false;
-    const headerLayout = includeHeaders ? buildHeaderLayout(columns, config.columnTree) : { cells: [], depth: 0, paths: [] };
+    const headerLayout = includeHeaders
+      ? buildHeaderLayout(columns, config.columnTree)
+      : { cells: [], depth: 0, paths: [] };
+    const headerOffset = includeHeaders ? headerLayout.depth : 0;
 
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Export");
+    const sheetRows: SheetCell[][] = [];
+    const merges: MergeRange[] = [];
 
-    const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
-    const ySplit = includeHeaders ? headerLayout.depth : 0;
-    if (leftPinnedCount > 0 || ySplit > 0) {
-      const topLeftCell = `${columnNumberToName(Math.max(leftPinnedCount, 0) + 1)}${Math.max(ySplit, 0) + 1}`;
-      sheet.views = [{
-        state: "frozen",
-        xSplit: leftPinnedCount || undefined,
-        ySplit: ySplit || undefined,
-        topLeftCell,
-      }];
-    }
-
+    // Header rows (with hierarchical merges).
     if (includeHeaders && headerLayout.depth > 0) {
+      for (let level = 0; level < headerLayout.depth; level++) {
+        sheetRows.push(Array.from({ length: columns.length }, () => ({ value: { kind: "empty" } as CellValue })));
+      }
+      const headerStyle: CellStyle = {
+        bold: true,
+        alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+      };
       headerLayout.cells.forEach((rowCells, rowIdx) => {
-        const excelRow = sheet.getRow(rowIdx + 1);
         rowCells.forEach(cell => {
-          const target = excelRow.getCell(cell.colStart + 1);
-          target.value = cell.label;
-          target.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-
+          sheetRows[rowIdx][cell.colStart] = {
+            value: { kind: "string", value: cell.label ?? "" },
+            style: headerStyle,
+          };
           if (cell.colEnd > cell.colStart || cell.rowSpan > 1) {
-            sheet.mergeCells(
-              rowIdx + 1,
-              cell.colStart + 1,
-              rowIdx + cell.rowSpan,
-              cell.colEnd + 1,
-            );
+            merges.push({
+              fromRow: rowIdx + 1,
+              fromCol: cell.colStart + 1,
+              toRow: rowIdx + cell.rowSpan,
+              toCol: cell.colEnd + 1,
+            });
           }
         });
       });
     }
 
-    const headerOffset = includeHeaders ? headerLayout.depth : 0;
-    rows.forEach((row, rowIdx) => {
-      const excelRow = sheet.getRow(headerOffset + rowIdx + 1);
-      columns.forEach((col, colIdx) => {
-        const bundle = getValueBundle(row, col);
-        const cell = excelRow.getCell(colIdx + 1);
-        applyExcelValue(cell, bundle, col);
-      });
+    // Body rows.
+    const bodyStyles = columns.map(bodyCellStyle);
+    rows.forEach(row => {
+      const sheetRow: SheetCell[] = columns.map((col, colIdx) => ({
+        value: toCellValue(getValueBundle(row, col), col),
+        style: bodyStyles[colIdx],
+      }));
+      sheetRows.push(sheetRow);
     });
 
-    sheet.columns = columns.map(sourceCol => {
-      const widthInfo = sourceCol ? config.columnWidths?.get(sourceCol.instanceID) : null;
-      const rawWidth = widthInfo?.width ?? sourceCol?.width;
-      const width = rawWidth
-        ? Math.max(10, Math.floor(rawWidth / 7))
-        : Math.max(10, Math.min(40, Math.ceil((sourceCol?.label?.length ?? sourceCol?.key.length ?? 6) + 6)));
+    const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
 
-      const numFmt = resolveNumberFormat(sourceCol);
-      return {
-        width,
-        style: numFmt ? { numFmt } : undefined,
-      };
+    const bytes = await writeXlsx({
+      sheets: [
+        {
+          name: "Export",
+          rows: sheetRows,
+          columns: columns.map(col => ({ width: toExcelWidth(col, config) })),
+          merges,
+          frozen: {
+            xSplit: leftPinnedCount || undefined,
+            ySplit: headerOffset || undefined,
+          },
+        },
+      ],
     });
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
+    // `bytes` is a freshly allocated, exact-size Uint8Array, so its buffer is a plain ArrayBuffer.
+    const blob = new Blob([bytes.buffer as ArrayBuffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     triggerDownload(blob, ensureExtension(fileName, "xlsx"));
