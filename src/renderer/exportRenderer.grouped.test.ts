@@ -194,3 +194,117 @@ describe("group headings respect groupDisplayType", () => {
     expect(String(rowValues(ws, 3)[0])).toMatch(/^Boston /);
   });
 });
+
+/** Find the view index of the first group row whose key matches. */
+function groupRowViewIdx(core: GridCore, key: string): number {
+  const rm = core.getRowModel();
+  for (let i = 0; i < rm.getViewCount(); i++) {
+    const n = rm.getRowNodeAtViewIndex(i);
+    if (n?.isGroup && n.groupKey === key) return i;
+  }
+  throw new Error(`group row '${key}' not found`);
+}
+
+describe("grouped export respects the selection", () => {
+  it("selecting one group row exports only that group's subtree (tree mode)", async () => {
+    const core = makeGrid({ groupDisplayType: "singleColumn", groupDefaultExpanded: -1, groupRowsSelectable: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: core.getColumnModel().getByColId("salary")!.instanceID, type: "sum" as any }],
+    });
+    // Select the "Analyst" group (its sole leaf salary is 50).
+    core.dispatch({ type: "rowSelectSet", viewIdx: groupRowViewIdx(core, "Analyst"), mode: "toggle" });
+
+    makeExporter(core).exportExcel({ groupMode: "tree" });
+    const ws = await readBack(await waitForCapture());
+    // Only Analyst's leaf (50) is present — Manager's 100/200 are excluded.
+    expect(numericCells(ws).filter(v => v === 100 || v === 200)).toEqual([]);
+    expect(numericCells(ws)).toContain(50);
+  });
+
+  it("leaves mode: flat rows with the leaf's full group path in the Group column", async () => {
+    const core = makeGrid({ groupDisplayType: "singleColumn", groupDefaultExpanded: -1, groupRowsSelectable: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title", "city"] });
+    core.dispatch({ type: "rowSelectSet", viewIdx: groupRowViewIdx(core, "Manager"), mode: "toggle" });
+
+    makeExporter(core).exportExcel({ groupMode: "leaves" });
+    const ws = await readBack(await waitForCapture());
+
+    // No group-header rows: every body row is a leaf. Manager has two NYC leaves.
+    // Column A (Group) carries the full path; the real columns carry the data.
+    const bodyRows: any[][] = [];
+    for (let r = 2; r <= ws.rowCount; r++) bodyRows.push(rowValues(ws, r));
+    // Both Manager leaves present, each with path "Manager / NYC" in column A.
+    const managerLeaves = bodyRows.filter(row => row[0] === "Manager / NYC");
+    expect(managerLeaves.length).toBe(2);
+    // Analyst not selected → absent.
+    expect(bodyRows.some(row => String(row[0]).startsWith("Analyst"))).toBe(false);
+  });
+
+  it("collapsed selected group still exports its children, marked hidden (collapsed) in Excel", async () => {
+    // groupDefaultExpanded: 0 → all groups collapsed.
+    const core = makeGrid({ groupDisplayType: "singleColumn", groupDefaultExpanded: 0, groupRowsSelectable: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
+    core.dispatch({ type: "rowSelectSet", viewIdx: groupRowViewIdx(core, "Manager"), mode: "toggle" });
+
+    makeExporter(core).exportExcel({ groupMode: "tree" });
+    const ws = await readBack(await waitForCapture());
+
+    // The two Manager leaves are exported (100, 200) but hidden (collapsed group).
+    expect(numericCells(ws)).toEqual(expect.arrayContaining([100, 200]));
+    let hiddenLeafCount = 0;
+    for (let r = 1; r <= ws.rowCount; r++) {
+      const vals = rowValues(ws, r);
+      if (vals.includes(100) || vals.includes(200)) {
+        if (ws.getRow(r).hidden) hiddenLeafCount++;
+      }
+    }
+    expect(hiddenLeafCount).toBe(2);
+  });
+
+  it("honors a cell range's column span in a grouped export", async () => {
+    const core = makeGrid({ groupDisplayType: "groupRows", groupDefaultExpanded: -1 });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
+    // Build a range covering every view row but only columns 0..1 (Name, Title) — excludes Salary.
+    const lastRow = core.getRowModel().getViewCount() - 1;
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: lastRow, colIdx: 1, mode: "extend" });
+
+    makeExporter(core).exportExcel({ scope: "selection" });
+    const ws = await readBack(await waitForCapture());
+    // Salary column excluded → no numeric salary cells anywhere.
+    expect(numericCells(ws)).toEqual([]);
+    // Title heading (groupRows → first column) still present.
+    expect(rowValues(ws, 1)).toEqual(["Name", "Title"]);
+  });
+
+  it("omits the singleColumn Group column when the range excludes it", async () => {
+    // singleColumn → global leaf layout is [0]=Group, [1]=Name, [2]=Title, [3]=City, [4]=Salary.
+    const core = makeGrid({ groupDisplayType: "singleColumn", groupDefaultExpanded: -1 });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
+    // Range over all rows but columns 1..4 (Name..Salary) — EXCLUDES the group column at index 0.
+    const lastRow = core.getRowModel().getViewCount() - 1;
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: lastRow, colIdx: 4, mode: "extend" });
+
+    // Leaf export: the Group column must NOT be conjured back in.
+    makeExporter(core).exportExcel({ scope: "selection", groupMode: "leaves" });
+    let ws = await readBack(await waitForCapture());
+    expect(rowValues(ws, 1)).toEqual(["Name", "Title", "City", "Salary"]);
+    expect(rowValues(ws, 1)).not.toContain("Group");
+  });
+
+  it("keeps the singleColumn Group column when the range includes it", async () => {
+    const core = makeGrid({ groupDisplayType: "singleColumn", groupDefaultExpanded: -1 });
+    core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
+    // Range starting at column 0 includes the group column.
+    const lastRow = core.getRowModel().getViewCount() - 1;
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: lastRow, colIdx: 4, mode: "extend" });
+
+    makeExporter(core).exportExcel({ scope: "selection", groupMode: "leaves" });
+    const ws = await readBack(await waitForCapture());
+    expect(rowValues(ws, 1)).toEqual(["Group", "Name", "Title", "City", "Salary"]);
+  });
+});

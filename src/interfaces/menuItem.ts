@@ -9,6 +9,8 @@ export interface MenuItem {
 
   // behavior
   disabled?: boolean;
+  // native tooltip (title attr) — useful to explain why a disabled item is disabled
+  title?: string;
 
   // For default items
   command?: string;

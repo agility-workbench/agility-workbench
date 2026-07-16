@@ -15,6 +15,8 @@ export interface ExportOptions {
   fileName?: string;
   columnIds?: string[];
   includeHeaders?: boolean;
+  /** For a grouped export: "tree" (headers + subtotals, default) or "leaves" (flat leaf rows). */
+  groupMode?: "tree" | "leaves";
 }
 
 export interface ExportSelectionRange {
@@ -60,6 +62,16 @@ export interface ExportConfig {
    * from the exportable set.
    */
   autoGroupColumn?: Column;
+  /**
+   * How a grouped selection is exported:
+   *  - "tree" (default): group headers + per-group SUBTOTAL rows + outline levels.
+   *  - "leaves": a flat list of the selected leaf rows (no headers/subtotals). In singleColumn mode
+   *    the Group column is filled with each leaf's full group path (e.g. "Analyst / Boston").
+   *
+   * A cell range's column span is honored via `columnIds` (the exporter restricts to those columns);
+   * the singleColumn Group column is still prepended when present, so grouping context survives.
+   */
+  groupMode?: "tree" | "leaves";
 }
 
 interface HeaderCell {
@@ -589,16 +601,65 @@ const buildGroupedBody = (
   return { rows, rowMeta, leafRows };
 };
 
+interface FlatLeafBody {
+  rows: SheetCell[][];
+  leafRows: any[];
+}
+
+/**
+ * Emit a flat body for a grouped selection ("Export leaf rows"): every leaf under `groupRoots`, in
+ * display order, with no group-header or subtotal rows. In singleColumn mode `columns[0]` is the
+ * synthesized Group column — since there are no header rows to carry the grouping, each leaf's cell
+ * there is filled with its full group path ("Analyst / Boston"). Other modes carry the grouping in
+ * the real data columns already, so column 0 renders the leaf's own value.
+ */
+const buildFlatLeafBody = (
+  groupRoots: IRowNode[],
+  columns: Column[],
+  bodyStyles: (CellStyle | undefined)[],
+  mode: GroupDisplayType,
+  hasGroupColumn: boolean,
+): FlatLeafBody => {
+  const rows: SheetCell[][] = [];
+  const leafRows: any[] = [];
+
+  const walk = (node: IRowNode, path: string[]) => {
+    for (const child of node.children ?? []) {
+      if (child.isGroup) {
+        walk(child, [...path, String(child.groupKey ?? "")]);
+      } else {
+        const data = child.data;
+        const cells = columns.map((col, colIdx) => {
+          // singleColumn's prepended Group column (index 0) gets the leaf's full group path.
+          if (colIdx === 0 && mode === "singleColumn" && hasGroupColumn) {
+            return { value: { kind: "string", value: path.join(" / ") } as CellValue, style: bodyStyles[0] };
+          }
+          return { value: toCellValue(getValueBundle(data, col), col), style: bodyStyles[colIdx] };
+        });
+        rows.push(cells);
+        leafRows.push(data);
+      }
+    }
+  };
+
+  for (const root of groupRoots) walk(root, [String(root.groupKey ?? "")]);
+  return { rows, leafRows };
+};
+
 export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
   try {
     const grouped = !!config.groupRoots && config.groupRoots.length > 0;
     const mode: GroupDisplayType = config.groupDisplayType ?? "singleColumn";
+    const groupMode = config.groupMode ?? "tree";
 
+    // `resolveColumns` already applies any `columnIds` filter (used to honor a cell range's column
+    // span in a grouped export — the exportRenderer maps the range to the covered columns' ids).
     let columns = resolveColumns(config);
     // In singleColumn mode the group heading lives in a dedicated column the grid hides from the
     // exportable set — prepend it so the export mirrors the on-screen layout.
-    if (grouped && mode === "singleColumn" && config.autoGroupColumn) {
-      columns = [config.autoGroupColumn, ...columns];
+    const hasGroupColumn = grouped && mode === "singleColumn" && !!config.autoGroupColumn;
+    if (hasGroupColumn) {
+      columns = [config.autoGroupColumn!, ...columns];
     }
 
     const rows = resolveRows(config, columns.length);
@@ -644,7 +705,15 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
     let rowMeta: RowMeta[] | undefined;
     let footerRows: any[]; // leaf rows the grand-total footer aggregates over
 
-    if (grouped) {
+    // A tree export emits group-header + subtotal rows and needs SUBTOTAL in the grand total (to skip
+    // the nested subtotals); a flat leaf export has neither, so its grand total uses plain functions.
+    const treeExport = grouped && groupMode === "tree";
+
+    if (grouped && groupMode === "leaves") {
+      const body = buildFlatLeafBody(config.groupRoots!, columns, bodyStyles, mode, hasGroupColumn);
+      sheetRows.push(...body.rows);
+      footerRows = body.leafRows;
+    } else if (grouped) {
       // Header rows have no outline metadata; pad rowMeta so indices line up with sheetRows.
       rowMeta = sheetRows.map(() => ({}));
       const body = buildGroupedBody(
@@ -668,11 +737,12 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
       footerRows = rows;
     }
 
-    // Grand-total footer (SUBTOTAL when grouped so it ignores per-group subtotal rows). At this
-    // point sheetRows holds header + body, so its length is the 1-based row of the last body row.
+    // Grand-total footer (SUBTOTAL for a tree export so it ignores per-group subtotal rows; plain
+    // functions otherwise). At this point sheetRows holds header + body, so its length is the
+    // 1-based row of the last body row.
     const dataEndRow = sheetRows.length;
     const footer = config.aggregates
-      ? buildAggregateFooter(columns, footerRows, config.aggregates, dataStartRow, dataEndRow, grouped)
+      ? buildAggregateFooter(columns, footerRows, config.aggregates, dataStartRow, dataEndRow, treeExport)
       : null;
     if (footer) {
       sheetRows.push(footer);

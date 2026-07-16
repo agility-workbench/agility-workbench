@@ -11,6 +11,62 @@ import {
 
 type SelectionRange = { rowStart: number; rowEnd: number; colStart: number; colEnd: number };
 
+/** Append every leaf-descendant's `data` under `node` (pre-order) to `out`. */
+function collectLeafData(node: IRowNode, out: any[]): void {
+  for (const child of node.children ?? []) {
+    if (child.isGroup) collectLeafData(child, out);
+    else out.push(child.data);
+  }
+}
+
+/**
+ * Prune a group tree to the subset the user selected, keyed by node id:
+ *  - A selected GROUP node → kept with its entire subtree (selecting a group means "all under it").
+ *  - A selected LEAF → kept.
+ *  - An unselected group with a selected descendant → kept as a context header, holding only the
+ *    kept descendants.
+ *  - Anything else → dropped.
+ * Returns pruned root-level nodes (may be empty if nothing matched).
+ */
+function pruneGroupTree(roots: IRowNode[], selected: Set<string>): IRowNode[] {
+  // Returns a pruned copy of `node` if it (or a descendant) is selected, else null. `ancestor
+  // selected` means an ancestor group was selected, so this whole subtree is included wholesale.
+  const prune = (node: IRowNode, ancestorSelected: boolean): IRowNode | null => {
+    const selfSelected = ancestorSelected || selected.has(node.id);
+
+    if (!node.isGroup) {
+      return selfSelected ? node : null;
+    }
+
+    if (selfSelected) {
+      return node; // whole subtree included; keep the original node (children intact)
+    }
+
+    // Not selected — keep only if some descendant survives.
+    const keptChildren: IRowNode[] = [];
+    for (const child of node.children ?? []) {
+      const kept = prune(child, false);
+      if (kept) keptChildren.push(kept);
+    }
+    if (keptChildren.length === 0) return null;
+    // Shallow clone so we can narrow children without mutating the live model node. Recompute the
+    // leaf count so the displayed "(N)" reflects the kept subset, not the original group size.
+    const leaves: any[] = [];
+    for (const c of keptChildren) {
+      if (c.isGroup) collectLeafData(c, leaves);
+      else leaves.push(c.data);
+    }
+    return { ...node, children: keptChildren, childCount: leaves.length };
+  };
+
+  const out: IRowNode[] = [];
+  for (const root of roots) {
+    const kept = prune(root, false);
+    if (kept) out.push(kept);
+  }
+  return out;
+}
+
 interface ExportRendererParams {
   core: GridCore;
   leafColumns: () => Column[];
@@ -78,23 +134,21 @@ export class ExportRenderer {
     const columns = this.params.leafColumns()?.length ? this.params.leafColumns().slice() : [];
     if (!columns.length) return null;
 
-    // When the grid is row-grouped, the export is driven by the group tree (outline levels +
-    // per-group subtotals over the full leaf set), regardless of scope. A cell-range selection can't
-    // be honored over a grouped view — its rows interleave synthetic group headers and leaves, and a
-    // "select all" is a range spanning the whole (possibly collapsed) view — so grouping wins. A
-    // column selection still narrows the exported columns; it just keeps the grouped layout.
     const groupColumns = this.params.core.getRowGroupColumns();
     const grouped = groupColumns.length > 0;
+
+    if (grouped) {
+      return this.buildGroupedExportConfig(options, scope, columns, groupColumns);
+    }
 
     let rows: any[] = [];
     let selectionRange = null;
     let selectedColumnIDs: Set<string> | undefined;
 
-    if (grouped) {
-      rows = this.getRowsForExport(true); // all leaf data (drives the guard + grand-total footer)
-      if (scope === "selectedColumns") selectedColumnIDs = this.params.selectedColumnIDs();
-    } else if (scope === "selection" && this.params.selectionRange()) {
-      rows = this.getRowsForSelectionExport();
+    if (scope === "selection" && this.params.selectionRange()) {
+      // Pass the FULL view rows (view-index aligned) + the range; export.ts slices rows AND columns
+      // by the range in one place (resolveRows/resolveColumns). Pre-slicing here would double-slice.
+      rows = this.getRowsForExport(false);
       selectionRange = { ...this.params.selectionRange()! };
     } else if (scope === "selectedColumns") {
       rows = this.getRowsForExport(true);
@@ -105,23 +159,11 @@ export class ExportRenderer {
 
     if (!rows || rows.length === 0) return null;
 
-    let groupRoots: IRowNode[] | undefined;
-    let autoGroupColumn: Column | undefined;
-    if (grouped) {
-      const roots = this.params.core.getRowModel().getGroupNodes().filter(n => n.level === 0);
-      if (roots.length > 0) groupRoots = roots;
-      // singleColumn mode hides the group-heading column from the exportable set; surface it so the
-      // export can include it.
-      autoGroupColumn = this.params.core.getColumnModel().getAutoGroupColumns()[0];
-    }
-
     // Include the aggregate footer only when the grid is actually showing aggregates on-screen
-    // (scope !== "none" and at least one column is aggregated). A flat range/selection export skips
-    // it, since the footer's formulas span whole-column ranges, not an arbitrary block; a grouped
-    // export always keeps it (SUBTOTAL over the full leaf set).
-    const showFooter = grouped || scope !== "selection";
+    // (scope !== "none"). A flat range/selection export skips it, since the footer's formulas span
+    // whole-column ranges, not an arbitrary block.
     const aggregates =
-      showFooter && this.params.core.getAggregateScope() !== "none"
+      scope !== "selection" && this.params.core.getAggregateScope() !== "none"
         ? this.params.core.getAggregateModel()
         : undefined;
 
@@ -135,11 +177,112 @@ export class ExportRenderer {
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
       aggregates,
-      groupRoots,
-      groupColumns: groupRoots ? groupColumns : undefined,
-      groupDisplayType: groupRoots ? this.params.core.getOptions().groupDisplayType : undefined,
-      autoGroupColumn: groupRoots ? autoGroupColumn : undefined,
     };
+  }
+
+  /**
+   * Build the export config for a row-grouped grid. The export is driven by the group tree (outline
+   * levels + per-group subtotals), pruned to what the user selected:
+   *  - Row selection (incl. selected group rows) → its selectedRowIds.
+   *  - Cell range → the group/leaf node ids the rectangle covers, plus its column span.
+   *  - Nothing selected (or the selection resolves to no nodes) → the full tree.
+   * `groupMode` ("tree" | "leaves") chooses the grouped-outline layout or a flat leaf dump.
+   */
+  private buildGroupedExportConfig(
+    options: ExportOptions,
+    scope: ExportScope,
+    columns: Column[],
+    groupColumns: Column[],
+  ): ExportConfig | null {
+    const rowModel = this.params.core.getRowModel();
+    const allRoots = rowModel.getGroupNodes().filter(n => n.level === 0);
+    if (allRoots.length === 0) return null;
+
+    // Resolve the active selection to a set of selected node ids + an optional column-id filter +
+    // whether the (singleColumn) group column falls within the selection.
+    const { nodeIds, columnIds, includeGroupColumn } = this.resolveGroupedSelection(scope, columns);
+
+    // Prune the tree to the selection (empty selection → full tree).
+    const groupRoots = nodeIds && nodeIds.size > 0 ? pruneGroupTree(allRoots, nodeIds) : allRoots;
+    if (groupRoots.length === 0) return null;
+
+    // Leaf data drives the empty-guard and (in leaves mode) the grand total.
+    const leafData: any[] = [];
+    for (const root of groupRoots) collectLeafData(root, leafData);
+    if (leafData.length === 0) return null;
+
+    const aggregates =
+      this.params.core.getAggregateScope() !== "none"
+        ? this.params.core.getAggregateModel()
+        : undefined;
+
+    return {
+      rows: leafData,
+      columns,
+      columnIds: columnIds ?? options.columnIds,
+      selectedColumnIDs: scope === "selectedColumns" ? this.params.selectedColumnIDs() : undefined,
+      includeHeaders: options.includeHeaders,
+      columnTree: this.params.core.getColumnModel().getColumns(),
+      columnWidths: this.params.columnWidths(),
+      aggregates,
+      groupRoots,
+      groupColumns,
+      groupDisplayType: this.params.core.getOptions().groupDisplayType,
+      // Only surface the synthesized group column when the selection actually covers it — a cell
+      // range that excludes the group column must not conjure it back into the export.
+      autoGroupColumn: includeGroupColumn ? this.params.core.getColumnModel().getAutoGroupColumns()[0] : undefined,
+      groupMode: options.groupMode ?? "tree",
+    };
+  }
+
+  /**
+   * Resolve the active selection (for a grouped grid) to:
+   *  - `nodeIds`: the selected view-node ids (null → export the whole tree),
+   *  - `columnIds`: for a cell range, the exportable columns its column span covers,
+   *  - `includeGroupColumn`: whether the singleColumn group column is in scope (a cell range that
+   *    excludes it must not have the group column prepended back).
+   */
+  private resolveGroupedSelection(
+    scope: ExportScope,
+    exportableColumns: Column[],
+  ): { nodeIds: Set<string> | null; columnIds: string[] | undefined; includeGroupColumn: boolean } {
+    const rowModel = this.params.core.getRowModel();
+
+    // Row / column selection (and the no-selection fallback) span all columns → group column shown.
+    const selectedRowIds = this.params.core.getSelectedRowIds();
+    if (selectedRowIds.size > 0) {
+      return { nodeIds: new Set(selectedRowIds), columnIds: undefined, includeGroupColumn: true };
+    }
+
+    // Cell range: collect the node ids the row span covers, and map the column span to column ids.
+    const range = this.params.selectionRange();
+    if (scope === "selection" && range) {
+      const nodeIds = new Set<string>();
+      for (let i = range.rowStart; i <= range.rowEnd; i++) {
+        const node = rowModel.getRowNodeAtViewIndex(i);
+        if (node) nodeIds.add(node.id);
+      }
+      // Global leaf indices (getLeaves) → exportable columns' instanceIDs within [colStart,colEnd].
+      const allLeaves = this.params.core.getColumnModel().getLeaves();
+      const exportable = new Set(exportableColumns.map(c => c.instanceID));
+      const columnIds: string[] = [];
+      for (let c = range.colStart; c <= range.colEnd; c++) {
+        const leaf = allLeaves[c];
+        if (leaf && exportable.has(leaf.instanceID)) columnIds.push(leaf.instanceID);
+      }
+      // The synthesized group column (singleColumn mode) is only in scope if its global leaf index
+      // falls inside the range's column span.
+      const autoGroup = this.params.core.getColumnModel().getAutoGroupColumns()[0];
+      const autoGroupIdx = autoGroup
+        ? this.params.core.getColumnModel().leafColumnLookup.get(autoGroup.instanceID)?.globalIndex
+        : undefined;
+      const includeGroupColumn =
+        autoGroupIdx != null && autoGroupIdx >= range.colStart && autoGroupIdx <= range.colEnd;
+
+      return { nodeIds, columnIds: columnIds.length ? columnIds : undefined, includeGroupColumn };
+    }
+
+    return { nodeIds: null, columnIds: undefined, includeGroupColumn: true };
   }
 
   private resolveExportScope(options: ExportOptions): ExportScope {
@@ -160,19 +303,6 @@ export class ExportRenderer {
     }
 
     for (let i = 0; i < this.params.core.getRowModel().getViewCount(); i++) {
-      const node = this.params.core.getRowModel().getRowNodeAtViewIndex(i);
-      if (node) rows.push(node.data);
-    }
-    return rows;
-  }
-
-  private getRowsForSelectionExport(): any[] {
-    const range = this.params.selectionRange();
-    if (!range) return [];
-    const rows: any[] = [];
-    const rowStart = Math.max(0, range.rowStart);
-    const rowEnd = Math.min(this.params.core.getRowModel().getViewCount() - 1, range.rowEnd);
-    for (let i = rowStart; i <= rowEnd; i++) {
       const node = this.params.core.getRowModel().getRowNodeAtViewIndex(i);
       if (node) rows.push(node.data);
     }
