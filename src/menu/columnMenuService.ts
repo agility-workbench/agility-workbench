@@ -17,8 +17,21 @@ type CapSummary = {
   exportable: boolean;
 };
 
+/** Column-scoped export hooks, injected once the renderer's ExportRenderer exists. */
+export interface ColumnMenuExportTarget {
+  exportColumnCSV: (columnIDs: string[]) => void;
+  exportColumnXLSX: (columnIDs: string[]) => void;
+}
+
 export class ColumnMenuService {
+  private exporter: ColumnMenuExportTarget | null = null;
+
   constructor(private core: IGridCore) { }
+
+  /** Wire the export target. Called by the renderer after its ExportRenderer is constructed. */
+  setExportTarget(exporter: ColumnMenuExportTarget) {
+    this.exporter = exporter;
+  }
 
   buildDefaultColumnMenu(ctx: ColumnMenuContext): MenuItem[] {
     const cap = this.summarize(ctx);
@@ -89,8 +102,11 @@ export class ColumnMenuService {
       items.push({ id: "pinning", label: `Pin ${s("Column")}`, subMenu: pinMenus });
     }
     if (cap.exportable) {
-      if (items.length > 0) items.push({ isSeparator: true });
-      items.push(...this.getExportMenuItems(colIDs));
+      const exportItems = this.getExportMenuItems(colIDs);
+      if (exportItems.length > 0) {
+        if (items.length > 0) items.push({ isSeparator: true });
+        items.push(...exportItems);
+      }
     }
 
     if (ctx.colIds.length > 1) {
@@ -117,8 +133,6 @@ export class ColumnMenuService {
     // app onClick takes precedence
     if (item.disabled) return;
     if (item.onClick) return item.onClick();
-
-    console.log("Executing column menu item", item);
 
     switch (item.command) {
       case "sort.setMany":
@@ -155,6 +169,10 @@ export class ColumnMenuService {
           type: "rowGroupSet",
           colIds: item.payload.colIDs,
         });
+      case "export.csv":
+        return this.exporter?.exportColumnCSV(item.payload.colIDs);
+      case "export.excel":
+        return this.exporter?.exportColumnXLSX(item.payload.colIDs);
       default:
         // unknown command -> ignore (or warn in dev)
         console.error(`Command ${item.command} is unhandled...`);

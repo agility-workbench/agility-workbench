@@ -1,6 +1,6 @@
 import { MenuItem } from "../interfaces/menuItem";
 import { IMenuAdapter } from "../interfaces/iMenuAdapter";
-import { ColumnMenuService } from "./columnMenuService";
+import { ColumnMenuService, ColumnMenuExportTarget } from "./columnMenuService";
 import { ColumnMenuContext } from "./context";
 
 export class MenuCoordinator {
@@ -8,6 +8,11 @@ export class MenuCoordinator {
     private menuSvc: ColumnMenuService,
     private menuAdapter: IMenuAdapter
   ) {}
+
+  /** Wire the column-menu export target through to the service. */
+  setExportTarget(exporter: ColumnMenuExportTarget) {
+    this.menuSvc.setExportTarget(exporter);
+  }
 
   openColumnMenu(ctx: ColumnMenuContext): {
     items: MenuItem[];

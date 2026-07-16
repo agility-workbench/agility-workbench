@@ -233,6 +233,11 @@ export class GridRenderer {
       selectionRange: () => this.core.getSelectionRange(),
       selectedColumnIDs: () => this.core.getSelectedColumnIds(),
     });
+    // Wire the column header menu's "Export as CSV/Excel" items to the exporter (built above).
+    menuCoordinator.setExportTarget({
+      exportColumnCSV: (colIDs) => this._exportRenderer.exportColumnCSV(colIDs),
+      exportColumnXLSX: (colIDs) => this._exportRenderer.exportColumnXLSX(colIDs),
+    });
     this._columnMenuOpener = new ColumnMenuOpener({
       core: this.core,
       menuCoordinator,
