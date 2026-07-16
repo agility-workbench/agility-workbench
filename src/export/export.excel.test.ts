@@ -231,6 +231,94 @@ describe("aggregate footer", () => {
   });
 });
 
+describe("grouped export (outline levels + SUBTOTAL)", () => {
+  // Minimal IRowNode builders mirroring csrm/rowGroup.ts output.
+  const leaf = (data: any): any => ({ id: "r" + Math.random(), data, isGroup: false, type: "leaf", level: 99 });
+  const group = (key: string, level: number, children: any[], expanded = true): any => ({
+    id: "g:" + key,
+    data: { __group: true },
+    isGroup: true,
+    type: "group",
+    level,
+    isExpanded: expanded,
+    children,
+    childCount: children.filter(c => !c.isGroup).length || children.length,
+    groupKey: key,
+    groupValue: key,
+  });
+
+  function groupedConfig(expanded = true): ExportConfig {
+    const columns = [
+      col({ key: "dept", label: "Dept", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    const roots = [
+      group("Sales", 0, [
+        leaf({ dept: "Sales", qty: 10 }),
+        leaf({ dept: "Sales", qty: 20 }),
+      ], expanded),
+      group("Eng", 0, [
+        leaf({ dept: "Eng", qty: 100 }),
+      ], expanded),
+    ];
+    return {
+      columns,
+      rows: [], // grouped path uses groupRoots, not rows
+      groupRoots: roots,
+      groupColumns: [columns[0]],
+      aggregates: [{ key: columns[1].instanceID, type: AggregateType.SUM }],
+    };
+  }
+
+  it("emits group header rows with labels and outline levels", async () => {
+    await exportExcel(groupedConfig());
+    const ws = await readBack(captured!);
+    // Row 1 = column header. Row 2 = "Sales (2)" group header at outline level 1.
+    expect(ws.getCell("A2").value).toBe("Sales (2)");
+    expect(ws.getRow(2).outlineLevel).toBe(1);
+    // Rows 3-4 = Sales leaves at outline level 2.
+    expect(ws.getCell("B3").value).toBe(10);
+    expect(ws.getRow(3).outlineLevel).toBe(2);
+    expect(ws.getRow(4).outlineLevel).toBe(2);
+    // Row 5 = "Eng (1)" group header.
+    expect(ws.getCell("A5").value).toBe("Eng (1)");
+    expect(ws.getRow(5).outlineLevel).toBe(1);
+  });
+
+  it("puts a SUBTOTAL(9,...) over each group's leaf range in the header row", async () => {
+    await exportExcel(groupedConfig());
+    const ws = await readBack(captured!);
+    // Sales header row 2: SUBTOTAL over its leaves (rows 3-4).
+    const sales = ws.getCell("B2").value as any;
+    expect(sales.formula).toBe("SUBTOTAL(9,B3:B4)");
+    expect(sales.result).toBe(30);
+    // Eng header row 5: single leaf at row 6.
+    const eng = ws.getCell("B5").value as any;
+    expect(eng.formula).toBe("SUBTOTAL(9,B6:B6)");
+    expect(eng.result).toBe(100);
+  });
+
+  it("adds a grand-total SUBTOTAL footer that ignores the per-group subtotals", async () => {
+    await exportExcel(groupedConfig());
+    const ws = await readBack(captured!);
+    // Layout: 1 header, 2 Sales-hdr, 3-4 Sales leaves, 5 Eng-hdr, 6 Eng leaf, 7 grand total.
+    const grand = ws.getCell("B7").value as any;
+    // SUBTOTAL over the whole body; nested SUBTOTALs are ignored by code 9, so result = 130.
+    expect(grand.formula).toBe("SUBTOTAL(9,B2:B6)");
+    expect(grand.result).toBe(130);
+  });
+
+  it("hides descendant rows of a collapsed group", async () => {
+    await exportExcel(groupedConfig(false)); // all groups collapsed
+    const ws = await readBack(captured!);
+    // Group header rows stay visible; their leaves are hidden.
+    expect(ws.getRow(2).hidden).toBe(false); // Sales header
+    expect(ws.getRow(3).hidden).toBe(true); // Sales leaf
+    expect(ws.getRow(4).hidden).toBe(true);
+    expect(ws.getRow(6).hidden).toBe(true); // Eng leaf
+  });
+});
+
 describe("zip writer", () => {
   it("stores entries with recoverable CRCs", async () => {
     const bytes = await createZip([{ path: "hello.txt", data: "world" }]);

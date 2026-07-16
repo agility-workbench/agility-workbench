@@ -47,13 +47,32 @@ export interface ColumnDef {
   width?: number;
 }
 
+export interface RowMeta {
+  /** Outline (grouping) depth: 0 = ungrouped, 1+ = nested. Drives Excel's collapse controls. */
+  outlineLevel?: number;
+  /** Row is hidden (e.g. inside a collapsed group). */
+  hidden?: boolean;
+  /**
+   * For a summary row, marks it collapsed so Excel draws the +/- control in the collapsed state.
+   * (Excel convention: the flag sits on the summary row, which for summary-above is the group header.)
+   */
+  collapsed?: boolean;
+}
+
 export interface SheetModel {
   name: string;
   /** Row-major grid of cells; ragged rows are allowed (missing trailing cells are empty). */
   rows: SheetCell[][];
+  /** Optional per-row outline metadata, indexed to match `rows`. */
+  rowMeta?: RowMeta[];
   columns?: ColumnDef[];
   merges?: MergeRange[];
   frozen?: FrozenPane;
+  /**
+   * Whether group summary rows sit below their detail rows. The grid renders group headers ABOVE
+   * their children, so this defaults to false. Controls Excel's outline button placement.
+   */
+  summaryBelow?: boolean;
 }
 
 export interface WorkbookModel {
@@ -151,8 +170,15 @@ function worksheetXml(sheet: SheetModel, styles: StyleRegistry): string {
       `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`,
   );
 
-  // Child element order matters per the CT_Worksheet schema: sheetViews -> cols -> sheetData ->
-  // mergeCells. Emit them in that order.
+  // Child element order matters per the CT_Worksheet schema: sheetPr -> sheetViews -> cols ->
+  // sheetData -> mergeCells. Emit them in that order.
+  const hasOutline = !!sheet.rowMeta && sheet.rowMeta.some(m => m && (m.outlineLevel ?? 0) > 0);
+  if (hasOutline) {
+    // summaryBelow="0" tells Excel the group summary sits ABOVE its detail rows (grid convention).
+    const summaryBelow = sheet.summaryBelow ? "1" : "0";
+    parts.push(`<sheetPr><outlinePr summaryBelow="${summaryBelow}" summaryRight="0"/></sheetPr>`);
+  }
+
   parts.push(frozenPaneXml(sheet.frozen));
 
   // <cols> for widths.
@@ -177,7 +203,14 @@ function worksheetXml(sheet: SheetModel, styles: StyleRegistry): string {
       const xml = cellXml(cell, cellRef(cIdx + 1, rowNum), styleId);
       if (xml) cells.push(xml);
     });
-    parts.push(`<row r="${rowNum}">${cells.join("")}</row>`);
+    const meta = sheet.rowMeta?.[rIdx];
+    const attrs = [`r="${rowNum}"`];
+    if (meta) {
+      if ((meta.outlineLevel ?? 0) > 0) attrs.push(`outlineLevel="${meta.outlineLevel}"`);
+      if (meta.hidden) attrs.push(`hidden="1"`);
+      if (meta.collapsed) attrs.push(`collapsed="1"`);
+    }
+    parts.push(`<row ${attrs.join(" ")}>${cells.join("")}</row>`);
   });
   parts.push(`</sheetData>`);
 

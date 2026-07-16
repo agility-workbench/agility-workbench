@@ -1,5 +1,6 @@
 import { Column } from "../column/column";
 import { GridCore } from "../core/core";
+import { IRowNode } from "../interfaces/iRowNode";
 import {
   exportCSV as downloadCSV,
   exportExcel as downloadExcel,
@@ -77,11 +78,22 @@ export class ExportRenderer {
     const columns = this.params.leafColumns()?.length ? this.params.leafColumns().slice() : [];
     if (!columns.length) return null;
 
+    // When the grid is row-grouped, the export is driven by the group tree (outline levels +
+    // per-group subtotals over the full leaf set), regardless of scope. A cell-range selection can't
+    // be honored over a grouped view — its rows interleave synthetic group headers and leaves, and a
+    // "select all" is a range spanning the whole (possibly collapsed) view — so grouping wins. A
+    // column selection still narrows the exported columns; it just keeps the grouped layout.
+    const groupColumns = this.params.core.getRowGroupColumns();
+    const grouped = groupColumns.length > 0;
+
     let rows: any[] = [];
     let selectionRange = null;
     let selectedColumnIDs: Set<string> | undefined;
 
-    if (scope === "selection" && this.params.selectionRange()) {
+    if (grouped) {
+      rows = this.getRowsForExport(true); // all leaf data (drives the guard + grand-total footer)
+      if (scope === "selectedColumns") selectedColumnIDs = this.params.selectedColumnIDs();
+    } else if (scope === "selection" && this.params.selectionRange()) {
       rows = this.getRowsForSelectionExport();
       selectionRange = { ...this.params.selectionRange()! };
     } else if (scope === "selectedColumns") {
@@ -93,11 +105,23 @@ export class ExportRenderer {
 
     if (!rows || rows.length === 0) return null;
 
+    let groupRoots: IRowNode[] | undefined;
+    let autoGroupColumn: Column | undefined;
+    if (grouped) {
+      const roots = this.params.core.getRowModel().getGroupNodes().filter(n => n.level === 0);
+      if (roots.length > 0) groupRoots = roots;
+      // singleColumn mode hides the group-heading column from the exportable set; surface it so the
+      // export can include it.
+      autoGroupColumn = this.params.core.getColumnModel().getAutoGroupColumns()[0];
+    }
+
     // Include the aggregate footer only when the grid is actually showing aggregates on-screen
-    // (scope !== "none" and at least one column is aggregated). A range/selection export skips it,
-    // since the footer's formulas span whole-column ranges, not an arbitrary block.
+    // (scope !== "none" and at least one column is aggregated). A flat range/selection export skips
+    // it, since the footer's formulas span whole-column ranges, not an arbitrary block; a grouped
+    // export always keeps it (SUBTOTAL over the full leaf set).
+    const showFooter = grouped || scope !== "selection";
     const aggregates =
-      scope !== "selection" && this.params.core.getAggregateScope() !== "none"
+      showFooter && this.params.core.getAggregateScope() !== "none"
         ? this.params.core.getAggregateModel()
         : undefined;
 
@@ -111,6 +135,10 @@ export class ExportRenderer {
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
       aggregates,
+      groupRoots,
+      groupColumns: groupRoots ? groupColumns : undefined,
+      groupDisplayType: groupRoots ? this.params.core.getOptions().groupDisplayType : undefined,
+      autoGroupColumn: groupRoots ? autoGroupColumn : undefined,
     };
   }
 

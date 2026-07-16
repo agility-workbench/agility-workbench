@@ -2,9 +2,10 @@ import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { AggregateModel, AggregateType } from "../interfaces/aggregate";
+import { GroupDisplayType } from "../interfaces/gridOptions";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { CellStyle } from "./xlsx/styleRegistry";
-import { CellValue, MergeRange, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
+import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
@@ -38,6 +39,27 @@ export interface ExportConfig {
    * COUNT otherwise), matching the grid's on-screen aggregate row.
    */
   aggregates?: AggregateModel[];
+  /**
+   * Top-level (level-0) group nodes, each with nested `children`, when the grid is row-grouped.
+   * When present, the Excel body is emitted with outline levels and per-group SUBTOTAL rows instead
+   * of a flat row list. `groupColumns` gives the grouped columns in level order (for header labels).
+   */
+  groupRoots?: IRowNode[];
+  groupColumns?: Column[];
+  /**
+   * How group headings are surfaced, mirroring the grid's on-screen layout:
+   *  - "singleColumn": a dedicated group column (see `autoGroupColumn`) carries every level's label.
+   *  - "multipleColumns": each grouped column shows the label for its own level in place.
+   *  - "groupRows": the label rides in the first exported column.
+   * Defaults to "singleColumn" when omitted.
+   */
+  groupDisplayType?: GroupDisplayType;
+  /**
+   * The synthesized auto-group column (grid-internal, normally non-exportable). Supplied for
+   * "singleColumn" mode so the export can include a group-heading column the grid otherwise hides
+   * from the exportable set.
+   */
+  autoGroupColumn?: Column;
 }
 
 interface HeaderCell {
@@ -330,7 +352,7 @@ const toExcelWidth = (col: Column, config: ExportConfig): number => {
 };
 
 /**
- * Excel function name for an aggregate op that maps cleanly to a live formula over a numeric range,
+ * Excel function name for an aggregate op that maps cleanly to a plain formula over a numeric range,
  * or null when it can't (text MIN/MAX, distinct count) and we must fall back to a static value.
  */
 const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null => {
@@ -355,60 +377,230 @@ const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null 
 };
 
 /**
- * Build the aggregate footer row. Each column with an aggregate becomes either a live Excel formula
- * over its body range (SUM/AVERAGE/MEDIAN/MIN/MAX/COUNTA on numeric data) or a static precomputed
- * value (text MIN/MAX, distinct count) — always matching what the grid's own calculator produces.
- * Returns null when there are no aggregates to show.
+ * SUBTOTAL function code (1-11 range) for an aggregate op, or null when unavailable. Codes 1-11
+ * ignore *nested* SUBTOTAL cells (so group subtotals never double-count into a parent/grand total)
+ * while still *including* hidden rows (so collapsing a group leaves the totals unchanged). MEDIAN
+ * and distinct-count have no SUBTOTAL equivalent.
+ */
+const subtotalCode = (op: AggregateType, isNumeric: boolean): number | null => {
+  switch (op) {
+    case AggregateType.AVG:
+      return 1;
+    case AggregateType.COUNT:
+      return 3; // COUNTA
+    case AggregateType.MAX:
+      return isNumeric ? 4 : null;
+    case AggregateType.MIN:
+      return isNumeric ? 5 : null;
+    case AggregateType.SUM:
+      return 9;
+    default:
+      return null; // MEDIAN, DISTINCT_COUNT
+  }
+};
+
+/**
+ * Build one aggregate cell: a live formula over [rangeStart, rangeEnd] when the op maps to an Excel
+ * function, else a static value. `useSubtotal` selects SUBTOTAL(code,…) (for grouped exports, where
+ * subtotal/grand rows must not double-count) over the plain function form. `computed` is the grid's
+ * own value, used as the formula's cached result or the static fallback.
+ */
+const aggregateCell = (
+  col: Column,
+  colIdx: number,
+  op: AggregateType,
+  computed: any,
+  rangeStart: number,
+  rangeEnd: number,
+  useSubtotal: boolean,
+): SheetCell => {
+  const isNumeric = col.isComputableType();
+  const style: CellStyle = { bold: true, numFmt: resolveNumberFormat(col) };
+  const colLetter = columnName(colIdx + 1);
+  const range = `${colLetter}${rangeStart}:${colLetter}${rangeEnd}`;
+  const cachedIsText = typeof computed !== "number";
+
+  if (useSubtotal) {
+    const code = subtotalCode(op, isNumeric);
+    if (code != null) {
+      return {
+        value: { kind: "formula", formula: `SUBTOTAL(${code},${range})`, cached: computed, cachedIsText },
+        style,
+      };
+    }
+  } else {
+    const fn = excelAggregateFn(op, isNumeric);
+    if (fn) {
+      return {
+        value: { kind: "formula", formula: `${fn}(${range})`, cached: computed, cachedIsText },
+        style,
+      };
+    }
+  }
+
+  // Static fallback: write the grid's computed value directly.
+  if (typeof computed === "number") return { value: { kind: "number", value: computed }, style };
+  return { value: { kind: "string", value: String(computed ?? "") }, style: { bold: true } };
+};
+
+/**
+ * Build the grand-total aggregate footer row. Uses SUBTOTAL when the body is grouped (so it ignores
+ * the per-group subtotal rows) and plain functions otherwise. Returns null when there's nothing to
+ * aggregate. `dataStartRow`/`dataEndRow` bound the full body block (1-based sheet rows).
  */
 const buildAggregateFooter = (
   columns: Column[],
   rows: any[],
   aggregates: AggregateModel[],
-  dataStartRow: number, // 1-based sheet row of the first body row
+  dataStartRow: number,
+  dataEndRow: number,
+  useSubtotal: boolean,
 ): SheetCell[] | null => {
   if (!aggregates || aggregates.length === 0 || rows.length === 0) return null;
 
   const opByCol = new Map(aggregates.map(a => [a.key, a.type]));
   const calculator = new AggregateCalculator();
-  const dataEndRow = dataStartRow + rows.length - 1;
 
-  const footer: SheetCell[] = columns.map((col, colIdx) => {
+  return columns.map((col, colIdx) => {
     const op = opByCol.get(col.instanceID);
     if (op == null) return { value: { kind: "empty" } as CellValue };
-
     const computed = calculator.calculateAggregate(col, op, rows);
-    const isNumeric = col.isComputableType();
-    const fn = excelAggregateFn(op, isNumeric);
-    const style: CellStyle = { bold: true, numFmt: resolveNumberFormat(col) };
-
-    if (fn) {
-      const colLetter = columnName(colIdx + 1);
-      const range = `${colLetter}${dataStartRow}:${colLetter}${dataEndRow}`;
-      const cachedIsText = typeof computed !== "number";
-      return {
-        value: {
-          kind: "formula",
-          formula: `${fn}(${range})`,
-          cached: computed as number | string,
-          cachedIsText,
-        },
-        style,
-      };
-    }
-
-    // Static fallback: write the grid's computed value directly.
-    if (typeof computed === "number") {
-      return { value: { kind: "number", value: computed }, style };
-    }
-    return { value: { kind: "string", value: String(computed ?? "") }, style: { bold: true } };
+    return aggregateCell(col, colIdx, op, computed, dataStartRow, dataEndRow, useSubtotal);
   });
+};
 
-  return footer;
+/** Collect a group node's leaf-descendant data rows in display order. */
+const collectGroupLeaves = (node: IRowNode): any[] => {
+  const out: any[] = [];
+  const walk = (n: IRowNode) => {
+    for (const child of n.children ?? []) {
+      if (child.isGroup) walk(child);
+      else out.push(child.data);
+    }
+  };
+  walk(node);
+  return out;
+};
+
+interface GroupedBody {
+  rows: SheetCell[][];
+  rowMeta: RowMeta[];
+  /** All leaf data rows in display order (for the grand-total footer range). */
+  leafRows: any[];
+}
+
+/**
+ * Emit the body for a grouped export: a group-header row per group (carrying SUBTOTAL formulas for
+ * aggregated columns over that group's contiguous leaf range), followed by its children — nested
+ * groups recurse, leaf rows render as data. Rows carry outline levels; collapsed groups hide their
+ * descendants. The grid renders headers ABOVE their rows (summary-above), so a group's SUBTOTAL
+ * range points at the rows emitted *after* its header.
+ *
+ * Group headings are placed to mirror `groupDisplayType`, matching the on-screen layout:
+ *  - "singleColumn": every level's label goes in column 0 (the exported auto-group column), indented.
+ *  - "multipleColumns": a group at level L labels the column tagged `groupLevel === L`.
+ *  - "groupRows": the label goes in column 0 (the first exported column).
+ */
+const buildGroupedBody = (
+  groupRoots: IRowNode[],
+  columns: Column[],
+  bodyStyles: (CellStyle | undefined)[],
+  aggregates: AggregateModel[] | undefined,
+  firstSheetRow: number, // 1-based sheet row where the body starts
+  mode: GroupDisplayType,
+): GroupedBody => {
+  const opByCol = new Map((aggregates ?? []).map(a => [a.key, a.type]));
+  const calculator = new AggregateCalculator();
+  const rows: SheetCell[][] = [];
+  const rowMeta: RowMeta[] = [];
+  const leafRows: any[] = [];
+
+  // Column index that hosts a group's label, by mode. multipleColumns maps level → its tagged
+  // column; singleColumn/groupRows always use column 0.
+  const levelColIdx = new Map<number, number>();
+  if (mode === "multipleColumns") {
+    columns.forEach((col, idx) => {
+      if (col.groupLevel != null) levelColIdx.set(col.groupLevel, idx);
+    });
+  }
+  const labelColIdxFor = (level: number): number =>
+    mode === "multipleColumns" ? (levelColIdx.get(level) ?? 0) : 0;
+
+  // Emit a leaf data row. Indent applies per-level in singleColumn mode (col 0 mirrors the grid's
+  // indented auto-group column); other modes render leaf data verbatim.
+  const emitLeaf = (data: any, level: number, outlineLevel: number, hidden: boolean) => {
+    rows.push(columns.map((col, colIdx) => ({
+      value: toCellValue(getValueBundle(data, col), col),
+      style: bodyStyles[colIdx],
+    })));
+    rowMeta.push({ outlineLevel, hidden });
+    leafRows.push(data);
+    void level;
+  };
+
+  // Recursively emit a group node and its subtree. `ancestorCollapsed` hides rows whose ancestor
+  // group is collapsed. Returns after appending the header row and all descendants.
+  const emitGroup = (node: IRowNode, outlineLevel: number, ancestorCollapsed: boolean) => {
+    const groupLeaves = collectGroupLeaves(node);
+    const labelColIdx = labelColIdxFor(node.level);
+
+    // Header row: group label + per-group SUBTOTAL cells. Placeholder pushed now; subtotal ranges
+    // reference the rows emitted below, so we finalize the header cells after recursing.
+    const headerCells: SheetCell[] = columns.map(() => ({ value: { kind: "empty" } as CellValue }));
+    rows.push(headerCells);
+    rowMeta.push({
+      outlineLevel,
+      hidden: ancestorCollapsed,
+      // Mark the (summary-above) header collapsed so Excel draws the +/- in the collapsed state.
+      collapsed: !node.isExpanded,
+    });
+
+    // "<value> (<count>)" in the mode's label column.
+    const label = `${node.groupKey ?? ""} (${node.childCount ?? groupLeaves.length})`;
+    headerCells[labelColIdx] = { value: { kind: "string", value: label }, style: { bold: true } };
+
+    // Children render at the next outline level; hidden if this group is collapsed (or an ancestor
+    // was). Data rows sit one level deeper than their group header.
+    const childrenCollapsed = ancestorCollapsed || !node.isExpanded;
+    const firstChildRow = firstSheetRow + rows.length;
+    for (const child of node.children ?? []) {
+      if (child.isGroup) {
+        emitGroup(child, outlineLevel + 1, childrenCollapsed);
+      } else {
+        emitLeaf(child.data, node.level + 1, outlineLevel + 1, childrenCollapsed);
+      }
+    }
+    const lastChildRow = firstSheetRow + rows.length - 1;
+
+    // Fill the header's aggregate cells with SUBTOTAL formulas over the group's leaf range. Skip the
+    // label column so a group value never gets overwritten by a subtotal.
+    if (lastChildRow >= firstChildRow) {
+      columns.forEach((col, colIdx) => {
+        if (colIdx === labelColIdx) return;
+        const op = opByCol.get(col.instanceID);
+        if (op == null) return;
+        const computed = calculator.calculateAggregate(col, op, groupLeaves);
+        headerCells[colIdx] = aggregateCell(col, colIdx, op, computed, firstChildRow, lastChildRow, true);
+      });
+    }
+  };
+
+  for (const root of groupRoots) emitGroup(root, 1, false);
+  return { rows, rowMeta, leafRows };
 };
 
 export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
   try {
-    const columns = resolveColumns(config);
+    const grouped = !!config.groupRoots && config.groupRoots.length > 0;
+    const mode: GroupDisplayType = config.groupDisplayType ?? "singleColumn";
+
+    let columns = resolveColumns(config);
+    // In singleColumn mode the group heading lives in a dedicated column the grid hides from the
+    // exportable set — prepend it so the export mirrors the on-screen layout.
+    if (grouped && mode === "singleColumn" && config.autoGroupColumn) {
+      columns = [config.autoGroupColumn, ...columns];
+    }
+
     const rows = resolveRows(config, columns.length);
     const includeHeaders = config.includeHeaders !== false;
     const headerLayout = includeHeaders
@@ -446,22 +638,46 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
       });
     }
 
-    // Body rows.
+    // Body rows. `rowMeta` carries outline levels only in the grouped case; undefined otherwise.
     const bodyStyles = columns.map(bodyCellStyle);
     const dataStartRow = headerOffset + 1; // 1-based sheet row of the first body row
-    rows.forEach(row => {
-      const sheetRow: SheetCell[] = columns.map((col, colIdx) => ({
-        value: toCellValue(getValueBundle(row, col), col),
-        style: bodyStyles[colIdx],
-      }));
-      sheetRows.push(sheetRow);
-    });
+    let rowMeta: RowMeta[] | undefined;
+    let footerRows: any[]; // leaf rows the grand-total footer aggregates over
 
-    // Aggregate footer (live Excel formulas where possible, static values otherwise).
+    if (grouped) {
+      // Header rows have no outline metadata; pad rowMeta so indices line up with sheetRows.
+      rowMeta = sheetRows.map(() => ({}));
+      const body = buildGroupedBody(
+        config.groupRoots!,
+        columns,
+        bodyStyles,
+        config.aggregates,
+        dataStartRow,
+        mode,
+      );
+      sheetRows.push(...body.rows);
+      rowMeta.push(...body.rowMeta);
+      footerRows = body.leafRows;
+    } else {
+      rows.forEach(row => {
+        sheetRows.push(columns.map((col, colIdx) => ({
+          value: toCellValue(getValueBundle(row, col), col),
+          style: bodyStyles[colIdx],
+        })));
+      });
+      footerRows = rows;
+    }
+
+    // Grand-total footer (SUBTOTAL when grouped so it ignores per-group subtotal rows). At this
+    // point sheetRows holds header + body, so its length is the 1-based row of the last body row.
+    const dataEndRow = sheetRows.length;
     const footer = config.aggregates
-      ? buildAggregateFooter(columns, rows, config.aggregates, dataStartRow)
+      ? buildAggregateFooter(columns, footerRows, config.aggregates, dataStartRow, dataEndRow, grouped)
       : null;
-    if (footer) sheetRows.push(footer);
+    if (footer) {
+      sheetRows.push(footer);
+      if (rowMeta) rowMeta.push({}); // footer sits at the top outline level
+    }
 
     const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
 
@@ -470,6 +686,7 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
         {
           name: "Export",
           rows: sheetRows,
+          rowMeta,
           columns: columns.map(col => ({ width: toExcelWidth(col, config) })),
           merges,
           frozen: {
