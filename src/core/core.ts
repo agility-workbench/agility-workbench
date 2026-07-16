@@ -6,7 +6,7 @@ import { ServerSideRowModel } from "../ssrm/serverSide";
 import { SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions, QuickFilterMatchMode, resolveQuickFilterOptions } from "../interfaces/gridOptions";
-import { ColId, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
+import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
   GridEventHandler,
@@ -187,6 +187,17 @@ export class GridCore implements IGridCore {
     if (changedSortColIds.length > 0) {
       this.emit("columnsChanged", { reason: "sort", changedColIds: changedSortColIds });
     }
+  }
+
+  // Restore a captured column layout (widths / pinning / visibility / order) from getColumnState().
+  // By default the column model merges (unknown colIds ignored, columns absent from state keep their
+  // place); pass `defaultState` to apply a fallback to those absent columns (e.g. { hidden: true }
+  // for an exact restore). The renderer rebuilds the pool + header + widths for the "state" reason.
+  private applyColumnState(state: ColumnState[], defaultState?: Partial<ColumnState>): void {
+    this.columnModel.applyColumnState(state, { defaultState });
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "state", changedColIds: state.map(s => s.colId) });
+    this.emit("rowsChanged", { reason: "state", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
   private applyServerSideColumnDefs(colDefs: ColDef[], schemaVersion?: string): void {
@@ -999,6 +1010,9 @@ export class GridCore implements IGridCore {
         break;
       case "columnDefsSet":
         this.setColumnDefs(action.defs);
+        break;
+      case "columnStateSet":
+        this.applyColumnState(action.state, action.defaultState);
         break;
       // Handle other action types as needed
       case "overlayShow":

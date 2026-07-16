@@ -9,6 +9,7 @@ export interface IColumnModel {
   getByColId(colId: string): Column | undefined;
   getByKey(key: string): Column | undefined;
   getColumnState(): ColumnState[];
+  applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
   getColumns(): Column[];
   getLeaves(): Column[];
   getLeadingColumns(): Column[];

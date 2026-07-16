@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
+import ColumnStateDemo from "./ColumnStateDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -10,6 +11,7 @@ const PAGES = [
   { id: "grid", label: "Grid demo", render: () => <App /> },
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
+  { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
 ] as const;
 
 function Root() {

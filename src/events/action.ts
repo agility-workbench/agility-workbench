@@ -51,6 +51,8 @@ export type GridActionColumnDefsSet = {
 export type GridActionColumnStateSet = {
   type: "columnStateSet";
   state: ColumnState[];
+  // Applied to columns absent from `state` (see ColumnModel.applyColumnState). Omit for a merge.
+  defaultState?: Partial<ColumnState>;
 };
 
 export type GridActionColumnAutosize = {

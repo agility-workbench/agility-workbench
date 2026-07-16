@@ -22,6 +22,15 @@ export interface IGridAPI {
   /** Get the current column state. */
   getColumnState(): ColumnState[];
 
+  /**
+   * Restore a previously-captured column layout (widths / pinning / visibility / order). By default
+   * merges over the current columns: unknown colIds are ignored and columns absent from `state` keep
+   * their place. Pass `opts.defaultState` to apply a fallback to those absent columns instead — e.g.
+   * `{ hidden: true }` for an exact restore that hides everything not in the saved view (including
+   * columns added since it was captured).
+   */
+  applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
+
   /** Read-only access to the column model (columns, leaves, lookups). */
   getColumnModel(): IColumnModel;
 

@@ -710,19 +710,129 @@ export class ColumnModel implements IColumnModel {
 
   getColumnState(): ColumnState[] {
     const state: ColumnState[] = [];
-    const leaves = this.getLeaves();
-    for (let i = 0; i < leaves.length; i++) {
-      const col = leaves[i];
+    // Walk section columns (not getLeaves(), which drops hidden leaves) so hidden columns are
+    // captured too — otherwise a persisted layout couldn't restore a column's hidden state. Section
+    // order (leading → left → center → right) mirrors the visible leaf order.
+    const orderedLeaves = [
+      ...this.leadingColumns,
+      ...this.leftColumns,
+      ...this.centerColumns,
+      ...this.rightColumns,
+    ].flatMap((col) => col.getLeaves());
+    let order = 0;
+    for (const col of orderedLeaves) {
       if (col.isInternal()) continue;
       state.push({
         colId: col.colId,
         widthPx: col.computedWidth,
         pinned: col.pinned,
         hidden: col.hidden,
-        order: i,
+        order: order++,
       });
     }
     return state;
+  }
+
+  /**
+   * Restore a previously-captured column layout (from `getColumnState`). By default this is a MERGE:
+   * entries whose `colId` no longer exists are ignored, and existing columns absent from `state`
+   * keep their current position and width.
+   *
+   * Ordering is driven by the explicit `order` field, NOT by array position:
+   *  - Entries WITH `order` reposition their column to that index (remove-then-insert). Ties on the
+   *    same `order` value keep their relative array order.
+   *  - Entries WITHOUT `order` (and columns absent from `state`) keep their current relative
+   *    position; they're only shifted to make room for the positioned columns. So a partial state
+   *    like `[{ colId, pinned: "left" }]` sets the property without dragging the column to the front.
+   *  A round-trip of `getColumnState()` (which stamps a dense `order` on every column) therefore
+   *  reproduces the exact layout, while a hand-authored partial state only touches what it names.
+   *
+   * `opts.defaultState` changes how columns ABSENT from `state` are treated — this is what turns a
+   * merge into an exact restore. It is applied to every current column not referenced by `state`
+   * (new columns added since the state was captured, or ones deliberately omitted). Only `hidden`,
+   * `pinned`, and `widthPx` are honored; `colId` / `order` / `selected` are ignored. The most common
+   * use is `{ hidden: true }` — "show exactly the saved view, hide everything else". With no
+   * `defaultState`, absent columns are left untouched (the merge default).
+   *
+   * Reuses the existing mutators so the layout stays consistent:
+   *  - visibility → `col.hidden`, applied before the rebuild;
+   *  - pinning → `col.pinned` (top-level columns only), bucketed by `updateColumns`;
+   *  - order → top-level columns repositioned by their state `order` (see above);
+   *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes).
+   */
+  applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
+    const widthOps: { col: Column; width: number }[] = [];
+    const seenTop = new Set<Column>();
+    // The first defined `order` (and its array index, for tie-breaking) seen for each top-level
+    // column. A group's leaves may each carry an order; we position the group by the first.
+    const targetOrder = new Map<Column, { order: number; arrayIndex: number }>();
+
+    // Apply per-column properties in array order (order-independent), and record positioning intent.
+    state.forEach((s, i) => {
+      const col = this.getByColId(s.colId);
+      if (!col || col.isInternal()) return;
+      if (s.hidden != null) col.hidden = s.hidden;
+      const top = this.getAncestors(col.instanceID)[0] ?? col;
+      // Pinning is a section property; only meaningful for a top-level column (a group pins as a
+      // whole, and a lone leaf is its own top-level column).
+      if (top === col && s.pinned !== undefined) col.pinned = s.pinned;
+      if (s.widthPx != null) widthOps.push({ col, width: s.widthPx });
+      seenTop.add(top);
+      if (s.order != null && !targetOrder.has(top)) {
+        targetOrder.set(top, { order: s.order, arrayIndex: i });
+      }
+    });
+
+    const topLevel = this.columns.filter((c) => !c.isInternal());
+
+    // Apply defaultState to columns absent from `state` entirely. This is the escape hatch that
+    // makes an exact restore possible: without it these columns keep their current layout (merge).
+    const def = opts?.defaultState;
+    if (def) {
+      for (const top of topLevel) {
+        if (seenTop.has(top)) continue;
+        if (def.pinned !== undefined) top.pinned = def.pinned;
+        for (const leaf of top.getLeaves()) {
+          if (def.hidden != null) leaf.hidden = def.hidden;
+          if (def.widthPx != null) widthOps.push({ col: leaf, width: def.widthPx });
+        }
+      }
+    }
+
+    this.updateColumns(this.reorderByTargetOrder(topLevel, targetOrder));
+    this.updateParentColumnWidthsForAll();
+
+    // Widths last so they apply to the rebuilt layout (resizeColumn is a no-op for unknown ids).
+    for (const { col, width } of widthOps) {
+      this.resizeColumn(col.instanceID, width);
+    }
+  }
+
+  // Remove-then-insert: columns WITHOUT a target order keep their current relative order; columns
+  // WITH one are inserted at that index, ascending by order (ties → array order). Insertion indices
+  // are clamped to the running length so out-of-range orders land at the end.
+  private reorderByTargetOrder(
+    topLevel: Column[],
+    targetOrder: Map<Column, { order: number; arrayIndex: number }>,
+  ): Column[] {
+    const positioned = topLevel
+      .filter((c) => targetOrder.has(c))
+      .map((c) => ({ col: c, ...targetOrder.get(c)! }))
+      .sort((a, b) => a.order - b.order || a.arrayIndex - b.arrayIndex);
+    if (positioned.length === 0) return topLevel;
+
+    const result = topLevel.filter((c) => !targetOrder.has(c));
+    // Insert same-order columns as one block so ties preserve array order (a per-item splice at the
+    // same index would reverse them).
+    let i = 0;
+    while (i < positioned.length) {
+      let j = i;
+      while (j < positioned.length && positioned[j].order === positioned[i].order) j++;
+      const block = positioned.slice(i, j).map((p) => p.col);
+      result.splice(Math.min(positioned[i].order, result.length), 0, ...block);
+      i = j;
+    }
+    return result;
   }
 
   private resizeActualColumn(col: Column, width: number): string[] {

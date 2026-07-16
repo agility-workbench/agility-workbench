@@ -40,6 +40,10 @@ export class GridAPI implements IGridAPI {
     return this.core.getColumnModel().getColumnState();
   }
 
+  applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
+    this.dispatch({ type: "columnStateSet", state, defaultState: opts?.defaultState });
+  }
+
   getColumnModel(): IColumnModel {
     return this.core.getColumnModel();
   }
