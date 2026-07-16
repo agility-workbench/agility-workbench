@@ -34,6 +34,15 @@ export class HeaderInteractionHandler {
   onHeaderCellClick(e: MouseEvent) {
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
+    // Clicking the row-number header toggles all-rows selection (consistent with clicking any other
+    // header cell), when enabled via selectAllRowsOnHeaderClick. The row-number column is internal,
+    // so the normal column-select/sort path below would no-op for it anyway.
+    if (header.classList.contains("pte-hcell-row-number")) {
+      if (this.params.core.options.selectAllRowsOnHeaderClick) {
+        this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
+      }
+      return;
+    }
     const headerExpand = (e.target as HTMLElement)?.closest(".pte-hcell-expander");
     if (headerExpand) {
       return this.params.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });

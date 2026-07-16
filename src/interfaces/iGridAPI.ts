@@ -4,6 +4,7 @@ import { ColDef } from "./column";
 import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
+import { IRowNode } from "./iRowNode";
 import { QuickFilterMatchMode } from "./gridOptions";
 
 export type NavDir = "up" | "down" | "left" | "right";
@@ -59,6 +60,16 @@ export interface IGridAPI {
   clearSelection(what?: "all" | "range" | "rows" | "columns"): void;
   /** Read the current selection snapshot. */
   getSelection(): SelectionSnapshot;
+  /** Underlying data objects of the currently-selected rows. */
+  getSelectedRows(): unknown[];
+  /** Currently-selected row nodes (unloaded / no-longer-present rows are omitted). */
+  getSelectedNodes(): IRowNode[];
+  /** Select every selectable data row in the current view (skips group rows). */
+  selectAllRows(): void;
+  /** Clear the row selection. */
+  deselectAllRows(): void;
+  /** Whether every selectable data row in the current view is currently selected. */
+  areAllRowsSelected(): boolean;
 
   /* ----- Editing ----- */
   /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */

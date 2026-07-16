@@ -112,6 +112,11 @@ export interface IGridCore {
   clearHistory(): void;
   getSelectedColumnIds(): Set<string>;
   getSelectedRowIds(): Set<string>;
+  getSelectedNodes(): unknown[];
+  getSelectedRows(): unknown[];
+  areAllRowsSelected(): boolean;
+  selectAllRows(): void;
+  deselectAllRows(): void;
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;
   getSelectionSnapshot(resolveIds?: boolean): SelectionSnapshot;
   pruneColumnSelection(): void;

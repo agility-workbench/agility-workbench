@@ -73,7 +73,17 @@ export interface GridOptions {
   allowExportAsExcel?: boolean;
   pagination?: boolean;
   rowNumbers?: boolean;
+  /**
+   * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
+   * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
+   */
   rowSelection?: boolean;
+  /**
+   * When true, clicking the row-number column header toggles selection of all rows in the current
+   * view (consistent with clicking any other header cell). Requires the row-number column
+   * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
+   */
+  selectAllRowsOnHeaderClick?: boolean;
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
@@ -150,6 +160,7 @@ export interface InternalGridOptions extends GridOptions {
   pagination: boolean;
   rowNumbers: boolean;
   rowSelection: boolean;
+  selectAllRowsOnHeaderClick: boolean;
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;

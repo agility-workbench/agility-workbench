@@ -255,6 +255,8 @@ export function SelectionDemo() {
             rowIdKey="id"
             rowNumbers
             quickFilter
+            rowSelection
+            selectAllRowsOnHeaderClick
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />

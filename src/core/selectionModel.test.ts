@@ -315,6 +315,63 @@ describe("SelectionModel — row selection", () => {
   });
 });
 
+describe("SelectionModel — select all rows", () => {
+  const grid = [["a"], ["b"], ["c"], ["d"]];
+
+  it("selectAllRows selects every loaded row and areAllRowsSelected reports true", () => {
+    const m = makeModel(grid);
+    expect(m.areAllRowsSelected()).toBe(false);
+    m.selectAllRows();
+    expect([...m.getSelectedRowIds()].sort()).toEqual(["r0", "r1", "r2", "r3"]);
+    expect(m.areAllRowsSelected()).toBe(true);
+  });
+
+  it("areAllRowsSelected is false when only some rows are selected", () => {
+    const m = makeModel(grid);
+    m.toggleRow(0, "toggle");
+    m.toggleRow(1, "toggle");
+    expect(m.areAllRowsSelected()).toBe(false);
+  });
+
+  it("selectAllRows clears any prior cell-range selection", () => {
+    const m = makeModel(grid);
+    m.selectSingleCell(0, 1);
+    m.selectAllRows();
+    expect(m.getSelectionRange()).toBeNull();
+    expect(m.getSnapshot().kind).toBe("row");
+  });
+
+  it("areAllRowsSelected is false when there are no selectable rows", () => {
+    const m = makeModel([]);
+    expect(m.areAllRowsSelected()).toBe(false);
+  });
+
+  it("skips non-selectable (group) rows", () => {
+    // Rows 1 and 3 are group rows (not selectable). selectAllRows should pick only r0 and r2, and
+    // areAllRowsSelected should still be true because every *selectable* row is selected.
+    const notSelectable = new Set([1, 3]);
+    const model = new SelectionModel({
+      getRowModel: () => ({
+        getViewCount: () => 4,
+        getRowNodeAtViewIndex: (i: number) => ({ id: `r${i}`, data: [i] }),
+      }) as any,
+      getColumnModel: () => ({
+        getLeaves: () => [],
+        getLeadingLeaves: () => [],
+        getColumns: () => [],
+        getById: () => undefined,
+        getAncestors: () => [],
+      }) as any,
+      getRowIdAtViewIndex: (i: number) => `r${i}`,
+      getPageStartIdx: () => 0,
+      isRowSelectable: (i: number) => !notSelectable.has(i),
+    });
+    model.selectAllRows();
+    expect([...model.getSelectedRowIds()].sort()).toEqual(["r0", "r2"]);
+    expect(model.areAllRowsSelected()).toBe(true);
+  });
+});
+
 describe("SelectionModel — column selection", () => {
   const grid = [["a", "b", "c"]]; // data cols 1..3
 

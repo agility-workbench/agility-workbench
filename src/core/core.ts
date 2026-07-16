@@ -114,7 +114,8 @@ export class GridCore implements IGridCore {
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
       rowNumbers: isTrue(options.rowNumbers),
-      rowSelection: options.rowSelection ?? isTrue(options.rowNumbers),
+      rowSelection: isTrue(options.rowSelection),
+      selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
@@ -912,6 +913,38 @@ export class GridCore implements IGridCore {
     return this.selectionModel.getSelectedRowIds();
   }
 
+  /** Currently-selected row nodes (unloaded / no-longer-present ids are omitted). */
+  getSelectedNodes(): IRowNode[] {
+    const nodes: IRowNode[] = [];
+    for (const id of this.selectionModel.getSelectedRowIds()) {
+      const node = this.rowModel.getRowNode(id);
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }
+
+  /** Underlying data objects of the currently-selected rows. */
+  getSelectedRows(): unknown[] {
+    return this.getSelectedNodes().map(n => n.data);
+  }
+
+  /** Whether every selectable data row in the current view is selected. */
+  areAllRowsSelected(): boolean {
+    return this.selectionModel.areAllRowsSelected();
+  }
+
+  /** Select every selectable data row in the current view. */
+  selectAllRows(): void {
+    this.selectionModel.selectAllRows();
+    this.emitSelectionChanged("api");
+  }
+
+  /** Clear the row selection. */
+  deselectAllRows(): void {
+    this.selectionModel.clearRows();
+    this.emitSelectionChanged("api");
+  }
+
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
     return this.selectionModel.isCellInActiveSelection(viewIdx, colIdx, rowId, colId);
   }
@@ -1136,6 +1169,10 @@ export class GridCore implements IGridCore {
       case "rowSelectSet":
         this.selectionModel.toggleRow(action.viewIdx, action.mode);
         this.emitSelectionChanged("mouse");
+        break;
+      case "rowSelectAll":
+        if (action.selected) this.selectAllRows();
+        else this.deselectAllRows();
         break;
       case "columnSelectSet":
         this.selectionModel.toggleColumn(action.colId, action.mode ?? "toggle");

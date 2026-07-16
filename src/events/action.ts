@@ -181,6 +181,12 @@ export type GridActionRowSelectSet = {
   mode: "replace" | "toggle" | "range";
 };
 
+// Select or clear all selectable data rows in the current view (row-number header click).
+export type GridActionRowSelectAll = {
+  type: "rowSelectAll";
+  selected: boolean;
+};
+
 export type GridActionColumnSelectSet = {
   type: "columnSelectSet";
   colId: string;
@@ -287,6 +293,7 @@ export type GridAction =
   | GridActionHeaderAction
   | GridActionSelectionClear
   | GridActionRowSelectSet
+  | GridActionRowSelectAll
   | GridActionColumnSelectSet
   | GridActionRangeSelectSet
   | GridActionEditStart

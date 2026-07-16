@@ -4,6 +4,7 @@ import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
+import { IRowNode } from "../interfaces/iRowNode";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
@@ -100,6 +101,26 @@ export class GridAPI implements IGridAPI {
     // Always resolve range row/column ids for API consumers — they typically want record
     // identity, not view indices.
     return this.core.getSelectionSnapshot(true);
+  }
+
+  getSelectedRows(): unknown[] {
+    return this.core.getSelectedRows();
+  }
+
+  getSelectedNodes(): IRowNode[] {
+    return this.core.getSelectedNodes() as IRowNode[];
+  }
+
+  selectAllRows(): void {
+    this.core.dispatch({ type: "rowSelectAll", selected: true });
+  }
+
+  deselectAllRows(): void {
+    this.core.dispatch({ type: "rowSelectAll", selected: false });
+  }
+
+  areAllRowsSelected(): boolean {
+    return this.core.areAllRowsSelected();
   }
 
   // ---------------- Editing ----------------

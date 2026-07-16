@@ -19,6 +19,8 @@ export function getGridOptions(props: GridReactProps): GridOptions {
   if (props.allowExportAsExcel) options.allowExportAsExcel = props.allowExportAsExcel;
   if (props.pagination) options.pagination = props.pagination;
   if (props.rowNumbers) options.rowNumbers = props.rowNumbers;
+  if (props.rowSelection != null) options.rowSelection = props.rowSelection;
+  if (props.selectAllRowsOnHeaderClick != null) options.selectAllRowsOnHeaderClick = props.selectAllRowsOnHeaderClick;
   if (props.pageSize) options.pageSize = props.pageSize;
   if (props.pageSizes) options.pageSizes = props.pageSizes;
   if (props.serverSideBlockSize) options.serverSideBlockSize = props.serverSideBlockSize;

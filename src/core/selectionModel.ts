@@ -552,6 +552,35 @@ export class SelectionModel {
     this.replaceRow(rowId, viewIdx);
   }
 
+  // Select every selectable data row in the current view (group rows are skipped unless
+  // groupRowsSelectable is enabled). Clears any cell-range / column selection first.
+  selectAllRows() {
+    this.clearRange();
+    this.clearColumns();
+    this.selectedRowIds.clear();
+    const viewCount = this.deps.getRowModel().getViewCount();
+    for (let i = 0; i < viewCount; i++) {
+      if (!this.deps.isRowSelectable(i)) continue;
+      const id = this.deps.getRowIdAtViewIndex(i);
+      if (id) this.selectedRowIds.add(id);
+    }
+    this.rowAnchorViewIdx = null;
+  }
+
+  // Whether every selectable data row in the current view is selected. False when there are no
+  // selectable rows. Used to decide the toggle direction for row-number header-click select-all.
+  areAllRowsSelected(): boolean {
+    const viewCount = this.deps.getRowModel().getViewCount();
+    let selectable = 0;
+    for (let i = 0; i < viewCount; i++) {
+      if (!this.deps.isRowSelectable(i)) continue;
+      selectable++;
+      const id = this.deps.getRowIdAtViewIndex(i);
+      if (!id || !this.selectedRowIds.has(id)) return false;
+    }
+    return selectable > 0;
+  }
+
   private replaceRow(rowId: string, viewIdx: number) {
     const wasOnlySelected = this.selectedRowIds.size === 1 && this.selectedRowIds.has(rowId);
     this.selectedRowIds.clear();
