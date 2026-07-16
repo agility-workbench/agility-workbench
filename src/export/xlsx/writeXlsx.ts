@@ -14,7 +14,13 @@ export type CellValue =
   | { kind: "string"; value: string }
   | { kind: "number"; value: number }
   | { kind: "boolean"; value: boolean }
-  | { kind: "date"; value: Date };
+  | { kind: "date"; value: Date }
+  /**
+   * A formula cell. `formula` is the Excel expression WITHOUT the leading "=" (e.g. "SUM(B2:B10)").
+   * `cached` is the precomputed result Excel shows until it recalculates — supply the grid's own
+   * computed value so the file reads correctly even before a recalc.
+   */
+  | { kind: "formula"; formula: string; cached?: number | string; cachedIsText?: boolean };
 
 export interface SheetCell {
   value: CellValue;
@@ -121,6 +127,14 @@ function cellXml(cell: SheetCell, ref: string, styleId: number): string {
       return `<c r="${ref}"${s} t="b"><v>${v.value ? 1 : 0}</v></c>`;
     case "date":
       return `<c r="${ref}"${s}><v>${numberToXml(dateToSerial(v.value))}</v></c>`;
+    case "formula": {
+      const f = `<f>${escapeXml(v.formula)}</f>`;
+      if (v.cached == null) return `<c r="${ref}"${s}>${f}</c>`;
+      if (v.cachedIsText) {
+        return `<c r="${ref}"${s} t="str">${f}<v>${escapeXml(String(v.cached))}</v></c>`;
+      }
+      return `<c r="${ref}"${s}>${f}<v>${numberToXml(Number(v.cached))}</v></c>`;
+    }
   }
 }
 

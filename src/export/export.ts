@@ -1,8 +1,11 @@
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
+import { AggregateModel, AggregateType } from "../interfaces/aggregate";
+import { AggregateCalculator } from "../aggregate/calculator";
 import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
+import { columnName } from "./xlsx/xml";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -29,6 +32,12 @@ export interface ExportConfig {
   columnIds?: string[];
   includeHeaders?: boolean;
   columnWidths?: Map<string, { width: number; minWidth?: number; maxWidth?: number; fixed?: boolean }>;
+  /**
+   * When present and non-empty, an aggregate footer row is appended to the Excel export. Each entry
+   * keys off a column's instanceID; columns without an entry get their default op (SUM for numeric,
+   * COUNT otherwise), matching the grid's on-screen aggregate row.
+   */
+  aggregates?: AggregateModel[];
 }
 
 interface HeaderCell {
@@ -320,6 +329,83 @@ const toExcelWidth = (col: Column, config: ExportConfig): number => {
   return Math.max(10, Math.min(40, Math.ceil((col.label?.length ?? col.key.length ?? 6) + 6)));
 };
 
+/**
+ * Excel function name for an aggregate op that maps cleanly to a live formula over a numeric range,
+ * or null when it can't (text MIN/MAX, distinct count) and we must fall back to a static value.
+ */
+const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null => {
+  switch (op) {
+    case AggregateType.SUM:
+      return "SUM";
+    case AggregateType.AVG:
+      return "AVERAGE";
+    case AggregateType.MEDIAN:
+      return "MEDIAN";
+    case AggregateType.MIN:
+      return isNumeric ? "MIN" : null; // text MIN uses the grid's collator, not Excel's
+    case AggregateType.MAX:
+      return isNumeric ? "MAX" : null;
+    case AggregateType.COUNT:
+      return "COUNTA"; // counts non-empty cells, matching the grid's row count
+    case AggregateType.DISTINCT_COUNT:
+      return null; // no single portable Excel function
+    default:
+      return null;
+  }
+};
+
+/**
+ * Build the aggregate footer row. Each column with an aggregate becomes either a live Excel formula
+ * over its body range (SUM/AVERAGE/MEDIAN/MIN/MAX/COUNTA on numeric data) or a static precomputed
+ * value (text MIN/MAX, distinct count) — always matching what the grid's own calculator produces.
+ * Returns null when there are no aggregates to show.
+ */
+const buildAggregateFooter = (
+  columns: Column[],
+  rows: any[],
+  aggregates: AggregateModel[],
+  dataStartRow: number, // 1-based sheet row of the first body row
+): SheetCell[] | null => {
+  if (!aggregates || aggregates.length === 0 || rows.length === 0) return null;
+
+  const opByCol = new Map(aggregates.map(a => [a.key, a.type]));
+  const calculator = new AggregateCalculator();
+  const dataEndRow = dataStartRow + rows.length - 1;
+
+  const footer: SheetCell[] = columns.map((col, colIdx) => {
+    const op = opByCol.get(col.instanceID);
+    if (op == null) return { value: { kind: "empty" } as CellValue };
+
+    const computed = calculator.calculateAggregate(col, op, rows);
+    const isNumeric = col.isComputableType();
+    const fn = excelAggregateFn(op, isNumeric);
+    const style: CellStyle = { bold: true, numFmt: resolveNumberFormat(col) };
+
+    if (fn) {
+      const colLetter = columnName(colIdx + 1);
+      const range = `${colLetter}${dataStartRow}:${colLetter}${dataEndRow}`;
+      const cachedIsText = typeof computed !== "number";
+      return {
+        value: {
+          kind: "formula",
+          formula: `${fn}(${range})`,
+          cached: computed as number | string,
+          cachedIsText,
+        },
+        style,
+      };
+    }
+
+    // Static fallback: write the grid's computed value directly.
+    if (typeof computed === "number") {
+      return { value: { kind: "number", value: computed }, style };
+    }
+    return { value: { kind: "string", value: String(computed ?? "") }, style: { bold: true } };
+  });
+
+  return footer;
+};
+
 export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
   try {
     const columns = resolveColumns(config);
@@ -362,6 +448,7 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
 
     // Body rows.
     const bodyStyles = columns.map(bodyCellStyle);
+    const dataStartRow = headerOffset + 1; // 1-based sheet row of the first body row
     rows.forEach(row => {
       const sheetRow: SheetCell[] = columns.map((col, colIdx) => ({
         value: toCellValue(getValueBundle(row, col), col),
@@ -369,6 +456,12 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
       }));
       sheetRows.push(sheetRow);
     });
+
+    // Aggregate footer (live Excel formulas where possible, static values otherwise).
+    const footer = config.aggregates
+      ? buildAggregateFooter(columns, rows, config.aggregates, dataStartRow)
+      : null;
+    if (footer) sheetRows.push(footer);
 
     const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
 

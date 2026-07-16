@@ -93,6 +93,14 @@ export class ExportRenderer {
 
     if (!rows || rows.length === 0) return null;
 
+    // Include the aggregate footer only when the grid is actually showing aggregates on-screen
+    // (scope !== "none" and at least one column is aggregated). A range/selection export skips it,
+    // since the footer's formulas span whole-column ranges, not an arbitrary block.
+    const aggregates =
+      scope !== "selection" && this.params.core.getAggregateScope() !== "none"
+        ? this.params.core.getAggregateModel()
+        : undefined;
+
     return {
       rows,
       columns,
@@ -102,6 +110,7 @@ export class ExportRenderer {
       includeHeaders: options.includeHeaders,
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
+      aggregates,
     };
   }
 

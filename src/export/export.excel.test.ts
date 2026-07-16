@@ -12,6 +12,7 @@ import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { ColDef } from "../interfaces/column";
 import { exportExcel, ExportConfig } from "./export";
+import { AggregateType } from "../interfaces/aggregate";
 import { writeXlsx } from "./xlsx/writeXlsx";
 import { createZip } from "./xlsx/zip";
 
@@ -154,6 +155,79 @@ describe("hand-rolled xlsx writer", () => {
     const ws = await readBack(captured!);
     expect(ws.getCell("A1").value).toBe("X & <Y>");
     expect(ws.getCell("A2").value).toBe('<tag> & "quote"');
+  });
+});
+
+describe("aggregate footer", () => {
+  it("writes live SUM/AVERAGE formulas over the body range with correct cached results", async () => {
+    const columns = [
+      col({ key: "name", label: "Name", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    const rows = [
+      { name: "a", qty: 10 },
+      { name: "b", qty: 20 },
+      { name: "c", qty: 30 },
+    ];
+    const config: ExportConfig = {
+      columns,
+      rows,
+      aggregates: [{ key: columns[1].instanceID, type: AggregateType.SUM }],
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+
+    // Header row 1, data rows 2-4, footer row 5.
+    const footer = ws.getCell("B5").value as any;
+    expect(footer.formula).toBe("SUM(B2:B4)");
+    expect(footer.result).toBe(60); // cached value matches the grid's calculator
+  });
+
+  it("falls back to a static value for text MIN (grid collator, not Excel)", async () => {
+    const columns = [col({ key: "name", label: "Name", type: ColumnType.STRING })];
+    const rows = [{ name: "Charlie" }, { name: "Alice" }, { name: "Bob" }];
+    const config: ExportConfig = {
+      columns,
+      rows,
+      aggregates: [{ key: columns[0].instanceID, type: AggregateType.MIN }],
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    // No formula — a plain string equal to the grid's computed min.
+    const footer = ws.getCell("A5").value;
+    expect(footer).toBe("Alice");
+  });
+
+  it("uses default op (SUM numeric / COUNT text) for columns without an explicit entry", async () => {
+    const columns = [
+      col({ key: "name", label: "Name", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    const rows = [{ name: "a", qty: 5 }, { name: "b", qty: 7 }];
+    // Only qty is explicitly aggregated; name has no entry -> should stay empty (footer only fills
+    // columns present in the aggregate model).
+    const config: ExportConfig = {
+      columns,
+      rows,
+      aggregates: [{ key: columns[1].instanceID, type: AggregateType.AVG }],
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    const qty = ws.getCell("B4").value as any;
+    expect(qty.formula).toBe("AVERAGE(B2:B3)");
+    expect(qty.result).toBe(6);
+    // name footer cell is empty.
+    expect(ws.getCell("A4").value).toBeNull();
+  });
+
+  it("omits the footer entirely when no aggregates are supplied", async () => {
+    const columns = [col({ key: "qty", label: "Qty", type: ColumnType.NUMBER })];
+    const config: ExportConfig = { columns, rows: [{ qty: 1 }, { qty: 2 }] };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    // Rows: header(1), data(2,3). No row 4.
+    expect(ws.getCell("A4").value).toBeNull();
+    expect(ws.actualRowCount).toBe(3);
   });
 });
 
