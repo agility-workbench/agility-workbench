@@ -1,6 +1,6 @@
 import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
-import { IGridAPI, NavDir } from "../interfaces/iGridAPI";
+import { ExportParams, IGridAPI, NavDir } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
@@ -8,10 +8,24 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
+/** Export hooks provided by the renderer once it's attached (it owns the leaf columns + widths). */
+export interface GridApiExporter {
+  exportCSV: (params: ExportParams) => void;
+  exportExcel: (params: ExportParams) => void;
+  getDataAsCsv: (params: ExportParams) => string | null;
+  getDataAsExcel: (params: ExportParams) => Promise<Uint8Array | null>;
+}
+
 export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
+  private _exporter: GridApiExporter | null = null;
 
   constructor(private core: IGridCore) {}
+
+  /** Wire the export target. Called by the renderer on attach; before that, exports are no-ops. */
+  setExporter(exporter: GridApiExporter): void {
+    this._exporter = exporter;
+  }
 
   getCore(): IGridCore {
     return this.core;
@@ -189,6 +203,39 @@ export class GridAPI implements IGridAPI {
 
   clearHistory(): void {
     this.core.clearHistory();
+  }
+
+  // ---------------- Export ----------------
+  exportDataAsCsv(params: ExportParams = {}): void {
+    if (!this._exporter) {
+      console.warn("exportDataAsCsv called before the grid was rendered; ignoring.");
+      return;
+    }
+    this._exporter.exportCSV(params);
+  }
+
+  exportDataAsExcel(params: ExportParams = {}): void {
+    if (!this._exporter) {
+      console.warn("exportDataAsExcel called before the grid was rendered; ignoring.");
+      return;
+    }
+    this._exporter.exportExcel(params);
+  }
+
+  getDataAsCsv(params: ExportParams = {}): string {
+    if (!this._exporter) {
+      console.warn("getDataAsCsv called before the grid was rendered; returning empty string.");
+      return "";
+    }
+    return this._exporter.getDataAsCsv(params) ?? "";
+  }
+
+  async getDataAsExcel(params: ExportParams = {}): Promise<Uint8Array> {
+    if (!this._exporter) {
+      console.warn("getDataAsExcel called before the grid was rendered; returning empty bytes.");
+      return new Uint8Array(0);
+    }
+    return (await this._exporter.getDataAsExcel(params)) ?? new Uint8Array(0);
   }
 
   destroy(): void {

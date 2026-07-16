@@ -296,7 +296,8 @@ const escapeCSVValue = (value: string): string => {
   return value;
 };
 
-export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") => {
+/** Build the CSV text for a config, without downloading. Returns "" when there are no columns. */
+export const buildCSV = (config: ExportConfig): string => {
   const columns = resolveColumns(config);
   const rows = resolveRows(config, columns.length);
   const includeHeaders = config.includeHeaders !== false;
@@ -315,7 +316,11 @@ export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") =>
     csvRows.push(values);
   });
 
-  const csvText = csvRows.map(r => r.join(",")).join("\n");
+  return csvRows.map(r => r.join(",")).join("\n");
+};
+
+export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") => {
+  const csvText = buildCSV(config);
   const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
   triggerDownload(blob, ensureExtension(fileName, "csv"));
 };
@@ -646,11 +651,11 @@ const buildFlatLeafBody = (
   return { rows, leafRows };
 };
 
-export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
-  try {
-    const grouped = !!config.groupRoots && config.groupRoots.length > 0;
-    const mode: GroupDisplayType = config.groupDisplayType ?? "singleColumn";
-    const groupMode = config.groupMode ?? "tree";
+/** Build the .xlsx bytes for a config, without downloading. */
+export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
+  const grouped = !!config.groupRoots && config.groupRoots.length > 0;
+  const mode: GroupDisplayType = config.groupDisplayType ?? "singleColumn";
+  const groupMode = config.groupMode ?? "tree";
 
     // `resolveColumns` already applies any `columnIds` filter (used to honor a cell range's column
     // span in a grouped export — the exportRenderer maps the range to the covered columns' ids).
@@ -767,6 +772,12 @@ export const exportExcel = async (config: ExportConfig, fileName = "grid-export.
       ],
     });
 
+  return bytes;
+};
+
+export const exportExcel = async (config: ExportConfig, fileName = "grid-export.xlsx") => {
+  try {
+    const bytes = await buildXlsx(config);
     // `bytes` is a freshly allocated, exact-size Uint8Array, so its buffer is a plain ArrayBuffer.
     const blob = new Blob([bytes.buffer as ArrayBuffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

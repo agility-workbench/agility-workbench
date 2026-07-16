@@ -9,6 +9,23 @@ import { QuickFilterMatchMode } from "./gridOptions";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
+/** Which rows/columns an export covers. */
+export type ExportScope = "all" | "selection" | "selectedColumns";
+
+/** Options for a programmatic CSV/Excel export (all optional). */
+export interface ExportParams {
+  /** "all" (default) exports the full view; "selection" a cell range; "selectedColumns" the picked columns. */
+  scope?: ExportScope;
+  /** Output filename. Auto-derived (e.g. "grid-all.xlsx") when omitted; the extension is enforced. */
+  fileName?: string;
+  /** Restrict the export to these column instanceIDs / colIds / keys. */
+  columnIds?: string[];
+  /** Include the (hierarchical) header rows. Defaults to true. */
+  includeHeaders?: boolean;
+  /** For a row-grouped grid: "tree" (group headers + subtotals, default) or "leaves" (flat rows). */
+  groupMode?: "tree" | "leaves";
+}
+
 export interface IGridAPI {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
@@ -111,6 +128,27 @@ export interface IGridAPI {
   canRedo(): boolean;
   /** Clear the undo/redo history. */
   clearHistory(): void;
+
+  /* ----- Export ----- */
+  /**
+   * Download the grid as a CSV file. No-op until the grid is rendered (the exporter is wired by the
+   * renderer on attach).
+   */
+  exportDataAsCsv(params?: ExportParams): void;
+  /** Download the grid as an Excel (.xlsx) file. No-op until the grid is rendered. */
+  exportDataAsExcel(params?: ExportParams): void;
+  /**
+   * Return the CSV text for the current state + params WITHOUT downloading — for programmatic export
+   * (upload, custom filename dialog, further processing). "" before the grid is rendered or when
+   * there's nothing to export.
+   */
+  getDataAsCsv(params?: ExportParams): string;
+  /**
+   * Return the raw .xlsx bytes (Uint8Array) for the current state + params WITHOUT downloading — so
+   * the caller decides what to do (stream to a server, encrypt/password-protect, wrap in a Blob,
+   * upload, etc.). Empty Uint8Array before the grid is rendered or when there's nothing to export.
+   */
+  getDataAsExcel(params?: ExportParams): Promise<Uint8Array>;
 
   destroy(): void;
 }

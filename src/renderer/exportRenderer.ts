@@ -4,6 +4,8 @@ import { IRowNode } from "../interfaces/iRowNode";
 import {
   exportCSV as downloadCSV,
   exportExcel as downloadExcel,
+  buildCSV,
+  buildXlsx,
   ExportConfig,
   ExportOptions,
   ExportScope,
@@ -89,6 +91,20 @@ export class ExportRenderer {
 
   exportExcel(options: ExportOptions = {}) {
     this.performExport("excel", options);
+  }
+
+  /** Build the CSV text for the current state + options without downloading. null if nothing to export. */
+  getDataAsCsv(options: ExportOptions = {}): string | null {
+    const config = this.buildExportConfig(options);
+    if (!config) return null;
+    return buildCSV(config);
+  }
+
+  /** Build the .xlsx bytes for the current state + options without downloading. null if nothing to export. */
+  async getDataAsExcel(options: ExportOptions = {}): Promise<Uint8Array | null> {
+    const config = this.buildExportConfig(options);
+    if (!config) return null;
+    return buildXlsx(config);
   }
 
   exportColumnCSV(columnIDs: string[] | null = []) {

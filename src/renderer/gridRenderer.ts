@@ -238,6 +238,23 @@ export class GridRenderer {
       exportColumnCSV: (colIDs) => this._exportRenderer.exportColumnCSV(colIDs),
       exportColumnXLSX: (colIDs) => this._exportRenderer.exportColumnXLSX(colIDs),
     });
+    // Expose programmatic export on the public API (api.exportDataAsCsv / exportDataAsExcel). The
+    // setExporter hook lives on the concrete GridAPI, not the IGridAPI interface (internal wiring),
+    // so probe for it structurally to avoid a renderer→api import cycle.
+    const apiWithExporter = this.api as unknown as {
+      setExporter?: (e: {
+        exportCSV: (p: ExportOptions) => void;
+        exportExcel: (p: ExportOptions) => void;
+        getDataAsCsv: (p: ExportOptions) => string | null;
+        getDataAsExcel: (p: ExportOptions) => Promise<Uint8Array | null>;
+      }) => void;
+    };
+    apiWithExporter.setExporter?.({
+      exportCSV: (params) => this._exportRenderer.exportCSV(params),
+      exportExcel: (params) => this._exportRenderer.exportExcel(params),
+      getDataAsCsv: (params) => this._exportRenderer.getDataAsCsv(params),
+      getDataAsExcel: (params) => this._exportRenderer.getDataAsExcel(params),
+    });
     this._columnMenuOpener = new ColumnMenuOpener({
       core: this.core,
       menuCoordinator,

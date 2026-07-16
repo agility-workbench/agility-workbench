@@ -120,3 +120,30 @@ describe("ungrouped range-selection export includes the first selected row", () 
     expect(csv.split("\n")).toEqual(["Qty", "10", "20"]);
   });
 });
+
+describe("streamable getData output (no download)", () => {
+  it("getDataAsCsv returns the CSV text without triggering a download", async () => {
+    const core = makeGrid();
+    const csv = makeExporter(core).getDataAsCsv({ scope: "all" });
+    expect(csv).not.toBeNull();
+    expect(csv!.split("\n")).toEqual(["Name,Qty", "Alice,10", "Bob,20", "Carol,30", "Dave,40"]);
+    // No Blob/download was produced.
+    expect(capturedCsv).toBeNull();
+    expect(captured).toBeNull();
+  });
+
+  it("getDataAsExcel returns valid .xlsx bytes exceljs can open, without downloading", async () => {
+    const core = makeGrid();
+    const bytes = await makeExporter(core).getDataAsExcel({ scope: "all" });
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes!.length).toBeGreaterThan(0);
+    // No download side effect.
+    expect(captured).toBeNull();
+    // The returned bytes are a real workbook.
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(bytes!) as unknown as ArrayBuffer);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell("A1").value).toBe("Name");
+    expect(ws.getCell("A2").value).toBe("Alice");
+  });
+});
