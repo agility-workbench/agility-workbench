@@ -1,6 +1,7 @@
 import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
 import { GridIconMap } from "../theme/icons";
+import type { GridTheme } from "../theme/theme";
 
 /**
  * How grouped rows are displayed:
@@ -142,9 +143,18 @@ export interface GridOptions {
   quickFilter?: boolean | QuickFilterOptions;
   /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
-   * like `url(...)`, or inline SVG markup.
+   * like `url(...)`, or inline SVG markup. Merged over any icons carried by
+   * `theme`, taking precedence.
    */
   icons?: GridIconMap;
+  /**
+   * Visual theme. A {@link GridTheme} resolves to CSS custom properties applied
+   * inline on this grid instance (and its popups), so grids can be themed
+   * independently. Build one from a preset, e.g.
+   * `themeDark.withParams({ accentColor: "#e11", rowHeight: 40 })`. Omitted =
+   * the stylesheet's default light theme.
+   */
+  theme?: GridTheme;
 }
 
 export interface InternalGridOptions extends GridOptions {

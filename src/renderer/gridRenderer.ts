@@ -12,6 +12,7 @@ import { IGridAPI } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
+import type { GridTheme } from "../theme/theme";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
   GridEventAggregateChangedParams,
@@ -39,6 +40,7 @@ import { ColumnInteractionRenderer } from "./header/columnInteraction";
 import { HeaderInteractionHandler } from "./header/interactionHandler";
 import { HeaderRenderer } from "./header/renderer";
 import { IconRenderer } from "./iconRenderer";
+import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer } from "./layout/columnLayout";
@@ -71,6 +73,7 @@ export class GridRenderer {
   _aggregateRowRenderer: AggregateRowRenderer;
   _serverSideController: ServerSideController;
   _iconRenderer: IconRenderer;
+  _themeRenderer: ThemeRenderer;
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
   _bodyRowHoverRenderer: BodyRowHoverRenderer;
@@ -161,6 +164,8 @@ export class GridRenderer {
     this.root.tabIndex = 0;
     this._rootAttachmentRenderer = new RootAttachmentRenderer(this.root);
     this._iconRenderer = new IconRenderer(this.root, this.core.id);
+    this._themeRenderer = new ThemeRenderer(this.root);
+    this.setTheme(this.core.getOptions().theme);
     this.setIcons(this.core.getOptions().icons);
 
     this._menuRenderer = new MenuRenderer(this.root);
@@ -505,6 +510,9 @@ export class GridRenderer {
     // Overlays
     this._filterOverlayRenderer = new FilterOverlayRenderer();
     this._filterOverlayRenderer.bind();
+    // The filter overlay portals to document.body, outside the root subtree, so it
+    // must receive theme variables directly.
+    this._themeRenderer.registerTarget(this._filterOverlayRenderer.overlay);
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root);
     this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
 
@@ -607,6 +615,20 @@ export class GridRenderer {
 
   setIcons(icons?: GridIconMap) {
     this._iconRenderer.setIcons(icons);
+  }
+
+  /** Apply only the theme's CSS variables (not its icons). Use when the caller
+   * reconciles icons separately (e.g. the React wrapper merging live props). */
+  setThemeVars(theme?: GridTheme) {
+    this._themeRenderer.setTheme(theme);
+  }
+
+  /** Apply a theme's CSS variables and its icon overrides. Icons explicitly set via
+   * `options.icons` take precedence over icons carried by the theme. */
+  setTheme(theme?: GridTheme) {
+    this.setThemeVars(theme);
+    const icons = { ...theme?.getIcons(), ...this.core.getOptions().icons };
+    if (Object.keys(icons).length > 0) this.setIcons(icons);
   }
 
   setServerSideDataSource(dataSource?: IServerSideDataSource) {

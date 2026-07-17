@@ -138,51 +138,56 @@
   box-sizing: border-box;
 }
 
-.pte-theme-dark .pte-root,
-.pte-theme-dark .pte-root *,
-.pte-theme-dark .pte-menu,
-.pte-theme-dark .pte-menu *,
-.pte-theme-dark .pte-filter,
-.pte-theme-dark .pte-filter * {
+/* Custom scrollbars are driven entirely by the --pte-scrollbar-* variables (both
+ * light and dark defaults are defined above), so these rules are scoped to the
+ * grid containers directly rather than gated behind a .pte-theme-dark ancestor.
+ * This lets per-instance theming (inline vars on .pte-root) restyle scrollbars
+ * without requiring a theme class on a shared ancestor. */
+.pte-root,
+.pte-root *,
+.pte-menu,
+.pte-menu *,
+.pte-filter,
+.pte-filter * {
   scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color);
 }
 
-.pte-theme-dark .pte-root::-webkit-scrollbar,
-.pte-theme-dark .pte-root *::-webkit-scrollbar,
-.pte-theme-dark .pte-menu::-webkit-scrollbar,
-.pte-theme-dark .pte-menu *::-webkit-scrollbar,
-.pte-theme-dark .pte-filter::-webkit-scrollbar,
-.pte-theme-dark .pte-filter *::-webkit-scrollbar {
+.pte-root::-webkit-scrollbar,
+.pte-root *::-webkit-scrollbar,
+.pte-menu::-webkit-scrollbar,
+.pte-menu *::-webkit-scrollbar,
+.pte-filter::-webkit-scrollbar,
+.pte-filter *::-webkit-scrollbar {
   width: var(--pte-scrollbar-size);
   height: var(--pte-scrollbar-size);
 }
 
-.pte-theme-dark .pte-root::-webkit-scrollbar-track,
-.pte-theme-dark .pte-root *::-webkit-scrollbar-track,
-.pte-theme-dark .pte-menu::-webkit-scrollbar-track,
-.pte-theme-dark .pte-menu *::-webkit-scrollbar-track,
-.pte-theme-dark .pte-filter::-webkit-scrollbar-track,
-.pte-theme-dark .pte-filter *::-webkit-scrollbar-track {
+.pte-root::-webkit-scrollbar-track,
+.pte-root *::-webkit-scrollbar-track,
+.pte-menu::-webkit-scrollbar-track,
+.pte-menu *::-webkit-scrollbar-track,
+.pte-filter::-webkit-scrollbar-track,
+.pte-filter *::-webkit-scrollbar-track {
   background: var(--pte-scrollbar-track-color);
 }
 
-.pte-theme-dark .pte-root::-webkit-scrollbar-thumb,
-.pte-theme-dark .pte-root *::-webkit-scrollbar-thumb,
-.pte-theme-dark .pte-menu::-webkit-scrollbar-thumb,
-.pte-theme-dark .pte-menu *::-webkit-scrollbar-thumb,
-.pte-theme-dark .pte-filter::-webkit-scrollbar-thumb,
-.pte-theme-dark .pte-filter *::-webkit-scrollbar-thumb {
+.pte-root::-webkit-scrollbar-thumb,
+.pte-root *::-webkit-scrollbar-thumb,
+.pte-menu::-webkit-scrollbar-thumb,
+.pte-menu *::-webkit-scrollbar-thumb,
+.pte-filter::-webkit-scrollbar-thumb,
+.pte-filter *::-webkit-scrollbar-thumb {
   background: var(--pte-scrollbar-thumb-color);
   border-radius: var(--pte-scrollbar-radius);
   border: 2px solid var(--pte-scrollbar-track-color);
 }
 
-.pte-theme-dark .pte-root::-webkit-scrollbar-thumb:hover,
-.pte-theme-dark .pte-root *::-webkit-scrollbar-thumb:hover,
-.pte-theme-dark .pte-menu::-webkit-scrollbar-thumb:hover,
-.pte-theme-dark .pte-menu *::-webkit-scrollbar-thumb:hover,
-.pte-theme-dark .pte-filter::-webkit-scrollbar-thumb:hover,
-.pte-theme-dark .pte-filter *::-webkit-scrollbar-thumb:hover {
+.pte-root::-webkit-scrollbar-thumb:hover,
+.pte-root *::-webkit-scrollbar-thumb:hover,
+.pte-menu::-webkit-scrollbar-thumb:hover,
+.pte-menu *::-webkit-scrollbar-thumb:hover,
+.pte-filter::-webkit-scrollbar-thumb:hover,
+.pte-filter *::-webkit-scrollbar-thumb:hover {
   background: var(--pte-scrollbar-thumb-hover-color);
 }
 

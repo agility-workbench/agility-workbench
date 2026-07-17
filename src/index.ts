@@ -6,6 +6,11 @@ export type { GridOptions, GroupDisplayType } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 
+export type { GridTheme, GridThemeParams } from "./theme/theme";
+export { createTheme, themeLight, themeDark } from "./theme/theme";
+export type { PteVarName } from "./theme/cssVars.generated";
+export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
+
 export type { ColDef } from "./interfaces/column";
 
 export type {

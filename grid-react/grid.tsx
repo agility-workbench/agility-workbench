@@ -130,9 +130,14 @@ export const GridReact = React.forwardRef<IGridAPI | null, GridReactProps>(
       core.dispatch({ type: "paginationSet", enabled: !isFalse(props.pagination), pageIndex: 0, pageSize: 100 });
     }, [props.pagination]);
 
+    // Theme vars and icons are reconciled together: props.icons override any icons
+    // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {
-      rendererRef.current?.setIcons(props.icons);
-    }, [props.icons]);
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      renderer.setThemeVars(props.theme);
+      renderer.setIcons({ ...props.theme?.getIcons(), ...props.icons });
+    }, [props.theme, props.icons]);
 
     // Full teardown on unmount (core + renderer + api)
     useLayoutEffect(() => {

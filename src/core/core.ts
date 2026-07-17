@@ -128,6 +128,7 @@ export class GridCore implements IGridCore {
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       quickFilter: options.quickFilter ?? false,
       icons: options.icons,
+      theme: options.theme,
     };
   }
 
