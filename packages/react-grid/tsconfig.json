@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "dist",
+    "paths": {
+      // Typecheck against the core's published declarations (built to dist), not
+      // its source — this is the surface consumers actually see, and it keeps the
+      // core's internal "@grid/*" aliases out of this package's compilation.
+      "@agility-workbench/grid": ["../grid/dist/index.d.ts"]
+    }
+  },
+  "include": ["src", "tsup.config.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

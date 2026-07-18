@@ -1,18 +1,28 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 
+const gridSrc = path.resolve(__dirname, "packages/grid/src");
+const reactSrc = path.resolve(__dirname, "packages/react-grid/src");
+
 export default defineConfig({
   resolve: {
     alias: {
-      "@grid": path.resolve(__dirname, "src"),
-      "@grid-react": path.resolve(__dirname, "grid-react"),
+      // Package-name specifiers used by source and demo.
+      "@agility-workbench/grid": gridSrc,
+      "@agility-workbench/react-grid": reactSrc,
+      // Internal dev aliases: core source and co-located tests deep-import via
+      // "@grid/*" (grid package internals). Resolved against the grid src tree.
+      "@grid": gridSrc,
+      "@react-grid": reactSrc,
     },
   },
   test: {
-    // Unit tests live next to the source they cover (src/**/*.test.ts and the React wrapper's
-    // grid-react/**/*.test.{ts,tsx}). The demo app under test/ is a Vite app, not a test suite,
-    // so it is excluded from discovery.
-    include: ["src/**/*.test.ts", "grid-react/**/*.test.{ts,tsx}"],
+    // Unit tests live next to the source they cover. The demo app under
+    // apps/playground/ is a Vite app, not a test suite, so it is excluded from discovery.
+    include: [
+      "packages/grid/src/**/*.test.{ts,tsx}",
+      "packages/react-grid/src/**/*.test.{ts,tsx}",
+    ],
     environment: "node",
   },
 });

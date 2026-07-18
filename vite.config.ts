@@ -2,14 +2,20 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+const gridSrc = path.resolve(__dirname, "packages/grid/src");
+const reactSrc = path.resolve(__dirname, "packages/react-grid/src");
+
 export default defineConfig({
   plugins: [react()],
-  root: "test",
+  root: "apps/playground",
   resolve: {
     alias: {
-      "@grid": path.resolve(__dirname, "src"),
-      "@grid-react": path.resolve(__dirname, "grid-react")
-    }
+      "@agility-workbench/grid": gridSrc,
+      "@agility-workbench/react-grid": reactSrc,
+      // Internal dev aliases used by package source (grid internals).
+      "@grid": gridSrc,
+      "@react-grid": reactSrc,
+    },
   },
   server: {
     port: 5176,

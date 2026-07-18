@@ -3,7 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    react: "grid-react/index.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
@@ -14,8 +13,4 @@ export default defineConfig({
   clean: false,
   minify: true,
   target: "es2022",
-  // Code-splitting lets the two entry points share a common chunk (the core), so
-  // it isn't duplicated across index.* and react.* in the ESM build.
-  splitting: true,
-  external: ["react", "react-dom", "react/jsx-runtime"],
 });

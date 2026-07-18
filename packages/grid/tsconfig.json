@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "dist",
+    "paths": {
+      "@grid": ["./src/index"],
+      "@grid/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "tsup.config.ts"]
+}
