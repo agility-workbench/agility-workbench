@@ -2,8 +2,24 @@
 import { describe, expect, it } from "vitest";
 import React, { forwardRef, useImperativeHandle } from "react";
 import { adaptCellEditor, ReactCellEditorHandle } from "./cellEditor";
-import { NumberCellEditor } from "@grid/renderer/editing/editors/numberCellEditor";
-import type { ICellEditor, ICellEditorParams } from "@grid/renderer/editing/cellEditor";
+import type { ICellEditor, ICellEditorParams } from "@agility-workbench/grid";
+
+// A minimal core editor class (implements the public ICellEditor contract) used to
+// assert that adaptCellEditor passes non-React editor classes through unchanged.
+// We deliberately do NOT reach into grid internals for a concrete built-in editor —
+// the React package only consumes the public @agility-workbench/grid surface.
+class CoreEditorStub implements ICellEditor {
+  private el = document.createElement("input");
+  init(params: ICellEditorParams): void {
+    this.el.value = String(params.value ?? "");
+  }
+  getGui(): HTMLElement {
+    return this.el;
+  }
+  getValue(): unknown {
+    return this.el.value;
+  }
+}
 
 function initParams(value: any): ICellEditorParams {
   return {
@@ -24,7 +40,7 @@ describe("adaptCellEditor discrimination", () => {
   });
 
   it("passes core editor classes through unchanged", () => {
-    expect(adaptCellEditor(NumberCellEditor)).toBe(NumberCellEditor);
+    expect(adaptCellEditor(CoreEditorStub)).toBe(CoreEditorStub);
   });
 
   it("returns undefined for undefined", () => {

@@ -60,8 +60,8 @@ agility-workbench/                 ← private workspace root
     │       └── theme/               theme.ts, icons.ts, inject.ts, table.css, icons/*.svg
     │                                + *.generated.ts (build artifacts, gitignored)
     └── react-grid/                @agility-workbench/react-grid
-        ├── package.json           depends on @agility-workbench/grid; react as peer
-        ├── tsconfig.json          typechecks against grid's built dist/*.d.ts
+        ├── package.json           depends on @agility-workbench/grid (semver); react as peer
+        ├── tsconfig.json          NO grid alias — resolves grid as a normal workspace dep
         ├── tsup.config.ts          single entry; externalizes grid + react
         ├── LICENSE, README.md
         └── src/
@@ -79,9 +79,12 @@ The React package is a **separate bundle** from the core. At build time, tsup ma
 `@agility-workbench/grid`, `react`, and `react-dom` as *external* — they are not bundled
 into the React output (its dist is ~7.5 KB). This means:
 
-- **React source may only import the core through its public entry** — the bare
+- **React source *and its tests* may only import the core through its public entry** — the bare
   specifier `@agility-workbench/grid`. Deep imports like `@agility-workbench/grid/renderer/...`
-  would not resolve against the core's bundled `dist/`, which has no such subpaths.
+  (or the dev-only `@grid/...` alias) would not resolve against the core's bundled `dist/`, which
+  has no such subpaths, so they are not used anywhere under `packages/react-grid/src`. The
+  package-resolution regression test (`src/packageResolution.test.ts`) guards this by failing if the
+  React tsconfig ever re-aliases `@agility-workbench/grid` to grid source or `dist`.
 - Everything the React layer needs is therefore **re-exported from
   [`packages/grid/src/index.ts`](packages/grid/src/index.ts)** (e.g. `IGridAPI`, cell-renderer
   types, `isClassRenderer`, menu adapter/context types, `initDomRenderer`, `CanvasMeasurer`,
@@ -101,13 +104,16 @@ into the React output (its dist is ~7.5 KB). This means:
 The core has **zero runtime dependencies**. `exceljs` is a dev-only dependency used to
 verify the hand-rolled `.xlsx` writer in tests; it is never bundled or shipped.
 
-## 4. Path aliases: two worlds
+## 4. Package resolution: three contexts
 
-There are two distinct resolution contexts, and they intentionally differ:
+The React package resolves the core exactly the way a published consumer does — as a normal
+npm workspace dependency, through `packages/grid/package.json`. There is **no TypeScript path
+alias** mapping `@agility-workbench/grid` to grid source or built declarations. Three distinct
+resolution contexts exist; keep them separate:
 
-**A. Dev/test (root configs)** — `vite.config.ts`, `vitest.config.ts`, root `tsconfig.json`
-alias package names *and* the legacy internal names straight to source, so the demo and the
-test runner never need a build:
+**A. Playground / test source (root configs)** — `vite.config.ts`, `vitest.config.ts`, and root
+`tsconfig.json` alias package names *and* the legacy internal names straight to source, so the demo
+and the test runner never need a build:
 
 | Alias | Resolves to |
 | --- | --- |
@@ -116,18 +122,36 @@ test runner never need a build:
 | `@grid`, `@grid/*` | `packages/grid/src` (used inside core source + co-located tests) |
 | `@react-grid`, `@react-grid/*` | `packages/react-grid/src` |
 
-**B. Build/publish (per-package configs)** —
-- `packages/grid/tsconfig.json` keeps the internal `@grid`/`@grid/*` aliases (core source
-  uses them in a handful of files).
-- `packages/react-grid/tsconfig.json` aliases `@agility-workbench/grid` → **`../grid/dist/index.d.ts`**
-  (the *built* declarations, not source). This validates the React layer against the exact
-  surface consumers see and keeps the core's internal aliases out of the React compile.
-  **Consequence: the grid package must be built before the react-grid package typechecks** — the
-  root `build` and `typecheck` scripts already enforce this order.
+This is a convenience for the dev loop only. It must **not** be relied on to make a package
+boundary look valid: the React *package* typecheck (context B) does not see these aliases, so an
+invalid deep import into grid internals fails there even though the playground/tests would resolve
+it against source.
+
+**B. React package build/typecheck (`packages/react-grid/tsconfig.json`)** — carries **no path
+aliases at all**. `@agility-workbench/grid` resolves through the workspace symlink
+`node_modules/@agility-workbench/grid → packages/grid` and that package's
+`package.json` (`exports` → `types` → `dist/index.d.ts`). This is byte-for-byte the surface a
+registry consumer resolves, it validates the complete `exports`/`types`/`main`/`module` map, and it
+keeps the core's internal `@grid/*` aliases out of the React compile — without depending on a
+specific generated filename.
+  **Consequence: the grid package's declarations must exist before react-grid typechecks.** The
+  root `typecheck` script builds grid first (`build:grid`), so it works from a clean checkout where
+  `dist/` does not yet exist; `build` builds grid before react for the same reason (see §5).
+
+**C. Grid package build/typecheck (`packages/grid/tsconfig.json`)** — keeps the internal
+`@grid`/`@grid/*` aliases (core source uses them in a handful of files). These never appear in the
+built `dist/*.d.ts` (tsup bundles them away), so they never leak to a consumer.
 
 > The `@grid` / `@react-grid` aliases are a legacy of the pre-split layout. They are
 > dev-only (never in published output). A future cleanup could rewrite core source to use
 > relative imports and drop them, but it is not required for publishing.
+
+> **Why not alias `@agility-workbench/grid` → `../grid/dist/index.d.ts` in the React tsconfig?**
+> That was the previous mechanism. It was removed: it hard-coded a generated filename and output
+> layout, bypassed `packages/grid/package.json` entirely (so `exports`/`main`/`module`/CSS-subpath
+> were never validated), and forced maintainers to understand a resolution path no consumer uses.
+> Resolving through the manifest (context B) fixes all four. A regression test
+> (`packages/react-grid/src/packageResolution.test.ts`) fails if any such alias reappears.
 
 ## 5. Build pipeline
 
@@ -154,12 +178,16 @@ test runner never need a build:
 
 | Command | Effect |
 | --- | --- |
-| `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. |
-| `npm run build` | Builds **grid, then react** (order matters — see §4B). |
-| `npm run typecheck` | Generates CSS, typechecks the demo, then each package. |
-| `npm test` | Runs the full Vitest suite (279 tests across both packages). |
+| `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^0.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
+| `npm run build` | `build:grid` then `build:react` — explicit order (react's typecheck needs grid's `dist/*.d.ts`; see §4B). |
+| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:playground`. Explicit, not workspace-traversal order. |
+| `npm test` | Runs the full Vitest suite (282 tests across both packages), including the package-resolution regression guard. |
 | `npm run dev` | Starts the Vite demo at `http://localhost:5176`. |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
+
+The root scripts are deliberately explicit (`build:grid`/`build:react`, `typecheck:react`/
+`typecheck:playground`) rather than relying on unspecified `--workspaces` traversal order, because
+react-grid's typecheck consumes grid's **generated** declarations.
 
 ## 6. Publishing to npm
 
@@ -197,7 +225,7 @@ and publish the core, then bump the react-grid dependency range to match.
 ```bash
 # from repo root
 npm run build                                   # build both, in order
-npm test                                        # 279 tests must pass
+npm test                                        # 282 tests must pass
 cd packages/grid       && npm publish           # prepublishOnly re-builds
 cd ../react-grid       && npm publish
 ```

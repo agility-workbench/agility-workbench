@@ -4,8 +4,8 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Grid } from "./grid";
-import type { IGridAPI } from "@grid/interfaces/iGridAPI";
-import type { ICellRenderer, CellRendererParams } from "@grid/renderer/renderer";
+import type { IGridAPI } from "@agility-workbench/grid";
+import type { ICellRenderer, CellRendererParams } from "@agility-workbench/grid";
 
 // happy-dom's <canvas> has no 2D context; CanvasMeasurer needs one so the real renderer can mount.
 beforeAll(() => {
