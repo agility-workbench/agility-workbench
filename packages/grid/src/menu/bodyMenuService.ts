@@ -26,8 +26,8 @@ export class BodyMenuService {
   buildDefaultBodyMenu(ctx: BodyMenuContext): MenuItem[] {
     const items: MenuItem[] = [];
 
-    items.push({ id: "copy", label: "Copy", command: "body.copy" });
-    items.push({ id: "copyWithHeaders", label: "Copy with Headers", command: "body.copyWithHeaders" });
+    items.push({ id: "copy", label: "Copy", left: "icon-copy", command: "body.copy" });
+    items.push({ id: "copyWithHeaders", label: "Copy with Headers", left: "icon-copy", command: "body.copyWithHeaders" });
 
     const opts = this.params.core.getOptions();
     const exportItems: MenuItem[] = [];
@@ -39,7 +39,7 @@ export class BodyMenuService {
     }
     if (exportItems.length > 0) {
       items.push({ isSeparator: true });
-      items.push({ id: "export", label: "Export", subMenu: exportItems });
+      items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
     }
 
     return items;

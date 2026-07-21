@@ -44,38 +44,38 @@ export class ColumnMenuService {
 
     if (cap.sortable) {
       if (cap.sortDir === "asc") {
-        items.push({ id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
+        items.push({ id: "sortDesc", label: "Sort Descending", left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
       } else if (cap.sortDir === "desc") {
-        items.push({ id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
+        items.push({ id: "sortAsc", label: "Sort Ascending", left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
       } else {
         items.push(
-          { id: "sortAsc", label: "Sort Ascending", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
-          { id: "sortDesc", label: "Sort Descending", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
+          { id: "sortAsc", label: "Sort Ascending", left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
+          { id: "sortDesc", label: "Sort Descending", left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
         );
       }
-      if (cap.sortDir !== null) items.push({ id: "sortClear", label: `Clear ${s("Sort")}`, command: "sort.setMany", payload: { colIDs, dir: null } });
+      if (cap.sortDir !== null) items.push({ id: "sortClear", label: `Clear ${s("Sort")}`, left: "icon-sort-clear", command: "sort.setMany", payload: { colIDs, dir: null } });
       items.push({ isSeparator: true });
     }
     if (cap.hideable) {
-      items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, command: "column.hideMany", payload: { colIDs } });
+      items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, left: "icon-col-hide", command: "column.hideMany", payload: { colIDs } });
       items.push({ isSeparator: true });
     }
-    if (cap.groupable) items.push({ id: "groupColumns", label: `Group by ${s("Column")}`, command: "group.setMany", payload: { colIDs } });
+    if (cap.groupable) items.push({ id: "groupColumns", label: `Group by ${s("Column")}`, left: "icon-group", command: "group.setMany", payload: { colIDs } });
     if (cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
         item.subMenu = [
-          { id: "aggSum", label: "Sum", command: "aggregate.setMany", payload: { colIDs, agg: "sum" } },
-          { id: "aggAvg", label: "Average", command: "aggregate.setMany", payload: { colIDs, agg: "avg" } },
-          { id: "aggMin", label: "Min", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
-          { id: "aggMedian", label: "Median", command: "aggregate.setMany", payload: { colIDs, agg: "median" } },
+          { id: "aggSum", label: "Sum", left: "icon-sum", command: "aggregate.setMany", payload: { colIDs, agg: "sum" } },
+          { id: "aggAvg", label: "Average", left: "icon-avg", command: "aggregate.setMany", payload: { colIDs, agg: "avg" } },
+          { id: "aggMin", label: "Min", left: "icon-min-number", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
+          { id: "aggMax", label: "Max", left: "icon-max-number", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
+          { id: "aggMedian", label: "Median", left: "icon-median", command: "aggregate.setMany", payload: { colIDs, agg: "median" } },
         ];
       } else if (cap.aggType === "string") {
         item.subMenu = [
-          { id: "aggCount", label: "Count", command: "aggregate.setMany", payload: { colIDs, agg: "count" } },
-          { id: "aggMin", label: "Min", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
+          { id: "aggCount", label: "Count", left: "icon-count", command: "aggregate.setMany", payload: { colIDs, agg: "count" } },
+          { id: "aggMin", label: "Min", left: "icon-min-string", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
+          { id: "aggMax", label: "Max", left: "icon-max-string", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
         ];
         if (cap.colType === ColumnType.STRING) {
           item.subMenu.splice(1, 0, { id: "aggDistinctCount", label: "Distinct Count", command: "aggregate.setMany", payload: { colIDs, agg: "distinct_count" } });
@@ -99,13 +99,15 @@ export class ColumnMenuService {
       } else {
         pinMenus.push({ id: "pinRight", label: "Pin Right", command: "column.pinMany", payload: { colIDs, pinned: "right" } });
       }
-      items.push({ id: "pinning", label: `Pin ${s("Column")}`, subMenu: pinMenus });
+      items.push({ id: "pinning", label: `Pin ${s("Column")}`, left: "icon-pin", subMenu: pinMenus });
     }
     if (cap.exportable) {
       const exportItems = this.getExportMenuItems(colIDs);
       if (exportItems.length > 0) {
-        if (items.length > 0) items.push({ isSeparator: true });
-        items.push(...exportItems);
+        if (items.length > 0) {
+          items.push({ isSeparator: true });
+        }
+        items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems});
       }
     }
 

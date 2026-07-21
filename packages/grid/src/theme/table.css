@@ -50,6 +50,9 @@
   --pte-icon-not-allowed: url(icons/not-allowed.svg);
   --pte-icon-filter: url(icons/filter.svg);
   --pte-icon-menu: url(icons/menu-vertical.svg);
+  --pte-icon-pin: url(icons/pin.svg);
+  --pte-icon-copy: url(icons/copy.svg);
+  --pte-icon-export: url(icons/export.svg);
   --pte-shadow-color: rgba(0, 0, 0, 0.1);
   --pte-overlay-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   --pte-drag-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
@@ -1633,11 +1636,15 @@
 .icon-group {
   mask-image: var(--pte-icon-group);
   background-color: var(--pte-icon-color);
+  width: 20px;
+  height: 20px;
 }
 
 .icon-col-hide {
   mask-image: var(--pte-icon-column-hide);
   background-color: var(--pte-icon-color);
+  width: 20px;
+  height: 20px;
 }
 
 .icon-count {
@@ -1653,6 +1660,8 @@
 .icon-sum {
   mask-image: var(--pte-icon-sum);
   background-color: var(--pte-icon-color);
+  width: 16px;
+  height: 16px;
 }
 
 .icon-avg {
@@ -1663,21 +1672,29 @@
 .icon-min-string {
   mask-image: var(--pte-icon-min-string);
   background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
 }
 
 .icon-min-number {
   mask-image: var(--pte-icon-min-number);
   background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
 }
 
 .icon-max-string {
   mask-image: var(--pte-icon-max-string);
   background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
 }
 
 .icon-max-number {
   mask-image: var(--pte-icon-max-number);
   background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
 }
 
 .icon-median {
@@ -1703,6 +1720,27 @@
 .icon-not-allowed {
   mask-image: var(--pte-icon-not-allowed);
   background-color: var(--pte-not-allowed-icon-color);
+}
+
+.icon-pin {
+  mask-image: var(--pte-icon-pin);
+  background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
+}
+
+.icon-copy {
+  mask-image: var(--pte-icon-copy);
+  background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
+}
+
+.icon-export {
+  mask-image: var(--pte-icon-export);
+  background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
 }
 
 .pte-select {

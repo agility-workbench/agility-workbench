@@ -26,6 +26,9 @@ export type GridIconName =
   | "not-allowed"
   | "filter"
   | "menu"
+  | "pin"
+  | "export"
+  | "copy"
   | (string & {});
 
 export type GridIconMap = Partial<Record<GridIconName, GridIconSource>>;
