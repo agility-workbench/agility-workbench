@@ -11,6 +11,8 @@ export interface GridProps extends GridOptions{
 
   /** Optional initial data/columns; wrapper will forward after init and on change */
   data?: unknown[];
+  /** Public row-data prop. Takes precedence over `data` when both are provided. */
+  rowData?: unknown[];
   columnDefs?: ReactColDef[] | ColDef[] | null;
 
   /** Expose API (AG Grid style) */

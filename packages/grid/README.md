@@ -27,12 +27,15 @@ npm install @agility-workbench/react-grid react react-dom
 ## Quick start (core, no framework)
 
 ```ts
-import { GridCore, GridRenderer, initDomRenderer, CanvasMeasurer } from "@agility-workbench/grid";
+import { CanvasMeasurer, ColumnType, GridCore, initDomRenderer } from "@agility-workbench/grid";
 import "@agility-workbench/grid/styles.css";
 
 const core = new GridCore(new CanvasMeasurer(), {
   rowIdKey: "id",
-  columnDefs: [{ field: "name" }, { field: "price" }],
+  columnDefs: [
+    { key: "name", label: "Name", type: ColumnType.STRING },
+    { key: "price", label: "Price", type: ColumnType.NUMBER },
+  ],
 });
 const { renderer } = initDomRenderer(core);
 renderer.attach({ current: document.getElementById("app")! });
@@ -109,8 +112,19 @@ new GridCore(new CanvasMeasurer(), {
 
 | Import | Contents |
 | --- | --- |
-| `@agility-workbench/grid` | Framework-agnostic core, types, theming API |
+| `@agility-workbench/grid` | Framework-agnostic core, public enums, event payload types, theming API |
 | `@agility-workbench/grid/styles.css` | The base stylesheet (icons inlined) |
+
+Public enums and event payload types are available from the package entry point:
+
+```ts
+import {
+  AggregateType,
+  ColumnType,
+  FilterType,
+  type GridEventEditingChangedParams,
+} from "@agility-workbench/grid";
+```
 
 ## License
 

@@ -16,31 +16,55 @@ are peer dependencies you provide.
 ## Quick start
 
 ```tsx
-import { Grid, themeDark, type ReactColDef } from "@agility-workbench/react-grid";
+import { StrictMode, useState } from "react";
+import {
+  ColumnType,
+  Grid,
+  themeDark,
+  type GridEventEditingChangedParams,
+  type IGridAPI,
+  type ReactColDef,
+} from "@agility-workbench/react-grid";
 import "@agility-workbench/grid/styles.css";
 
 const columnDefs: ReactColDef[] = [
-  { field: "name", headerName: "Name" },
-  { field: "price", headerName: "Price" },
+  { key: "name", label: "Name", type: ColumnType.STRING },
+  { key: "price", label: "Price", type: ColumnType.NUMBER },
 ];
 
-const data = [
-  { name: "Widget", price: 9.99 },
-  { name: "Gadget", price: 14.5 },
+const rowData = [
+  { id: "1", name: "Widget", price: 9.99 },
+  { id: "2", name: "Gadget", price: 14.5 },
 ];
 
 export function Example() {
+  const [api, setApi] = useState<IGridAPI | null>(null);
+
   return (
-    <div style={{ height: 400 }}>
-      <Grid
-        columnDefs={columnDefs}
-        data={data}
-        theme={themeDark.withParams({ accentColor: "#e11d48", rowHeight: 40 })}
-      />
-    </div>
+    <StrictMode>
+      <div style={{ height: 400 }}>
+        <Grid
+          rowData={rowData}
+          columnDefs={columnDefs}
+          rowIdKey="id"
+          theme={themeDark.withParams({ accentColor: "#e11d48", rowHeight: 40 })}
+          onGridReady={(readyApi) => {
+            setApi(readyApi);
+            readyApi.on("editingChanged", (event: GridEventEditingChangedParams) => {
+              console.log(event.state);
+            });
+          }}
+        />
+      </div>
+    </StrictMode>
   );
 }
 ```
+
+The React binding creates and attaches the renderer after the host element mounts, so
+`React.StrictMode` effect replay is supported. In development, `onGridReady` may run once
+for each live setup React creates; each callback receives a live API, and refs are cleared
+when a setup is cleaned up.
 
 ## Styling
 
@@ -63,7 +87,15 @@ The React entry re-exports everything from `@agility-workbench/grid` (themes, `C
 `injectGridStyles`, all types), so a single import covers your app:
 
 ```tsx
-import { Grid, themeLight, type ColDef } from "@agility-workbench/react-grid";
+import {
+  AggregateType,
+  ColumnType,
+  FilterType,
+  Grid,
+  themeLight,
+  type ColDef,
+  type GridEventEditingChangedParams,
+} from "@agility-workbench/react-grid";
 ```
 
 See the [`@agility-workbench/grid` README](https://www.npmjs.com/package/@agility-workbench/grid)

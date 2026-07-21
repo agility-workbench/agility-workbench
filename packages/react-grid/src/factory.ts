@@ -31,8 +31,12 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
-  if (props.serverSideDataSource) options.serverSideDataSource = props.serverSideDataSource;
-  if (props.serverSideAggregationSource) options.serverSideAggregationSource = props.serverSideAggregationSource;
+  if (props.rowModelType === "serverSide" && props.serverSideDataSource) {
+    options.serverSideDataSource = props.serverSideDataSource;
+  }
+  if (props.rowModelType === "serverSide" && props.serverSideAggregationSource) {
+    options.serverSideAggregationSource = props.serverSideAggregationSource;
+  }
   if (props.icons) options.icons = props.icons;
   if (props.theme) options.theme = props.theme;
   return options;

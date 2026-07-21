@@ -1,6 +1,6 @@
-import React, { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { GridProps } from "./interface";
-import { GridOptions, GridRenderer } from "@agility-workbench/grid";
+import { GridRenderer } from "@agility-workbench/grid";
 import type { IGridCore } from "@agility-workbench/grid";
 import { createCore, getGridOptions } from "./factory";
 import type { IGridAPI } from "@agility-workbench/grid";
@@ -10,78 +10,105 @@ import { initDomRenderer } from "@agility-workbench/grid";
 import { isFalse } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
 
+type GridInstance = {
+  core: IGridCore;
+  renderer: GridRenderer;
+  api: IGridAPI;
+  destroyed: boolean;
+};
+
+function assignRef<T>(ref: React.ForwardedRef<T> | undefined, value: T | null): void {
+  if (!ref) return;
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  ref.current = value;
+}
+
+function destroyInstance(instance: GridInstance): void {
+  if (instance.destroyed) return;
+  instance.destroyed = true;
+
+  try {
+    instance.renderer.detach();
+  } catch { }
+  try {
+    instance.renderer.destroy();
+  } catch { }
+  try {
+    instance.core.destroy();
+  } catch { }
+  try {
+    instance.api.destroy?.();
+  } catch { }
+}
+
 export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
   function Grid(props, forwardedRef) {
     const hostRef = useRef<HTMLDivElement | null>(null);
+    const instanceRef = useRef<GridInstance | null>(null);
+    const onGridReadyRef = useRef(props.onGridReady);
+    const getColumnMenuItemsRef = useRef(props.getColumnMenuItems);
+    const getBodyMenuItemsRef = useRef(props.getBodyMenuItems);
 
-    // Instances live in refs so they survive renders without triggering re-renders.
-    const coreRef = useRef<IGridCore | null>(null);
-    const rendererRef = useRef<GridRenderer | null>(null);
-    const apiRefLocal = useRef<IGridAPI | null>(null);
+    onGridReadyRef.current = props.onGridReady;
+    getColumnMenuItemsRef.current = props.getColumnMenuItems;
+    getBodyMenuItemsRef.current = props.getBodyMenuItems;
 
-    // Expose API via forwardedRef (optional convenience)
-    useImperativeHandle(forwardedRef, () => apiRefLocal.current!, []);
-
-    // Expose API via props.apiRef (if provided)
-    useImperativeHandle(props.apiRef ?? null, () => apiRefLocal.current!, []);
-
-    // Create instances (core/renderer/api) exactly once.
-    // useMemo is fine because we attach/destroy in layout effect; instances are stored in refs.
-    useMemo(() => {
-      // cleanup old instances if recreating
-      if (coreRef.current || rendererRef.current || apiRefLocal.current) {
-        try {
-          rendererRef.current?.detach();
-        } catch { }
-        try {
-          rendererRef.current?.destroy();
-        } catch { }
-        try {
-          coreRef.current?.destroy();
-        } catch { }
-        try {
-          apiRefLocal.current?.destroy?.();
-        } catch { }
-      }
+    // Create, attach, announce, and destroy the lifecycle-sensitive grid resources
+    // from the layout effect so React render stays pure and StrictMode can replay it safely.
+    useLayoutEffect(() => {
+      const host = hostRef.current;
+      if (!host) return;
 
       const core = createCore(getGridOptions(props));
       const { renderer, api } = initDomRenderer(
         core,
-        new ReactMenuAdapter({ getColumnMenuItems: props.getColumnMenuItems }),
-        new ReactBodyMenuAdapter({ getBodyMenuItems: props.getBodyMenuItems }),
+        new ReactMenuAdapter({
+          getColumnMenuItems: (params) => getColumnMenuItemsRef.current?.(params) ?? params.items,
+        }),
+        new ReactBodyMenuAdapter({
+          getBodyMenuItems: (params) => getBodyMenuItemsRef.current?.(params) ?? params.items,
+        }),
       );
+      const instance: GridInstance = { core, renderer, api, destroyed: false };
+      instanceRef.current = instance;
 
-      coreRef.current = core;
-      rendererRef.current = renderer;
-      apiRefLocal.current = api;
-
+      renderer.attach({ current: host });
       core.dispatch({ type: "init" });
+      assignRef(forwardedRef, api);
+      assignRef(props.apiRef, api);
+      onGridReadyRef.current?.(api);
 
-      // Fire onGridReady synchronously on creation (before attach is also ok).
-      props.onGridReady?.(api);
+      return () => {
+        if (instanceRef.current === instance) {
+          instanceRef.current = null;
+        }
 
+        assignRef(forwardedRef, null);
+        assignRef(props.apiRef, null);
+        destroyInstance(instance);
+      };
+      // Only recreate the instance for true mount/unmount lifecycle changes.
+      // Ordinary prop changes are synchronized by the effects below.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Attach renderer to DOM host on mount, detach on unmount.
     useLayoutEffect(() => {
-      const host = hostRef.current;
-      const renderer = rendererRef.current;
-
-      if (!hostRef || !host || !renderer) return;
-
-      renderer.attach(hostRef);
+      const api = instanceRef.current?.api ?? null;
+      assignRef(forwardedRef, api);
+      assignRef(props.apiRef, api);
 
       return () => {
-        try {
-          renderer.detach();
-        } catch { }
+        assignRef(forwardedRef, null);
+        assignRef(props.apiRef, null);
       };
-    }, []);
+    }, [forwardedRef, props.apiRef]);
 
     // Forward data / columnDefs to core on change (NOT on scroll).
     useLayoutEffect(() => {
-      const core = coreRef.current;
+      const core = instanceRef.current?.core;
       if (!core) return;
       core.setColumnDefsFromProps(adaptReactColumnDefs(props.columnDefs));
 
@@ -89,32 +116,34 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.columnDefs]);
 
     useLayoutEffect(() => {
-      const core = coreRef.current;
+      const core = instanceRef.current?.core;
       if (!core) return;
       if (props.rowModelType === "serverSide") return;
-      core.dispatch?.({ type: "rowDataSet", rows: props.data || [] });
+      core.dispatch?.({ type: "rowDataSet", rows: props.rowData ?? props.data ?? [] });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.data, props.rowModelType]);
+    }, [props.data, props.rowData, props.rowModelType]);
 
     useLayoutEffect(() => {
-      const core = coreRef.current;
-      if (!core) return;
-      core.setServerSideDataSource(props.serverSideDataSource ?? null);
+      const instance = instanceRef.current;
+      if (!instance || props.rowModelType !== "serverSide") return;
+      if (!props.serverSideDataSource) return;
+      instance.renderer.setServerSideDataSource(props.serverSideDataSource);
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.serverSideDataSource]);
+    }, [props.rowModelType, props.serverSideDataSource]);
 
     useLayoutEffect(() => {
-      const core = coreRef.current;
-      if (!core) return;
-      core.setServerSideAggregationSource(props.serverSideAggregationSource ?? null);
+      const instance = instanceRef.current;
+      if (!instance || props.rowModelType !== "serverSide") return;
+      if (!props.serverSideAggregationSource) return;
+      instance.renderer.setServerSideAggregation(props.serverSideAggregationSource);
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.serverSideAggregationSource]);
+    }, [props.rowModelType, props.serverSideAggregationSource]);
 
     useLayoutEffect(() => {
-      const core = coreRef.current;
+      const core = instanceRef.current?.core;
       if (!core) return;
 
       core.dispatch({ type: "overlayShow", overlayType: props.loading ? "loading" : "none" });
@@ -123,7 +152,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.loading]);
 
     useLayoutEffect(() => {
-      const core = coreRef.current;
+      const core = instanceRef.current?.core;
       if (!core) return;
 
       core.dispatch({ type: "paginationSet", enabled: !isFalse(props.pagination), pageIndex: 0, pageSize: 100 });
@@ -132,33 +161,11 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {
-      const renderer = rendererRef.current;
+      const renderer = instanceRef.current?.renderer;
       if (!renderer) return;
       renderer.setThemeVars(props.theme);
       renderer.setIcons({ ...props.theme?.getIcons(), ...props.icons });
     }, [props.theme, props.icons]);
-
-    // Full teardown on unmount (core + renderer + api)
-    useLayoutEffect(() => {
-      return () => {
-        try {
-          rendererRef.current?.detach();
-        } catch { }
-        try {
-          rendererRef.current?.destroy();
-        } catch { }
-        try {
-          coreRef.current?.destroy();
-        } catch { }
-        try {
-          apiRefLocal.current?.destroy?.();
-        } catch { }
-
-        rendererRef.current = null;
-        coreRef.current = null;
-        apiRefLocal.current = null;
-      };
-    }, []);
 
     return (
       <div
