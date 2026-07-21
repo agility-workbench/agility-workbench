@@ -282,7 +282,7 @@ export class ColumnMenuService {
     if (groupIds.length > 0 && targetCol?.isAutoGroupColumn()) {
       return {
         id: "ungroupAllColumns",
-        label: "Ungroup All",
+        label: `Ungroup${groupIds.length > 1 ? " All" : ""}`,
         left: "icon-group",
         command: "group.setMany",
         payload: { colIDs: [] },
