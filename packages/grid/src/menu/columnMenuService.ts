@@ -17,6 +17,11 @@ type CapSummary = {
   exportable: boolean;
 };
 
+type GroupMenuItem = MenuItem & {
+  command: "group.setMany";
+  payload: { colIDs: string[] };
+};
+
 /** Column-scoped export hooks, injected once the renderer's ExportRenderer exists. */
 export interface ColumnMenuExportTarget {
   exportColumnCSV: (columnIDs: string[]) => void;
@@ -60,7 +65,8 @@ export class ColumnMenuService {
       items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, left: "icon-col-hide", command: "column.hideMany", payload: { colIDs } });
       items.push({ isSeparator: true });
     }
-    if (cap.groupable) items.push({ id: "groupColumns", label: `Group by ${s("Column")}`, left: "icon-group", command: "group.setMany", payload: { colIDs } });
+    const groupItem = this.getGroupMenuItem(colIDs, ctx.targetColId, cap.groupable, s);
+    if (groupItem) items.push(groupItem);
     if (cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
@@ -260,6 +266,77 @@ export class ColumnMenuService {
       items.push({ id: "exportExcel", label: "Export as Excel", command: "export.excel", payload: { colIDs } });
     }
     return items;
+  }
+
+  private getGroupMenuItem(
+    colIDs: string[],
+    targetColId: string,
+    groupable: boolean,
+    pluralize: (singular: string, plural?: string) => string,
+  ): GroupMenuItem | null {
+    const groupColumns = this.core.getRowGroupColumns();
+    const groupIds = groupColumns.map(col => col.instanceID);
+    const grouped = new Set(groupIds);
+    const targetCol = this.core.getColumnModel().getById(targetColId);
+
+    if (groupIds.length > 0 && targetCol?.isAutoGroupColumn()) {
+      return {
+        id: "ungroupAllColumns",
+        label: "Ungroup All",
+        left: "icon-group",
+        command: "group.setMany",
+        payload: { colIDs: [] },
+      };
+    }
+
+    const userColIDs = this.expandUserColumnIds(colIDs);
+    const allSelectedAreGrouped = userColIDs.length > 0 && userColIDs.every(id => grouped.has(id));
+    if (allSelectedAreGrouped) {
+      if (userColIDs.length > 1) {
+        return {
+          id: "ungroupAllColumns",
+          label: "Ungroup All",
+          left: "icon-group",
+          command: "group.setMany",
+          payload: { colIDs: [] },
+        };
+      }
+
+      return {
+        id: "ungroupColumns",
+        label: "Ungroup",
+        left: "icon-group",
+        command: "group.setMany",
+        payload: { colIDs: groupIds.filter(id => id !== userColIDs[0]) },
+      };
+    }
+
+    if (!groupable) return null;
+    return {
+      id: "groupColumns",
+      label: `Group by ${pluralize("Column")}`,
+      left: "icon-group",
+      command: "group.setMany",
+      payload: { colIDs },
+    };
+  }
+
+  private expandUserColumnIds(colIDs: string[]): string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+
+    for (const colID of colIDs) {
+      const col = this.core.getColumnModel().getById(colID);
+      if (!col || col.isInternal()) continue;
+      const leaves = col.children.length > 0 ? col.getVisibleLeaves() : [col];
+      for (const leaf of leaves) {
+        if (leaf.isInternal() || seen.has(leaf.instanceID)) continue;
+        seen.add(leaf.instanceID);
+        ids.push(leaf.instanceID);
+      }
+    }
+
+    return ids;
   }
 
   private getNextAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {

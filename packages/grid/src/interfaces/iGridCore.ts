@@ -9,6 +9,7 @@ import { AggregateModel, AggregateScope } from "./aggregate";
 import { GridOptions } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
 import { ColDef } from "./column";
+import { Column } from "../column/column";
 
 export type GridId = string;
 export type ColId = string;
@@ -99,6 +100,7 @@ export interface IGridCore {
   getQuickFilterText(): string;
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
+  getRowGroupColumns(): Column[];
   setAggregateModel(aggregates: AggregateModel[]): void;
   setAggregateScope(scope: AggregateScope): void;
 
