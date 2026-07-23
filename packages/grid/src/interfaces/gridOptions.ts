@@ -101,6 +101,24 @@ export interface GridOptions {
    */
   rowSelection?: boolean;
   /**
+   * When true, clicking a body cell selects it (and focuses the grid for keyboard navigation).
+   * When false, cells are not clickable — clicks neither select nor focus a cell, double-click
+   * editing is disabled, and range selection cannot be started with the mouse. Defaults to true.
+   */
+  cellSelection?: boolean;
+  /**
+   * When true, a cell range can be extended by dragging the mouse or with Shift+Arrow / Shift+click.
+   * When false, selection stays a single cell (mouse drag and keyboard/mouse range-extension are
+   * ignored); plain click and arrow navigation still work. Requires `cellSelection`. Defaults to true.
+   */
+  rangeSelection?: boolean;
+  /**
+   * When true, clicking a column header selects that column (Ctrl/Cmd+click toggles). When false,
+   * header clicks no longer select the column; sorting (Shift+click / sort affordances), the column
+   * menu, and filtering are unaffected. Defaults to true.
+   */
+  columnSelection?: boolean;
+  /**
    * When true, clicking the row-number column header toggles selection of all rows in the current
    * view (consistent with clicking any other header cell). Requires the row-number column
    * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
@@ -195,6 +213,9 @@ export interface InternalGridOptions extends GridOptions {
   zebraRows: boolean;
   highlightActiveCell: boolean;
   rowSelection: boolean;
+  cellSelection: boolean;
+  rangeSelection: boolean;
+  columnSelection: boolean;
   selectAllRowsOnHeaderClick: boolean;
   pageSize: number;
   pageSizes: number[];

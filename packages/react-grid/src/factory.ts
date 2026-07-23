@@ -24,6 +24,9 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.zebraRows != null) options.zebraRows = props.zebraRows;
   if (props.highlightActiveCell != null) options.highlightActiveCell = props.highlightActiveCell;
   if (props.rowSelection != null) options.rowSelection = props.rowSelection;
+  if (props.cellSelection != null) options.cellSelection = props.cellSelection;
+  if (props.rangeSelection != null) options.rangeSelection = props.rangeSelection;
+  if (props.columnSelection != null) options.columnSelection = props.columnSelection;
   if (props.selectAllRowsOnHeaderClick != null) options.selectAllRowsOnHeaderClick = props.selectAllRowsOnHeaderClick;
   if (props.pageSize) options.pageSize = props.pageSize;
   if (props.pageSizes) options.pageSizes = props.pageSizes;

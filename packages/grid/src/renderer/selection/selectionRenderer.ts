@@ -243,6 +243,9 @@ export class SelectionRenderer {
     if (this.params.core.getEditingCell()) return;
 
     const ctrl = e.ctrlKey || e.metaKey;
+    // Shift-based range extension only applies when range selection is enabled; otherwise Shift is
+    // ignored and navigation collapses to a single moving cell.
+    const extend = e.shiftKey && this.params.core.options.rangeSelection;
 
     // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
     if (e.key === "F2" || e.key === "Enter") {
@@ -304,13 +307,13 @@ export class SelectionRenderer {
         this.params.core.dispatch({
           type: "navigateCorner",
           corner: e.key === "Home" ? "topLeft" : "bottomRight",
-          extend: e.shiftKey,
+          extend,
         });
       } else {
         this.params.core.dispatch({
           type: "navigate",
           dir: e.key === "Home" ? "left" : "right",
-          extend: e.shiftKey,
+          extend,
           jump: "edge",
         });
       }
@@ -323,7 +326,7 @@ export class SelectionRenderer {
       this.params.core.dispatch({
         type: "navigate",
         dir: e.key === "PageUp" ? "up" : "down",
-        extend: e.shiftKey,
+        extend,
         jump: "page",
         pageRows: this.params.viewportRows(),
       });
@@ -352,7 +355,7 @@ export class SelectionRenderer {
     this.params.core.dispatch({
       type: "navigate",
       dir,
-      extend: e.shiftKey,
+      extend,
       jump: ctrl ? "block" : undefined,
     });
   }
@@ -388,6 +391,15 @@ export class SelectionRenderer {
       return;
     }
 
+    // Cell selection disabled: clicks neither select nor focus a cell (but an empty-space click can
+    // still clear an existing selection, e.g. one set via the API).
+    if (!this.params.core.options.cellSelection) {
+      if (!this.getCellLocation(e.target) && this.params.core.options.clearSelectionOnBodyClick) {
+        this.params.core.dispatch({ type: "selectionClear", what: "all" });
+      }
+      return;
+    }
+
     const location = this.getCellLocation(e.target);
     if (!location) {
       if (this.params.core.options.clearSelectionOnBodyClick) {
@@ -396,7 +408,9 @@ export class SelectionRenderer {
       return;
     }
     e.preventDefault();
-    this.isSelecting = true;
+    // Only arm drag-to-extend when range selection is allowed. The "start" dispatch collapses the
+    // selection to this single cell either way.
+    this.isSelecting = this.params.core.options.rangeSelection;
     this.params.core.dispatch({
       type: "rangeSelectSet",
       viewIdx: location.viewIdx,
@@ -408,6 +422,7 @@ export class SelectionRenderer {
 
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
+    if (!this.params.core.options.cellSelection) return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
     const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);

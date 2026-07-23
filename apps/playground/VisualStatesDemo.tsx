@@ -98,6 +98,11 @@ export function VisualStatesDemo() {
   const [zebraRows, setZebraRows] = useState(true);
   const [highlightActiveCell, setHighlightActiveCell] = useState(true);
 
+  // Interaction gating (all default true = today's behavior).
+  const [cellSelection, setCellSelection] = useState(true);
+  const [rangeSelection, setRangeSelection] = useState(true);
+  const [columnSelection, setColumnSelection] = useState(true);
+
   const [themeId, setThemeId] = useState(themePresets[0].id);
   const [customColors, setCustomColors] = useState(false);
 
@@ -123,11 +128,18 @@ export function VisualStatesDemo() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
-          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Options</strong>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Visual</strong>
           <Toggle label="rowHover" checked={rowHover} onChange={setRowHover} hint="Highlight the row under the pointer" />
           <Toggle label="columnHover" checked={columnHover} onChange={setColumnHover} hint="Highlight the whole column under the pointer" />
           <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
           <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Interaction</strong>
+          <Toggle label="cellSelection" checked={cellSelection} onChange={setCellSelection} hint="Allow clicking cells to select / focus them (also enables double-click edit)" />
+          <Toggle label="rangeSelection" checked={rangeSelection} onChange={setRangeSelection} hint="Allow drag / Shift+Arrow to extend a multi-cell range" />
+          <Toggle label="columnSelection" checked={columnSelection} onChange={setColumnSelection} hint="Allow clicking a column header to select the column" />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -142,13 +154,15 @@ export function VisualStatesDemo() {
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
         Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
-        inside the selection. Toggle <code>Custom colors</code> to recolor these states via theme params.
+        inside the selection. Use the <strong>Interaction</strong> toggles to disable cell clicking, range
+        dragging, or column-header selection. Toggle <code>Custom colors</code> to recolor these states via
+        theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${themeId}-${customColors}`}
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
@@ -156,6 +170,9 @@ export function VisualStatesDemo() {
           columnHover={columnHover}
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
+          cellSelection={cellSelection}
+          rangeSelection={rangeSelection}
+          columnSelection={columnSelection}
           theme={theme}
           style={{ width: "100%", height: "100%" }}
         />

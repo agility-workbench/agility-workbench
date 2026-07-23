@@ -54,8 +54,12 @@ export class HeaderInteractionHandler {
       if (e.shiftKey) {
         return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
       }
-      const additive = e.ctrlKey || e.metaKey;
-      this.params.toggleColumnSelection(header.id, additive ? "toggle" : "replace");
+      // Column selection is opt-out: when disabled, a header click still counts as a header action
+      // (e.g. for sort affordances) but does not select the column.
+      if (this.params.core.options.columnSelection) {
+        const additive = e.ctrlKey || e.metaKey;
+        this.params.toggleColumnSelection(header.id, additive ? "toggle" : "replace");
+      }
       return this.params.core.dispatch({ type: "headerAction", action: "click", colId: header.id });
     }
     const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
