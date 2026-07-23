@@ -19,6 +19,10 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.allowExportAsExcel) options.allowExportAsExcel = props.allowExportAsExcel;
   if (props.pagination) options.pagination = props.pagination;
   if (props.rowNumbers) options.rowNumbers = props.rowNumbers;
+  if (props.rowHover != null) options.rowHover = props.rowHover;
+  if (props.columnHover != null) options.columnHover = props.columnHover;
+  if (props.zebraRows != null) options.zebraRows = props.zebraRows;
+  if (props.highlightActiveCell != null) options.highlightActiveCell = props.highlightActiveCell;
   if (props.rowSelection != null) options.rowSelection = props.rowSelection;
   if (props.selectAllRowsOnHeaderClick != null) options.selectAllRowsOnHeaderClick = props.selectAllRowsOnHeaderClick;
   if (props.pageSize) options.pageSize = props.pageSize;

@@ -31,6 +31,7 @@ import { BodyCellRenderer } from "./body/cellRenderer";
 import { CellRefreshReason } from "./renderer";
 import { BodyPoolSizer } from "./body/poolSizer";
 import { BodyRowHoverRenderer } from "./body/rowHover";
+import { BodyColumnHoverRenderer } from "./body/columnHover";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -77,6 +78,7 @@ export class GridRenderer {
   _bodyCellRenderer: BodyCellRenderer;
   _bodyPoolSizer: BodyPoolSizer;
   _bodyRowHoverRenderer: BodyRowHoverRenderer;
+  _bodyColumnHoverRenderer: BodyColumnHoverRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -322,6 +324,7 @@ export class GridRenderer {
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
+    this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._aggregateModelController.setAggregateScope("none");
@@ -538,7 +541,8 @@ export class GridRenderer {
     this._pinnedSectionLayoutRenderer.bind();
     this._scrollSyncRenderer.bind();
     this._interactionEventBinder.bind();
-    this._bodyRowHoverRenderer.bind();
+    if (this.core.options.rowHover) this._bodyRowHoverRenderer.bind();
+    if (this.core.options.columnHover) this._bodyColumnHoverRenderer.bind();
 
     // initial
     // requestAnimationFrame(() => this._maybeUpdatePoolSize());
@@ -657,6 +661,7 @@ export class GridRenderer {
     this._quickFilterWidget?.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
+    this._bodyColumnHoverRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
   }

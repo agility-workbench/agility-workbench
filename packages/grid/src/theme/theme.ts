@@ -39,6 +39,12 @@ export interface GridThemeParams {
   borderColor?: string;
   /** Row hover background. */
   rowHoverColor?: string;
+  /** Column hover background (highlights a column when `columnHover` is enabled). */
+  columnHoverColor?: string;
+  /** Alternating (odd) row background for zebra striping (when `zebraRows` is enabled). */
+  rowAltBackgroundColor?: string;
+  /** Active (focused) cell outline color (when `highlightActiveCell` is enabled). */
+  activeCellBorderColor?: string;
   /** Selected row/cell background. Fans out to the base and hover selected backgrounds. */
   selectedBackgroundColor?: string;
   /** Base font family. */
@@ -110,6 +116,9 @@ const FANOUT: Record<string, Fanout> = {
   mutedTextColor: { vars: ["--pte-muted-text-color"] },
   borderColor: { vars: ["--pte-border-color", "--pte-frame-border-color"] },
   rowHoverColor: { vars: ["--pte-hover-bg-color"] },
+  columnHoverColor: { vars: ["--pte-column-hover-bg-color"] },
+  rowAltBackgroundColor: { vars: ["--pte-row-alt-bg-color"] },
+  activeCellBorderColor: { vars: ["--pte-active-cell-border-color"] },
   selectedBackgroundColor: {
     vars: ["--pte-selected-bg-color", "--pte-selected-hover-bg-color"],
   },
@@ -215,6 +224,9 @@ export const themeDark: GridTheme = createTheme({
     "--pte-selected-bg-color": "#1e3a8a",
     "--pte-selected-hover-bg-color": "#27459b",
     "--pte-selected-border-color": "#60a5fa",
+    "--pte-active-cell-border-color": "#93c5fd",
+    "--pte-row-alt-bg-color": "#131f36",
+    "--pte-column-hover-bg-color": "#13223a",
     "--pte-input-bg-color": "#111827",
     "--pte-select-border-color": "#60a5fa",
     "--pte-hcell-filter-active-color": "#60a5fa",

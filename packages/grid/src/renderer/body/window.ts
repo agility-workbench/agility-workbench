@@ -142,6 +142,11 @@ export class BodyWindowRenderer {
         slot.rightRowEl.setAttribute("data-view-idx", String(viewIndex));
       }
 
+      const isAltRow = this.params.core.options.zebraRows && viewIndex % 2 === 1;
+      for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+        el?.classList.toggle("pte-row-alt", isAltRow);
+      }
+
       this.markGroupRow(slot, row);
       this.patchCells(slot, row, viewIndex, this.params.core.getRowNumberForViewIndex(viewIndex));
       this.params.applySelectionToSlot(slot, viewIndex);

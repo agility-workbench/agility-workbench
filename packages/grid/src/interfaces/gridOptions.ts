@@ -75,6 +75,27 @@ export interface GridOptions {
   pagination?: boolean;
   rowNumbers?: boolean;
   /**
+   * When true, the row under the pointer is highlighted (background `--pte-hover-bg-color`).
+   * Defaults to true. Set to false to disable row-hover highlighting entirely.
+   */
+  rowHover?: boolean;
+  /**
+   * When true, hovering a body cell highlights every cell in that column (background
+   * `--pte-column-hover-bg-color`). Defaults to false.
+   */
+  columnHover?: boolean;
+  /**
+   * When true, alternating (odd) data rows get a distinct background
+   * (`--pte-row-alt-bg-color`) for zebra striping. Defaults to false.
+   */
+  zebraRows?: boolean;
+  /**
+   * When true, the active (focused) cell is drawn with a distinct outline
+   * (`--pte-active-cell-border-color`) so it stands out inside a larger range selection.
+   * Defaults to false.
+   */
+  highlightActiveCell?: boolean;
+  /**
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
    */
@@ -169,6 +190,10 @@ export interface InternalGridOptions extends GridOptions {
   allowExportAsExcel: boolean;
   pagination: boolean;
   rowNumbers: boolean;
+  rowHover: boolean;
+  columnHover: boolean;
+  zebraRows: boolean;
+  highlightActiveCell: boolean;
   rowSelection: boolean;
   selectAllRowsOnHeaderClick: boolean;
   pageSize: number;

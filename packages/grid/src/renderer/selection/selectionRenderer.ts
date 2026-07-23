@@ -36,6 +36,9 @@ export class SelectionRenderer {
     const range = this.params.core.getSelectionRange();
     const selectedRowIDs = this.params.core.getSelectedRowIds();
     const selectedColumnIDs = this.params.core.getSelectedColumnIds();
+    const activeCell = this.params.core.options.highlightActiveCell
+      ? this.params.core.getActiveCell()
+      : null;
     const rangeRow = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
     const leaves = this.params.leafColumns();
@@ -85,12 +88,16 @@ export class SelectionRenderer {
             ? colIdx === leaves.length - 1
             : (colSelected && !nextColSelected);
 
+        const isActive = !!activeCell && Number.isFinite(colIdx)
+          && viewIndex === activeCell.row && colIdx === activeCell.colIdx;
+
         const cls = cell.classList;
         cls.toggle("selected", selected);
         cls.toggle("selected-top", selected && isTop);
         cls.toggle("selected-bottom", selected && isBottom);
         cls.toggle("selected-left", selected && isLeft);
         cls.toggle("selected-right", selected && isRight);
+        cls.toggle("pte-active-cell", isActive);
       }
     };
 
@@ -199,10 +206,12 @@ export class SelectionRenderer {
     this.applyColumnSelectionStyles();
   }
 
-  /** Called when core emits focusChanged — scroll the active cell into view. */
+  /** Called when core emits focusChanged — scroll the active cell into view and, when the
+   * active-cell highlight is enabled, repaint so the outline follows the focused cell. */
   onFocusChanged(viewIdx?: number, colIdx?: number) {
     if (viewIdx == null || colIdx == null) return;
     this.params.ensureCellVisible(viewIdx, colIdx);
+    if (this.params.core.options.highlightActiveCell) this.refreshSelectionStyles();
   }
 
   // ---------------- DOM resolution ----------------

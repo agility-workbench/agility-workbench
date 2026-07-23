@@ -1,0 +1,167 @@
+import { useMemo, useState } from "react";
+
+import { Grid } from "@react-grid";
+import type { ReactColDef } from "@react-grid";
+import { ColumnType } from "@grid/interfaces/column";
+import { themeLight, themeDark } from "@grid";
+import type { GridTheme } from "@grid";
+
+/**
+ * Playground for the row/cell visual-state options:
+ *   - rowHover           highlight the row under the pointer (on by default)
+ *   - columnHover        highlight the whole column under the pointer
+ *   - zebraRows          alternating background on odd rows
+ *   - highlightActiveCell distinct outline on the focused cell inside a range
+ *
+ * Toggle each independently, in light or dark, and optionally apply custom colors through the
+ * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
+ * confirm they feed the same CSS variables.
+ */
+
+type PersonRow = {
+  id: number;
+  name: string;
+  department: string;
+  city: string;
+  salary: number;
+  rating: number;
+  active: string;
+};
+
+const FIRST = ["Ava", "Liam", "Mia", "Noah", "Emma", "Ethan", "Olivia", "Lucas", "Sophia", "Mason", "Isla", "Leo"];
+const LAST = ["Chen", "Patel", "Kim", "Garcia", "Nguyen", "Silva", "Khan", "Rossi", "Haas", "Ito", "Novak", "Park"];
+const DEPTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support"];
+const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Deterministic PRNG so the demo data is stable across reloads.
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildRows(count: number): PersonRow[] {
+  const rand = mulberry32(7);
+  const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
+  return Array.from({ length: count }, (_, i) => ({
+    id: 1000 + i,
+    name: `${pick(FIRST)} ${pick(LAST)}`,
+    department: pick(DEPTS),
+    city: pick(CITIES),
+    salary: 60_000 + Math.floor(rand() * 140_000),
+    rating: +(1 + rand() * 4).toFixed(1),
+    active: rand() > 0.25 ? "Yes" : "No",
+  }));
+}
+
+const themePresets = [
+  { id: "light", label: "Light", className: "pte-theme-light" },
+  { id: "dark", label: "Dark", className: "pte-theme-dark" },
+];
+
+// Custom accent colors layered on top of a preset via the semantic theme params added for these
+// features. Each fans out to its --pte-* variable.
+const CUSTOM_PARAMS = {
+  activeCellBorderColor: "#f97316", // orange active-cell outline
+  rowAltBackgroundColor: "#fff7ed", // warm zebra stripe (light)
+  columnHoverColor: "#ffedd5", // warm column hover (light)
+};
+const CUSTOM_PARAMS_DARK = {
+  activeCellBorderColor: "#fb923c",
+  rowAltBackgroundColor: "#20160c",
+  columnHoverColor: "#2a1c0e",
+};
+
+function Toggle({ label, checked, onChange, hint }: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  hint?: string;
+}) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }} title={hint}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+export function VisualStatesDemo() {
+  const rows = useMemo(() => buildRows(200), []);
+
+  const [rowHover, setRowHover] = useState(true);
+  const [columnHover, setColumnHover] = useState(true);
+  const [zebraRows, setZebraRows] = useState(true);
+  const [highlightActiveCell, setHighlightActiveCell] = useState(true);
+
+  const [themeId, setThemeId] = useState(themePresets[0].id);
+  const [customColors, setCustomColors] = useState(false);
+
+  const activePreset = themePresets.find((t) => t.id === themeId) ?? themePresets[0];
+
+  const theme = useMemo<GridTheme | undefined>(() => {
+    if (!customColors) return undefined;
+    const base = themeId === "dark" ? themeDark : themeLight;
+    return base.withParams(themeId === "dark" ? CUSTOM_PARAMS_DARK : CUSTOM_PARAMS);
+  }, [customColors, themeId]);
+
+  const columnDefs = useMemo<ReactColDef[]>(() => [
+    { colId: "id", key: "id", label: "ID", width: 80 },
+    { colId: "name", key: "name", label: "Name", width: 160, editable: true },
+    { colId: "department", key: "department", label: "Department", width: 140 },
+    { colId: "city", key: "city", label: "City", width: 130 },
+    { colId: "salary", key: "salary", label: "Salary", width: 120, type: ColumnType.NUMBER },
+    { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER },
+    { colId: "active", key: "active", label: "Active", width: 90 },
+  ], []);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Options</strong>
+          <Toggle label="rowHover" checked={rowHover} onChange={setRowHover} hint="Highlight the row under the pointer" />
+          <Toggle label="columnHover" checked={columnHover} onChange={setColumnHover} hint="Highlight the whole column under the pointer" />
+          <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
+          <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="vs-theme" style={{ fontSize: 13 }}>Theme</label>
+          <select id="vs-theme" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
+            {themePresets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+          <Toggle label="Custom colors" checked={customColors} onChange={setCustomColors} hint="Apply the new semantic theme params (orange accent)" />
+        </div>
+      </div>
+
+      <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
+        Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
+        make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
+        inside the selection. Toggle <code>Custom colors</code> to recolor these states via theme params.
+      </p>
+
+      <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
+        {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
+        <Grid
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${themeId}-${customColors}`}
+          data={rows}
+          columnDefs={columnDefs}
+          rowIdKey="id"
+          rowHover={rowHover}
+          columnHover={columnHover}
+          zebraRows={zebraRows}
+          highlightActiveCell={highlightActiveCell}
+          theme={theme}
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default VisualStatesDemo;
