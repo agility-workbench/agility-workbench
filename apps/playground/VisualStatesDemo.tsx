@@ -98,10 +98,14 @@ export function VisualStatesDemo() {
   const [zebraRows, setZebraRows] = useState(true);
   const [highlightActiveCell, setHighlightActiveCell] = useState(true);
 
-  // Interaction gating (all default true = today's behavior).
-  const [cellSelection, setCellSelection] = useState(true);
+  // Interaction gating (defaults preserve today's behavior).
+  const [cellSelection, setCellSelection] = useState<"true" | "false" | "text">("true");
   const [rangeSelection, setRangeSelection] = useState(true);
   const [columnSelection, setColumnSelection] = useState(true);
+
+  // Map the string control to the option's boolean | "text" value.
+  const cellSelectionValue: boolean | "text" =
+    cellSelection === "text" ? "text" : cellSelection === "true";
 
   const [themeId, setThemeId] = useState(themePresets[0].id);
   const [customColors, setCustomColors] = useState(false);
@@ -137,7 +141,15 @@ export function VisualStatesDemo() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
           <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Interaction</strong>
-          <Toggle label="cellSelection" checked={cellSelection} onChange={setCellSelection} hint="Allow clicking cells to select / focus them (also enables double-click edit)" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+            title="true = grid cell selection · false = inert cells · text = native browser text selection (like a plain HTML table)">
+            cellSelection
+            <select value={cellSelection} onChange={(e) => setCellSelection(e.target.value as typeof cellSelection)}>
+              <option value="true">true (grid)</option>
+              <option value="false">false (inert)</option>
+              <option value="text">text (native)</option>
+            </select>
+          </label>
           <Toggle label="rangeSelection" checked={rangeSelection} onChange={setRangeSelection} hint="Allow drag / Shift+Arrow to extend a multi-cell range" />
           <Toggle label="columnSelection" checked={columnSelection} onChange={setColumnSelection} hint="Allow clicking a column header to select the column" />
         </div>
@@ -154,15 +166,17 @@ export function VisualStatesDemo() {
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
         Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
-        inside the selection. Use the <strong>Interaction</strong> toggles to disable cell clicking, range
-        dragging, or column-header selection. Toggle <code>Custom colors</code> to recolor these states via
-        theme params.
+        inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
+        column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
+        HTML table where you can drag to select and copy cell text. Toggle <code>Custom colors</code> to
+        recolor these states via theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
           key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${themeId}-${customColors}`}
+          // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
@@ -170,7 +184,7 @@ export function VisualStatesDemo() {
           columnHover={columnHover}
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
-          cellSelection={cellSelection}
+          cellSelection={cellSelectionValue}
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}
           theme={theme}

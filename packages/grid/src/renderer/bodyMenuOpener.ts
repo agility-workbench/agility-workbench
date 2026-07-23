@@ -17,6 +17,12 @@ export class BodyMenuOpener {
     const target = e.target as HTMLElement | null;
     if (!target) return;
 
+    // The body context menu operates on the cell selection (focus/copy/cut/paste/export), so it is
+    // only available in grid cell-selection mode. When cellSelection is false ("inert") or "text",
+    // return BEFORE preventDefault: nothing is selected, no grid menu opens, and in "text" mode the
+    // browser's own context menu (e.g. Copy) appears over the natively-selected text.
+    if (this.params.core.options.cellSelection !== true) return;
+
     const cell = target.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return;
 

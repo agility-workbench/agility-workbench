@@ -391,9 +391,11 @@ export class SelectionRenderer {
       return;
     }
 
-    // Cell selection disabled: clicks neither select nor focus a cell (but an empty-space click can
-    // still clear an existing selection, e.g. one set via the API).
-    if (!this.params.core.options.cellSelection) {
+    // Grid cell selection is only active when cellSelection === true. When it is false ("inert") or
+    // "text" (native browser text selection), clicks neither select nor focus a cell — and we return
+    // BEFORE preventDefault so the browser's own text selection can start in "text" mode. An
+    // empty-space click can still clear an existing selection (e.g. one set via the API).
+    if (this.params.core.options.cellSelection !== true) {
       if (!this.getCellLocation(e.target) && this.params.core.options.clearSelectionOnBodyClick) {
         this.params.core.dispatch({ type: "selectionClear", what: "all" });
       }
@@ -422,7 +424,7 @@ export class SelectionRenderer {
 
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
-    if (!this.params.core.options.cellSelection) return;
+    if (this.params.core.options.cellSelection !== true) return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
     const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);

@@ -18,7 +18,7 @@ beforeAll(() => {
 type Row = { id: number; name: string; city: string };
 
 interface Opts {
-  cellSelection?: boolean;
+  cellSelection?: boolean | "text";
   rangeSelection?: boolean;
   columnSelection?: boolean;
 }
@@ -68,6 +68,17 @@ function mousedown(el: HTMLElement) {
   el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
 }
 
+/** Right-click a cell; returns the dispatched event so callers can inspect defaultPrevented. */
+function contextmenu(el: HTMLElement): MouseEvent {
+  const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  el.dispatchEvent(ev);
+  return ev;
+}
+
+function bodyMenuOpen(container: HTMLElement): boolean {
+  return !!container.ownerDocument.querySelector(".pte-menu");
+}
+
 describe("cellSelection", () => {
   it("selects a cell on click by default", async () => {
     const { container, apiRef, root } = await mountGrid();
@@ -83,6 +94,48 @@ describe("cellSelection", () => {
     await act(async () => { mousedown(bodyCells(container)[0]); });
     expect(api.getSelection().kind).toBe("none");
     expect(api.getSelection().active).toBeNull();
+    root.unmount();
+  });
+
+  it("reverts to native text selection when cellSelection is 'text'", async () => {
+    const { container, apiRef, root } = await mountGrid({ cellSelection: "text" });
+    const api = apiRef.current!;
+    // Grid selection stays off...
+    await act(async () => { mousedown(bodyCells(container)[0]); });
+    expect(api.getSelection().kind).toBe("none");
+    // ...and the root opts cells into native text selection.
+    const rootEl = container.querySelector<HTMLElement>("[data-pte-grid-id]")!;
+    expect(rootEl.classList.contains("pte-text-selection")).toBe(true);
+    root.unmount();
+  });
+
+  it("opens the body context menu on right-click by default (selecting the cell)", async () => {
+    const { container, apiRef, root } = await mountGrid();
+    const api = apiRef.current!;
+    const ev = await act(async () => contextmenu(bodyCells(container)[0]));
+    expect(ev.defaultPrevented).toBe(true); // native menu suppressed
+    expect(bodyMenuOpen(container)).toBe(true);
+    expect(api.getSelection().kind).toBe("cell");
+    root.unmount();
+  });
+
+  it("does not open the body menu or select on right-click when cellSelection is false", async () => {
+    const { container, apiRef, root } = await mountGrid({ cellSelection: false });
+    const api = apiRef.current!;
+    const ev = await act(async () => contextmenu(bodyCells(container)[0]));
+    expect(ev.defaultPrevented).toBe(false); // grid does not intercept
+    expect(bodyMenuOpen(container)).toBe(false);
+    expect(api.getSelection().kind).toBe("none");
+    root.unmount();
+  });
+
+  it("lets the native context menu through (no grid menu, no selection) in 'text' mode", async () => {
+    const { container, apiRef, root } = await mountGrid({ cellSelection: "text" });
+    const api = apiRef.current!;
+    const ev = await act(async () => contextmenu(bodyCells(container)[0]));
+    expect(ev.defaultPrevented).toBe(false); // browser's own menu (Copy) appears
+    expect(bodyMenuOpen(container)).toBe(false);
+    expect(api.getSelection().kind).toBe("none");
     root.unmount();
   });
 });

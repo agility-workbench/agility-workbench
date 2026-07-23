@@ -119,7 +119,7 @@ export class GridCore implements IGridCore {
       zebraRows: isTrue(options.zebraRows),
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: isTrue(options.rowSelection),
-      cellSelection: options.cellSelection ?? true,
+      cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),

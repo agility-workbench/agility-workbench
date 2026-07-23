@@ -1173,6 +1173,12 @@
   background-color: var(--pte-column-hover-bg-color);
 }
 
+/* "text" cell-selection mode — revert cells to native browser text selection (plain-table feel). */
+.pte-text-selection .pte-cell {
+  user-select: text;
+  cursor: text;
+}
+
 .pte-cell {
   padding-top: var(--pte-cell-padding-top);
   padding-bottom: var(--pte-cell-padding-bottom);

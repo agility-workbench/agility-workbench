@@ -164,6 +164,11 @@ export class GridRenderer {
     this.root.dataset.pteGridId = this.core.id;
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
+    // In "text" cell-selection mode, revert body cells to native browser text selection (like a
+    // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
+    if (this.core.options.cellSelection === "text") {
+      this.root.classList.add("pte-text-selection");
+    }
     this._rootAttachmentRenderer = new RootAttachmentRenderer(this.root);
     this._iconRenderer = new IconRenderer(this.root, this.core.id);
     this._themeRenderer = new ThemeRenderer(this.root);

@@ -17,6 +17,14 @@ export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
 /**
+ * How the mouse interacts with body cells:
+ * - `true`: grid cell selection (default).
+ * - `false`: cells inert; nothing selectable.
+ * - `"text"`: native browser text selection, like a plain HTML table.
+ */
+export type CellSelectionMode = boolean | "text";
+
+/**
  * Quick filter (global search) configuration.
  * - `mode`: "onDemand" (default) hides the widget until summoned with Ctrl/Cmd+F; "always" keeps it
  *   pinned open under the header.
@@ -101,11 +109,15 @@ export interface GridOptions {
    */
   rowSelection?: boolean;
   /**
-   * When true, clicking a body cell selects it (and focuses the grid for keyboard navigation).
-   * When false, cells are not clickable — clicks neither select nor focus a cell, double-click
-   * editing is disabled, and range selection cannot be started with the mouse. Defaults to true.
+   * Controls how the mouse interacts with body cells:
+   * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
+   *   selection, keyboard navigation, and double-click editing.
+   * - `false`: cells are inert — clicks neither select nor focus a cell, and double-click editing
+   *   is disabled. Native text selection stays suppressed (nothing is selectable).
+   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off, but the browser's
+   *   native text selection is enabled so users can select and copy cell text with the mouse.
    */
-  cellSelection?: boolean;
+  cellSelection?: CellSelectionMode;
   /**
    * When true, a cell range can be extended by dragging the mouse or with Shift+Arrow / Shift+click.
    * When false, selection stays a single cell (mouse drag and keyboard/mouse range-extension are
@@ -213,7 +225,7 @@ export interface InternalGridOptions extends GridOptions {
   zebraRows: boolean;
   highlightActiveCell: boolean;
   rowSelection: boolean;
-  cellSelection: boolean;
+  cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
   selectAllRowsOnHeaderClick: boolean;
