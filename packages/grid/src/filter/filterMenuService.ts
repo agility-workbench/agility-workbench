@@ -52,10 +52,11 @@ export class ColumnFilterMenuService {
     if (column.filter === true || typeof column.filter === "function" || column.filter === undefined) {
       return this.getFilterParamsByColType(column);
     }
+    const debounceMs = this.core.getOptions().filterDebounceMs;
     switch (column.filter) {
       case "number":
       case "currency":
-        return { filterOptions: this.getFilterOpsForType(true), debounceMs: 300 };
+        return { filterOptions: this.getFilterOpsForType(true), debounceMs };
       case "date":
         return { filterOptions: this.getFilterOpsForType(true) };
       case "boolean":
@@ -64,7 +65,7 @@ export class ColumnFilterMenuService {
       case "tree":
         return { filterOptions: [{value: FilterType.NOT_IN, label: "Not in"}] };
     }
-    return { filterOptions: this.getFilterOpsForType(false), debounceMs: 300 };
+    return { filterOptions: this.getFilterOpsForType(false), debounceMs };
   }
 
   private mergeFilterParams(defaultParams: FilterParams, customParams: FilterParams): FilterParams {
@@ -75,16 +76,17 @@ export class ColumnFilterMenuService {
     if (column.filter === "set" || column.filter === "tree") {
       return { filterOptions: [{value: FilterType.NOT_IN, label: "Not in"}] };
     }
+    const debounceMs = this.core.getOptions().filterDebounceMs;
     switch (column.type) {
       case ColumnType.NUMBER:
       case ColumnType.CURRENCY:
-        return { filterOptions: this.getFilterOpsForType(column.isComputableType()), debounceMs: 300 };
+        return { filterOptions: this.getFilterOpsForType(column.isComputableType()), debounceMs };
       case ColumnType.DATE:
         return { filterOptions: this.getFilterOpsForType(column.isComputableType()) };
       case ColumnType.BOOLEAN:
         return { filterOptions: this.getFilterOpsForType(column.isComputableType()) };
       default:
-        return { filterOptions: this.getFilterOpsForType(column.isComputableType()), debounceMs: 300 };
+        return { filterOptions: this.getFilterOpsForType(column.isComputableType()), debounceMs };
     }
   }
 

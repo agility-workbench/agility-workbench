@@ -15,6 +15,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.getRowId) options.getRowId = props.getRowId;
   if (props.rowIdKey) options.rowIdKey = props.rowIdKey;
   if (props.overscanRowCount) options.overscanRowCount = props.overscanRowCount;
+  if (props.minResizeWidth != null) options.minResizeWidth = props.minResizeWidth;
+  if (props.maxColumnWidth != null) options.maxColumnWidth = props.maxColumnWidth;
   if (props.allowExportAsCSV) options.allowExportAsCSV = props.allowExportAsCSV;
   if (props.allowExportAsExcel) options.allowExportAsExcel = props.allowExportAsExcel;
   if (props.pagination) options.pagination = props.pagination;
@@ -44,6 +46,11 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
+  if (props.loadingMessage != null) options.loadingMessage = props.loadingMessage;
+  if (props.noRowsMessage != null) options.noRowsMessage = props.noRowsMessage;
+  if (props.filterDebounceMs != null) options.filterDebounceMs = props.filterDebounceMs;
+  if (props.cellFlashDuration != null) options.cellFlashDuration = props.cellFlashDuration;
+  if (props.cellFadeDuration != null) options.cellFadeDuration = props.cellFadeDuration;
   if (props.rowModelType === "serverSide" && props.serverSideDataSource) {
     options.serverSideDataSource = props.serverSideDataSource;
   }

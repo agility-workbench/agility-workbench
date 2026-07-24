@@ -19,8 +19,12 @@ export class LoadingOverlayRenderer {
   private isLoading = false;
   private overlay: HTMLDivElement;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, message?: string) {
     this.overlay = createLoadingOverlay();
+    if (message != null) {
+      const label = this.overlay.querySelector(".pte-loading-label") as HTMLDivElement | null;
+      if (label) label.textContent = message;
+    }
     root.appendChild(this.overlay);
   }
 

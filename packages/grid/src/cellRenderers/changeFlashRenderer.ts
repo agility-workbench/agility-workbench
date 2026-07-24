@@ -77,8 +77,10 @@ export class ChangeFlashCellRenderer implements ICellRenderer {
 
   private flash(dir: FlashDirection, p: CellRendererParams) {
     const cfg = (p.colDef.cellRendererParams ?? {}) as ChangeFlashParams;
-    const flashMs = cfg.cellFlashDuration ?? DEFAULT_FLASH_MS;
-    const fadeMs = cfg.cellFadeDuration ?? DEFAULT_FADE_MS;
+    // Resolution order: per-column cellRendererParams → grid-level option → built-in default.
+    const opts = p.api?.getCore?.().getOptions?.();
+    const flashMs = cfg.cellFlashDuration ?? opts?.cellFlashDuration ?? DEFAULT_FLASH_MS;
+    const fadeMs = cfg.cellFadeDuration ?? opts?.cellFadeDuration ?? DEFAULT_FADE_MS;
 
     this.clearTimers();
 

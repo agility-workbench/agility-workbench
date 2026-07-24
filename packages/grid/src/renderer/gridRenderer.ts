@@ -529,7 +529,7 @@ export class GridRenderer {
     // The filter overlay portals to document.body, outside the root subtree, so it
     // must receive theme variables directly.
     this._themeRenderer.registerTarget(this._filterOverlayRenderer.overlay);
-    this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root);
+    this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root, this.core.options.loadingMessage);
     this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
 
     // Quick filter (global search). Only mounted when enabled and the model is client-side.
@@ -624,7 +624,7 @@ export class GridRenderer {
       } else if (hasColumnFilter) {
         this._noRowsOverlayRenderer.setMessage("No rows match the current filters");
       } else {
-        this._noRowsOverlayRenderer.setMessage("No rows to show");
+        this._noRowsOverlayRenderer.setMessage(this.core.options.noRowsMessage);
       }
     }
     this._noRowsOverlayRenderer.setEmpty(isEmpty);

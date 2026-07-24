@@ -88,6 +88,16 @@ export interface GridOptions {
   getRowId?: (row: object) => string;
   rowIdKey?: string;
   overscanRowCount?: number;
+  /**
+   * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
+   * content-based auto-sizing. Defaults to 75.
+   */
+  minResizeWidth?: number;
+  /**
+   * Maximum width (px) content-based auto-sizing will grow a column to (an explicit `width` /
+   * user resize can still exceed it). Defaults to 420.
+   */
+  maxColumnWidth?: number;
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
   pagination?: boolean;
@@ -219,6 +229,34 @@ export interface GridOptions {
    */
   quickFilter?: boolean | QuickFilterOptions;
   /**
+   * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
+   * "Loading data...".
+   */
+  loadingMessage?: string;
+  /**
+   * Text shown in the no-rows overlay when the grid is genuinely empty (no data). Defaults to
+   * "No rows to show". Note: when rows exist but are all filtered out, a filter-specific message is
+   * shown instead and this option does not apply.
+   */
+  noRowsMessage?: string;
+  /**
+   * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
+   * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
+   * to 300.
+   */
+  filterDebounceMs?: number;
+  /**
+   * Grid-wide default duration (ms) a changed cell stays fully highlighted before fading, used by
+   * the change-flash cell renderer. A column's `cellRendererParams.cellFlashDuration` overrides it.
+   * Defaults to 500.
+   */
+  cellFlashDuration?: number;
+  /**
+   * Grid-wide default duration (ms) of the change-flash fade-out. A column's
+   * `cellRendererParams.cellFadeDuration` overrides it. Defaults to 1000.
+   */
+  cellFadeDuration?: number;
+  /**
    * Named icon overrides. Values may be a URL, data URI, CSS image value
    * like `url(...)`, or inline SVG markup. Merged over any icons carried by
    * `theme`, taking precedence.
@@ -268,5 +306,10 @@ export interface InternalGridOptions extends GridOptions {
   groupDefaultExpanded: number;
   groupRowsSelectable: boolean;
   quickFilter: boolean | QuickFilterOptions;
+  loadingMessage: string;
+  noRowsMessage: string;
+  filterDebounceMs: number;
+  cellFlashDuration: number;
+  cellFadeDuration: number;
   icons?: GridIconMap;
 }
