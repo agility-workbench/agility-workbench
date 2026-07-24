@@ -463,6 +463,39 @@ export class SelectionRenderer {
     if (!this.isSelecting) return;
     this.isSelecting = false;
   }
+
+  /**
+   * Body click → emit rowClicked (for any body row, including group rows) and, when the click landed
+   * on a real data cell, cellClicked. These are notification-only events (they don't drive
+   * selection, which happens on mousedown); consumers subscribe via api.on or the onRowClicked /
+   * onCellClicked options. Fires regardless of cellSelection mode so plain-table / read-only grids
+   * still get click callbacks.
+   */
+  onCellClick(e: MouseEvent) {
+    if (e.button !== 0) return;
+    const rowEl = (e.target as HTMLElement | null)?.closest(".pte-row") as HTMLDivElement | null;
+    if (!rowEl || !this.params.root.contains(rowEl)) return;
+    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
+    if (!Number.isFinite(viewIdx)) return;
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    if (!rowId) return;
+    const rowNode = this.params.core.getRowModel().getRowNode(rowId);
+    const isGroup = !!rowNode?.isGroup;
+
+    this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, event: e });
+
+    // cellClicked only for a real, non-row-number data cell.
+    const cell = (e.target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
+    if (!cell || cell.classList.contains("pte-row-number-cell")) return;
+    const colIdx = Number(cell.dataset.colIdx);
+    if (!Number.isFinite(colIdx)) return;
+    const col = this.params.leafColumns()[colIdx];
+    if (!col) return;
+    const value = rowNode && !isGroup ? col.getValue(rowNode) : undefined;
+    this.params.core.emit("cellClicked", {
+      rowId, colId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value, event: e,
+    });
+  }
 }
 
 // A KeyboardEvent.key that represents a single printable character (letters, digits, punctuation,

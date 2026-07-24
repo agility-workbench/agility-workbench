@@ -16,6 +16,8 @@ export type GridEventName =
   | "focusChanged"
   | "editingChanged"
   | "paginationChanged"
+  | "cellClicked"
+  | "rowClicked"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -124,6 +126,33 @@ export type GridEventPaginationChangedParams = {
   pageSizes: number[];
 };
 
+export type GridEventCellClickedParams = {
+  rowId: GridId;
+  colId: ColId;
+  /** View index of the clicked row. */
+  viewIdx: number;
+  /** Global leaf-column index of the clicked cell. */
+  colIdx: number;
+  /** The clicked row's underlying data object. */
+  data: unknown;
+  /** The clicked cell's raw value. */
+  value: unknown;
+  /** The originating DOM click event. */
+  event: MouseEvent;
+};
+
+export type GridEventRowClickedParams = {
+  rowId: GridId;
+  /** View index of the clicked row. */
+  viewIdx: number;
+  /** The clicked row's underlying data object. */
+  data: unknown;
+  /** Whether the clicked row is a group (summary) row. */
+  isGroup: boolean;
+  /** The originating DOM click event. */
+  event: MouseEvent;
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -143,6 +172,8 @@ export interface GridEventMap {
   focusChanged: GridEventFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
+  cellClicked: GridEventCellClickedParams;
+  rowClicked: GridEventRowClickedParams;
   error: GridEventErrorParams;
 }
 

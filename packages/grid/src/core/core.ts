@@ -97,6 +97,29 @@ export class GridCore implements IGridCore {
       getPageStartIdx: () => this.getPageStartIdx(),
       isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
     });
+    this.bindOptionCallbacks();
+  }
+
+  // Bridge the declarative on* option callbacks to the underlying core events, so consumers can use
+  // either api.on(...) or the GridOptions callbacks interchangeably. Framework-agnostic — works for
+  // vanilla and React alike. Callbacks are read from resolved options at construction.
+  private bindOptionCallbacks() {
+    const o = this.options;
+    if (o.onCellClicked) this.on("cellClicked", (ev) => o.onCellClicked!(ev));
+    if (o.onRowClicked) this.on("rowClicked", (ev) => o.onRowClicked!(ev));
+    if (o.onSelectionChanged) this.on("selectionChanged", (ev) => o.onSelectionChanged!(ev));
+    if (o.onCellValueChanged) {
+      this.on("editingChanged", (ev) => {
+        if (ev.state === "committed" && ev.cell) {
+          o.onCellValueChanged!({ rowId: ev.cell.rowId, colId: ev.cell.colId, value: ev.value });
+        }
+      });
+    }
+    if (o.onSortChanged) {
+      this.on("columnsChanged", (ev) => {
+        if (ev.reason === "sort") o.onSortChanged!({ changedColIds: ev.changedColIds });
+      });
+    }
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -119,6 +142,11 @@ export class GridCore implements IGridCore {
       zebraRows: isTrue(options.zebraRows),
       getRowClass: options.getRowClass,
       getRowStyle: options.getRowStyle,
+      onCellClicked: options.onCellClicked,
+      onRowClicked: options.onRowClicked,
+      onCellValueChanged: options.onCellValueChanged,
+      onSelectionChanged: options.onSelectionChanged,
+      onSortChanged: options.onSortChanged,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: isTrue(options.rowSelection),
       cellSelection: options.cellSelection ?? true, // true | false | "text"

@@ -108,6 +108,9 @@ export function VisualStatesDemo() {
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
 
+  // Event-callback readout: shows the most recent grid event (onCellClicked / onSortChanged / …).
+  const [lastEvent, setLastEvent] = useState<string>("—");
+
   // Header / column-menu options.
   const [buttonsOnHover, setButtonsOnHover] = useState(false);
   // Per-column flags demonstrated on specific columns: hide the menu (⋮) button on "Rating", and
@@ -248,6 +251,10 @@ export function VisualStatesDemo() {
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
           getRowStyle={getRowStyle}
+          onCellClicked={(p) => setLastEvent(`onCellClicked → row ${p.rowId}, col "${p.colId}" = ${JSON.stringify(p.value)}`)}
+          onSortChanged={() => setLastEvent("onSortChanged")}
+          onSelectionChanged={(p) => setLastEvent(`onSelectionChanged → ${p.snapshot.kind}`)}
+          onCellValueChanged={(p) => setLastEvent(`onCellValueChanged → row ${p.rowId}, col "${p.colId}" = ${JSON.stringify(p.value)}`)}
           cellSelection={cellSelectionValue}
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}
@@ -256,6 +263,10 @@ export function VisualStatesDemo() {
           theme={theme}
           style={{ width: "100%", height: "100%" }}
         />
+      </div>
+
+      <div style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>
+        Last event: <span style={{ color: "var(--pte-text-color, #111)" }}>{lastEvent}</span>
       </div>
     </div>
   );

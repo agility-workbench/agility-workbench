@@ -26,6 +26,11 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.zebraRows != null) options.zebraRows = props.zebraRows;
   if (props.getRowClass) options.getRowClass = props.getRowClass;
   if (props.getRowStyle) options.getRowStyle = props.getRowStyle;
+  if (props.onCellClicked) options.onCellClicked = props.onCellClicked;
+  if (props.onRowClicked) options.onRowClicked = props.onRowClicked;
+  if (props.onCellValueChanged) options.onCellValueChanged = props.onCellValueChanged;
+  if (props.onSelectionChanged) options.onSelectionChanged = props.onSelectionChanged;
+  if (props.onSortChanged) options.onSortChanged = props.onSortChanged;
   if (props.highlightActiveCell != null) options.highlightActiveCell = props.highlightActiveCell;
   if (props.rowSelection != null) options.rowSelection = props.rowSelection;
   if (props.cellSelection != null) options.cellSelection = props.cellSelection;

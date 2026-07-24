@@ -5,6 +5,25 @@ import type { GridTheme } from "../theme/theme";
 import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
+import type {
+  GridEventCellClickedParams,
+  GridEventRowClickedParams,
+  GridEventSelectionChangedParams,
+} from "../events/events";
+
+/** Payload for the `onCellValueChanged` option: a cell edit was committed. */
+export interface CellValueChangedParams {
+  rowId: string;
+  colId: string;
+  /** The newly committed value. */
+  value: unknown;
+}
+
+/** Payload for the `onSortChanged` option. */
+export interface SortChangedParams {
+  /** Column ids whose sort state changed (when known). */
+  changedColIds?: string[];
+}
 
 /** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */
 export interface RowClassParams {
@@ -156,6 +175,30 @@ export interface GridOptions {
    * return a style object or nothing. Recomputed as rows scroll into view.
    */
   getRowStyle?: GetRowStyle;
+  /**
+   * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
+   * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell.
+   */
+  onCellClicked?: (params: GridEventCellClickedParams) => void;
+  /**
+   * Called when a body row is clicked (left button), including group rows. Convenience wrapper over
+   * the `rowClicked` event.
+   */
+  onRowClicked?: (params: GridEventRowClickedParams) => void;
+  /**
+   * Called when a cell edit is committed with a new value. Convenience wrapper over the
+   * `editingChanged` event (state "committed").
+   */
+  onCellValueChanged?: (params: CellValueChangedParams) => void;
+  /**
+   * Called when the selection changes. Convenience wrapper over the `selectionChanged` event.
+   */
+  onSelectionChanged?: (params: GridEventSelectionChangedParams) => void;
+  /**
+   * Called when the sort changes (a column is sorted, re-sorted, or cleared). Convenience wrapper
+   * over the `columnsChanged` event with reason "sort".
+   */
+  onSortChanged?: (params: SortChangedParams) => void;
   /**
    * When true, the active (focused) cell is drawn with a distinct outline
    * (`--pte-active-cell-border-color`) so it stands out inside a larger range selection.

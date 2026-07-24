@@ -399,6 +399,7 @@ export class GridRenderer {
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
       onCellMouseDown: (e) => this._selectionRenderer.onCellMouseDown(e),
+      onCellClick: (e) => this._selectionRenderer.onCellClick(e),
       onCellDoubleClick: (e) => this._selectionRenderer.onCellDoubleClick(e),
       onBodyContextMenu: (e) => this._bodyMenuOpener?.onBodyContextMenu(e),
       onColumnResizeMouseMove: (e) => this._columnInteractionRenderer.onColumnResizeMouseMove(e),
