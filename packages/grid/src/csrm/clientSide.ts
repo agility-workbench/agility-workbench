@@ -256,14 +256,17 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   private setSorts(sort: SortModel): void {
     this.sortedIdx = this.filteredIdx.slice();
-    const comparators = sort.items.filter(s => s.col && s.dir !== null)
+    const comparators = sort.items
+      // A column's comparator may not be resolved yet (e.g. an initial sort seeded before the first
+      // data load identifies comparators); skip such items rather than crash. They sort correctly on
+      // the next pass once comparators exist.
+      .filter(s => s.col && s.dir !== null && typeof s.col.comparator === "function")
       .map(sort => {
         const { col, dir } = sort;
         const mult = dir === "desc" ? -1 : 1;
         const cmp = col.comparator!;
         return (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => cmp(a, b, nodeA, nodeB) * mult;
-      })
-      .filter(Boolean) as Array<(a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => number>;
+      });
 
     this.sortedIdx.sort((a, b) => {
       for (const cmp of comparators) {

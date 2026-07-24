@@ -568,8 +568,22 @@ export class GridCore implements IGridCore {
     // exist, so discard the edit history.
     this.history.clear();
     this.rowModel.setRows(rows);
+    // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
+    // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
+    // the first sort runs with unresolved comparators and is silently skipped. Client-side only;
+    // comparators are derived from sample values.
+    this.identifyComparatorsFromCurrentRows();
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+  }
+
+  // Re-derive every leaf column's sort comparator from the current row nodes. Cheap no-op when there
+  // are no rows (comparators stay null and any active sort is skipped until data arrives).
+  private identifyComparatorsFromCurrentRows(): void {
+    const nodes: IRowNode[] = [];
+    this.rowModel.forEachNode((node: IRowNode) => nodes.push(node));
+    if (nodes.length === 0) return;
+    this.columnModel.identifyComparators(nodes);
   }
 
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {

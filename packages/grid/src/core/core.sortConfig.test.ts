@@ -114,3 +114,38 @@ describe("GridOptions.initialSort", () => {
     expect(viewOrder(core, "n")).toEqual(afterUser);
   });
 });
+
+describe("columns-before-data order (React wrapper sequence)", () => {
+  // The React wrapper sets columnDefs BEFORE data. An initial sort is therefore seeded while there
+  // are no rows (so comparators aren't resolved yet); the first setRowData must resolve comparators
+  // and apply the seeded sort without crashing. Regression for "cmp is not a function".
+  const order = ["S", "M", "L", "XL"];
+
+  function buildColsFirst(options: object, colDefs: any[]) {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide", ...options });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setColumnDefsFromProps(colDefs); // columns first, no data
+    core.setRowData(ROWS.map(r => ({ ...r }))); // data second → applies seeded sort
+    return core;
+  }
+
+  it("applies a ColDef initial sort seeded before data (no crash)", () => {
+    const core = buildColsFirst({}, [
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER, sort: "asc" },
+      { colId: "size", key: "size", label: "Size", type: ColumnType.STRING },
+    ]);
+    expect(viewOrder(core, "id")).toEqual(["2", "4", "1", "3"]); // n asc: 1,1,2,3
+  });
+
+  it("applies a grid initialSort with a CUSTOM comparator seeded before data (the demo case)", () => {
+    const core = buildColsFirst({ initialSort: [{ colId: "size", dir: "asc" }] }, [
+      {
+        colId: "size", key: "size", label: "Size", type: ColumnType.STRING,
+        comparator: (a: string, b: string) => order.indexOf(a) - order.indexOf(b),
+      },
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+    ]);
+    // Custom size order applied on first load, not alphabetical.
+    expect(viewOrder(core, "size")).toEqual(["S", "M", "L", "XL"]);
+  });
+});
