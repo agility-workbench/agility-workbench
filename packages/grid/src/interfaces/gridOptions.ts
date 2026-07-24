@@ -73,6 +73,12 @@ export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
 /** How the quick-filter search string is matched against each row. */
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
+/** One entry of a grid-level initial sort: a column id and its direction, in priority order. */
+export interface InitialSortItem {
+  colId: string;
+  dir: "asc" | "desc";
+}
+
 /**
  * How a mouse gesture starts editing an editable cell:
  * - "doubleClick" (default): double-click opens the editor.
@@ -294,6 +300,13 @@ export interface GridOptions {
    * by `suppressKeyboardEdit`. Non-editable columns and group rows never enter edit regardless.
    */
   editTrigger?: EditTrigger;
+  /**
+   * Initial sort applied once when the grid first sets up its columns — an ordered list of
+   * `{ colId, dir }` (first = primary sort). Per-column `ColDef.sort` / `sortIndex` take precedence:
+   * a column with its own `sort` keeps that, and `initialSort` only fills columns not covered that
+   * way. Not kept in sync with later user sorting. Client-side row model.
+   */
+  initialSort?: InitialSortItem[];
   /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with

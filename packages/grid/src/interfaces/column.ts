@@ -1,7 +1,8 @@
 import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValueParserParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
 import { CellEditor } from "../renderer/editing/cellEditor";
-import { Filter, FilterParams } from "./filter";
+import { ComparatorFn, Filter, FilterParams } from "./filter";
+import type { SortDir } from "./sort";
 
 export enum ColumnType {
   STRING = "string",
@@ -82,6 +83,24 @@ export interface ColDef {
   hidden?: boolean;
   pinned?: "left" | "right";
   sortable?: boolean;
+  /**
+   * Custom sort comparator for this column: `(a, b, nodeA, nodeB) => number` (negative if a<b).
+   * `a`/`b` are the two cell values; the row nodes are provided for value-getter or cross-field
+   * comparisons. When omitted, a comparator is auto-derived from the column `type`.
+   */
+  comparator?: ComparatorFn;
+  /**
+   * Initial sort direction for this column ("asc" | "desc"), applied once when the grid first sets
+   * up its columns. Combine with `sortIndex` to order a multi-column initial sort. Overrides the
+   * grid-level `initialSort` for this column. Not kept in sync with later user sorting.
+   */
+  sort?: SortDir;
+  /**
+   * Order of this column within a multi-column initial sort (lower first). Only meaningful alongside
+   * `sort`. Columns with `sort` but no `sortIndex` are ordered after indexed ones, in definition
+   * order.
+   */
+  sortIndex?: number;
   filter?: Filter;
   filterParams?: FilterParams;
   groupable?: boolean;

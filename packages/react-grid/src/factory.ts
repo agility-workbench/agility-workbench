@@ -49,6 +49,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.rowModelType) options.rowModelType = props.rowModelType;
   if (props.undoLimit != null) options.undoLimit = props.undoLimit;
   if (props.editTrigger != null) options.editTrigger = props.editTrigger;
+  if (props.initialSort != null) options.initialSort = props.initialSort;
   if (props.suppressKeyboardEdit != null) options.suppressKeyboardEdit = props.suppressKeyboardEdit;
   if (props.suppressTypeToEdit != null) options.suppressTypeToEdit = props.suppressTypeToEdit;
   if (props.reevaluateOnEdit != null) options.reevaluateOnEdit = props.reevaluateOnEdit;

@@ -5,6 +5,7 @@ import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellStyle, ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
+import type { SortDir } from "../interfaces/sort";
 
 type InternalColumnRole = "rowNumber" | "autoGroup";
 type InternalColDef = ColDef & { __internalRole?: InternalColumnRole; __groupLevel?: number };
@@ -55,7 +56,13 @@ export class Column {
   groupExpandState: "open" | "closed";
   columnGroupVisible: boolean;
   exportable: boolean = true;
+  // The resolved comparator used for sorting (auto-derived from type, or the user-supplied one).
   comparator: ComparatorFn | null = null;
+  // User-supplied comparator from the ColDef, if any. Takes precedence over auto-derivation.
+  userComparator?: ComparatorFn;
+  // Initial sort seeded from the ColDef (`sort` / `sortIndex`), applied once at first column setup.
+  initialSort?: SortDir;
+  initialSortIndex?: number;
   collator?: Intl.Collator | null
   showExpander: boolean = false;
   internalRole?: InternalColumnRole;
@@ -115,6 +122,9 @@ export class Column {
     this.hidden = isTrue(col.hidden);
     this.pinned = col.pinned || null;
     this.sortable = !isFalse(col.sortable);
+    this.userComparator = col.comparator;
+    this.initialSort = col.sort;
+    this.initialSortIndex = col.sortIndex;
     this.filter = col.filter;
     this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);
@@ -253,6 +263,7 @@ export class Column {
     dup.columnContextMenu = this.columnContextMenu;
     dup.collator = this.collator;
     dup.comparator = this.comparator;
+    dup.userComparator = this.userComparator;
     dup.groupExpandState = this.groupExpandState;
     dup.columnGroupVisible = this.columnGroupVisible;
     dup.computedWidth = this.computedWidth;

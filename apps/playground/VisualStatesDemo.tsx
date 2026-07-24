@@ -111,6 +111,10 @@ export function VisualStatesDemo() {
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
 
+  // Sort config: an initial sort (Salary desc) + a custom Department comparator (by a fixed order).
+  // NOTE: initial sort seeds ONCE at first column setup, so toggling it needs a grid remount (key).
+  const [sortConfig, setSortConfig] = useState(true);
+
   // Event-callback readout: shows the most recent grid event (onCellClicked / onSortChanged / …).
   const [lastEvent, setLastEvent] = useState<string>("—");
 
@@ -160,11 +164,19 @@ export function VisualStatesDemo() {
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
     { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
-    { colId: "department", key: "department", label: "Department", width: 140, filter: true },
+    {
+      colId: "department", key: "department", label: "Department", width: 140, filter: true,
+      // Custom comparator: sort by a fixed department priority rather than alphabetically.
+      comparator: sortConfig
+        ? (a: string, b: string) => DEPTS.indexOf(a) - DEPTS.indexOf(b)
+        : undefined,
+    },
     // columnContextMenu: false → right-clicking this header shows the browser's native menu.
     { colId: "city", key: "city", label: "City", width: 130, filter: true, columnContextMenu: !nativeCityMenu },
     {
       colId: "salary", key: "salary", label: "Salary", width: 120, type: ColumnType.NUMBER,
+      // Initial sort: Salary descending on first load.
+      sort: sortConfig ? "desc" : undefined,
       // cellStyle: color high salaries green, low ones muted (function of the cell value).
       cellStyle: conditionalStyling
         ? (p: { value: number }) => ({ color: p.value >= 150_000 ? "#16a34a" : "#9ca3af", fontWeight: p.value >= 150_000 ? "600" : "400" })
@@ -173,7 +185,7 @@ export function VisualStatesDemo() {
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !hideRatingMenu },
     { colId: "active", key: "active", label: "Active", width: 90 },
-  ], [hideRatingMenu, nativeCityMenu, conditionalStyling]);
+  ], [hideRatingMenu, nativeCityMenu, conditionalStyling, sortConfig]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
@@ -185,6 +197,7 @@ export function VisualStatesDemo() {
           <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
           <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
           <Toggle label="conditionalStyling" checked={conditionalStyling} onChange={setConditionalStyling} hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
+          <Toggle label="sortConfig" checked={sortConfig} onChange={setSortConfig} hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
@@ -255,7 +268,7 @@ export function VisualStatesDemo() {
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${sortConfig}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}

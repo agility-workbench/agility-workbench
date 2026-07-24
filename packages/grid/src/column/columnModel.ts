@@ -637,6 +637,16 @@ export class ColumnModel implements IColumnModel {
   }
 
   identifyComparator(column: Column, rows: IRowNode[]): void {
+    // An explicit ColDef comparator always wins over type-based auto-derivation (and doesn't need
+    // sample rows to resolve). The public comparator contract is (aValue, bValue, nodeA, nodeB) —
+    // cell VALUES first — but the row model's sort passes row-data objects as the first two args, so
+    // wrap it to extract each column value from the node (matching the auto-derived comparators).
+    if (column.userComparator) {
+      const userCmp = column.userComparator;
+      column.comparator = (_a, _b, nodeA, nodeB) =>
+        userCmp(column.getValue(nodeA), column.getValue(nodeB), nodeA, nodeB);
+      return;
+    }
     if (column.filter && typeof column.filter === "function") {
       column.comparator = column.filter;
       return;

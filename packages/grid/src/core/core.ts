@@ -50,6 +50,9 @@ export class GridCore implements IGridCore {
 
   private filters: FilterModel = new FilterModel();
   private sorts: SortModel = new SortModel();
+  // Guards one-time seeding of the initial sort (ColDef sort/sortIndex + grid initialSort) so later
+  // columnDefs updates don't clobber the user's manual sorting.
+  private initialSortSeeded = false;
 
   // Quick-filter (global search) state. Resolved match-mode / case-sensitivity default from the
   // quickFilter grid option; the widget may override them at runtime. Client-side row model only.
@@ -165,6 +168,7 @@ export class GridCore implements IGridCore {
       editTrigger: options.editTrigger ?? "doubleClick",
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
+      initialSort: options.initialSort,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
@@ -220,11 +224,16 @@ export class GridCore implements IGridCore {
 
   private setColumnDefs(colDefs: ColDef[]) {
     this.columnModel.setColumnDefs(colDefs);
+    const seededSort = this.seedInitialSort();
     const changedSortColIds = this.reconcileSortModelColumns();
     const changedFilterColIds = this.reconcileFilterModelColumns();
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
     this.autosizeColumns();
+    // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
+    if (seededSort) {
+      this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
@@ -314,6 +323,42 @@ export class GridCore implements IGridCore {
     }
 
     return changedColIds;
+  }
+
+  /**
+   * Seed the initial sort model ONCE, on the first column setup. Precedence: per-column
+   * `ColDef.sort` (ordered by `sortIndex`, then leaf order) is applied first; grid `initialSort`
+   * then fills only columns not already covered. Runs before the sorted view is first produced (the
+   * next applyRequest reads this.sorts), so it applies without an extra reflow. Later columnDefs
+   * updates are skipped so user sorting is preserved.
+   */
+  private seedInitialSort(): boolean {
+    if (this.initialSortSeeded) return false;
+    this.initialSortSeeded = true;
+
+    const leaves = this.columnModel.getLeaves().filter(c => !c.isInternal());
+
+    // 1) Per-column ColDef sort, ordered by sortIndex (undefined last, stable by leaf order).
+    const colDefSorted = leaves
+      .filter(c => c.initialSort && c.sortable)
+      .map((c, i) => ({ c, order: c.initialSortIndex ?? Number.MAX_SAFE_INTEGER, tie: i }))
+      .sort((a, b) => (a.order - b.order) || (a.tie - b.tie));
+
+    const covered = new Set<string>();
+    for (const { c } of colDefSorted) {
+      this.sorts.updateItem(c, c.initialSort!);
+      covered.add(c.instanceID);
+    }
+
+    // 2) Grid-level initialSort fills columns not covered by a ColDef sort.
+    for (const item of this.options.initialSort ?? []) {
+      const col = this.resolveSortColumn({ key: item.colId });
+      if (!col || !col.sortable || covered.has(col.instanceID)) continue;
+      this.sorts.updateItem(col, item.dir);
+      covered.add(col.instanceID);
+    }
+
+    return covered.size > 0;
   }
 
   private reconcileSortModelColumns(): string[] {
