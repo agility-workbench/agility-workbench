@@ -107,6 +107,8 @@ export function VisualStatesDemo() {
   const [editTrigger, setEditTrigger] = useState<"doubleClick" | "singleClick" | "none">("doubleClick");
   const [suppressKeyboardEdit, setSuppressKeyboardEdit] = useState(false);
   const [suppressTypeToEdit, setSuppressTypeToEdit] = useState(false);
+  const [moveAfterEdit, setMoveAfterEdit] = useState(true);
+  const [stopEditingOnBlur, setStopEditingOnBlur] = useState(true);
 
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
@@ -224,6 +226,8 @@ export function VisualStatesDemo() {
           </label>
           <Toggle label="suppressKeyboardEdit" checked={suppressKeyboardEdit} onChange={setSuppressKeyboardEdit} hint="Disable F2 / Enter / type-to-edit (mouse trigger unaffected)" />
           <Toggle label="suppressTypeToEdit" checked={suppressTypeToEdit} onChange={setSuppressTypeToEdit} hint="Disable only type-to-edit; F2 / Enter still start editing" />
+          <Toggle label="moveAfterEdit" checked={moveAfterEdit} onChange={setMoveAfterEdit} hint="After committing, Enter moves down / Tab moves right (edit the Name column to try)" />
+          <Toggle label="stopEditingOnBlur" checked={stopEditingOnBlur} onChange={setStopEditingOnBlur} hint="Commit the editor when it loses focus; off keeps it open" />
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
             title="default = grid menu · native = browser menu · custom = grid menu + a custom item · empty = no menu (native suppressed)">
             bodyContextMenu
@@ -268,7 +272,7 @@ export function VisualStatesDemo() {
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${sortConfig}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${sortConfig}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${moveAfterEdit}-${stopEditingOnBlur}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
@@ -288,6 +292,8 @@ export function VisualStatesDemo() {
           editTrigger={editTrigger}
           suppressKeyboardEdit={suppressKeyboardEdit}
           suppressTypeToEdit={suppressTypeToEdit}
+          moveAfterEdit={moveAfterEdit}
+          stopEditingWhenCellsLoseFocus={stopEditingOnBlur}
           bodyContextMenu={bodyContextMenu}
           showColumnButtonsOnHover={buttonsOnHover}
           theme={theme}

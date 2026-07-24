@@ -321,6 +321,19 @@ export interface GridOptions {
    */
   suppressTypeToEdit?: boolean;
   /**
+   * When true (default), committing an edit with Enter or Tab moves the active cell to the next cell
+   * and keeps navigating from there: Enter → down (Shift+Enter → up), Tab → right (Shift+Tab →
+   * left). When false, Enter/Tab commit in place without moving. (Multiline/textarea editors keep
+   * Enter for newlines; Ctrl/Cmd+Enter commits.)
+   */
+  moveAfterEdit?: boolean;
+  /**
+   * When true (default), an open cell editor commits its value when it loses focus (e.g. clicking
+   * elsewhere). When false, losing focus is ignored and the editor stays open until an explicit
+   * commit (Enter/Tab) or cancel (Escape).
+   */
+  stopEditingWhenCellsLoseFocus?: boolean;
+  /**
    * When true (default), committing a cell edit re-runs the active sort and/or filter if the
    * edited column participates in them — so an edited row moves to its correct sorted position or
    * drops out of a filtered view. Set to false to keep edited rows in place until the next
@@ -427,6 +440,8 @@ export interface InternalGridOptions extends GridOptions {
   editTrigger: EditTrigger;
   suppressKeyboardEdit: boolean;
   suppressTypeToEdit: boolean;
+  moveAfterEdit: boolean;
+  stopEditingWhenCellsLoseFocus: boolean;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;

@@ -154,10 +154,14 @@ export class CellEditRenderer {
         if (this.multiline && !(e.ctrlKey || e.metaKey)) return;
         e.preventDefault();
         this.commit();
+        // moveAfterEdit: advance to the next row after committing (Shift+Enter goes up).
+        this.moveAfterCommit(e.shiftKey ? "up" : "down");
         break;
       case "Tab":
         e.preventDefault();
         this.commit();
+        // Tab advances horizontally after committing (Shift+Tab goes left).
+        this.moveAfterCommit(e.shiftKey ? "left" : "right");
         break;
       case "Escape":
         e.preventDefault();
@@ -169,8 +173,17 @@ export class CellEditRenderer {
   private onEditorBlur = () => {
     // Ignore the blur we cause ourselves while tearing down.
     if (this.tearingDown) return;
+    // Committing on blur is opt-out; when disabled, focus loss leaves the editor open.
+    if (!this.params.core.options.stopEditingWhenCellsLoseFocus) return;
     this.commit();
   };
+
+  // After an Enter/Tab commit, move the active cell one step so editing flows like a spreadsheet.
+  // Gated by moveAfterEdit; no-op once the option is off (commit stays in place).
+  private moveAfterCommit(dir: "up" | "down" | "left" | "right") {
+    if (!this.params.core.options.moveAfterEdit) return;
+    this.params.core.dispatch({ type: "navigate", dir });
+  }
 
   private commit() {
     if (!this.editingCell || !this.editor) return;
