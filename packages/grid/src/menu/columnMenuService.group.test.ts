@@ -46,9 +46,25 @@ function groupItem(core: GridCore, ctx: ColumnMenuContext): MenuItem | undefined
 }
 
 describe("column menu row grouping items", () => {
-  it("shows Ungroup All on the auto group column menu", () => {
+  it("shows 'Ungroup' on the auto group column menu when a single column is grouped", () => {
     const core = makeGrid();
     core.dispatch({ type: "rowGroupSet", colIds: [colId(core, "region")] });
+    const autoGroupId = core.getColumnModel().getAutoGroupColumns()[0].instanceID;
+
+    const item = groupItem(core, {
+      trigger: "columnMenuButton",
+      targetColId: autoGroupId,
+      colIds: [autoGroupId],
+    });
+
+    // One grouped column → "Ungroup" (no "All"); still clears every grouping.
+    expect(item?.label).toBe("Ungroup");
+    expect(item?.payload).toEqual({ colIDs: [] });
+  });
+
+  it("shows 'Ungroup All' on the auto group column menu when more than one column is grouped", () => {
+    const core = makeGrid();
+    core.dispatch({ type: "rowGroupSet", colIds: [colId(core, "region"), colId(core, "country")] });
     const autoGroupId = core.getColumnModel().getAutoGroupColumns()[0].instanceID;
 
     const item = groupItem(core, {
