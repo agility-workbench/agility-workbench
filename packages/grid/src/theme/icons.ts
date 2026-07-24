@@ -29,6 +29,8 @@ export type GridIconName =
   | "pin"
   | "export"
   | "copy"
+  | "cut"
+  | "paste"
   | (string & {});
 
 export type GridIconMap = Partial<Record<GridIconName, GridIconSource>>;

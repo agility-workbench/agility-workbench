@@ -55,6 +55,8 @@
   --pte-icon-menu: url(icons/menu-vertical.svg);
   --pte-icon-pin: url(icons/pin.svg);
   --pte-icon-copy: url(icons/copy.svg);
+  --pte-icon-cut: url(icons/cut.svg);
+  --pte-icon-paste: url(icons/paste.svg);
   --pte-icon-export: url(icons/export.svg);
   --pte-shadow-color: rgba(0, 0, 0, 0.1);
   --pte-overlay-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
@@ -1756,6 +1758,20 @@
 
 .icon-copy {
   mask-image: var(--pte-icon-copy);
+  background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
+}
+
+.icon-cut {
+  mask-image: var(--pte-icon-cut);
+  background-color: var(--pte-icon-color);
+  width: 18px;
+  height: 18px;
+}
+
+.icon-paste {
+  mask-image: var(--pte-icon-paste);
   background-color: var(--pte-icon-color);
   width: 18px;
   height: 18px;

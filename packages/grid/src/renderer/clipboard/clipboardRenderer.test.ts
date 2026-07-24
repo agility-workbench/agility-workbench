@@ -96,6 +96,22 @@ describe("ClipboardRenderer", () => {
     await clip.paste();
     expect(data(core, "1").locked).toBe("L1");
   });
+
+  it("hasEditableCells reflects whether the selection covers an editable cell", () => {
+    const { clip } = makeClip(core);
+    // Nothing selected → false.
+    expect(clip.hasEditableCells()).toBe(false);
+    // Active cell on the non-editable "locked" column → false.
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 2 });
+    expect(clip.hasEditableCells()).toBe(false);
+    // Active cell on the editable "qty" column → true.
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 1 });
+    expect(clip.hasEditableCells()).toBe(true);
+    // A range spanning locked + editable columns → true (at least one editable).
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 2, mode: "extend" });
+    expect(clip.hasEditableCells()).toBe(true);
+  });
 });
 
 describe("ClipboardRenderer multi-cell paste", () => {

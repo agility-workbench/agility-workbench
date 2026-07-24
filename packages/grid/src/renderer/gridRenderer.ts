@@ -282,6 +282,9 @@ export class GridRenderer {
         },
         {
           copySelection: ({ includeHeaders, ctx }) => this._copySelectionToClipboard({ includeHeaders, ctx }),
+          cutSelection: () => this._clipboardRenderer.cut(),
+          pasteSelection: () => void this._clipboardRenderer.paste(),
+          hasEditableCells: () => this._clipboardRenderer.hasEditableCells(),
         },
       );
       this._bodyMenuOpener = new BodyMenuOpener({

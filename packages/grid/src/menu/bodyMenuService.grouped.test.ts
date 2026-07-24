@@ -43,7 +43,12 @@ function makeService(core: GridCore) {
       exportCSV: (o) => calls.push({ fn: "csv", ...o }),
       exportExcel: (o) => calls.push({ fn: "excel", ...o }),
     },
-    clipboard: { copySelection: () => {} },
+    clipboard: {
+      copySelection: () => {},
+      cutSelection: () => {},
+      pasteSelection: () => {},
+      hasEditableCells: () => false,
+    },
   });
   return { svc, calls };
 }

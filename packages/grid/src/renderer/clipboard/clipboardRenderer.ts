@@ -60,6 +60,26 @@ export class ClipboardRenderer {
     if (edits.length) this.params.core.dispatch({ type: "cellsCommit", edits, reason: "clear" });
   }
 
+  /**
+   * Whether the current selection contains at least one editable cell. Used to gate edit-oriented
+   * actions (cut / paste) in the body context menu so they only appear when they could do something.
+   * Mirrors the editability rule used by buildClearEdits / paste (col.isCellEditable per row).
+   */
+  hasEditableCells(): boolean {
+    const block = this.resolveSelectionBlock();
+    if (!block) return false;
+    const core = this.params.core;
+    for (const viewIdx of block.viewIdxs) {
+      const rowId = core.getRowIdAtViewIndex(viewIdx);
+      if (!rowId) continue;
+      const row = core.getRowModel().getRowNode(rowId);
+      for (const col of block.cols) {
+        if (col.isCellEditable(row)) return true;
+      }
+    }
+    return false;
+  }
+
   // Build the "" commit for every editable cell in the block; locked cells are left untouched.
   // Committing "" runs the column's valueParser (so e.g. numeric columns decide the empty result).
   private buildClearEdits(block: SelectionBlock): { cell: CellRef; value: unknown }[] {

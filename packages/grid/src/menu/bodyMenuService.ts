@@ -12,6 +12,10 @@ export interface BodyMenuExportTarget {
 
 export interface BodyMenuClipboardTarget {
   copySelection: (opts: { includeHeaders: boolean; ctx: BodyMenuContext }) => void;
+  cutSelection: (opts: { ctx: BodyMenuContext }) => void;
+  pasteSelection: (opts: { ctx: BodyMenuContext }) => void;
+  /** Whether the current selection contains at least one editable cell (gates Cut / Paste). */
+  hasEditableCells: () => boolean;
 }
 
 interface BodyMenuServiceParams {
@@ -26,8 +30,20 @@ export class BodyMenuService {
   buildDefaultBodyMenu(ctx: BodyMenuContext): MenuItem[] {
     const items: MenuItem[] = [];
 
+    // Cut / Paste are edit operations, so they only appear when the selection includes at least one
+    // editable cell (i.e. the grid has editable columns in range). Right-click has already focused
+    // the target cell, so these act on the current selection just like the keyboard Ctrl+X / Ctrl+V.
+    // Order: Cut, Copy, Copy with Headers, Paste (clipboard ops bracket the copy pair).
+    const canEdit = this.params.clipboard.hasEditableCells();
+
+    if (canEdit) {
+      items.push({ id: "cut", label: "Cut", left: "icon-cut", command: "body.cut" });
+    }
     items.push({ id: "copy", label: "Copy", left: "icon-copy", command: "body.copy" });
     items.push({ id: "copyWithHeaders", label: "Copy with Headers", left: "icon-copy", command: "body.copyWithHeaders" });
+    if (canEdit) {
+      items.push({ id: "paste", label: "Paste", left: "icon-paste", command: "body.paste" });
+    }
 
     const opts = this.params.core.getOptions();
     const exportItems: MenuItem[] = [];
@@ -155,6 +171,10 @@ export class BodyMenuService {
         return this.params.clipboard.copySelection({ includeHeaders: false, ctx });
       case "body.copyWithHeaders":
         return this.params.clipboard.copySelection({ includeHeaders: true, ctx });
+      case "body.cut":
+        return this.params.clipboard.cutSelection({ ctx });
+      case "body.paste":
+        return this.params.clipboard.pasteSelection({ ctx });
       case "body.export.csv":
         return this.params.exporter.exportCSV({ scope });
       case "body.export.excel":
