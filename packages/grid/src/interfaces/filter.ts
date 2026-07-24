@@ -2,7 +2,22 @@ import { FilterValueAsyncSource } from "../filter/types";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
 
-export type Filter = boolean | string | ((valA: any, valB: any, nodeA: IRowNode, nodeB: IRowNode) => number);
+/**
+ * Custom column filter matcher. Called once per row for each active menu filter on the column;
+ * return true to keep the row. Receives the cell value, the row node, and the user's current filter
+ * input from the menu: `filterValues` is the raw `FilterDef.values` array (e.g. `["abc"]` for
+ * contains, `[10, 20]` for inRange, `[]` for isBlank), and `filterType` is the chosen operator. Use
+ * it to implement column-specific matching that the built-in operators don't cover. Only runs for
+ * filters the user has applied via the menu — a column with no active filter is not filtered.
+ */
+export type FilterMatcherFn = (
+  val: any,
+  node: IRowNode,
+  filterValues: any[],
+  filterType: FilterType,
+) => boolean;
+
+export type Filter = boolean | string | FilterMatcherFn;
 
 export enum FilterType {
   CONTAINS = "contains",

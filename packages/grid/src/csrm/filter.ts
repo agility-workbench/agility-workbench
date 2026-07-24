@@ -1,6 +1,6 @@
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
-import { FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
+import { FilterItem, FilterMatcherFn, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 
 export interface QuickFilterSpec {
@@ -64,8 +64,18 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
   const out = new Array(n);
   let outLen = 0;
 
-  const active: Array<{ col: Column; type: FilterType; v: any }> = [];
+  const active: Array<{ col: Column; type: FilterType; v: any; matcher?: FilterMatcherFn; rawValues?: any[] }> = [];
   for (const filter of filters) {
+    // A column whose `filter` is a function supplies a custom matcher: it receives the cell value,
+    // node, and the user's raw menu input (values + type), and decides row-by-row. The built-in
+    // value normalization / operator switch is bypassed for that column.
+    const matcher = typeof filter.col.filter === "function" ? (filter.col.filter as FilterMatcherFn) : undefined;
+    if (matcher) {
+      for (const f of filter.filters) {
+        active.push({ col: filter.col, type: f.type, v: null, matcher, rawValues: Array.isArray(f.values) ? f.values : [f.values] });
+      }
+      continue;
+    }
     // Pre-normalize filter values
     for (const f of filter.filters) {
       const valuesNeeded = valuesNeededFor(f.type);
@@ -114,6 +124,16 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
     for (let j = 0; j < active.length; j++) {
       const f = active[j];
       const cell = f.col.getValue(rows[i]);
+
+      // Custom matcher: delegate the keep/drop decision to the column's filter function.
+      if (f.matcher) {
+        if (!f.matcher(cell, rows[i], f.rawValues ?? [], f.type)) {
+          ok = false;
+          break;
+        }
+        continue;
+      }
+
       const strVal = cell == null ? "" : String(cell).toLowerCase();
 
       switch (f.type) {

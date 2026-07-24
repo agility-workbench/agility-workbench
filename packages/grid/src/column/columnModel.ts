@@ -647,10 +647,7 @@ export class ColumnModel implements IColumnModel {
         userCmp(column.getValue(nodeA), column.getValue(nodeB), nodeA, nodeB);
       return;
     }
-    if (column.filter && typeof column.filter === "function") {
-      column.comparator = column.filter;
-      return;
-    } else if (column.filter == "") {
+    if (column.filter == "") {
       return;
     } else if (rows.length == 0) {
       column.comparator = null;
