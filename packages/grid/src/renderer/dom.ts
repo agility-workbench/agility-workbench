@@ -31,6 +31,7 @@ export function initDomRenderer(
     (exporter, clipboard) => new BodyMenuCoordinator(
       new BodyMenuService({ core, exporter, clipboard }),
       bodyAdapter,
+      core,
     ),
   );
   return { renderer, api };

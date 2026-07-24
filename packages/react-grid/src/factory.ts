@@ -28,6 +28,11 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.rangeSelection != null) options.rangeSelection = props.rangeSelection;
   if (props.columnSelection != null) options.columnSelection = props.columnSelection;
   if (props.selectAllRowsOnHeaderClick != null) options.selectAllRowsOnHeaderClick = props.selectAllRowsOnHeaderClick;
+  // Forward only the boolean intent to core: false disables the menu (native menu shows); everything
+  // else (true / omitted / a function) leaves core at its "show menu" default and lets the React
+  // body-menu adapter apply the function arm (so React-node slots are handled). This avoids running
+  // a user callback twice (once in core, once in the adapter).
+  if (props.bodyContextMenu === false) options.bodyContextMenu = false;
   if (props.pageSize) options.pageSize = props.pageSize;
   if (props.pageSizes) options.pageSizes = props.pageSizes;
   if (props.serverSideBlockSize) options.serverSideBlockSize = props.serverSideBlockSize;

@@ -50,11 +50,11 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const instanceRef = useRef<GridInstance | null>(null);
     const onGridReadyRef = useRef(props.onGridReady);
     const getColumnMenuItemsRef = useRef(props.getColumnMenuItems);
-    const getBodyMenuItemsRef = useRef(props.getBodyMenuItems);
+    const bodyContextMenuRef = useRef(props.bodyContextMenu);
 
     onGridReadyRef.current = props.onGridReady;
     getColumnMenuItemsRef.current = props.getColumnMenuItems;
-    getBodyMenuItemsRef.current = props.getBodyMenuItems;
+    bodyContextMenuRef.current = props.bodyContextMenu;
 
     // Create, attach, announce, and destroy the lifecycle-sensitive grid resources
     // from the layout effect so React render stays pure and StrictMode can replay it safely.
@@ -69,7 +69,13 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
           getColumnMenuItems: (params) => getColumnMenuItemsRef.current?.(params) ?? params.items,
         }),
         new ReactBodyMenuAdapter({
-          getBodyMenuItems: (params) => getBodyMenuItemsRef.current?.(params) ?? params.items,
+          // Only the function arm customizes items here; boolean modes (default / native-menu) are
+          // handled via core options forwarded by getGridOptions. Read the ref so the callback stays
+          // reactive to prop changes without recreating the grid instance.
+          getBodyMenuItems: (params) => {
+            const opt = bodyContextMenuRef.current;
+            return typeof opt === "function" ? opt(params) : params.items;
+          },
         }),
       );
       const instance: GridInstance = { core, renderer, api, destroyed: false };

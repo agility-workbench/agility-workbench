@@ -23,7 +23,12 @@ export type { BodyMenuContext } from "./menu";
 export type { ColumnMenuContext } from "./menu";
 export { isFalse, isTrue } from "./misc";
 
-export type { GridOptions, GroupDisplayType } from "./interfaces/gridOptions";
+export type {
+  GridOptions,
+  GroupDisplayType,
+  CellSelectionMode,
+  BodyContextMenuGetter,
+} from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 

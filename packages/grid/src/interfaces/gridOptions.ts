@@ -2,6 +2,16 @@ import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
 import { GridIconMap } from "../theme/icons";
 import type { GridTheme } from "../theme/theme";
+import type { MenuItem } from "./menuItem";
+import type { BodyMenuContext } from "../menu/bodyContext";
+
+/**
+ * Customizes the body (right-click) context menu. Receives the menu context and the default items
+ * the grid built for it; returns the items to actually show. Return `[]` to show no menu for this
+ * context (the grid still owns the gesture — the browser's native menu stays suppressed). To let
+ * the native browser menu through instead, set `bodyContextMenu` to `false`.
+ */
+export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
 /**
  * How grouped rows are displayed:
@@ -131,6 +141,15 @@ export interface GridOptions {
    */
   columnSelection?: boolean;
   /**
+   * Controls the body (right-click) context menu:
+   * - `true` / omitted (default): show the grid's default body menu (Copy, Export, …).
+   * - `false`: the grid does not open a menu and does not intercept the event, so the browser's
+   *   native context menu appears.
+   * - a function: called with the menu context and the default items; return the items to show
+   *   (return `[]` to show nothing while still suppressing the native menu).
+   */
+  bodyContextMenu?: boolean | BodyContextMenuGetter;
+  /**
    * When true, clicking the row-number column header toggles selection of all rows in the current
    * view (consistent with clicking any other header cell). Requires the row-number column
    * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
@@ -228,6 +247,7 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
+  bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
   pageSize: number;
   pageSizes: number[];

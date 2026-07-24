@@ -4,7 +4,9 @@ import { BodyMenuContext, ColumnMenuContext } from "@agility-workbench/grid";
 import { ReactColDef } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
-export interface GridProps extends GridOptions{
+// `bodyContextMenu`'s callback arm is redeclared below to return React-aware MenuItems (slots may be
+// React nodes), so it is omitted from the inherited core GridOptions.
+export interface GridProps extends Omit<GridOptions, "bodyContextMenu"> {
   /** Optional className/style for the host div */
   className?: string;
   style?: React.CSSProperties;
@@ -25,6 +27,13 @@ export interface GridProps extends GridOptions{
   /** Hook to customize column menu items */
   getColumnMenuItems?: (p: { ctx: ColumnMenuContext; items: MenuItem[] }) => MenuItem[];
 
-  /** Hook to customize body context menu items (right-click anywhere in the body, including row-number cells) */
-  getBodyMenuItems?: (p: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
+  /**
+   * Controls the body (right-click) context menu:
+   * - `true` / omitted (default): the grid's default body menu (Copy, Export, …).
+   * - `false`: no grid menu — the browser's native context menu appears instead.
+   * - a function: called with the menu context and the default items; return the items to show
+   *   (menu-item slots may be React nodes). Return `[]` to show nothing while still suppressing the
+   *   native menu. Fires on right-click anywhere in the body, including row-number cells.
+   */
+  bodyContextMenu?: boolean | ((p: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[]);
 }

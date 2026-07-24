@@ -122,6 +122,8 @@ export class GridCore implements IGridCore {
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
+      bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
+
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],

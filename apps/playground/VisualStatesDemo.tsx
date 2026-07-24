@@ -102,10 +102,26 @@ export function VisualStatesDemo() {
   const [cellSelection, setCellSelection] = useState<"true" | "false" | "text">("true");
   const [rangeSelection, setRangeSelection] = useState(true);
   const [columnSelection, setColumnSelection] = useState(true);
+  const [bodyMenu, setBodyMenu] = useState<"default" | "native" | "custom" | "empty">("default");
 
   // Map the string control to the option's boolean | "text" value.
   const cellSelectionValue: boolean | "text" =
     cellSelection === "text" ? "text" : cellSelection === "true";
+
+  // Map the body-menu control onto bodyContextMenu's boolean | getter shape.
+  const bodyContextMenu = useMemo(() => {
+    switch (bodyMenu) {
+      case "native": return false;                                    // browser's native menu
+      case "empty": return () => [];                                  // grid owns it, shows nothing
+      case "custom":                                                  // defaults + a custom item
+        return ({ items }: { items: any[] }) => [
+          ...items,
+          { isSeparator: true },
+          { id: "hello", label: "Say hello", onClick: () => window.alert("Hello from a custom item!") },
+        ];
+      default: return true;                                           // default grid menu
+    }
+  }, [bodyMenu]);
 
   const [themeId, setThemeId] = useState(themePresets[0].id);
   const [customColors, setCustomColors] = useState(false);
@@ -152,6 +168,16 @@ export function VisualStatesDemo() {
           </label>
           <Toggle label="rangeSelection" checked={rangeSelection} onChange={setRangeSelection} hint="Allow drag / Shift+Arrow to extend a multi-cell range" />
           <Toggle label="columnSelection" checked={columnSelection} onChange={setColumnSelection} hint="Allow clicking a column header to select the column" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+            title="default = grid menu · native = browser menu · custom = grid menu + a custom item · empty = no menu (native suppressed)">
+            bodyContextMenu
+            <select value={bodyMenu} onChange={(e) => setBodyMenu(e.target.value as typeof bodyMenu)}>
+              <option value="default">default</option>
+              <option value="native">false (native)</option>
+              <option value="custom">custom items</option>
+              <option value="empty">[] (none)</option>
+            </select>
+          </label>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -168,14 +194,15 @@ export function VisualStatesDemo() {
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
         inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
         column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
-        HTML table where you can drag to select and copy cell text. Toggle <code>Custom colors</code> to
-        recolor these states via theme params.
+        HTML table where you can drag to select and copy cell text. Right-click the body to try the
+        <code>bodyContextMenu</code> modes (default / native / custom items / none). Toggle
+        <code>Custom colors</code> to recolor these states via theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
@@ -187,6 +214,7 @@ export function VisualStatesDemo() {
           cellSelection={cellSelectionValue}
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}
+          bodyContextMenu={bodyContextMenu}
           theme={theme}
           style={{ width: "100%", height: "100%" }}
         />

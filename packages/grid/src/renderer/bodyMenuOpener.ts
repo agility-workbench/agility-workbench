@@ -23,6 +23,11 @@ export class BodyMenuOpener {
     // browser's own context menu (e.g. Copy) appears over the natively-selected text.
     if (this.params.core.options.cellSelection !== true) return;
 
+    // bodyContextMenu === false disables the grid menu entirely: return BEFORE preventDefault so the
+    // browser's native context menu appears. (A getter that returns [] is handled downstream — the
+    // grid still owns the gesture in that case and shows nothing.)
+    if (this.params.core.options.bodyContextMenu === false) return;
+
     const cell = target.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return;
 
