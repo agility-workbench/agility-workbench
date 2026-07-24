@@ -53,7 +53,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.suppressKeyboardEdit != null) options.suppressKeyboardEdit = props.suppressKeyboardEdit;
   if (props.suppressTypeToEdit != null) options.suppressTypeToEdit = props.suppressTypeToEdit;
   if (props.moveAfterEdit != null) options.moveAfterEdit = props.moveAfterEdit;
-  if (props.stopEditingWhenCellsLoseFocus != null) options.stopEditingWhenCellsLoseFocus = props.stopEditingWhenCellsLoseFocus;
+  if (props.commitOnBlur != null) options.commitOnBlur = props.commitOnBlur;
   if (props.reevaluateOnEdit != null) options.reevaluateOnEdit = props.reevaluateOnEdit;
   if (props.groupDisplayType) options.groupDisplayType = props.groupDisplayType;
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;

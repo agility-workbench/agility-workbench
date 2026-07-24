@@ -174,7 +174,7 @@ export class CellEditRenderer {
     // Ignore the blur we cause ourselves while tearing down.
     if (this.tearingDown) return;
     // Committing on blur is opt-out; when disabled, focus loss leaves the editor open.
-    if (!this.params.core.options.stopEditingWhenCellsLoseFocus) return;
+    if (!this.params.core.options.commitOnBlur) return;
     this.commit();
   };
 

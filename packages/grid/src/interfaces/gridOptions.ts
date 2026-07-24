@@ -332,7 +332,7 @@ export interface GridOptions {
    * elsewhere). When false, losing focus is ignored and the editor stays open until an explicit
    * commit (Enter/Tab) or cancel (Escape).
    */
-  stopEditingWhenCellsLoseFocus?: boolean;
+  commitOnBlur?: boolean;
   /**
    * When true (default), committing a cell edit re-runs the active sort and/or filter if the
    * edited column participates in them — so an edited row moves to its correct sorted position or
@@ -441,7 +441,7 @@ export interface InternalGridOptions extends GridOptions {
   suppressKeyboardEdit: boolean;
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
-  stopEditingWhenCellsLoseFocus: boolean;
+  commitOnBlur: boolean;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;

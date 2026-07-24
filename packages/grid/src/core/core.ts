@@ -169,7 +169,7 @@ export class GridCore implements IGridCore {
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,
-      stopEditingWhenCellsLoseFocus: options.stopEditingWhenCellsLoseFocus ?? true,
+      commitOnBlur: options.commitOnBlur ?? true,
       initialSort: options.initialSort,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       groupDisplayType: options.groupDisplayType ?? "singleColumn",

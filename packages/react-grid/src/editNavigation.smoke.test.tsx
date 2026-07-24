@@ -107,7 +107,7 @@ describe("moveAfterEdit", () => {
   });
 });
 
-describe("stopEditingWhenCellsLoseFocus", () => {
+describe("commitOnBlur", () => {
   it("commits on blur by default", async () => {
     const { container, apiRef, root } = await mount();
     const api = apiRef.current!;
@@ -121,7 +121,7 @@ describe("stopEditingWhenCellsLoseFocus", () => {
   });
 
   it("keeps the editor open on blur when disabled", async () => {
-    const { container, apiRef, root } = await mount({ stopEditingWhenCellsLoseFocus: false });
+    const { container, apiRef, root } = await mount({ commitOnBlur: false });
     const api = apiRef.current!;
     await openEditor(container, 0);
     const input = editorInput(container)!;
