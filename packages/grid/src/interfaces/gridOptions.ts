@@ -74,6 +74,15 @@ export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
 /**
+ * How a mouse gesture starts editing an editable cell:
+ * - "doubleClick" (default): double-click opens the editor.
+ * - "singleClick": a single click selects the cell and opens the editor together.
+ * - "none": no mouse gesture starts editing (editing is API-only unless keyboard triggers are on).
+ * Keyboard triggers (F2/Enter, type-to-edit) are governed separately by `suppressKeyboardEdit`.
+ */
+export type EditTrigger = "doubleClick" | "singleClick" | "none";
+
+/**
  * How the mouse interacts with body cells:
  * - `true`: grid cell selection (default).
  * - `false`: cells inert; nothing selectable.
@@ -280,6 +289,25 @@ export interface GridOptions {
    */
   undoLimit?: number;
   /**
+   * How a mouse gesture starts editing an editable cell: "doubleClick" (default), "singleClick"
+   * (select + edit on one click), or "none" (no mouse edit trigger). Keyboard triggers are governed
+   * by `suppressKeyboardEdit`. Non-editable columns and group rows never enter edit regardless.
+   */
+  editTrigger?: EditTrigger;
+  /**
+   * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
+   * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
+   * `editTrigger: "none"` for fully API-only editing. Defaults to false.
+   */
+  suppressKeyboardEdit?: boolean;
+  /**
+   * When true, only type-to-edit (opening the editor by typing a printable character on the focused
+   * cell) is disabled; F2 / Enter still start editing. Useful to prevent accidental edits from stray
+   * keystrokes while keeping an explicit keyboard trigger. Implied by `suppressKeyboardEdit`.
+   * Defaults to false.
+   */
+  suppressTypeToEdit?: boolean;
+  /**
    * When true (default), committing a cell edit re-runs the active sort and/or filter if the
    * edited column participates in them — so an edited row moves to its correct sorted position or
    * drops out of a filtered view. Set to false to keep edited rows in place until the next
@@ -383,6 +411,9 @@ export interface InternalGridOptions extends GridOptions {
   autosizeColumnsOnDataChange: boolean;
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
+  editTrigger: EditTrigger;
+  suppressKeyboardEdit: boolean;
+  suppressTypeToEdit: boolean;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;

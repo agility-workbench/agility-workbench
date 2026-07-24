@@ -48,6 +48,9 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.serverSideBlockSize) options.serverSideBlockSize = props.serverSideBlockSize;
   if (props.rowModelType) options.rowModelType = props.rowModelType;
   if (props.undoLimit != null) options.undoLimit = props.undoLimit;
+  if (props.editTrigger != null) options.editTrigger = props.editTrigger;
+  if (props.suppressKeyboardEdit != null) options.suppressKeyboardEdit = props.suppressKeyboardEdit;
+  if (props.suppressTypeToEdit != null) options.suppressTypeToEdit = props.suppressTypeToEdit;
   if (props.reevaluateOnEdit != null) options.reevaluateOnEdit = props.reevaluateOnEdit;
   if (props.groupDisplayType) options.groupDisplayType = props.groupDisplayType;
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;

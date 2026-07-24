@@ -104,6 +104,9 @@ export function VisualStatesDemo() {
   const [rangeSelection, setRangeSelection] = useState(true);
   const [columnSelection, setColumnSelection] = useState(true);
   const [bodyMenu, setBodyMenu] = useState<"default" | "native" | "custom" | "empty">("default");
+  const [editTrigger, setEditTrigger] = useState<"doubleClick" | "singleClick" | "none">("doubleClick");
+  const [suppressKeyboardEdit, setSuppressKeyboardEdit] = useState(false);
+  const [suppressTypeToEdit, setSuppressTypeToEdit] = useState(false);
 
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
@@ -198,6 +201,17 @@ export function VisualStatesDemo() {
           <Toggle label="rangeSelection" checked={rangeSelection} onChange={setRangeSelection} hint="Allow drag / Shift+Arrow to extend a multi-cell range" />
           <Toggle label="columnSelection" checked={columnSelection} onChange={setColumnSelection} hint="Allow clicking a column header to select the column" />
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+            title="How a mouse gesture starts editing the (editable) Name column. Keyboard triggers are governed by suppressKeyboardEdit.">
+            editTrigger
+            <select value={editTrigger} onChange={(e) => setEditTrigger(e.target.value as typeof editTrigger)}>
+              <option value="doubleClick">doubleClick</option>
+              <option value="singleClick">singleClick</option>
+              <option value="none">none</option>
+            </select>
+          </label>
+          <Toggle label="suppressKeyboardEdit" checked={suppressKeyboardEdit} onChange={setSuppressKeyboardEdit} hint="Disable F2 / Enter / type-to-edit (mouse trigger unaffected)" />
+          <Toggle label="suppressTypeToEdit" checked={suppressTypeToEdit} onChange={setSuppressTypeToEdit} hint="Disable only type-to-edit; F2 / Enter still start editing" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
             title="default = grid menu · native = browser menu · custom = grid menu + a custom item · empty = no menu (native suppressed)">
             bodyContextMenu
             <select value={bodyMenu} onChange={(e) => setBodyMenu(e.target.value as typeof bodyMenu)}>
@@ -241,7 +255,7 @@ export function VisualStatesDemo() {
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
@@ -258,6 +272,9 @@ export function VisualStatesDemo() {
           cellSelection={cellSelectionValue}
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}
+          editTrigger={editTrigger}
+          suppressKeyboardEdit={suppressKeyboardEdit}
+          suppressTypeToEdit={suppressTypeToEdit}
           bodyContextMenu={bodyContextMenu}
           showColumnButtonsOnHover={buttonsOnHover}
           theme={theme}

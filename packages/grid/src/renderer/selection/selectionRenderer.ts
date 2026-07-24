@@ -248,7 +248,9 @@ export class SelectionRenderer {
     const extend = e.shiftKey && this.params.core.options.rangeSelection;
 
     // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
+    // Disabled by suppressKeyboardEdit; Enter still consumes the event to avoid stray behavior.
     if (e.key === "F2" || e.key === "Enter") {
+      if (this.params.core.options.suppressKeyboardEdit) return;
       const cell = this.activeCellRef();
       if (cell) {
         e.preventDefault();
@@ -341,8 +343,11 @@ export class SelectionRenderer {
       case "ArrowRight": dir = "right"; break;
       default:
         // Edit-on-typing: a printable character on the focused cell opens the editor seeded with
-        // that character. (Modifier combos and non-printing keys fall through untouched.)
-        if (!ctrl && !e.altKey && isPrintableKey(e.key)) {
+        // that character. (Modifier combos and non-printing keys fall through untouched.) Disabled
+        // by suppressKeyboardEdit (all keyboard edit) or suppressTypeToEdit (just this trigger).
+        const typeToEditOff = this.params.core.options.suppressKeyboardEdit
+          || this.params.core.options.suppressTypeToEdit;
+        if (!typeToEditOff && !ctrl && !e.altKey && isPrintableKey(e.key)) {
           const cell = this.activeCellRef();
           if (cell) {
             e.preventDefault();
@@ -420,11 +425,19 @@ export class SelectionRenderer {
       mode: "start",
     });
     this.params.root.focus();
+
+    // Single-click editing: the same click that selects the cell also opens the editor. Core no-ops
+    // for non-editable columns / group rows, so this is safe to always dispatch when enabled.
+    if (this.params.core.options.editTrigger === "singleClick") {
+      const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);
+      if (cell) this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
+    }
   }
 
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
     if (this.params.core.options.cellSelection !== true) return;
+    if (this.params.core.options.editTrigger !== "doubleClick") return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
     const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);
