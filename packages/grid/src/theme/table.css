@@ -1061,6 +1061,19 @@
   background-color: var(--pte-menu-btn-hover-bg);
 }
 
+/* showColumnButtonsOnHover: hide the header menu / filter buttons until the header cell is hovered
+   or keyboard-focused. An active-filter button (pte-hcell-menu-filter-active) stays visible so a
+   filtered column is never silently hidden. */
+.pte-column-buttons-on-hover .pte-hcell-menu-btn {
+  visibility: hidden;
+}
+
+.pte-column-buttons-on-hover .pte-hcell:hover .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
+  visibility: visible;
+}
+
 .pte-hcell-menu-flyout {
   display: none;
   position: absolute;

@@ -169,6 +169,11 @@ export class GridRenderer {
     if (this.core.options.cellSelection === "text") {
       this.root.classList.add("pte-text-selection");
     }
+    // Reveal column header buttons only on header hover/focus (a root class scopes the CSS to this
+    // grid instance). Off by default → buttons are always visible.
+    if (this.core.options.showColumnButtonsOnHover) {
+      this.root.classList.add("pte-column-buttons-on-hover");
+    }
     this._rootAttachmentRenderer = new RootAttachmentRenderer(this.root);
     this._iconRenderer = new IconRenderer(this.root, this.core.id);
     this._themeRenderer = new ThemeRenderer(this.root);

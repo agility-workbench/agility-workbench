@@ -51,6 +51,18 @@ export interface ColDef {
   resizable?: boolean;
   movable?: boolean;
   hideable?: boolean;
+  /**
+   * When true (default), the column header shows its menu (⋮) button, which opens the column menu.
+   * When false, the button is hidden; the column menu can still be reached via right-click unless
+   * `columnContextMenu` is also false.
+   */
+  showColumnMenu?: boolean;
+  /**
+   * When true (default), right-clicking this column's header opens the column context menu. When
+   * false, the header context menu is disabled for this column and the browser's native menu
+   * appears instead. The menu (⋮) button is unaffected (see `showColumnMenu`).
+   */
+  columnContextMenu?: boolean;
   columnGroupShow?: "open" | "closed";
   openByDefault?: boolean;
   exportable?: boolean;

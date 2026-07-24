@@ -205,7 +205,9 @@ export class HeaderRenderer {
         menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this.getFilterMenuElement()));
       }
     }
-    menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
+    if (col.showColumnMenu) {
+      menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
+    }
     return menu;
   }
 

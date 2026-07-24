@@ -141,6 +141,13 @@ export interface GridOptions {
    */
   columnSelection?: boolean;
   /**
+   * When true, the column header buttons (menu ⋮ and filter) stay hidden until the pointer hovers
+   * (or keyboard-focuses) the header cell, then fade in — keeping headers clean until needed. When
+   * false (default), the buttons are always visible. An active filter's button stays visible
+   * regardless, so a filtered column is never silently hidden.
+   */
+  showColumnButtonsOnHover?: boolean;
+  /**
    * Controls the body (right-click) context menu:
    * - `true` / omitted (default): show the grid's default body menu (Copy, Export, …).
    * - `false`: the grid does not open a menu and does not intercept the event, so the browser's
@@ -247,6 +254,7 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
+  showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
   pageSize: number;

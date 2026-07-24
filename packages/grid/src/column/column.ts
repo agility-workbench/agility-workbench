@@ -45,6 +45,8 @@ export class Column {
   resizable: boolean;
   movable: boolean;
   hideable?: boolean;
+  showColumnMenu: boolean;
+  columnContextMenu: boolean;
   centralPosition?: number;
   columnGroupShow: "always" | "open" | "closed";
   openByDefault: boolean;
@@ -72,6 +74,8 @@ export class Column {
     this.groupable = true;
     this.resizable = true;
     this.movable = true;
+    this.showColumnMenu = true;
+    this.columnContextMenu = true;
     this.columnGroupShow = "always";
     this.openByDefault = false;
     this.groupExpandState = "closed";
@@ -113,6 +117,8 @@ export class Column {
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
     this.hideable = !isFalse(col.hideable);
+    this.showColumnMenu = !isFalse(col.showColumnMenu);
+    this.columnContextMenu = !isFalse(col.columnContextMenu);
     this.columnGroupShow = col.columnGroupShow === "open" ? "open" : col.columnGroupShow === "closed" ? "closed" : "always";
     this.openByDefault = isTrue(col.openByDefault);
     this.centralPosition = undefined;
@@ -177,6 +183,8 @@ export class Column {
     this.resizable = this.children.every(c => c.resizable);
     this.movable = this.children.every(c => c.movable);
     this.hideable = this.children.every(c => c.hideable);
+    this.showColumnMenu = this.children.every(c => c.showColumnMenu);
+    this.columnContextMenu = this.children.every(c => c.columnContextMenu);
   }
 
   getComparator(): ComparatorFn | null {
@@ -235,6 +243,8 @@ export class Column {
     dup.cellEditor = this.cellEditor;
     dup.cellEditorParams = this.cellEditorParams;
     dup.editable = this.editable;
+    dup.showColumnMenu = this.showColumnMenu;
+    dup.columnContextMenu = this.columnContextMenu;
     dup.collator = this.collator;
     dup.comparator = this.comparator;
     dup.groupExpandState = this.groupExpandState;

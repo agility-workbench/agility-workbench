@@ -17,10 +17,15 @@ export class HeaderInteractionHandler {
   constructor(private params: HeaderInteractionHandlerParams) {}
 
   onHeaderContextMenu(e: MouseEvent) {
-    e.preventDefault();
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
+    const col = header ? this.params.core.getColumnModel().getById(header.id) : undefined;
+    // Per-column opt-out: when columnContextMenu is false, do NOT preventDefault so the browser's
+    // native context menu appears instead of the grid's column menu. (Checked before the default
+    // preventDefault below, which otherwise suppresses the native menu across the whole header.)
+    if (col && !col.isInternal() && !col.columnContextMenu) return;
+
+    e.preventDefault();
     if (!header) return;
-    const col = this.params.core.getColumnModel().getById(header.id);
     if (!col || col.isInternal()) return;
     const selectedColumnIDs = this.params.selectedColumnIDs();
     const leaves = col.getLeaves();

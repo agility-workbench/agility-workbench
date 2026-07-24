@@ -27,6 +27,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.cellSelection != null) options.cellSelection = props.cellSelection;
   if (props.rangeSelection != null) options.rangeSelection = props.rangeSelection;
   if (props.columnSelection != null) options.columnSelection = props.columnSelection;
+  if (props.showColumnButtonsOnHover != null) options.showColumnButtonsOnHover = props.showColumnButtonsOnHover;
   if (props.selectAllRowsOnHeaderClick != null) options.selectAllRowsOnHeaderClick = props.selectAllRowsOnHeaderClick;
   // Forward only the boolean intent to core: false disables the menu (native menu shows); everything
   // else (true / omitted / a function) leaves core at its "show menu" default and lets the React
