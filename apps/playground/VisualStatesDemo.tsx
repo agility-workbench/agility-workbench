@@ -7,15 +7,16 @@ import { themeLight, themeDark } from "@grid";
 import type { GridTheme } from "@grid";
 
 /**
- * Playground for the row/cell visual-state options:
- *   - rowHover           highlight the row under the pointer (on by default)
- *   - columnHover        highlight the whole column under the pointer
- *   - zebraRows          alternating background on odd rows
- *   - highlightActiveCell distinct outline on the focused cell inside a range
+ * Playground for the row/cell visual-state and interaction options:
+ *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
+ *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
+ *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
+ *                columnContextMenu demonstrated on the Rating and City columns
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
- * confirm they feed the same CSS variables.
+ * confirm they feed the same CSS variables. The Name column is editable, so the body context menu
+ * gains Cut / Paste when a Name cell is in the selection.
  */
 
 type PersonRow = {
@@ -104,6 +105,13 @@ export function VisualStatesDemo() {
   const [columnSelection, setColumnSelection] = useState(true);
   const [bodyMenu, setBodyMenu] = useState<"default" | "native" | "custom" | "empty">("default");
 
+  // Header / column-menu options.
+  const [buttonsOnHover, setButtonsOnHover] = useState(false);
+  // Per-column flags demonstrated on specific columns: hide the menu (⋮) button on "Rating", and
+  // disable the right-click column menu on "City" (its header falls back to the native menu).
+  const [hideRatingMenu, setHideRatingMenu] = useState(true);
+  const [nativeCityMenu, setNativeCityMenu] = useState(true);
+
   // Map the string control to the option's boolean | "text" value.
   const cellSelectionValue: boolean | "text" =
     cellSelection === "text" ? "text" : cellSelection === "true";
@@ -136,13 +144,16 @@ export function VisualStatesDemo() {
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
-    { colId: "name", key: "name", label: "Name", width: 160, editable: true },
-    { colId: "department", key: "department", label: "Department", width: 140 },
-    { colId: "city", key: "city", label: "City", width: 130 },
+    // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
+    { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
+    { colId: "department", key: "department", label: "Department", width: 140, filter: true },
+    // columnContextMenu: false → right-clicking this header shows the browser's native menu.
+    { colId: "city", key: "city", label: "City", width: 130, filter: true, columnContextMenu: !nativeCityMenu },
     { colId: "salary", key: "salary", label: "Salary", width: 120, type: ColumnType.NUMBER },
-    { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER },
+    // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
+    { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !hideRatingMenu },
     { colId: "active", key: "active", label: "Active", width: 90 },
-  ], []);
+  ], [hideRatingMenu, nativeCityMenu]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
@@ -180,6 +191,13 @@ export function VisualStatesDemo() {
           </label>
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Header</strong>
+          <Toggle label="showColumnButtonsOnHover" checked={buttonsOnHover} onChange={setButtonsOnHover} hint="Reveal the header menu / filter buttons only on header hover or focus (grid-level)" />
+          <Toggle label="Rating: showColumnMenu=false" checked={hideRatingMenu} onChange={setHideRatingMenu} hint="Hide the ⋮ menu button on the Rating column (menu still reachable via right-click)" />
+          <Toggle label="City: columnContextMenu=false" checked={nativeCityMenu} onChange={setNativeCityMenu} hint="Right-clicking the City header shows the browser's native menu instead of the grid column menu" />
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <label htmlFor="vs-theme" style={{ fontSize: 13 }}>Theme</label>
           <select id="vs-theme" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
@@ -195,14 +213,17 @@ export function VisualStatesDemo() {
         inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
         column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
         HTML table where you can drag to select and copy cell text. Right-click the body to try the
-        <code>bodyContextMenu</code> modes (default / native / custom items / none). Toggle
-        <code>Custom colors</code> to recolor these states via theme params.
+        <code>bodyContextMenu</code> modes (default / native / custom items / none) — with a Name cell
+        selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
+        <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
+        Rating column hides its ⋮ button and the City header opens the browser's native menu on
+        right-click. Toggle <code>Custom colors</code> to recolor these states via theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
@@ -215,6 +236,7 @@ export function VisualStatesDemo() {
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}
           bodyContextMenu={bodyContextMenu}
+          showColumnButtonsOnHover={buttonsOnHover}
           theme={theme}
           style={{ width: "100%", height: "100%" }}
         />
