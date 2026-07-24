@@ -3,7 +3,7 @@ import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
-import { ColDef, ColumnType } from "../interfaces/column";
+import { CellClass, CellStyle, ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 
 type InternalColumnRole = "rowNumber" | "autoGroup";
@@ -33,6 +33,8 @@ export class Column {
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
+  cellClass?: CellClass;
+  cellStyle?: CellStyle;
   type: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children: Column[] = [];
@@ -106,6 +108,8 @@ export class Column {
     this.formatterOptions = col.formatterOptions;
     this.cellRenderer = col.cellRenderer;
     this.cellRendererParams = col.cellRendererParams;
+    this.cellClass = col.cellClass;
+    this.cellStyle = col.cellStyle;
     this.type = col.type || ColumnType.STRING;
     this.format = col.format;
     this.hidden = isTrue(col.hidden);
@@ -242,6 +246,8 @@ export class Column {
     dup.valueParser = this.valueParser;
     dup.cellEditor = this.cellEditor;
     dup.cellEditorParams = this.cellEditorParams;
+    dup.cellClass = this.cellClass;
+    dup.cellStyle = this.cellStyle;
     dup.editable = this.editable;
     dup.showColumnMenu = this.showColumnMenu;
     dup.columnContextMenu = this.columnContextMenu;

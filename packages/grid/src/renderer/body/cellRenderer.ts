@@ -1,8 +1,10 @@
 import { Column } from "../../column/column";
+import { CellClassParams } from "../../interfaces/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { INDENT_PER_LEVEL, renderGroupCell } from "./groupCellRenderer";
 import { CellRefreshReason, createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
+import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
@@ -30,6 +32,10 @@ export class BodyCellRenderer {
       cell.textContent = String(rowNumber);
       return;
     }
+
+    // Conditional per-column class/style. Applied for data cells below; cleared here on the group /
+    // row-number branches so a recycled cell never keeps a prior data cell's dynamic styling.
+    this.applyCellStyling(cell, row, col, viewIndex);
 
     // Group rows: the auto-group column renders the chevron + indented label + count; other data
     // columns render this group's aggregate total (if any) and everything else is blank. Any
@@ -81,6 +87,36 @@ export class BodyCellRenderer {
 
       cell.replaceChildren(runtime.gui);
       rec.runtime = runtime;
+    }
+  }
+
+  // Apply the column's cellClass / cellStyle to a data cell. For group rows (or when neither is
+  // configured) it clears any previously-applied dynamic class/style so recycled cells stay clean.
+  private applyCellStyling(cell: HTMLDivElement, row: IRowNode, col: Column, viewIndex: number) {
+    const hasClass = col.cellClass != null;
+    const hasStyle = col.cellStyle != null;
+    if (!hasClass && !hasStyle) return;
+
+    if (row.isGroup) {
+      if (hasClass) applyDynamicClasses(cell, null);
+      if (hasStyle) applyDynamicStyles(cell, null);
+      return;
+    }
+
+    const params: CellClassParams = {
+      value: col.getValue(row),
+      data: row.data,
+      rowId: row.id,
+      rowIndex: viewIndex,
+      colDef: col.col,
+    };
+    if (hasClass) {
+      const cls = typeof col.cellClass === "function" ? col.cellClass(params) : col.cellClass;
+      applyDynamicClasses(cell, cls);
+    }
+    if (hasStyle) {
+      const style = typeof col.cellStyle === "function" ? col.cellStyle(params) : col.cellStyle;
+      applyDynamicStyles(cell, style);
     }
   }
 

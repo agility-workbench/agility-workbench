@@ -861,6 +861,9 @@ export class GridRenderer {
           this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason);
         }
       }
+
+      // The row's data may have changed (e.g. a transaction update), so re-run row-level styling.
+      this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
     }
   }
 

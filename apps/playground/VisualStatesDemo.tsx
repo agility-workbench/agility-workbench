@@ -105,6 +105,9 @@ export function VisualStatesDemo() {
   const [columnSelection, setColumnSelection] = useState(true);
   const [bodyMenu, setBodyMenu] = useState<"default" | "native" | "custom" | "empty">("default");
 
+  // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
+  const [conditionalStyling, setConditionalStyling] = useState(true);
+
   // Header / column-menu options.
   const [buttonsOnHover, setButtonsOnHover] = useState(false);
   // Per-column flags demonstrated on specific columns: hide the menu (⋮) button on "Rating", and
@@ -142,6 +145,11 @@ export function VisualStatesDemo() {
     return base.withParams(themeId === "dark" ? CUSTOM_PARAMS_DARK : CUSTOM_PARAMS);
   }, [customColors, themeId]);
 
+  // getRowStyle: subtly dim inactive employees (active === "No").
+  const getRowStyle = conditionalStyling
+    ? (p: { data: PersonRow }) => (p.data.active === "No" ? { opacity: "0.55" } : undefined)
+    : undefined;
+
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
@@ -149,11 +157,17 @@ export function VisualStatesDemo() {
     { colId: "department", key: "department", label: "Department", width: 140, filter: true },
     // columnContextMenu: false → right-clicking this header shows the browser's native menu.
     { colId: "city", key: "city", label: "City", width: 130, filter: true, columnContextMenu: !nativeCityMenu },
-    { colId: "salary", key: "salary", label: "Salary", width: 120, type: ColumnType.NUMBER },
+    {
+      colId: "salary", key: "salary", label: "Salary", width: 120, type: ColumnType.NUMBER,
+      // cellStyle: color high salaries green, low ones muted (function of the cell value).
+      cellStyle: conditionalStyling
+        ? (p: { value: number }) => ({ color: p.value >= 150_000 ? "#16a34a" : "#9ca3af", fontWeight: p.value >= 150_000 ? "600" : "400" })
+        : undefined,
+    },
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !hideRatingMenu },
     { colId: "active", key: "active", label: "Active", width: 90 },
-  ], [hideRatingMenu, nativeCityMenu]);
+  ], [hideRatingMenu, nativeCityMenu, conditionalStyling]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
@@ -164,6 +178,7 @@ export function VisualStatesDemo() {
           <Toggle label="columnHover" checked={columnHover} onChange={setColumnHover} hint="Highlight the whole column under the pointer" />
           <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
           <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
+          <Toggle label="conditionalStyling" checked={conditionalStyling} onChange={setConditionalStyling} hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
@@ -223,7 +238,7 @@ export function VisualStatesDemo() {
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
         {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
+          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}
@@ -232,6 +247,7 @@ export function VisualStatesDemo() {
           columnHover={columnHover}
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
+          getRowStyle={getRowStyle}
           cellSelection={cellSelectionValue}
           rangeSelection={rangeSelection}
           columnSelection={columnSelection}

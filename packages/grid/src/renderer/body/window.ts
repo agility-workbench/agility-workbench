@@ -4,6 +4,7 @@ import { GridEventRowsChangedParams } from "../../events/events";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
+import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 
 interface BodyWindowRendererParams {
   core: GridCore;
@@ -117,6 +118,7 @@ export class BodyWindowRenderer {
 
       if (viewIndex >= total) {
         this.hideSlot(slot);
+        this.clearRowStyling(slot);
         this.params.applySelectionToSlot(slot, null);
         continue;
       }
@@ -125,6 +127,7 @@ export class BodyWindowRenderer {
       const row = rowModel.getRowNodeAtViewIndex(viewIndex);
       if (!row) {
         this.hideSlot(slot);
+        this.clearRowStyling(slot);
         this.params.applySelectionToSlot(slot, null);
         continue;
       }
@@ -147,6 +150,7 @@ export class BodyWindowRenderer {
         el?.classList.toggle("pte-row-alt", isAltRow);
       }
 
+      this.applyRowStyling(slot, row, viewIndex);
       this.markGroupRow(slot, row);
       this.patchCells(slot, row, viewIndex, this.params.core.getRowNumberForViewIndex(viewIndex));
       this.params.applySelectionToSlot(slot, viewIndex);
@@ -162,6 +166,42 @@ export class BodyWindowRenderer {
       el.classList.toggle("pte-group-row", isGroup);
       if (isGroup) el.setAttribute("data-group-id", row.id);
       else el.removeAttribute("data-group-id");
+    }
+  }
+
+  /**
+   * Re-apply row-level styling for a single already-rendered slot. Called after a targeted cell
+   * refresh (e.g. a transaction update) so getRowClass/getRowStyle reflect the new row data without
+   * a full window repaint. No-op when neither option is set.
+   */
+  refreshRowStyling(slot: RowPoolDef, row: IRowNode, viewIndex: number) {
+    this.applyRowStyling(slot, row, viewIndex);
+  }
+
+  // Apply the user-supplied getRowClass / getRowStyle to every fragment of this row. No-op (fast
+  // path) when neither option is set. Applied to all four section rows so pinned columns match.
+  private applyRowStyling(slot: RowPoolDef, row: IRowNode, viewIndex: number) {
+    const { getRowClass, getRowStyle } = this.params.core.options;
+    if (!getRowClass && !getRowStyle) return;
+    const params = { data: row.data, rowId: row.id, rowIndex: viewIndex, isGroup: !!row.isGroup, node: row };
+    const cls = getRowClass ? getRowClass(params) : null;
+    const style = getRowStyle ? getRowStyle(params) : null;
+    for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (!el) continue;
+      if (getRowClass) applyDynamicClasses(el, cls);
+      if (getRowStyle) applyDynamicStyles(el, style);
+    }
+  }
+
+  // Clear any previously-applied dynamic row class/style from a slot being hidden/recycled, so a
+  // reused empty slot never carries stale styling.
+  private clearRowStyling(slot: RowPoolDef) {
+    const { getRowClass, getRowStyle } = this.params.core.options;
+    if (!getRowClass && !getRowStyle) return;
+    for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (!el) continue;
+      if (getRowClass) applyDynamicClasses(el, null);
+      if (getRowStyle) applyDynamicStyles(el, null);
     }
   }
 

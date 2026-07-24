@@ -117,6 +117,8 @@ export class GridCore implements IGridCore {
       rowHover: options.rowHover ?? true,
       columnHover: isTrue(options.columnHover),
       zebraRows: isTrue(options.zebraRows),
+      getRowClass: options.getRowClass,
+      getRowStyle: options.getRowStyle,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: isTrue(options.rowSelection),
       cellSelection: options.cellSelection ?? true, // true | false | "text"

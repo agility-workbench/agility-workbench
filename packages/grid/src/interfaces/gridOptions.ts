@@ -4,6 +4,34 @@ import { GridIconMap } from "../theme/icons";
 import type { GridTheme } from "../theme/theme";
 import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
+import type { IRowNode } from "./iRowNode";
+
+/** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */
+export interface RowClassParams {
+  /** The row's underlying data object. */
+  data: any;
+  /** The row's stable id. */
+  rowId: string;
+  /** The row's current view index. */
+  rowIndex: number;
+  /** Whether this is a group (summary) row. */
+  isGroup: boolean;
+  /** The full row node. */
+  node: IRowNode;
+}
+
+/**
+ * Returns extra CSS class name(s) to apply to a row. May return a single class, a space-separated
+ * string, an array of classes, or a falsy value for none. Recomputed as rows scroll into view.
+ */
+export type GetRowClass = (params: RowClassParams) => string | string[] | null | undefined;
+
+/**
+ * Returns inline styles to apply to a row (camelCase CSS properties), or a falsy value for none.
+ * Recomputed as rows scroll into view. Only properties returned are managed by the grid; a property
+ * that stops being returned is cleared on the next repaint.
+ */
+export type GetRowStyle = (params: RowClassParams) => Partial<CSSStyleDeclaration> | null | undefined;
 
 /**
  * Customizes the body (right-click) context menu. Receives the menu context and the default items
@@ -117,6 +145,17 @@ export interface GridOptions {
    * (`--pte-row-alt-bg-color`) for zebra striping. Defaults to false.
    */
   zebraRows?: boolean;
+  /**
+   * Conditional per-row CSS class(es). Called for each rendered row; return a class name, a
+   * space-separated string, an array, or nothing. Applied on top of the grid's own row classes and
+   * recomputed as rows scroll into view. Use for state-driven styling (e.g. flag error rows).
+   */
+  getRowClass?: GetRowClass;
+  /**
+   * Conditional per-row inline styles (camelCase CSS properties). Called for each rendered row;
+   * return a style object or nothing. Recomputed as rows scroll into view.
+   */
+  getRowStyle?: GetRowStyle;
   /**
    * When true, the active (focused) cell is drawn with a distinct outline
    * (`--pte-active-cell-border-color`) so it stands out inside a larger range selection.
