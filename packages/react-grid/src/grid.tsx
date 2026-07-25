@@ -164,6 +164,24 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       core.dispatch({ type: "paginationSet", enabled: !isFalse(props.pagination), pageIndex: 0, pageSize: 100 });
     }, [props.pagination]);
 
+    // Reconfigure the quick filter live (anchor, clearOnClose, mode, popover controls, enable/disable)
+    // without remounting the grid. Serialized so an inline-object `quickFilter` prop doesn't rebuild
+    // the widget on every render — only when the config's contents actually change.
+    const quickFilterKey = JSON.stringify(props.quickFilter ?? null);
+    const quickFilterMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      // Skip the mount run: the widget is already built with these options by the create effect.
+      // Only a genuine post-mount change should trigger a rebuild.
+      if (!quickFilterMountedRef.current) {
+        quickFilterMountedRef.current = true;
+        return;
+      }
+      const renderer = instanceRef.current?.renderer;
+      if (!renderer) return;
+      renderer.setQuickFilterOptions(props.quickFilter);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [quickFilterKey]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {

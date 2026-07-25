@@ -23,6 +23,21 @@ const ROWS: Row[] = [
   { id: "3", name: "Globex", region: "West" },
 ];
 
+function renderInto(root: ReturnType<typeof createRoot>, apiRef: React.RefObject<IGridAPI | null>, quickFilter: any) {
+  root.render(
+    <Grid
+      apiRef={apiRef}
+      data={ROWS}
+      columnDefs={[
+        { colId: "name", key: "name", label: "Name", editable: true },
+        { colId: "region", key: "region", label: "Region", editable: true },
+      ]}
+      rowIdKey="id"
+      quickFilter={quickFilter}
+    />,
+  );
+}
+
 async function mountGrid(quickFilter: any = true) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
@@ -31,20 +46,15 @@ async function mountGrid(quickFilter: any = true) {
   const apiRef = React.createRef<IGridAPI | null>();
   const root = createRoot(container);
   await act(async () => {
-    root.render(
-      <Grid
-        apiRef={apiRef}
-        data={ROWS}
-        columnDefs={[
-          { colId: "name", key: "name", label: "Name", editable: true },
-          { colId: "region", key: "region", label: "Region", editable: true },
-        ]}
-        rowIdKey="id"
-        quickFilter={quickFilter}
-      />,
-    );
+    renderInto(root, apiRef, quickFilter);
   });
-  return { container, apiRef, root };
+  // Re-render with a new quickFilter prop (same grid instance — exercises the live reconfigure path).
+  const rerender = async (quickFilter: any) => {
+    await act(async () => {
+      renderInto(root, apiRef, quickFilter);
+    });
+  };
+  return { container, apiRef, root, rerender };
 }
 
 const widget = (c: HTMLElement) => c.querySelector<HTMLElement>(".pte-quick-filter");
@@ -53,6 +63,16 @@ const clearBtn = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".pte-qu
 const optionsBtn = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".pte-quick-filter-options")!;
 const closeBtn = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".pte-quick-filter-close");
 const optionsPanel = (c: HTMLElement) => c.querySelector<HTMLElement>(".pte-quick-filter-options-panel")!;
+const pill = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".pte-quick-filter-pill");
+const anchorSelect = (c: HTMLElement) => c.querySelector<HTMLSelectElement>(".pte-quick-filter-anchor-select");
+const keepCheckbox = (c: HTMLElement) => c.querySelector<HTMLInputElement>(".pte-quick-filter-keep-checkbox");
+const openWidget = async (c: HTMLElement) => {
+  const rootEl = c.querySelector(".pte-root") as HTMLElement;
+  rootEl.focus();
+  await act(async () => {
+    rootEl.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true }));
+  });
+};
 const noRowsVisible = (c: HTMLElement) => {
   const el = c.querySelector<HTMLElement>(".pte-norows-overlay");
   return !!el && !el.classList.contains("hidden");
@@ -265,6 +285,192 @@ describe("quick filter end-to-end via Grid", () => {
   it("omits the close button in 'always' mode (nothing to close)", async () => {
     const { container, root } = await mountGrid({ mode: "always" });
     expect(closeBtn(container)).toBeNull();
+    root.unmount();
+  });
+});
+
+describe("quick filter: clearOnClose", () => {
+  it("keeps the filter and shows the indicator pill when clearOnClose is false", async () => {
+    const { container, apiRef, root } = await mountGrid({ clearOnClose: false });
+    const core = apiRef.current!.getCore();
+
+    await openWidget(container);
+    await setSearch(container, "globex");
+    expect(core.getRowModel().getViewCount()).toBe(1);
+
+    // Dismiss: the widget collapses but the filter persists.
+    await act(async () => { closeBtn(container)!.click(); });
+    expect(widget(container)!.classList.contains("pte-quick-filter-open")).toBe(false);
+    expect(core.getQuickFilterText()).toBe("globex");
+    expect(core.getRowModel().getViewCount()).toBe(1);
+
+    // The collapsed pill stands in, showing the active term, and reopens the widget on click.
+    expect(pill(container)).toBeTruthy();
+    expect(pill(container)!.hidden).toBe(false);
+    expect(pill(container)!.textContent).toContain("globex");
+    expect(widget(container)!.classList.contains("pte-quick-filter-has-indicator")).toBe(true);
+
+    await act(async () => { pill(container)!.click(); });
+    expect(widget(container)!.classList.contains("pte-quick-filter-open")).toBe(true);
+    expect(input(container).value).toBe("globex");
+    expect(pill(container)!.hidden).toBe(true);
+
+    root.unmount();
+  });
+
+  it("clears on close by default (regression guard) and builds no pill", async () => {
+    const { container, apiRef, root } = await mountGrid();
+    const core = apiRef.current!.getCore();
+
+    await openWidget(container);
+    await setSearch(container, "globex");
+    await act(async () => { closeBtn(container)!.click(); });
+
+    expect(core.getQuickFilterText()).toBe("");
+    expect(core.getRowModel().getViewCount()).toBe(3);
+    expect(pill(container)).toBeNull();
+
+    root.unmount();
+  });
+});
+
+describe("quick filter: position", () => {
+  it("anchors to the left edge when configured, releasing the right edge to auto", async () => {
+    const { container, root } = await mountGrid({ mode: "always", position: { anchor: "left", offsetX: 16 } });
+    const w = widget(container)!;
+    expect(w.style.left).toBe("16px");
+    // The opposite edge must be an explicit `auto`, not "" — clearing it would fall back to the base
+    // stylesheet `right` rule, pinning both edges and stretching the panel to full width.
+    expect(w.style.right).toBe("auto");
+    root.unmount();
+  });
+
+  it("anchors right by default, releasing the left edge to auto", async () => {
+    const { container, root } = await mountGrid({ mode: "always" });
+    const w = widget(container)!;
+    // happy-dom drops `calc(var(...))` on assignment, so we can't read the `right` value back here;
+    // the observable, env-robust signal for the right anchor is that `left` is released to auto.
+    expect(w.style.left).toBe("auto");
+    root.unmount();
+  });
+
+  it("offsets the top below the header by offsetTop", async () => {
+    const { container, root } = await mountGrid({ mode: "always", position: { offsetTop: 20 } });
+    const w = widget(container)!;
+    // top = headerHeight + offsetTop; header height is >= 0 in happy-dom (often 0), so assert the
+    // offset is included by checking it is at least offsetTop px.
+    const top = parseInt(w.style.top, 10);
+    expect(Number.isNaN(top)).toBe(false);
+    expect(top).toBeGreaterThanOrEqual(20);
+    root.unmount();
+  });
+});
+
+describe("quick filter: layout UI controls (showLayoutOptions)", () => {
+  it("does not render layout controls by default", async () => {
+    const { container, root } = await mountGrid({ mode: "always" });
+    await act(async () => { optionsBtn(container).click(); });
+    expect(anchorSelect(container)).toBeNull();
+    expect(keepCheckbox(container)).toBeNull();
+    root.unmount();
+  });
+
+  it("shows the options popover even when only layout controls are enabled", async () => {
+    const { container, root } = await mountGrid({ mode: "always", showOptions: false, showLayoutOptions: true });
+    // Options button present despite showOptions:false, but the match controls are absent.
+    expect(optionsBtn(container)).toBeTruthy();
+    await act(async () => { optionsBtn(container).click(); });
+    expect(optionsPanel(container).querySelector(".pte-quick-filter-option-select:not(.pte-quick-filter-anchor-select)")).toBeNull();
+    expect(anchorSelect(container)).toBeTruthy();
+    root.unmount();
+  });
+
+  it("re-anchors the widget live when the anchor control changes", async () => {
+    const { container, root } = await mountGrid({ mode: "always", showLayoutOptions: true });
+    const w = widget(container)!;
+    expect(w.style.left).toBe("auto"); // right anchor default
+
+    await act(async () => { optionsBtn(container).click(); });
+    await act(async () => {
+      anchorSelect(container)!.value = "left";
+      anchorSelect(container)!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(w.style.left).toBe("8px"); // default offsetX
+    expect(w.style.right).toBe("auto");
+    root.unmount();
+  });
+
+  it("keep-on-close checkbox makes the filter persist and drives the pill", async () => {
+    const { container, apiRef, root } = await mountGrid({ showLayoutOptions: true });
+    const core = apiRef.current!.getCore();
+
+    await openWidget(container);
+    // Enable "keep filter when closed".
+    await act(async () => { optionsBtn(container).click(); });
+    expect(keepCheckbox(container)!.checked).toBe(false); // clearOnClose default true → unchecked
+    await act(async () => {
+      keepCheckbox(container)!.checked = true;
+      keepCheckbox(container)!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await setSearch(container, "globex");
+    await act(async () => { closeBtn(container)!.click(); });
+
+    // Filter persists and the pill stands in.
+    expect(core.getQuickFilterText()).toBe("globex");
+    expect(core.getRowModel().getViewCount()).toBe(1);
+    expect(pill(container)!.hidden).toBe(false);
+    root.unmount();
+  });
+
+  it("omits the keep-on-close control in 'always' mode but keeps the anchor control", async () => {
+    const { container, root } = await mountGrid({ mode: "always", showLayoutOptions: true });
+    await act(async () => { optionsBtn(container).click(); });
+    expect(anchorSelect(container)).toBeTruthy();
+    expect(keepCheckbox(container)).toBeNull();
+    root.unmount();
+  });
+});
+
+describe("quick filter: live reconfigure (no remount)", () => {
+  it("applies a changed quickFilter prop live, without losing the active search", async () => {
+    const { container, apiRef, root, rerender } = await mountGrid({ mode: "always", position: { anchor: "right" } });
+    const core = apiRef.current!.getCore();
+
+    await setSearch(container, "globex");
+    expect(core.getRowModel().getViewCount()).toBe(1);
+    expect(widget(container)!.style.left).toBe("auto"); // right anchor
+
+    // Change only the anchor. The grid must NOT remount, the filter must survive, and the widget
+    // must re-anchor left.
+    await rerender({ mode: "always", position: { anchor: "left", offsetX: 16 } });
+
+    expect(core.getRowModel().getViewCount()).toBe(1); // search preserved
+    expect(input(container).value).toBe("globex"); // input text preserved
+    expect(widget(container)!.style.left).toBe("16px"); // re-anchored live
+    root.unmount();
+  });
+
+  it("enables the widget live when quickFilter goes from false to true", async () => {
+    const { container, root, rerender } = await mountGrid(false);
+    expect(widget(container)).toBeNull(); // disabled → no widget
+
+    await rerender({ mode: "always" });
+    expect(widget(container)).toBeTruthy(); // built live
+    expect(widget(container)!.classList.contains("pte-quick-filter-open")).toBe(true);
+    root.unmount();
+  });
+
+  it("disables the widget live when quickFilter goes from true to false, clearing the filter", async () => {
+    const { container, apiRef, root, rerender } = await mountGrid({ mode: "always" });
+    const core = apiRef.current!.getCore();
+
+    await setSearch(container, "globex");
+    expect(core.getRowModel().getViewCount()).toBe(1);
+
+    await rerender(false);
+    expect(widget(container)).toBeNull(); // torn down
+
     root.unmount();
   });
 });

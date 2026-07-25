@@ -50,6 +50,8 @@ import { FilterOverlayRenderer } from "./overlay/filter";
 import { LoadingOverlayRenderer } from "./overlay/loading";
 import { NoRowsOverlayRenderer } from "./overlay/noRows";
 import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
+import type { QuickFilterRestoreState } from "./quickFilter/quickFilterWidget";
+import type { QuickFilterOptions } from "../interfaces/gridOptions";
 import { PaginationRenderer } from "./pagination/renderer";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
@@ -93,6 +95,9 @@ export class GridRenderer {
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _noRowsOverlayRenderer: NoRowsOverlayRenderer;
   _quickFilterWidget?: QuickFilterWidget;
+  // Captured so the widget can be rebuilt in place when its options change at runtime.
+  private _quickFilterHeaderHeight?: () => number;
+  private _quickFilterOptions?: boolean | QuickFilterOptions;
   _rootAttachmentRenderer: RootAttachmentRenderer;
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
@@ -534,16 +539,10 @@ export class GridRenderer {
     this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
 
     // Quick filter (global search). Only mounted when enabled and the model is client-side.
-    const quickFilterWidget = new QuickFilterWidget({
-      core: this.core,
-      root: this.root,
-      topOffset: () => headerRefs.wrapper.offsetHeight + 6,
-    });
-    if (quickFilterWidget.isEnabled() && this.core.getRowModel().getType() !== "serverSide") {
-      this._quickFilterWidget = quickFilterWidget;
-    } else {
-      quickFilterWidget.destroy();
-    }
+    // The header-height getter is captured so the widget can be rebuilt on a live reconfigure.
+    this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
+    this._quickFilterOptions = this.core.getOptions().quickFilter;
+    this._buildQuickFilterWidget();
 
     // Create a pooled set of row nodes
     // this._poolSize = this._bodyPoolSizer.computePoolSize(...);
@@ -593,6 +592,43 @@ export class GridRenderer {
   // ---------------- Public API ----------------
   togglePagination(pagination: boolean) {
     this._paginationRenderer.togglePagination(pagination);
+  }
+
+  // Build (or skip building) the quick-filter widget from the currently-stored options. A prior
+  // widget, if any, must be destroyed by the caller first. `restore` carries live search state
+  // across a rebuild. The widget is only mounted when enabled and the row model is client-side.
+  private _buildQuickFilterWidget(restore?: QuickFilterRestoreState): void {
+    const widget = new QuickFilterWidget({
+      core: this.core,
+      root: this.root,
+      options: this._quickFilterOptions,
+      headerHeight: this._quickFilterHeaderHeight ?? (() => 0),
+      restore,
+    });
+    if (widget.isEnabled() && this.core.getRowModel().getType() !== "serverSide") {
+      this._quickFilterWidget = widget;
+    } else {
+      widget.destroy();
+      this._quickFilterWidget = undefined;
+      // No widget means no way to see or clear a filter — so a config that disables the quick filter
+      // must not leave rows silently hidden by a previously-active search.
+      if (this.core.getQuickFilterText() !== "") {
+        this.core.dispatch({ type: "quickFilterSet", text: "" });
+      }
+    }
+  }
+
+  // Reconfigure the quick filter at runtime without remounting the grid. Because the widget builds
+  // its DOM (popover, layout rows, indicator pill) and resolves its options once at construction,
+  // a config change is applied by tearing the widget down and rebuilding it in place — carrying the
+  // live search state over so an active filter isn't disturbed. This also handles the
+  // enabled↔disabled and (via the build guard) client-side↔serverSide transitions.
+  setQuickFilterOptions(options: boolean | QuickFilterOptions | undefined) {
+    this._quickFilterOptions = options;
+    const restore = this._quickFilterWidget?.captureState();
+    this._quickFilterWidget?.destroy();
+    this._quickFilterWidget = undefined;
+    this._buildQuickFilterWidget(restore);
   }
 
   // Grid-level keydown. The listener is bound to the grid root (see GridInteractionEventBinder), so

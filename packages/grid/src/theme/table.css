@@ -553,6 +553,8 @@
 /* ---------------- Quick filter (global search) ---------------- */
 .pte-quick-filter {
   position: absolute;
+  /* Fallback placement before the first open; the widget overrides `top`/`left`/`right` inline on
+     each open from its resolved `position` options (anchor + offsetX + offsetTop below the header). */
   top: 6px;
   /* Clear the vertical scrollbar gutter so the widget never sits over the scrollbar thumb. */
   right: calc(var(--pte-scrollbar-size, 10px) + 8px);
@@ -569,8 +571,58 @@
   font-size: var(--pte-font-size);
 }
 
-.pte-quick-filter.pte-quick-filter-open {
+.pte-quick-filter.pte-quick-filter-open,
+.pte-quick-filter.pte-quick-filter-has-indicator {
   display: inline-flex;
+}
+
+/* In collapsed-indicator state the wrapper is shown for the pill only, so hide the search row and
+   any expanded options; conversely the pill is always laid out but only shown in that state. */
+.pte-quick-filter.pte-quick-filter-has-indicator .pte-quick-filter-row,
+.pte-quick-filter.pte-quick-filter-has-indicator .pte-quick-filter-options-panel {
+  display: none;
+}
+
+/* The collapsed pill: filter icon + the active search text, on the same tinted chrome. */
+.pte-quick-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--pte-text-color);
+  font: inherit;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.pte-quick-filter-pill[hidden] {
+  display: none;
+}
+
+.pte-quick-filter-pill:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-quick-filter-pill-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-filter);
+  /* Tint the icon with the active-filter accent so the pill reads as "a filter is on". */
+  background-color: var(--pte-hcell-filter-active-color);
+}
+
+.pte-quick-filter-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The search row: [ field ] options close. */
@@ -694,6 +746,13 @@
 .pte-quick-filter-option-row {
   display: flex;
   align-items: center;
+}
+
+/* Divider between the match-controls section and the layout-controls section of the panel. */
+.pte-quick-filter-option-sep {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--pte-border-color);
 }
 
 .pte-quick-filter-option-label {

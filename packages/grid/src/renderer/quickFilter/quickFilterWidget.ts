@@ -2,17 +2,34 @@ import { IGridCore } from "../../interfaces/iGridCore";
 import { getIconClassName } from "../../theme/icons";
 import {
   QuickFilterMatchMode,
+  QuickFilterOptions,
   ResolvedQuickFilterOptions,
   resolveQuickFilterOptions,
 } from "../../interfaces/gridOptions";
 import { button, div, span } from "../element";
 
+// Transient state carried across a config-driven rebuild so the live search isn't lost when the
+// widget is torn down and reconstructed with new options (see GridRenderer.setQuickFilterOptions).
+// Layout/structural config (mode, position, clearOnClose, showOptions…) comes from the new config;
+// only the "what am I searching for" state is preserved here.
+export interface QuickFilterRestoreState {
+  text: string;
+  open: boolean;
+  matchMode: QuickFilterMatchMode;
+  caseSensitive: boolean;
+}
+
 interface QuickFilterWidgetParams {
   core: IGridCore;
   root: HTMLElement;
-  // Pixel offset from the top of the root at which the widget floats (so it sits just below the
-  // header). Read lazily on each show so header height changes (e.g. grouped headers) are respected.
-  topOffset: () => number;
+  // The raw quick-filter config to build from. Passed explicitly (rather than read from core) so a
+  // reconfigure can construct a fresh widget from new options without the grid being remounted.
+  options: boolean | QuickFilterOptions | undefined;
+  // Current header height in px. Read lazily on each show so header-height changes (e.g. grouped
+  // headers) are respected; the widget adds its configured `offsetTop` to sit just below the header.
+  headerHeight: () => number;
+  // Search state to restore when rebuilding in place (omitted on first construction).
+  restore?: QuickFilterRestoreState;
 }
 
 // A self-contained, floating global-search widget. It owns its input, an options popover
@@ -31,20 +48,35 @@ export class QuickFilterWidget {
   private optionsPanel?: HTMLDivElement;
   private matchModeSelect?: HTMLSelectElement;
   private caseCheckbox?: HTMLInputElement;
+  private anchorSelect?: HTMLSelectElement;
+  private keepOpenCheckbox?: HTMLInputElement;
+  // Collapsed pill shown when the widget is dismissed but a filter is still active
+  // (clearOnClose === false). Clicking it re-opens the full widget.
+  private indicatorPill?: HTMLButtonElement;
+  private indicatorLabel?: HTMLSpanElement;
 
   private readonly opts: ResolvedQuickFilterOptions;
   // Sticky per-session option state (seeded from the resolved config; user edits mutate it).
   private matchMode: QuickFilterMatchMode;
   private caseSensitive: boolean;
+  // Layout state is also sticky per-session and, when `showLayoutOptions` is on, user-editable.
+  private anchor: "left" | "right";
+  private clearOnClose: boolean;
 
   private debounceTimer: number | null = null;
   private open = false;
   private optionsExpanded = false;
 
   constructor(private params: QuickFilterWidgetParams) {
-    this.opts = resolveQuickFilterOptions(params.core.getOptions().quickFilter);
-    this.matchMode = this.opts.matchMode;
-    this.caseSensitive = this.opts.caseSensitive;
+    this.opts = resolveQuickFilterOptions(params.options);
+    // Match/case are per-session sticky: on a rebuild they carry over from the previous widget's
+    // live state (via `restore`); on first build they seed from the resolved config.
+    this.matchMode = params.restore?.matchMode ?? this.opts.matchMode;
+    this.caseSensitive = params.restore?.caseSensitive ?? this.opts.caseSensitive;
+    // Anchor/clearOnClose always take the *new* config on a rebuild (the reconfigure is what changed
+    // them), so they are seeded from `opts`, not from `restore`.
+    this.anchor = this.opts.position.anchor;
+    this.clearOnClose = this.opts.clearOnClose;
 
     // The widget is a vertical stack: a search row, and (when expanded) an options panel below it,
     // all inside one bordered container that grows in height to reveal the options.
@@ -79,7 +111,7 @@ export class QuickFilterWidget {
     field.appendChild(this.clearBtn);
     this.searchRow.appendChild(field);
 
-    if (this.opts.showOptions) {
+    if (this.hasOptionsPopover()) {
       // The button's own background is used for the hover highlight, so the icon lives in a child
       // span (its own mask + fill) — otherwise the hover background would overwrite the icon fill.
       this.optionsBtn = button("pte-quick-filter-btn pte-quick-filter-options");
@@ -105,17 +137,46 @@ export class QuickFilterWidget {
     }
 
     this.wrapper.appendChild(this.searchRow);
-    if (this.opts.showOptions) this.buildOptionsPanel();
+    if (this.hasOptionsPopover()) this.buildOptionsPanel();
+
+    // When the filter can persist past a close, a compact pill stands in for the collapsed widget so
+    // the active search stays visible (and re-openable) rather than filtering silently. The pill is
+    // built whenever persistence is possible — either configured off now, or reachable at runtime via
+    // the layout controls (which can flip `clearOnClose` to false).
+    const canPersist = !this.clearOnClose || this.opts.showLayoutOptions;
+    if (canPersist && this.opts.mode !== "always") this.buildIndicatorPill();
 
     this.bind();
     this.params.root.appendChild(this.wrapper);
 
-    // "always" mode keeps the widget pinned open; otherwise it starts hidden until summoned.
-    this.setOpen(this.opts.mode === "always");
+    // Restore a carried-over search on rebuild; otherwise start empty.
+    if (params.restore?.text) {
+      this.input.value = params.restore.text;
+      this.updateClearVisibility();
+    }
+
+    // Open if "always" mode (pinned), or if a rebuild is restoring a previously-open widget.
+    const startOpen = this.opts.mode === "always" || (params.restore?.open ?? false);
+    this.setOpen(startOpen);
   }
 
   isEnabled(): boolean {
     return this.opts.enabled;
+  }
+
+  // Snapshot the live search state so a reconfigure can rebuild the widget without losing it.
+  captureState(): QuickFilterRestoreState {
+    return {
+      text: this.input.value,
+      open: this.open,
+      matchMode: this.matchMode,
+      caseSensitive: this.caseSensitive,
+    };
+  }
+
+  // The options popover is present when either the match controls or the layout controls are enabled.
+  private hasOptionsPopover(): boolean {
+    return this.opts.showOptions || this.opts.showLayoutOptions;
   }
 
   isOpen(): boolean {
@@ -129,11 +190,13 @@ export class QuickFilterWidget {
     this.input.select();
   }
 
-  // Hide the widget and clear the search (so a dismissed search doesn't silently keep filtering).
+  // Hide the widget. By default (`clearOnClose`) the search is cleared too, so a dismissed search
+  // doesn't silently keep filtering. When `clearOnClose` is false the filter persists and a compact
+  // indicator pill takes the widget's place (see `syncIndicator`).
   // No-op in "always" mode, where the widget is a permanent fixture: there we only clear the text.
   hide(): void {
     this.collapseOptions();
-    if (this.input.value !== "") {
+    if (this.clearOnClose && this.input.value !== "") {
       this.input.value = "";
       this.clearBtn.hidden = true;
       this.commit(true);
@@ -162,13 +225,35 @@ export class QuickFilterWidget {
   private setOpen(open: boolean): void {
     this.open = open;
     if (open) {
-      // Anchor just below the header on each open so grouped-header height changes are respected.
-      this.wrapper.style.top = `${this.params.topOffset()}px`;
+      this.applyPosition();
+      this.updateClearVisibility();
     } else {
       this.collapseOptions();
     }
     this.wrapper.classList.toggle("pte-quick-filter-open", open);
-    this.wrapper.setAttribute("aria-hidden", open ? "false" : "true");
+    // The collapsed pill (if any) is only shown while closed with an active persisted filter.
+    this.syncIndicator();
+    // aria-hidden must stay false whenever anything in the widget is visible (open, or the pill).
+    const visible = open || !this.indicatorPill?.hidden;
+    this.wrapper.setAttribute("aria-hidden", visible ? "false" : "true");
+  }
+
+  // Place the floating widget: `offsetTop` px below the current header, pinned to the configured
+  // horizontal edge. Read lazily on each open so grouped/multi-row header height changes are honored.
+  private applyPosition(): void {
+    const { offsetX, offsetTop } = this.opts.position;
+    this.wrapper.style.top = `${this.params.headerHeight() + offsetTop}px`;
+    // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
+    // width. Clearing to "" would fall back to the stylesheet's base `right` rule, pinning *both*
+    // edges and stretching the panel across the full width.
+    if (this.anchor === "left") {
+      this.wrapper.style.left = `${offsetX}px`;
+      this.wrapper.style.right = "auto";
+    } else {
+      // Add the scrollbar gutter so the widget never sits over the vertical scrollbar thumb.
+      this.wrapper.style.right = `calc(var(--pte-scrollbar-size, 10px) + ${offsetX}px)`;
+      this.wrapper.style.left = "auto";
+    }
   }
 
   private bind(): void {
@@ -214,45 +299,102 @@ export class QuickFilterWidget {
     this.optionsPanel = div("pte-quick-filter-options-panel");
     this.optionsPanel.hidden = true;
 
-    // Match mode row.
-    const modeRow = div("pte-quick-filter-option-row");
-    const modeLabel = document.createElement("label");
-    modeLabel.className = "pte-quick-filter-option-label";
-    modeLabel.textContent = "Match";
-    this.matchModeSelect = document.createElement("select");
-    this.matchModeSelect.className = "pte-select pte-quick-filter-option-select";
-    for (const [value, text] of [["multiTerm", "All words"], ["substring", "Exact phrase"]] as const) {
+    // Match controls (match-mode + case sensitivity) — only when `showOptions` is on.
+    if (this.opts.showOptions) {
+      // Match mode row.
+      const modeRow = div("pte-quick-filter-option-row");
+      const modeLabel = document.createElement("label");
+      modeLabel.className = "pte-quick-filter-option-label";
+      modeLabel.textContent = "Match";
+      this.matchModeSelect = document.createElement("select");
+      this.matchModeSelect.className = "pte-select pte-quick-filter-option-select";
+      for (const [value, text] of [["multiTerm", "All words"], ["substring", "Exact phrase"]] as const) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        this.matchModeSelect.appendChild(o);
+      }
+      this.matchModeSelect.value = this.matchMode;
+      this.matchModeSelect.addEventListener("change", () => {
+        this.matchMode = this.matchModeSelect!.value as QuickFilterMatchMode;
+        this.commit(true);
+      });
+      modeLabel.appendChild(this.matchModeSelect);
+      modeRow.appendChild(modeLabel);
+
+      // Case sensitivity row.
+      const caseRow = div("pte-quick-filter-option-row");
+      const caseLabel = document.createElement("label");
+      caseLabel.className = "pte-quick-filter-option-label";
+      this.caseCheckbox = document.createElement("input");
+      this.caseCheckbox.type = "checkbox";
+      this.caseCheckbox.checked = this.caseSensitive;
+      this.caseCheckbox.addEventListener("change", () => {
+        this.caseSensitive = this.caseCheckbox!.checked;
+        this.commit(true);
+      });
+      caseLabel.appendChild(this.caseCheckbox);
+      caseLabel.appendChild(document.createTextNode(" Match case"));
+      caseRow.appendChild(caseLabel);
+
+      this.optionsPanel.appendChild(modeRow);
+      this.optionsPanel.appendChild(caseRow);
+    }
+
+    // Layout controls (anchor + keep-on-close) — only when `showLayoutOptions` is on.
+    if (this.opts.showLayoutOptions) this.buildLayoutRows();
+
+    this.wrapper.appendChild(this.optionsPanel);
+  }
+
+  // Anchor (left/right) and keep-filter-on-close controls, appended to the options panel. Changing
+  // the anchor re-places the widget immediately; the keep-on-close toggle mutates `clearOnClose`
+  // (the checkbox is phrased positively as "Keep filter when closed", i.e. the inverse). The
+  // keep-on-close row is omitted in "always" mode, where the widget never closes.
+  private buildLayoutRows(): void {
+    const panel = this.optionsPanel!;
+    // A separator so the layout section reads as distinct from the match controls (when both shown).
+    if (this.opts.showOptions) panel.appendChild(div("pte-quick-filter-option-sep"));
+
+    // Anchor row.
+    const anchorRow = div("pte-quick-filter-option-row");
+    const anchorLabel = document.createElement("label");
+    anchorLabel.className = "pte-quick-filter-option-label";
+    anchorLabel.textContent = "Anchor";
+    this.anchorSelect = document.createElement("select");
+    this.anchorSelect.className = "pte-select pte-quick-filter-option-select pte-quick-filter-anchor-select";
+    for (const [value, text] of [["right", "Right"], ["left", "Left"]] as const) {
       const o = document.createElement("option");
       o.value = value;
       o.textContent = text;
-      this.matchModeSelect.appendChild(o);
+      this.anchorSelect.appendChild(o);
     }
-    this.matchModeSelect.value = this.matchMode;
-    this.matchModeSelect.addEventListener("change", () => {
-      this.matchMode = this.matchModeSelect!.value as QuickFilterMatchMode;
-      this.commit(true);
+    this.anchorSelect.value = this.anchor;
+    this.anchorSelect.addEventListener("change", () => {
+      this.anchor = this.anchorSelect!.value as "left" | "right";
+      this.applyPosition();
     });
-    modeLabel.appendChild(this.matchModeSelect);
-    modeRow.appendChild(modeLabel);
+    anchorLabel.appendChild(this.anchorSelect);
+    anchorRow.appendChild(anchorLabel);
+    panel.appendChild(anchorRow);
 
-    // Case sensitivity row.
-    const caseRow = div("pte-quick-filter-option-row");
-    const caseLabel = document.createElement("label");
-    caseLabel.className = "pte-quick-filter-option-label";
-    this.caseCheckbox = document.createElement("input");
-    this.caseCheckbox.type = "checkbox";
-    this.caseCheckbox.checked = this.caseSensitive;
-    this.caseCheckbox.addEventListener("change", () => {
-      this.caseSensitive = this.caseCheckbox!.checked;
-      this.commit(true);
-    });
-    caseLabel.appendChild(this.caseCheckbox);
-    caseLabel.appendChild(document.createTextNode(" Match case"));
-    caseRow.appendChild(caseLabel);
-
-    this.optionsPanel.appendChild(modeRow);
-    this.optionsPanel.appendChild(caseRow);
-    this.wrapper.appendChild(this.optionsPanel);
+    if (this.opts.mode !== "always") {
+      // Keep-on-close row.
+      const keepRow = div("pte-quick-filter-option-row");
+      const keepLabel = document.createElement("label");
+      keepLabel.className = "pte-quick-filter-option-label";
+      this.keepOpenCheckbox = document.createElement("input");
+      this.keepOpenCheckbox.type = "checkbox";
+      this.keepOpenCheckbox.className = "pte-quick-filter-keep-checkbox";
+      this.keepOpenCheckbox.checked = !this.clearOnClose;
+      this.keepOpenCheckbox.addEventListener("change", () => {
+        this.clearOnClose = !this.keepOpenCheckbox!.checked;
+      });
+      keepLabel.appendChild(this.keepOpenCheckbox);
+      keepLabel.appendChild(document.createTextNode(" Keep filter when closed"));
+      keepRow.appendChild(keepLabel);
+      panel.appendChild(keepRow);
+    }
   }
 
   private toggleOptions(): void {
@@ -274,6 +416,38 @@ export class QuickFilterWidget {
     this.optionsExpanded = false;
     this.wrapper.classList.remove("pte-quick-filter-options-open");
     this.optionsBtn?.setAttribute("aria-expanded", "false");
+  }
+
+  // The collapsed pill: a single button (filter icon + current search text) that reopens the widget.
+  // Built only when the filter can outlive a close (`clearOnClose === false`, non-"always" mode).
+  private buildIndicatorPill(): void {
+    this.indicatorPill = button("pte-quick-filter-pill");
+    this.indicatorPill.type = "button";
+    this.indicatorPill.hidden = true;
+    this.indicatorPill.setAttribute("aria-label", "Active search — click to edit");
+    const pillIcon = span(`pte-quick-filter-pill-icon ${getIconClassName("filter")}`);
+    pillIcon.setAttribute("aria-hidden", "true");
+    this.indicatorLabel = span("pte-quick-filter-pill-label");
+    this.indicatorPill.appendChild(pillIcon);
+    this.indicatorPill.appendChild(this.indicatorLabel);
+    this.indicatorPill.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.show();
+    });
+    this.wrapper.appendChild(this.indicatorPill);
+  }
+
+  // Reflect the collapsed-with-active-filter state: show the pill (and keep the wrapper displayed)
+  // only when the widget is closed and a persisted filter is active. A no-op unless a pill exists.
+  private syncIndicator(): void {
+    if (!this.indicatorPill || !this.indicatorLabel) return;
+    const term = this.input.value.trim();
+    const active = !this.open && term !== "";
+    this.indicatorPill.hidden = !active;
+    if (active) this.indicatorLabel.textContent = term;
+    // Keep the wrapper positioned even while "closed" so the pill floats in the right place.
+    if (active) this.applyPosition();
+    this.wrapper.classList.toggle("pte-quick-filter-has-indicator", active);
   }
 
   // Push the current search state into the core. `immediate` skips the debounce (used for clears and

@@ -106,6 +106,13 @@ export type CellSelectionMode = boolean | "text";
  * - `debounceMs`: delay before a keystroke triggers a refilter. Defaults to 150.
  * - `showOptions`: whether the widget exposes the match-mode / match-case popover to end users.
  *   Defaults to true. When false the configured defaults are fixed.
+ * - `showLayoutOptions`: whether the widget's options popover also exposes end-user controls for the
+ *   anchor (left/right) and keep-filter-on-close behavior. Defaults to false. End-user changes are
+ *   sticky for the session (not written back to grid options), like the other popover controls.
+ * - `clearOnClose`: whether dismissing the widget also clears the active search. Defaults to true
+ *   (a dismissed search stops filtering). When false the filter persists after close and an
+ *   active-filter indicator is shown on the header so the filtering is never silent.
+ * - `position`: where the floating widget sits relative to the grid (see `QuickFilterPositionOptions`).
  * These are the *initial* defaults; end-user changes made in the widget popover are sticky for the
  * session (they are not written back to grid options). Client-side row model only.
  */
@@ -115,6 +122,23 @@ export interface QuickFilterOptions {
   caseSensitive?: boolean;
   debounceMs?: number;
   showOptions?: boolean;
+  showLayoutOptions?: boolean;
+  clearOnClose?: boolean;
+  position?: QuickFilterPositionOptions;
+}
+
+/**
+ * Placement of the floating quick-filter widget within the grid root.
+ * - `anchor`: which horizontal edge the widget is pinned to. "right" (default) preserves the
+ *   historical placement; "left" pins it to the left edge instead.
+ * - `offsetX`: inset in px from the anchored edge. Defaults to 8. On the right edge this is added
+ *   on top of the scrollbar gutter so the widget never overlaps the scrollbar thumb.
+ * - `offsetTop`: gap in px between the bottom of the header and the top of the widget. Defaults to 6.
+ */
+export interface QuickFilterPositionOptions {
+  anchor?: "left" | "right";
+  offsetX?: number;
+  offsetTop?: number;
 }
 
 /** Fully-resolved quick-filter configuration (all defaults applied). `enabled` is false when the
@@ -126,12 +150,16 @@ export interface ResolvedQuickFilterOptions {
   caseSensitive: boolean;
   debounceMs: number;
   showOptions: boolean;
+  showLayoutOptions: boolean;
+  clearOnClose: boolean;
+  position: Required<QuickFilterPositionOptions>;
 }
 
 export function resolveQuickFilterOptions(
   opt: boolean | QuickFilterOptions | undefined,
 ): ResolvedQuickFilterOptions {
   const o = typeof opt === "object" && opt !== null ? opt : {};
+  const pos = o.position ?? {};
   return {
     enabled: opt === true || (typeof opt === "object" && opt !== null),
     mode: o.mode ?? "onDemand",
@@ -139,6 +167,13 @@ export function resolveQuickFilterOptions(
     caseSensitive: o.caseSensitive ?? false,
     debounceMs: o.debounceMs != null && o.debounceMs >= 0 ? o.debounceMs : 150,
     showOptions: o.showOptions ?? true,
+    showLayoutOptions: o.showLayoutOptions ?? false,
+    clearOnClose: o.clearOnClose ?? true,
+    position: {
+      anchor: pos.anchor ?? "right",
+      offsetX: Number.isFinite(pos.offsetX) && (pos.offsetX as number) >= 0 ? (pos.offsetX as number) : 8,
+      offsetTop: Number.isFinite(pos.offsetTop) && (pos.offsetTop as number) >= 0 ? (pos.offsetTop as number) : 6,
+    },
   };
 }
 

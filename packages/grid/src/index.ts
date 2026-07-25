@@ -28,6 +28,9 @@ export type {
   GroupDisplayType,
   CellSelectionMode,
   BodyContextMenuGetter,
+  QuickFilterOptions,
+  QuickFilterPositionOptions,
+  QuickFilterMatchMode,
 } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";

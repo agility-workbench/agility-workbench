@@ -9,6 +9,7 @@ import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
 import ColumnStateDemo from "./ColumnStateDemo";
 import VisualStatesDemo from "./VisualStatesDemo";
+import QuickFilterDemo from "./QuickFilterDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -18,6 +19,7 @@ const PAGES = [
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
+  { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
 ] as const;
 
 function Root() {
