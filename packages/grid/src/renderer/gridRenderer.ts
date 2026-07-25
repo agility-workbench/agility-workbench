@@ -502,6 +502,8 @@ export class GridRenderer {
         this._startIndex = startIndex;
       },
       renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap, viewIndex, rowNumber),
+      renderFullWidthCell: (slot, row, viewIndex, rowNumber) => this._bodyCellRenderer.renderFullWidthCell(slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber),
+      clearFullWidthCell: (slot) => this._bodyCellRenderer.clearFullWidthCell(slot.fullWidthCellEl, slot.cellRendererInstances),
       applySelectionToSlot: (slot, viewIndex) => this._selectionRenderer.applySelectionToSlot(slot, viewIndex),
     });
 
@@ -853,6 +855,13 @@ export class GridRenderer {
   }
 
   _onCellsChanged(params: GridEventCellsChangedParams) {
+    // A single-cell repaint can't re-resolve colSpan geometry (span width + covered-cell hiding
+    // depend on the row's values and neighbours). When any column spans, repaint the whole window
+    // once so patchCells recomputes spans for the changed rows.
+    if (this.core.getColumnModel().getLeaves().some((col) => col.colSpan != null)) {
+      this._bodyWindowRenderer.update(true, undefined);
+      return;
+    }
     for (const rowId of params.rowIds) {
       for (const colId of params.colIds) {
         this._repaintCell(rowId, colId);
@@ -871,6 +880,14 @@ export class GridRenderer {
     const changed = changedColIds.length > 0 ? new Set(changedColIds) : null;
     const columnModel = this.core.getColumnModel();
     const rowModel = this.core.getRowModel();
+
+    // colSpan geometry is resolved per-row in patchCells and depends on column widths and cell
+    // values — a targeted single-cell repaint can't recompute it. When any column spans, fall back
+    // to a full window repaint so widths and covered-cell visibility stay consistent.
+    if (columnModel.getLeaves().some((col) => col.colSpan != null)) {
+      this._bodyWindowRenderer.update(true, undefined);
+      return;
+    }
     const sections: { leaves: Column[]; cells: (slot: RowPoolDef) => HTMLDivElement[] | undefined }[] = [
       { leaves: columnModel.getLeadingLeaves(), cells: (s) => s.leadingCellEls },
       { leaves: columnModel.getLeftLeaves(), cells: (s) => s.leftCellEls },

@@ -179,6 +179,8 @@ export class GridCore implements IGridCore {
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupRowsSelectable: options.groupRowsSelectable ?? false,
+      isFullWidthRow: options.isFullWidthRow,
+      fullWidthCellRenderer: options.fullWidthCellRenderer,
       quickFilter: options.quickFilter ?? false,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
@@ -986,6 +988,15 @@ export class GridCore implements IGridCore {
     if (this.options.groupRowsSelectable) return true;
     const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
     return !node || !node.isGroup;
+  }
+
+  // Whether a row node renders as a full-width row: its content spans the whole body width instead
+  // of per-column cells. True for group rows in "groupRows" display mode, or any node the
+  // isFullWidthRow option opts in. Single source of truth for the renderer.
+  isFullWidthNode(node: IRowNode | null | undefined): boolean {
+    if (!node) return false;
+    if (node.isGroup && this.options.groupDisplayType === "groupRows") return true;
+    return !!this.options.isFullWidthRow?.(node);
   }
 
   getViewIndexForRowId(rowId: GridId): number | null {

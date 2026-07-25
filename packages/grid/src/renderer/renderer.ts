@@ -21,6 +21,11 @@ export interface CellRendererParams {
   eCell: HTMLElement;
   /** Why the renderer is being (re)invoked. Defaults to "data". */
   refreshReason?: CellRefreshReason;
+  /**
+   * The full row node. Populated for a full-width row's renderer (which has no owning column) so it
+   * can read group metadata / level; omitted on the ordinary per-column cell path.
+   */
+  node?: any;
 }
 
 export type CellRendererFn = (p: CellRendererParams) =>

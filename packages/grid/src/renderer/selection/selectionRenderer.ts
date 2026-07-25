@@ -54,18 +54,31 @@ export class SelectionRenderer {
       if (!cells) return;
       for (let i = 0; i < cells.length; i++) {
         const cell = cells[i];
+        if (cell.style.display === "none") continue; // covered by a colSpan neighbour — nothing to paint
         const colIdxRaw = cell.dataset.colIdx;
         const colIdx = colIdxRaw == null ? NaN : Number(colIdxRaw);
+        // A spanning cell covers the leaf-index interval [colIdx, colEnd]; a plain cell has colEnd = colIdx.
+        //
+        // KNOWN LIMITATION: the selection range is a rectangle in leaf-index space, but colSpan can
+        // exist on some rows and not others, producing an L-shaped visual selection a rectangle can't
+        // describe. E.g. select a cell that spans cols [2,3] on row 1, then drag to row 2 (where those
+        // columns don't span): the range is [2,2], so row 1 paints across cols 2-3 (its own span) but
+        // row 2's col 3 is outside the range and stays unbordered — leaving a gap under the spanned
+        // portion. Fixing this would mean growing the range to absorb spans across all rows in the
+        // selection (changing what is selected/copied); left as-is by design for now.
+        const span = cell.dataset.colSpan ? Number(cell.dataset.colSpan) : 1;
+        const colEnd = Number.isFinite(colIdx) ? colIdx + Math.max(1, span) - 1 : colIdx;
         const leafCol = Number.isFinite(colIdx) ? leaves[colIdx] : null;
         const colId = leafCol?.instanceID;
         const colSelected = colId ? selectedColumnIDs.has(colId) : false;
 
+        // Range covers this cell if the range's column interval intersects [colIdx, colEnd].
         const rangeSelected = !!rangeRow && !!range && Number.isFinite(colIdx)
-          && colIdx >= range.colStart && colIdx <= range.colEnd;
+          && colIdx <= range.colEnd && colEnd >= range.colStart;
         const selected = rangeSelected || colSelected || rowSelected;
 
         const prevColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colIdx - 1);
-        const nextColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colIdx + 1);
+        const nextColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colEnd + 1);
 
         const isTop = rangeSelected
           ? (viewIndex === range?.rowStart)
@@ -78,18 +91,18 @@ export class SelectionRenderer {
             ? !nextRowSelected
             : (colSelected && lastRow);
         const isLeft = rangeSelected
-          ? (colIdx === range?.colStart)
+          ? (colIdx <= (range?.colStart ?? 0) && (range?.colStart ?? 0) <= colEnd)
           : rowSelected
             ? colIdx === 0
             : (colSelected && !prevColSelected);
         const isRight = rangeSelected
-          ? (colIdx === range?.colEnd)
+          ? (colIdx <= (range?.colEnd ?? 0) && (range?.colEnd ?? 0) <= colEnd)
           : rowSelected
-            ? colIdx === leaves.length - 1
+            ? colEnd === leaves.length - 1
             : (colSelected && !nextColSelected);
 
         const isActive = !!activeCell && Number.isFinite(colIdx)
-          && viewIndex === activeCell.row && colIdx === activeCell.colIdx;
+          && viewIndex === activeCell.row && activeCell.colIdx >= colIdx && activeCell.colIdx <= colEnd;
 
         const cls = cell.classList;
         cls.toggle("selected", selected);
@@ -105,6 +118,42 @@ export class SelectionRenderer {
     apply(slot.leftCellEls);
     apply(slot.cellEls);
     apply(slot.rightCellEls);
+
+    this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell);
+  }
+
+  // Paint the single full-width host cell (group full-width rows, or isFullWidthRow rows). Column
+  // position is meaningless for a one-cell row, so selection is purely row-scoped: the host is
+  // "selected" when the row is row-selected or the active cell / cell-range falls on this view row.
+  // When the host isn't shown (normal row) or carries no colIdx (non-group full-width row, which is
+  // not cell-selectable), all selection classes are cleared.
+  private applySelectionToFullWidthCell(
+    slot: RowPoolDef,
+    viewIndex: number | null,
+    rangeRow: boolean,
+    rowSelected: boolean,
+    activeCell: { row: number; colIdx: number } | null,
+  ) {
+    const host = slot.fullWidthCellEl;
+    const cls = host.classList;
+    const cellSelectable = host.style.display !== "none" && host.dataset.colIdx != null;
+    if (!cellSelectable) {
+      cls.remove("selected", "selected-top", "selected-bottom", "selected-left", "selected-right", "pte-active-cell");
+      // Row selection still applies to a non-cell-selectable host (e.g. a full-width row selected via
+      // the row-number checkbox); keep just the row-scoped "selected" fill.
+      cls.toggle("selected", host.style.display !== "none" && rowSelected);
+      return;
+    }
+
+    const selected = rowSelected || rangeRow;
+    const isActive = !!activeCell && viewIndex === activeCell.row;
+    cls.toggle("selected", selected);
+    // A one-cell row is bordered on all four sides whenever selected.
+    cls.toggle("selected-top", selected);
+    cls.toggle("selected-bottom", selected);
+    cls.toggle("selected-left", selected);
+    cls.toggle("selected-right", selected);
+    cls.toggle("pte-active-cell", isActive);
   }
 
   private isViewIndexRowSelected(viewIndex: number | null, selectedRowIDs: Set<string>): boolean {

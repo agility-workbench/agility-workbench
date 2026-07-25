@@ -145,7 +145,12 @@ export class ColumnLayoutRenderer {
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
-      slot.rowEl.style.width = `${totalWidth}px`;
+      // A full-width row's center row is sized to the body width, not the column total — leave it
+      // alone (the next patch re-establishes both). Its data cells are display:none, so their widths
+      // above are harmless.
+      if (!slot.rowEl.classList.contains("pte-full-width-row")) {
+        slot.rowEl.style.width = `${totalWidth}px`;
+      }
       maxWidth = Math.max(maxWidth, totalWidth);
     }
     this.params.hScroller.style.width = `${maxWidth}px`;

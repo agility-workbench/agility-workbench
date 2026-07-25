@@ -47,3 +47,19 @@ describe("Column editing", () => {
     expect(dup.valueParser).toBe(parser);
   });
 });
+
+describe("Column colSpan", () => {
+  it("defaults to undefined (no span)", () => {
+    const col = new Column({ key: "name", label: "Name" });
+    expect(col.colSpan).toBeUndefined();
+  });
+
+  it("copies the colSpan callback through updateFromColDef", () => {
+    const colSpan = () => 2;
+    const col = new Column({ key: "name", label: "Name", colSpan });
+    expect(col.colSpan).toBe(colSpan);
+    // A subsequent def without colSpan clears it.
+    col.updateFromColDef({ key: "name", label: "Name" });
+    expect(col.colSpan).toBeUndefined();
+  });
+});

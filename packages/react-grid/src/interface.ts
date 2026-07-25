@@ -1,12 +1,13 @@
 import { ColDef, GridOptions } from "@agility-workbench/grid";
 import { IGridAPI } from "@agility-workbench/grid";
 import { BodyMenuContext, ColumnMenuContext } from "@agility-workbench/grid";
-import { ReactColDef } from "./cellRenderer";
+import { ReactCellRenderer, ReactColDef } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
 // `bodyContextMenu`'s callback arm is redeclared below to return React-aware MenuItems (slots may be
-// React nodes), so it is omitted from the inherited core GridOptions.
-export interface GridProps extends Omit<GridOptions, "bodyContextMenu"> {
+// React nodes); `fullWidthCellRenderer` is redeclared to also accept a React component. Both are
+// omitted from the inherited core GridOptions.
+export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWidthCellRenderer"> {
   /** Optional className/style for the host div */
   className?: string;
   style?: React.CSSProperties;
@@ -36,4 +37,10 @@ export interface GridProps extends Omit<GridOptions, "bodyContextMenu"> {
    *   native menu. Fires on right-click anywhere in the body, including row-number cells.
    */
   bodyContextMenu?: boolean | ((p: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[]);
+
+  /**
+   * Renderer for a full-width row's content (see the core `fullWidthCellRenderer`). May be a plain
+   * core CellRenderer or a React component; a React component is adapted like `colDef.cellRenderer`.
+   */
+  fullWidthCellRenderer?: GridOptions["fullWidthCellRenderer"] | ReactCellRenderer;
 }

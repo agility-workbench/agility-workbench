@@ -68,7 +68,7 @@ function createReactRendererClass(Renderer: ReactCellRenderer): CellRendererClas
   };
 }
 
-function adaptCellRenderer(renderer: ReactColDef["cellRenderer"]): CellRenderer | undefined {
+export function adaptCellRenderer(renderer: CellRenderer | ReactCellRenderer | undefined): CellRenderer | undefined {
   if (!renderer) return undefined;
   if (typeof renderer === "function" && isClassRenderer(renderer as CellRenderer)) {
     return renderer as CellRenderer;

@@ -5,6 +5,7 @@ import type { GridTheme } from "../theme/theme";
 import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
+import type { CellRenderer } from "../renderer/renderer";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -454,6 +455,21 @@ export interface GridOptions {
    */
   groupRowsSelectable?: boolean;
   /**
+   * Marks a row as "full-width": its content spans the entire body width across all column sections
+   * (pinned to the left of the viewport, staying fixed as the body scrolls horizontally) instead of
+   * rendering per-column cells. Return true for the row nodes that should render full width. Group
+   * rows in `groupDisplayType: "groupRows"` are treated as full-width automatically regardless of
+   * this callback. Row height is unchanged. Client-side row model only.
+   */
+  isFullWidthRow?: (node: IRowNode) => boolean;
+  /**
+   * Renderer for a full-width row's content. Receives the standard {@link CellRendererParams} (with
+   * the row node's data). When omitted, a group full-width row falls back to the default
+   * chevron + label; a non-group full-width row renders empty. Only consulted for rows that
+   * {@link isFullWidthRow} (or the `groupRows` display type) marks as full-width.
+   */
+  fullWidthCellRenderer?: CellRenderer;
+  /**
    * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
    * or an options object to customise. Omitted/false disables the feature. Client-side row model
    * only (server-side ignores it).
@@ -545,6 +561,8 @@ export interface InternalGridOptions extends GridOptions {
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;
   groupRowsSelectable: boolean;
+  isFullWidthRow?: (node: IRowNode) => boolean;
+  fullWidthCellRenderer?: CellRenderer;
   quickFilter: boolean | QuickFilterOptions;
   loadingMessage: string;
   noRowsMessage: string;

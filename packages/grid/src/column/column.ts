@@ -3,7 +3,7 @@ import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
-import { CellClass, CellStyle, ColDef, ColumnType } from "../interfaces/column";
+import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
@@ -37,6 +37,8 @@ export class Column {
   cellRendererParams?: any;
   cellClass?: CellClass;
   cellStyle?: CellStyle;
+  // Per-row horizontal span callback (see ColDef.colSpan). Undefined = never spans.
+  colSpan?: (params: CellClassParams) => number;
   type: ColumnType;
   format?: string; // e.g., for date or currency formatting
   children: Column[] = [];
@@ -122,6 +124,7 @@ export class Column {
     this.cellRendererParams = col.cellRendererParams;
     this.cellClass = col.cellClass;
     this.cellStyle = col.cellStyle;
+    this.colSpan = col.colSpan;
     this.type = col.type || ColumnType.STRING;
     this.format = col.format;
     this.hidden = isTrue(col.hidden);

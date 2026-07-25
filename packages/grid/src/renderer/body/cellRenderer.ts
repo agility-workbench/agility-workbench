@@ -8,8 +8,85 @@ import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
+  // Reserved key for the full-width renderer instance in a slot's cellRendererInstances map. Prefixed
+  // with "__" so it can never collide with a real column instanceID (a crypto.randomUUID()).
+  private static readonly FULL_WIDTH_RENDERER_KEY = "__fullWidth";
 
   constructor(private api: IGridAPI) {}
+
+  // Render a full-width row's single host cell. Uses the grid's fullWidthCellRenderer when set;
+  // otherwise falls back to the default group chevron+label for group rows, or blank for a plain
+  // full-width row. The renderer instance is kept in the slot's map under FULL_WIDTH_RENDERER_KEY so
+  // it is reused across scroll and torn down when the slot stops being full-width (see teardown in
+  // renderCell's non-full-width branches via clearFullWidthRenderer).
+  renderFullWidthCell(
+    cell: HTMLDivElement,
+    row: IRowNode,
+    cellRendererMap: Map<string, RendererRecord>,
+    viewIndex: number = row.viewIndex,
+    rowNumber: number = viewIndex + 1,
+  ) {
+    const renderer = this.api.getCore().getOptions().fullWidthCellRenderer;
+
+    if (!renderer) {
+      this.clearFullWidthRenderer(cellRendererMap);
+      cell.classList.add("pte-group-cell");
+      if (row.isGroup) {
+        renderGroupCell(cell, row);
+      } else {
+        cell.style.paddingLeft = "";
+        cell.replaceChildren();
+      }
+      return;
+    }
+
+    cell.classList.remove("pte-group-cell");
+    // A full-width row has no owning column/cell. Expose the row's underlying data object as both
+    // `value` and `data` (there's no per-column value), the full node via `node`, and a minimal
+    // colDef stub so renderers that read colDef.cellRendererParams (e.g. the React adapter) stay safe.
+    const colDefStub = { cellRendererParams: undefined } as unknown as Column;
+    const rendererParams = {
+      ...getCellRendererParams(row.data, row.data, row, viewIndex, colDefStub, cell, this.api, "data"),
+      data: row.data,
+      node: row,
+    };
+    void rowNumber;
+
+    const rec = cellRendererMap.get(BodyCellRenderer.FULL_WIDTH_RENDERER_KEY);
+    if (!rec || rec.renderer !== renderer) {
+      rec?.runtime.destroy();
+      const runtime = createRendererRuntime(renderer, rendererParams);
+      cell.replaceChildren(runtime.gui);
+      cellRendererMap.set(BodyCellRenderer.FULL_WIDTH_RENDERER_KEY, { renderer, runtime });
+      return;
+    }
+
+    const ok = rec.runtime.refresh(rendererParams);
+    if (ok === false) {
+      rec.runtime.destroy();
+      const runtime = createRendererRuntime(renderer, rendererParams);
+      cell.replaceChildren(runtime.gui);
+      rec.runtime = runtime;
+    }
+  }
+
+  // Tear down a slot's full-width renderer instance and clear its host cell. Called when the slot
+  // leaves full-width layout (public, invoked by the window renderer's reset path) and before
+  // falling back to the default group/blank content.
+  clearFullWidthCell(cell: HTMLDivElement, cellRendererMap: Map<string, RendererRecord>) {
+    this.clearFullWidthRenderer(cellRendererMap);
+    cell.classList.remove("pte-group-cell");
+    cell.style.paddingLeft = "";
+    cell.replaceChildren();
+  }
+
+  private clearFullWidthRenderer(cellRendererMap: Map<string, RendererRecord>) {
+    const rec = cellRendererMap.get(BodyCellRenderer.FULL_WIDTH_RENDERER_KEY);
+    if (rec) {
+      rec.runtime.destroy();
+      cellRendererMap.delete(BodyCellRenderer.FULL_WIDTH_RENDERER_KEY);
+    }
+  }
 
   renderCell(
     cell: HTMLDivElement,
@@ -124,8 +201,9 @@ export class BodyCellRenderer {
   //  - "singleColumn": the synthesized auto-group column renders chevron + indented label + count.
   //  - "multipleColumns": each real grouped column (tagged with groupLevel) renders the label for
   //    its own level; other levels stay blank so each grouped field owns one column.
-  //  - "groupRows": no auto column, so the first center column carries the label (sticky-left).
   //  - any other data column → this group's aggregate total for that column, if computed.
+  // Note: "groupRows" mode never reaches here — those group rows render as full-width rows and skip
+  // per-column cell rendering entirely (see BodyWindowRenderer.applyFullWidthLayout).
   private renderGroupRowCell(cell: HTMLDivElement, row: IRowNode, col: Column) {
     cell.classList.add("pte-group-cell");
 
@@ -134,7 +212,6 @@ export class BodyCellRenderer {
       // A level-tagged column only labels its own level; other group rows leave it blank (but may
       // still show an aggregate for that column below).
       if (col.groupLevel != null && col.groupLevel !== row.level) {
-        cell.classList.remove("pte-group-cell-sticky");
         this.renderGroupAggregateOrBlank(cell, row, col);
         return;
       }
@@ -142,14 +219,6 @@ export class BodyCellRenderer {
       return;
     }
 
-    // "groupRows" mode has no auto-group column, so the group label rides in the first center
-    // column (sticky to the left edge so it stays visible while the body scrolls horizontally).
-    if (this.isGroupLabelHostColumn(col)) {
-      cell.classList.add("pte-group-cell-sticky");
-      renderGroupCell(cell, row);
-      return;
-    }
-    cell.classList.remove("pte-group-cell-sticky");
     this.renderGroupAggregateOrBlank(cell, row, col);
   }
 
@@ -163,15 +232,6 @@ export class BodyCellRenderer {
     } else {
       cell.replaceChildren();
     }
-  }
-
-  // True when `col` should host the group label in "groupRows" mode: the mode is groupRows and this
-  // is the first center leaf column. (Only groupRows routes the label through a data column;
-  // multipleColumns puts it on the level-tagged grouped columns instead.)
-  private isGroupLabelHostColumn(col: Column): boolean {
-    if (this.api.getCore().getOptions().groupDisplayType !== "groupRows") return false;
-    const centerLeaves = this.api.getColumnModel().getCenterLeaves();
-    return centerLeaves.length > 0 && centerLeaves[0].instanceID === col.instanceID;
   }
 
   // Expose the indent constant so callers (e.g. groupRows-mode label) can align with the chevron.

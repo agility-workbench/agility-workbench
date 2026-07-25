@@ -1347,13 +1347,22 @@
   white-space: nowrap;
 }
 
-/* "groupRows" mode: the label rides in the first center column but stays pinned to the left edge
-   while the body scrolls horizontally. */
-.pte-cell.pte-group-cell-sticky {
+/* Full-width rows (groupDisplayType "groupRows", and rows opted in via isFullWidthRow). The content
+   lives in a single host cell inside the center row, pinned to the left edge of the viewport so it
+   stays visible while the body scrolls horizontally, and spans the full body width. */
+.pte-row.pte-full-width-row {
+  font-weight: 600;
+}
+
+.pte-cell.pte-full-width-cell {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background-color: var(--pte-group-row-bg-color);
+  overflow: hidden;
 }
 
 .pte-cell.pte-cell-editing {

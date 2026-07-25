@@ -29,6 +29,7 @@ export class BodyRowPoolRenderer {
         leftCellEls: [],
         cellEls: [],
         rightCellEls: [],
+        fullWidthCellEl: this.createFullWidthCell(),
         cellRendererInstances: new Map<string, RendererRecord>(),
       };
 
@@ -71,6 +72,10 @@ export class BodyRowPoolRenderer {
         row.cellEls.push(cell);
       }
 
+      // The full-width host rides in the center row (always present even with zero center leaves).
+      // Hidden by default; shown by applyFullWidthLayout for full-width rows only.
+      row.rowEl.appendChild(row.fullWidthCellEl);
+
       centerViewport.appendChild(row.rowEl);
 
       if (rightLeaves.length > 0) {
@@ -97,6 +102,15 @@ export class BodyRowPoolRenderer {
     row.className = "pte-row";
     row.style.height = `${this.params.rowHeight()}px`;
     return row;
+  }
+
+  // The per-slot full-width host cell. Carries no dataset.colIdx (it is not a leaf column), so
+  // selection hit-testing treats it as non-selectable like a group cell. Hidden until needed.
+  private createFullWidthCell() {
+    const cell = document.createElement("div");
+    cell.className = "pte-cell pte-full-width-cell";
+    cell.style.display = "none";
+    return cell;
   }
 
   private createCell(colId: string, isRightAligned: boolean) {

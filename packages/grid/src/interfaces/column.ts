@@ -77,6 +77,19 @@ export interface ColDef {
    * view; a property that stops being returned is cleared on the next repaint.
    */
   cellStyle?: CellStyle;
+  /**
+   * Number of columns this cell should span horizontally: the cell widens to cover itself plus the
+   * next `N-1` adjacent leaf columns, and those covered cells are hidden. Evaluated per row from the
+   * cell context, so a column can span on some rows and not others. A span is clamped to the end of
+   * this column's section — a colSpan never crosses a pinned (left/center/right) boundary. Values
+   * `<= 1`, non-finite, or non-integer collapse to 1 (no span). Recomputed as cells scroll into
+   * view.
+   *
+   * Note: because the cell-selection range is a rectangle in column-index space, a colSpan present
+   * on some rows but not others can produce an L-shaped selection whose border under the spanned
+   * portion is not drawn on the non-spanning rows. This is a known limitation.
+   */
+  colSpan?: (params: CellClassParams) => number;
   sparklineType?: "line" | "bar" | "area";
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting

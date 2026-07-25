@@ -81,7 +81,12 @@ export function GroupingDemo() {
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "region", key: "region", label: "Region", width: 130 },
     { colId: "country", key: "country", label: "Country", width: 130 },
-    { colId: "category", key: "category", label: "Category", width: 130 },
+    // colSpan demo: the Category cell spans across Sales Rep whenever it is "Services", producing a
+    // merged two-column cell on those rows only. Span is clamped within the (center) section.
+    {
+      colId: "category", key: "category", label: "Category", width: 130,
+      colSpan: (p) => (p.value === "Services" ? 2 : 1),
+    },
     { colId: "rep", key: "rep", label: "Sales Rep", width: 160 },
     { colId: "units", key: "units", label: "Units", width: 110, type: ColumnType.NUMBER },
     { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
