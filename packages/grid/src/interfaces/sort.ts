@@ -14,6 +14,20 @@ export type SortItemUpdate = {
   dir: SortDir | null;
 };
 
+/** The built-in sort cycle used when neither the column nor the grid specifies a `sortingOrder`. */
+export const DEFAULT_SORTING_ORDER: (SortDir | null)[] = ["asc", "desc", null];
+
+/**
+ * Advance a sort direction one step through `order` (the configured sort cycle), wrapping at the end.
+ * `null` represents the unsorted state. If `current` isn't found in `order` (e.g. the cycle changed),
+ * start from the first entry. An empty/missing `order` falls back to `DEFAULT_SORTING_ORDER`.
+ */
+export function nextSortDir(current: SortDir | null, order: (SortDir | null)[]): SortDir | null {
+  const cycle = order && order.length > 0 ? order : DEFAULT_SORTING_ORDER;
+  const idx = cycle.indexOf(current);
+  return idx === -1 ? cycle[0] : cycle[(idx + 1) % cycle.length];
+}
+
 export class SortModel {
   public id: string = crypto.randomUUID();
 

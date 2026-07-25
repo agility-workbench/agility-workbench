@@ -1063,28 +1063,74 @@
   flex-direction: row-reverse;
 }
 
-.pte-hcell-content.pte-sorted-asc::after {
-  content: " ";
-  font-size: 22px;
+/* Dedicated, clickable sort affordance. Lives inside .pte-hcell-content (after the label), so it
+   inherits the row-reverse flip on computable columns. Direction/priority state is set via the
+   pte-sort-asc / pte-sort-desc / pte-sort-none classes and pte-has-priority. */
+.pte-hcell-sort {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
   margin-left: 4px;
-  mask-image: var(--pte-icon-sort-asc);
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  background-color: var(--pte-icon-color);
-  width: 22px;
-  height: 22px;
+  cursor: pointer;
 }
 
-.pte-hcell-content.pte-sorted-desc::after {
-  content: " ";
-  font-size: 22px;
-  margin-left: 4px;
-  mask-image: var(--pte-icon-sort-desc);
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  background-color: var(--pte-icon-color);
+/* On right-aligned (computable) columns the content is row-reversed, so mirror the sort element too:
+   the arrow stays next to the label and the priority badge moves to the outer edge. This keeps the
+   layout a true mirror of left-aligned columns and makes the badge (not the arrow) the first thing
+   clipped when the column is narrowed. */
+.pte-hcell-container.pte-hcell-computable .pte-hcell-sort {
+  flex-direction: row-reverse;
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+.pte-hcell-sort-arrow {
   width: 22px;
   height: 22px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: var(--pte-icon-color);
+}
+
+.pte-hcell-sort.pte-sort-asc .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-asc);
+}
+
+.pte-hcell-sort.pte-sort-desc .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-desc);
+}
+
+/* Neutral (unsorted) state: a dimmed clear/none glyph signalling the column is sortable. */
+.pte-hcell-sort.pte-sort-none .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-clear);
+  opacity: 0.4;
+}
+
+/* At rest the neutral icon is hidden; it's revealed on header hover / keyboard focus, unless the
+   column opts into a persistent neutral icon (pte-sort-persist, from unSortIcon). A column with an
+   active sort (asc/desc) always shows its arrow. */
+.pte-hcell-sort.pte-sort-none:not(.pte-sort-persist) {
+  visibility: hidden;
+}
+
+.pte-hcell:hover .pte-hcell-sort.pte-sort-none,
+.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none {
+  visibility: visible;
+}
+
+/* Multi-column sort priority badge. */
+.pte-hcell-sort-priority {
+  display: none;
+  font-size: 10px;
+  line-height: 1;
+  min-width: 12px;
+  text-align: center;
+  color: var(--pte-muted-text-color);
+}
+
+.pte-hcell-sort.pte-has-priority .pte-hcell-sort-priority {
+  display: inline-block;
 }
 
 .pte-hcell-children {

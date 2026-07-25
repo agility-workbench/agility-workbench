@@ -52,12 +52,25 @@ export class HeaderInteractionHandler {
     if (headerExpand) {
       return this.params.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });
     }
+    // The sort icon lives inside .pte-hcell-content, so it must be checked before the content branch
+    // below. A plain click replaces the sort with this column; the configured multiSortKey modifier
+    // makes it additive (multi-column sort).
+    const sortIcon = (e.target as HTMLElement)?.closest(".pte-hcell-sort");
+    if (sortIcon) {
+      const col = this.params.core.getColumnModel().getById(header.id);
+      if (!col || col.isInternal() || !col.sortable) return;
+      const additive = this.params.core.options.multiSortKey === "shift"
+        ? e.shiftKey
+        : e.ctrlKey || e.metaKey;
+      return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive });
+    }
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = this.params.core.getColumnModel().getById(header.id);
       if (!col || col.isInternal()) return;
       if (e.shiftKey) {
-        return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id });
+        // Backward-compatible power-user shortcut: Shift+click on the header body sorts additively.
+        return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive: true });
       }
       // Column selection is opt-out: when disabled, a header click still counts as a header action
       // (e.g. for sort affordances) but does not select the column.

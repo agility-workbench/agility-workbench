@@ -213,7 +213,7 @@ export class GridRenderer {
       updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       updatePaginationControls: (params?: GridEventPaginationChangedParams) => this._updatePaginationControls(params),
-      addSortIndicatorToHeader: (colID, dir) => this._headerRenderer.addSortIndicatorToHeader(colID, dir),
+      refreshSortIndicators: () => this._headerRenderer.refreshSortIndicators(),
       setFilterIndicators: () => this._headerRenderer.setFilterIndicators(),
       buildRowPool: () => this._buildRowPool(),
       buildHeaderDOM: (reason) => this._buildHeaderDOM(reason),

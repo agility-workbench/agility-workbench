@@ -3,7 +3,7 @@ import { IRowModel, IRowModelRequestParams, RowDataChangeReason } from "../inter
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
-import { SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
+import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridOptions, InternalGridOptions, QuickFilterMatchMode, resolveQuickFilterOptions } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -170,6 +170,10 @@ export class GridCore implements IGridCore {
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,
       commitOnBlur: options.commitOnBlur ?? true,
+      sortingOrder: options.sortingOrder ?? ["asc", "desc", null],
+      sortIconVisibility: options.sortIconVisibility ?? "hover",
+      multiSortKey: options.multiSortKey ?? "ctrl",
+      showSortPriority: options.showSortPriority ?? "multi",
       initialSort: options.initialSort,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
@@ -779,7 +783,7 @@ export class GridCore implements IGridCore {
     return this.sorts.id !== currSortID;
   }
 
-  toggleSort(col: Column) {
+  toggleSort(col: Column, additive: boolean = false) {
     if (!col.sortable) return;
     let curr: SortItem | undefined;
     if (col.children.length > 0) {
@@ -798,9 +802,31 @@ export class GridCore implements IGridCore {
       curr = this.sorts.items.find(s => s.col.instanceID === col.instanceID);
     }
 
-    if (!this.setSortModelForCol(col, curr ? (curr.dir === "asc" ? "desc" : null) : "asc")) return;
+    // Advance through the configured sort cycle: per-column order wins over the grid-level order,
+    // which falls back to the built-in default inside nextSortDir.
+    const order = col.sortingOrder ?? this.options.sortingOrder;
+    const nextDir = nextSortDir(curr?.dir ?? null, order);
 
-    const changedColIds = col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID];
+    // A non-additive (plain) sort replaces the whole sort model: clear every other sorted column
+    // first, then apply this one. Additive sorts (Ctrl/⌘ icon-click, or the Shift+click shortcut)
+    // leave the existing sort model in place and just update this column.
+    let clearedIds: string[] = [];
+    if (!additive) {
+      const keep = new Set(col.getLeaves().map(c => c.instanceID));
+      const others = this.sorts.items.map(s => s.col).filter(c => !keep.has(c.instanceID));
+      if (others.length > 0) {
+        clearedIds = others.flatMap(c => c.getVisibleLeaves().map(l => l.instanceID));
+        this.sorts.bulkUpdate(others, null);
+      }
+    }
+
+    const applied = this.setSortModelForCol(col, nextDir);
+    if (!applied && clearedIds.length === 0) return;
+
+    const changedColIds = [
+      ...clearedIds,
+      ...(col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID]),
+    ];
     this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
   }
@@ -1221,7 +1247,7 @@ export class GridCore implements IGridCore {
         if (!col || col.isInternal()) return;
         switch (action.action) {
           case "toggleSort":
-            this.toggleSort(col);
+            this.toggleSort(col, action.additive ?? false);
             break;
           case "filterClick":
           case "menuClick":

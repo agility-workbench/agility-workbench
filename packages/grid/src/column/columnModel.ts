@@ -543,7 +543,10 @@ export class ColumnModel implements IColumnModel {
   }
 
   private getColumnContentWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams): number {
-    return measureCtx.measure(col.label, params?.headerFont ?? "500 14px Arial") + 104; // 16px padding + 88px for sort/filter icons
+    // 16px padding + 104px for the header affordances: sort arrow, its (possible) multi-sort priority
+    // badge, and the filter & menu buttons. The badge is included even for single-sort columns so an
+    // auto-sized column never clips the sort button once a priority number appears.
+    return measureCtx.measure(col.label, params?.headerFont ?? "500 14px Arial") + 120;
   }
 
   computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {

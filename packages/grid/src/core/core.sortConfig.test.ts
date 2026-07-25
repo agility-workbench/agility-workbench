@@ -115,6 +115,91 @@ describe("GridOptions.initialSort", () => {
   });
 });
 
+describe("sortingOrder (configurable cycle)", () => {
+  function setup(options: object, colDefs: any[]) {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide", ...options });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData(ROWS.map(r => ({ ...r })));
+    core.setColumnDefsFromProps(colDefs);
+    return core;
+  }
+  const sortDirs = (core: GridCore) => core.getSortModel().items.map(s => ({ key: s.key, dir: s.dir }));
+  const clickSort = (core: GridCore, colId: string, additive = false) =>
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: core.getColumnModel().getByColId(colId)!.instanceID, additive });
+
+  it("uses the grid-level sortingOrder (descending-first)", () => {
+    const core = setup({ sortingOrder: ["desc", "asc", null] }, [
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+    ]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "desc" }]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "asc" }]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([]); // back to unsorted
+  });
+
+  it("column-level sortingOrder overrides the grid-level one", () => {
+    const core = setup({ sortingOrder: ["asc", "desc", null] }, [
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER, sortingOrder: ["desc", "asc"] },
+    ]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "desc" }]); // column's desc-first wins
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "asc" }]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "desc" }]); // two-state cycle wraps, never unsorted
+  });
+});
+
+describe("additive vs replace sort (multi-column)", () => {
+  function setup(colDefs: any[]) {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData(ROWS.map(r => ({ ...r })));
+    core.setColumnDefsFromProps(colDefs);
+    return core;
+  }
+  const keys = (core: GridCore) => core.getSortModel().items.map(s => s.key);
+  const clickSort = (core: GridCore, colId: string, additive = false) =>
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: core.getColumnModel().getByColId(colId)!.instanceID, additive });
+
+  const cols = [
+    { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+    { colId: "size", key: "size", label: "Size", type: ColumnType.STRING },
+  ];
+
+  it("a plain (non-additive) sort replaces the whole sort model", () => {
+    const core = setup(cols);
+    clickSort(core, "n");
+    clickSort(core, "size"); // plain click on a different column → replaces
+    expect(keys(core)).toEqual(["size"]);
+  });
+
+  it("an additive sort accumulates columns in click order (priority)", () => {
+    const core = setup(cols);
+    clickSort(core, "n");
+    clickSort(core, "size", true); // additive → both, n primary
+    expect(keys(core)).toEqual(["n", "size"]);
+  });
+
+  it("removing a middle sort renumbers priority of the rest", () => {
+    const core = setup([
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+      { colId: "size", key: "size", label: "Size", type: ColumnType.STRING },
+      { colId: "id", key: "id", label: "ID", type: ColumnType.STRING },
+    ]);
+    clickSort(core, "n");
+    clickSort(core, "size", true);
+    clickSort(core, "id", true);
+    expect(keys(core)).toEqual(["n", "size", "id"]);
+    // Cycle "size" additively through to unsorted (asc→desc→none) to drop it from the middle.
+    clickSort(core, "size", true);
+    clickSort(core, "size", true);
+    expect(keys(core)).toEqual(["n", "id"]); // size gone, n still primary, id now second
+  });
+});
+
 describe("columns-before-data order (React wrapper sequence)", () => {
   // The React wrapper sets columnDefs BEFORE data. An initial sort is therefore seeded while there
   // are no rows (so comparators aren't resolved yet); the first setRowData must resolve comparators

@@ -31,6 +31,11 @@ export type {
   QuickFilterOptions,
   QuickFilterPositionOptions,
   QuickFilterMatchMode,
+  InitialSortItem,
+  SortingOrder,
+  MultiSortKey,
+  ShowSortPriority,
+  SortIconVisibility,
 } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";

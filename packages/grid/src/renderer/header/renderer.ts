@@ -1,5 +1,6 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
+import type { SortIconVisibility } from "../../interfaces/gridOptions";
 import { isFalse } from "../../misc";
 import { createElement } from "../element";
 import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
@@ -147,21 +148,65 @@ export class HeaderRenderer {
       const headerMenu = this.getHeaderMenuElement(col);
       headerContainer.appendChild(headerMenu);
     }
-    const sort = this.params.core.getSortModel().items.find(s => s.col.instanceID === col.instanceID);
-    if (sort) {
-      headerContent.classList.add("pte-sorted-" + sort.dir);
+    // Sortable leaf columns get a real, clickable sort icon inside the content (after the label). Its
+    // resting visibility and current direction/priority are driven by classes updated here and in
+    // refreshSortIndicators. Parent columns are excluded — they never carry a direction in the sort
+    // model (their leaves do). Non-sortable and row-number columns get no icon, and neither do columns
+    // whose sortIconVisibility resolves to "never" (still sortable, just no icon affordance).
+    if (!isRowNumberColumn && col.sortable && col.children.length === 0) {
+      const visibility = this.resolveSortIconVisibility(col);
+      if (visibility !== "never") {
+        const sortEl = createElement("div", "pte-hcell-sort");
+        if (visibility === "always") sortEl.classList.add("pte-sort-persist");
+        sortEl.appendChild(createElement("span", "pte-hcell-sort-arrow"));
+        sortEl.appendChild(createElement("span", "pte-hcell-sort-priority"));
+        headerContent.appendChild(sortEl);
+        this.updateSortIcon(col, sortEl);
+      }
     }
     return header;
   }
 
-  addSortIndicatorToHeader(key: string, dir: "asc" | "desc" | "") {
-    const hcell = document.getElementById(key);
-    if (!hcell) return;
-    const hcellContent = hcell.querySelector(".pte-hcell-content");
-    if (!hcellContent) return;
-    hcellContent.classList.remove("pte-sorted-asc", "pte-sorted-desc");
-    if (dir === "") return;
-    hcellContent.classList.add("pte-sorted-" + dir);
+  /** Grid-level `sortIconVisibility`, overridable per column: whether/when the sort icon renders. */
+  private resolveSortIconVisibility(col: Column): SortIconVisibility {
+    return col.sortIconVisibility ?? this.params.core.options.sortIconVisibility;
+  }
+
+  /**
+   * Set a single sort icon's direction (asc / desc / neutral) and priority badge from the current
+   * sort model. `sortEl` is the `.pte-hcell-sort` wrapper; falls back to locating it from the column.
+   */
+  private updateSortIcon(col: Column, sortEl?: HTMLElement | null) {
+    if (!sortEl) {
+      const hcell = document.getElementById(col.instanceID);
+      sortEl = hcell?.querySelector(".pte-hcell-sort") as HTMLElement | null;
+    }
+    if (!sortEl) return;
+    const items = this.params.core.getSortModel().items;
+    const idx = items.findIndex(s => s.col.instanceID === col.instanceID);
+    const dir = idx === -1 ? null : items[idx].dir;
+
+    sortEl.classList.remove("pte-sort-asc", "pte-sort-desc", "pte-sort-none");
+    sortEl.classList.add(dir ? "pte-sort-" + dir : "pte-sort-none");
+
+    const badge = sortEl.querySelector(".pte-hcell-sort-priority") as HTMLElement | null;
+    if (badge) {
+      const mode = this.params.core.options.showSortPriority;
+      const show = dir !== null && (mode === "always" || (mode === "multi" && items.length >= 2));
+      badge.textContent = show ? String(idx + 1) : "";
+      sortEl.classList.toggle("pte-has-priority", show);
+    }
+  }
+
+  /**
+   * Refresh sort icons across all sortable columns. Called on every sort change because adding or
+   * removing a sorted column renumbers the priority badges of the others — a per-changed-column
+   * update would leave stale numbers behind.
+   */
+  refreshSortIndicators() {
+    for (const col of this.params.core.getColumnModel().getLeaves()) {
+      if (col.sortable) this.updateSortIcon(col);
+    }
   }
 
   setFilterIndicators() {

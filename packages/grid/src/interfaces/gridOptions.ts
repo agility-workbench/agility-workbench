@@ -80,6 +80,40 @@ export interface InitialSortItem {
 }
 
 /**
+ * The cycle a column steps through on successive sort clicks. Each click advances to the next entry
+ * (wrapping at the end); `null` is the unsorted state. Defaults to `["asc", "desc", null]`. Drop
+ * `null` (e.g. `["asc", "desc"]`) to keep a column always sorted, or lead with `"desc"` for
+ * descending-first columns.
+ */
+export type SortingOrder = ("asc" | "desc" | null)[];
+
+/**
+ * Modifier key that makes a sort-icon click additive (adds the column to a multi-column sort instead
+ * of replacing it): "ctrl" (also matches ⌘ / metaKey) or "shift". Defaults to "ctrl", consistent
+ * with additive column selection.
+ */
+export type MultiSortKey = "ctrl" | "shift";
+
+/**
+ * When the multi-column sort priority number is shown on the sort icon:
+ * - "multi" (default): only when 2+ columns are sorted.
+ * - "always": whenever a column is sorted (even a single one).
+ * - "never": never shown.
+ */
+export type ShowSortPriority = "multi" | "always" | "never";
+
+/**
+ * When the sort icon is shown on a sortable column:
+ * - "hover" (default): revealed on header hover / keyboard focus (a column with an active sort always
+ *   shows its direction arrow regardless).
+ * - "always": the (neutral) icon is shown at rest too, making the column visibly sortable.
+ * - "never": no sort icon is rendered, even when the column is actively sorted. The column stays
+ *   sortable via the column menu, Shift+click on the header, and the API — only the icon affordance
+ *   is suppressed (use this when a custom sort UI drives sorting).
+ */
+export type SortIconVisibility = "hover" | "always" | "never";
+
+/**
  * How a mouse gesture starts editing an editable cell:
  * - "doubleClick" (default): double-click opens the editor.
  * - "singleClick": a single click selects the cell and opens the editor together.
@@ -343,6 +377,32 @@ export interface GridOptions {
    */
   initialSort?: InitialSortItem[];
   /**
+   * The cycle a column steps through on successive sort-icon clicks — an ordered list of directions
+   * where `null` is the unsorted state. Each click advances to the next entry, wrapping at the end.
+   * Defaults to `["asc", "desc", null]`. Set `["asc", "desc"]` to keep sorted columns always sorted,
+   * or `["desc", "asc", null]` for descending-first. Overridable per column via `ColDef.sortingOrder`.
+   */
+  sortingOrder?: SortingOrder;
+  /**
+   * When the sort icon is shown on sortable columns: "hover" (default) reveals it on header hover /
+   * keyboard focus; "always" shows the neutral icon at rest too, making the column visibly sortable;
+   * "never" renders no icon at all (the column stays sortable via the menu, Shift+click, and the API).
+   * Except under "never", a column with an active sort always shows its direction arrow. Overridable
+   * per column via `ColDef.sortIconVisibility`.
+   */
+  sortIconVisibility?: SortIconVisibility;
+  /**
+   * Modifier key that makes a sort-icon click additive — adding the column to a multi-column sort
+   * rather than replacing the current sort. "ctrl" (default, also matches ⌘) or "shift". A plain
+   * (unmodified) icon click always replaces the sort with just that column.
+   */
+  multiSortKey?: MultiSortKey;
+  /**
+   * When the multi-column sort priority number is shown on the sort icon: "multi" (default — only
+   * when 2+ columns are sorted), "always" (whenever a column is sorted), or "never".
+   */
+  showSortPriority?: ShowSortPriority;
+  /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
    * `editTrigger: "none"` for fully API-only editing. Defaults to false.
@@ -477,6 +537,10 @@ export interface InternalGridOptions extends GridOptions {
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
   commitOnBlur: boolean;
+  sortingOrder: SortingOrder;
+  sortIconVisibility: SortIconVisibility;
+  multiSortKey: MultiSortKey;
+  showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;

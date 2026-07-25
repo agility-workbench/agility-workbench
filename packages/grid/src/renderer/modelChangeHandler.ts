@@ -13,7 +13,7 @@ interface GridModelChangeHandlerParams {
   updateWindow: (forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) => void;
   resetScrollPosition: () => void;
   updatePaginationControls: (params?: GridEventPaginationChangedParams) => void;
-  addSortIndicatorToHeader: (colID: string, dir: "asc" | "desc" | "") => void;
+  refreshSortIndicators: () => void;
   setFilterIndicators: () => void;
   buildRowPool: () => void;
   buildHeaderDOM: (reason: string) => void;
@@ -53,16 +53,13 @@ export class GridModelChangeHandler {
   }
 
   onColumnsChanged(params: GridEventColumnsChangedParams) {
-    console.log(params);
     let rebuiltRows = false;
     // Selection clearing on column visibility/state/order/defs changes is owned by the core
     // (it emits selectionChanged); the renderer only rebuilds/repaints below.
     if (params.reason === "sort") {
-      const sorts = this.params.core.getSortModel().items;
-      for (const colID of params.changedColIds || []) {
-        const sort = sorts.find(s => s.col.instanceID === colID);
-        this.params.addSortIndicatorToHeader(colID, sort?.dir || "");
-      }
+      // Refresh all sort icons, not just the changed columns: adding/removing a sorted column
+      // renumbers the priority badges of the others.
+      this.params.refreshSortIndicators();
     } else if (params.reason === "filter") {
       this.params.setFilterIndicators();
     } else if (params.reason === "visibility") {

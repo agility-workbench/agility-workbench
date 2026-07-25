@@ -175,6 +175,8 @@ export type GridActionHeaderAction = {
   type: "headerAction";
   colId: string;
   action: string;
+  // For action "toggleSort": add the column to a multi-column sort instead of replacing it.
+  additive?: boolean;
 };
 
 export type GridActionRowSelectSet = {

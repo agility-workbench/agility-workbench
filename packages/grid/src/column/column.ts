@@ -6,6 +6,7 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellStyle, ColDef, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
+import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
 
 type InternalColumnRole = "rowNumber" | "autoGroup";
 type InternalColDef = ColDef & { __internalRole?: InternalColumnRole; __groupLevel?: number };
@@ -63,6 +64,10 @@ export class Column {
   // Initial sort seeded from the ColDef (`sort` / `sortIndex`), applied once at first column setup.
   initialSort?: SortDir;
   initialSortIndex?: number;
+  // Per-column overrides for sort-cycle order and resting neutral-icon visibility. Undefined = fall
+  // back to the grid-level option; resolved at the point of use (cycle computation / icon render).
+  sortingOrder?: SortingOrder;
+  sortIconVisibility?: SortIconVisibility;
   collator?: Intl.Collator | null
   showExpander: boolean = false;
   internalRole?: InternalColumnRole;
@@ -125,6 +130,8 @@ export class Column {
     this.userComparator = col.comparator;
     this.initialSort = col.sort;
     this.initialSortIndex = col.sortIndex;
+    this.sortingOrder = col.sortingOrder;
+    this.sortIconVisibility = col.sortIconVisibility;
     this.filter = col.filter;
     this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);

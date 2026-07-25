@@ -3,6 +3,7 @@ import { CellRenderer } from "../renderer/renderer";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { ComparatorFn, Filter, FilterParams } from "./filter";
 import type { SortDir } from "./sort";
+import type { SortingOrder, SortIconVisibility } from "./gridOptions";
 
 export enum ColumnType {
   STRING = "string",
@@ -83,6 +84,19 @@ export interface ColDef {
   hidden?: boolean;
   pinned?: "left" | "right";
   sortable?: boolean;
+  /**
+   * The cycle this column steps through on successive sort clicks — an ordered list of directions
+   * where `null` is the unsorted state (e.g. `["desc", "asc", null]` for descending-first). Overrides
+   * the grid-level `sortingOrder`. When omitted, the grid-level order (default `["asc", "desc", null]`)
+   * applies.
+   */
+  sortingOrder?: SortingOrder;
+  /**
+   * When the sort icon is shown for this column: "always" shows the neutral icon at rest, "hover"
+   * reveals it on header hover / focus, "never" renders no icon (still sortable via menu / Shift+click
+   * / API). Overrides the grid-level `sortIconVisibility` for this column.
+   */
+  sortIconVisibility?: SortIconVisibility;
   /**
    * Custom sort comparator for this column: `(a, b, nodeA, nodeB) => number` (negative if a<b).
    * `a`/`b` are the two cell values; the row nodes are provided for value-getter or cross-field
