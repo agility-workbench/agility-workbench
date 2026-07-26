@@ -154,10 +154,13 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           break;
         }
         case "eq":
-          if (cell !== f.v) ok = false;
+          // Match the normalization used when f.v was built (filter.ts ~line 98/104): numeric columns
+          // compare coerced numbers (cell is a number, f.v the raw input string); string columns
+          // compare the lowercased cell (strVal) against the already-lowercased f.v.
+          if (f.col.isComputableType() ? Number(cell) !== Number(f.v) : strVal !== f.v) ok = false;
           break;
         case "neq":
-          if (cell === f.v) ok = false;
+          if (f.col.isComputableType() ? Number(cell) === Number(f.v) : strVal === f.v) ok = false;
           break;
         case "gt":
           if (!(Number(cell) > Number(f.v))) ok = false;
