@@ -1,6 +1,6 @@
 import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState } from "../../filter/types";
-import { createElement, div } from "../element";
+import { button, createElement, div } from "../element";
 import { FilterDef, FilterType, valuesNeededFor } from "../../interfaces/filter";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 
@@ -142,14 +142,37 @@ export class BasicFilterRenderer implements IFilterRenderer {
   }
 
   private createFilterValueInput(idx: number, suffix: string, value: any): HTMLElement {
+    const wrap = div("pte-filter-input-wrap");
+
     const input = createElement("input", "pte-filter-input");
     input.name = `filter-value-${suffix}`;
     input.type = this.spec.kind;
     input.value = value ?? "";
 
-    input.addEventListener("input", (e) => this.controller.setValue(idx, 0, input.value));
+    const clearBtn = button("pte-filter-input-clear");
+    clearBtn.type = "button";
+    clearBtn.tabIndex = -1;
+    clearBtn.setAttribute("aria-label", "Clear");
+    clearBtn.innerHTML = "&times;";
 
-    return input;
+    const syncClear = () => wrap.classList.toggle("pte-filter-input-clear-visible", input.value !== "");
+
+    input.addEventListener("input", () => {
+      this.controller.setValue(idx, 0, input.value);
+      syncClear();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      this.controller.setValue(idx, 0, "");
+      syncClear();
+      input.focus();
+    });
+
+    syncClear();
+    wrap.appendChild(input);
+    wrap.appendChild(clearBtn);
+    return wrap;
   }
 
   private updateFilterRow(idx: number, suffix: string, filter: FilterDef) {
@@ -163,19 +186,22 @@ export class BasicFilterRenderer implements IFilterRenderer {
     const needed = valuesNeededFor(filter.type);
     const existingInputs = row.querySelectorAll(`input[name^="filter-value-${suffix}"]`);
     for (let i = 0; i < needed; i++) {
-      let input = existingInputs[i] as HTMLInputElement;
+      const input = existingInputs[i] as HTMLInputElement | undefined;
       if (!input) {
-        input = this.createFilterValueInput(idx, suffix, filter.values[i]) as HTMLInputElement;
-        row.appendChild(input);
+        row.appendChild(this.createFilterValueInput(idx, suffix, filter.values[i]));
       } else {
-        if (input.value !== (filter.values[i] ?? "")) {
-          input.value = filter.values[i] ?? "";
+        const next = filter.values[i] ?? "";
+        if (input.value !== next) {
+          input.value = next;
         }
+        // Keep the clear button in sync when the value changes from state (not just user typing).
+        const wrap = input.closest(".pte-filter-input-wrap");
+        wrap?.classList.toggle("pte-filter-input-clear-visible", input.value !== "");
       }
     }
-    // remove extra inputs
+    // remove extra inputs (remove the wrapper, not just the input)
     for (let i = needed; i < existingInputs.length; i++) {
-      existingInputs[i].remove();
+      (existingInputs[i].closest(".pte-filter-input-wrap") ?? existingInputs[i]).remove();
     }
   }
 

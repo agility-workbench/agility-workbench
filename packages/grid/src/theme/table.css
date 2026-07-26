@@ -1707,6 +1707,45 @@
   border-color: var(--pte-select-border-color);
 }
 
+.pte-filter-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+/* Leave room for the clear button so long values don't run under it. */
+.pte-filter-input-wrap .pte-filter-input {
+  padding-right: 28px;
+}
+
+.pte-filter-input-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pte-filter-input-clear:hover {
+  color: var(--pte-text-color);
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-filter-input-clear-visible .pte-filter-input-clear {
+  display: inline-flex;
+}
+
 .pte-filter-input[type="number"] {
   appearance: none;
   -moz-appearance: textfield;
