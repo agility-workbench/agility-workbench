@@ -7,6 +7,7 @@ import { AggregateCalculator } from "../aggregate/calculator";
 import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
+import { resolveColSpan } from "../renderer/body/colSpan";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -72,6 +73,26 @@ export interface ExportConfig {
    * the singleColumn Group column is still prepended when present, so grouping context survives.
    */
   groupMode?: "tree" | "leaves";
+  /**
+   * Per-cell horizontal span resolver, mirroring the grid's `ColDef.colSpan`. Given a body row's
+   * data and a column, returns the raw span the column requested for that row (1 / undefined = no
+   * span). The exporter clamps the result to the exported column window and the column's pinned
+   * section, then emits an Excel cell merge — reproducing the on-screen merged cell. Omitted → no
+   * body spanning. Applies to leaf/data rows (flat and grouped exports); group header/subtotal rows
+   * keep their own layout.
+   */
+  getCellColSpan?: (rowData: any, col: Column, rowIndex: number) => number | undefined;
+  /**
+   * Marks a body row as full-width (group rows in "groupRows" mode, or rows the grid's
+   * `isFullWidthRow` opts in). A full-width row exports as a single value in the first column merged
+   * across every exported column, mirroring the grid. `rowData` is the row's underlying data object.
+   */
+  isFullWidthRow?: (rowData: any) => boolean;
+  /**
+   * Renders a full-width row's exported text. Defaults to the row's group label (for group rows) or
+   * empty. Only consulted for rows {@link isFullWidthRow} marks full-width.
+   */
+  fullWidthText?: (rowData: any) => string;
 }
 
 interface HeaderCell {
@@ -288,6 +309,120 @@ const getValueBundle = (row: any, col: Column): ValueBundle => {
   return { raw, formatted };
 };
 
+// Which pinned section a column belongs to. Body spans (like on screen) never cross a section
+// boundary, so runs of same-section columns bound how far a span can reach.
+const sectionOf = (col: Column): "left" | "center" | "right" =>
+  col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center";
+
+/**
+ * Resolve one body row's horizontal spans over the EXPORTED column window. Returns, per column
+ * index, the effective span (>= 1). A span is clamped so it never runs past the end of the column's
+ * pinned section within this window and never past the last exported column — exactly mirroring the
+ * grid's clamp, but against the columns actually present in the export (so a selection/column filter
+ * that cuts a span merges only the visible part). Columns covered by an earlier span get span 0
+ * (they are emitted empty and folded into the merge).
+ */
+const resolveRowSpans = (
+  rowData: any,
+  columns: Column[],
+  getCellColSpan: (rowData: any, col: Column, rowIndex: number) => number | undefined,
+  rowIndex: number,
+): number[] => {
+  const spans = new Array<number>(columns.length).fill(1);
+  let c = 0;
+  while (c < columns.length) {
+    const col = columns[c];
+    const section = sectionOf(col);
+    // Columns remaining in this same-section run from c onward.
+    let sectionEnd = c;
+    while (sectionEnd + 1 < columns.length && sectionOf(columns[sectionEnd + 1]) === section) sectionEnd++;
+    const remainingInSection = sectionEnd - c + 1;
+
+    const raw = getCellColSpan(rowData, col, rowIndex);
+    const span = resolveColSpan(raw, remainingInSection);
+    spans[c] = span;
+    for (let k = 1; k < span; k++) spans[c + k] = 0; // covered
+    c += span;
+  }
+  return spans;
+};
+
+// A body data row's Excel cells plus the column-local merges it needs (0-based column offsets;
+// `span` >= 2). The caller translates each merge to an absolute MergeRange once it knows the row's
+// 1-based sheet row.
+interface BodyRowCells {
+  cells: SheetCell[];
+  spanMerges: Array<{ colStart: number; span: number }>;
+  /** True when the whole row is a single full-width cell merged across every column. */
+  fullWidth: boolean;
+}
+
+/**
+ * Build one leaf/data row's cells, honoring full-width rows and per-cell colSpan (both mirroring the
+ * grid). Full-width → the row's text in column 0, empty elsewhere, merged across all columns. colSpan
+ * → the spanning cell keeps its value, covered cells go empty, and a merge spans them. With neither
+ * configured, every column emits its own value (the original behavior).
+ */
+const emitDataRowCells = (
+  rowData: any,
+  columns: Column[],
+  bodyStyles: (CellStyle | undefined)[],
+  config: ExportConfig,
+  rowIndex: number,
+): BodyRowCells => {
+  if (config.isFullWidthRow?.(rowData)) {
+    const text = config.fullWidthText?.(rowData) ?? "";
+    const cells = columns.map((_, colIdx) =>
+      colIdx === 0
+        ? { value: { kind: "string", value: text } as CellValue, style: bodyStyles[0] }
+        : { value: { kind: "empty" } as CellValue },
+    );
+    return {
+      cells,
+      spanMerges: columns.length > 1 ? [{ colStart: 0, span: columns.length }] : [],
+      fullWidth: true,
+    };
+  }
+
+  if (!config.getCellColSpan) {
+    return {
+      cells: columns.map((col, colIdx) => ({
+        value: toCellValue(getValueBundle(rowData, col), col),
+        style: bodyStyles[colIdx],
+      })),
+      spanMerges: [],
+      fullWidth: false,
+    };
+  }
+
+  const spans = resolveRowSpans(rowData, columns, config.getCellColSpan, rowIndex);
+  const cells: SheetCell[] = [];
+  const spanMerges: Array<{ colStart: number; span: number }> = [];
+  for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+    const span = spans[colIdx];
+    if (span === 0) {
+      cells.push({ value: { kind: "empty" } as CellValue }); // covered by an earlier span
+      continue;
+    }
+    const col = columns[colIdx];
+    cells.push({ value: toCellValue(getValueBundle(rowData, col), col), style: bodyStyles[colIdx] });
+    if (span > 1) spanMerges.push({ colStart: colIdx, span });
+  }
+  return { cells, spanMerges, fullWidth: false };
+};
+
+// Translate a row's column-local span merges to absolute 1-based MergeRanges on a single sheet row.
+const spanMergesToRanges = (
+  spanMerges: Array<{ colStart: number; span: number }>,
+  sheetRow1Based: number,
+): MergeRange[] =>
+  spanMerges.map(m => ({
+    fromRow: sheetRow1Based,
+    toRow: sheetRow1Based,
+    fromCol: m.colStart + 1,
+    toCol: m.colStart + m.span,
+  }));
+
 const escapeCSVValue = (value: string): string => {
   const needsQuote = /[",\n\r]/.test(value);
   if (needsQuote) {
@@ -308,8 +443,22 @@ export const buildCSV = (config: ExportConfig): string => {
     csvRows.push(...buildHeaderMatrix(headerLayout, columns.length));
   }
 
-  rows.forEach(row => {
-    const values = columns.map(col => {
+  rows.forEach((row, rowIndex) => {
+    // CSV has no merged-cell concept, so mirror the grid's *visible* content: a full-width row puts
+    // its text in the first column and blanks the rest; a colSpan puts the value in the spanning
+    // column and blanks the columns it covers.
+    if (config.isFullWidthRow?.(row)) {
+      const text = config.fullWidthText?.(row) ?? "";
+      const values = columns.map((_, colIdx) => (colIdx === 0 ? escapeCSVValue(text) : ""));
+      csvRows.push(values);
+      return;
+    }
+
+    const spans = config.getCellColSpan
+      ? resolveRowSpans(row, columns, config.getCellColSpan, rowIndex)
+      : null;
+    const values = columns.map((col, colIdx) => {
+      if (spans && spans[colIdx] === 0) return ""; // covered by an earlier span
       const { formatted } = getValueBundle(row, col);
       return escapeCSVValue(formatted ?? "");
     });
@@ -504,6 +653,8 @@ interface GroupedBody {
   rowMeta: RowMeta[];
   /** All leaf data rows in display order (for the grand-total footer range). */
   leafRows: any[];
+  /** Absolute (1-based) cell merges from leaf-row colSpan (empty when no colSpan configured). */
+  merges: MergeRange[];
 }
 
 /**
@@ -525,11 +676,14 @@ const buildGroupedBody = (
   aggregates: AggregateModel[] | undefined,
   firstSheetRow: number, // 1-based sheet row where the body starts
   mode: GroupDisplayType,
+  config: ExportConfig,
 ): GroupedBody => {
   const opByCol = new Map((aggregates ?? []).map(a => [a.key, a.type]));
   const calculator = new AggregateCalculator();
   const rows: SheetCell[][] = [];
   const rowMeta: RowMeta[] = [];
+  const merges: MergeRange[] = [];
+  let leafIndex = 0;
   const leafRows: any[] = [];
 
   // Column index that hosts a group's label, by mode. multipleColumns maps level → its tagged
@@ -543,13 +697,14 @@ const buildGroupedBody = (
   const labelColIdxFor = (level: number): number =>
     mode === "multipleColumns" ? (levelColIdx.get(level) ?? 0) : 0;
 
-  // Emit a leaf data row. Indent applies per-level in singleColumn mode (col 0 mirrors the grid's
-  // indented auto-group column); other modes render leaf data verbatim.
+  // Emit a leaf data row, honoring per-cell colSpan (full-width leaf rows can't occur — a full-width
+  // node is a group row, handled by emitGroup). colSpan merges are stamped at the leaf's absolute
+  // sheet row. Indent for singleColumn mode is carried by the auto-group column's own value.
   const emitLeaf = (data: any, level: number, outlineLevel: number, hidden: boolean) => {
-    rows.push(columns.map((col, colIdx) => ({
-      value: toCellValue(getValueBundle(data, col), col),
-      style: bodyStyles[colIdx],
-    })));
+    const built = emitDataRowCells(data, columns, bodyStyles, config, leafIndex++);
+    rows.push(built.cells);
+    // The row just pushed sits at firstSheetRow + rows.length - 1 (1-based).
+    merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
     rowMeta.push({ outlineLevel, hidden });
     leafRows.push(data);
     void level;
@@ -565,6 +720,7 @@ const buildGroupedBody = (
     // reference the rows emitted below, so we finalize the header cells after recursing.
     const headerCells: SheetCell[] = columns.map(() => ({ value: { kind: "empty" } as CellValue }));
     rows.push(headerCells);
+    const headerSheetRow = firstSheetRow + rows.length - 1; // 1-based sheet row of this header
     rowMeta.push({
       outlineLevel,
       hidden: ancestorCollapsed,
@@ -589,8 +745,17 @@ const buildGroupedBody = (
     }
     const lastChildRow = firstSheetRow + rows.length - 1;
 
-    // Fill the header's aggregate cells with SUBTOTAL formulas over the group's leaf range. Skip the
-    // label column so a group value never gets overwritten by a subtotal.
+    // In "groupRows" mode the on-screen group row is a single full-width cell (label only, no
+    // per-column subtotals), so mirror that: merge the header across all columns and skip subtotals.
+    if (mode === "groupRows") {
+      if (columns.length > 1) {
+        merges.push(...spanMergesToRanges([{ colStart: 0, span: columns.length }], headerSheetRow));
+      }
+      return;
+    }
+
+    // singleColumn / multipleColumns: fill the header's aggregate cells with SUBTOTAL formulas over
+    // the group's leaf range. Skip the label column so a group value never gets overwritten.
     if (lastChildRow >= firstChildRow) {
       columns.forEach((col, colIdx) => {
         if (colIdx === labelColIdx) return;
@@ -603,12 +768,14 @@ const buildGroupedBody = (
   };
 
   for (const root of groupRoots) emitGroup(root, 1, false);
-  return { rows, rowMeta, leafRows };
+  return { rows, rowMeta, leafRows, merges };
 };
 
 interface FlatLeafBody {
   rows: SheetCell[][];
   leafRows: any[];
+  /** Absolute (1-based) cell merges from leaf-row colSpan (empty when no colSpan configured). */
+  merges: MergeRange[];
 }
 
 /**
@@ -616,7 +783,8 @@ interface FlatLeafBody {
  * display order, with no group-header or subtotal rows. In singleColumn mode `columns[0]` is the
  * synthesized Group column — since there are no header rows to carry the grouping, each leaf's cell
  * there is filled with its full group path ("Analyst / Boston"). Other modes carry the grouping in
- * the real data columns already, so column 0 renders the leaf's own value.
+ * the real data columns already, so column 0 renders the leaf's own value. Per-cell colSpan is
+ * honored (and merged) like the flat export; the singleColumn group column never spans.
  */
 const buildFlatLeafBody = (
   groupRoots: IRowNode[],
@@ -624,9 +792,14 @@ const buildFlatLeafBody = (
   bodyStyles: (CellStyle | undefined)[],
   mode: GroupDisplayType,
   hasGroupColumn: boolean,
+  config: ExportConfig,
+  firstSheetRow: number, // 1-based sheet row where the body starts
 ): FlatLeafBody => {
   const rows: SheetCell[][] = [];
   const leafRows: any[] = [];
+  const merges: MergeRange[] = [];
+  let leafIndex = 0;
+  const groupPathCol0 = mode === "singleColumn" && hasGroupColumn;
 
   const walk = (node: IRowNode, path: string[]) => {
     for (const child of node.children ?? []) {
@@ -634,21 +807,21 @@ const buildFlatLeafBody = (
         walk(child, [...path, String(child.groupKey ?? "")]);
       } else {
         const data = child.data;
-        const cells = columns.map((col, colIdx) => {
-          // singleColumn's prepended Group column (index 0) gets the leaf's full group path.
-          if (colIdx === 0 && mode === "singleColumn" && hasGroupColumn) {
-            return { value: { kind: "string", value: path.join(" / ") } as CellValue, style: bodyStyles[0] };
-          }
-          return { value: toCellValue(getValueBundle(data, col), col), style: bodyStyles[colIdx] };
-        });
-        rows.push(cells);
+        const built = emitDataRowCells(data, columns, bodyStyles, config, leafIndex++);
+        // singleColumn's prepended Group column (index 0) carries the leaf's full group path. It
+        // never spans (the internal auto-group column has no colSpan), so this override is safe.
+        if (groupPathCol0 && built.cells.length > 0) {
+          built.cells[0] = { value: { kind: "string", value: path.join(" / ") } as CellValue, style: bodyStyles[0] };
+        }
+        rows.push(built.cells);
+        merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
         leafRows.push(data);
       }
     }
   };
 
   for (const root of groupRoots) walk(root, [String(root.groupKey ?? "")]);
-  return { rows, leafRows };
+  return { rows, leafRows, merges };
 };
 
 /** Build the .xlsx bytes for a config, without downloading. */
@@ -715,8 +888,9 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     const treeExport = grouped && groupMode === "tree";
 
     if (grouped && groupMode === "leaves") {
-      const body = buildFlatLeafBody(config.groupRoots!, columns, bodyStyles, mode, hasGroupColumn);
+      const body = buildFlatLeafBody(config.groupRoots!, columns, bodyStyles, mode, hasGroupColumn, config, dataStartRow);
       sheetRows.push(...body.rows);
+      merges.push(...body.merges);
       footerRows = body.leafRows;
     } else if (grouped) {
       // Header rows have no outline metadata; pad rowMeta so indices line up with sheetRows.
@@ -728,16 +902,18 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
         config.aggregates,
         dataStartRow,
         mode,
+        config,
       );
       sheetRows.push(...body.rows);
       rowMeta.push(...body.rowMeta);
+      merges.push(...body.merges);
       footerRows = body.leafRows;
     } else {
-      rows.forEach(row => {
-        sheetRows.push(columns.map((col, colIdx) => ({
-          value: toCellValue(getValueBundle(row, col), col),
-          style: bodyStyles[colIdx],
-        })));
+      rows.forEach((row, rowIndex) => {
+        const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex);
+        sheetRows.push(built.cells);
+        // sheetRows.length is now the 1-based sheet row of the row just pushed.
+        merges.push(...spanMergesToRanges(built.spanMerges, sheetRows.length));
       });
       footerRows = rows;
     }

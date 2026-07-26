@@ -193,7 +193,51 @@ export class ExportRenderer {
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
       aggregates,
+      ...this.buildSpanResolvers(),
     };
+  }
+
+  /**
+   * Build the body-spanning resolvers the exporter uses to reproduce the grid's on-screen merges:
+   *  - getCellColSpan: evaluates a column's own `colSpan` callback for a row (same CellClassParams
+   *    the body renderer builds), so the export merges exactly where the grid does.
+   *  - isFullWidthRow: true for rows the grid renders full-width (group rows in "groupRows" mode, or
+   *    the grid's isFullWidthRow opt-ins), via the core's single predicate.
+   *  - fullWidthText: the label the grid shows in a full-width row (group "<key> (<count>)", else
+   *    the row's isFullWidthRow content isn't text-representable here, so empty).
+   * All three take the row's underlying data; a minimal node is reconstructed for the grid callbacks.
+   * Returns an empty object when neither feature is configured (keeps the original fast path).
+   */
+  private buildSpanResolvers(): Partial<ExportConfig> {
+    const opts = this.params.core.getOptions();
+    const anyColSpan = this.params.core.getColumnModel().getLeaves().some(c => c.colSpan != null);
+    const anyFullWidth = opts.groupDisplayType === "groupRows" || opts.isFullWidthRow != null;
+    if (!anyColSpan && !anyFullWidth) return {};
+
+    // Reconstruct the row node from its data so the grid callbacks see a real node. Export flattens
+    // to node.data, so resolve the node by identity when possible (falls back to a leaf-ish stub).
+    const nodeFor = (rowData: any): IRowNode =>
+      (rowData && typeof rowData === "object" && "data" in rowData)
+        ? (rowData as IRowNode)
+        : ({ data: rowData, isGroup: false, level: 0, id: "", viewIndex: -1, selected: false, type: "leaf", isExpanded: false } as IRowNode);
+
+    const resolvers: Partial<ExportConfig> = {};
+    if (anyColSpan) {
+      resolvers.getCellColSpan = (rowData, col, rowIndex) => {
+        if (!col.colSpan) return 1;
+        const node = nodeFor(rowData);
+        return col.colSpan({ value: col.getValue(node), data: node.data, rowId: node.id, rowIndex, colDef: col.col });
+      };
+    }
+    if (anyFullWidth) {
+      resolvers.isFullWidthRow = (rowData) => this.params.core.isFullWidthNode(nodeFor(rowData));
+      resolvers.fullWidthText = (rowData) => {
+        const node = nodeFor(rowData);
+        if (node.isGroup) return `${node.groupKey ?? ""} (${node.childCount ?? 0})`;
+        return "";
+      };
+    }
+    return resolvers;
   }
 
   /**
@@ -248,6 +292,9 @@ export class ExportRenderer {
       // range that excludes the group column must not conjure it back into the export.
       autoGroupColumn: includeGroupColumn ? this.params.core.getColumnModel().getAutoGroupColumns()[0] : undefined,
       groupMode: options.groupMode ?? "tree",
+      // Leaf-row colSpan is honored in grouped exports too; full-width (group) rows keep their
+      // existing SUBTOTAL-header layout, so only getCellColSpan is meaningful here.
+      ...this.buildSpanResolvers(),
     };
   }
 
