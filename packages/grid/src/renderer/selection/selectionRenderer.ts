@@ -291,6 +291,15 @@ export class SelectionRenderer {
     // runs underneath an open editor.
     if (this.params.core.getEditingCell()) return;
 
+    // Embedded form controls (column filter inputs, filter type/op <select>, join radios, the quick
+    // filter box, etc.) live inside the grid root, so their keydowns bubble here. Let them own their
+    // own keyboard — otherwise navigation/clipboard/edit shortcuts would steal Arrows, Home/End and
+    // Backspace/Delete and these fields could only be typed into, never edited or cleared.
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) {
+      return;
+    }
+
     const ctrl = e.ctrlKey || e.metaKey;
     // Shift-based range extension only applies when range selection is enabled; otherwise Shift is
     // ignored and navigation collapses to a single moving cell.
