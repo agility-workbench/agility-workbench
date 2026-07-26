@@ -1,6 +1,7 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
+import { HeaderComponent } from "../renderer/header/headerComponent";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
@@ -35,6 +36,10 @@ export class Column {
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
+  // Custom header components (see ColDef.headerComponent / headerCellComponent). Undefined = use the
+  // grid default or the built-in header.
+  headerComponent?: HeaderComponent;
+  headerCellComponent?: HeaderComponent;
   cellClass?: CellClass;
   cellStyle?: CellStyle;
   // Per-row horizontal span callback (see ColDef.colSpan). Undefined = never spans.
@@ -122,6 +127,8 @@ export class Column {
     this.formatterOptions = col.formatterOptions;
     this.cellRenderer = col.cellRenderer;
     this.cellRendererParams = col.cellRendererParams;
+    this.headerComponent = col.headerComponent;
+    this.headerCellComponent = col.headerCellComponent;
     this.cellClass = col.cellClass;
     this.cellStyle = col.cellStyle;
     this.colSpan = col.colSpan;
@@ -266,6 +273,8 @@ export class Column {
     dup.valueParser = this.valueParser;
     dup.cellEditor = this.cellEditor;
     dup.cellEditorParams = this.cellEditorParams;
+    dup.headerComponent = this.headerComponent;
+    dup.headerCellComponent = this.headerCellComponent;
     dup.cellClass = this.cellClass;
     dup.cellStyle = this.cellStyle;
     dup.editable = this.editable;

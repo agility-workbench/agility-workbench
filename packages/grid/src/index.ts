@@ -14,6 +14,14 @@ export type {
   CellRefreshReason,
   ICellRenderer,
 } from "./renderer/renderer";
+export { isClassHeaderComponent } from "./renderer/header/headerComponent";
+export type {
+  HeaderComponent,
+  HeaderComponentClass,
+  HeaderComponentFn,
+  HeaderComponentParams,
+  IHeaderComponent,
+} from "./renderer/header/headerComponent";
 export type {
   IBodyMenuAdapter,
   IMenuAdapter,

@@ -181,6 +181,8 @@ export class GridCore implements IGridCore {
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       isFullWidthRow: options.isFullWidthRow,
       fullWidthCellRenderer: options.fullWidthCellRenderer,
+      defaultHeaderComponent: options.defaultHeaderComponent,
+      defaultHeaderCellComponent: options.defaultHeaderCellComponent,
       quickFilter: options.quickFilter ?? false,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",

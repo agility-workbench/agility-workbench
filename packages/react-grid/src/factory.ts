@@ -65,6 +65,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.isFullWidthRow != null) options.isFullWidthRow = props.isFullWidthRow;
   if (props.fullWidthCellRenderer != null) options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);
+  if (props.defaultHeaderComponent != null) options.defaultHeaderComponent = props.defaultHeaderComponent;
+  if (props.defaultHeaderCellComponent != null) options.defaultHeaderCellComponent = props.defaultHeaderCellComponent;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
   if (props.loadingMessage != null) options.loadingMessage = props.loadingMessage;
   if (props.noRowsMessage != null) options.noRowsMessage = props.noRowsMessage;

@@ -1,20 +1,36 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import type { SortIconVisibility } from "../../interfaces/gridOptions";
+import type { IGridAPI } from "../../interfaces/iGridAPI";
+import type { SortDir } from "../../interfaces/sort";
 import { isFalse } from "../../misc";
 import { createElement } from "../element";
+import {
+  HeaderComponent,
+  HeaderComponentParams,
+  HeaderComponentRuntime,
+  createHeaderComponentRuntime,
+} from "./headerComponent";
 import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
 
 interface HeaderRendererParams {
   core: GridCore;
   root: HTMLElement;
+  api: IGridAPI;
   rowHeight: () => number;
   getBody: () => HTMLDivElement;
   getContainerEl: () => HTMLElement;
+  openColumnMenu: (colID: string, anchorEl: HTMLElement) => void;
+  openColumnFilter: (colID: string, anchorEl: HTMLElement) => void;
 }
+
+/** A mounted custom header component plus which slot (1 = content, 2 = whole cell) it filled. */
+type MountedHeaderComponent = { runtime: HeaderComponentRuntime; level: 1 | 2 };
 
 export class HeaderRenderer {
   private elements: HeaderWrapperElements;
+  /** Live custom header components, keyed by column instanceID. Rebuilt each buildDOM. */
+  private components = new Map<string, MountedHeaderComponent>();
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
@@ -50,6 +66,10 @@ export class HeaderRenderer {
     rightHeader.style.minHeight = `${headerHeight}px`;
     body.style.height = `calc(100% - ${headerHeight}px`;
     body.style.maxHeight = `calc(100% - ${headerHeight}px`;
+    // Tear down any custom header components from the previous build before wiping their DOM, so
+    // class components can release listeners/state. buildHeaderCell repopulates this map.
+    for (const { runtime } of this.components.values()) runtime.destroy();
+    this.components.clear();
     leadingHeader.innerHTML = "";
     leftHeader.innerHTML = "";
     centerHeader.innerHTML = "";
@@ -108,6 +128,9 @@ export class HeaderRenderer {
     if (!isRowNumberColumn) {
       headerWrapper.appendChild(headerResize);
     }
+    // Resolve a custom header component (never for the internal row-number column). Level 2 (whole
+    // cell) takes precedence over Level 1 (content only); see resolveHeaderComponent.
+    const custom = isRowNumberColumn ? null : this.resolveHeaderComponent(col);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
     headerContainer.style.height = `${this.params.rowHeight() * contentHeight}px`;
@@ -115,21 +138,45 @@ export class HeaderRenderer {
       headerContainer.classList.add("pte-hcell-computable");
     }
     headerWrapper.appendChild(headerContainer);
+
+    if (custom?.level === 2) {
+      // Whole-cell component: it owns everything inside the container (content + filter/menu). The
+      // grid keeps the wrapper + resize handle already built above.
+      headerContainer.classList.add("pte-hcell-custom-cell");
+      const runtime = createHeaderComponentRuntime(custom.comp, this.buildComponentParams(col, header, 2));
+      headerContainer.appendChild(runtime.gui);
+      this.components.set(col.instanceID, { runtime, level: 2 });
+      this.appendHeaderChildren(col, header, maxDepth);
+      if (col.children.length === 0) header.style.width = `${col.computedWidth}px`;
+      return header;
+    }
+
     const headerContent = document.createElement("div");
     headerContent.className = "pte-hcell-content";
     headerContainer.appendChild(headerContent);
+
+    if (custom?.level === 1) {
+      // Content-only component: it replaces the label/expander/sort inside .pte-hcell-content. The
+      // grid still renders the filter/menu row below. A level-1 component that needs the group
+      // expander must render its own (or use a level-2 headerCellComponent).
+      headerContent.classList.add("pte-hcell-custom-content");
+      const runtime = createHeaderComponentRuntime(custom.comp, this.buildComponentParams(col, header, 1));
+      headerContent.appendChild(runtime.gui);
+      this.components.set(col.instanceID, { runtime, level: 1 });
+      this.appendHeaderChildren(col, header, maxDepth);
+      if (col.children.length === 0) header.style.width = `${col.computedWidth}px`;
+      if (!isRowNumberColumn) {
+        headerContainer.appendChild(this.getHeaderMenuElement(col));
+      }
+      return header;
+    }
+
     const headerLabel = document.createElement("div");
     headerLabel.className = "pte-hcell-label";
     headerLabel.textContent = isRowNumberColumn ? "" : col.label ?? col.key;
     headerContent.appendChild(headerLabel);
-    if (col.children.length > 0) {
-      const children = document.createElement("div");
-      children.className = "pte-hcell-children";
-      header.appendChild(children);
-      for (const child of col.getVisibleChildren()) {
-        children.append(this.buildHeaderCell(child, maxDepth));
-      }
-    } else {
+    this.appendHeaderChildren(col, header, maxDepth);
+    if (col.children.length === 0) {
       header.style.width = `${col.computedWidth}px`;
     }
     if (col.showExpander) {
@@ -165,6 +212,73 @@ export class HeaderRenderer {
       }
     }
     return header;
+  }
+
+  /** Build the nested group-header row (recursing into visible children). No-op for leaf columns. */
+  private appendHeaderChildren(col: Column, header: HTMLDivElement, maxDepth: number) {
+    if (col.children.length === 0) return;
+    const children = document.createElement("div");
+    children.className = "pte-hcell-children";
+    header.appendChild(children);
+    for (const child of col.getVisibleChildren()) {
+      children.append(this.buildHeaderCell(child, maxDepth));
+    }
+  }
+
+  /**
+   * Resolve the custom header component for a column, if any. A whole-cell component (Level 2 — the
+   * column's `headerCellComponent` or the grid's `defaultHeaderCellComponent`) takes precedence over
+   * a content-only component (Level 1 — `headerComponent` / `defaultHeaderComponent`). When a column
+   * has both a resolved Level 1 and Level 2 component, Level 2 wins and a one-time dev warning fires.
+   */
+  private resolveHeaderComponent(col: Column): { comp: HeaderComponent; level: 1 | 2 } | null {
+    const opts = this.params.core.options;
+    const cellComp = col.headerCellComponent ?? opts.defaultHeaderCellComponent;
+    const contentComp = col.headerComponent ?? opts.defaultHeaderComponent;
+    if (cellComp) {
+      if (col.headerComponent && col.headerCellComponent && !this.warnedBothComponents.has(col.instanceID)) {
+        this.warnedBothComponents.add(col.instanceID);
+        console.warn(
+          `[grid] Column "${col.colId || col.key}" defines both headerComponent and ` +
+          `headerCellComponent; the whole-cell headerCellComponent takes precedence and the ` +
+          `content-only headerComponent is ignored.`,
+        );
+      }
+      return { comp: cellComp, level: 2 };
+    }
+    if (contentComp) return { comp: contentComp, level: 1 };
+    return null;
+  }
+
+  /** Columns already warned about defining both header components (warn once each). */
+  private warnedBothComponents = new Set<string>();
+
+  /** Current sort state for a column: its direction, 0-based multi-sort index, and total sorted count. */
+  private getColumnSortState(col: Column): { direction: SortDir | null; index: number; count: number } {
+    const items = this.params.core.getSortModel().items;
+    const index = items.findIndex(s => s.col.instanceID === col.instanceID);
+    return { direction: index === -1 ? null : items[index].dir, index, count: items.length };
+  }
+
+  /** Build the params passed to a custom header component (init + every refresh). */
+  private buildComponentParams(col: Column, header: HTMLElement, level: 1 | 2): HeaderComponentParams {
+    const core = this.params.core;
+    const filterActive = core.getFilterModel().items.some(f => this.filterMatchesColumn(f, col));
+    return {
+      column: col,
+      displayName: col.label ?? col.key,
+      level,
+      api: this.params.api,
+      eGridHeader: header,
+      sort: this.getColumnSortState(col),
+      filterActive,
+      progressSort: (additive?: boolean) =>
+        core.dispatch({ type: "headerAction", action: "toggleSort", colId: col.instanceID, additive: !!additive }),
+      showColumnMenu: (anchorEl: HTMLElement) => this.params.openColumnMenu(col.instanceID, anchorEl),
+      showFilterMenu: (anchorEl: HTMLElement) => this.params.openColumnFilter(col.instanceID, anchorEl),
+      selectColumn: (mode: "replace" | "toggle" = "replace") =>
+        core.dispatch({ type: "columnSelectSet", colId: col.instanceID, mode }),
+    };
   }
 
   /** Grid-level `sortIconVisibility`, overridable per column: whether/when the sort icon renders. */
@@ -207,6 +321,7 @@ export class HeaderRenderer {
     for (const col of this.params.core.getColumnModel().getLeaves()) {
       if (col.sortable) this.updateSortIcon(col);
     }
+    this.refreshHeaderComponents();
   }
 
   setFilterIndicators() {
@@ -217,6 +332,31 @@ export class HeaderRenderer {
       const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
       if (!menuBtn) continue;
       menuBtn.classList.toggle("active", filters.some(f => this.filterMatchesColumn(f, col)));
+    }
+    this.refreshHeaderComponents();
+  }
+
+  /**
+   * Push fresh sort/filter state into every mounted custom header component. Covers both leaf and
+   * group columns (the default indicator passes above only walk leaves). A component whose refresh()
+   * returns false is destroyed and recreated in place from the same slot element.
+   */
+  private refreshHeaderComponents() {
+    for (const [instanceID, mounted] of this.components) {
+      const col = this.params.core.getColumnModel().getById(instanceID);
+      const header = document.getElementById(instanceID);
+      if (!col || !header) continue;
+      const params = this.buildComponentParams(col, header, mounted.level);
+      const updated = mounted.runtime.refresh(params);
+      if (updated) continue;
+      // refresh() opted out of in-place update: destroy and recreate into the same slot.
+      const slot = mounted.runtime.gui.parentElement;
+      mounted.runtime.destroy();
+      const comp = this.resolveHeaderComponent(col);
+      if (!slot || !comp || comp.level !== mounted.level) continue;
+      const runtime = createHeaderComponentRuntime(comp.comp, params);
+      slot.replaceChildren(runtime.gui);
+      this.components.set(instanceID, { runtime, level: mounted.level });
     }
   }
 

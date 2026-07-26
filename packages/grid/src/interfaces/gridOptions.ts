@@ -6,6 +6,7 @@ import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
+import type { HeaderComponent } from "../renderer/header/headerComponent";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -470,6 +471,17 @@ export interface GridOptions {
    */
   fullWidthCellRenderer?: CellRenderer;
   /**
+   * Grid-level fallback for a column's header *content* component (Level 1). Applied to every column
+   * that does not set its own `headerComponent`. See {@link ColDef.headerComponent}.
+   */
+  defaultHeaderComponent?: HeaderComponent;
+  /**
+   * Grid-level fallback for a column's whole-cell header component (Level 2). Applied to every
+   * column that does not set its own `headerCellComponent`, and takes precedence over any Level 1
+   * component. See {@link ColDef.headerCellComponent}.
+   */
+  defaultHeaderCellComponent?: HeaderComponent;
+  /**
    * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
    * or an options object to customise. Omitted/false disables the feature. Client-side row model
    * only (server-side ignores it).
@@ -563,6 +575,8 @@ export interface InternalGridOptions extends GridOptions {
   groupRowsSelectable: boolean;
   isFullWidthRow?: (node: IRowNode) => boolean;
   fullWidthCellRenderer?: CellRenderer;
+  defaultHeaderComponent?: HeaderComponent;
+  defaultHeaderCellComponent?: HeaderComponent;
   quickFilter: boolean | QuickFilterOptions;
   loadingMessage: string;
   noRowsMessage: string;

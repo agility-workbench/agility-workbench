@@ -37,6 +37,10 @@ export class HeaderInteractionHandler {
   }
 
   onHeaderCellClick(e: MouseEvent) {
+    // Routing keys off the header CSS classes (.pte-hcell-sort, .pte-hcell-content,
+    // .pte-hcell-menu-btn / -filterBtn). Custom header components (ColDef.headerComponent /
+    // headerCellComponent) that reuse these classes inherit this default routing; those that render
+    // their own controls drive interactions via the callbacks on HeaderComponentParams instead.
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
     // Clicking the row-number header toggles all-rows selection (consistent with clicking any other

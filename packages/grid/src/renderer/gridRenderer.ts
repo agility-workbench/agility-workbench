@@ -329,9 +329,12 @@ export class GridRenderer {
     this._headerRenderer = new HeaderRenderer({
       core: this.core,
       root: this.root,
+      api: this.api,
       rowHeight: () => this.rowHeight,
       getBody: () => this._bodyViewportRenderer.getRefs().body,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
+      openColumnMenu: (colID, anchorEl) => this._columnMenuOpener.openColumnMenu("columnMenuButton", colID, { anchorEl }),
+      openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
     const headerRefs = this._headerRenderer.getRefs();
 

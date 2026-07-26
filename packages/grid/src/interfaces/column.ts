@@ -1,5 +1,6 @@
 import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValueParserParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
+import { HeaderComponent } from "../renderer/header/headerComponent";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { ComparatorFn, Filter, FilterParams } from "./filter";
 import type { SortDir } from "./sort";
@@ -44,6 +45,24 @@ export interface ColDef {
   colId?: string;
   key?: string;
   label: string;
+  /**
+   * Custom component for this column's header *content* — replaces the label, sort icon, and group
+   * expander (the `.pte-hcell-content` slot). The grid still renders the resize handle and the
+   * filter/menu button row. A function returning an element/string, or a class with
+   * `init/getGui/refresh/destroy` (see {@link HeaderComponent}). Overridden by `headerCellComponent`
+   * when both are set on the same column (Level 2 wins). Falls back to the grid-level
+   * `defaultHeaderComponent`.
+   */
+  headerComponent?: HeaderComponent;
+  /**
+   * Custom component for the *entire* header cell — replaces the content *and* the filter/menu
+   * buttons. The grid keeps only the resize handle. Reuse the grid header CSS classes
+   * (`.pte-hcell-sort`, `.pte-hcell-menu-btn`, `.pte-hcell-menu-filterBtn`, `.pte-hcell-content`) to
+   * inherit default click routing, or drive sort/filter/menu/select via the callbacks on the
+   * component params. Takes precedence over `headerComponent`. Falls back to the grid-level
+   * `defaultHeaderCellComponent`.
+   */
+  headerCellComponent?: HeaderComponent;
   width?: number;    // fixed width
   minWidth?: number; // minimum width (resizable)
   maxWidth?: number; // maximum width (resizable)
