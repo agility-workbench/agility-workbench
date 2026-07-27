@@ -52,11 +52,12 @@ agility-workbench/                 ← private workspace root
     │   └── src/
     │       ├── index.ts            ← the ONLY public entry (what consumers import)
     │       ├── core/               GridCore, options resolution, state
-    │       ├── renderer/           DOM renderer, cell/row/header renderers, themeRenderer
+    │       ├── renderer/           DOM renderer: body, header, tooltip, actionFrame, floating,
+    │       │                        quickFilter, editing, filter, clipboard, aggregate, overlay, …
     │       ├── interfaces/         public + internal TypeScript contracts
     │       ├── column/ filter/ selection/ menu/ aggregate/ export/
     │       ├── csrm/ ssrm/          client-side & server-side row models
-    │       ├── cellRenderers/       built-in renderers (e.g. ChangeFlash)
+    │       ├── cellRenderers/       built-in renderers (ChangeFlash, Sparkline)
     │       └── theme/               theme.ts, icons.ts, inject.ts, table.css, icons/*.svg
     │                                + *.generated.ts (build artifacts, gitignored)
     └── react-grid/                @agility-workbench/react-grid
@@ -66,18 +67,18 @@ agility-workbench/                 ← private workspace root
         ├── LICENSE, README.md
         └── src/
             ├── index.ts            public entry: Grid + `export * from grid`
-            ├── grid.tsx            the <Grid /> component
+            ├── grid.tsx            the <Grid /> component (StrictMode-safe)
             ├── factory.ts          maps React props → GridOptions, builds core
-            ├── cellRenderer.ts cellEditor.ts   React↔core adapters
+            ├── cellRenderer.ts cellEditor.ts   React↔core adapters (cell/tooltip/actionFrame/header + defaultColDef)
             ├── MenuAdapter.ts BodyMenuAdapter.ts menu.ts interface.ts
-            └── *.test.tsx          co-located smoke tests
+            └── *.smoke.test.tsx *.test.tsx   co-located smoke/integration tests
 ```
 
 ## 3. The package boundary (important)
 
 The React package is a **separate bundle** from the core. At build time, tsup marks
 `@agility-workbench/grid`, `react`, and `react-dom` as *external* — they are not bundled
-into the React output (its dist is ~7.5 KB). This means:
+into the React output (its dist is ~12 KB ESM / ~13 KB CJS). This means:
 
 - **React source *and its tests* may only import the core through its public entry** — the bare
   specifier `@agility-workbench/grid`. Deep imports like `@agility-workbench/grid/renderer/...`
@@ -87,9 +88,11 @@ into the React output (its dist is ~7.5 KB). This means:
   React tsconfig ever re-aliases `@agility-workbench/grid` to grid source or `dist`.
 - Everything the React layer needs is therefore **re-exported from
   [`packages/grid/src/index.ts`](packages/grid/src/index.ts)** (e.g. `IGridAPI`, cell-renderer
-  types, `isClassRenderer`, menu adapter/context types, `initDomRenderer`, `CanvasMeasurer`,
-  `isFalse`). When the React layer needs a new core symbol, **add it to the core's
-  `index.ts` first.**
+  types, `isClassRenderer`, the header / tooltip / ActionFrame component contracts and their
+  `isClass…` guards, menu adapter/context types, `initDomRenderer`, `CanvasMeasurer`, `isFalse`).
+  When the React layer needs a new core symbol, **add it to the core's `index.ts` first** — the
+  React adapters (`adaptTooltip`, `adaptActionFrame`, header/cell adapters) all depend on these
+  re-exports.
 - `packages/react-grid/src/index.ts` does `export * from "@agility-workbench/grid"`, so consumers
   can import the whole API (grid + React) from `@agility-workbench/react-grid` alone.
 
@@ -160,7 +163,7 @@ built `dist/*.d.ts` (tsup bundles them away), so they never leak to a consumer.
 `npm run build` in `packages/grid` runs: `clean` → `generate` → `tsup`.
 
 1. **`clean`** — removes `dist/`.
-2. **`generate`** (`scripts/build-css.mjs`) — reads `src/theme/table.css`, inlines all 24 SVG
+2. **`generate`** (`scripts/build-css.mjs`) — reads `src/theme/table.css`, inlines all 29 SVG
    icons as `data:` URIs, and writes:
    - `dist/index.css` — the single, portable, publishable stylesheet.
    - `src/theme/styles.generated.ts` — `GRID_STYLES` string, consumed by `injectGridStyles()`.
@@ -181,7 +184,7 @@ built `dist/*.d.ts` (tsup bundles them away), so they never leak to a consumer.
 | `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^0.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
 | `npm run build` | `build:grid` then `build:react` — explicit order (react's typecheck needs grid's `dist/*.d.ts`; see §4B). |
 | `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:playground`. Explicit, not workspace-traversal order. |
-| `npm test` | Runs the full Vitest suite (282 tests across both packages), including the package-resolution regression guard. |
+| `npm test` | Runs the full Vitest suite (458 tests across both packages), including the package-resolution regression guard. |
 | `npm run dev` | Starts the Vite demo at `http://localhost:5176`. |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
@@ -225,7 +228,7 @@ and publish the core, then bump the react-grid dependency range to match.
 ```bash
 # from repo root
 npm run build                                   # build both, in order
-npm test                                        # 282 tests must pass
+npm test                                        # 458 tests must pass
 cd packages/grid       && npm publish           # prepublishOnly re-builds
 cd ../react-grid       && npm publish
 ```

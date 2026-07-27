@@ -1,41 +1,76 @@
 # Grid — Technical Architecture & Feature Reference
 
-> **Doc status:** Refreshed 2026-07-16 against branch `renderer-split`. Since the original draft,
-> **row grouping**, the **sparkline renderer**, and **`addColumnDef`** (transient columns) have all
-> been implemented — they are no longer TODOs. `columnHierarchy.ts` and `filterMenuService.ts` are
-> full implementations, not stubs. **All Tier-1 gaps are now closed**: `applyColumnState`
-> (merge / exact restore, order-field-driven), the row-selection API + row-number-header select-all,
-> and the `sparklineType` type fix. **Excel export is now a hand-rolled, zero-dependency OOXML
-> writer** (`src/export/xlsx/`) — exceljs has been dropped from the runtime path (kept only as a
-> dev-time verifier in tests). The writer adds live aggregate formulas, native row-group outlines
-> with `SUBTOTAL` subtotals, DEFLATE compression, and selection-aware grouped export. See §5.9 and
-> §10 for details.
+> **Doc status:** Refreshed 2026-07-27 against branch `mono-repo`. This is now an
+> **npm-workspaces monorepo** publishing two packages — `@agility-workbench/grid` (core) and
+> `@agility-workbench/react-grid` (React binding). For the repository/packaging/publishing story see
+> [`../maintainers/repository.md`](../maintainers/repository.md); this document covers the grid's
+> *feature* architecture. Since the previous refresh, a large batch of consumer-facing features
+> landed (see §0): **tooltips**, **ActionFrame** (persistent cell frame + form popover), **custom
+> header components**, **row/cell spanning** (`colSpan` → Excel merge), **full-width rows**, **sort
+> ergonomics** (configurable cycle / multi-sort key / priority indicator / icon visibility / initial
+> & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
+> options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
+> (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
+> functions**, and **quick-filter layout/anchoring options**. The suite is now **458 tests across 59
+> files**.
 
-## 0. What's new in export (this branch)
+## 0. What's new since the last refresh (branch `mono-repo`)
+
+Grouped by area; each maps to a §5 sub-table.
+
+- **Monorepo split** — the single package became `packages/grid` + `packages/react-grid` under an
+  npm-workspaces root (`@agility-workbench` scope). Public entry contracts unchanged in spirit; the
+  React layer consumes the core only through its published entry. See `repository.md`.
+- **Tooltips** (§5.14) — body + header tooltips with `anchored`/`follow` modes, interactive content,
+  per-column overrides, custom tooltip components, and a built-in auto-truncation tooltip. On by
+  default. Built on a shared `FloatingAnchor` primitive (`renderer/floating/`).
+- **ActionFrame** (§5.15) — a persistent, Sheets-comment-style frame on a body cell with a
+  client-owned form popover. Grid owns the frame/chrome/positioning/lifecycle; content is a custom
+  component. Reuses `FloatingAnchor` in *sticky* mode (conceal-on-scroll-out, re-show on scroll-in).
+- **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
+  `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
+  cell renderer.
+- **Row/cell spanning → Excel merge** (§5.1 / §5.9) — `ColDef.colSpan` merges body cells within a
+  section; the exporter reproduces the merge as a real Excel merge range.
+- **Full-width rows** (§5.2 / §5.10) — `isFullWidthRow` + `fullWidthCellRenderer`; group rows in
+  `groupRows` mode are full-width automatically.
+- **Sort ergonomics** (§5.4) — configurable `sortingOrder` cycle, `multiSortKey`, `showSortPriority`,
+  `sortIconVisibility`, grid-level `initialSort`, per-column `sort`/`sortIndex`, and a custom
+  `comparator`.
+- **Conditional styling** (§5.10) — `getRowClass`/`getRowStyle` and per-column `cellClass`/`cellStyle`,
+  diffed against pooled DOM so recycled rows never leak stale classes.
+- **Event-callback options** (§5.13) — `onCellClicked`, `onRowClicked`, `onCellValueChanged`,
+  `onSelectionChanged`, `onSortChanged` convenience wrappers over the event bus.
+- **`defaultColDef`** (§5.1) — grid-wide ColDef defaults merged under every column (identity fields
+  excluded).
+- **Edit controls** (§5.6) — `editTrigger` (`doubleClick`/`singleClick`/`none`),
+  `suppressKeyboardEdit`, `suppressTypeToEdit`, `moveAfterEdit`, `commitOnBlur`.
+- **Visual-state + interaction options** (§5.10 / §5.5) — `rowHover`, `columnHover`, `zebraRows`,
+  `highlightActiveCell`, `cellSelection` (`true`/`false`/`"text"`), `rangeSelection`,
+  `columnSelection`, `showColumnButtonsOnHover`, `bodyContextMenu` control.
+- **Custom filter function** (§5.3) — `ColDef.filter` as a matcher `(val, node, filterValues,
+  filterType) => boolean`, plus a clear button on filter inputs.
+
+### Export (carried forward from the previous branch)
 
 - **Hand-rolled `.xlsx` writer** (`src/export/xlsx/`): `zip.ts` (CRC-32 + STORE/DEFLATE via the
   platform `CompressionStream`), `xml.ts` (escaping, A1 refs, Excel date serials), `styleRegistry.ts`
-  (index-deduped `styles.xml`), `writeXlsx.ts` (OOXML part assembler). No runtime dependency; ~10×
-  smaller than uncompressed and on par with exceljs's output size.
+  (index-deduped `styles.xml`), `writeXlsx.ts` (OOXML part assembler). No runtime dependency.
 - **Aggregate footer as live formulas**: `SUM/AVERAGE/MEDIAN/MIN/MAX/COUNTA` over the data range,
   with the grid's own computed value cached; static fallback for text MIN/MAX and distinct-count.
 - **Row grouping → Excel outline levels**: group-header + per-group `SUBTOTAL(code,…)` rows (codes
   1–11 so nested subtotals never double-count), collapsed groups exported hidden, `summaryBelow=0`.
-- **`groupDisplayType`-aware headings**: singleColumn prepends a "Group" column; multipleColumns puts
-  each level's heading under its own column; groupRows uses the first column.
-- **Selection-aware grouped export**: selecting group rows / a cell range prunes the exported tree;
-  the range's column span is honored; a body-menu submenu offers "Export with row groups" vs "Export
-  leaf rows" (the former disabled with a tooltip when the range excludes the heading column).
-- **Column-header menu export** ("Export as CSV/Excel") is now wired to actually run.
+- **`groupDisplayType`-aware headings**, **selection-aware grouped export**, **cell/col spanning →
+  Excel merges**, and **column-header + body-menu export entry points**. See §5.9.
 
 ## 1. Overview
 
-**Grid** is a high-performance, virtualized, headless data grid library written in TypeScript. It ships as a plain JS/TS core with a **React wrapper** (`packages/react-grid/src/`) for declarative use. The architecture cleanly separates **core state & logic** from **DOM rendering**, with a unidirectional action-dispatch pattern and an event-driven observer model.
+**Grid** is a high-performance, virtualized, headless data grid library written in TypeScript. It ships as a plain JS/TS **core** (`packages/grid/src/`) with a **React wrapper** (`packages/react-grid/src/`) for declarative use. The architecture cleanly separates **core state & logic** from **DOM rendering**, with a unidirectional action-dispatch pattern and an event-driven observer model.
 
-- **Package name:** `@your-scope/grid` (internal)
-- **React wrapper:** `@react-grid`
-- **Build:** `tsup` (ESM + CJS), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests
+- **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
+- **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
+- **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
+- **Testing:** `vitest` with `happy-dom` for DOM tests (458 tests / 59 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -92,10 +127,13 @@
 
 ## 3. Directory Structure & Module Map
 
+> Paths below are relative to `packages/grid/src/` unless noted. The React wrapper lives in
+> `packages/react-grid/src/` and the demo in `apps/playground/` (both shown at the end).
+
 ```
-src/
-├── index.ts                   Public API barrel export
-├── misc.ts                    Boolean/null utilities
+packages/grid/src/
+├── index.ts                   Public API barrel export (the ONLY public entry)
+├── misc.ts                    Boolean/null utilities (isTrue/isFalse)
 │
 ├── aggregate/                 Aggregation calculation
 │   └── calculator.ts          Aggregate functions (count, sum, avg, min, max, median, distinct_count)
@@ -109,8 +147,8 @@ src/
 │   └── sparklineRenderer.ts   SVG in-cell sparkline (line/bar/area) over a set of source columns
 │
 ├── column/                    Column definitions & model
-│   ├── column.ts              Column class — wraps ColDef, holds runtime state, getValue/formatValue/parseValue
-│   ├── columnModel.ts         ColumnModel — hierarchy, pinning, visibility, widths, lookup maps, addColumnDef, getColumnState
+│   ├── column.ts              Column class — wraps ColDef, runtime state, getValue/formatValue/parseValue, comparator, sortingOrder
+│   ├── columnModel.ts         ColumnModel — hierarchy, pinning, visibility, widths, lookups, addColumnDef, getColumnState/applyColumnState, defaultColDef merge
 │   ├── columnHierarchy.ts     ColumnHierarchy — builds/rewires parent-child column trees (grouped headers)
 │   ├── columnMove.ts          Column reorder logic
 │   └── formatters.ts          Type-based value formatters (number, currency, date, boolean)
@@ -148,9 +186,9 @@ src/
 │
 ├── interfaces/                Public type contracts
 │   ├── aggregate.ts           AggregateType enum, AggregateScope, AggregateModel
-│   ├── column.ts              ColDef, ColumnType enum, ColumnSection
-│   ├── filter.ts              FilterModel, FilterItem, FilterDef, FilterType enum, FilterParams
-│   ├── gridOptions.ts         GridOptions (public) and InternalGridOptions (resolved defaults)
+│   ├── column.ts              ColDef + DefaultColDef, ColumnType enum, sort/span/tooltip/actionFrame/header/cellClass fields, NON_DEFAULTABLE_COLDEF_KEYS
+│   ├── filter.ts              Filter, FilterItem, FilterDef, FilterType enum (17 ops), FilterParams, ComparatorFn
+│   ├── gridOptions.ts         GridOptions (public) + InternalGridOptions; tooltip/actionFrame/quickFilter/sort option types + resolvers
 │   ├── iBodyMenuAdapter.ts    Body context-menu adapter interface
 │   ├── iColumnModel.ts        ColumnModel public interface
 │   ├── iFilterRenderer.ts     Filter renderer interface
@@ -176,7 +214,7 @@ src/
 │   └── index.ts
 │
 ├── renderer/                  DOM rendering engine
-│   ├── gridRenderer.ts        GridRenderer — top-level orchestrator (~800 lines)
+│   ├── gridRenderer.ts        GridRenderer — top-level orchestrator (~1100 lines)
 │   ├── renderer.ts            CellRenderer: ICellRenderer, CellRendererFn, createRendererRuntime
 │   ├── index.ts               Exports: GridRenderer, CanvasMeasurer, initDomRenderer
 │   ├── dom.ts                 initDomRenderer factory
@@ -204,12 +242,30 @@ src/
 │   │
 │   ├── body/                  Body (data rows) rendering
 │   │   ├── cellRenderer.ts    BodyCellRenderer — renders cell text or custom renderer into DOM
+│   │   ├── colSpan.ts         Pure (DOM-free) colSpan resolver (normalizeSpan / resolveColSpan); never crosses a section
+│   │   ├── columnHover.ts     Column-hover highlight (opt-in via columnHover); keys off data-col-idx
+│   │   ├── dynamicStyle.ts    Apply/diff getRowClass·getRowStyle·cellClass·cellStyle on pooled DOM (no stale-class leak)
+│   │   ├── groupCellRenderer.ts Group cell (chevron + indented label + child count)
 │   │   ├── poolSizer.ts       Compute pool size based on viewport height + overscan
 │   │   ├── rowHover.ts        Row hover CSS class management
 │   │   ├── rowPool.ts         RowPoolRenderer — builds/rebuilds the DOM row pool
 │   │   ├── viewport.ts        BodyViewportRenderer — viewport spacer sizing, scroll reset
-│   │   ├── window.ts          BodyWindowRenderer — sliding window: positions rows, renders cells
+│   │   ├── window.ts          BodyWindowRenderer — sliding window: positions rows, renders cells, colSpan/full-width
 │   │   └── wrapper.ts         BodyWrapperElements — DOM skeleton for body sections
+│   │
+│   ├── floating/              Shared overlay geometry primitive
+│   │   └── floatingAnchor.ts  FloatingAnchor — anchored/follow positioning, flip/clamp, sticky conceal-on-scroll (used by tooltip + ActionFrame)
+│   │
+│   ├── tooltip/               Tooltips (body + header)
+│   │   ├── bodyTooltipRenderer.ts Hover/show lifecycle, precedence resolution, auto-truncation tooltip
+│   │   └── tooltipComponent.ts   ITooltipComponent contract (fn/class) + isClassTooltipComponent
+│   │
+│   ├── actionFrame/           Persistent cell frame + form popover
+│   │   ├── actionFrameRenderer.ts Open/close lifecycle, sticky anchoring, indicator, event emission
+│   │   └── actionFrameComponent.ts IActionFrameComponent contract (fn/class) + isClassActionFrameComponent
+│   │
+│   ├── quickFilter/           Global search widget
+│   │   └── quickFilterWidget.ts  Floating widget: Ctrl/Cmd+F, options popover, anchoring/placement
 │   │
 │   ├── clipboard/             Copy/cut/paste
 │   │   ├── clipboardRenderer.ts Selection → TSV serialization, paste with tiling
@@ -227,7 +283,8 @@ src/
 │   │   └── setFilterRenderer.ts  Set filter UI (checkboxes, search, select-all)
 │   │
 │   ├── header/                Column header rendering
-│   │   ├── renderer.ts        HeaderRenderer — builds header DOM from ColumnModel
+│   │   ├── renderer.ts        HeaderRenderer — builds header DOM from ColumnModel; sort/filter indicators, custom-header mounting
+│   │   ├── headerComponent.ts IHeaderComponent contract (fn/class), two-level (content vs whole-cell) + isClassHeaderComponent
 │   │   ├── wrapper.ts         Header DOM skeleton
 │   │   ├── columnInteraction.ts Resize handles, drag-to-reorder
 │   │   └── interactionHandler.ts Click/context-menu on headers
@@ -239,9 +296,10 @@ src/
 │   │   ├── columnLayout.ts    Apply column widths to header/body/h-scroll sections
 │   │   └── pinnedSectionLayout.ts Pin/unpin section visibility
 │   │
-│   ├── overlay/               Loading & filter overlays
+│   ├── overlay/               Loading, no-rows & filter overlays
 │   │   ├── filter.ts          Filter overlay (not yet used for full-screen)
-│   │   └── loading.ts         Loading overlay (spinner)
+│   │   ├── loading.ts         Loading overlay (spinner)
+│   │   └── noRows.ts          No-rows / empty-state overlay (filter/search-aware message)
 │   │
 │   ├── pagination/            Pagination UI
 │   │   ├── renderer.ts        PaginationRenderer — page controls, page size selector, aggregate scope
@@ -258,31 +316,36 @@ src/
 │   └── serverSide.ts          Async row loading, block management, server aggregation, schema inference
 │
 ├── theme/                     Theme assets
-│   ├── table.css              Core grid CSS (~800 lines)
+│   ├── table.css              Core grid CSS (~2100 lines)
+│   ├── theme.ts               GridTheme API — createTheme / themeLight / themeDark (CSS-var presets)
+│   ├── inject.ts              injectGridStyles / areGridStylesInjected (zero-import stylesheet)
 │   ├── icons.ts               Icon name union, getIconClassName, icon CSS variable injection
-│   └── icons/                 SVG icon files (sort, filter, aggregate, menu, chevrons, etc.)
+│   ├── *.generated.ts         styles.generated.ts (GRID_STYLES) + cssVars.generated.ts (PteVarName); build artifacts, gitignored
+│   └── icons/                 29 SVG icon files (sort asc/desc letters+numbers, filter, aggregate, menu, chevrons, frame ±, etc.)
 │
 └── selection/                 (deprecated — merged into core/selectionModel.ts)
     └── columnSelection.ts     Column selection logic
 
-packages/react-grid/src/                    React wrapper
-├── index.ts                   Re-exports Grid, GridProps, ReactCellRenderer, ReactColDef
-├── grid.tsx                   Grid component (~220 lines) — lifecycle, prop→core bridging
+packages/react-grid/src/                    React wrapper (@agility-workbench/react-grid)
+├── index.ts                   `export * from grid` + Grid, GridProps, ReactCellRenderer/ColDef/TooltipComponent/ActionFrameComponent, ReactCellEditor
+├── grid.tsx                   Grid component — lifecycle, prop→core bridging, StrictMode-safe
 ├── factory.ts                 createCore, createApi, getGridOptions helpers
-├── interface.ts               GridProps (extends GridOptions)
-├── cellRenderer.ts            ReactCellRenderer type, adaptReactColumnDefs (JSX→CellRendererClass)
+├── interface.ts               GridProps (extends GridOptions; React-aware defaultColDef / fullWidthCellRenderer / bodyContextMenu)
+├── cellRenderer.ts            React adapters: adaptCellRenderer/adaptTooltip/adaptActionFrame/adaptReactColDef; ReactColDef, ReactDefaultColDef
 ├── cellEditor.ts              ReactCellEditor, ReactCellEditorHandle types
 ├── menu.ts                    MenuItem type for React
 ├── BodyMenuAdapter.ts         Adapter: getBodyMenuItems → MenuAdapter interface
 └── MenuAdapter.ts             Adapter: getColumnMenuItems → MenuAdapter interface
 
 apps/playground/                          Demo app (Vite-based, not tests)
-├── App.tsx                    Full demo with client-side + server-side, themes, trading grid
-├── helpers.ts
-├── index.html / main.tsx
+├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
+├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
+├── ColumnStateDemo.tsx  SelectionDemo.tsx  GroupingDemo.tsx
+├── QuickFilterDemo.tsx  VisualStatesDemo.tsx  helpers.ts
+├── index.html / main.tsx / style.css / roboto-font.css
 └── dist-demo/
 
-dist/                          Build output
+packages/*/dist/                          Build output (per package)
 node_modules/
 ```
 
@@ -381,6 +444,11 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Add transient column at runtime (`addColumnDef`) | ✅ Complete | `column/columnModel.ts` → `addColumnDef` (used for on-demand sparkline columns) |
 | Read column state (`getColumnState`) | ✅ Complete | `column/columnModel.ts` → `getColumnState` (includes hidden columns) |
 | Restore column state (`applyColumnState`) | ✅ Complete | `column/columnModel.ts` → `applyColumnState`; merge by default, `{ defaultState }` for exact restore; order-field-driven repositioning |
+| Grid-wide column defaults (`defaultColDef`) | ✅ Complete | `interfaces/gridOptions.ts` → `DefaultColDef`; `column/columnModel.ts` shallow merge under each column (precedence: column › defaultColDef › built-in; `NON_DEFAULTABLE_COLDEF_KEYS` excluded) |
+| Custom header component (`headerComponent`, content-only) | ✅ Complete | `renderer/header/headerComponent.ts` (level 1); grid keeps resize handle + filter/menu row |
+| Custom header cell component (`headerCellComponent`, whole cell) | ✅ Complete | `renderer/header/headerComponent.ts` (level 2, takes precedence); grid keeps only the resize handle |
+| Cell spanning (`colSpan`) | ✅ Complete | `renderer/body/colSpan.ts` + `renderer/body/window.ts`; clamped to the column's own section (never crosses a pinned boundary) |
+| Conditional cell class / style (`cellClass` / `cellStyle`) | ✅ Complete | `interfaces/column.ts` → `CellClass`/`CellStyle`; applied/diffed via `renderer/body/dynamicStyle.ts` |
 
 ### 5.2 Row Model Features
 
@@ -401,6 +469,7 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Group display types (singleColumn / multipleColumns / groupRows) | ✅ Complete | `groupDisplayType` option; `column/columnModel.ts` group-column synthesis |
 | Per-group aggregation | ✅ Complete | `csrm/clientSide.ts` computes over each group's leaf descendants via `AggregateCalculator` |
 | Group default-expanded depth + stable expansion across refresh | ✅ Complete | `groupDefaultExpanded` option; content-based `groupNodeId` |
+| Full-width rows (span all sections, pinned left of viewport) | ✅ Complete (CSRM) | `isFullWidthRow` + `fullWidthCellRenderer` options; `renderer/body/window.ts`; `groupRows` group rows are auto full-width |
 | **Tree data (parent-child hierarchy from data)** | ❌ Missing | Distinct from value grouping — see §10 |
 | **Server-side grouping** | ❌ Missing | SSRM `getGroupNodes` returns `[]` — see §10 |
 
@@ -416,17 +485,26 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | AND/OR join between conditions | ✅ Complete | `FilterItem.join` |
 | Filter panel (column menu integration) | ✅ Complete | `filter/filterMenuController.ts`, `filter/filterMenuCoordinator.ts` |
 | Filter indicators on headers | ✅ Complete | `renderer/header/renderer.ts` → `setFilterIndicators` |
-| debounceMs, maxFilterItems, button customization | ✅ Complete | `FilterParams` |
+| debounceMs, maxFilterItems, button customization | ✅ Complete | `FilterParams`; grid-wide default via `filterDebounceMs` option |
+| Custom filter function (`ColDef.filter` as matcher) | ✅ Complete | `(val, node, filterValues, filterType) => boolean` bypasses the operator switch; `csrm/customFilter.test.ts` |
+| Clear button on filter inputs | ✅ Complete | `renderer/filter/basicFilterRenderer.ts` |
 
 ### 5.4 Sort Features
 
 | Feature | Status | Location |
 |---------|--------|----------|
 | Multi-column sort | ✅ Complete | `interfaces/sort.ts` → `SortModel` |
-| Toggle sort (asc → desc → none) | ✅ Complete | `GridCore.toggleSort()` |
+| Configurable sort cycle (`sortingOrder`) | ✅ Complete | `interfaces/sort.ts` → `nextSortDir` / `DEFAULT_SORTING_ORDER`; grid-level + per-column + `defaultColDef` |
+| Toggle sort (advances the configured cycle) | ✅ Complete | `GridCore.toggleSort()` / `progressSort` |
+| Multi-sort modifier key (`multiSortKey`: ctrl/shift) | ✅ Complete | additive sort on modified icon click; default "ctrl" |
+| Sort priority indicator (`showSortPriority`: multi/always/never) | ✅ Complete | number badge on the sort icon; `renderer/header/renderer.ts` |
+| Sort icon visibility (`sortIconVisibility`: hover/always/never) | ✅ Complete | grid-level + per-column; "never" keeps the column sortable via menu/Shift+click/API |
+| Grid-level initial sort (`initialSort`) | ✅ Complete | ordered `{colId,dir}`; per-column `sort`/`sortIndex` take precedence; CSRM |
+| Per-column initial sort (`sort` + `sortIndex`) | ✅ Complete | `interfaces/column.ts`; applied once at column setup |
 | Sort indicators on headers | ✅ Complete | `renderer/header/renderer.ts` |
 | Type-aware comparator auto-detection | ✅ Complete | `column/columnModel.ts` → `identifyComparator` |
 | Numeric vs. string comparators with Intl.Collator | ✅ Complete | `column/column.ts` → `getCollator`, `setComparator` |
+| Custom column comparator (`ColDef.comparator`) | ✅ Complete | `(a, b, nodeA, nodeB) => number`; `column/column.ts` |
 
 ### 5.5 Selection & Navigation Features
 
@@ -446,6 +524,11 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Selection invalidated on page change | ✅ Complete | Range stores `pageStartIdx`; getter checks it |
 | Selection visual rendering | ✅ Complete | `renderer/selection/selectionRenderer.ts` |
 | Scroll-into-view for focused cell | ✅ Complete | `GridRenderer._ensureCellVisible()` |
+| Cell-selection mode (`cellSelection`: true / false / "text") | ✅ Complete | `"text"` reverts to native browser text selection; `false` makes cells inert |
+| Range selection toggle (`rangeSelection`) | ✅ Complete | when false, selection stays a single cell (drag / Shift-extend ignored) |
+| Column-selection toggle (`columnSelection`) | ✅ Complete | when false, header clicks no longer select (sort/menu/filter unaffected) |
+| Clear selection on body click (`clearSelectionOnBodyClick`) | ✅ Complete | default true |
+| Active-cell highlight (`highlightActiveCell`) | ✅ Complete | distinct outline on the focused cell within a range |
 
 ### 5.6 Editing Features
 
@@ -455,6 +538,11 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Built-in editors: text, number, date, boolean, select, textarea | ✅ Complete | `renderer/editing/editors/` |
 | Custom cell editor (class or factory function) | ✅ Complete | `renderer/editing/cellEditor.ts` → `CellEditorClass`, `ICellEditorFn` |
 | Edit-on-typing (printable char opens editor) | ✅ Complete | `charPress` in `editStart` action |
+| Edit trigger control (`editTrigger`: doubleClick / singleClick / none) | ✅ Complete | mouse gesture that opens the editor |
+| Keyboard-edit suppression (`suppressKeyboardEdit` / `suppressTypeToEdit`) | ✅ Complete | disable F2·Enter and/or type-to-edit |
+| Move after edit (`moveAfterEdit`) | ✅ Complete | Enter/Tab commit-and-navigate; default true (textarea keeps Enter) |
+| Commit on blur (`commitOnBlur`) | ✅ Complete | default true; false keeps the editor open until explicit commit/cancel |
+| Undo limit (`undoLimit`) | ✅ Complete | default 100; 0 disables undo/redo |
 | Undo/redo (per-cell and batch paste/cut/clear) | ✅ Complete | `core/historyModel.ts` |
 | Re-evaluate sort/filter after edit | ✅ Complete | `GridCore.reevaluateAfterEdit()` (gated by `reevaluateOnEdit` option) |
 | Multi-cell paste/clear | ✅ Complete | `renderer/clipboard/clipboardRenderer.ts` |
@@ -490,6 +578,8 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Excel export — hand-rolled OOXML, **zero runtime deps** | ✅ Complete | `export/export.ts` → `exportExcel` + `export/xlsx/` |
 | DEFLATE compression (CompressionStream, STORE fallback) | ✅ Complete | `export/xlsx/zip.ts` |
 | Hierarchical merged headers in export | ✅ Complete | `buildHeaderLayout` / `buildHeaderMatrix` |
+| Cell spanning → Excel merge ranges | ✅ Complete | `export/export.ts` resolves each body row's `colSpan` (via `resolveColSpan`) into `MergeRange`s |
+| Full-width rows → single merged cell | ✅ Complete | `export/export.ts`; a full-width row exports as one value merged across the first columns |
 | Frozen panes in Excel (pinned cols + header) | ✅ Complete | `writeXlsx.ts` → `<pane>` xSplit/ySplit |
 | Currency/date/number formatting in Excel | ✅ Complete | `resolveNumberFormat`, `toCellValue`, `styleRegistry` |
 | Aggregate footer as **live formulas** (SUM/AVG/MEDIAN/MIN/MAX/COUNTA) | ✅ Complete | `export.ts` → `buildAggregateFooter` / `aggregateCell` |
@@ -523,9 +613,15 @@ columns once, in `resolveRows`/`resolveColumns`.
 | Change flash cell renderer | ✅ Complete | `cellRenderers/changeFlashRenderer.ts` |
 | Sparkline cell renderer (line/bar/area, SVG) | ✅ Complete | `cellRenderers/sparklineRenderer.ts` |
 | Group cell renderer (chevron + indented label + child count) | ✅ Complete | `renderer/body/groupCellRenderer.ts` |
-| Row hover highlighting | ✅ Complete | `renderer/body/rowHover.ts` |
+| Full-width row rendering | ✅ Complete | `renderer/body/window.ts` (spans all sections, pinned left of viewport) |
+| Conditional row class / style (`getRowClass` / `getRowStyle`) | ✅ Complete | `renderer/body/dynamicStyle.ts` (diffed against pooled DOM) |
+| Row hover highlighting (`rowHover`) | ✅ Complete | `renderer/body/rowHover.ts`; default on |
+| Column hover highlighting (`columnHover`) | ✅ Complete | `renderer/body/columnHover.ts`; opt-in |
+| Zebra striping (`zebraRows`) | ✅ Complete | `--pte-row-alt-bg-color`; opt-in |
 | Loading overlay | ✅ Complete | `renderer/overlay/loading.ts` |
-| Theme system (CSS custom properties + icon overrides) | ✅ Complete | `theme/table.css`, `theme/icons.ts` |
+| No-rows / empty-state overlay | ✅ Complete | `renderer/overlay/noRows.ts`; filter/search-aware message |
+| Theme system (CSS custom properties + icon overrides) | ✅ Complete | `theme/table.css`, `theme/theme.ts` (`createTheme`/`themeLight`/`themeDark`), `theme/icons.ts` |
+| Zero-import stylesheet injection | ✅ Complete | `theme/inject.ts` → `injectGridStyles()` |
 | Canvas-based text measurement for auto-sizing | ✅ Complete | `renderer/canvasMeasurer.ts` |
 
 ### 5.11 Pagination Features
@@ -553,11 +649,47 @@ columns once, in `resolveRows`/`resolveColumns`.
 |---------|--------|----------|
 | Grid component (forwardRef to API) | ✅ Complete | `packages/react-grid/src/grid.tsx` |
 | Declarative props (data, columnDefs, loading, pagination, etc.) | ✅ Complete | `packages/react-grid/src/interface.ts` |
-| React cell renderers | ✅ Complete | `packages/react-grid/src/cellRenderer.ts` |
+| React cell renderers | ✅ Complete | `packages/react-grid/src/cellRenderer.ts` → `adaptCellRenderer` |
+| React tooltip / ActionFrame / header components | ✅ Complete | `cellRenderer.ts` → `adaptTooltip` / `adaptActionFrame`; `ReactColDef` accepts React components |
 | React cell editors | ✅ Complete | `packages/react-grid/src/cellEditor.ts` |
+| React-aware `defaultColDef` | ✅ Complete | `interface.ts` → `ReactDefaultColDef`; `cellRenderer.ts` → `adaptReactDefaultColDef` |
 | onGridReady callback | ✅ Complete | `packages/react-grid/src/grid.tsx` |
+| Event-callback props (`onCellClicked` / `onRowClicked` / `onCellValueChanged` / `onSelectionChanged` / `onSortChanged`) | ✅ Complete | `interfaces/gridOptions.ts` (convenience wrappers over the event bus) |
 | Menu customization hooks | ✅ Complete | `getColumnMenuItems`, `getBodyMenuItems` |
+| StrictMode-safe mount/unmount | ✅ Complete | `packages/react-grid/src/grid.tsx` (`lifecycle.strictmode.test.tsx`) |
 | Icon overrides | ✅ Complete | `icons` prop |
+
+### 5.14 Tooltip Features
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| Body cell tooltips | ✅ Complete | `renderer/tooltip/bodyTooltipRenderer.ts`; on by default (`tooltip` option) |
+| Header cell tooltips (`headerTooltip`) | ✅ Complete | string or custom component; `renderer/header/renderer.ts` + tooltip renderer |
+| Content precedence: component → valueGetter → field → auto-truncation | ✅ Complete | `tooltipComponent` › `tooltipValueGetter` › `tooltipField` › built-in clipped-value tooltip |
+| Positioning modes: `anchored` / `follow` | ✅ Complete | `interfaces/gridOptions.ts` → `TooltipMode`; `renderer/floating/floatingAnchor.ts` |
+| Interactive tooltips (pointer enters content) | ✅ Complete | forces `anchored`; `TooltipOptions.interactive` |
+| Placement (`top`/`bottom`/`left`/`right`/`auto`) + delays | ✅ Complete | `showDelay`/`hideDelay`; `escapeRootClip` mounts in `document.body` |
+| Per-column tooltip overrides (`tooltipOptions`) | ✅ Complete | `resolveColumnTooltipOptions` layers over grid-level config |
+| Custom tooltip component (fn or class) | ✅ Complete | `renderer/tooltip/tooltipComponent.ts` → `ITooltipComponent` |
+| Auto-truncation opt-out (`suppressAutoTooltip`) | ✅ Complete | grid-level and per-column |
+| API (`showTooltip` / `hideTooltip`) + events (`tooltipShow` / `tooltipHide`) | ✅ Complete | `api/api.ts`, `events/events.ts` |
+
+### 5.15 ActionFrame Features
+
+A persistent, Google-Sheets-comment-style frame drawn on a body cell, with a client-owned form
+rendered in a popover. The grid owns the frame border, popover chrome, positioning, and open/close
+lifecycle; the content is a custom component.
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| Persistent cell frame + form popover | ✅ Complete | `renderer/actionFrame/actionFrameRenderer.ts` |
+| Custom form component (`actionFrameComponent`, fn or class) | ✅ Complete | `renderer/actionFrame/actionFrameComponent.ts` → `IActionFrameComponent` |
+| Built-in trigger (`actionFrameTrigger`: click / none) | ✅ Complete | `interfaces/column.ts` |
+| Placement / offset / `escapeRootClip` (grid + per-column) | ✅ Complete | `resolveActionFrameOptions`; `renderer/floating/floatingAnchor.ts` |
+| Sticky anchoring (conceal on scroll-out, re-show on scroll-in) | ✅ Complete | `FloatingAnchor` sticky mode |
+| Content indicator (`actionFrameIndicator`) | ✅ Complete | opt-in corner marker on cells whose frame has content |
+| Single-frame invariant (closes editor / prior frame) | ✅ Complete | `actionFrameRenderer.ts` |
+| API (`openActionFrame` / `closeActionFrame` / `getActionFrameCell`) + event (`actionFrameChanged`) | ✅ Complete | `api/api.ts`, `events/events.ts` |
 
 ---
 
@@ -612,6 +744,21 @@ Both `GridCore` and `ServerSideRowModel` use monotonic counters (`requestIdCount
 2. Export from `src/index.ts`
 3. Use via `ColDef.cellRenderer`
 
+### Custom Header / Tooltip / ActionFrame Components
+
+Each follows the same fn-or-class contract as the cell renderer (`init/getGui/refresh/destroy` for
+the class form; a re-invoked function for the fn form), with its own `is…Component` type guard:
+
+- **Header** — `renderer/header/headerComponent.ts` (`IHeaderComponent`). Wire via
+  `ColDef.headerComponent` (content only) or `ColDef.headerCellComponent` (whole cell).
+- **Tooltip** — `renderer/tooltip/tooltipComponent.ts` (`ITooltipComponent`). Wire via
+  `ColDef.tooltipComponent` / `headerTooltip`.
+- **ActionFrame** — `renderer/actionFrame/actionFrameComponent.ts` (`IActionFrameComponent`). Wire
+  via `ColDef.actionFrameComponent`.
+
+The React wrapper adapts JSX components for all three in `packages/react-grid/src/cellRenderer.ts`
+(`adaptTooltip` / `adaptActionFrame` / header via `adaptReactColDef`).
+
 ### Adding a New Aggregate Function
 
 1. Add the type to `AggregateType` enum in `src/interfaces/aggregate.ts`
@@ -636,77 +783,88 @@ Both `GridCore` and `ServerSideRowModel` use monotonic counters (`requestIdCount
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation. Test files live co-located with source:
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **458 tests across 59
+files**, co-located with source (core `packages/grid/src/`, React smoke tests
+`packages/react-grid/src/`). A representative slice:
 
-- `src/core/core.editing.test.ts` — editing lifecycle
-- `src/core/core.history.test.ts` — undo/redo
-- `src/core/core.reevaluate.test.ts` — post-edit re-sort/filter
-- `src/core/core.transaction.test.ts` — applyTransaction add/update/remove, re-eval gating, history preservation
-- `src/core/selectionModel.test.ts` — selection model
-- `src/column/column.editing.test.ts` — column editing behavior
-- `src/renderer/editing/editors/editors.test.ts` — editor instances
-- `src/renderer/clipboard/clipboardRenderer.test.ts` — copy/paste
-- `src/renderer/clipboard/tsv.test.ts` — TSV parsing
-- `src/export/export.excel.test.ts` — hand-rolled xlsx: value types, formats, merges, panes, DEFLATE, aggregate formulas, grouping/outline (read back with exceljs)
-- `src/renderer/exportRenderer.grouped.test.ts` — grouped export: groupDisplayType placement, selection pruning, collapsed groups, group-column-in-range gating
-- `src/renderer/exportRenderer.range.test.ts` — ungrouped range export includes the first selected row (double-slice regression)
-- `src/menu/bodyMenuService.grouped.test.ts` — body-menu Excel submenu detection + disable-with-tooltip + command routing
-- `src/menu/columnMenuService.export.test.ts` — column-header menu export items build and route to the exporter
-- `packages/react-grid/src/cellEditor.test.tsx` — React editor integration
-- `packages/react-grid/src/applyTransaction.smoke.test.tsx` — end-to-end transaction stream through the React wrapper (mounts real renderer)
+**Core / model** — `core/core.editing.test.ts` (editing lifecycle), `core.history.test.ts`
+(undo/redo), `core.reevaluate.test.ts` (post-edit re-sort/filter), `core.transaction.test.ts`
+(add/update/remove, re-eval gating, history preservation), `core.sortConfig.test.ts` (sortingOrder
+cycle, defaultColDef / column overrides), `core.quickFilter.test.ts`, `selectionModel.test.ts`,
+`column/columnModel.applyColumnState.test.ts`, `column/columnModel.defaultColDef.test.ts`,
+`interfaces/sort.test.ts`.
 
-The `apps/playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` or `npm run test:watch`.
+**Filtering** — `csrm/filter` / `csrm/quickFilter.test.ts` / `csrm/customFilter.test.ts` (custom
+matcher function), `csrm/rowGroup.test.ts`.
+
+**Rendering / body** — `renderer/body/colSpan.test.ts` (span resolution),
+`renderer/editing/editors/editors.test.ts`, `renderer/clipboard/clipboardRenderer.test.ts` +
+`tsv.test.ts`.
+
+**Export** — `export/export.excel.test.ts` (value types, formats, merges, panes, DEFLATE, aggregate
+formulas, grouping/outline — read back with exceljs), `renderer/exportRenderer.grouped.test.ts`,
+`exportRenderer.range.test.ts`, `menu/bodyMenuService.grouped.test.ts`,
+`menu/columnMenuService.export.test.ts`.
+
+**React smoke tests** (`packages/react-grid/src/*.smoke.test.tsx`, mount the real renderer) — cover
+`actionFrame`, `tooltip`, `colSpan`, `fullWidthRow`, `rowGroup`, `rowSelection`, `quickFilter`,
+`conditionalStyling`, `visualStateOptions`, `interactionOptions`, `columnMenuFlags`,
+`bodyContextMenu`, `clickCallbacks`, `editTrigger`, `editNavigation`, `sortIconVisibility`,
+`sparklineResize`, `applyTransaction`, plus `lifecycle.strictmode.test.tsx`,
+`cellEditor.test.tsx`, `publicExports.test.ts`, and the `packageResolution.test.ts` boundary guard.
+
+The `apps/playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` (from the repo root, runs the whole workspace suite) or `npm run test:watch`.
 
 ---
 
 ## 9. Build & Development
 
+This is an npm-workspaces monorepo; scripts run from the repo root unless noted. See
+[`../maintainers/repository.md`](../maintainers/repository.md) for the full build/publish pipeline.
+
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Vite dev server for the demo app |
-| `npm run build` | tsup build → `dist/` (ESM + CJS + types) |
-| `npm run test` | vitest single run |
-| `npm run test:watch` | vitest watch mode |
-| `npm run typecheck` | tsc --noEmit |
-| `npm run clean` | rm -rf dist |
+| `npm run dev` | Vite dev server for the demo app (`http://localhost:5176`) |
+| `npm run build` | `build:grid` then `build:react` (explicit order — react typecheck needs grid's `dist/*.d.ts`) |
+| `npm run test` | vitest single run across both packages |
+| `npm run typecheck` | build grid, then typecheck grid → react → playground |
+| `npm run clean` | clean each package's `dist/` + root `dist-demo/` |
 
-The `dist/` produces:
-- `dist/index.esm.js` — ES module
-- `dist/index.cjs.js` — CommonJS
-- `dist/index.d.ts` — TypeScript declarations
+Each package's `dist/` produces `index.js` (ESM), `index.cjs` (CJS), and `index.d.ts` / `.d.cts`
+(declarations); the core additionally emits `index.css` (portable stylesheet with inlined icons).
 
-Path aliases (`@grid`, `@grid/*`, `@react-grid`, `@react-grid/*`) are configured in `tsconfig.json` and `vitest.config.ts`.
+Path aliases for the dev loop (`@grid`, `@grid/*`, `@react-grid`, `@react-grid/*`, and the package
+names → source) are configured in the root `tsconfig.json`, `vite.config.ts`, and `vitest.config.ts`.
+They are dev-only and never appear in published output; the React *package* build resolves the core
+through its manifest, exactly as a registry consumer does (see `repository.md` §4).
 
 ---
 
 ## 10. Current Limitations & Gaps
 
-Reflects the code as of 2026-07-14 (`renderer-split`). The earlier "sparkline / column-hierarchy /
-filter-menu-service / grouping are stubs" notes are **obsolete** — all of those are implemented.
+Reflects the code as of 2026-07-27 (`mono-repo`). Everything listed as "recently completed" in
+earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-menu service,
+`applyColumnState`, row-selection API, quick filter, no-rows overlay) remains implemented.
 
-### Now implemented (previously listed as TODO)
-- **Row grouping** — `csrm/rowGroup.ts`, all three `groupDisplayType` modes render, per-group aggregation.
-- **Sparkline renderer** — `cellRenderers/sparklineRenderer.ts` (line/bar/area SVG).
-- **`addColumnDef`** — runtime transient columns via `column/columnModel.ts`.
-- **Column hierarchy** (`columnHierarchy.ts`) and **filter menu service** (`filterMenuService.ts`) are full implementations.
+### Now implemented (previously listed as TODO / Tier-2 gaps)
+- **Row/cell spanning** — `ColDef.colSpan` (`renderer/body/colSpan.ts`); also exported as Excel merges.
+- **Full-width rows** — `isFullWidthRow` + `fullWidthCellRenderer` (`renderer/body/window.ts`); CSRM.
+- **Tooltips** — body + header, `renderer/tooltip/` on the shared `FloatingAnchor` primitive.
+- **ActionFrame** — persistent cell frame + form popover, `renderer/actionFrame/`.
+- **Custom header components** — `headerComponent` / `headerCellComponent`.
+- **Sort ergonomics** — configurable cycle, multi-sort key, priority indicator, icon visibility,
+  initial + column-level sort, custom comparator.
+- **Conditional styling** — `getRowClass` / `getRowStyle` / `cellClass` / `cellStyle`.
+- **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state + interaction
+  options**, **custom filter function**.
 
 ### Genuine gaps (no implementation)
 
-**Tier 1 — all cleared.** The three remaining Tier-1 gaps are now implemented (see "Recently completed" below).
-
-**Recently completed (were Tier 1 gaps):**
-- **`applyColumnState`** ✅ — `column/columnModel.ts` → `applyColumnState`, wired through `columnStateSet` action → `core` → `api.applyColumnState(state, opts?)`. Default is a **merge** (unknown colIds ignored; columns absent from state keep their place). `opts.defaultState` (e.g. `{ hidden: true }`) applies a fallback to absent columns for an **exact restore**, hiding anything not in the saved view (including columns added since capture). Ordering is driven by each entry's explicit **`order` field** (not array position): entries with `order` reposition via remove-then-insert (ties keep array order); entries without `order` don't move. `getColumnState()` now also includes hidden columns so a layout round-trips. Tests: `src/column/columnModel.applyColumnState.test.ts`, `packages/react-grid/src/rowSelection.smoke.test.tsx`; demo: `apps/playground/ColumnStateDemo.tsx`.
-- **Row selection API + select-all** ✅ — `api.getSelectedRows()` / `getSelectedNodes()` / `selectAllRows()` / `deselectAllRows()` / `areAllRowsSelected()` (`api/api.ts`, `core/core.ts`, `core/selectionModel.ts`). Two independent, opt-in options (both default **false**): `rowSelection` (select via row-number-cell click / Ctrl+click / Shift+range) and `selectAllRowsOnHeaderClick` (clicking the row-number header toggles all rows, consistent with other header clicks — no separate checkbox column). `rowSelectAll` action. Tests: `src/core/selectionModel.test.ts`, `packages/react-grid/src/rowSelection.smoke.test.tsx`; demo: `apps/playground/SelectionDemo.tsx`.
-- **`sparklineType` type fixed** ✅ — `ColDef.sparklineType` is now `"line" | "bar" | "area"` (`interfaces/column.ts`), matching the renderer and the column menu (line/bar/area).
-- **Quick filter / global search** ✅ — `quickFilter` grid option; floating widget (`renderer/quickFilter/quickFilterWidget.ts`) summoned with Ctrl/Cmd+F, multiTerm/substring + case-sensitivity options, debounced, matches formatted values across visible columns, ANDs with column filters. Predicate: `csrm/filter.ts` → `performQuickFilter`. API: `api.setQuickFilter()` / `getQuickFilterText()`. CSRM only. Tests: `src/csrm/quickFilter.test.ts`, `src/core/core.quickFilter.test.ts`, `packages/react-grid/src/quickFilter.smoke.test.tsx`.
-- **No-rows / empty overlay** ✅ — distinct empty-state overlay (`renderer/overlay/noRows.ts`), decoupled from the loading spinner in `coreEventBinder.ts`, driven from the actual row count, with a filter/search-aware message.
-
-**Tier 2 — new capabilities:**
+**Tier 2 — remaining new capabilities:**
 - **Pinned top/bottom rows** — no frozen summary/pinned data rows (distinct from the aggregate footer).
-- **Dynamic / auto row height + text wrapping** — all rows are fixed height (`renderer/body/viewport.ts` sizes the viewport as `rowCount * rowHeight`); no `getRowHeight` callback, `autoHeight`, or `wrapText`.
+- **Dynamic / auto row height + text wrapping** — all rows are fixed height (`renderer/body/viewport.ts` sizes the viewport as `rowCount * rowHeight`); no `getRowHeight` callback, `autoHeight`, or `wrapText`. (Full-width rows keep the standard row height.)
 - **Tree data** — hierarchy from the data itself (`getDataPath`/`treeData`), distinct from value grouping.
-- **Master/detail rows** and **full-width rows** — none.
-- **Row/cell spanning** — none.
+- **Master/detail rows** — none (full-width rows exist, but no expandable detail panel).
 
 **Tier 3 — platform features:**
 - **Tool panel / sidebar / column chooser** — column show/hide/pin/group is only via the context menu.
@@ -717,5 +875,6 @@ filter-menu-service / grouping are stubs" notes are **obsolete** — all of thos
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.
 - **Server-side row model** does not distinguish `forEachNodeAfterFilterAndSort` from `forEachNode` (identical implementations).
-- **Zero runtime dependencies** — `package.json` `dependencies` is now empty (`react`/`react-dom` are peer deps). `exceljs` (test-only read-back verifier) and `@vitejs/plugin-react` (Vite build/demo config) both moved to `devDependencies`, so installing the package pulls in nothing but the peers.
+- **Quick filter, grouping, full-width rows, and custom filter functions are client-side (CSRM) only.**
+- **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.
