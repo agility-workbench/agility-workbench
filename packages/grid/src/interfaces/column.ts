@@ -1,10 +1,11 @@
 import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValueParserParams } from "../column/formatters";
 import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
+import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { ComparatorFn, Filter, FilterParams } from "./filter";
 import type { SortDir } from "./sort";
-import type { SortingOrder, SortIconVisibility } from "./gridOptions";
+import type { SortingOrder, SortIconVisibility, TooltipColumnOptions } from "./gridOptions";
 
 export enum ColumnType {
   STRING = "string",
@@ -63,6 +64,34 @@ export interface ColDef {
    * `defaultHeaderCellComponent`.
    */
   headerCellComponent?: HeaderComponent;
+  /**
+   * Tooltip content for this column's body cells, resolved in precedence order:
+   * `tooltipComponent` → `tooltipValueGetter` → `tooltipField` → grid `defaultTooltipComponent` /
+   * `defaultTooltipValueGetter` → built-in auto-truncation (the cell's own full text when clipped).
+   *
+   * `tooltipField` reads a string from another field on the row.
+   */
+  tooltipField?: string;
+  /** Computes tooltip text for a body cell. See {@link tooltipField} for precedence. */
+  tooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
+  /**
+   * Custom component rendered inside the tooltip (a function returning an element/string, or a class
+   * with `init/getGui/refresh/destroy`). Highest precedence. See {@link TooltipComponent}.
+   */
+  tooltipComponent?: TooltipComponent;
+  /** Extra params merged into {@link TooltipComponentParams} for this column's tooltip component. */
+  tooltipComponentParams?: any;
+  /**
+   * Per-column tooltip presentation overrides (mode, placement, interactive, escapeRootClip). Each
+   * omitted field falls back to the grid-level `tooltip` option. See {@link TooltipColumnOptions}.
+   */
+  tooltipOptions?: TooltipColumnOptions;
+  /** Opt this column out of the built-in auto-truncation tooltip (on by default). */
+  suppressAutoTooltip?: boolean;
+  /**
+   * Tooltip for this column's *header* cell. A plain string, or a custom {@link TooltipComponent}.
+   */
+  headerTooltip?: string | TooltipComponent;
   width?: number;    // fixed width
   minWidth?: number; // minimum width (resizable)
   maxWidth?: number; // maximum width (resizable)

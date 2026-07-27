@@ -16,15 +16,39 @@ export interface GridApiExporter {
   getDataAsExcel: (params: ExportParams) => Promise<Uint8Array | null>;
 }
 
+/** Tooltip hooks provided by the renderer once it's attached (it owns the floating layer). */
+export interface GridApiTooltipController {
+  showBodyTooltip: (viewIdx: number, colIdx: number) => void;
+  hideTooltip: () => void;
+}
+
 export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
+  private _tooltip: GridApiTooltipController | null = null;
 
   constructor(private core: IGridCore) {}
 
   /** Wire the export target. Called by the renderer on attach; before that, exports are no-ops. */
   setExporter(exporter: GridApiExporter): void {
     this._exporter = exporter;
+  }
+
+  /** Wire the tooltip controller. Called by the renderer on attach; before that these are no-ops. */
+  setTooltipController(controller: GridApiTooltipController): void {
+    this._tooltip = controller;
+  }
+
+  showTooltip(cell: CellRef): void {
+    if (!this._tooltip) return;
+    const viewIdx = this.core.getViewIndexForRowId(cell.rowId);
+    const colIdx = this.core.getColumnModel().getLeaves().findIndex((c) => c.instanceID === cell.colId);
+    if (viewIdx == null || viewIdx < 0 || colIdx < 0) return;
+    this._tooltip.showBodyTooltip(viewIdx, colIdx);
+  }
+
+  hideTooltip(): void {
+    this._tooltip?.hideTooltip();
   }
 
   getCore(): IGridCore {

@@ -2,6 +2,8 @@ import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueForm
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
+import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
+import type { TooltipColumnOptions } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
@@ -40,6 +42,14 @@ export class Column {
   // grid default or the built-in header.
   headerComponent?: HeaderComponent;
   headerCellComponent?: HeaderComponent;
+  // Tooltip config (see ColDef). Resolved lazily by the tooltip renderer.
+  tooltipField?: string;
+  tooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
+  tooltipComponent?: TooltipComponent;
+  tooltipComponentParams?: any;
+  tooltipOptions?: TooltipColumnOptions;
+  suppressAutoTooltip?: boolean;
+  headerTooltip?: string | TooltipComponent;
   cellClass?: CellClass;
   cellStyle?: CellStyle;
   // Per-row horizontal span callback (see ColDef.colSpan). Undefined = never spans.
@@ -129,6 +139,13 @@ export class Column {
     this.cellRendererParams = col.cellRendererParams;
     this.headerComponent = col.headerComponent;
     this.headerCellComponent = col.headerCellComponent;
+    this.tooltipField = col.tooltipField;
+    this.tooltipValueGetter = col.tooltipValueGetter;
+    this.tooltipComponent = col.tooltipComponent;
+    this.tooltipComponentParams = col.tooltipComponentParams;
+    this.tooltipOptions = col.tooltipOptions;
+    this.suppressAutoTooltip = col.suppressAutoTooltip;
+    this.headerTooltip = col.headerTooltip;
     this.cellClass = col.cellClass;
     this.cellStyle = col.cellStyle;
     this.colSpan = col.colSpan;
@@ -275,6 +292,13 @@ export class Column {
     dup.cellEditorParams = this.cellEditorParams;
     dup.headerComponent = this.headerComponent;
     dup.headerCellComponent = this.headerCellComponent;
+    dup.tooltipField = this.tooltipField;
+    dup.tooltipValueGetter = this.tooltipValueGetter;
+    dup.tooltipComponent = this.tooltipComponent;
+    dup.tooltipComponentParams = this.tooltipComponentParams;
+    dup.tooltipOptions = this.tooltipOptions;
+    dup.suppressAutoTooltip = this.suppressAutoTooltip;
+    dup.headerTooltip = this.headerTooltip;
     dup.cellClass = this.cellClass;
     dup.cellStyle = this.cellStyle;
     dup.editable = this.editable;

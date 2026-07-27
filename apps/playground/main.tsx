@@ -11,6 +11,7 @@ import ColumnStateDemo from "./ColumnStateDemo";
 import VisualStatesDemo from "./VisualStatesDemo";
 import QuickFilterDemo from "./QuickFilterDemo";
 import HeaderComponentDemo from "./HeaderComponentDemo";
+import TooltipDemo from "./TooltipDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -22,6 +23,7 @@ const PAGES = [
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
+  { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
 ] as const;
 
 function Root() {

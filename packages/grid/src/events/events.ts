@@ -18,6 +18,8 @@ export type GridEventName =
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
+  | "tooltipShow"
+  | "tooltipHide"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -153,6 +155,19 @@ export type GridEventRowClickedParams = {
   event: MouseEvent;
 };
 
+export type GridEventTooltipParams = {
+  /** Where the tooltip is anchored. */
+  location: "body" | "header";
+  /** Column instance id (both body and header tooltips). */
+  colId: ColId | null;
+  /** Row id (body tooltips only; null for header tooltips). */
+  rowId: GridId | null;
+  /** Global leaf-column index (body tooltips; null for header tooltips). */
+  colIdx: number | null;
+  /** View index of the row (body tooltips; null for header tooltips). */
+  viewIdx: number | null;
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -174,6 +189,8 @@ export interface GridEventMap {
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;
+  tooltipShow: GridEventTooltipParams;
+  tooltipHide: GridEventTooltipParams;
   error: GridEventErrorParams;
 }
 

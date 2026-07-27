@@ -32,6 +32,10 @@ import { CellRefreshReason } from "./renderer";
 import { BodyPoolSizer } from "./body/poolSizer";
 import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyColumnHoverRenderer } from "./body/columnHover";
+import { FloatingAnchor } from "./floating/floatingAnchor";
+import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
+import { resolveTooltipOptions } from "../interfaces/gridOptions";
+import type { TooltipOptions } from "../interfaces/gridOptions";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -81,6 +85,11 @@ export class GridRenderer {
   _bodyPoolSizer: BodyPoolSizer;
   _bodyRowHoverRenderer: BodyRowHoverRenderer;
   _bodyColumnHoverRenderer: BodyColumnHoverRenderer;
+  _tooltipFloating: FloatingAnchor;
+  _bodyTooltipRenderer: BodyTooltipRenderer;
+  // Live tooltip config. Seeded from core options at construction; updated in place by
+  // setTooltipOptions so the React wrapper can reconfigure tooltips without remounting the grid.
+  _tooltipOptions: boolean | TooltipOptions | undefined;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -199,7 +208,12 @@ export class GridRenderer {
       updatePaginationControls: (params) => this._updatePaginationControls(params),
       renderAggregateRow: () => this._renderAggregateRow(),
       onSelectionChanged: () => this._selectionRenderer.onSelectionChanged(),
-      onFocusChanged: (params) => this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx),
+      onFocusChanged: (params) => {
+        this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx);
+        if (params.viewIdx != null && params.colIdx != null) {
+          this._bodyTooltipRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.reason);
+        }
+      },
       onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
       onCellsChanged: (params) => this._onCellsChanged(params),
     });
@@ -346,6 +360,31 @@ export class GridRenderer {
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
+    // Tooltips sit below the menu band (menus use 9999+) so a column/context menu covers a tooltip.
+    this._tooltipFloating = new FloatingAnchor(this.root, 9800);
+    this._tooltipOptions = this.core.options.tooltip;
+    this._bodyTooltipRenderer = new BodyTooltipRenderer({
+      core: this.core,
+      api: this.api,
+      body: bodyWrapper.body,
+      headerWrapper: headerRefs.wrapper,
+      floating: this._tooltipFloating,
+      leafColumns: () => this._leafColumns,
+      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      options: () => resolveTooltipOptions(this._tooltipOptions),
+    });
+    // Expose programmatic tooltip control on the public API (api.showTooltip / hideTooltip). Probe
+    // structurally to avoid a renderer→api import cycle, matching the exporter hook above.
+    const apiWithTooltip = this.api as unknown as {
+      setTooltipController?: (c: {
+        showBodyTooltip: (viewIdx: number, colIdx: number) => void;
+        hideTooltip: () => void;
+      }) => void;
+    };
+    apiWithTooltip.setTooltipController?.({
+      showBodyTooltip: (viewIdx, colIdx) => this._bodyTooltipRenderer.showBodyTooltip(viewIdx, colIdx),
+      hideTooltip: () => this._bodyTooltipRenderer.hideTooltip(),
+    });
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._aggregateModelController.setAggregateScope("none");
@@ -561,6 +600,7 @@ export class GridRenderer {
     this._interactionEventBinder.bind();
     if (this.core.options.rowHover) this._bodyRowHoverRenderer.bind();
     if (this.core.options.columnHover) this._bodyColumnHoverRenderer.bind();
+    if (resolveTooltipOptions(this._tooltipOptions).enabled) this._bodyTooltipRenderer.bind();
 
     // initial
     // requestAnimationFrame(() => this._maybeUpdatePoolSize());
@@ -628,6 +668,20 @@ export class GridRenderer {
   // a config change is applied by tearing the widget down and rebuilding it in place — carrying the
   // live search state over so an active filter isn't disturbed. This also handles the
   // enabled↔disabled and (via the build guard) client-side↔serverSide transitions.
+  /** Reconfigure tooltips live (mode, interactivity, delays, enable/disable) without remounting.
+   * Any visible tooltip is dismissed so the next hover picks up the new config. */
+  setTooltipOptions(options: boolean | TooltipOptions | undefined) {
+    this._tooltipOptions = options;
+    // Keep the mirrored value on core.options in sync so anything reading it there agrees.
+    (this.core.options as { tooltip: boolean | TooltipOptions | undefined }).tooltip = options;
+    this._bodyTooltipRenderer.hideNow();
+    if (resolveTooltipOptions(options).enabled) {
+      this._bodyTooltipRenderer.bind();
+    } else {
+      this._bodyTooltipRenderer.unbind();
+    }
+  }
+
   setQuickFilterOptions(options: boolean | QuickFilterOptions | undefined) {
     this._quickFilterOptions = options;
     const restore = this._quickFilterWidget?.captureState();
@@ -717,6 +771,7 @@ export class GridRenderer {
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
+    this._bodyTooltipRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
   }

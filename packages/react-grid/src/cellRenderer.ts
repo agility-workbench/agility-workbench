@@ -8,6 +8,13 @@ import type {
   ICellRenderer,
 } from "@agility-workbench/grid";
 import { isClassRenderer } from "@agility-workbench/grid";
+import { isClassTooltipComponent } from "@agility-workbench/grid";
+import type {
+  TooltipComponent,
+  TooltipComponentClass,
+  TooltipComponentParams,
+  ITooltipComponent,
+} from "@agility-workbench/grid";
 import type { CellEditor } from "@agility-workbench/grid";
 import { adaptCellEditor, ReactCellEditor } from "./cellEditor";
 
@@ -15,13 +22,23 @@ export type ReactCellRenderer =
   | React.ComponentType<CellRendererParams>
   | React.ExoticComponent<CellRendererParams>;
 
-export type ReactColDef = Omit<ColDef, "cellRenderer" | "cellEditor" | "children"> & {
+export type ReactTooltipComponent =
+  | React.ComponentType<TooltipComponentParams>
+  | React.ExoticComponent<TooltipComponentParams>;
+
+export type ReactColDef = Omit<
+  ColDef,
+  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip"
+> & {
   cellRenderer?: CellRenderer | ReactCellRenderer;
   cellEditor?: CellEditor | ReactCellEditor;
+  tooltipComponent?: TooltipComponent | ReactTooltipComponent;
+  headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
   children?: ReactColDef[];
 };
 
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
+const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();
 
 function isObjectRenderer(renderer: unknown): renderer is object {
   return (typeof renderer === "function" || typeof renderer === "object") && renderer !== null;
@@ -83,6 +100,69 @@ export function adaptCellRenderer(renderer: CellRenderer | ReactCellRenderer | u
   return adapted;
 }
 
+function getTooltipProps(params: TooltipComponentParams): TooltipComponentParams {
+  const extraParams = params.colDef?.tooltipComponentParams;
+  if (extraParams == null || typeof extraParams !== "object") return params;
+  return { ...params, ...extraParams };
+}
+
+function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentClass {
+  return class ReactTooltipAdapter implements ITooltipComponent {
+    private el = document.createElement("div");
+    private root: Root | null = null;
+
+    init(params: TooltipComponentParams): void {
+      // A single createRoot lives for the life of this tooltip instance; refresh re-renders into it
+      // rather than remounting, so interactive content keeps its React state across repositions.
+      this.root = createRoot(this.el);
+      this.render(params);
+    }
+
+    getGui(): HTMLElement {
+      return this.el;
+    }
+
+    refresh(params: TooltipComponentParams): boolean {
+      this.render(params);
+      return true;
+    }
+
+    destroy(): void {
+      this.root?.unmount();
+      this.root = null;
+    }
+
+    private render(params: TooltipComponentParams): void {
+      this.root?.render(React.createElement(Comp, getTooltipProps(params)));
+    }
+  };
+}
+
+export function adaptTooltip(
+  comp: TooltipComponent | ReactTooltipComponent | undefined,
+): TooltipComponent | undefined {
+  if (!comp) return undefined;
+  if (typeof comp === "function" && isClassTooltipComponent(comp as TooltipComponent)) {
+    return comp as TooltipComponent;
+  }
+  if (!isObjectRenderer(comp)) return comp as TooltipComponent;
+
+  const cached = reactTooltipCache.get(comp);
+  if (cached) return cached;
+
+  const adapted = createReactTooltipClass(comp as ReactTooltipComponent);
+  reactTooltipCache.set(comp, adapted);
+  return adapted;
+}
+
+/** headerTooltip may be a plain string (pass through) or a component (adapt like a tooltip). */
+function adaptHeaderTooltip(
+  ht: string | TooltipComponent | ReactTooltipComponent | undefined,
+): string | TooltipComponent | undefined {
+  if (ht == null || typeof ht === "string") return ht;
+  return adaptTooltip(ht);
+}
+
 export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[] | null | undefined {
   if (columnDefs == null) return columnDefs;
 
@@ -91,6 +171,8 @@ export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[
       ...colDef,
       cellRenderer: adaptCellRenderer(colDef.cellRenderer),
       cellEditor: adaptCellEditor(colDef.cellEditor),
+      tooltipComponent: adaptTooltip(colDef.tooltipComponent),
+      headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
       children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
     };
     return next;

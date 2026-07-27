@@ -7,6 +7,8 @@ import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { HeaderComponent } from "../renderer/header/headerComponent";
+import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
+import type { TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -210,6 +212,108 @@ export function resolveQuickFilterOptions(
       offsetX: Number.isFinite(pos.offsetX) && (pos.offsetX as number) >= 0 ? (pos.offsetX as number) : 8,
       offsetTop: Number.isFinite(pos.offsetTop) && (pos.offsetTop as number) >= 0 ? (pos.offsetTop as number) : 6,
     },
+  };
+}
+
+/** How a tooltip is positioned. `anchored` pins to the cell (supports interactive content);
+ * `follow` tracks the pointer (display-only). See {@link ResolvedTooltipOptions}. */
+export type TooltipMode = "anchored" | "follow";
+
+/** Where an anchored tooltip prefers to sit relative to the cell. `auto` picks the first side with
+ * room (bottom → top → right → left). */
+export type TooltipPlacement = "top" | "bottom" | "left" | "right" | "auto";
+
+/** Grid-level tooltip configuration (the object form of the `tooltip` option). */
+export interface TooltipOptions {
+  /** Delay in ms before a hover tooltip appears. Default 400. */
+  showDelay?: number;
+  /** Delay in ms before a tooltip hides after the pointer leaves. Default 100. */
+  hideDelay?: number;
+  /** Allow the pointer to enter the tooltip and interact with its content (buttons/inputs). Forces
+   * `anchored` mode when set (you can't click a tooltip that follows the pointer). Default false. */
+  interactive?: boolean;
+  /** Preferred placement for anchored tooltips. Default "auto". */
+  placement?: TooltipPlacement;
+  /** Positioning mode. Default "anchored". Ignored (forced to "anchored") when `interactive`. */
+  mode?: TooltipMode;
+  /** Mount the tooltip in `document.body` instead of the grid root, to escape `.pte-root`
+   * overflow clipping near the grid edge. Default false. */
+  escapeRootClip?: boolean;
+  /** Disable the built-in auto-truncation tooltip (full value shown when a cell is clipped).
+   * Default false (auto-truncation is on). */
+  suppressAutoTooltip?: boolean;
+}
+
+/**
+ * Per-column tooltip presentation overrides (see {@link ColDef.tooltipOptions}). A column may
+ * override how its tooltip is positioned and behaves; anything omitted falls back to the grid-level
+ * {@link TooltipOptions}. Timing (`showDelay`/`hideDelay`) and the master enable switch stay
+ * grid-level and are intentionally not overridable here.
+ */
+export interface TooltipColumnOptions {
+  /** Positioning mode for this column. Ignored (forced to "anchored") when `interactive`. */
+  mode?: TooltipMode;
+  /** Preferred placement for this column's anchored tooltip. */
+  placement?: TooltipPlacement;
+  /** Whether this column's tooltip is interactive. Forces `anchored` mode. */
+  interactive?: boolean;
+  /** Mount this column's tooltip in `document.body` to escape `.pte-root` overflow clipping. */
+  escapeRootClip?: boolean;
+}
+
+/** The fully-resolved tooltip config the renderer consumes. */
+export interface ResolvedTooltipOptions {
+  enabled: boolean;
+  showDelay: number;
+  hideDelay: number;
+  interactive: boolean;
+  placement: TooltipPlacement;
+  mode: TooltipMode;
+  escapeRootClip: boolean;
+  suppressAutoTooltip: boolean;
+}
+
+export function resolveTooltipOptions(
+  opt: boolean | TooltipOptions | undefined,
+): ResolvedTooltipOptions {
+  // Default ON: only an explicit `false` disables tooltips entirely.
+  const enabled = opt !== false;
+  const o = typeof opt === "object" && opt !== null ? opt : {};
+  const interactive = o.interactive ?? false;
+  // Interactive tooltips must be anchored — a follow-mouse tooltip can't be clicked.
+  const mode: TooltipMode = interactive ? "anchored" : (o.mode ?? "anchored");
+  return {
+    enabled,
+    showDelay: o.showDelay != null && o.showDelay >= 0 ? o.showDelay : 400,
+    hideDelay: o.hideDelay != null && o.hideDelay >= 0 ? o.hideDelay : 100,
+    interactive,
+    placement: o.placement ?? "auto",
+    mode,
+    escapeRootClip: o.escapeRootClip ?? false,
+    suppressAutoTooltip: o.suppressAutoTooltip ?? false,
+  };
+}
+
+/**
+ * Layer a column's presentation overrides on top of the grid-level resolved config. Only the
+ * presentation fields ({@link TooltipColumnOptions}) can be overridden; `enabled`, delays, and
+ * `suppressAutoTooltip` come from the grid level. The interactive⇒anchored rule is re-applied after
+ * merging so a column that turns on `interactive` can't be left in `follow` mode.
+ */
+export function resolveColumnTooltipOptions(
+  base: ResolvedTooltipOptions,
+  colOpts: TooltipColumnOptions | undefined,
+): ResolvedTooltipOptions {
+  if (!colOpts) return base;
+  const interactive = colOpts.interactive ?? base.interactive;
+  const requestedMode = colOpts.mode ?? base.mode;
+  return {
+    ...base,
+    interactive,
+    // Interactive tooltips must be anchored — a follow-mouse tooltip can't be clicked.
+    mode: interactive ? "anchored" : requestedMode,
+    placement: colOpts.placement ?? base.placement,
+    escapeRootClip: colOpts.escapeRootClip ?? base.escapeRootClip,
   };
 }
 
@@ -482,6 +586,23 @@ export interface GridOptions {
    */
   defaultHeaderCellComponent?: HeaderComponent;
   /**
+   * Tooltips. Pass `true` (or omit) to enable with defaults, an options object to customise, or
+   * `false` to disable all tooltips (including the built-in auto-truncation tooltip). Enabled by
+   * default. See {@link TooltipOptions}.
+   */
+  tooltip?: boolean | TooltipOptions;
+  /**
+   * Grid-level fallback tooltip component, applied to every column that does not resolve its own
+   * tooltip content. See {@link ColDef.tooltipComponent}.
+   */
+  defaultTooltipComponent?: TooltipComponent;
+  /**
+   * Grid-level fallback tooltip value getter (returns tooltip text for a cell). Lower precedence
+   * than a column's own tooltip config, higher than auto-truncation. See
+   * {@link ColDef.tooltipValueGetter}.
+   */
+  defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
+  /**
    * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
    * or an options object to customise. Omitted/false disables the feature. Client-side row model
    * only (server-side ignores it).
@@ -577,6 +698,9 @@ export interface InternalGridOptions extends GridOptions {
   fullWidthCellRenderer?: CellRenderer;
   defaultHeaderComponent?: HeaderComponent;
   defaultHeaderCellComponent?: HeaderComponent;
+  tooltip: boolean | TooltipOptions;
+  defaultTooltipComponent?: TooltipComponent;
+  defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
   quickFilter: boolean | QuickFilterOptions;
   loadingMessage: string;
   noRowsMessage: string;

@@ -109,6 +109,13 @@ export interface IGridAPI {
   /** Set a cell's value directly (bypasses the inline editor; runs the column's valueParser). */
   setCellValue(cell: CellRef, value: unknown): void;
 
+  /* ----- Tooltips ----- */
+  /** Programmatically show the tooltip for a body cell (bypasses the hover delay). No-op if the
+   * cell resolves nothing to show or the grid isn't rendered yet. */
+  showTooltip(cell: CellRef): void;
+  /** Hide any visible tooltip. */
+  hideTooltip(): void;
+
   /* ----- Clipboard ----- */
   /** Copy the current selection to the clipboard as TSV. */
   copySelection(): void;

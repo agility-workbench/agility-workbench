@@ -1,7 +1,7 @@
 import { GridCore, GridOptions } from "@agility-workbench/grid";
 import { CanvasMeasurer } from "@agility-workbench/grid";
 import { GridProps } from "./interface";
-import { adaptCellRenderer } from "./cellRenderer";
+import { adaptCellRenderer, adaptTooltip } from "./cellRenderer";
 
 export function createCore(options: GridOptions): GridCore {
   return new GridCore(new CanvasMeasurer(), options);
@@ -67,6 +67,9 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.fullWidthCellRenderer != null) options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);
   if (props.defaultHeaderComponent != null) options.defaultHeaderComponent = props.defaultHeaderComponent;
   if (props.defaultHeaderCellComponent != null) options.defaultHeaderCellComponent = props.defaultHeaderCellComponent;
+  if (props.tooltip != null) options.tooltip = props.tooltip;
+  if (props.defaultTooltipComponent != null) options.defaultTooltipComponent = adaptTooltip(props.defaultTooltipComponent);
+  if (props.defaultTooltipValueGetter != null) options.defaultTooltipValueGetter = props.defaultTooltipValueGetter;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
   if (props.loadingMessage != null) options.loadingMessage = props.loadingMessage;
   if (props.noRowsMessage != null) options.noRowsMessage = props.noRowsMessage;

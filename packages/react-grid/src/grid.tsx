@@ -182,6 +182,22 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [quickFilterKey]);
 
+    // Reconfigure tooltips live (mode, interactivity, delays, enable/disable) without remounting.
+    // Serialized so an inline-object `tooltip` prop doesn't reconfigure on every render — only when
+    // the config's contents actually change. Skip the mount run (create effect already applied it).
+    const tooltipKey = JSON.stringify(props.tooltip ?? null);
+    const tooltipMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!tooltipMountedRef.current) {
+        tooltipMountedRef.current = true;
+        return;
+      }
+      const renderer = instanceRef.current?.renderer;
+      if (!renderer) return;
+      renderer.setTooltipOptions(props.tooltip);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tooltipKey]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {

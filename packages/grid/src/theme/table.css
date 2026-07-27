@@ -88,6 +88,12 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-tooltip-bg: #1f2937;
+  --pte-tooltip-text-color: #f9fafb;
+  --pte-tooltip-border-color: transparent;
+  --pte-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  --pte-tooltip-max-width: 320px;
+  --pte-tooltip-radius: 6px;
 }
 
 .pte-theme-dark {
@@ -140,6 +146,12 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-tooltip-bg: #0f172a;
+  --pte-tooltip-text-color: #e2e8f0;
+  --pte-tooltip-border-color: #334155;
+  --pte-tooltip-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --pte-tooltip-max-width: 320px;
+  --pte-tooltip-radius: 6px;
 }
 
 *[class^="pte-"],
@@ -1964,4 +1976,81 @@
   max-width: 70%;
   text-overflow: ellipsis;
   overflow: hidden;
+}
+
+/* ---------------- Tooltips / floating layer ---------------- */
+/* Base floating overlay (shared by tooltips; ActionFrame will reuse the same layer primitive). */
+.pte-floating {
+  box-sizing: border-box;
+}
+
+.pte-tooltip {
+  background: var(--pte-tooltip-bg);
+  color: var(--pte-tooltip-text-color);
+  border: 1px solid var(--pte-tooltip-border-color);
+  border-radius: var(--pte-tooltip-radius);
+  box-shadow: var(--pte-tooltip-shadow);
+  max-width: var(--pte-tooltip-max-width);
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+/* Interactive tooltips accept pointer events so their controls are clickable. */
+.pte-tooltip.pte-tooltip-interactive {
+  pointer-events: auto;
+}
+
+.pte-tooltip-text {
+  white-space: pre-wrap;
+}
+
+.pte-tooltip-custom-root {
+  display: block;
+}
+
+/* Arrow: a small rotated square pinned to the edge opposite the placement side. */
+.pte-floating-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--pte-tooltip-bg);
+  border: 1px solid var(--pte-tooltip-border-color);
+  transform: rotate(45deg);
+  z-index: -1;
+}
+
+.pte-tooltip[data-placement="bottom"] .pte-floating-arrow {
+  top: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.pte-tooltip[data-placement="top"] .pte-floating-arrow {
+  bottom: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-left: none;
+  border-top: none;
+}
+
+.pte-tooltip[data-placement="right"] .pte-floating-arrow {
+  left: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-top: none;
+  border-right: none;
+}
+
+.pte-tooltip[data-placement="left"] .pte-floating-arrow {
+  right: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-bottom: none;
+  border-left: none;
 }

@@ -22,6 +22,14 @@ export type {
   HeaderComponentParams,
   IHeaderComponent,
 } from "./renderer/header/headerComponent";
+export { isClassTooltipComponent } from "./renderer/tooltip/tooltipComponent";
+export type {
+  TooltipComponent,
+  TooltipComponentClass,
+  TooltipComponentFn,
+  TooltipComponentParams,
+  ITooltipComponent,
+} from "./renderer/tooltip/tooltipComponent";
 export type {
   IBodyMenuAdapter,
   IMenuAdapter,
@@ -44,6 +52,10 @@ export type {
   MultiSortKey,
   ShowSortPriority,
   SortIconVisibility,
+  TooltipOptions,
+  TooltipColumnOptions,
+  TooltipMode,
+  TooltipPlacement,
 } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
@@ -85,6 +97,7 @@ export type {
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
+  GridEventTooltipParams,
   GridEventViewportChangedParams,
   Unsubscribe,
 } from "./events/events";
