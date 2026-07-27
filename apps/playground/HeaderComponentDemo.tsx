@@ -17,7 +17,7 @@ import type {
  *     default click-to-sort routing fires with no callback wiring.
  *  2. `headerCellComponent` (Level 2, class) — owns the whole cell (content + its own filter &
  *     sort buttons), driving interactions through the params callbacks (progressSort / showFilterMenu).
- *  3. Grid-level `defaultHeaderComponent` applied to every column, with one column overriding it via
+ *  3. `defaultColDef.headerComponent` applied to every column, with one column overriding it via
  *     its own `headerCellComponent` (Level 2 wins over the Level 1 default).
  *  4. A group (parent) column carrying a `headerComponent` — children still render below it.
  */
@@ -195,7 +195,7 @@ function DefaultTintedHeader(params: HeaderComponentParams): HTMLElement {
   root.style.width = "100%";
   root.style.fontStyle = "italic";
   root.style.color = "#6366f1";
-  root.title = "Rendered by grid-level defaultHeaderComponent";
+  root.title = "Rendered by defaultColDef.headerComponent";
   return root;
 }
 
@@ -215,7 +215,7 @@ export function HeaderComponentDemo() {
           filter: "set",
           headerComponent: EmojiHeader("🗺️", "#0ea5e9"),
         },
-        // No component on this leaf → inherits the grid-level defaultHeaderComponent (Path 3).
+        // No component on this leaf → inherits defaultColDef.headerComponent (Path 3).
         { colId: "country", key: "country", label: "Country", width: 150, filter: "text" },
       ],
     },
@@ -240,7 +240,7 @@ export function HeaderComponentDemo() {
         <span style={{ fontWeight: 700 }}>Sales Rep</span> uses a Level 2 <code>headerCellComponent</code>{" "}
         (owns the whole cell; its ↕ button sorts, ⛃ opens the filter — turns green when active).{" "}
         <span style={{ fontStyle: "italic", color: "#6366f1" }}>Country / Units / Revenue</span> fall
-        back to a grid-level <code>defaultHeaderComponent</code>. The <span style={{ color: "#0ea5e9" }}>🌍 Location</span>{" "}
+        back to <code>defaultColDef.headerComponent</code>. The <span style={{ color: "#0ea5e9" }}>🌍 Location</span>{" "}
         group header is a Level 1 component over child columns. Ctrl/⌘/Shift+click a sort control for multi-sort.
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -249,8 +249,7 @@ export function HeaderComponentDemo() {
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
-          defaultHeaderComponent={DefaultTintedHeader}
-          sortIconVisibility="always"
+          defaultColDef={{ headerComponent: DefaultTintedHeader, sortIconVisibility: "always" }}
           style={{ width: "100%", height: "100%" }}
         />
       </div>

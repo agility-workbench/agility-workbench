@@ -75,8 +75,8 @@ export { createTheme, themeLight, themeDark } from "./theme/theme";
 export type { PteVarName } from "./theme/cssVars.generated";
 export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
 
-export { ColumnType } from "./interfaces/column";
-export type { ColDef } from "./interfaces/column";
+export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
+export type { ColDef, DefaultColDef } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type { AggregateModel, AggregateScope } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";

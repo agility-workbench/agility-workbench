@@ -1,13 +1,13 @@
 import React from "react";
 import { createRoot, Root } from "react-dom/client";
-import type { ColDef } from "@agility-workbench/grid";
+import type { ColDef, DefaultColDef } from "@agility-workbench/grid";
 import type {
   CellRenderer,
   CellRendererClass,
   CellRendererParams,
   ICellRenderer,
 } from "@agility-workbench/grid";
-import { isClassRenderer } from "@agility-workbench/grid";
+import { isClassRenderer, NON_DEFAULTABLE_COLDEF_KEYS } from "@agility-workbench/grid";
 import { isClassTooltipComponent } from "@agility-workbench/grid";
 import type {
   TooltipComponent,
@@ -48,6 +48,13 @@ export type ReactColDef = Omit<
   actionFrameComponent?: ActionFrameComponent | ReactActionFrameComponent;
   children?: ReactColDef[];
 };
+
+/**
+ * React-aware shape of the grid-level `defaultColDef`: a {@link ReactColDef} minus the per-column
+ * identity/structure fields that never inherit (see `NON_DEFAULTABLE_COLDEF_KEYS`). Mirrors core
+ * `DefaultColDef`, but its component fields may be React components.
+ */
+export type ReactDefaultColDef = Omit<ReactColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
 
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
 const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();
@@ -231,19 +238,41 @@ export function adaptActionFrame(
   return adapted;
 }
 
+/**
+ * Adapt the React-aware components carried by a single column def into their core equivalents. Used
+ * for real column defs and, via {@link adaptReactDefaultColDef}, for the grid-level `defaultColDef`.
+ */
+export function adaptReactColDef(colDef: ReactColDef): ColDef {
+  return {
+    ...colDef,
+    cellRenderer: adaptCellRenderer(colDef.cellRenderer),
+    cellEditor: adaptCellEditor(colDef.cellEditor),
+    tooltipComponent: adaptTooltip(colDef.tooltipComponent),
+    headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
+    actionFrameComponent: adaptActionFrame(colDef.actionFrameComponent),
+    children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
+  };
+}
+
 export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[] | null | undefined {
   if (columnDefs == null) return columnDefs;
+  return columnDefs.map((colDef) => adaptReactColDef(colDef));
+}
 
-  return columnDefs.map((colDef) => {
-    const next: ColDef = {
-      ...colDef,
-      cellRenderer: adaptCellRenderer(colDef.cellRenderer),
-      cellEditor: adaptCellEditor(colDef.cellEditor),
-      tooltipComponent: adaptTooltip(colDef.tooltipComponent),
-      headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
-      actionFrameComponent: adaptActionFrame(colDef.actionFrameComponent),
-      children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
-    };
-    return next;
-  });
+/**
+ * Adapt a grid-level `defaultColDef`: same per-field component adaptation as a real column def, but
+ * only the fields actually present are adapted (it is a `Partial<ColDef>`), so an omitted field
+ * stays omitted rather than being forced to `undefined`.
+ */
+export function adaptReactDefaultColDef(
+  defaultColDef?: ReactDefaultColDef | null,
+): DefaultColDef | undefined {
+  if (defaultColDef == null) return undefined;
+  const next = { ...defaultColDef } as unknown as DefaultColDef;
+  if ("cellRenderer" in defaultColDef) next.cellRenderer = adaptCellRenderer(defaultColDef.cellRenderer);
+  if ("cellEditor" in defaultColDef) next.cellEditor = adaptCellEditor(defaultColDef.cellEditor);
+  if ("tooltipComponent" in defaultColDef) next.tooltipComponent = adaptTooltip(defaultColDef.tooltipComponent);
+  if ("headerTooltip" in defaultColDef) next.headerTooltip = adaptHeaderTooltip(defaultColDef.headerTooltip);
+  if ("actionFrameComponent" in defaultColDef) next.actionFrameComponent = adaptActionFrame(defaultColDef.actionFrameComponent);
+  return next;
 }

@@ -8,8 +8,9 @@ import { IGridAPI } from "../../interfaces/iGridAPI";
  * refresh, a class form gets `init/getGui/refresh/destroy`.
  *
  * Content resolution precedence for a body cell (computed by the tooltip renderer):
- *   tooltipComponent → tooltipValueGetter → tooltipField → grid defaultTooltipComponent /
- *   defaultTooltipValueGetter → auto-truncation (the cell's own full text when it is clipped).
+ *   tooltipComponent → tooltipValueGetter → tooltipField → auto-truncation (the cell's own full text
+ *   when it is clipped). Grid-wide defaults for any of these come from `defaultColDef`, merged onto
+ *   the column before resolution.
  */
 export interface TooltipComponentParams {
   /** Raw cell value (body tooltips). Undefined for header tooltips. */

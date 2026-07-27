@@ -6,10 +6,7 @@ import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
-import type { HeaderComponent } from "../renderer/header/headerComponent";
-import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
-import type { TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
-import type { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
+import type { DefaultColDef } from "./column";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -521,21 +518,6 @@ export interface GridOptions {
    */
   initialSort?: InitialSortItem[];
   /**
-   * The cycle a column steps through on successive sort-icon clicks — an ordered list of directions
-   * where `null` is the unsorted state. Each click advances to the next entry, wrapping at the end.
-   * Defaults to `["asc", "desc", null]`. Set `["asc", "desc"]` to keep sorted columns always sorted,
-   * or `["desc", "asc", null]` for descending-first. Overridable per column via `ColDef.sortingOrder`.
-   */
-  sortingOrder?: SortingOrder;
-  /**
-   * When the sort icon is shown on sortable columns: "hover" (default) reveals it on header hover /
-   * keyboard focus; "always" shows the neutral icon at rest too, making the column visibly sortable;
-   * "never" renders no icon at all (the column stays sortable via the menu, Shift+click, and the API).
-   * Except under "never", a column with an active sort always shows its direction arrow. Overridable
-   * per column via `ColDef.sortIconVisibility`.
-   */
-  sortIconVisibility?: SortIconVisibility;
-  /**
    * Modifier key that makes a sort-icon click additive — adding the column to a multi-column sort
    * rather than replacing the current sort. "ctrl" (default, also matches ⌘) or "shift". A plain
    * (unmodified) icon click always replaces the sort with just that column.
@@ -613,43 +595,21 @@ export interface GridOptions {
    */
   fullWidthCellRenderer?: CellRenderer;
   /**
-   * Grid-level fallback for a column's header *content* component (Level 1). Applied to every column
-   * that does not set its own `headerComponent`. See {@link ColDef.headerComponent}.
+   * Default column definition merged *under* every column. Any {@link ColDef} field set here becomes
+   * the grid-wide default for that field; an explicit value on an individual column always wins, and
+   * a built-in default applies when neither supplies one (precedence: column › `defaultColDef` ›
+   * built-in). Merge is shallow at the top-level field, so a nested object (e.g. `cellRendererParams`,
+   * `filterParams`, `actionFrameOptions`) set on a column replaces — does not merge with — the one
+   * here. The per-column identity/structural fields (`colId`, `key`, `label`, `children`) are not
+   * accepted (see {@link DefaultColDef}).
    */
-  defaultHeaderComponent?: HeaderComponent;
-  /**
-   * Grid-level fallback for a column's whole-cell header component (Level 2). Applied to every
-   * column that does not set its own `headerCellComponent`, and takes precedence over any Level 1
-   * component. See {@link ColDef.headerCellComponent}.
-   */
-  defaultHeaderCellComponent?: HeaderComponent;
+  defaultColDef?: DefaultColDef;
   /**
    * Tooltips. Pass `true` (or omit) to enable with defaults, an options object to customise, or
    * `false` to disable all tooltips (including the built-in auto-truncation tooltip). Enabled by
    * default. See {@link TooltipOptions}.
    */
   tooltip?: boolean | TooltipOptions;
-  /**
-   * Grid-level fallback tooltip component, applied to every column that does not resolve its own
-   * tooltip content. See {@link ColDef.tooltipComponent}.
-   */
-  defaultTooltipComponent?: TooltipComponent;
-  /**
-   * Grid-level fallback tooltip value getter (returns tooltip text for a cell). Lower precedence
-   * than a column's own tooltip config, higher than auto-truncation. See
-   * {@link ColDef.tooltipValueGetter}.
-   */
-  defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
-  /**
-   * Grid-level fallback ActionFrame form-body component, applied to every column that does not set
-   * its own `actionFrameComponent`. See {@link ColDef.actionFrameComponent}.
-   */
-  defaultActionFrameComponent?: ActionFrameComponent;
-  /**
-   * Grid-level ActionFrame presentation defaults (popover placement / offset / clip escape). A
-   * column's `actionFrameOptions` overrides these field-by-field. See {@link ActionFrameOptions}.
-   */
-  actionFrameOptions?: ActionFrameOptions;
   /**
    * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
    * or an options object to customise. Omitted/false disables the feature. Client-side row model
@@ -734,8 +694,6 @@ export interface InternalGridOptions extends GridOptions {
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
   commitOnBlur: boolean;
-  sortingOrder: SortingOrder;
-  sortIconVisibility: SortIconVisibility;
   multiSortKey: MultiSortKey;
   showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
@@ -744,13 +702,8 @@ export interface InternalGridOptions extends GridOptions {
   groupRowsSelectable: boolean;
   isFullWidthRow?: (node: IRowNode) => boolean;
   fullWidthCellRenderer?: CellRenderer;
-  defaultHeaderComponent?: HeaderComponent;
-  defaultHeaderCellComponent?: HeaderComponent;
+  defaultColDef?: DefaultColDef;
   tooltip: boolean | TooltipOptions;
-  defaultTooltipComponent?: TooltipComponent;
-  defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
-  defaultActionFrameComponent?: ActionFrameComponent;
-  actionFrameOptions?: ActionFrameOptions;
   quickFilter: boolean | QuickFilterOptions;
   loadingMessage: string;
   noRowsMessage: string;

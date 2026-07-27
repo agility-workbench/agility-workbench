@@ -173,8 +173,6 @@ export class GridCore implements IGridCore {
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,
       commitOnBlur: options.commitOnBlur ?? true,
-      sortingOrder: options.sortingOrder ?? ["asc", "desc", null],
-      sortIconVisibility: options.sortIconVisibility ?? "hover",
       multiSortKey: options.multiSortKey ?? "ctrl",
       showSortPriority: options.showSortPriority ?? "multi",
       initialSort: options.initialSort,
@@ -184,12 +182,8 @@ export class GridCore implements IGridCore {
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       isFullWidthRow: options.isFullWidthRow,
       fullWidthCellRenderer: options.fullWidthCellRenderer,
-      defaultHeaderComponent: options.defaultHeaderComponent,
-      defaultHeaderCellComponent: options.defaultHeaderCellComponent,
+      defaultColDef: options.defaultColDef,
       tooltip: options.tooltip ?? true,
-      defaultTooltipComponent: options.defaultTooltipComponent,
-      defaultTooltipValueGetter: options.defaultTooltipValueGetter,
-      defaultActionFrameComponent: options.defaultActionFrameComponent,
       quickFilter: options.quickFilter ?? false,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
@@ -813,9 +807,9 @@ export class GridCore implements IGridCore {
       curr = this.sorts.items.find(s => s.col.instanceID === col.instanceID);
     }
 
-    // Advance through the configured sort cycle: per-column order wins over the grid-level order,
-    // which falls back to the built-in default inside nextSortDir.
-    const order = col.sortingOrder ?? this.options.sortingOrder;
+    // Advance through the configured sort cycle: a column's order (its own, or inherited from
+    // `defaultColDef`) wins, falling back to the built-in default.
+    const order = col.sortingOrder ?? ["asc", "desc", null];
     const nextDir = nextSortDir(curr?.dir ?? null, order);
 
     // A non-additive (plain) sort replaces the whole sort model: clear every other sorted column
@@ -1383,8 +1377,9 @@ export class GridCore implements IGridCore {
         const col = this.columnModel.getById(action.cell.colId);
         const row = this.rowModel.getRowNode(action.cell.rowId);
         if (!col || !row || row.isGroup) break;
-        // No frame to show if neither the column nor the grid default provides a form component.
-        if (!col.actionFrameComponent && !this.options.defaultActionFrameComponent) break;
+        // No frame to show if the column has no form component (a `defaultColDef` value, if any,
+        // has already been merged onto the column).
+        if (!col.actionFrameComponent) break;
         // A frame and an inline edit can't be open on the grid at once — cancel any active edit.
         if (this.editingCell) {
           const editing = this.editingCell;

@@ -1,4 +1,4 @@
-import { ColDef, ColumnSection } from "../interfaces/column";
+import { ColDef, ColumnSection, NON_DEFAULTABLE_COLDEF_KEYS } from "../interfaces/column";
 import { Column } from "./column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { IRowNode } from "../interfaces/iRowNode";
@@ -109,7 +109,8 @@ export class ColumnModel implements IColumnModel {
    * When `measureCtx`/`params`/`rows` are supplied, the new leaves are sized to
    * their content and given comparators so they are immediately sortable.
    */
-  addColumnDef(colDef: ColDef, section: ColumnSection = "center", measureCtx?: ITextMeasurer, params?: TextMeasureParams, rows: IRowNode[] = []): string {
+  addColumnDef(rawColDef: ColDef, section: ColumnSection = "center", measureCtx?: ITextMeasurer, params?: TextMeasureParams, rows: IRowNode[] = []): string {
+    const colDef = this.mergeColDef(rawColDef);
     // Normalize colId
     colDef.colId = colDef.colId || colDef.key || `col_${crypto.randomUUID()}`;
 
@@ -248,8 +249,9 @@ export class ColumnModel implements IColumnModel {
   }
 
   private buildColumns(colDefs: ColDef[], parentCol?: Column, idxPrefix: string = "", reuseContext?: ColumnReuseContext): Column[] {
-    return colDefs.map((colDef, i) => {
+    return colDefs.map((rawColDef, i) => {
       const idx = `${idxPrefix}${i + 1}`;
+      const colDef = this.mergeColDef(rawColDef);
       colDef.colId = colDef.colId || colDef.key || `col_${idx}`;
       const col = this.claimReusableColumn(colDef, reuseContext);
       if (col) {
@@ -449,6 +451,31 @@ export class ColumnModel implements IColumnModel {
       copy.children = colDef.children.map((child) => this.deepCopyColDef(child));
     }
     return copy;
+  }
+
+  /**
+   * Layer the grid-level `defaultColDef` *under* a column's own definition: every field the column
+   * omits falls back to `defaultColDef`, while an explicit value on the column always wins (shallow
+   * merge — a nested object on the column replaces the default's, not deep-merged). The identity /
+   * structural fields (`colId`, `key`, `label`, `children`) never inherit; a column keeps its own.
+   * Applied per level, so group children each inherit in turn.
+   */
+  private mergeColDef(colDef: ColDef): ColDef {
+    const dflt = this.options.defaultColDef;
+    if (!dflt) return colDef;
+    // Start from the inheritable defaults, dropping any per-column identity/structure keys. The type
+    // (DefaultColDef) already forbids them, but a plain-JS caller could still pass one — strip
+    // defensively so a stray `colId`/`label` in defaultColDef can never clobber a real column.
+    const merged: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(dflt)) {
+      if (!(NON_DEFAULTABLE_COLDEF_KEYS as readonly string[]).includes(k)) merged[k] = v;
+    }
+    // A field explicitly set to `undefined` on the column means "not specified" and must not clobber
+    // the inherited default — only defined column values override.
+    for (const [k, v] of Object.entries(colDef)) {
+      if (v !== undefined) merged[k] = v;
+    }
+    return merged as unknown as ColDef;
   }
 
   private withInternalColumns(cols: Column[]): Column[] {

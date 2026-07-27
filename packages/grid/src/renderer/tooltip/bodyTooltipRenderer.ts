@@ -310,12 +310,12 @@ export class BodyTooltipRenderer {
       ...(col.tooltipComponentParams ?? {}),
     };
 
-    // 1. Custom component (column, then grid default).
-    const comp = col.tooltipComponent ?? core.options.defaultTooltipComponent;
+    // 1. Custom component (grid-wide defaults arrive pre-merged via `defaultColDef`).
+    const comp = col.tooltipComponent;
     if (comp) return createTooltipComponentRuntime(comp, params);
 
-    // 2. Value getter (column, then grid default).
-    const getter = col.tooltipValueGetter ?? core.options.defaultTooltipValueGetter;
+    // 2. Value getter.
+    const getter = col.tooltipValueGetter;
     if (getter) {
       const text = getter(params);
       return text != null && String(text).length > 0 ? this.textRuntime(String(text)) : null;

@@ -1,7 +1,7 @@
 import { GridCore, GridOptions } from "@agility-workbench/grid";
 import { CanvasMeasurer } from "@agility-workbench/grid";
 import { GridProps } from "./interface";
-import { adaptCellRenderer, adaptTooltip, adaptActionFrame } from "./cellRenderer";
+import { adaptCellRenderer, adaptReactDefaultColDef } from "./cellRenderer";
 
 export function createCore(options: GridOptions): GridCore {
   return new GridCore(new CanvasMeasurer(), options);
@@ -51,8 +51,6 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.undoLimit != null) options.undoLimit = props.undoLimit;
   if (props.editTrigger != null) options.editTrigger = props.editTrigger;
   if (props.initialSort != null) options.initialSort = props.initialSort;
-  if (props.sortingOrder != null) options.sortingOrder = props.sortingOrder;
-  if (props.sortIconVisibility != null) options.sortIconVisibility = props.sortIconVisibility;
   if (props.multiSortKey != null) options.multiSortKey = props.multiSortKey;
   if (props.showSortPriority != null) options.showSortPriority = props.showSortPriority;
   if (props.suppressKeyboardEdit != null) options.suppressKeyboardEdit = props.suppressKeyboardEdit;
@@ -65,13 +63,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.isFullWidthRow != null) options.isFullWidthRow = props.isFullWidthRow;
   if (props.fullWidthCellRenderer != null) options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);
-  if (props.defaultHeaderComponent != null) options.defaultHeaderComponent = props.defaultHeaderComponent;
-  if (props.defaultHeaderCellComponent != null) options.defaultHeaderCellComponent = props.defaultHeaderCellComponent;
+  if (props.defaultColDef != null) options.defaultColDef = adaptReactDefaultColDef(props.defaultColDef);
   if (props.tooltip != null) options.tooltip = props.tooltip;
-  if (props.defaultTooltipComponent != null) options.defaultTooltipComponent = adaptTooltip(props.defaultTooltipComponent);
-  if (props.defaultTooltipValueGetter != null) options.defaultTooltipValueGetter = props.defaultTooltipValueGetter;
-  if (props.defaultActionFrameComponent != null) options.defaultActionFrameComponent = adaptActionFrame(props.defaultActionFrameComponent);
-  if (props.actionFrameOptions != null) options.actionFrameOptions = props.actionFrameOptions;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
   if (props.loadingMessage != null) options.loadingMessage = props.loadingMessage;
   if (props.noRowsMessage != null) options.noRowsMessage = props.noRowsMessage;

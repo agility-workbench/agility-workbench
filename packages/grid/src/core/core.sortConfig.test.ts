@@ -127,8 +127,8 @@ describe("sortingOrder (configurable cycle)", () => {
   const clickSort = (core: GridCore, colId: string, additive = false) =>
     core.dispatch({ type: "headerAction", action: "toggleSort", colId: core.getColumnModel().getByColId(colId)!.instanceID, additive });
 
-  it("uses the grid-level sortingOrder (descending-first)", () => {
-    const core = setup({ sortingOrder: ["desc", "asc", null] }, [
+  it("uses the defaultColDef sortingOrder (descending-first)", () => {
+    const core = setup({ defaultColDef: { sortingOrder: ["desc", "asc", null] } }, [
       { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
     ]);
     clickSort(core, "n");
@@ -139,8 +139,8 @@ describe("sortingOrder (configurable cycle)", () => {
     expect(sortDirs(core)).toEqual([]); // back to unsorted
   });
 
-  it("column-level sortingOrder overrides the grid-level one", () => {
-    const core = setup({ sortingOrder: ["asc", "desc", null] }, [
+  it("column-level sortingOrder overrides the defaultColDef one", () => {
+    const core = setup({ defaultColDef: { sortingOrder: ["asc", "desc", null] } }, [
       { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER, sortingOrder: ["desc", "asc"] },
     ]);
     clickSort(core, "n");
@@ -149,6 +149,18 @@ describe("sortingOrder (configurable cycle)", () => {
     expect(sortDirs(core)).toEqual([{ key: "n", dir: "asc" }]);
     clickSort(core, "n");
     expect(sortDirs(core)).toEqual([{ key: "n", dir: "desc" }]); // two-state cycle wraps, never unsorted
+  });
+
+  it("falls back to the built-in asc-first cycle when nothing sets sortingOrder", () => {
+    const core = setup({}, [
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+    ]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "asc" }]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([{ key: "n", dir: "desc" }]);
+    clickSort(core, "n");
+    expect(sortDirs(core)).toEqual([]); // back to unsorted
   });
 });
 

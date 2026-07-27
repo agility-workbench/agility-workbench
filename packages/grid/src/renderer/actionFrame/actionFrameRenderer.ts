@@ -93,7 +93,7 @@ export class ActionFrameRenderer {
   private onCellClicked(p: GridEventCellClickedParams) {
     const col = this.params.getColumnById(String(p.colId));
     if (!col || col.actionFrameTrigger !== "click") return;
-    if (!col.actionFrameComponent && !this.params.core.options.defaultActionFrameComponent) return;
+    if (!col.actionFrameComponent) return;
     this.params.core.dispatch({
       type: "actionFrameOpen",
       cell: { rowId: String(p.rowId), colId: String(p.colId) },
@@ -109,7 +109,7 @@ export class ActionFrameRenderer {
 
     const col = this.params.getColumnById(cell.colId);
     if (!col) return;
-    const comp = col.actionFrameComponent ?? this.params.core.options.defaultActionFrameComponent;
+    const comp = col.actionFrameComponent;
     if (!comp) return;
 
     const rowNode = this.params.core.getRowModel().getRowNode(cell.rowId);
@@ -138,7 +138,9 @@ export class ActionFrameRenderer {
     this.runtime = createActionFrameComponentRuntime(comp, params);
     this.openCell = cell;
 
-    const opts = resolveActionFrameOptions(this.params.core.options.actionFrameOptions, col.actionFrameOptions);
+    // Grid-wide presentation defaults arrive via `defaultColDef.actionFrameOptions`, already merged
+    // onto the column, so the column value is the sole source here.
+    const opts = resolveActionFrameOptions(undefined, col.actionFrameOptions);
     const overlay = this.params.floating.show(this.runtime.gui, {
       mode: {
         kind: "anchored",

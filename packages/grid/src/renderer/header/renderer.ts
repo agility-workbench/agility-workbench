@@ -226,15 +226,15 @@ export class HeaderRenderer {
   }
 
   /**
-   * Resolve the custom header component for a column, if any. A whole-cell component (Level 2 — the
-   * column's `headerCellComponent` or the grid's `defaultHeaderCellComponent`) takes precedence over
-   * a content-only component (Level 1 — `headerComponent` / `defaultHeaderComponent`). When a column
-   * has both a resolved Level 1 and Level 2 component, Level 2 wins and a one-time dev warning fires.
+   * Resolve the custom header component for a column, if any. A whole-cell component (Level 2 —
+   * `headerCellComponent`) takes precedence over a content-only component (Level 1 —
+   * `headerComponent`). When a column has both a Level 1 and Level 2 component, Level 2 wins and a
+   * one-time dev warning fires. (Grid-wide defaults arrive via `defaultColDef`, already merged onto
+   * the column.)
    */
   private resolveHeaderComponent(col: Column): { comp: HeaderComponent; level: 1 | 2 } | null {
-    const opts = this.params.core.options;
-    const cellComp = col.headerCellComponent ?? opts.defaultHeaderCellComponent;
-    const contentComp = col.headerComponent ?? opts.defaultHeaderComponent;
+    const cellComp = col.headerCellComponent;
+    const contentComp = col.headerComponent;
     if (cellComp) {
       if (col.headerComponent && col.headerCellComponent && !this.warnedBothComponents.has(col.instanceID)) {
         this.warnedBothComponents.add(col.instanceID);
@@ -281,9 +281,10 @@ export class HeaderRenderer {
     };
   }
 
-  /** Grid-level `sortIconVisibility`, overridable per column: whether/when the sort icon renders. */
+  /** A column's `sortIconVisibility` (its own or inherited from `defaultColDef`), defaulting to
+   * "hover": whether/when the sort icon renders. */
   private resolveSortIconVisibility(col: Column): SortIconVisibility {
-    return col.sortIconVisibility ?? this.params.core.options.sortIconVisibility;
+    return col.sortIconVisibility ?? "hover";
   }
 
   /**

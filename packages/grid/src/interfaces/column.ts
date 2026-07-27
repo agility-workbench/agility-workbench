@@ -52,8 +52,8 @@ export interface ColDef {
    * expander (the `.pte-hcell-content` slot). The grid still renders the resize handle and the
    * filter/menu button row. A function returning an element/string, or a class with
    * `init/getGui/refresh/destroy` (see {@link HeaderComponent}). Overridden by `headerCellComponent`
-   * when both are set on the same column (Level 2 wins). Falls back to the grid-level
-   * `defaultHeaderComponent`.
+   * when both are set on the same column (Level 2 wins). A grid-wide default can be supplied via
+   * `defaultColDef.headerComponent`.
    */
   headerComponent?: HeaderComponent;
   /**
@@ -61,14 +61,15 @@ export interface ColDef {
    * buttons. The grid keeps only the resize handle. Reuse the grid header CSS classes
    * (`.pte-hcell-sort`, `.pte-hcell-menu-btn`, `.pte-hcell-menu-filterBtn`, `.pte-hcell-content`) to
    * inherit default click routing, or drive sort/filter/menu/select via the callbacks on the
-   * component params. Takes precedence over `headerComponent`. Falls back to the grid-level
-   * `defaultHeaderCellComponent`.
+   * component params. Takes precedence over `headerComponent`. A grid-wide default can be supplied
+   * via `defaultColDef.headerCellComponent`.
    */
   headerCellComponent?: HeaderComponent;
   /**
    * Tooltip content for this column's body cells, resolved in precedence order:
-   * `tooltipComponent` → `tooltipValueGetter` → `tooltipField` → grid `defaultTooltipComponent` /
-   * `defaultTooltipValueGetter` → built-in auto-truncation (the cell's own full text when clipped).
+   * `tooltipComponent` → `tooltipValueGetter` → `tooltipField` → built-in auto-truncation (the cell's
+   * own full text when clipped). A grid-wide default for any of these can be supplied via
+   * `defaultColDef` (e.g. `defaultColDef.tooltipComponent`).
    *
    * `tooltipField` reads a string from another field on the row.
    */
@@ -92,7 +93,8 @@ export interface ColDef {
   /**
    * ActionFrame form body for this column's body cells — the client-owned content rendered inside
    * the popover attached to a framed cell (à la a Google Sheets comment). See
-   * {@link ActionFrameComponent}. When omitted, the grid-level `defaultActionFrameComponent` is used.
+   * {@link ActionFrameComponent}. A grid-wide default can be supplied via
+   * `defaultColDef.actionFrameComponent`.
    */
   actionFrameComponent?: ActionFrameComponent;
   /** Extra params merged into {@link ActionFrameComponentParams} for this column's ActionFrame. */
@@ -104,8 +106,10 @@ export interface ColDef {
    */
   actionFrameTrigger?: "click" | "none";
   /**
-   * Per-column ActionFrame presentation overrides (popover placement / offset / clip escape). Each
-   * omitted field falls back to the grid-level `actionFrameOptions`. See {@link ActionFrameOptions}.
+   * Per-column ActionFrame presentation overrides (popover placement / offset / clip escape). A
+   * grid-wide default can be supplied via `defaultColDef.actionFrameOptions`; note the merge with
+   * `defaultColDef` is shallow, so a value set here replaces (does not field-merge with) the default.
+   * See {@link ActionFrameOptions}.
    */
   actionFrameOptions?: ActionFrameOptions;
   /**
@@ -228,3 +232,18 @@ export interface ColDef {
   openByDefault?: boolean;
   exportable?: boolean;
 }
+
+/**
+ * ColDef fields that are per-column identity / structure and therefore never inherit from a
+ * grid-level `defaultColDef` — sharing them across columns would be meaningless or actively wrong
+ * (e.g. every column ending up with the same `colId`). Single source of truth: both the
+ * `DefaultColDef` type and the runtime merge in `ColumnModel` derive from this list, so they can't
+ * drift apart.
+ */
+export const NON_DEFAULTABLE_COLDEF_KEYS = ["colId", "key", "label", "children"] as const;
+
+/**
+ * The shape of the grid-level `defaultColDef`: any {@link ColDef} field except the per-column
+ * identity/structure ones (see {@link NON_DEFAULTABLE_COLDEF_KEYS}), all optional.
+ */
+export type DefaultColDef = Omit<ColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;

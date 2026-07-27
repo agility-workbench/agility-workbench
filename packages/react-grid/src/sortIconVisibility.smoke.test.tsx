@@ -40,7 +40,7 @@ async function mountGrid(props: { sortIconVisibility?: SortIconVisibility; colOv
           { colId: "name", key: "name", label: "Name", sortIconVisibility: props.colOverride },
         ]}
         rowIdKey="id"
-        sortIconVisibility={props.sortIconVisibility}
+        defaultColDef={{ sortIconVisibility: props.sortIconVisibility }}
       />,
     );
   });
