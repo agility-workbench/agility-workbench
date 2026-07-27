@@ -12,6 +12,7 @@ import VisualStatesDemo from "./VisualStatesDemo";
 import QuickFilterDemo from "./QuickFilterDemo";
 import HeaderComponentDemo from "./HeaderComponentDemo";
 import TooltipDemo from "./TooltipDemo";
+import ActionFrameDemo from "./ActionFrameDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -24,6 +25,7 @@ const PAGES = [
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
+  { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },
 ] as const;
 
 function Root() {

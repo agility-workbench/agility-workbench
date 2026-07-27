@@ -3,7 +3,8 @@ import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
 import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
-import type { TooltipColumnOptions } from "../interfaces/gridOptions";
+import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
+import type { TooltipColumnOptions, ActionFrameOptions } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
@@ -50,6 +51,12 @@ export class Column {
   tooltipOptions?: TooltipColumnOptions;
   suppressAutoTooltip?: boolean;
   headerTooltip?: string | TooltipComponent;
+  // ActionFrame config (see ColDef). Resolved lazily by the ActionFrame renderer.
+  actionFrameComponent?: ActionFrameComponent;
+  actionFrameComponentParams?: any;
+  actionFrameTrigger?: "click" | "none";
+  actionFrameOptions?: ActionFrameOptions;
+  actionFrameIndicator?: boolean | string | ((params: CellClassParams) => boolean);
   cellClass?: CellClass;
   cellStyle?: CellStyle;
   // Per-row horizontal span callback (see ColDef.colSpan). Undefined = never spans.
@@ -146,6 +153,11 @@ export class Column {
     this.tooltipOptions = col.tooltipOptions;
     this.suppressAutoTooltip = col.suppressAutoTooltip;
     this.headerTooltip = col.headerTooltip;
+    this.actionFrameComponent = col.actionFrameComponent;
+    this.actionFrameComponentParams = col.actionFrameComponentParams;
+    this.actionFrameTrigger = col.actionFrameTrigger;
+    this.actionFrameOptions = col.actionFrameOptions;
+    this.actionFrameIndicator = col.actionFrameIndicator;
     this.cellClass = col.cellClass;
     this.cellStyle = col.cellStyle;
     this.colSpan = col.colSpan;
@@ -299,6 +311,11 @@ export class Column {
     dup.tooltipOptions = this.tooltipOptions;
     dup.suppressAutoTooltip = this.suppressAutoTooltip;
     dup.headerTooltip = this.headerTooltip;
+    dup.actionFrameComponent = this.actionFrameComponent;
+    dup.actionFrameComponentParams = this.actionFrameComponentParams;
+    dup.actionFrameTrigger = this.actionFrameTrigger;
+    dup.actionFrameOptions = this.actionFrameOptions;
+    dup.actionFrameIndicator = this.actionFrameIndicator;
     dup.cellClass = this.cellClass;
     dup.cellStyle = this.cellStyle;
     dup.editable = this.editable;

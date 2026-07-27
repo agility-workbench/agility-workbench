@@ -34,6 +34,7 @@ import { BodyRowHoverRenderer } from "./body/rowHover";
 import { BodyColumnHoverRenderer } from "./body/columnHover";
 import { FloatingAnchor } from "./floating/floatingAnchor";
 import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
+import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveTooltipOptions } from "../interfaces/gridOptions";
 import type { TooltipOptions } from "../interfaces/gridOptions";
 import { BodyRowPoolRenderer } from "./body/rowPool";
@@ -90,6 +91,8 @@ export class GridRenderer {
   // Live tooltip config. Seeded from core options at construction; updated in place by
   // setTooltipOptions so the React wrapper can reconfigure tooltips without remounting the grid.
   _tooltipOptions: boolean | TooltipOptions | undefined;
+  _actionFrameFloating: FloatingAnchor;
+  _actionFrameRenderer: ActionFrameRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
@@ -385,6 +388,19 @@ export class GridRenderer {
       showBodyTooltip: (viewIdx, colIdx) => this._bodyTooltipRenderer.showBodyTooltip(viewIdx, colIdx),
       hideTooltip: () => this._bodyTooltipRenderer.hideTooltip(),
     });
+    // ActionFrame popover sits above tooltips (9800) but below menus (9999+) so a menu/filter opened
+    // from within the frame still layers on top, and a hover tooltip on the same cell stays under it.
+    this._actionFrameFloating = new FloatingAnchor(this.root, 9850);
+    this._actionFrameRenderer = new ActionFrameRenderer({
+      core: this.core,
+      api: this.api,
+      body: bodyWrapper.body,
+      root: this.root,
+      floating: this._actionFrameFloating,
+      leafColumns: () => this._leafColumns,
+      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
+    });
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._aggregateModelController.setAggregateScope("none");
@@ -523,7 +539,11 @@ export class GridRenderer {
       aggregateLeft: aggregateRefs.left,
       aggregateCenter: aggregateRefs.center,
       aggregateRight: aggregateRefs.right,
-      onWindowUpdate: (scrollSrc) => this._bodyWindowRenderer.update(false, scrollSrc),
+      onWindowUpdate: (scrollSrc) => {
+        this._bodyWindowRenderer.update(false, scrollSrc);
+        // Keep a persistent ActionFrame pinned to its (possibly recycled) cell across scroll.
+        this._actionFrameRenderer.onWindowUpdate();
+      },
     });
     this._bodyWindowRenderer = new BodyWindowRenderer({
       core: this.core,
@@ -601,6 +621,7 @@ export class GridRenderer {
     if (this.core.options.rowHover) this._bodyRowHoverRenderer.bind();
     if (this.core.options.columnHover) this._bodyColumnHoverRenderer.bind();
     if (resolveTooltipOptions(this._tooltipOptions).enabled) this._bodyTooltipRenderer.bind();
+    this._actionFrameRenderer.bind();
 
     // initial
     // requestAnimationFrame(() => this._maybeUpdatePoolSize());
@@ -772,6 +793,7 @@ export class GridRenderer {
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
+    this._actionFrameRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
   }

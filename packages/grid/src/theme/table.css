@@ -94,6 +94,14 @@
   --pte-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   --pte-tooltip-max-width: 320px;
   --pte-tooltip-radius: 6px;
+  --pte-action-frame-border-color: #7c3aed;
+  --pte-action-frame-glow: rgba(124, 58, 237, 0.25);
+  --pte-action-frame-popover-bg: #ffffff;
+  --pte-action-frame-popover-text-color: #111827;
+  --pte-action-frame-popover-border-color: #e5e7eb;
+  --pte-action-frame-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --pte-action-frame-popover-radius: 8px;
+  --pte-action-frame-popover-width: 300px;
 }
 
 .pte-theme-dark {
@@ -152,6 +160,14 @@
   --pte-tooltip-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
   --pte-tooltip-max-width: 320px;
   --pte-tooltip-radius: 6px;
+  --pte-action-frame-border-color: #a78bfa;
+  --pte-action-frame-glow: rgba(167, 139, 250, 0.3);
+  --pte-action-frame-popover-bg: #1e293b;
+  --pte-action-frame-popover-text-color: #e2e8f0;
+  --pte-action-frame-popover-border-color: #334155;
+  --pte-action-frame-popover-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
+  --pte-action-frame-popover-radius: 8px;
+  --pte-action-frame-popover-width: 300px;
 }
 
 *[class^="pte-"],
@@ -2053,4 +2069,55 @@
   margin-top: -4px;
   border-bottom: none;
   border-left: none;
+}
+
+/* ---------------- ActionFrame ---------------- */
+/* The persistent frame border on a cell — deliberately distinct from the active-cell outline
+   (a solid accent border + soft glow), applied via a class re-stamped on the live cell. */
+.pte-cell.pte-action-frame {
+  border: 2px solid var(--pte-action-frame-border-color);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-action-frame-glow);
+  /* Sit above neighbouring cells so the full border shows over adjacent cell borders. */
+  z-index: 3;
+}
+
+/* The attached form popover. */
+.pte-action-frame-popover {
+  background: var(--pte-action-frame-popover-bg);
+  color: var(--pte-action-frame-popover-text-color);
+  border: 1px solid var(--pte-action-frame-popover-border-color);
+  border-radius: var(--pte-action-frame-popover-radius);
+  box-shadow: var(--pte-action-frame-popover-shadow);
+  width: var(--pte-action-frame-popover-width);
+  max-width: 90vw;
+  padding: 10px;
+  box-sizing: border-box;
+  /* Persistent + interactive: always accepts pointer events (unlike a display tooltip). */
+  pointer-events: auto;
+}
+
+.pte-action-frame-custom-root {
+  display: block;
+}
+
+/* Opt-in "has content" indicator — a small corner triangle in the cell's top-right, the
+   spreadsheet comment-marker convention. Drawn with a CSS triangle so it needs no extra DOM
+   (recycle-safe: the class is toggled per cell in the styling pass). The base .pte-cell has no
+   position, so scope a positioning context to the marked cell only (avoids affecting other cells). */
+.pte-cell.pte-action-frame-indicator {
+  position: relative;
+}
+
+.pte-cell.pte-action-frame-indicator::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 6px 6px 0;
+  border-color: transparent var(--pte-action-frame-border-color) transparent transparent;
+  pointer-events: none;
 }

@@ -6,5 +6,5 @@ export * from "@agility-workbench/grid";
 
 export { Grid } from "./grid";
 export type { GridProps } from "./interface";
-export type { ReactCellRenderer, ReactColDef, ReactTooltipComponent } from "./cellRenderer";
+export type { ReactCellRenderer, ReactColDef, ReactTooltipComponent, ReactActionFrameComponent } from "./cellRenderer";
 export type { ReactCellEditor, ReactCellEditorHandle } from "./cellEditor";

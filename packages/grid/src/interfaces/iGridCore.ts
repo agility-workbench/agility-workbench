@@ -109,6 +109,7 @@ export interface IGridCore {
   getSelectionAnchor(): CellPos | null;
   getActiveCell(): CellPos | null;
   getEditingCell(): CellRef | null;
+  getActionFrameCell(): CellRef | null;
   canUndo(): boolean;
   canRedo(): boolean;
   clearHistory(): void;

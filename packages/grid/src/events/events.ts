@@ -1,7 +1,7 @@
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
-import { SelectionSnapshot } from "../interfaces/selection";
+import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 
 export type GridEventName =
   | "overlayShow"
@@ -20,6 +20,7 @@ export type GridEventName =
   | "rowClicked"
   | "tooltipShow"
   | "tooltipHide"
+  | "actionFrameChanged"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -168,6 +169,13 @@ export type GridEventTooltipParams = {
   viewIdx: number | null;
 };
 
+export type GridEventActionFrameParams = {
+  /** Whether the frame opened or closed. */
+  state: "opened" | "closed";
+  /** The cell the frame is (or was) attached to. */
+  cell: CellRef | null;
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -191,6 +199,7 @@ export interface GridEventMap {
   rowClicked: GridEventRowClickedParams;
   tooltipShow: GridEventTooltipParams;
   tooltipHide: GridEventTooltipParams;
+  actionFrameChanged: GridEventActionFrameParams;
   error: GridEventErrorParams;
 }
 

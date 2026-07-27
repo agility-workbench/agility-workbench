@@ -9,6 +9,7 @@ import type { CellRenderer } from "../renderer/renderer";
 import type { HeaderComponent } from "../renderer/header/headerComponent";
 import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
 import type { TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
+import type { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -317,6 +318,43 @@ export function resolveColumnTooltipOptions(
   };
 }
 
+/** Where the ActionFrame popover prefers to sit relative to its cell. `auto` picks the first side
+ * with room (bottom → top → right → left), flipping when the preferred side is clipped. */
+export type ActionFramePlacement = "top" | "bottom" | "left" | "right" | "auto";
+
+/** ActionFrame presentation config. Usable per column (`ColDef.actionFrameOptions`) and grid-wide
+ * (`GridOptions.actionFrameOptions`); the column value overrides the grid default field-by-field. */
+export interface ActionFrameOptions {
+  /** Preferred popover placement. Default "auto". */
+  placement?: ActionFramePlacement;
+  /** Gap in px between the cell and the popover. Default 8. */
+  offset?: number;
+  /** Mount the popover in `document.body` to escape `.pte-root` overflow clipping near the grid
+   * edge. Default false. */
+  escapeRootClip?: boolean;
+}
+
+/** Fully-resolved ActionFrame presentation config consumed by the renderer. */
+export interface ResolvedActionFrameOptions {
+  placement: ActionFramePlacement;
+  offset: number;
+  escapeRootClip: boolean;
+}
+
+/** Resolve the grid-level ActionFrame options, then layer a column's overrides on top. */
+export function resolveActionFrameOptions(
+  gridOpts: ActionFrameOptions | undefined,
+  colOpts: ActionFrameOptions | undefined,
+): ResolvedActionFrameOptions {
+  const g = gridOpts ?? {};
+  const c = colOpts ?? {};
+  return {
+    placement: c.placement ?? g.placement ?? "auto",
+    offset: c.offset ?? g.offset ?? 8,
+    escapeRootClip: c.escapeRootClip ?? g.escapeRootClip ?? false,
+  };
+}
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -603,6 +641,16 @@ export interface GridOptions {
    */
   defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
   /**
+   * Grid-level fallback ActionFrame form-body component, applied to every column that does not set
+   * its own `actionFrameComponent`. See {@link ColDef.actionFrameComponent}.
+   */
+  defaultActionFrameComponent?: ActionFrameComponent;
+  /**
+   * Grid-level ActionFrame presentation defaults (popover placement / offset / clip escape). A
+   * column's `actionFrameOptions` overrides these field-by-field. See {@link ActionFrameOptions}.
+   */
+  actionFrameOptions?: ActionFrameOptions;
+  /**
    * Quick filter (global search across all visible columns). Pass `true` to enable with defaults,
    * or an options object to customise. Omitted/false disables the feature. Client-side row model
    * only (server-side ignores it).
@@ -701,6 +749,8 @@ export interface InternalGridOptions extends GridOptions {
   tooltip: boolean | TooltipOptions;
   defaultTooltipComponent?: TooltipComponent;
   defaultTooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
+  defaultActionFrameComponent?: ActionFrameComponent;
+  actionFrameOptions?: ActionFrameOptions;
   quickFilter: boolean | QuickFilterOptions;
   loadingMessage: string;
   noRowsMessage: string;

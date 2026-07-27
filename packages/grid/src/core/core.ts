@@ -76,6 +76,9 @@ export class GridCore implements IGridCore {
 
   // The cell currently being edited (inline editor open), or null when not editing.
   private editingCell: CellRef | null = null;
+  // The cell with an open ActionFrame (persistent frame + form popover), or null. Only one at a
+  // time (like editing); opening the editor closes it.
+  private actionFrameCell: CellRef | null = null;
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
 
@@ -186,6 +189,7 @@ export class GridCore implements IGridCore {
       tooltip: options.tooltip ?? true,
       defaultTooltipComponent: options.defaultTooltipComponent,
       defaultTooltipValueGetter: options.defaultTooltipValueGetter,
+      defaultActionFrameComponent: options.defaultActionFrameComponent,
       quickFilter: options.quickFilter ?? false,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
@@ -1056,6 +1060,18 @@ export class GridCore implements IGridCore {
     return this.editingCell;
   }
 
+  getActionFrameCell(): CellRef | null {
+    return this.actionFrameCell;
+  }
+
+  /** Close any open ActionFrame and emit the close event. No-op when none is open. */
+  private closeActionFrameIfOpen(): void {
+    if (!this.actionFrameCell) return;
+    const cell = this.actionFrameCell;
+    this.actionFrameCell = null;
+    this.emit("actionFrameChanged", { state: "closed", cell });
+  }
+
   canUndo(): boolean {
     return this.history.canUndo();
   }
@@ -1357,8 +1373,30 @@ export class GridCore implements IGridCore {
         const col = this.columnModel.getById(action.cell.colId);
         const row = this.rowModel.getRowNode(action.cell.rowId);
         if (!col || !row || row.isGroup || !col.isCellEditable(row)) break;
+        // Editing and ActionFrame are mutually exclusive: opening the editor closes any open frame.
+        this.closeActionFrameIfOpen();
         this.editingCell = action.cell;
         this.emit("editingChanged", { state: "started", cell: action.cell, charPress: action.charPress });
+        break;
+      }
+      case "actionFrameOpen": {
+        const col = this.columnModel.getById(action.cell.colId);
+        const row = this.rowModel.getRowNode(action.cell.rowId);
+        if (!col || !row || row.isGroup) break;
+        // No frame to show if neither the column nor the grid default provides a form component.
+        if (!col.actionFrameComponent && !this.options.defaultActionFrameComponent) break;
+        // A frame and an inline edit can't be open on the grid at once — cancel any active edit.
+        if (this.editingCell) {
+          const editing = this.editingCell;
+          this.editingCell = null;
+          this.emit("editingChanged", { state: "cancelled", cell: editing });
+        }
+        this.actionFrameCell = action.cell;
+        this.emit("actionFrameChanged", { state: "opened", cell: action.cell });
+        break;
+      }
+      case "actionFrameClose": {
+        this.closeActionFrameIfOpen();
         break;
       }
       case "editCommit": {

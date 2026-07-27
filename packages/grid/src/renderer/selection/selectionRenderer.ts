@@ -305,6 +305,18 @@ export class SelectionRenderer {
     // ignored and navigation collapses to a single moving cell.
     const extend = e.shiftKey && this.params.core.options.rangeSelection;
 
+    // Shift+F2 — open the ActionFrame on the focused cell (Excel/Sheets "edit comment" convention).
+    // Core no-ops on a group row / when the column has no ActionFrame component. Checked before the
+    // plain-F2 edit handler below so the shift chord isn't swallowed by it.
+    if (e.key === "F2" && e.shiftKey) {
+      const cell = this.activeCellRef();
+      if (cell) {
+        e.preventDefault();
+        this.params.core.dispatch({ type: "actionFrameOpen", cell, source: "keyboard" });
+      }
+      return;
+    }
+
     // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
     // Disabled by suppressKeyboardEdit; Enter still consumes the event to avoid stray behavior.
     if (e.key === "F2" || e.key === "Enter") {

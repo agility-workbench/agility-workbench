@@ -37,6 +37,13 @@ export interface FloatingShowOptions {
   escapeRootClip?: boolean;
   /** Draw a small arrow pointing at the anchor. Anchored mode only. Default false. */
   arrow?: boolean;
+  /**
+   * Persistent anchoring (ActionFrame). When true, an anchored floater whose cell scrolls out of
+   * view is *concealed* (hidden but retained) rather than torn down, and re-appears when the cell
+   * scrolls back in on a later {@link reposition}. Default false — non-sticky floaters (tooltips)
+   * fully hide when their anchor disappears.
+   */
+  sticky?: boolean;
 }
 
 /** Margin kept between the floating element and the clamp-bounds edge. */
@@ -93,7 +100,7 @@ export class FloatingAnchor {
     this.position();
   }
 
-  /** Remove the floating element from the DOM. Idempotent. */
+  /** Remove the floating element from the DOM and drop all state. Idempotent. */
   hide(): void {
     if (this.overlay && this.overlay.parentElement) {
       this.overlay.parentElement.removeChild(this.overlay);
@@ -101,6 +108,15 @@ export class FloatingAnchor {
     this.overlay = null;
     this.arrowEl = null;
     this.current = null;
+  }
+
+  /**
+   * Visually hide the overlay but KEEP it mounted and retain `current`, so a later
+   * {@link reposition} can bring it back. Used for sticky floaters whose anchor cell has scrolled
+   * out of view. No-op when there is nothing shown.
+   */
+  private conceal(): void {
+    if (this.overlay) this.overlay.style.display = "none";
   }
 
   /** Tear down entirely. */
@@ -176,8 +192,10 @@ export class FloatingAnchor {
     } else {
       const rect = opts.mode.getAnchorRect();
       if (!rect) {
-        // Anchor gone (scrolled out / recycled): nothing to pin to.
-        this.hide();
+        // Anchor gone (scrolled out / recycled): a sticky floater is concealed (retained so it can
+        // re-appear when the cell scrolls back in); a transient one is torn down.
+        if (opts.sticky) this.conceal();
+        else this.hide();
         return;
       }
       const placement = opts.mode.placement ?? "auto";

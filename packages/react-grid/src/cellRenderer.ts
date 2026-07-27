@@ -15,6 +15,13 @@ import type {
   TooltipComponentParams,
   ITooltipComponent,
 } from "@agility-workbench/grid";
+import { isClassActionFrameComponent } from "@agility-workbench/grid";
+import type {
+  ActionFrameComponent,
+  ActionFrameComponentClass,
+  ActionFrameComponentParams,
+  IActionFrameComponent,
+} from "@agility-workbench/grid";
 import type { CellEditor } from "@agility-workbench/grid";
 import { adaptCellEditor, ReactCellEditor } from "./cellEditor";
 
@@ -26,19 +33,25 @@ export type ReactTooltipComponent =
   | React.ComponentType<TooltipComponentParams>
   | React.ExoticComponent<TooltipComponentParams>;
 
+export type ReactActionFrameComponent =
+  | React.ComponentType<ActionFrameComponentParams>
+  | React.ExoticComponent<ActionFrameComponentParams>;
+
 export type ReactColDef = Omit<
   ColDef,
-  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip"
+  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent"
 > & {
   cellRenderer?: CellRenderer | ReactCellRenderer;
   cellEditor?: CellEditor | ReactCellEditor;
   tooltipComponent?: TooltipComponent | ReactTooltipComponent;
   headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
+  actionFrameComponent?: ActionFrameComponent | ReactActionFrameComponent;
   children?: ReactColDef[];
 };
 
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
 const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();
+const reactActionFrameCache = new WeakMap<object, ActionFrameComponentClass>();
 
 function isObjectRenderer(renderer: unknown): renderer is object {
   return (typeof renderer === "function" || typeof renderer === "object") && renderer !== null;
@@ -163,6 +176,61 @@ function adaptHeaderTooltip(
   return adaptTooltip(ht);
 }
 
+function getActionFrameProps(params: ActionFrameComponentParams): ActionFrameComponentParams {
+  const extraParams = params.colDef?.actionFrameComponentParams;
+  if (extraParams == null || typeof extraParams !== "object") return params;
+  return { ...params, ...extraParams };
+}
+
+function createReactActionFrameClass(Comp: ReactActionFrameComponent): ActionFrameComponentClass {
+  return class ReactActionFrameAdapter implements IActionFrameComponent {
+    private el = document.createElement("div");
+    private root: Root | null = null;
+
+    init(params: ActionFrameComponentParams): void {
+      // One createRoot for the life of the open frame; refresh re-renders into it so the form keeps
+      // its React state across repositions (scroll tracking calls reposition, not remount).
+      this.root = createRoot(this.el);
+      this.render(params);
+    }
+
+    getGui(): HTMLElement {
+      return this.el;
+    }
+
+    refresh(params: ActionFrameComponentParams): boolean {
+      this.render(params);
+      return true;
+    }
+
+    destroy(): void {
+      this.root?.unmount();
+      this.root = null;
+    }
+
+    private render(params: ActionFrameComponentParams): void {
+      this.root?.render(React.createElement(Comp, getActionFrameProps(params)));
+    }
+  };
+}
+
+export function adaptActionFrame(
+  comp: ActionFrameComponent | ReactActionFrameComponent | undefined,
+): ActionFrameComponent | undefined {
+  if (!comp) return undefined;
+  if (typeof comp === "function" && isClassActionFrameComponent(comp as ActionFrameComponent)) {
+    return comp as ActionFrameComponent;
+  }
+  if (!isObjectRenderer(comp)) return comp as ActionFrameComponent;
+
+  const cached = reactActionFrameCache.get(comp);
+  if (cached) return cached;
+
+  const adapted = createReactActionFrameClass(comp as ReactActionFrameComponent);
+  reactActionFrameCache.set(comp, adapted);
+  return adapted;
+}
+
 export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[] | null | undefined {
   if (columnDefs == null) return columnDefs;
 
@@ -173,6 +241,7 @@ export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[
       cellEditor: adaptCellEditor(colDef.cellEditor),
       tooltipComponent: adaptTooltip(colDef.tooltipComponent),
       headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
+      actionFrameComponent: adaptActionFrame(colDef.actionFrameComponent),
       children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
     };
     return next;

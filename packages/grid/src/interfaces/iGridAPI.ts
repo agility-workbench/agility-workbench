@@ -116,6 +116,15 @@ export interface IGridAPI {
   /** Hide any visible tooltip. */
   hideTooltip(): void;
 
+  /* ----- ActionFrame ----- */
+  /** Open the persistent ActionFrame (frame + form popover) on a body cell. Closes any open editor
+   * or previously-open frame (only one at a time). No-op on a group row / missing cell. */
+  openActionFrame(cell: CellRef): void;
+  /** Close any open ActionFrame. */
+  closeActionFrame(): void;
+  /** The cell with an open ActionFrame, or null. */
+  getActionFrameCell(): CellRef | null;
+
   /* ----- Clipboard ----- */
   /** Copy the current selection to the clipboard as TSV. */
   copySelection(): void;

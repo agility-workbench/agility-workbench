@@ -51,6 +51,18 @@ export class GridAPI implements IGridAPI {
     this._tooltip?.hideTooltip();
   }
 
+  openActionFrame(cell: CellRef): void {
+    this.core.dispatch({ type: "actionFrameOpen", cell, source: "api" });
+  }
+
+  closeActionFrame(): void {
+    this.core.dispatch({ type: "actionFrameClose" });
+  }
+
+  getActionFrameCell(): CellRef | null {
+    return this.core.getActionFrameCell();
+  }
+
   getCore(): IGridCore {
     return this.core;
   }

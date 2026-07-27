@@ -238,6 +238,18 @@ export type GridActionCellsCommit = {
   reason?: "paste" | "cut" | "clear" | "api";
 };
 
+// ActionFrame actions — open/close the persistent frame + form popover on a body cell. Only one
+// frame is open at a time (like editing); opening the editor closes it (mutual exclusion in core).
+export type GridActionActionFrameOpen = {
+  type: "actionFrameOpen";
+  cell: CellRef;
+  source?: "mouse" | "keyboard" | "api";
+};
+
+export type GridActionActionFrameClose = {
+  type: "actionFrameClose";
+};
+
 // Undo / redo the last recorded cell-edit step.
 export type GridActionUndo = { type: "undo" };
 export type GridActionRedo = { type: "redo" };
@@ -303,6 +315,8 @@ export type GridAction =
   | GridActionEditStart
   | GridActionEditCommit
   | GridActionEditCancel
+  | GridActionActionFrameOpen
+  | GridActionActionFrameClose
   | GridActionCellsCommit
   | GridActionUndo
   | GridActionRedo

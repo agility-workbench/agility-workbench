@@ -1,13 +1,13 @@
 import { ColDef, GridOptions } from "@agility-workbench/grid";
 import { IGridAPI } from "@agility-workbench/grid";
 import { BodyMenuContext, ColumnMenuContext } from "@agility-workbench/grid";
-import { ReactCellRenderer, ReactColDef, ReactTooltipComponent } from "./cellRenderer";
+import { ReactCellRenderer, ReactColDef, ReactTooltipComponent, ReactActionFrameComponent } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
 // `bodyContextMenu`'s callback arm is redeclared below to return React-aware MenuItems (slots may be
 // React nodes); `fullWidthCellRenderer` is redeclared to also accept a React component. Both are
 // omitted from the inherited core GridOptions.
-export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWidthCellRenderer" | "defaultTooltipComponent"> {
+export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWidthCellRenderer" | "defaultTooltipComponent" | "defaultActionFrameComponent"> {
   /** Optional className/style for the host div */
   className?: string;
   style?: React.CSSProperties;
@@ -49,4 +49,11 @@ export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWi
    * TooltipComponent or a React component; a React component is adapted like `colDef.tooltipComponent`.
    */
   defaultTooltipComponent?: GridOptions["defaultTooltipComponent"] | ReactTooltipComponent;
+
+  /**
+   * Grid-level fallback ActionFrame form-body component (see core `defaultActionFrameComponent`).
+   * May be a plain core ActionFrameComponent or a React component; adapted like
+   * `colDef.actionFrameComponent`.
+   */
+  defaultActionFrameComponent?: GridOptions["defaultActionFrameComponent"] | ReactActionFrameComponent;
 }

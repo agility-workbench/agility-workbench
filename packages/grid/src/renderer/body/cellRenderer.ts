@@ -167,16 +167,19 @@ export class BodyCellRenderer {
     }
   }
 
-  // Apply the column's cellClass / cellStyle to a data cell. For group rows (or when neither is
-  // configured) it clears any previously-applied dynamic class/style so recycled cells stay clean.
+  // Apply the column's cellClass / cellStyle / ActionFrame indicator to a data cell. For group rows
+  // (or when none is configured) it clears any previously-applied dynamic class/style/indicator so
+  // recycled cells stay clean.
   private applyCellStyling(cell: HTMLDivElement, row: IRowNode, col: Column, viewIndex: number) {
     const hasClass = col.cellClass != null;
     const hasStyle = col.cellStyle != null;
-    if (!hasClass && !hasStyle) return;
+    const hasIndicator = col.actionFrameIndicator != null && col.actionFrameIndicator !== false;
+    if (!hasClass && !hasStyle && !hasIndicator) return;
 
     if (row.isGroup) {
       if (hasClass) applyDynamicClasses(cell, null);
       if (hasStyle) applyDynamicStyles(cell, null);
+      if (hasIndicator) cell.classList.remove("pte-action-frame-indicator");
       return;
     }
 
@@ -195,6 +198,18 @@ export class BodyCellRenderer {
       const style = typeof col.cellStyle === "function" ? col.cellStyle(params) : col.cellStyle;
       applyDynamicStyles(cell, style);
     }
+    if (hasIndicator) {
+      cell.classList.toggle("pte-action-frame-indicator", this.hasActionFrameContent(col, row, params));
+    }
+  }
+
+  // Resolve the column's actionFrameIndicator (true | field name | predicate) for one cell.
+  private hasActionFrameContent(col: Column, row: IRowNode, params: CellClassParams): boolean {
+    const ind = col.actionFrameIndicator;
+    if (ind === true) return true;
+    if (typeof ind === "string") return !!row.data?.[ind];
+    if (typeof ind === "function") return !!ind(params);
+    return false;
   }
 
   // Render one cell of a group row, dispatching on the column kind:

@@ -2,10 +2,11 @@ import { FormatterOptions, FormatterOptionsParams, ValueFormatterParams, ValuePa
 import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
 import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
+import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { ComparatorFn, Filter, FilterParams } from "./filter";
 import type { SortDir } from "./sort";
-import type { SortingOrder, SortIconVisibility, TooltipColumnOptions } from "./gridOptions";
+import type { SortingOrder, SortIconVisibility, TooltipColumnOptions, ActionFrameOptions } from "./gridOptions";
 
 export enum ColumnType {
   STRING = "string",
@@ -88,6 +89,35 @@ export interface ColDef {
   tooltipOptions?: TooltipColumnOptions;
   /** Opt this column out of the built-in auto-truncation tooltip (on by default). */
   suppressAutoTooltip?: boolean;
+  /**
+   * ActionFrame form body for this column's body cells — the client-owned content rendered inside
+   * the popover attached to a framed cell (à la a Google Sheets comment). See
+   * {@link ActionFrameComponent}. When omitted, the grid-level `defaultActionFrameComponent` is used.
+   */
+  actionFrameComponent?: ActionFrameComponent;
+  /** Extra params merged into {@link ActionFrameComponentParams} for this column's ActionFrame. */
+  actionFrameComponentParams?: any;
+  /**
+   * Built-in trigger that opens this column's ActionFrame. `"click"` opens on a single cell click;
+   * `"none"` (default) disables the built-in trigger (the API and the Shift+F2 keyboard shortcut
+   * still work).
+   */
+  actionFrameTrigger?: "click" | "none";
+  /**
+   * Per-column ActionFrame presentation overrides (popover placement / offset / clip escape). Each
+   * omitted field falls back to the grid-level `actionFrameOptions`. See {@link ActionFrameOptions}.
+   */
+  actionFrameOptions?: ActionFrameOptions;
+  /**
+   * Opt-in visual indicator marking body cells whose ActionFrame has content (a small corner
+   * triangle, à la a spreadsheet comment marker). Off by default. Three forms:
+   *   - `true` — mark every cell in the column.
+   *   - a field name (string) — mark when `row.data[field]` is truthy.
+   *   - a predicate — mark when it returns true for the cell.
+   * Recomputed as cells scroll into view (recycle-safe). This is a grid-drawn convenience; a custom
+   * `cellRenderer` can still draw any indicator instead.
+   */
+  actionFrameIndicator?: boolean | string | ((params: CellClassParams) => boolean);
   /**
    * Tooltip for this column's *header* cell. A plain string, or a custom {@link TooltipComponent}.
    */

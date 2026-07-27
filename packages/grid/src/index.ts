@@ -30,6 +30,14 @@ export type {
   TooltipComponentParams,
   ITooltipComponent,
 } from "./renderer/tooltip/tooltipComponent";
+export { isClassActionFrameComponent } from "./renderer/actionFrame/actionFrameComponent";
+export type {
+  ActionFrameComponent,
+  ActionFrameComponentClass,
+  ActionFrameComponentFn,
+  ActionFrameComponentParams,
+  IActionFrameComponent,
+} from "./renderer/actionFrame/actionFrameComponent";
 export type {
   IBodyMenuAdapter,
   IMenuAdapter,
@@ -56,6 +64,8 @@ export type {
   TooltipColumnOptions,
   TooltipMode,
   TooltipPlacement,
+  ActionFrameOptions,
+  ActionFramePlacement,
 } from "./interfaces/gridOptions";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
@@ -98,6 +108,7 @@ export type {
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
   GridEventTooltipParams,
+  GridEventActionFrameParams,
   GridEventViewportChangedParams,
   Unsubscribe,
 } from "./events/events";
