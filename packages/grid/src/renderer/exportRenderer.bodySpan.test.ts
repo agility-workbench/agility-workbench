@@ -84,6 +84,30 @@ describe("ColDef.colSpan → export merges (end-to-end)", () => {
   });
 });
 
+describe("colSpan keyed off rowId (end-to-end)", () => {
+  it("reproduces the real (rowIdKey-derived) rowId in the export callback", async () => {
+    // Grid uses rowIdKey:"id", so a leaf row's id is String(data.id). A colSpan that keys off rowId
+    // must merge the same rows in the export as on screen.
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData(ROWS.map(r => ({ ...r })));
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region", type: ColumnType.STRING,
+        // Merge Region across Category only on the row whose id is "2".
+        colSpan: (p: any) => (p.rowId === "2" ? 2 : 1) },
+      { colId: "category", key: "category", label: "Category", type: ColumnType.STRING },
+      { colId: "rep", key: "rep", label: "Sales Rep", type: ColumnType.STRING },
+      { colId: "units", key: "units", label: "Units", type: ColumnType.NUMBER },
+    ]);
+    makeExporter(core).exportExcel({ scope: "all" });
+    const ws = await waitForXlsx();
+    const merges: string[] = (ws as any).model?.merges ?? [];
+    // Rows in order: id 1 (row2), id 2 (row3), id 3 (row4). Only id "2" merges A:B.
+    expect(merges).toContain("A3:B3");
+    expect(merges.some(m => /^A2:/.test(m) || /^A4:/.test(m))).toBe(false);
+  });
+});
+
 describe("groupDisplayType 'groupRows' → full-width merges (end-to-end)", () => {
   it("emits a full-row merge for each group header row", async () => {
     const core = makeGrid({ groupDisplayType: "groupRows", groupDefaultExpanded: -1 });

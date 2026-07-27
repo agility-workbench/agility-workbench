@@ -1,6 +1,6 @@
 import { Column } from "../column/column";
 import { GridCore } from "../core/core";
-import { IRowNode } from "../interfaces/iRowNode";
+import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import {
   exportCSV as downloadCSV,
   exportExcel as downloadExcel,
@@ -205,7 +205,8 @@ export class ExportRenderer {
    *    the grid's isFullWidthRow opt-ins), via the core's single predicate.
    *  - fullWidthText: the label the grid shows in a full-width row (group "<key> (<count>)", else
    *    the row's isFullWidthRow content isn't text-representable here, so empty).
-   * All three take the row's underlying data; a minimal node is reconstructed for the grid callbacks.
+   * All three take the row's underlying data; a node is reconstructed for the grid callbacks, with a
+   * real data-derived id when the grid uses getRowId/rowIdKey (so rowId-dependent callbacks match).
    * Returns an empty object when neither feature is configured (keeps the original fast path).
    */
   private buildSpanResolvers(): Partial<ExportConfig> {
@@ -214,12 +215,20 @@ export class ExportRenderer {
     const anyFullWidth = opts.groupDisplayType === "groupRows" || opts.isFullWidthRow != null;
     if (!anyColSpan && !anyFullWidth) return {};
 
-    // Reconstruct the row node from its data so the grid callbacks see a real node. Export flattens
-    // to node.data, so resolve the node by identity when possible (falls back to a leaf-ish stub).
-    const nodeFor = (rowData: any): IRowNode =>
-      (rowData && typeof rowData === "object" && "data" in rowData)
-        ? (rowData as IRowNode)
-        : ({ data: rowData, isGroup: false, level: 0, id: "", viewIndex: -1, selected: false, type: "leaf", isExpanded: false } as IRowNode);
+    // When the grid derives ids from data (getRowId / rowIdKey), a leaf row's id is a pure function
+    // of its data — reproduce it so `colSpan`/`isFullWidthRow` callbacks that key off rowId behave
+    // the same in export as on screen. (The auto "r_N" fallback is opaque and not data-derivable, so
+    // rowId stays "" for those grids — nothing meaningful to key on anyway.)
+    const idOf = (opts.getRowId || opts.rowIdKey) ? createRowIdFactory(opts) : null;
+
+    // Reconstruct the row node from its data so the grid callbacks see a node. Export flattens rows
+    // to node.data; a nested { data } (already a node) is used as-is, otherwise a leaf stub is built
+    // with the real, data-derived id when available.
+    const nodeFor = (rowData: any): IRowNode => {
+      if (rowData && typeof rowData === "object" && "data" in rowData) return rowData as IRowNode;
+      const id = idOf && rowData != null ? idOf(rowData) : "";
+      return { data: rowData, isGroup: false, level: 0, id, viewIndex: -1, selected: false, type: "leaf", isExpanded: false } as IRowNode;
+    };
 
     const resolvers: Partial<ExportConfig> = {};
     if (anyColSpan) {
