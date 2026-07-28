@@ -482,6 +482,7 @@
 }
 
 .pte-column-panel-search:focus-visible,
+.pte-column-panel-bulk-checkbox:focus-visible,
 .pte-column-panel-pin:focus-visible,
 .pte-column-panel-close:focus-visible,
 .pte-column-panel-order:focus-visible,
@@ -489,6 +490,25 @@
 .pte-column-panel-rail:focus-visible,
 .pte-column-panel-trigger:focus-visible {
   box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-bulk {
+  min-height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--pte-border-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.pte-column-panel-bulk:has(.pte-column-panel-bulk-checkbox:disabled) {
+  color: var(--pte-muted-text-color);
+  cursor: default;
 }
 
 .pte-column-panel-list {
@@ -556,6 +576,7 @@
   letter-spacing: -3px;
 }
 
+.pte-column-panel-bulk-checkbox,
 .pte-column-panel-checkbox {
   accent-color: var(--pte-checkbox-accent-color);
 }

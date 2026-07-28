@@ -20,7 +20,10 @@ const columns: ReactColDef[] = [
   { colId: "revenue", key: "revenue", label: "Revenue" },
 ];
 
-async function mount(columnPanel: React.ComponentProps<typeof Grid>["columnPanel"] = true) {
+async function mount(
+  columnPanel: React.ComponentProps<typeof Grid>["columnPanel"] = true,
+  columnDefs: ReactColDef[] = columns,
+) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 500, configurable: true });
   document.body.appendChild(container);
@@ -34,7 +37,7 @@ async function mount(columnPanel: React.ComponentProps<typeof Grid>["columnPanel
         apiRef={apiRef}
         rowIdKey="id"
         rowData={[{ id: "1", name: "Acme", region: "West", revenue: 42 }]}
-        columnDefs={columns}
+        columnDefs={columnDefs}
         columnPanel={nextColumnPanel}
         tooltip={{ showDelay: 0, hideDelay: 0 }}
       />,
@@ -88,6 +91,8 @@ describe("column panel", () => {
       .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
     await act(async () => regionCheckbox.click());
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
+    expect(container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!.indeterminate)
+      .toBe(true);
 
     const revenuePin = panelRow(container, "revenue")
       .querySelector<HTMLSelectElement>(".pte-column-panel-pin")!;
@@ -116,6 +121,53 @@ describe("column panel", () => {
     expect(api.getColumnState().map((state) => state.colId)).toEqual(["name", "region", "revenue"]);
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(false);
     expect(api.getColumnModel().getByColId("revenue")!.pinned).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("bulk-shows and hides eligible columns within the active search", async () => {
+    const { container, root, api } = await mount({ defaultOpen: true });
+    const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
+    const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
+    const bulkLabel = container.querySelector<HTMLElement>(".pte-column-panel-bulk-label")!;
+
+    expect(bulk.checked).toBe(true);
+    expect(bulk.indeterminate).toBe(false);
+    expect(bulkLabel.textContent).toBe("All columns");
+
+    await act(async () => {
+      search.value = "rev";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(bulkLabel.textContent).toBe("All matching columns");
+    await act(async () => bulk.click());
+
+    expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(true);
+    expect(api.getColumnModel().getByColId("name")!.hidden).toBe(false);
+    expect(api.getColumnModel().getByColId("region")!.hidden).toBe(false);
+
+    await act(async () => bulk.click());
+    expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(false);
+    await act(async () => root.unmount());
+  });
+
+  it("excludes non-hideable columns from bulk visibility", async () => {
+    const lockedColumns: ReactColDef[] = [
+      { colId: "name", key: "name", label: "Name", hideable: false },
+      { colId: "region", key: "region", label: "Region" },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, lockedColumns);
+    const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
+
+    await act(async () => bulk.click());
+    expect(api.getColumnModel().getByColId("name")!.hidden).toBe(false);
+    expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
+
+    const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
+    await act(async () => {
+      search.value = "name";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(bulk.disabled).toBe(true);
     await act(async () => root.unmount());
   });
 

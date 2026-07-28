@@ -39,6 +39,9 @@ export class ColumnPanelRenderer {
   private railButton = button("pte-column-panel-rail");
   private content = div("pte-column-panel-content");
   private searchInput = createElement("input", "pte-column-panel-search");
+  private bulkVisibility = createElement("label", "pte-column-panel-bulk");
+  private bulkVisibilityCheckbox = createElement("input", "pte-column-panel-bulk-checkbox");
+  private bulkVisibilityLabel = span("pte-column-panel-bulk-label", "All columns");
   private list = div("pte-column-panel-list");
   private resetButton = button("pte-column-panel-reset", "Reset layout");
   private triggerButton = button("pte-column-panel-trigger");
@@ -163,12 +166,16 @@ export class ColumnPanelRenderer {
     this.searchInput.setAttribute("aria-label", "Search columns");
     this.searchInput.addEventListener("input", () => this.renderList());
 
+    this.bulkVisibilityCheckbox.type = "checkbox";
+    this.bulkVisibilityCheckbox.addEventListener("change", () => this.setBulkVisibility());
+    this.bulkVisibility.append(this.bulkVisibilityCheckbox, this.bulkVisibilityLabel);
+
     const footer = div("pte-column-panel-footer");
     this.resetButton.type = "button";
     this.resetButton.addEventListener("click", () => this.resetLayout());
     footer.appendChild(this.resetButton);
 
-    this.content.append(header, this.searchInput, this.list, footer);
+    this.content.append(header, this.searchInput, this.bulkVisibility, this.list, footer);
     this.panel.append(this.railButton, this.content);
   }
 
@@ -269,16 +276,12 @@ export class ColumnPanelRenderer {
     this.list.replaceChildren();
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const columns = this.getPanelColumns();
+    const matchingColumns = columns.filter(({ col }) => this.matchesQuery(col, query));
+    this.updateBulkVisibility(matchingColumns, query.length > 0);
 
     let shown = 0;
     for (const section of ["left", "center", "right"] as const) {
-      const sectionColumns = columns.filter(({ col, state }) => {
-        if (this.sectionFor(state) !== section) return false;
-        if (!query) return true;
-        return col.label.toLocaleLowerCase().includes(query)
-          || col.colId.toLocaleLowerCase().includes(query)
-          || col.key.toLocaleLowerCase().includes(query);
-      });
+      const sectionColumns = matchingColumns.filter(({ state }) => this.sectionFor(state) === section);
       if (sectionColumns.length === 0) continue;
       shown += sectionColumns.length;
 
@@ -298,6 +301,34 @@ export class ColumnPanelRenderer {
       const empty = div("pte-column-panel-empty", query ? "No matching columns" : "No columns");
       this.list.appendChild(empty);
     }
+  }
+
+  private matchesQuery(col: Column, query: string): boolean {
+    return !query
+      || col.label.toLocaleLowerCase().includes(query)
+      || col.colId.toLocaleLowerCase().includes(query)
+      || col.key.toLocaleLowerCase().includes(query);
+  }
+
+  private updateBulkVisibility(columns: PanelColumn[], filtered: boolean): void {
+    const eligible = columns.filter(({ col }) => col.hideable);
+    const visibleCount = eligible.filter(({ state }) => !state.hidden).length;
+    this.bulkVisibilityLabel.textContent = filtered ? "All matching columns" : "All columns";
+    this.bulkVisibilityCheckbox.disabled = eligible.length === 0;
+    this.bulkVisibilityCheckbox.checked = eligible.length > 0 && visibleCount === eligible.length;
+    this.bulkVisibilityCheckbox.indeterminate = visibleCount > 0 && visibleCount < eligible.length;
+  }
+
+  private setBulkVisibility(): void {
+    const query = this.searchInput.value.trim().toLocaleLowerCase();
+    const eligible = this.getPanelColumns()
+      .filter(({ col }) => col.hideable && this.matchesQuery(col, query));
+    if (eligible.length === 0) return;
+    this.params.core.dispatch({
+      type: "columnVisibility",
+      colIds: eligible.map(({ col }) => col.instanceID),
+      hidden: !this.bulkVisibilityCheckbox.checked,
+    });
   }
 
   private buildColumnRow(

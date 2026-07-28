@@ -45,9 +45,10 @@ core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 
 
 ## Column panel
 
-Enable the built-in right-side column panel to let users search, show/hide, pin, and reorder
-columns. Changes apply immediately; Reset restores the layout captured from the latest column
-definitions.
+Enable the built-in right-side column panel to let users search, show/hide individually or in bulk,
+pin, and reorder columns. Bulk visibility applies to the current search results and skips
+non-hideable columns. Changes apply immediately; Reset restores the layout captured from the latest
+column definitions.
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {

@@ -11,7 +11,7 @@
 > & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
-> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **494 tests across 65
+> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **497 tests across 65
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -28,7 +28,7 @@ Grouped by area; each maps to a §5 sub-table.
   client-owned form popover. Grid owns the frame/chrome/positioning/lifecycle; content is a custom
   component. Reuses `FloatingAnchor` in *sticky* mode (conceal-on-scroll-out, re-show on scroll-in).
 - **Column panel** (§5.16) — opt-in docked column management with five trigger modes (rail, header,
-  column/header menus, footer, toolbar), search, live visibility and pinning controls,
+  column/header menus, footer, toolbar), search, filtered bulk visibility, live visibility and pinning controls,
   drag/keyboard reordering, responsive column-state refresh, and layout reset.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
@@ -73,7 +73,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (494 tests / 65 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (497 tests / 65 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -709,6 +709,7 @@ lifecycle; the content is a custom component.
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
 | Show/hide and left/right pinning | ✅ Complete | Dispatches the existing `columnVisibility` / `columnPin` actions |
+| Bulk show/hide | ✅ Complete | Tri-state checkbox scopes to current search matches and ignores `hideable: false` columns |
 | Pointer and keyboard reordering | ✅ Complete | Native drag/drop plus labelled Move up/down controls |
 | Reset to latest column definitions | ✅ Complete | Captured `ColumnState` reapplied through `columnStateSet` |
 | Live React option changes | ✅ Complete | `GridRenderer.setColumnPanelOptions`; React layout effect |
@@ -805,7 +806,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **494 tests across 65
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **497 tests across 65
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 
@@ -879,8 +880,8 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Conditional styling** — `getRowClass` / `getRowStyle` / `cellClass` / `cellStyle`.
 - **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state + interaction
   options**, **custom filter function**.
-- **Column panel / column chooser** — docked search, show/hide, pinning, drag/keyboard ordering, and
-  reset (`renderer/columnPanel/`).
+- **Column panel / column chooser** — docked search, individual/filtered-bulk visibility, pinning,
+  drag/keyboard ordering, and reset (`renderer/columnPanel/`).
 
 ### Genuine gaps (no implementation)
 
