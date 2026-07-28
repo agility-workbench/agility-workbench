@@ -2,6 +2,14 @@ export type { IGridCore } from "./interfaces/iGridCore";
 export type { IGridAPI } from "./interfaces/iGridAPI";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
+export { SparklineRenderer } from "./cellRenderers/sparklineRenderer";
+export type {
+  SparklineData,
+  SparklineParams,
+  SparklineTuple,
+  SparklineTooltipValueFormatterParams,
+  SparklineXValue,
+} from "./cellRenderers/sparklineRenderer";
 export { CanvasMeasurer, initDomRenderer } from "./renderer";
 
 // Extension-point surface consumed by framework bindings (e.g. the React wrapper).

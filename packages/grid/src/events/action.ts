@@ -87,6 +87,8 @@ export type GridActionColumnMove = {
 
 export type GridActionAddSparklineColumn = {
   type: "addSparklineColumn";
+  /** Column whose menu opened the command; it has formatter precedence over the selection. */
+  targetColId: string;
   colIds: string[];
   sparklineType: "line" | "bar" | "area";
   newColId?: string;

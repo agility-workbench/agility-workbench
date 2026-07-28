@@ -43,6 +43,42 @@ core.dispatch({ type: "init" });
 core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 }] });
 ```
 
+## Sparklines
+
+`SparklineRenderer` plots the array returned as the cell value. Keep data selection in the
+column's `valueGetter` and presentation options in `cellRendererParams`:
+
+```ts
+import {
+  SparklineRenderer,
+  type SparklineTooltipValueFormatterParams,
+} from "@agility-workbench/grid";
+
+const trendColumn = {
+  colId: "trend",
+  label: "Trend",
+  valueGetter: (row) =>
+    row.data.monthlyRevenue.map((value, index) => [`Month ${index + 1}`, value]),
+  cellRenderer: SparklineRenderer,
+  cellRendererParams: {
+    type: "line",
+    showPoints: true,
+    tooltipValueFormatter: ({ xValue, yValue }: SparklineTooltipValueFormatterParams) =>
+      `${xValue}: ${yValue.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+      })}`,
+  },
+};
+```
+
+The renderer accepts `number[]` (array indexes become X values) and `[x, number][]` data, plus
+`line`, `area`, and `bar` types. Tuple X values are treated as ordered categories. Set
+`showPoints: true` to draw visible markers on line and area charts. Individual points use the
+grid's tooltip layer; each line/area point owns a full-height nearest-X hover band, so the pointer
+does not need to hit the marker exactly. Grid-level tooltip options such as delays, positioning,
+and disabling tooltips continue to apply.
+
 ## Styling
 
 The grid needs its stylesheet loaded once. Two options:

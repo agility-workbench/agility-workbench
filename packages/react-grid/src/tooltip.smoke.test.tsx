@@ -5,7 +5,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Grid } from "./grid";
 import type { ReactColDef } from "./cellRenderer";
-import type { IGridAPI, TooltipOptions, TooltipComponentParams } from "@agility-workbench/grid";
+import {
+  SparklineRenderer,
+  type IGridAPI,
+  type TooltipOptions,
+  type TooltipComponentParams,
+} from "@agility-workbench/grid";
 
 // happy-dom's <canvas> has no 2D context; CanvasMeasurer needs one to measure text.
 beforeAll(() => {
@@ -127,6 +132,110 @@ describe("tooltips", () => {
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelector(".custom-tt")).not.toBeNull();
     expect(container.querySelector(".custom-tt")!.textContent).toContain("TT:Ava");
+    await act(async () => { root.unmount(); });
+  });
+
+  it("uses the grid tooltip for individual sparkline points", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0, hideDelay: 0 },
+      columns: [
+        {
+          colId: "trend",
+          label: "Trend",
+          valueGetter: row => [10, Number.NaN, 30],
+          cellRenderer: SparklineRenderer,
+          cellRendererParams: {
+            type: "line",
+            showPoints: true,
+            tooltipValueFormatter: ({ value, index }: { value: number; index: number }) =>
+              `Point ${index}: $${value}`,
+          },
+        },
+      ],
+    });
+
+    const targets = container.querySelectorAll<SVGElement>(
+      `.pte-row[data-view-idx="0"] .pte-sparkline-tooltip-target`,
+    );
+    expect(targets).toHaveLength(2);
+    expect(targets[0].tagName.toLowerCase()).toBe("rect");
+    expect(Number(targets[0].getAttribute("height"))).toBeGreaterThan(0);
+    expect(container.querySelectorAll(
+      `.pte-row[data-view-idx="0"] .pte-sparkline-point`,
+    )).toHaveLength(2);
+    expect(targets[0].dataset.sparklinePointIndex).toBe("0");
+    expect(targets[1].dataset.sparklinePointIndex).toBe("2");
+
+    await act(async () => {
+      targets[1].dispatchEvent(new MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: 20,
+        clientY: 10,
+      }));
+      await tick();
+    });
+    expect(tooltipEl(container)?.textContent).toContain("Point 2: $30");
+
+    await act(async () => {
+      targets[0].dispatchEvent(new MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: 10,
+        clientY: 10,
+      }));
+      await tick();
+    });
+    expect(tooltipEl(container)?.textContent).toContain("Point 0: $10");
+    await act(async () => { root.unmount(); });
+  });
+
+  it("shows tuple X and Y values in the default sparkline tooltip", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0, hideDelay: 0 },
+      columns: [
+        {
+          colId: "trend",
+          label: "Trend",
+          valueGetter: () => [["Jan", 10], ["Feb", 20], ["Mar", 30]],
+          cellRenderer: SparklineRenderer,
+        },
+      ],
+    });
+    const target = container.querySelector<SVGElement>(
+      `.pte-row[data-view-idx="0"] .pte-sparkline-tooltip-target[data-sparkline-point-index="1"]`,
+    )!;
+    expect(container.querySelector(
+      `.pte-row[data-view-idx="0"] .pte-sparkline-point`,
+    )).toBeNull();
+    await act(async () => {
+      target.dispatchEvent(new MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: 15,
+        clientY: 10,
+      }));
+      await tick();
+    });
+    expect(tooltipEl(container)?.textContent).toContain("Feb: 20");
+    await act(async () => { root.unmount(); });
+  });
+
+  it("does not show sparkline point tooltips when tooltip=false", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: false,
+      columns: [
+        {
+          colId: "trend",
+          label: "Trend",
+          valueGetter: () => [10, 20],
+          cellRenderer: SparklineRenderer,
+        },
+      ],
+    });
+    const target = container.querySelector<SVGElement>(".pte-sparkline-tooltip-target")!;
+    await act(async () => {
+      target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      await tick();
+    });
+    expect(tooltipEl(container)).toBeNull();
     await act(async () => { root.unmount(); });
   });
 

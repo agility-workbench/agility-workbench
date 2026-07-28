@@ -9,6 +9,12 @@ import {
   createTooltipComponentRuntime,
   TooltipComponentRuntime,
 } from "./tooltipComponent";
+import {
+  findRendererTooltipTarget,
+  getRendererTooltipAnchor,
+  getRendererTooltipContent,
+  RENDERER_TOOLTIP_TARGET_DISPOSED,
+} from "./rendererTooltipTarget";
 
 export interface BodyTooltipRendererParams {
   core: GridCore;
@@ -29,12 +35,25 @@ export interface BodyTooltipRendererParams {
 
 /** What a tooltip is anchored to: a body cell (by view/col index) or a header cell (by colId). */
 type TooltipTarget =
-  | { kind: "body"; viewIdx: number; colIdx: number; clientX: number; clientY: number }
+  | {
+      kind: "body";
+      viewIdx: number;
+      colIdx: number;
+      clientX: number;
+      clientY: number;
+      rendererTarget?: Element;
+    }
   | { kind: "header"; colId: string; clientX: number; clientY: number };
 
 function sameTarget(a: TooltipTarget | null, b: TooltipTarget | null): boolean {
   if (!a || !b || a.kind !== b.kind) return false;
-  if (a.kind === "body" && b.kind === "body") return a.viewIdx === b.viewIdx && a.colIdx === b.colIdx;
+  if (a.kind === "body" && b.kind === "body") {
+    return (
+      a.viewIdx === b.viewIdx &&
+      a.colIdx === b.colIdx &&
+      a.rendererTarget === b.rendererTarget
+    );
+  }
   if (a.kind === "header" && b.kind === "header") return a.colId === b.colId;
   return false;
 }
@@ -70,6 +89,7 @@ export class BodyTooltipRenderer {
     this.params.body.addEventListener("mouseover", this.handleMouseOver);
     this.params.body.addEventListener("mouseout", this.handleMouseOut);
     this.params.body.addEventListener("mousemove", this.handleMouseMove);
+    this.params.body.addEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     this.params.headerWrapper.addEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.addEventListener("mouseout", this.handleMouseOut);
     // Rows recycle on scroll, so the safe v1 behavior is to dismiss. Scroll doesn't bubble; the
@@ -86,6 +106,7 @@ export class BodyTooltipRenderer {
     this.params.body.removeEventListener("mouseover", this.handleMouseOver);
     this.params.body.removeEventListener("mouseout", this.handleMouseOut);
     this.params.body.removeEventListener("mousemove", this.handleMouseMove);
+    this.params.body.removeEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     this.params.headerWrapper.removeEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.removeEventListener("mouseout", this.handleMouseOut);
     document.removeEventListener("scroll", this.handleScroll, true);
@@ -101,6 +122,15 @@ export class BodyTooltipRenderer {
 
   private handleScroll = () => {
     if (this.active || this.showTimer != null) this.hideNow();
+  };
+
+  private handleRendererTargetDisposed = (event: Event) => {
+    if (
+      this.active?.kind === "body" &&
+      this.active.rendererTarget === event.target
+    ) {
+      this.hideNow();
+    }
   };
 
   /** Esc dismisses the tooltip (a11y). Guarded so it never steals Esc from an open editor/input:
@@ -283,7 +313,12 @@ export class BodyTooltipRenderer {
 
   // ---------------- content resolution ----------------
 
-  private resolveBody(target: { kind: "body"; viewIdx: number; colIdx: number }): TooltipComponentRuntime | null {
+  private resolveBody(target: {
+    kind: "body";
+    viewIdx: number;
+    colIdx: number;
+    rendererTarget?: Element;
+  }): TooltipComponentRuntime | null {
     const { core } = this.params;
     const col = this.params.leafColumns()[target.colIdx];
     if (!col) return null;
@@ -292,6 +327,15 @@ export class BodyTooltipRenderer {
     if (!rowId) return null;
     const rowNode = core.getRowModel().getRowNode(rowId);
     if (!rowNode || rowNode.isGroup) return null;
+
+    // A custom renderer may expose subtargets (for example, individual sparkline points). Their
+    // content takes precedence over the owning column's cell-level tooltip configuration.
+    if (target.rendererTarget) {
+      const content = getRendererTooltipContent(target.rendererTarget);
+      return content != null && String(content).length > 0
+        ? this.textRuntime(String(content))
+        : null;
+    }
 
     const value = col.getValue(rowNode);
     const valueFormatted = col.formatValue(value, rowNode);
@@ -393,11 +437,18 @@ export class BodyTooltipRenderer {
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
     if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
-    return { kind: "body", viewIdx, colIdx, clientX, clientY };
+    const rendererTarget = findRendererTooltipTarget(el, cell) ?? undefined;
+    return { kind: "body", viewIdx, colIdx, clientX, clientY, rendererTarget };
   }
 
   private getTargetRect(target: TooltipTarget): DOMRect | null {
-    if (target.kind === "body") return this.getCellRect(target.viewIdx, target.colIdx);
+    if (target.kind === "body") {
+      if (target.rendererTarget?.isConnected) {
+        const anchor = getRendererTooltipAnchor(target.rendererTarget);
+        if (anchor.isConnected) return anchor.getBoundingClientRect();
+      }
+      return this.getCellRect(target.viewIdx, target.colIdx);
+    }
     const hcell = document.getElementById(target.colId);
     return hcell ? hcell.getBoundingClientRect() : null;
   }

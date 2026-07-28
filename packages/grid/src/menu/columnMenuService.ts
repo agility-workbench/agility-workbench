@@ -170,6 +170,7 @@ export class ColumnMenuService {
       case "columns.newSparklineCol":
         return this.core.dispatch({
           type: "addSparklineColumn",
+          targetColId: ctx.targetColId,
           colIds: item.payload.colIDs,
           sparklineType: item.payload.type,
         });

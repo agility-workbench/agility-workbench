@@ -1,15 +1,59 @@
+import { Column } from "../column/column";
+import { IGridAPI } from "../interfaces/iGridAPI";
+import { IRowNode } from "../interfaces/iRowNode";
 import { ICellRenderer, CellRendererParams } from "../renderer/renderer";
 
-interface SparklineParams {
-  colIds: string[];
-  type?: "line" | "bar" | "area";
+export type SparklineXValue =
+  | string
+  | number
+  | Date
+  | { toString(): string };
+
+export type SparklineTuple = readonly [SparklineXValue, number];
+export type SparklineData = readonly number[] | readonly SparklineTuple[];
+
+export interface SparklineTooltipValueFormatterParams {
+  xValue: SparklineXValue;
+  yValue: number;
+  /** Backward-compatible alias for yValue. */
+  value: number;
+  /** Index in the original array returned by the column's valueGetter. */
+  index: number;
+  /** The row's underlying data object. */
+  data: any;
+  /** The row node used by the grid. */
+  rowNode: IRowNode;
+  rowId: string;
+  rowIndex: number;
+  colDef: Column;
+  api: IGridAPI;
 }
+
+export interface SparklineParams {
+  type?: "line" | "bar" | "area";
+  /** Draw a visible marker at each point on line and area sparklines. Default false. */
+  showPoints?: boolean;
+  /** Format the text shown by the grid tooltip for an individual data point. */
+  tooltipValueFormatter?: (params: SparklineTooltipValueFormatterParams) => string;
+}
+
+type SparklinePoint = {
+  index: number;
+  /** Ordinal position used by the default category axis. */
+  position: number;
+  xValue: SparklineXValue;
+  yValue: number;
+  explicitX: boolean;
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 export class SparklineRenderer implements ICellRenderer {
   private params!: CellRendererParams;
-  private svgEl!: SVGElement;
+  private svgEl!: SVGSVGElement;
   private rafId: number | null = null;
-  private warnedMissingColIds = false;
+  private tooltipCleanups: Array<() => void> = [];
+  private warnedInvalidValue = false;
 
   init(params: CellRendererParams): void {
     this.params = params;
@@ -40,51 +84,42 @@ export class SparklineRenderer implements ICellRenderer {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this.clearTooltipTargets();
   }
 
-  private createSvg(): SVGElement {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  private createSvg(): SVGSVGElement {
+    const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", "100%");
+    svg.classList.add("pte-sparkline");
     svg.style.display = "block";
     svg.style.overflow = "visible";
     return svg;
   }
 
   private redraw(): void {
-    const { colIds, type = "line" } = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
-    if (!colIds || colIds.length === 0) {
-      // Misconfiguration is otherwise indistinguishable from an empty cell — warn once.
-      if (!this.warnedMissingColIds) {
-        this.warnedMissingColIds = true;
+    const {
+      type = "line",
+      showPoints = false,
+    } = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
+    const series = this.params.value;
+    this.clearTooltipTargets();
+
+    if (!Array.isArray(series)) {
+      if (!this.warnedInvalidValue) {
+        this.warnedInvalidValue = true;
         console.warn(
-          `SparklineRenderer: no "colIds" configured in cellRendererParams for column "${this.params.colDef.colId}"; nothing to draw.`,
+          `SparklineRenderer: expected the valueGetter for column "${this.params.colDef.colId}" to return number[] or [x, number][]; nothing to draw.`,
         );
       }
-      this.svgEl.innerHTML = "";
+      this.svgEl.replaceChildren();
       return;
     }
 
-    const row = this.params.data;
-    const columnModel = this.params.api.getColumnModel();
-    const values: number[] = [];
-    for (const colId of colIds) {
-      // Source ids come from the column menu as instanceIDs, but hand-authored
-      // colDefs may reference a colId or key — resolve against all three.
-      const col =
-        columnModel.getById(colId) ??
-        columnModel.getByColId(colId) ??
-        columnModel.getByKey(colId);
-      // Skip unknown columns and group (non-leaf) columns — only leaves hold values.
-      if (!col || col.children.length > 0) continue;
-      const val = col.getValue(row);
-      if (val != null && !isNaN(Number(val))) {
-        values.push(Number(val));
-      }
-    }
+    const { points, domainLength } = this.normalizeSeries(series);
 
-    if (values.length === 0) {
-      this.svgEl.innerHTML = "";
+    if (points.length === 0) {
+      this.svgEl.replaceChildren();
       return;
     }
 
@@ -96,9 +131,7 @@ export class SparklineRenderer implements ICellRenderer {
     const chartHeight = height - padding * 2;
 
     if (chartWidth <= 0 || chartHeight <= 0) {
-      // Element is not yet laid out. Draw at a fallback size so something shows,
-      // then remeasure on the next frame once layout has settled.
-      this.drawSparkline(values, 100, 20, padding, type);
+      this.drawSparkline(points, domainLength, 100, 20, padding, type, showPoints);
       if (this.rafId == null) {
         this.rafId = requestAnimationFrame(() => {
           this.rafId = null;
@@ -108,57 +141,210 @@ export class SparklineRenderer implements ICellRenderer {
       return;
     }
 
-    this.drawSparkline(values, width, height, padding, type);
+    this.drawSparkline(points, domainLength, width, height, padding, type, showPoints);
   }
 
-  private drawSparkline(values: number[], width: number, height: number, padding: number, type: "line" | "bar" | "area"): void {
+  private normalizeSeries(series: unknown[]): {
+    points: SparklinePoint[];
+    domainLength: number;
+  } {
+    // A tuple series uses a category axis: valid tuples are compacted and evenly spaced in their
+    // original order. A number series retains array indexes as X values, including gaps left by an
+    // invalid Y value.
+    const tupleSeries = series.some(value => Array.isArray(value));
+    const points: SparklinePoint[] = [];
+
+    series.forEach((datum, index) => {
+      if (tupleSeries) {
+        if (!Array.isArray(datum) || datum.length < 2) return;
+        const [xValue, yValue] = datum;
+        if (!this.isValidXValue(xValue) || typeof yValue !== "number" || !Number.isFinite(yValue)) {
+          return;
+        }
+        points.push({
+          index,
+          position: points.length,
+          xValue,
+          yValue,
+          explicitX: true,
+        });
+        return;
+      }
+
+      if (typeof datum === "number" && Number.isFinite(datum)) {
+        points.push({
+          index,
+          position: index,
+          xValue: index,
+          yValue: datum,
+          explicitX: false,
+        });
+      }
+    });
+
+    return {
+      points,
+      domainLength: tupleSeries ? points.length : series.length,
+    };
+  }
+
+  private isValidXValue(value: unknown): value is SparklineXValue {
+    if (typeof value === "string") return true;
+    if (typeof value === "number") return Number.isFinite(value);
+    if (value instanceof Date) return Number.isFinite(value.getTime());
+    return value != null && typeof (value as { toString?: unknown }).toString === "function";
+  }
+
+  private drawSparkline(
+    points: SparklinePoint[],
+    seriesLength: number,
+    width: number,
+    height: number,
+    padding: number,
+    type: "line" | "bar" | "area",
+    showPoints: boolean,
+  ): void {
     const chartWidth = width - padding * 2;
     const chartHeight = height - padding * 2;
-
     if (chartWidth <= 0 || chartHeight <= 0) return;
 
-    // Map the SVG's user-coordinate space to the current pixel box so the drawn geometry rescales
-    // with the cell (e.g. on column resize) rather than staying frozen at the width it was first
-    // measured at. The svg element itself is width/height:100%, so it always fills the cell.
     this.svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    this.svgEl.replaceChildren();
 
+    const values = points.map(point => point.yValue);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;
 
-    const xScale = (i: number) => padding + (i / Math.max(values.length - 1, 1)) * chartWidth;
-    const yScale = (v: number) => padding + chartHeight - ((v - min) / range) * chartHeight;
-
-    let svgContent = "";
+    const xScale = (position: number) =>
+      padding + (position / Math.max(seriesLength - 1, 1)) * chartWidth;
+    const yScale = (value: number) =>
+      padding + chartHeight - ((value - min) / range) * chartHeight;
 
     if (type === "bar") {
-      const barWidth = Math.max(1, (chartWidth / values.length) * 0.8);
-      const gap = chartWidth / values.length;
-      for (let i = 0; i < values.length; i++) {
-        const x = padding + i * gap + (gap - barWidth) / 2;
-        const barHeight = Math.max(1, ((values[i] - min) / range) * chartHeight);
+      const gap = chartWidth / Math.max(seriesLength, 1);
+      const barWidth = Math.max(1, gap * 0.8);
+      for (const point of points) {
+        const x = padding + point.position * gap + (gap - barWidth) / 2;
+        const barHeight = Math.max(1, ((point.yValue - min) / range) * chartHeight);
         const y = padding + chartHeight - barHeight;
-        svgContent += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="#4a90d9" rx="1" />`;
+        const bar = document.createElementNS(SVG_NS, "rect");
+        bar.setAttribute("x", String(x));
+        bar.setAttribute("y", String(y));
+        bar.setAttribute("width", String(barWidth));
+        bar.setAttribute("height", String(barHeight));
+        bar.setAttribute("rx", "1");
+        bar.classList.add("pte-sparkline-bar", "pte-sparkline-tooltip-target");
+        bar.dataset.sparklinePointIndex = String(point.index);
+        this.registerPointTooltip(bar, point);
+        this.svgEl.appendChild(bar);
       }
-    } else if (type === "line" || type === "area") {
-      let pointsStr = "";
-      for (let i = 0; i < values.length; i++) {
-        const x = xScale(i);
-        const y = yScale(values[i]);
-        pointsStr += `${x},${y} `;
-      }
-
-      if (type === "area") {
-        const firstX = xScale(0);
-        const lastX = xScale(values.length - 1);
-        const baselineY = padding + chartHeight;
-        const areaPoints = `${firstX},${baselineY} ${pointsStr}${lastX},${baselineY}`;
-        svgContent += `<polygon points="${areaPoints}" fill="rgba(74,144,217,0.2)" stroke="none" />`;
-      }
-
-      svgContent += `<polyline points="${pointsStr.trim()}" fill="none" stroke="#4a90d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`;
+      return;
     }
 
-    this.svgEl.innerHTML = svgContent;
+    const pointList = points
+      .map(point => `${xScale(point.position)},${yScale(point.yValue)}`)
+      .join(" ");
+    if (type === "area") {
+      const area = document.createElementNS(SVG_NS, "polygon");
+      const firstX = xScale(points[0].position);
+      const lastX = xScale(points[points.length - 1].position);
+      const baselineY = padding + chartHeight;
+      area.setAttribute("points", `${firstX},${baselineY} ${pointList} ${lastX},${baselineY}`);
+      area.setAttribute("fill", "rgba(74,144,217,0.2)");
+      area.setAttribute("stroke", "none");
+      this.svgEl.appendChild(area);
+    }
+
+    const line = document.createElementNS(SVG_NS, "polyline");
+    line.setAttribute("points", pointList);
+    line.classList.add("pte-sparkline-path");
+    this.svgEl.appendChild(line);
+
+    // Each point owns the vertical band halfway to its neighbours. This makes the nearest X value
+    // discoverable anywhere over the chart while a separate tiny anchor keeps the floating tooltip
+    // visually attached to the plotted point rather than the centre of the hit band.
+    points.forEach((point, pointIndex) => {
+      const pointX = xScale(point.position);
+      if (showPoints) {
+        const marker = document.createElementNS(SVG_NS, "circle");
+        marker.setAttribute("cx", String(pointX));
+        marker.setAttribute("cy", String(yScale(point.yValue)));
+        marker.setAttribute("r", "2.5");
+        marker.classList.add("pte-sparkline-point");
+        marker.dataset.sparklinePointIndex = String(point.index);
+        this.svgEl.appendChild(marker);
+      }
+
+      const anchor = document.createElementNS(SVG_NS, "circle");
+      anchor.setAttribute("cx", String(pointX));
+      anchor.setAttribute("cy", String(yScale(point.yValue)));
+      anchor.setAttribute("r", "1");
+      anchor.setAttribute("fill", "transparent");
+      anchor.setAttribute("pointer-events", "none");
+      this.svgEl.appendChild(anchor);
+
+      const previousX =
+        pointIndex > 0 ? xScale(points[pointIndex - 1].position) : 0;
+      const nextX =
+        pointIndex < points.length - 1
+          ? xScale(points[pointIndex + 1].position)
+          : width;
+      const left = pointIndex > 0 ? (previousX + pointX) / 2 : 0;
+      const right =
+        pointIndex < points.length - 1
+          ? (pointX + nextX) / 2
+          : width;
+
+      const hitTarget = document.createElementNS(SVG_NS, "rect");
+      hitTarget.setAttribute("x", String(left));
+      hitTarget.setAttribute("y", "0");
+      hitTarget.setAttribute("width", String(Math.max(1, right - left)));
+      hitTarget.setAttribute("height", String(height));
+      hitTarget.setAttribute("fill", "transparent");
+      hitTarget.classList.add("pte-sparkline-tooltip-target");
+      hitTarget.dataset.sparklinePointIndex = String(point.index);
+      this.registerPointTooltip(hitTarget, point, anchor);
+      this.svgEl.appendChild(hitTarget);
+    });
+  }
+
+  private registerPointTooltip(
+    target: SVGElement,
+    point: SparklinePoint,
+    anchor?: SVGElement,
+  ): void {
+    const cleanup = this.params.registerTooltipTarget(target, () => {
+      const rendererParams = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
+      const formatter = rendererParams.tooltipValueFormatter;
+      if (!formatter) {
+        return point.explicitX
+          ? `${this.formatXValue(point.xValue)}: ${point.yValue}`
+          : String(point.yValue);
+      }
+      const rowNode = this.params.data as IRowNode;
+      return formatter({
+        xValue: point.xValue,
+        yValue: point.yValue,
+        value: point.yValue,
+        index: point.index,
+        data: rowNode?.data ?? rowNode,
+        rowNode,
+        rowId: this.params.rowId,
+        rowIndex: this.params.rowIndex,
+        colDef: this.params.colDef,
+        api: this.params.api,
+      });
+    }, anchor);
+    this.tooltipCleanups.push(cleanup);
+  }
+
+  private formatXValue(value: SparklineXValue): string {
+    return value instanceof Date ? value.toLocaleString() : String(value);
+  }
+
+  private clearTooltipTargets(): void {
+    for (const cleanup of this.tooltipCleanups) cleanup();
+    this.tooltipCleanups = [];
   }
 }

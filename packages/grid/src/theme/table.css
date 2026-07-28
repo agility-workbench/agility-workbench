@@ -1472,17 +1472,8 @@
   background: var(--pte-input-bg-color, #fff);
 }
 
-.pte-cell-sparkline {
-  padding-left: 8px;
-  padding-right: 8px;
-}
-
-.pte-cell-sparkline .pte-sparkline {
-  width: 100%;
-  height: 60%;
-  min-height: 12px;
-  display: block;
-  pointer-events: none;
+.pte-sparkline-tooltip-target {
+  pointer-events: all;
 }
 
 .pte-sparkline-path {
@@ -1491,6 +1482,13 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.pte-sparkline-point {
+  fill: var(--pte-sparkline-stroke-color);
+  stroke: var(--pte-root-bg-color);
+  stroke-width: 1;
+  pointer-events: none;
 }
 
 .pte-sparkline-bar {

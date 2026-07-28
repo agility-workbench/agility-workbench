@@ -38,7 +38,7 @@ function getOptsFromCol(params: ValueFormatterParams): FormatterOptions {
 
 export function currencyFormatter(params: ValueFormatterParams): string {
   const opts = params.col ? getOptsFromCol(params) : {};
-  return params.value ? params.value.toLocaleString(opts.locale || "en-US", {
+  return params.value != null ? params.value.toLocaleString(opts.locale || "en-US", {
     style: "currency",
     currency: opts.currency || "USD",
   }) : '';

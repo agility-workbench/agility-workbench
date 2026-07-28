@@ -1,5 +1,8 @@
 import { Column } from "../column/column";
 import { IGridAPI } from "../interfaces/iGridAPI";
+import {
+  registerRendererTooltipTarget,
+} from "./tooltip/rendererTooltipTarget";
 
 /**
  * Why refresh() is being called. The grid is renderer-agnostic, so it cannot
@@ -19,6 +22,17 @@ export interface CellRendererParams {
   colDef: Column;
   api: IGridAPI;
   eCell: HTMLElement;
+  /**
+   * Register an element inside this renderer as a tooltip target. The grid owns tooltip timing,
+   * positioning, styling, and teardown; the renderer supplies the target, its text, and optionally
+   * a different element to anchor the floating tooltip to.
+   * Call the returned cleanup function before discarding the target.
+   */
+  registerTooltipTarget: (
+    target: Element,
+    getContent: () => string | number | null | undefined,
+    anchor?: Element,
+  ) => () => void;
   /** Why the renderer is being (re)invoked. Defaults to "data". */
   refreshReason?: CellRefreshReason;
   /**
@@ -147,6 +161,7 @@ export function getCellRendererParams(
     colDef: col,
     api: api,
     eCell: eCell,
+    registerTooltipTarget: registerRendererTooltipTarget,
     refreshReason: refreshReason,
   };
 }

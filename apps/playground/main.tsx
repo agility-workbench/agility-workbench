@@ -14,6 +14,7 @@ import HeaderComponentDemo from "./HeaderComponentDemo";
 import TooltipDemo from "./TooltipDemo";
 import ActionFrameDemo from "./ActionFrameDemo";
 import FooterVisibilityDemo from "./FooterVisibilityDemo";
+import SparklineDemo from "./SparklineDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -28,6 +29,7 @@ const PAGES = [
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
   { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },
   { id: "footerVisibility", label: "Footer visibility", render: () => <FooterVisibilityDemo /> },
+  { id: "sparklines", label: "Sparklines", render: () => <SparklineDemo /> },
 ] as const;
 
 function Root() {

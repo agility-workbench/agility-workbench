@@ -34,7 +34,8 @@ import { SelectionModel } from "./selectionModel";
 import { CellEdit, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
-import { SparklineRenderer } from "../cellRenderers/sparklineRenderer";
+import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
+import { getFormatterByType } from "../column/formatters";
 
 type SchemaSource = "auto" | "props" | "server";
 
@@ -1293,6 +1294,32 @@ export class GridCore implements IGridCore {
         break;
       case "addSparklineColumn": {
         const colId = action.newColId || `sparkline_${crypto.randomUUID()}`;
+        const selectedColumns = action.colIds
+          .map(id =>
+            this.columnModel.getById(id) ??
+            this.columnModel.getByColId(id) ??
+            this.columnModel.getByKey(id),
+          )
+          .filter((col): col is Column => !!col && col.children.length === 0);
+        if (selectedColumns.length === 0) break;
+
+        const targetColumn =
+          this.columnModel.getById(action.targetColId) ??
+          this.columnModel.getByColId(action.targetColId) ??
+          this.columnModel.getByKey(action.targetColId) ??
+          selectedColumns[0];
+
+        // Formatter precedence is deliberately based on explicitly-declared formatters. Runtime
+        // Column.valueFormatter may already contain a datatype default, which must not outrank an
+        // explicit formatter on another selected column.
+        const explicitFormatterSource = targetColumn.col.valueFormatter
+          ? targetColumn
+          : selectedColumns.find(col => !!col.col.valueFormatter);
+        const formatterSource = explicitFormatterSource ?? targetColumn;
+        const pointFormatter =
+          explicitFormatterSource?.col.valueFormatter ??
+          getFormatterByType(targetColumn.type);
+
         const colDef: ColDef = {
           colId,
           label: "Sparkline",
@@ -1303,8 +1330,31 @@ export class GridCore implements IGridCore {
           resizable: true,
           movable: true,
           hideable: true,
+          valueGetter: row =>
+            selectedColumns.map(col => [col.label, col.getValue(row)] as const),
           cellRenderer: SparklineRenderer,
-          cellRendererParams: { colIds: action.colIds, type: action.sparklineType },
+          cellRendererParams: {
+            type: action.sparklineType,
+            showPoints: true,
+            ...(pointFormatter
+              ? {
+                  tooltipValueFormatter: ({
+                    xValue,
+                    yValue,
+                    rowNode,
+                  }: {
+                    xValue: unknown;
+                    yValue: number;
+                    rowNode: IRowNode;
+                  }) =>
+                    `${String(xValue)}: ${pointFormatter({
+                      value: yValue,
+                      row: rowNode,
+                      col: formatterSource,
+                    })}`,
+                }
+              : {}),
+          } as SparklineParams,
         };
         const allRows: IRowNode[] = [];
         this.rowModel.forEachNode((node: IRowNode) => allRows.push(node));
