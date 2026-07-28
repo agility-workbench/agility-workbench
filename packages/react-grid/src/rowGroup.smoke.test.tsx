@@ -106,4 +106,55 @@ describe("row grouping end-to-end via Grid", () => {
     await act(async () => root.unmount());
     container.remove();
   });
+
+  it("updates groupDisplayType live without remounting the grid", async () => {
+    const { container, apiRef, root } = await mountGrid("singleColumn");
+    const originalApi = apiRef.current!;
+    const core = originalApi.getCore();
+
+    await act(async () => {
+      core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    });
+    expect(core.getColumnModel().getAutoGroupColumns()).toHaveLength(1);
+
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={ROWS}
+          columnDefs={[
+            { colId: "region", key: "region", label: "Region" },
+            { colId: "sales", key: "sales", label: "Sales" },
+          ]}
+          rowIdKey="id"
+          groupDisplayType="multipleColumns"
+        />,
+      );
+    });
+    expect(apiRef.current).toBe(originalApi);
+    expect(core.getOptions().groupDisplayType).toBe("multipleColumns");
+    expect(core.getColumnModel().getAutoGroupColumns()).toHaveLength(0);
+    expect(core.getColumnModel().getByColId("region")!.groupLevel).toBe(0);
+
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={ROWS}
+          columnDefs={[
+            { colId: "region", key: "region", label: "Region" },
+            { colId: "sales", key: "sales", label: "Sales" },
+          ]}
+          rowIdKey="id"
+          groupDisplayType="groupRows"
+        />,
+      );
+    });
+    expect(apiRef.current).toBe(originalApi);
+    expect(core.getOptions().groupDisplayType).toBe("groupRows");
+    expect(groupRowEls(container).some(row => row.classList.contains("pte-full-width-row"))).toBe(true);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
 });

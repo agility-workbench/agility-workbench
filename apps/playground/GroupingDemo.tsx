@@ -134,7 +134,7 @@ export function GroupingDemo() {
           >
             {DISPLAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>(remounts the grid)</span>
+          <span style={{ fontSize: 11, color: "#9ca3af" }}>(updates live)</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -173,7 +173,7 @@ export function GroupingDemo() {
       {/* minWidth:0 keeps the grid from widening the page when the pinned auto-group column appears. */}
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         <Grid
-          key={`${displayType}-${groupRowsSelectable}`}
+          // key={`${displayType}-${groupRowsSelectable}`}
           apiRef={apiRef}
           data={rows}
           columnDefs={columnDefs}

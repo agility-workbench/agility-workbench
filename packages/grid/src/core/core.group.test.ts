@@ -171,6 +171,29 @@ describe("GridCore row grouping", () => {
     expect(c.getColumnModel().getAutoGroupColumns().length).toBe(0);
   });
 
+  it("switches group display type in place while preserving the grouped tree", () => {
+    const c = makeGrid({ groupDisplayType: "singleColumn" });
+    c.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    const apac = viewNodes(c).find(n => n.groupKey === "APAC")!;
+    c.dispatch({ type: "groupToggleExpand", groupId: apac.id, expanded: true });
+
+    c.setGroupDisplayType("multipleColumns");
+    expect(c.getOptions().groupDisplayType).toBe("multipleColumns");
+    expect(c.getColumnModel().getAutoGroupColumns()).toHaveLength(0);
+    expect(c.getColumnModel().getByColId("region")!.groupLevel).toBe(0);
+    expect(c.getColumnModel().getByColId("country")!.groupLevel).toBe(1);
+    expect(c.getRowModel().getRowNode(apac.id)?.isExpanded).toBe(true);
+
+    c.setGroupDisplayType("groupRows");
+    expect(c.getColumnModel().getByColId("region")!.groupLevel).toBeUndefined();
+    expect(c.getColumnModel().getByColId("country")!.groupLevel).toBeUndefined();
+    expect(c.getRowModel().getRowNode(apac.id)?.isExpanded).toBe(true);
+
+    c.setGroupDisplayType("singleColumn");
+    expect(c.getColumnModel().getAutoGroupColumns()).toHaveLength(1);
+    expect(c.getRowModel().getRowNode(apac.id)?.isExpanded).toBe(true);
+  });
+
   it("ignores non-groupable columns", () => {
     const c = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
     c.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });

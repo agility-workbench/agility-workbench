@@ -130,6 +130,12 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.data, props.rowData, props.rowModelType]);
 
+    // groupDisplayType changes the synthesized grouping columns and whether group nodes render as
+    // full-width rows. Reconcile it explicitly so declarative prop changes do not require a key/remount.
+    useLayoutEffect(() => {
+      instanceRef.current?.core.setGroupDisplayType(props.groupDisplayType ?? "singleColumn");
+    }, [props.groupDisplayType]);
+
     useLayoutEffect(() => {
       const instance = instanceRef.current;
       if (!instance || props.rowModelType !== "serverSide") return;

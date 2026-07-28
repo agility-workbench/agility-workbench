@@ -5,7 +5,13 @@ import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { GridOptions, InternalGridOptions, QuickFilterMatchMode, resolveQuickFilterOptions } from "../interfaces/gridOptions";
+import {
+  GridOptions,
+  GroupDisplayType,
+  InternalGridOptions,
+  QuickFilterMatchMode,
+  resolveQuickFilterOptions,
+} from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
@@ -763,6 +769,21 @@ export class GridCore implements IGridCore {
 
   getRowGroupColumns(): Column[] {
     return this.groupColumns.slice();
+  }
+
+  // Switch the visual grouping layout in place. The grouped row tree itself is unchanged, which
+  // preserves expansion state; only the synthesized/tagged columns and full-width-row treatment
+  // need to be rebuilt by the renderer.
+  setGroupDisplayType(groupDisplayType: GroupDisplayType): void {
+    if (this.options.groupDisplayType === groupDisplayType) return;
+
+    this.options.groupDisplayType = groupDisplayType;
+    this.columnModel.setRowGroupColumns(this.groupColumns, groupDisplayType);
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "defs" });
+
+    const changedColIds = this.autosizeColumns();
+    if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
   }
 
   private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc"): boolean {

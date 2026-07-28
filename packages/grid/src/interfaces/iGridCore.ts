@@ -6,7 +6,7 @@ import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
-import { GridOptions } from "./gridOptions";
+import { GridOptions, GroupDisplayType } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
 import { ColDef } from "./column";
 import { Column } from "../column/column";
@@ -101,6 +101,8 @@ export interface IGridCore {
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
   getRowGroupColumns(): Column[];
+  /** Change how grouped rows are displayed without rebuilding the grid instance. */
+  setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
   setAggregateModel(aggregates: AggregateModel[]): void;
   setAggregateScope(scope: AggregateScope): void;
 
