@@ -352,6 +352,49 @@ export function resolveActionFrameOptions(
   };
 }
 
+/**
+ * Built-in column-management panel.
+ *
+ * The panel is opt-in (`columnPanel: true`) and docks to the right side of the grid. Changes are
+ * applied immediately. `defaultOpen` controls only the initial state; the user's open/closed choice
+ * is preserved across live option updates. `width` is clamped to 240–480px.
+ */
+export interface ColumnPanelOptions {
+  defaultOpen?: boolean;
+  width?: number;
+  /**
+   * Where the drawer toggle is exposed:
+   * - `rail` (default): full-height collapsed rail on the right.
+   * - `header`: full-height empty right gutter with the toggle in its header corner.
+   * - `menu`: "Manage columns…" in both the column-menu button and header context menu.
+   * - `footer`: full-height empty right gutter with the toggle in its footer corner.
+   * - `toolbar`: grid-level toolbar above the header, with the toggle at the extreme right.
+   */
+  trigger?: ColumnPanelTrigger;
+}
+
+export type ColumnPanelTrigger = "rail" | "header" | "menu" | "footer" | "toolbar";
+
+export interface ResolvedColumnPanelOptions {
+  enabled: boolean;
+  defaultOpen: boolean;
+  width: number;
+  trigger: ColumnPanelTrigger;
+}
+
+export function resolveColumnPanelOptions(
+  opt: boolean | ColumnPanelOptions | undefined,
+): ResolvedColumnPanelOptions {
+  const o = typeof opt === "object" && opt !== null ? opt : {};
+  const width = Number.isFinite(o.width) ? Math.min(480, Math.max(240, o.width as number)) : 304;
+  return {
+    enabled: opt === true || (typeof opt === "object" && opt !== null),
+    defaultOpen: o.defaultOpen ?? false,
+    width,
+    trigger: o.trigger ?? "rail",
+  };
+}
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -617,6 +660,13 @@ export interface GridOptions {
    */
   quickFilter?: boolean | QuickFilterOptions;
   /**
+   * Built-in right-side column management panel. Pass `true` to show a collapsed "Columns" rail,
+   * or an options object to configure its initial open state and width. The panel supports search,
+   * live show/hide, pinning, drag/keyboard reordering, and restoring the initial column layout.
+   * Omitted/false disables it.
+   */
+  columnPanel?: boolean | ColumnPanelOptions;
+  /**
    * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
    * "Loading data...".
    */
@@ -705,6 +755,7 @@ export interface InternalGridOptions extends GridOptions {
   defaultColDef?: DefaultColDef;
   tooltip: boolean | TooltipOptions;
   quickFilter: boolean | QuickFilterOptions;
+  columnPanel: boolean | ColumnPanelOptions;
   loadingMessage: string;
   noRowsMessage: string;
   filterDebounceMs: number;

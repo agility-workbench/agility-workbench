@@ -36,7 +36,7 @@ import { FloatingAnchor } from "./floating/floatingAnchor";
 import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
 import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveTooltipOptions } from "../interfaces/gridOptions";
-import type { RuntimeGridOptions, TooltipOptions } from "../interfaces/gridOptions";
+import type { ColumnPanelOptions, RuntimeGridOptions, TooltipOptions } from "../interfaces/gridOptions";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -66,6 +66,7 @@ import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
 import { serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
+import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
@@ -107,6 +108,7 @@ export class GridRenderer {
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _noRowsOverlayRenderer: NoRowsOverlayRenderer;
   _quickFilterWidget?: QuickFilterWidget;
+  _columnPanelRenderer: ColumnPanelRenderer;
   // Captured so the widget can be rebuilt in place when its options change at runtime.
   private _quickFilterHeaderHeight?: () => number;
   private _quickFilterOptions?: boolean | QuickFilterOptions;
@@ -369,6 +371,7 @@ export class GridRenderer {
     this._bodyTooltipRenderer = new BodyTooltipRenderer({
       core: this.core,
       api: this.api,
+      root: this.root,
       body: bodyWrapper.body,
       headerWrapper: headerRefs.wrapper,
       floating: this._tooltipFloating,
@@ -580,6 +583,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       height: () => this.height,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
+      body: bodyWrapper.body,
       headerWrapper: headerRefs.wrapper,
       hScrollContainer: horizontalScroll.container,
       paginator: this._paginationRenderer.getElement(),
@@ -607,6 +611,23 @@ export class GridRenderer {
     this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
     this._quickFilterOptions = this.core.getOptions().quickFilter;
     this._buildQuickFilterWidget();
+    this._columnPanelRenderer = new ColumnPanelRenderer({
+      core: this.core,
+      root: this.root,
+      options: this.core.getOptions().columnPanel,
+      onLayoutChange: () => {
+        // Opening changes the flex content width. Re-apply the current column boxes and viewport
+        // window after the browser has resolved that docked width.
+        requestAnimationFrame(() => {
+          this._maybeUpdatePoolSize();
+          this._columnLayoutRenderer?.updateColumnWidths();
+          this._bodyWindowRenderer?.update(true, undefined);
+        });
+      },
+    });
+    menuCoordinator.setColumnPanelTarget({
+      openColumnPanel: () => this._columnPanelRenderer.openPanel(),
+    });
 
     // Create a pooled set of row nodes
     // this._poolSize = this._bodyPoolSizer.computePoolSize(...);
@@ -709,6 +730,11 @@ export class GridRenderer {
     this._quickFilterWidget?.destroy();
     this._quickFilterWidget = undefined;
     this._buildQuickFilterWidget(restore);
+  }
+
+  setColumnPanelOptions(options: boolean | ColumnPanelOptions | undefined) {
+    (this.core.options as { columnPanel: boolean | ColumnPanelOptions | undefined }).columnPanel = options;
+    this._columnPanelRenderer.setOptions(options);
   }
 
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
@@ -820,6 +846,7 @@ export class GridRenderer {
     this._coreEventBinder.destroy();
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
+    this._columnPanelRenderer.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();

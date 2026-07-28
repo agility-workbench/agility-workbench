@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
-import type { ReactColDef } from "@react-grid";
+import type { ColumnPanelTrigger, ReactColDef } from "@react-grid";
 import { AggregateType } from "@grid/interfaces/aggregate";
 import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
@@ -33,6 +33,7 @@ export function FooterVisibilityDemo() {
   const [pagination, setPagination] = useState(false);
   const [aggregateRevenue, setAggregateRevenue] = useState(false);
   const [allowAggregation, setAllowAggregation] = useState(true);
+  const [columnPanelTrigger, setColumnPanelTrigger] = useState<ColumnPanelTrigger>("rail");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "Order", width: 100, type: ColumnType.NUMBER, aggregatable: false },
@@ -112,6 +113,21 @@ export function FooterVisibilityDemo() {
         <span style={{ fontSize: 13, color: "#6b7280" }}>
           Aggregate controls expected: <strong>{allowAggregation ? "available" : "omitted"}</strong>
         </span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <label htmlFor="column-panel-trigger" style={{ fontSize: "13px" }}>Columns trigger</label>
+          <select
+            id="column-panel-trigger"
+            value={columnPanelTrigger}
+            onChange={(e) => setColumnPanelTrigger(e.target.value as ColumnPanelTrigger)}
+          >
+            <option value="rail">Rail</option>
+            <option value="header">Header</option>
+            <option value="menu">Column menu</option>
+            <option value="footer">Footer</option>
+            <option value="toolbar">Toolbar</option>
+          </select>
+        </div>
       </div>
 
       <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
@@ -131,6 +147,7 @@ export function FooterVisibilityDemo() {
           pageSize={8}
           pageSizes={[8, 16, 24]}
           style={{ width: "100%", height: "100%" }}
+          columnPanel={{ trigger: columnPanelTrigger }}
         />
       </div>
     </div>

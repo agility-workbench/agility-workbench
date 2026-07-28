@@ -218,8 +218,8 @@ export class FloatingAnchor {
     overlay.style.visibility = "visible";
   }
 
-  /** Compute the top-left for an anchored placement, flipping to the opposite side when the
-   * preferred side lacks room. "auto" tries bottom → top → right → left. */
+  /** Compute the top-left for an anchored placement. Preferred placements try their opposite side
+   * first, then the perpendicular axis; "auto" tries bottom → top → right → left. */
   private resolveAnchored(
     rect: DOMRect,
     size: DOMRect,
@@ -232,18 +232,22 @@ export class FloatingAnchor {
     const fitsRight = rect.right + offset + size.width <= bounds.right;
     const fitsLeft = rect.left - offset - size.width >= bounds.left;
 
-    let side: FloatingPlacement = placement;
-    if (placement === "auto") {
-      side = fitsBottom ? "bottom" : fitsTop ? "top" : fitsRight ? "right" : fitsLeft ? "left" : "bottom";
-    } else if (placement === "bottom" && !fitsBottom && fitsTop) {
-      side = "top";
-    } else if (placement === "top" && !fitsTop && fitsBottom) {
-      side = "bottom";
-    } else if (placement === "right" && !fitsRight && fitsLeft) {
-      side = "left";
-    } else if (placement === "left" && !fitsLeft && fitsRight) {
-      side = "right";
-    }
+    const fits: Record<Exclude<FloatingPlacement, "auto">, boolean> = {
+      bottom: fitsBottom,
+      top: fitsTop,
+      right: fitsRight,
+      left: fitsLeft,
+    };
+    const candidates: Array<Exclude<FloatingPlacement, "auto">> = placement === "auto"
+      ? ["bottom", "top", "right", "left"]
+      : placement === "bottom"
+        ? ["bottom", "top", "right", "left"]
+        : placement === "top"
+          ? ["top", "bottom", "right", "left"]
+          : placement === "right"
+            ? ["right", "left", "bottom", "top"]
+            : ["left", "right", "bottom", "top"];
+    const side = candidates.find(candidate => fits[candidate]) ?? candidates[0];
 
     // Center along the cross-axis; the outer clamp fixes any overflow.
     switch (side) {

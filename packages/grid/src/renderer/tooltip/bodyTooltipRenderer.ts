@@ -13,12 +13,15 @@ import {
   findRendererTooltipTarget,
   getRendererTooltipAnchor,
   getRendererTooltipContent,
+  getRendererTooltipPlacement,
   RENDERER_TOOLTIP_TARGET_DISPOSED,
 } from "./rendererTooltipTarget";
 
 export interface BodyTooltipRendererParams {
   core: GridCore;
   api: IGridAPI;
+  /** Grid root, used to delegate tooltips from grid-owned UI outside the body/header. */
+  root: HTMLElement;
   /** The body element pointer events are delegated from and live cells are queried under. */
   body: HTMLElement;
   /** The header wrapper element, for header-cell tooltips. */
@@ -33,7 +36,7 @@ export interface BodyTooltipRendererParams {
   options: () => ResolvedTooltipOptions;
 }
 
-/** What a tooltip is anchored to: a body cell (by view/col index) or a header cell (by colId). */
+/** What a tooltip is anchored to: a body cell, header cell, or registered grid UI control. */
 type TooltipTarget =
   | {
       kind: "body";
@@ -43,7 +46,8 @@ type TooltipTarget =
       clientY: number;
       rendererTarget?: Element;
     }
-  | { kind: "header"; colId: string; clientX: number; clientY: number };
+  | { kind: "header"; colId: string; clientX: number; clientY: number }
+  | { kind: "ui"; rendererTarget: Element; clientX: number; clientY: number };
 
 function sameTarget(a: TooltipTarget | null, b: TooltipTarget | null): boolean {
   if (!a || !b || a.kind !== b.kind) return false;
@@ -55,6 +59,7 @@ function sameTarget(a: TooltipTarget | null, b: TooltipTarget | null): boolean {
     );
   }
   if (a.kind === "header" && b.kind === "header") return a.colId === b.colId;
+  if (a.kind === "ui" && b.kind === "ui") return a.rendererTarget === b.rendererTarget;
   return false;
 }
 
@@ -89,9 +94,11 @@ export class BodyTooltipRenderer {
     this.params.body.addEventListener("mouseover", this.handleMouseOver);
     this.params.body.addEventListener("mouseout", this.handleMouseOut);
     this.params.body.addEventListener("mousemove", this.handleMouseMove);
-    this.params.body.addEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     this.params.headerWrapper.addEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.addEventListener("mouseout", this.handleMouseOut);
+    this.params.root.addEventListener("mouseover", this.handleUiMouseOver);
+    this.params.root.addEventListener("mouseout", this.handleUiMouseOut);
+    this.params.root.addEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     // Rows recycle on scroll, so the safe v1 behavior is to dismiss. Scroll doesn't bubble; the
     // capture phase catches it from any inner scroller. Window resize invalidates positions too.
     document.addEventListener("scroll", this.handleScroll, true);
@@ -106,9 +113,11 @@ export class BodyTooltipRenderer {
     this.params.body.removeEventListener("mouseover", this.handleMouseOver);
     this.params.body.removeEventListener("mouseout", this.handleMouseOut);
     this.params.body.removeEventListener("mousemove", this.handleMouseMove);
-    this.params.body.removeEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     this.params.headerWrapper.removeEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.removeEventListener("mouseout", this.handleMouseOut);
+    this.params.root.removeEventListener("mouseover", this.handleUiMouseOver);
+    this.params.root.removeEventListener("mouseout", this.handleUiMouseOut);
+    this.params.root.removeEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
     document.removeEventListener("scroll", this.handleScroll, true);
     window.removeEventListener("resize", this.handleScroll);
     document.removeEventListener("keydown", this.handleKeyDown, true);
@@ -126,7 +135,7 @@ export class BodyTooltipRenderer {
 
   private handleRendererTargetDisposed = (event: Event) => {
     if (
-      this.active?.kind === "body" &&
+      (this.active?.kind === "body" || this.active?.kind === "ui") &&
       this.active.rendererTarget === event.target
     ) {
       this.hideNow();
@@ -220,6 +229,25 @@ export class BodyTooltipRenderer {
     this.params.floating.show(content, this.floatingOptsFor(this.active, e.clientX, e.clientY));
   };
 
+  private handleUiMouseOver = (e: MouseEvent) => {
+    if (!this.params.options().enabled) return;
+    const target = this.locateUi(e.target, e.clientX, e.clientY);
+    if (!target) return;
+    if (sameTarget(this.active, target)) {
+      if (this.hideTimer != null) this.cancelHide();
+      return;
+    }
+    this.scheduleShow(target);
+  };
+
+  private handleUiMouseOut = (e: MouseEvent) => {
+    const source = this.locateUi(e.target, e.clientX, e.clientY);
+    if (!source) return;
+    const destination = this.locateUi(e.relatedTarget, e.clientX, e.clientY);
+    if (destination && sameTarget(destination, source)) return;
+    this.scheduleHide();
+  };
+
   // ---------------- scheduling ----------------
 
   private scheduleShow(target: TooltipTarget) {
@@ -261,7 +289,11 @@ export class BodyTooltipRenderer {
   // ---------------- show ----------------
 
   private showFor(target: TooltipTarget) {
-    const runtime = target.kind === "body" ? this.resolveBody(target) : this.resolveHeader(target);
+    const runtime = target.kind === "body"
+      ? this.resolveBody(target)
+      : target.kind === "header"
+        ? this.resolveHeader(target)
+        : this.resolveUi(target);
     if (!runtime) {
       this.hideNow();
       return;
@@ -288,12 +320,20 @@ export class BodyTooltipRenderer {
   private columnForTarget(target: TooltipTarget): Column | null | undefined {
     return target.kind === "body"
       ? this.params.leafColumns()[target.colIdx]
-      : this.params.getColumnById(target.colId);
+      : target.kind === "header"
+        ? this.params.getColumnById(target.colId)
+        : null;
   }
 
   /** Grid-level resolved options with the target column's `tooltipOptions` layered on top. */
   private optionsForTarget(target: TooltipTarget): ResolvedTooltipOptions {
-    return resolveColumnTooltipOptions(this.params.options(), this.columnForTarget(target)?.tooltipOptions);
+    const options = resolveColumnTooltipOptions(
+      this.params.options(),
+      this.columnForTarget(target)?.tooltipOptions,
+    );
+    if (target.kind !== "ui") return options;
+    const placement = getRendererTooltipPlacement(target.rendererTarget);
+    return placement ? { ...options, placement } : options;
   }
 
   private floatingOptsFor(target: TooltipTarget, x: number, y: number) {
@@ -395,6 +435,13 @@ export class BodyTooltipRenderer {
     return createTooltipComponentRuntime(col.headerTooltip as TooltipComponent, params);
   }
 
+  private resolveUi(target: { kind: "ui"; rendererTarget: Element }): TooltipComponentRuntime | null {
+    const content = getRendererTooltipContent(target.rendererTarget);
+    return content != null && String(content).length > 0
+      ? this.textRuntime(String(content))
+      : null;
+  }
+
   /** A minimal text-only runtime (no destroy needed). */
   private textRuntime(text: string): TooltipComponentRuntime {
     const el = document.createElement("div");
@@ -413,7 +460,10 @@ export class BodyTooltipRenderer {
         viewIdx: target.viewIdx,
       };
     }
-    return { location: "header" as const, colId: target.colId, rowId: null, colIdx: null, viewIdx: null };
+    if (target.kind === "header") {
+      return { location: "header" as const, colId: target.colId, rowId: null, colIdx: null, viewIdx: null };
+    }
+    return { location: "ui" as const, colId: null, rowId: null, colIdx: null, viewIdx: null };
   }
 
   // ---------------- DOM helpers ----------------
@@ -441,6 +491,13 @@ export class BodyTooltipRenderer {
     return { kind: "body", viewIdx, colIdx, clientX, clientY, rendererTarget };
   }
 
+  private locateUi(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {
+    const el = target as HTMLElement | null;
+    if (!el || this.params.body.contains(el) || this.params.headerWrapper.contains(el)) return null;
+    const rendererTarget = findRendererTooltipTarget(el, this.params.root);
+    return rendererTarget ? { kind: "ui", rendererTarget, clientX, clientY } : null;
+  }
+
   private getTargetRect(target: TooltipTarget): DOMRect | null {
     if (target.kind === "body") {
       if (target.rendererTarget?.isConnected) {
@@ -449,8 +506,13 @@ export class BodyTooltipRenderer {
       }
       return this.getCellRect(target.viewIdx, target.colIdx);
     }
-    const hcell = document.getElementById(target.colId);
-    return hcell ? hcell.getBoundingClientRect() : null;
+    if (target.kind === "header") {
+      const hcell = document.getElementById(target.colId);
+      return hcell ? hcell.getBoundingClientRect() : null;
+    }
+    if (!target.rendererTarget.isConnected) return null;
+    const anchor = getRendererTooltipAnchor(target.rendererTarget);
+    return anchor.isConnected ? anchor.getBoundingClientRect() : null;
   }
 
   /** Find the live (recycled) cell element for a location, or null if scrolled out. */

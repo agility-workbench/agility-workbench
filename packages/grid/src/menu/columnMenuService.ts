@@ -4,6 +4,7 @@ import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
 import { Column } from "../column/column";
+import { resolveColumnPanelOptions } from "../interfaces/gridOptions";
 
 type CapSummary = {
   sortable: boolean;
@@ -29,14 +30,23 @@ export interface ColumnMenuExportTarget {
   exportColumnXLSX: (columnIDs: string[]) => void;
 }
 
+export interface ColumnPanelMenuTarget {
+  openColumnPanel: () => void;
+}
+
 export class ColumnMenuService {
   private exporter: ColumnMenuExportTarget | null = null;
+  private columnPanelTarget: ColumnPanelMenuTarget | null = null;
 
   constructor(private core: IGridCore) { }
 
   /** Wire the export target. Called by the renderer after its ExportRenderer is constructed. */
   setExportTarget(exporter: ColumnMenuExportTarget) {
     this.exporter = exporter;
+  }
+
+  setColumnPanelTarget(target: ColumnPanelMenuTarget) {
+    this.columnPanelTarget = target;
   }
 
   buildDefaultColumnMenu(ctx: ColumnMenuContext): MenuItem[] {
@@ -117,6 +127,17 @@ export class ColumnMenuService {
         items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems});
       }
     }
+    const panelOptions = resolveColumnPanelOptions(this.core.getOptions().columnPanel);
+    if (panelOptions.enabled && panelOptions.trigger === "menu") {
+      if (items.length > 0 && !items[items.length - 1].isSeparator) {
+        items.push({ isSeparator: true });
+      }
+      items.push({
+        id: "manageColumns",
+        label: "Manage columns…",
+        command: "columnPanel.open",
+      });
+    }
 
     if (ctx.colIds.length > 1) {
       items.unshift({ id: "clearSelection", label: `Clear Selection`, disabled: true });
@@ -161,6 +182,8 @@ export class ColumnMenuService {
           colIds: item.payload.colIDs,
           pinned: item.payload.pinned,
         });
+      case "columnPanel.open":
+        return this.columnPanelTarget?.openColumnPanel();
       // filter.open / filter.clear / pin / hide etc
       case "aggregate.setMany":
         return this.core.dispatch({

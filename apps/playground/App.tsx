@@ -6,6 +6,7 @@ import { Grid } from "@react-grid"; // React Data Grid Component
 import type { ReactColDef } from "@react-grid";
 import type {
   ColDef,
+  ColumnPanelTrigger,
   FormatterOptionsParams,
   GroupDisplayType,
   IServerSideDataSource,
@@ -333,6 +334,7 @@ function App() {
   const gridApiRef = useRef<IGridAPI | null>(null);
   const [groupDisplayType, setGroupDisplayType] = useState<GroupDisplayType>("singleColumn");
   const [groupByColId, setGroupByColId] = useState<string>("");
+  const [columnPanelTrigger, setColumnPanelTrigger] = useState<ColumnPanelTrigger>("rail");
 
   const applyDemoColumnConfig = (cols: ReactColDef[] = []) => {
     const currencyFormatter = (col: ReactColDef) => {
@@ -559,6 +561,20 @@ function App() {
             ))}
           </select>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <label htmlFor="column-panel-trigger" style={{ fontSize: "13px" }}>Columns trigger</label>
+          <select
+            id="column-panel-trigger"
+            value={columnPanelTrigger}
+            onChange={(e) => setColumnPanelTrigger(e.target.value as ColumnPanelTrigger)}
+          >
+            <option value="rail">Rail</option>
+            <option value="header">Header</option>
+            <option value="menu">Column menu</option>
+            <option value="footer">Footer</option>
+            <option value="toolbar">Toolbar</option>
+          </select>
+        </div>
         {rowModel === "clientSide" && (
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <label htmlFor="group-display" style={{ fontSize: "13px" }}>Group display</label>
@@ -606,6 +622,7 @@ function App() {
           rowModelType={rowModel}
           groupDisplayType={groupDisplayType}
           quickFilter
+          columnPanel={{ trigger: columnPanelTrigger }}
           serverSideDataSource={serverSideDataSource}
           serverSideAggregationSource={serverSideDataSource.getAggregates}
           serverSideBlockSize={serverSideBlockSize}

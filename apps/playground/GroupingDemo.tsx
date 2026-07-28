@@ -4,7 +4,7 @@ import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { AggregateType } from "@grid/interfaces/aggregate";
-import type { GroupDisplayType } from "@grid";
+import type { ColumnPanelTrigger, GroupDisplayType } from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 
 /**
@@ -77,6 +77,7 @@ export function GroupingDemo() {
   const [groupBy, setGroupBy] = useState<string[]>(["region", "category"]);
   const [aggregate, setAggregate] = useState(true);
   const [groupRowsSelectable, setGroupRowsSelectable] = useState(true);
+  const [columnPanelTrigger, setColumnPanelTrigger] = useState<ColumnPanelTrigger>("rail");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "region", key: "region", label: "Region", width: 130 },
@@ -101,9 +102,9 @@ export function GroupingDemo() {
     if (!api) return;
     const model = on
       ? [
-          { key: colInstance(api, "units"), type: AggregateType.SUM },
-          { key: colInstance(api, "revenue"), type: AggregateType.SUM },
-        ].filter((m) => m.key)
+        { key: colInstance(api, "units"), type: AggregateType.SUM },
+        { key: colInstance(api, "revenue"), type: AggregateType.SUM },
+      ].filter((m) => m.key)
       : [];
     api.dispatch({ type: "aggregateModelSet", aggregateModels: model as any });
   };
@@ -170,6 +171,21 @@ export function GroupingDemo() {
         </button>
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <label htmlFor="column-panel-trigger" style={{ fontSize: "13px" }}>Columns trigger</label>
+        <select
+          id="column-panel-trigger"
+          value={columnPanelTrigger}
+          onChange={(e) => setColumnPanelTrigger(e.target.value as ColumnPanelTrigger)}
+        >
+          <option value="rail">Rail</option>
+          <option value="header">Header</option>
+          <option value="menu">Column menu</option>
+          <option value="footer">Footer</option>
+          <option value="toolbar">Toolbar</option>
+        </select>
+      </div>
+
       {/* minWidth:0 keeps the grid from widening the page when the pinned auto-group column appears. */}
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         <Grid
@@ -183,6 +199,7 @@ export function GroupingDemo() {
           groupRowsSelectable={groupRowsSelectable}
           style={{ width: "100%", height: "100%" }}
           onGridReady={handleReady}
+          columnPanel={{ trigger: columnPanelTrigger }}
         />
       </div>
     </div>

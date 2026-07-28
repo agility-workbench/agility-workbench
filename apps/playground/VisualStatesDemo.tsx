@@ -296,6 +296,7 @@ export function VisualStatesDemo() {
           bodyContextMenu={bodyContextMenu}
           showColumnButtonsOnHover={buttonsOnHover}
           theme={theme}
+          columnPanel
           style={{ width: "100%", height: "100%" }}
         />
       </div>

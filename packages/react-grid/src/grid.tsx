@@ -266,6 +266,18 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tooltipKey]);
 
+    // The docked column panel can be enabled/disabled or resized without recreating the grid.
+    const columnPanelKey = JSON.stringify(props.columnPanel ?? null);
+    const columnPanelMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!columnPanelMountedRef.current) {
+        columnPanelMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.renderer.setColumnPanelOptions(props.columnPanel);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [columnPanelKey]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {

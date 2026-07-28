@@ -54,6 +54,7 @@ export class HeaderRenderer {
     } = this.elements;
     const body = this.params.getBody();
     const headerHeight = core.options.headerHeight * core.getColumnModel().maxHeaderDepth;
+    this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
     headerWrapper.style.height = `${headerHeight}px`;
     headerWrapper.style.minHeight = `${headerHeight}px`;
     leadingHeader.style.height = `${headerHeight}px`;

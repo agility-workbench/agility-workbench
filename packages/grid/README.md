@@ -43,6 +43,36 @@ core.dispatch({ type: "init" });
 core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 }] });
 ```
 
+## Column panel
+
+Enable the built-in right-side column panel to let users search, show/hide, pin, and reorder
+columns. Changes apply immediately; Reset restores the layout captured from the latest column
+definitions.
+
+```ts
+const core = new GridCore(new CanvasMeasurer(), {
+  columnDefs,
+  columnPanel: {
+    trigger: "toolbar",
+    defaultOpen: false,
+    width: 320,
+  },
+});
+```
+
+Pass `columnPanel: true` for the default right rail. Every trigger opens the same right-hand drawer:
+
+| Trigger | Entry point |
+| --- | --- |
+| `"rail"` | Full-height collapsed rail on the right (default) |
+| `"header"` | Empty full-height right gutter, with the toggle in its header corner |
+| `"menu"` | **Manage columns…** in the column button and header context menus |
+| `"footer"` | Empty full-height right gutter, with the toggle in its footer corner |
+| `"toolbar"` | Grid toolbar above the header, button at the extreme right |
+
+Reordering works by drag-and-drop and through accessible Move up/down controls. Trigger and width
+changes are applied live by the React binding without remounting the grid.
+
 ## Sparklines
 
 `SparklineRenderer` plots the array returned as the cell value. Keep data selection in the

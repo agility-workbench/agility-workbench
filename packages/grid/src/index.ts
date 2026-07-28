@@ -63,6 +63,8 @@ export type {
   QuickFilterOptions,
   QuickFilterPositionOptions,
   QuickFilterMatchMode,
+  ColumnPanelOptions,
+  ColumnPanelTrigger,
   InitialSortItem,
   SortingOrder,
   MultiSortKey,

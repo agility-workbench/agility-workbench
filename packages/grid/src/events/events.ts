@@ -60,7 +60,7 @@ export type GridEventViewportChangedParams = {
 };
 
 export type GridEventColumnsChangedParams = {
-  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "add";
+  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "group" | "add";
   changedColIds?: ColId[];
 };
 
@@ -158,8 +158,8 @@ export type GridEventRowClickedParams = {
 
 export type GridEventTooltipParams = {
   /** Where the tooltip is anchored. */
-  location: "body" | "header";
-  /** Column instance id (both body and header tooltips). */
+  location: "body" | "header" | "ui";
+  /** Column instance id for body/header tooltips; null for grid UI tooltips. */
   colId: ColId | null;
   /** Row id (body tooltips only; null for header tooltips). */
   rowId: GridId | null;

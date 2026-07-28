@@ -1,6 +1,6 @@
 # Grid — Technical Architecture & Feature Reference
 
-> **Doc status:** Refreshed 2026-07-27 against branch `mono-repo`. This is now an
+> **Doc status:** Refreshed 2026-07-28 against branch `mono-repo`. This is now an
 > **npm-workspaces monorepo** publishing two packages — `@agility-workbench/grid` (core) and
 > `@agility-workbench/react-grid` (React binding). For the repository/packaging/publishing story see
 > [`../maintainers/repository.md`](../maintainers/repository.md); this document covers the grid's
@@ -11,7 +11,7 @@
 > & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
-> functions**, and **quick-filter layout/anchoring options**. The suite is now **458 tests across 59
+> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **494 tests across 65
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -27,6 +27,9 @@ Grouped by area; each maps to a §5 sub-table.
 - **ActionFrame** (§5.15) — a persistent, Sheets-comment-style frame on a body cell with a
   client-owned form popover. Grid owns the frame/chrome/positioning/lifecycle; content is a custom
   component. Reuses `FloatingAnchor` in *sticky* mode (conceal-on-scroll-out, re-show on scroll-in).
+- **Column panel** (§5.16) — opt-in docked column management with five trigger modes (rail, header,
+  column/header menus, footer, toolbar), search, live visibility and pinning controls,
+  drag/keyboard reordering, responsive column-state refresh, and layout reset.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
   cell renderer.
@@ -70,7 +73,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (458 tests / 59 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (494 tests / 65 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -266,6 +269,9 @@ packages/grid/src/
 │   │
 │   ├── quickFilter/           Global search widget
 │   │   └── quickFilterWidget.ts  Floating widget: Ctrl/Cmd+F, options popover, anchoring/placement
+│   │
+│   ├── columnPanel/           Docked column-management sidebar
+│   │   └── columnPanelRenderer.ts Search, visibility, pinning, drag/keyboard order, layout reset
 │   │
 │   ├── clipboard/             Copy/cut/paste
 │   │   ├── clipboardRenderer.ts Selection → TSV serialization, paste with tiling
@@ -691,6 +697,22 @@ lifecycle; the content is a custom component.
 | Single-frame invariant (closes editor / prior frame) | ✅ Complete | `actionFrameRenderer.ts` |
 | API (`openActionFrame` / `closeActionFrame` / `getActionFrameCell`) + event (`actionFrameChanged`) | ✅ Complete | `api/api.ts`, `events/events.ts` |
 
+### 5.16 Column Panel Features
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| Shared right-hand management drawer | ✅ Complete | `columnPanel: true` or `ColumnPanelOptions`; `renderer/columnPanel/columnPanelRenderer.ts` |
+| Trigger: full-height right rail (default) | ✅ Complete | `trigger: "rail"` |
+| Trigger: header corner in an empty right gutter | ✅ Complete | `trigger: "header"`; reserves the gutter through header and body, so no data column sits beneath the toggle |
+| Trigger: column button + header context menus | ✅ Complete | `trigger: "menu"` → **Manage columns…**; `ColumnMenuService` |
+| Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
+| Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
+| Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
+| Show/hide and left/right pinning | ✅ Complete | Dispatches the existing `columnVisibility` / `columnPin` actions |
+| Pointer and keyboard reordering | ✅ Complete | Native drag/drop plus labelled Move up/down controls |
+| Reset to latest column definitions | ✅ Complete | Captured `ColumnState` reapplied through `columnStateSet` |
+| Live React option changes | ✅ Complete | `GridRenderer.setColumnPanelOptions`; React layout effect |
+
 ---
 
 ## 6. Key Design Patterns
@@ -783,7 +805,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **458 tests across 59
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **494 tests across 65
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 
@@ -857,6 +879,8 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Conditional styling** — `getRowClass` / `getRowStyle` / `cellClass` / `cellStyle`.
 - **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state + interaction
   options**, **custom filter function**.
+- **Column panel / column chooser** — docked search, show/hide, pinning, drag/keyboard ordering, and
+  reset (`renderer/columnPanel/`).
 
 ### Genuine gaps (no implementation)
 
@@ -867,7 +891,6 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Master/detail rows** — none (full-width rows exist, but no expandable detail panel).
 
 **Tier 3 — platform features:**
-- **Tool panel / sidebar / column chooser** — column show/hide/pin/group is only via the context menu.
 - **Server-side grouping** — grouping is CSRM-only (`ssrm` `getGroupNodes` returns `[]`).
 - **Pivoting** — appears only as a string in event `reason` enums; no model/logic.
 - **Accessibility** — ARIA is menu/filter-only; the data grid lacks `role="grid"/"row"/"gridcell"/"columnheader"`, row/col counts, and a roving-tabindex focus model.

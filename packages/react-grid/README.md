@@ -47,6 +47,7 @@ export function Example() {
           rowData={rowData}
           columnDefs={columnDefs}
           rowIdKey="id"
+          columnPanel={{ trigger: "toolbar" }}
           theme={themeDark.withParams({ accentColor: "#e11d48", rowHeight: 40 })}
           onGridReady={(readyApi) => {
             setApi(readyApi);
@@ -65,6 +66,9 @@ The React binding creates and attaches the renderer after the host element mount
 `React.StrictMode` effect replay is supported. In development, `onGridReady` may run once
 for each live setup React creates; each callback receives a live API, and refs are cleared
 when a setup is cleaned up.
+
+`columnPanel.trigger` accepts `"rail"`, `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. All
+five entry points open the same right-hand column-management drawer.
 
 ## Styling
 

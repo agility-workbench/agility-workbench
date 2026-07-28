@@ -192,6 +192,7 @@ export class GridCore implements IGridCore {
       defaultColDef: options.defaultColDef,
       tooltip: options.tooltip ?? true,
       quickFilter: options.quickFilter ?? false,
+      columnPanel: options.columnPanel ?? false,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
@@ -748,7 +749,7 @@ export class GridCore implements IGridCore {
     // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "defs" });
+    this.emit("columnsChanged", { reason: "group" });
     this.rowModel.applyRequest(this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
     // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
     // live on the group nodes built during applyRequest).
@@ -788,7 +789,7 @@ export class GridCore implements IGridCore {
     this.options.groupDisplayType = groupDisplayType;
     this.columnModel.setRowGroupColumns(this.groupColumns, groupDisplayType);
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "defs" });
+    this.emit("columnsChanged", { reason: "group" });
 
     const changedColIds = this.autosizeColumns();
     if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
