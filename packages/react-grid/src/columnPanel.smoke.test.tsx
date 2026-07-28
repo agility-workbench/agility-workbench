@@ -76,6 +76,8 @@ describe("column panel", () => {
     const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
     const reset = container.querySelector<HTMLButtonElement>(".pte-column-panel-reset")!;
     const modified = container.querySelector<HTMLElement>(".pte-column-panel-modified")!;
+    const announcer = container.querySelector<HTMLElement>(".pte-column-panel-announcer")!;
+    expect(announcer.getAttribute("aria-live")).toBe("polite");
     expect(reset.disabled).toBe(true);
     expect(modified.hidden).toBe(true);
 
@@ -99,6 +101,7 @@ describe("column panel", () => {
       .toBe(true);
     expect(reset.disabled).toBe(false);
     expect(modified.hidden).toBe(false);
+    expect(announcer.textContent).toBe("Region hidden");
 
     const revenuePin = panelRow(container, "revenue")
       .querySelector<HTMLSelectElement>(".pte-column-panel-pin")!;
@@ -110,6 +113,7 @@ describe("column panel", () => {
     expect(
       container.querySelector('.pte-column-panel-section[data-section="left"] [data-col-id="revenue"]'),
     ).not.toBeNull();
+    expect(announcer.textContent).toBe("Revenue pinned left");
 
     // Move Region above Name with the keyboard-accessible order control.
     const regionUp = panelRow(container, "region")
@@ -120,6 +124,7 @@ describe("column panel", () => {
       .sort((a, b) => a.order! - b.order!)
       .map((state) => state.colId);
     expect(centerOrder).toEqual(["region", "name"]);
+    expect(announcer.textContent).toBe("Region moved to position 1 of 2");
 
     await act(async () => {
       reset.click();
@@ -129,6 +134,7 @@ describe("column panel", () => {
     expect(api.getColumnModel().getByColId("revenue")!.pinned).toBeNull();
     expect(reset.disabled).toBe(true);
     expect(modified.hidden).toBe(true);
+    expect(announcer.textContent).toBe("Column layout reset");
     await act(async () => root.unmount());
   });
 
@@ -152,6 +158,8 @@ describe("column panel", () => {
     expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(true);
     expect(api.getColumnModel().getByColId("name")!.hidden).toBe(false);
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(false);
+    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
+      .toBe("1 matching column hidden");
 
     await act(async () => bulk.click());
     expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(false);
@@ -218,6 +226,8 @@ describe("column panel", () => {
     });
 
     expect(api.getColumnState().map((state) => state.colId)).toEqual(["region", "revenue", "name"]);
+    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
+      .toBe("Name moved to position 3 of 3");
     await act(async () => root.unmount());
   });
 

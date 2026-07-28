@@ -714,6 +714,7 @@ lifecycle; the content is a custom component.
 | Pointer and keyboard reordering | ✅ Complete | Native drag/drop plus labelled Move up/down controls |
 | Reset to latest column definitions | ✅ Complete | Captured `ColumnState` reapplied through `columnStateSet` |
 | Modified-state feedback | ✅ Complete | Footer status and Reset availability track managed visibility, pinning, and order against the latest definition baseline |
+| Accessible action feedback | ✅ Complete | Polite atomic live region announces individual/bulk visibility, pinning, ordering, and reset results |
 | Live React option changes | ✅ Complete | `GridRenderer.setColumnPanelOptions`; React layout effect |
 
 ---

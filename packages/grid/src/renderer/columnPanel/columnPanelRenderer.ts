@@ -43,6 +43,7 @@ export class ColumnPanelRenderer {
   private bulkVisibilityCheckbox = createElement("input", "pte-column-panel-bulk-checkbox");
   private bulkVisibilityLabel = span("pte-column-panel-bulk-label", "All columns");
   private list = div("pte-column-panel-list");
+  private announcer = div("pte-column-panel-announcer");
   private modifiedIndicator = span("pte-column-panel-modified", "Modified");
   private resetButton = button("pte-column-panel-reset", "Reset layout");
   private triggerButton = button("pte-column-panel-trigger");
@@ -173,13 +174,14 @@ export class ColumnPanelRenderer {
 
     const footer = div("pte-column-panel-footer");
     this.modifiedIndicator.hidden = true;
-    this.modifiedIndicator.setAttribute("role", "status");
     this.resetButton.type = "button";
     this.resetButton.disabled = true;
     this.resetButton.addEventListener("click", () => this.resetLayout());
     footer.append(this.modifiedIndicator, this.resetButton);
 
-    this.content.append(header, this.searchInput, this.bulkVisibility, this.list, footer);
+    this.announcer.setAttribute("aria-live", "polite");
+    this.announcer.setAttribute("aria-atomic", "true");
+    this.content.append(header, this.searchInput, this.bulkVisibility, this.list, footer, this.announcer);
     this.panel.append(this.railButton, this.content);
   }
 
@@ -258,6 +260,7 @@ export class ColumnPanelRenderer {
       state: this.initialState.map((item) => ({ ...item })),
       defaultState: { hidden: true, pinned: null },
     });
+    this.announce("Column layout reset");
   }
 
   private getPanelColumns(): PanelColumn[] {
@@ -329,11 +332,15 @@ export class ColumnPanelRenderer {
     const eligible = this.getPanelColumns()
       .filter(({ col }) => col.hideable && this.matchesQuery(col, query));
     if (eligible.length === 0) return;
+    const hidden = !this.bulkVisibilityCheckbox.checked;
     this.params.core.dispatch({
       type: "columnVisibility",
       colIds: eligible.map(({ col }) => col.instanceID),
-      hidden: !this.bulkVisibilityCheckbox.checked,
+      hidden,
     });
+    const noun = eligible.length === 1 ? "column" : "columns";
+    const scope = query ? `matching ${noun}` : noun;
+    this.announce(`${eligible.length} ${scope} ${hidden ? "hidden" : "shown"}`);
   }
 
   private updateModifiedState(columns: PanelColumn[]): void {
@@ -378,11 +385,13 @@ export class ColumnPanelRenderer {
     checkbox.disabled = !col.hideable;
     checkbox.setAttribute("aria-label", `${state.hidden ? "Show" : "Hide"} ${col.label}`);
     checkbox.addEventListener("change", () => {
+      const hidden = !checkbox.checked;
       this.params.core.dispatch({
         type: "columnVisibility",
         colIds: [col.instanceID],
-        hidden: !checkbox.checked,
+        hidden,
       });
+      this.announce(`${col.label} ${hidden ? "hidden" : "shown"}`);
     });
 
     const label = span("pte-column-panel-label");
@@ -406,11 +415,13 @@ export class ColumnPanelRenderer {
     pin.value = state.pinned ?? "";
     pin.disabled = !col.movable;
     pin.addEventListener("change", () => {
+      const pinned = pin.value === "left" ? "left" : pin.value === "right" ? "right" : null;
       this.params.core.dispatch({
         type: "columnPin",
         colIds: [col.instanceID],
-        pinned: pin.value === "left" ? "left" : pin.value === "right" ? "right" : null,
+        pinned,
       });
+      this.announce(`${col.label} ${pinned ? `pinned ${pinned}` : "unpinned"}`);
     });
 
     const actions = div("pte-column-panel-order-actions");
@@ -454,6 +465,11 @@ export class ColumnPanelRenderer {
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
     this.applySectionOrder(ordered);
+    this.announce(`${moved.col.label} moved to position ${to + 1} of ${columns.length}`);
+  }
+
+  private announce(message: string): void {
+    this.announcer.textContent = message;
   }
 
   private applySectionOrder(orderedSection: PanelColumn[]): void {
