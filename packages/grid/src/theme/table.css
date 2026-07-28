@@ -36,6 +36,8 @@
   --pte-icon-sort-desc: url(icons/down.svg);
   --pte-icon-sort-clear: url(icons/down-up.svg);
   --pte-icon-submenu: url(icons/submenu.svg);
+  --pte-icon-group-collapsed: url(icons/right-chevron.svg);
+  --pte-icon-group-expanded: url(icons/down-chevron.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
   --pte-icon-column-hide: url(icons/column-hide.svg);
@@ -1361,12 +1363,25 @@
 
 .pte-group-toggle {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pte-group-toggle:hover {
+  background-color: var(--pte-menu-btn-hover-bg);
+}
+
+.pte-group-toggle-icon {
   width: 16px;
   height: 16px;
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;
-  cursor: pointer;
 }
 
 .pte-group-label {
@@ -1844,6 +1859,16 @@
 
 .icon-arrow-right {
   mask-image: var(--pte-icon-submenu);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-group-collapsed {
+  mask-image: var(--pte-icon-group-collapsed);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-group-expanded {
+  mask-image: var(--pte-icon-group-expanded);
   background-color: var(--pte-icon-color);
 }
 

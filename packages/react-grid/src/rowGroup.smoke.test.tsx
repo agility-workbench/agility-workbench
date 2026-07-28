@@ -67,6 +67,7 @@ describe("row grouping end-to-end via Grid", () => {
     expect(core.getRowModel().getViewCount()).toBe(2);
     expect(groupRowEls(container).length).toBeGreaterThanOrEqual(1);
     expect(toggles().length).toBeGreaterThanOrEqual(1);
+    expect(toggles().every(toggle => toggle.querySelector(".icon-group-collapsed"))).toBe(true);
 
     // A group label carries its child count.
     const labels = Array.from(container.querySelectorAll<HTMLElement>(".pte-group-label")).map(e => e.textContent);
@@ -80,6 +81,7 @@ describe("row grouping end-to-end via Grid", () => {
       core.dispatch({ type: "groupToggleExpand", groupId: emeaId });
     });
     expect(core.getRowModel().getViewCount()).toBe(4);
+    expect(toggles().some(toggle => toggle.querySelector(".icon-group-expanded"))).toBe(true);
 
     await act(async () => root.unmount());
     container.remove();

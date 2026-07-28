@@ -14,6 +14,8 @@ const BUILT_IN_ICON_NAMES = new Set([
   "sort-desc",
   "sort-clear",
   "submenu",
+  "group-collapsed",
+  "group-expanded",
   "check",
   "group",
   "column-hide",

@@ -14,10 +14,14 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
   cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
 
   const toggle = document.createElement("span");
-  toggle.className = "pte-group-toggle " + (row.isExpanded ? "icon-minus-frame" : "icon-plus-frame");
+  toggle.className = "pte-group-toggle";
   toggle.setAttribute("data-group-id", row.id);
   toggle.setAttribute("role", "button");
   toggle.setAttribute("aria-expanded", String(!!row.isExpanded));
+
+  const icon = document.createElement("span");
+  icon.className = "pte-group-toggle-icon " + (row.isExpanded ? "icon-group-expanded" : "icon-group-collapsed");
+  toggle.appendChild(icon);
 
   const label = document.createElement("span");
   label.className = "pte-group-label";

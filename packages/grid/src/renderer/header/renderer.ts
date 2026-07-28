@@ -185,9 +185,9 @@ export class HeaderRenderer {
       const span = createElement("span", "pte-hcell-expander-icon");
       expander.appendChild(span);
       if (col.groupExpandState === "open") {
-        span.classList.add("icon-minus-frame");
+        span.classList.add("icon-group-expanded");
       } else {
-        span.classList.add("icon-plus-frame");
+        span.classList.add("icon-group-collapsed");
       }
       headerContent.appendChild(expander);
     }
