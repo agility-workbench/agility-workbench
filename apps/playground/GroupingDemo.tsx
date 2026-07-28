@@ -76,7 +76,7 @@ export function GroupingDemo() {
   const [displayType, setDisplayType] = useState<GroupDisplayType>("singleColumn");
   const [groupBy, setGroupBy] = useState<string[]>(["region", "category"]);
   const [aggregate, setAggregate] = useState(true);
-  const [groupRowsSelectable, setGroupRowsSelectable] = useState(false);
+  const [groupRowsSelectable, setGroupRowsSelectable] = useState(true);
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "region", key: "region", label: "Region", width: 130 },

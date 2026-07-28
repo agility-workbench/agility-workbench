@@ -157,4 +157,49 @@ describe("row grouping end-to-end via Grid", () => {
     await act(async () => root.unmount());
     container.remove();
   });
+
+  it("updates groupRowsSelectable live without remounting the grid", async () => {
+    const { container, apiRef, root } = await mountGrid("groupRows");
+    const originalApi = apiRef.current!;
+    const core = originalApi.getCore();
+
+    await act(async () => {
+      core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    });
+    const groupCell = container.querySelector<HTMLElement>(".pte-full-width-row .pte-full-width-cell")!;
+
+    await act(async () => {
+      groupCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      groupCell.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    });
+    expect(core.getSelectionRange()).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={ROWS}
+          columnDefs={[
+            { colId: "region", key: "region", label: "Region" },
+            { colId: "sales", key: "sales", label: "Sales" },
+          ]}
+          rowIdKey="id"
+          groupDisplayType="groupRows"
+          groupRowsSelectable
+        />,
+      );
+    });
+    expect(apiRef.current).toBe(originalApi);
+    expect(core.getOptions().groupRowsSelectable).toBe(true);
+
+    const liveGroupCell = container.querySelector<HTMLElement>(".pte-full-width-row .pte-full-width-cell")!;
+    await act(async () => {
+      liveGroupCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      liveGroupCell.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    });
+    expect(core.getSelectionRange()).not.toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
 });

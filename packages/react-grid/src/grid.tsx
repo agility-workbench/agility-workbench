@@ -137,6 +137,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.groupDisplayType]);
 
     useLayoutEffect(() => {
+      instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
+    }, [props.groupRowsSelectable]);
+
+    useLayoutEffect(() => {
       const instance = instanceRef.current;
       if (!instance || props.rowModelType !== "serverSide") return;
       if (!props.serverSideDataSource) return;

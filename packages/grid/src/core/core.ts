@@ -786,6 +786,19 @@ export class GridCore implements IGridCore {
     if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
   }
 
+  setGroupRowsSelectable(groupRowsSelectable: boolean): void {
+    if (this.options.groupRowsSelectable === groupRowsSelectable) return;
+
+    this.options.groupRowsSelectable = groupRowsSelectable;
+    // A group row may already own a cell/range/row selection. Clear selection when disabling so
+    // the grid does not retain a visibly selected row that is no longer a valid selection target.
+    if (!groupRowsSelectable) {
+      this.selectionModel.clearAll();
+      this.emitSelectionChanged("model");
+      this.emitFocusChanged(null, "api");
+    }
+  }
+
   private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc"): boolean {
     const currSortID = this.sorts.id;
     const traverse = (column: Column) => {

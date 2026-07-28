@@ -295,4 +295,20 @@ describe("GridCore group row selectability (groupRowsSelectable)", () => {
     expect(active.row).toBe(leafBeforeGroupIdx + 1);
     expect(c.getRowModel().getRowNodeAtViewIndex(active.row)!.isGroup).toBe(true);
   });
+
+  it("updates groupRowsSelectable in place", () => {
+    const c = grouped();
+    const nodes = viewNodes(c);
+    const leafBeforeGroupIdx = nodes.findIndex((n, i) => !n.isGroup && nodes[i + 1]?.isGroup);
+
+    c.setGroupRowsSelectable(true);
+    c.dispatch({ type: "focusSet", viewIdx: leafBeforeGroupIdx, colIdx: 0, reason: "api" });
+    c.dispatch({ type: "navigate", dir: "down" });
+    expect(c.getRowModel().getRowNodeAtViewIndex(c.getActiveCell()!.row)!.isGroup).toBe(true);
+
+    c.setGroupRowsSelectable(false);
+    expect(c.getOptions().groupRowsSelectable).toBe(false);
+    expect(c.getSelectionRange()).toBeNull();
+    expect(c.getActiveCell()).toBeNull();
+  });
 });

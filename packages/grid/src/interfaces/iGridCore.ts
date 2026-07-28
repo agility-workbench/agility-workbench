@@ -103,6 +103,8 @@ export interface IGridCore {
   getRowGroupColumns(): Column[];
   /** Change how grouped rows are displayed without rebuilding the grid instance. */
   setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
+  /** Change whether group rows can be selected without rebuilding the grid instance. */
+  setGroupRowsSelectable(groupRowsSelectable: boolean): void;
   setAggregateModel(aggregates: AggregateModel[]): void;
   setAggregateScope(scope: AggregateScope): void;
 
