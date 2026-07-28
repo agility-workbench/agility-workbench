@@ -213,6 +213,12 @@ export interface ColDef {
   filter?: Filter;
   filterParams?: FilterParams;
   groupable?: boolean;
+  /**
+   * When true (default), the column menu includes aggregation actions for this column. For a
+   * multi-column selection, every selected column must be aggregatable for the aggregate item to
+   * appear.
+   */
+  aggregatable?: boolean;
   resizable?: boolean;
   movable?: boolean;
   hideable?: boolean;

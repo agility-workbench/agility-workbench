@@ -70,6 +70,7 @@ export class Column {
   filter?: Filter;
   filterParams?: FilterParams;
   groupable: boolean;
+  aggregatable: boolean;
   resizable: boolean;
   movable: boolean;
   hideable?: boolean;
@@ -110,6 +111,7 @@ export class Column {
     this.hidden = false;
     this.sortable = true;
     this.groupable = true;
+    this.aggregatable = true;
     this.resizable = true;
     this.movable = true;
     this.showColumnMenu = true;
@@ -174,6 +176,7 @@ export class Column {
     this.filter = col.filter;
     this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);
+    this.aggregatable = !isFalse(col.aggregatable);
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
     this.hideable = !isFalse(col.hideable);
@@ -231,6 +234,7 @@ export class Column {
   /* The following props are derived from children and should not be set directly on group columns
     * - sortable
     * - groupable
+    * - aggregatable
     * - resizable
     * - movable
     * - hideable
@@ -240,6 +244,7 @@ export class Column {
     this.children.forEach(c => c.updatePropsByChildren());
     this.sortable = this.children.every(c => c.sortable);
     this.groupable = this.children.every(c => c.groupable);
+    this.aggregatable = this.children.every(c => c.aggregatable);
     this.resizable = this.children.every(c => c.resizable);
     this.movable = this.children.every(c => c.movable);
     this.hideable = this.children.every(c => c.hideable);

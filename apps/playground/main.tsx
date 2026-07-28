@@ -13,6 +13,7 @@ import QuickFilterDemo from "./QuickFilterDemo";
 import HeaderComponentDemo from "./HeaderComponentDemo";
 import TooltipDemo from "./TooltipDemo";
 import ActionFrameDemo from "./ActionFrameDemo";
+import FooterVisibilityDemo from "./FooterVisibilityDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -26,6 +27,7 @@ const PAGES = [
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
   { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },
+  { id: "footerVisibility", label: "Footer visibility", render: () => <FooterVisibilityDemo /> },
 ] as const;
 
 function Root() {
@@ -34,7 +36,7 @@ function Root() {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <nav style={{ display: "flex", gap: 8, padding: "8px 8px 0" }}>
+      <nav style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "8px 8px 0" }}>
         {PAGES.map((p) => (
           <button
             key={p.id}

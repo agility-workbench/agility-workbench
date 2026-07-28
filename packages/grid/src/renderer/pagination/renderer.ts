@@ -21,6 +21,8 @@ export class PaginationRenderer {
   aggregateScopeSelect!: HTMLSelectElement;
   aggregateClearBtn!: HTMLButtonElement;
   private paginator: HTMLDivElement;
+  private controlsPaginationEnabled: boolean | null = null;
+  private controlsAggregationAvailable: boolean | null = null;
 
   constructor(private params: PaginationRendererParams) {
     this.paginator = createPaginationWrapper();
@@ -42,8 +44,12 @@ export class PaginationRenderer {
       totalPageCount,
       pageSizes,
     } = core.getPaginationInfo();
+    this.controlsPaginationEnabled = paginationEnabled;
+    this.controlsAggregationAvailable = this.hasAggregatableColumns();
 
-    paginator.appendChild(this.buildAggregationControls());
+    if (this.controlsAggregationAvailable) {
+      paginator.appendChild(this.buildAggregationControls());
+    }
 
     if (!paginationEnabled) {
       this.updateControls();
@@ -204,6 +210,13 @@ export class PaginationRenderer {
       totalRowCount,
       totalPageCount,
     } = params || this.params.core.getPaginationInfo();
+    if (
+      this.controlsPaginationEnabled !== paginationEnabled
+      || this.controlsAggregationAvailable !== this.hasAggregatableColumns()
+    ) {
+      this.buildControls();
+      return;
+    }
     if (!paginationEnabled) {
       this.updateAggregateControls();
       this.paginator.classList.toggle("visible", this.params.core.getAggregateModel().length > 0);
@@ -232,7 +245,7 @@ export class PaginationRenderer {
   }
 
   updateAggregateControls(_params?: GridEventAggregateChangedParams) {
-    if (!this.aggregateScopeSelect || !this.aggregateClearBtn) return;
+    if (!this.controlsAggregationAvailable || !this.aggregateScopeSelect || !this.aggregateClearBtn) return;
     const aggregateCount = this.params.core.getAggregateModel().length;
     const lockedToPage = this.params.core.isAggregateScopeLockedToPage();
     this.aggregateScopeSelect.value = lockedToPage ? "page" : this.params.core.getAggregateScope();
@@ -241,6 +254,12 @@ export class PaginationRenderer {
 
     const paginationEnabled = this.params.core.getPaginationInfo().paginationEnabled;
     this.paginator.classList.toggle("visible", paginationEnabled || aggregateCount > 0);
+  }
+
+  private hasAggregatableColumns(): boolean {
+    return this.params.core.getColumnModel().getLeaves().some(
+      column => !column.isInternal() && column.aggregatable,
+    );
   }
 
   togglePagination(pagination: boolean) {

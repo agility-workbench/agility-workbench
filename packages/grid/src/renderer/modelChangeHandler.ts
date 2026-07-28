@@ -78,6 +78,7 @@ export class GridModelChangeHandler {
     }
     if (rebuiltRows) {
       this.params.updateWindow(true, undefined);
+      this.params.updatePaginationControls();
     }
   }
 

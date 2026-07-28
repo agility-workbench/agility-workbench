@@ -8,6 +8,7 @@ import { Column } from "../column/column";
 type CapSummary = {
   sortable: boolean;
   groupable: boolean;
+  aggregatable: boolean;
   hideable: boolean;
   pinning: "left" | "right" | "mixed" | null;
   sortDir: "asc" | "desc" | "mixed" | null;
@@ -67,7 +68,7 @@ export class ColumnMenuService {
     }
     const groupItem = this.getGroupMenuItem(colIDs, ctx.targetColId, cap.groupable, s);
     if (groupItem) items.push(groupItem);
-    if (cap.aggType) {
+    if (cap.aggregatable && cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
         item.subMenu = [
@@ -193,6 +194,7 @@ export class ColumnMenuService {
 
     let sortable = true;
     let groupable = true;
+    let aggregatable = true;
     let hideable = true;
     let colTypes: ColumnType | "mixed" | null = null;
     let sortDir: "asc" | "desc" | "mixed" | null = null;
@@ -212,6 +214,7 @@ export class ColumnMenuService {
         }
       }
       if (!col.groupable) groupable = false;
+      if (!col.aggregatable) aggregatable = false;
       if (!col.hideable) hideable = false;
       if (col.children.length == 0) {
         const colType = col.type || ColumnType.STRING;
@@ -247,6 +250,7 @@ export class ColumnMenuService {
     return {
       sortable,
       groupable,
+      aggregatable,
       sortDir,
       hideable,
       pinning,

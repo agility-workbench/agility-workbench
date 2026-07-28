@@ -7,7 +7,6 @@ import type { IGridAPI } from "@agility-workbench/grid";
 import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@agility-workbench/grid";
-import { isFalse } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
 
 type GridInstance = {
@@ -227,10 +226,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.loading]);
 
     useLayoutEffect(() => {
-      const core = instanceRef.current?.core;
-      if (!core) return;
+      const renderer = instanceRef.current?.renderer;
+      if (!renderer) return;
 
-      core.dispatch({ type: "paginationSet", enabled: !isFalse(props.pagination), pageIndex: 0, pageSize: 100 });
+      renderer.togglePagination(props.pagination ?? false);
     }, [props.pagination]);
 
     // Reconfigure the quick filter live (anchor, clearOnClose, mode, popover controls, enable/disable)
