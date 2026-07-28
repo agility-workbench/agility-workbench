@@ -36,7 +36,7 @@ import { FloatingAnchor } from "./floating/floatingAnchor";
 import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
 import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveTooltipOptions } from "../interfaces/gridOptions";
-import type { TooltipOptions } from "../interfaces/gridOptions";
+import type { RuntimeGridOptions, TooltipOptions } from "../interfaces/gridOptions";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -709,6 +709,37 @@ export class GridRenderer {
     this._quickFilterWidget?.destroy();
     this._quickFilterWidget = undefined;
     this._buildQuickFilterWidget(restore);
+  }
+
+  /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
+  setRuntimeOptions(options: RuntimeGridOptions) {
+    const previous = { ...this.core.options };
+    this.core.setRuntimeOptions(options);
+
+    if (previous.rowHover !== options.rowHover) {
+      if (options.rowHover) this._bodyRowHoverRenderer.bind();
+      else this._bodyRowHoverRenderer.destroy();
+    }
+    if (previous.columnHover !== options.columnHover) {
+      if (options.columnHover) this._bodyColumnHoverRenderer.bind();
+      else this._bodyColumnHoverRenderer.destroy();
+    }
+
+    this.root.classList.toggle("pte-text-selection", options.cellSelection === "text");
+    this.root.classList.toggle("pte-column-buttons-on-hover", options.showColumnButtonsOnHover);
+
+    const rowPaintChanged =
+      previous.zebraRows !== options.zebraRows
+      || previous.getRowClass !== options.getRowClass
+      || previous.getRowStyle !== options.getRowStyle;
+    if (rowPaintChanged) this._bodyWindowRenderer.update(true, undefined);
+
+    if (previous.highlightActiveCell !== options.highlightActiveCell) {
+      this._selectionRenderer.refreshSelectionStyles();
+    }
+    if (previous.bodyContextMenu !== options.bodyContextMenu && options.bodyContextMenu === false) {
+      this._menuRenderer.close(0);
+    }
   }
 
   // Grid-level keydown. The listener is bound to the grid root (see GridInteractionEventBinder), so

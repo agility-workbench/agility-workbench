@@ -51,10 +51,20 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onGridReadyRef = useRef(props.onGridReady);
     const getColumnMenuItemsRef = useRef(props.getColumnMenuItems);
     const bodyContextMenuRef = useRef(props.bodyContextMenu);
+    const onCellClickedRef = useRef(props.onCellClicked);
+    const onRowClickedRef = useRef(props.onRowClicked);
+    const onCellValueChangedRef = useRef(props.onCellValueChanged);
+    const onSelectionChangedRef = useRef(props.onSelectionChanged);
+    const onSortChangedRef = useRef(props.onSortChanged);
 
     onGridReadyRef.current = props.onGridReady;
     getColumnMenuItemsRef.current = props.getColumnMenuItems;
     bodyContextMenuRef.current = props.bodyContextMenu;
+    onCellClickedRef.current = props.onCellClicked;
+    onRowClickedRef.current = props.onRowClicked;
+    onCellValueChangedRef.current = props.onCellValueChanged;
+    onSelectionChangedRef.current = props.onSelectionChanged;
+    onSortChangedRef.current = props.onSortChanged;
 
     // Create, attach, announce, and destroy the lifecycle-sensitive grid resources
     // from the layout effect so React render stays pure and StrictMode can replay it safely.
@@ -62,7 +72,16 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const host = hostRef.current;
       if (!host) return;
 
-      const core = createCore(getGridOptions(props));
+      const options = getGridOptions(props);
+      // Stable bridges keep the core subscriptions intact while always invoking the latest React
+      // callback supplied by the parent.
+      options.onCellClicked = (ev) => onCellClickedRef.current?.(ev);
+      options.onRowClicked = (ev) => onRowClickedRef.current?.(ev);
+      options.onCellValueChanged = (ev) => onCellValueChangedRef.current?.(ev);
+      options.onSelectionChanged = (ev) => onSelectionChangedRef.current?.(ev);
+      options.onSortChanged = (ev) => onSortChangedRef.current?.(ev);
+
+      const core = createCore(options);
       const { renderer, api } = initDomRenderer(
         core,
         new ReactMenuAdapter({
@@ -139,6 +158,46 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     useLayoutEffect(() => {
       instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
     }, [props.groupRowsSelectable]);
+
+    useLayoutEffect(() => {
+      instanceRef.current?.renderer.setRuntimeOptions({
+        rowHover: props.rowHover ?? true,
+        columnHover: props.columnHover ?? false,
+        zebraRows: props.zebraRows ?? false,
+        getRowClass: props.getRowClass,
+        getRowStyle: props.getRowStyle,
+        highlightActiveCell: props.highlightActiveCell ?? false,
+        cellSelection: props.cellSelection ?? true,
+        rangeSelection: props.rangeSelection ?? true,
+        columnSelection: props.columnSelection ?? true,
+        showColumnButtonsOnHover: props.showColumnButtonsOnHover ?? false,
+        // Function-valued customization is resolved through bodyContextMenuRef by the adapter.
+        // Core only owns whether the browser-native mode disables the grid menu entirely.
+        bodyContextMenu: props.bodyContextMenu === false ? false : true,
+        editTrigger: props.editTrigger ?? "doubleClick",
+        suppressKeyboardEdit: props.suppressKeyboardEdit ?? false,
+        suppressTypeToEdit: props.suppressTypeToEdit ?? false,
+        moveAfterEdit: props.moveAfterEdit ?? true,
+        commitOnBlur: props.commitOnBlur ?? true,
+      });
+    }, [
+      props.rowHover,
+      props.columnHover,
+      props.zebraRows,
+      props.getRowClass,
+      props.getRowStyle,
+      props.highlightActiveCell,
+      props.cellSelection,
+      props.rangeSelection,
+      props.columnSelection,
+      props.showColumnButtonsOnHover,
+      props.bodyContextMenu,
+      props.editTrigger,
+      props.suppressKeyboardEdit,
+      props.suppressTypeToEdit,
+      props.moveAfterEdit,
+      props.commitOnBlur,
+    ]);
 
     useLayoutEffect(() => {
       const instance = instanceRef.current;

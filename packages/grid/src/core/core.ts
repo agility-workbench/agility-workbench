@@ -10,6 +10,7 @@ import {
   GroupDisplayType,
   InternalGridOptions,
   QuickFilterMatchMode,
+  RuntimeGridOptions,
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -36,6 +37,10 @@ import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 
 type SchemaSource = "auto" | "props" | "server";
+
+interface RangeColumnSnapshot {
+  layout: Array<{ id: string; section: "left" | "center" | "right" }>;
+}
 
 export class GridCore implements IGridCore {
   readonly id: string;
@@ -112,26 +117,21 @@ export class GridCore implements IGridCore {
     this.bindOptionCallbacks();
   }
 
-  // Bridge the declarative on* option callbacks to the underlying core events, so consumers can use
-  // either api.on(...) or the GridOptions callbacks interchangeably. Framework-agnostic — works for
-  // vanilla and React alike. Callbacks are read from resolved options at construction.
+  // Bridge declarative on* option callbacks to core events. Every bridge is installed even when its
+  // initial callback is absent so a framework wrapper can replace callbacks live.
   private bindOptionCallbacks() {
     const o = this.options;
-    if (o.onCellClicked) this.on("cellClicked", (ev) => o.onCellClicked!(ev));
-    if (o.onRowClicked) this.on("rowClicked", (ev) => o.onRowClicked!(ev));
-    if (o.onSelectionChanged) this.on("selectionChanged", (ev) => o.onSelectionChanged!(ev));
-    if (o.onCellValueChanged) {
-      this.on("editingChanged", (ev) => {
-        if (ev.state === "committed" && ev.cell) {
-          o.onCellValueChanged!({ rowId: ev.cell.rowId, colId: ev.cell.colId, value: ev.value });
-        }
-      });
-    }
-    if (o.onSortChanged) {
-      this.on("columnsChanged", (ev) => {
-        if (ev.reason === "sort") o.onSortChanged!({ changedColIds: ev.changedColIds });
-      });
-    }
+    this.on("cellClicked", (ev) => o.onCellClicked?.(ev));
+    this.on("rowClicked", (ev) => o.onRowClicked?.(ev));
+    this.on("selectionChanged", (ev) => o.onSelectionChanged?.(ev));
+    this.on("editingChanged", (ev) => {
+      if (ev.state === "committed" && ev.cell) {
+        o.onCellValueChanged?.({ rowId: ev.cell.rowId, colId: ev.cell.colId, value: ev.value });
+      }
+    });
+    this.on("columnsChanged", (ev) => {
+      if (ev.reason === "sort") o.onSortChanged?.({ changedColIds: ev.changedColIds });
+    });
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -240,6 +240,10 @@ export class GridCore implements IGridCore {
   }
 
   private setColumnDefs(colDefs: ColDef[]) {
+    const rangeSnapshot = this.captureRangeColumnSnapshot();
+    const sortedComparatorSnapshot = new Map(
+      this.sorts.items.map(item => [item.col.instanceID, item.col.userComparator]),
+    );
     this.columnModel.setColumnDefs(colDefs);
     const seededSort = this.seedInitialSort();
     const changedSortColIds = this.reconcileSortModelColumns();
@@ -247,14 +251,17 @@ export class GridCore implements IGridCore {
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
     this.autosizeColumns();
+    const activeComparatorChanged = this.sorts.items.some(
+      item => sortedComparatorSnapshot.get(item.col.instanceID) !== item.col.userComparator,
+    );
     // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
-    if (seededSort) {
+    if (seededSort || activeComparatorChanged) {
       this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
-    this.clearSelectionForColumnChange();
+    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged);
     this.emit("columnsChanged", { reason: "defs" });
     if (changedFilterColIds.length > 0) {
       this.emit("columnsChanged", { reason: "filter", changedColIds: changedFilterColIds });
@@ -793,6 +800,22 @@ export class GridCore implements IGridCore {
     // A group row may already own a cell/range/row selection. Clear selection when disabling so
     // the grid does not retain a visibly selected row that is no longer a valid selection target.
     if (!groupRowsSelectable) {
+      this.selectionModel.clearAll();
+      this.emitSelectionChanged("model");
+      this.emitFocusChanged(null, "api");
+    }
+  }
+
+  setRuntimeOptions(options: RuntimeGridOptions): void {
+    const cellSelectionBecameDisabled =
+      this.options.cellSelection === true && options.cellSelection !== true;
+    const columnSelectionBecameDisabled =
+      this.options.columnSelection && !options.columnSelection
+      && this.selectionModel.getSelectedColumnIds().size > 0;
+
+    Object.assign(this.options, options);
+
+    if (cellSelectionBecameDisabled || columnSelectionBecameDisabled) {
       this.selectionModel.clearAll();
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
@@ -1621,6 +1644,66 @@ export class GridCore implements IGridCore {
     this.selectionModel.clearRange();
     this.selectionModel.clearColumns();
     this.emitSelectionChanged("model");
+  }
+
+  private captureRangeColumnSnapshot(): RangeColumnSnapshot | null {
+    const range = this.selectionModel.getSelectionRange();
+    const anchor = this.selectionModel.getAnchor();
+    const active = this.selectionModel.getActiveCell();
+    if (!range || !anchor || !active) return null;
+
+    const leaves = this.columnModel.getLeaves();
+    const lookup = this.columnModel.leafColumnLookup;
+    return {
+      layout: leaves.map(col => ({
+        // Synthesized columns may be recreated during reconciliation; their stable internal colId
+        // identifies the same logical column. User columns retain their instance IDs by colId/key.
+        id: col.isInternal() ? col.colId : col.instanceID,
+        section: lookup.get(col.instanceID)?.section ?? "center",
+      })),
+    };
+  }
+
+  /**
+   * Preserve a cell range across a colDef refresh only when the entire visible column layout is
+   * unchanged. Any insertion/removal/hide, sequence change, or pin-region change clears the range,
+   * guaranteeing that a range can never be reinterpreted or split into discontiguous pieces.
+   */
+  private reconcileSelectionAfterColumnDefs(
+    snapshot: RangeColumnSnapshot | null,
+    rowOrderChanged: boolean,
+  ): void {
+    let changed = false;
+
+    if (snapshot) {
+      if (rowOrderChanged) {
+        this.selectionModel.clearRange();
+        changed = true;
+      } else {
+        const lookup = this.columnModel.leafColumnLookup;
+        const nextLayout = this.columnModel.getLeaves().map(col => ({
+          id: col.isInternal() ? col.colId : col.instanceID,
+          section: lookup.get(col.instanceID)?.section ?? "center",
+        }));
+        const layoutUnchanged = nextLayout.length === snapshot.layout.length
+          && nextLayout.every((entry, idx) =>
+            entry.id === snapshot.layout[idx].id
+            && entry.section === snapshot.layout[idx].section);
+
+        if (!layoutUnchanged) {
+          this.selectionModel.clearRange();
+          changed = true;
+        }
+      }
+    }
+
+    const visibleColumnIds = new Set<string>();
+    for (const id of this.selectionModel.getSelectedColumnIds()) {
+      const col = this.columnModel.getById(id);
+      if (col && !col.hidden && col.getVisibleLeaves().length > 0) visibleColumnIds.add(id);
+    }
+    changed = this.selectionModel.retainSelectedColumns(visibleColumnIds) || changed;
+    if (changed) this.emitSelectionChanged("model");
   }
 
   private emitFocusChanged(active: CellPos | null, reason: "mouse" | "keyboard" | "api"): void {

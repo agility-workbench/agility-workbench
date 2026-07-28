@@ -22,5 +22,6 @@ export class BodyColumnHoverRenderer {
 
   destroy() {
     document.removeEventListener("mouseover", this.handleMouseOver);
+    this.body.querySelectorAll(".pte-col-hover").forEach(c => c.classList.remove("pte-col-hover"));
   }
 }

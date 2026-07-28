@@ -270,9 +270,8 @@ export function VisualStatesDemo() {
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
-        {/* Remount on option changes so the renderer picks up hover-binding / class changes cleanly. */}
+        {/* Runtime options update the existing grid instance so selection and scroll state survive. */}
         <Grid
-          key={`${rowHover}-${columnHover}-${zebraRows}-${highlightActiveCell}-${conditionalStyling}-${sortConfig}-${cellSelection}-${rangeSelection}-${columnSelection}-${bodyMenu}-${editTrigger}-${suppressKeyboardEdit}-${suppressTypeToEdit}-${moveAfterEdit}-${commitOnBlur}-${buttonsOnHover}-${hideRatingMenu}-${nativeCityMenu}-${themeId}-${customColors}`}
           // cellSelection: "true" | "false" | "text" mapped to boolean | "text"
           data={rows}
           columnDefs={columnDefs}

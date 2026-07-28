@@ -6,7 +6,7 @@ import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
-import { GridOptions, GroupDisplayType } from "./gridOptions";
+import { GridOptions, GroupDisplayType, RuntimeGridOptions } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
 import { ColDef } from "./column";
 import { Column } from "../column/column";
@@ -105,6 +105,8 @@ export interface IGridCore {
   setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
   /** Change whether group rows can be selected without rebuilding the grid instance. */
   setGroupRowsSelectable(groupRowsSelectable: boolean): void;
+  /** Update behavior/presentation options that are supported after construction. */
+  setRuntimeOptions(options: RuntimeGridOptions): void;
   setAggregateModel(aggregates: AggregateModel[]): void;
   setAggregateScope(scope: AggregateScope): void;
 

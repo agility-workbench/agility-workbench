@@ -157,3 +157,133 @@ describe("rowHover toggle", () => {
     root.unmount();
   });
 });
+
+describe("visual and interaction options update live", () => {
+  it("reconfigures the existing grid instance and preserves a still-valid range", async () => {
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    const data: Row[] = [{ id: 1, name: "AAA" }, { id: 2, name: "BBB" }];
+    const columnDefs = [
+      { colId: "id", key: "id", label: "ID" },
+      { colId: "name", key: "name", label: "Name" },
+    ];
+
+    const render = async (enabled: boolean, cellSelection: boolean | "text" = true) => {
+      await act(async () => {
+        root.render(
+          <Grid
+            apiRef={apiRef}
+            data={data}
+            columnDefs={columnDefs}
+            rowIdKey="id"
+            rowHover={enabled}
+            columnHover={enabled}
+            zebraRows={enabled}
+            highlightActiveCell={enabled}
+            getRowStyle={enabled ? () => ({ opacity: "0.5" }) : undefined}
+            cellSelection={cellSelection}
+            rangeSelection={enabled}
+            columnSelection={enabled}
+            showColumnButtonsOnHover={enabled}
+            bodyContextMenu={enabled}
+            editTrigger={enabled ? "singleClick" : "none"}
+            suppressKeyboardEdit={!enabled}
+            suppressTypeToEdit={!enabled}
+            moveAfterEdit={enabled}
+            commitOnBlur={enabled}
+          />,
+        );
+      });
+    };
+
+    await render(false);
+    const originalApi = apiRef.current!;
+    await act(async () => {
+      originalApi.selectRange(0, 0);
+      originalApi.extendRangeTo(1, 0);
+    });
+
+    await render(true);
+    const core = originalApi.getCore();
+    expect(apiRef.current).toBe(originalApi);
+    expect(core.getSelectionRange()).not.toBeNull();
+    expect(container.querySelector(".pte-active-cell")).not.toBeNull();
+    expect(container.querySelector(".pte-row-alt")).not.toBeNull();
+    expect(container.querySelector<HTMLElement>(".pte-row[data-view-idx='0']")!.style.opacity).toBe("0.5");
+    const rootEl = container.querySelector<HTMLElement>("[data-pte-grid-id]")!;
+    expect(rootEl.classList.contains("pte-column-buttons-on-hover")).toBe(true);
+    expect(core.getOptions()).toMatchObject({
+      rangeSelection: true,
+      columnSelection: true,
+      editTrigger: "singleClick",
+      suppressKeyboardEdit: false,
+      suppressTypeToEdit: false,
+      moveAfterEdit: true,
+      commitOnBlur: true,
+      bodyContextMenu: true,
+    });
+
+    const cell = firstDataCell(container);
+    await act(async () => {
+      cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(container.querySelector(".pte-row-hover")).not.toBeNull();
+    expect(container.querySelector(".pte-col-hover")).not.toBeNull();
+
+    await render(false);
+    expect(core.getSelectionRange()).not.toBeNull();
+    expect(container.querySelector(".pte-active-cell")).toBeNull();
+    expect(container.querySelector(".pte-row-alt")).toBeNull();
+    expect(container.querySelector(".pte-row-hover")).toBeNull();
+    expect(container.querySelector(".pte-col-hover")).toBeNull();
+    expect(container.querySelector<HTMLElement>(".pte-row[data-view-idx='0']")!.style.opacity).toBe("");
+    expect(rootEl.classList.contains("pte-column-buttons-on-hover")).toBe(false);
+
+    await render(false, "text");
+    expect(apiRef.current).toBe(originalApi);
+    expect(core.getSelectionRange()).toBeNull();
+    expect(rootEl.classList.contains("pte-text-selection")).toBe(true);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("uses the latest event callback without replacing the grid instance", async () => {
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    const calls: string[] = [];
+    const data: Row[] = [{ id: 1, name: "AAA" }];
+    const columnDefs = [{ colId: "name", key: "name", label: "Name" }];
+
+    const render = async (label: string) => {
+      await act(async () => {
+        root.render(
+          <Grid
+            apiRef={apiRef}
+            data={data}
+            columnDefs={columnDefs}
+            rowIdKey="id"
+            onSelectionChanged={() => calls.push(label)}
+          />,
+        );
+      });
+    };
+
+    await render("first");
+    const originalApi = apiRef.current!;
+    await render("latest");
+    await act(async () => originalApi.selectRange(0, 0));
+
+    expect(apiRef.current).toBe(originalApi);
+    expect(calls).toEqual(["latest"]);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+});

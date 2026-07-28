@@ -712,3 +712,27 @@ export interface InternalGridOptions extends GridOptions {
   cellFadeDuration: number;
   icons?: GridIconMap;
 }
+
+/**
+ * Grid options whose behavior can be changed in place after construction. Structural/initial
+ * options (row model, row identity, initial sort, etc.) are intentionally excluded.
+ */
+export type RuntimeGridOptions = Pick<
+  InternalGridOptions,
+  | "rowHover"
+  | "columnHover"
+  | "zebraRows"
+  | "getRowClass"
+  | "getRowStyle"
+  | "highlightActiveCell"
+  | "cellSelection"
+  | "rangeSelection"
+  | "columnSelection"
+  | "showColumnButtonsOnHover"
+  | "bodyContextMenu"
+  | "editTrigger"
+  | "suppressKeyboardEdit"
+  | "suppressTypeToEdit"
+  | "moveAfterEdit"
+  | "commitOnBlur"
+>;

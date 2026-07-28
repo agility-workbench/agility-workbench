@@ -251,26 +251,23 @@ export class BodyWindowRenderer {
   // path) when neither option is set. Applied to all four section rows so pinned columns match.
   private applyRowStyling(slot: RowPoolDef, row: IRowNode, viewIndex: number) {
     const { getRowClass, getRowStyle } = this.params.core.options;
-    if (!getRowClass && !getRowStyle) return;
     const params = { data: row.data, rowId: row.id, rowIndex: viewIndex, isGroup: !!row.isGroup, node: row };
     const cls = getRowClass ? getRowClass(params) : null;
     const style = getRowStyle ? getRowStyle(params) : null;
     for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
       if (!el) continue;
-      if (getRowClass) applyDynamicClasses(el, cls);
-      if (getRowStyle) applyDynamicStyles(el, style);
+      applyDynamicClasses(el, cls);
+      applyDynamicStyles(el, style);
     }
   }
 
   // Clear any previously-applied dynamic row class/style from a slot being hidden/recycled, so a
   // reused empty slot never carries stale styling.
   private clearRowStyling(slot: RowPoolDef) {
-    const { getRowClass, getRowStyle } = this.params.core.options;
-    if (!getRowClass && !getRowStyle) return;
     for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
       if (!el) continue;
-      if (getRowClass) applyDynamicClasses(el, null);
-      if (getRowStyle) applyDynamicStyles(el, null);
+      applyDynamicClasses(el, null);
+      applyDynamicStyles(el, null);
     }
   }
 

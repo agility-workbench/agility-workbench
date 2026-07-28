@@ -21,6 +21,7 @@ interface Opts {
   cellSelection?: boolean | "text";
   rangeSelection?: boolean;
   columnSelection?: boolean;
+  bodyContextMenu?: boolean | ((params: { items: any[] }) => any[]);
 }
 
 async function mountGrid(opts: Opts = {}) {
@@ -37,25 +38,29 @@ async function mountGrid(opts: Opts = {}) {
   ];
 
   const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <Grid
-        apiRef={apiRef}
-        data={data}
-        columnDefs={[
-          { colId: "id", key: "id", label: "ID" },
-          { colId: "name", key: "name", label: "Name" },
-          { colId: "city", key: "city", label: "City" },
-        ]}
-        rowIdKey="id"
-        cellSelection={opts.cellSelection}
-        rangeSelection={opts.rangeSelection}
-        columnSelection={opts.columnSelection}
-      />,
-    );
-  });
+  const render = async (nextOpts: Opts) => {
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={data}
+          columnDefs={[
+            { colId: "id", key: "id", label: "ID" },
+            { colId: "name", key: "name", label: "Name" },
+            { colId: "city", key: "city", label: "City" },
+          ]}
+          rowIdKey="id"
+          cellSelection={nextOpts.cellSelection}
+          rangeSelection={nextOpts.rangeSelection}
+          columnSelection={nextOpts.columnSelection}
+          bodyContextMenu={nextOpts.bodyContextMenu}
+        />,
+      );
+    });
+  };
+  await render(opts);
 
-  return { container, apiRef, root };
+  return { container, apiRef, root, render };
 }
 
 /** Cells in the first row, in DOM order, excluding the row-number cell. */
@@ -203,5 +208,63 @@ describe("columnSelection", () => {
     await act(async () => { clickHeader(container, api, "name"); });
     expect(api.getSelection().kind).not.toBe("column");
     root.unmount();
+  });
+});
+
+describe("interaction options update live", () => {
+  it("applies cell/range/column selection and native body-menu transitions in place", async () => {
+    const { container, apiRef, root, render } = await mountGrid({
+      cellSelection: true,
+      rangeSelection: true,
+      columnSelection: true,
+      bodyContextMenu: true,
+    });
+    const originalApi = apiRef.current!;
+
+    await act(async () => { mousedown(bodyCells(container)[0]); });
+    expect(originalApi.getSelection().kind).toBe("cell");
+
+    await render({
+      cellSelection: "text",
+      rangeSelection: false,
+      columnSelection: false,
+      bodyContextMenu: false,
+    });
+    expect(apiRef.current).toBe(originalApi);
+    expect(originalApi.getSelection().kind).toBe("none");
+    expect(container.querySelector("[data-pte-grid-id]")!.classList.contains("pte-text-selection")).toBe(true);
+    expect(contextmenu(bodyCells(container)[0]).defaultPrevented).toBe(false);
+
+    await render({
+      cellSelection: true,
+      rangeSelection: false,
+      columnSelection: false,
+      bodyContextMenu: true,
+    });
+    const cells = bodyCells(container);
+    await act(async () => {
+      mousedown(cells[0]);
+      cells[2].dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    expect(originalApi.getSelection().kind).toBe("cell");
+
+    const nameId = originalApi.getColumnModel().getByColId("name")!.instanceID;
+    const header = container.querySelector<HTMLElement>(`.pte-hcell#${nameId} .pte-hcell-content`)!;
+    await act(async () => header.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(originalApi.getSelection().kind).not.toBe("column");
+
+    await render({
+      cellSelection: true,
+      rangeSelection: true,
+      columnSelection: true,
+      bodyContextMenu: true,
+    });
+    const liveHeader = container.querySelector<HTMLElement>(`.pte-hcell#${nameId} .pte-hcell-content`)!;
+    await act(async () => liveHeader.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(originalApi.getSelection().kind).toBe("column");
+
+    await act(async () => root.unmount());
+    container.remove();
   });
 });

@@ -196,6 +196,17 @@ export class SelectionModel {
     this.range = null;
   }
 
+  /** Remove selected columns that no longer exist after a column-definition update. */
+  retainSelectedColumns(validIds: Set<string>): boolean {
+    let changed = false;
+    for (const id of this.selectedColumnIds) {
+      if (validIds.has(id)) continue;
+      this.selectedColumnIds.delete(id);
+      changed = true;
+    }
+    return changed;
+  }
+
   // A cell is empty when its value is null/undefined/"". 0 and false are real values.
   // A cell whose row is not currently loaded (server-side sparse data) is treated as empty
   // AND as a hard boundary for block scanning (see blockJump).
