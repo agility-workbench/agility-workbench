@@ -107,6 +107,30 @@ describe("ColumnModel.applyColumnState", () => {
     expect(colIdsInOrder(model)).toEqual(["b", "a", "d", "c"]);
   });
 
+  it("moves a conditional leaf outside its column group and makes it independently visible", () => {
+    const model = makeModel();
+    model.setColumnDefs([
+      {
+        colId: "responsive",
+        label: "Responsive",
+        children: [
+          { colId: "a", key: "a", label: "A", columnGroupShow: "closed" },
+          { colId: "b", key: "b", label: "B", columnGroupShow: "open" },
+        ],
+      },
+      { colId: "c", key: "c", label: "C" },
+    ]);
+
+    const a = model.getByColId("a")!;
+    expect(model.moveColumnOutOfGroup(a.instanceID, "center")).toBe(true);
+
+    expect(model.getAncestors(a.instanceID)).toEqual([a]);
+    expect(a.columnGroupShow).toBe("always");
+    expect(a.columnGroupVisible).toBe(true);
+    expect(model.getCenterLeaves()).toContain(a);
+    expect(colIdsInOrder(model)).toEqual(["a", "c"]);
+  });
+
   it("a partial state WITHOUT order does not reposition the named column", () => {
     const model = makeModel(); // [a, b, c, d]
     // Only pin d; no order field → d should stay in place, not jump to the front.

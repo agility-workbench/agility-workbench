@@ -11,7 +11,7 @@
 > & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
-> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **501 tests across 65
+> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **503 tests across 65
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -29,7 +29,8 @@ Grouped by area; each maps to a §5 sub-table.
   component. Reuses `FloatingAnchor` in *sticky* mode (conceal-on-scroll-out, re-show on scroll-in).
 - **Column panel** (§5.16) — opt-in docked column management with five trigger modes (rail, header,
   column/header menus, footer, toolbar), search, filtered bulk visibility, live visibility and pinning controls,
-  drag/keyboard reordering, responsive column-state refresh, and layout reset.
+  grouped hierarchy with explicit group exit, drag/keyboard reordering, responsive column-state
+  refresh, and layout reset.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
   cell renderer.
@@ -73,7 +74,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (501 tests / 65 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (503 tests / 65 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -811,7 +812,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **501 tests across 65
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **503 tests across 65
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 

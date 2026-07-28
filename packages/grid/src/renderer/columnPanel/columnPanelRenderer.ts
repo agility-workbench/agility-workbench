@@ -310,6 +310,7 @@ export class ColumnPanelRenderer {
       heading.appendChild(count);
       group.appendChild(heading);
       group.appendChild(this.buildColumnTree(sectionColumns, section, query.length > 0));
+      group.appendChild(this.buildRootDropZone(section));
       this.list.appendChild(group);
     }
 
@@ -563,6 +564,15 @@ export class ColumnPanelRenderer {
     });
 
     const actions = div("pte-column-panel-order-actions");
+    if (entry.ancestors.length > 0) {
+      const parent = entry.ancestors[entry.ancestors.length - 1];
+      actions.appendChild(this.orderButton(
+        "↰",
+        `Move ${col.label} outside ${parent.label}`,
+        !col.movable,
+        () => this.moveOutsideGroup(entry, section),
+      ));
+    }
     const up = this.orderButton("↑", `Move ${col.label} up`, index === 0 || !col.movable, () => {
       this.reorderWithinSection(sectionColumns, index, index - 1);
     });
@@ -610,6 +620,40 @@ export class ColumnPanelRenderer {
     this.announcer.textContent = message;
   }
 
+  private moveOutsideGroup(entry: PanelColumn, section: PanelSection): void {
+    const parent = entry.ancestors[entry.ancestors.length - 1];
+    if (!parent) return;
+    this.params.core.dispatch({
+      type: "columnMoveOutOfGroup",
+      colId: entry.col.instanceID,
+      toSection: section,
+    });
+    this.announce(`${entry.col.label} moved outside ${parent.label}`);
+  }
+
+  private buildRootDropZone(section: PanelSection): HTMLDivElement {
+    const dropZone = div("pte-column-panel-root-dropzone", "Drop here to move outside group");
+    dropZone.addEventListener("dragover", (event) => {
+      const source = this.getPanelColumns()
+        .find(({ col }) => col.instanceID === this.draggedColId);
+      if (!source || source.ancestors.length === 0 || this.sectionFor(source.state) !== section) return;
+      event.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const source = this.getPanelColumns()
+        .find(({ col }) => col.instanceID === this.draggedColId);
+      if (source && source.ancestors.length > 0 && this.sectionFor(source.state) === section) {
+        this.moveOutsideGroup(source, section);
+      }
+      this.clearDragState();
+    });
+    return dropZone;
+  }
+
   private applySectionOrder(orderedSection: PanelColumn[]): void {
     const all = this.getPanelColumns();
     const hierarchyKey = this.hierarchyKey(orderedSection[0]);
@@ -632,19 +676,15 @@ export class ColumnPanelRenderer {
   private bindDrag(row: HTMLDivElement, entry: PanelColumn, section: PanelSection): void {
     if (!entry.col.movable) return;
     row.addEventListener("dragstart", (event) => {
-      this.draggedColId = entry.col.colId;
+      this.draggedColId = entry.col.instanceID;
       row.classList.add("dragging");
+      this.list.classList.toggle("pte-column-panel-dragging-group-column", entry.ancestors.length > 0);
       event.dataTransfer?.setData("text/plain", entry.col.colId);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
     });
-    row.addEventListener("dragend", () => {
-      this.draggedColId = null;
-      this.list.querySelectorAll(".dragging, .drag-over").forEach((el) => {
-        el.classList.remove("dragging", "drag-over");
-      });
-    });
+    row.addEventListener("dragend", () => this.clearDragState());
     row.addEventListener("dragover", (event) => {
-      const source = this.getPanelColumns().find(({ col }) => col.colId === this.draggedColId);
+      const source = this.getPanelColumns().find(({ col }) => col.instanceID === this.draggedColId);
       if (
         !source
         || this.sectionFor(source.state) !== section
@@ -661,10 +701,18 @@ export class ColumnPanelRenderer {
       const sectionColumns = this.getPanelColumns().filter(candidate =>
         this.sectionFor(candidate.state) === section && this.hierarchyKey(candidate) === hierarchyKey,
       );
-      const from = sectionColumns.findIndex(({ col }) => col.colId === this.draggedColId);
+      const from = sectionColumns.findIndex(({ col }) => col.instanceID === this.draggedColId);
       const to = sectionColumns.findIndex(({ col }) => col.colId === entry.col.colId);
       this.reorderWithinSection(sectionColumns, from, to);
-      this.draggedColId = null;
+      this.clearDragState();
+    });
+  }
+
+  private clearDragState(): void {
+    this.draggedColId = null;
+    this.list.classList.remove("pte-column-panel-dragging-group-column");
+    this.list.querySelectorAll(".dragging, .drag-over").forEach((el) => {
+      el.classList.remove("dragging", "drag-over");
     });
   }
 }

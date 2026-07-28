@@ -984,6 +984,74 @@ export class ColumnModel implements IColumnModel {
     return true;
   }
 
+  moveColumnOutOfGroup(colId: string, section: ColumnSection): boolean {
+    const col = this.getById(colId);
+    if (!col || col.isInternal() || col.children.length > 0) return false;
+    const ancestors = this.getAncestors(col.instanceID);
+    if (ancestors.length < 2) return false;
+
+    const sourceTopLevel = ancestors[0];
+    const sourceSection: ColumnSection =
+      col.pinned === "left" ? "left" : col.pinned === "right" ? "right" : "center";
+    const sourceTopLevelIndex = this.getSectionArray(sourceSection)
+      .findIndex(candidate => candidate.instanceID === sourceTopLevel.instanceID);
+    const nextColumns = this.columns.slice();
+
+    const removeFromTree = (columns: Column[]): boolean => {
+      for (let index = 0; index < columns.length; index++) {
+        const candidate = columns[index];
+        if (candidate.instanceID === col.instanceID) {
+          columns.splice(index, 1);
+          return true;
+        }
+        if (candidate.children.length === 0 || !removeFromTree(candidate.children)) continue;
+        if (candidate.children.length === 0) columns.splice(index, 1);
+        return true;
+      }
+      return false;
+    };
+    if (!removeFromTree(nextColumns)) return false;
+
+    col.pinned = section === "center" ? null : section;
+    col.columnGroupShow = "always";
+    col.columnGroupVisible = true;
+    col.col = {
+      ...col.col,
+      pinned: col.pinned ?? undefined,
+      columnGroupShow: undefined,
+    };
+
+    const targetColumns = nextColumns.filter(candidate =>
+      !candidate.isRowNumberColumn()
+      && (candidate.pinned === "left" ? "left" : candidate.pinned === "right" ? "right" : "center") === section,
+    );
+    const remainingSourceIndex = targetColumns
+      .findIndex(candidate => candidate.instanceID === sourceTopLevel.instanceID);
+    const sectionIndex = sourceSection === section
+      ? remainingSourceIndex >= 0
+        ? remainingSourceIndex + 1
+        : Math.max(0, sourceTopLevelIndex)
+      : targetColumns.length;
+    const target = targetColumns[sectionIndex];
+    const lastInSection = targetColumns[targetColumns.length - 1];
+    const globalIndex = target
+      ? nextColumns.findIndex(candidate => candidate.instanceID === target.instanceID)
+      : lastInSection
+        ? nextColumns.findIndex(candidate => candidate.instanceID === lastInSection.instanceID) + 1
+        : nextColumns.findIndex(candidate => {
+          if (candidate.isRowNumberColumn()) return false;
+          const candidateSection =
+            candidate.pinned === "left" ? "left" : candidate.pinned === "right" ? "right" : "center";
+          return ["left", "center", "right"].indexOf(candidateSection)
+            > ["left", "center", "right"].indexOf(section);
+        });
+    nextColumns.splice(globalIndex < 0 ? nextColumns.length : globalIndex, 0, col);
+
+    this.updateColumns(nextColumns);
+    this.updateParentColumnWidthsForAll();
+    return true;
+  }
+
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.getById(colId);
     if (!col || col.isInternal()) return false;

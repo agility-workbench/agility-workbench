@@ -272,6 +272,57 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("moves grouped columns to the section root by button or drag and drop", async () => {
+    const groupedColumns: ReactColDef[] = [
+      {
+        colId: "contact",
+        label: "Contact",
+        children: [
+          { colId: "name", key: "name", label: "Name", columnGroupShow: "closed" },
+          { colId: "region", key: "region", label: "Region" },
+        ],
+      },
+      { colId: "revenue", key: "revenue", label: "Revenue" },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, groupedColumns);
+    const nameOut = panelRow(container, "name")
+      .querySelector<HTMLButtonElement>('[aria-label="Move Name outside Contact"]')!;
+
+    await act(async () => nameOut.click());
+    const name = api.getColumnModel().getByColId("name")!;
+    expect(api.getColumnModel().getAncestors(name.instanceID)).toEqual([name]);
+    expect(name.columnGroupShow).toBe("always");
+    expect(name.columnGroupVisible).toBe(true);
+    expect(
+      container.querySelector(
+        '.pte-column-panel-tree-group[data-group-col-id="contact"] [data-col-id="name"]',
+      ),
+    ).toBeNull();
+    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
+      .toBe("Name moved outside Contact");
+
+    const region = panelRow(container, "region");
+    const rootDropZone = container.querySelector<HTMLElement>(
+      '.pte-column-panel-section[data-section="center"] .pte-column-panel-root-dropzone',
+    )!;
+    await act(async () => {
+      region.dispatchEvent(new Event("dragstart", { bubbles: true, cancelable: true }));
+      rootDropZone.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+      rootDropZone.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+    });
+
+    const regionColumn = api.getColumnModel().getByColId("region")!;
+    expect(api.getColumnModel().getAncestors(regionColumn.instanceID)).toEqual([regionColumn]);
+    expect(container.querySelector(
+      '.pte-column-panel-tree-group[data-group-col-id="contact"]',
+    )).toBeNull();
+    expect(container.querySelector(".pte-column-panel-list")
+      ?.classList.contains("pte-column-panel-dragging-group-column")).toBe(false);
+    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
+      .toBe("Region moved outside Contact");
+    await act(async () => root.unmount());
+  });
+
   it("reflects effective visibility controlled by column-group expansion", async () => {
     const adaptiveColumns: ReactColDef[] = [
       {

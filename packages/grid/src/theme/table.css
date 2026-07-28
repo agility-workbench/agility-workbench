@@ -610,7 +610,7 @@
 .pte-column-panel-row {
   min-height: 40px;
   display: grid;
-  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 48px;
+  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 72px;
   gap: 5px;
   align-items: center;
   padding: 3px 5px;
@@ -667,6 +667,7 @@
 
 .pte-column-panel-order-actions {
   display: flex;
+  justify-content: flex-end;
 }
 
 .pte-column-panel-order {
@@ -677,6 +678,27 @@
 .pte-column-panel-order:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+.pte-column-panel-root-dropzone {
+  display: none;
+  margin: 4px 5px 2px;
+  padding: 8px;
+  border: 1px dashed var(--pte-control-border-color);
+  border-radius: 6px;
+  color: var(--pte-muted-text-color);
+  text-align: center;
+  font-size: 11px;
+}
+
+.pte-column-panel-dragging-group-column .pte-column-panel-root-dropzone {
+  display: block;
+}
+
+.pte-column-panel-root-dropzone.drag-over {
+  border-color: var(--pte-selected-border-color);
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
 }
 
 .pte-column-panel-empty {

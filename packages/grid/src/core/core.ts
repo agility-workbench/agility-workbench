@@ -1294,6 +1294,13 @@ export class GridCore implements IGridCore {
         this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "columnMoveOutOfGroup":
+        if (this.columnModel.moveColumnOutOfGroup(action.colId, action.toSection)) {
+          this.clearSelectionForColumnChange();
+          this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
+          this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        }
+        break;
       case "addSparklineColumn": {
         const colId = action.newColId || `sparkline_${crypto.randomUUID()}`;
         const selectedColumns = action.colIds
