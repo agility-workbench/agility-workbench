@@ -173,16 +173,17 @@ export class BodyWindowRenderer {
   }
 
   // Switch a slot between full-width and normal layout. Passing a non-null `row` (a full-width node)
-  // hides the three pinned section rows and every center data cell, shows the sticky full-width host
-  // sized to the visible body width, and tags the center row. Passing `null` reverses all of that so
-  // a recycled slot returns to normal per-column rendering with the correct center width.
+  // hides the three pinned section rows and every center data cell, shows the sticky full-width
+  // host, and tags the center row. Group rows are constrained to the center columns' total width;
+  // user-defined full-width rows continue to span the visible center body. Passing `null` reverses
+  // all of that so a recycled slot returns to normal per-column rendering with the correct width.
   private applyFullWidthLayout(slot: RowPoolDef, row: IRowNode | null) {
     if (row) {
       slot.rowEl.classList.add("pte-full-width-row");
-      // Span the visible center band. With no pinned columns this equals the body width (the row
-      // spans everything); with pinned columns the center scroller is narrower and the full-width
-      // content is confined to (and pinned to the left of) the center section.
-      const width = this.params.centerScroller.clientWidth;
+      // A groupRows heading describes the rendered columns, so do not stretch its background into
+      // empty body space when the columns are narrower than the viewport. Other full-width rows
+      // retain their documented viewport-spanning behaviour.
+      const width = row.isGroup ? this.centerTotalWidth() : this.params.centerScroller.clientWidth;
       slot.rowEl.style.width = `${width}px`;
       for (const cell of slot.cellEls) cell.style.display = "none";
       slot.fullWidthCellEl.style.display = "flex";

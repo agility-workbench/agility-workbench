@@ -145,10 +145,13 @@ export class ColumnLayoutRenderer {
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
-      // A full-width row's center row is sized to the body width, not the column total — leave it
-      // alone (the next patch re-establishes both). Its data cells are display:none, so their widths
-      // above are harmless.
-      if (!slot.rowEl.classList.contains("pte-full-width-row")) {
+      // groupRows headings track the center columns' total width, including during a live column
+      // resize. User-defined full-width rows are viewport-sized by the window renderer, so leave
+      // those alone. The hidden data-cell widths above are harmless in either case.
+      if (slot.rowEl.classList.contains("pte-full-width-row") && slot.rowEl.classList.contains("pte-group-row")) {
+        slot.rowEl.style.width = `${totalWidth}px`;
+        slot.fullWidthCellEl.style.width = `${totalWidth}px`;
+      } else if (!slot.rowEl.classList.contains("pte-full-width-row")) {
         slot.rowEl.style.width = `${totalWidth}px`;
       }
       maxWidth = Math.max(maxWidth, totalWidth);

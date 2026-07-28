@@ -1391,8 +1391,9 @@
 }
 
 /* Full-width rows (groupDisplayType "groupRows", and rows opted in via isFullWidthRow). The content
-   lives in a single host cell inside the center row, pinned to the left edge of the viewport so it
-   stays visible while the body scrolls horizontally, and spans the full body width. */
+   lives in a single host cell inside the center row and is pinned to the left edge while the body
+   scrolls horizontally. groupRows headings are column-width constrained; isFullWidthRow content
+   spans the visible center body. */
 .pte-row.pte-full-width-row {
   font-weight: 600;
 }

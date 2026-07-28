@@ -110,6 +110,11 @@ describe("groupDisplayType='groupRows' renders true full-width group rows", () =
       const host = gr.querySelector<HTMLElement>(".pte-full-width-cell")!;
       expect(host.style.display).not.toBe("none");
       expect(host.querySelector(".pte-group-toggle")).toBeTruthy();
+      const columnWidth = core.getColumnModel().getCenterLeaves()
+        .filter(col => !col.hidden)
+        .reduce((total, col) => total + col.computedWidth, 0);
+      expect(gr.style.width).toBe(`${columnWidth}px`);
+      expect(host.style.width).toBe(`${columnWidth}px`);
     }
 
     const before = core.getRowModel().getViewCount();
