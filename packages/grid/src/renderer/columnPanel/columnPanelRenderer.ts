@@ -43,6 +43,7 @@ export class ColumnPanelRenderer {
   private bulkVisibilityCheckbox = createElement("input", "pte-column-panel-bulk-checkbox");
   private bulkVisibilityLabel = span("pte-column-panel-bulk-label", "All columns");
   private list = div("pte-column-panel-list");
+  private modifiedIndicator = span("pte-column-panel-modified", "Modified");
   private resetButton = button("pte-column-panel-reset", "Reset layout");
   private triggerButton = button("pte-column-panel-trigger");
   private triggerMount: HTMLElement | null = null;
@@ -171,9 +172,12 @@ export class ColumnPanelRenderer {
     this.bulkVisibility.append(this.bulkVisibilityCheckbox, this.bulkVisibilityLabel);
 
     const footer = div("pte-column-panel-footer");
+    this.modifiedIndicator.hidden = true;
+    this.modifiedIndicator.setAttribute("role", "status");
     this.resetButton.type = "button";
+    this.resetButton.disabled = true;
     this.resetButton.addEventListener("click", () => this.resetLayout());
-    footer.appendChild(this.resetButton);
+    footer.append(this.modifiedIndicator, this.resetButton);
 
     this.content.append(header, this.searchInput, this.bulkVisibility, this.list, footer);
     this.panel.append(this.railButton, this.content);
@@ -276,6 +280,7 @@ export class ColumnPanelRenderer {
     this.list.replaceChildren();
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const columns = this.getPanelColumns();
+    this.updateModifiedState(columns);
     const matchingColumns = columns.filter(({ col }) => this.matchesQuery(col, query));
     this.updateBulkVisibility(matchingColumns, query.length > 0);
 
@@ -329,6 +334,28 @@ export class ColumnPanelRenderer {
       colIds: eligible.map(({ col }) => col.instanceID),
       hidden: !this.bulkVisibilityCheckbox.checked,
     });
+  }
+
+  private updateModifiedState(columns: PanelColumn[]): void {
+    const managedIds = new Set(columns.map(({ col }) => col.colId));
+    const baseline = (this.initialState ?? []).filter(state => managedIds.has(state.colId));
+    const current = columns.map(({ state }) => state);
+    const modified = this.layoutSignature(current) !== this.layoutSignature(baseline);
+    this.modifiedIndicator.hidden = !modified;
+    this.resetButton.disabled = !modified;
+  }
+
+  private layoutSignature(states: ColumnState[]): string {
+    return JSON.stringify(
+      states
+        .map(state => ({
+          colId: state.colId,
+          hidden: state.hidden ?? false,
+          pinned: state.pinned ?? null,
+          order: state.order ?? 0,
+        }))
+        .sort((a, b) => a.colId.localeCompare(b.colId)),
+    );
   }
 
   private buildColumnRow(

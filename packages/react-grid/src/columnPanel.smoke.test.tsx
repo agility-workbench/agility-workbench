@@ -74,6 +74,10 @@ describe("column panel", () => {
   it("searches, hides, pins, keyboard-reorders, and resets columns live", async () => {
     const { container, root, api } = await mount({ defaultOpen: true });
     const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
+    const reset = container.querySelector<HTMLButtonElement>(".pte-column-panel-reset")!;
+    const modified = container.querySelector<HTMLElement>(".pte-column-panel-modified")!;
+    expect(reset.disabled).toBe(true);
+    expect(modified.hidden).toBe(true);
 
     await act(async () => {
       search.value = "rev";
@@ -93,6 +97,8 @@ describe("column panel", () => {
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
     expect(container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!.indeterminate)
       .toBe(true);
+    expect(reset.disabled).toBe(false);
+    expect(modified.hidden).toBe(false);
 
     const revenuePin = panelRow(container, "revenue")
       .querySelector<HTMLSelectElement>(".pte-column-panel-pin")!;
@@ -116,11 +122,13 @@ describe("column panel", () => {
     expect(centerOrder).toEqual(["region", "name"]);
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>(".pte-column-panel-reset")!.click();
+      reset.click();
     });
     expect(api.getColumnState().map((state) => state.colId)).toEqual(["name", "region", "revenue"]);
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(false);
     expect(api.getColumnModel().getByColId("revenue")!.pinned).toBeNull();
+    expect(reset.disabled).toBe(true);
+    expect(modified.hidden).toBe(true);
     await act(async () => root.unmount());
   });
 

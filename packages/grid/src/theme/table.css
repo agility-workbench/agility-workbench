@@ -464,7 +464,7 @@
 
 .pte-column-panel-close:hover,
 .pte-column-panel-order:hover:not(:disabled),
-.pte-column-panel-reset:hover {
+.pte-column-panel-reset:hover:not(:disabled) {
   background: var(--pte-hover-bg-color);
   color: var(--pte-text-color);
 }
@@ -622,14 +622,43 @@
 
 .pte-column-panel-footer {
   flex: 0 0 auto;
+  min-height: 51px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 12px;
   border-top: 1px solid var(--pte-border-color);
+}
+
+.pte-column-panel-modified {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pte-muted-text-color);
+  font-size: 11px;
+}
+
+.pte-column-panel-modified::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pte-selected-border-color);
+  content: "";
+}
+
+.pte-column-panel-modified[hidden] {
+  display: none;
 }
 
 .pte-column-panel-reset {
   padding: 6px 8px;
   color: var(--pte-text-color);
   font-size: 12px;
+}
+
+.pte-column-panel-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .pte-header-wrapper {

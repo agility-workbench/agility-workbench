@@ -713,6 +713,7 @@ lifecycle; the content is a custom component.
 | Per-column opt-out | ✅ Complete | `ColDef.suppressColumnPanel` omits a column from drawer search and operations without removing it from grid state |
 | Pointer and keyboard reordering | ✅ Complete | Native drag/drop plus labelled Move up/down controls |
 | Reset to latest column definitions | ✅ Complete | Captured `ColumnState` reapplied through `columnStateSet` |
+| Modified-state feedback | ✅ Complete | Footer status and Reset availability track managed visibility, pinning, and order against the latest definition baseline |
 | Live React option changes | ✅ Complete | `GridRenderer.setColumnPanelOptions`; React layout effect |
 
 ---
