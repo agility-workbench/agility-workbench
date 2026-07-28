@@ -52,6 +52,8 @@ export class SparklineRenderer implements ICellRenderer {
   private params!: CellRendererParams;
   private svgEl!: SVGSVGElement;
   private rafId: number | null = null;
+  private width = 100;
+  private height = 20;
   private tooltipCleanups: Array<() => void> = [];
   private warnedInvalidValue = false;
 
@@ -59,6 +61,7 @@ export class SparklineRenderer implements ICellRenderer {
     this.params = params;
     this.svgEl = this.createSvg();
     this.redraw();
+    this.scheduleMeasure();
   }
 
   getGui(): HTMLElement {
@@ -76,6 +79,7 @@ export class SparklineRenderer implements ICellRenderer {
   refresh(params: CellRendererParams): boolean {
     this.params = params;
     this.redraw();
+    if (params.refreshReason === "resize") this.scheduleMeasure();
     return true;
   }
 
@@ -123,25 +127,26 @@ export class SparklineRenderer implements ICellRenderer {
       return;
     }
 
-    const rect = this.svgEl.getBoundingClientRect();
-    const width = rect.width || 100;
-    const height = rect.height || 20;
     const padding = 2;
-    const chartWidth = width - padding * 2;
-    const chartHeight = height - padding * 2;
+    this.drawSparkline(points, domainLength, this.width, this.height, padding, type, showPoints);
+  }
 
-    if (chartWidth <= 0 || chartHeight <= 0) {
-      this.drawSparkline(points, domainLength, 100, 20, padding, type, showPoints);
-      if (this.rafId == null) {
-        this.rafId = requestAnimationFrame(() => {
-          this.rafId = null;
-          this.redraw();
-        });
-      }
-      return;
-    }
-
-    this.drawSparkline(points, domainLength, width, height, padding, type, showPoints);
+  /**
+   * Cell dimensions are stable while rows are recycled during vertical scrolling. Measuring in
+   * every refresh forces layout once per visible sparkline, so measure only after mount and after
+   * an explicit column resize, then reuse the cached dimensions for ordinary row refreshes.
+   */
+  private scheduleMeasure(): void {
+    if (this.rafId != null) return;
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null;
+      const rect = this.svgEl.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (rect.width === this.width && rect.height === this.height) return;
+      this.width = rect.width;
+      this.height = rect.height;
+      this.redraw();
+    });
   }
 
   private normalizeSeries(series: unknown[]): {
@@ -209,11 +214,15 @@ export class SparklineRenderer implements ICellRenderer {
     if (chartWidth <= 0 || chartHeight <= 0) return;
 
     this.svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    this.svgEl.replaceChildren();
+    const fragment = document.createDocumentFragment();
 
-    const values = points.map(point => point.yValue);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    let min = points[0].yValue;
+    let max = min;
+    for (let i = 1; i < points.length; i++) {
+      const value = points[i].yValue;
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
     const range = max - min || 1;
 
     const xScale = (position: number) =>
@@ -237,8 +246,9 @@ export class SparklineRenderer implements ICellRenderer {
         bar.classList.add("pte-sparkline-bar", "pte-sparkline-tooltip-target");
         bar.dataset.sparklinePointIndex = String(point.index);
         this.registerPointTooltip(bar, point);
-        this.svgEl.appendChild(bar);
+        fragment.appendChild(bar);
       }
+      this.svgEl.replaceChildren(fragment);
       return;
     }
 
@@ -253,13 +263,13 @@ export class SparklineRenderer implements ICellRenderer {
       area.setAttribute("points", `${firstX},${baselineY} ${pointList} ${lastX},${baselineY}`);
       area.setAttribute("fill", "rgba(74,144,217,0.2)");
       area.setAttribute("stroke", "none");
-      this.svgEl.appendChild(area);
+      fragment.appendChild(area);
     }
 
     const line = document.createElementNS(SVG_NS, "polyline");
     line.setAttribute("points", pointList);
     line.classList.add("pte-sparkline-path");
-    this.svgEl.appendChild(line);
+    fragment.appendChild(line);
 
     // Each point owns the vertical band halfway to its neighbours. This makes the nearest X value
     // discoverable anywhere over the chart while a separate tiny anchor keeps the floating tooltip
@@ -273,7 +283,7 @@ export class SparklineRenderer implements ICellRenderer {
         marker.setAttribute("r", "2.5");
         marker.classList.add("pte-sparkline-point");
         marker.dataset.sparklinePointIndex = String(point.index);
-        this.svgEl.appendChild(marker);
+        fragment.appendChild(marker);
       }
 
       const anchor = document.createElementNS(SVG_NS, "circle");
@@ -282,7 +292,7 @@ export class SparklineRenderer implements ICellRenderer {
       anchor.setAttribute("r", "1");
       anchor.setAttribute("fill", "transparent");
       anchor.setAttribute("pointer-events", "none");
-      this.svgEl.appendChild(anchor);
+      fragment.appendChild(anchor);
 
       const previousX =
         pointIndex > 0 ? xScale(points[pointIndex - 1].position) : 0;
@@ -305,8 +315,9 @@ export class SparklineRenderer implements ICellRenderer {
       hitTarget.classList.add("pte-sparkline-tooltip-target");
       hitTarget.dataset.sparklinePointIndex = String(point.index);
       this.registerPointTooltip(hitTarget, point, anchor);
-      this.svgEl.appendChild(hitTarget);
+      fragment.appendChild(hitTarget);
     });
+    this.svgEl.replaceChildren(fragment);
   }
 
   private registerPointTooltip(
