@@ -70,6 +70,43 @@ describe("ColumnModel.applyColumnState", () => {
     expect(colIdsInOrder(model)).toEqual(["d", "c", "b", "a"]);
   });
 
+  it("reorders leaves among siblings inside nested column groups", () => {
+    const model = makeModel();
+    model.setColumnDefs([
+      {
+        colId: "identity",
+        label: "Identity",
+        children: [
+          {
+            colId: "contact",
+            label: "Contact",
+            children: [
+              { colId: "a", key: "a", label: "A" },
+              { colId: "b", key: "b", label: "B" },
+            ],
+          },
+        ],
+      },
+      {
+        colId: "metrics",
+        label: "Metrics",
+        children: [
+          { colId: "c", key: "c", label: "C" },
+          { colId: "d", key: "d", label: "D" },
+        ],
+      },
+    ]);
+
+    model.applyColumnState([
+      { colId: "b", order: 0 },
+      { colId: "a", order: 1 },
+      { colId: "d", order: 2 },
+      { colId: "c", order: 3 },
+    ]);
+
+    expect(colIdsInOrder(model)).toEqual(["b", "a", "d", "c"]);
+  });
+
   it("a partial state WITHOUT order does not reposition the named column", () => {
     const model = makeModel(); // [a, b, c, d]
     // Only pin d; no order field → d should stay in place, not jump to the front.

@@ -796,14 +796,14 @@ export class ColumnModel implements IColumnModel {
    * Reuses the existing mutators so the layout stays consistent:
    *  - visibility → `col.hidden`, applied before the rebuild;
    *  - pinning → `col.pinned` (top-level columns only), bucketed by `updateColumns`;
-   *  - order → top-level columns repositioned by their state `order` (see above);
+   *  - order → columns repositioned among siblings at every group depth (see above);
    *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes).
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
     const widthOps: { col: Column; width: number }[] = [];
     const seenTop = new Set<Column>();
-    // The first defined `order` (and its array index, for tie-breaking) seen for each top-level
-    // column. A group's leaves may each carry an order; we position the group by the first.
+    // A leaf's order positions it among its siblings and contributes the minimum descendant order
+    // to each ancestor group. This lets a flat ColumnState round-trip a nested column tree.
     const targetOrder = new Map<Column, { order: number; arrayIndex: number }>();
 
     // Apply per-column properties in array order (order-independent), and record positioning intent.
@@ -811,14 +811,24 @@ export class ColumnModel implements IColumnModel {
       const col = this.getByColId(s.colId);
       if (!col || col.isInternal()) return;
       if (s.hidden != null) col.hidden = s.hidden;
-      const top = this.getAncestors(col.instanceID)[0] ?? col;
+      const path = this.getAncestors(col.instanceID);
+      const top = path[0] ?? col;
       // Pinning is a section property; only meaningful for a top-level column (a group pins as a
       // whole, and a lone leaf is its own top-level column).
       if (top === col && s.pinned !== undefined) col.pinned = s.pinned;
       if (s.widthPx != null) widthOps.push({ col, width: s.widthPx });
       seenTop.add(top);
-      if (s.order != null && !targetOrder.has(top)) {
-        targetOrder.set(top, { order: s.order, arrayIndex: i });
+      if (s.order != null) {
+        for (const node of path.length > 0 ? path : [col]) {
+          const previous = targetOrder.get(node);
+          if (
+            !previous
+            || s.order < previous.order
+            || (s.order === previous.order && i < previous.arrayIndex)
+          ) {
+            targetOrder.set(node, { order: s.order, arrayIndex: i });
+          }
+        }
       }
     });
 
@@ -838,13 +848,26 @@ export class ColumnModel implements IColumnModel {
       }
     }
 
-    this.updateColumns(this.reorderByTargetOrder(topLevel, targetOrder));
+    this.updateColumns(this.reorderTreeByTargetOrder(topLevel, targetOrder));
     this.updateParentColumnWidthsForAll();
 
     // Widths last so they apply to the rebuilt layout (resizeColumn is a no-op for unknown ids).
     for (const { col, width } of widthOps) {
       this.resizeColumn(col.instanceID, width);
     }
+  }
+
+  private reorderTreeByTargetOrder(
+    columns: Column[],
+    targetOrder: Map<Column, { order: number; arrayIndex: number }>,
+  ): Column[] {
+    const ordered = this.reorderByTargetOrder(columns, targetOrder);
+    for (const column of ordered) {
+      if (column.children.length > 0) {
+        column.children = this.reorderTreeByTargetOrder(column.children, targetOrder);
+      }
+    }
+    return ordered;
   }
 
   // Remove-then-insert: columns WITHOUT a target order keep their current relative order; columns

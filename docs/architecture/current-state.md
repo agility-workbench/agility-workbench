@@ -11,7 +11,7 @@
 > & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
-> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **498 tests across 65
+> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **500 tests across 65
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -73,7 +73,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (498 tests / 65 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (500 tests / 65 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -708,6 +708,7 @@ lifecycle; the content is a custom component.
 | Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
+| Column-group hierarchy | ✅ Complete | Nested collapsible groups; ancestor names participate in search and matching paths expand automatically |
 | Show/hide and left/right pinning | ✅ Complete | Dispatches the existing `columnVisibility` / `columnPin` actions |
 | Bulk show/hide | ✅ Complete | Tri-state checkbox scopes to current search matches and ignores `hideable: false` columns |
 | Per-column opt-out | ✅ Complete | `ColDef.suppressColumnPanel` omits a column from drawer search and operations without removing it from grid state |
@@ -809,7 +810,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **498 tests across 65
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **500 tests across 65
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 

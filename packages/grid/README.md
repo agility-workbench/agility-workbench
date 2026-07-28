@@ -76,7 +76,9 @@ Reordering works by drag-and-drop and through accessible Move up/down controls. 
 changes are applied live by the React binding without remounting the grid. Set
 `suppressColumnPanel: true` on a column definition to keep that column in the grid and API while
 omitting it from the drawer and its bulk operations. A polite live region announces visibility,
-pinning, ordering, and reset results to assistive technology.
+pinning, ordering, and reset results to assistive technology. Nested column definitions render as
+collapsible groups; searching a group name reveals its descendants, and reordering stays within the
+appropriate sibling group.
 
 ## Sparklines
 

@@ -214,6 +214,64 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("renders collapsible column-group hierarchy and searches group paths", async () => {
+    const groupedColumns: ReactColDef[] = [
+      {
+        colId: "identity",
+        label: "Identity",
+        children: [
+          {
+            colId: "contact",
+            label: "Contact",
+            children: [
+              { colId: "name", key: "name", label: "Name" },
+              { colId: "region", key: "region", label: "Region" },
+            ],
+          },
+        ],
+      },
+      {
+        colId: "metrics",
+        label: "Metrics",
+        children: [
+          { colId: "revenue", key: "revenue", label: "Revenue" },
+        ],
+      },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, groupedColumns);
+    const identity = container.querySelector<HTMLButtonElement>(
+      '.pte-column-panel-tree-group[data-group-col-id="identity"] > .pte-column-panel-tree-group-header',
+    )!;
+    expect(identity.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelectorAll(".pte-column-panel-tree-group")).toHaveLength(3);
+
+    await act(async () => identity.click());
+    expect(panelRow(container, "name")).toBeNull();
+    expect(panelRow(container, "region")).toBeNull();
+    expect(panelRow(container, "revenue")).not.toBeNull();
+
+    const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
+    await act(async () => {
+      search.value = "identity";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(panelRow(container, "name")).not.toBeNull();
+    expect(panelRow(container, "region")).not.toBeNull();
+    expect(panelRow(container, "revenue")).toBeNull();
+
+    const regionUp = panelRow(container, "region")
+      .querySelector<HTMLButtonElement>('[aria-label="Move Region up"]')!;
+    await act(async () => regionUp.click());
+    expect(api.getColumnState().map(state => state.colId)).toEqual(["region", "name", "revenue"]);
+
+    const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
+    await act(async () => bulk.click());
+    expect(api.getColumnModel().getByColId("name")!.hidden).toBe(true);
+    expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
+    expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(false);
+    await act(async () => root.unmount());
+  });
+
   it("reorders columns by drag and drop within a pin section", async () => {
     const { container, root, api } = await mount({ defaultOpen: true });
     const name = panelRow(container, "name");

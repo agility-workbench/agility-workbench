@@ -22,7 +22,12 @@ interface ColumnPanelRendererParams {
 interface PanelColumn {
   col: Column;
   state: ColumnState;
+  ancestors: Column[];
 }
+
+type PanelTreeItem =
+  | { kind: "column"; entry: PanelColumn }
+  | { kind: "group"; group: Column; items: PanelTreeItem[] };
 
 const SECTION_LABELS: Record<PanelSection, string> = {
   left: "Pinned left",
@@ -54,6 +59,7 @@ export class ColumnPanelRenderer {
   private trigger: ColumnPanelTrigger = "rail";
   private draggedColId: string | null = null;
   private initialState: ColumnState[] | null = null;
+  private collapsedGroups = new Set<string>();
   private triggerTooltipDisposer: (() => void) | null = null;
   private listTooltipDisposers: Array<() => void> = [];
 
@@ -269,7 +275,11 @@ export class ColumnPanelRenderer {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .flatMap((state) => {
         const col = model.getByColId(state.colId);
-        return col && !col.isInternal() && !col.suppressColumnPanel ? [{ col, state }] : [];
+        if (!col || col.isInternal()) return [];
+        const ancestors = model.getAncestors(col.instanceID).slice(0, -1);
+        return col.suppressColumnPanel || ancestors.some(ancestor => ancestor.suppressColumnPanel)
+          ? []
+          : [{ col, state, ancestors }];
       });
   }
 
@@ -284,7 +294,7 @@ export class ColumnPanelRenderer {
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const columns = this.getPanelColumns();
     this.updateModifiedState(columns);
-    const matchingColumns = columns.filter(({ col }) => this.matchesQuery(col, query));
+    const matchingColumns = columns.filter(entry => this.matchesQuery(entry, query));
     this.updateBulkVisibility(matchingColumns, query.length > 0);
 
     let shown = 0;
@@ -299,9 +309,7 @@ export class ColumnPanelRenderer {
       const count = span("pte-column-panel-section-count", String(sectionColumns.length));
       heading.appendChild(count);
       group.appendChild(heading);
-      sectionColumns.forEach((entry, index) => {
-        group.appendChild(this.buildColumnRow(entry, sectionColumns, index, section));
-      });
+      group.appendChild(this.buildColumnTree(sectionColumns, section, query.length > 0));
       this.list.appendChild(group);
     }
 
@@ -311,11 +319,13 @@ export class ColumnPanelRenderer {
     }
   }
 
-  private matchesQuery(col: Column, query: string): boolean {
-    return !query
-      || col.label.toLocaleLowerCase().includes(query)
+  private matchesQuery(entry: PanelColumn, query: string): boolean {
+    if (!query) return true;
+    return [entry.col, ...entry.ancestors].some(col =>
+      col.label.toLocaleLowerCase().includes(query)
       || col.colId.toLocaleLowerCase().includes(query)
-      || col.key.toLocaleLowerCase().includes(query);
+      || col.key.toLocaleLowerCase().includes(query),
+    );
   }
 
   private updateBulkVisibility(columns: PanelColumn[], filtered: boolean): void {
@@ -330,7 +340,7 @@ export class ColumnPanelRenderer {
   private setBulkVisibility(): void {
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const eligible = this.getPanelColumns()
-      .filter(({ col }) => col.hideable && this.matchesQuery(col, query));
+      .filter(entry => entry.col.hideable && this.matchesQuery(entry, query));
     if (eligible.length === 0) return;
     const hidden = !this.bulkVisibilityCheckbox.checked;
     this.params.core.dispatch({
@@ -362,6 +372,101 @@ export class ColumnPanelRenderer {
           order: state.order ?? 0,
         }))
         .sort((a, b) => a.colId.localeCompare(b.colId)),
+    );
+  }
+
+  private buildColumnTree(
+    columns: PanelColumn[],
+    section: PanelSection,
+    forceExpanded: boolean,
+  ): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    const items = this.createTreeItems(columns);
+    for (const item of items) {
+      fragment.appendChild(this.renderTreeItem(item, section, forceExpanded));
+    }
+    return fragment;
+  }
+
+  private createTreeItems(columns: PanelColumn[]): PanelTreeItem[] {
+    const items: PanelTreeItem[] = [];
+    const groupItems = new Map<string, Extract<PanelTreeItem, { kind: "group" }>>();
+    for (const entry of columns) {
+      let target = items;
+      let path = "";
+      for (const group of entry.ancestors) {
+        path = `${path}/${group.instanceID}`;
+        let groupItem = groupItems.get(path);
+        if (!groupItem) {
+          groupItem = { kind: "group", group, items: [] };
+          groupItems.set(path, groupItem);
+          target.push(groupItem);
+        }
+        target = groupItem.items;
+      }
+      target.push({ kind: "column", entry });
+    }
+    return items;
+  }
+
+  private renderTreeItem(
+    item: PanelTreeItem,
+    section: PanelSection,
+    forceExpanded: boolean,
+  ): HTMLElement {
+    if (item.kind === "column") {
+      const siblings = this.directColumnsForParent(item.entry, section);
+      const index = siblings.findIndex(({ col }) => col.colId === item.entry.col.colId);
+      return this.buildColumnRow(item.entry, siblings, index, section);
+    }
+
+    const wrapper = div("pte-column-panel-tree-group");
+    wrapper.dataset.groupColId = item.group.colId;
+    const header = button("pte-column-panel-tree-group-header");
+    header.type = "button";
+    const collapsed = !forceExpanded && this.collapsedGroups.has(item.group.instanceID);
+    header.setAttribute("aria-expanded", String(!collapsed));
+    header.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} ${item.group.label}`);
+    const chevron = span("pte-column-panel-tree-group-chevron", collapsed ? "›" : "⌄");
+    chevron.setAttribute("aria-hidden", "true");
+    const label = span("pte-column-panel-tree-group-label", item.group.label);
+    const count = span("pte-column-panel-tree-group-count", String(this.countTreeColumns(item)));
+    header.append(chevron, label, count);
+    this.listTooltipDisposers.push(registerRendererTooltipTarget(label, () => item.group.label));
+    header.addEventListener("click", () => {
+      if (this.collapsedGroups.has(item.group.instanceID)) {
+        this.collapsedGroups.delete(item.group.instanceID);
+      } else {
+        this.collapsedGroups.add(item.group.instanceID);
+      }
+      this.renderList();
+    });
+    wrapper.appendChild(header);
+    if (!collapsed) {
+      const children = div("pte-column-panel-tree-children");
+      for (const child of item.items) {
+        children.appendChild(this.renderTreeItem(child, section, forceExpanded));
+      }
+      wrapper.appendChild(children);
+    }
+    return wrapper;
+  }
+
+  private countTreeColumns(item: Extract<PanelTreeItem, { kind: "group" }>): number {
+    return item.items.reduce(
+      (count, child) => count + (child.kind === "column" ? 1 : this.countTreeColumns(child)),
+      0,
+    );
+  }
+
+  private hierarchyKey(entry: PanelColumn): string {
+    return entry.ancestors.map(group => group.instanceID).join("/");
+  }
+
+  private directColumnsForParent(entry: PanelColumn, section: PanelSection): PanelColumn[] {
+    const key = this.hierarchyKey(entry);
+    return this.getPanelColumns().filter(candidate =>
+      this.sectionFor(candidate.state) === section && this.hierarchyKey(candidate) === key,
     );
   }
 
@@ -474,9 +579,13 @@ export class ColumnPanelRenderer {
 
   private applySectionOrder(orderedSection: PanelColumn[]): void {
     const all = this.getPanelColumns();
+    const hierarchyKey = this.hierarchyKey(orderedSection[0]);
     const positions = all
       .map((entry, index) => ({ entry, index }))
-      .filter(({ entry }) => this.sectionFor(entry.state) === this.sectionFor(orderedSection[0].state))
+      .filter(({ entry }) =>
+        this.sectionFor(entry.state) === this.sectionFor(orderedSection[0].state)
+        && this.hierarchyKey(entry) === hierarchyKey,
+      )
       .map(({ index }) => index);
     positions.forEach((position, index) => {
       all[position] = orderedSection[index];
@@ -503,7 +612,11 @@ export class ColumnPanelRenderer {
     });
     row.addEventListener("dragover", (event) => {
       const source = this.getPanelColumns().find(({ col }) => col.colId === this.draggedColId);
-      if (!source || this.sectionFor(source.state) !== section) return;
+      if (
+        !source
+        || this.sectionFor(source.state) !== section
+        || this.hierarchyKey(source) !== this.hierarchyKey(entry)
+      ) return;
       event.preventDefault();
       row.classList.add("drag-over");
     });
@@ -511,7 +624,10 @@ export class ColumnPanelRenderer {
     row.addEventListener("drop", (event) => {
       event.preventDefault();
       row.classList.remove("drag-over");
-      const sectionColumns = this.getPanelColumns().filter(({ state }) => this.sectionFor(state) === section);
+      const hierarchyKey = this.hierarchyKey(entry);
+      const sectionColumns = this.getPanelColumns().filter(candidate =>
+        this.sectionFor(candidate.state) === section && this.hierarchyKey(candidate) === hierarchyKey,
+      );
       const from = sectionColumns.findIndex(({ col }) => col.colId === this.draggedColId);
       const to = sectionColumns.findIndex(({ col }) => col.colId === entry.col.colId);
       this.reorderWithinSection(sectionColumns, from, to);
