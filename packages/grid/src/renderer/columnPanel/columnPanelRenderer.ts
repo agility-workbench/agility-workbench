@@ -262,7 +262,7 @@ export class ColumnPanelRenderer {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .flatMap((state) => {
         const col = model.getByColId(state.colId);
-        return col && !col.isInternal() ? [{ col, state }] : [];
+        return col && !col.isInternal() && !col.suppressColumnPanel ? [{ col, state }] : [];
       });
   }
 

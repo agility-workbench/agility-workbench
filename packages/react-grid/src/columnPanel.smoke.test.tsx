@@ -171,6 +171,33 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("omits suppressColumnPanel columns from the drawer without removing them from the grid", async () => {
+    const panelColumns: ReactColDef[] = [
+      { colId: "name", key: "name", label: "Name", suppressColumnPanel: true },
+      { colId: "region", key: "region", label: "Region" },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, panelColumns);
+
+    expect(panelRow(container, "name")).toBeNull();
+    expect(panelRow(container, "region")).not.toBeNull();
+    expect(api.getColumnModel().getByColId("name")).not.toBeNull();
+    expect(container.querySelector('.pte-hcell-leaf')?.textContent).toContain("Name");
+
+    const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
+    await act(async () => bulk.click());
+    expect(api.getColumnModel().getByColId("name")!.hidden).toBe(false);
+    expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
+
+    const search = container.querySelector<HTMLInputElement>(".pte-column-panel-search")!;
+    await act(async () => {
+      search.value = "name";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(0);
+    expect(bulk.disabled).toBe(true);
+    await act(async () => root.unmount());
+  });
+
   it("reorders columns by drag and drop within a pin section", async () => {
     const { container, root, api } = await mount({ defaultOpen: true });
     const name = panelRow(container, "name");

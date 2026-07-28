@@ -313,6 +313,7 @@ export class GridCore implements IGridCore {
       resizable: def.resizable,
       movable: def.movable,
       hideable: def.hideable,
+      suppressColumnPanel: def.suppressColumnPanel,
       columnGroupShow: def.columnGroupShow,
       openByDefault: def.openByDefault,
       children: def.children ? normalize(def.children) : undefined,

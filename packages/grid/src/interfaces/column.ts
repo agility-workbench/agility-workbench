@@ -223,6 +223,11 @@ export interface ColDef {
   movable?: boolean;
   hideable?: boolean;
   /**
+   * Omit this column from the built-in column-management drawer while leaving it available in the
+   * grid, column state, menus, and API. Default false.
+   */
+  suppressColumnPanel?: boolean;
+  /**
    * When true (default), the column header shows its menu (⋮) button, which opens the column menu.
    * When false, the button is hidden; the column menu can still be reached via right-click unless
    * `columnContextMenu` is also false.

@@ -74,6 +74,7 @@ export class Column {
   resizable: boolean;
   movable: boolean;
   hideable?: boolean;
+  suppressColumnPanel: boolean = false;
   showColumnMenu: boolean;
   columnContextMenu: boolean;
   centralPosition?: number;
@@ -180,6 +181,7 @@ export class Column {
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
     this.hideable = !isFalse(col.hideable);
+    this.suppressColumnPanel = isTrue(col.suppressColumnPanel);
     this.showColumnMenu = !isFalse(col.showColumnMenu);
     this.columnContextMenu = !isFalse(col.columnContextMenu);
     this.columnGroupShow = col.columnGroupShow === "open" ? "open" : col.columnGroupShow === "closed" ? "closed" : "always";

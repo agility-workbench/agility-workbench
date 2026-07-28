@@ -72,7 +72,9 @@ Pass `columnPanel: true` for the default right rail. Every trigger opens the sam
 | `"toolbar"` | Grid toolbar above the header, button at the extreme right |
 
 Reordering works by drag-and-drop and through accessible Move up/down controls. Trigger and width
-changes are applied live by the React binding without remounting the grid.
+changes are applied live by the React binding without remounting the grid. Set
+`suppressColumnPanel: true` on a column definition to keep that column in the grid and API while
+omitting it from the drawer and its bulk operations.
 
 ## Sparklines
 
