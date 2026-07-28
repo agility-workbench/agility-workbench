@@ -272,6 +272,63 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("reflects effective visibility controlled by column-group expansion", async () => {
+    const adaptiveColumns: ReactColDef[] = [
+      {
+        colId: "responsive",
+        label: "Responsive",
+        children: [
+          {
+            colId: "name",
+            key: "name",
+            label: "Name",
+            columnGroupShow: "closed",
+          },
+          {
+            colId: "region",
+            key: "region",
+            label: "Region",
+            columnGroupShow: "open",
+          },
+        ],
+      },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, adaptiveColumns);
+    const nameCheckbox = () => panelRow(container, "name")
+      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
+    const regionCheckbox = () => panelRow(container, "region")
+      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
+    const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
+
+    expect(nameCheckbox().checked).toBe(true);
+    expect(nameCheckbox().disabled).toBe(false);
+    expect(regionCheckbox().checked).toBe(false);
+    expect(regionCheckbox().disabled).toBe(true);
+    expect(panelRow(container, "region").classList.contains("pte-column-panel-row-group-hidden"))
+      .toBe(true);
+    expect(bulk.checked).toBe(true);
+
+    const groupId = api.getColumnModel().getByColId("responsive")!.instanceID;
+    await act(async () => {
+      api.getCore().dispatch({
+        type: "headerAction",
+        colId: groupId,
+        action: "toggleGroupExpand",
+      });
+    });
+
+    expect(nameCheckbox().checked).toBe(false);
+    expect(nameCheckbox().disabled).toBe(true);
+    expect(regionCheckbox().checked).toBe(true);
+    expect(regionCheckbox().disabled).toBe(false);
+    expect(panelRow(container, "name").classList.contains("pte-column-panel-row-group-hidden"))
+      .toBe(true);
+    expect(panelRow(container, "region").classList.contains("pte-column-panel-row-group-hidden"))
+      .toBe(false);
+    expect(bulk.checked).toBe(true);
+    await act(async () => root.unmount());
+  });
+
   it("reorders columns by drag and drop within a pin section", async () => {
     const { container, root, api } = await mount({ defaultOpen: true });
     const name = panelRow(container, "name");

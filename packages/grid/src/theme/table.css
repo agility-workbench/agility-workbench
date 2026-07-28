@@ -622,6 +622,11 @@
   background: var(--pte-hover-bg-color);
 }
 
+.pte-column-panel-row-group-hidden .pte-column-panel-label {
+  color: var(--pte-muted-text-color);
+  font-style: italic;
+}
+
 .pte-column-panel-row.dragging {
   opacity: 0.45;
 }

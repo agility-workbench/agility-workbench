@@ -78,7 +78,9 @@ changes are applied live by the React binding without remounting the grid. Set
 omitting it from the drawer and its bulk operations. A polite live region announces visibility,
 pinning, ordering, and reset results to assistive technology. Nested column definitions render as
 collapsible groups; searching a group name reveals its descendants, and reordering stays within the
-appropriate sibling group.
+appropriate sibling group. Columns conditionally shown by `columnGroupShow` reflect their effective
+visibility as the header group expands or collapses; group-hidden columns are excluded from bulk
+visibility and their individual checkbox explains which parent currently controls them.
 
 ## Sparklines
 

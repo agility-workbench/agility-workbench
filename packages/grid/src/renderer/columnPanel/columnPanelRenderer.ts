@@ -329,7 +329,7 @@ export class ColumnPanelRenderer {
   }
 
   private updateBulkVisibility(columns: PanelColumn[], filtered: boolean): void {
-    const eligible = columns.filter(({ col }) => col.hideable);
+    const eligible = columns.filter(entry => entry.col.hideable && this.isGroupVisible(entry));
     const visibleCount = eligible.filter(({ state }) => !state.hidden).length;
     this.bulkVisibilityLabel.textContent = filtered ? "All matching columns" : "All columns";
     this.bulkVisibilityCheckbox.disabled = eligible.length === 0;
@@ -340,7 +340,11 @@ export class ColumnPanelRenderer {
   private setBulkVisibility(): void {
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const eligible = this.getPanelColumns()
-      .filter(entry => entry.col.hideable && this.matchesQuery(entry, query));
+      .filter(entry =>
+        entry.col.hideable
+        && this.isGroupVisible(entry)
+        && this.matchesQuery(entry, query),
+      );
     if (eligible.length === 0) return;
     const hidden = !this.bulkVisibilityCheckbox.checked;
     this.params.core.dispatch({
@@ -463,6 +467,23 @@ export class ColumnPanelRenderer {
     return entry.ancestors.map(group => group.instanceID).join("/");
   }
 
+  private isGroupVisible(entry: PanelColumn): boolean {
+    return entry.col.columnGroupVisible
+      && entry.ancestors.every(ancestor => !ancestor.hidden && ancestor.columnGroupVisible);
+  }
+
+  private groupVisibilityController(entry: PanelColumn): Column | null {
+    for (let index = 0; index < entry.ancestors.length; index++) {
+      const ancestor = entry.ancestors[index];
+      if (ancestor.hidden || !ancestor.columnGroupVisible) {
+        return entry.ancestors[index - 1] ?? ancestor;
+      }
+    }
+    return entry.col.columnGroupVisible
+      ? null
+      : entry.ancestors[entry.ancestors.length - 1] ?? null;
+  }
+
   private directColumnsForParent(entry: PanelColumn, section: PanelSection): PanelColumn[] {
     const key = this.hierarchyKey(entry);
     return this.getPanelColumns().filter(candidate =>
@@ -480,15 +501,24 @@ export class ColumnPanelRenderer {
     const row = div("pte-column-panel-row");
     row.dataset.colId = col.colId;
     row.draggable = col.movable;
+    const groupController = this.groupVisibilityController(entry);
+    const groupVisible = groupController === null;
+    const groupVisibilityLabel = groupController?.label ?? "";
+    row.classList.toggle("pte-column-panel-row-group-hidden", !groupVisible);
 
     const drag = span("pte-column-panel-drag", "⋮⋮");
     drag.setAttribute("aria-hidden", "true");
 
     const checkbox = createElement("input", "pte-column-panel-checkbox");
     checkbox.type = "checkbox";
-    checkbox.checked = !state.hidden;
-    checkbox.disabled = !col.hideable;
-    checkbox.setAttribute("aria-label", `${state.hidden ? "Show" : "Hide"} ${col.label}`);
+    checkbox.checked = !state.hidden && groupVisible;
+    checkbox.disabled = !col.hideable || !groupVisible;
+    checkbox.setAttribute(
+      "aria-label",
+      groupVisible
+        ? `${state.hidden ? "Show" : "Hide"} ${col.label}`
+        : `${col.label} hidden by ${groupVisibilityLabel}`,
+    );
     checkbox.addEventListener("change", () => {
       const hidden = !checkbox.checked;
       this.params.core.dispatch({
@@ -502,7 +532,10 @@ export class ColumnPanelRenderer {
     const label = span("pte-column-panel-label");
     label.textContent = col.label;
     this.listTooltipDisposers.push(
-      registerRendererTooltipTarget(label, () => col.label),
+      registerRendererTooltipTarget(
+        label,
+        () => groupVisible ? col.label : `${col.label} — hidden by ${groupVisibilityLabel}`,
+      ),
     );
 
     const pin = createElement("select", "pte-column-panel-pin");
