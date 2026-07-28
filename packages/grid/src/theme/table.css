@@ -35,7 +35,7 @@
   --pte-icon-sort-asc: url(icons/up.svg);
   --pte-icon-sort-desc: url(icons/down.svg);
   --pte-icon-sort-clear: url(icons/down-up.svg);
-  --pte-icon-submenu: url(icons/right-chevron.svg);
+  --pte-icon-submenu: url(icons/submenu.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
   --pte-icon-column-hide: url(icons/column-hide.svg);
@@ -1845,8 +1845,6 @@
 .icon-arrow-right {
   mask-image: var(--pte-icon-submenu);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-check {
@@ -1857,15 +1855,11 @@
 .icon-group {
   mask-image: var(--pte-icon-group);
   background-color: var(--pte-icon-color);
-  width: 20px;
-  height: 20px;
 }
 
 .icon-col-hide {
   mask-image: var(--pte-icon-column-hide);
   background-color: var(--pte-icon-color);
-  width: 20px;
-  height: 20px;
 }
 
 .icon-count {
@@ -1881,8 +1875,6 @@
 .icon-sum {
   mask-image: var(--pte-icon-sum);
   background-color: var(--pte-icon-color);
-  width: 16px;
-  height: 16px;
 }
 
 .icon-avg {
@@ -1893,29 +1885,21 @@
 .icon-min-string {
   mask-image: var(--pte-icon-min-string);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-min-number {
   mask-image: var(--pte-icon-min-number);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-max-string {
   mask-image: var(--pte-icon-max-string);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-max-number {
   mask-image: var(--pte-icon-max-number);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-median {
@@ -1946,36 +1930,26 @@
 .icon-pin {
   mask-image: var(--pte-icon-pin);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-copy {
   mask-image: var(--pte-icon-copy);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-cut {
   mask-image: var(--pte-icon-cut);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-paste {
   mask-image: var(--pte-icon-paste);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .icon-export {
   mask-image: var(--pte-icon-export);
   background-color: var(--pte-icon-color);
-  width: 18px;
-  height: 18px;
 }
 
 .pte-select {
