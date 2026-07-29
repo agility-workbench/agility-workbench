@@ -31,7 +31,7 @@ Grouped by area; each maps to a §5 sub-table.
   column/header menus, footer, toolbar), search, filtered bulk visibility, live visibility and pinning controls,
   grouped hierarchy that follows group-toggle visibility, hierarchy-aware drag/keyboard reordering,
   responsive column-state refresh, layout reset, toolbar exports for the current selection or
-  entire table, and removable/reorderable active row-group chips.
+  entire table, removable/reorderable active row-group chips, and priority-ordered sort chips.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
   cell renderer.
@@ -237,7 +237,7 @@ packages/grid/src/
 │   ├── overlay.ts             Overlay base
 │   ├── exportRenderer.ts      ExportRenderer — builds ExportConfig from current state; resolves scope,
 │   │                          prunes the group tree to the selection, maps a range's column span
-│   ├── toolbar/               Top toolbar — export menu and active row-group chips
+│   ├── toolbar/               Top toolbar — export menu, row-group chips, and multi-sort controls
 │   ├── serverSideController.ts SSRM data source / aggregation wiring
 │   │
 │   ├── aggregate/             Aggregate row rendering
@@ -503,6 +503,7 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Feature | Status | Location |
 |---------|--------|----------|
 | Multi-column sort | ✅ Complete | `interfaces/sort.ts` → `SortModel` |
+| Toolbar sort management | ✅ Complete | ordered chips with trailing-area picker/header drop, direction toggle, removal, right-edge clear-all, keyboard/drag priority reordering; `renderer/toolbar/` |
 | Configurable sort cycle (`sortingOrder`) | ✅ Complete | `interfaces/sort.ts` → `nextSortDir` / `DEFAULT_SORTING_ORDER`; grid-level + per-column + `defaultColDef` |
 | Toggle sort (advances the configured cycle) | ✅ Complete | `GridCore.toggleSort()` / `progressSort` |
 | Multi-sort modifier key (`multiSortKey`: ctrl/shift) | ✅ Complete | additive sort on modified icon click; default "ctrl" |
@@ -711,7 +712,7 @@ lifecycle; the content is a custom component.
 | Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
 | Toolbar export menu | ✅ Complete | Selection / Entire table scopes with CSV and Excel formats; delegates to `ExportRenderer` |
-| Toolbar row-group controls | ✅ Complete | Add-group picker; shared position-aware insertion marker for header, panel, and chip drags; active chips with removal and Left/Right keyboard reordering through `rowGroupSet` |
+| Toolbar row-group controls | ✅ Complete | Trailing-area add-group picker and right-edge clear-all; shared position-aware insertion marker for header, panel, and chip drags; active chips with removal and Left/Right keyboard reordering through `rowGroupSet` |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
 | Column-group hierarchy | ✅ Complete | Nested collapsible groups; ancestor names participate in search and matching paths expand automatically |
 | Group-controlled visibility | ✅ Complete | Uses the column model's resolved `columnGroupVisible`; inactive leaves are omitted while manually hidden active leaves remain manageable |

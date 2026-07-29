@@ -555,6 +555,204 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps toolbar sort priority synchronized with header indicators", async () => {
+    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const core = api.getCore();
+    const model = api.getColumnModel();
+    const region = model.getByColId("region")!;
+    const revenue = model.getByColId("revenue")!;
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-sort-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarSortAdd-${region.instanceID}"]`,
+      )!.click();
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-sort-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarSortAdd-${revenue.instanceID}"]`,
+      )!.click();
+    });
+
+    expect(core.getSortModel().items.map(item => item.col.instanceID))
+      .toEqual([region.instanceID, revenue.instanceID]);
+    expect(
+      document.getElementById(region.instanceID)
+        ?.querySelector(".pte-hcell-sort-priority")?.textContent,
+    ).toBe("1");
+    expect(
+      document.getElementById(revenue.instanceID)
+        ?.querySelector(".pte-hcell-sort-priority")?.textContent,
+    ).toBe("2");
+
+    const name = model.getByColId("name")!;
+    const nameHeader = document.getElementById(name.instanceID)!;
+    const sortZone = container.querySelector<HTMLElement>(".pte-grid-toolbar-sort-dropzone")!;
+    const sortChips = Array.from(
+      sortZone.querySelectorAll<HTMLElement>(".pte-grid-toolbar-sort-chip"),
+    );
+    sortChips.forEach((chip, index) => {
+      Object.defineProperty(chip, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          left: 300 + index * 100,
+          right: 400 + index * 100,
+          top: 0,
+          bottom: 26,
+          width: 100,
+          height: 26,
+        }),
+      });
+    });
+    Object.defineProperty(nameHeader, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, right: 120, top: 50, bottom: 90, width: 120, height: 40 }),
+    });
+    Object.defineProperty(sortZone, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 300, right: 600, top: 0, bottom: 42, width: 300, height: 42 }),
+    });
+
+    await act(async () => {
+      nameHeader.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true,
+        button: 0,
+        clientX: 20,
+        clientY: 60,
+      }));
+      document.dispatchEvent(new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: 420,
+        clientY: 20,
+      }));
+      expect(sortChips[1].classList.contains("drop-before")).toBe(true);
+      expect(
+        sortZone.querySelector<HTMLElement>(".pte-grid-toolbar-sort-drop-indicator")?.style.left,
+      ).toBe("100px");
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    expect(core.getSortModel().items.map(item => item.col.instanceID))
+      .toEqual([region.instanceID, name.instanceID, revenue.instanceID]);
+    expect(Array.from(
+      container.querySelectorAll(".pte-grid-toolbar-sort-chip-label"),
+      chip => chip.textContent,
+    )).toEqual(["Region", "Name", "Revenue"]);
+    expect(sortZone.querySelector(".pte-grid-toolbar-sort-drop-indicator")).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(
+        `.pte-grid-toolbar-sort-chip[data-sort-col-id="${name.instanceID}"] .pte-grid-toolbar-sort-remove`,
+      )!.click();
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLElement>(
+        `.pte-grid-toolbar-sort-chip[data-sort-col-id="${revenue.instanceID}"]`,
+      )!.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowLeft",
+        bubbles: true,
+      }));
+    });
+    expect(core.getSortModel().items.map(item => item.col.instanceID))
+      .toEqual([revenue.instanceID, region.instanceID]);
+    expect(
+      document.getElementById(revenue.instanceID)
+        ?.querySelector(".pte-hcell-sort-priority")?.textContent,
+    ).toBe("1");
+    expect(
+      document.getElementById(region.instanceID)
+        ?.querySelector(".pte-hcell-sort-priority")?.textContent,
+    ).toBe("2");
+
+    await act(async () => {
+      core.dispatch({
+        type: "headerAction",
+        action: "toggleSort",
+        colId: name.instanceID,
+      });
+    });
+    expect(core.getSortModel().items.map(item => item.col.instanceID)).toEqual([name.instanceID]);
+    expect(Array.from(
+      container.querySelectorAll(".pte-grid-toolbar-sort-chip-label"),
+      chip => chip.textContent,
+    )).toEqual(["Name"]);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-sort-clear")!.click();
+    });
+    expect(core.getSortModel().items).toEqual([]);
+    expect(container.querySelector(".pte-grid-toolbar-sort-chip")).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it("identifies clipped grouping and sort chips with grid tooltips", async () => {
+    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const model = api.getColumnModel();
+    const region = model.getByColId("region")!;
+    const revenue = model.getByColId("revenue")!;
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-group-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarGroupAdd-${region.instanceID}"]`,
+      )!.click();
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-sort-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarSortAdd-${revenue.instanceID}"]`,
+      )!.click();
+    });
+
+    const groupChip = container.querySelector<HTMLElement>(
+      `.pte-grid-toolbar-group-chip[data-group-col-id="${region.instanceID}"]`,
+    )!;
+    const groupLabel = groupChip.querySelector<HTMLElement>(
+      ".pte-grid-toolbar-group-chip-label",
+    )!;
+    expect(groupChip.hasAttribute("title")).toBe(false);
+    Object.defineProperties(groupLabel, {
+      scrollWidth: { configurable: true, value: 60 },
+      clientWidth: { configurable: true, value: 100 },
+    });
+    await act(async () => {
+      groupChip.querySelector<HTMLElement>(".pte-grid-toolbar-group-drag")!.dispatchEvent(
+        new MouseEvent("mouseover", { bubbles: true, clientX: 20, clientY: 20 }),
+      );
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector(".pte-tooltip")).toBeNull();
+
+    Object.defineProperty(groupLabel, "clientWidth", { configurable: true, value: 0 });
+    await act(async () => {
+      groupChip.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      groupChip.querySelector<HTMLElement>(".pte-grid-toolbar-group-drag")!.dispatchEvent(
+        new MouseEvent("mouseover", { bubbles: true, clientX: 20, clientY: 20 }),
+      );
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector(".pte-tooltip")?.textContent).toBe("Region");
+
+    const sortChip = container.querySelector<HTMLElement>(
+      `.pte-grid-toolbar-sort-chip[data-sort-col-id="${revenue.instanceID}"]`,
+    )!;
+    const sortLabel = sortChip.querySelector<HTMLElement>(
+      ".pte-grid-toolbar-sort-chip-label",
+    )!;
+    expect(sortChip.hasAttribute("title")).toBe(false);
+    Object.defineProperties(sortLabel, {
+      scrollWidth: { configurable: true, value: 80 },
+      clientWidth: { configurable: true, value: 0 },
+    });
+    await act(async () => {
+      groupChip.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      sortChip.querySelector<HTMLElement>(".pte-grid-toolbar-sort-drag")!.dispatchEvent(
+        new MouseEvent("mouseover", { bubbles: true, clientX: 400, clientY: 20 }),
+      );
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector(".pte-tooltip")?.textContent).toBe("Revenue");
+
+    await act(async () => root.unmount());
+  });
+
   it("offers Manage columns in both the column button menu and header context menu", async () => {
     const { container, root, api } = await mount({ trigger: "menu" });
     const nameInstanceId = api.getColumnModel().getByColId("name")!.instanceID;

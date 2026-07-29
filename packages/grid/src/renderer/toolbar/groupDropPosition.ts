@@ -1,7 +1,12 @@
 const CHIP_SELECTOR = ".pte-grid-toolbar-group-chip";
+const INDICATOR_CLASS = "pte-grid-toolbar-group-drop-indicator";
 
-export function resolveGroupDropIndex(zone: HTMLElement, clientX: number): number {
-  const chips = Array.from(zone.querySelectorAll<HTMLElement>(CHIP_SELECTOR));
+export function resolveGroupDropIndex(
+  zone: HTMLElement,
+  clientX: number,
+  chipSelector = CHIP_SELECTOR,
+): number {
+  const chips = Array.from(zone.querySelectorAll<HTMLElement>(chipSelector));
   const before = chips.findIndex(chip => {
     const rect = chip.getBoundingClientRect();
     return clientX < rect.left + rect.width / 2;
@@ -9,9 +14,14 @@ export function resolveGroupDropIndex(zone: HTMLElement, clientX: number): numbe
   return before < 0 ? chips.length : before;
 }
 
-export function showGroupDropPosition(zone: HTMLElement, index: number): void {
-  clearGroupDropPosition(zone);
-  const chips = Array.from(zone.querySelectorAll<HTMLElement>(CHIP_SELECTOR));
+export function showGroupDropPosition(
+  zone: HTMLElement,
+  index: number,
+  chipSelector = CHIP_SELECTOR,
+  indicatorClass = INDICATOR_CLASS,
+): void {
+  clearGroupDropPosition(zone, indicatorClass);
+  const chips = Array.from(zone.querySelectorAll<HTMLElement>(chipSelector));
   const zoneRect = zone.getBoundingClientRect();
   let x = zoneRect.left;
   if (index < chips.length) {
@@ -22,14 +32,17 @@ export function showGroupDropPosition(zone: HTMLElement, index: number): void {
     x = chips[chips.length - 1].getBoundingClientRect().right;
   }
   const marker = document.createElement("span");
-  marker.className = "pte-grid-toolbar-group-drop-indicator";
+  marker.className = indicatorClass;
   marker.setAttribute("aria-hidden", "true");
   marker.style.left = `${x - zoneRect.left}px`;
   zone.appendChild(marker);
 }
 
-export function clearGroupDropPosition(zone: HTMLElement): void {
-  zone.querySelector(".pte-grid-toolbar-group-drop-indicator")?.remove();
+export function clearGroupDropPosition(
+  zone: HTMLElement,
+  indicatorClass = INDICATOR_CLASS,
+): void {
+  zone.querySelector(`.${indicatorClass}`)?.remove();
   zone.querySelectorAll(".drop-before, .drop-after").forEach(element => {
     element.classList.remove("drop-before", "drop-after");
   });

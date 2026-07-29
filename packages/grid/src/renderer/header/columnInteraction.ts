@@ -6,6 +6,10 @@ import {
   resolveGroupDropIndex,
   showGroupDropPosition,
 } from "../toolbar/groupDropPosition";
+import {
+  getSortDirections,
+  insertSortColumn,
+} from "../toolbar/sortModelOperations";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
@@ -44,6 +48,8 @@ export class ColumnInteractionRenderer {
   private dragAllowsDrop = false;
   private groupDropZone: HTMLElement | null = null;
   private groupDropIndex: number | null = null;
+  private sortDropZone: HTMLElement | null = null;
+  private sortDropIndex: number | null = null;
 
   constructor(private params: ColumnInteractionRendererParams) { }
 
@@ -123,10 +129,28 @@ export class ColumnInteractionRenderer {
     }
 
     const groupDropZone = this.getGroupDropZoneForPoint(e.clientX, e.clientY);
+    const sortDropZone = groupDropZone
+      ? null
+      : this.getSortDropZoneForPoint(e.clientX, e.clientY);
     this.setGroupDropZone(groupDropZone);
+    this.setSortDropZone(sortDropZone);
     if (groupDropZone) {
       this.groupDropIndex = resolveGroupDropIndex(groupDropZone, e.clientX);
       showGroupDropPosition(groupDropZone, this.groupDropIndex);
+      this.dragTargetIndex = -1;
+      if (this.dragIndicatorEl) this.dragIndicatorEl.style.display = "none";
+      e.preventDefault();
+      return;
+    }
+    if (sortDropZone) {
+      const chipSelector = ".pte-grid-toolbar-sort-chip";
+      this.sortDropIndex = resolveGroupDropIndex(sortDropZone, e.clientX, chipSelector);
+      showGroupDropPosition(
+        sortDropZone,
+        this.sortDropIndex,
+        chipSelector,
+        "pte-grid-toolbar-sort-drop-indicator",
+      );
       this.dragTargetIndex = -1;
       if (this.dragIndicatorEl) this.dragIndicatorEl.style.display = "none";
       e.preventDefault();
@@ -202,6 +226,8 @@ export class ColumnInteractionRenderer {
     const allowDrop = this.dragAllowsDrop;
     const addToGroups = this.groupDropZone != null;
     const groupDropIndex = this.groupDropIndex;
+    const addToSorts = this.sortDropZone != null;
+    const sortDropIndex = this.sortDropIndex;
     this.teardownColumnDrag();
     if (!performedDrag) return;
     if (addToGroups) {
@@ -211,6 +237,12 @@ export class ColumnInteractionRenderer {
         colIds.splice(insertAt, 0, col.instanceID);
         this.params.core.dispatch({ type: "rowGroupSet", colIds });
       }
+      this.suppressHeaderClick = true;
+      setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+      return;
+    }
+    if (addToSorts) {
+      insertSortColumn(this.params.core, col, sortDropIndex ?? undefined);
       this.suppressHeaderClick = true;
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
       return;
@@ -343,6 +375,20 @@ export class ColumnInteractionRenderer {
     return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom ? zone : null;
   }
 
+  private getSortDropZoneForPoint(x: number, y: number): HTMLElement | null {
+    const col = this.draggingColumn;
+    if (
+      !col
+      || !col.sortable
+      || col.isInternal()
+      || getSortDirections(col).length === 0
+    ) return null;
+    const zone = this.params.root.querySelector<HTMLElement>(".pte-grid-toolbar-sort-dropzone");
+    if (!zone) return null;
+    const rect = zone.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom ? zone : null;
+  }
+
   private setGroupDropZone(zone: HTMLElement | null): void {
     if (zone === this.groupDropZone) return;
     if (this.groupDropZone) {
@@ -352,6 +398,21 @@ export class ColumnInteractionRenderer {
     this.groupDropZone = zone;
     this.groupDropIndex = null;
     this.groupDropZone?.classList.add("drag-over");
+    if (this.isDraggingColumn) this.setDragCursor(true, zone != null || this.dragAllowsDrop);
+  }
+
+  private setSortDropZone(zone: HTMLElement | null): void {
+    if (zone === this.sortDropZone) return;
+    if (this.sortDropZone) {
+      this.sortDropZone.classList.remove("drag-over");
+      clearGroupDropPosition(
+        this.sortDropZone,
+        "pte-grid-toolbar-sort-drop-indicator",
+      );
+    }
+    this.sortDropZone = zone;
+    this.sortDropIndex = null;
+    this.sortDropZone?.classList.add("drag-over");
     if (this.isDraggingColumn) this.setDragCursor(true, zone != null || this.dragAllowsDrop);
   }
 
@@ -440,8 +501,17 @@ export class ColumnInteractionRenderer {
       this.groupDropZone.classList.remove("drag-over");
       clearGroupDropPosition(this.groupDropZone);
     }
+    if (this.sortDropZone) {
+      this.sortDropZone.classList.remove("drag-over");
+      clearGroupDropPosition(
+        this.sortDropZone,
+        "pte-grid-toolbar-sort-drop-indicator",
+      );
+    }
     this.groupDropZone = null;
     this.groupDropIndex = null;
+    this.sortDropZone = null;
+    this.sortDropIndex = null;
     this.draggingColumn = null;
     this.dragHeaderEl = null;
     this.dragHeaderContainer = null;

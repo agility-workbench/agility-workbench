@@ -1,14 +1,23 @@
+import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { Unsubscribe } from "../../events/events";
 import { ExportOptions } from "../../export/export";
 import { MenuItem } from "../../interfaces/menuItem";
+import { SortDir } from "../../interfaces/sort";
 import { button, div, span } from "../element";
 import { MenuRenderer } from "../menuRenderer";
+import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 import {
   clearGroupDropPosition,
   resolveGroupDropIndex,
   showGroupDropPosition,
 } from "./groupDropPosition";
+import {
+  applyOrderedSortItems,
+  getOrderedSortItems,
+  getSortDirections,
+  insertSortColumn,
+} from "./sortModelOperations";
 
 interface GridToolbarRendererParams {
   core: GridCore;
@@ -25,9 +34,14 @@ interface GridToolbarRendererParams {
 export class GridToolbarRenderer {
   private toolbar = div("pte-grid-toolbar");
   private left = div("pte-grid-toolbar-left");
+  private groupSection = div("pte-grid-toolbar-group-section");
+  private sortSection = div("pte-grid-toolbar-sort-section");
   private right = div("pte-grid-toolbar-right");
   private exportButton = button("pte-grid-toolbar-export-button");
   private draggedGroupColId: string | null = null;
+  private draggedSortColId: string | null = null;
+  private groupChipTooltipDisposers: Array<() => void> = [];
+  private sortChipTooltipDisposers: Array<() => void> = [];
   private unsubscribe: Unsubscribe;
 
   constructor(private params: GridToolbarRendererParams) {
@@ -41,11 +55,15 @@ export class GridToolbarRenderer {
     this.exportButton.append(icon, span("pte-grid-toolbar-export-label", "Export"));
     this.exportButton.addEventListener("click", () => this.openExportMenu());
     this.bindExternalColumnDrop();
+    this.bindSortChipDrop();
+    this.left.append(this.groupSection, this.sortSection);
     this.toolbar.append(this.left, this.right);
     this.unsubscribe = this.params.core.on("columnsChanged", event => {
       if (event.reason === "group" || event.reason === "defs") this.renderGroupChips();
+      if (event.reason === "sort" || event.reason === "defs") this.renderSortChips();
     });
     this.renderGroupChips();
+    this.renderSortChips();
   }
 
   mountColumnTrigger(trigger: HTMLButtonElement): void {
@@ -62,11 +80,14 @@ export class GridToolbarRenderer {
 
   destroy(): void {
     this.unsubscribe();
+    this.disposeGroupChipTooltips();
+    this.disposeSortChipTooltips();
     this.unmount();
   }
 
   private renderGroupChips(): void {
-    this.left.replaceChildren();
+    this.disposeGroupChipTooltips();
+    this.groupSection.replaceChildren();
     const groups = this.params.core.getRowGroupColumns();
     if (groups.length > 0) {
       const label = span("pte-grid-toolbar-group-label", "Grouped by");
@@ -88,6 +109,10 @@ export class GridToolbarRenderer {
         const handle = span("pte-grid-toolbar-group-drag", "⠿");
         handle.setAttribute("aria-hidden", "true");
         const chipLabel = span("pte-grid-toolbar-group-chip-label", col.label);
+        this.groupChipTooltipDisposers.push(registerRendererTooltipTarget(
+          chip,
+          () => chipLabel.scrollWidth > chipLabel.clientWidth ? col.label : null,
+        ));
         const remove = button("pte-grid-toolbar-group-remove", "×");
         remove.type = "button";
         remove.setAttribute("aria-label", `Remove ${col.label} from row grouping`);
@@ -114,46 +139,67 @@ export class GridToolbarRenderer {
         chip.addEventListener("dragend", () => {
           this.draggedGroupColId = null;
           chip.classList.remove("dragging");
-          this.left.classList.remove("drag-over");
-          clearGroupDropPosition(this.left);
+          this.groupSection.classList.remove("drag-over");
+          clearGroupDropPosition(this.groupSection);
         });
 
         chip.append(handle, chipLabel, remove);
         list.appendChild(chip);
       });
 
-      this.left.append(label, list);
+      this.groupSection.append(label, list);
     }
 
     const addGroup = button("pte-grid-toolbar-group-add", "Add group");
     addGroup.type = "button";
     addGroup.setAttribute("aria-haspopup", "menu");
     addGroup.disabled = this.availableGroupColumns().length === 0;
-    addGroup.addEventListener("click", () => this.openAddGroupMenu(addGroup));
-    this.left.appendChild(addGroup);
+    addGroup.addEventListener("click", event => {
+      this.openAddGroupMenu(addGroup, event.detail === 0 ? undefined : event.clientX);
+    });
+    this.groupSection.appendChild(addGroup);
+
+    if (groups.length > 0) {
+      const clear = button("pte-grid-toolbar-group-clear", "×");
+      clear.type = "button";
+      clear.setAttribute("aria-label", "Clear row grouping");
+      clear.addEventListener("click", () => {
+        this.params.core.dispatch({ type: "rowGroupSet", colIds: [] });
+      });
+      this.groupChipTooltipDisposers.push(registerRendererTooltipTarget(
+        clear,
+        () => "Clear grouping",
+      ));
+      this.groupSection.appendChild(clear);
+    }
   }
 
   private bindExternalColumnDrop(): void {
-    this.left.classList.add("pte-grid-toolbar-group-dropzone");
-    this.left.addEventListener("dragover", event => {
+    this.groupSection.classList.add("pte-grid-toolbar-group-dropzone");
+    this.groupSection.addEventListener("dragover", event => {
+      if (this.draggedSortColId) return;
       if (!this.draggedGroupColId && this.availableGroupColumns().length === 0) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-      this.left.classList.add("drag-over");
-      showGroupDropPosition(this.left, resolveGroupDropIndex(this.left, event.clientX));
+      this.groupSection.classList.add("drag-over");
+      showGroupDropPosition(
+        this.groupSection,
+        resolveGroupDropIndex(this.groupSection, event.clientX),
+      );
     });
-    this.left.addEventListener("dragleave", event => {
+    this.groupSection.addEventListener("dragleave", event => {
       const next = event.relatedTarget as Node | null;
-      if (!next || !this.left.contains(next)) {
-        this.left.classList.remove("drag-over");
-        clearGroupDropPosition(this.left);
+      if (!next || !this.groupSection.contains(next)) {
+        this.groupSection.classList.remove("drag-over");
+        clearGroupDropPosition(this.groupSection);
       }
     });
-    this.left.addEventListener("drop", event => {
+    this.groupSection.addEventListener("drop", event => {
+      if (this.draggedSortColId) return;
       event.preventDefault();
-      this.left.classList.remove("drag-over");
-      const index = resolveGroupDropIndex(this.left, event.clientX);
-      clearGroupDropPosition(this.left);
+      this.groupSection.classList.remove("drag-over");
+      const index = resolveGroupDropIndex(this.groupSection, event.clientX);
+      clearGroupDropPosition(this.groupSection);
       const draggedGroup = this.draggedGroupColId;
       this.draggedGroupColId = null;
       if (draggedGroup) {
@@ -165,6 +211,151 @@ export class GridToolbarRenderer {
     });
   }
 
+  private renderSortChips(): void {
+    this.disposeSortChipTooltips();
+    this.sortSection.replaceChildren();
+    const sorts = this.params.core.getSortModel().items;
+    if (sorts.length > 0) {
+      const label = span("pte-grid-toolbar-sort-label", "Sort by");
+      const list = div("pte-grid-toolbar-sort-list");
+      list.setAttribute("role", "list");
+      list.setAttribute("aria-label", "Column sort priority");
+
+      sorts.forEach((sort, index) => {
+        const col = sort.col;
+        const chip = div("pte-grid-toolbar-sort-chip");
+        chip.dataset.sortColId = col.instanceID;
+        chip.draggable = true;
+        chip.tabIndex = 0;
+        chip.setAttribute("role", "listitem");
+        chip.setAttribute(
+          "aria-label",
+          `${col.label}, sort priority ${index + 1} of ${sorts.length}, ${sort.dir === "asc" ? "ascending" : "descending"}. Use Left and Right arrows to reorder.`,
+        );
+
+        const handle = span("pte-grid-toolbar-sort-drag", "⠿");
+        handle.setAttribute("aria-hidden", "true");
+        const chipLabel = span("pte-grid-toolbar-sort-chip-label", col.label);
+        this.sortChipTooltipDisposers.push(registerRendererTooltipTarget(
+          chip,
+          () => chipLabel.scrollWidth > chipLabel.clientWidth ? col.label : null,
+        ));
+        const nextDirection = this.nextSortDirection(col, sort.dir);
+        const direction = button("pte-grid-toolbar-sort-direction");
+        direction.type = "button";
+        direction.disabled = nextDirection == null;
+        direction.setAttribute("aria-label", nextDirection == null
+          ? `${col.label} sort direction is fixed to ${sort.dir === "asc" ? "ascending" : "descending"}`
+          : `Sort ${col.label} ${nextDirection === "asc" ? "ascending" : "descending"}`);
+        direction.addEventListener("click", event => {
+          event.stopPropagation();
+          if (nextDirection) this.setSortDirection(col.instanceID, nextDirection);
+        });
+        const directionIcon = span(
+          `pte-grid-toolbar-sort-direction-icon ${sort.dir === "asc" ? "icon-asc" : "icon-desc"}`,
+        );
+        directionIcon.setAttribute("aria-hidden", "true");
+        direction.appendChild(directionIcon);
+        const remove = button("pte-grid-toolbar-sort-remove", "×");
+        remove.type = "button";
+        remove.setAttribute("aria-label", `Remove ${col.label} from sorting`);
+        remove.addEventListener("click", event => {
+          event.stopPropagation();
+          this.removeSort(col.instanceID);
+        });
+
+        chip.addEventListener("keydown", event => {
+          if (event.target !== chip) return;
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            this.moveSort(col.instanceID, event.key === "ArrowLeft" ? -1 : 1);
+          } else if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            this.removeSort(col.instanceID);
+          }
+        });
+        chip.addEventListener("dragstart", event => {
+          this.draggedSortColId = col.instanceID;
+          chip.classList.add("dragging");
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", col.instanceID);
+          }
+        });
+        chip.addEventListener("dragend", () => {
+          this.draggedSortColId = null;
+          chip.classList.remove("dragging");
+          this.sortSection.classList.remove("drag-over");
+          clearGroupDropPosition(
+            this.sortSection,
+            "pte-grid-toolbar-sort-drop-indicator",
+          );
+        });
+
+        chip.append(handle, chipLabel, direction, remove);
+        list.appendChild(chip);
+      });
+
+      this.sortSection.append(label, list);
+    }
+
+    const addSort = button("pte-grid-toolbar-sort-add", "Add sort");
+    addSort.type = "button";
+    addSort.setAttribute("aria-haspopup", "menu");
+    addSort.disabled = this.availableSortColumns().length === 0;
+    addSort.addEventListener("click", event => {
+      this.openAddSortMenu(addSort, event.detail === 0 ? undefined : event.clientX);
+    });
+    this.sortSection.appendChild(addSort);
+
+    if (sorts.length > 0) {
+      const clear = button("pte-grid-toolbar-sort-clear", "×");
+      clear.type = "button";
+      clear.setAttribute("aria-label", "Clear all sorting");
+      clear.addEventListener("click", () => this.applySortModel([]));
+      this.sortChipTooltipDisposers.push(registerRendererTooltipTarget(
+        clear,
+        () => "Clear sorting",
+      ));
+      this.sortSection.appendChild(clear);
+    }
+  }
+
+  private bindSortChipDrop(): void {
+    const chipSelector = ".pte-grid-toolbar-sort-chip";
+    const indicatorClass = "pte-grid-toolbar-sort-drop-indicator";
+    this.sortSection.classList.add("pte-grid-toolbar-sort-dropzone");
+    this.sortSection.addEventListener("dragover", event => {
+      if (!this.draggedSortColId) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      this.sortSection.classList.add("drag-over");
+      showGroupDropPosition(
+        this.sortSection,
+        resolveGroupDropIndex(this.sortSection, event.clientX, chipSelector),
+        chipSelector,
+        indicatorClass,
+      );
+    });
+    this.sortSection.addEventListener("dragleave", event => {
+      const next = event.relatedTarget as Node | null;
+      if (!next || !this.sortSection.contains(next)) {
+        this.sortSection.classList.remove("drag-over");
+        clearGroupDropPosition(this.sortSection, indicatorClass);
+      }
+    });
+    this.sortSection.addEventListener("drop", event => {
+      if (!this.draggedSortColId) return;
+      event.preventDefault();
+      const index = resolveGroupDropIndex(this.sortSection, event.clientX, chipSelector);
+      const colId = this.draggedSortColId;
+      this.draggedSortColId = null;
+      this.sortSection.classList.remove("drag-over");
+      clearGroupDropPosition(this.sortSection, indicatorClass);
+      this.moveSortToIndex(colId, index);
+    });
+  }
+
   private availableGroupColumns() {
     if (this.params.core.getRowModel().getType() !== "clientSide") return [];
     const grouped = new Set(this.params.core.getRowGroupColumns().map(col => col.instanceID));
@@ -173,7 +364,7 @@ export class GridToolbarRenderer {
     );
   }
 
-  private openAddGroupMenu(anchor: HTMLButtonElement): void {
+  private openAddGroupMenu(anchor: HTMLButtonElement, pointerX?: number): void {
     const items: MenuItem[] = this.availableGroupColumns().map(col => ({
       id: `toolbarGroupAdd-${col.instanceID}`,
       label: col.label,
@@ -182,13 +373,114 @@ export class GridToolbarRenderer {
     }));
     const rect = anchor.getBoundingClientRect();
     this.params.menuRenderer.open({
-      anchorEl: anchor,
-      clientX: rect.left,
+      clientX: pointerX ?? rect.left,
       clientY: rect.bottom,
       items,
       position: "bottom-left",
       onItemClick: item => this.addGroupColumn(item.payload.colId),
     });
+  }
+
+  private availableSortColumns() {
+    const sorted = new Set(
+      this.params.core.getSortModel().items.map(item => item.col.instanceID),
+    );
+    return this.params.core.getColumnModel().getLeaves().filter(
+      col => col.sortable
+        && !col.isInternal()
+        && !sorted.has(col.instanceID)
+        && getSortDirections(col).length > 0,
+    );
+  }
+
+  private openAddSortMenu(anchor: HTMLButtonElement, pointerX?: number): void {
+    const items: MenuItem[] = this.availableSortColumns().map(col => ({
+      id: `toolbarSortAdd-${col.instanceID}`,
+      label: col.label,
+      command: "toolbar.sort.add",
+      payload: { colId: col.instanceID },
+    }));
+    const rect = anchor.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      clientX: pointerX ?? rect.left,
+      clientY: rect.bottom,
+      items,
+      position: "bottom-left",
+      onItemClick: item => this.addSortColumn(item.payload.colId),
+    });
+  }
+
+  private addSortColumn(colId: string): void {
+    const model = this.params.core.getColumnModel();
+    const col = model.getById(colId) ?? model.getByColId(colId);
+    if (!col || !col.sortable || col.isInternal()) return;
+    if (this.params.core.getSortModel().items.some(item => item.col.instanceID === col.instanceID)) {
+      return;
+    }
+    insertSortColumn(this.params.core, col);
+  }
+
+  private nextSortDirection(col: Column, current: SortDir): SortDir | null {
+    const directions = getSortDirections(col);
+    if (directions.length < 2) return null;
+    const index = directions.indexOf(current);
+    return directions[(index < 0 ? 0 : index + 1) % directions.length];
+  }
+
+  private setSortDirection(colId: string, dir: SortDir): void {
+    this.params.core.dispatch({
+      type: "sortModelSet",
+      sortItems: [{ key: colId, dir }],
+    });
+  }
+
+  private removeSort(colId: string): void {
+    this.params.core.dispatch({
+      type: "sortModelSet",
+      sortItems: [{ key: colId, dir: null }],
+    });
+  }
+
+  private moveSort(colId: string, offset: -1 | 1): void {
+    const sorts = this.currentSortItems();
+    const from = sorts.findIndex(item => item.key === colId);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= sorts.length) return;
+    [sorts[from], sorts[to]] = [sorts[to], sorts[from]];
+    this.applySortModel(sorts);
+    this.focusSortChip(colId);
+  }
+
+  private moveSortToIndex(colId: string, index: number): void {
+    const col = this.params.core.getColumnModel().getById(colId);
+    if (!col) return;
+    insertSortColumn(this.params.core, col, index);
+    this.focusSortChip(colId);
+  }
+
+  private currentSortItems(): { key: string; dir: SortDir }[] {
+    return getOrderedSortItems(this.params.core);
+  }
+
+  private applySortModel(next: { key: string; dir: SortDir }[]): void {
+    applyOrderedSortItems(this.params.core, next);
+  }
+
+  private focusSortChip(colId: string): void {
+    const chip = Array.from(
+      this.sortSection.querySelectorAll<HTMLElement>(".pte-grid-toolbar-sort-chip"),
+    ).find(item => item.dataset.sortColId === colId);
+    chip?.focus();
+  }
+
+  private disposeGroupChipTooltips(): void {
+    this.groupChipTooltipDisposers.forEach(dispose => dispose());
+    this.groupChipTooltipDisposers = [];
+  }
+
+  private disposeSortChipTooltips(): void {
+    this.sortChipTooltipDisposers.forEach(dispose => dispose());
+    this.sortChipTooltipDisposers = [];
   }
 
   private addGroupColumn(colId: string, index?: number): void {
