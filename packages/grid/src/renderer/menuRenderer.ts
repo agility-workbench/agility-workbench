@@ -331,6 +331,7 @@ export class MenuRenderer {
       text.textContent = item.label || '';
       el.appendChild(text);
       el.disabled = !!item.disabled;
+      el.classList.toggle("disabled", !!item.disabled);
       if (item.title) {
         // Set on both the button and the label: a disabled <button> can swallow the native tooltip
         // in some browsers, but the inner span still surfaces it.

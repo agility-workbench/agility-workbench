@@ -574,7 +574,7 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 |---------|--------|----------|
 | Aggregate functions: count, distinct_count, sum, avg, min, max, median | ✅ Complete | `aggregate/calculator.ts` |
 | Aggregate scope: none / page / all | ✅ Complete | `interfaces/aggregate.ts` |
-| Aggregate row (bottom of grid) | ✅ Complete | `renderer/aggregate/wrapper.ts`, `rowBuilder.ts` |
+| Aggregate row (bottom of grid) | ✅ Complete | `renderer/aggregate/wrapper.ts`, `rowBuilder.ts`; function icons open the shared type-aware aggregation menu |
 | Column menu aggregate selection | ✅ Complete | `renderer/aggregate/modelController.ts` |
 | Server-side aggregation (delegated to data source) | ✅ Complete | `ssrm/serverSide.ts` → `requestServerAggregates` |
 | Client-side aggregation fallback | ✅ Complete | `aggregate/calculator.ts` + `csrm/clientSide.ts` |

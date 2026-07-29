@@ -409,6 +409,8 @@ export class GridRenderer {
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
       e.stopPropagation();
       this._aggregateModelController.setAggregateScope("none");
+    }, (column, activeType, anchorEl) => {
+      this._columnMenuOpener.openAggregateMenu(column.instanceID, activeType, anchorEl);
     });
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeadingCells = [];

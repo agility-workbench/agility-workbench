@@ -1985,6 +1985,31 @@
   mask-repeat: no-repeat;
 }
 
+.pte-aggregate-menu-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pte-icon-color);
+  cursor: pointer;
+}
+
+.pte-aggregate-menu-button:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-aggregate-menu-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
 .pte-filter-icon {
   mask-image: var(--pte-icon-filter);
   background-color: var(--pte-icon-color);

@@ -1,5 +1,6 @@
 import { Column } from "../../column/column";
 import { AggregateType } from "../../interfaces/aggregate";
+import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 
 export interface AggregateRowElements {
   row: HTMLDivElement;
@@ -61,7 +62,16 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
 export class AggregateRowRenderer {
   private elements: AggregateRowElements;
 
-  constructor(root: HTMLElement, rowHeight: number, onClose: (event: MouseEvent) => void) {
+  constructor(
+    root: HTMLElement,
+    rowHeight: number,
+    onClose: (event: MouseEvent) => void,
+    private onOpenAggregateMenu?: (
+      column: Column,
+      activeType: AggregateType,
+      anchorEl: HTMLElement,
+    ) => void,
+  ) {
     this.elements = createAggregateRow(rowHeight, onClose);
     root.appendChild(this.elements.row);
   }
@@ -107,15 +117,29 @@ export class AggregateRowRenderer {
         continue;
       }
       const aggFn = aggregateMap.get(col.instanceID) || (col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT);
-      const icon = document.createElement("div");
+      const label = aggFn === AggregateType.DISTINCT_COUNT
+        ? "Distinct Count"
+        : aggFn[0].toUpperCase() + aggFn.substring(1);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pte-aggregate-menu-button";
+      button.setAttribute("aria-haspopup", "menu");
+      button.setAttribute("aria-label", `Change ${col.label} aggregation. Current function: ${label}`);
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.onOpenAggregateMenu?.(col, aggFn, button);
+      });
+      registerRendererTooltipTarget(button, () => `${label} — change aggregation function`, button, "top");
+
+      const icon = document.createElement("span");
       icon.className = "pte-aggregate-icon";
       let suffix = "";
       if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
         suffix = "-" + (col.isComputableType() ? "number" : "string");
       }
       icon.classList.add("icon-" + aggFn + suffix);
-      icon.title = aggFn === AggregateType.DISTINCT_COUNT ? "Distinct Count" : aggFn[0].toUpperCase() + aggFn.substring(1);
-      cell.appendChild(icon);
+      button.appendChild(icon);
+      cell.appendChild(button);
       const content = document.createElement("div");
       content.className = "pte-aggregate-cell-content";
       content.textContent = values.get(col.instanceID) ?? "";
