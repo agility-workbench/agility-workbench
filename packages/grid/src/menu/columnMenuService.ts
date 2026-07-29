@@ -319,22 +319,36 @@ export class ColumnMenuService {
     const userColIDs = this.expandUserColumnIds(colIDs);
     const allSelectedAreGrouped = userColIDs.length > 0 && userColIDs.every(id => grouped.has(id));
     if (allSelectedAreGrouped) {
-      if (userColIDs.length > 1) {
+      const selectedGroupIds = new Set(userColIDs);
+      const remainingGroupIds = groupIds.filter(id => !selectedGroupIds.has(id));
+      if (remainingGroupIds.length === 0) {
         return [{
           id: "ungroupAllColumns",
-          label: "Ungroup All",
+          label: groupIds.length > 1 ? "Ungroup All" : "Ungroup",
           left: "icon-group",
           command: "group.setMany",
           payload: { colIDs: [] },
         }];
       }
 
-      return [{
+      const removeItem: GroupMenuItem = {
         id: "ungroupColumns",
-        label: "Ungroup",
-        left: "icon-group",
+        label: `Remove ${pluralize("Column")} from Grouping`,
         command: "group.setMany",
-        payload: { colIDs: groupIds.filter(id => id !== userColIDs[0]) },
+        payload: { colIDs: remainingGroupIds },
+      };
+      const clearItem: GroupMenuItem = {
+        id: "ungroupAllColumns",
+        label: "Clear All Grouping",
+        command: "group.setMany",
+        payload: { colIDs: [] },
+      };
+
+      return [{
+        id: "ungroupColumnsMenu",
+        label: "Grouping",
+        left: "icon-group",
+        subMenu: [removeItem, clearItem],
       }];
     }
 

@@ -43,6 +43,7 @@ function groupItem(core: GridCore, ctx: ColumnMenuContext): MenuItem | undefined
   return new ColumnMenuService(core as any).buildDefaultColumnMenu(ctx).find(item =>
     item.id === "groupColumns"
     || item.id === "groupColumnsMenu"
+    || item.id === "ungroupColumnsMenu"
     || item.id === "ungroupColumns"
     || item.id === "ungroupAllColumns"
   );
@@ -80,7 +81,7 @@ describe("column menu row grouping items", () => {
     expect(item?.payload).toEqual({ colIDs: [] });
   });
 
-  it("shows Ungroup for a grouped user column and removes only that column", () => {
+  it("offers to remove a grouped user column or clear all grouping", () => {
     const core = makeGrid();
     const region = colId(core, "region");
     const country = colId(core, "country");
@@ -88,16 +89,27 @@ describe("column menu row grouping items", () => {
 
     const svc = new ColumnMenuService(core as any);
     const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: region, colIds: [region] };
-    const item = findById(svc.buildDefaultColumnMenu(ctx), "ungroupColumns")!;
+    const items = svc.buildDefaultColumnMenu(ctx);
+    const groupMenu = findById(items, "ungroupColumnsMenu")!;
+    const remove = findById(items, "ungroupColumns")!;
+    const clear = findById(items, "ungroupAllColumns")!;
 
-    expect(item.label).toBe("Ungroup");
-    expect(item.payload).toEqual({ colIDs: [country] });
+    expect(groupMenu.label).toBe("Grouping");
+    expect(groupMenu.subMenu).toEqual([remove, clear]);
+    expect(remove.label).toBe("Remove Column from Grouping");
+    expect(remove.payload).toEqual({ colIDs: [country] });
+    expect(clear.label).toBe("Clear All Grouping");
+    expect(clear.payload).toEqual({ colIDs: [] });
 
-    svc.execute(item, ctx);
+    svc.execute(remove, ctx);
     expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([country]);
+
+    core.dispatch({ type: "rowGroupSet", colIds: [region, country] });
+    svc.execute(clear, ctx);
+    expect(core.getRowGroupColumns()).toEqual([]);
   });
 
-  it("shows Ungroup All when every selected column is already grouped", () => {
+  it("shows only Ungroup All when every active group is selected", () => {
     const core = makeGrid();
     const region = colId(core, "region");
     const country = colId(core, "country");
@@ -111,6 +123,31 @@ describe("column menu row grouping items", () => {
 
     expect(item?.label).toBe("Ungroup All");
     expect(item?.payload).toEqual({ colIDs: [] });
+  });
+
+  it("can remove multiple selected columns without clearing an unselected group", () => {
+    const core = makeGrid();
+    const region = colId(core, "region");
+    const country = colId(core, "country");
+    const sales = colId(core, "sales");
+    core.dispatch({ type: "rowGroupSet", colIds: [region, country, sales] });
+
+    const svc = new ColumnMenuService(core as any);
+    const ctx: ColumnMenuContext = {
+      trigger: "columnMenuButton",
+      targetColId: region,
+      colIds: [region, country],
+    };
+    const items = svc.buildDefaultColumnMenu(ctx);
+    const remove = findById(items, "ungroupColumns")!;
+    const clear = findById(items, "ungroupAllColumns")!;
+
+    expect(remove.label).toBe("Remove Columns from Grouping");
+    expect(remove.payload).toEqual({ colIDs: [sales] });
+    expect(clear.label).toBe("Clear All Grouping");
+
+    svc.execute(remove, ctx);
+    expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([sales]);
   });
 
   it("offers to replace or append grouping when another column is already grouped", () => {
