@@ -73,6 +73,17 @@ export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: Menu
  */
 export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
 
+/**
+ * How sorting non-grouped columns affects a grouped view:
+ * - "local" (default): group buckets retain their group-key order; sorting applies within each
+ *   group. An explicit sort on a grouped column still controls that group level.
+ * - "hierarchy": sorting a grouped column also reorders its ancestor group levels; non-grouped
+ *   column sorts remain local to each group.
+ * - "global": group buckets follow the first occurrence in the globally sorted leaf rows, so a
+ *   non-grouped sort can reorder the groups as well as their local rows.
+ */
+export type GroupSortMode = "local" | "hierarchy" | "global";
+
 /** How the quick-filter search string is matched against each row. */
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
@@ -657,6 +668,12 @@ export interface GridOptions {
    */
   groupDefaultExpanded?: number;
   /**
+   * How sorts propagate through grouped rows: "local" (default) confines each sort to its own
+   * grouping level or leaf rows; "hierarchy" lets grouped-column sorts reorder ancestor groups;
+   * "global" lets any sort reorder groups from the globally sorted leaf order. Client-side only.
+   */
+  groupSortMode?: GroupSortMode;
+  /**
    * Whether group (summary) rows participate in cell selection, keyboard navigation, and clipboard
    * copy/cut. When false (default), group rows are skipped: clicking a group cell selects nothing,
    * arrow/block navigation jumps over group rows to the nearest leaf, and copy/cut omits group
@@ -798,6 +815,7 @@ export interface InternalGridOptions extends GridOptions {
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;
+  groupSortMode: GroupSortMode;
   groupRowsSelectable: boolean;
   isFullWidthRow?: (node: IRowNode) => boolean;
   fullWidthCellRenderer?: CellRenderer;

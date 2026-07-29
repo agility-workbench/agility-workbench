@@ -60,6 +60,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.reevaluateOnEdit != null) options.reevaluateOnEdit = props.reevaluateOnEdit;
   if (props.groupDisplayType) options.groupDisplayType = props.groupDisplayType;
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
+  if (props.groupSortMode != null) options.groupSortMode = props.groupSortMode;
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.isFullWidthRow != null) options.isFullWidthRow = props.isFullWidthRow;
   if (props.fullWidthCellRenderer != null) options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);

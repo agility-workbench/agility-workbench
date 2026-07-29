@@ -3,6 +3,7 @@ import { buildGroupTree, flattenGroupTree, groupNodeId, BLANK_GROUP_KEY } from "
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
+import { SortModel } from "../interfaces/sort";
 
 // Minimal leaf node factory.
 function leaf(id: string, data: object): IRowNode {
@@ -47,6 +48,114 @@ describe("buildGroupTree", () => {
     expect(roots.map(r => r.childCount)).toEqual([2, 2]);
     expect(roots.every(r => r.isGroup && r.level === 0)).toBe(true);
     expect(groupNodesById.get("g:APAC")).toBe(roots[0]);
+  });
+
+  it("honors a descending sort on the grouping column", () => {
+    const region = col("region");
+    const { roots } = buildGroupTree({
+      leaves: LEAVES,
+      groupColumns: [region],
+      sortModel: new SortModel([{ col: region, key: region.key, dir: "desc" }]),
+      expansion: new Map(),
+      defaultExpanded: 0,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("honors independent sort directions at each grouping level", () => {
+    const region = col("region");
+    const country = col("country");
+    const { roots } = buildGroupTree({
+      leaves: LEAVES,
+      groupColumns: [region, country],
+      sortModel: new SortModel([
+        { col: region, key: region.key, dir: "desc" },
+        { col: country, key: country.key, dir: "desc" },
+      ]),
+      expansion: new Map(),
+      defaultExpanded: -1,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["EMEA", "APAC"]);
+    expect(roots[0].children!.map(r => r.groupKey)).toEqual(["UK", "France"]);
+  });
+
+  it("keeps a non-grouped sort local by default", () => {
+    const region = col("region");
+    const sales = col("sales", ColumnType.NUMBER);
+    const sortedLeaves = [
+      leaf("1", { region: "EMEA", sales: 5 }),
+      leaf("2", { region: "APAC", sales: 15 }),
+      leaf("3", { region: "EMEA", sales: 20 }),
+      leaf("4", { region: "APAC", sales: 30 }),
+    ];
+    const { roots } = buildGroupTree({
+      leaves: sortedLeaves,
+      groupColumns: [region],
+      sortModel: new SortModel([{ col: sales, key: sales.key, dir: "asc" }]),
+      expansion: new Map(),
+      defaultExpanded: -1,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["APAC", "EMEA"]);
+    expect(roots.find(r => r.groupKey === "EMEA")!.children!.map(r => r.data.sales)).toEqual([5, 20]);
+  });
+
+  it("lets a non-grouped sort reorder buckets in global mode", () => {
+    const region = col("region");
+    const sales = col("sales", ColumnType.NUMBER);
+    const sortedLeaves = [
+      leaf("1", { region: "EMEA", sales: 5 }),
+      leaf("2", { region: "APAC", sales: 15 }),
+      leaf("3", { region: "EMEA", sales: 20 }),
+      leaf("4", { region: "APAC", sales: 30 }),
+    ];
+    const { roots } = buildGroupTree({
+      leaves: sortedLeaves,
+      groupColumns: [region],
+      sortModel: new SortModel([{ col: sales, key: sales.key, dir: "asc" }]),
+      groupSortMode: "global",
+      expansion: new Map(),
+      defaultExpanded: -1,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("propagates a descendant grouped-column sort to ancestor groups in hierarchy mode", () => {
+    const region = col("region");
+    const country = col("country");
+    // Already sorted by country ascending: France, Japan, UK.
+    const sortedLeaves = [
+      leaf("1", { region: "EMEA", country: "France" }),
+      leaf("2", { region: "APAC", country: "Japan" }),
+      leaf("3", { region: "EMEA", country: "UK" }),
+    ];
+    const { roots } = buildGroupTree({
+      leaves: sortedLeaves,
+      groupColumns: [region, country],
+      sortModel: new SortModel([{ col: country, key: country.key, dir: "asc" }]),
+      groupSortMode: "hierarchy",
+      expansion: new Map(),
+      defaultExpanded: -1,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["EMEA", "APAC"]);
+    expect(roots[0].children!.map(r => r.groupKey)).toEqual(["France", "UK"]);
+  });
+
+  it("does not propagate a non-grouped sort in hierarchy mode", () => {
+    const region = col("region");
+    const sales = col("sales", ColumnType.NUMBER);
+    const sortedLeaves = [
+      leaf("1", { region: "EMEA", sales: 5 }),
+      leaf("2", { region: "APAC", sales: 15 }),
+    ];
+    const { roots } = buildGroupTree({
+      leaves: sortedLeaves,
+      groupColumns: [region],
+      sortModel: new SortModel([{ col: sales, key: sales.key, dir: "asc" }]),
+      groupSortMode: "hierarchy",
+      expansion: new Map(),
+      defaultExpanded: -1,
+    });
+    expect(roots.map(r => r.groupKey)).toEqual(["APAC", "EMEA"]);
   });
 
   it("nests multiple levels", () => {

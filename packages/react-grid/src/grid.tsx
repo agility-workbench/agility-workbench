@@ -155,6 +155,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.groupDisplayType]);
 
     useLayoutEffect(() => {
+      instanceRef.current?.core.setGroupSortMode(props.groupSortMode ?? "local");
+    }, [props.groupSortMode]);
+
+    useLayoutEffect(() => {
       instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
     }, [props.groupRowsSelectable]);
 

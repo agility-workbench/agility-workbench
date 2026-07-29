@@ -4,7 +4,7 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter, performQuickFilter } from "../csrm/filter";
-import { GridOptions, QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { GridOptions, GroupSortMode, QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
@@ -17,6 +17,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private filteredIdx: number[] = [];
   private sortedIdx: number[] = [];
   private viewIdx: number[] = [];
+  private sortModel: SortModel = new SortModel();
+  private groupSortMode: GroupSortMode = "local";
   private aggregateScope: AggregateScope = "all";
   private aggregates: AggregateModel[] = [];
   private leafColumns: Column[] = [];
@@ -168,10 +170,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
-  // Rebuild the group tree from the current filtered+sorted leaves. Group buckets are ordered by
-  // the grouping column's comparator; leaves keep their sorted order within each bucket. Per-group
-  // aggregate values are computed over each group's full leaf-descendant set (only when aggregates
-  // are configured). Expansion state is read from groupExpansion, falling back to the default depth.
+  // Rebuild the group tree from the current filtered+sorted leaves. Group buckets honor an active
+  // sort on their grouping column (and otherwise use ascending comparator order); leaves keep their
+  // sorted order within each bucket. Per-group aggregate values are computed over each group's full
+  // leaf-descendant set (only when aggregates are configured). Expansion state is read from
+  // groupExpansion, falling back to the default depth.
   private rebuildGroupTree() {
     const leaves = this.sortedIdx.map(i => this.nodes[i]);
     // Only compute per-group totals for columns with an aggregate explicitly configured. Unlike the
@@ -191,6 +194,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     const { roots, groupNodesById } = buildGroupTree<Row>({
       leaves,
       groupColumns: this.groupColumns,
+      sortModel: this.sortModel,
+      groupSortMode: this.groupSortMode,
       expansion: this.groupExpansion,
       defaultExpanded: this.groupDefaultExpanded,
       computeAggregates,
@@ -311,13 +316,15 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   applyRequest(params: IRowModelRequestParams): void {
-    const { id, sortModel, filterModel, paginate, range, aggregateScope } = params;
+    const { id, sortModel, filterModel, paginate, range, aggregateScope, groupSortMode } = params;
     const aggregateOnly = params.reason === "aggregateScope" || params.reason === "aggregateModel";
     if (!aggregateOnly) this.listener.onLoadingStart(id);
     this.aggregateScope = aggregateScope;
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
     this.groupColumns = params.groupColumns.slice();
+    this.sortModel = sortModel;
+    this.groupSortMode = groupSortMode;
     if (params.quickFilter) {
       this.quickFilterText = params.quickFilter.text;
       this.quickFilterMatchMode = params.quickFilter.matchMode;

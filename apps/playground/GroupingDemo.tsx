@@ -4,7 +4,7 @@ import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { AggregateType } from "@grid/interfaces/aggregate";
-import type { ColumnPanelTrigger, GroupDisplayType } from "@grid";
+import type { ColumnPanelTrigger, GroupDisplayType, GroupSortMode } from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 
 /**
@@ -29,7 +29,13 @@ const COUNTRIES: Record<string, string[]> = {
   APAC: ["Japan", "India", "Australia"],
   Americas: ["USA", "Canada", "Brazil"],
 };
-const CATEGORIES = ["Hardware", "Software", "Services"];
+// Deliberately omit one category from each region. This makes a Region → Category grouping useful
+// for checking that a Category sort reorders the second-level groups in local group-sort mode.
+const CATEGORIES_BY_REGION: Record<string, string[]> = {
+  EMEA: ["Hardware", "Software"],
+  APAC: ["Software", "Services"],
+  Americas: ["Hardware", "Services"],
+};
 const REPS = ["Ava Chen", "Liam Patel", "Mia Kim", "Noah Garcia", "Emma Silva", "Ethan Khan"];
 
 // Deterministic PRNG so demo data is stable across reloads.
@@ -52,7 +58,7 @@ function buildRows(count: number): SaleRow[] {
       id: 1 + i,
       region,
       country: pick(COUNTRIES[region]),
-      category: pick(CATEGORIES),
+      category: pick(CATEGORIES_BY_REGION[region]),
       rep: pick(REPS),
       units: 1 + Math.floor(rand() * 500),
       revenue: 500 + Math.floor(rand() * 500_000),
@@ -77,6 +83,7 @@ export function GroupingDemo() {
   const [groupBy, setGroupBy] = useState<string[]>(["region", "category"]);
   const [aggregate, setAggregate] = useState(true);
   const [groupRowsSelectable, setGroupRowsSelectable] = useState(true);
+  const [groupSortMode, setGroupSortMode] = useState<GroupSortMode>("local");
   const [columnPanelTrigger, setColumnPanelTrigger] = useState<ColumnPanelTrigger>("rail");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -166,6 +173,18 @@ export function GroupingDemo() {
           Group rows selectable
         </label>
 
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Group sort mode
+          <select
+            value={groupSortMode}
+            onChange={(e) => setGroupSortMode(e.target.value as GroupSortMode)}
+          >
+            <option value="local">Local</option>
+            <option value="hierarchy">Hierarchy</option>
+            <option value="global">Global</option>
+          </select>
+        </label>
+
         <button className="btn" type="button" onClick={() => { setGroupBy([]); applyGrouping([]); }}>
           Clear grouping
         </button>
@@ -196,6 +215,7 @@ export function GroupingDemo() {
           rowIdKey="id"
           groupDisplayType={displayType}
           groupDefaultExpanded={1}
+          groupSortMode={groupSortMode}
           groupRowsSelectable={groupRowsSelectable}
           style={{ width: "100%", height: "100%" }}
           onGridReady={handleReady}

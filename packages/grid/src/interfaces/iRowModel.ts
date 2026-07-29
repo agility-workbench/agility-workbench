@@ -4,7 +4,7 @@ import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
-import { QuickFilterMatchMode } from "./gridOptions";
+import { GroupSortMode, QuickFilterMatchMode } from "./gridOptions";
 
 export type RowModelType = "clientSide" | "serverSide";
 export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
@@ -35,6 +35,8 @@ export interface IRowModelRequestParams {
   readonly leafColumns: Column[];
   // Columns the rows are grouped by, in grouping-level order. Empty = no grouping.
   readonly groupColumns: Column[];
+  // Whether non-grouped sorts only order leaves within groups or also reorder the group buckets.
+  readonly groupSortMode: GroupSortMode;
   // When present, this request is a pure expand/collapse of a single group node — the model
   // updates its expansion state and re-flattens the view without rebuilding the group tree.
   readonly groupExpansion?: { groupId: string; expanded?: boolean };

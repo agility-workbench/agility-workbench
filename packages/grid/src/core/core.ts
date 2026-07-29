@@ -8,6 +8,7 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import {
   GridOptions,
   GroupDisplayType,
+  GroupSortMode,
   InternalGridOptions,
   QuickFilterMatchMode,
   RuntimeGridOptions,
@@ -186,6 +187,7 @@ export class GridCore implements IGridCore {
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
+      groupSortMode: options.groupSortMode ?? "local",
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       isFullWidthRow: options.isFullWidthRow,
       fullWidthCellRenderer: options.fullWidthCellRenderer,
@@ -573,6 +575,7 @@ export class GridCore implements IGridCore {
       aggregateReason,
       leafColumns: this.columnModel.getLeaves().filter(col => !col.isInternal()),
       groupColumns: this.groupColumns.slice(),
+      groupSortMode: this.options.groupSortMode,
       groupExpansion,
       quickFilter: {
         text: this.quickFilterText,
@@ -796,6 +799,26 @@ export class GridCore implements IGridCore {
 
     const changedColIds = this.autosizeColumns();
     if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
+  }
+
+  setGroupSortMode(groupSortMode: GroupSortMode): void {
+    if (this.options.groupSortMode === groupSortMode) return;
+    this.options.groupSortMode = groupSortMode;
+    if (this.groupColumns.length === 0 || this.rowModel.getType() !== "clientSide") return;
+
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "sort",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+    ));
+    this.selectionModel.clearAll();
+    this.emitSelectionChanged("model");
+    this.emit("rowsChanged", {
+      reason: "sort",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+    });
+    this.emit("paginationChanged", this.getPaginationInfo());
   }
 
   setGroupRowsSelectable(groupRowsSelectable: boolean): void {

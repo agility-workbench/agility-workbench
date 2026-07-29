@@ -254,6 +254,35 @@ describe("GridCore row grouping", () => {
     expect(leaves.map(n => (n.data as any).sales)).toEqual([40, 30, 15]);
   });
 
+  it("uses the active sort direction for a grouped column", () => {
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.setSortModel([{ key: colInstance(core, "region"), dir: "desc" }]);
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("keeps non-grouped sorts local by default and can apply them globally", () => {
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.setSortModel([{ key: colInstance(core, "sales"), dir: "asc" }]);
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+
+    core.setGroupSortMode("global");
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("can propagate a lower grouped-column sort through the hierarchy only", () => {
+    core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    core.setSortModel([{ key: colInstance(core, "country"), dir: "asc" }]);
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+
+    core.setGroupSortMode("hierarchy");
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+
+    const nonGrouped = makeGrid({ groupSortMode: "hierarchy" });
+    nonGrouped.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    nonGrouped.setSortModel([{ key: colInstance(nonGrouped, "sales"), dir: "asc" }]);
+    expect(viewNodes(nonGrouped).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+  });
+
   it("group rows are not editable", () => {
     core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
     const group = core.getRowModel().getRowNodeAtViewIndex(0)!;

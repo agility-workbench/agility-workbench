@@ -58,6 +58,7 @@ export { isFalse, isTrue } from "./misc";
 export type {
   GridOptions,
   GroupDisplayType,
+  GroupSortMode,
   CellSelectionMode,
   BodyContextMenuGetter,
   QuickFilterOptions,
