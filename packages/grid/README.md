@@ -67,6 +67,11 @@ is omitted, enabling the toolbar section uses its defaults. The React binding ap
 changes live without remounting the grid. A column panel configured with `trigger: "toolbar"` also
 keeps the toolbar visible for its Columns button, independently of these section flags.
 
+The toolbar observes its own rendered width. At narrower widths the quick filter contracts and the
+Export and Columns controls become icon-only; at the narrowest width those secondary actions move
+into a More menu. The behavior therefore follows the grid's container rather than the browser
+window.
+
 ## Column panel
 
 Enable the built-in right-side column panel to let users search, show/hide individually or in bulk,

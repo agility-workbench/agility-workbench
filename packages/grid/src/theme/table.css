@@ -724,7 +724,24 @@
   font-size: 12px;
 }
 
-.pte-grid-toolbar-export-button:hover {
+.pte-grid-toolbar-more-button {
+  width: 42px;
+  min-width: 42px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.pte-grid-toolbar-export-button:hover,
+.pte-grid-toolbar-more-button:hover {
   background: var(--pte-hover-bg-color);
   color: var(--pte-text-color);
 }
@@ -743,6 +760,41 @@
   mask-position: center;
   mask-repeat: no-repeat;
   mask-size: contain;
+}
+
+.pte-grid-toolbar-more-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.pte-grid-toolbar-compact .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 112px;
+}
+
+.pte-grid-toolbar-compact .pte-grid-toolbar-export-button,
+.pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button {
+  min-width: 42px;
+  width: 42px;
+  padding: 0;
+}
+
+.pte-grid-toolbar-compact .pte-grid-toolbar-export-label,
+.pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button .pte-column-panel-trigger-label {
+  display: none;
+}
+
+.pte-grid-toolbar-overflow .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 88px;
+}
+
+.pte-grid-toolbar-overflow .pte-grid-toolbar-export-button,
+.pte-grid-toolbar-overflow .pte-column-panel-trigger-toolbar-button {
+  display: none;
+}
+
+.pte-grid-toolbar-overflow .pte-grid-toolbar-more-button {
+  display: inline-flex;
 }
 
 .pte-column-panel-trigger-toolbar-button {

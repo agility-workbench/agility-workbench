@@ -45,12 +45,17 @@ export class GridToolbarRenderer {
   private right = div("pte-grid-toolbar-right");
   private quickFilterHost = div("pte-grid-toolbar-quick-filter");
   private exportButton = button("pte-grid-toolbar-export-button");
+  private moreButton = button("pte-grid-toolbar-more-button");
   private draggedGroupColId: string | null = null;
   private draggedSortColId: string | null = null;
   private groupChipTooltipDisposers: Array<() => void> = [];
   private sortChipTooltipDisposers: Array<() => void> = [];
+  private exportTooltipDisposer: (() => void) | null = null;
+  private moreTooltipDisposer: (() => void) | null = null;
   private options: ResolvedGridToolbarOptions = resolveGridToolbarOptions(undefined);
   private columnTrigger: HTMLButtonElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private availableWidth: number | null = null;
   private unsubscribe: Unsubscribe;
 
   constructor(private params: GridToolbarRendererParams) {
@@ -63,9 +68,31 @@ export class GridToolbarRenderer {
     icon.setAttribute("aria-hidden", "true");
     this.exportButton.append(icon, span("pte-grid-toolbar-export-label", "Export"));
     this.exportButton.addEventListener("click", () => this.openExportMenu());
+    this.exportTooltipDisposer = registerRendererTooltipTarget(
+      this.exportButton,
+      () => this.toolbar.classList.contains("pte-grid-toolbar-compact") ? "Export" : null,
+      undefined,
+      "left",
+    );
+
+    this.moreButton.type = "button";
+    this.moreButton.setAttribute("aria-label", "More toolbar actions");
+    this.moreButton.setAttribute("aria-haspopup", "menu");
+    const moreIcon = span("pte-grid-toolbar-more-icon pte-menu-icon");
+    moreIcon.setAttribute("aria-hidden", "true");
+    this.moreButton.appendChild(moreIcon);
+    this.moreButton.addEventListener("click", () => this.openMoreMenu());
+    this.moreTooltipDisposer = registerRendererTooltipTarget(
+      this.moreButton,
+      () => "More actions",
+      undefined,
+      "left",
+    );
+
     this.bindExternalColumnDrop();
     this.bindSortChipDrop();
     this.toolbar.append(this.left, this.right);
+    this.bindResponsiveLayout();
     this.unsubscribe = this.params.core.on("columnsChanged", event => {
       if (event.reason === "group" || event.reason === "defs") this.renderGroupChips();
       if (event.reason === "sort" || event.reason === "defs") this.renderSortChips();
@@ -102,6 +129,12 @@ export class GridToolbarRenderer {
 
   destroy(): void {
     this.unsubscribe();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.exportTooltipDisposer?.();
+    this.exportTooltipDisposer = null;
+    this.moreTooltipDisposer?.();
+    this.moreTooltipDisposer = null;
     this.disposeGroupChipTooltips();
     this.disposeSortChipTooltips();
     this.columnTrigger = null;
@@ -121,8 +154,10 @@ export class GridToolbarRenderer {
     const rightSections: HTMLElement[] = [];
     if (this.options.quickFilter) rightSections.push(this.quickFilterHost);
     if (this.options.export) rightSections.push(this.exportButton);
+    if (this.options.export || this.columnTrigger) rightSections.push(this.moreButton);
     if (this.columnTrigger) rightSections.push(this.columnTrigger);
     this.right.replaceChildren(...rightSections);
+    if (this.availableWidth != null) this.applyResponsiveWidth(this.availableWidth);
 
     const visible = leftSections.length > 0 || rightSections.length > 0;
     if (visible && !this.toolbar.isConnected) {
@@ -130,6 +165,28 @@ export class GridToolbarRenderer {
     } else if (!visible) {
       this.toolbar.remove();
     }
+  }
+
+  private bindResponsiveLayout(): void {
+    if (typeof ResizeObserver === "undefined") return;
+    this.resizeObserver = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width ?? this.toolbar.getBoundingClientRect().width;
+      if (width <= 0) return;
+      this.availableWidth = width;
+      this.applyResponsiveWidth(width);
+    });
+    this.resizeObserver.observe(this.toolbar);
+  }
+
+  private applyResponsiveWidth(width: number): void {
+    const compact = width < 760;
+    const overflow = width < 520 && (this.options.export || this.columnTrigger != null);
+    const changed =
+      this.toolbar.classList.contains("pte-grid-toolbar-compact") !== compact ||
+      this.toolbar.classList.contains("pte-grid-toolbar-overflow") !== overflow;
+    this.toolbar.classList.toggle("pte-grid-toolbar-compact", compact);
+    this.toolbar.classList.toggle("pte-grid-toolbar-overflow", overflow);
+    if (changed) this.params.menuRenderer.close(0);
   }
 
   private renderGroupChips(): void {
@@ -576,11 +633,60 @@ export class GridToolbarRenderer {
   }
 
   private openExportMenu(): void {
+    const items = this.buildExportItems();
+    const rect = this.exportButton.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      anchorEl: this.exportButton,
+      clientX: rect.right,
+      clientY: rect.bottom,
+      items,
+      position: "bottom-right",
+      onItemClick: item => this.executeExport(item),
+    });
+  }
+
+  private openMoreMenu(): void {
+    const items: MenuItem[] = [];
+    if (this.options.export) {
+      const exportItems = this.buildExportItems();
+      items.push({
+        id: "toolbarMoreExport",
+        label: "Export",
+        left: "icon-export",
+        disabled: exportItems.length === 0,
+        subMenu: exportItems.length > 0 ? exportItems : undefined,
+      });
+    }
+    if (this.columnTrigger) {
+      items.push({
+        id: "toolbarMoreColumns",
+        label: "Columns",
+        command: "toolbar.columns.open",
+      });
+    }
+    const rect = this.moreButton.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      anchorEl: this.moreButton,
+      clientX: rect.right,
+      clientY: rect.bottom,
+      items,
+      position: "bottom-right",
+      onItemClick: item => {
+        if (item.command === "toolbar.columns.open") {
+          this.columnTrigger?.click();
+        } else {
+          this.executeExport(item);
+        }
+      },
+    });
+  }
+
+  private buildExportItems(): MenuItem[] {
     const selection = this.params.core.getSelectionSnapshot();
     const hasSelection = selection.kind !== "none";
     const selectionScope: ExportOptions["scope"] =
       selection.kind === "column" ? "selectedColumns" : "selection";
-    const items: MenuItem[] = hasSelection
+    return hasSelection
       ? [
           {
             id: "toolbarExportSelection",
@@ -594,15 +700,6 @@ export class GridToolbarRenderer {
           },
         ]
       : this.formatItems("All", "all", "Table as ");
-    const rect = this.exportButton.getBoundingClientRect();
-    this.params.menuRenderer.open({
-      anchorEl: this.exportButton,
-      clientX: rect.right,
-      clientY: rect.bottom,
-      items,
-      position: "bottom-right",
-      onItemClick: item => this.executeExport(item),
-    });
   }
 
   private formatItems(

@@ -129,6 +129,7 @@ describe("toolbar options", () => {
     expect(rightChildren.map(child => child.className)).toEqual([
       "pte-grid-toolbar-quick-filter",
       "pte-grid-toolbar-export-button",
+      "pte-grid-toolbar-more-button",
       expect.stringContaining("pte-column-panel-trigger-toolbar-button"),
     ]);
 

@@ -78,6 +78,10 @@ placement and close controls. Changing the object live adds/removes sections wit
 grid. The toolbar-hosted Columns trigger also counts as content, so
 `columnPanel={{ trigger: "toolbar" }}` can display a Columns-only toolbar.
 
+Responsive toolbar breakpoints follow the grid container. Labels collapse first, then Export and
+Columns move into a More menu, so embedding the grid in a resizable panel does not require any
+application-level resize handling.
+
 ## Styling
 
 Load the stylesheet once (it lives in the core package):

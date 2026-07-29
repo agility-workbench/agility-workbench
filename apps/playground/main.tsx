@@ -16,6 +16,7 @@ import ActionFrameDemo from "./ActionFrameDemo";
 import FooterVisibilityDemo from "./FooterVisibilityDemo";
 import SparklineDemo from "./SparklineDemo";
 import ToolbarDemo from "./ToolbarDemo";
+import ResponsiveToolbarDemo from "./ResponsiveToolbarDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -25,6 +26,11 @@ const PAGES = [
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
   { id: "toolbar", label: "Toolbar", render: () => <ToolbarDemo /> },
+  {
+    id: "responsiveToolbar",
+    label: "Responsive toolbar",
+    render: () => <ResponsiveToolbarDemo />,
+  },
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },

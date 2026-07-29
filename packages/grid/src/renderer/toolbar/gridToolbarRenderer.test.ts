@@ -33,6 +33,75 @@ function colId(core: GridCore, key: string): string {
 }
 
 describe("GridToolbarRenderer", () => {
+  it("compresses from full controls to icon controls and delegates narrow overflow actions", () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let notifyWidth: ((width: number) => void) | undefined;
+    class TestResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        notifyWidth = width => callback(
+          [{ contentRect: { width } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
+
+    try {
+      const core = makeCore();
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const exportCSV = vi.fn();
+      const toolbar = new GridToolbarRenderer({
+        core,
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV,
+        exportExcel: vi.fn(),
+      });
+      const columns = document.createElement("button");
+      const openColumns = vi.fn();
+      columns.addEventListener("click", openColumns);
+      toolbar.mountColumnTrigger(columns);
+      const toolbarEl = root.querySelector(".pte-grid-toolbar")!;
+
+      notifyWidth!(900);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(false);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(false);
+
+      notifyWidth!(700);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(true);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(false);
+
+      notifyWidth!(480);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(true);
+      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
+      root.querySelector<HTMLButtonElement>(
+        '.pte-menu-item[data-item-id="toolbarMoreColumns"]',
+      )!.click();
+      expect(openColumns).toHaveBeenCalledTimes(1);
+
+      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
+      root.querySelector<HTMLButtonElement>(
+        '.pte-menu-item[data-item-id="toolbarMoreExport"]',
+      )!.click();
+      root.querySelector<HTMLButtonElement>(
+        '.pte-menu-item[data-item-id="toolbarExportAllCSV"]',
+      )!.click();
+      expect(exportCSV).toHaveBeenCalledWith({ scope: "all" });
+
+      notifyWidth!(800);
+      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(false);
+      toolbar.destroy();
+      root.remove();
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver;
+    }
+  });
+
   it("mounts only for opted-in sections and reconciles them live", () => {
     const core = makeCore();
     const root = document.createElement("div");
