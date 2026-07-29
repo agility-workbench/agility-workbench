@@ -16,6 +16,10 @@ interface ColumnPanelRendererParams {
   root: HTMLDivElement;
   options: boolean | ColumnPanelOptions | undefined;
   onLayoutChange: () => void;
+  toolbar: {
+    mountColumnTrigger: (trigger: HTMLButtonElement) => void;
+    unmount: () => void;
+  };
 }
 
 interface PanelColumn {
@@ -52,6 +56,7 @@ export class ColumnPanelRenderer {
   private resetButton = button("pte-column-panel-reset", "Reset layout");
   private triggerButton = button("pte-column-panel-trigger");
   private triggerMount: HTMLElement | null = null;
+  private toolbarTriggerMounted = false;
   private unsubscribe?: Unsubscribe;
   private enabled = false;
   private open = false;
@@ -228,19 +233,19 @@ export class ColumnPanelRenderer {
     }
 
     if (trigger === "toolbar") {
-      const toolbar = div("pte-grid-toolbar");
-      const left = div("pte-grid-toolbar-left");
-      const right = div("pte-grid-toolbar-right");
-      right.appendChild(this.triggerButton);
-      toolbar.append(left, right);
-      this.params.root.insertBefore(toolbar, this.params.root.firstChild);
-      this.triggerMount = toolbar;
+      this.params.toolbar.mountColumnTrigger(this.triggerButton);
+      this.toolbarTriggerMounted = true;
+      this.triggerMount = this.triggerButton;
       return;
     }
 
   }
 
   private unmountExternalTrigger(): void {
+    if (this.toolbarTriggerMounted) {
+      this.params.toolbar.unmount();
+      this.toolbarTriggerMounted = false;
+    }
     this.triggerButton.remove();
     if (this.triggerMount && this.triggerMount !== this.triggerButton) {
       this.triggerMount.remove();

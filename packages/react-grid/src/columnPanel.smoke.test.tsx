@@ -469,6 +469,11 @@ describe("column panel", () => {
     const parent = container.querySelector<HTMLElement>(parentSelector)!;
     const triggerButton = parent.querySelector<HTMLButtonElement>(buttonSelector)!;
     expect(triggerButton).not.toBeNull();
+    if (trigger === "toolbar") {
+      const exportButton = parent.querySelector<HTMLButtonElement>(".pte-grid-toolbar-export-button");
+      expect(exportButton).not.toBeNull();
+      expect(parent.lastElementChild).toBe(triggerButton);
+    }
     expect(container.querySelector(".pte-root")!.classList.contains(`pte-column-panel-trigger-${trigger}`))
       .toBe(true);
 

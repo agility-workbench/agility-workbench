@@ -67,6 +67,7 @@ import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
 import { serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
+import { GridToolbarRenderer } from "./toolbar/gridToolbarRenderer";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
@@ -109,6 +110,7 @@ export class GridRenderer {
   _noRowsOverlayRenderer: NoRowsOverlayRenderer;
   _quickFilterWidget?: QuickFilterWidget;
   _columnPanelRenderer: ColumnPanelRenderer;
+  _toolbarRenderer: GridToolbarRenderer;
   // Captured so the widget can be rebuilt in place when its options change at runtime.
   private _quickFilterHeaderHeight?: () => number;
   private _quickFilterOptions?: boolean | QuickFilterOptions;
@@ -611,6 +613,13 @@ export class GridRenderer {
     this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
     this._quickFilterOptions = this.core.getOptions().quickFilter;
     this._buildQuickFilterWidget();
+    this._toolbarRenderer = new GridToolbarRenderer({
+      core: this.core,
+      root: this.root,
+      menuRenderer: this._menuRenderer,
+      exportCSV: options => this._exportRenderer.exportCSV(options),
+      exportExcel: options => this._exportRenderer.exportExcel(options),
+    });
     this._columnPanelRenderer = new ColumnPanelRenderer({
       core: this.core,
       root: this.root,
@@ -624,6 +633,7 @@ export class GridRenderer {
           this._bodyWindowRenderer?.update(true, undefined);
         });
       },
+      toolbar: this._toolbarRenderer,
     });
     menuCoordinator.setColumnPanelTarget({
       openColumnPanel: () => this._columnPanelRenderer.openPanel(),
@@ -847,6 +857,7 @@ export class GridRenderer {
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
     this._columnPanelRenderer.destroy();
+    this._toolbarRenderer.destroy();
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();

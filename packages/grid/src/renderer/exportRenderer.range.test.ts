@@ -121,6 +121,33 @@ describe("ungrouped range-selection export includes the first selected row", () 
   });
 });
 
+describe("explicit export scope", () => {
+  it("exports selected rows in view order for selection scope", () => {
+    const core = makeGrid();
+    core.dispatch({ type: "rowSelectSet", viewIdx: 1, mode: "replace" });
+    core.dispatch({ type: "rowSelectSet", viewIdx: 3, mode: "toggle" });
+
+    const csv = makeExporter(core).getDataAsCsv({ scope: "selection" });
+
+    expect(csv?.split("\n")).toEqual(["Name,Qty", "Bob,20", "Dave,40"]);
+  });
+
+  it("exports the entire table when all scope is explicit, even with selected rows", () => {
+    const core = makeGrid();
+    core.dispatch({ type: "rowSelectSet", viewIdx: 1, mode: "replace" });
+
+    const csv = makeExporter(core).getDataAsCsv({ scope: "all" });
+
+    expect(csv?.split("\n")).toEqual([
+      "Name,Qty",
+      "Alice,10",
+      "Bob,20",
+      "Carol,30",
+      "Dave,40",
+    ]);
+  });
+});
+
 describe("streamable getData output (no download)", () => {
   it("getDataAsCsv returns the CSV text without triggering a download", async () => {
     const core = makeGrid();

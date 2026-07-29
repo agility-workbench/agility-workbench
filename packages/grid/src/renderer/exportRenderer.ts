@@ -166,9 +166,17 @@ export class ExportRenderer {
       // by the range in one place (resolveRows/resolveColumns). Pre-slicing here would double-slice.
       rows = this.getRowsForExport(false);
       selectionRange = { ...this.params.selectionRange()! };
+    } else if (scope === "selection" && this.params.core.getSelectedRowIds().size > 0) {
+      const selectedRowIds = this.params.core.getSelectedRowIds();
+      for (let index = 0; index < this.params.core.getRowModel().getViewCount(); index++) {
+        const node = this.params.core.getRowModel().getRowNodeAtViewIndex(index);
+        if (node && selectedRowIds.has(node.id)) rows.push(node.data);
+      }
     } else if (scope === "selectedColumns") {
       rows = this.getRowsForExport(true);
       selectedColumnIDs = this.params.selectedColumnIDs();
+    } else if (scope === "selection") {
+      return null;
     } else {
       rows = this.getRowsForExport(true);
     }
@@ -320,9 +328,9 @@ export class ExportRenderer {
   ): { nodeIds: Set<string> | null; columnIds: string[] | undefined; includeGroupColumn: boolean } {
     const rowModel = this.params.core.getRowModel();
 
-    // Row / column selection (and the no-selection fallback) span all columns → group column shown.
+    // An explicit row selection spans all columns, so the group heading column remains in scope.
     const selectedRowIds = this.params.core.getSelectedRowIds();
-    if (selectedRowIds.size > 0) {
+    if (scope === "selection" && selectedRowIds.size > 0) {
       return { nodeIds: new Set(selectedRowIds), columnIds: undefined, includeGroupColumn: true };
     }
 
@@ -361,6 +369,7 @@ export class ExportRenderer {
     if (options.scope) return options.scope;
     if (options.columnIds && options.columnIds.length > 0) return "all";
     if (this.params.selectionRange()) return "selection";
+    if (this.params.core.getSelectedRowIds().size > 0) return "selection";
     if (this.params.selectedColumnIDs().size > 0) return "selectedColumns";
     return "all";
   }

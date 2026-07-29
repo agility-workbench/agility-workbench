@@ -396,6 +396,45 @@
   align-items: stretch;
 }
 
+.pte-grid-toolbar-export-button {
+  min-width: 92px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-export-button:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-export-button:disabled {
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pte-grid-toolbar-export-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
 .pte-column-panel-trigger-toolbar-button {
   min-width: 92px;
   padding: 0 12px;
@@ -488,7 +527,8 @@
 .pte-column-panel-order:focus-visible,
 .pte-column-panel-reset:focus-visible,
 .pte-column-panel-rail:focus-visible,
-.pte-column-panel-trigger:focus-visible {
+.pte-column-panel-trigger:focus-visible,
+.pte-grid-toolbar-export-button:focus-visible {
   box-shadow: 0 0 0 2px var(--pte-selected-border-color);
 }
 
