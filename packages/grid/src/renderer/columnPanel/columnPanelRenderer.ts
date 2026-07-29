@@ -1,5 +1,6 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
+import { ColumnSection } from "../../interfaces/column";
 import { ColumnState } from "../../interfaces/iGridCore";
 import {
   ColumnPanelOptions,
@@ -9,8 +10,6 @@ import {
 import { Unsubscribe } from "../../events/events";
 import { button, createElement, div, span } from "../element";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
-
-type PanelSection = "left" | "center" | "right";
 
 interface ColumnPanelRendererParams {
   core: GridCore;
@@ -29,7 +28,7 @@ type PanelTreeItem =
   | { kind: "column"; entry: PanelColumn }
   | { kind: "group"; group: Column; items: PanelTreeItem[] };
 
-const SECTION_LABELS: Record<PanelSection, string> = {
+const SECTION_LABELS: Record<ColumnSection, string> = {
   left: "Pinned left",
   center: "Columns",
   right: "Pinned right",
@@ -277,13 +276,16 @@ export class ColumnPanelRenderer {
         const col = model.getByColId(state.colId);
         if (!col || col.isInternal()) return [];
         const ancestors = model.getAncestors(col.instanceID).slice(0, -1);
-        return col.suppressColumnPanel || ancestors.some(ancestor => ancestor.suppressColumnPanel)
+        const entry = { col, state, ancestors };
+        return col.suppressColumnPanel
+          || ancestors.some(ancestor => ancestor.suppressColumnPanel)
+          || !col.columnGroupVisible
           ? []
-          : [{ col, state, ancestors }];
+          : [entry];
       });
   }
 
-  private sectionFor(state: ColumnState): PanelSection {
+  private sectionFor(state: ColumnState): ColumnSection {
     return state.pinned === "left" ? "left" : state.pinned === "right" ? "right" : "center";
   }
 
@@ -330,7 +332,7 @@ export class ColumnPanelRenderer {
   }
 
   private updateBulkVisibility(columns: PanelColumn[], filtered: boolean): void {
-    const eligible = columns.filter(entry => entry.col.hideable && this.isGroupVisible(entry));
+    const eligible = columns.filter(entry => entry.col.hideable);
     const visibleCount = eligible.filter(({ state }) => !state.hidden).length;
     this.bulkVisibilityLabel.textContent = filtered ? "All matching columns" : "All columns";
     this.bulkVisibilityCheckbox.disabled = eligible.length === 0;
@@ -343,7 +345,6 @@ export class ColumnPanelRenderer {
     const eligible = this.getPanelColumns()
       .filter(entry =>
         entry.col.hideable
-        && this.isGroupVisible(entry)
         && this.matchesQuery(entry, query),
       );
     if (eligible.length === 0) return;
@@ -382,7 +383,7 @@ export class ColumnPanelRenderer {
 
   private buildColumnTree(
     columns: PanelColumn[],
-    section: PanelSection,
+    section: ColumnSection,
     forceExpanded: boolean,
   ): DocumentFragment {
     const fragment = document.createDocumentFragment();
@@ -416,13 +417,14 @@ export class ColumnPanelRenderer {
 
   private renderTreeItem(
     item: PanelTreeItem,
-    section: PanelSection,
+    section: ColumnSection,
     forceExpanded: boolean,
   ): HTMLElement {
     if (item.kind === "column") {
-      const siblings = this.directColumnsForParent(item.entry, section);
-      const index = siblings.findIndex(({ col }) => col.colId === item.entry.col.colId);
-      return this.buildColumnRow(item.entry, siblings, index, section);
+      const sectionColumns = this.getPanelColumns()
+        .filter(candidate => this.sectionFor(candidate.state) === section);
+      const index = sectionColumns.findIndex(({ col }) => col.instanceID === item.entry.col.instanceID);
+      return this.buildColumnRow(item.entry, sectionColumns, index, section);
     }
 
     const wrapper = div("pte-column-panel-tree-group");
@@ -464,62 +466,25 @@ export class ColumnPanelRenderer {
     );
   }
 
-  private hierarchyKey(entry: PanelColumn): string {
-    return entry.ancestors.map(group => group.instanceID).join("/");
-  }
-
-  private isGroupVisible(entry: PanelColumn): boolean {
-    return entry.col.columnGroupVisible
-      && entry.ancestors.every(ancestor => !ancestor.hidden && ancestor.columnGroupVisible);
-  }
-
-  private groupVisibilityController(entry: PanelColumn): Column | null {
-    for (let index = 0; index < entry.ancestors.length; index++) {
-      const ancestor = entry.ancestors[index];
-      if (ancestor.hidden || !ancestor.columnGroupVisible) {
-        return entry.ancestors[index - 1] ?? ancestor;
-      }
-    }
-    return entry.col.columnGroupVisible
-      ? null
-      : entry.ancestors[entry.ancestors.length - 1] ?? null;
-  }
-
-  private directColumnsForParent(entry: PanelColumn, section: PanelSection): PanelColumn[] {
-    const key = this.hierarchyKey(entry);
-    return this.getPanelColumns().filter(candidate =>
-      this.sectionFor(candidate.state) === section && this.hierarchyKey(candidate) === key,
-    );
-  }
-
   private buildColumnRow(
     entry: PanelColumn,
     sectionColumns: PanelColumn[],
     index: number,
-    section: PanelSection,
+    section: ColumnSection,
   ): HTMLDivElement {
     const { col, state } = entry;
     const row = div("pte-column-panel-row");
     row.dataset.colId = col.colId;
     row.draggable = col.movable;
-    const groupController = this.groupVisibilityController(entry);
-    const groupVisible = groupController === null;
-    const groupVisibilityLabel = groupController?.label ?? "";
-    row.classList.toggle("pte-column-panel-row-group-hidden", !groupVisible);
 
     const drag = span("pte-column-panel-drag", "⋮⋮");
     drag.setAttribute("aria-hidden", "true");
 
     const checkbox = createElement("input", "pte-column-panel-checkbox");
     checkbox.type = "checkbox";
-    checkbox.checked = !state.hidden && groupVisible;
-    checkbox.disabled = !col.hideable || !groupVisible;
-    checkbox.setAttribute(
-      "aria-label",
-      groupVisible
-        ? `${state.hidden ? "Show" : "Hide"} ${col.label}`
-        : `${col.label} hidden by ${groupVisibilityLabel}`,
-    );
+    checkbox.checked = !state.hidden;
+    checkbox.disabled = !col.hideable;
+    checkbox.setAttribute("aria-label", `${state.hidden ? "Show" : "Hide"} ${col.label}`);
     checkbox.addEventListener("change", () => {
       const hidden = !checkbox.checked;
       this.params.core.dispatch({
@@ -533,10 +498,7 @@ export class ColumnPanelRenderer {
     const label = span("pte-column-panel-label");
     label.textContent = col.label;
     this.listTooltipDisposers.push(
-      registerRendererTooltipTarget(
-        label,
-        () => groupVisible ? col.label : `${col.label} — hidden by ${groupVisibilityLabel}`,
-      ),
+      registerRendererTooltipTarget(label, () => col.label),
     );
 
     const pin = createElement("select", "pte-column-panel-pin");
@@ -564,15 +526,6 @@ export class ColumnPanelRenderer {
     });
 
     const actions = div("pte-column-panel-order-actions");
-    if (entry.ancestors.length > 0) {
-      const parent = entry.ancestors[entry.ancestors.length - 1];
-      actions.appendChild(this.orderButton(
-        "↰",
-        `Move ${col.label} outside ${parent.label}`,
-        !col.movable,
-        () => this.moveOutsideGroup(entry, section),
-      ));
-    }
     const up = this.orderButton("↑", `Move ${col.label} up`, index === 0 || !col.movable, () => {
       this.reorderWithinSection(sectionColumns, index, index - 1);
     });
@@ -612,7 +565,20 @@ export class ColumnPanelRenderer {
     const ordered = columns.slice();
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
-    this.applySectionOrder(ordered);
+    const section = this.sectionFor(moved.state);
+    const visibleLeaves = this.params.core.getColumnModel().getLeavesBySection(section);
+    const visibleIds = new Set(visibleLeaves.map(col => col.instanceID));
+    const firstVisibleRight = ordered.slice(to + 1)
+      .find(candidate => visibleIds.has(candidate.col.instanceID));
+    const targetIndex = firstVisibleRight
+      ? visibleLeaves.findIndex(col => col.instanceID === firstVisibleRight.col.instanceID)
+      : visibleLeaves.length;
+    this.params.core.dispatch({
+      type: "columnMove",
+      colId: moved.col.instanceID,
+      toIndex: targetIndex,
+      toSection: section,
+    });
     this.announce(`${moved.col.label} moved to position ${to + 1} of ${columns.length}`);
   }
 
@@ -620,19 +586,8 @@ export class ColumnPanelRenderer {
     this.announcer.textContent = message;
   }
 
-  private moveOutsideGroup(entry: PanelColumn, section: PanelSection): void {
-    const parent = entry.ancestors[entry.ancestors.length - 1];
-    if (!parent) return;
-    this.params.core.dispatch({
-      type: "columnMoveOutOfGroup",
-      colId: entry.col.instanceID,
-      toSection: section,
-    });
-    this.announce(`${entry.col.label} moved outside ${parent.label}`);
-  }
-
-  private buildRootDropZone(section: PanelSection): HTMLDivElement {
-    const dropZone = div("pte-column-panel-root-dropzone", "Drop here to move outside group");
+  private buildRootDropZone(section: ColumnSection): HTMLDivElement {
+    const dropZone = div("pte-column-panel-root-dropzone", "Drop here to move branch to section end");
     dropZone.addEventListener("dragover", (event) => {
       const source = this.getPanelColumns()
         .find(({ col }) => col.instanceID === this.draggedColId);
@@ -647,33 +602,18 @@ export class ColumnPanelRenderer {
       const source = this.getPanelColumns()
         .find(({ col }) => col.instanceID === this.draggedColId);
       if (source && source.ancestors.length > 0 && this.sectionFor(source.state) === section) {
-        this.moveOutsideGroup(source, section);
+        const sectionColumns = this.getPanelColumns()
+          .filter(candidate => this.sectionFor(candidate.state) === section);
+        const from = sectionColumns
+          .findIndex(candidate => candidate.col.instanceID === source.col.instanceID);
+        this.reorderWithinSection(sectionColumns, from, sectionColumns.length - 1);
       }
       this.clearDragState();
     });
     return dropZone;
   }
 
-  private applySectionOrder(orderedSection: PanelColumn[]): void {
-    const all = this.getPanelColumns();
-    const hierarchyKey = this.hierarchyKey(orderedSection[0]);
-    const positions = all
-      .map((entry, index) => ({ entry, index }))
-      .filter(({ entry }) =>
-        this.sectionFor(entry.state) === this.sectionFor(orderedSection[0].state)
-        && this.hierarchyKey(entry) === hierarchyKey,
-      )
-      .map(({ index }) => index);
-    positions.forEach((position, index) => {
-      all[position] = orderedSection[index];
-    });
-    this.params.core.dispatch({
-      type: "columnStateSet",
-      state: all.map(({ state, col }, order) => ({ ...state, colId: col.colId, order })),
-    });
-  }
-
-  private bindDrag(row: HTMLDivElement, entry: PanelColumn, section: PanelSection): void {
+  private bindDrag(row: HTMLDivElement, entry: PanelColumn, section: ColumnSection): void {
     if (!entry.col.movable) return;
     row.addEventListener("dragstart", (event) => {
       this.draggedColId = entry.col.instanceID;
@@ -688,7 +628,6 @@ export class ColumnPanelRenderer {
       if (
         !source
         || this.sectionFor(source.state) !== section
-        || this.hierarchyKey(source) !== this.hierarchyKey(entry)
       ) return;
       event.preventDefault();
       row.classList.add("drag-over");
@@ -697,9 +636,8 @@ export class ColumnPanelRenderer {
     row.addEventListener("drop", (event) => {
       event.preventDefault();
       row.classList.remove("drag-over");
-      const hierarchyKey = this.hierarchyKey(entry);
       const sectionColumns = this.getPanelColumns().filter(candidate =>
-        this.sectionFor(candidate.state) === section && this.hierarchyKey(candidate) === hierarchyKey,
+        this.sectionFor(candidate.state) === section,
       );
       const from = sectionColumns.findIndex(({ col }) => col.instanceID === this.draggedColId);
       const to = sectionColumns.findIndex(({ col }) => col.colId === entry.col.colId);

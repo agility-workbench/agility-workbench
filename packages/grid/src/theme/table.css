@@ -610,7 +610,7 @@
 .pte-column-panel-row {
   min-height: 40px;
   display: grid;
-  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 72px;
+  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 48px;
   gap: 5px;
   align-items: center;
   padding: 3px 5px;
@@ -620,11 +620,6 @@
 
 .pte-column-panel-row:hover {
   background: var(--pte-hover-bg-color);
-}
-
-.pte-column-panel-row-group-hidden .pte-column-panel-label {
-  color: var(--pte-muted-text-color);
-  font-style: italic;
 }
 
 .pte-column-panel-row.dragging {

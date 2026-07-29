@@ -272,58 +272,107 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
-  it("moves grouped columns to the section root by button or drag and drop", async () => {
+  it("moves a nested leaf with its full hierarchy when dropped at the section end", async () => {
     const groupedColumns: ReactColDef[] = [
       {
-        colId: "contact",
-        label: "Contact",
+        colId: "identity",
+        label: "Identity",
         children: [
-          { colId: "name", key: "name", label: "Name", columnGroupShow: "closed" },
-          { colId: "region", key: "region", label: "Region" },
+          {
+            colId: "contact",
+            label: "Contact",
+            children: [
+              { colId: "name", key: "name", label: "Name" },
+              { colId: "region", key: "region", label: "Region" },
+            ],
+          },
+        ],
+      },
+      {
+        colId: "metrics",
+        label: "Metrics",
+        children: [
+          { colId: "revenue", key: "revenue", label: "Revenue" },
+        ],
+      },
+    ];
+    const { container, root, api } = await mount({ defaultOpen: true }, groupedColumns);
+    const rootDropZone = container.querySelector<HTMLElement>(
+      '.pte-column-panel-section[data-section="center"] .pte-column-panel-root-dropzone',
+    )!;
+    await act(async () => {
+      panelRow(container, "name")
+        .dispatchEvent(new Event("dragstart", { bubbles: true, cancelable: true }));
+      rootDropZone.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+      rootDropZone.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+    });
+
+    expect(api.getColumnState().map(state => state.colId)).toEqual(["region", "revenue", "name"]);
+    const model = api.getColumnModel();
+    const nameAncestors = model.getAncestors(model.getByColId("name")!.instanceID);
+    const regionAncestors = model.getAncestors(model.getByColId("region")!.instanceID);
+    expect(nameAncestors.map(col => col.colId)).toEqual(["identity", "contact", "name"]);
+    expect(regionAncestors.map(col => col.colId)).toEqual(["identity", "contact", "region"]);
+    expect(nameAncestors[0].instanceID).not.toBe(regionAncestors[0].instanceID);
+    expect(container.querySelectorAll(
+      '.pte-column-panel-tree-group[data-group-col-id="identity"]',
+    )).toHaveLength(2);
+    expect(container.querySelector(".pte-column-panel-list")
+      ?.classList.contains("pte-column-panel-dragging-group-column")).toBe(false);
+    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
+      .toBe("Name moved to position 3 of 3");
+    await act(async () => root.unmount());
+  });
+
+  it("duplicates only the immediate parent when a leaf moves within its top-level group", async () => {
+    const groupedColumns: ReactColDef[] = [
+      {
+        colId: "identity",
+        label: "Identity",
+        children: [
+          {
+            colId: "contact",
+            label: "Contact",
+            children: [
+              { colId: "name", key: "name", label: "Name" },
+              { colId: "region", key: "region", label: "Region" },
+            ],
+          },
+          { colId: "status", key: "status", label: "Status" },
         ],
       },
       { colId: "revenue", key: "revenue", label: "Revenue" },
     ];
     const { container, root, api } = await mount({ defaultOpen: true }, groupedColumns);
-    const nameOut = panelRow(container, "name")
-      .querySelector<HTMLButtonElement>('[aria-label="Move Name outside Contact"]')!;
 
-    await act(async () => nameOut.click());
-    const name = api.getColumnModel().getByColId("name")!;
-    expect(api.getColumnModel().getAncestors(name.instanceID)).toEqual([name]);
-    expect(name.columnGroupShow).toBe("always");
-    expect(name.columnGroupVisible).toBe(true);
-    expect(
-      container.querySelector(
-        '.pte-column-panel-tree-group[data-group-col-id="contact"] [data-col-id="name"]',
-      ),
-    ).toBeNull();
-    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
-      .toBe("Name moved outside Contact");
-
-    const region = panelRow(container, "region");
-    const rootDropZone = container.querySelector<HTMLElement>(
-      '.pte-column-panel-section[data-section="center"] .pte-column-panel-root-dropzone',
-    )!;
     await act(async () => {
-      region.dispatchEvent(new Event("dragstart", { bubbles: true, cancelable: true }));
-      rootDropZone.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
-      rootDropZone.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+      panelRow(container, "name")
+        .dispatchEvent(new Event("dragstart", { bubbles: true, cancelable: true }));
+      panelRow(container, "status")
+        .dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+      panelRow(container, "status")
+        .dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
     });
 
-    const regionColumn = api.getColumnModel().getByColId("region")!;
-    expect(api.getColumnModel().getAncestors(regionColumn.instanceID)).toEqual([regionColumn]);
-    expect(container.querySelector(
+    expect(api.getColumnState().map(state => state.colId))
+      .toEqual(["region", "status", "name", "revenue"]);
+    const model = api.getColumnModel();
+    const nameAncestors = model.getAncestors(model.getByColId("name")!.instanceID);
+    const regionAncestors = model.getAncestors(model.getByColId("region")!.instanceID);
+    expect(nameAncestors.map(col => col.colId)).toEqual(["identity", "contact", "name"]);
+    expect(regionAncestors.map(col => col.colId)).toEqual(["identity", "contact", "region"]);
+    expect(nameAncestors[0].instanceID).toBe(regionAncestors[0].instanceID);
+    expect(nameAncestors[1].instanceID).not.toBe(regionAncestors[1].instanceID);
+    expect(container.querySelectorAll(
+      '.pte-column-panel-tree-group[data-group-col-id="identity"]',
+    )).toHaveLength(1);
+    expect(container.querySelectorAll(
       '.pte-column-panel-tree-group[data-group-col-id="contact"]',
-    )).toBeNull();
-    expect(container.querySelector(".pte-column-panel-list")
-      ?.classList.contains("pte-column-panel-dragging-group-column")).toBe(false);
-    expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
-      .toBe("Region moved outside Contact");
+    )).toHaveLength(2);
     await act(async () => root.unmount());
   });
 
-  it("reflects effective visibility controlled by column-group expansion", async () => {
+  it("lists only columns made visible by column-group expansion", async () => {
     const adaptiveColumns: ReactColDef[] = [
       {
         colId: "responsive",
@@ -345,19 +394,20 @@ describe("column panel", () => {
       },
     ];
     const { container, root, api } = await mount({ defaultOpen: true }, adaptiveColumns);
-    const nameCheckbox = () => panelRow(container, "name")
-      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
-    const regionCheckbox = () => panelRow(container, "region")
-      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
     const bulk = container.querySelector<HTMLInputElement>(".pte-column-panel-bulk-checkbox")!;
 
-    expect(nameCheckbox().checked).toBe(true);
-    expect(nameCheckbox().disabled).toBe(false);
-    expect(regionCheckbox().checked).toBe(false);
-    expect(regionCheckbox().disabled).toBe(true);
-    expect(panelRow(container, "region").classList.contains("pte-column-panel-row-group-hidden"))
-      .toBe(true);
+    expect(panelRow(container, "name")).not.toBeNull();
+    expect(panelRow(container, "region")).toBeNull();
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["name"]);
+    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(1);
     expect(bulk.checked).toBe(true);
+
+    const nameCheckbox = panelRow(container, "name")
+      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
+    await act(async () => nameCheckbox.click());
+    expect(panelRow(container, "name")).not.toBeNull();
+    expect(nameCheckbox.checked).toBe(false);
+    expect(api.getColumnModel().getCenterLeaves()).toHaveLength(0);
 
     const groupId = api.getColumnModel().getByColId("responsive")!.instanceID;
     await act(async () => {
@@ -368,15 +418,24 @@ describe("column panel", () => {
       });
     });
 
-    expect(nameCheckbox().checked).toBe(false);
-    expect(nameCheckbox().disabled).toBe(true);
-    expect(regionCheckbox().checked).toBe(true);
-    expect(regionCheckbox().disabled).toBe(false);
-    expect(panelRow(container, "name").classList.contains("pte-column-panel-row-group-hidden"))
-      .toBe(true);
-    expect(panelRow(container, "region").classList.contains("pte-column-panel-row-group-hidden"))
-      .toBe(false);
+    expect(panelRow(container, "name")).toBeNull();
+    expect(panelRow(container, "region")).not.toBeNull();
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["region"]);
+    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(1);
     expect(bulk.checked).toBe(true);
+
+    await act(async () => {
+      api.getCore().dispatch({
+        type: "headerAction",
+        colId: groupId,
+        action: "toggleGroupExpand",
+      });
+    });
+    const restoredNameCheckbox = panelRow(container, "name")
+      .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
+    expect(panelRow(container, "region")).toBeNull();
+    expect(restoredNameCheckbox.checked).toBe(false);
+    expect(api.getColumnModel().getCenterLeaves()).toHaveLength(0);
     await act(async () => root.unmount());
   });
 

@@ -29,8 +29,8 @@ Grouped by area; each maps to a §5 sub-table.
   component. Reuses `FloatingAnchor` in *sticky* mode (conceal-on-scroll-out, re-show on scroll-in).
 - **Column panel** (§5.16) — opt-in docked column management with five trigger modes (rail, header,
   column/header menus, footer, toolbar), search, filtered bulk visibility, live visibility and pinning controls,
-  grouped hierarchy with explicit group exit, drag/keyboard reordering, responsive column-state
-  refresh, and layout reset.
+  grouped hierarchy that follows group-toggle visibility, hierarchy-aware drag/keyboard reordering,
+  responsive column-state refresh, and layout reset.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
   cell renderer.

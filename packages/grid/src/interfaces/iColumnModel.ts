@@ -25,7 +25,6 @@ export interface IColumnModel {
   readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
-  moveColumnOutOfGroup(colId: string, section: ColumnSection): boolean;
   getAncestors(colId: string): Column[];
   walkColumns(callback: (col: Column) => void): void;
   toggleGroupExpansion(colId: string): boolean;
