@@ -43,6 +43,7 @@ export class GridToolbarRenderer {
   private groupSection = div("pte-grid-toolbar-group-section");
   private sortSection = div("pte-grid-toolbar-sort-section");
   private right = div("pte-grid-toolbar-right");
+  private quickFilterHost = div("pte-grid-toolbar-quick-filter");
   private exportButton = button("pte-grid-toolbar-export-button");
   private draggedGroupColId: string | null = null;
   private draggedSortColId: string | null = null;
@@ -90,6 +91,10 @@ export class GridToolbarRenderer {
     this.syncSections();
   }
 
+  getQuickFilterHost(): HTMLDivElement {
+    return this.quickFilterHost;
+  }
+
   private unmount(): void {
     this.params.menuRenderer.close(0);
     this.toolbar.remove();
@@ -114,6 +119,7 @@ export class GridToolbarRenderer {
       : "";
 
     const rightSections: HTMLElement[] = [];
+    if (this.options.quickFilter) rightSections.push(this.quickFilterHost);
     if (this.options.export) rightSections.push(this.exportButton);
     if (this.columnTrigger) rightSections.push(this.columnTrigger);
     this.right.replaceChildren(...rightSections);

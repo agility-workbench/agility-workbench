@@ -47,7 +47,7 @@ export function Example() {
           rowData={rowData}
           columnDefs={columnDefs}
           rowIdKey="id"
-          toolbar={{ grouping: true, sorting: true, export: true }}
+          toolbar={{ grouping: true, sorting: true, quickFilter: true, export: true }}
           columnPanel={{ trigger: "toolbar" }}
           theme={themeDark.withParams({ accentColor: "#e11d48", rowHeight: 40 })}
           onGridReady={(readyApi) => {
@@ -71,9 +71,11 @@ when a setup is cleaned up.
 `columnPanel.trigger` accepts `"rail"`, `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. All
 five entry points open the same right-hand column-management drawer.
 
-`toolbar` independently enables the `grouping`, `sorting`, and `export` sections. Every section is
-off by default; enabling any one shows the toolbar. Changing the object live adds/removes sections
-without remounting the grid. The toolbar-hosted Columns trigger also counts as content, so
+`toolbar` independently enables the `grouping`, `sorting`, `quickFilter`, and `export` sections.
+Every section is off by default; enabling any one shows the toolbar. The quick-filter section reuses
+the existing filter and its behavioral `quickFilter` configuration, but supersedes its floating
+placement and close controls. Changing the object live adds/removes sections without remounting the
+grid. The toolbar-hosted Columns trigger also counts as content, so
 `columnPanel={{ trigger: "toolbar" }}` can display a Columns-only toolbar.
 
 ## Styling

@@ -404,6 +404,12 @@ export interface GridToolbarOptions {
   grouping?: boolean;
   /** Multi-column sorting picker, ordered chips, and drop zone. */
   sorting?: boolean;
+  /**
+   * Hosts the existing quick filter in the toolbar. This enables quick filtering when no separate
+   * `quickFilter` option is supplied; when one is supplied, its search-behavior options are reused.
+   * Floating-only layout options are ignored while the toolbar host is active.
+   */
+  quickFilter?: boolean;
   /** CSV/Excel export menu. */
   export?: boolean;
 }
@@ -411,6 +417,7 @@ export interface GridToolbarOptions {
 export interface ResolvedGridToolbarOptions {
   grouping: boolean;
   sorting: boolean;
+  quickFilter: boolean;
   export: boolean;
 }
 
@@ -420,6 +427,7 @@ export function resolveGridToolbarOptions(
   return {
     grouping: options?.grouping === true,
     sorting: options?.sorting === true,
+    quickFilter: options?.quickFilter === true,
     export: options?.export === true,
   };
 }

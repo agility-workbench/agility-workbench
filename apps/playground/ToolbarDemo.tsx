@@ -51,6 +51,7 @@ const SECTION_LABELS: Array<{
 }> = [
   { key: "grouping", label: "Grouping" },
   { key: "sorting", label: "Sorting" },
+  { key: "quickFilter", label: "Quick filter" },
   { key: "export", label: "Export" },
 ];
 
@@ -60,6 +61,7 @@ export function ToolbarDemo() {
   const [toolbar, setToolbar] = useState<GridToolbarOptions>({
     grouping: true,
     sorting: true,
+    quickFilter: true,
     export: true,
   });
   const [columns, setColumns] = useState(true);
@@ -163,7 +165,7 @@ export function ToolbarDemo() {
               className="btn"
               type="button"
               onClick={() => {
-                setToolbar({ grouping: true, sorting: true, export: true });
+                setToolbar({ grouping: true, sorting: true, quickFilter: true, export: true });
                 setColumns(true);
               }}
             >
@@ -223,6 +225,7 @@ export function ToolbarDemo() {
           columnDefs={columnDefs}
           rowIdKey="id"
           toolbar={toolbar}
+          quickFilter={{ debounceMs: 0, showOptions: true }}
           columnPanel={columns ? { trigger: "toolbar" } : false}
           allowExportAsCSV
           allowExportAsExcel

@@ -711,7 +711,7 @@ lifecycle; the content is a custom component.
 | Trigger: column button + header context menus | ✅ Complete | `trigger: "menu"` → **Manage columns…**; `ColumnMenuService` |
 | Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
-| Opt-in toolbar sections | ✅ Complete | `toolbar.grouping`, `toolbar.sorting`, and `toolbar.export`; visibility derives from enabled sections and updates live |
+| Opt-in toolbar sections | ✅ Complete | `toolbar.grouping`, `toolbar.sorting`, `toolbar.quickFilter`, and `toolbar.export`; quick filter reuses the existing widget/state, visibility derives from enabled sections, and all update live |
 | Toolbar export menu | ✅ Complete | Selection / Entire table scopes with CSV and Excel formats; delegates to `ExportRenderer` |
 | Toolbar row-group controls | ✅ Complete | Trailing-area add-group picker and right-edge clear-all; shared position-aware insertion marker for header, panel, and chip drags; active chips with removal and Left/Right keyboard reordering through `rowGroupSet` |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |

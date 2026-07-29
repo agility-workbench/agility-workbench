@@ -39,7 +39,7 @@ describe("Tier-2 option resolution", () => {
       filterDebounceMs: 0,
       cellFlashDuration: 250,
       cellFadeDuration: 750,
-      toolbar: { grouping: true, export: true },
+      toolbar: { grouping: true, quickFilter: true, export: true },
     });
     expect(o.minResizeWidth).toBe(40);
     expect(o.maxColumnWidth).toBe(600);
@@ -48,7 +48,7 @@ describe("Tier-2 option resolution", () => {
     expect(o.filterDebounceMs).toBe(0); // 0 is a valid "no debounce" value, not replaced by default
     expect(o.cellFlashDuration).toBe(250);
     expect(o.cellFadeDuration).toBe(750);
-    expect(o.toolbar).toEqual({ grouping: true, export: true });
+    expect(o.toolbar).toEqual({ grouping: true, quickFilter: true, export: true });
   });
 
   it("clamps invalid (non-positive / negative) values back to defaults", () => {

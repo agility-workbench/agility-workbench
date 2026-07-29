@@ -54,14 +54,18 @@ const core = new GridCore(new CanvasMeasurer(), {
   toolbar: {
     grouping: true,
     sorting: true,
+    quickFilter: true,
     export: true,
   },
 });
 ```
 
-All three sections default to `false`. The React binding applies section changes live without
-remounting the grid. A column panel configured with `trigger: "toolbar"` also keeps the toolbar
-visible for its Columns button, independently of these section flags.
+All four sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
+the toolbar; the separate `quickFilter` option still configures matching, case sensitivity, and
+debouncing, while floating-only placement and close behavior do not apply there. If `quickFilter`
+is omitted, enabling the toolbar section uses its defaults. The React binding applies section
+changes live without remounting the grid. A column panel configured with `trigger: "toolbar"` also
+keeps the toolbar visible for its Columns button, independently of these section flags.
 
 ## Column panel
 

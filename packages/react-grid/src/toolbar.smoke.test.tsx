@@ -29,6 +29,7 @@ async function mount() {
   const render = async (
     toolbar?: GridToolbarOptions,
     columnPanel: React.ComponentProps<typeof Grid>["columnPanel"] = false,
+    quickFilter: React.ComponentProps<typeof Grid>["quickFilter"] = false,
   ) => {
     await act(async () => {
       root.render(
@@ -39,6 +40,7 @@ async function mount() {
           columnDefs={columnDefs}
           toolbar={toolbar}
           columnPanel={columnPanel}
+          quickFilter={quickFilter}
         />,
       );
     });
@@ -103,6 +105,74 @@ describe("toolbar options", () => {
     await render(undefined, false);
     expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
     expect(api.getCore()).toBe(core);
+
+    await act(async () => root.unmount());
+  });
+
+  it("hosts the existing quick filter once, preserves its state across live placement changes, and focuses it", async () => {
+    const { container, root, api, render } = await mount();
+    const core = api.getCore();
+
+    await render(
+      { quickFilter: true, export: true },
+      { trigger: "toolbar" },
+      { debounceMs: 10_000, showOptions: true, showLayoutOptions: true },
+    );
+
+    const toolbar = container.querySelector(".pte-grid-toolbar")!;
+    const toolbarFilter = toolbar.querySelector<HTMLInputElement>(".pte-quick-filter-input");
+    expect(toolbarFilter).not.toBeNull();
+    expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
+    expect(toolbar.querySelector(".pte-quick-filter-anchor-select")).toBeNull();
+
+    const rightChildren = Array.from(toolbar.querySelector(".pte-grid-toolbar-right")!.children);
+    expect(rightChildren.map(child => child.className)).toEqual([
+      "pte-grid-toolbar-quick-filter",
+      "pte-grid-toolbar-export-button",
+      expect.stringContaining("pte-column-panel-trigger-toolbar-button"),
+    ]);
+
+    toolbarFilter!.value = "acme";
+    await act(async () => {
+      toolbarFilter!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(core.getQuickFilterText()).toBe("");
+
+    toolbarFilter!.blur();
+    await act(async () => {
+      container.querySelector<HTMLElement>(".pte-root")!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(toolbarFilter);
+
+    await render({}, false, { debounceMs: 10_000, showOptions: true });
+    const floatingFilter = container.querySelector<HTMLInputElement>(".pte-quick-filter-input");
+    expect(floatingFilter).not.toBeNull();
+    expect(floatingFilter).not.toBe(toolbarFilter);
+    expect(floatingFilter!.value).toBe("acme");
+    expect(core.getQuickFilterText()).toBe("acme");
+    expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
+    expect(api.getCore()).toBe(core);
+
+    await render({ quickFilter: true }, false, { debounceMs: 10_000, showOptions: true });
+    const restoredToolbarFilter =
+      container.querySelector<HTMLInputElement>(".pte-grid-toolbar .pte-quick-filter-input");
+    expect(restoredToolbarFilter?.value).toBe("acme");
+    expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("lets the toolbar section enable the default quick filter by itself", async () => {
+    const { container, root, render } = await mount();
+
+    await render({ quickFilter: true });
+    expect(container.querySelector(".pte-grid-toolbar .pte-quick-filter-input")).not.toBeNull();
+
+    await render({});
+    expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
+    expect(container.querySelector(".pte-quick-filter")).toBeNull();
 
     await act(async () => root.unmount());
   });

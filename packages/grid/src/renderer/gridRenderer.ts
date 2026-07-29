@@ -35,7 +35,7 @@ import { BodyColumnHoverRenderer } from "./body/columnHover";
 import { FloatingAnchor } from "./floating/floatingAnchor";
 import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
 import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
-import { resolveTooltipOptions } from "../interfaces/gridOptions";
+import { resolveGridToolbarOptions, resolveTooltipOptions } from "../interfaces/gridOptions";
 import type {
   ColumnPanelOptions,
   GridToolbarOptions,
@@ -119,6 +119,7 @@ export class GridRenderer {
   // Captured so the widget can be rebuilt in place when its options change at runtime.
   private _quickFilterHeaderHeight?: () => number;
   private _quickFilterOptions?: boolean | QuickFilterOptions;
+  private _toolbarOptions?: GridToolbarOptions;
   _rootAttachmentRenderer: RootAttachmentRenderer;
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
@@ -615,11 +616,7 @@ export class GridRenderer {
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root, this.core.options.loadingMessage);
     this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
 
-    // Quick filter (global search). Only mounted when enabled and the model is client-side.
-    // The header-height getter is captured so the widget can be rebuilt on a live reconfigure.
-    this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
-    this._quickFilterOptions = this.core.getOptions().quickFilter;
-    this._buildQuickFilterWidget();
+    this._toolbarOptions = this.core.getOptions().toolbar;
     this._toolbarRenderer = new GridToolbarRenderer({
       core: this.core,
       root: this.root,
@@ -628,6 +625,11 @@ export class GridRenderer {
       exportCSV: options => this._exportRenderer.exportCSV(options),
       exportExcel: options => this._exportRenderer.exportExcel(options),
     });
+    // Quick filter (global search). Only mounted when enabled and the model is client-side. The
+    // toolbar is constructed first because it may provide the widget's host.
+    this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
+    this._quickFilterOptions = this.core.getOptions().quickFilter;
+    this._buildQuickFilterWidget();
     this._columnPanelRenderer = new ColumnPanelRenderer({
       core: this.core,
       root: this.root,
@@ -703,15 +705,27 @@ export class GridRenderer {
   // widget, if any, must be destroyed by the caller first. `restore` carries live search state
   // across a rebuild. The widget is only mounted when enabled and the row model is client-side.
   private _buildQuickFilterWidget(restore?: QuickFilterRestoreState): void {
+    const inToolbar = resolveGridToolbarOptions(this._toolbarOptions).quickFilter;
     const widget = new QuickFilterWidget({
       core: this.core,
-      root: this.root,
-      options: this._quickFilterOptions,
+      root: inToolbar ? this._toolbarRenderer.getQuickFilterHost() : this.root,
+      options: inToolbar && !this._quickFilterOptions ? true : this._quickFilterOptions,
       headerHeight: this._quickFilterHeaderHeight ?? (() => 0),
+      presentation: inToolbar ? "toolbar" : "floating",
       restore,
     });
     if (widget.isEnabled() && this.core.getRowModel().getType() !== "serverSide") {
       this._quickFilterWidget = widget;
+      // A rebuild can happen before a pending debounce fires. Preserve the visible value as the
+      // authoritative state instead of silently reverting the rows to the last committed query.
+      if (restore && this.core.getQuickFilterText() !== restore.text) {
+        this.core.dispatch({
+          type: "quickFilterSet",
+          text: restore.text,
+          matchMode: restore.matchMode,
+          caseSensitive: restore.caseSensitive,
+        });
+      }
     } else {
       widget.destroy();
       this._quickFilterWidget = undefined;
@@ -756,8 +770,19 @@ export class GridRenderer {
   }
 
   setToolbarOptions(options: GridToolbarOptions | undefined) {
+    const wasInToolbar = resolveGridToolbarOptions(this._toolbarOptions).quickFilter;
+    const willBeInToolbar = resolveGridToolbarOptions(options).quickFilter;
+    const restore = wasInToolbar !== willBeInToolbar
+      ? this._quickFilterWidget?.captureState()
+      : undefined;
+    if (wasInToolbar !== willBeInToolbar) {
+      this._quickFilterWidget?.destroy();
+      this._quickFilterWidget = undefined;
+    }
+    this._toolbarOptions = options;
     (this.core.options as { toolbar: GridToolbarOptions }).toolbar = options ?? {};
     this._toolbarRenderer.setOptions(options);
+    if (wasInToolbar !== willBeInToolbar) this._buildQuickFilterWidget(restore);
   }
 
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */

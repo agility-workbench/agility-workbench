@@ -28,6 +28,8 @@ interface QuickFilterWidgetParams {
   // Current header height in px. Read lazily on each show so header-height changes (e.g. grouped
   // headers) are respected; the widget adds its configured `offsetTop` to sit just below the header.
   headerHeight: () => number;
+  /** The toolbar reuses this widget but suppresses its floating-only presentation controls. */
+  presentation?: "floating" | "toolbar";
   // Search state to restore when rebuilding in place (omitted on first construction).
   restore?: QuickFilterRestoreState;
 }
@@ -80,7 +82,11 @@ export class QuickFilterWidget {
 
     // The widget is a vertical stack: a search row, and (when expanded) an options panel below it,
     // all inside one bordered container that grows in height to reveal the options.
-    this.wrapper = div("pte-quick-filter");
+    this.wrapper = div(
+      params.presentation === "toolbar"
+        ? "pte-quick-filter pte-quick-filter-toolbar"
+        : "pte-quick-filter",
+    );
     this.wrapper.setAttribute("role", "search");
 
     this.searchRow = div("pte-quick-filter-row");
@@ -127,7 +133,7 @@ export class QuickFilterWidget {
 
     // A dedicated close button, so dismissing doesn't require pressing Esc. In "always" mode the
     // widget is a permanent fixture with nothing to close, so it's omitted there.
-    if (this.opts.mode !== "always") {
+    if (!this.isPermanent()) {
       this.closeBtn = button("pte-quick-filter-btn pte-quick-filter-close");
       this.closeBtn.type = "button";
       this.closeBtn.setAttribute("aria-label", "Close search");
@@ -144,7 +150,7 @@ export class QuickFilterWidget {
     // built whenever persistence is possible — either configured off now, or reachable at runtime via
     // the layout controls (which can flip `clearOnClose` to false).
     const canPersist = !this.clearOnClose || this.opts.showLayoutOptions;
-    if (canPersist && this.opts.mode !== "always") this.buildIndicatorPill();
+    if (canPersist && !this.isPermanent()) this.buildIndicatorPill();
 
     this.bind();
     this.params.root.appendChild(this.wrapper);
@@ -156,7 +162,7 @@ export class QuickFilterWidget {
     }
 
     // Open if "always" mode (pinned), or if a rebuild is restoring a previously-open widget.
-    const startOpen = this.opts.mode === "always" || (params.restore?.open ?? false);
+    const startOpen = this.isPermanent() || (params.restore?.open ?? false);
     this.setOpen(startOpen);
   }
 
@@ -176,7 +182,15 @@ export class QuickFilterWidget {
 
   // The options popover is present when either the match controls or the layout controls are enabled.
   private hasOptionsPopover(): boolean {
-    return this.opts.showOptions || this.opts.showLayoutOptions;
+    return this.opts.showOptions || (!this.isToolbarPresentation() && this.opts.showLayoutOptions);
+  }
+
+  private isToolbarPresentation(): boolean {
+    return this.params.presentation === "toolbar";
+  }
+
+  private isPermanent(): boolean {
+    return this.isToolbarPresentation() || this.opts.mode === "always";
   }
 
   isOpen(): boolean {
@@ -196,6 +210,10 @@ export class QuickFilterWidget {
   // No-op in "always" mode, where the widget is a permanent fixture: there we only clear the text.
   hide(): void {
     this.collapseOptions();
+    if (this.isToolbarPresentation()) {
+      this.input.blur();
+      return;
+    }
     if (this.clearOnClose && this.input.value !== "") {
       this.input.value = "";
       this.clearBtn.hidden = true;
@@ -206,7 +224,7 @@ export class QuickFilterWidget {
   }
 
   toggle(): void {
-    if (this.open && this.opts.mode !== "always") this.hide();
+    if (this.open && !this.isPermanent()) this.hide();
     else this.show();
   }
 
@@ -225,7 +243,7 @@ export class QuickFilterWidget {
   private setOpen(open: boolean): void {
     this.open = open;
     if (open) {
-      this.applyPosition();
+      if (!this.isToolbarPresentation()) this.applyPosition();
       this.updateClearVisibility();
     } else {
       this.collapseOptions();
@@ -241,6 +259,7 @@ export class QuickFilterWidget {
   // Place the floating widget: `offsetTop` px below the current header, pinned to the configured
   // horizontal edge. Read lazily on each open so grouped/multi-row header height changes are honored.
   private applyPosition(): void {
+    if (this.isToolbarPresentation()) return;
     const { offsetX, offsetTop } = this.opts.position;
     this.wrapper.style.top = `${this.params.headerHeight() + offsetTop}px`;
     // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
@@ -342,7 +361,7 @@ export class QuickFilterWidget {
     }
 
     // Layout controls (anchor + keep-on-close) — only when `showLayoutOptions` is on.
-    if (this.opts.showLayoutOptions) this.buildLayoutRows();
+    if (!this.isToolbarPresentation() && this.opts.showLayoutOptions) this.buildLayoutRows();
 
     this.wrapper.appendChild(this.optionsPanel);
   }
