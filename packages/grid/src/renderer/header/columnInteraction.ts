@@ -37,6 +37,7 @@ export class ColumnInteractionRenderer {
   private dragSection: ColumnSection | null = null;
   private dragDirection: "left" | "right" | null = null;
   private dragAllowsDrop = false;
+  private groupDropZone: HTMLElement | null = null;
 
   constructor(private params: ColumnInteractionRendererParams) { }
 
@@ -115,6 +116,15 @@ export class ColumnInteractionRenderer {
       this.dragGhostEl.style.top = `${e.clientY + 8}px`;
     }
 
+    const groupDropZone = this.getGroupDropZoneForPoint(e.clientX, e.clientY);
+    this.setGroupDropZone(groupDropZone);
+    if (groupDropZone) {
+      this.dragTargetIndex = -1;
+      if (this.dragIndicatorEl) this.dragIndicatorEl.style.display = "none";
+      e.preventDefault();
+      return;
+    }
+
     if (!this.dragAllowsDrop) {
       this.dragTargetIndex = -1;
       e.preventDefault();
@@ -182,8 +192,18 @@ export class ColumnInteractionRenderer {
     const section = this.dragSection || "center";
     const performedDrag = this.isDraggingColumn;
     const allowDrop = this.dragAllowsDrop;
+    const addToGroups = this.groupDropZone != null;
     this.teardownColumnDrag();
     if (!performedDrag) return;
+    if (addToGroups) {
+      const colIds = this.params.core.getRowGroupColumns().map(group => group.instanceID);
+      if (!colIds.includes(col.instanceID)) {
+        this.params.core.dispatch({ type: "rowGroupSet", colIds: [...colIds, col.instanceID] });
+      }
+      this.suppressHeaderClick = true;
+      setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+      return;
+    }
     if (!allowDrop) {
       this.suppressHeaderClick = true;
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
@@ -297,6 +317,29 @@ export class ColumnInteractionRenderer {
     return null;
   }
 
+  private getGroupDropZoneForPoint(x: number, y: number): HTMLElement | null {
+    const col = this.draggingColumn;
+    if (
+      !col
+      || !col.groupable
+      || col.isInternal()
+      || this.params.core.getRowModel().getType() !== "clientSide"
+      || this.params.core.getRowGroupColumns().some(group => group.instanceID === col.instanceID)
+    ) return null;
+    const zone = this.params.root.querySelector<HTMLElement>(".pte-grid-toolbar-group-dropzone");
+    if (!zone) return null;
+    const rect = zone.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom ? zone : null;
+  }
+
+  private setGroupDropZone(zone: HTMLElement | null): void {
+    if (zone === this.groupDropZone) return;
+    this.groupDropZone?.classList.remove("drag-over");
+    this.groupDropZone = zone;
+    this.groupDropZone?.classList.add("drag-over");
+    if (this.isDraggingColumn) this.setDragCursor(true, zone != null || this.dragAllowsDrop);
+  }
+
   private getDropAnchorLeaves(section: ColumnSection = "center"): Column[] {
     const model = this.params.core.getColumnModel();
     const leaves = model.getLeavesBySection(section);
@@ -378,6 +421,8 @@ export class ColumnInteractionRenderer {
       this.dragIndicatorEl.remove();
       this.dragIndicatorEl = null;
     }
+    this.groupDropZone?.classList.remove("drag-over");
+    this.groupDropZone = null;
     this.draggingColumn = null;
     this.dragHeaderEl = null;
     this.dragHeaderContainer = null;

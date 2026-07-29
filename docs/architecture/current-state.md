@@ -11,7 +11,7 @@
 > & column-level sort / custom comparator), **conditional row & cell styling**, **event-callback
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
-> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **506 tests across 66
+> functions**, **quick-filter layout/anchoring options**, and a built-in **column panel**. The suite is now **508 tests across 66
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -30,8 +30,8 @@ Grouped by area; each maps to a §5 sub-table.
 - **Column panel** (§5.16) — opt-in docked column management with five trigger modes (rail, header,
   column/header menus, footer, toolbar), search, filtered bulk visibility, live visibility and pinning controls,
   grouped hierarchy that follows group-toggle visibility, hierarchy-aware drag/keyboard reordering,
-  responsive column-state refresh, layout reset, and toolbar exports for the current selection or
-  entire table.
+  responsive column-state refresh, layout reset, toolbar exports for the current selection or
+  entire table, and removable/reorderable active row-group chips.
 - **Custom header components** (§5.1) — two scopes: `headerComponent` (content only) and
   `headerCellComponent` (whole cell incl. filter/menu buttons), with a params contract mirroring the
   cell renderer.
@@ -75,7 +75,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (506 tests / 66 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (508 tests / 66 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -237,6 +237,7 @@ packages/grid/src/
 │   ├── overlay.ts             Overlay base
 │   ├── exportRenderer.ts      ExportRenderer — builds ExportConfig from current state; resolves scope,
 │   │                          prunes the group tree to the selection, maps a range's column span
+│   ├── toolbar/               Top toolbar — export menu and active row-group chips
 │   ├── serverSideController.ts SSRM data source / aggregation wiring
 │   │
 │   ├── aggregate/             Aggregate row rendering
@@ -710,6 +711,7 @@ lifecycle; the content is a custom component.
 | Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
 | Toolbar export menu | ✅ Complete | Selection / Entire table scopes with CSV and Excel formats; delegates to `ExportRenderer` |
+| Toolbar row-group controls | ✅ Complete | Add-group picker; header/panel column drop zone; active chips with removal, drag reordering, and Left/Right keyboard reordering through `rowGroupSet` |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
 | Column-group hierarchy | ✅ Complete | Nested collapsible groups; ancestor names participate in search and matching paths expand automatically |
 | Group-controlled visibility | ✅ Complete | Uses the column model's resolved `columnGroupVisible`; inactive leaves are omitted while manually hidden active leaves remain manageable |
@@ -814,7 +816,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **506 tests across 66
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **508 tests across 66
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 

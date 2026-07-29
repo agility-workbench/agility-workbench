@@ -483,6 +483,40 @@ describe("column panel", () => {
     await act(async () => root.unmount());
   });
 
+  it("groups a column dropped from the header onto the toolbar grouping section", async () => {
+    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const name = api.getColumnModel().getByColId("name")!;
+    const header = container.querySelector<HTMLElement>(`.pte-hcell#${name.instanceID}`)!;
+    const dropZone = container.querySelector<HTMLElement>(".pte-grid-toolbar-group-dropzone")!;
+    Object.defineProperty(header, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, right: 120, top: 50, bottom: 90, width: 120, height: 40 }),
+    });
+    Object.defineProperty(dropZone, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, right: 300, top: 0, bottom: 42, width: 300, height: 42 }),
+    });
+
+    await act(async () => {
+      header.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true,
+        button: 0,
+        clientX: 20,
+        clientY: 60,
+      }));
+      document.dispatchEvent(new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: 30,
+        clientY: 20,
+      }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+
+    expect(api.getColumnModel().getAutoGroupColumns()).toHaveLength(1);
+    expect(container.querySelector(".pte-grid-toolbar-group-chip-label")?.textContent).toBe("Name");
+    await act(async () => root.unmount());
+  });
+
   it("offers Manage columns in both the column button menu and header context menu", async () => {
     const { container, root, api } = await mount({ trigger: "menu" });
     const nameInstanceId = api.getColumnModel().getByColId("name")!.instanceID;
