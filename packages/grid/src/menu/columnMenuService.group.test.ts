@@ -41,7 +41,10 @@ function findById(items: MenuItem[], id: string): MenuItem | undefined {
 
 function groupItem(core: GridCore, ctx: ColumnMenuContext): MenuItem | undefined {
   return new ColumnMenuService(core as any).buildDefaultColumnMenu(ctx).find(item =>
-    item.id === "groupColumns" || item.id === "ungroupColumns" || item.id === "ungroupAllColumns"
+    item.id === "groupColumns"
+    || item.id === "groupColumnsMenu"
+    || item.id === "ungroupColumns"
+    || item.id === "ungroupAllColumns"
   );
 }
 
@@ -108,5 +111,55 @@ describe("column menu row grouping items", () => {
 
     expect(item?.label).toBe("Ungroup All");
     expect(item?.payload).toEqual({ colIDs: [] });
+  });
+
+  it("offers to replace or append grouping when another column is already grouped", () => {
+    const core = makeGrid();
+    const region = colId(core, "region");
+    const country = colId(core, "country");
+    core.dispatch({ type: "rowGroupSet", colIds: [region] });
+
+    const svc = new ColumnMenuService(core as any);
+    const ctx: ColumnMenuContext = {
+      trigger: "columnMenuButton",
+      targetColId: country,
+      colIds: [country],
+    };
+    const items = svc.buildDefaultColumnMenu(ctx);
+    const groupMenu = findById(items, "groupColumnsMenu")!;
+    const replace = findById(items, "groupColumns")!;
+    const add = findById(items, "addGroupColumns")!;
+
+    expect(groupMenu.label).toBe("Group by Column");
+    expect(groupMenu.subMenu).toEqual([replace, add]);
+    expect(replace.label).toBe("Replace Existing Grouping");
+    expect(replace.payload).toEqual({ colIDs: [country] });
+    expect(add.label).toBe("Add to Existing Grouping");
+    expect(add.payload).toEqual({ colIDs: [region, country] });
+
+    svc.execute(replace, ctx);
+    expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([country]);
+
+    core.dispatch({ type: "rowGroupSet", colIds: [region] });
+    svc.execute(add, ctx);
+    expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([region, country]);
+  });
+
+  it("appends only ungrouped columns from a multi-column menu selection", () => {
+    const core = makeGrid();
+    const region = colId(core, "region");
+    const country = colId(core, "country");
+    const sales = colId(core, "sales");
+    core.dispatch({ type: "rowGroupSet", colIds: [region] });
+
+    const items = new ColumnMenuService(core as any).buildDefaultColumnMenu({
+      trigger: "columnMenuButton",
+      targetColId: country,
+      colIds: [region, country, sales],
+    });
+    const add = findById(items, "addGroupColumns")!;
+
+    expect(add.label).toBe("Add to Existing Grouping");
+    expect(add.payload).toEqual({ colIDs: [region, country, sales] });
   });
 });

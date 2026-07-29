@@ -76,8 +76,7 @@ export class ColumnMenuService {
       items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, left: "icon-col-hide", command: "column.hideMany", payload: { colIDs } });
       items.push({ isSeparator: true });
     }
-    const groupItem = this.getGroupMenuItem(colIDs, ctx.targetColId, cap.groupable, s);
-    if (groupItem) items.push(groupItem);
+    items.push(...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s));
     if (cap.aggregatable && cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
@@ -296,57 +295,79 @@ export class ColumnMenuService {
     return items;
   }
 
-  private getGroupMenuItem(
+  private getGroupMenuItems(
     colIDs: string[],
     targetColId: string,
     groupable: boolean,
     pluralize: (singular: string, plural?: string) => string,
-  ): GroupMenuItem | null {
+  ): MenuItem[] {
     const groupColumns = this.core.getRowGroupColumns();
     const groupIds = groupColumns.map(col => col.instanceID);
     const grouped = new Set(groupIds);
     const targetCol = this.core.getColumnModel().getById(targetColId);
 
     if (groupIds.length > 0 && targetCol?.isAutoGroupColumn()) {
-      return {
+      return [{
         id: "ungroupAllColumns",
         label: `Ungroup${groupIds.length > 1 ? " All" : ""}`,
         left: "icon-group",
         command: "group.setMany",
         payload: { colIDs: [] },
-      };
+      }];
     }
 
     const userColIDs = this.expandUserColumnIds(colIDs);
     const allSelectedAreGrouped = userColIDs.length > 0 && userColIDs.every(id => grouped.has(id));
     if (allSelectedAreGrouped) {
       if (userColIDs.length > 1) {
-        return {
+        return [{
           id: "ungroupAllColumns",
           label: "Ungroup All",
           left: "icon-group",
           command: "group.setMany",
           payload: { colIDs: [] },
-        };
+        }];
       }
 
-      return {
+      return [{
         id: "ungroupColumns",
         label: "Ungroup",
         left: "icon-group",
         command: "group.setMany",
         payload: { colIDs: groupIds.filter(id => id !== userColIDs[0]) },
-      };
+      }];
     }
 
-    if (!groupable) return null;
-    return {
+    if (!groupable) return [];
+    const replaceItem: GroupMenuItem = {
       id: "groupColumns",
-      label: `Group by ${pluralize("Column")}`,
-      left: "icon-group",
+      label: groupIds.length > 0 ? "Replace Existing Grouping" : `Group by ${pluralize("Column")}`,
       command: "group.setMany",
       payload: { colIDs },
     };
+
+    if (groupIds.length === 0) {
+      replaceItem.left = "icon-group";
+      return [replaceItem];
+    }
+
+    const nextGroupIds = [
+      ...groupIds,
+      ...userColIDs.filter(id => !grouped.has(id)),
+    ];
+    const addItem: GroupMenuItem = {
+      id: "addGroupColumns",
+      label: "Add to Existing Grouping",
+      command: "group.setMany",
+      payload: { colIDs: nextGroupIds },
+    };
+
+    return [{
+      id: "groupColumnsMenu",
+      label: `Group by ${pluralize("Column")}`,
+      left: "icon-group",
+      subMenu: [replaceItem, addItem],
+    }];
   }
 
   private expandUserColumnIds(colIDs: string[]): string[] {
