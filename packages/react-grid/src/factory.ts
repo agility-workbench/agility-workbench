@@ -67,6 +67,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.tooltip != null) options.tooltip = props.tooltip;
   if (props.quickFilter != null) options.quickFilter = props.quickFilter;
   if (props.columnPanel != null) options.columnPanel = props.columnPanel;
+  if (props.toolbar != null) options.toolbar = props.toolbar;
   if (props.loadingMessage != null) options.loadingMessage = props.loadingMessage;
   if (props.noRowsMessage != null) options.noRowsMessage = props.noRowsMessage;
   if (props.filterDebounceMs != null) options.filterDebounceMs = props.filterDebounceMs;

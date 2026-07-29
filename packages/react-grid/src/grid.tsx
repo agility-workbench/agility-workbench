@@ -278,6 +278,19 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [columnPanelKey]);
 
+    // Toolbar sections are independently opt-in and reconcile in place. An empty/omitted config
+    // removes the toolbar unless another feature (currently the Columns trigger) is hosted there.
+    const toolbarKey = JSON.stringify(props.toolbar ?? null);
+    const toolbarMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!toolbarMountedRef.current) {
+        toolbarMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.renderer.setToolbarOptions(props.toolbar);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [toolbarKey]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {

@@ -43,6 +43,26 @@ core.dispatch({ type: "init" });
 core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 }] });
 ```
 
+## Toolbar
+
+Toolbar sections are individually opt-in. There is no separate visibility flag: the toolbar appears
+when at least one section is enabled, and disappears when none are enabled.
+
+```ts
+const core = new GridCore(new CanvasMeasurer(), {
+  columnDefs,
+  toolbar: {
+    grouping: true,
+    sorting: true,
+    export: true,
+  },
+});
+```
+
+All three sections default to `false`. The React binding applies section changes live without
+remounting the grid. A column panel configured with `trigger: "toolbar"` also keeps the toolbar
+visible for its Columns button, independently of these section flags.
+
 ## Column panel
 
 Enable the built-in right-side column panel to let users search, show/hide individually or in bulk,

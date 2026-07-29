@@ -408,6 +408,9 @@
 .pte-grid-toolbar-sort-section {
   width: 100%;
   box-sizing: border-box;
+}
+
+.pte-grid-toolbar-group-section + .pte-grid-toolbar-sort-section {
   border-left: 1px solid var(--pte-frame-border-color);
 }
 

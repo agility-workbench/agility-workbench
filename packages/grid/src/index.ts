@@ -65,6 +65,7 @@ export type {
   QuickFilterMatchMode,
   ColumnPanelOptions,
   ColumnPanelTrigger,
+  GridToolbarOptions,
   InitialSortItem,
   SortingOrder,
   MultiSortKey,

@@ -23,6 +23,7 @@ const columns: ReactColDef[] = [
 async function mount(
   columnPanel: React.ComponentProps<typeof Grid>["columnPanel"] = true,
   columnDefs: ReactColDef[] = columns,
+  toolbar?: React.ComponentProps<typeof Grid>["toolbar"],
 ) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 500, configurable: true });
@@ -39,6 +40,7 @@ async function mount(
         rowData={[{ id: "1", name: "Acme", region: "West", revenue: 42 }]}
         columnDefs={columnDefs}
         columnPanel={nextColumnPanel}
+        toolbar={toolbar}
         tooltip={{ showDelay: 0, hideDelay: 0 }}
       />,
       );
@@ -471,7 +473,7 @@ describe("column panel", () => {
     expect(triggerButton).not.toBeNull();
     if (trigger === "toolbar") {
       const exportButton = parent.querySelector<HTMLButtonElement>(".pte-grid-toolbar-export-button");
-      expect(exportButton).not.toBeNull();
+      expect(exportButton).toBeNull();
       expect(parent.lastElementChild).toBe(triggerButton);
     }
     expect(container.querySelector(".pte-root")!.classList.contains(`pte-column-panel-trigger-${trigger}`))
@@ -484,7 +486,11 @@ describe("column panel", () => {
   });
 
   it("groups a column dropped from the header onto the toolbar grouping section", async () => {
-    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const { container, root, api } = await mount(
+      { trigger: "toolbar" },
+      columns,
+      { grouping: true },
+    );
     const model = api.getColumnModel();
     const region = model.getByColId("region")!;
     const revenue = model.getByColId("revenue")!;
@@ -556,7 +562,11 @@ describe("column panel", () => {
   });
 
   it("keeps toolbar sort priority synchronized with header indicators", async () => {
-    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const { container, root, api } = await mount(
+      { trigger: "toolbar" },
+      columns,
+      { sorting: true },
+    );
     const core = api.getCore();
     const model = api.getColumnModel();
     const region = model.getByColId("region")!;
@@ -686,7 +696,11 @@ describe("column panel", () => {
   });
 
   it("identifies clipped grouping and sort chips with grid tooltips", async () => {
-    const { container, root, api } = await mount({ trigger: "toolbar" });
+    const { container, root, api } = await mount(
+      { trigger: "toolbar" },
+      columns,
+      { grouping: true, sorting: true },
+    );
     const model = api.getColumnModel();
     const region = model.getByColId("region")!;
     const revenue = model.getByColId("revenue")!;

@@ -18,7 +18,7 @@ interface ColumnPanelRendererParams {
   onLayoutChange: () => void;
   toolbar: {
     mountColumnTrigger: (trigger: HTMLButtonElement) => void;
-    unmount: () => void;
+    unmountColumnTrigger: () => void;
   };
 }
 
@@ -243,7 +243,7 @@ export class ColumnPanelRenderer {
 
   private unmountExternalTrigger(): void {
     if (this.toolbarTriggerMounted) {
-      this.params.toolbar.unmount();
+      this.params.toolbar.unmountColumnTrigger();
       this.toolbarTriggerMounted = false;
     }
     this.triggerButton.remove();

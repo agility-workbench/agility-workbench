@@ -33,6 +33,55 @@ function colId(core: GridCore, key: string): string {
 }
 
 describe("GridToolbarRenderer", () => {
+  it("mounts only for opted-in sections and reconciles them live", () => {
+    const core = makeCore();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const toolbar = new GridToolbarRenderer({
+      core,
+      root,
+      menuRenderer: new MenuRenderer(root),
+      exportCSV: vi.fn(),
+      exportExcel: vi.fn(),
+    });
+
+    expect(root.querySelector(".pte-grid-toolbar")).toBeNull();
+
+    toolbar.setOptions({ grouping: true });
+    expect(root.querySelector(".pte-grid-toolbar-group-section")).not.toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-sort-section")).toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-export-button")).toBeNull();
+    expect(
+      root.querySelector<HTMLElement>(".pte-grid-toolbar-left")!.style.gridTemplateColumns,
+    ).toContain("repeat(1");
+
+    toolbar.setOptions({ sorting: true, export: true });
+    expect(root.querySelector(".pte-grid-toolbar-group-section")).toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-sort-section")).not.toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-export-button")).not.toBeNull();
+
+    toolbar.setOptions(undefined);
+    expect(root.querySelector(".pte-grid-toolbar")).toBeNull();
+
+    const columns = document.createElement("button");
+    columns.textContent = "Columns";
+    toolbar.mountColumnTrigger(columns);
+    expect(root.querySelector(".pte-grid-toolbar")).not.toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-right")?.lastElementChild).toBe(columns);
+
+    toolbar.setOptions({ export: true });
+    expect(root.querySelector(".pte-grid-toolbar-export-button")).not.toBeNull();
+    expect(root.querySelector(".pte-grid-toolbar-right")?.lastElementChild).toBe(columns);
+
+    toolbar.setOptions(undefined);
+    expect(root.querySelector(".pte-grid-toolbar")).not.toBeNull();
+    toolbar.unmountColumnTrigger();
+    expect(root.querySelector(".pte-grid-toolbar")).toBeNull();
+
+    toolbar.destroy();
+    root.remove();
+  });
+
   it("offers explicit selection and entire-table scopes while keeping Columns rightmost", () => {
     const core = makeCore();
     const root = document.createElement("div");
@@ -44,6 +93,7 @@ describe("GridToolbarRenderer", () => {
       core,
       root,
       menuRenderer,
+      options: { grouping: true, sorting: true, export: true },
       exportCSV,
       exportExcel,
     });
@@ -107,6 +157,7 @@ describe("GridToolbarRenderer", () => {
       core,
       root,
       menuRenderer,
+      options: { grouping: true, sorting: true, export: true },
       exportCSV: vi.fn(),
       exportExcel: vi.fn(),
     });
@@ -177,6 +228,7 @@ describe("GridToolbarRenderer", () => {
       core,
       root,
       menuRenderer: new MenuRenderer(root),
+      options: { grouping: true, sorting: true, export: true },
       exportCSV: vi.fn(),
       exportExcel: vi.fn(),
     });
@@ -326,6 +378,7 @@ describe("GridToolbarRenderer", () => {
       core,
       root,
       menuRenderer: new MenuRenderer(root),
+      options: { grouping: true, sorting: true, export: true },
       exportCSV: vi.fn(),
       exportExcel: vi.fn(),
     });

@@ -395,6 +395,35 @@ export function resolveColumnPanelOptions(
   };
 }
 
+/**
+ * Opt-in sections for the grid toolbar. The toolbar has no separate visibility flag: it is mounted
+ * when at least one section is enabled (or when the column panel uses its toolbar trigger).
+ */
+export interface GridToolbarOptions {
+  /** Row-grouping picker, ordered chips, and drop zone. */
+  grouping?: boolean;
+  /** Multi-column sorting picker, ordered chips, and drop zone. */
+  sorting?: boolean;
+  /** CSV/Excel export menu. */
+  export?: boolean;
+}
+
+export interface ResolvedGridToolbarOptions {
+  grouping: boolean;
+  sorting: boolean;
+  export: boolean;
+}
+
+export function resolveGridToolbarOptions(
+  options: GridToolbarOptions | undefined,
+): ResolvedGridToolbarOptions {
+  return {
+    grouping: options?.grouping === true,
+    sorting: options?.sorting === true,
+    export: options?.export === true,
+  };
+}
+
 export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
@@ -667,6 +696,11 @@ export interface GridOptions {
    */
   columnPanel?: boolean | ColumnPanelOptions;
   /**
+   * Built-in toolbar sections. Every section is disabled by default; enabling any section mounts
+   * the toolbar. Section visibility can be changed live without recreating the grid.
+   */
+  toolbar?: GridToolbarOptions;
+  /**
    * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
    * "Loading data...".
    */
@@ -756,6 +790,7 @@ export interface InternalGridOptions extends GridOptions {
   tooltip: boolean | TooltipOptions;
   quickFilter: boolean | QuickFilterOptions;
   columnPanel: boolean | ColumnPanelOptions;
+  toolbar: GridToolbarOptions;
   loadingMessage: string;
   noRowsMessage: string;
   filterDebounceMs: number;

@@ -36,7 +36,12 @@ import { FloatingAnchor } from "./floating/floatingAnchor";
 import { BodyTooltipRenderer } from "./tooltip/bodyTooltipRenderer";
 import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveTooltipOptions } from "../interfaces/gridOptions";
-import type { ColumnPanelOptions, RuntimeGridOptions, TooltipOptions } from "../interfaces/gridOptions";
+import type {
+  ColumnPanelOptions,
+  GridToolbarOptions,
+  RuntimeGridOptions,
+  TooltipOptions,
+} from "../interfaces/gridOptions";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -619,6 +624,7 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       menuRenderer: this._menuRenderer,
+      options: this.core.getOptions().toolbar,
       exportCSV: options => this._exportRenderer.exportCSV(options),
       exportExcel: options => this._exportRenderer.exportExcel(options),
     });
@@ -747,6 +753,11 @@ export class GridRenderer {
   setColumnPanelOptions(options: boolean | ColumnPanelOptions | undefined) {
     (this.core.options as { columnPanel: boolean | ColumnPanelOptions | undefined }).columnPanel = options;
     this._columnPanelRenderer.setOptions(options);
+  }
+
+  setToolbarOptions(options: GridToolbarOptions | undefined) {
+    (this.core.options as { toolbar: GridToolbarOptions }).toolbar = options ?? {};
+    this._toolbarRenderer.setOptions(options);
   }
 
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */

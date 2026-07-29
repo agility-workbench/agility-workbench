@@ -2,6 +2,11 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { Unsubscribe } from "../../events/events";
 import { ExportOptions } from "../../export/export";
+import {
+  GridToolbarOptions,
+  ResolvedGridToolbarOptions,
+  resolveGridToolbarOptions,
+} from "../../interfaces/gridOptions";
 import { MenuItem } from "../../interfaces/menuItem";
 import { SortDir } from "../../interfaces/sort";
 import { button, div, span } from "../element";
@@ -23,6 +28,7 @@ interface GridToolbarRendererParams {
   core: GridCore;
   root: HTMLDivElement;
   menuRenderer: MenuRenderer;
+  options?: GridToolbarOptions;
   exportCSV: (options: ExportOptions) => void;
   exportExcel: (options: ExportOptions) => void;
 }
@@ -42,6 +48,8 @@ export class GridToolbarRenderer {
   private draggedSortColId: string | null = null;
   private groupChipTooltipDisposers: Array<() => void> = [];
   private sortChipTooltipDisposers: Array<() => void> = [];
+  private options: ResolvedGridToolbarOptions = resolveGridToolbarOptions(undefined);
+  private columnTrigger: HTMLButtonElement | null = null;
   private unsubscribe: Unsubscribe;
 
   constructor(private params: GridToolbarRendererParams) {
@@ -56,7 +64,6 @@ export class GridToolbarRenderer {
     this.exportButton.addEventListener("click", () => this.openExportMenu());
     this.bindExternalColumnDrop();
     this.bindSortChipDrop();
-    this.left.append(this.groupSection, this.sortSection);
     this.toolbar.append(this.left, this.right);
     this.unsubscribe = this.params.core.on("columnsChanged", event => {
       if (event.reason === "group" || event.reason === "defs") this.renderGroupChips();
@@ -64,16 +71,26 @@ export class GridToolbarRenderer {
     });
     this.renderGroupChips();
     this.renderSortChips();
+    this.setOptions(this.params.options);
+  }
+
+  setOptions(options: GridToolbarOptions | undefined): void {
+    this.options = resolveGridToolbarOptions(options);
+    this.syncSections();
   }
 
   mountColumnTrigger(trigger: HTMLButtonElement): void {
-    if (!this.toolbar.isConnected) {
-      this.params.root.insertBefore(this.toolbar, this.params.root.firstChild);
-    }
-    this.right.replaceChildren(this.exportButton, trigger);
+    this.columnTrigger = trigger;
+    this.syncSections();
   }
 
-  unmount(): void {
+  unmountColumnTrigger(): void {
+    this.columnTrigger?.remove();
+    this.columnTrigger = null;
+    this.syncSections();
+  }
+
+  private unmount(): void {
     this.params.menuRenderer.close(0);
     this.toolbar.remove();
   }
@@ -82,7 +99,31 @@ export class GridToolbarRenderer {
     this.unsubscribe();
     this.disposeGroupChipTooltips();
     this.disposeSortChipTooltips();
+    this.columnTrigger = null;
     this.unmount();
+  }
+
+  private syncSections(): void {
+    this.params.menuRenderer.close(0);
+    const leftSections: HTMLElement[] = [];
+    if (this.options.grouping) leftSections.push(this.groupSection);
+    if (this.options.sorting) leftSections.push(this.sortSection);
+    this.left.replaceChildren(...leftSections);
+    this.left.style.gridTemplateColumns = leftSections.length > 0
+      ? `repeat(${leftSections.length}, minmax(0, 1fr))`
+      : "";
+
+    const rightSections: HTMLElement[] = [];
+    if (this.options.export) rightSections.push(this.exportButton);
+    if (this.columnTrigger) rightSections.push(this.columnTrigger);
+    this.right.replaceChildren(...rightSections);
+
+    const visible = leftSections.length > 0 || rightSections.length > 0;
+    if (visible && !this.toolbar.isConnected) {
+      this.params.root.insertBefore(this.toolbar, this.params.root.firstChild);
+    } else if (!visible) {
+      this.toolbar.remove();
+    }
   }
 
   private renderGroupChips(): void {
