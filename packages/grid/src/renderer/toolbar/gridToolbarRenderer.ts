@@ -4,6 +4,11 @@ import { ExportOptions } from "../../export/export";
 import { MenuItem } from "../../interfaces/menuItem";
 import { button, div, span } from "../element";
 import { MenuRenderer } from "../menuRenderer";
+import {
+  clearGroupDropPosition,
+  resolveGroupDropIndex,
+  showGroupDropPosition,
+} from "./groupDropPosition";
 
 interface GridToolbarRendererParams {
   core: GridCore;
@@ -109,17 +114,8 @@ export class GridToolbarRenderer {
         chip.addEventListener("dragend", () => {
           this.draggedGroupColId = null;
           chip.classList.remove("dragging");
-        });
-        chip.addEventListener("dragover", event => {
-          if (!this.draggedGroupColId || this.draggedGroupColId === col.instanceID) return;
-          event.preventDefault();
-          if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-        });
-        chip.addEventListener("drop", event => {
-          event.preventDefault();
-          const dragged = this.draggedGroupColId;
-          this.draggedGroupColId = null;
-          if (dragged) this.moveGroupTo(dragged, col.instanceID);
+          this.left.classList.remove("drag-over");
+          clearGroupDropPosition(this.left);
         });
 
         chip.append(handle, chipLabel, remove);
@@ -140,20 +136,32 @@ export class GridToolbarRenderer {
   private bindExternalColumnDrop(): void {
     this.left.classList.add("pte-grid-toolbar-group-dropzone");
     this.left.addEventListener("dragover", event => {
-      if (this.availableGroupColumns().length === 0) return;
+      if (!this.draggedGroupColId && this.availableGroupColumns().length === 0) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
       this.left.classList.add("drag-over");
+      showGroupDropPosition(this.left, resolveGroupDropIndex(this.left, event.clientX));
     });
     this.left.addEventListener("dragleave", event => {
       const next = event.relatedTarget as Node | null;
-      if (!next || !this.left.contains(next)) this.left.classList.remove("drag-over");
+      if (!next || !this.left.contains(next)) {
+        this.left.classList.remove("drag-over");
+        clearGroupDropPosition(this.left);
+      }
     });
     this.left.addEventListener("drop", event => {
       event.preventDefault();
       this.left.classList.remove("drag-over");
+      const index = resolveGroupDropIndex(this.left, event.clientX);
+      clearGroupDropPosition(this.left);
+      const draggedGroup = this.draggedGroupColId;
+      this.draggedGroupColId = null;
+      if (draggedGroup) {
+        this.moveGroupToIndex(draggedGroup, index);
+        return;
+      }
       const colId = event.dataTransfer?.getData("text/plain");
-      if (colId) this.addGroupColumn(colId);
+      if (colId) this.addGroupColumn(colId, index);
     });
   }
 
@@ -183,13 +191,15 @@ export class GridToolbarRenderer {
     });
   }
 
-  private addGroupColumn(colId: string): void {
+  private addGroupColumn(colId: string, index?: number): void {
     const model = this.params.core.getColumnModel();
     const col = model.getById(colId) ?? model.getByColId(colId);
     if (!col || !col.groupable || col.isInternal()) return;
     const colIds = this.params.core.getRowGroupColumns().map(group => group.instanceID);
     if (colIds.includes(col.instanceID)) return;
-    this.params.core.dispatch({ type: "rowGroupSet", colIds: [...colIds, col.instanceID] });
+    const insertAt = index == null ? colIds.length : Math.max(0, Math.min(index, colIds.length));
+    colIds.splice(insertAt, 0, col.instanceID);
+    this.params.core.dispatch({ type: "rowGroupSet", colIds });
   }
 
   private removeGroup(colId: string): void {
@@ -209,14 +219,13 @@ export class GridToolbarRenderer {
     this.focusGroupChip(colId);
   }
 
-  private moveGroupTo(colId: string, targetColId: string): void {
-    if (colId === targetColId) return;
+  private moveGroupToIndex(colId: string, index: number): void {
     const colIds = this.params.core.getRowGroupColumns().map(col => col.instanceID);
     const from = colIds.indexOf(colId);
-    const to = colIds.indexOf(targetColId);
-    if (from < 0 || to < 0) return;
+    if (from < 0) return;
     const [moved] = colIds.splice(from, 1);
-    colIds.splice(to, 0, moved);
+    const insertAt = Math.max(0, Math.min(index > from ? index - 1 : index, colIds.length));
+    colIds.splice(insertAt, 0, moved);
     this.params.core.dispatch({ type: "rowGroupSet", colIds });
     this.focusGroupChip(colId);
   }

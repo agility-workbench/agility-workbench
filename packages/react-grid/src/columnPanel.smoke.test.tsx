@@ -485,9 +485,39 @@ describe("column panel", () => {
 
   it("groups a column dropped from the header onto the toolbar grouping section", async () => {
     const { container, root, api } = await mount({ trigger: "toolbar" });
-    const name = api.getColumnModel().getByColId("name")!;
+    const model = api.getColumnModel();
+    const region = model.getByColId("region")!;
+    const revenue = model.getByColId("revenue")!;
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-group-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarGroupAdd-${region.instanceID}"]`,
+      )!.click();
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-group-add")!.click();
+      container.querySelector<HTMLButtonElement>(
+        `.pte-menu-item[data-item-id="toolbarGroupAdd-${revenue.instanceID}"]`,
+      )!.click();
+    });
+
+    const name = model.getByColId("name")!;
     const header = container.querySelector<HTMLElement>(`.pte-hcell#${name.instanceID}`)!;
     const dropZone = container.querySelector<HTMLElement>(".pte-grid-toolbar-group-dropzone")!;
+    const chips = Array.from(
+      dropZone.querySelectorAll<HTMLElement>(".pte-grid-toolbar-group-chip"),
+    );
+    chips.forEach((chip, index) => {
+      Object.defineProperty(chip, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          left: index * 100,
+          right: (index + 1) * 100,
+          top: 0,
+          bottom: 26,
+          width: 100,
+          height: 26,
+        }),
+      });
+    });
     Object.defineProperty(header, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ left: 0, right: 120, top: 50, bottom: 90, width: 120, height: 40 }),
@@ -506,14 +536,22 @@ describe("column panel", () => {
       }));
       document.dispatchEvent(new MouseEvent("mousemove", {
         bubbles: true,
-        clientX: 30,
+        clientX: 120,
         clientY: 20,
       }));
+      expect(chips[1].classList.contains("drop-before")).toBe(true);
+      expect(
+        dropZone.querySelector<HTMLElement>(".pte-grid-toolbar-group-drop-indicator")?.style.left,
+      ).toBe("100px");
       document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
 
     expect(api.getColumnModel().getAutoGroupColumns()).toHaveLength(1);
-    expect(container.querySelector(".pte-grid-toolbar-group-chip-label")?.textContent).toBe("Name");
+    expect(Array.from(
+      container.querySelectorAll(".pte-grid-toolbar-group-chip-label"),
+      chip => chip.textContent,
+    )).toEqual(["Region", "Name", "Revenue"]);
+    expect(dropZone.querySelector(".pte-grid-toolbar-group-drop-indicator")).toBeNull();
     await act(async () => root.unmount());
   });
 

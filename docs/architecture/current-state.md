@@ -711,7 +711,7 @@ lifecycle; the content is a custom component.
 | Trigger: footer corner in an empty right gutter | ✅ Complete | `trigger: "footer"`; same reserved-gutter geometry as header mode |
 | Trigger: top grid toolbar | ✅ Complete | `trigger: "toolbar"`; reserved left/right toolbar regions, Columns at the extreme right |
 | Toolbar export menu | ✅ Complete | Selection / Entire table scopes with CSV and Excel formats; delegates to `ExportRenderer` |
-| Toolbar row-group controls | ✅ Complete | Add-group picker; header/panel column drop zone; active chips with removal, drag reordering, and Left/Right keyboard reordering through `rowGroupSet` |
+| Toolbar row-group controls | ✅ Complete | Add-group picker; shared position-aware insertion marker for header, panel, and chip drags; active chips with removal and Left/Right keyboard reordering through `rowGroupSet` |
 | Search by label, colId, or key | ✅ Complete | Live panel-list filtering |
 | Column-group hierarchy | ✅ Complete | Nested collapsible groups; ancestor names participate in search and matching paths expand automatically |
 | Group-controlled visibility | ✅ Complete | Uses the column model's resolved `columnGroupVisible`; inactive leaves are omitted while manually hidden active leaves remain manageable |

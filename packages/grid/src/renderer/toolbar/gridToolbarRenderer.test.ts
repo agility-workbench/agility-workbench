@@ -145,31 +145,92 @@ describe("GridToolbarRenderer", () => {
     expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([country, region, year]);
     expect(chipLabels()).toEqual(["Country", "Region", "Year"]);
 
-    root.querySelector<HTMLElement>(
+    const dropZone = root.querySelector<HTMLElement>(".pte-grid-toolbar-group-dropzone")!;
+    const internalChips = Array.from(
+      dropZone.querySelectorAll<HTMLElement>(".pte-grid-toolbar-group-chip"),
+    );
+    internalChips.forEach((chip, index) => {
+      Object.defineProperty(chip, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          left: index * 100,
+          right: (index + 1) * 100,
+          top: 0,
+          bottom: 26,
+          width: 100,
+          height: 26,
+        }),
+      });
+    });
+    const yearChip = root.querySelector<HTMLElement>(
       `.pte-grid-toolbar-group-chip[data-group-col-id="${year}"]`,
-    )!.dispatchEvent(new Event("dragstart", { bubbles: true }));
-    root.querySelector<HTMLElement>(
+    )!;
+    const countryChip = root.querySelector<HTMLElement>(
       `.pte-grid-toolbar-group-chip[data-group-col-id="${country}"]`,
-    )!.dispatchEvent(new Event("drop", { bubbles: true }));
+    )!;
+    yearChip.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    countryChip.dispatchEvent(new MouseEvent("dragover", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+    }));
+    expect(countryChip.classList.contains("drop-before")).toBe(true);
+    expect(
+      dropZone.querySelector<HTMLElement>(".pte-grid-toolbar-group-drop-indicator")?.style.left,
+    ).toBe("0px");
+    countryChip.dispatchEvent(new MouseEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+    }));
     expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([year, country, region]);
     expect(chipLabels()).toEqual(["Year", "Country", "Region"]);
+    expect(dropZone.querySelector(".pte-grid-toolbar-group-drop-indicator")).toBeNull();
 
     const dragData = {
       dropEffect: "none",
       getData: (type: string) => type === "text/plain" ? "name" : "",
     };
-    const dropZone = root.querySelector<HTMLElement>(".pte-grid-toolbar-group-dropzone")!;
-    const dragOver = new Event("dragover", { bubbles: true, cancelable: true });
+    const chips = Array.from(
+      dropZone.querySelectorAll<HTMLElement>(".pte-grid-toolbar-group-chip"),
+    );
+    chips.forEach((chip, index) => {
+      Object.defineProperty(chip, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          left: index * 100,
+          right: (index + 1) * 100,
+          top: 0,
+          bottom: 26,
+          width: 100,
+          height: 26,
+        }),
+      });
+    });
+    const dragOver = new MouseEvent("dragover", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 120,
+    });
     Object.defineProperty(dragOver, "dataTransfer", { value: dragData });
     dropZone.dispatchEvent(dragOver);
     expect(dragOver.defaultPrevented).toBe(true);
     expect(dropZone.classList.contains("drag-over")).toBe(true);
-    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    expect(chips[1].classList.contains("drop-before")).toBe(true);
+    expect(
+      dropZone.querySelector<HTMLElement>(".pte-grid-toolbar-group-drop-indicator")?.style.left,
+    ).toBe("100px");
+    const drop = new MouseEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 120,
+    });
     Object.defineProperty(drop, "dataTransfer", { value: dragData });
     dropZone.dispatchEvent(drop);
     expect(core.getRowGroupColumns().map(col => col.key))
-      .toEqual(["year", "country", "region", "name"]);
+      .toEqual(["year", "name", "country", "region"]);
     expect(dropZone.classList.contains("drag-over")).toBe(false);
+    expect(dropZone.querySelector(".pte-grid-toolbar-group-drop-indicator")).toBeNull();
 
     toolbar.destroy();
     root.remove();

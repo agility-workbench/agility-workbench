@@ -383,6 +383,7 @@
 }
 
 .pte-grid-toolbar-left {
+  position: relative;
   min-width: 0;
   align-self: stretch;
   flex: 1 1 auto;
@@ -413,6 +414,7 @@
 }
 
 .pte-grid-toolbar-group-chip {
+  position: relative;
   min-width: 0;
   height: 26px;
   display: inline-flex;
@@ -425,6 +427,41 @@
   color: var(--pte-text-color);
   cursor: grab;
   font-size: 12px;
+}
+
+.pte-grid-toolbar-group-drop-indicator {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pte-selected-border-color);
+  box-shadow:
+    0 0 0 2px var(--pte-surface-bg-color),
+    0 0 6px var(--pte-selected-border-color);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pte-grid-toolbar-group-drop-indicator::before,
+.pte-grid-toolbar-group-drop-indicator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pte-selected-border-color);
+  transform: translateX(-50%);
+}
+
+.pte-grid-toolbar-group-drop-indicator::before {
+  top: -2px;
+}
+
+.pte-grid-toolbar-group-drop-indicator::after {
+  bottom: -2px;
 }
 
 .pte-grid-toolbar-group-chip:hover {

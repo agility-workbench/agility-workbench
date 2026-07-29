@@ -1,6 +1,11 @@
 import { ColumnSection } from "../../interfaces/column";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
+import {
+  clearGroupDropPosition,
+  resolveGroupDropIndex,
+  showGroupDropPosition,
+} from "../toolbar/groupDropPosition";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
 
@@ -38,6 +43,7 @@ export class ColumnInteractionRenderer {
   private dragDirection: "left" | "right" | null = null;
   private dragAllowsDrop = false;
   private groupDropZone: HTMLElement | null = null;
+  private groupDropIndex: number | null = null;
 
   constructor(private params: ColumnInteractionRendererParams) { }
 
@@ -119,6 +125,8 @@ export class ColumnInteractionRenderer {
     const groupDropZone = this.getGroupDropZoneForPoint(e.clientX, e.clientY);
     this.setGroupDropZone(groupDropZone);
     if (groupDropZone) {
+      this.groupDropIndex = resolveGroupDropIndex(groupDropZone, e.clientX);
+      showGroupDropPosition(groupDropZone, this.groupDropIndex);
       this.dragTargetIndex = -1;
       if (this.dragIndicatorEl) this.dragIndicatorEl.style.display = "none";
       e.preventDefault();
@@ -193,12 +201,15 @@ export class ColumnInteractionRenderer {
     const performedDrag = this.isDraggingColumn;
     const allowDrop = this.dragAllowsDrop;
     const addToGroups = this.groupDropZone != null;
+    const groupDropIndex = this.groupDropIndex;
     this.teardownColumnDrag();
     if (!performedDrag) return;
     if (addToGroups) {
       const colIds = this.params.core.getRowGroupColumns().map(group => group.instanceID);
       if (!colIds.includes(col.instanceID)) {
-        this.params.core.dispatch({ type: "rowGroupSet", colIds: [...colIds, col.instanceID] });
+        const insertAt = Math.max(0, Math.min(groupDropIndex ?? colIds.length, colIds.length));
+        colIds.splice(insertAt, 0, col.instanceID);
+        this.params.core.dispatch({ type: "rowGroupSet", colIds });
       }
       this.suppressHeaderClick = true;
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
@@ -334,8 +345,12 @@ export class ColumnInteractionRenderer {
 
   private setGroupDropZone(zone: HTMLElement | null): void {
     if (zone === this.groupDropZone) return;
-    this.groupDropZone?.classList.remove("drag-over");
+    if (this.groupDropZone) {
+      this.groupDropZone.classList.remove("drag-over");
+      clearGroupDropPosition(this.groupDropZone);
+    }
     this.groupDropZone = zone;
+    this.groupDropIndex = null;
     this.groupDropZone?.classList.add("drag-over");
     if (this.isDraggingColumn) this.setDragCursor(true, zone != null || this.dragAllowsDrop);
   }
@@ -421,8 +436,12 @@ export class ColumnInteractionRenderer {
       this.dragIndicatorEl.remove();
       this.dragIndicatorEl = null;
     }
-    this.groupDropZone?.classList.remove("drag-over");
+    if (this.groupDropZone) {
+      this.groupDropZone.classList.remove("drag-over");
+      clearGroupDropPosition(this.groupDropZone);
+    }
     this.groupDropZone = null;
+    this.groupDropIndex = null;
     this.draggingColumn = null;
     this.dragHeaderEl = null;
     this.dragHeaderContainer = null;
