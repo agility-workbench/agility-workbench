@@ -17,6 +17,7 @@ import FooterVisibilityDemo from "./FooterVisibilityDemo";
 import SparklineDemo from "./SparklineDemo";
 import ToolbarDemo from "./ToolbarDemo";
 import ResponsiveToolbarDemo from "./ResponsiveToolbarDemo";
+import SavedViewsDemo from "./SavedViewsDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -31,6 +32,7 @@ const PAGES = [
     label: "Responsive toolbar",
     render: () => <ResponsiveToolbarDemo />,
   },
+  { id: "savedViews", label: "Saved views", render: () => <SavedViewsDemo /> },
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },

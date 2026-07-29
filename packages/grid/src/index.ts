@@ -78,6 +78,14 @@ export type {
   ActionFrameOptions,
   ActionFramePlacement,
 } from "./interfaces/gridOptions";
+export type {
+  GridViewFilterState,
+  GridViewGroupExpansionState,
+  GridViewSortState,
+  GridViewState,
+  SavedGridView,
+  SavedViewsOptions,
+} from "./interfaces/gridView";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 

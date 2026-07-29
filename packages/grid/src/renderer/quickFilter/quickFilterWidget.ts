@@ -68,6 +68,7 @@ export class QuickFilterWidget {
   private debounceTimer: number | null = null;
   private open = false;
   private optionsExpanded = false;
+  private unsubscribeCore: (() => void) | null = null;
 
   constructor(private params: QuickFilterWidgetParams) {
     this.opts = resolveQuickFilterOptions(params.options);
@@ -153,6 +154,14 @@ export class QuickFilterWidget {
     if (canPersist && !this.isPermanent()) this.buildIndicatorPill();
 
     this.bind();
+    this.unsubscribeCore = this.params.core.on("modelUpdated", event => {
+      if (event.reason !== "filter") return;
+      const text = this.params.core.getQuickFilterText();
+      if (this.input.value === text) return;
+      this.input.value = text;
+      this.updateClearVisibility();
+      this.syncIndicator();
+    });
     this.params.root.appendChild(this.wrapper);
 
     // Restore a carried-over search on rebuild; otherwise start empty.
@@ -233,6 +242,8 @@ export class QuickFilterWidget {
   }
 
   destroy(): void {
+    this.unsubscribeCore?.();
+    this.unsubscribeCore = null;
     if (this.debounceTimer != null) {
       window.clearTimeout(this.debounceTimer);
       this.debounceTimer = null;

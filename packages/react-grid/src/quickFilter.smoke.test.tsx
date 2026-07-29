@@ -131,12 +131,14 @@ describe("quick filter end-to-end via Grid", () => {
     await act(async () => {
       core.dispatch({ type: "quickFilterSet", text: "zzzzz" });
     });
+    expect(input(container).value).toBe("zzzzz");
     expect(core.getRowModel().getViewCount()).toBe(0);
     expect(noRowsVisible(container)).toBe(true);
 
     await act(async () => {
       core.dispatch({ type: "quickFilterSet", text: "" });
     });
+    expect(input(container).value).toBe("");
     expect(core.getRowModel().getViewCount()).toBe(3);
     expect(noRowsVisible(container)).toBe(false);
 

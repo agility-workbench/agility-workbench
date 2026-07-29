@@ -71,7 +71,8 @@ when a setup is cleaned up.
 `columnPanel.trigger` accepts `"rail"`, `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. All
 five entry points open the same right-hand column-management drawer.
 
-`toolbar` independently enables the `grouping`, `sorting`, `quickFilter`, and `export` sections.
+`toolbar` independently enables the `views`, `grouping`, `sorting`, `quickFilter`, and `export`
+sections.
 Every section is off by default; enabling any one shows the toolbar. The quick-filter section reuses
 the existing filter and its behavioral `quickFilter` configuration, but supersedes its floating
 placement and close controls. Changing the object live adds/removes sections without remounting the
@@ -81,6 +82,10 @@ grid. The toolbar-hosted Columns trigger also counts as content, so
 Responsive toolbar breakpoints follow the grid container. Labels collapse first, then Export and
 Columns move into a More menu, so embedding the grid in a resizable panel does not require any
 application-level resize handling.
+
+`toolbar.views` adds the saved-view picker. Supply `savedViews={{ views, activeViewId, onChange,
+onActiveViewChange }}` to keep persistence controlled by React state, local storage, or a remote
+service. The grid reports complete updated arrays and does not write to storage itself.
 
 ## Styling
 

@@ -291,6 +291,12 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolbarKey]);
 
+    // Saved views are application-owned. Reconcile a new list/callback object in place so a
+    // persistence update immediately refreshes the Views menu without remounting the grid.
+    useLayoutEffect(() => {
+      instanceRef.current?.renderer.setSavedViewsOptions(props.savedViews);
+    }, [props.savedViews]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes.
     useLayoutEffect(() => {

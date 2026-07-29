@@ -6,6 +6,9 @@ import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { FilterItem } from "../interfaces/filter";
+import { GridViewState } from "../interfaces/gridView";
+import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
 /** Export hooks provided by the renderer once it's attached (it owns the leaf columns + widths). */
@@ -112,6 +115,81 @@ export class GridAPI implements IGridAPI {
 
   getQuickFilterText(): string {
     return this.core.getQuickFilterText();
+  }
+
+  captureViewState(): GridViewState {
+    return {
+      version: 1,
+      columns: this.getColumnState().map(state => ({ ...state })),
+      rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
+      sortModel: this.core.getSortModel().items.map(item => ({
+        colId: item.col.colId,
+        dir: item.dir,
+      })),
+      filterModel: this.core.getFilterModel().items.map(item => ({
+        colId: item.col.colId,
+        filters: item.filters.map(filter => ({
+          type: filter.type,
+          values: cloneViewValue(filter.values),
+        })),
+        join: item.join,
+      })),
+      quickFilterText: this.core.getQuickFilterText(),
+      groupExpansion: this.core.getRowModel().getGroupNodes().map(node => ({
+        groupId: node.id,
+        expanded: node.isExpanded,
+      })),
+    };
+  }
+
+  applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void {
+    if (!state || state.version !== 1) return;
+
+    this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
+    this.applyColumnState(
+      state.columns ?? [],
+      opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },
+    );
+
+    const clearSorts: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
+      key: item.col.instanceID,
+      dir: null,
+    }));
+    this.dispatch({
+      type: "sortModelSet",
+      sortItems: [
+        ...clearSorts,
+        ...(state.sortModel ?? []).map(item => ({ key: item.colId, dir: item.dir })),
+      ],
+    });
+
+    const filters: FilterItem[] = (state.filterModel ?? []).flatMap(item => {
+      const col = this.core.getColumnModel().getByColId(item.colId)
+        ?? this.core.getColumnModel().getById(item.colId)
+        ?? this.core.getColumnModel().getByKey(item.colId);
+      if (!col) return [];
+      return [{
+        col,
+        key: col.key,
+        filters: item.filters.map(filter => ({
+          type: filter.type,
+          values: cloneViewValue(filter.values),
+        })),
+        join: item.join,
+      }];
+    });
+    this.dispatch({ type: "filterModelSet", filterModel: filters });
+    this.setQuickFilter(state.quickFilterText ?? "");
+
+    const expansion = new Map(
+      (state.groupExpansion ?? []).map(item => [item.groupId, item.expanded]),
+    );
+    for (const node of this.core.getRowModel().getGroupNodes()) {
+      const expanded = expansion.get(node.id) ?? false;
+      if (node.isExpanded !== expanded) {
+        this.dispatch({ type: "groupToggleExpand", groupId: node.id, expanded });
+      }
+    }
   }
 
   // ---------------- Selection ----------------
@@ -277,4 +355,21 @@ export class GridAPI implements IGridAPI {
   destroy(): void {
     // Cleanup if necessary
   }
+}
+
+function cloneViewValue<T>(value: T): T {
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(value);
+    } catch {
+      // Fall through for values a custom filter may have made non-cloneable.
+    }
+  }
+  if (Array.isArray(value)) return value.map(item => cloneViewValue(item)) as T;
+  if (value && typeof value === "object") {
+    const clone: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) clone[key] = cloneViewValue(item);
+    return clone as T;
+  }
+  return value;
 }

@@ -12,6 +12,7 @@ import type {
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
+import type { SavedViewsOptions } from "./gridView";
 
 /** Payload for the `onCellValueChanged` option: a cell edit was committed. */
 export interface CellValueChangedParams {
@@ -410,6 +411,8 @@ export interface GridToolbarOptions {
    * Floating-only layout options are ignored while the toolbar host is active.
    */
   quickFilter?: boolean;
+  /** Saved-view picker and management menu. Configure its data through `savedViews`. */
+  views?: boolean;
   /** CSV/Excel export menu. */
   export?: boolean;
 }
@@ -418,6 +421,7 @@ export interface ResolvedGridToolbarOptions {
   grouping: boolean;
   sorting: boolean;
   quickFilter: boolean;
+  views: boolean;
   export: boolean;
 }
 
@@ -428,6 +432,7 @@ export function resolveGridToolbarOptions(
     grouping: options?.grouping === true,
     sorting: options?.sorting === true,
     quickFilter: options?.quickFilter === true,
+    views: options?.views === true,
     export: options?.export === true,
   };
 }
@@ -708,6 +713,8 @@ export interface GridOptions {
    * the toolbar. Section visibility can be changed live without recreating the grid.
    */
   toolbar?: GridToolbarOptions;
+  /** Application-owned view definitions and persistence callbacks for `toolbar.views`. */
+  savedViews?: SavedViewsOptions;
   /**
    * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
    * "Loading data...".
@@ -799,6 +806,7 @@ export interface InternalGridOptions extends GridOptions {
   quickFilter: boolean | QuickFilterOptions;
   columnPanel: boolean | ColumnPanelOptions;
   toolbar: GridToolbarOptions;
+  savedViews?: SavedViewsOptions;
   loadingMessage: string;
   noRowsMessage: string;
   filterDebounceMs: number;

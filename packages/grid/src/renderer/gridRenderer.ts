@@ -42,6 +42,7 @@ import type {
   RuntimeGridOptions,
   TooltipOptions,
 } from "../interfaces/gridOptions";
+import type { SavedViewsOptions } from "../interfaces/gridView";
 import { BodyRowPoolRenderer } from "./body/rowPool";
 import { BodyViewportRenderer } from "./body/viewport";
 import { BodyWindowRenderer } from "./body/window";
@@ -619,9 +620,11 @@ export class GridRenderer {
     this._toolbarOptions = this.core.getOptions().toolbar;
     this._toolbarRenderer = new GridToolbarRenderer({
       core: this.core,
+      api: this.api,
       root: this.root,
       menuRenderer: this._menuRenderer,
       options: this.core.getOptions().toolbar,
+      savedViews: this.core.getOptions().savedViews,
       exportCSV: options => this._exportRenderer.exportCSV(options),
       exportExcel: options => this._exportRenderer.exportExcel(options),
     });
@@ -783,6 +786,11 @@ export class GridRenderer {
     (this.core.options as { toolbar: GridToolbarOptions }).toolbar = options ?? {};
     this._toolbarRenderer.setOptions(options);
     if (wasInToolbar !== willBeInToolbar) this._buildQuickFilterWidget(restore);
+  }
+
+  setSavedViewsOptions(options: SavedViewsOptions | undefined) {
+    (this.core.options as { savedViews: SavedViewsOptions | undefined }).savedViews = options;
+    this._toolbarRenderer.setSavedViewsOptions(options);
   }
 
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { GridCore } from "../../core/core";
+import { GridAPI } from "../../api/api";
 import { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { MenuRenderer } from "../menuRenderer";
 import { GridToolbarRenderer } from "./gridToolbarRenderer";
@@ -33,6 +34,82 @@ function colId(core: GridCore, key: string): string {
 }
 
 describe("GridToolbarRenderer", () => {
+  it("applies and manages application-owned saved views through the public view API", () => {
+    const core = makeCore();
+    const api = new GridAPI(core);
+    const baseline = {
+      id: "baseline",
+      name: "Baseline",
+      state: api.captureViewState(),
+    };
+    const onChange = vi.fn();
+    const onActiveViewChange = vi.fn();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const toolbar = new GridToolbarRenderer({
+      core,
+      api,
+      root,
+      menuRenderer: new MenuRenderer(root),
+      options: { views: true },
+      savedViews: {
+        views: [baseline],
+        activeViewId: "baseline",
+        onChange,
+        onActiveViewChange,
+      },
+      exportCSV: vi.fn(),
+      exportExcel: vi.fn(),
+    });
+    const viewsButton = root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-views-button")!;
+    expect(viewsButton.textContent).toContain("Baseline");
+
+    viewsButton.click();
+    root.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewApply:baseline"]',
+    )!.click();
+    expect(onActiveViewChange).toHaveBeenLastCalledWith("baseline");
+
+    core.dispatch({ type: "quickFilterSet", text: "updated query" });
+    viewsButton.click();
+    root.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewUpdate"]',
+    )!.click();
+    expect(onChange.mock.calls.at(-1)?.[0][0].state.quickFilterText).toBe("updated query");
+
+    viewsButton.click();
+    root.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewRename"]',
+    )!.click();
+    const renameInput = root.querySelector<HTMLInputElement>(".pte-grid-toolbar-view-input")!;
+    renameInput.value = "Renamed";
+    root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-view-form-submit")!.click();
+    expect(onChange.mock.calls.at(-1)?.[0][0].name).toBe("Renamed");
+    expect(viewsButton.textContent).toContain("Renamed");
+
+    viewsButton.click();
+    root.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewDelete"]',
+    )!.click();
+    root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-view-form-delete")!.click();
+    expect(onChange).toHaveBeenLastCalledWith([]);
+    expect(onActiveViewChange).toHaveBeenLastCalledWith(null);
+
+    viewsButton.click();
+    root.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewCreate"]',
+    )!.click();
+    const createInput = root.querySelector<HTMLInputElement>(".pte-grid-toolbar-view-input")!;
+    createInput.value = "New view";
+    root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-view-form-submit")!.click();
+    expect(onChange.mock.calls.at(-1)?.[0]).toEqual([
+      expect.objectContaining({ name: "New view" }),
+    ]);
+
+    toolbar.destroy();
+    root.remove();
+  });
+
   it("compresses from full controls to icon controls and delegates narrow overflow actions", () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     let notifyWidth: ((width: number) => void) | undefined;
@@ -56,6 +133,7 @@ describe("GridToolbarRenderer", () => {
       const exportCSV = vi.fn();
       const toolbar = new GridToolbarRenderer({
         core,
+        api: new GridAPI(core),
         root,
         menuRenderer: new MenuRenderer(root),
         options: { grouping: true, sorting: true, quickFilter: true, export: true },
@@ -108,6 +186,7 @@ describe("GridToolbarRenderer", () => {
     document.body.appendChild(root);
     const toolbar = new GridToolbarRenderer({
       core,
+      api: new GridAPI(core),
       root,
       menuRenderer: new MenuRenderer(root),
       exportCSV: vi.fn(),
@@ -160,6 +239,7 @@ describe("GridToolbarRenderer", () => {
     const exportExcel = vi.fn();
     const toolbar = new GridToolbarRenderer({
       core,
+      api: new GridAPI(core),
       root,
       menuRenderer,
       options: { grouping: true, sorting: true, export: true },
@@ -224,6 +304,7 @@ describe("GridToolbarRenderer", () => {
     const openMenu = vi.spyOn(menuRenderer, "open").mockImplementation(() => {});
     const toolbar = new GridToolbarRenderer({
       core,
+      api: new GridAPI(core),
       root,
       menuRenderer,
       options: { grouping: true, sorting: true, export: true },
@@ -295,6 +376,7 @@ describe("GridToolbarRenderer", () => {
     document.body.appendChild(root);
     const toolbar = new GridToolbarRenderer({
       core,
+      api: new GridAPI(core),
       root,
       menuRenderer: new MenuRenderer(root),
       options: { grouping: true, sorting: true, export: true },
@@ -445,6 +527,7 @@ describe("GridToolbarRenderer", () => {
     document.body.appendChild(root);
     const toolbar = new GridToolbarRenderer({
       core,
+      api: new GridAPI(core),
       root,
       menuRenderer: new MenuRenderer(root),
       options: { grouping: true, sorting: true, export: true },

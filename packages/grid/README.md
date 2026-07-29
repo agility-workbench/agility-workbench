@@ -55,12 +55,13 @@ const core = new GridCore(new CanvasMeasurer(), {
     grouping: true,
     sorting: true,
     quickFilter: true,
+    views: true,
     export: true,
   },
 });
 ```
 
-All four sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
+All five sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
 the toolbar; the separate `quickFilter` option still configures matching, case sensitivity, and
 debouncing, while floating-only placement and close behavior do not apply there. If `quickFilter`
 is omitted, enabling the toolbar section uses its defaults. The React binding applies section
@@ -71,6 +72,27 @@ The toolbar observes its own rendered width. At narrower widths the quick filter
 Export and Columns controls become icon-only; at the narrowest width those secondary actions move
 into a More menu. The behavior therefore follows the grid's container rather than the browser
 window.
+
+### Saved views
+
+Enable `toolbar.views` and provide an application-owned list plus persistence callbacks:
+
+```ts
+const options = {
+  toolbar: { views: true },
+  savedViews: {
+    views,
+    activeViewId,
+    onChange: nextViews => persist(nextViews),
+    onActiveViewChange: id => setActiveViewId(id),
+  },
+};
+```
+
+Views capture column layout, row grouping, multi-sort, column filters, quick-filter text, and group
+expansion. `api.captureViewState()` and `api.applyViewState(state)` expose the same serializable
+state workflow programmatically. Applying a view restores columns exactly by default; pass
+`{ columns: "merge" }` to retain columns added after capture.
 
 ## Column panel
 

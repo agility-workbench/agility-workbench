@@ -7,6 +7,8 @@ import {
   ResolvedGridToolbarOptions,
   resolveGridToolbarOptions,
 } from "../../interfaces/gridOptions";
+import type { IGridAPI } from "../../interfaces/iGridAPI";
+import type { SavedGridView, SavedViewsOptions } from "../../interfaces/gridView";
 import { MenuItem } from "../../interfaces/menuItem";
 import { SortDir } from "../../interfaces/sort";
 import { button, div, span } from "../element";
@@ -26,9 +28,11 @@ import {
 
 interface GridToolbarRendererParams {
   core: GridCore;
+  api: IGridAPI;
   root: HTMLDivElement;
   menuRenderer: MenuRenderer;
   options?: GridToolbarOptions;
+  savedViews?: SavedViewsOptions;
   exportCSV: (options: ExportOptions) => void;
   exportExcel: (options: ExportOptions) => void;
 }
@@ -43,6 +47,8 @@ export class GridToolbarRenderer {
   private groupSection = div("pte-grid-toolbar-group-section");
   private sortSection = div("pte-grid-toolbar-sort-section");
   private right = div("pte-grid-toolbar-right");
+  private viewsButton = button("pte-grid-toolbar-views-button");
+  private viewsLabel = span("pte-grid-toolbar-views-label", "Views");
   private quickFilterHost = div("pte-grid-toolbar-quick-filter");
   private exportButton = button("pte-grid-toolbar-export-button");
   private moreButton = button("pte-grid-toolbar-more-button");
@@ -52,13 +58,31 @@ export class GridToolbarRenderer {
   private sortChipTooltipDisposers: Array<() => void> = [];
   private exportTooltipDisposer: (() => void) | null = null;
   private moreTooltipDisposer: (() => void) | null = null;
+  private viewsTooltipDisposer: (() => void) | null = null;
   private options: ResolvedGridToolbarOptions = resolveGridToolbarOptions(undefined);
+  private savedViewsOptions?: SavedViewsOptions;
+  private views: SavedGridView[] = [];
+  private activeViewId: string | null = null;
   private columnTrigger: HTMLButtonElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private availableWidth: number | null = null;
   private unsubscribe: Unsubscribe;
 
   constructor(private params: GridToolbarRendererParams) {
+    this.viewsButton.type = "button";
+    this.viewsButton.setAttribute("aria-haspopup", "menu");
+    this.viewsButton.setAttribute("aria-label", "Saved views");
+    const viewsIcon = span("pte-grid-toolbar-views-icon", "▤");
+    viewsIcon.setAttribute("aria-hidden", "true");
+    this.viewsButton.append(viewsIcon, this.viewsLabel);
+    this.viewsButton.addEventListener("click", () => this.openViewsMenu());
+    this.viewsTooltipDisposer = registerRendererTooltipTarget(
+      this.viewsButton,
+      () => this.toolbar.classList.contains("pte-grid-toolbar-compact")
+        ? this.activeView()?.name ?? "Views"
+        : null,
+    );
+
     this.exportButton.type = "button";
     this.exportButton.setAttribute("aria-label", "Export table");
     this.exportButton.setAttribute("aria-haspopup", "menu");
@@ -99,12 +123,24 @@ export class GridToolbarRenderer {
     });
     this.renderGroupChips();
     this.renderSortChips();
+    this.setSavedViewsOptions(this.params.savedViews);
     this.setOptions(this.params.options);
   }
 
   setOptions(options: GridToolbarOptions | undefined): void {
     this.options = resolveGridToolbarOptions(options);
     this.syncSections();
+  }
+
+  setSavedViewsOptions(options: SavedViewsOptions | undefined): void {
+    this.savedViewsOptions = options;
+    this.views = [...(options?.views ?? [])];
+    if (options?.activeViewId !== undefined) {
+      this.activeViewId = options.activeViewId;
+    } else if (this.activeViewId && !this.views.some(view => view.id === this.activeViewId)) {
+      this.activeViewId = null;
+    }
+    this.updateViewsButton();
   }
 
   mountColumnTrigger(trigger: HTMLButtonElement): void {
@@ -135,6 +171,8 @@ export class GridToolbarRenderer {
     this.exportTooltipDisposer = null;
     this.moreTooltipDisposer?.();
     this.moreTooltipDisposer = null;
+    this.viewsTooltipDisposer?.();
+    this.viewsTooltipDisposer = null;
     this.disposeGroupChipTooltips();
     this.disposeSortChipTooltips();
     this.columnTrigger = null;
@@ -157,14 +195,226 @@ export class GridToolbarRenderer {
     if (this.options.export || this.columnTrigger) rightSections.push(this.moreButton);
     if (this.columnTrigger) rightSections.push(this.columnTrigger);
     this.right.replaceChildren(...rightSections);
+    this.toolbar.replaceChildren(
+      ...(this.options.views ? [this.viewsButton] : []),
+      this.left,
+      this.right,
+    );
     if (this.availableWidth != null) this.applyResponsiveWidth(this.availableWidth);
 
-    const visible = leftSections.length > 0 || rightSections.length > 0;
+    const visible = this.options.views || leftSections.length > 0 || rightSections.length > 0;
     if (visible && !this.toolbar.isConnected) {
       this.params.root.insertBefore(this.toolbar, this.params.root.firstChild);
     } else if (!visible) {
       this.toolbar.remove();
     }
+  }
+
+  private activeView(): SavedGridView | undefined {
+    return this.views.find(view => view.id === this.activeViewId);
+  }
+
+  private updateViewsButton(): void {
+    const active = this.activeView();
+    this.viewsLabel.textContent = active?.name ?? "Views";
+    this.viewsButton.classList.toggle("pte-grid-toolbar-views-active", !!active);
+    this.viewsButton.setAttribute(
+      "aria-label",
+      active ? `Saved view: ${active.name}` : "Saved views",
+    );
+  }
+
+  private setActiveView(viewId: string | null): void {
+    this.activeViewId = viewId;
+    this.updateViewsButton();
+    this.savedViewsOptions?.onActiveViewChange?.(viewId);
+  }
+
+  private commitViews(views: SavedGridView[]): void {
+    this.views = views;
+    if (this.activeViewId && !views.some(view => view.id === this.activeViewId)) {
+      this.setActiveView(null);
+    } else {
+      this.updateViewsButton();
+    }
+    this.savedViewsOptions?.onChange?.(views);
+  }
+
+  private openViewsMenu(): void {
+    const active = this.activeView();
+    const items: MenuItem[] = this.views.length > 0
+      ? this.views.map(view => ({
+          id: `toolbarViewApply:${view.id}`,
+          label: view.name,
+          left: view.id === this.activeViewId ? "icon-check" : undefined,
+          command: "toolbar.views.apply",
+          payload: { viewId: view.id },
+        }))
+      : [{
+          id: "toolbarViewsEmpty",
+          label: "No saved views",
+          disabled: true,
+        }];
+
+    if (this.savedViewsOptions?.onChange) {
+      items.push({ isSeparator: true });
+      items.push({
+        id: "toolbarViewCreate",
+        label: "Save current view…",
+        command: "toolbar.views.create",
+      });
+      if (active) {
+        items.push(
+          {
+            id: "toolbarViewUpdate",
+            label: `Update “${active.name}”`,
+            command: "toolbar.views.update",
+          },
+          {
+            id: "toolbarViewRename",
+            label: `Rename “${active.name}”…`,
+            command: "toolbar.views.rename",
+          },
+          {
+            id: "toolbarViewDelete",
+            label: `Delete “${active.name}”…`,
+            command: "toolbar.views.delete",
+          },
+        );
+      }
+    }
+
+    const rect = this.viewsButton.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      anchorEl: this.viewsButton,
+      clientX: rect.left,
+      clientY: rect.bottom,
+      items,
+      position: "bottom-left",
+      onItemClick: item => this.executeViewCommand(item),
+    });
+  }
+
+  private executeViewCommand(item: MenuItem): void {
+    if (item.command === "toolbar.views.apply") {
+      const view = this.views.find(candidate => candidate.id === item.payload?.viewId);
+      if (!view) return;
+      this.params.api.applyViewState(view.state);
+      this.setActiveView(view.id);
+      return;
+    }
+    if (item.command === "toolbar.views.create") {
+      this.openViewNameEditor("Save current view", "", name => {
+        const view: SavedGridView = {
+          id: createSavedViewId(),
+          name,
+          state: this.params.api.captureViewState(),
+        };
+        this.commitViews([...this.views, view]);
+        this.setActiveView(view.id);
+      });
+      return;
+    }
+
+    const active = this.activeView();
+    if (!active) return;
+    if (item.command === "toolbar.views.update") {
+      const next = this.views.map(view => view.id === active.id
+        ? { ...view, state: this.params.api.captureViewState() }
+        : view);
+      this.commitViews(next);
+    } else if (item.command === "toolbar.views.rename") {
+      this.openViewNameEditor("Rename view", active.name, name => {
+        this.commitViews(this.views.map(view => view.id === active.id
+          ? { ...view, name }
+          : view));
+      });
+    } else if (item.command === "toolbar.views.delete") {
+      this.openViewDeleteConfirmation(active);
+    }
+  }
+
+  private openViewNameEditor(
+    title: string,
+    initialValue: string,
+    onSubmit: (name: string) => void,
+  ): void {
+    const content = div("pte-grid-toolbar-view-form");
+    const heading = span("pte-grid-toolbar-view-form-title", title);
+    const input = document.createElement("input");
+    input.className = "pte-grid-toolbar-view-input";
+    input.type = "text";
+    input.value = initialValue;
+    input.placeholder = "View name";
+    input.setAttribute("aria-label", "View name");
+    const actions = div("pte-grid-toolbar-view-form-actions");
+    const cancel = button("pte-grid-toolbar-view-form-cancel", "Cancel");
+    const save = button("pte-grid-toolbar-view-form-submit", "Save");
+    cancel.type = "button";
+    save.type = "button";
+    const submit = () => {
+      const name = input.value.trim();
+      if (!name) {
+        input.setAttribute("aria-invalid", "true");
+        input.focus();
+        return;
+      }
+      this.params.menuRenderer.close(0);
+      onSubmit(name);
+    };
+    cancel.addEventListener("click", () => this.params.menuRenderer.close(0));
+    save.addEventListener("click", submit);
+    content.addEventListener("keydown", event => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+    });
+    actions.append(cancel, save);
+    content.append(heading, input, actions);
+    this.openViewsContent(content);
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  }
+
+  private openViewDeleteConfirmation(view: SavedGridView): void {
+    const content = div("pte-grid-toolbar-view-form");
+    content.appendChild(span(
+      "pte-grid-toolbar-view-form-title",
+      `Delete “${view.name}”?`,
+    ));
+    const message = span(
+      "pte-grid-toolbar-view-form-message",
+      "This removes the view from the application-owned list.",
+    );
+    const actions = div("pte-grid-toolbar-view-form-actions");
+    const cancel = button("pte-grid-toolbar-view-form-cancel", "Cancel");
+    const remove = button("pte-grid-toolbar-view-form-delete", "Delete");
+    cancel.type = "button";
+    remove.type = "button";
+    cancel.addEventListener("click", () => this.params.menuRenderer.close(0));
+    remove.addEventListener("click", () => {
+      this.params.menuRenderer.close(0);
+      this.commitViews(this.views.filter(candidate => candidate.id !== view.id));
+    });
+    actions.append(cancel, remove);
+    content.append(message, actions);
+    this.openViewsContent(content);
+  }
+
+  private openViewsContent(contentEl: HTMLElement): void {
+    const rect = this.viewsButton.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      anchorEl: this.viewsButton,
+      clientX: rect.left,
+      clientY: rect.bottom,
+      items: [],
+      contentEl,
+      position: "bottom-left",
+    });
   }
 
   private bindResponsiveLayout(): void {
@@ -736,4 +986,10 @@ export class GridToolbarRenderer {
       this.params.exportExcel(options);
     }
   }
+}
+
+function createSavedViewId(): string {
+  const randomUUID = globalThis.crypto?.randomUUID;
+  if (randomUUID) return randomUUID.call(globalThis.crypto);
+  return `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

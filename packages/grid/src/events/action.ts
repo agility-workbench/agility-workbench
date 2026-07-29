@@ -1,6 +1,6 @@
 import { AggregateModel } from "@grid/interfaces";
 import { ColDef } from "../interfaces/column";
-import { FilterModel } from "../interfaces/filter";
+import { FilterItem } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
@@ -130,7 +130,7 @@ export type GridActionSortModelSet = {
 
 export type GridActionFilterModelSet = {
   type: "filterModelSet";
-  filterModel: FilterModel[];
+  filterModel: FilterItem[];
 };
 
 export type GridActionQuickFilterSet = {

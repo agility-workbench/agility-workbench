@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -30,6 +30,7 @@ async function mount() {
     toolbar?: GridToolbarOptions,
     columnPanel: React.ComponentProps<typeof Grid>["columnPanel"] = false,
     quickFilter: React.ComponentProps<typeof Grid>["quickFilter"] = false,
+    savedViews: React.ComponentProps<typeof Grid>["savedViews"] = undefined,
   ) => {
     await act(async () => {
       root.render(
@@ -41,6 +42,7 @@ async function mount() {
           toolbar={toolbar}
           columnPanel={columnPanel}
           quickFilter={quickFilter}
+          savedViews={savedViews}
         />,
       );
     });
@@ -174,6 +176,51 @@ describe("toolbar options", () => {
     await render({});
     expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
     expect(container.querySelector(".pte-quick-filter")).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it("updates application-owned saved views live without remounting", async () => {
+    const { container, root, api, render } = await mount();
+    const core = api.getCore();
+    const onActiveViewChange = vi.fn();
+    const state = api.captureViewState();
+    state.quickFilterText = "acme";
+
+    await render(
+      { views: true },
+      false,
+      false,
+      {
+        views: [{ id: "sales", name: "Sales view", state }],
+        activeViewId: null,
+        onActiveViewChange,
+      },
+    );
+    const viewsButton =
+      container.querySelector<HTMLButtonElement>(".pte-grid-toolbar-views-button")!;
+    expect(viewsButton.textContent).toContain("Views");
+
+    viewsButton.click();
+    container.querySelector<HTMLButtonElement>(
+      '.pte-menu-item[data-item-id="toolbarViewApply:sales"]',
+    )!.click();
+    expect(core.getQuickFilterText()).toBe("acme");
+    expect(onActiveViewChange).toHaveBeenCalledWith("sales");
+    expect(api.getCore()).toBe(core);
+
+    await render(
+      { views: true },
+      false,
+      false,
+      {
+        views: [{ id: "sales", name: "Renamed externally", state }],
+        activeViewId: "sales",
+        onActiveViewChange,
+      },
+    );
+    expect(viewsButton.textContent).toContain("Renamed externally");
+    expect(api.getCore()).toBe(core);
 
     await act(async () => root.unmount());
   });

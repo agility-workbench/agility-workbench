@@ -6,6 +6,7 @@ import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
 import { QuickFilterMatchMode } from "./gridOptions";
+import { GridViewState } from "./gridView";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -64,6 +65,11 @@ export interface IGridAPI {
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
   /** Current quick-filter text ("" when inactive). */
   getQuickFilterText(): string;
+
+  /** Capture serializable column, grouping, sorting, filtering, and expansion state. */
+  captureViewState(): GridViewState;
+  /** Apply a captured view through the grid's existing state actions. */
+  applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void;
 
   /* ----- Selection ----- */
   /** Focus a single cell (view index + global leaf column index). */

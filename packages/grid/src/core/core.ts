@@ -194,6 +194,7 @@ export class GridCore implements IGridCore {
       quickFilter: options.quickFilter ?? false,
       columnPanel: options.columnPanel ?? false,
       toolbar: options.toolbar ?? {},
+      savedViews: options.savedViews,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
@@ -661,17 +662,17 @@ export class GridCore implements IGridCore {
 
   setFilterModel(filters: FilterItem[]) {
     const nextItems: FilterItem[] = [];
-    const changedColIds: string[] = [];
+    const changedColIds = new Set(this.filters.items.map(item => item.col.instanceID));
     const seenColIds = new Set<string>();
     for (const filter of filters) {
       const col = this.resolveModelColumn(filter);
       if (!col || seenColIds.has(col.instanceID)) continue;
       seenColIds.add(col.instanceID);
-      changedColIds.push(col.instanceID);
+      changedColIds.add(col.instanceID);
       nextItems.push({ ...filter, col, key: col.key });
     }
     this.filters.setItems(nextItems);
-    this.applyFilters(changedColIds);
+    this.applyFilters([...changedColIds]);
   }
 
   private applyFilters(changedColIds: string[]) {
@@ -1274,6 +1275,9 @@ export class GridCore implements IGridCore {
         break;
       case "sortModelSet":
         this.setSortModel(action.sortItems);
+        break;
+      case "filterModelSet":
+        this.setFilterModel(action.filterModel);
         break;
       case "quickFilterSet":
         this.setQuickFilter(action.text, { matchMode: action.matchMode, caseSensitive: action.caseSensitive });

@@ -6,6 +6,14 @@ export type { IColumnModel } from "./iColumnModel";
 export type { IFilterRenderer } from "./iFilterRenderer";
 export type { IGridAPI } from "./iGridAPI";
 export type { IGridCore } from "./iGridCore";
+export type {
+  GridViewFilterState,
+  GridViewGroupExpansionState,
+  GridViewSortState,
+  GridViewState,
+  SavedGridView,
+  SavedViewsOptions,
+} from "./gridView";
 export type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
 export type { IMenuAdapter } from "./iMenuAdapter";
 export type { IRowModel, RowModelType } from "./iRowModel";
