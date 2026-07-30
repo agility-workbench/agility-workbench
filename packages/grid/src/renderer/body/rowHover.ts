@@ -1,14 +1,18 @@
 export class BodyRowHoverRenderer {
   private handleMouseOver = (e: MouseEvent) => {
-    this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
+    this.root.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
     const row = (e.target as HTMLElement)?.closest(".pte-row");
-    if (!row) return;
-    this.body.querySelectorAll(`.pte-row[row-id="${row.getAttribute("row-id")}"]`).forEach(r => {
-      r.classList.add("pte-row-hover");
+    if (!row || !this.root.contains(row)) return;
+    const rowId = row.getAttribute("row-id") ?? row.getAttribute("data-row-id");
+    if (rowId == null) return;
+    this.root.querySelectorAll(".pte-row").forEach(candidate => {
+      const candidateId = candidate.getAttribute("row-id")
+        ?? candidate.getAttribute("data-row-id");
+      if (candidateId === rowId) candidate.classList.add("pte-row-hover");
     });
   };
 
-  constructor(private body: HTMLDivElement) { }
+  constructor(private root: HTMLDivElement) { }
 
   bind() {
     document.addEventListener("mouseover", this.handleMouseOver);
@@ -16,6 +20,6 @@ export class BodyRowHoverRenderer {
 
   destroy() {
     document.removeEventListener("mouseover", this.handleMouseOver);
-    this.body.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
+    this.root.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
   }
 }

@@ -13,6 +13,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.leafHeaderHeight) options.leafHeaderHeight = props.leafHeaderHeight;
   if (props.parentHeaderHeight) options.parentHeaderHeight = props.parentHeaderHeight;
   if (props.rowHeight) options.rowHeight = props.rowHeight;
+  if (props.pinnedTopRowData) options.pinnedTopRowData = props.pinnedTopRowData;
+  if (props.pinnedBottomRowData) options.pinnedBottomRowData = props.pinnedBottomRowData;
   if (props.getRowId) options.getRowId = props.getRowId;
   if (props.rowIdKey) options.rowIdKey = props.rowIdKey;
   if (props.overscanRowCount) options.overscanRowCount = props.overscanRowCount;
@@ -62,6 +64,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
   if (props.groupSortMode != null) options.groupSortMode = props.groupSortMode;
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
+  if (props.isRowPinned != null) options.isRowPinned = props.isRowPinned;
+  if (props.groupRowsSticky != null) options.groupRowsSticky = props.groupRowsSticky;
   if (props.isFullWidthRow != null) options.isFullWidthRow = props.isFullWidthRow;
   if (props.fullWidthCellRenderer != null) options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);
   if (props.defaultColDef != null) options.defaultColDef = adaptReactDefaultColDef(props.defaultColDef);

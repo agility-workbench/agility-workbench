@@ -59,6 +59,8 @@ export type {
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
+  RowPinnedPosition,
+  IsRowPinnedParams,
   CellSelectionMode,
   BodyContextMenuGetter,
   QuickFilterOptions,

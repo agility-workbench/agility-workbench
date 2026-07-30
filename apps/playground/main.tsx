@@ -18,6 +18,8 @@ import SparklineDemo from "./SparklineDemo";
 import ToolbarDemo from "./ToolbarDemo";
 import ResponsiveToolbarDemo from "./ResponsiveToolbarDemo";
 import SavedViewsDemo from "./SavedViewsDemo";
+import PinnedRowsDemo from "./PinnedRowsDemo";
+import StickyGroupRowsDemo from "./StickyGroupRowsDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -26,6 +28,8 @@ const PAGES = [
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
+  { id: "pinnedRows", label: "Pinned rows", render: () => <PinnedRowsDemo /> },
+  { id: "stickyGroups", label: "Sticky group rows", render: () => <StickyGroupRowsDemo /> },
   { id: "toolbar", label: "Toolbar", render: () => <ToolbarDemo /> },
   {
     id: "responsiveToolbar",

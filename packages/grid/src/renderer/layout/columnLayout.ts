@@ -35,6 +35,7 @@ interface ColumnLayoutRendererParams {
   aggregateCenterCells: () => HTMLDivElement[];
   aggregateRight: HTMLDivElement;
   aggregateRightCells: () => HTMLDivElement[];
+  updatePinnedRowsLayout?: () => void;
 }
 
 export class ColumnLayoutRenderer {
@@ -253,6 +254,7 @@ export class ColumnLayoutRenderer {
     const chromeHeight = headerHeight
       + (this.params.hScrollContainer.style.display === "flex" ? hScrollHeight : 0);
     this.params.body.style.height = `calc(100% - ${chromeHeight}px)`;
+    this.params.updatePinnedRowsLayout?.();
   }
 
   private applyAggregateColumnWidths(cells: HTMLDivElement[], columns: Column[], colIDs: string[]): void {

@@ -22,6 +22,10 @@ export interface IRowNode<Row = any> {
   groupKey?: string;
   groupValue?: any;
   aggregateValues?: { [key: string]: any };
+  /** Stable parent group id while row grouping is active. Used by sticky group-row rendering. */
+  parentId?: string;
+  /** Set only on rows rendered in the frozen top/bottom bands. */
+  rowPinned?: "top" | "bottom";
 }
 
 export function createRowIdFactory(opts: GridOptions): (row: object) => string {

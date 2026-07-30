@@ -120,6 +120,7 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
       const path = [...parentPath, key];
       const id = groupNodeId(path);
       const children = lastLevel ? bucket.nodes : build(bucket.nodes, level + 1, path);
+      for (const child of children) child.parentId = id;
       const groupNode: IRowNode<Row> = {
         id,
         // Synthetic data so Column.getValue on any column is safe on a group row.
@@ -142,6 +143,7 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
   };
 
   const roots = groupColumns.length === 0 ? [] : build(leaves, 0, []);
+  for (const root of roots) delete root.parentId;
   return { roots, groupNodesById };
 }
 

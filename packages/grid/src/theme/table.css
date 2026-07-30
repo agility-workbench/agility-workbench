@@ -19,6 +19,7 @@
   --pte-selected-border-color: #3b82f6;
   --pte-active-cell-border-color: #3b82f6;
   --pte-row-alt-bg-color: #fafafa;
+  --pte-group-row-bg-color: #f3f4f6;
   --pte-column-hover-bg-color: #f3f4f6;
   --pte-input-bg-color: #ffffff;
   --pte-select-border-color: #3b82f6;
@@ -123,6 +124,7 @@
   --pte-selected-border-color: #60a5fa;
   --pte-active-cell-border-color: #93c5fd;
   --pte-row-alt-bg-color: #131f36;
+  --pte-group-row-bg-color: #1e293b;
   --pte-column-hover-bg-color: #13223a;
   --pte-input-bg-color: #111827;
   --pte-select-border-color: #60a5fa;
@@ -1327,6 +1329,135 @@
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
+  position: relative;
+}
+
+/* Frozen application rows and mirrored group rows. Each band repeats the body's four horizontal
+   sections so pinned columns remain pinned and the center follows the grid's horizontal scroll. */
+.pte-pinned-rows {
+  display: none;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--pte-root-bg-color);
+  z-index: 4;
+  box-sizing: border-box;
+}
+
+.pte-pinned-rows-top {
+  border-bottom: 1px solid var(--pte-frame-border-color);
+  box-shadow: 0 2px 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-bottom {
+  border-top: 1px solid var(--pte-frame-border-color);
+  box-shadow: 0 -2px 5px var(--pte-shadow-color);
+}
+
+/* Sticky group ancestry overlays the scrollable body instead of participating in root flex layout.
+   The first group can therefore become sticky without moving or resizing the body by one row. */
+.pte-sticky-group-rows {
+  position: absolute;
+  inset: 0 15px auto 0;
+  width: auto;
+  z-index: 6;
+  box-shadow: 0 2px 5px var(--pte-shadow-color);
+  /* background: var(--pte-group-row-bg-color); */
+  pointer-events: none;
+}
+
+/* Sticky group rows are part of the central body's scroll context, so they stop before—and never
+   create a second control over—the body's vertical scrollbar lane. */
+.pte-sticky-group-rows .pte-pinned-rows-vertical {
+  display: none;
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-center,
+.pte-pinned-rows-right {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.pte-pinned-rows-leading::-webkit-scrollbar,
+.pte-pinned-rows-left::-webkit-scrollbar,
+.pte-pinned-rows-center::-webkit-scrollbar,
+.pte-pinned-rows-right::-webkit-scrollbar {
+  display: none;
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-center,
+.pte-pinned-rows-right {
+  pointer-events: auto;
+}
+
+/* Application-pinned top/bottom bands own a fifth, 15px-wide vertical-scroll column just like the
+   central body. Section scrollers hide their native bars and mirror this column's scrollTop. */
+.pte-pinned-rows-vertical {
+  flex: 0 0 15px;
+  width: 15px;
+  min-width: 15px;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  scrollbar-width: auto;
+}
+
+.pte-pinned-rows-vertical.scrollable {
+  overflow-x: hidden;
+  overflow-y: scroll;
+  pointer-events: auto;
+  background: var(--pte-scrollbar-track-color);
+}
+
+.pte-pinned-rows-vertical-scroller {
+  width: 1px;
+  min-height: 100%;
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-right {
+  flex: 0 0 auto;
+}
+
+.pte-pinned-rows-center {
+  flex: 1 1 auto;
+}
+
+.pte-pinned-rows-leading {
+  background: var(--pte-header-background-color);
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-pinned-rows-left {
+  border-right: 1px solid var(--pte-frame-border-color);
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-right {
+  border-left: 1px solid var(--pte-frame-border-color);
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-host {
+  position: relative;
+}
+
+.pte-pinned-row {
+  background: var(--pte-root-bg-color);
+}
+
+.pte-pinned-row.pte-group-row {
+  /* background: var(--pte-group-row-bg-color); */
+  font-weight: 600;
 }
 
 .pte-aggregate-row {

@@ -84,6 +84,18 @@ export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
  */
 export type GroupSortMode = "local" | "hierarchy" | "global";
 
+/** Frozen row band occupied by a row. `null` means the row is not explicitly pinned. */
+export type RowPinnedPosition = "top" | "bottom";
+
+/** Context passed to {@link GridOptions.isRowPinned}. */
+export interface IsRowPinnedParams {
+  node: IRowNode;
+  data: any;
+  rowId: string;
+  rowIndex: number;
+  isGroup: boolean;
+}
+
 /** How the quick-filter search string is matched against each row. */
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
@@ -453,6 +465,16 @@ export interface GridOptions {
   leafHeaderHeight?: number;
   parentHeaderHeight?: number;
   rowHeight?: number;
+  /**
+   * Application-owned rows rendered in a frozen band immediately below the header. These rows are
+   * outside sorting, filtering, grouping, pagination, selection, and the virtualized row count.
+   */
+  pinnedTopRowData?: any[];
+  /**
+   * Application-owned rows rendered in a frozen band below the scrollable body. These rows are
+   * outside sorting, filtering, grouping, pagination, selection, and the virtualized row count.
+   */
+  pinnedBottomRowData?: any[];
   getRowId?: (row: object) => string;
   rowIdKey?: string;
   overscanRowCount?: number;
@@ -682,6 +704,17 @@ export interface GridOptions {
    */
   groupRowsSelectable?: boolean;
   /**
+   * Pins displayed row-model nodes into a frozen top or bottom band. This is primarily useful for
+   * generated group nodes, which cannot be supplied through pinnedTopRowData/pinnedBottomRowData.
+   * The pinned row mirrors the live node and retains group expansion and aggregate values.
+   */
+  isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
+  /**
+   * When true, the expanded ancestor groups of the first visible body row stack in a frozen band
+   * beneath pinnedTopRowData and explicitly pinned top rows. Client-side grouping only.
+   */
+  groupRowsSticky?: boolean;
+  /**
    * Marks a row as "full-width": its content spans the entire body width across all column sections
    * (pinned to the left of the viewport, staying fixed as the body scrolls horizontally) instead of
    * rendering per-column cells. Return true for the row nodes that should render full width. Group
@@ -781,6 +814,8 @@ export interface InternalGridOptions extends GridOptions {
   leafHeaderHeight: number;
   parentHeaderHeight: number;
   rowHeight: number;
+  pinnedTopRowData: any[];
+  pinnedBottomRowData: any[];
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;
@@ -817,6 +852,8 @@ export interface InternalGridOptions extends GridOptions {
   groupDefaultExpanded: number;
   groupSortMode: GroupSortMode;
   groupRowsSelectable: boolean;
+  isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
+  groupRowsSticky: boolean;
   isFullWidthRow?: (node: IRowNode) => boolean;
   fullWidthCellRenderer?: CellRenderer;
   defaultColDef?: DefaultColDef;

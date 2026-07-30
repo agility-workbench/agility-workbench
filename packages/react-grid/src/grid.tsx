@@ -163,6 +163,20 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.groupRowsSelectable]);
 
     useLayoutEffect(() => {
+      instanceRef.current?.renderer.setPinnedRowOptions({
+        pinnedTopRowData: props.pinnedTopRowData ?? [],
+        pinnedBottomRowData: props.pinnedBottomRowData ?? [],
+        isRowPinned: props.isRowPinned,
+        groupRowsSticky: props.groupRowsSticky ?? false,
+      });
+    }, [
+      props.pinnedTopRowData,
+      props.pinnedBottomRowData,
+      props.isRowPinned,
+      props.groupRowsSticky,
+    ]);
+
+    useLayoutEffect(() => {
       instanceRef.current?.renderer.setRuntimeOptions({
         rowHover: props.rowHover ?? true,
         columnHover: props.columnHover ?? false,

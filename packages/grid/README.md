@@ -169,6 +169,42 @@ grid's tooltip layer; each line/area point owns a full-height nearest-X hover ba
 does not need to hit the marker exactly. Grid-level tooltip options such as delays, positioning,
 and disabling tooltips continue to apply.
 
+## Pinned and sticky rows
+
+Application-owned rows can be frozen above or below the virtualized body. They use the normal
+columns, value formatters, cell renderers, and row/cell styling, but stay outside sorting,
+filtering, grouping, pagination, selection, and the displayed row count:
+
+```ts
+const core = new GridCore(new CanvasMeasurer(), {
+  columnDefs,
+  pinnedTopRowData: [{ label: "Target", amount: 1_000_000 }],
+  pinnedBottomRowData: [{ label: "Total", amount: 842_000 }],
+});
+```
+
+Replace either band live with `api.setPinnedTopRowData(rows)` /
+`api.setPinnedBottomRowData(rows)`.
+
+Generated group nodes can be mirrored in either band without removing their original hierarchy
+position. Their chevrons and aggregate values remain connected to the live group:
+
+```ts
+const options = {
+  groupRowsSticky: true,
+  isRowPinned: ({ node }) =>
+    node.isGroup && node.groupKey === "EMEA" ? "bottom" : null,
+};
+
+api.setRowPinned(groupNode.id, "top");
+api.setRowPinned(groupNode.id, null); // unpin
+```
+
+`groupRowsSticky` stacks the expanded ancestors of the first visible row at the top as the body
+scrolls. It supports `singleColumn`, `multipleColumns`, and full-width `groupRows` display. Top and
+bottom bands each cap at 30% of the grid height and get an independent vertical scrollbar when
+their content exceeds that space; the central body keeps its own scrollbar.
+
 ## Styling
 
 The grid needs its stylesheet loaded once. Two options:

@@ -142,6 +142,8 @@ export class GridCore implements IGridCore {
       leafHeaderHeight: options.leafHeaderHeight ?? 43,
       parentHeaderHeight: options.parentHeaderHeight ?? 43,
       rowHeight: options.rowHeight ?? 43,
+      pinnedTopRowData: options.pinnedTopRowData ?? [],
+      pinnedBottomRowData: options.pinnedBottomRowData ?? [],
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
       overscanRowCount: options.overscanRowCount ?? 10,
@@ -189,6 +191,8 @@ export class GridCore implements IGridCore {
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupSortMode: options.groupSortMode ?? "local",
       groupRowsSelectable: options.groupRowsSelectable ?? false,
+      isRowPinned: options.isRowPinned,
+      groupRowsSticky: options.groupRowsSticky ?? false,
       isFullWidthRow: options.isFullWidthRow,
       fullWidthCellRenderer: options.fullWidthCellRenderer,
       defaultColDef: options.defaultColDef,
@@ -832,6 +836,18 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+  }
+
+  setPinnedRowOptions(options: {
+    pinnedTopRowData?: any[];
+    pinnedBottomRowData?: any[];
+    isRowPinned?: GridOptions["isRowPinned"];
+    groupRowsSticky?: boolean;
+  }): void {
+    if (options.pinnedTopRowData !== undefined) this.options.pinnedTopRowData = options.pinnedTopRowData;
+    if (options.pinnedBottomRowData !== undefined) this.options.pinnedBottomRowData = options.pinnedBottomRowData;
+    if ("isRowPinned" in options) this.options.isRowPinned = options.isRowPinned;
+    if (options.groupRowsSticky !== undefined) this.options.groupRowsSticky = options.groupRowsSticky;
   }
 
   setRuntimeOptions(options: RuntimeGridOptions): void {

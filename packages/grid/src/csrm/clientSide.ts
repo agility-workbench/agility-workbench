@@ -352,6 +352,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         this.rebuildGroupTree();
         this.rebuildGroupedView();
       } else {
+        for (const node of this.nodes) delete node.parentId;
         this.groupRoots = [];
         this.groupNodesMap = new Map();
         this.groupedFlatAll = [];

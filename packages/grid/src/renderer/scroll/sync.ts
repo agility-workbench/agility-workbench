@@ -18,6 +18,7 @@ interface GridScrollSyncRendererParams {
   aggregateCenter: HTMLDivElement;
   aggregateRight: HTMLDivElement;
   onWindowUpdate: (scrollSrc: HTMLDivElement) => void;
+  onHorizontalSync?: (left: number, center: number, right: number) => void;
 }
 
 export class GridScrollSyncRenderer {
@@ -105,6 +106,7 @@ export class GridScrollSyncRenderer {
     this.params.leftHeader.scrollLeft = scrollLeft;
     this.params.hScrollLeft.scrollLeft = scrollLeft;
     this.params.aggregateLeft.scrollLeft = scrollLeft;
+    this.notifyHorizontalSync();
   }
 
   private syncCenterScroll(scrollLeft: number) {
@@ -112,6 +114,7 @@ export class GridScrollSyncRenderer {
     this.params.centerHeader.scrollLeft = scrollLeft;
     this.params.hScrollCenter.scrollLeft = scrollLeft;
     this.params.aggregateCenter.scrollLeft = scrollLeft;
+    this.notifyHorizontalSync();
   }
 
   private syncRightScroll(scrollLeft: number) {
@@ -119,5 +122,14 @@ export class GridScrollSyncRenderer {
     this.params.rightHeader.scrollLeft = scrollLeft;
     this.params.hScrollRight.scrollLeft = scrollLeft;
     this.params.aggregateRight.scrollLeft = scrollLeft;
+    this.notifyHorizontalSync();
+  }
+
+  private notifyHorizontalSync() {
+    this.params.onHorizontalSync?.(
+      this.params.leftSpacer.scrollLeft,
+      this.params.centerSpacer.scrollLeft,
+      this.params.rightSpacer.scrollLeft,
+    );
   }
 }

@@ -74,6 +74,7 @@ import { serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
 import { GridToolbarRenderer } from "./toolbar/gridToolbarRenderer";
+import { PinnedRowsRenderer } from "./pinnedRows/pinnedRowsRenderer";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
@@ -106,6 +107,7 @@ export class GridRenderer {
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _bodyViewportRenderer: BodyViewportRenderer;
   _bodyWindowRenderer: BodyWindowRenderer;
+  _pinnedRowsRenderer: PinnedRowsRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _headerInteractionHandler: HeaderInteractionHandler;
   _columnLayoutRenderer: ColumnLayoutRenderer;
@@ -215,9 +217,18 @@ export class GridRenderer {
       setEmpty: (isEmpty) => this.setEmpty(isEmpty),
       buildPaginationControls: () => this.buildPaginationControls(),
       maybeUpdatePoolSize: (params) => this._maybeUpdatePoolSize(params),
-      onColumnsChanged: (params) => this._modelChangeHandler.onColumnsChanged(params),
-      onColumnWidthsChanged: (params) => this._modelChangeHandler.onColumnWidthsChanged(params),
-      onDataChanged: (params) => this._modelChangeHandler.onDataChanged(params),
+      onColumnsChanged: (params) => {
+        this._modelChangeHandler.onColumnsChanged(params);
+        this._pinnedRowsRenderer?.render(undefined, true);
+      },
+      onColumnWidthsChanged: (params) => {
+        this._modelChangeHandler.onColumnWidthsChanged(params);
+        this._pinnedRowsRenderer?.render(undefined, true);
+      },
+      onDataChanged: (params) => {
+        this._modelChangeHandler.onDataChanged(params);
+        this._pinnedRowsRenderer?.render(undefined, true);
+      },
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
       renderAggregateRow: () => this._renderAggregateRow(),
@@ -372,7 +383,26 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
-    this._bodyRowHoverRenderer = new BodyRowHoverRenderer(bodyWrapper.body);
+    this._pinnedRowsRenderer = new PinnedRowsRenderer({
+      core: this.core,
+      api: this.api,
+      root: this.root,
+      body: bodyWrapper.body,
+      rowHeight: () => this.rowHeight,
+      bodyCellRenderer: this._bodyCellRenderer,
+      onHeightChanged: () => {
+        requestAnimationFrame(() => this._maybeUpdatePoolSize());
+      },
+    });
+    const apiWithPinnedRows = this.api as unknown as {
+      setPinnedRowsController?: (controller: {
+        setPinnedTopRowData: (rows: any[]) => void;
+        setPinnedBottomRowData: (rows: any[]) => void;
+        setRowPinned: (rowId: string, position: "top" | "bottom" | null) => void;
+      }) => void;
+    };
+    apiWithPinnedRows.setPinnedRowsController?.(this._pinnedRowsRenderer);
+    this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.root);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
     // Tooltips sit below the menu band (menus use 9999+) so a column/context menu covers a tooltip.
     this._tooltipFloating = new FloatingAnchor(this.root, 9800);
@@ -522,6 +552,7 @@ export class GridRenderer {
       aggregateCenterCells: () => this._aggregateCells,
       aggregateRight: aggregateRefs.right,
       aggregateRightCells: () => this._aggregateRightCells,
+      updatePinnedRowsLayout: () => this._pinnedRowsRenderer.updateLayout(),
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
@@ -553,8 +584,17 @@ export class GridRenderer {
       aggregateLeft: aggregateRefs.left,
       aggregateCenter: aggregateRefs.center,
       aggregateRight: aggregateRefs.right,
+      onHorizontalSync: (left, center, right) => {
+        this._pinnedRowsRenderer.syncHorizontal(left, center, right);
+      },
       onWindowUpdate: (scrollSrc) => {
         this._bodyWindowRenderer.update(false, scrollSrc);
+        this._pinnedRowsRenderer.render(scrollSrc.scrollTop);
+        this._pinnedRowsRenderer.syncHorizontal(
+          bodyWrapper.leftSpacer.scrollLeft,
+          bodyWrapper.centerSpacer.scrollLeft,
+          bodyWrapper.rightSpacer.scrollLeft,
+        );
         // Keep a persistent ActionFrame pinned to its (possibly recycled) cell across scroll.
         this._actionFrameRenderer.onWindowUpdate();
       },
@@ -793,6 +833,15 @@ export class GridRenderer {
     this._toolbarRenderer.setSavedViewsOptions(options);
   }
 
+  setPinnedRowOptions(options: {
+    pinnedTopRowData?: any[];
+    pinnedBottomRowData?: any[];
+    isRowPinned?: import("../interfaces/gridOptions").GridOptions["isRowPinned"];
+    groupRowsSticky?: boolean;
+  }) {
+    this._pinnedRowsRenderer.setOptions(options);
+  }
+
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
   setRuntimeOptions(options: RuntimeGridOptions) {
     const previous = { ...this.core.options };
@@ -909,6 +958,7 @@ export class GridRenderer {
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
     this._actionFrameRenderer.destroy();
+    this._pinnedRowsRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
   }
@@ -985,6 +1035,7 @@ export class GridRenderer {
     this._headerRenderer.buildDOM(reason);
     this.core.pruneColumnSelection();
     this._selectionRenderer.applyColumnSelectionStyles();
+    this._pinnedRowsRenderer?.render(undefined, true);
   }
 
   private buildPaginationControls() {
@@ -1003,6 +1054,7 @@ export class GridRenderer {
     this._aggregateCells = result.centerCells;
     this._aggregateRightCells = result.rightCells;
     this._columnLayoutRenderer.updateColumnWidths();
+    this._pinnedRowsRenderer.updateLayout();
     this._renderAggregateRow();
   }
 

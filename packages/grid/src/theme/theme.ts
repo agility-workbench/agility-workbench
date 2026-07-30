@@ -226,6 +226,7 @@ export const themeDark: GridTheme = createTheme({
     "--pte-selected-border-color": "#60a5fa",
     "--pte-active-cell-border-color": "#93c5fd",
     "--pte-row-alt-bg-color": "#131f36",
+    "--pte-group-row-bg-color": "#1e293b",
     "--pte-column-hover-bg-color": "#13223a",
     "--pte-input-bg-color": "#111827",
     "--pte-select-border-color": "#60a5fa",

@@ -5,7 +5,7 @@ import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
-import { QuickFilterMatchMode } from "./gridOptions";
+import { QuickFilterMatchMode, RowPinnedPosition } from "./gridOptions";
 import { GridViewState } from "./gridView";
 
 export type NavDir = "up" | "down" | "left" | "right";
@@ -57,6 +57,16 @@ export interface IGridAPI {
 
   /** Set the row data. */
   setRowData(rows: RowData[]): void;
+
+  /** Replace the application-owned rows in the frozen top band. */
+  setPinnedTopRowData(rows: RowData[]): void;
+  /** Replace the application-owned rows in the frozen bottom band. */
+  setPinnedBottomRowData(rows: RowData[]): void;
+  /**
+   * Explicitly mirror a displayed row-model node in a frozen band. Generated group node ids are
+   * supported; pass null to unpin. The original row remains in the hierarchy.
+   */
+  setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void;
 
   /** Apply a transaction to the row data. */
   applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): void;

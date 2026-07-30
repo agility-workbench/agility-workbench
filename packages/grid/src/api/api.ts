@@ -5,7 +5,7 @@ import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
-import { QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { QuickFilterMatchMode, RowPinnedPosition } from "../interfaces/gridOptions";
 import { FilterItem } from "../interfaces/filter";
 import { GridViewState } from "../interfaces/gridView";
 import { SortItemUpdate } from "../interfaces/sort";
@@ -25,10 +25,17 @@ export interface GridApiTooltipController {
   hideTooltip: () => void;
 }
 
+export interface GridApiPinnedRowsController {
+  setPinnedTopRowData: (rows: RowData[]) => void;
+  setPinnedBottomRowData: (rows: RowData[]) => void;
+  setRowPinned: (rowId: GridId, position: RowPinnedPosition | null) => void;
+}
+
 export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
+  private _pinnedRows: GridApiPinnedRowsController | null = null;
 
   constructor(private core: IGridCore) {}
 
@@ -40,6 +47,10 @@ export class GridAPI implements IGridAPI {
   /** Wire the tooltip controller. Called by the renderer on attach; before that these are no-ops. */
   setTooltipController(controller: GridApiTooltipController): void {
     this._tooltip = controller;
+  }
+
+  setPinnedRowsController(controller: GridApiPinnedRowsController): void {
+    this._pinnedRows = controller;
   }
 
   showTooltip(cell: CellRef): void {
@@ -87,6 +98,18 @@ export class GridAPI implements IGridAPI {
 
   setRowData(rows: RowData[]): void {
     this.dispatch({ type: "rowDataSet", rows });
+  }
+
+  setPinnedTopRowData(rows: RowData[]): void {
+    this._pinnedRows?.setPinnedTopRowData(rows);
+  }
+
+  setPinnedBottomRowData(rows: RowData[]): void {
+    this._pinnedRows?.setPinnedBottomRowData(rows);
+  }
+
+  setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void {
+    this._pinnedRows?.setRowPinned(rowId, position);
   }
 
   getColumnState(): ColumnState[] {
