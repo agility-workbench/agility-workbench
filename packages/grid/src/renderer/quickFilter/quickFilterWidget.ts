@@ -25,9 +25,6 @@ interface QuickFilterWidgetParams {
   // The raw quick-filter config to build from. Passed explicitly (rather than read from core) so a
   // reconfigure can construct a fresh widget from new options without the grid being remounted.
   options: boolean | QuickFilterOptions | undefined;
-  // Current header height in px. Read lazily on each show so header-height changes (e.g. grouped
-  // headers) are respected; the widget adds its configured `offsetTop` to sit just below the header.
-  headerHeight: () => number;
   /** The toolbar reuses this widget but suppresses its floating-only presentation controls. */
   presentation?: "floating" | "toolbar";
   // Search state to restore when rebuilding in place (omitted on first construction).
@@ -267,12 +264,12 @@ export class QuickFilterWidget {
     this.wrapper.setAttribute("aria-hidden", visible ? "false" : "true");
   }
 
-  // Place the floating widget: `offsetTop` px below the current header, pinned to the configured
-  // horizontal edge. Read lazily on each open so grouped/multi-row header height changes are honored.
+  // The floating host is a zero-height sibling immediately after the header, so `offsetTop` is
+  // already relative to the header's bottom and needs no layout measurement.
   private applyPosition(): void {
     if (this.isToolbarPresentation()) return;
     const { offsetX, offsetTop } = this.opts.position;
-    this.wrapper.style.top = `${this.params.headerHeight() + offsetTop}px`;
+    this.wrapper.style.top = `${offsetTop}px`;
     // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
     // width. Clearing to "" would fall back to the stylesheet's base `right` rule, pinning *both*
     // edges and stretching the panel across the full width.

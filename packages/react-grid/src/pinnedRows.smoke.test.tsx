@@ -52,6 +52,42 @@ async function mount(extra: Record<string, unknown> = {}) {
 }
 
 describe("pinned and sticky rows", () => {
+  it("anchors an always-on floating quick filter after the header without measuring layout", async () => {
+    const { container, root } = await mount({
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+      quickFilter: { mode: "always", debounceMs: 0 },
+      toolbar: { sorting: true },
+    });
+
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    const toolbar = gridRoot.querySelector<HTMLElement>(".pte-grid-toolbar")!;
+    const header = gridRoot.querySelector<HTMLElement>(".pte-header-wrapper")!;
+    const floatingHost = gridRoot.querySelector<HTMLElement>(".pte-quick-filter-floating-host")!;
+    const topBand = gridRoot.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top:not(.pte-sticky-group-rows)",
+    )!;
+    const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
+    const filter = floatingHost.querySelector<HTMLElement>(".pte-quick-filter")!;
+    const children = Array.from(gridRoot.children);
+
+    expect(children.indexOf(toolbar)).toBeLessThan(children.indexOf(header));
+    expect(children.indexOf(header)).toBeLessThan(children.indexOf(floatingHost));
+    expect(children.indexOf(floatingHost)).toBeLessThan(children.indexOf(topBand));
+    expect(children.indexOf(topBand)).toBeLessThan(children.indexOf(body));
+    expect(filter.closest(".pte-grid-toolbar")).toBeNull();
+    expect(filter.style.top).toBe("6px");
+
+    await act(async () => {
+      gridRoot.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+      );
+    });
+    expect(filter.style.top).toBe("6px");
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("renders application-owned top/bottom rows and reconciles them through the API", async () => {
     const { container, apiRef, root } = await mount({
       pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],

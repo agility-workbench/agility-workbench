@@ -117,10 +117,9 @@ export class GridRenderer {
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _noRowsOverlayRenderer: NoRowsOverlayRenderer;
   _quickFilterWidget?: QuickFilterWidget;
+  private _quickFilterFloatingHost: HTMLDivElement;
   _columnPanelRenderer: ColumnPanelRenderer;
   _toolbarRenderer: GridToolbarRenderer;
-  // Captured so the widget can be rebuilt in place when its options change at runtime.
-  private _quickFilterHeaderHeight?: () => number;
   private _quickFilterOptions?: boolean | QuickFilterOptions;
   private _toolbarOptions?: GridToolbarOptions;
   _rootAttachmentRenderer: RootAttachmentRenderer;
@@ -668,9 +667,13 @@ export class GridRenderer {
       exportCSV: options => this._exportRenderer.exportCSV(options),
       exportExcel: options => this._exportRenderer.exportExcel(options),
     });
+    // This zero-height host participates in the root's column flow immediately after the header.
+    // Its absolutely-positioned child can overlay the rows below the header without measuring
+    // detached DOM or being clipped by the header.
+    this._quickFilterFloatingHost = div("pte-quick-filter-floating-host");
+    headerRefs.wrapper.insertAdjacentElement("afterend", this._quickFilterFloatingHost);
     // Quick filter (global search). Only mounted when enabled and the model is client-side. The
-    // toolbar is constructed first because it may provide the widget's host.
-    this._quickFilterHeaderHeight = () => headerRefs.wrapper.offsetHeight;
+    // toolbar is constructed first because it may provide the widget's alternative host.
     this._quickFilterOptions = this.core.getOptions().quickFilter;
     this._buildQuickFilterWidget();
     this._columnPanelRenderer = new ColumnPanelRenderer({
@@ -751,9 +754,8 @@ export class GridRenderer {
     const inToolbar = resolveGridToolbarOptions(this._toolbarOptions).quickFilter;
     const widget = new QuickFilterWidget({
       core: this.core,
-      root: inToolbar ? this._toolbarRenderer.getQuickFilterHost() : this.root,
+      root: inToolbar ? this._toolbarRenderer.getQuickFilterHost() : this._quickFilterFloatingHost,
       options: inToolbar && !this._quickFilterOptions ? true : this._quickFilterOptions,
-      headerHeight: this._quickFilterHeaderHeight ?? (() => 0),
       presentation: inToolbar ? "toolbar" : "floating",
       restore,
     });
@@ -951,6 +953,7 @@ export class GridRenderer {
     this._coreEventBinder.destroy();
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
+    this._quickFilterFloatingHost.remove();
     this._columnPanelRenderer.destroy();
     this._toolbarRenderer.destroy();
     this._interactionEventBinder.destroy();
