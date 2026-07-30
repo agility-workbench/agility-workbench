@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
@@ -56,6 +56,36 @@ export function QuickFilterDemo() {
   const [offsetTop, setOffsetTop] = useState(6);
   const [showOptions, setShowOptions] = useState(true);
   const [showLayoutOptions, setShowLayoutOptions] = useState(true);
+  const [reconfigurePending, setReconfigurePending] = useState(false);
+  const [reconfigureResult, setReconfigureResult] = useState("");
+  const reconfigureTimer = useRef<number | null>(null);
+  const gridHost = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => () => {
+    if (reconfigureTimer.current !== null) window.clearTimeout(reconfigureTimer.current);
+  }, []);
+
+  const scheduleFocusedReconfigure = () => {
+    if (reconfigureTimer.current !== null) window.clearTimeout(reconfigureTimer.current);
+    setReconfigurePending(true);
+    setReconfigureResult("");
+    gridHost.current?.querySelector<HTMLElement>(".pte-root")?.focus();
+    reconfigureTimer.current = window.setTimeout(() => {
+      // Any config change rebuilds the widget. Changing this otherwise-inconsequential offset
+      // verifies that the replacement widget restores focus when the old input owned it.
+      setOffsetX(value => value + 1);
+      reconfigureTimer.current = null;
+      window.requestAnimationFrame(() => {
+        const active = document.activeElement as HTMLElement | null;
+        setReconfigureResult(
+          active?.classList.contains("pte-quick-filter-input")
+            ? "Focus remained in the quick filter."
+            : `Focus moved to ${active?.tagName.toLowerCase() ?? "no element"}.`,
+        );
+        setReconfigurePending(false);
+      });
+    }, 4000);
+  };
 
   const quickFilter = useMemo<QuickFilterOptions>(() => ({
     mode,
@@ -134,6 +164,10 @@ export function QuickFilterDemo() {
           />
           showLayoutOptions
         </label>
+
+        <button type="button" disabled={reconfigurePending} onClick={scheduleFocusedReconfigure}>
+          {reconfigurePending ? "Reconfiguring in 4s…" : "Test focused reconfigure"}
+        </button>
       </div>
 
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
@@ -143,9 +177,12 @@ export function QuickFilterDemo() {
         {" "}With <code>clearOnClose</code> off, dismissing the search leaves the filter active and shows a
         pill you can click to reopen. With <code>showLayoutOptions</code> on, the ⋯ options popover
         exposes the Anchor and “Keep filter when closed” controls.
+        {" "}To verify focus preservation during live reconfiguration, click
+        “Test focused reconfigure,” press Ctrl/Cmd+F, and leave the search input focused before the
+        four-second timer expires. {reconfigureResult}
       </p>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div ref={gridHost} style={{ flex: 1, minHeight: 0 }}>
         <Grid
           data={rows}
           columnDefs={columnDefs}

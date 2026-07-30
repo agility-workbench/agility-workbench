@@ -149,6 +149,20 @@ describe("toolbar options", () => {
     });
     expect(document.activeElement).toBe(toolbarFilter);
 
+    await act(async () => {
+      toolbarFilter!.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    expect(document.activeElement).toBe(container.querySelector(".pte-root"));
+
+    container.querySelector<HTMLElement>(".pte-root")!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+    );
+    expect(document.activeElement).toBe(toolbarFilter);
+
     await render({}, false, { debounceMs: 10_000, showOptions: true });
     const floatingFilter = container.querySelector<HTMLInputElement>(".pte-quick-filter-input");
     expect(floatingFilter).not.toBeNull();
@@ -157,12 +171,14 @@ describe("toolbar options", () => {
     expect(core.getQuickFilterText()).toBe("acme");
     expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
     expect(api.getCore()).toBe(core);
+    expect(document.activeElement).toBe(floatingFilter);
 
     await render({ quickFilter: true }, false, { debounceMs: 10_000, showOptions: true });
     const restoredToolbarFilter =
       container.querySelector<HTMLInputElement>(".pte-grid-toolbar .pte-quick-filter-input");
     expect(restoredToolbarFilter?.value).toBe("acme");
     expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
+    expect(document.activeElement).toBe(restoredToolbarFilter);
 
     await act(async () => root.unmount());
   });

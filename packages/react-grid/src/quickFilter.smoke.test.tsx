@@ -124,6 +124,27 @@ describe("quick filter end-to-end via Grid", () => {
     root.unmount();
   });
 
+  it("claims Ctrl+F while the quick-filter input already has focus", async () => {
+    const { container, root } = await mountGrid();
+    await openWidget(container);
+
+    let prevented = false;
+    await act(async () => {
+      const ev = new KeyboardEvent("keydown", {
+        key: "f",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      input(container).dispatchEvent(ev);
+      prevented = ev.defaultPrevented;
+    });
+
+    expect(prevented).toBe(true);
+    expect(document.activeElement).toBe(input(container));
+    root.unmount();
+  });
+
   it("shows the no-rows overlay when the search matches nothing, and hides it when cleared", async () => {
     const { container, apiRef, root } = await mountGrid();
     const core = apiRef.current!.getCore();
@@ -280,7 +301,26 @@ describe("quick filter end-to-end via Grid", () => {
     expect(widget(container)!.classList.contains("pte-quick-filter-open")).toBe(false);
     expect(core.getQuickFilterText()).toBe("");
     expect(core.getRowModel().getViewCount()).toBe(3);
+    expect(document.activeElement).toBe(rootEl);
 
+    root.unmount();
+  });
+
+  it("returns focus to the grid when Escape closes the search", async () => {
+    const { container, root } = await mountGrid();
+    const rootEl = container.querySelector(".pte-root") as HTMLElement;
+    await openWidget(container);
+
+    await act(async () => {
+      input(container).dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    expect(widget(container)!.classList.contains("pte-quick-filter-open")).toBe(false);
+    expect(document.activeElement).toBe(rootEl);
     root.unmount();
   });
 
@@ -442,14 +482,29 @@ describe("quick filter: live reconfigure (no remount)", () => {
     await setSearch(container, "globex");
     expect(core.getRowModel().getViewCount()).toBe(1);
     expect(widget(container)!.style.left).toBe("auto"); // right anchor
+    const previousInput = input(container);
+    previousInput.focus();
 
     // Change only the anchor. The grid must NOT remount, the filter must survive, and the widget
-    // must re-anchor left.
+    // must re-anchor left while transferring focus to the replacement input.
     await rerender({ mode: "always", position: { anchor: "left", offsetX: 16 } });
 
     expect(core.getRowModel().getViewCount()).toBe(1); // search preserved
     expect(input(container).value).toBe("globex"); // input text preserved
+    expect(input(container)).not.toBe(previousInput); // widget DOM rebuilt
+    expect(document.activeElement).toBe(input(container)); // focus restored
     expect(widget(container)!.style.left).toBe("16px"); // re-anchored live
+    root.unmount();
+  });
+
+  it("does not steal focus when a live reconfigure replaces an unfocused widget", async () => {
+    const { container, root, rerender } = await mountGrid({ mode: "always" });
+    const rootEl = container.querySelector(".pte-root") as HTMLElement;
+    rootEl.focus();
+
+    await rerender({ mode: "always", position: { offsetX: 16 } });
+
+    expect(document.activeElement).toBe(rootEl);
     root.unmount();
   });
 
@@ -469,9 +524,11 @@ describe("quick filter: live reconfigure (no remount)", () => {
 
     await setSearch(container, "globex");
     expect(core.getRowModel().getViewCount()).toBe(1);
+    input(container).focus();
 
     await rerender(false);
     expect(widget(container)).toBeNull(); // torn down
+    expect(document.activeElement).toBe(container.querySelector(".pte-root"));
 
     root.unmount();
   });

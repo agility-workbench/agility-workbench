@@ -21,6 +21,8 @@ export interface QuickFilterRestoreState {
 
 interface QuickFilterWidgetParams {
   core: IGridCore;
+  /** Return keyboard ownership to the grid after this widget dismisses or blurs itself. */
+  focusGrid: () => void;
   root: HTMLElement;
   // The raw quick-filter config to build from. Passed explicitly (rather than read from core) so a
   // reconfigure can construct a fresh widget from new options without the grid being remounted.
@@ -203,6 +205,21 @@ export class QuickFilterWidget {
     return this.open;
   }
 
+  containsFocus(): boolean {
+    return this.wrapper.contains(this.wrapper.ownerDocument.activeElement);
+  }
+
+  /** Restore keyboard ownership after a config-driven rebuild replaced the focused widget DOM. */
+  restoreFocus(): void {
+    if (this.open || this.isPermanent()) {
+      this.input.focus();
+    } else if (this.indicatorPill && !this.indicatorPill.hidden) {
+      this.indicatorPill.focus();
+    } else {
+      this.params.focusGrid();
+    }
+  }
+
   // Show and focus the widget. In "always" mode this is a focus-only convenience.
   show(): void {
     this.setOpen(true);
@@ -217,7 +234,7 @@ export class QuickFilterWidget {
   hide(): void {
     this.collapseOptions();
     if (this.isToolbarPresentation()) {
-      this.input.blur();
+      this.params.focusGrid();
       return;
     }
     if (this.clearOnClose && this.input.value !== "") {
@@ -227,6 +244,7 @@ export class QuickFilterWidget {
     }
     if (this.opts.mode === "always") return;
     this.setOpen(false);
+    this.params.focusGrid();
   }
 
   toggle(): void {
@@ -294,6 +312,12 @@ export class QuickFilterWidget {
     // owns its own keyboard; Escape additionally clears + closes the widget.
     this.input.addEventListener("keydown", (e: KeyboardEvent) => {
       e.stopPropagation();
+      // The input intentionally owns its keyboard events, so the root-level shortcut cannot
+      // prevent the browser's native Find dialog while focus is here. Claim Ctrl/Cmd+F locally.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         this.hide();

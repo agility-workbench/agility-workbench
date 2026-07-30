@@ -122,6 +122,10 @@ export class GridRenderer {
   _toolbarRenderer: GridToolbarRenderer;
   private _quickFilterOptions?: boolean | QuickFilterOptions;
   private _toolbarOptions?: GridToolbarOptions;
+  // React can reconcile quick-filter options and toolbar placement in consecutive layout effects.
+  // Keep the focus-transfer intent alive through that synchronous batch even if the browser briefly
+  // falls back to <body> between the two widget rebuilds.
+  private _quickFilterFocusRestorePending = false;
   _rootAttachmentRenderer: RootAttachmentRenderer;
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
@@ -750,10 +754,11 @@ export class GridRenderer {
   // Build (or skip building) the quick-filter widget from the currently-stored options. A prior
   // widget, if any, must be destroyed by the caller first. `restore` carries live search state
   // across a rebuild. The widget is only mounted when enabled and the row model is client-side.
-  private _buildQuickFilterWidget(restore?: QuickFilterRestoreState): void {
+  private _buildQuickFilterWidget(restore?: QuickFilterRestoreState, restoreFocus = false): void {
     const inToolbar = resolveGridToolbarOptions(this._toolbarOptions).quickFilter;
     const widget = new QuickFilterWidget({
       core: this.core,
+      focusGrid: () => this.root.focus(),
       root: inToolbar ? this._toolbarRenderer.getQuickFilterHost() : this._quickFilterFloatingHost,
       options: inToolbar && !this._quickFilterOptions ? true : this._quickFilterOptions,
       presentation: inToolbar ? "toolbar" : "floating",
@@ -771,6 +776,7 @@ export class GridRenderer {
           caseSensitive: restore.caseSensitive,
         });
       }
+      if (restoreFocus) widget.restoreFocus();
     } else {
       widget.destroy();
       this._quickFilterWidget = undefined;
@@ -779,6 +785,7 @@ export class GridRenderer {
       if (this.core.getQuickFilterText() !== "") {
         this.core.dispatch({ type: "quickFilterSet", text: "" });
       }
+      if (restoreFocus) this.root.focus();
     }
   }
 
@@ -803,10 +810,11 @@ export class GridRenderer {
 
   setQuickFilterOptions(options: boolean | QuickFilterOptions | undefined) {
     this._quickFilterOptions = options;
+    const restoreFocus = this._captureQuickFilterFocusIntent();
     const restore = this._quickFilterWidget?.captureState();
     this._quickFilterWidget?.destroy();
     this._quickFilterWidget = undefined;
-    this._buildQuickFilterWidget(restore);
+    this._buildQuickFilterWidget(restore, restoreFocus);
   }
 
   setColumnPanelOptions(options: boolean | ColumnPanelOptions | undefined) {
@@ -820,6 +828,8 @@ export class GridRenderer {
     const restore = wasInToolbar !== willBeInToolbar
       ? this._quickFilterWidget?.captureState()
       : undefined;
+    const restoreFocus = wasInToolbar !== willBeInToolbar
+      && this._captureQuickFilterFocusIntent();
     if (wasInToolbar !== willBeInToolbar) {
       this._quickFilterWidget?.destroy();
       this._quickFilterWidget = undefined;
@@ -827,7 +837,19 @@ export class GridRenderer {
     this._toolbarOptions = options;
     (this.core.options as { toolbar: GridToolbarOptions }).toolbar = options ?? {};
     this._toolbarRenderer.setOptions(options);
-    if (wasInToolbar !== willBeInToolbar) this._buildQuickFilterWidget(restore);
+    if (wasInToolbar !== willBeInToolbar) this._buildQuickFilterWidget(restore, restoreFocus);
+  }
+
+  private _captureQuickFilterFocusIntent(): boolean {
+    const restoreFocus =
+      this._quickFilterFocusRestorePending || (this._quickFilterWidget?.containsFocus() ?? false);
+    if (restoreFocus && !this._quickFilterFocusRestorePending) {
+      this._quickFilterFocusRestorePending = true;
+      queueMicrotask(() => {
+        this._quickFilterFocusRestorePending = false;
+      });
+    }
+    return restoreFocus;
   }
 
   setSavedViewsOptions(options: SavedViewsOptions | undefined) {
