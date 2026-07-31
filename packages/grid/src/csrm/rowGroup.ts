@@ -155,7 +155,7 @@ export function flattenGroupTree<Row = any>(roots: IRowNode<Row>[]): IRowNode<Ro
     for (const node of nodes) {
       node.viewIndex = out.length;
       out.push(node);
-      if (node.isGroup && node.isExpanded && node.children) {
+      if ((node.isGroup || node.isTreeData) && node.isExpanded && node.children) {
         walk(node.children);
       }
     }

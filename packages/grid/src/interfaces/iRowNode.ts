@@ -12,7 +12,8 @@ export interface IRowNode<Row = any> {
   // state
   selected: boolean;
 
-  // future: group/tree
+  // Row-group nodes are synthetic. Tree-data nodes may be either synthetic ancestors (`isGroup`)
+  // or ordinary data-bearing rows (`isTreeData`) that also own children.
   type: "leaf" | "group";
   level: number;
   isGroup: boolean;
@@ -21,6 +22,10 @@ export interface IRowNode<Row = any> {
   childCount?: number;
   groupKey?: string;
   groupValue?: any;
+  /** True for nodes participating in a tree-data hierarchy, including ordinary data rows. */
+  isTreeData?: boolean;
+  /** Display label for this node in the generated tree column. */
+  treeKey?: string;
   aggregateValues?: { [key: string]: any };
   /** Stable parent group id while row grouping is active. Used by sticky group-row rendering. */
   parentId?: string;

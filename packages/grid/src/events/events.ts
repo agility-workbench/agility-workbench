@@ -2,6 +2,7 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
+import { TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
 
 export type GridEventName =
   | "overlayShow"
@@ -21,6 +22,7 @@ export type GridEventName =
   | "tooltipShow"
   | "tooltipHide"
   | "actionFrameChanged"
+  | "keyboardNavigationModeChanged"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -101,11 +103,12 @@ export type GridEventSelectionChangedParams = {
 };
 
 export type GridEventFocusChangedParams = {
-  prev?: { rowId: GridId; colId: ColId };
-  next?: { rowId: GridId; colId: ColId };
-  // active cell position in view-index space (for scroll-into-view; survives unloaded rows)
+  prev?: { rowId: GridId; colId: ColId; rowPinned?: "top" | "bottom" };
+  next?: { rowId: GridId; colId: ColId; rowPinned?: "top" | "bottom" };
+  // active cell position in its row section (for scroll-into-view; survives unloaded body rows)
   viewIdx?: number;
   colIdx?: number;
+  rowPinned?: "top" | "bottom";
   // if focus moved due to keyboard navigation
   reason?: "mouse" | "keyboard" | "api";
 };
@@ -176,6 +179,12 @@ export type GridEventActionFrameParams = {
   cell: CellRef | null;
 };
 
+export type GridEventKeyboardNavigationModeChangedParams = {
+  mode: TreeDataKeyboardNavigationMode;
+  previousMode: TreeDataKeyboardNavigationMode;
+  source: "api" | "shortcut" | "options";
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -200,6 +209,7 @@ export interface GridEventMap {
   tooltipShow: GridEventTooltipParams;
   tooltipHide: GridEventTooltipParams;
   actionFrameChanged: GridEventActionFrameParams;
+  keyboardNavigationModeChanged: GridEventKeyboardNavigationModeChangedParams;
   error: GridEventErrorParams;
 }
 

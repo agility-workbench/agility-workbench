@@ -62,6 +62,23 @@ const AUTO_GROUP_COLUMN_DEF = {
   __internalRole: "autoGroup",
 } satisfies ColDef & { __internalRole: "autoGroup" };
 
+const TREE_COLUMN_DEF = {
+  colId: "__pte_tree__",
+  key: "__pte_tree__",
+  label: "Hierarchy",
+  width: 240,
+  minWidth: 120,
+  sortable: true,
+  filter: true,
+  groupable: false,
+  aggregatable: false,
+  resizable: true,
+  movable: true,
+  hideable: true,
+  exportable: true,
+  __treeColumn: true,
+} satisfies ColDef & { __treeColumn: true };
+
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
   private rowNumberColumn?: Column;
@@ -492,11 +509,31 @@ export class ColumnModel implements IColumnModel {
       rowNumberColumn.hidden = false;
       leading.push(rowNumberColumn);
     }
-    for (const groupCol of this.autoGroupColumns) {
-      groupCol.pinned = "left";
-      groupCol.hidden = false;
-    }
     return [...leading, ...this.autoGroupColumns, ...userColumns];
+  }
+
+  private createTreeColumn(): Column {
+    const treeData = this.options.treeData!;
+    const clientDef = treeData.columnDef ?? {};
+    const valueGetter = clientDef.valueGetter ?? ((node: IRowNode) => {
+      const row = node?.data;
+      const custom = treeData.getLabel?.(row);
+      if (custom != null) return custom;
+      if (treeData.mode === "path") {
+        const path = treeData.getPath(row);
+        if (path.length > 0) return path[path.length - 1];
+      }
+      return row?.name ?? row?.label ?? node?.id ?? "";
+    });
+    return new Column({
+      ...TREE_COLUMN_DEF,
+      ...clientDef,
+      valueGetter,
+      // These capabilities have no meaningful operation in tree mode.
+      groupable: false,
+      aggregatable: false,
+      __treeColumn: true,
+    } as ColDef & { __treeColumn: true }, "tree");
   }
 
   // Reconfigure the columns for the current grouping, then rebuild the column layout so sections /
@@ -506,24 +543,39 @@ export class ColumnModel implements IColumnModel {
   //  - "multipleColumns": no synthesized column — each real grouped column shows the group value in
   //    place, tagged with its grouping level.
   //  - "groupRows": no auto column (the label spans the row).
-  setRowGroupColumns(groupColumns: Column[], mode: "singleColumn" | "multipleColumns" | "groupRows"): void {
+  setRowGroupColumns(
+    groupColumns: Column[],
+    mode: "singleColumn" | "multipleColumns" | "groupRows",
+    treeData: boolean = false,
+  ): void {
     // Clear any prior per-column group-level tags before re-tagging for the new grouping.
     this.walkColumns((c) => { if (!c.isAutoGroupColumn()) c.groupLevel = undefined; });
 
     const next: Column[] = [];
-    if (groupColumns.length > 0 && mode === "singleColumn") {
+    if (!treeData && groupColumns.length > 0 && mode === "singleColumn") {
       next.push(new Column({ ...AUTO_GROUP_COLUMN_DEF }, "auto-group"));
     } else if (groupColumns.length > 0 && mode === "multipleColumns") {
       // Tag the real grouped columns so the renderer shows each level's value under its own column.
       groupColumns.forEach((gc, level) => { gc.groupLevel = level; });
     }
     this.autoGroupColumns = next;
-    // Rebuild from the current user columns (drops any previous auto columns, re-adds the new set).
-    this.updateColumns(this.columns.filter((c) => !c.isAutoGroupColumn() && !c.isRowNumberColumn()));
+    // Rebuild from the current user columns (drops any previous row-group auto columns). Tree data
+    // receives a regular, client-configurable hierarchy column and preserves its runtime position.
+    const userColumns = this.columns.filter((c) => !c.isAutoGroupColumn() && !c.isRowNumberColumn());
+    if (treeData) {
+      const existingTreeColumn = userColumns.find(c => c.isTreeColumn());
+      this.updateColumns(existingTreeColumn ? userColumns : [this.createTreeColumn(), ...userColumns]);
+    } else {
+      this.updateColumns(userColumns.filter(c => !c.isTreeColumn()));
+    }
   }
 
   getAutoGroupColumns(): Column[] {
     return this.autoGroupColumns;
+  }
+
+  getHierarchyColumn(): Column | undefined {
+    return this.columns.find(col => col.isTreeColumn()) ?? this.autoGroupColumns[0];
   }
 
   private getRowNumberColumn(): Column {

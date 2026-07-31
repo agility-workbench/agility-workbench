@@ -63,6 +63,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.groupDisplayType) options.groupDisplayType = props.groupDisplayType;
   if (props.groupDefaultExpanded != null) options.groupDefaultExpanded = props.groupDefaultExpanded;
   if (props.groupSortMode != null) options.groupSortMode = props.groupSortMode;
+  if (props.treeData != null) options.treeData = props.treeData;
   if (props.groupRowsSelectable != null) options.groupRowsSelectable = props.groupRowsSelectable;
   if (props.isRowPinned != null) options.isRowPinned = props.isRowPinned;
   if (props.groupRowsSticky != null) options.groupRowsSticky = props.groupRowsSticky;

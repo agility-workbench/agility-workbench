@@ -4,11 +4,12 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter, performQuickFilter } from "../csrm/filter";
-import { GridOptions, GroupSortMode, QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { GridOptions, GroupSortMode, QuickFilterMatchMode, TreeDataOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
 import { buildGroupTree, flattenGroupTree } from "./rowGroup";
+import { buildTreeData, prepareTreeRows } from "./treeData";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -41,6 +42,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private groupedFlatAll: IRowNode<Row>[] = [];
   private viewNodes: IRowNode<Row>[] = [];
   private readonly groupDefaultExpanded: number;
+  private readonly treeData?: TreeDataOptions<Row>;
+  private nestedTreeParents: Map<string, string | undefined> = new Map();
+  private warnedMissingTreeParents = new Set<string>();
 
   paginate: boolean = false;
   startIdx = 0;
@@ -51,10 +55,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   constructor(opts: GridOptions, readonly listener: IRowModelListener) {
     this.getId = createRowIdFactory(opts);
     this.groupDefaultExpanded = opts.groupDefaultExpanded ?? 0;
+    this.treeData = opts.treeData as TreeDataOptions<Row> | undefined;
   }
 
   private get grouped(): boolean {
-    return this.groupColumns.length > 0;
+    return this.groupColumns.length > 0 || this.treeData != null;
   }
 
   getType(): RowModelType {
@@ -79,7 +84,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   setRows(rows: Row[]) {
-    this.nodes = rows.map((r) => this.createNode(r));
+    const prepared = this.treeData
+      ? prepareTreeRows(rows, this.treeData, this.getId)
+      : { rows, nestedParents: new Map<string, string | undefined>() };
+    this.nestedTreeParents = prepared.nestedParents;
+    this.nodes = prepared.rows.map((r) => this.createNode(r));
 
     // Index nodes by id so getRowNode / setCellValue can resolve rows by their stable id.
     this.nodesMap.clear();
@@ -106,9 +115,24 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     let removed = 0;
     if (tx.remove?.length) {
       const removeIds = new Set(tx.remove);
+      // Nested-children relationships have no parent-id field to re-evaluate after a removal.
+      // Removing a parent therefore removes its complete nested subtree.
+      if (this.treeData?.mode === "children") {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const [id, parentId] of this.nestedTreeParents) {
+            if (parentId != null && removeIds.has(parentId) && !removeIds.has(id)) {
+              removeIds.add(id);
+              changed = true;
+            }
+          }
+        }
+      }
       const kept: IRowNode<Row>[] = [];
       for (const node of this.nodes) {
         if (removeIds.has(node.id) && this.nodesMap.delete(node.id)) {
+          this.nestedTreeParents.delete(node.id);
           removed++;
         } else {
           kept.push(node);
@@ -131,7 +155,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
     let added = 0;
     if (tx.add?.length) {
-      for (const row of tx.add) {
+      const prepared = this.treeData?.mode === "children"
+        ? prepareTreeRows(tx.add, this.treeData, this.getId)
+        : { rows: tx.add, nestedParents: new Map<string, string | undefined>() };
+      for (const [id, parentId] of prepared.nestedParents) {
+        this.nestedTreeParents.set(id, parentId);
+      }
+      for (const row of prepared.rows) {
         const node = this.createNode(row);
         if (this.nodesMap.has(node.id)) {
           // An id collision with an existing row is treated as an update rather than a duplicate.
@@ -191,15 +221,39 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         }
       : undefined;
 
-    const { roots, groupNodesById } = buildGroupTree<Row>({
-      leaves,
-      groupColumns: this.groupColumns,
-      sortModel: this.sortModel,
-      groupSortMode: this.groupSortMode,
-      expansion: this.groupExpansion,
-      defaultExpanded: this.groupDefaultExpanded,
-      computeAggregates,
-    });
+    let roots: IRowNode<Row>[];
+    let groupNodesById: Map<string, IRowNode<Row>>;
+    if (this.treeData) {
+      const result = buildTreeData<Row>({
+        nodes: this.nodes,
+        options: this.treeData,
+        nestedParents: this.nestedTreeParents,
+        includedIds: new Set(this.filteredIdx.map(i => this.nodes[i].id)),
+        sortRank: new Map(this.sortedIdx.map((i, rank) => [this.nodes[i].id, rank])),
+        expansion: this.groupExpansion,
+        defaultExpanded: this.groupDefaultExpanded,
+        onMissingParent: (rowId, parentId) => {
+          const key = `${rowId}\0${parentId}`;
+          if (this.warnedMissingTreeParents.has(key)) return;
+          this.warnedMissingTreeParents.add(key);
+          console.warn(`Tree data parent "${parentId}" for row "${rowId}" was not found; rendering it as a root.`);
+        },
+      });
+      roots = result.roots;
+      groupNodesById = result.expandableNodesById;
+    } else {
+      const result = buildGroupTree<Row>({
+        leaves,
+        groupColumns: this.groupColumns,
+        sortModel: this.sortModel,
+        groupSortMode: this.groupSortMode,
+        expansion: this.groupExpansion,
+        defaultExpanded: this.groupDefaultExpanded,
+        computeAggregates,
+      });
+      roots = result.roots;
+      groupNodesById = result.groupNodesById;
+    }
     this.groupRoots = roots;
     this.groupNodesMap = groupNodesById;
 
@@ -257,6 +311,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   getGroupNodes(): IRowNode<Row>[] {
     return this.grouped ? Array.from(this.groupNodesMap.values()) : [];
+  }
+
+  getHierarchyRoots(): IRowNode<Row>[] {
+    return this.grouped ? this.groupRoots.slice() : [];
   }
 
   private setSorts(sort: SortModel): void {
@@ -389,6 +447,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.nodesMap.clear();
     this.groupNodesMap.clear();
     this.groupExpansion.clear();
+    this.warnedMissingTreeParents.clear();
   }
 
   private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {

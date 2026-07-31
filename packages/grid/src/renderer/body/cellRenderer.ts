@@ -2,7 +2,7 @@ import { Column } from "../../column/column";
 import { CellClassParams } from "../../interfaces/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
-import { INDENT_PER_LEVEL, renderGroupCell } from "./groupCellRenderer";
+import { INDENT_PER_LEVEL, renderGroupCell, renderTreeCell } from "./groupCellRenderer";
 import { CellRefreshReason, createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 
@@ -127,6 +127,20 @@ export class BodyCellRenderer {
       this.renderGroupRowCell(cell, row, col);
       return;
     }
+
+    // Every real tree-data row gets its hierarchy label in the generated tree column. Unlike a
+    // synthetic group row it remains a normal data row in every other column.
+    if (row.isTreeData && col.isTreeColumn()) {
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+      if (rec) {
+        rec.runtime.destroy();
+        cellRendererMap.delete(col.instanceID);
+      }
+      cell.classList.add("pte-group-cell");
+      renderTreeCell(cell, row);
+      return;
+    }
     cell.classList.remove("pte-group-cell");
     cell.style.paddingLeft = "";
 
@@ -223,7 +237,7 @@ export class BodyCellRenderer {
     cell.classList.add("pte-group-cell");
 
     // singleColumn auto column, or a real grouped column in multipleColumns mode.
-    if (col.isAutoGroupColumn() || col.groupLevel != null) {
+    if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel != null) {
       // A level-tagged column only labels its own level; other group rows leave it blank (but may
       // still show an aggregate for that column below).
       if (col.groupLevel != null && col.groupLevel !== row.level) {

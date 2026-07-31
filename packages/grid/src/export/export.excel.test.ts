@@ -319,6 +319,65 @@ describe("grouped export (outline levels + SUBTOTAL)", () => {
   });
 });
 
+describe("tree-data export", () => {
+  it("keeps data-bearing parents as data rows and writes hierarchy outline metadata", async () => {
+    const treeColumn = col({
+      colId: "__pte_tree__",
+      key: "__pte_tree__",
+      label: "Organization",
+      exportable: true,
+      __treeColumn: true,
+    } as any);
+    const columns = [
+      col({ key: "name", label: "Name", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    const child: any = {
+      id: "child",
+      data: { name: "Child data", qty: 2 },
+      type: "leaf",
+      isGroup: false,
+      isTreeData: true,
+      treeKey: "Child",
+      level: 1,
+      isExpanded: false,
+      children: undefined,
+    };
+    const root: any = {
+      id: "root",
+      data: { name: "Root data", qty: 1 },
+      type: "leaf",
+      isGroup: false,
+      isTreeData: true,
+      treeKey: "Root",
+      level: 0,
+      isExpanded: false,
+      children: [child],
+    };
+    const config: ExportConfig = {
+      columns,
+      rows: [root.data, child.data],
+      groupRoots: [root],
+      groupColumns: [],
+      groupDisplayType: "singleColumn",
+      treeData: true,
+      autoGroupColumn: treeColumn,
+    };
+
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    expect(ws.getCell("A1").value).toBe("Organization");
+    expect(ws.getCell("A2").value).toBe("Root");
+    expect(ws.getCell("B2").value).toBe("Root data");
+    expect(ws.getCell("C2").value).toBe(1);
+    expect(ws.getCell("A3").value).toBe("Child");
+    expect(ws.getCell("B3").value).toBe("Child data");
+    expect(ws.getRow(2).outlineLevel).toBe(1);
+    expect(ws.getRow(3).outlineLevel).toBe(2);
+    expect(ws.getRow(3).hidden).toBe(true);
+  });
+});
+
 describe("zip writer", () => {
   it("stores entries with recoverable CRCs", async () => {
     const bytes = await createZip([{ path: "hello.txt", data: "world" }]);

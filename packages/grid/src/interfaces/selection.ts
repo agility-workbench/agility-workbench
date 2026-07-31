@@ -1,12 +1,16 @@
 export interface CellRef {
   rowId: string;
   colId: string;
+  /** Present when the cell belongs to a pinned top/bottom row section. */
+  rowPinned?: "top" | "bottom";
 }
 
-/** A cell position in view-index space (row = view index, colIdx = global leaf index). */
+/** A cell position in section-local row-index space and global leaf-column space. */
 export interface CellPos {
   row: number;
   colIdx: number;
+  /** Omitted for the body; otherwise `row` is local to this pinned section. */
+  rowPinned?: "top" | "bottom";
 }
 
 /**

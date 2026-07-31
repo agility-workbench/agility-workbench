@@ -22,6 +22,11 @@ interface SelectionModelDeps {
   // Whether a view-index row can hold a cell selection / be a navigation target (group rows are
   // skipped unless groupRowsSelectable is enabled).
   isRowSelectable: (viewIdx: number) => boolean;
+  getPinnedRowCount?: (position: "top" | "bottom") => number;
+  getPinnedRowNode?: (
+    position: "top" | "bottom",
+    rowIndex: number,
+  ) => import("../interfaces/iRowNode").IRowNode | null;
 }
 
 /**
@@ -58,6 +63,68 @@ export class SelectionModel {
 
   private maxRow(): number {
     return this.deps.getRowModel().getViewCount() - 1;
+  }
+
+  private firstRowPosition(): CellPos | null {
+    if ((this.deps.getPinnedRowCount?.("top") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "top" };
+    if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(0, 1), colIdx: 0 };
+    if ((this.deps.getPinnedRowCount?.("bottom") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "bottom" };
+    return null;
+  }
+
+  private lastRowPosition(): CellPos | null {
+    const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
+    if (bottomCount > 0) return { row: bottomCount - 1, colIdx: 0, rowPinned: "bottom" };
+    if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(this.maxRow(), -1), colIdx: 0 };
+    const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
+    if (topCount > 0) return { row: topCount - 1, colIdx: 0, rowPinned: "top" };
+    return null;
+  }
+
+  private stepVertical(from: CellPos, direction: 1 | -1): CellPos {
+    const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
+    const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
+    const bodyCount = this.maxRow() + 1;
+    if (direction < 0) {
+      if (from.rowPinned === "bottom") {
+        if (from.row > 0) return { ...from, row: from.row - 1 };
+        if (bodyCount > 0) return { row: this.nearestSelectableRow(bodyCount - 1, -1), colIdx: from.colIdx };
+        if (topCount > 0) return { row: topCount - 1, colIdx: from.colIdx, rowPinned: "top" };
+        return from;
+      }
+      if (!from.rowPinned) {
+        const previous = this.nearestSelectableRow(from.row - 1, -1);
+        if (from.row > 0 && previous < from.row) return { row: previous, colIdx: from.colIdx };
+        if (topCount > 0) return { row: topCount - 1, colIdx: from.colIdx, rowPinned: "top" };
+        return from;
+      }
+      return from.row > 0 ? { ...from, row: from.row - 1 } : from;
+    }
+
+    if (from.rowPinned === "top") {
+      if (from.row + 1 < topCount) return { ...from, row: from.row + 1 };
+      if (bodyCount > 0) return { row: this.nearestSelectableRow(0, 1), colIdx: from.colIdx };
+      if (bottomCount > 0) return { row: 0, colIdx: from.colIdx, rowPinned: "bottom" };
+      return from;
+    }
+    if (!from.rowPinned) {
+      const next = this.nearestSelectableRow(from.row + 1, 1);
+      if (from.row + 1 < bodyCount && next > from.row) return { row: next, colIdx: from.colIdx };
+      if (bottomCount > 0) return { row: 0, colIdx: from.colIdx, rowPinned: "bottom" };
+      return from;
+    }
+    return from.row + 1 < bottomCount ? { ...from, row: from.row + 1 } : from;
+  }
+
+  private moveVertical(from: CellPos, delta: number): CellPos {
+    let next = from;
+    const direction: 1 | -1 = delta < 0 ? -1 : 1;
+    for (let i = 0; i < Math.abs(delta); i++) {
+      const stepped = this.stepVertical(next, direction);
+      if (stepped.row === next.row && stepped.rowPinned === next.rowPinned) break;
+      next = stepped;
+    }
+    return next;
   }
 
   // ---------------- Reads ----------------
@@ -118,6 +185,7 @@ export class SelectionModel {
       const single = range.rowStart === range.rowEnd && range.colStart === range.colEnd;
       return single ? "cell" : "range";
     }
+    if (this.active?.rowPinned) return "cell";
     return "none";
   }
 
@@ -142,13 +210,26 @@ export class SelectionModel {
   }
 
   // ---------------- Cell range selection ----------------
-  startFromCell(location: { viewIdx: number; colIdx: number }): boolean {
-    if (location.viewIdx < 0 || location.viewIdx >= this.deps.getRowModel().getViewCount()) return false;
+  startFromCell(location: {
+    viewIdx: number;
+    colIdx: number;
+    rowPinned?: "top" | "bottom";
+  }): boolean {
+    const rowCount = location.rowPinned
+      ? this.deps.getPinnedRowCount?.(location.rowPinned) ?? 0
+      : this.deps.getRowModel().getViewCount();
+    if (location.viewIdx < 0 || location.viewIdx >= rowCount) return false;
     if (location.colIdx < 0 || location.colIdx >= this.leafColumns().length) return false;
     this.clearRows();
     this.clearColumns();
-    this.anchor = { row: location.viewIdx, colIdx: location.colIdx };
-    this.active = { row: location.viewIdx, colIdx: location.colIdx };
+    this.anchor = { row: location.viewIdx, colIdx: location.colIdx, rowPinned: location.rowPinned };
+    this.active = { row: location.viewIdx, colIdx: location.colIdx, rowPinned: location.rowPinned };
+    if (location.rowPinned) {
+      // The existing rectangular range remains body-view-index based. A pinned cell still owns
+      // focus/active styling, while range extension begins once both endpoints are in the body.
+      this.range = null;
+      return true;
+    }
     this.range = {
       rowStart: location.viewIdx,
       rowEnd: location.viewIdx,
@@ -159,8 +240,11 @@ export class SelectionModel {
     return true;
   }
 
-  updateRange(endRow: number, endCol: number): boolean {
+  updateRange(endRow: number, endCol: number, rowPinned?: "top" | "bottom"): boolean {
     if (!this.anchor) return false;
+    if (rowPinned || this.anchor.rowPinned) {
+      return this.startFromCell({ viewIdx: endRow, colIdx: endCol, rowPinned });
+    }
     const viewCount = this.deps.getRowModel().getViewCount();
     const leafCount = this.leafColumns().length;
     if (viewCount === 0 || leafCount === 0) {
@@ -184,10 +268,10 @@ export class SelectionModel {
     return true;
   }
 
-  selectSingleCell(viewIdx: number, colIdx: number): boolean {
+  selectSingleCell(viewIdx: number, colIdx: number, rowPinned?: "top" | "bottom"): boolean {
     this.clearRows();
     this.clearColumns();
-    return this.startFromCell({ viewIdx, colIdx });
+    return this.startFromCell({ viewIdx, colIdx, rowPinned });
   }
 
   clearRange() {
@@ -207,76 +291,62 @@ export class SelectionModel {
     return changed;
   }
 
-  // A cell is empty when its value is null/undefined/"". 0 and false are real values.
-  // A cell whose row is not currently loaded (server-side sparse data) is treated as empty
-  // AND as a hard boundary for block scanning (see blockJump).
-  private isEmptyCell(row: number, colIdx: number): boolean {
-    const node = this.deps.getRowModel().getRowNodeAtViewIndex(row);
+  private rowNodeAtPosition(position: CellPos) {
+    return position.rowPinned
+      ? this.deps.getPinnedRowNode?.(position.rowPinned, position.row) ?? null
+      : this.deps.getRowModel().getRowNodeAtViewIndex(position.row);
+  }
+
+  private isEmptyPosition(position: CellPos): boolean {
+    const node = this.rowNodeAtPosition(position);
     if (!node) return true;
-    const col = this.leafColumns()[colIdx];
+    const col = this.leafColumns()[position.colIdx];
     if (!col) return true;
-    const v = col.getValue(node);
-    return v == null || v === "";
+    const value = col.getValue(node);
+    return value == null || value === "";
   }
 
-  // Whether a row is loaded — an unloaded row is a hard stop for block scanning so the jump
-  // never crosses into (or past) the unloaded region for server-side data.
-  private isRowLoaded(row: number): boolean {
-    return !!this.deps.getRowModel().getRowNodeAtViewIndex(row);
-  }
-
-  /**
-   * Excel-style Ctrl+Arrow block jump from (fromRow, fromCol) along (dRow, dCol) — exactly one of
-   * the deltas is non-zero. Bounded by [0, maxRow] × [firstCol, lastCol]. Rules, based on the
-   * current cell and its immediate neighbor:
-   *  - current filled, neighbor filled → last filled cell of the contiguous run.
-   *  - current filled, neighbor empty  → next filled cell across the gap (or the edge if none).
-   *  - current empty                   → first filled cell ahead (or the edge if none).
-   * For server-side data, an unloaded row is a hard boundary: the scan stops at the last loaded
-   * cell before it, so the effective edge is the first/last loaded row.
-   */
-  private blockJump(fromRow: number, fromCol: number, dRow: number, dCol: number): { row: number; col: number } {
+  /** Excel-style Ctrl+Arrow scan across pinned row and column section boundaries. */
+  private blockJumpPosition(
+    from: CellPos,
+    dRow: number,
+    dCol: number,
+  ): CellPos {
     const minCol = this.firstSelectableColIdx();
     const maxCol = this.lastColIdx();
-    const maxRow = this.maxRow();
-    const inBounds = (r: number, c: number) => r >= 0 && r <= maxRow && c >= minCol && c <= maxCol;
+    const advance = (position: CellPos): CellPos | null => {
+      if (dCol !== 0) {
+        const colIdx = position.colIdx + dCol;
+        return colIdx >= minCol && colIdx <= maxCol ? { ...position, colIdx } : null;
+      }
+      const next = this.stepVertical(position, dRow < 0 ? -1 : 1);
+      if (next.row === position.row && next.rowPinned === position.rowPinned) return null;
+      return this.rowNodeAtPosition(next) ? next : null;
+    };
 
-    const next = (r: number, c: number) => ({ r: r + dRow, c: c + dCol });
-    // A step is traversable only when its target row is loaded (vertical scans); horizontal
-    // scans stay on one row, so loading only needs checking once.
-    const loadedAt = (r: number) => (dRow !== 0 ? this.isRowLoaded(r) : true);
-
-    let r = fromRow;
-    let c = fromCol;
-    const startEmpty = this.isEmptyCell(r, c);
-
-    // First hop must be to a loaded, in-bounds cell; otherwise we're already at the edge.
-    let step = next(r, c);
-    if (!inBounds(step.r, step.c) || !loadedAt(step.r)) {
-      return { row: r, col: c };
-    }
-
-    const neighborEmpty = this.isEmptyCell(step.r, step.c);
+    const first = advance(from);
+    if (!first) return from;
+    const startEmpty = this.isEmptyPosition(from);
+    const neighborEmpty = this.isEmptyPosition(first);
 
     if (!startEmpty && !neighborEmpty) {
-      // Run: advance while the NEXT cell stays filled and loaded → stop at end of the run.
+      let current = from;
       while (true) {
-        const ahead = next(r, c);
-        if (!inBounds(ahead.r, ahead.c) || !loadedAt(ahead.r) || this.isEmptyCell(ahead.r, ahead.c)) break;
-        r = ahead.r; c = ahead.c;
+        const ahead = advance(current);
+        if (!ahead || this.isEmptyPosition(ahead)) break;
+        current = ahead;
       }
-      return { row: r, col: c };
+      return current;
     }
 
-    // Gap / start-on-empty: advance to the first filled, loaded cell ahead. If none exists,
-    // land on the last in-bounds loaded cell (the edge).
-    let lastReachable = { row: r, col: c };
+    let current = from;
+    let lastReachable = from;
     while (true) {
-      const ahead = next(r, c);
-      if (!inBounds(ahead.r, ahead.c) || !loadedAt(ahead.r)) break;
-      r = ahead.r; c = ahead.c;
-      lastReachable = { row: r, col: c };
-      if (!this.isEmptyCell(r, c)) return { row: r, col: c };
+      const ahead = advance(current);
+      if (!ahead) break;
+      current = ahead;
+      lastReachable = ahead;
+      if (!this.isEmptyPosition(ahead)) return ahead;
     }
     return lastReachable;
   }
@@ -293,40 +363,39 @@ export class SelectionModel {
   navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump; pageRows?: number }): CellPos | null {
     const firstCol = this.firstSelectableColIdx();
     const lastCol = this.lastColIdx();
-    const maxRow = this.maxRow();
-    if (lastCol < firstCol || maxRow < 0) return null;
+    const firstPosition = this.firstRowPosition();
+    if (lastCol < firstCol || !firstPosition) return null;
 
     // Nothing selected yet: select the first selectable data cell.
-    if (!this.active || !this.range) {
-      this.selectSingleCell(this.nearestSelectableRow(0, 1), firstCol);
+    if (!this.active) {
+      this.selectSingleCell(firstPosition.row, firstCol, firstPosition.rowPinned);
       return this.active;
     }
 
     const from = this.active;
-    let nextRow = from.row;
+    let nextPosition = { ...from };
     let nextCol = from.colIdx;
 
     if (opts.jump === "block") {
       // Excel-style Ctrl+Arrow: jump across data blocks based on cell contents.
       const delta = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] }[dir];
-      const jumped = this.blockJump(from.row, from.colIdx, delta[0], delta[1]);
-      nextRow = jumped.row;
-      nextCol = jumped.col;
+      nextPosition = this.blockJumpPosition(from, delta[0], delta[1]);
+      nextCol = nextPosition.colIdx;
     } else if (opts.jump === "edge") {
       // Home/End: hard edge, regardless of cell contents.
       switch (dir) {
         case "left": nextCol = firstCol; break;
         case "right": nextCol = lastCol; break;
-        case "up": nextRow = 0; break;
-        case "down": nextRow = maxRow; break;
+        case "up": nextPosition = this.firstRowPosition() ?? nextPosition; break;
+        case "down": nextPosition = this.lastRowPosition() ?? nextPosition; break;
       }
     } else if (opts.jump === "page") {
       // PageUp/PageDown: move by one viewport of rows (supplied by the renderer). Horizontal
       // directions have no natural "page", so fall back to a single-cell step.
       const pageRows = Math.max(1, opts.pageRows ?? 1);
       switch (dir) {
-        case "up": nextRow = Math.max(0, from.row - pageRows); break;
-        case "down": nextRow = Math.min(maxRow, from.row + pageRows); break;
+        case "up": nextPosition = this.moveVertical(from, -pageRows); break;
+        case "down": nextPosition = this.moveVertical(from, pageRows); break;
         case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
         case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
       }
@@ -334,31 +403,25 @@ export class SelectionModel {
       switch (dir) {
         case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
         case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
-        case "up": nextRow = Math.max(0, from.row - 1); break;
-        case "down": nextRow = Math.min(maxRow, from.row + 1); break;
+        case "up": nextPosition = this.stepVertical(from, -1); break;
+        case "down": nextPosition = this.stepVertical(from, 1); break;
       }
     }
 
-    // Skip over non-selectable (group) rows. Prefer the direction of travel; for horizontal moves
-    // (row unchanged) prefer moving down, then up.
-    const preferDir: 1 | -1 = nextRow < from.row ? -1 : 1;
-    nextRow = this.nearestSelectableRow(nextRow, preferDir);
-
-    return this.moveActiveTo(nextRow, nextCol, opts.extend);
+    return this.moveActiveToPosition(
+      { row: nextPosition.row, colIdx: nextCol, rowPinned: nextPosition.rowPinned },
+      opts.extend,
+    );
   }
 
   /** Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End). Returns the new active cell. */
   navigateToCorner(corner: "topLeft" | "bottomRight", extend: boolean): CellPos | null {
     const firstCol = this.firstSelectableColIdx();
     const lastCol = this.lastColIdx();
-    const maxRow = this.maxRow();
-    if (lastCol < firstCol || maxRow < 0) return null;
-
-    const nextRow = corner === "topLeft"
-      ? this.nearestSelectableRow(0, 1)
-      : this.nearestSelectableRow(maxRow, -1);
+    const position = corner === "topLeft" ? this.firstRowPosition() : this.lastRowPosition();
+    if (lastCol < firstCol || !position) return null;
     const nextCol = corner === "topLeft" ? firstCol : lastCol;
-    return this.moveActiveTo(nextRow, nextCol, extend);
+    return this.moveActiveToPosition({ ...position, colIdx: nextCol }, extend);
   }
 
   /** Select the entire grid (all data cells). Anchor at top-left, active at bottom-right. */
@@ -402,18 +465,26 @@ export class SelectionModel {
   // Move the active cell to (row, col): extend the range from the existing anchor, or collapse
   // to a single cell. Shared by navigate() and navigateToCorner().
   private moveActiveTo(row: number, col: number, extend: boolean): CellPos | null {
+    return this.moveActiveToPosition({ row, colIdx: col }, extend);
+  }
+
+  private moveActiveToPosition(position: CellPos, extend: boolean): CellPos | null {
     if (extend) {
       if (!this.anchor) {
-        this.anchor = this.active ? { ...this.active } : { row, colIdx: col };
+        this.anchor = this.active ? { ...this.active } : { ...position };
       }
-      this.updateRange(row, col);
+      this.updateRange(position.row, position.colIdx, position.rowPinned);
     } else {
-      this.selectSingleCell(row, col);
+      this.selectSingleCell(position.row, position.colIdx, position.rowPinned);
     }
     return this.active;
   }
 
   clampToView() {
+    if (this.active?.rowPinned) {
+      if (this.active.row >= (this.deps.getPinnedRowCount?.(this.active.rowPinned) ?? 0)) this.clearRange();
+      return;
+    }
     if (!this.range) return;
     if (this.range.pageStartIdx !== this.deps.getPageStartIdx()) return;
     const viewCount = this.deps.getRowModel().getViewCount();

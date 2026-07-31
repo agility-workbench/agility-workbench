@@ -12,7 +12,7 @@ interface SelectionRendererParams {
   rowPool: () => RowPoolDef[];
   startIndex: () => number;
   leafColumns: () => Column[];
-  ensureCellVisible: (viewIdx: number, colIdx: number) => void;
+  ensureCellVisible: (viewIdx: number, colIdx: number, rowPinned?: "top" | "bottom") => void;
   // Number of fully-visible rows in the viewport — used to size PageUp/PageDown moves.
   viewportRows: () => number;
 }
@@ -102,6 +102,7 @@ export class SelectionRenderer {
             : (colSelected && !nextColSelected);
 
         const isActive = !!activeCell && Number.isFinite(colIdx)
+          && !activeCell.rowPinned
           && viewIndex === activeCell.row && activeCell.colIdx >= colIdx && activeCell.colIdx <= colEnd;
 
         const cls = cell.classList;
@@ -132,7 +133,7 @@ export class SelectionRenderer {
     viewIndex: number | null,
     rangeRow: boolean,
     rowSelected: boolean,
-    activeCell: { row: number; colIdx: number } | null,
+    activeCell: { row: number; colIdx: number; rowPinned?: "top" | "bottom" } | null,
   ) {
     const host = slot.fullWidthCellEl;
     const cls = host.classList;
@@ -146,7 +147,7 @@ export class SelectionRenderer {
     }
 
     const selected = rowSelected || rangeRow;
-    const isActive = !!activeCell && viewIndex === activeCell.row;
+    const isActive = !!activeCell && !activeCell.rowPinned && viewIndex === activeCell.row;
     cls.toggle("selected", selected);
     // A one-cell row is bordered on all four sides whenever selected.
     cls.toggle("selected-top", selected);
@@ -257,14 +258,18 @@ export class SelectionRenderer {
 
   /** Called when core emits focusChanged — scroll the active cell into view and, when the
    * active-cell highlight is enabled, repaint so the outline follows the focused cell. */
-  onFocusChanged(viewIdx?: number, colIdx?: number) {
+  onFocusChanged(viewIdx?: number, colIdx?: number, rowPinned?: "top" | "bottom") {
     if (viewIdx == null || colIdx == null) return;
-    this.params.ensureCellVisible(viewIdx, colIdx);
+    this.params.ensureCellVisible(viewIdx, colIdx, rowPinned);
     if (this.params.core.options.highlightActiveCell) this.refreshSelectionStyles();
   }
 
   // ---------------- DOM resolution ----------------
-  getCellLocation(target: EventTarget | null): { viewIdx: number; colIdx: number } | null {
+  getCellLocation(target: EventTarget | null): {
+    viewIdx: number;
+    colIdx: number;
+    rowPinned?: "top" | "bottom";
+  } | null {
     const cell = (target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return null;
     if (cell.classList.contains("pte-row-number-cell")) return null;
@@ -275,13 +280,21 @@ export class SelectionRenderer {
     // clicking a group cell resolves to no location (the click clears/keeps selection like empty
     // space). The chevron toggle is handled earlier in onCellMouseDown either way. Editing is
     // always blocked on group rows in the core's editStart.
-    if (!this.params.core.options.groupRowsSelectable && rowEl.classList.contains("pte-group-row")) return null;
+    if (
+      !rowEl.dataset.rowPinned
+      && !this.params.core.options.groupRowsSelectable
+      && rowEl.classList.contains("pte-group-row")
+    ) return null;
 
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
     if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
-
-    return { viewIdx, colIdx };
+    const rowPinned = rowEl.dataset.rowPinned;
+    return {
+      viewIdx,
+      colIdx,
+      rowPinned: rowPinned === "top" || rowPinned === "bottom" ? rowPinned : undefined,
+    };
   }
 
   // ---------------- Input handlers (translate → dispatch) ----------------
@@ -301,6 +314,54 @@ export class SelectionRenderer {
     }
 
     const ctrl = e.ctrlKey || e.metaKey;
+
+    // Optional fixed runtime mode switch. It is deliberately handled before all other grid
+    // shortcuts, but only after the editor/form-control guards above.
+    if (
+      ctrl
+      && e.shiftKey
+      && !e.altKey
+      && (e.key === " " || e.code === "Space")
+      && this.params.core.options.treeData?.enableKeyboardNavigationModeSwitch
+    ) {
+      e.preventDefault();
+      const next = this.params.core.getKeyboardNavigationMode() === "grid" ? "hierarchy" : "grid";
+      this.params.core.dispatch({
+        type: "keyboardNavigationModeSet",
+        mode: next,
+        source: "shortcut",
+      });
+      return;
+    }
+
+    // Hierarchy mode replaces Ctrl/Cmd block navigation only inside the generated hierarchy
+    // column. Shift keeps its existing range/block semantics, and every other column is untouched.
+    if (
+      ctrl
+      && !e.shiftKey
+      && !e.altKey
+      && this.params.core.getKeyboardNavigationMode() === "hierarchy"
+      && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp")
+    ) {
+      const active = this.params.core.getActiveCell();
+      const hierarchy = this.params.core.getColumnModel().getHierarchyColumn();
+      const activeColumn = active
+        ? this.params.core.getColumnModel().getLeaves()[active.colIdx]
+        : undefined;
+      if (hierarchy && activeColumn?.instanceID === hierarchy.instanceID) {
+        e.preventDefault();
+        this.params.core.dispatch({
+          type: "treeNavigate",
+          command: e.key === "ArrowRight"
+            ? "expand"
+            : e.key === "ArrowLeft"
+              ? "collapse"
+              : "parent",
+        });
+        return;
+      }
+    }
+
     // Shift-based range extension only applies when range selection is enabled; otherwise Shift is
     // ignored and navigation collapses to a single moving cell.
     const extend = e.shiftKey && this.params.core.options.rangeSelection;
@@ -442,11 +503,33 @@ export class SelectionRenderer {
     // it doesn't also start a cell-range selection.
     const toggle = (e.target as HTMLElement | null)?.closest(".pte-group-toggle") as HTMLElement | null;
     if (toggle && this.params.root.contains(toggle)) {
+      const rowEl = toggle.closest(".pte-row") as HTMLElement | null;
+      const cellEl = toggle.closest(".pte-cell") as HTMLElement | null;
       const groupId = toggle.getAttribute("data-group-id")
-        ?? (toggle.closest(".pte-row") as HTMLElement | null)?.getAttribute("data-group-id");
+        ?? rowEl?.getAttribute("data-group-id");
       if (groupId) {
         e.preventDefault();
         this.params.core.dispatch({ type: "groupToggleExpand", groupId });
+        // The chevron consumes mousedown so it does not start a drag/range gesture. For tree data,
+        // still make its hierarchy cell the active keyboard target after the synchronous reflow;
+        // otherwise the subsequent mode-toggle / hierarchy keys are sent outside the grid or act
+        // on a previously-focused cell.
+        if ((this.params.core.options.treeData || rowEl?.dataset.rowPinned) && rowEl && cellEl) {
+          const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
+          const colIdx = Number(cellEl.dataset.colIdx);
+          if (Number.isFinite(viewIdx) && Number.isFinite(colIdx)) {
+            this.params.core.dispatch({
+              type: "focusSet",
+              viewIdx,
+              colIdx,
+              rowPinned: rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
+                ? rowEl.dataset.rowPinned
+                : undefined,
+              reason: "mouse",
+            });
+          }
+        }
+        this.params.root.focus();
         return;
       }
     }
@@ -492,6 +575,7 @@ export class SelectionRenderer {
       type: "rangeSelectSet",
       viewIdx: location.viewIdx,
       colIdx: location.colIdx,
+      rowPinned: location.rowPinned,
       mode: "start",
     });
     this.params.root.focus();
@@ -499,7 +583,7 @@ export class SelectionRenderer {
     // Single-click editing: the same click that selects the cell also opens the editor. Core no-ops
     // for non-editable columns / group rows, so this is safe to always dispatch when enabled.
     if (this.params.core.options.editTrigger === "singleClick") {
-      const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);
+      const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
       if (cell) this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
     }
   }
@@ -510,24 +594,30 @@ export class SelectionRenderer {
     if (this.params.core.options.editTrigger !== "doubleClick") return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
-    const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx);
+    const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
     if (!cell) return;
     e.preventDefault();
     this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
   }
 
   // Resolve a view-index/leaf-index cell position to a stable { rowId, colId } reference.
-  private cellRefFromLocation(viewIdx: number, colIdx: number): CellRef | null {
-    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+  private cellRefFromLocation(
+    viewIdx: number,
+    colIdx: number,
+    rowPinned?: "top" | "bottom",
+  ): CellRef | null {
+    const rowId = rowPinned
+      ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)?.id ?? null
+      : this.params.core.getRowIdAtViewIndex(viewIdx);
     const col = this.params.leafColumns()[colIdx];
     if (!rowId || !col) return null;
-    return { rowId, colId: col.instanceID };
+    return { rowId, colId: col.instanceID, rowPinned };
   }
 
   private activeCellRef(): CellRef | null {
     const active = this.params.core.getActiveCell();
     if (!active) return null;
-    return this.cellRefFromLocation(active.row, active.colIdx);
+    return this.cellRefFromLocation(active.row, active.colIdx, active.rowPinned);
   }
 
   onCellMouseMove(e: MouseEvent) {
@@ -538,6 +628,7 @@ export class SelectionRenderer {
       type: "rangeSelectSet",
       viewIdx: location.viewIdx,
       colIdx: location.colIdx,
+      rowPinned: location.rowPinned,
       mode: "extend",
     });
   }
@@ -560,9 +651,15 @@ export class SelectionRenderer {
     if (!rowEl || !this.params.root.contains(rowEl)) return;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     if (!Number.isFinite(viewIdx)) return;
-    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    const rowPinned = rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
+      ? rowEl.dataset.rowPinned
+      : undefined;
+    const pinnedNode = rowPinned
+      ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)
+      : null;
+    const rowId = pinnedNode?.id ?? this.params.core.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
-    const rowNode = this.params.core.getRowModel().getRowNode(rowId);
+    const rowNode = pinnedNode ?? this.params.core.getRowModel().getRowNode(rowId);
     const isGroup = !!rowNode?.isGroup;
 
     this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, event: e });

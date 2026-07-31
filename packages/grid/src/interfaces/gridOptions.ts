@@ -6,7 +6,7 @@ import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
-import type { DefaultColDef } from "./column";
+import type { ColDef, DefaultColDef } from "./column";
 import type {
   GridEventCellClickedParams,
   GridEventRowClickedParams,
@@ -83,6 +83,63 @@ export type GroupDisplayType = "singleColumn" | "multipleColumns" | "groupRows";
  *   non-grouped sort can reorder the groups as well as their local rows.
  */
 export type GroupSortMode = "local" | "hierarchy" | "global";
+
+/** Keyboard behavior for Ctrl/Cmd+Arrow while the generated tree-data column is active. */
+export type TreeDataKeyboardNavigationMode = "grid" | "hierarchy";
+
+/** Common presentation hooks shared by every client-side tree-data relationship mode. */
+export interface TreeDataCommonOptions<Row = any> {
+  /**
+   * Label shown in the generated tree column. Path mode defaults to the final path segment; the
+   * other modes fall back to `row.name`, `row.label`, and finally the stable row id.
+   */
+  getLabel?: (row: Row) => unknown;
+  /**
+   * Definition for the generated hierarchy column. It is a regular movable column: label, width,
+   * pinning, sorting, filtering, visibility, menu flags, and other ordinary column options apply.
+   * Defaults to an unpinned column labelled "Hierarchy".
+   */
+  columnDef?: Partial<ColDef>;
+  /**
+   * "grid" preserves the ordinary Ctrl/Cmd+Arrow data-block jumps. In "hierarchy" mode,
+   * Ctrl/Cmd+Right expands; Ctrl/Cmd+Left collapses an expanded parent or focuses the direct parent
+   * from a leaf/already-collapsed parent; Ctrl/Cmd+Up always focuses the direct parent while the
+   * generated hierarchy column is active. Defaults to "grid".
+   */
+  keyboardNavigationMode?: TreeDataKeyboardNavigationMode;
+  /**
+   * Enables the fixed Ctrl/Cmd+Shift+Space shortcut for switching between grid and hierarchy
+   * navigation at runtime. The shortcut itself is deliberately not configurable. Defaults to false.
+   */
+  enableKeyboardNavigationModeSwitch?: boolean;
+}
+
+/** A flat row set where each row supplies its complete root-to-node path. */
+export interface TreeDataPathOptions<Row = any> extends TreeDataCommonOptions<Row> {
+  mode: "path";
+  getPath: (row: Row) => readonly (string | number)[];
+}
+
+/** A flat row set where each row refers to its parent's stable row id. */
+export interface TreeDataParentOptions<Row = any> extends TreeDataCommonOptions<Row> {
+  mode: "parent";
+  getParentId: (row: Row) => string | number | null | undefined;
+}
+
+/** A nested row set where `rowData` contains roots and this callback returns direct children. */
+export interface TreeDataChildrenOptions<Row = any> extends TreeDataCommonOptions<Row> {
+  mode: "children";
+  getChildren: (row: Row) => readonly Row[] | null | undefined;
+}
+
+/**
+ * Describes how client-side rows relate to one another. Relationship modes are deliberately
+ * explicit and mutually exclusive; all three normalize to the same runtime tree.
+ */
+export type TreeDataOptions<Row = any> =
+  | TreeDataPathOptions<Row>
+  | TreeDataParentOptions<Row>
+  | TreeDataChildrenOptions<Row>;
 
 /** Frozen row band occupied by a row. `null` means the row is not explicitly pinned. */
 export type RowPinnedPosition = "top" | "bottom";
@@ -696,6 +753,11 @@ export interface GridOptions {
    */
   groupSortMode?: GroupSortMode;
   /**
+   * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
+   * Tree data is mutually exclusive with column-value row grouping.
+   */
+  treeData?: TreeDataOptions;
+  /**
    * Whether group (summary) rows participate in cell selection, keyboard navigation, and clipboard
    * copy/cut. When false (default), group rows are skipped: clicking a group cell selects nothing,
    * arrow/block navigation jumps over group rows to the nearest leaf, and copy/cut omits group
@@ -706,7 +768,8 @@ export interface GridOptions {
   /**
    * Pins displayed row-model nodes into a frozen top or bottom band. This is primarily useful for
    * generated group nodes, which cannot be supplied through pinnedTopRowData/pinnedBottomRowData.
-   * The pinned row mirrors the live node and retains group expansion and aggregate values.
+   * The live node moves out of the body section while pinned and retains group expansion and
+   * aggregate values; unpinning returns it to its model-owned body position.
    */
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   /**
@@ -851,6 +914,7 @@ export interface InternalGridOptions extends GridOptions {
   groupDisplayType: GroupDisplayType;
   groupDefaultExpanded: number;
   groupSortMode: GroupSortMode;
+  treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   groupRowsSticky: boolean;

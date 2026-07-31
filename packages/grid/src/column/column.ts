@@ -13,7 +13,11 @@ import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
 
 type InternalColumnRole = "rowNumber" | "autoGroup";
-type InternalColDef = ColDef & { __internalRole?: InternalColumnRole; __groupLevel?: number };
+type InternalColDef = ColDef & {
+  __internalRole?: InternalColumnRole;
+  __groupLevel?: number;
+  __treeColumn?: boolean;
+};
 
 export class Column {
   instanceID: string;
@@ -97,6 +101,7 @@ export class Column {
   collator?: Intl.Collator | null
   showExpander: boolean = false;
   internalRole?: InternalColumnRole;
+  private treeColumn: boolean = false;
   // For a "multipleColumns" auto-group column: the grouping level (0-based) this column represents.
   // Undefined for the "singleColumn" auto-group column and all non-group columns.
   groupLevel?: number;
@@ -193,6 +198,7 @@ export class Column {
       : isNullOrUndefined(col.columnGroupShow) ? true : (isTrue(col.openByDefault) ? col.columnGroupShow === "open" : col.columnGroupShow === "closed");
     this.exportable = !isFalse(col.exportable);
     this.internalRole = (col as InternalColDef).__internalRole;
+    this.treeColumn = (col as InternalColDef).__treeColumn === true;
     this.groupLevel = (col as InternalColDef).__groupLevel;
     this.updateComputedWidth();
     // Preserve a prior user resize across rebuilds that reuse this instance (grouping/move); a full
@@ -231,6 +237,10 @@ export class Column {
 
   isAutoGroupColumn(): boolean {
     return this.internalRole === "autoGroup";
+  }
+
+  isTreeColumn(): boolean {
+    return this.treeColumn;
   }
 
   /* The following props are derived from children and should not be set directly on group columns

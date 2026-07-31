@@ -11,7 +11,9 @@ import {
   GroupSortMode,
   InternalGridOptions,
   QuickFilterMatchMode,
+  RowPinnedPosition,
   RuntimeGridOptions,
+  TreeDataKeyboardNavigationMode,
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -92,11 +94,14 @@ export class GridCore implements IGridCore {
   // The cell with an open ActionFrame (persistent frame + form popover), or null. Only one at a
   // time (like editing); opening the editor closes it.
   private actionFrameCell: CellRef | null = null;
+  private keyboardNavigationMode: TreeDataKeyboardNavigationMode;
+  private displayedPinnedRows: Record<RowPinnedPosition, IRowNode[]> = { top: [], bottom: [] };
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
+    this.keyboardNavigationMode = this.options.treeData?.keyboardNavigationMode ?? "grid";
     this.history = new HistoryModel(this.options.undoLimit);
     this.id = crypto.randomUUID();
     this.columnModel = new ColumnModel(this.options);
@@ -115,6 +120,9 @@ export class GridCore implements IGridCore {
       getRowIdAtViewIndex: (viewIdx) => this.getRowIdAtViewIndex(viewIdx),
       getPageStartIdx: () => this.getPageStartIdx(),
       isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
+      getPinnedRowCount: (position) => this.displayedPinnedRows[position].length,
+      getPinnedRowNode: (position, rowIndex) =>
+        this.displayedPinnedRows[position][rowIndex] ?? null,
     });
     this.bindOptionCallbacks();
   }
@@ -190,6 +198,12 @@ export class GridCore implements IGridCore {
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupSortMode: options.groupSortMode ?? "local",
+      // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
+      treeData: options.rowModelType === "serverSide"
+        ? undefined
+        : options.treeData
+          ? { ...options.treeData } as typeof options.treeData
+          : undefined,
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       isRowPinned: options.isRowPinned,
       groupRowsSticky: options.groupRowsSticky ?? false,
@@ -435,7 +449,6 @@ export class GridCore implements IGridCore {
   // Re-resolve grouped columns against the rebuilt column set (colDef replacement creates new
   // Column instances) and re-synthesize the auto-group columns so grouping survives a colDef swap.
   private reconcileGroupModelColumns(): void {
-    if (this.groupColumns.length === 0) return;
     const resolved: Column[] = [];
     const seen = new Set<string>();
     for (const col of this.groupColumns) {
@@ -445,7 +458,11 @@ export class GridCore implements IGridCore {
       resolved.push(next);
     }
     this.groupColumns = resolved;
-    this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType);
+    this.columnModel.setRowGroupColumns(
+      resolved,
+      this.options.groupDisplayType,
+      this.options.treeData != null,
+    );
   }
 
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
@@ -745,6 +762,10 @@ export class GridCore implements IGridCore {
       console.warn("Row grouping is only supported on the 'clientSide' row model.");
       return;
     }
+    if (this.options.treeData) {
+      console.warn("Column-value row grouping cannot be combined with tree data.");
+      return;
+    }
     const resolved: Column[] = [];
     const seen = new Set<string>();
     for (const colId of colIds) {
@@ -755,7 +776,7 @@ export class GridCore implements IGridCore {
       resolved.push(col);
     }
     this.groupColumns = resolved;
-    this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType);
+    this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType, false);
     // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
@@ -772,7 +793,7 @@ export class GridCore implements IGridCore {
   // Expand or collapse a single group node, then re-flatten the grouped view (no filter/sort/tree
   // rebuild). When `expanded` is omitted the node's state is toggled.
   toggleGroupExpand(groupId: string, expanded?: boolean): void {
-    if (this.groupColumns.length === 0) return;
+    if (this.groupColumns.length === 0 && !this.options.treeData) return;
     this.rowModel.applyRequest(this.createRowModelRequest(
       "group",
       { start: this.pageStartIdx, end: this.pageEndIdx },
@@ -781,6 +802,26 @@ export class GridCore implements IGridCore {
       undefined,
       { groupId, expanded },
     ));
+    // Collapsing a hierarchy can remove enough display rows to invalidate the current page. Keep
+    // the core page range (not just the footer label) on the last valid page, then rebuild the
+    // paginated row slice so the viewport cannot remain empty with a stale out-of-range offset.
+    if (this.paginationEnabled) {
+      const pageSize = this.pageEndIdx - this.pageStartIdx;
+      const lastPageIndex = pageSize > 0
+        ? Math.max(Math.ceil(this.rowModel.getRowCount() / pageSize) - 1, 0)
+        : 0;
+      const currentPageIndex = pageSize > 0 ? Math.floor(this.pageStartIdx / pageSize) : 0;
+      if (currentPageIndex > lastPageIndex) {
+        this.pageStartIdx = lastPageIndex * pageSize;
+        this.pageEndIdx = this.pageStartIdx + pageSize;
+        this.rowModel.applyRequest(this.createRowModelRequest(
+          "pagination",
+          { start: this.pageStartIdx, end: this.pageEndIdx },
+          this.getInitialServerSideLoadRange(),
+          true,
+        ));
+      }
+    }
     this.clearSelectionForColumnChange();
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("paginationChanged", this.getPaginationInfo());
@@ -797,7 +838,11 @@ export class GridCore implements IGridCore {
     if (this.options.groupDisplayType === groupDisplayType) return;
 
     this.options.groupDisplayType = groupDisplayType;
-    this.columnModel.setRowGroupColumns(this.groupColumns, groupDisplayType);
+    this.columnModel.setRowGroupColumns(
+      this.groupColumns,
+      groupDisplayType,
+      this.options.treeData != null,
+    );
     this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "group" });
 
@@ -808,7 +853,8 @@ export class GridCore implements IGridCore {
   setGroupSortMode(groupSortMode: GroupSortMode): void {
     if (this.options.groupSortMode === groupSortMode) return;
     this.options.groupSortMode = groupSortMode;
-    if (this.groupColumns.length === 0 || this.rowModel.getType() !== "clientSide") return;
+    if ((this.groupColumns.length === 0 && !this.options.treeData)
+      || this.rowModel.getType() !== "clientSide") return;
 
     this.rowModel.applyRequest(this.createRowModelRequest(
       "sort",
@@ -836,6 +882,99 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+  }
+
+  getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
+    return this.options.treeData ? this.keyboardNavigationMode : "grid";
+  }
+
+  setKeyboardNavigationMode(
+    mode: TreeDataKeyboardNavigationMode,
+    source: "api" | "shortcut" | "options" = "api",
+  ): void {
+    const next = this.options.treeData ? mode : "grid";
+    if (this.keyboardNavigationMode === next) return;
+    const previousMode = this.keyboardNavigationMode;
+    this.keyboardNavigationMode = next;
+    if (this.options.treeData) this.options.treeData.keyboardNavigationMode = next;
+    this.emit("keyboardNavigationModeChanged", { mode: next, previousMode, source });
+  }
+
+  setTreeDataKeyboardNavigationOptions(
+    mode: TreeDataKeyboardNavigationMode = "grid",
+    enableModeSwitch: boolean = false,
+  ): void {
+    if (!this.options.treeData) return;
+    this.options.treeData.enableKeyboardNavigationModeSwitch = enableModeSwitch;
+    this.setKeyboardNavigationMode(mode, "options");
+  }
+
+  private navigateTree(command: "expand" | "collapse" | "parent"): void {
+    if (!this.options.treeData || this.keyboardNavigationMode !== "hierarchy") return;
+    const active = this.selectionModel.getActiveCell();
+    const hierarchy = this.columnModel.getHierarchyColumn();
+    if (!active || !hierarchy) return;
+    const activeColumn = this.columnModel.getLeaves()[active.colIdx];
+    if (activeColumn?.instanceID !== hierarchy.instanceID) return;
+
+    const node = active.rowPinned
+      ? this.getDisplayedPinnedRow(active.rowPinned, active.row)
+      : this.rowModel.getRowNodeAtViewIndex(active.row);
+    if (!node) return;
+
+    if (command === "expand" || (command === "collapse" && !!node.children?.length && node.isExpanded)) {
+      const targetExpanded = command === "expand";
+      if (!node.children?.length || node.isExpanded === targetExpanded) return;
+      this.toggleGroupExpand(node.id, targetExpanded);
+
+      // toggleGroupExpand reconciles selection because the visible row set changed. Restore focus
+      // to the same hierarchy node, whose page-local index may have changed after page clamping.
+      const updated = this.rowModel.getRowNode(node.id);
+      const pinnedIndex = active.rowPinned
+        ? this.displayedPinnedRows[active.rowPinned].findIndex(row => row.id === node.id)
+        : -1;
+      const localViewIndex = updated ? updated.viewIndex - this.getPageStartIdx() : -1;
+      if (active.rowPinned && pinnedIndex >= 0) {
+        this.selectionModel.selectSingleCell(pinnedIndex, active.colIdx, active.rowPinned);
+        this.emitSelectionChanged("keyboard");
+        this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
+      } else if (localViewIndex >= 0 && localViewIndex < this.rowModel.getViewCount()) {
+        this.selectionModel.selectSingleCell(localViewIndex, active.colIdx);
+        this.emitSelectionChanged("keyboard");
+        this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
+      }
+      return;
+    }
+
+    // Ctrl/Cmd+Left follows the tree-view fallback: collapse an expanded parent first, then move
+    // to the direct parent when the current node is a leaf or is already collapsed.
+    if (!node.parentId) return;
+    const parent = this.rowModel.getRowNode(node.parentId);
+    if (!parent || parent.viewIndex < 0) return;
+
+    const pinnedParentIndex = active.rowPinned
+      ? this.displayedPinnedRows[active.rowPinned].findIndex(row => row.id === parent.id)
+      : -1;
+    if (active.rowPinned && pinnedParentIndex >= 0) {
+      this.selectionModel.selectSingleCell(pinnedParentIndex, active.colIdx, active.rowPinned);
+      this.emitSelectionChanged("keyboard");
+      this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
+      return;
+    }
+
+    if (this.paginationEnabled) {
+      const pageSize = this.pageEndIdx - this.pageStartIdx;
+      if (pageSize <= 0) return;
+      const targetPage = Math.floor(parent.viewIndex / pageSize);
+      const currentPage = Math.floor(this.pageStartIdx / pageSize);
+      if (targetPage !== currentPage) this.applyPagination(targetPage, pageSize, true);
+    }
+
+    const localViewIndex = parent.viewIndex - this.getPageStartIdx();
+    if (localViewIndex < 0 || localViewIndex >= this.rowModel.getViewCount()) return;
+    this.selectionModel.selectSingleCell(localViewIndex, active.colIdx);
+    this.emitSelectionChanged("keyboard");
+    this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
   }
 
   setPinnedRowOptions(options: {
@@ -1089,8 +1228,9 @@ export class GridCore implements IGridCore {
   // Whether the row at a view index can hold a cell selection / be a navigation target. Group rows
   // are skipped unless groupRowsSelectable is enabled; all leaf rows are selectable.
   private isViewRowSelectable(viewIdx: number): boolean {
-    if (this.options.groupRowsSelectable) return true;
     const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    if (node && this.isBodyRowPinned(node.id)) return false;
+    if (this.options.groupRowsSelectable) return true;
     return !node || !node.isGroup;
   }
 
@@ -1099,7 +1239,7 @@ export class GridCore implements IGridCore {
   // isFullWidthRow option opts in. Single source of truth for the renderer.
   isFullWidthNode(node: IRowNode | null | undefined): boolean {
     if (!node) return false;
-    if (node.isGroup && this.options.groupDisplayType === "groupRows") return true;
+    if (!this.options.treeData && node.isGroup && this.options.groupDisplayType === "groupRows") return true;
     return !!this.options.isFullWidthRow?.(node);
   }
 
@@ -1149,6 +1289,44 @@ export class GridCore implements IGridCore {
 
   getActiveCell(): CellPos | null {
     return this.selectionModel.getActiveCell();
+  }
+
+  setDisplayedPinnedRows(top: IRowNode[], bottom: IRowNode[]): void {
+    const active = this.selectionModel.getActiveCell();
+    const activeNode = active?.rowPinned
+      ? this.displayedPinnedRows[active.rowPinned][active.row] ?? null
+      : active
+        ? this.rowModel.getRowNodeAtViewIndex(active.row) ?? null
+        : null;
+    this.displayedPinnedRows = { top: top.slice(), bottom: bottom.slice() };
+
+    // Preserve the logical cell while its row crosses a section boundary. This is the row-axis
+    // equivalent of retaining the active column while it moves between left/center/right.
+    if (active && activeNode) {
+      const topIndex = top.findIndex(row => row.id === activeNode.id);
+      const bottomIndex = bottom.findIndex(row => row.id === activeNode.id);
+      if (topIndex >= 0) {
+        this.selectionModel.selectSingleCell(topIndex, active.colIdx, "top");
+      } else if (bottomIndex >= 0) {
+        this.selectionModel.selectSingleCell(bottomIndex, active.colIdx, "bottom");
+      } else if (active.rowPinned) {
+        const bodyNode = this.rowModel.getRowNode(activeNode.id);
+        const bodyIndex = bodyNode ? bodyNode.viewIndex - this.getPageStartIdx() : -1;
+        if (bodyIndex >= 0 && bodyIndex < this.rowModel.getViewCount()) {
+          this.selectionModel.selectSingleCell(bodyIndex, active.colIdx);
+        }
+      }
+    }
+    this.selectionModel.clampToView();
+  }
+
+  getDisplayedPinnedRow(position: RowPinnedPosition, rowIndex: number): IRowNode | null {
+    return this.displayedPinnedRows[position][rowIndex] ?? null;
+  }
+
+  isBodyRowPinned(rowId: GridId): boolean {
+    return this.displayedPinnedRows.top.some(row => row.id === rowId && row.viewIndex >= 0)
+      || this.displayedPinnedRows.bottom.some(row => row.id === rowId && row.viewIndex >= 0);
   }
 
   getEditingCell(): CellRef | null {
@@ -1421,6 +1599,12 @@ export class GridCore implements IGridCore {
       case "groupToggleExpand":
         this.toggleGroupExpand(action.groupId, action.expanded);
         break;
+      case "keyboardNavigationModeSet":
+        this.setKeyboardNavigationMode(action.mode, action.source);
+        break;
+      case "treeNavigate":
+        this.navigateTree(action.command);
+        break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
         if (!col || col.isInternal()) return;
@@ -1478,7 +1662,11 @@ export class GridCore implements IGridCore {
         break;
       }
       case "focusSet": {
-        const ok = this.selectionModel.selectSingleCell(action.viewIdx, action.colIdx);
+        const ok = this.selectionModel.selectSingleCell(
+          action.viewIdx,
+          action.colIdx,
+          action.rowPinned,
+        );
         if (ok) {
           this.emitSelectionChanged(action.reason ?? "api");
           this.emitFocusChanged(this.selectionModel.getActiveCell(), action.reason ?? "api");
@@ -1487,9 +1675,13 @@ export class GridCore implements IGridCore {
       }
       case "rangeSelectSet": {
         if (action.mode === "extend") {
-          this.selectionModel.updateRange(action.viewIdx, action.colIdx);
+          this.selectionModel.updateRange(action.viewIdx, action.colIdx, action.rowPinned);
         } else {
-          this.selectionModel.startFromCell({ viewIdx: action.viewIdx, colIdx: action.colIdx });
+          this.selectionModel.startFromCell({
+            viewIdx: action.viewIdx,
+            colIdx: action.colIdx,
+            rowPinned: action.rowPinned,
+          });
         }
         this.emitSelectionChanged("mouse");
         this.emitFocusChanged(this.selectionModel.getActiveCell(), "mouse");
@@ -1807,9 +1999,14 @@ export class GridCore implements IGridCore {
     if (active) {
       params.viewIdx = active.row;
       params.colIdx = active.colIdx;
-      const rowId = this.getRowIdAtViewIndex(active.row);
+      params.rowPinned = active.rowPinned;
+      const rowId = active.rowPinned
+        ? this.getDisplayedPinnedRow(active.rowPinned, active.row)?.id ?? null
+        : this.getRowIdAtViewIndex(active.row);
       const col = this.columnModel.getLeaves()[active.colIdx];
-      if (rowId && col) params.next = { rowId, colId: col.instanceID };
+      if (rowId && col) {
+        params.next = { rowId, colId: col.instanceID, rowPinned: active.rowPinned };
+      }
     }
     this.emit("focusChanged", params);
   }

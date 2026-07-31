@@ -7,7 +7,7 @@ workspaces.
   TypeScript with no framework dependency.
 - **React binding** — using React? Install [`@agility-workbench/react-grid`](https://www.npmjs.com/package/@agility-workbench/react-grid),
   a thin `<Grid />` adapter built on this core.
-- **Virtualized** rendering, client-side and server-side row models, row grouping,
+- **Virtualized** rendering, client-side and server-side row models, row grouping, tree data,
   aggregation, quick filter, editing, and CSV / Excel export (zero-dependency `.xlsx` writer).
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
   per grid instance.
@@ -186,8 +186,8 @@ const core = new GridCore(new CanvasMeasurer(), {
 Replace either band live with `api.setPinnedTopRowData(rows)` /
 `api.setPinnedBottomRowData(rows)`.
 
-Generated group nodes can be mirrored in either band without removing their original hierarchy
-position. Their chevrons and aggregate values remain connected to the live group:
+Generated group nodes can move into either band without leaving a second body copy. They remain in
+the row model, so their chevrons, hierarchy position, and aggregate values stay connected:
 
 ```ts
 const options = {
@@ -203,7 +203,97 @@ api.setRowPinned(groupNode.id, null); // unpin
 `groupRowsSticky` stacks the expanded ancestors of the first visible row at the top as the body
 scrolls. It supports `singleColumn`, `multipleColumns`, and full-width `groupRows` display. Top and
 bottom bands each cap at 30% of the grid height and get an independent vertical scrollbar when
-their content exceeds that space; the central body keeps its own scrollbar.
+their content exceeds that space; the central body keeps its own scrollbar. The top and bottom
+row sections are outside the body rather than body children. Explicitly pinned groups and sticky
+ancestors join the existing top/bottom sections instead of creating another row surface. Pinned
+cells retain section-local row and global column coordinates, so arrows navigate top → body →
+bottom exactly as horizontal navigation crosses left → center → right column sections.
+
+## Tree data
+
+Client-side tree data supports three explicit relationship modes. All modes share expansion,
+sibling sorting, ancestor-preserving filtering, selection, editing, saved-view expansion, sticky
+ancestors, and export behavior. Tree data cannot be combined with column-value row grouping.
+
+Use complete paths when rows arrive as a flat hierarchy. Missing prefixes become deterministic
+synthetic ancestors:
+
+```ts
+const options = {
+  rowIdKey: "id",
+  treeData: {
+    mode: "path",
+    getPath: row => row.path, // ["World", "Europe", "France", "Paris"]
+  },
+};
+```
+
+Use parent references for database-shaped flat records. Input order is irrelevant; `null` or
+`undefined` creates a root:
+
+```ts
+const options = {
+  rowIdKey: "id",
+  treeData: {
+    mode: "parent",
+    getParentId: row => row.parentId,
+    getLabel: row => row.name,
+    columnDef: {
+      label: "Organization",
+      width: 280,
+    },
+  },
+};
+```
+
+Use nested children when `rowData` already contains root objects with nested arrays:
+
+```ts
+const options = {
+  rowIdKey: "id",
+  treeData: {
+    mode: "children",
+    getChildren: row => row.children,
+    getLabel: row => row.name,
+  },
+};
+```
+
+Real rows remain data-bearing and editable even when they own children. Duplicate ids, duplicate
+paths, and relationship cycles throw descriptive errors. A missing parent-id reference is rendered
+as a root with a console diagnostic. In nested-children mode, transaction additions may add root
+subtrees and removing a parent removes its subtree; use `setRowData` when changing the parent of an
+existing nested row. Tree data uses one generated hierarchy column whose normal column definition
+can be supplied through `treeData.columnDef`. It is unpinned by default and participates in ordinary
+column movement, sorting, filtering, visibility, pinning, menus, and export. `groupDisplayType`
+continues to apply only to column-value row grouping.
+
+Tree data has two keyboard-navigation modes:
+
+```ts
+treeData: {
+  mode: "parent",
+  getParentId: row => row.parentId,
+  keyboardNavigationMode: "hierarchy",
+  enableKeyboardNavigationModeSwitch: true,
+}
+```
+
+`"grid"` (the default) preserves the normal Ctrl/Cmd+Arrow data-block jumps. In `"hierarchy"`
+mode, Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses an expanded parent (or focuses the direct
+parent from a leaf/already-collapsed parent), and Ctrl/Cmd+Up always focuses the direct parent when
+the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block navigation.
+When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime; applications can
+also call `api.getKeyboardNavigationMode()` and `api.setKeyboardNavigationMode(mode)`.
+
+### Planned keyboard-shortcut discovery
+
+A future grid-owned shortcut reference must show the shortcuts that are valid for the current
+context rather than a static global list. It should account for the active keyboard-navigation
+mode, focused area/cell, hierarchy availability, selection and editing state, enabled features, and
+platform-specific Ctrl/Cmd labels. It must be reachable from within the grid by keyboard and
+pointer, expose the active navigation mode, and update immediately when runtime options or focus
+change.
 
 ## Styling
 

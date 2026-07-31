@@ -10,6 +10,7 @@ import {
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
   GridEventViewportChangedParams,
+  GridEventKeyboardNavigationModeChangedParams,
   Unsubscribe,
 } from "../events/events";
 
@@ -29,6 +30,7 @@ interface GridRendererCoreEventBinderParams {
   onFocusChanged: (params: GridEventFocusChangedParams) => void;
   onEditingChanged: (params: GridEventEditingChangedParams) => void;
   onCellsChanged: (params: GridEventCellsChangedParams) => void;
+  onKeyboardNavigationModeChanged: (params: GridEventKeyboardNavigationModeChangedParams) => void;
 }
 
 export class GridRendererCoreEventBinder {
@@ -79,6 +81,9 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("cellsChanged", (params: GridEventCellsChangedParams) => {
         this.params.onCellsChanged(params);
+      }),
+      this.params.core.on("keyboardNavigationModeChanged", (params) => {
+        this.params.onKeyboardNavigationModeChanged(params);
       }),
     );
   }

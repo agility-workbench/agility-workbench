@@ -78,6 +78,8 @@ export interface IRowModel<Row = any> {
   // All synthetic group nodes in the current grouping (empty when not grouping). Used e.g. to size
   // columns to their per-group aggregate values.
   getGroupNodes(): IRowNode<Row>[];
+  /** Root nodes of the current grouped/tree hierarchy, including data-bearing tree roots. */
+  getHierarchyRoots?(): IRowNode<Row>[];
 
   // identity
   getRowNode(id: string): IRowNode<Row> | undefined;

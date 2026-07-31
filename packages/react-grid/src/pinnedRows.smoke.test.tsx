@@ -63,9 +63,7 @@ describe("pinned and sticky rows", () => {
     const toolbar = gridRoot.querySelector<HTMLElement>(".pte-grid-toolbar")!;
     const header = gridRoot.querySelector<HTMLElement>(".pte-header-wrapper")!;
     const floatingHost = gridRoot.querySelector<HTMLElement>(".pte-quick-filter-floating-host")!;
-    const topBand = gridRoot.querySelector<HTMLElement>(
-      ".pte-pinned-rows-top:not(.pte-sticky-group-rows)",
-    )!;
+    const topBand = gridRoot.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
     const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
     const filter = floatingHost.querySelector<HTMLElement>(".pte-quick-filter")!;
     const children = Array.from(gridRoot.children);
@@ -126,6 +124,58 @@ describe("pinned and sticky rows", () => {
     container.remove();
   });
 
+  it("navigates top, body, and bottom row sections without changing column coordinates", async () => {
+    const { container, apiRef, root } = await mount({
+      cellSelection: true,
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+      pinnedBottomRowData: [{ id: "total", region: "Total", country: "All", sales: 150 }],
+    });
+    const core = apiRef.current!.getCore();
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
+    const pinnedCell = gridRoot.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-rows-center .pte-cell",
+    )!;
+
+    expect(body.querySelector(".pte-pinned-rows")).toBeNull();
+    expect(pinnedCell.closest(".pte-row")?.dataset.rowPinned).toBe("top");
+    expect(pinnedCell.closest(".pte-row")?.dataset.viewIdx).toBe("0");
+    expect(pinnedCell.dataset.colIdx).toBe("1");
+
+    await act(async () => {
+      pinnedCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+
+    await act(async () => {
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowDown",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
+
+    await act(async () => {
+      for (let index = 1; index < ROWS.length; index++) {
+        gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowDown",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "bottom" });
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("gives top, bottom, and central body independent vertical scrollbars", async () => {
     const { container, apiRef, root } = await mount();
     const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
@@ -142,9 +192,7 @@ describe("pinned and sticky rows", () => {
       apiRef.current!.setPinnedBottomRowData(pinnedRows);
     });
 
-    const top = container.querySelector<HTMLElement>(
-      ".pte-pinned-rows-top:not(.pte-sticky-group-rows)",
-    )!;
+    const top = container.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
     const bottom = container.querySelector<HTMLElement>(".pte-pinned-rows-bottom")!;
     const topVertical = top.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
     const bottomVertical = bottom.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
@@ -180,6 +228,7 @@ describe("pinned and sticky rows", () => {
     const group = core.getRowModel().getRowNodeAtViewIndex(0)!;
 
     await act(async () => {
+      core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 1, reason: "keyboard" });
       apiRef.current!.setRowPinned(group.id, "top");
     });
     const topBand = container.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
@@ -188,6 +237,8 @@ describe("pinned and sticky rows", () => {
     )!;
     expect(pinned).toBeTruthy();
     expect(topBand.textContent).toContain(group.groupKey);
+    expect(container.querySelector(`.pte-body [data-row-id='${group.id}']`)).toBeNull();
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
 
     const before = core.getRowModel().getViewCount();
     await act(async () => {
@@ -205,6 +256,7 @@ describe("pinned and sticky rows", () => {
     expect(container.querySelector(
       `.pte-pinned-rows-top .pte-pinned-row[data-row-id='${group.id}']`,
     )).toBeNull();
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 0 });
 
     await act(async () => root.unmount());
     container.remove();
@@ -237,16 +289,22 @@ describe("pinned and sticky rows", () => {
       await new Promise(resolve => requestAnimationFrame(resolve));
     });
     expect(container.querySelectorAll(
-      ".pte-sticky-group-rows .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
+      ".pte-pinned-rows-top .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     ).length).toBe(2);
     const firstRoot = core.getRowModel().getRowNodeAtViewIndex(0)!;
     const firstChildGroup = core.getRowModel().getRowNodeAtViewIndex(1)!;
     expect(container.querySelector(
-      `.pte-sticky-group-rows [data-row-id='${firstRoot.id}']`,
+      `.pte-pinned-rows-top [data-row-id='${firstRoot.id}']`,
     )).toBeTruthy();
     expect(container.querySelector(
-      `.pte-sticky-group-rows [data-row-id='${firstChildGroup.id}']`,
+      `.pte-pinned-rows-top [data-row-id='${firstChildGroup.id}']`,
     )).toBeTruthy();
+    expect(container.querySelector(
+      `.pte-body [data-row-id='${firstRoot.id}']`,
+    )).toBeNull();
+    expect(container.querySelector(
+      `.pte-body [data-row-id='${firstChildGroup.id}']`,
+    )).toBeNull();
 
     await act(async () => {
       scroller.scrollTop = leafIndex * 43 + 1;
@@ -258,38 +316,60 @@ describe("pinned and sticky rows", () => {
       ".pte-pinned-rows-top .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     );
     expect(stickyRows.length).toBe(2);
-    // Sticky ancestry is an overlay inside the body. Activating the first sticky group must not
-    // open the normal in-flow top band, which would push the body down by one row and cause jitter.
-    const staticTopBand = container.querySelector<HTMLElement>(
-      ".pte-pinned-rows-top:not(.pte-sticky-group-rows)",
-    )!;
-    const stickyBand = container.querySelector<HTMLElement>(".pte-sticky-group-rows")!;
-    expect(staticTopBand.style.display).toBe("none");
-    expect(stickyBand.parentElement?.classList.contains("pte-body")).toBe(true);
-    expect(stickyBand.style.display).toBe("flex");
-    const stickyVertical = stickyBand.querySelector<HTMLElement>(".pte-pinned-rows-vertical")!;
-    expect(stickyVertical.classList.contains("scrollable")).toBe(false);
-    expect(stickyVertical.style.pointerEvents).toBe("none");
-    expect(stickyBand.style.right).toBe("15px");
-    expect(stickyBand.style.width).toBe("auto");
-    expect(stickyVertical.style.display).toBe("none");
+    // Sticky ancestry joins the same top row section as every other pinned-top row.
+    const staticTopBand = container.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
+    expect(container.querySelector(".pte-sticky-group-rows")).toBeNull();
+    expect(staticTopBand.parentElement).toBe(container.querySelector(".pte-root"));
+    expect(container.querySelector(".pte-body .pte-pinned-rows")).toBeNull();
+    expect(staticTopBand.style.display).toBe("flex");
     const bodyVertical = container.querySelector<HTMLElement>(".pte-scroller-vertical-spacer")!;
     expect(bodyVertical).toBeTruthy();
-    expect(stickyBand.contains(bodyVertical)).toBe(false);
+    expect(staticTopBand.contains(bodyVertical)).toBe(false);
 
-    const stickyRowId = stickyBand.querySelector<HTMLElement>(
+    const stickyRowId = staticTopBand.querySelector<HTMLElement>(
       ".pte-pinned-row.pte-group-row",
     )!.dataset.rowId!;
-    const stickyCopies = stickyBand.querySelectorAll<HTMLElement>(
+    const stickyCopies = staticTopBand.querySelectorAll<HTMLElement>(
       `.pte-pinned-row[data-row-id='${stickyRowId}']`,
     );
     await act(async () => {
-      stickyBand.querySelector<HTMLElement>(
+      staticTopBand.querySelector<HTMLElement>(
         `.pte-pinned-rows-center .pte-pinned-row[data-row-id='${stickyRowId}'] .pte-cell`,
       )!
         .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(Array.from(stickyCopies).every(row => row.classList.contains("pte-row-hover"))).toBe(true);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("keeps application-pinned top rows outside the body when sticky ancestors are active", async () => {
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+      groupRowsSticky: true,
+      groupDefaultExpanded: -1,
+    });
+    await act(async () => {
+      apiRef.current!.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+      const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+      scroller.scrollTop = 1;
+      scroller.dispatchEvent(new Event("scroll"));
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
+    const topBand = gridRoot.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
+
+    expect(topBand.parentElement).toBe(gridRoot);
+    expect(topBand.textContent).toContain("Target");
+    expect(topBand.querySelector("[data-row-id='p:top:target']")).toBeTruthy();
+    expect(topBand.querySelectorAll(
+      ".pte-pinned-rows-center .pte-pinned-row.pte-group-row",
+    ).length).toBe(2);
+    expect(gridRoot.querySelector(".pte-sticky-group-rows")).toBeNull();
+    expect(body.querySelector(".pte-pinned-rows")).toBeNull();
 
     await act(async () => root.unmount());
     container.remove();

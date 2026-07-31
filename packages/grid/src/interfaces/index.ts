@@ -20,3 +20,10 @@ export type { IRowModel, RowModelType } from "./iRowModel";
 export type { IRowNode } from "./iRowNode";
 export type { MenuItem } from "./menuItem";
 export type { SortModel } from "./sort";
+export type {
+  TreeDataOptions,
+  TreeDataPathOptions,
+  TreeDataParentOptions,
+  TreeDataChildrenOptions,
+  TreeDataKeyboardNavigationMode,
+} from "./gridOptions";

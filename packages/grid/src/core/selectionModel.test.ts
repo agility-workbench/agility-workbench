@@ -13,7 +13,12 @@ import { SelectionModel } from "./selectionModel";
  */
 function makeHarness(
   grid: (unknown[] | null)[],
-  opts: { leadingCols?: number; pageStart?: number } = {},
+  opts: {
+    leadingCols?: number;
+    pageStart?: number;
+    pinnedTopCount?: number;
+    pinnedBottomCount?: number;
+  } = {},
 ) {
   const leadingCols = opts.leadingCols ?? 1;
   const state = { grid, pageStart: opts.pageStart ?? 0 };
@@ -55,6 +60,8 @@ function makeHarness(
     getPageStartIdx: () => state.pageStart,
     // No group rows in these tests — every row is selectable.
     isRowSelectable: () => true,
+    getPinnedRowCount: position =>
+      position === "top" ? opts.pinnedTopCount ?? 0 : opts.pinnedBottomCount ?? 0,
   });
 
   return { model, state };
@@ -240,6 +247,44 @@ describe("SelectionModel — plain arrow navigation", () => {
     expect(m.getSelectionRange()).toMatchObject({ rowStart: 0, rowEnd: 1, colStart: 1, colEnd: 1 });
     expect(m.getActiveCell()).toEqual({ row: 1, colIdx: 1 });
     expect(m.getAnchor()).toEqual({ row: 0, colIdx: 1 });
+  });
+});
+
+describe("SelectionModel — pinned row sections", () => {
+  it("moves vertically through top, body, and bottom while preserving the global column", () => {
+    const m = makeHarness(
+      [["a", "b"], ["c", "d"]],
+      { pinnedTopCount: 2, pinnedBottomCount: 1 },
+    ).model;
+
+    expect(m.navigate("down", { extend: false })).toEqual({
+      row: 0, colIdx: 1, rowPinned: "top",
+    });
+    expect(m.navigate("right", { extend: false })).toEqual({
+      row: 0, colIdx: 2, rowPinned: "top",
+    });
+    expect(m.navigate("down", { extend: false })).toEqual({
+      row: 1, colIdx: 2, rowPinned: "top",
+    });
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 2 });
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 1, colIdx: 2 });
+    expect(m.navigate("down", { extend: false })).toEqual({
+      row: 0, colIdx: 2, rowPinned: "bottom",
+    });
+    expect(m.navigate("up", { extend: false })).toEqual({ row: 1, colIdx: 2 });
+  });
+
+  it("uses pinned sections as the grid corners", () => {
+    const m = makeHarness(
+      [["a", "b"]],
+      { pinnedTopCount: 1, pinnedBottomCount: 2 },
+    ).model;
+    expect(m.navigateToCorner("topLeft", false)).toEqual({
+      row: 0, colIdx: 1, rowPinned: "top",
+    });
+    expect(m.navigateToCorner("bottomRight", false)).toEqual({
+      row: 1, colIdx: 2, rowPinned: "bottom",
+    });
   });
 });
 

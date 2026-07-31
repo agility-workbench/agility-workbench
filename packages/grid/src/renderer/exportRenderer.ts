@@ -13,11 +13,11 @@ import {
 
 type SelectionRange = { rowStart: number; rowEnd: number; colStart: number; colEnd: number };
 
-/** Append every leaf-descendant's `data` under `node` (pre-order) to `out`. */
+/** Append every data-bearing node under `node` (pre-order) to `out`. */
 function collectLeafData(node: IRowNode, out: any[]): void {
+  if (!node.isGroup) out.push(node.data);
   for (const child of node.children ?? []) {
-    if (child.isGroup) collectLeafData(child, out);
-    else out.push(child.data);
+    collectLeafData(child, out);
   }
 }
 
@@ -36,7 +36,8 @@ function pruneGroupTree(roots: IRowNode[], selected: Set<string>): IRowNode[] {
   const prune = (node: IRowNode, ancestorSelected: boolean): IRowNode | null => {
     const selfSelected = ancestorSelected || selected.has(node.id);
 
-    if (!node.isGroup) {
+    const hierarchyNode = node.isGroup || !!node.children?.length;
+    if (!hierarchyNode) {
       return selfSelected ? node : null;
     }
 
@@ -55,8 +56,7 @@ function pruneGroupTree(roots: IRowNode[], selected: Set<string>): IRowNode[] {
     // leaf count so the displayed "(N)" reflects the kept subset, not the original group size.
     const leaves: any[] = [];
     for (const c of keptChildren) {
-      if (c.isGroup) collectLeafData(c, leaves);
-      else leaves.push(c.data);
+      collectLeafData(c, leaves);
     }
     return { ...node, children: keptChildren, childCount: leaves.length };
   };
@@ -151,7 +151,7 @@ export class ExportRenderer {
     if (!columns.length) return null;
 
     const groupColumns = this.params.core.getRowGroupColumns();
-    const grouped = groupColumns.length > 0;
+    const grouped = groupColumns.length > 0 || !!this.params.core.getOptions().treeData;
 
     if (grouped) {
       return this.buildGroupedExportConfig(options, scope, columns, groupColumns);
@@ -272,7 +272,8 @@ export class ExportRenderer {
     groupColumns: Column[],
   ): ExportConfig | null {
     const rowModel = this.params.core.getRowModel();
-    const allRoots = rowModel.getGroupNodes().filter(n => n.level === 0);
+    const allRoots = rowModel.getHierarchyRoots?.()
+      ?? rowModel.getGroupNodes().filter(node => node.level === 0);
     if (allRoots.length === 0) return null;
 
     // Resolve the active selection to a set of selected node ids + an optional column-id filter +
@@ -305,9 +306,12 @@ export class ExportRenderer {
       groupRoots,
       groupColumns,
       groupDisplayType: this.params.core.getOptions().groupDisplayType,
+      treeData: !!this.params.core.getOptions().treeData,
       // Only surface the synthesized group column when the selection actually covers it — a cell
       // range that excludes the group column must not conjure it back into the export.
-      autoGroupColumn: includeGroupColumn ? this.params.core.getColumnModel().getAutoGroupColumns()[0] : undefined,
+      autoGroupColumn: includeGroupColumn
+        ? this.params.core.getColumnModel().getHierarchyColumn()
+        : undefined,
       groupMode: options.groupMode ?? "tree",
       // Leaf-row colSpan is honored in grouped exports too; full-width (group) rows keep their
       // existing SUBTOTAL-header layout, so only getCellColSpan is meaningful here.
@@ -352,7 +356,7 @@ export class ExportRenderer {
       }
       // The synthesized group column (singleColumn mode) is only in scope if its global leaf index
       // falls inside the range's column span.
-      const autoGroup = this.params.core.getColumnModel().getAutoGroupColumns()[0];
+      const autoGroup = this.params.core.getColumnModel().getHierarchyColumn();
       const autoGroupIdx = autoGroup
         ? this.params.core.getColumnModel().leafColumnLookup.get(autoGroup.instanceID)?.globalIndex
         : undefined;

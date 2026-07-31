@@ -5,7 +5,11 @@ import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
-import { QuickFilterMatchMode, RowPinnedPosition } from "../interfaces/gridOptions";
+import {
+  QuickFilterMatchMode,
+  RowPinnedPosition,
+  TreeDataKeyboardNavigationMode,
+} from "../interfaces/gridOptions";
 import { FilterItem } from "../interfaces/filter";
 import { GridViewState } from "../interfaces/gridView";
 import { SortItemUpdate } from "../interfaces/sort";
@@ -138,6 +142,14 @@ export class GridAPI implements IGridAPI {
 
   getQuickFilterText(): string {
     return this.core.getQuickFilterText();
+  }
+
+  getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
+    return this.core.getKeyboardNavigationMode();
+  }
+
+  setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void {
+    this.dispatch({ type: "keyboardNavigationModeSet", mode, source: "api" });
   }
 
   captureViewState(): GridViewState {

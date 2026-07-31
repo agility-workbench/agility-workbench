@@ -122,6 +122,7 @@ export class BodyWindowRenderer {
       if (viewIndex >= total) {
         this.applyFullWidthLayout(slot, null);
         this.hideSlot(slot);
+        this.clearSlotIdentity(slot);
         this.clearRowStyling(slot);
         this.params.applySelectionToSlot(slot, null);
         continue;
@@ -132,6 +133,18 @@ export class BodyWindowRenderer {
       if (!row) {
         this.applyFullWidthLayout(slot, null);
         this.hideSlot(slot);
+        this.clearSlotIdentity(slot);
+        this.clearRowStyling(slot);
+        this.params.applySelectionToSlot(slot, null);
+        continue;
+      }
+      if (this.params.core.isBodyRowPinned(row.id)) {
+        // The node has transitioned to the top/bottom row section. Keep its model index stable for
+        // sorting/group ancestry, but remove every body fragment immediately so it cannot be
+        // painted, hit-tested, or focused twice during the transition.
+        this.applyFullWidthLayout(slot, null);
+        this.hideSlot(slot);
+        this.clearSlotIdentity(slot);
         this.clearRowStyling(slot);
         this.params.applySelectionToSlot(slot, null);
         continue;
@@ -277,6 +290,16 @@ export class BodyWindowRenderer {
     if (slot.leadingRowEl) slot.leadingRowEl.style.display = "none";
     if (slot.leftRowEl) slot.leftRowEl.style.display = "none";
     if (slot.rightRowEl) slot.rightRowEl.style.display = "none";
+  }
+
+  private clearSlotIdentity(slot: RowPoolDef) {
+    for (const element of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (!element) continue;
+      element.removeAttribute("row-id");
+      element.removeAttribute("data-view-idx");
+      element.removeAttribute("data-group-id");
+      element.classList.remove("pte-group-row");
+    }
   }
 
   private showSlot(slot: RowPoolDef) {

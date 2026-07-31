@@ -12,7 +12,7 @@
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
 > functions**, **quick-filter layout/anchoring options**, a built-in **column panel**, and
-> **pinned/sticky rows**. The suite is now **540 tests across 70
+> **pinned/sticky rows**. The suite is now **555 tests across 72
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -76,7 +76,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (540 tests / 70 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (555 tests / 72 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -480,7 +480,7 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Per-group aggregation | ✅ Complete | `csrm/clientSide.ts` computes over each group's leaf descendants via `AggregateCalculator` |
 | Group default-expanded depth + stable expansion across refresh | ✅ Complete | `groupDefaultExpanded` option; content-based `groupNodeId` |
 | Full-width rows (span all sections, pinned left of viewport) | ✅ Complete (CSRM) | `isFullWidthRow` + `fullWidthCellRenderer` options; `renderer/body/window.ts`; `groupRows` group rows are auto full-width |
-| **Tree data (parent-child hierarchy from data)** | ❌ Missing | Distinct from value grouping — see §10 |
+| Tree data (path / parent-id / nested-children relationships) | ✅ Complete (CSRM) | `csrm/treeData.ts`; normalized into the grouped-view pipeline |
 | **Server-side grouping** | ❌ Missing | SSRM `getGroupNodes` returns `[]` — see §10 |
 
 ### 5.3 Filter Features
@@ -627,7 +627,7 @@ columns once, in `resolveRows`/`resolveColumns`.
 | Full-width row rendering | ✅ Complete | `renderer/body/window.ts` (spans all sections, pinned left of viewport) |
 | Pinned top/bottom data rows | ✅ Complete | `renderer/pinnedRows/pinnedRowsRenderer.ts`; application-owned, outside the row model |
 | Explicitly pinned generated group rows | ✅ Complete | `isRowPinned`; `api.setRowPinned()`; live chevrons + aggregates |
-| Sticky group ancestry | ✅ Complete (CSRM) | `groupRowsSticky`; active nested ancestors share the pinned top band |
+| Sticky group ancestry | ✅ Complete (CSRM) | `groupRowsSticky`; active nested ancestors join the existing top pinned-row section outside `.pte-body` |
 | Conditional row class / style (`getRowClass` / `getRowStyle`) | ✅ Complete | `renderer/body/dynamicStyle.ts` (diffed against pooled DOM) |
 | Row hover highlighting (`rowHover`) | ✅ Complete | `renderer/body/rowHover.ts`; default on |
 | Column hover highlighting (`columnHover`) | ✅ Complete | `renderer/body/columnHover.ts`; opt-in |
@@ -741,7 +741,7 @@ lifecycle; the content is a custom component.
 | Normal formatting and custom cell renderers | ✅ Complete | Reuses `BodyCellRenderer` across leading/left/center/right sections |
 | Generated group-row pinning | ✅ Complete | `isRowPinned` callback and `api.setRowPinned(groupId, position)` |
 | Live group expansion and aggregates | ✅ Complete | Mirrored nodes retain stable group id, chevron, hierarchy level, and aggregate values |
-| Automatically sticky nested ancestors | ✅ Complete (CSRM) | `groupRowsSticky`; follows the first visible node's `parentId` chain |
+| Automatically sticky nested ancestors | ✅ Complete (CSRM) | `groupRowsSticky`; follows the first visible node's `parentId` chain in the shared, navigable top row section |
 | All group display modes | ✅ Complete | `singleColumn`, `multipleColumns`, and full-width `groupRows` |
 | Horizontal section synchronization | ✅ Complete | Shared scroll synchronizer updates pinned row bands with header/body/footer |
 | Independent vertical overflow | ✅ Complete | Top/bottom application-pinned bands own a scrollbar column and cap at 30%; sticky group ancestry leaves the body's scrollbar lane exposed |
@@ -838,7 +838,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **540 tests across 70
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **558 tests across 73
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 
@@ -914,18 +914,24 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
   options**, **custom filter function**.
 - **Column panel / column chooser** — docked search, individual/filtered-bulk visibility, pinning,
   drag/keyboard ordering, and reset (`renderer/columnPanel/`).
+- **Tree data** — path, parent-reference, and nested-children relationship modes normalized through
+  `csrm/treeData.ts`; real parent rows remain data-bearing and editable. Tree data supports runtime
+  grid/hierarchy keyboard-navigation modes, an opt-in fixed mode toggle, and parent navigation
+  across pagination pages.
 
 ### Genuine gaps (no implementation)
 
 **Tier 2 — remaining new capabilities:**
 - **Dynamic / auto row height + text wrapping** — all rows are fixed height (`renderer/body/viewport.ts` sizes the viewport as `rowCount * rowHeight`); no `getRowHeight` callback, `autoHeight`, or `wrapText`. (Full-width rows keep the standard row height.)
-- **Tree data** — hierarchy from the data itself (`getDataPath`/`treeData`), distinct from value grouping.
 - **Master/detail rows** — none (full-width rows exist, but no expandable detail panel).
 
 **Tier 3 — platform features:**
 - **Server-side grouping** — grouping is CSRM-only (`ssrm` `getGroupNodes` returns `[]`).
 - **Pivoting** — appears only as a string in event `reason` enums; no model/logic.
 - **Accessibility** — ARIA is menu/filter-only; the data grid lacks `role="grid"/"row"/"gridcell"/"columnheader"`, row/col counts, and a roving-tabindex focus model.
+- **Contextual keyboard-shortcut reference** — the grid does not yet provide an in-grid view of the
+  shortcuts currently available for the focused context. The future surface must react to active
+  navigation mode, focus, editing/selection state, enabled features, and platform modifier labels.
 
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.

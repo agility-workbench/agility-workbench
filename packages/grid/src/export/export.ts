@@ -57,6 +57,8 @@ export interface ExportConfig {
    * Defaults to "singleColumn" when omitted.
    */
   groupDisplayType?: GroupDisplayType;
+  /** Hierarchy is tree data: real parent nodes remain data rows rather than aggregate headers. */
+  treeData?: boolean;
   /**
    * The synthesized auto-group column (grid-internal, normally non-exportable). Supplied for
    * "singleColumn" mode so the export can include a group-heading column the grid otherwise hides
@@ -824,6 +826,80 @@ const buildFlatLeafBody = (
   return { rows, leafRows, merges };
 };
 
+/**
+ * Tree-data export keeps real parents as ordinary data rows and emits only missing path ancestors
+ * as bold synthetic headings. The generated tree column carries each node's label/path.
+ */
+const buildTreeDataBody = (
+  roots: IRowNode[],
+  columns: Column[],
+  bodyStyles: (CellStyle | undefined)[],
+  config: ExportConfig,
+  firstSheetRow: number,
+  flat: boolean,
+): GroupedBody => {
+  const rows: SheetCell[][] = [];
+  const rowMeta: RowMeta[] = [];
+  const leafRows: any[] = [];
+  const merges: MergeRange[] = [];
+  let dataIndex = 0;
+  const treeColumnIndex = columns.findIndex(column => column.isTreeColumn());
+
+  const walk = (
+    node: IRowNode,
+    path: string[],
+    ancestorCollapsed: boolean,
+  ) => {
+    const label = node.treeKey ?? node.groupKey ?? node.id;
+    const nextPath = [...path, String(label)];
+
+    if (node.isGroup) {
+      if (!flat) {
+        const cells: SheetCell[] = columns.map(() => ({
+          value: { kind: "empty" } as CellValue,
+        }));
+        if (treeColumnIndex >= 0) {
+          cells[treeColumnIndex] = {
+            value: { kind: "string", value: String(label) },
+            style: { bold: true },
+          };
+        }
+        rows.push(cells);
+        rowMeta.push({
+          outlineLevel: node.level + 1,
+          hidden: ancestorCollapsed,
+          collapsed: !node.isExpanded,
+        });
+      }
+    } else {
+      const built = emitDataRowCells(node.data, columns, bodyStyles, config, dataIndex++);
+      if (treeColumnIndex >= 0) {
+        built.cells[treeColumnIndex] = {
+          value: {
+            kind: "string",
+            value: flat ? nextPath.join(" / ") : String(label),
+          },
+          style: bodyStyles[treeColumnIndex],
+        };
+      }
+      rows.push(built.cells);
+      merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
+      rowMeta.push(flat ? {} : {
+        outlineLevel: node.level + 1,
+        hidden: ancestorCollapsed,
+        collapsed: node.children?.length ? !node.isExpanded : undefined,
+      });
+      leafRows.push(node.data);
+    }
+
+    const childrenHidden = ancestorCollapsed || (!flat && !!node.children?.length && !node.isExpanded);
+    for (const child of node.children ?? []) walk(child, nextPath, flat ? false : childrenHidden);
+  };
+
+  for (const root of roots) walk(root, [], false);
+  return { rows, rowMeta, leafRows, merges };
+};
+
 /** Build the .xlsx bytes for a config, without downloading. */
 export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
   const grouped = !!config.groupRoots && config.groupRoots.length > 0;
@@ -835,8 +911,12 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     let columns = resolveColumns(config);
     // In singleColumn mode the group heading lives in a dedicated column the grid hides from the
     // exportable set — prepend it so the export mirrors the on-screen layout.
-    const hasGroupColumn = grouped && mode === "singleColumn" && !!config.autoGroupColumn;
-    if (hasGroupColumn) {
+    const hierarchyColumnAlreadyIncluded = !!config.autoGroupColumn
+      && columns.some(column => column.instanceID === config.autoGroupColumn!.instanceID);
+    const hasGroupColumn = grouped
+      && (mode === "singleColumn" || !!config.treeData)
+      && !!config.autoGroupColumn;
+    if (hasGroupColumn && !hierarchyColumnAlreadyIncluded) {
       columns = [config.autoGroupColumn!, ...columns];
     }
 
@@ -887,7 +967,21 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     // the nested subtotals); a flat leaf export has neither, so its grand total uses plain functions.
     const treeExport = grouped && groupMode === "tree";
 
-    if (grouped && groupMode === "leaves") {
+    if (grouped && config.treeData) {
+      rowMeta = sheetRows.map(() => ({}));
+      const body = buildTreeDataBody(
+        config.groupRoots!,
+        columns,
+        bodyStyles,
+        config,
+        dataStartRow,
+        groupMode === "leaves",
+      );
+      sheetRows.push(...body.rows);
+      rowMeta.push(...body.rowMeta);
+      merges.push(...body.merges);
+      footerRows = body.leafRows;
+    } else if (grouped && groupMode === "leaves") {
       const body = buildFlatLeafBody(config.groupRoots!, columns, bodyStyles, mode, hasGroupColumn, config, dataStartRow);
       sheetRows.push(...body.rows);
       merges.push(...body.merges);

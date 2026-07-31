@@ -40,50 +40,39 @@ interface PinnedRowsRendererParams {
   rowHeight: () => number;
   bodyCellRenderer: BodyCellRenderer;
   onHeightChanged: () => void;
+  onBodyPartitionChanged: () => void;
 }
 
 /**
  * Frozen rows are deliberately a renderer concern: application-owned pinned data does not enter the
- * row model, while group rows mirror nodes already owned by the client-side model. Both bands reuse
- * BodyCellRenderer, so formatting, group labels, aggregates, and custom renderers stay consistent.
+ * row model, while pinned group/tree-parent rows remain model-owned but move out of the body paint
+ * partition. Both bands reuse BodyCellRenderer, so formatting, hierarchy labels, aggregates, and
+ * custom renderers stay consistent.
  */
 export class PinnedRowsRenderer implements PinnedRowsController {
   private readonly top: BandElements;
   private readonly bottom: BandElements;
-  private readonly sticky: BandElements;
   private readonly manualPinned = new Map<string, RowPinnedPosition>();
   private readonly topRendererMaps = new Set<Map<string, RendererRecord>>();
   private readonly bottomRendererMaps = new Set<Map<string, RendererRecord>>();
-  private readonly stickyRendererMaps = new Set<Map<string, RendererRecord>>();
   private dataSequence = 0;
   private dataIds = new WeakMap<object, string>();
   private topSignature = "";
   private bottomSignature = "";
-  private stickySignature = "";
   private lastScrollTop = 0;
   private topCount = 0;
   private bottomCount = 0;
+  private bodyPartitionSignature = "";
 
   constructor(private params: PinnedRowsRendererParams) {
     this.top = this.createBand("top");
     this.bottom = this.createBand("bottom");
-    this.sticky = this.createBand("top", true);
     this.params.root.insertBefore(this.top.root, this.params.body);
     this.params.body.insertAdjacentElement("afterend", this.bottom.root);
-    this.params.body.appendChild(this.sticky.root);
+  }
 
-    const toggleGroup = (event: MouseEvent) => {
-      const toggle = (event.target as HTMLElement | null)?.closest(".pte-group-toggle");
-      if (!toggle) return;
-      const groupId = toggle.getAttribute("data-group-id");
-      if (!groupId) return;
-      event.preventDefault();
-      event.stopPropagation();
-      this.params.core.dispatch({ type: "groupToggleExpand", groupId });
-    };
-    this.top.root.addEventListener("mousedown", toggleGroup);
-    this.bottom.root.addEventListener("mousedown", toggleGroup);
-    this.sticky.root.addEventListener("mousedown", toggleGroup);
+  getInteractionRoots(): HTMLDivElement[] {
+    return [this.top.root, this.bottom.root];
   }
 
   setPinnedTopRowData(rows: any[]): void {
@@ -114,10 +103,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   render(scrollTop = this.lastScrollTop, force = false): void {
     this.lastScrollTop = Math.max(0, scrollTop);
-    const { top, bottom, sticky } = this.resolveRows(this.lastScrollTop);
+    const { top, bottom } = this.resolveRows(this.lastScrollTop);
     const topSignature = this.signature(top);
     const bottomSignature = this.signature(bottom);
-    const stickySignature = this.signature(sticky);
     const heightChanged = top.length !== this.topCount || bottom.length !== this.bottomCount;
 
     if (force || topSignature !== this.topSignature) {
@@ -128,10 +116,19 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.renderBand(this.bottom, bottom);
       this.bottomSignature = bottomSignature;
     }
-    if (force || stickySignature !== this.stickySignature) {
-      this.renderBand(this.sticky, sticky);
-      this.stickySignature = stickySignature;
+    this.params.core.setDisplayedPinnedRows(
+      top.map(item => item.node),
+      bottom.map(item => item.node),
+    );
+    const bodyPartitionSignature = [...top, ...bottom]
+      .filter(item => item.node.viewIndex >= 0)
+      .map(item => `${item.position}:${item.node.id}`)
+      .join("|");
+    if (bodyPartitionSignature !== this.bodyPartitionSignature) {
+      this.bodyPartitionSignature = bodyPartitionSignature;
+      this.params.onBodyPartitionChanged();
     }
+    this.refreshSelectionStyles();
     this.updateLayout();
     this.topCount = top.length;
     this.bottomCount = bottom.length;
@@ -145,9 +142,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.bottom.center.scrollLeft = center;
     this.top.right.scrollLeft = right;
     this.bottom.right.scrollLeft = right;
-    this.sticky.left.scrollLeft = left;
-    this.sticky.center.scrollLeft = center;
-    this.sticky.right.scrollLeft = right;
   }
 
   updateLayout(): void {
@@ -158,40 +152,61 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const rightWidth = this.columnsWidth(model.getRightLeaves());
     const cap = this.params.root.clientWidth * 0.35;
 
-    for (const band of [this.top, this.bottom, this.sticky]) {
+    for (const band of [this.top, this.bottom]) {
       this.sizeSection(band.leading, band.leadingHost, leadingWidth, leadingWidth);
-      this.sizeSection(band.left, band.leftHost, Math.min(leftWidth, cap), leftWidth);
       band.centerHost.style.width = `${centerWidth}px`;
       band.centerHost.style.minWidth = `${centerWidth}px`;
-      this.sizeSection(band.right, band.rightHost, Math.min(rightWidth, cap), rightWidth);
       band.leading.style.display = leadingWidth > 0 ? "block" : "none";
       band.left.style.display = leftWidth > 0 ? "block" : "none";
       band.right.style.display = rightWidth > 0 ? "block" : "none";
     }
   }
 
+  refreshSelectionStyles(): void {
+    const active = this.params.core.options.highlightActiveCell
+      ? this.params.core.getActiveCell()
+      : null;
+    for (const band of [this.top, this.bottom]) {
+      band.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
+        const row = cell.closest<HTMLElement>(".pte-row");
+        const rowIndex = Number(row?.dataset.viewIdx);
+        const colIndex = Number(cell.dataset.colIdx);
+        const rowPinned = row?.dataset.rowPinned;
+        cell.classList.toggle(
+          "pte-active-cell",
+          !!active
+          && active.rowPinned === rowPinned
+          && active.row === rowIndex
+          && active.colIdx === colIndex,
+        );
+      });
+    }
+  }
+
+  ensureCellVisible(position: RowPinnedPosition, rowIndex: number): void {
+    const band = position === "top" ? this.top : this.bottom;
+    const rowTop = rowIndex * this.params.rowHeight();
+    const rowBottom = rowTop + this.params.rowHeight();
+    const viewportHeight = band.center.clientHeight;
+    if (rowTop < band.center.scrollTop) {
+      this.syncBandVertical(band, band.center, rowTop);
+    } else if (rowBottom > band.center.scrollTop + viewportHeight) {
+      this.syncBandVertical(band, band.center, rowBottom - viewportHeight);
+    }
+  }
+
   destroy(): void {
     this.destroyRendererMaps(this.topRendererMaps);
     this.destroyRendererMaps(this.bottomRendererMaps);
-    this.destroyRendererMaps(this.stickyRendererMaps);
     this.top.root.remove();
     this.bottom.root.remove();
-    this.sticky.root.remove();
+    this.params.core.setDisplayedPinnedRows([], []);
     this.manualPinned.clear();
   }
 
-  private createBand(position: RowPinnedPosition, sticky = false): BandElements {
+  private createBand(position: RowPinnedPosition): BandElements {
     const root = document.createElement("div");
     root.className = `pte-pinned-rows pte-pinned-rows-${position}`;
-    if (sticky) {
-      root.classList.add("pte-sticky-group-rows");
-      // Sticky ancestry overlays the body content, but must stop before the body's dedicated
-      // vertical scrollbar lane. Keep this structural invariant inline so a consumer theme cannot
-      // accidentally stretch the overlay back over the scrollbar.
-      root.style.right = "15px";
-      root.style.width = "auto";
-      // root.style.background = "var(--pte-group-row-bg-color)";
-    }
     root.dataset.pinned = position;
 
     const section = (name: string) => {
@@ -212,7 +227,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const verticalScroller = document.createElement("div");
     verticalScroller.className = "pte-pinned-rows-vertical-scroller";
     vertical.appendChild(verticalScroller);
-    if (sticky) vertical.style.display = "none";
     root.appendChild(vertical);
 
     const band: BandElements = {
@@ -237,11 +251,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private resolveRows(scrollTop: number): {
     top: RenderedPinnedRow[];
     bottom: RenderedPinnedRow[];
-    sticky: RenderedPinnedRow[];
   } {
     const top = this.dataRows(this.params.core.options.pinnedTopRowData, "top");
     const bottom = this.dataRows(this.params.core.options.pinnedBottomRowData, "bottom");
-    const sticky: RenderedPinnedRow[] = [];
     const topIds = new Set(top.map(item => item.node.id));
     const bottomIds = new Set(bottom.map(item => item.node.id));
     const model = this.params.core.getRowModel();
@@ -268,11 +280,11 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     if (this.params.core.options.groupRowsSticky && model.getType() === "clientSide") {
       for (const source of this.stickyAncestors(scrollTop)) {
         if (topIds.has(source.id)) continue;
-        sticky.push({ node: { ...source, rowPinned: "top" }, position: "top" });
+        top.push({ node: { ...source, rowPinned: "top" }, position: "top" });
         topIds.add(source.id);
       }
     }
-    return { top, bottom, sticky };
+    return { top, bottom };
   }
 
   private dataRows(rows: any[], position: RowPinnedPosition): RenderedPinnedRow[] {
@@ -333,7 +345,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       let parentId = current.parentId;
       while (parentId) {
         const parent = model.getRowNode(parentId);
-        if (!parent?.isGroup) break;
+        if (!parent || (!parent.isGroup && !parent.isTreeData)) break;
         chain.push(parent);
         parentId = parent.parentId;
       }
@@ -342,7 +354,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       // A group joins the stack once its natural row edge has crossed the content edge below its
       // already-resolved ancestors. Strict '<' keeps the unscrolled first group in its natural row.
       const ancestorEdge = scrollTop + chain.length * rowHeight;
-      if (current.isGroup && index * rowHeight < ancestorEdge) chain.push(current);
+      if ((current.isGroup || current.isTreeData)
+        && current.children?.length
+        && index * rowHeight < ancestorEdge) chain.push(current);
 
       const signature = chain.map(node => node.id).join("|");
       resolved = chain;
@@ -386,41 +400,51 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     band.vertical.style.pointerEvents = overflows ? "auto" : "none";
     if (!overflows) this.syncBandVertical(band, band.vertical, 0);
 
-    for (const { node, position } of rows) {
-      this.renderRow(band, node, position);
-    }
+    rows.forEach(({ node, position }, rowIndex) => {
+      this.renderRow(band, node, position, rowIndex);
+    });
   }
 
-  private renderRow(band: BandElements, row: IRowNode, position: RowPinnedPosition): void {
+  private renderRow(
+    band: BandElements,
+    row: IRowNode,
+    position: RowPinnedPosition,
+    rowIndex: number,
+  ): void {
     const rendererMap = new Map<string, RendererRecord>();
     this.mapsFor(band).add(rendererMap);
     const model = this.params.core.getColumnModel();
-    const leading = this.createSectionRow(band.leadingHost, row, position);
-    const left = this.createSectionRow(band.leftHost, row, position);
-    const center = this.createSectionRow(band.centerHost, row, position);
-    const right = this.createSectionRow(band.rightHost, row, position);
+    const leading = this.createSectionRow(band.leadingHost, row, position, rowIndex);
+    const left = this.createSectionRow(band.leftHost, row, position, rowIndex);
+    const center = this.createSectionRow(band.centerHost, row, position, rowIndex);
+    const right = this.createSectionRow(band.rightHost, row, position, rowIndex);
 
-    if (row.isGroup && this.params.core.options.groupDisplayType === "groupRows") {
+    if (!this.params.core.options.treeData
+      && row.isGroup
+      && this.params.core.options.groupDisplayType === "groupRows") {
       const cell = document.createElement("div");
       cell.className = "pte-cell pte-full-width-cell pte-group-cell";
+      cell.dataset.colIdx = String(model.getLeadingLeaves().length);
       cell.style.display = "flex";
       cell.style.width = `${this.columnsWidth(model.getCenterLeaves())}px`;
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
+      this.applyActiveCell(center, rowIndex, position);
       return;
     }
 
-    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap);
-    this.renderCells(left, model.getLeftLeaves(), row, rendererMap);
-    this.renderCells(center, model.getCenterLeaves(), row, rendererMap);
-    this.renderCells(right, model.getRightLeaves(), row, rendererMap);
+    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap, rowIndex, position);
+    this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, position);
+    this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, position);
+    this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, position);
   }
 
   private createSectionRow(
     host: HTMLDivElement,
     row: IRowNode,
     position: RowPinnedPosition,
+    rowIndex: number,
   ): HTMLDivElement {
     const element = document.createElement("div");
     element.className = "pte-row pte-pinned-row";
@@ -428,6 +452,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     element.setAttribute("row-id", row.id);
     element.dataset.rowId = row.id;
     element.dataset.pinned = position;
+    element.dataset.rowPinned = position;
+    element.dataset.viewIdx = String(rowIndex);
     if (row.isGroup) {
       element.classList.add("pte-group-row");
       element.dataset.groupId = row.id;
@@ -452,6 +478,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     columns: Column[],
     row: IRowNode,
     rendererMap: Map<string, RendererRecord>,
+    rowIndex: number,
+    position: RowPinnedPosition,
   ): void {
     let width = 0;
     for (const column of columns) {
@@ -459,6 +487,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       const cell = document.createElement("div");
       cell.className = "pte-cell";
       cell.dataset.colId = column.instanceID;
+      const meta = this.params.core.getColumnModel().leafColumnLookup.get(column.instanceID);
+      if (meta) cell.dataset.colIdx = String(meta.globalIndex);
       cell.style.flex = "0 0 auto";
       cell.style.width = `${column.computedWidth}px`;
       if (column.isComputableType()) cell.classList.add("pte-cell-right-aligned");
@@ -469,6 +499,26 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       width += column.computedWidth;
     }
     rowElement.style.width = `${width}px`;
+    this.applyActiveCell(rowElement, rowIndex, position);
+  }
+
+  private applyActiveCell(
+    rowElement: HTMLDivElement,
+    rowIndex: number,
+    position: RowPinnedPosition,
+  ): void {
+    const active = this.params.core.options.highlightActiveCell
+      ? this.params.core.getActiveCell()
+      : null;
+    rowElement.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
+      cell.classList.toggle(
+        "pte-active-cell",
+        !!active
+        && active.rowPinned === position
+        && active.row === rowIndex
+        && Number(cell.dataset.colIdx) === active.colIdx,
+      );
+    });
   }
 
   private columnsWidth(columns: Column[]): number {
@@ -501,8 +551,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   private mapsFor(band: BandElements): Set<Map<string, RendererRecord>> {
     if (band === this.top) return this.topRendererMaps;
-    if (band === this.bottom) return this.bottomRendererMaps;
-    return this.stickyRendererMaps;
+    return this.bottomRendererMaps;
   }
 
   private destroyRendererMaps(maps: Set<Map<string, RendererRecord>>): void {

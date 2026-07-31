@@ -163,6 +163,16 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.groupRowsSelectable]);
 
     useLayoutEffect(() => {
+      instanceRef.current?.core.setTreeDataKeyboardNavigationOptions(
+        props.treeData?.keyboardNavigationMode ?? "grid",
+        props.treeData?.enableKeyboardNavigationModeSwitch ?? false,
+      );
+    }, [
+      props.treeData?.keyboardNavigationMode,
+      props.treeData?.enableKeyboardNavigationModeSwitch,
+    ]);
+
+    useLayoutEffect(() => {
       instanceRef.current?.renderer.setPinnedRowOptions({
         pinnedTopRowData: props.pinnedTopRowData ?? [],
         pinnedBottomRowData: props.pinnedBottomRowData ?? [],

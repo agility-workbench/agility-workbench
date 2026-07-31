@@ -119,6 +119,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return [];
   }
 
+  getHierarchyRoots(): IRowNode[] {
+    return [];
+  }
+
   getViewCount() {
     if (!this.paginate) return this.rowCount;
     return Math.max(0, Math.min(this.rowCount, this.viewEndRow) - this.viewStartRow);

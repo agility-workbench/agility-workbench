@@ -1261,6 +1261,39 @@
   border: 0;
 }
 
+.pte-grid-announcer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 10001;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  color: var(--pte-text-color);
+  background: var(--pte-surface-bg-color);
+  box-shadow: var(--pte-overlay-shadow);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, calc(-50% - 4px));
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 0s linear 120ms;
+  white-space: nowrap;
+}
+
+.pte-grid-announcer.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%);
+  transition-delay: 0s;
+}
+
 .pte-column-panel-reset {
   padding: 6px 8px;
   color: var(--pte-text-color);
@@ -1356,24 +1389,6 @@
   box-shadow: 0 -2px 5px var(--pte-shadow-color);
 }
 
-/* Sticky group ancestry overlays the scrollable body instead of participating in root flex layout.
-   The first group can therefore become sticky without moving or resizing the body by one row. */
-.pte-sticky-group-rows {
-  position: absolute;
-  inset: 0 15px auto 0;
-  width: auto;
-  z-index: 6;
-  box-shadow: 0 2px 5px var(--pte-shadow-color);
-  /* background: var(--pte-group-row-bg-color); */
-  pointer-events: none;
-}
-
-/* Sticky group rows are part of the central body's scroll context, so they stop before—and never
-   create a second control over—the body's vertical scrollbar lane. */
-.pte-sticky-group-rows .pte-pinned-rows-vertical {
-  display: none;
-}
-
 .pte-pinned-rows-leading,
 .pte-pinned-rows-left,
 .pte-pinned-rows-center,
@@ -1426,6 +1441,7 @@
 .pte-pinned-rows-left,
 .pte-pinned-rows-right {
   flex: 0 0 auto;
+  z-index: 1;
 }
 
 .pte-pinned-rows-center {
@@ -1453,10 +1469,14 @@
 
 .pte-pinned-row {
   background: var(--pte-root-bg-color);
+  border-bottom: var(--pte-row-border-size) solid var(--pte-border-color);
+}
+
+.pte-pinned-row:last-child {
+  border-bottom-color: transparent;
 }
 
 .pte-pinned-row.pte-group-row {
-  /* background: var(--pte-group-row-bg-color); */
   font-weight: 600;
 }
 
@@ -2557,6 +2577,12 @@
 
 .pte-group-toggle:hover {
   background-color: var(--pte-menu-btn-hover-bg);
+}
+
+.pte-tree-toggle-spacer {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
 }
 
 .pte-group-toggle-icon {

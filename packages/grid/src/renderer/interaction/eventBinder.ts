@@ -2,6 +2,7 @@ interface GridInteractionEventBinderParams {
   root: HTMLDivElement;
   headerWrapper: HTMLDivElement;
   body: HTMLDivElement;
+  pinnedRowContainers?: HTMLDivElement[];
   onHeaderMouseDown: (e: MouseEvent) => void;
   onHeaderContextMenu: (e: MouseEvent) => void;
   onHeaderDoubleClick: (e: MouseEvent) => void;
@@ -80,6 +81,12 @@ export class GridInteractionEventBinder {
     this.params.body.addEventListener("click", this.handleCellClick);
     this.params.body.addEventListener("dblclick", this.handleCellDoubleClick);
     this.params.body.addEventListener("contextmenu", this.handleBodyContextMenu);
+    for (const container of this.params.pinnedRowContainers ?? []) {
+      container.addEventListener("mousedown", this.handleCellMouseDown);
+      container.addEventListener("click", this.handleCellClick);
+      container.addEventListener("dblclick", this.handleCellDoubleClick);
+      container.addEventListener("contextmenu", this.handleBodyContextMenu);
+    }
     document.addEventListener("mousemove", this.handleDocumentMouseMove);
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
     this.params.root.addEventListener("click", this.handleDocumentClick);
@@ -94,6 +101,12 @@ export class GridInteractionEventBinder {
     this.params.body.removeEventListener("click", this.handleCellClick);
     this.params.body.removeEventListener("dblclick", this.handleCellDoubleClick);
     this.params.body.removeEventListener("contextmenu", this.handleBodyContextMenu);
+    for (const container of this.params.pinnedRowContainers ?? []) {
+      container.removeEventListener("mousedown", this.handleCellMouseDown);
+      container.removeEventListener("click", this.handleCellClick);
+      container.removeEventListener("dblclick", this.handleCellDoubleClick);
+      container.removeEventListener("contextmenu", this.handleBodyContextMenu);
+    }
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);
     this.params.root.removeEventListener("click", this.handleDocumentClick);

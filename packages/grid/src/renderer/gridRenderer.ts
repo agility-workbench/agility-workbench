@@ -153,6 +153,8 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
+  private _keyboardNavigationAnnouncer: HTMLDivElement;
+  private _keyboardNavigationAnnouncementTimer?: ReturnType<typeof setTimeout>;
   _aggregateLeadingCells: HTMLDivElement[];
   _aggregateLeftCells: HTMLDivElement[];
   _aggregateCells: HTMLDivElement[];
@@ -195,8 +197,14 @@ export class GridRenderer {
     // DOM skeleton
     this.root = div("pte-root");
     this.root.dataset.pteGridId = this.core.id;
+    this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
+    this._keyboardNavigationAnnouncer = div("pte-grid-announcer");
+    this._keyboardNavigationAnnouncer.setAttribute("role", "status");
+    this._keyboardNavigationAnnouncer.setAttribute("aria-live", "polite");
+    this._keyboardNavigationAnnouncer.setAttribute("aria-atomic", "true");
+    this.root.appendChild(this._keyboardNavigationAnnouncer);
     // In "text" cell-selection mode, revert body cells to native browser text selection (like a
     // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
     if (this.core.options.cellSelection === "text") {
@@ -235,15 +243,32 @@ export class GridRenderer {
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
       renderAggregateRow: () => this._renderAggregateRow(),
-      onSelectionChanged: () => this._selectionRenderer.onSelectionChanged(),
+      onSelectionChanged: () => {
+        this._selectionRenderer.onSelectionChanged();
+        this._pinnedRowsRenderer?.refreshSelectionStyles();
+      },
       onFocusChanged: (params) => {
-        this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx);
-        if (params.viewIdx != null && params.colIdx != null) {
+        this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.rowPinned);
+        this._pinnedRowsRenderer?.refreshSelectionStyles();
+        if (params.viewIdx != null && params.colIdx != null && !params.rowPinned) {
           this._bodyTooltipRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.reason);
         }
       },
       onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
       onCellsChanged: (params) => this._onCellsChanged(params),
+      onKeyboardNavigationModeChanged: ({ mode }) => {
+        this.root.dataset.keyboardNavigationMode = mode;
+        this._keyboardNavigationAnnouncer.textContent =
+          mode === "hierarchy" ? "Hierarchy navigation mode" : "Grid navigation mode";
+        this._keyboardNavigationAnnouncer.classList.add("is-visible");
+        if (this._keyboardNavigationAnnouncementTimer) {
+          clearTimeout(this._keyboardNavigationAnnouncementTimer);
+        }
+        this._keyboardNavigationAnnouncementTimer = setTimeout(() => {
+          this._keyboardNavigationAnnouncer.classList.remove("is-visible");
+          this._keyboardNavigationAnnouncementTimer = undefined;
+        }, 2000);
+      },
     });
     this._modelChangeHandler = new GridModelChangeHandler({
       core: this.core,
@@ -273,7 +298,8 @@ export class GridRenderer {
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
-      ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
+      ensureCellVisible: (viewIdx, colIdx, rowPinned) =>
+        this._ensureCellVisible(viewIdx, colIdx, rowPinned),
       viewportRows: () => {
         const h = this._bodyViewportRenderer.getRefs().body.clientHeight;
         return Math.max(1, Math.floor(h / this.rowHeight));
@@ -396,6 +422,10 @@ export class GridRenderer {
       onHeightChanged: () => {
         requestAnimationFrame(() => this._maybeUpdatePoolSize());
       },
+      onBodyPartitionChanged: () => {
+        this._bodyWindowRenderer?.update(true, undefined);
+        this._selectionRenderer?.refreshSelectionStyles();
+      },
     });
     const apiWithPinnedRows = this.api as unknown as {
       setPinnedRowsController?: (controller: {
@@ -505,6 +535,7 @@ export class GridRenderer {
       root: this.root,
       headerWrapper: headerRefs.wrapper,
       body: bodyWrapper.body,
+      pinnedRowContainers: this._pinnedRowsRenderer.getInteractionRoots(),
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
@@ -972,6 +1003,10 @@ export class GridRenderer {
   }
 
   destroy() {
+    if (this._keyboardNavigationAnnouncementTimer) {
+      clearTimeout(this._keyboardNavigationAnnouncementTimer);
+      this._keyboardNavigationAnnouncementTimer = undefined;
+    }
     this._coreEventBinder.destroy();
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
@@ -1193,17 +1228,25 @@ export class GridRenderer {
     }
   }
 
-  _ensureCellVisible(viewIdx: number, colIdx: number) {
+  _ensureCellVisible(
+    viewIdx: number,
+    colIdx: number,
+    rowPinned?: "top" | "bottom",
+  ) {
     const refs = this._bodyViewportRenderer.getRefs();
 
     // Vertical: scroll centerScroller so the row is fully in view.
-    const rowTop = viewIdx * this.rowHeight;
-    const viewH = refs.body.clientHeight;
-    const st = refs.centerScroller.scrollTop;
-    if (rowTop < st) {
-      refs.centerScroller.scrollTop = rowTop;
-    } else if (rowTop + this.rowHeight > st + viewH) {
-      refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
+    if (rowPinned) {
+      this._pinnedRowsRenderer.ensureCellVisible(rowPinned, viewIdx);
+    } else {
+      const rowTop = viewIdx * this.rowHeight;
+      const viewH = refs.body.clientHeight;
+      const st = refs.centerScroller.scrollTop;
+      if (rowTop < st) {
+        refs.centerScroller.scrollTop = rowTop;
+      } else if (rowTop + this.rowHeight > st + viewH) {
+        refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
+      }
     }
 
     // Horizontal: only center-section columns scroll; leading/pinned are always visible.

@@ -138,9 +138,10 @@ export class BodyMenuService {
       return inRange(first ? lookup.get(first.instanceID)?.globalIndex : undefined);
     }
 
-    // singleColumn (default): the synthesized auto-group column.
-    const autoGroup = columnModel.getAutoGroupColumns()[0];
-    return inRange(autoGroup ? lookup.get(autoGroup.instanceID)?.globalIndex : undefined);
+    // singleColumn row grouping uses the synthesized auto-group column; tree data uses its regular
+    // hierarchy column. Both carry the hierarchy labels included by grouped selection exports.
+    const hierarchy = columnModel.getHierarchyColumn();
+    return inRange(hierarchy ? lookup.get(hierarchy.instanceID)?.globalIndex : undefined);
   }
 
   // The distinct group-node levels the selection covers (used for multipleColumns host checking).

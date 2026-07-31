@@ -31,6 +31,113 @@ body {
   background-color: var(--pte-btn-hover-bg-color, #0056b3);
 }
 
+.tree-data-demo {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tree-data-demo-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 16px;
+  border: 1px solid var(--pte-frame-border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--pte-header-bg-color, #fff);
+}
+
+.tree-data-demo-intro h2 {
+  margin: 2px 0 5px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.tree-data-demo-intro p {
+  max-width: 760px;
+  color: color-mix(in srgb, var(--pte-text-color, #111827) 72%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tree-data-demo-intro .tree-data-demo-eyebrow {
+  color: var(--pte-selected-border-color, #2563eb);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tree-data-demo-intro code {
+  flex: 0 1 520px;
+  padding: 9px 11px;
+  border: 1px solid var(--pte-control-border-color, #d1d5db);
+  border-radius: 6px;
+  background: var(--pte-input-bg-color, #f8fafc);
+  color: var(--pte-text-color, #111827);
+  font-size: 11px;
+  white-space: normal;
+}
+
+.tree-data-demo-controls {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tree-data-demo-modes,
+.tree-data-demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tree-data-demo-mode {
+  padding-inline: 12px;
+  opacity: 0.58;
+}
+
+.tree-data-demo-mode.is-active {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 72%, transparent);
+}
+
+.tree-data-demo-summary {
+  flex: 1;
+  min-width: 220px;
+  color: color-mix(in srgb, var(--pte-text-color, #111827) 68%, transparent);
+  font-size: 12px;
+}
+
+.tree-data-demo-actions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.tree-data-demo-grid {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .tree-data-demo-intro {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tree-data-demo-intro code {
+    flex-basis: auto;
+  }
+}
+
 .location-cell {
   --location-accent: #2563eb;
   --location-bg: rgba(37, 99, 235, 0.13);

@@ -4,7 +4,7 @@ import { FilterItem } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
-import { QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { QuickFilterMatchMode, TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
 
 export type GridActionInit = {
   type: "init";
@@ -160,11 +160,23 @@ export type GridActionGroupToggleExpand = {
   expanded?: boolean;
 };
 
+export type GridActionKeyboardNavigationModeSet = {
+  type: "keyboardNavigationModeSet";
+  mode: TreeDataKeyboardNavigationMode;
+  source?: "api" | "shortcut" | "options";
+};
+
+export type GridActionTreeNavigate = {
+  type: "treeNavigate";
+  command: "expand" | "collapse" | "parent";
+};
+
 // Focus/Selection actions
 export type GridActionFocusSet = {
   type: "focusSet";
   viewIdx: number;
   colIdx: number;
+  rowPinned?: "top" | "bottom";
   reason?: "mouse" | "keyboard" | "api";
 };
 
@@ -204,6 +216,7 @@ export type GridActionRangeSelectSet = {
   // Start a fresh range at this cell, or extend the current range's active corner to it.
   viewIdx: number;
   colIdx: number;
+  rowPinned?: "top" | "bottom";
   mode: "start" | "extend";
 };
 
@@ -307,6 +320,8 @@ export type GridAction =
   | GridActionAggregateModelSet
   | GridActionRowGroupSet
   | GridActionGroupToggleExpand
+  | GridActionKeyboardNavigationModeSet
+  | GridActionTreeNavigate
   | GridActionFocusSet
   | GridActionHeaderAction
   | GridActionSelectionClear

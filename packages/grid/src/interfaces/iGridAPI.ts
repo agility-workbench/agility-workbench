@@ -5,7 +5,11 @@ import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
-import { QuickFilterMatchMode, RowPinnedPosition } from "./gridOptions";
+import {
+  QuickFilterMatchMode,
+  RowPinnedPosition,
+  TreeDataKeyboardNavigationMode,
+} from "./gridOptions";
 import { GridViewState } from "./gridView";
 
 export type NavDir = "up" | "down" | "left" | "right";
@@ -75,6 +79,11 @@ export interface IGridAPI {
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
   /** Current quick-filter text ("" when inactive). */
   getQuickFilterText(): string;
+
+  /** Current tree-data keyboard navigation mode. Non-tree grids always report "grid". */
+  getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
+  /** Switch tree-data keyboard navigation immediately. No-op for "hierarchy" on non-tree grids. */
+  setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void;
 
   /** Capture serializable column, grouping, sorting, filtering, and expansion state. */
   captureViewState(): GridViewState;
