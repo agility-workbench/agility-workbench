@@ -103,7 +103,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   render(scrollTop = this.lastScrollTop, force = false): void {
     this.lastScrollTop = Math.max(0, scrollTop);
-    const { top, bottom } = this.resolveRows(this.lastScrollTop);
+    const { top, bottom, stickySuppressedIds } = this.resolveRows(this.lastScrollTop);
     const topSignature = this.signature(top);
     const bottomSignature = this.signature(bottom);
     const heightChanged = top.length !== this.topCount || bottom.length !== this.bottomCount;
@@ -116,13 +116,23 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.renderBand(this.bottom, bottom);
       this.bottomSignature = bottomSignature;
     }
+    const bodyPinnedIds = new Set(
+      [...top, ...bottom]
+        .filter(item => item.node.viewIndex >= 0)
+        .map(item => item.node.id),
+    );
+    for (const rowId of stickySuppressedIds) bodyPinnedIds.add(rowId);
     this.params.core.setDisplayedPinnedRows(
       top.map(item => item.node),
       bottom.map(item => item.node),
+      bodyPinnedIds,
     );
-    const bodyPartitionSignature = [...top, ...bottom]
+    const bodyPartitionSignature = [...bodyPinnedIds]
+      .sort()
+      .map(rowId => `body:${rowId}`)
+      .concat([...top, ...bottom]
       .filter(item => item.node.viewIndex >= 0)
-      .map(item => `${item.position}:${item.node.id}`)
+      .map(item => `${item.position}:${item.node.id}`))
       .join("|");
     if (bodyPartitionSignature !== this.bodyPartitionSignature) {
       this.bodyPartitionSignature = bodyPartitionSignature;
@@ -251,6 +261,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private resolveRows(scrollTop: number): {
     top: RenderedPinnedRow[];
     bottom: RenderedPinnedRow[];
+    stickySuppressedIds: Set<string>;
   } {
     const top = this.dataRows(this.params.core.options.pinnedTopRowData, "top");
     const bottom = this.dataRows(this.params.core.options.pinnedBottomRowData, "bottom");
@@ -277,14 +288,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       ids.add(source.id);
     }
 
+    const stickySuppressedIds = new Set<string>();
     if (this.params.core.options.groupRowsSticky && model.getType() === "clientSide") {
-      for (const source of this.stickyAncestors(scrollTop)) {
+      const sticky = this.stickyRows(scrollTop);
+      for (const source of sticky.ancestors) {
         if (topIds.has(source.id)) continue;
         top.push({ node: { ...source, rowPinned: "top" }, position: "top" });
         topIds.add(source.id);
       }
+      for (const rowId of sticky.suppressedIds) stickySuppressedIds.add(rowId);
     }
-    return { top, bottom };
+    return { top, bottom, stickySuppressedIds };
   }
 
   private dataRows(rows: any[], position: RowPinnedPosition): RenderedPinnedRow[] {
@@ -319,52 +333,47 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     return `p:${position}:${index}:${String(data)}`;
   }
 
-  private stickyAncestors(scrollTop: number): IRowNode[] {
+  private stickyRows(scrollTop: number): {
+    ancestors: IRowNode[];
+    suppressedIds: Set<string>;
+  } {
     const model = this.params.core.getRowModel();
     const rowHeight = Math.max(1, this.params.rowHeight());
     const total = model.getViewCount();
-    if (total === 0) return [];
+    const suppressedIds = new Set<string>();
+    if (total === 0) return { ancestors: [], suppressedIds };
 
-    // Resolve against the first row *below* the sticky stack, not merely the first row at the
-    // physical viewport top. This is a small fixed-point calculation because discovering one sticky
-    // ancestor moves that content boundary down by one row, which may reveal the next group level.
-    // For Region → Country, scrolling the Region header by 1px therefore resolves both headers in
-    // the same frame instead of waiting for Country to travel underneath Region and reach y=0.
-    let stackHeightRows = 0;
-    let previousSignature = "";
-    let resolved: IRowNode[] = [];
-    const maxPasses = Math.min(total + 1, 64);
-
-    for (let pass = 0; pass < maxPasses; pass++) {
-      const contentEdge = scrollTop + stackHeightRows * rowHeight;
-      const index = Math.min(total - 1, Math.max(0, Math.floor(contentEdge / rowHeight)));
-      const current = model.getRowNodeAtViewIndex(index);
-      if (!current) return resolved;
-
-      const chain: IRowNode[] = [];
-      let parentId = current.parentId;
-      while (parentId) {
-        const parent = model.getRowNode(parentId);
-        if (!parent || (!parent.isGroup && !parent.isTreeData)) break;
-        chain.push(parent);
-        parentId = parent.parentId;
-      }
-      chain.reverse();
-
-      // A group joins the stack once its natural row edge has crossed the content edge below its
-      // already-resolved ancestors. Strict '<' keeps the unscrolled first group in its natural row.
-      const ancestorEdge = scrollTop + chain.length * rowHeight;
-      if ((current.isGroup || current.isTreeData)
-        && current.children?.length
-        && index * rowHeight < ancestorEdge) chain.push(current);
-
-      const signature = chain.map(node => node.id).join("|");
-      resolved = chain;
-      if (signature === previousSignature) break;
-      previousSignature = signature;
-      stackHeightRows = chain.length;
+    // Once a group header crosses the top it leaves the body's compacted row flow permanently for
+    // that scroll position, even after a sibling replaces it in the visible sticky ancestry. Its
+    // compact top is its model index minus all preceding group headers that have likewise left the
+    // flow. Deriving this set from scrollTop makes downward and upward transitions symmetric.
+    let precedingParents = 0;
+    const parents = model.getGroupNodes()
+      .filter(node => node.viewIndex >= 0 && (node.isGroup || node.isTreeData) && node.children?.length)
+      .sort((left, right) => left.viewIndex - right.viewIndex);
+    for (const node of parents) {
+      const compactTop = (node.viewIndex - precedingParents) * rowHeight;
+      if (scrollTop > 0 && compactTop <= scrollTop) suppressedIds.add(node.id);
+      precedingParents++;
     }
-    return resolved;
+
+    const contentEdge = scrollTop + suppressedIds.size * rowHeight;
+    const index = Math.min(total - 1, Math.max(0, Math.floor(contentEdge / rowHeight)));
+    const current = model.getRowNodeAtViewIndex(index);
+    if (!current) return { ancestors: [], suppressedIds };
+
+    const chain: IRowNode[] = [];
+    let parentId = current.parentId;
+    while (parentId) {
+      const parent = model.getRowNode(parentId);
+      if (!parent || (!parent.isGroup && !parent.isTreeData)) break;
+      chain.push(parent);
+      parentId = parent.parentId;
+    }
+    chain.reverse();
+
+    if (suppressedIds.has(current.id)) chain.push(current);
+    return { ancestors: chain, suppressedIds };
   }
 
   private signature(rows: RenderedPinnedRow[]): string {

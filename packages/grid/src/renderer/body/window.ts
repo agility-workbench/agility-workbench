@@ -106,7 +106,11 @@ export class BodyWindowRenderer {
   }
 
   private translateViewports(startIndex: number) {
-    const offsetY = startIndex * this.params.rowHeight();
+    // Model-backed pinned rows are removed from the body's flow. Account for every removed row
+    // before the virtual window, including sticky parents that have already left the overscan
+    // pool, so their one-row collapse cannot disappear when the pool advances.
+    const bodyRowsBefore = startIndex - this.params.core.getBodyPinnedRowCountBefore(startIndex);
+    const offsetY = bodyRowsBefore * this.params.rowHeight();
     this.params.leadingViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.leftViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.centerViewport.style.transform = `translateY(${offsetY}px)`;
@@ -141,7 +145,8 @@ export class BodyWindowRenderer {
       if (this.params.core.isBodyRowPinned(row.id)) {
         // The node has transitioned to the top/bottom row section. Keep its model index stable for
         // sorting/group ancestry, but remove every body fragment immediately so it cannot be
-        // painted, hit-tested, or focused twice during the transition.
+        // painted, hit-tested, or focused twice during the transition. translateViewports retains
+        // the same compacted offset after this source slot leaves the virtual pool.
         this.applyFullWidthLayout(slot, null);
         this.hideSlot(slot);
         this.clearSlotIdentity(slot);

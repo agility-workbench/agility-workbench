@@ -237,7 +237,7 @@ describe("pinned and sticky rows", () => {
     )!;
     expect(pinned).toBeTruthy();
     expect(topBand.textContent).toContain(group.groupKey);
-    expect(container.querySelector(`.pte-body [data-row-id='${group.id}']`)).toBeNull();
+    expect(container.querySelector(`.pte-body [row-id='${group.id}']`)).toBeNull();
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
 
     const before = core.getRowModel().getViewCount();
@@ -263,7 +263,14 @@ describe("pinned and sticky rows", () => {
   });
 
   it("stacks the active generated group ancestry while the body scrolls", async () => {
+    const groupedRows = Array.from({ length: 60 }, (_, index) => ({
+      id: `sticky-${index}`,
+      region: "EMEA",
+      country: index < 30 ? "First" : "Second",
+      sales: index,
+    }));
     const { container, apiRef, root } = await mount({
+      rowData: groupedRows,
       groupRowsSticky: true,
       groupDefaultExpanded: -1,
     });
@@ -280,9 +287,8 @@ describe("pinned and sticky rows", () => {
     expect(leaf.parentId).toBeTruthy();
 
     const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
-    // The first two visible rows are the expanded level-0 and level-1 headers. Moving the parent
-    // header by a single pixel should pin both in one render: the child has already reached the
-    // content edge below its newly-sticky parent.
+    // The nested headers share the same compact top after their preceding parent headers leave the
+    // body, so both join the sticky ancestry without leaving body copies.
     await act(async () => {
       scroller.scrollTop = 1;
       scroller.dispatchEvent(new Event("scroll"));
@@ -300,10 +306,10 @@ describe("pinned and sticky rows", () => {
       `.pte-pinned-rows-top [data-row-id='${firstChildGroup.id}']`,
     )).toBeTruthy();
     expect(container.querySelector(
-      `.pte-body [data-row-id='${firstRoot.id}']`,
+      `.pte-body [row-id='${firstRoot.id}']`,
     )).toBeNull();
     expect(container.querySelector(
-      `.pte-body [data-row-id='${firstChildGroup.id}']`,
+      `.pte-body [row-id='${firstChildGroup.id}']`,
     )).toBeNull();
 
     await act(async () => {
@@ -339,6 +345,68 @@ describe("pinned and sticky rows", () => {
         .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(Array.from(stickyCopies).every(row => row.classList.contains("pte-row-hover"))).toBe(true);
+
+    // At a sibling boundary, keep the immediate parent pinned through the final pixel occupied by
+    // its last child, then atomically replace it when the next parent's row reaches the top.
+    const groups = Array.from(
+      { length: core.getRowModel().getViewCount() },
+      (_, index) => core.getRowModel().getRowNodeAtViewIndex(index)!,
+    ).filter(node => node.isGroup && node.level === 1);
+    let pairIndex = -1;
+    groups.forEach((node, index) => {
+      if (index + 1 < groups.length && groups[index + 1].parentId === node.parentId) {
+        pairIndex = index;
+      }
+    });
+    const currentParent = groups[pairIndex];
+    const nextParent = groups[pairIndex + 1];
+    expect(currentParent).toBeTruthy();
+    expect(nextParent).toBeTruthy();
+
+    const precedingParents = core.getRowModel().getGroupNodes()
+      .filter(node => node.viewIndex >= 0
+        && node.viewIndex < nextParent.viewIndex
+        && node.children?.length)
+      .length;
+    const nextParentCompactTop = (nextParent.viewIndex - precedingParents) * 43;
+
+    await act(async () => {
+      scroller.scrollTop = nextParentCompactTop - 1;
+      scroller.dispatchEvent(new Event("scroll"));
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+    expect(staticTopBand.querySelector(
+      `.pte-pinned-rows-center [data-row-id='${currentParent.id}']`,
+    )).toBeTruthy();
+    expect(staticTopBand.querySelector(
+      `.pte-pinned-rows-center [data-row-id='${nextParent.id}']`,
+    )).toBeNull();
+    const startIndex = Math.max(
+      0,
+      Math.floor(scroller.scrollTop / 43) - core.options.overscanRowCount,
+    );
+    const suppressedBeforeWindow = core.getBodyPinnedRowCountBefore(startIndex);
+    expect(suppressedBeforeWindow).toBeGreaterThan(0);
+    expect(container.querySelector<HTMLElement>(".pte-body .pte-viewport")!.style.transform)
+      .toBe(`translateY(${(startIndex - suppressedBeforeWindow) * 43}px)`);
+
+    await act(async () => {
+      scroller.scrollTop = nextParentCompactTop;
+      // Replaying the exact boundary must not alternate the two parents or change the band depth.
+      for (let event = 0; event < 3; event++) {
+        scroller.dispatchEvent(new Event("scroll"));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+    });
+    expect(staticTopBand.querySelectorAll(
+      ".pte-pinned-rows-center .pte-pinned-row.pte-group-row",
+    ).length).toBe(2);
+    expect(staticTopBand.querySelector(
+      `.pte-pinned-rows-center [data-row-id='${currentParent.id}']`,
+    )).toBeNull();
+    expect(staticTopBand.querySelector(
+      `.pte-pinned-rows-center [data-row-id='${nextParent.id}']`,
+    )).toBeTruthy();
 
     await act(async () => root.unmount());
     container.remove();

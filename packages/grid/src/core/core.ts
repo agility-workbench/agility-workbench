@@ -96,6 +96,8 @@ export class GridCore implements IGridCore {
   private actionFrameCell: CellRef | null = null;
   private keyboardNavigationMode: TreeDataKeyboardNavigationMode;
   private displayedPinnedRows: Record<RowPinnedPosition, IRowNode[]> = { top: [], bottom: [] };
+  private bodyPinnedRowIds = new Set<GridId>();
+  private bodyPinnedViewIndices: number[] = [];
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
 
@@ -1291,7 +1293,11 @@ export class GridCore implements IGridCore {
     return this.selectionModel.getActiveCell();
   }
 
-  setDisplayedPinnedRows(top: IRowNode[], bottom: IRowNode[]): void {
+  setDisplayedPinnedRows(
+    top: IRowNode[],
+    bottom: IRowNode[],
+    bodyPinnedRowIds?: ReadonlySet<GridId>,
+  ): void {
     const active = this.selectionModel.getActiveCell();
     const activeNode = active?.rowPinned
       ? this.displayedPinnedRows[active.rowPinned][active.row] ?? null
@@ -1299,6 +1305,17 @@ export class GridCore implements IGridCore {
         ? this.rowModel.getRowNodeAtViewIndex(active.row) ?? null
         : null;
     this.displayedPinnedRows = { top: top.slice(), bottom: bottom.slice() };
+    this.bodyPinnedRowIds = bodyPinnedRowIds
+      ? new Set(bodyPinnedRowIds)
+      : new Set(
+        [...top, ...bottom]
+          .filter(row => row.viewIndex >= 0)
+          .map(row => row.id),
+      );
+    this.bodyPinnedViewIndices = [...this.bodyPinnedRowIds]
+      .map(rowId => this.rowModel.getRowNode(rowId)?.viewIndex ?? -1)
+      .filter(viewIndex => viewIndex >= 0)
+      .sort((left, right) => left - right);
 
     // Preserve the logical cell while its row crosses a section boundary. This is the row-axis
     // equivalent of retaining the active column while it moves between left/center/right.
@@ -1325,8 +1342,18 @@ export class GridCore implements IGridCore {
   }
 
   isBodyRowPinned(rowId: GridId): boolean {
-    return this.displayedPinnedRows.top.some(row => row.id === rowId && row.viewIndex >= 0)
-      || this.displayedPinnedRows.bottom.some(row => row.id === rowId && row.viewIndex >= 0);
+    return this.bodyPinnedRowIds.has(rowId);
+  }
+
+  getBodyPinnedRowCountBefore(viewIndex: number): number {
+    let low = 0;
+    let high = this.bodyPinnedViewIndices.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.bodyPinnedViewIndices[middle] < viewIndex) low = middle + 1;
+      else high = middle;
+    }
+    return low;
   }
 
   getEditingCell(): CellRef | null {

@@ -109,7 +109,7 @@ describe("tree data end-to-end via Grid", () => {
     });
     expect(core.getPaginationInfo().pageIndex).toBe(0);
     expect(container.querySelector(".pte-pinned-rows-top .pte-group-label")?.textContent).toBe("Root");
-    expect(container.querySelector(".pte-body [data-row-id='root']")).toBeNull();
+    expect(container.querySelector(".pte-body [row-id='root']")).toBeNull();
     expect(container.querySelector<HTMLButtonElement>(".pte-pagination-btn-first")?.disabled).toBe(true);
     expect(container.querySelector<HTMLButtonElement>(".pte-pagination-btn-prev")?.disabled).toBe(true);
 
@@ -167,7 +167,7 @@ describe("tree data end-to-end via Grid", () => {
     });
     expect(core.getPaginationInfo().pageIndex).toBe(0);
     expect(container.querySelector(".pte-pinned-rows-top .pte-group-label")?.textContent).toBe("Root");
-    expect(container.querySelector(".pte-body [data-row-id='root']")).toBeNull();
+    expect(container.querySelector(".pte-body [row-id='root']")).toBeNull();
 
     await act(async () => root.unmount());
     container.remove();

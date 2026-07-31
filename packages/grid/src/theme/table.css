@@ -1993,6 +1993,7 @@
 
 .pte-scroller-left {
   overflow: auto;
+  overflow-anchor: none;
   position: relative;
   scrollbar-width: none;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
@@ -2000,6 +2001,7 @@
 
 .pte-scroller-leading {
   overflow: hidden auto;
+  overflow-anchor: none;
   position: relative;
   scrollbar-width: none;
   flex: 0 0 auto;
@@ -2016,6 +2018,7 @@
 
 .pte-scroller-right {
   overflow: auto;
+  overflow-anchor: none;
   position: relative;
   scrollbar-width: none;
   box-shadow: -2px 0 5px var(--pte-shadow-color);
@@ -2027,6 +2030,7 @@
 
 .pte-scroller {
   overflow: auto;
+  overflow-anchor: none;
   position: relative;
   display: flex;
   flex: 1 1 auto;
@@ -2045,6 +2049,7 @@
   height: 100%;
   overflow-x: hidden;
   overflow-y: scroll;
+  overflow-anchor: none;
 }
 
 .pte-scroller-vertical {
