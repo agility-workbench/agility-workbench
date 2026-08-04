@@ -824,6 +824,137 @@ describe("pinned and sticky rows", () => {
     container.remove();
   });
 
+  it("opens the context menu on the clicked pinned band cell, not the body top-left", async () => {
+    let seenCtx: any = null;
+    const { container, apiRef, root } = await mount({
+      cellSelection: true,
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+      pinnedBottomRowData: [{ id: "total", region: "Total", country: "All", sales: 150 }],
+      bodyContextMenu: ({ ctx, items }: any) => {
+        seenCtx = ctx;
+        return items;
+      },
+    });
+    const core = apiRef.current!.getCore();
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    const topCell = gridRoot.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-rows-center .pte-cell",
+    )!;
+
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    await act(async () => {
+      topCell.dispatchEvent(ev);
+    });
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    expect(seenCtx?.rowPinned).toBe("top");
+    expect(seenCtx?.rowId).toBe("p:top:target");
+    expect(document.querySelector(".pte-menu")).not.toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("keeps a selection spanning the bottom band when right-clicking inside it", async () => {
+    const { container, apiRef, root } = await mount({
+      cellSelection: true,
+      pinnedBottomRowData: [{ id: "total", region: "Total", country: "All", sales: 150 }],
+    });
+    const core = apiRef.current!.getCore();
+    await act(async () => {
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 4, colIdx: 1, mode: "start" });
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, rowPinned: "bottom", mode: "extend" });
+    });
+    const before = core.getSelectionRange();
+    expect(before?.pinnedBottom).toEqual({ start: 0, end: 0 });
+
+    const bottomCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-bottom .pte-pinned-rows-center .pte-cell",
+    )!;
+    await act(async () => {
+      bottomCell.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+      );
+    });
+
+    // The clicked band cell is inside the active selection, so focus must not collapse to it.
+    expect(core.getSelectionRange()).toEqual(before);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("draws a cross-band range as one continuous border box (no seam borders)", async () => {
+    const { container, apiRef, root } = await mount({
+      cellSelection: true,
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+    });
+    const core = apiRef.current!.getCore();
+    await act(async () => {
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, rowPinned: "top", mode: "start" });
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 1, mode: "extend" });
+    });
+
+    const bandCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-rows-center .pte-row[data-view-idx='0'] .pte-cell[data-col-idx='1']",
+    )!;
+    const bodyFirst = container.querySelector<HTMLElement>(
+      ".pte-body .pte-row[data-view-idx='0'] .pte-cell[data-col-idx='1']",
+    )!;
+    const bodyLast = container.querySelector<HTMLElement>(
+      ".pte-body .pte-row[data-view-idx='1'] .pte-cell[data-col-idx='1']",
+    )!;
+
+    // Band segment: outer edge bordered, seam edge open.
+    expect(bandCell.classList.contains("selected")).toBe(true);
+    expect(bandCell.classList.contains("selected-top")).toBe(true);
+    expect(bandCell.classList.contains("selected-bottom")).toBe(false);
+    // Body part: seam edge open, outer edge bordered.
+    expect(bodyFirst.classList.contains("selected")).toBe(true);
+    expect(bodyFirst.classList.contains("selected-top")).toBe(false);
+    expect(bodyLast.classList.contains("selected-bottom")).toBe(true);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("paints column selection through the pinned bands and closes it on the bottom band", async () => {
+    const { container, apiRef, root } = await mount({
+      cellSelection: true,
+      pinnedTopRowData: [{ id: "target", region: "Target", country: "All", sales: 200 }],
+      pinnedBottomRowData: [{ id: "total", region: "Total", country: "All", sales: 150 }],
+    });
+    const core = apiRef.current!.getCore();
+    const countryCol = core.getColumnModel().getLeaves()[1];
+    await act(async () => {
+      core.dispatch({ type: "columnSelectSet", colId: countryCol.instanceID, mode: "set" });
+    });
+
+    const topCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-rows-center .pte-cell[data-col-idx='1']",
+    )!;
+    const bottomCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-bottom .pte-pinned-rows-center .pte-cell[data-col-idx='1']",
+    )!;
+    const bodyLast = container.querySelector<HTMLElement>(
+      `.pte-body .pte-row[data-view-idx='${ROWS.length - 1}'] .pte-cell[data-col-idx='1']`,
+    )!;
+
+    expect(topCell.classList.contains("selected")).toBe(true);
+    expect(topCell.classList.contains("selected-left")).toBe(true);
+    expect(topCell.classList.contains("selected-right")).toBe(true);
+    expect(topCell.classList.contains("selected-bottom")).toBe(false);
+    expect(bottomCell.classList.contains("selected")).toBe(true);
+    // The column run closes at the grid's visual bottom — the bottom band, not the body.
+    expect(bottomCell.classList.contains("selected-bottom")).toBe(true);
+    expect(bodyLast.classList.contains("selected")).toBe(true);
+    expect(bodyLast.classList.contains("selected-bottom")).toBe(false);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("supports callback-based group pinning and groupRows full-width display", async () => {
     const { container, apiRef, root } = await mount({
       groupDisplayType: "groupRows",

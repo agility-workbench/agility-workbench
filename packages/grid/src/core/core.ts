@@ -1342,6 +1342,10 @@ export class GridCore implements IGridCore {
     return this.displayedPinnedRows[position][rowIndex] ?? null;
   }
 
+  getDisplayedPinnedRowCount(position: RowPinnedPosition): number {
+    return this.displayedPinnedRows[position].length;
+  }
+
   /** Locate a pinned band row by id, with its band position and band-local index. */
   getDisplayedPinnedRowRef(
     rowId: GridId,
@@ -1456,8 +1460,8 @@ export class GridCore implements IGridCore {
     this.emitSelectionChanged("api");
   }
 
-  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
-    return this.selectionModel.isCellInActiveSelection(viewIdx, colIdx, rowId, colId);
+  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string, rowPinned?: "top" | "bottom"): boolean {
+    return this.selectionModel.isCellInActiveSelection(viewIdx, colIdx, rowId, colId, rowPinned);
   }
 
   getSelectionSnapshot(resolveIds = false): SelectionSnapshot {

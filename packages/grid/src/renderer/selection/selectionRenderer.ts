@@ -41,6 +41,7 @@ export class SelectionRenderer {
       : null;
     const rangeRow = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
+    const hasBottomBand = this.params.core.getDisplayedPinnedRowCount("bottom") > 0;
     const leaves = this.params.leafColumns();
 
     const rowId = viewIndex != null
@@ -80,16 +81,20 @@ export class SelectionRenderer {
         const prevColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colIdx - 1);
         const nextColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colEnd + 1);
 
+        // A range that continues into a pinned band (pinnedTop/pinnedBottom segment) is one
+        // contiguous selection — the body edge facing the band draws no border, the band paints
+        // the outer edge. Same for a selected column: with a bottom band, the column run closes
+        // on the band's last row, not the body's.
         const isTop = rangeSelected
-          ? (viewIndex === range?.rowStart)
+          ? (viewIndex === range?.rowStart && !range?.pinnedTop)
           : rowSelected
             ? !prevRowSelected
             : false;
         const isBottom = rangeSelected
-          ? (viewIndex === range?.rowEnd)
+          ? (viewIndex === range?.rowEnd && !range?.pinnedBottom)
           : rowSelected
             ? !nextRowSelected
-            : (colSelected && lastRow);
+            : (colSelected && lastRow && !hasBottomBand);
         const isLeft = rangeSelected
           ? (colIdx <= (range?.colStart ?? 0) && (range?.colStart ?? 0) <= colEnd)
           : rowSelected

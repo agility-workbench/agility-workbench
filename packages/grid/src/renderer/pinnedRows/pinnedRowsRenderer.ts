@@ -222,56 +222,84 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const active = core.getActiveCell();
     const range = core.getSelectionRange();
     const highlight = !!core.options.highlightActiveCell;
+    const leaves = core.getColumnModel().getLeaves();
+    const selectedColumnIDs = core.getSelectedColumnIds();
+    const colSelectedAt = (idx: number): boolean => {
+      const col = leaves[idx];
+      return !!col && selectedColumnIDs.has(col.instanceID);
+    };
+    const bodyRangeRows = !!range && range.rowEnd >= range.rowStart;
 
-    // Pinned bands paint their segment of the unified range. Each segment draws its own border
-    // box (the band frame already separates it from the body rectangle visually).
+    // Pinned bands paint their segment of the unified range. The border box is open on the side
+    // facing the body when the range continues there — the range is one contiguous selection, so
+    // a band-edge border would read as two stacked rectangles at the seam.
     for (const { band, position } of [
       { band: this.top, position: "top" as const },
       { band: this.bottom, position: "bottom" as const },
     ]) {
       const segment = position === "top" ? range?.pinnedTop : range?.pinnedBottom;
+      const continuesBelow = position === "top" && (bodyRangeRows || !!range?.pinnedBottom);
+      const continuesAbove = position === "bottom" && (bodyRangeRows || !!range?.pinnedTop);
+      const bandLastRow = core.getDisplayedPinnedRowCount(position) - 1;
       band.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
         const row = cell.closest<HTMLElement>(".pte-row");
         const rowIndex = Number(row?.dataset.viewIdx);
         const colIndex = Number(cell.dataset.colIdx);
-        const selected = !!segment && !!range
+        const rangeSelected = !!segment && !!range
           && rowIndex >= segment.start && rowIndex <= segment.end
           && colIndex >= range.colStart && colIndex <= range.colEnd;
+        // A selected column runs through the bands too. Like the body, it draws no top border
+        // (the run starts under the header) and closes at the grid's visual bottom — which is the
+        // bottom band's last row when that band exists.
+        const colSelected = colSelectedAt(colIndex);
+        const selected = rangeSelected || colSelected;
         const isActive = !!active
           && active.rowPinned === position
           && active.row === rowIndex
           && active.colIdx === colIndex;
         this.applyCellSelectionClasses(cell, {
           selected,
-          top: selected && rowIndex === segment!.start,
-          bottom: selected && rowIndex === segment!.end,
-          left: selected && colIndex === range!.colStart,
-          right: selected && colIndex === range!.colEnd,
+          top: rangeSelected && rowIndex === segment!.start && !continuesAbove,
+          bottom: rangeSelected
+            ? rowIndex === segment!.end && !continuesBelow
+            : colSelected && position === "bottom" && rowIndex === bandLastRow,
+          left: rangeSelected
+            ? colIndex === range!.colStart
+            : colSelected && !colSelectedAt(colIndex - 1),
+          right: rangeSelected
+            ? colIndex === range!.colEnd
+            : colSelected && !colSelectedAt(colIndex + 1),
           active: isActive && highlight,
         });
       });
     }
 
-    // Sticky mirrors cover their live body rows (even at rest), so range/focus styling must appear
-    // on the mirror too or the covered body copy's would be invisible. Mirrors carry the row's
-    // real view index and no rowPinned tag — body-range coordinates match directly.
+    // Sticky mirrors cover their live body rows (even at rest), so range/column/focus styling must
+    // appear on the mirror too or the covered body copy's would be invisible. Mirrors carry the
+    // row's real view index and no rowPinned tag — body-range coordinates match directly.
     this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
       const row = cell.closest<HTMLElement>(".pte-row");
       const rowIndex = Number(row?.dataset.viewIdx);
       const colIndex = Number(cell.dataset.colIdx);
-      const selected = !!range
+      const rangeSelected = !!range
         && rowIndex >= range.rowStart && rowIndex <= range.rowEnd
         && colIndex >= range.colStart && colIndex <= range.colEnd;
+      const colSelected = colSelectedAt(colIndex);
+      const selected = rangeSelected || colSelected;
       const isActive = !!active
         && !active.rowPinned
         && active.row === rowIndex
         && colIndex === active.colIdx;
       this.applyCellSelectionClasses(cell, {
         selected,
-        top: selected && rowIndex === range!.rowStart,
-        bottom: selected && rowIndex === range!.rowEnd,
-        left: selected && colIndex === range!.colStart,
-        right: selected && colIndex === range!.colEnd,
+        top: rangeSelected && rowIndex === range!.rowStart && !range!.pinnedTop,
+        bottom: rangeSelected && rowIndex === range!.rowEnd && !range!.pinnedBottom,
+        left: rangeSelected
+          ? colIndex === range!.colStart
+          : colSelected && !colSelectedAt(colIndex - 1),
+        right: rangeSelected
+          ? colIndex === range!.colEnd
+          : colSelected && !colSelectedAt(colIndex + 1),
         active: isActive && highlight,
       });
     });

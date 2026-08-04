@@ -39,30 +39,40 @@ export class BodyMenuOpener {
     const colId = cell.dataset.colId ?? null;
     if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx) || !colId) return;
 
-    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    // App-pinned band rows carry a band-local data-view-idx plus a rowPinned marker; resolve their
+    // rowId from the band, not the body view. (Sticky mirrors carry the real body view index and no
+    // marker, so they take the body path.)
+    const rowPinned = rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
+      ? rowEl.dataset.rowPinned
+      : undefined;
+    const rowId = rowPinned
+      ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)?.id ?? null
+      : this.params.core.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
 
     e.preventDefault();
 
-    if (!this.params.core.isCellInActiveSelection(viewIdx, colIdx, rowId, colId)) {
-      this.params.core.dispatch({ type: "focusSet", viewIdx, colIdx, reason: "mouse" });
+    if (!this.params.core.isCellInActiveSelection(viewIdx, colIdx, rowId, colId, rowPinned)) {
+      this.params.core.dispatch({ type: "focusSet", viewIdx, colIdx, rowPinned, reason: "mouse" });
     }
 
     this.open({
       rowId,
       colId,
       viewIdx,
+      rowPinned,
       clientX: e.clientX,
       clientY: e.clientY,
     });
   }
 
-  private open(args: { rowId: string; colId: string; viewIdx: number; clientX: number; clientY: number; anchorEl?: HTMLElement }) {
+  private open(args: { rowId: string; colId: string; viewIdx: number; rowPinned?: "top" | "bottom"; clientX: number; clientY: number; anchorEl?: HTMLElement }) {
     const ctx: BodyMenuContext = {
       trigger: "bodyContextMenu",
       rowId: args.rowId,
       colId: args.colId,
       viewIdx: args.viewIdx,
+      rowPinned: args.rowPinned,
       selection: this.snapshotSelection(),
       anchorEl: args.anchorEl,
       clientX: args.clientX,

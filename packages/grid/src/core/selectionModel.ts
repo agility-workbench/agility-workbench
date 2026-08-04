@@ -197,10 +197,23 @@ export class SelectionModel {
     return this.selectedRowIds;
   }
 
-  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean {
+  isCellInActiveSelection(
+    viewIdx: number,
+    colIdx: number,
+    rowId: string,
+    colId: string,
+    rowPinned?: "top" | "bottom",
+  ): boolean {
     const r = this.range;
-    if (r && r.pageStartIdx === this.deps.getPageStartIdx()) {
-      if (viewIdx >= r.rowStart && viewIdx <= r.rowEnd && colIdx >= r.colStart && colIdx <= r.colEnd) return true;
+    if (r && r.pageStartIdx === this.deps.getPageStartIdx() && colIdx >= r.colStart && colIdx <= r.colEnd) {
+      if (rowPinned) {
+        // Band cells match against the range's pinned segment (band-local indices), never the
+        // body rowStart/rowEnd — band-local index 0 is unrelated to body view index 0.
+        const seg = rowPinned === "top" ? r.pinnedTop : r.pinnedBottom;
+        if (seg && viewIdx >= seg.start && viewIdx <= seg.end) return true;
+      } else if (viewIdx >= r.rowStart && viewIdx <= r.rowEnd) {
+        return true;
+      }
     }
     if (this.selectedRowIds.has(rowId)) return true;
     if (this.selectedColumnIds.has(colId)) return true;

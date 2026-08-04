@@ -133,6 +133,8 @@ export interface IGridCore {
   getActiveCell(): CellPos | null;
   /** Row node rendered at `rowIndex` of a pinned band, or null. Band-local indexing. */
   getDisplayedPinnedRow(position: "top" | "bottom", rowIndex: number): import("./iRowNode").IRowNode | null;
+  /** Number of rows currently displayed in a pinned band. */
+  getDisplayedPinnedRowCount(position: "top" | "bottom"): number;
   getEditingCell(): CellRef | null;
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;
