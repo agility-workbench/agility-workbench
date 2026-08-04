@@ -202,6 +202,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         // Core only owns whether the browser-native mode disables the grid menu entirely.
         bodyContextMenu: props.bodyContextMenu === false ? false : true,
         editTrigger: props.editTrigger ?? "doubleClick",
+        pinnedRowsEditable: props.pinnedRowsEditable ?? false,
         suppressKeyboardEdit: props.suppressKeyboardEdit ?? false,
         suppressTypeToEdit: props.suppressTypeToEdit ?? false,
         moveAfterEdit: props.moveAfterEdit ?? true,
@@ -220,6 +221,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.showColumnButtonsOnHover,
       props.bodyContextMenu,
       props.editTrigger,
+      props.pinnedRowsEditable,
       props.suppressKeyboardEdit,
       props.suppressTypeToEdit,
       props.moveAfterEdit,

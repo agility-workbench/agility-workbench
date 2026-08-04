@@ -704,6 +704,13 @@ export interface GridOptions {
    */
   showSortPriority?: ShowSortPriority;
   /**
+   * When true, cells of pinned rows can be edited: application-pinned top/bottom data rows
+   * (`pinnedTopRowData` / `pinnedBottomRowData`) and pinned tree-data parent rows. Synthetic group
+   * headers are never editable regardless. Edits to application-pinned rows write directly into
+   * the provided row data objects (they live outside the row model). Defaults to false.
+   */
+  pinnedRowsEditable?: boolean;
+  /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
    * `editTrigger: "none"` for fully API-only editing. Defaults to false.
@@ -904,6 +911,7 @@ export interface InternalGridOptions extends GridOptions {
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
   editTrigger: EditTrigger;
+  pinnedRowsEditable: boolean;
   suppressKeyboardEdit: boolean;
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
@@ -952,6 +960,7 @@ export type RuntimeGridOptions = Pick<
   | "showColumnButtonsOnHover"
   | "bodyContextMenu"
   | "editTrigger"
+  | "pinnedRowsEditable"
   | "suppressKeyboardEdit"
   | "suppressTypeToEdit"
   | "moveAfterEdit"

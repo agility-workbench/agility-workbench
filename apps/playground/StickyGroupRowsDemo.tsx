@@ -122,6 +122,7 @@ export function StickyGroupRowsDemo() {
           groupDefaultExpanded={-1}
           groupRowsSticky={sticky}
           groupDisplayType={displayType}
+          groupRowsSelectable
           quickFilter
           toolbar={{ grouping: true, sorting: true }}
           style={{ width: "100%", height: "100%" }}

@@ -189,6 +189,7 @@ export class GridCore implements IGridCore {
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       editTrigger: options.editTrigger ?? "doubleClick",
+      pinnedRowsEditable: isTrue(options.pinnedRowsEditable),
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,
@@ -1341,6 +1342,37 @@ export class GridCore implements IGridCore {
     return this.displayedPinnedRows[position][rowIndex] ?? null;
   }
 
+  /** Locate a pinned band row by id, with its band position and band-local index. */
+  getDisplayedPinnedRowRef(
+    rowId: GridId,
+  ): { node: IRowNode; position: RowPinnedPosition; rowIndex: number } | null {
+    for (const position of ["top", "bottom"] as const) {
+      const rowIndex = this.displayedPinnedRows[position].findIndex(node => node.id === rowId);
+      if (rowIndex >= 0) {
+        return { node: this.displayedPinnedRows[position][rowIndex], position, rowIndex };
+      }
+    }
+    return null;
+  }
+
+  // Resolve the row a cell reference addresses: a model row, or — for application-pinned data
+  // rows, which never enter the row model — the displayed band row.
+  private resolveCellRow(cell: CellRef): IRowNode | null {
+    return this.rowModel.getRowNode(cell.rowId)
+      ?? this.getDisplayedPinnedRowRef(cell.rowId)?.node
+      ?? null;
+  }
+
+  // Write a cell value wherever the row lives: through the row model, or — for application-pinned
+  // data rows — directly into the application-provided data object (mirroring setCellValue).
+  private writeCellValue(cell: CellRef, key: string, value: unknown): boolean {
+    if (this.rowModel.setCellValue(cell.rowId, key, value)) return true;
+    const pinned = this.getDisplayedPinnedRowRef(cell.rowId);
+    if (!pinned) return false;
+    (pinned.node.data as any)[key] = value;
+    return true;
+  }
+
   isBodyRowPinned(rowId: GridId): boolean {
     return this.bodyPinnedRowIds.has(rowId);
   }
@@ -1737,8 +1769,11 @@ export class GridCore implements IGridCore {
         break;
       case "editStart": {
         const col = this.columnModel.getById(action.cell.colId);
-        const row = this.rowModel.getRowNode(action.cell.rowId);
+        const row = this.resolveCellRow(action.cell);
         if (!col || !row || row.isGroup || !col.isCellEditable(row)) break;
+        // Pinned cells are editable only when opted in. Synthetic group headers stay blocked by
+        // the isGroup guard above; pinned tree parents and application data rows pass through.
+        if (action.cell.rowPinned && !this.options.pinnedRowsEditable) break;
         // Editing and ActionFrame are mutually exclusive: opening the editor closes any open frame.
         this.closeActionFrameIfOpen();
         this.editingCell = action.cell;
@@ -1768,7 +1803,7 @@ export class GridCore implements IGridCore {
       }
       case "editCommit": {
         const col = this.columnModel.getById(action.cell.colId);
-        const row = this.rowModel.getRowNode(action.cell.rowId);
+        const row = this.resolveCellRow(action.cell);
         this.editingCell = null;
         if (!col || !row) {
           this.emit("editingChanged", { state: "stopped", cell: action.cell });
@@ -1778,7 +1813,7 @@ export class GridCore implements IGridCore {
         const newValue = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
-        this.rowModel.setCellValue(action.cell.rowId, col.key, newValue);
+        this.writeCellValue(action.cell, col.key, newValue);
         if (!this.applyingHistory) {
           this.history.push({ label: "edit", edits: [{ cell: action.cell, oldValue, newValue }] });
         }
@@ -1805,11 +1840,11 @@ export class GridCore implements IGridCore {
         const recorded: CellEdit[] = [];
         for (const edit of action.edits) {
           const col = this.columnModel.getById(edit.cell.colId);
-          const row = this.rowModel.getRowNode(edit.cell.rowId);
+          const row = this.resolveCellRow(edit.cell);
           if (!col || !row) continue;
           const oldValue = col.getValue(row);
           const newValue = col.parseValue(String(edit.value ?? ""), row, oldValue);
-          if (this.rowModel.setCellValue(edit.cell.rowId, col.key, newValue)) {
+          if (this.writeCellValue(edit.cell, col.key, newValue)) {
             changedRowIds.add(edit.cell.rowId);
             changedColIds.add(col.instanceID);
             recorded.push({ cell: edit.cell, oldValue, newValue });
@@ -1858,7 +1893,7 @@ export class GridCore implements IGridCore {
         const col = this.columnModel.getById(edit.cell.colId);
         if (!col) continue;
         const value = dir === "undo" ? edit.oldValue : edit.newValue;
-        if (this.rowModel.setCellValue(edit.cell.rowId, col.key, value)) {
+        if (this.writeCellValue(edit.cell, col.key, value)) {
           changedRowIds.add(edit.cell.rowId);
           changedColIds.add(col.instanceID);
         }

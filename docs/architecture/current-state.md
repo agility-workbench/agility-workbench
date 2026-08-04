@@ -745,6 +745,10 @@ lifecycle; the content is a custom component.
 | All group display modes | ✅ Complete | `singleColumn`, `multipleColumns`, and full-width `groupRows` |
 | Horizontal section synchronization | ✅ Complete | Shared scroll synchronizer updates pinned row bands with header/body/footer |
 | Independent vertical overflow | ✅ Complete | Top/bottom application-pinned bands own a scrollbar column and cap at 30%; the sticky overlay clips to its stack height and never affects layout |
+| Keyboard navigation across bands | ✅ Complete | Plain arrows hand over at the body's content edges; Ctrl/Home/End/Page are region-locked; ensure-visible insets the sticky chain (`stickyClearance`) |
+| Editable pinned rows (`pinnedRowsEditable`) | ✅ Complete | Opt-in; editors mount in band cells; app-row edits write the provided data objects via `writeCellValue`, undoable; group headers never editable |
+| Pinned rows in exports | ✅ Complete | `ExportConfig.pinnedTopRows/pinnedBottomRows`; CSV+Excel frame the body; Excel freezes header+top band (`ySplit`); footer formulas span body only; selection exports honor pinned segments |
+| Range selection across bands | ✅ Complete | `SelectionRange.pinnedTop/pinnedBottom` segments over the unified row sequence; drag/Shift+Arrow/Ctrl+A cross edges; copy serializes segments in order; cut/paste body-only |
 
 ---
 

@@ -18,7 +18,9 @@ interface CellEditRendererParams {
   startIndex: () => number;
   leafColumnLookup: () => SectionLookup;
   leafColumns: () => Column[];
-  ensureCellVisible: (viewIdx: number, colIdx: number) => void;
+  ensureCellVisible: (viewIdx: number, colIdx: number, rowPinned?: "top" | "bottom") => void;
+  // The rendered cell element of a pinned band row, for mounting an editor there.
+  findPinnedCellEl?: (position: "top" | "bottom", rowIndex: number, colIdx: number) => HTMLDivElement | null;
   // Re-render a single cell's content in place (used to restore the cell when editing stops).
   repaintCell: (rowId: string, colId: string) => void;
   // Grid API reference passed to editors.
@@ -64,16 +66,24 @@ export class CellEditRenderer {
 
     const core = this.params.core;
     const col = core.getColumnModel().getById(cell.colId);
-    const row = core.getRowModel().getRowNode(cell.rowId);
+    // Application-pinned data rows never enter the row model; resolve them from the band.
+    const pinnedRef = cell.rowPinned ? core.getDisplayedPinnedRowRef(cell.rowId) : null;
+    const row = pinnedRef?.node ?? core.getRowModel().getRowNode(cell.rowId);
     if (!col || !row) return;
 
-    const viewIdx = core.getViewIndexForRowId(cell.rowId);
     const lookup = this.params.leafColumnLookup().get(cell.colId);
-    if (viewIdx == null || !lookup) return;
+    if (!lookup) return;
 
-    this.params.ensureCellVisible(viewIdx, lookup.globalIndex);
-
-    const cellEl = this.findCellEl(viewIdx, lookup.section, lookup.localIndex);
+    let cellEl: HTMLDivElement | null;
+    if (pinnedRef) {
+      this.params.ensureCellVisible(pinnedRef.rowIndex, lookup.globalIndex, pinnedRef.position);
+      cellEl = this.params.findPinnedCellEl?.(pinnedRef.position, pinnedRef.rowIndex, lookup.globalIndex) ?? null;
+    } else {
+      const viewIdx = core.getViewIndexForRowId(cell.rowId);
+      if (viewIdx == null) return;
+      this.params.ensureCellVisible(viewIdx, lookup.globalIndex);
+      cellEl = this.findCellEl(viewIdx, lookup.section, lookup.localIndex);
+    }
     if (!cellEl) return;
 
     const editor = createEditorForColumn(col);

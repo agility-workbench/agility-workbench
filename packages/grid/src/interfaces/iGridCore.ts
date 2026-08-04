@@ -131,6 +131,8 @@ export interface IGridCore {
   getSelectionRange(): SelectionRange | null;
   getSelectionAnchor(): CellPos | null;
   getActiveCell(): CellPos | null;
+  /** Row node rendered at `rowIndex` of a pinned band, or null. Band-local indexing. */
+  getDisplayedPinnedRow(position: "top" | "bottom", rowIndex: number): import("./iRowNode").IRowNode | null;
   getEditingCell(): CellRef | null;
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;

@@ -1,7 +1,8 @@
 import { Column } from "../../column/column";
 import { IGridCore } from "../../interfaces/iGridCore";
 import { CellRef } from "../../interfaces/selection";
-import { parseTSV, serializeRowsToTSV } from "./tsv";
+import { IRowNode } from "../../interfaces/iRowNode";
+import { parseTSV, serializeNodesToTSV } from "./tsv";
 
 interface ClipboardRendererParams {
   core: IGridCore;
@@ -10,10 +11,13 @@ interface ClipboardRendererParams {
   readText?: () => Promise<string>;
 }
 
-// The rectangular block resolved from the current selection, in the terms the TSV serializer wants.
+// The rectangular block resolved from the current selection, in the terms the TSV serializer
+// wants. `nodes` is the full unified row list (pinned top, body, pinned bottom) used for copy;
+// `viewIdxs` is the body part only — the writable subset that cut/clear/paste operate on.
 interface SelectionBlock {
   cols: Column[];
   viewIdxs: number[];
+  nodes: IRowNode[];
 }
 
 /**
@@ -34,14 +38,14 @@ export class ClipboardRenderer {
   copy(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    const tsv = serializeRowsToTSV(this.params.core.getRowModel(), block.cols, block.viewIdxs, false);
+    const tsv = serializeNodesToTSV(block.cols, block.nodes, false);
     void this.write(tsv);
   }
 
   cut(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    const tsv = serializeRowsToTSV(this.params.core.getRowModel(), block.cols, block.viewIdxs, false);
+    const tsv = serializeNodesToTSV(block.cols, block.nodes, false);
     void this.write(tsv);
 
     // Clear the copied cells (cut = copy + clear).
@@ -182,7 +186,26 @@ export class ClipboardRenderer {
         return globalIdx >= range.colStart && globalIdx <= range.colEnd;
       });
       const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(range.rowStart, range.rowEnd));
-      return cols.length && viewIdxs.length ? { cols, viewIdxs } : null;
+      // Copy in unified row order: pinned top segment, body rows, pinned bottom segment.
+      const groupRowsSelectable = core.getOptions().groupRowsSelectable;
+      const pinnedNodes = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
+        if (!segment) return [] as IRowNode[];
+        const nodes: IRowNode[] = [];
+        for (let r = segment.start; r <= segment.end; r++) {
+          const node = core.getDisplayedPinnedRow(position, r);
+          // Pinned group rows follow the same copy filter as body group rows.
+          if (node && (groupRowsSelectable || !node.isGroup)) nodes.push(node);
+        }
+        return nodes;
+      };
+      const nodes = [
+        ...pinnedNodes("top", range.pinnedTop),
+        ...viewIdxs
+          .map(viewIdx => rowModel.getRowNodeAtViewIndex(viewIdx))
+          .filter((node): node is IRowNode => node != null),
+        ...pinnedNodes("bottom", range.pinnedBottom),
+      ];
+      return cols.length && nodes.length ? { cols, viewIdxs, nodes } : null;
     }
 
     const selectedRowIds = core.getSelectedRowIds();
@@ -193,17 +216,28 @@ export class ClipboardRenderer {
         if (id && selectedRowIds.has(id)) viewIdxs.push(i);
       }
       const copyable = this.filterCopyableRows(viewIdxs);
-      return copyable.length ? { cols: visibleLeaves, viewIdxs: copyable } : null;
+      return copyable.length
+        ? { cols: visibleLeaves, viewIdxs: copyable, nodes: this.nodesForViewIdxs(copyable) }
+        : null;
     }
 
     const selectedColIds = core.getSelectedColumnIds();
     if (selectedColIds.size > 0) {
       const cols = visibleLeaves.filter(c => selectedColIds.has(c.instanceID));
       const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(0, rowModel.getViewCount() - 1));
-      return cols.length && viewIdxs.length ? { cols, viewIdxs } : null;
+      return cols.length && viewIdxs.length
+        ? { cols, viewIdxs, nodes: this.nodesForViewIdxs(viewIdxs) }
+        : null;
     }
 
     return null;
+  }
+
+  private nodesForViewIdxs(viewIdxs: number[]): IRowNode[] {
+    const rowModel = this.params.core.getRowModel();
+    return viewIdxs
+      .map(viewIdx => rowModel.getRowNodeAtViewIndex(viewIdx))
+      .filter((node): node is IRowNode => node != null);
   }
 
   // Drop group (summary) rows from a copy/cut set unless groupRowsSelectable is enabled. Group
@@ -220,16 +254,19 @@ export class ClipboardRenderer {
   private pasteAnchor(): { rowStart: number; colStart: number; rowSpan: number; colSpan: number } | null {
     const core = this.params.core;
     const range = core.getSelectionRange();
-    if (range) {
+    // Paste writes into body cells only; a range whose body segment is empty (entirely within a
+    // pinned band) has no paste target.
+    if (range && range.rowEnd >= range.rowStart) {
       return {
-        rowStart: Math.min(range.rowStart, range.rowEnd),
+        rowStart: range.rowStart,
         colStart: Math.min(range.colStart, range.colEnd),
-        rowSpan: Math.abs(range.rowEnd - range.rowStart) + 1,
+        rowSpan: range.rowEnd - range.rowStart + 1,
         colSpan: Math.abs(range.colEnd - range.colStart) + 1,
       };
     }
+    if (range) return null;
     const active = core.getActiveCell();
-    if (!active) return null;
+    if (!active || active.rowPinned) return null;
     return { rowStart: active.row, colStart: active.colIdx, rowSpan: 1, colSpan: 1 };
   }
 

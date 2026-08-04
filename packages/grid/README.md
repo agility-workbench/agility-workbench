@@ -213,7 +213,20 @@ separate top/bottom bands outside the body; each band caps at 30% of the grid he
 independent vertical scrollbar when its content exceeds that space, while the central body keeps
 its own scrollbar. Pinned cells retain section-local row and global column coordinates, so arrows
 navigate top → body → bottom exactly as horizontal navigation crosses left → center → right column
-sections.
+sections. The body always scrolls to its content edge first: only a plain arrow step from the
+first/last body row hands the active cell over to a band, and Ctrl/Home/End/Page jumps are
+region-locked. Range selection spans the bands: a range is one contiguous span of the unified
+`pinned top → body → pinned bottom` row sequence (built by drag or Shift+Arrow across the edges),
+each segment paints its own selection rectangle, and copy serializes the segments in that order.
+Ctrl+A selects the entire sequence, bands included. Exports mirror the same order: pinned data
+rows frame the body in CSV and Excel output (full exports and selection exports alike, honoring a
+range's pinned segments), and the Excel export freezes the header together with the pinned top
+rows so they stay pinned in the workbook; the aggregate footer keeps aggregating body rows only.
+Cut, clear, and paste apply to the body segment only. Pinned rows are read-only by default; `pinnedRowsEditable: true` enables inline
+editing of application-pinned data rows (writing into the provided data objects, with undo/redo)
+and pinned tree-data parents — synthetic group headers are never editable. Scrolling a focused row
+into view accounts for the sticky ancestor overlay, so the row lands below the docked chain rather
+than hidden underneath it.
 
 ## Tree data
 

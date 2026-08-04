@@ -25,7 +25,7 @@ export function PinnedRowsDemo() {
 
   const columns = useMemo<ReactColDef[]>(() => [
     { colId: "team", key: "team", label: "Team", width: 150, pinned: "left" },
-    { colId: "owner", key: "owner", label: "Owner", width: 140 },
+    { colId: "owner", key: "owner", label: "Owner", width: 140, editable: true },
     {
       colId: "pipeline",
       key: "pipeline",
@@ -80,6 +80,7 @@ export function PinnedRowsDemo() {
           rowData={ROWS}
           columnDefs={columns}
           rowIdKey="id"
+          pinnedRowsEditable
           pinnedTopRowData={topRows}
           pinnedBottomRowData={bottomRows}
           quickFilter={{ mode: "always", debounceMs: 0 }}

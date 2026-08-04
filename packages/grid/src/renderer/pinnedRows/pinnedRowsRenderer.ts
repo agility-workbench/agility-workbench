@@ -218,38 +218,87 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   refreshSelectionStyles(): void {
-    const active = this.params.core.options.highlightActiveCell
-      ? this.params.core.getActiveCell()
-      : null;
-    for (const band of [this.top, this.bottom]) {
+    const core = this.params.core;
+    const active = core.getActiveCell();
+    const range = core.getSelectionRange();
+    const highlight = !!core.options.highlightActiveCell;
+
+    // Pinned bands paint their segment of the unified range. Each segment draws its own border
+    // box (the band frame already separates it from the body rectangle visually).
+    for (const { band, position } of [
+      { band: this.top, position: "top" as const },
+      { band: this.bottom, position: "bottom" as const },
+    ]) {
+      const segment = position === "top" ? range?.pinnedTop : range?.pinnedBottom;
       band.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
         const row = cell.closest<HTMLElement>(".pte-row");
         const rowIndex = Number(row?.dataset.viewIdx);
         const colIndex = Number(cell.dataset.colIdx);
-        const rowPinned = row?.dataset.rowPinned;
-        cell.classList.toggle(
-          "pte-active-cell",
-          !!active
-          && active.rowPinned === rowPinned
+        const selected = !!segment && !!range
+          && rowIndex >= segment.start && rowIndex <= segment.end
+          && colIndex >= range.colStart && colIndex <= range.colEnd;
+        const isActive = !!active
+          && active.rowPinned === position
           && active.row === rowIndex
-          && active.colIdx === colIndex,
-        );
+          && active.colIdx === colIndex;
+        this.applyCellSelectionClasses(cell, {
+          selected,
+          top: selected && rowIndex === segment!.start,
+          bottom: selected && rowIndex === segment!.end,
+          left: selected && colIndex === range!.colStart,
+          right: selected && colIndex === range!.colEnd,
+          active: isActive && highlight,
+        });
       });
     }
-    // Sticky mirrors cover their live body rows (even at rest), so the active-cell highlight must
-    // appear on the mirror too or the covered body copy's ring would be invisible. Mirrors carry
-    // the row's real view index and no rowPinned tag — body coordinates match directly.
+
+    // Sticky mirrors cover their live body rows (even at rest), so range/focus styling must appear
+    // on the mirror too or the covered body copy's would be invisible. Mirrors carry the row's
+    // real view index and no rowPinned tag — body-range coordinates match directly.
     this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
       const row = cell.closest<HTMLElement>(".pte-row");
       const rowIndex = Number(row?.dataset.viewIdx);
-      cell.classList.toggle(
-        "pte-active-cell",
-        !!active
+      const colIndex = Number(cell.dataset.colIdx);
+      const selected = !!range
+        && rowIndex >= range.rowStart && rowIndex <= range.rowEnd
+        && colIndex >= range.colStart && colIndex <= range.colEnd;
+      const isActive = !!active
         && !active.rowPinned
         && active.row === rowIndex
-        && Number(cell.dataset.colIdx) === active.colIdx,
-      );
+        && colIndex === active.colIdx;
+      this.applyCellSelectionClasses(cell, {
+        selected,
+        top: selected && rowIndex === range!.rowStart,
+        bottom: selected && rowIndex === range!.rowEnd,
+        left: selected && colIndex === range!.colStart,
+        right: selected && colIndex === range!.colEnd,
+        active: isActive && highlight,
+      });
     });
+  }
+
+  private applyCellSelectionClasses(cell: HTMLElement, state: {
+    selected: boolean;
+    top: boolean;
+    bottom: boolean;
+    left: boolean;
+    right: boolean;
+    active: boolean;
+  }): void {
+    cell.classList.toggle("selected", state.selected);
+    cell.classList.toggle("selected-top", state.top);
+    cell.classList.toggle("selected-bottom", state.bottom);
+    cell.classList.toggle("selected-left", state.left);
+    cell.classList.toggle("selected-right", state.right);
+    cell.classList.toggle("pte-active-cell", state.active);
+  }
+
+  /** The rendered cell element of a band row (any section), e.g. for mounting a cell editor. */
+  findCellElement(position: RowPinnedPosition, rowIndex: number, colIdx: number): HTMLDivElement | null {
+    const band = position === "top" ? this.top : this.bottom;
+    return band.root.querySelector<HTMLDivElement>(
+      `.pte-pinned-row[data-view-idx='${rowIndex}'] .pte-cell[data-col-idx='${colIdx}']`,
+    );
   }
 
   ensureCellVisible(position: RowPinnedPosition, rowIndex: number): void {
@@ -434,6 +483,27 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     return stack;
   }
 
+  /**
+   * Height of the sticky ancestor chain that will sit docked above this row once it is scrolled
+   * to the top — i.e. how far the effective viewport top is inset for it. Scrolling that leaves a
+   * row underneath the overlay would hide it, so ensure-visible scrolling subtracts this. The
+   * row's own slot is excluded: a parent row scrolled to its slot is represented by its docked
+   * mirror (which carries the active-cell styling).
+   */
+  stickyClearance(viewIndex: number): number {
+    const core = this.params.core;
+    if (!core.options.groupRowsSticky) return 0;
+    const model = core.getRowModel();
+    if (model.getType() !== "clientSide") return 0;
+    const node = model.getRowNodeAtViewIndex(viewIndex);
+    if (!node) return 0;
+    const chain = this.parentChainOf(node);
+    const ancestors = chain.length > 0 && chain[chain.length - 1].id === node.id
+      ? chain.length - 1
+      : chain.length;
+    return ancestors * this.params.rowHeight();
+  }
+
   /** Body-flow top (px, content space) of a view row, compacted for application-pinned rows. */
   private compactTop(viewIndex: number, rowHeight: number): number {
     return (viewIndex - this.params.core.getBodyPinnedRowCountBefore(viewIndex)) * rowHeight;
@@ -603,7 +673,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
-      if (pinned) this.applyActiveCell(center, rowIndex, pinned);
       return;
     }
 
@@ -685,27 +754,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       width += column.computedWidth;
     }
     rowElement.style.width = `${width}px`;
-    if (pinned) this.applyActiveCell(rowElement, rowIndex, pinned);
   }
 
-  private applyActiveCell(
-    rowElement: HTMLDivElement,
-    rowIndex: number,
-    position: RowPinnedPosition,
-  ): void {
-    const active = this.params.core.options.highlightActiveCell
-      ? this.params.core.getActiveCell()
-      : null;
-    rowElement.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
-      cell.classList.toggle(
-        "pte-active-cell",
-        !!active
-        && active.rowPinned === position
-        && active.row === rowIndex
-        && Number(cell.dataset.colIdx) === active.colIdx,
-      );
-    });
-  }
 
   private columnsWidth(columns: Column[]): number {
     return columns.reduce((sum, column) => sum + (column.hidden ? 0 : column.computedWidth), 0);
@@ -717,9 +767,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     visibleWidth: number,
     contentWidth: number,
   ): void {
-    section.style.width = `${visibleWidth}px`;
-    section.style.minWidth = `${visibleWidth}px`;
-    section.style.maxWidth = `${visibleWidth}px`;
+    // section.style.width = `${visibleWidth}px`;
+    // section.style.minWidth = `${visibleWidth}px`;
+    // section.style.maxWidth = `${visibleWidth}px`;
     host.style.width = `${contentWidth}px`;
     host.style.minWidth = `${contentWidth}px`;
   }

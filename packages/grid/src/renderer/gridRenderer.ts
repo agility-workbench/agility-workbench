@@ -70,7 +70,7 @@ import { GridScrollSyncRenderer } from "./scroll/sync";
 import { SelectionRenderer } from "./selection/selectionRenderer";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
-import { serializeRowsToTSV } from "./clipboard/tsv";
+import { serializeNodesToTSV, serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
 import { GridToolbarRenderer } from "./toolbar/gridToolbarRenderer";
@@ -312,7 +312,9 @@ export class GridRenderer {
       startIndex: () => this._startIndex,
       leafColumnLookup: () => this._leafColumnLookup,
       leafColumns: () => this._leafColumns,
-      ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
+      ensureCellVisible: (viewIdx, colIdx, rowPinned) => this._ensureCellVisible(viewIdx, colIdx, rowPinned),
+      findPinnedCellEl: (position, rowIndex, colIdx) =>
+        this._pinnedRowsRenderer?.findCellElement(position, rowIndex, colIdx) ?? null,
       repaintCell: (rowId, colId) => this._repaintCell(rowId, colId),
       api: () => null,
     });
@@ -1151,6 +1153,12 @@ export class GridRenderer {
   _repaintCell(rowId: string, colId: string) {
     const viewIdx = this.core.getViewIndexForRowId(rowId);
     const lookup = this._leafColumnLookup.get(colId);
+    // Pinned band rows (application data rows) have no body view index — rebuild the bands so the
+    // edited/restored cell content re-renders there.
+    if (viewIdx == null && this.core.getDisplayedPinnedRowRef(rowId)) {
+      this._pinnedRowsRenderer?.render(undefined, true);
+      return;
+    }
     if (viewIdx == null || !lookup) return;
     const slot = this._rowPool[viewIdx - this._startIndex];
     if (!slot) return;
@@ -1171,6 +1179,9 @@ export class GridRenderer {
     // once so patchCells recomputes spans for the changed rows.
     if (this.core.getColumnModel().getLeaves().some((col) => col.colSpan != null)) {
       this._bodyWindowRenderer.update(true, undefined);
+      if (params.rowIds.some(rowId => this.core.getDisplayedPinnedRowRef(rowId))) {
+        this._pinnedRowsRenderer?.render(undefined, true);
+      }
       return;
     }
     for (const rowId of params.rowIds) {
@@ -1239,15 +1250,19 @@ export class GridRenderer {
   ) {
     const refs = this._bodyViewportRenderer.getRefs();
 
-    // Vertical: scroll centerScroller so the row is fully in view.
+    // Vertical: scroll centerScroller so the row is fully in view. Body positions are compacted
+    // for application-pinned model rows, and the effective viewport top is inset by the sticky
+    // ancestor chain that will dock above the row — otherwise the row would technically be in
+    // view but sitting hidden underneath the overlay.
     if (rowPinned) {
       this._pinnedRowsRenderer.ensureCellVisible(rowPinned, viewIdx);
     } else {
-      const rowTop = viewIdx * this.rowHeight;
+      const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+      const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
       const viewH = refs.body.clientHeight;
       const st = refs.centerScroller.scrollTop;
-      if (rowTop < st) {
-        refs.centerScroller.scrollTop = rowTop;
+      if (rowTop - clearance < st) {
+        refs.centerScroller.scrollTop = Math.max(0, rowTop - clearance);
       } else if (rowTop + this.rowHeight > st + viewH) {
         refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
       }
@@ -1324,7 +1339,22 @@ export class GridRenderer {
         const globalIdx = columnModel.getLeaves().indexOf(allLeaves[idx]);
         return globalIdx >= r.colStart && globalIdx <= r.colEnd;
       });
-      viewIdxRange = { start: r.rowStart, end: r.rowEnd };
+      // Serialize in unified row order: pinned top segment, body rows, pinned bottom segment.
+      const nodes: import("../interfaces/iRowNode").IRowNode[] = [];
+      const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
+        if (!segment) return;
+        for (let i = segment.start; i <= segment.end; i++) {
+          const node = this.core.getDisplayedPinnedRow(position, i);
+          if (node) nodes.push(node);
+        }
+      };
+      pushPinned("top", r.pinnedTop);
+      for (let i = r.rowStart; i <= r.rowEnd; i++) {
+        const node = rowModel.getRowNodeAtViewIndex(i);
+        if (node) nodes.push(node);
+      }
+      pushPinned("bottom", r.pinnedBottom);
+      return serializeNodesToTSV(cols, nodes, includeHeaders);
     } else if (ctx.selection.rowIds.length > 0) {
       const rowIdSet = new Set(ctx.selection.rowIds);
       const viewIdxs: number[] = [];

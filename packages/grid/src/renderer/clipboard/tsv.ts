@@ -12,6 +12,26 @@ export function escapeTSV(value: unknown): string {
 }
 
 /**
+ * Serialize a rectangular block of the grid (given columns × row nodes) to TSV. Accepts any row
+ * nodes — body rows and pinned band rows serialize identically.
+ */
+export function serializeNodesToTSV(
+  cols: Column[],
+  nodes: import("../../interfaces/iRowNode").IRowNode[],
+  includeHeaders: boolean,
+): string {
+  const lines: string[] = [];
+  if (includeHeaders) {
+    lines.push(cols.map(c => escapeTSV(c.label ?? c.key ?? "")).join("\t"));
+  }
+  for (const node of nodes) {
+    const cells = cols.map(col => escapeTSV(col.formatValue(col.getValue(node), node)));
+    lines.push(cells.join("\t"));
+  }
+  return lines.join("\n");
+}
+
+/**
  * Serialize a rectangular block of the grid (given columns × view-index rows) to TSV.
  * Rows that aren't currently loaded (server-side sparse data) are skipped.
  */
@@ -21,17 +41,10 @@ export function serializeRowsToTSV(
   viewIdxs: number[],
   includeHeaders: boolean,
 ): string {
-  const lines: string[] = [];
-  if (includeHeaders) {
-    lines.push(cols.map(c => escapeTSV(c.label ?? c.key ?? "")).join("\t"));
-  }
-  for (const viewIdx of viewIdxs) {
-    const node = rowModel.getRowNodeAtViewIndex(viewIdx);
-    if (!node) continue;
-    const cells = cols.map(col => escapeTSV(col.formatValue(col.getValue(node), node)));
-    lines.push(cells.join("\t"));
-  }
-  return lines.join("\n");
+  const nodes = viewIdxs
+    .map(viewIdx => rowModel.getRowNodeAtViewIndex(viewIdx))
+    .filter((node): node is NonNullable<typeof node> => node != null);
+  return serializeNodesToTSV(cols, nodes, includeHeaders);
 }
 
 /**

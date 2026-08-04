@@ -145,6 +145,51 @@ describe("hand-rolled xlsx writer", () => {
     expect(view.ySplit).toBe(1); // one header row
   });
 
+  it("frames the body with pinned rows and freezes the top band with the header", async () => {
+    const columns = [
+      col({ key: "name", label: "Name" }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    const config: ExportConfig = {
+      columns,
+      rows: [{ name: "body1", qty: 1 }, { name: "body2", qty: 2 }],
+      pinnedTopRows: [{ name: "forecast", qty: 100 }],
+      pinnedBottomRows: [{ name: "total", qty: 3 }],
+      aggregates: [],
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+
+    // Row order: header, pinned top, body, pinned bottom.
+    expect(ws.getCell("A1").value).toBe("Name");
+    expect(ws.getCell("A2").value).toBe("forecast");
+    expect(ws.getCell("A3").value).toBe("body1");
+    expect(ws.getCell("A4").value).toBe("body2");
+    expect(ws.getCell("A5").value).toBe("total");
+
+    // The frozen pane covers the header AND the pinned top rows.
+    const view = ws.views[0] as any;
+    expect(view.state).toBe("frozen");
+    expect(view.ySplit).toBe(2); // 1 header row + 1 pinned top row
+  });
+
+  it("keeps the aggregate footer's formula range on body rows only", async () => {
+    const columns = [col({ key: "qty", label: "Qty", type: ColumnType.NUMBER })];
+    (columns[0] as any).aggregatable = true;
+    const config: ExportConfig = {
+      columns,
+      rows: [{ qty: 1 }, { qty: 2 }],
+      pinnedTopRows: [{ qty: 100 }],
+      pinnedBottomRows: [{ qty: 200 }],
+      aggregates: [{ key: columns[0].instanceID, type: AggregateType.SUM }],
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    // Sheet: 1 header, 2 pinned top, 3-4 body, 5 pinned bottom, 6 footer.
+    const footer = ws.getCell("A6").value as any;
+    expect(String(footer?.formula ?? footer)).toContain("A3:A4");
+  });
+
   it("escapes XML-special characters in values", async () => {
     const columns = [col({ key: "x", label: "X & <Y>", type: ColumnType.STRING })];
     const config: ExportConfig = {

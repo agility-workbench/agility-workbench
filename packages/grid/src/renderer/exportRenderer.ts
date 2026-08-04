@@ -1,6 +1,7 @@
 import { Column } from "../column/column";
 import { GridCore } from "../core/core";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
+import { PinnedRangeSegment, SelectionRange } from "../interfaces/selection";
 import {
   exportCSV as downloadCSV,
   exportExcel as downloadExcel,
@@ -11,7 +12,6 @@ import {
   ExportScope,
 } from "../export/export";
 
-type SelectionRange = { rowStart: number; rowEnd: number; colStart: number; colEnd: number };
 
 /** Append every data-bearing node under `node` (pre-order) to `out`. */
 function collectLeafData(node: IRowNode, out: any[]): void {
@@ -181,7 +181,10 @@ export class ExportRenderer {
       rows = this.getRowsForExport(true);
     }
 
-    if (!rows || rows.length === 0) return null;
+    const { pinnedTopRows, pinnedBottomRows } = this.pinnedRowsForExport(scope);
+    if ((!rows || rows.length === 0) && pinnedTopRows.length === 0 && pinnedBottomRows.length === 0) {
+      return null;
+    }
 
     // Include the aggregate footer only when the grid is actually showing aggregates on-screen
     // (scope !== "none"). A flat range/selection export skips it, since the footer's formulas span
@@ -194,6 +197,8 @@ export class ExportRenderer {
     return {
       rows,
       columns,
+      pinnedTopRows,
+      pinnedBottomRows,
       selectionRange,
       selectedColumnIDs,
       columnIds: options.columnIds,
@@ -294,9 +299,13 @@ export class ExportRenderer {
         ? this.params.core.getAggregateModel()
         : undefined;
 
+    const { pinnedTopRows, pinnedBottomRows } = this.pinnedRowsForExport(scope);
+
     return {
       rows: leafData,
       columns,
+      pinnedTopRows,
+      pinnedBottomRows,
       columnIds: columnIds ?? options.columnIds,
       selectedColumnIDs: scope === "selectedColumns" ? this.params.selectedColumnIDs() : undefined,
       includeHeaders: options.includeHeaders,
@@ -372,10 +381,39 @@ export class ExportRenderer {
   private resolveExportScope(options: ExportOptions): ExportScope {
     if (options.scope) return options.scope;
     if (options.columnIds && options.columnIds.length > 0) return "all";
-    if (this.params.selectionRange()) return "selection";
+    const range = this.params.selectionRange();
+    if (range && (range.rowEnd >= range.rowStart || range.pinnedTop || range.pinnedBottom)) {
+      return "selection";
+    }
     if (this.params.core.getSelectedRowIds().size > 0) return "selection";
     if (this.params.selectedColumnIDs().size > 0) return "selectedColumns";
     return "all";
+  }
+
+  /**
+   * The pinned band rows an export should include, in band order. For a cell-range selection the
+   * range's pinned segments decide; every other scope exports the full bands (row-id selections
+   * can't cover band rows, so they contribute none). Synthetic group headers carry no data row and
+   * are skipped — pinned group rows of a grouped grid are part of the group tree already.
+   */
+  private pinnedRowsForExport(scope: ExportScope): { pinnedTopRows: any[]; pinnedBottomRows: any[] } {
+    const range = scope === "selection" ? this.params.selectionRange() : null;
+    const rowIdSelection = scope === "selection" && !range;
+    const collect = (position: "top" | "bottom") => {
+      const rows: any[] = [];
+      if (rowIdSelection) return rows;
+      const segment: PinnedRangeSegment | undefined = range
+        ? (position === "top" ? range.pinnedTop : range.pinnedBottom)
+        : undefined;
+      if (range && !segment) return rows;
+      for (let i = segment?.start ?? 0; segment == null || i <= segment.end; i++) {
+        const node = this.params.core.getDisplayedPinnedRow(position, i);
+        if (!node) break;
+        if (!node.isGroup) rows.push(node.data);
+      }
+      return rows;
+    };
+    return { pinnedTopRows: collect("top"), pinnedBottomRows: collect("bottom") };
   }
 
   private getRowsForExport(includeAllRows: boolean): any[] {

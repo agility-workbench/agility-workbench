@@ -30,6 +30,14 @@ export interface ExportSelectionRange {
 export interface ExportConfig {
   rows: any[];
   columns: Column[];
+  /**
+   * Pinned band row data exported around the body, mirroring the on-screen order: `pinnedTopRows`
+   * are emitted directly after the header (and included in the Excel frozen pane so they stay
+   * pinned in the workbook), `pinnedBottomRows` after the last body row (before the aggregate
+   * footer). Same shape as `rows`; the aggregate footer's formulas span body rows only.
+   */
+  pinnedTopRows?: any[];
+  pinnedBottomRows?: any[];
   columnTree?: Column[];
   selectionRange?: ExportSelectionRange | null;
   selectedColumnIDs?: Set<string>;
@@ -167,10 +175,17 @@ const clampSelection = (
   if (!range) return null;
   if (rowCount <= 0 || colCount <= 0) return null;
 
-  const rowStart = Math.min(Math.max(range.rowStart, 0), Math.max(rowCount - 1, 0));
-  const rowEnd = Math.min(Math.max(range.rowEnd, 0), Math.max(rowCount - 1, 0));
   const colStart = Math.min(Math.max(range.colStart, 0), Math.max(colCount - 1, 0));
   const colEnd = Math.min(Math.max(range.colEnd, 0), Math.max(colCount - 1, 0));
+
+  // A range may live entirely in the pinned bands (body segment empty, rowStart > rowEnd). Its
+  // column span still applies; the empty body segment is preserved so resolveRows yields nothing.
+  if (range.rowEnd < range.rowStart) {
+    return { rowStart: 0, rowEnd: -1, colStart: Math.min(colStart, colEnd), colEnd: Math.max(colStart, colEnd) };
+  }
+
+  const rowStart = Math.min(Math.max(range.rowStart, 0), Math.max(rowCount - 1, 0));
+  const rowEnd = Math.min(Math.max(range.rowEnd, 0), Math.max(rowCount - 1, 0));
 
   return {
     rowStart: Math.min(rowStart, rowEnd),
@@ -199,6 +214,7 @@ const resolveRows = (config: ExportConfig, colCount: number): any[] => {
   const rows = config.rows ?? [];
   const range = clampSelection(config.selectionRange, rows.length, colCount);
   if (!range) return rows.slice();
+  if (range.rowEnd < range.rowStart) return [];
   return rows.slice(range.rowStart, range.rowEnd + 1);
 };
 
@@ -445,7 +461,7 @@ export const buildCSV = (config: ExportConfig): string => {
     csvRows.push(...buildHeaderMatrix(headerLayout, columns.length));
   }
 
-  rows.forEach((row, rowIndex) => {
+  const emitRow = (row: any, rowIndex: number) => {
     // CSV has no merged-cell concept, so mirror the grid's *visible* content: a full-width row puts
     // its text in the first column and blanks the rest; a colSpan puts the value in the spanning
     // column and blanks the columns it covers.
@@ -465,7 +481,12 @@ export const buildCSV = (config: ExportConfig): string => {
       return escapeCSVValue(formatted ?? "");
     });
     csvRows.push(values);
-  });
+  };
+
+  // Pinned band rows frame the body, mirroring the on-screen top band → body → bottom band order.
+  (config.pinnedTopRows ?? []).forEach(emitRow);
+  rows.forEach(emitRow);
+  (config.pinnedBottomRows ?? []).forEach(emitRow);
 
   return csvRows.map(r => r.join(",")).join("\n");
 };
@@ -959,7 +980,18 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
 
     // Body rows. `rowMeta` carries outline levels only in the grouped case; undefined otherwise.
     const bodyStyles = columns.map(bodyCellStyle);
-    const dataStartRow = headerOffset + 1; // 1-based sheet row of the first body row
+
+    // Pinned top rows sit directly under the header, inside the frozen pane, so they stay pinned
+    // in the workbook exactly as they are in the grid.
+    const pinnedTopRows = config.pinnedTopRows ?? [];
+    const pinnedBottomRows = config.pinnedBottomRows ?? [];
+    pinnedTopRows.forEach((row, rowIndex) => {
+      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex);
+      sheetRows.push(built.cells);
+      merges.push(...spanMergesToRanges(built.spanMerges, sheetRows.length));
+    });
+
+    const dataStartRow = headerOffset + pinnedTopRows.length + 1; // 1-based sheet row of the first body row
     let rowMeta: RowMeta[] | undefined;
     let footerRows: any[]; // leaf rows the grand-total footer aggregates over
 
@@ -1013,9 +1045,17 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     }
 
     // Grand-total footer (SUBTOTAL for a tree export so it ignores per-group subtotal rows; plain
-    // functions otherwise). At this point sheetRows holds header + body, so its length is the
-    // 1-based row of the last body row.
+    // functions otherwise). At this point sheetRows holds header + pinned top + body, so its length
+    // is the 1-based row of the last body row. Captured BEFORE the pinned bottom rows are appended
+    // so the footer's formula ranges aggregate body rows only.
     const dataEndRow = sheetRows.length;
+
+    pinnedBottomRows.forEach((row, rowIndex) => {
+      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex);
+      sheetRows.push(built.cells);
+      merges.push(...spanMergesToRanges(built.spanMerges, sheetRows.length));
+      if (rowMeta) rowMeta.push({}); // pinned rows sit at the top outline level
+    });
     const footer = config.aggregates
       ? buildAggregateFooter(columns, footerRows, config.aggregates, dataStartRow, dataEndRow, treeExport)
       : null;
@@ -1036,7 +1076,7 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
           merges,
           frozen: {
             xSplit: leftPinnedCount || undefined,
-            ySplit: headerOffset || undefined,
+            ySplit: (headerOffset + pinnedTopRows.length) || undefined,
           },
         },
       ],

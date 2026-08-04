@@ -13,9 +13,19 @@ export interface CellPos {
   rowPinned?: "top" | "bottom";
 }
 
+/** A contiguous run of rows inside one pinned band, in band-local indices (inclusive). */
+export interface PinnedRangeSegment {
+  start: number;
+  end: number;
+}
+
 /**
- * A rectangular cell selection in view-index space. `pageStartIdx` records the page the
- * selection was made on so it can be invalidated when the page changes.
+ * A rectangular cell selection. Rows form one contiguous span in the unified row sequence
+ * `pinned top → body → pinned bottom`; `rowStart`/`rowEnd` hold the body part in view-index
+ * space, and `pinnedTop`/`pinnedBottom` the band parts. A range with no body rows carries
+ * `rowStart: 0, rowEnd: -1` (start > end) so body-oriented consumers naturally iterate nothing.
+ * `pageStartIdx` records the page the selection was made on so it can be invalidated when the
+ * page changes.
  */
 export interface SelectionRange {
   rowStart: number;
@@ -23,6 +33,8 @@ export interface SelectionRange {
   colStart: number;
   colEnd: number;
   pageStartIdx: number;
+  pinnedTop?: PinnedRangeSegment;
+  pinnedBottom?: PinnedRangeSegment;
 }
 
 /** Which kind of selection is currently active. The three kinds are mutually exclusive. */

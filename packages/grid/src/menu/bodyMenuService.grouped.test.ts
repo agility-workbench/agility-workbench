@@ -120,7 +120,7 @@ describe("body menu Excel export item (grouping-aware)", () => {
     // A range that covers a group row but starts at column 1 (excludes the group column at index 0).
     const gIdx = groupRowViewIdx(core, "Manager");
     const items = svc0(core).buildDefaultBodyMenu(
-      ctxWith({ range: { rowStart: gIdx, rowEnd: gIdx + 1, colStart: 1, colEnd: 3 } }),
+      ctxWith({ range: { rowStart: gIdx, rowEnd: gIdx + 1, colStart: 1, colEnd: 3, pageStartIdx: 0 } }),
     );
     const tree = findById(items, "exportExcelTree")!;
     expect(tree.disabled).toBe(true);
@@ -134,7 +134,7 @@ describe("body menu Excel export item (grouping-aware)", () => {
     core.dispatch({ type: "rowGroupSet", colIds: ["title"] });
     const gIdx = groupRowViewIdx(core, "Manager");
     const items = svc0(core).buildDefaultBodyMenu(
-      ctxWith({ range: { rowStart: gIdx, rowEnd: gIdx + 1, colStart: 0, colEnd: 3 } }),
+      ctxWith({ range: { rowStart: gIdx, rowEnd: gIdx + 1, colStart: 0, colEnd: 3, pageStartIdx: 0 } }),
     );
     expect(findById(items, "exportExcelTree")!.disabled).toBeFalsy();
   });

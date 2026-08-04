@@ -1,7 +1,9 @@
+import type { SelectionRange } from "../interfaces/selection";
+
 export interface BodyMenuSelectionSnapshot {
   rowIds: string[];
   colIds: string[];
-  range: { rowStart: number; rowEnd: number; colStart: number; colEnd: number } | null;
+  range: SelectionRange | null;
 }
 
 export interface BodyMenuContext {

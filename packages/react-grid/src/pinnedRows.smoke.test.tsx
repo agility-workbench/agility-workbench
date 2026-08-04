@@ -485,6 +485,345 @@ describe("pinned and sticky rows", () => {
     container.remove();
   });
 
+
+  it("hands keyboard navigation to the bands only at the body's content edges", async () => {
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [
+        { id: "t1", region: "Top1", country: "x", sales: 1 },
+        { id: "t2", region: "Top2", country: "x", sales: 2 },
+      ],
+      pinnedBottomRowData: [{ id: "b1", region: "Bottom", country: "x", sales: 3 }],
+      highlightActiveCell: true,
+    });
+    const core = apiRef.current!.getCore();
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    const key = async (name: string, init: KeyboardEventInit = {}) => {
+      await act(async () => {
+        gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+          key: name, bubbles: true, cancelable: true, ...init,
+        }));
+      });
+    };
+
+    await act(async () => {
+      core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 1, reason: "keyboard" });
+    });
+    // Up at the first body row crosses into the top band's bottom-most row, walks up, and clamps.
+    await key("ArrowUp");
+    expect(core.getActiveCell()).toEqual({ row: 1, colIdx: 1, rowPinned: "top" });
+    // The focused band cell wears the standard single-cell selection dress plus (because
+    // highlightActiveCell is enabled here) the distinct active outline — same as a body cell.
+    expect(container.querySelector(
+      ".pte-pinned-rows-top .pte-pinned-row[data-view-idx='1'] .pte-cell[data-col-idx='1'].selected.selected-top.selected-bottom",
+    )).toBeTruthy();
+    expect(container.querySelector(
+      ".pte-pinned-rows-top .pte-pinned-row[data-view-idx='1'] .pte-cell[data-col-idx='1'].pte-active-cell",
+    )).toBeTruthy();
+    await key("ArrowUp");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    await key("ArrowUp");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    // Down walks back through the band and re-enters the body.
+    await key("ArrowDown");
+    await key("ArrowDown");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
+
+    // Shift+Down at the last body row extends the range across the boundary into the bottom
+    // band: the range keeps its body segment and gains a pinned segment.
+    await act(async () => {
+      core.dispatch({ type: "focusSet", viewIdx: 4, colIdx: 1, reason: "keyboard" });
+    });
+    await key("ArrowDown", { shiftKey: true });
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "bottom" });
+    expect(core.getSelectionRange()).toMatchObject({
+      rowStart: 4, rowEnd: 4, pinnedBottom: { start: 0, end: 0 },
+    });
+    // The band cell paints as part of the range.
+    expect(container.querySelector(
+      ".pte-pinned-rows-bottom .pte-pinned-row[data-view-idx='0'] .pte-cell[data-col-idx='1'].selected",
+    )).toBeTruthy();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("mouse-drag ranges span the body and the pinned bands, and copy includes them", async () => {
+    const written: string[] = [];
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (text: string) => { written.push(text); return Promise.resolve(); } },
+    });
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [{ id: "t1", region: "TopRegion", country: "TopCountry", sales: 111 }],
+    });
+    const core = apiRef.current!.getCore();
+
+    // Drag from the pinned top row into body row 1 (country column, colIdx 1 — the region
+    // column is left-pinned in this fixture and lives outside the center viewport).
+    const bandCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-row[data-view-idx='0'] .pte-cell[data-col-idx='1']",
+    )!;
+    const bodyCell = container.querySelector<HTMLElement>(
+      ".pte-body .pte-viewport .pte-row[data-view-idx='1'] .pte-cell[data-col-idx='1']",
+    )!;
+    await act(async () => {
+      bandCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      bodyCell.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    expect(core.getSelectionRange()).toMatchObject({
+      rowStart: 0, rowEnd: 1, colStart: 1, colEnd: 1, pinnedTop: { start: 0, end: 0 },
+    });
+    // Both segments paint.
+    expect(container.querySelector(
+      ".pte-pinned-rows-top .pte-cell[data-col-idx='1'].selected.selected-top",
+    )).toBeTruthy();
+
+    // Ctrl+C serializes pinned top rows first, then the body rows.
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    await act(async () => {
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "c", ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+    });
+    expect(written.length).toBe(1);
+    const lines = written[0].split("\n");
+    expect(lines[0]).toBe("TopCountry");
+    expect(lines.length).toBe(3); // pinned row + body rows 0..1
+
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("scrolls a focused row clear of the sticky ancestor overlay", async () => {
+    const groupedRows = Array.from({ length: 60 }, (_, index) => ({
+      id: `nav-${index}`,
+      region: "EMEA",
+      country: index < 30 ? "First" : "Second",
+      sales: index,
+    }));
+    const { container, apiRef, root } = await mount({
+      rowData: groupedRows,
+      groupRowsSticky: true,
+      groupDefaultExpanded: -1,
+    });
+    const core = apiRef.current!.getCore();
+    await act(async () => {
+      core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    });
+    const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scrollTo = async (top: number) => {
+      await act(async () => {
+        scroller.scrollTop = top;
+        scroller.dispatchEvent(new Event("scroll"));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      });
+    };
+
+    // Focusing a row above the viewport scrolls it BELOW the docked ancestor chain (2 x 43px),
+    // not merely to the scroller top where the overlay would hide it.
+    await scrollTo(500);
+    await act(async () => {
+      core.dispatch({ type: "focusSet", viewIdx: 13, colIdx: 1, reason: "keyboard" });
+    });
+    expect(scroller.scrollTop).toBe(13 * 43 - 86);
+
+    await scrollTo(500);
+    await act(async () => {
+      core.dispatch({ type: "focusSet", viewIdx: 2, colIdx: 1, reason: "keyboard" });
+    });
+    expect(scroller.scrollTop).toBe(0);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("Ctrl+A selects the entire grid including the pinned bands", async () => {
+    const written: string[] = [];
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (text: string) => { written.push(text); return Promise.resolve(); } },
+    });
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [{ id: "t1", region: "Top", country: "tc", sales: 1 }],
+      pinnedBottomRowData: [{ id: "b1", region: "Bottom", country: "bc", sales: 2 }],
+    });
+    const core = apiRef.current!.getCore();
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+
+    await act(async () => {
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "a", ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+    });
+    expect(core.getSelectionRange()).toMatchObject({
+      rowStart: 0,
+      rowEnd: 4,
+      pinnedTop: { start: 0, end: 0 },
+      pinnedBottom: { start: 0, end: 0 },
+    });
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 2, rowPinned: "bottom" });
+    // Both bands paint their segment.
+    expect(container.querySelector(".pte-pinned-rows-top .pte-cell.selected")).toBeTruthy();
+    expect(container.querySelector(".pte-pinned-rows-bottom .pte-cell.selected")).toBeTruthy();
+
+    // Copy serializes the whole grid: pinned top, 5 body rows, pinned bottom.
+    await act(async () => {
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "c", ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+    });
+    expect(written.length).toBe(1);
+    const lines = written[0].split("\n");
+    expect(lines.length).toBe(7);
+    expect(lines[0].startsWith("Top")).toBe(true);
+    expect(lines[6].startsWith("Bottom")).toBe(true);
+
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("edits pinned data rows when pinnedRowsEditable is enabled, with undo", async () => {
+    const topRow = { id: "t1", region: "Original", country: "tc", sales: 1 };
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [topRow],
+      pinnedRowsEditable: true,
+      defaultColDef: { editable: true },
+    });
+    const core = apiRef.current!.getCore();
+
+    // Double-click the pinned cell: the editor mounts inside the band cell.
+    const bandCell = container.querySelector<HTMLElement>(
+      ".pte-pinned-rows-top .pte-pinned-row[data-view-idx='0'] .pte-cell[data-col-idx='1']",
+    )!;
+    await act(async () => {
+      bandCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      bandCell.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+      bandCell.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+    });
+    expect(core.getEditingCell()).toMatchObject({ rowId: "p:top:t1", rowPinned: "top" });
+    const input = bandCell.querySelector<HTMLInputElement>("input")!;
+    expect(input).toBeTruthy();
+
+    // Commit a new value: it writes into the application-provided data object and repaints.
+    await act(async () => {
+      input.value = "Changed";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    expect(core.getEditingCell()).toBeNull();
+    expect(topRow.country).toBe("Changed");
+    expect(container.querySelector(
+      ".pte-pinned-rows-top .pte-pinned-row[data-view-idx='0'] .pte-cell[data-col-idx='1']",
+    )!.textContent).toBe("Changed");
+
+    // Undo restores the pinned row's value.
+    await act(async () => {
+      core.dispatch({ type: "undo" });
+    });
+    expect(topRow.country).toBe("tc");
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("keeps pinned rows read-only by default and never edits pinned group headers", async () => {
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [{ id: "t1", region: "Top", country: "tc", sales: 1 }],
+      defaultColDef: { editable: true },
+    });
+    const core = apiRef.current!.getCore();
+
+    // Without pinnedRowsEditable, editStart on a pinned cell is a no-op.
+    await act(async () => {
+      core.dispatch({
+        type: "editStart",
+        cell: { rowId: "p:top:t1", colId: core.getColumnModel().getLeaves()[1].instanceID, rowPinned: "top" },
+        source: "api",
+      });
+    });
+    expect(core.getEditingCell()).toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("never edits a pinned synthetic group header even with pinnedRowsEditable", async () => {
+    const { container, apiRef, root } = await mount({
+      pinnedRowsEditable: true,
+      defaultColDef: { editable: true },
+      isRowPinned: ({ node }: any) => node.isGroup && node.groupKey === "EMEA" ? "top" : null,
+    });
+    const core = apiRef.current!.getCore();
+    await act(async () => {
+      core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    });
+    const pinnedGroup = core.getDisplayedPinnedRow("top", 0)!;
+    expect(pinnedGroup.isGroup).toBe(true);
+    await act(async () => {
+      core.dispatch({
+        type: "editStart",
+        cell: { rowId: pinnedGroup.id, colId: core.getColumnModel().getLeaves()[1].instanceID, rowPinned: "top" },
+        source: "api",
+      });
+    });
+    expect(core.getEditingCell()).toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("exports include pinned rows: Ctrl+A and cross-band ranges, body-only ranges exclude them", async () => {
+    const { container, apiRef, root } = await mount({
+      pinnedTopRowData: [{ id: "t1", region: "TopR", country: "TopC", sales: 100 }],
+      pinnedBottomRowData: [{ id: "b1", region: "BotR", country: "BotC", sales: 200 }],
+    });
+    const api = apiRef.current!;
+    const core = api.getCore();
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+
+    // Full export (no selection): pinned top first, body, pinned bottom last.
+    const all = api.getDataAsCsv({ includeHeaders: false }).split("\n");
+    expect(all.length).toBe(7);
+    expect(all[0].startsWith("TopR")).toBe(true);
+    expect(all[6].startsWith("BotR")).toBe(true);
+
+    // Ctrl+A → selection export spans the bands.
+    await act(async () => {
+      gridRoot.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "a", ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+    });
+    const selected = api.getDataAsCsv({ includeHeaders: false }).split("\n");
+    expect(selected.length).toBe(7);
+    expect(selected[0].startsWith("TopR")).toBe(true);
+    expect(selected[6].startsWith("BotR")).toBe(true);
+
+    // A body-only range excludes the bands.
+    await act(async () => {
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 0, mode: "start" });
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 3, colIdx: 2, mode: "extend" });
+    });
+    const bodyOnly = api.getDataAsCsv({ includeHeaders: false }).split("\n");
+    expect(bodyOnly.length).toBe(3);
+    expect(bodyOnly.some(line => line.startsWith("TopR") || line.startsWith("BotR"))).toBe(false);
+
+    // A range extended into the bottom band includes just that band segment.
+    await act(async () => {
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 4, colIdx: 0, mode: "start" });
+      core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 2, rowPinned: "bottom", mode: "extend" });
+    });
+    const crossing = api.getDataAsCsv({ includeHeaders: false }).split("\n");
+    expect(crossing.length).toBe(2);
+    expect(crossing[1].startsWith("BotR")).toBe(true);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("supports callback-based group pinning and groupRows full-width display", async () => {
     const { container, apiRef, root } = await mount({
       groupDisplayType: "groupRows",

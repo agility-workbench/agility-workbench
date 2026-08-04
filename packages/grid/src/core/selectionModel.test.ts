@@ -251,40 +251,127 @@ describe("SelectionModel — plain arrow navigation", () => {
 });
 
 describe("SelectionModel — pinned row sections", () => {
-  it("moves vertically through top, body, and bottom while preserving the global column", () => {
+  it("hands navigation over to the bands only at the body's content edges", () => {
     const m = makeHarness(
       [["a", "b"], ["c", "d"]],
       { pinnedTopCount: 2, pinnedBottomCount: 1 },
     ).model;
 
-    expect(m.navigate("down", { extend: false })).toEqual({
-      row: 0, colIdx: 1, rowPinned: "top",
-    });
-    expect(m.navigate("right", { extend: false })).toEqual({
-      row: 0, colIdx: 2, rowPinned: "top",
-    });
-    expect(m.navigate("down", { extend: false })).toEqual({
-      row: 1, colIdx: 2, rowPinned: "top",
-    });
+    // Initial navigation lands in the body, not a band.
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 1 });
+    // At the first body row, Up crosses into the top band's bottom-most row and walks up.
+    expect(m.navigate("up", { extend: false })).toEqual({ row: 1, colIdx: 1, rowPinned: "top" });
+    expect(m.navigate("right", { extend: false })).toEqual({ row: 1, colIdx: 2, rowPinned: "top" });
+    expect(m.navigate("up", { extend: false })).toEqual({ row: 0, colIdx: 2, rowPinned: "top" });
+    expect(m.navigate("up", { extend: false })).toEqual({ row: 0, colIdx: 2, rowPinned: "top" }); // clamp
+    // Down walks back through the band and re-enters the body at its first row.
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 1, colIdx: 2, rowPinned: "top" });
     expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 2 });
     expect(m.navigate("down", { extend: false })).toEqual({ row: 1, colIdx: 2 });
-    expect(m.navigate("down", { extend: false })).toEqual({
-      row: 0, colIdx: 2, rowPinned: "bottom",
-    });
+    // At the last body row, Down crosses into the bottom band and clamps at its end.
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 2, rowPinned: "bottom" });
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 2, rowPinned: "bottom" }); // clamp
     expect(m.navigate("up", { extend: false })).toEqual({ row: 1, colIdx: 2 });
   });
 
-  it("uses pinned sections as the grid corners", () => {
+  it("corners land on the body edges; bands take one more plain arrow", () => {
     const m = makeHarness(
       [["a", "b"]],
       { pinnedTopCount: 1, pinnedBottomCount: 2 },
     ).model;
-    expect(m.navigateToCorner("topLeft", false)).toEqual({
-      row: 0, colIdx: 1, rowPinned: "top",
+    expect(m.navigateToCorner("topLeft", false)).toEqual({ row: 0, colIdx: 1 });
+    expect(m.navigate("up", { extend: false })).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    expect(m.navigateToCorner("bottomRight", false)).toEqual({ row: 0, colIdx: 2 });
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 0, colIdx: 2, rowPinned: "bottom" });
+    expect(m.navigate("down", { extend: false })).toEqual({ row: 1, colIdx: 2, rowPinned: "bottom" });
+  });
+
+  it("shift-extension crosses region edges and builds a unified range", () => {
+    const m = makeHarness(
+      [["a", "b"], ["c", "d"]],
+      { pinnedTopCount: 1, pinnedBottomCount: 1 },
+    ).model;
+    m.selectSingleCell(1, 1);
+    m.navigate("up", { extend: true });
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
+    expect(m.getSelectionRange()).toMatchObject({ rowStart: 0, rowEnd: 1 });
+    expect(m.getSelectionRange()?.pinnedTop).toBeUndefined();
+
+    m.navigate("up", { extend: true }); // cross into the top band
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 0, rowEnd: 1, pinnedTop: { start: 0, end: 0 },
     });
-    expect(m.navigateToCorner("bottomRight", false)).toEqual({
-      row: 1, colIdx: 2, rowPinned: "bottom",
+    m.navigate("up", { extend: true }); // clamp at the band's first row
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 0, rowEnd: 1, pinnedTop: { start: 0, end: 0 },
     });
+
+    m.navigate("down", { extend: true }); // shrink back out of the band
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
+    expect(m.getSelectionRange()).toMatchObject({ rowStart: 0, rowEnd: 1 });
+    expect(m.getSelectionRange()?.pinnedTop).toBeUndefined();
+
+    m.navigate("down", { extend: true });
+    m.navigate("down", { extend: true }); // cross into the bottom band
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "bottom" });
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 1, rowEnd: 1, pinnedBottom: { start: 0, end: 0 },
+    });
+  });
+
+  it("selectAll spans the pinned bands and the body as one unified range", () => {
+    const m = makeHarness(
+      [["a", "b"], ["c", "d"]],
+      { pinnedTopCount: 2, pinnedBottomCount: 1 },
+    ).model;
+    const active = m.selectAll();
+    expect(active).toEqual({ row: 0, colIdx: 2, rowPinned: "bottom" });
+    expect(m.getAnchor()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 0,
+      rowEnd: 1,
+      colStart: 1,
+      colEnd: 2,
+      pinnedTop: { start: 0, end: 1 },
+      pinnedBottom: { start: 0, end: 0 },
+    });
+  });
+
+  it("a range can live entirely inside a band and snapshots resolve pinned cells", () => {
+    const harness = makeHarness(
+      [["a", "b"]],
+      { pinnedTopCount: 2 },
+    );
+    const m = harness.model;
+    m.selectSingleCell(0, 1, "top");
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 0, rowEnd: -1, pinnedTop: { start: 0, end: 0 },
+    });
+    m.updateRange(1, 2, "top");
+    expect(m.getSelectionRange()).toMatchObject({
+      rowStart: 0, rowEnd: -1, colStart: 1, colEnd: 2, pinnedTop: { start: 0, end: 1 },
+    });
+  });
+
+  it("block and edge jumps stay region-locked", () => {
+    const m = makeHarness(
+      [["a", "b"], ["c", "d"], ["e", "f"]],
+      { pinnedTopCount: 2, pinnedBottomCount: 1 },
+    ).model;
+    m.selectSingleCell(2, 1);
+    m.navigate("up", { extend: false, jump: "block" });
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1 }); // stops at the body edge
+    m.navigate("up", { extend: false, jump: "edge" });
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
+    m.navigate("up", { extend: false }); // plain arrow enters the band
+    expect(m.getActiveCell()).toEqual({ row: 1, colIdx: 1, rowPinned: "top" });
+    m.navigate("up", { extend: false, jump: "edge" }); // edge jump inside the band stays inside
+    expect(m.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    m.navigate("down", { extend: false, jump: "edge" });
+    expect(m.getActiveCell()).toEqual({ row: 1, colIdx: 1, rowPinned: "top" });
+    m.navigate("down", { extend: false, jump: "page", pageRows: 10 }); // page jump stays region-locked
+    expect(m.getActiveCell()).toEqual({ row: 1, colIdx: 1, rowPinned: "top" });
   });
 });
 

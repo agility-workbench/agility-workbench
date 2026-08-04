@@ -55,6 +55,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.initialSort != null) options.initialSort = props.initialSort;
   if (props.multiSortKey != null) options.multiSortKey = props.multiSortKey;
   if (props.showSortPriority != null) options.showSortPriority = props.showSortPriority;
+  if (props.pinnedRowsEditable != null) options.pinnedRowsEditable = props.pinnedRowsEditable;
   if (props.suppressKeyboardEdit != null) options.suppressKeyboardEdit = props.suppressKeyboardEdit;
   if (props.suppressTypeToEdit != null) options.suppressTypeToEdit = props.suppressTypeToEdit;
   if (props.moveAfterEdit != null) options.moveAfterEdit = props.moveAfterEdit;

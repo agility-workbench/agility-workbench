@@ -65,17 +65,20 @@ export class SelectionModel {
     return this.deps.getRowModel().getViewCount() - 1;
   }
 
+  // Pinned bands are only entered by a plain single arrow step from the body's content edge, so
+  // first/last resolve to the BODY edge whenever body rows exist; jumps land there and it takes
+  // one more arrow to hand navigation over to the band. Bands are the fallback for an empty body.
   private firstRowPosition(): CellPos | null {
-    if ((this.deps.getPinnedRowCount?.("top") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "top" };
     if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(0, 1), colIdx: 0 };
+    if ((this.deps.getPinnedRowCount?.("top") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "top" };
     if ((this.deps.getPinnedRowCount?.("bottom") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "bottom" };
     return null;
   }
 
   private lastRowPosition(): CellPos | null {
+    if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(this.maxRow(), -1), colIdx: 0 };
     const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
     if (bottomCount > 0) return { row: bottomCount - 1, colIdx: 0, rowPinned: "bottom" };
-    if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(this.maxRow(), -1), colIdx: 0 };
     const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
     if (topCount > 0) return { row: topCount - 1, colIdx: 0, rowPinned: "top" };
     return null;
@@ -116,12 +119,56 @@ export class SelectionModel {
     return from.row + 1 < bottomCount ? { ...from, row: from.row + 1 } : from;
   }
 
+  /** Whether two positions live in the same row region (body, pinned top, or pinned bottom). */
+  private sameRegion(a: CellPos, b: CellPos): boolean {
+    return (a.rowPinned ?? null) === (b.rowPinned ?? null);
+  }
+
+  /** Position of a row in the unified `pinned top → body → pinned bottom` row sequence. Ranges
+   * are contiguous spans of this sequence, which is what lets them include pinned rows. */
+  private rowOrdinal(pos: CellPos): number {
+    const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
+    if (pos.rowPinned === "top") return pos.row;
+    if (pos.rowPinned === "bottom") return topCount + this.maxRow() + 1 + pos.row;
+    return topCount + pos.row;
+  }
+
+  /** Build the rectangular range between two cells as segments of the unified row sequence. */
+  private buildRange(a: CellPos, b: CellPos): SelectionRange {
+    const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
+    const bodyCount = this.maxRow() + 1;
+    const startOrd = Math.min(this.rowOrdinal(a), this.rowOrdinal(b));
+    const endOrd = Math.max(this.rowOrdinal(a), this.rowOrdinal(b));
+
+    const segment = (regionStart: number, regionCount: number) => {
+      const start = Math.max(startOrd - regionStart, 0);
+      const end = Math.min(endOrd - regionStart, regionCount - 1);
+      return start <= end ? { start, end } : null;
+    };
+    const top = segment(0, topCount);
+    const body = segment(topCount, bodyCount);
+    const bottom = segment(topCount + bodyCount, this.deps.getPinnedRowCount?.("bottom") ?? 0);
+
+    return {
+      rowStart: body ? body.start : 0,
+      rowEnd: body ? body.end : -1,
+      colStart: Math.min(a.colIdx, b.colIdx),
+      colEnd: Math.max(a.colIdx, b.colIdx),
+      pageStartIdx: this.deps.getPageStartIdx(),
+      ...(top ? { pinnedTop: top } : {}),
+      ...(bottom ? { pinnedBottom: bottom } : {}),
+    };
+  }
+
+  // Page steps stay region-locked: only a plain single arrow at the content edge hands navigation
+  // over to a pinned band.
   private moveVertical(from: CellPos, delta: number): CellPos {
     let next = from;
     const direction: 1 | -1 = delta < 0 ? -1 : 1;
     for (let i = 0; i < Math.abs(delta); i++) {
       const stepped = this.stepVertical(next, direction);
       if (stepped.row === next.row && stepped.rowPinned === next.rowPinned) break;
+      if (!this.sameRegion(from, stepped)) break;
       next = stepped;
     }
     return next;
@@ -182,15 +229,19 @@ export class SelectionModel {
     if (this.selectedRowIds.size > 0) return "row";
     if (this.selectedColumnIds.size > 0) return "column";
     if (range) {
-      const single = range.rowStart === range.rowEnd && range.colStart === range.colEnd;
+      const rowCount = Math.max(0, range.rowEnd - range.rowStart + 1)
+        + (range.pinnedTop ? range.pinnedTop.end - range.pinnedTop.start + 1 : 0)
+        + (range.pinnedBottom ? range.pinnedBottom.end - range.pinnedBottom.start + 1 : 0);
+      const single = rowCount === 1 && range.colStart === range.colEnd;
       return single ? "cell" : "range";
     }
     if (this.active?.rowPinned) return "cell";
     return "none";
   }
 
-  // Flatten the range rectangle to a row-major list of CellRefs. Rows not currently loaded
-  // (server-side sparse data) have no rowId and are omitted, so this yields loaded cells only.
+  // Flatten the range rectangle to a row-major list of CellRefs in unified row order (pinned top,
+  // body, pinned bottom). Rows not currently loaded (server-side sparse data) have no rowId and
+  // are omitted, so this yields loaded cells only.
   private resolveRangeCells(range: SelectionRange): CellRef[] {
     const leaves = this.leafColumns();
     const colIds: string[] = [];
@@ -199,6 +250,17 @@ export class SelectionModel {
       if (col) colIds.push(col.instanceID);
     }
     const cells: CellRef[] = [];
+    const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
+      if (!segment) return;
+      for (let r = segment.start; r <= segment.end; r++) {
+        const node = this.deps.getPinnedRowNode?.(position, r);
+        if (!node) continue;
+        for (const colId of colIds) {
+          cells.push({ rowId: node.id, colId, rowPinned: position });
+        }
+      }
+    };
+    pushPinned("top", range.pinnedTop);
     for (let r = range.rowStart; r <= range.rowEnd; r++) {
       const rowId = this.deps.getRowIdAtViewIndex(r);
       if (!rowId) continue;
@@ -206,6 +268,7 @@ export class SelectionModel {
         cells.push({ rowId, colId });
       }
     }
+    pushPinned("bottom", range.pinnedBottom);
     return cells;
   }
 
@@ -224,47 +287,26 @@ export class SelectionModel {
     this.clearColumns();
     this.anchor = { row: location.viewIdx, colIdx: location.colIdx, rowPinned: location.rowPinned };
     this.active = { row: location.viewIdx, colIdx: location.colIdx, rowPinned: location.rowPinned };
-    if (location.rowPinned) {
-      // The existing rectangular range remains body-view-index based. A pinned cell still owns
-      // focus/active styling, while range extension begins once both endpoints are in the body.
-      this.range = null;
-      return true;
-    }
-    this.range = {
-      rowStart: location.viewIdx,
-      rowEnd: location.viewIdx,
-      colStart: location.colIdx,
-      colEnd: location.colIdx,
-      pageStartIdx: this.deps.getPageStartIdx(),
-    };
+    this.range = this.buildRange(this.anchor, this.active);
     return true;
   }
 
   updateRange(endRow: number, endCol: number, rowPinned?: "top" | "bottom"): boolean {
     if (!this.anchor) return false;
-    if (rowPinned || this.anchor.rowPinned) {
-      return this.startFromCell({ viewIdx: endRow, colIdx: endCol, rowPinned });
-    }
-    const viewCount = this.deps.getRowModel().getViewCount();
     const leafCount = this.leafColumns().length;
-    if (viewCount === 0 || leafCount === 0) {
+    const regionCount = rowPinned
+      ? this.deps.getPinnedRowCount?.(rowPinned) ?? 0
+      : this.deps.getRowModel().getViewCount();
+    if (regionCount === 0 || leafCount === 0) {
       this.clearRange();
       return true;
     }
 
-    const maxRow = viewCount - 1;
-    const maxCol = leafCount - 1;
-    const nextRow = Math.min(Math.max(endRow, 0), maxRow);
-    const nextCol = Math.min(Math.max(endCol, 0), maxCol);
+    const nextRow = Math.min(Math.max(endRow, 0), regionCount - 1);
+    const nextCol = Math.min(Math.max(endCol, 0), leafCount - 1);
 
-    this.active = { row: nextRow, colIdx: nextCol };
-    this.range = {
-      rowStart: Math.min(this.anchor.row, nextRow),
-      rowEnd: Math.max(this.anchor.row, nextRow),
-      colStart: Math.min(this.anchor.colIdx, nextCol),
-      colEnd: Math.max(this.anchor.colIdx, nextCol),
-      pageStartIdx: this.deps.getPageStartIdx(),
-    };
+    this.active = { row: nextRow, colIdx: nextCol, rowPinned };
+    this.range = this.buildRange(this.anchor, this.active);
     return true;
   }
 
@@ -306,7 +348,9 @@ export class SelectionModel {
     return value == null || value === "";
   }
 
-  /** Excel-style Ctrl+Arrow scan across pinned row and column section boundaries. */
+  /** Excel-style Ctrl+Arrow scan across column section boundaries. Vertically it is region-locked
+   * (stops at the body's content edge / the band's edge): pinned bands are only entered by a plain
+   * single arrow step from the edge. */
   private blockJumpPosition(
     from: CellPos,
     dRow: number,
@@ -321,6 +365,7 @@ export class SelectionModel {
       }
       const next = this.stepVertical(position, dRow < 0 ? -1 : 1);
       if (next.row === position.row && next.rowPinned === position.rowPinned) return null;
+      if (!this.sameRegion(from, next)) return null;
       return this.rowNodeAtPosition(next) ? next : null;
     };
 
@@ -382,12 +427,21 @@ export class SelectionModel {
       nextPosition = this.blockJumpPosition(from, delta[0], delta[1]);
       nextCol = nextPosition.colIdx;
     } else if (opts.jump === "edge") {
-      // Home/End: hard edge, regardless of cell contents.
+      // Home/End: hard edge, regardless of cell contents. Region-locked vertically: within a
+      // pinned band the edge is the band's first/last row, in the body it's the content edge.
       switch (dir) {
         case "left": nextCol = firstCol; break;
         case "right": nextCol = lastCol; break;
-        case "up": nextPosition = this.firstRowPosition() ?? nextPosition; break;
-        case "down": nextPosition = this.lastRowPosition() ?? nextPosition; break;
+        case "up":
+          nextPosition = from.rowPinned
+            ? { ...from, row: 0 }
+            : this.firstRowPosition() ?? nextPosition;
+          break;
+        case "down":
+          nextPosition = from.rowPinned
+            ? { ...from, row: Math.max(0, (this.deps.getPinnedRowCount?.(from.rowPinned) ?? 1) - 1) }
+            : this.lastRowPosition() ?? nextPosition;
+          break;
       }
     } else if (opts.jump === "page") {
       // PageUp/PageDown: move by one viewport of rows (supplied by the renderer). Horizontal
@@ -424,24 +478,33 @@ export class SelectionModel {
     return this.moveActiveToPosition({ ...position, colIdx: nextCol }, extend);
   }
 
-  /** Select the entire grid (all data cells). Anchor at top-left, active at bottom-right. */
+  /** Select the entire grid: every row of the unified `pinned top → body → pinned bottom`
+   * sequence across all data columns. Anchor at the very first cell, active at the very last. */
   selectAll(): CellPos | null {
     const firstCol = this.firstSelectableColIdx();
     const lastCol = this.lastColIdx();
     const maxRow = this.maxRow();
-    if (lastCol < firstCol || maxRow < 0) return null;
+    const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
+    const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
+    if (lastCol < firstCol) return null;
+    if (maxRow < 0 && topCount === 0 && bottomCount === 0) return null;
+
+    const first: CellPos = topCount > 0
+      ? { row: 0, colIdx: firstCol, rowPinned: "top" }
+      : maxRow >= 0
+        ? { row: 0, colIdx: firstCol }
+        : { row: 0, colIdx: firstCol, rowPinned: "bottom" };
+    const last: CellPos = bottomCount > 0
+      ? { row: bottomCount - 1, colIdx: lastCol, rowPinned: "bottom" }
+      : maxRow >= 0
+        ? { row: maxRow, colIdx: lastCol }
+        : { row: topCount - 1, colIdx: lastCol, rowPinned: "top" };
 
     this.clearRows();
     this.clearColumns();
-    this.anchor = { row: 0, colIdx: firstCol };
-    this.active = { row: maxRow, colIdx: lastCol };
-    this.range = {
-      rowStart: 0,
-      rowEnd: maxRow,
-      colStart: firstCol,
-      colEnd: lastCol,
-      pageStartIdx: this.deps.getPageStartIdx(),
-    };
+    this.anchor = first;
+    this.active = last;
+    this.range = this.buildRange(first, last);
     return this.active;
   }
 
@@ -489,38 +552,58 @@ export class SelectionModel {
     if (this.range.pageStartIdx !== this.deps.getPageStartIdx()) return;
     const viewCount = this.deps.getRowModel().getViewCount();
     const leafCount = this.leafColumns().length;
-    if (viewCount === 0 || leafCount === 0) {
+    if (leafCount === 0) {
+      this.clearRange();
+      return;
+    }
+
+    const clampSegment = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
+      if (!segment) return undefined;
+      const count = this.deps.getPinnedRowCount?.(position) ?? 0;
+      if (count === 0 || segment.start >= count) return undefined;
+      return { start: segment.start, end: Math.min(segment.end, count - 1) };
+    };
+    const pinnedTop = clampSegment("top", this.range.pinnedTop);
+    const pinnedBottom = clampSegment("bottom", this.range.pinnedBottom);
+    const hasBody = viewCount > 0 && this.range.rowEnd >= this.range.rowStart;
+    if (!hasBody && !pinnedTop && !pinnedBottom) {
       this.clearRange();
       return;
     }
 
     const maxRow = viewCount - 1;
     const maxCol = leafCount - 1;
-    const rowStart = Math.min(this.range.rowStart, maxRow);
-    const rowEnd = Math.min(this.range.rowEnd, maxRow);
+    const rowStart = hasBody ? Math.min(this.range.rowStart, maxRow) : 0;
+    const rowEnd = hasBody ? Math.min(this.range.rowEnd, maxRow) : -1;
     const colStart = Math.min(this.range.colStart, maxCol);
     const colEnd = Math.min(this.range.colEnd, maxCol);
 
     this.range = {
-      rowStart: Math.min(rowStart, rowEnd),
-      rowEnd: Math.max(rowStart, rowEnd),
+      rowStart: hasBody ? Math.min(rowStart, rowEnd) : 0,
+      rowEnd: hasBody ? Math.max(rowStart, rowEnd) : -1,
       colStart: Math.min(colStart, colEnd),
       colEnd: Math.max(colStart, colEnd),
       pageStartIdx: this.range.pageStartIdx,
+      ...(pinnedTop ? { pinnedTop } : {}),
+      ...(pinnedBottom ? { pinnedBottom } : {}),
     };
 
-    if (this.anchor) {
-      this.anchor = {
-        row: Math.min(Math.max(this.anchor.row, 0), maxRow),
-        colIdx: Math.min(Math.max(this.anchor.colIdx, 0), maxCol),
+    const clampPos = (pos: CellPos): CellPos => {
+      if (pos.rowPinned) {
+        const count = this.deps.getPinnedRowCount?.(pos.rowPinned) ?? 0;
+        return {
+          row: Math.min(Math.max(pos.row, 0), Math.max(count - 1, 0)),
+          colIdx: Math.min(Math.max(pos.colIdx, 0), maxCol),
+          rowPinned: pos.rowPinned,
+        };
+      }
+      return {
+        row: Math.min(Math.max(pos.row, 0), Math.max(maxRow, 0)),
+        colIdx: Math.min(Math.max(pos.colIdx, 0), maxCol),
       };
-    }
-    if (this.active) {
-      this.active = {
-        row: Math.min(Math.max(this.active.row, 0), maxRow),
-        colIdx: Math.min(Math.max(this.active.colIdx, 0), maxCol),
-      };
-    }
+    };
+    if (this.anchor) this.anchor = clampPos(this.anchor);
+    if (this.active) this.active = clampPos(this.active);
   }
 
   // ---------------- Column selection ----------------
