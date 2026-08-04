@@ -106,9 +106,9 @@ export class BodyWindowRenderer {
   }
 
   private translateViewports(startIndex: number) {
-    // Model-backed pinned rows are removed from the body's flow. Account for every removed row
-    // before the virtual window, including sticky parents that have already left the overscan
-    // pool, so their one-row collapse cannot disappear when the pool advances.
+    // Application-pinned model rows are removed from the body's flow (sticky group ancestors are
+    // not — they stay in the flow and are mirrored by the overlay). Account for every removed row
+    // before the virtual window so the compacted offset holds as the pool advances.
     const bodyRowsBefore = startIndex - this.params.core.getBodyPinnedRowCountBefore(startIndex);
     const offsetY = bodyRowsBefore * this.params.rowHeight();
     this.params.leadingViewport.style.transform = `translateY(${offsetY}px)`;

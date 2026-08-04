@@ -1480,6 +1480,60 @@
   font-weight: 600;
 }
 
+/* Sticky group ancestors overlay the top of the body instead of pushing it down. The original rows
+   stay in the body flow and scroll beneath; each mirrored header is translated per frame, so an
+   incoming sibling pushes the outgoing header out with position:sticky semantics and chain changes
+   never shift the body layout. The container clips headers sliding out above its top edge and its
+   height tracks the lowest header.
+
+   Deliberately NO border/shadow on this container: its height snaps by a row at every sibling
+   swap (it shrinks with the outgoing header, then jumps back when the incoming one docks over its
+   pixel-identical body copy). The content is continuous through that snap, so any decoration tied
+   to the container's bottom edge would be the only thing seen jumping — the band's edge is instead
+   the last mirror row's own row border, the same pixel the body copy's border occupied. */
+.pte-sticky-rows {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  z-index: 5;
+  box-sizing: border-box;
+}
+
+.pte-sticky-rows .pte-pinned-row:last-child {
+  border-bottom-color: var(--pte-border-color);
+}
+
+.pte-sticky-rows .pte-pinned-rows-leading,
+.pte-sticky-rows .pte-pinned-rows-left,
+.pte-sticky-rows .pte-pinned-rows-center,
+.pte-sticky-rows .pte-pinned-rows-right,
+.pte-sticky-rows .pte-pinned-rows-vertical,
+.pte-sticky-rows .pte-pinned-rows-host {
+  height: 100%;
+}
+
+/* The column sections must be opaque: mirror rows don't paint every pixel of the overlay (a
+   full-width groupRows mirror renders only the center section, and rows can be narrower than the
+   viewport), and any unpainted pixel would otherwise show the body scrolling beneath. The root and
+   its 15px scrollbar lane stay transparent so the body's vertical scrollbar remains visible. */
+.pte-sticky-rows .pte-pinned-rows-left,
+.pte-sticky-rows .pte-pinned-rows-center,
+.pte-sticky-rows .pte-pinned-rows-right {
+  background: var(--pte-root-bg-color);
+}
+
+/* No will-change here: promoting each mirror to its own compositor layer switches its text from
+   subpixel to grayscale antialiasing, so a row's label would visibly shimmer at the instant it
+   docks over its pixel-identical body copy. The transforms are cheap enough without a layer. */
+.pte-row.pte-sticky-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 .pte-aggregate-row {
   display: none;
   flex: 0 0 auto;

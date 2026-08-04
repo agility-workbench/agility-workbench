@@ -80,14 +80,17 @@ describe("tree data end-to-end via Grid", () => {
     });
     const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
     const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
-    const stickyParent = gridRoot.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
-    const stickyCell = stickyParent.querySelector<HTMLElement>(".pte-cell")!;
-    expect(stickyParent.parentElement).toBe(gridRoot);
+    const overlay = body.querySelector<HTMLElement>(".pte-sticky-rows")!;
+    const stickyCell = overlay.querySelector<HTMLElement>(".pte-cell")!;
+    expect(overlay.parentElement).toBe(body);
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
-    expect(stickyParent.textContent).toContain("Root");
-    expect(stickyCell.closest(".pte-row")?.dataset.rowPinned).toBe("top");
-    expect(stickyCell.closest(".pte-row")?.dataset.viewIdx).toBe("0");
+    expect(overlay.textContent).toContain("Root");
+    // Sticky mirrors are the live body row: no pinned tagging, real view index, and the original
+    // row stays in the body flow beneath the overlay.
+    expect(stickyCell.closest<HTMLElement>(".pte-row")?.dataset.rowPinned).toBeUndefined();
+    expect(stickyCell.closest<HTMLElement>(".pte-row")?.dataset.viewIdx).toBe("0");
     expect(stickyCell.dataset.colIdx).toBe(String(hierarchyIndex));
+    expect(body.querySelector(".pte-viewport [row-id='root']")).toBeTruthy();
 
     await act(async () => {
       stickyCell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
@@ -95,7 +98,6 @@ describe("tree data end-to-end via Grid", () => {
     expect(core.getActiveCell()).toEqual({
       row: 0,
       colIdx: hierarchyIndex,
-      rowPinned: "top",
     });
 
     await act(async () => {
@@ -108,8 +110,9 @@ describe("tree data end-to-end via Grid", () => {
       core.dispatch({ type: "groupToggleExpand", groupId: "root", expanded: false });
     });
     expect(core.getPaginationInfo().pageIndex).toBe(0);
-    expect(container.querySelector(".pte-pinned-rows-top .pte-group-label")?.textContent).toBe("Root");
-    expect(container.querySelector(".pte-body [row-id='root']")).toBeNull();
+    // A collapsed root has no visible descendants to stick for — it stays a plain body row.
+    expect(container.querySelector(".pte-body .pte-viewport [row-id='root']")).toBeTruthy();
+    expect(container.querySelector<HTMLElement>(".pte-sticky-rows")!.style.display).toBe("none");
     expect(container.querySelector<HTMLButtonElement>(".pte-pagination-btn-first")?.disabled).toBe(true);
     expect(container.querySelector<HTMLButtonElement>(".pte-pagination-btn-prev")?.disabled).toBe(true);
 
@@ -166,8 +169,9 @@ describe("tree data end-to-end via Grid", () => {
       }));
     });
     expect(core.getPaginationInfo().pageIndex).toBe(0);
-    expect(container.querySelector(".pte-pinned-rows-top .pte-group-label")?.textContent).toBe("Root");
-    expect(container.querySelector(".pte-body [row-id='root']")).toBeNull();
+    // A collapsed root has no visible descendants to stick for — it stays a plain body row.
+    expect(container.querySelector(".pte-body .pte-viewport [row-id='root']")).toBeTruthy();
+    expect(container.querySelector<HTMLElement>(".pte-sticky-rows")!.style.display).toBe("none");
 
     await act(async () => root.unmount());
     container.remove();

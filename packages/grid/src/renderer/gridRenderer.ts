@@ -426,6 +426,10 @@ export class GridRenderer {
         this._bodyWindowRenderer?.update(true, undefined);
         this._selectionRenderer?.refreshSelectionStyles();
       },
+      forwardWheel: (deltaX, deltaY) => {
+        bodyWrapper.centerScroller.scrollTop += deltaY;
+        if (deltaX) bodyWrapper.centerSpacer.scrollLeft += deltaX;
+      },
     });
     const apiWithPinnedRows = this.api as unknown as {
       setPinnedRowsController?: (controller: {

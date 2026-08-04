@@ -201,13 +201,19 @@ api.setRowPinned(groupNode.id, null); // unpin
 ```
 
 `groupRowsSticky` stacks the expanded ancestors of the first visible row at the top as the body
-scrolls. It supports `singleColumn`, `multipleColumns`, and full-width `groupRows` display. Top and
-bottom bands each cap at 30% of the grid height and get an independent vertical scrollbar when
-their content exceeds that space; the central body keeps its own scrollbar. The top and bottom
-row sections are outside the body rather than body children. Explicitly pinned groups and sticky
-ancestors join the existing top/bottom sections instead of creating another row surface. Pinned
-cells retain section-local row and global column coordinates, so arrows navigate top → body →
-bottom exactly as horizontal navigation crosses left → center → right column sections.
+scrolls, with `position: sticky` semantics: the original rows never leave the body flow, ancestors
+are mirrored into an overlay clipped to the top of the body, and an arriving sibling header pushes
+the outgoing one up behind its parent instead of swapping in place. Because the overlay is
+absolutely positioned, sticky transitions never resize or shift the body. The chain docks at rest
+(scrollTop 0) directly over its pixel-identical rows, so the band never has to "appear" mid-scroll
+even when the compositor presents scrolled frames ahead of the main thread; wheel gestures over
+the band are forwarded to the grid scroller. It supports
+`singleColumn`, `multipleColumns`, and full-width `groupRows` display. Application-pinned rows use
+separate top/bottom bands outside the body; each band caps at 30% of the grid height and gets an
+independent vertical scrollbar when its content exceeds that space, while the central body keeps
+its own scrollbar. Pinned cells retain section-local row and global column coordinates, so arrows
+navigate top → body → bottom exactly as horizontal navigation crosses left → center → right column
+sections.
 
 ## Tree data
 

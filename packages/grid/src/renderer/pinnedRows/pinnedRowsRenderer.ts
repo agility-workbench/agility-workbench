@@ -26,6 +26,13 @@ interface RenderedPinnedRow {
   position: RowPinnedPosition;
 }
 
+/** One sticky ancestor with its viewport-relative y position (px below the body top; negative while
+ * sliding out above it). */
+interface StickyStackRow {
+  node: IRowNode;
+  top: number;
+}
+
 export interface PinnedRowsController {
   setPinnedTopRowData(rows: any[]): void;
   setPinnedBottomRowData(rows: any[]): void;
@@ -41,37 +48,65 @@ interface PinnedRowsRendererParams {
   bodyCellRenderer: BodyCellRenderer;
   onHeightChanged: () => void;
   onBodyPartitionChanged: () => void;
+  /** Scroll the grid body by a wheel delta. The sticky overlay covers real body rows even at rest,
+   * so wheel gestures over it must keep scrolling the grid as if the overlay were not there. */
+  forwardWheel?: (deltaX: number, deltaY: number) => void;
 }
 
 /**
- * Frozen rows are deliberately a renderer concern: application-owned pinned data does not enter the
- * row model, while pinned group/tree-parent rows remain model-owned but move out of the body paint
- * partition. Both bands reuse BodyCellRenderer, so formatting, hierarchy labels, aggregates, and
- * custom renderers stay consistent.
+ * Two distinct mechanisms share this renderer because they share row markup and section layout:
+ *
+ * - Application-pinned rows (pinnedTopRowData / isRowPinned / api.setRowPinned) render in top and
+ *   bottom bands that push the body viewport. Model-backed pinned rows leave the body's paint
+ *   partition; their membership only changes through explicit API/option calls, never mid-scroll,
+ *   so the resulting reflow is a deliberate one-off.
+ * - Sticky group ancestors render in an absolutely-positioned overlay on top of the body. The
+ *   original rows stay in the body flow and scroll beneath it, so the overlay never affects layout:
+ *   a chain change repaints only the overlay, and an incoming sibling header pushes the outgoing
+ *   one out with a per-frame translate (true position:sticky semantics). This is what keeps the
+ *   body free of row-height jumps when a group row converts to pinned during scrolling.
+ *
+ * Both reuse BodyCellRenderer, so formatting, hierarchy labels, aggregates, and custom renderers
+ * stay consistent with the body.
  */
 export class PinnedRowsRenderer implements PinnedRowsController {
   private readonly top: BandElements;
   private readonly bottom: BandElements;
+  private readonly sticky: BandElements;
   private readonly manualPinned = new Map<string, RowPinnedPosition>();
   private readonly topRendererMaps = new Set<Map<string, RendererRecord>>();
   private readonly bottomRendererMaps = new Set<Map<string, RendererRecord>>();
+  private readonly stickyRendererMaps = new Set<Map<string, RendererRecord>>();
   private dataSequence = 0;
   private dataIds = new WeakMap<object, string>();
   private topSignature = "";
   private bottomSignature = "";
+  private stickySignature = "";
   private lastScrollTop = 0;
   private topCount = 0;
   private bottomCount = 0;
   private bodyPartitionSignature = "";
+  // Application-pinned rows only change through API/option/model events (which force-render), so
+  // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
+  private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
 
   constructor(private params: PinnedRowsRendererParams) {
     this.top = this.createBand("top");
     this.bottom = this.createBand("bottom");
+    this.sticky = this.createBand("sticky");
     this.params.root.insertBefore(this.top.root, this.params.body);
     this.params.body.insertAdjacentElement("afterend", this.bottom.root);
+    this.params.body.appendChild(this.sticky.root);
+    // The overlay is not inside any grid scroller, so native wheel chaining would scroll the page.
+    this.sticky.root.addEventListener("wheel", event => {
+      if (!this.params.forwardWheel) return;
+      event.preventDefault();
+      this.params.forwardWheel(event.deltaX, event.deltaY);
+    }, { passive: false });
   }
 
   getInteractionRoots(): HTMLDivElement[] {
+    // The sticky overlay lives inside the body, so body-level listeners already cover it.
     return [this.top.root, this.bottom.root];
   }
 
@@ -103,55 +138,62 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   render(scrollTop = this.lastScrollTop, force = false): void {
     this.lastScrollTop = Math.max(0, scrollTop);
-    const { top, bottom, stickySuppressedIds } = this.resolveRows(this.lastScrollTop);
-    const topSignature = this.signature(top);
-    const bottomSignature = this.signature(bottom);
+    if (force || !this.appRows) this.appRows = this.resolveAppRows();
+    const { top, bottom } = this.appRows;
+    const topSignature = this.signature(top.map(item => item.node));
+    const bottomSignature = this.signature(bottom.map(item => item.node));
     const heightChanged = top.length !== this.topCount || bottom.length !== this.bottomCount;
+    let bandsChanged = false;
 
     if (force || topSignature !== this.topSignature) {
       this.renderBand(this.top, top);
       this.topSignature = topSignature;
+      bandsChanged = true;
     }
     if (force || bottomSignature !== this.bottomSignature) {
       this.renderBand(this.bottom, bottom);
       this.bottomSignature = bottomSignature;
+      bandsChanged = true;
     }
-    const bodyPinnedIds = new Set(
-      [...top, ...bottom]
+
+    if (bandsChanged) {
+      const bodyPinnedIds = new Set(
+        [...top, ...bottom]
+          .filter(item => item.node.viewIndex >= 0)
+          .map(item => item.node.id),
+      );
+      this.params.core.setDisplayedPinnedRows(
+        top.map(item => item.node),
+        bottom.map(item => item.node),
+        bodyPinnedIds,
+      );
+      const bodyPartitionSignature = [...top, ...bottom]
         .filter(item => item.node.viewIndex >= 0)
-        .map(item => item.node.id),
-    );
-    for (const rowId of stickySuppressedIds) bodyPinnedIds.add(rowId);
-    this.params.core.setDisplayedPinnedRows(
-      top.map(item => item.node),
-      bottom.map(item => item.node),
-      bodyPinnedIds,
-    );
-    const bodyPartitionSignature = [...bodyPinnedIds]
-      .sort()
-      .map(rowId => `body:${rowId}`)
-      .concat([...top, ...bottom]
-      .filter(item => item.node.viewIndex >= 0)
-      .map(item => `${item.position}:${item.node.id}`))
-      .join("|");
-    if (bodyPartitionSignature !== this.bodyPartitionSignature) {
-      this.bodyPartitionSignature = bodyPartitionSignature;
-      this.params.onBodyPartitionChanged();
+        .map(item => `${item.position}:${item.node.id}`)
+        .join("|");
+      if (bodyPartitionSignature !== this.bodyPartitionSignature) {
+        this.bodyPartitionSignature = bodyPartitionSignature;
+        this.params.onBodyPartitionChanged();
+      }
     }
-    this.refreshSelectionStyles();
-    this.updateLayout();
+
+    const stickyChanged = this.renderStickyOverlay(this.computeStickyStack(this.lastScrollTop), force);
+    if (bandsChanged || stickyChanged) {
+      this.refreshSelectionStyles();
+      this.updateLayout();
+    }
+
     this.topCount = top.length;
     this.bottomCount = bottom.length;
     if (heightChanged) this.params.onHeightChanged();
   }
 
   syncHorizontal(left: number, center: number, right: number): void {
-    this.top.left.scrollLeft = left;
-    this.bottom.left.scrollLeft = left;
-    this.top.center.scrollLeft = center;
-    this.bottom.center.scrollLeft = center;
-    this.top.right.scrollLeft = right;
-    this.bottom.right.scrollLeft = right;
+    for (const band of [this.top, this.bottom, this.sticky]) {
+      band.left.scrollLeft = left;
+      band.center.scrollLeft = center;
+      band.right.scrollLeft = right;
+    }
   }
 
   updateLayout(): void {
@@ -160,10 +202,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const leftWidth = this.columnsWidth(model.getLeftLeaves());
     const centerWidth = this.columnsWidth(model.getCenterLeaves());
     const rightWidth = this.columnsWidth(model.getRightLeaves());
-    const cap = this.params.root.clientWidth * 0.35;
 
-    for (const band of [this.top, this.bottom]) {
+    for (const band of [this.top, this.bottom, this.sticky]) {
+      // Sections are sized explicitly: sticky overlay rows are absolutely positioned, so they
+      // contribute no intrinsic width to their host and flex auto-sizing would collapse them.
       this.sizeSection(band.leading, band.leadingHost, leadingWidth, leadingWidth);
+      this.sizeSection(band.left, band.leftHost, leftWidth, leftWidth);
+      this.sizeSection(band.right, band.rightHost, rightWidth, rightWidth);
       band.centerHost.style.width = `${centerWidth}px`;
       band.centerHost.style.minWidth = `${centerWidth}px`;
       band.leading.style.display = leadingWidth > 0 ? "block" : "none";
@@ -191,6 +236,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
         );
       });
     }
+    // Sticky mirrors cover their live body rows (even at rest), so the active-cell highlight must
+    // appear on the mirror too or the covered body copy's ring would be invisible. Mirrors carry
+    // the row's real view index and no rowPinned tag — body coordinates match directly.
+    this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
+      const row = cell.closest<HTMLElement>(".pte-row");
+      const rowIndex = Number(row?.dataset.viewIdx);
+      cell.classList.toggle(
+        "pte-active-cell",
+        !!active
+        && !active.rowPinned
+        && active.row === rowIndex
+        && Number(cell.dataset.colIdx) === active.colIdx,
+      );
+    });
   }
 
   ensureCellVisible(position: RowPinnedPosition, rowIndex: number): void {
@@ -208,16 +267,22 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   destroy(): void {
     this.destroyRendererMaps(this.topRendererMaps);
     this.destroyRendererMaps(this.bottomRendererMaps);
+    this.destroyRendererMaps(this.stickyRendererMaps);
     this.top.root.remove();
     this.bottom.root.remove();
+    this.sticky.root.remove();
     this.params.core.setDisplayedPinnedRows([], []);
     this.manualPinned.clear();
   }
 
-  private createBand(position: RowPinnedPosition): BandElements {
+  private createBand(kind: RowPinnedPosition | "sticky"): BandElements {
     const root = document.createElement("div");
-    root.className = `pte-pinned-rows pte-pinned-rows-${position}`;
-    root.dataset.pinned = position;
+    if (kind === "sticky") {
+      root.className = "pte-sticky-rows";
+    } else {
+      root.className = `pte-pinned-rows pte-pinned-rows-${kind}`;
+      root.dataset.pinned = kind;
+    }
 
     const section = (name: string) => {
       const outer = document.createElement("div");
@@ -252,17 +317,15 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       vertical,
       verticalScroller,
     };
-    for (const scroller of [band.leading, band.left, band.center, band.right, band.vertical]) {
-      scroller.addEventListener("scroll", () => this.syncBandVertical(band, scroller));
+    if (kind !== "sticky") {
+      for (const scroller of [band.leading, band.left, band.center, band.right, band.vertical]) {
+        scroller.addEventListener("scroll", () => this.syncBandVertical(band, scroller));
+      }
     }
     return band;
   }
 
-  private resolveRows(scrollTop: number): {
-    top: RenderedPinnedRow[];
-    bottom: RenderedPinnedRow[];
-    stickySuppressedIds: Set<string>;
-  } {
+  private resolveAppRows(): { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } {
     const top = this.dataRows(this.params.core.options.pinnedTopRowData, "top");
     const bottom = this.dataRows(this.params.core.options.pinnedBottomRowData, "bottom");
     const topIds = new Set(top.map(item => item.node.id));
@@ -270,35 +333,26 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const model = this.params.core.getRowModel();
     const callback = this.params.core.options.isRowPinned;
 
-    for (let index = 0; index < model.getViewCount(); index++) {
-      const source = model.getRowNodeAtViewIndex(index);
-      if (!source) continue;
-      const position = this.manualPinned.get(source.id) ?? callback?.({
-        node: source,
-        data: source.data,
-        rowId: source.id,
-        rowIndex: index,
-        isGroup: !!source.isGroup,
-      });
-      if (!position) continue;
-      const target = position === "top" ? top : bottom;
-      const ids = position === "top" ? topIds : bottomIds;
-      if (ids.has(source.id)) continue;
-      target.push({ node: { ...source, rowPinned: position }, position });
-      ids.add(source.id);
-    }
-
-    const stickySuppressedIds = new Set<string>();
-    if (this.params.core.options.groupRowsSticky && model.getType() === "clientSide") {
-      const sticky = this.stickyRows(scrollTop);
-      for (const source of sticky.ancestors) {
-        if (topIds.has(source.id)) continue;
-        top.push({ node: { ...source, rowPinned: "top" }, position: "top" });
-        topIds.add(source.id);
+    if (callback || this.manualPinned.size > 0) {
+      for (let index = 0; index < model.getViewCount(); index++) {
+        const source = model.getRowNodeAtViewIndex(index);
+        if (!source) continue;
+        const position = this.manualPinned.get(source.id) ?? callback?.({
+          node: source,
+          data: source.data,
+          rowId: source.id,
+          rowIndex: index,
+          isGroup: !!source.isGroup,
+        });
+        if (!position) continue;
+        const target = position === "top" ? top : bottom;
+        const ids = position === "top" ? topIds : bottomIds;
+        if (ids.has(source.id)) continue;
+        target.push({ node: { ...source, rowPinned: position }, position });
+        ids.add(source.id);
       }
-      for (const rowId of sticky.suppressedIds) stickySuppressedIds.add(rowId);
     }
-    return { top, bottom, stickySuppressedIds };
+    return { top, bottom };
   }
 
   private dataRows(rows: any[], position: RowPinnedPosition): RenderedPinnedRow[] {
@@ -333,52 +387,162 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     return `p:${position}:${index}:${String(data)}`;
   }
 
-  private stickyRows(scrollTop: number): {
-    ancestors: IRowNode[];
-    suppressedIds: Set<string>;
-  } {
-    const model = this.params.core.getRowModel();
-    const rowHeight = Math.max(1, this.params.rowHeight());
+  /**
+   * Resolve the sticky ancestor stack for this scroll position with position:sticky semantics:
+   * every row stays in the body flow, and each ancestor is clamped between its slot below the
+   * already-resolved stack and its block's end (which is what slides it out behind its parent as
+   * the next sibling arrives). Positions are compacted for application-pinned model rows, which
+   * are the only rows removed from the body flow.
+   *
+   * A header docks the moment its top TOUCHES its slot — including at scrollTop 0, where the
+   * chain's mirrors sit exactly over their pixel-identical body rows. Docking at rest is what
+   * kills the last flicker: composited wheel scrolling presents frames before the main thread
+   * runs, and if the band only appeared after the first scroll event, its first frame would show
+   * the headers scrolled un-pinned and then snapping back. With the band always present, the
+   * compositor scrolls the body beneath an overlay that never has to "appear".
+   */
+  private computeStickyStack(scrollTop: number): StickyStackRow[] {
+    const core = this.params.core;
+    if (!core.options.groupRowsSticky) return [];
+    const model = core.getRowModel();
+    if (model.getType() !== "clientSide") return [];
     const total = model.getViewCount();
-    const suppressedIds = new Set<string>();
-    if (total === 0) return { ancestors: [], suppressedIds };
+    const rowHeight = Math.max(1, this.params.rowHeight());
+    if (total === 0) return [];
 
-    // Once a group header crosses the top it leaves the body's compacted row flow permanently for
-    // that scroll position, even after a sibling replaces it in the visible sticky ancestry. Its
-    // compact top is its model index minus all preceding group headers that have likewise left the
-    // flow. Deriving this set from scrollTop makes downward and upward transitions symmetric.
-    let precedingParents = 0;
-    const parents = model.getGroupNodes()
-      .filter(node => node.viewIndex >= 0 && (node.isGroup || node.isTreeData) && node.children?.length)
-      .sort((left, right) => left.viewIndex - right.viewIndex);
-    for (const node of parents) {
-      const compactTop = (node.viewIndex - precedingParents) * rowHeight;
-      if (scrollTop > 0 && compactTop <= scrollTop) suppressedIds.add(node.id);
-      precedingParents++;
+    const stack: StickyStackRow[] = [];
+    let bottom = 0;
+    for (let depth = 0; depth < 64; depth++) {
+      // The deepest row starting at or above the current stack bottom resolves this depth's
+      // anchor: its depth-`depth` hierarchy parent is the last such header, which is exactly the
+      // sticky candidate (an arriving sibling becomes the anchor the moment it touches the edge).
+      const edgeIndex = this.lastRowTouching(scrollTop + bottom, total, rowHeight);
+      if (edgeIndex < 0) break;
+      const edgeRow = model.getRowNodeAtViewIndex(edgeIndex);
+      const anchor = edgeRow ? this.parentChainOf(edgeRow)[depth] : undefined;
+      if (!anchor) break;
+      const natural = this.compactTop(anchor.viewIndex, rowHeight) - scrollTop;
+      if (natural > bottom) break; // header still below the stack in the body — nothing deeper sticks
+      const lastDescendant = this.lastDescendantIndex(anchor, depth, total);
+      if (lastDescendant <= anchor.viewIndex) break; // collapsed/childless: scrolls away naturally
+      const blockEnd = this.compactTop(lastDescendant, rowHeight) + rowHeight - scrollTop;
+      const top = Math.min(bottom, blockEnd - rowHeight);
+      if (top + rowHeight <= 0) break;
+      stack.push({ node: anchor, top });
+      bottom = top + rowHeight;
     }
-
-    const contentEdge = scrollTop + suppressedIds.size * rowHeight;
-    const index = Math.min(total - 1, Math.max(0, Math.floor(contentEdge / rowHeight)));
-    const current = model.getRowNodeAtViewIndex(index);
-    if (!current) return { ancestors: [], suppressedIds };
-
-    const chain: IRowNode[] = [];
-    let parentId = current.parentId;
-    while (parentId) {
-      const parent = model.getRowNode(parentId);
-      if (!parent || (!parent.isGroup && !parent.isTreeData)) break;
-      chain.push(parent);
-      parentId = parent.parentId;
-    }
-    chain.reverse();
-
-    if (suppressedIds.has(current.id)) chain.push(current);
-    return { ancestors: chain, suppressedIds };
+    return stack;
   }
 
-  private signature(rows: RenderedPinnedRow[]): string {
-    return rows.map(({ node }) =>
-      `${node.id}:${node.isExpanded ? 1 : 0}:${node.childCount ?? ""}:${node.level}:${node.rowPinned}`
+  /** Body-flow top (px, content space) of a view row, compacted for application-pinned rows. */
+  private compactTop(viewIndex: number, rowHeight: number): number {
+    return (viewIndex - this.params.core.getBodyPinnedRowCountBefore(viewIndex)) * rowHeight;
+  }
+
+  /** Last view index whose compacted top is at or above `contentY`, or -1. Tops are monotone. */
+  private lastRowTouching(contentY: number, total: number, rowHeight: number): number {
+    let low = 0;
+    let high = total - 1;
+    let result = -1;
+    while (low <= high) {
+      const middle = (low + high) >>> 1;
+      if (this.compactTop(middle, rowHeight) <= contentY) {
+        result = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return result;
+  }
+
+  /** True for nodes that can hold a slot in the sticky stack: synthetic group rows and tree-data
+   * parents that actually own children. */
+  private isStickyParent(node: IRowNode): boolean {
+    return (node.isGroup || !!node.isTreeData) && !!node.children?.length;
+  }
+
+  /** Root-first chain of the hierarchy parents a row sits under, including the row itself when it
+   * is a parent. Depth position in this chain — not the node's `level`, which stays 0 for leaf
+   * data rows — is what indexes the sticky stack. */
+  private parentChainOf(node: IRowNode): IRowNode[] {
+    const model = this.params.core.getRowModel();
+    const chain: IRowNode[] = [];
+    if (this.isStickyParent(node)) chain.push(node);
+    let parentId = node.parentId;
+    while (parentId) {
+      const parent = model.getRowNode(parentId);
+      if (!parent) break;
+      if (this.isStickyParent(parent)) chain.push(parent);
+      parentId = parent.parentId;
+    }
+    return chain.reverse();
+  }
+
+  /** View index of the anchor's last visible descendant (its own index when it has none). A
+   * parent's visible block is contiguous, so the membership predicate is binary-searchable. */
+  private lastDescendantIndex(anchor: IRowNode, depth: number, total: number): number {
+    const model = this.params.core.getRowModel();
+    let low = anchor.viewIndex + 1;
+    let high = total - 1;
+    let result = anchor.viewIndex;
+    while (low <= high) {
+      const middle = (low + high) >>> 1;
+      const node = model.getRowNodeAtViewIndex(middle);
+      if (node && this.parentChainOf(node)[depth]?.id === anchor.id) {
+        result = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return result;
+  }
+
+  /** Repaint the overlay DOM when the chain changes; reposition rows and the clip height every
+   * frame (cheap transform/height writes — this is what animates the push-out). Returns whether
+   * the chain itself changed. */
+  private renderStickyOverlay(stack: StickyStackRow[], force: boolean): boolean {
+    const rowHeight = this.params.rowHeight();
+    const signature = this.signature(stack.map(item => item.node));
+    const changed = force || signature !== this.stickySignature;
+    if (changed) {
+      this.stickySignature = signature;
+      this.destroyRendererMaps(this.stickyRendererMaps);
+      this.sticky.leadingHost.replaceChildren();
+      this.sticky.leftHost.replaceChildren();
+      this.sticky.centerHost.replaceChildren();
+      this.sticky.rightHost.replaceChildren();
+      stack.forEach((item, index) => this.renderRow(this.sticky, item.node, null, index));
+    }
+    if (stack.length === 0) {
+      this.sticky.root.style.display = "none";
+      return changed;
+    }
+    this.sticky.root.style.display = "flex";
+    const bottom = stack.reduce((max, item) => Math.max(max, item.top + rowHeight), 0);
+    this.sticky.root.style.height = `${Math.max(0, bottom)}px`;
+    const hosts = [
+      this.sticky.leadingHost,
+      this.sticky.leftHost,
+      this.sticky.centerHost,
+      this.sticky.rightHost,
+    ];
+    stack.forEach((item, index) => {
+      for (const host of hosts) {
+        const element = host.children[index] as HTMLElement | undefined;
+        if (!element) continue;
+        element.style.transform = `translateY(${item.top}px)`;
+        // Ancestors paint above descendants so an outgoing header slides up behind its parent.
+        element.style.zIndex = String(stack.length - index);
+      }
+    });
+    return changed;
+  }
+
+  private signature(rows: IRowNode[]): string {
+    return rows.map(node =>
+      `${node.id}:${node.isExpanded ? 1 : 0}:${node.childCount ?? ""}:${node.level}:${node.rowPinned ?? ""}`
     ).join("|");
   }
 
@@ -417,16 +581,16 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private renderRow(
     band: BandElements,
     row: IRowNode,
-    position: RowPinnedPosition,
+    pinned: RowPinnedPosition | null,
     rowIndex: number,
   ): void {
     const rendererMap = new Map<string, RendererRecord>();
     this.mapsFor(band).add(rendererMap);
     const model = this.params.core.getColumnModel();
-    const leading = this.createSectionRow(band.leadingHost, row, position, rowIndex);
-    const left = this.createSectionRow(band.leftHost, row, position, rowIndex);
-    const center = this.createSectionRow(band.centerHost, row, position, rowIndex);
-    const right = this.createSectionRow(band.rightHost, row, position, rowIndex);
+    const leading = this.createSectionRow(band.leadingHost, row, pinned, rowIndex);
+    const left = this.createSectionRow(band.leftHost, row, pinned, rowIndex);
+    const center = this.createSectionRow(band.centerHost, row, pinned, rowIndex);
+    const right = this.createSectionRow(band.rightHost, row, pinned, rowIndex);
 
     if (!this.params.core.options.treeData
       && row.isGroup
@@ -439,20 +603,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
-      this.applyActiveCell(center, rowIndex, position);
+      if (pinned) this.applyActiveCell(center, rowIndex, pinned);
       return;
     }
 
-    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap, rowIndex, position);
-    this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, position);
-    this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, position);
-    this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, position);
+    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap, rowIndex, pinned);
+    this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned);
+    this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned);
+    this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned);
   }
 
   private createSectionRow(
     host: HTMLDivElement,
     row: IRowNode,
-    position: RowPinnedPosition,
+    pinned: RowPinnedPosition | null,
     rowIndex: number,
   ): HTMLDivElement {
     const element = document.createElement("div");
@@ -460,9 +624,19 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     element.style.height = `${this.params.rowHeight()}px`;
     element.setAttribute("row-id", row.id);
     element.dataset.rowId = row.id;
-    element.dataset.pinned = position;
-    element.dataset.rowPinned = position;
-    element.dataset.viewIdx = String(rowIndex);
+    if (pinned) {
+      element.dataset.pinned = pinned;
+      element.dataset.rowPinned = pinned;
+      element.dataset.viewIdx = String(rowIndex);
+    } else {
+      // Sticky mirrors are the live body row: interactions resolve against its real view index,
+      // and the zebra stripe matches so docking never changes a single pixel of the row.
+      element.classList.add("pte-sticky-row");
+      element.dataset.viewIdx = String(row.viewIndex);
+      if (this.params.core.options.zebraRows && row.viewIndex % 2 === 1) {
+        element.classList.add("pte-row-alt");
+      }
+    }
     if (row.isGroup) {
       element.classList.add("pte-group-row");
       element.dataset.groupId = row.id;
@@ -474,7 +648,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       rowIndex: row.viewIndex,
       isGroup: !!row.isGroup,
       node: row,
-      rowPinned: position,
+      rowPinned: pinned ?? undefined,
     };
     if (getRowClass) applyDynamicClasses(element, getRowClass(callbackParams));
     if (getRowStyle) applyDynamicStyles(element, getRowStyle(callbackParams));
@@ -488,8 +662,11 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     row: IRowNode,
     rendererMap: Map<string, RendererRecord>,
     rowIndex: number,
-    position: RowPinnedPosition,
+    pinned: RowPinnedPosition | null,
   ): void {
+    // Application-pinned rows live outside the view sequence and show a blank row number; a sticky
+    // mirror shows its body row's real number so the header docks without its cells changing.
+    const rowNumber = pinned ? 0 : this.params.core.getRowNumberForViewIndex(row.viewIndex);
     let width = 0;
     for (const column of columns) {
       if (column.hidden) continue;
@@ -503,12 +680,12 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       if (column.isComputableType()) cell.classList.add("pte-cell-right-aligned");
       if (column.isRowNumberColumn()) cell.classList.add("pte-row-number-cell");
       rowElement.appendChild(cell);
-      this.params.bodyCellRenderer.renderCell(cell, row, column, rendererMap, row.viewIndex, 0);
-      if (column.isRowNumberColumn()) cell.textContent = "";
+      this.params.bodyCellRenderer.renderCell(cell, row, column, rendererMap, row.viewIndex, rowNumber);
+      if (pinned && column.isRowNumberColumn()) cell.textContent = "";
       width += column.computedWidth;
     }
     rowElement.style.width = `${width}px`;
-    this.applyActiveCell(rowElement, rowIndex, position);
+    if (pinned) this.applyActiveCell(rowElement, rowIndex, pinned);
   }
 
   private applyActiveCell(
@@ -560,6 +737,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   private mapsFor(band: BandElements): Set<Map<string, RendererRecord>> {
     if (band === this.top) return this.topRendererMaps;
+    if (band === this.sticky) return this.stickyRendererMaps;
     return this.bottomRendererMaps;
   }
 

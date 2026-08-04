@@ -627,7 +627,7 @@ columns once, in `resolveRows`/`resolveColumns`.
 | Full-width row rendering | ✅ Complete | `renderer/body/window.ts` (spans all sections, pinned left of viewport) |
 | Pinned top/bottom data rows | ✅ Complete | `renderer/pinnedRows/pinnedRowsRenderer.ts`; application-owned, outside the row model |
 | Explicitly pinned generated group rows | ✅ Complete | `isRowPinned`; `api.setRowPinned()`; live chevrons + aggregates |
-| Sticky group ancestry | ✅ Complete (CSRM) | `groupRowsSticky`; active nested ancestors join the existing top pinned-row section outside `.pte-body` |
+| Sticky group ancestry | ✅ Complete (CSRM) | `groupRowsSticky`; ancestors mirror into an absolute overlay inside `.pte-body` (`.pte-sticky-rows`); originals stay in the body flow |
 | Conditional row class / style (`getRowClass` / `getRowStyle`) | ✅ Complete | `renderer/body/dynamicStyle.ts` (diffed against pooled DOM) |
 | Row hover highlighting (`rowHover`) | ✅ Complete | `renderer/body/rowHover.ts`; default on |
 | Column hover highlighting (`columnHover`) | ✅ Complete | `renderer/body/columnHover.ts`; opt-in |
@@ -741,10 +741,10 @@ lifecycle; the content is a custom component.
 | Normal formatting and custom cell renderers | ✅ Complete | Reuses `BodyCellRenderer` across leading/left/center/right sections |
 | Generated group-row pinning | ✅ Complete | `isRowPinned` callback and `api.setRowPinned(groupId, position)` |
 | Live group expansion and aggregates | ✅ Complete | Mirrored nodes retain stable group id, chevron, hierarchy level, and aggregate values |
-| Automatically sticky nested ancestors | ✅ Complete (CSRM) | `groupRowsSticky`; follows the first visible node's `parentId` chain in the shared, navigable top row section |
+| Automatically sticky nested ancestors | ✅ Complete (CSRM) | `groupRowsSticky`; per-depth anchors resolved against the scroll position render in a body-top overlay with position:sticky push-out semantics |
 | All group display modes | ✅ Complete | `singleColumn`, `multipleColumns`, and full-width `groupRows` |
 | Horizontal section synchronization | ✅ Complete | Shared scroll synchronizer updates pinned row bands with header/body/footer |
-| Independent vertical overflow | ✅ Complete | Top/bottom application-pinned bands own a scrollbar column and cap at 30%; sticky group ancestry leaves the body's scrollbar lane exposed |
+| Independent vertical overflow | ✅ Complete | Top/bottom application-pinned bands own a scrollbar column and cap at 30%; the sticky overlay clips to its stack height and never affects layout |
 
 ---
 
