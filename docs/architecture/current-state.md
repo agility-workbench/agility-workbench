@@ -939,7 +939,7 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.
-- **Server-side row model** does not distinguish `forEachNodeAfterFilterAndSort` from `forEachNode` (identical implementations).
+- **Server-side row model** implements `forEachNodeAfterFilterAndSort` identically to `forEachNode` **by design** — the distinction is meaningless under SSRM. The server pre-applies filter and sort, so the client's node cache only ever holds post-filter/sort rows; a "before" universe never exists client-side. Both methods iterate all loaded nodes in view order. (The distinction is real in CSRM, which holds all rows and a separate filtered/sorted index. AG Grid likewise documents its equivalent as CSRM-only.)
 - **Quick filter, grouping, full-width rows, and custom filter functions are client-side (CSRM) only.**
 - **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.
