@@ -711,6 +711,16 @@ export interface GridOptions {
    */
   pinnedRowsEditable?: boolean;
   /**
+   * When true, the body context menu offers "Pin row" (to top / to bottom) and "Unpin row" for the
+   * rows owning the selected cells: a single-cell selection targets its owning row, a row selection
+   * targets the selected rows, and a cell range targets every row the range covers (including group
+   * header rows). Right-clicking outside the selection targets the clicked row only. Pinning uses
+   * the same mechanism as {@link IGridAPI.setRowPinned}; a menu unpin overrides rows pinned by
+   * {@link GridOptions.isRowPinned}. Application-supplied band rows (`pinnedTopRowData` /
+   * `pinnedBottomRowData`) are application-owned and never targeted. Defaults to false.
+   */
+  rowPinningMenu?: boolean;
+  /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
    * `editTrigger: "none"` for fully API-only editing. Defaults to false.
@@ -912,6 +922,7 @@ export interface InternalGridOptions extends GridOptions {
   undoLimit: number;
   editTrigger: EditTrigger;
   pinnedRowsEditable: boolean;
+  rowPinningMenu: boolean;
   suppressKeyboardEdit: boolean;
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
@@ -961,6 +972,7 @@ export type RuntimeGridOptions = Pick<
   | "bodyContextMenu"
   | "editTrigger"
   | "pinnedRowsEditable"
+  | "rowPinningMenu"
   | "suppressKeyboardEdit"
   | "suppressTypeToEdit"
   | "moveAfterEdit"

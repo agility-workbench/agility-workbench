@@ -12,7 +12,7 @@
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
 > functions**, **quick-filter layout/anchoring options**, a built-in **column panel**, and
-> **pinned/sticky rows**. The suite is now **555 tests across 72
+> **pinned/sticky rows**. The suite is now **595 tests across 75
 > files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
@@ -76,7 +76,7 @@ Grouped by area; each maps to a §5 sub-table.
 - **Core package:** `@agility-workbench/grid` (framework-agnostic; zero runtime dependencies)
 - **React binding:** `@agility-workbench/react-grid` (thin `<Grid />`; `react`/`react-dom` peers)
 - **Build:** `tsup` (ESM + CJS + d.ts), dev server via `vite`
-- **Testing:** `vitest` with `happy-dom` for DOM tests (555 tests / 72 files)
+- **Testing:** `vitest` with `happy-dom` for DOM tests (595 tests / 75 files)
 - **Exports:** CSV + Excel (`.xlsx`) via a hand-rolled, zero-dependency OOXML writer (`src/export/xlsx/`); exceljs is only a dev/test verifier
 
 ---
@@ -654,6 +654,7 @@ columns once, in `resolveRows`/`resolveColumns`.
 |---------|--------|----------|
 | Column header context menu | ✅ Complete | `menu/columnMenuService.ts`, `renderer/columnMenuOpener.ts` |
 | Body context menu (right-click on cell/row) | ✅ Complete | `menu/bodyMenuService.ts`, `renderer/bodyMenuOpener.ts` |
+| Row pinning via body menu (`rowPinningMenu`, opt-in) | ✅ Complete | `menu/bodyMenuService.ts` → `buildRowPinningItem` / `resolvePinTargetRowIds`; see §5.17 |
 | React-customizable menu items | ✅ Complete | `packages/react-grid/src/MenuAdapter.ts`, `BodyMenuAdapter.ts` |
 | Filter menu (per-column filter panel) | ✅ Complete | `filter/filterMenuCoordinator.ts` |
 
@@ -749,6 +750,8 @@ lifecycle; the content is a custom component.
 | Editable pinned rows (`pinnedRowsEditable`) | ✅ Complete | Opt-in; editors mount in band cells; app-row edits write the provided data objects via `writeCellValue`, undoable; group headers never editable |
 | Pinned rows in exports | ✅ Complete | `ExportConfig.pinnedTopRows/pinnedBottomRows`; CSV+Excel frame the body; Excel freezes header+top band (`ySplit`); footer formulas span body only; selection exports honor pinned segments |
 | Range selection across bands | ✅ Complete | `SelectionRange.pinnedTop/pinnedBottom` segments over the unified row sequence; drag/Shift+Arrow/Ctrl+A cross edges; copy serializes segments in order; cut/paste body-only |
+| Context-menu row pinning (`rowPinningMenu`) | ✅ Complete | Opt-in "Pin row → Pin to top / Pin to bottom" + "Unpin row" in the body menu; targets the rows owning the selected cells (single cell / row selection / range incl. group headers); menu unpin stores an explicit override that beats `isRowPinned`; `menu/bodyMenuService.ts` + `renderer/pinnedRows/` |
+| Band ordering (app data rows on the outer edges) | ✅ Complete | `pinnedTopRowData` → runtime-pinned top → body → runtime-pinned bottom → `pinnedBottomRowData`; `resolveAppRows` in `renderer/pinnedRows/pinnedRowsRenderer.ts` |
 
 ---
 
@@ -842,7 +845,7 @@ The React wrapper adapts JSX components for all three in `packages/react-grid/sr
 
 ## 8. Testing
 
-Tests use **vitest** with `happy-dom` for DOM environment simulation — **558 tests across 73
+Tests use **vitest** with `happy-dom` for DOM environment simulation — **595 tests across 75
 files**, co-located with source (core `packages/grid/src/`, React smoke tests
 `packages/react-grid/src/`). A representative slice:
 

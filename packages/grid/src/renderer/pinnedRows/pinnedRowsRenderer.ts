@@ -73,7 +73,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private readonly top: BandElements;
   private readonly bottom: BandElements;
   private readonly sticky: BandElements;
-  private readonly manualPinned = new Map<string, RowPinnedPosition>();
+  // Explicit per-row pin state set through the API/menu. A stored `null` is an explicit unpin
+  // override: it wins over the isRowPinned callback, which would otherwise re-pin the row on the
+  // next resolve. Without a callback there is nothing to override, so null just clears the entry.
+  private readonly manualPinned = new Map<string, RowPinnedPosition | null>();
   private readonly topRendererMaps = new Set<Map<string, RendererRecord>>();
   private readonly bottomRendererMaps = new Set<Map<string, RendererRecord>>();
   private readonly stickyRendererMaps = new Set<Map<string, RendererRecord>>();
@@ -121,7 +124,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   setRowPinned(rowId: string, position: RowPinnedPosition | null): void {
-    if (position) this.manualPinned.set(rowId, position);
+    if (position || this.params.core.options.isRowPinned) this.manualPinned.set(rowId, position);
     else this.manualPinned.delete(rowId);
     this.render(this.lastScrollTop, true);
   }
@@ -402,11 +405,15 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     return band;
   }
 
+  // Band order keeps the application-supplied data rows on the outer edges and runtime-pinned
+  // model rows (isRowPinned / setRowPinned) adjacent to the body:
+  // pinnedTopRowData → model-pinned top → body → model-pinned bottom → pinnedBottomRowData.
   private resolveAppRows(): { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } {
     const top = this.dataRows(this.params.core.options.pinnedTopRowData, "top");
-    const bottom = this.dataRows(this.params.core.options.pinnedBottomRowData, "bottom");
+    const dataBottom = this.dataRows(this.params.core.options.pinnedBottomRowData, "bottom");
+    const modelBottom: RenderedPinnedRow[] = [];
     const topIds = new Set(top.map(item => item.node.id));
-    const bottomIds = new Set(bottom.map(item => item.node.id));
+    const bottomIds = new Set(dataBottom.map(item => item.node.id));
     const model = this.params.core.getRowModel();
     const callback = this.params.core.options.isRowPinned;
 
@@ -414,22 +421,24 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       for (let index = 0; index < model.getViewCount(); index++) {
         const source = model.getRowNodeAtViewIndex(index);
         if (!source) continue;
-        const position = this.manualPinned.get(source.id) ?? callback?.({
-          node: source,
-          data: source.data,
-          rowId: source.id,
-          rowIndex: index,
-          isGroup: !!source.isGroup,
-        });
+        const position = this.manualPinned.has(source.id)
+          ? this.manualPinned.get(source.id)
+          : callback?.({
+            node: source,
+            data: source.data,
+            rowId: source.id,
+            rowIndex: index,
+            isGroup: !!source.isGroup,
+          });
         if (!position) continue;
-        const target = position === "top" ? top : bottom;
+        const target = position === "top" ? top : modelBottom;
         const ids = position === "top" ? topIds : bottomIds;
         if (ids.has(source.id)) continue;
         target.push({ node: { ...source, rowPinned: position }, position });
         ids.add(source.id);
       }
     }
-    return { top, bottom };
+    return { top, bottom: modelBottom.concat(dataBottom) };
   }
 
   private dataRows(rows: any[], position: RowPinnedPosition): RenderedPinnedRow[] {

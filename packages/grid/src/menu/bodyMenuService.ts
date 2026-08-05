@@ -1,6 +1,7 @@
 import { IGridCore } from "../interfaces";
 import { Column } from "../column/column";
 import { MenuItem } from "../interfaces/menuItem";
+import type { RowPinnedPosition } from "../interfaces/gridOptions";
 import { BodyMenuContext } from "./bodyContext";
 
 type ExportScopeOption = "selection" | "selectedColumns" | "all";
@@ -8,6 +9,10 @@ type ExportScopeOption = "selection" | "selectedColumns" | "all";
 export interface BodyMenuExportTarget {
   exportCSV: (options: { scope?: ExportScopeOption }) => void;
   exportExcel: (options: { scope?: ExportScopeOption; groupMode?: "tree" | "leaves" }) => void;
+}
+
+export interface BodyMenuPinningTarget {
+  setRowPinned: (rowId: string, position: RowPinnedPosition | null) => void;
 }
 
 export interface BodyMenuClipboardTarget {
@@ -22,6 +27,7 @@ interface BodyMenuServiceParams {
   core: IGridCore;
   exporter: BodyMenuExportTarget;
   clipboard: BodyMenuClipboardTarget;
+  pinning: BodyMenuPinningTarget;
 }
 
 export class BodyMenuService {
@@ -58,7 +64,76 @@ export class BodyMenuService {
       items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
     }
 
+    if (opts.rowPinningMenu) {
+      const pinItem = this.buildRowPinningItem(ctx);
+      if (pinItem) {
+        items.push({ isSeparator: true });
+        items.push(pinItem);
+      }
+    }
+
     return items;
+  }
+
+  // The "Pin row(s)" submenu. Targets are the rows owning the selected cells (the opener collapses
+  // the selection to the clicked cell when the click lands outside it, so the selection snapshot is
+  // always the right scope). A pin direction is disabled when every target already sits in that
+  // band; Unpin appears once any target is currently pinned. No targets (e.g. the click landed on an
+  // application-owned band row) → no item.
+  private buildRowPinningItem(ctx: BodyMenuContext): MenuItem | null {
+    const targets = this.resolvePinTargetRowIds(ctx);
+    if (targets.length === 0) return null;
+
+    const positions = targets.map(id => this.params.core.getDisplayedPinnedRowRef(id)?.position ?? null);
+    const allIn = (position: RowPinnedPosition) => positions.every(p => p === position);
+    const plural = targets.length > 1;
+
+    const subMenu: MenuItem[] = [
+      { id: "pinTop", label: "Pin to top", command: "body.pin.top", disabled: allIn("top") },
+      { id: "pinBottom", label: "Pin to bottom", command: "body.pin.bottom", disabled: allIn("bottom") },
+    ];
+    if (positions.some(p => p !== null)) {
+      subMenu.push({ id: "unpin", label: plural ? "Unpin rows" : "Unpin row", command: "body.pin.none" });
+    }
+    return { id: "pinRow", label: plural ? "Pin rows" : "Pin row", left: "icon-pin", subMenu };
+  }
+
+  // The model rows a pin/unpin acts on, per the selection snapshot: every row a cell range covers
+  // (body span + any model-backed rows in the range's pinned-band segments), plus the selected rows
+  // when the click landed on one; the clicked row alone otherwise (e.g. column selection).
+  // Application-owned band rows never enter the row model, so filtering to model rows excludes them.
+  private resolvePinTargetRowIds(ctx: BodyMenuContext): string[] {
+    const rowModel = this.params.core.getRowModel();
+    const isModelRow = (id: string | null | undefined): id is string => !!id && !!rowModel.getRowNode(id);
+    const ids = new Set<string>();
+
+    const range = ctx.selection.range;
+    if (range) {
+      // Band-only ranges carry rowStart 0 / rowEnd -1, so this loop covers exactly the body span.
+      for (let i = range.rowStart; i <= range.rowEnd; i++) {
+        const node = rowModel.getRowNodeAtViewIndex(i);
+        if (node) ids.add(node.id);
+      }
+      for (const position of ["top", "bottom"] as const) {
+        const seg = position === "top" ? range.pinnedTop : range.pinnedBottom;
+        if (!seg) continue;
+        for (let i = seg.start; i <= seg.end; i++) {
+          const id = this.params.core.getDisplayedPinnedRow(position, i)?.id;
+          if (isModelRow(id)) ids.add(id);
+        }
+      }
+    }
+    if (ctx.selection.rowIds.includes(ctx.rowId)) {
+      for (const id of ctx.selection.rowIds) if (isModelRow(id)) ids.add(id);
+    }
+    if (ids.size === 0 && isModelRow(ctx.rowId)) ids.add(ctx.rowId);
+    return Array.from(ids);
+  }
+
+  private applyRowPinning(ctx: BodyMenuContext, position: RowPinnedPosition | null): void {
+    for (const rowId of this.resolvePinTargetRowIds(ctx)) {
+      this.params.pinning.setRowPinned(rowId, position);
+    }
   }
 
   // The Excel export item. When the grid is grouped AND the selection covers at least one group row,
@@ -184,6 +259,12 @@ export class BodyMenuService {
         return this.params.exporter.exportExcel({ scope, groupMode: "tree" });
       case "body.export.excel.leaves":
         return this.params.exporter.exportExcel({ scope, groupMode: "leaves" });
+      case "body.pin.top":
+        return this.applyRowPinning(ctx, "top");
+      case "body.pin.bottom":
+        return this.applyRowPinning(ctx, "bottom");
+      case "body.pin.none":
+        return this.applyRowPinning(ctx, null);
       default:
         console.error(`Unhandled body menu command: ${item.command}`);
         return;

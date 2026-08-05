@@ -73,6 +73,7 @@ export function PinnedRowsDemo() {
         </button>
         <span style={{ fontSize: 12, color: "#6b7280" }}>
           Pinned rows stay outside sort, filter, pagination, and the virtualized row count.
+          Right-click any data row for Pin row / Unpin row.
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
@@ -81,6 +82,7 @@ export function PinnedRowsDemo() {
           columnDefs={columns}
           rowIdKey="id"
           pinnedRowsEditable
+          rowPinningMenu
           pinnedTopRowData={topRows}
           pinnedBottomRowData={bottomRows}
           quickFilter={{ mode: "always", debounceMs: 0 }}

@@ -49,6 +49,7 @@ function makeService(core: GridCore) {
       pasteSelection: () => {},
       hasEditableCells: () => false,
     },
+    pinning: { setRowPinned: () => {} },
   });
   return { svc, calls };
 }

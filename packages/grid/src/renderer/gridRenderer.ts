@@ -188,6 +188,7 @@ export class GridRenderer {
     createBodyMenuCoordinator?: (
       exporter: import("../menu/bodyMenuService").BodyMenuExportTarget,
       clipboard: import("../menu/bodyMenuService").BodyMenuClipboardTarget,
+      pinning: import("../menu/bodyMenuService").BodyMenuPinningTarget,
     ) => import("../menu/bodyMenuCoordinator").BodyMenuCoordinator,
   ) {
     this._measureCtx = null;
@@ -365,6 +366,11 @@ export class GridRenderer {
           cutSelection: () => this._clipboardRenderer.cut(),
           pasteSelection: () => void this._clipboardRenderer.paste(),
           hasEditableCells: () => this._clipboardRenderer.hasEditableCells(),
+        },
+        {
+          // Deferred: _pinnedRowsRenderer is constructed after the menu wiring; menu clicks run
+          // long after both exist.
+          setRowPinned: (rowId, position) => this._pinnedRowsRenderer.setRowPinned(rowId, position),
         },
       );
       this._bodyMenuOpener = new BodyMenuOpener({

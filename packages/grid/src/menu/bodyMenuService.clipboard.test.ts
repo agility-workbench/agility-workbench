@@ -38,6 +38,7 @@ function makeService(core: GridCore, hasEditableCells: boolean) {
     core: core as any,
     exporter: { exportCSV: () => {}, exportExcel: () => {} },
     clipboard,
+    pinning: { setRowPinned: () => {} },
   });
   return { svc, calls };
 }

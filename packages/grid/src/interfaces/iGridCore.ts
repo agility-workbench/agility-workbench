@@ -135,6 +135,10 @@ export interface IGridCore {
   getDisplayedPinnedRow(position: "top" | "bottom", rowIndex: number): import("./iRowNode").IRowNode | null;
   /** Number of rows currently displayed in a pinned band. */
   getDisplayedPinnedRowCount(position: "top" | "bottom"): number;
+  /** Locate a pinned band row by id, with its band position and band-local index. */
+  getDisplayedPinnedRowRef(
+    rowId: GridId,
+  ): { node: import("./iRowNode").IRowNode; position: "top" | "bottom"; rowIndex: number } | null;
   getEditingCell(): CellRef | null;
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;

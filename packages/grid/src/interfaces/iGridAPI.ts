@@ -68,7 +68,9 @@ export interface IGridAPI {
   setPinnedBottomRowData(rows: RowData[]): void;
   /**
    * Explicitly mirror a displayed row-model node in a frozen band. Generated group node ids are
-   * supported; pass null to unpin. The original row remains in the hierarchy.
+   * supported; pass null to unpin. When an {@link GridOptions.isRowPinned} callback is configured,
+   * null is remembered as an explicit unpin override for that row — it wins over the callback until
+   * the row is pinned again. The original row remains in the hierarchy.
    */
   setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void;
 

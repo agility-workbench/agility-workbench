@@ -190,6 +190,7 @@ export class GridCore implements IGridCore {
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       editTrigger: options.editTrigger ?? "doubleClick",
       pinnedRowsEditable: isTrue(options.pinnedRowsEditable),
+      rowPinningMenu: isTrue(options.rowPinningMenu),
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,

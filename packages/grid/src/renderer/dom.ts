@@ -28,8 +28,8 @@ export function initDomRenderer(
     api,
     new MenuCoordinator(menuSvc, adapter),
     new FilterMenuCoordinator(core as GridCore, filterSvc),
-    (exporter, clipboard) => new BodyMenuCoordinator(
-      new BodyMenuService({ core, exporter, clipboard }),
+    (exporter, clipboard, pinning) => new BodyMenuCoordinator(
+      new BodyMenuService({ core, exporter, clipboard, pinning }),
       bodyAdapter,
       core,
     ),
