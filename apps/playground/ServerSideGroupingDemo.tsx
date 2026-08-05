@@ -123,6 +123,7 @@ export function ServerSideGroupingDemo() {
   const [groupBy, setGroupBy] = useState<string[]>(["region", "country"]);
   const [reportTotals, setReportTotals] = useState(true);
   const [pagination, setPagination] = useState(true);
+  const [stickyGroups, setStickyGroups] = useState(true);
   const [requestLog, setRequestLog] = useState<string[]>([]);
   const reportTotalsRef = useRef(reportTotals);
   reportTotalsRef.current = reportTotals;
@@ -201,6 +202,11 @@ export function ServerSideGroupingDemo() {
           Pagination
         </label>
 
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="checkbox" checked={stickyGroups} onChange={(e) => setStickyGroups(e.target.checked)} />
+          Sticky group rows
+        </label>
+
         <button
           className="btn"
           type="button"
@@ -237,7 +243,7 @@ export function ServerSideGroupingDemo() {
           serverSideDataSource={dataSource}
           serverSideBlockSize={100}
           pagination={pagination}
-          groupRowsSticky
+          groupRowsSticky={stickyGroups}
           pageSize={50}
           getGroupChildCount={(row: any) => row.count}
           style={{ width: "100%", height: "100%" }}

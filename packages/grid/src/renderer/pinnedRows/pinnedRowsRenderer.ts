@@ -527,7 +527,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const core = this.params.core;
     if (!core.options.groupRowsSticky) return [];
     const model = core.getRowModel();
-    if (model.getType() !== "clientSide") return [];
     const total = model.getViewCount();
     const rowHeight = Math.max(1, this.params.rowHeight());
     if (total === 0) return [];
@@ -540,8 +539,11 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       // sticky candidate (an arriving sibling becomes the anchor the moment it touches the edge).
       const edgeIndex = this.lastRowTouching(scrollTop + bottom, total, rowHeight);
       if (edgeIndex < 0) break;
+      // A server-side edge slot may not be loaded yet; its ancestor chain is still resolvable
+      // through the model's segment index (ancestors are always loaded before descendants).
       const edgeRow = model.getRowNodeAtViewIndex(edgeIndex);
-      const anchor = edgeRow ? this.parentChainOf(edgeRow)[depth] : undefined;
+      const chain = edgeRow ? this.parentChainOf(edgeRow) : this.ancestorChainAt(edgeIndex);
+      const anchor = chain[depth];
       if (!anchor) break;
       const natural = this.compactTop(anchor.viewIndex, rowHeight) - scrollTop;
       if (natural > bottom) break; // header still below the stack in the body — nothing deeper sticks
@@ -567,9 +569,11 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const core = this.params.core;
     if (!core.options.groupRowsSticky) return 0;
     const model = core.getRowModel();
-    if (model.getType() !== "clientSide") return 0;
     const node = model.getRowNodeAtViewIndex(viewIndex);
-    if (!node) return 0;
+    if (!node) {
+      // Unloaded server-side slot: every chain entry is an ancestor above it.
+      return this.ancestorChainAt(viewIndex).length * this.params.rowHeight();
+    }
     const chain = this.parentChainOf(node);
     const ancestors = chain.length > 0 && chain[chain.length - 1].id === node.id
       ? chain.length - 1
@@ -600,9 +604,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   /** True for nodes that can hold a slot in the sticky stack: synthetic group rows and tree-data
-   * parents that actually own children. */
+   * parents that actually own children. Server-side group nodes never materialize a `children`
+   * array (their children live in lazy blocks), so a group without one still counts. */
   private isStickyParent(node: IRowNode): boolean {
-    return (node.isGroup || !!node.isTreeData) && !!node.children?.length;
+    if (node.isGroup) return node.children ? node.children.length > 0 : true;
+    return !!node.isTreeData && !!node.children?.length;
+  }
+
+  /** Sticky-parent chain for a view slot whose row may not be loaded: the model resolves the
+   * owning listing's ancestor group nodes from its store metadata. Empty on models without the
+   * lookup (client-side, where every visible row is materialized anyway). */
+  private ancestorChainAt(viewIndex: number): IRowNode[] {
+    const model = this.params.core.getRowModel();
+    const chain = model.getAncestorChainAtViewIndex?.(viewIndex) ?? [];
+    return chain.filter(node => this.isStickyParent(node));
   }
 
   /** Root-first chain of the hierarchy parents a row sits under, including the row itself when it
@@ -622,10 +637,16 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     return chain.reverse();
   }
 
-  /** View index of the anchor's last visible descendant (its own index when it has none). A
-   * parent's visible block is contiguous, so the membership predicate is binary-searchable. */
+  /** View index of the anchor's last visible descendant (its own index when it has none). The
+   * server-side model answers from its flattened spans (its rows may not be loaded, which would
+   * derail a row scan); otherwise a parent's visible block is contiguous, so the membership
+   * predicate is binary-searchable. */
   private lastDescendantIndex(anchor: IRowNode, depth: number, total: number): number {
     const model = this.params.core.getRowModel();
+    const spanEnd = model.getSubtreeEndViewIndex?.(anchor.id);
+    if (spanEnd != null) {
+      return Math.min(Math.max(spanEnd, anchor.viewIndex), total - 1);
+    }
     let low = anchor.viewIndex + 1;
     let high = total - 1;
     let result = anchor.viewIndex;

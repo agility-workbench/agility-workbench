@@ -100,6 +100,16 @@ export interface IRowModel<Row = any> {
    * reached). Absent = always known (client-side model). */
   isTotalRowCountKnown?(): boolean;
 
+  /** View index of a group's last visible descendant (its own index when collapsed/empty),
+   * answered from store metadata so it works when the rows themselves are not loaded. Absent on
+   * models where every visible row is materialized (client-side) — callers scan rows instead. */
+  getSubtreeEndViewIndex?(groupId: string): number | undefined;
+
+  /** Root-first chain of loaded ancestor group nodes owning a view slot, excluding the slot's own
+   * row. Works for server-side slots whose row data is not loaded (ancestors always are). Absent
+   * on the client-side model. */
+  getAncestorChainAtViewIndex?(viewIndex: number): IRowNode<Row>[];
+
   /** Server-side only: re-invoke the data source for the whole store or one group subtree.
    * `requestId` is a fresh core request id used for the resulting listener callbacks. */
   refreshServerSideData?(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean>;

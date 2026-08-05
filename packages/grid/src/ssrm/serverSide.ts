@@ -61,6 +61,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   private segments: FlatSegment[] = [];
   private flatTotal = 0;
   private totalKnown = true;
+  // Exclusive flat end of each expanded loaded group's subtree (its own row, descendants, and any
+  // probe slot). Rebuilt with the segments; lets the sticky overlay know where a group's block
+  // ends without its rows being loaded.
+  private subtreeEndFlat: Map<string, number> = new Map();
 
   // Per-group expansion overrides (group node id → expanded). Survives purges so sorting/filtering
   // and refreshes keep the expanded tree; ids are content-derived paths, so they stay stable.
@@ -213,6 +217,37 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return this.nodesMap.get(id);
   }
 
+  // View index of a group's last visible descendant (its own index when collapsed or empty).
+  // Derived from the flattened spans, so it stays correct when the group's rows are not loaded —
+  // the sticky overlay needs the block end of groups whose children are still lazy blocks. For an
+  // uncounted listing the span ends at the probe slot and extends as blocks arrive.
+  getSubtreeEndViewIndex(groupId: string): number | undefined {
+    const node = this.nodesMap.get(groupId);
+    if (!node || !node.isGroup) return undefined;
+    const end = this.subtreeEndFlat.get(groupId);
+    if (end == null) return node.viewIndex;
+    const viewOffset = this.paginate ? this.viewStartRow : 0;
+    return end - 1 - viewOffset;
+  }
+
+  // Root-first chain of the loaded ancestor group nodes owning a view slot, excluding the slot's
+  // own row. Resolves through the segment index, so it works for slots whose row data has not
+  // loaded yet (a group's ancestors are always loaded before any of its descendants).
+  getAncestorChainAtViewIndex(viewRowIndex: number): IRowNode<Row>[] {
+    const flatIdx = (this.paginate ? this.viewStartRow : 0) + viewRowIndex;
+    const seg = this.findSegment(flatIdx);
+    if (!seg) return [];
+    const chain: IRowNode<Row>[] = [];
+    let id: string | undefined = seg.listingId || undefined;
+    while (id) {
+      const node = this.nodesMap.get(id);
+      if (!node) break;
+      chain.push(node);
+      id = node.parentId;
+    }
+    return chain.reverse();
+  }
+
   setCellValue(rowId: string, key: string, value: any): boolean {
     const node = this.nodesMap.get(rowId);
     if (!node) return false;
@@ -351,6 +386,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.listings.clear();
     this.nodesMap.clear();
     this.segments = [];
+    this.subtreeEndFlat.clear();
     this.flatTotal = 0;
     this.storeGeneration++;
   }
@@ -394,6 +430,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   // block, which is how open-ended listings extend (and eventually pin) their count.
   private rebuildFlat(): void {
     this.segments = [];
+    this.subtreeEndFlat.clear();
     let flat = 0;
     let known = true;
     const viewOffset = this.paginate ? this.viewStartRow : 0;
@@ -416,6 +453,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           [...listing.groupKeys, { key: this.groupBy[listing.groupKeys.length]?.key ?? "", value: node.groupValue ?? null }],
           [...listing.path, node.groupKey ?? BLANK_GROUP_KEY],
         ));
+        this.subtreeEndFlat.set(node.id, flat);
       }
       if (cursor < slots) {
         this.pushSegment(listing, cursor, slots, flat, viewOffset);

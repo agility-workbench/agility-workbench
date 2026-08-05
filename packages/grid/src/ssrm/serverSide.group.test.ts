@@ -339,6 +339,33 @@ describe("server-side row grouping", () => {
     expect(ds.requests.length).toBeGreaterThan(0);
   });
 
+  it("answers subtree spans and ancestor chains for slots whose rows are not loaded", async () => {
+    // pageSize/blockSize 2 so EMEA's third child stays unloaded: page 2 (view 2..4) covers child
+    // indices 0-1 only. The first block's totalRows pins the count at 3, leaving child 2 counted
+    // but unloaded — the case the sticky overlay needs answered without row data.
+    const { core } = makeGrid({ pagination: true, pageSize: 2, serverSideBlockSize: 2 });
+    await flush();
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: groupNodeId(["EMEA"]) });
+    await flush();
+    core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 2 });
+    await flush();
+
+    const rm = core.getRowModel();
+    // Flattened: [APAC, EMEA, c0, c1, c2]; page 2 shows flat 2-3, so flat 4 is view index 2 —
+    // past the page, unloaded.
+    expect(rm.getRowNodeAtViewIndex(2)).toBeUndefined();
+    // Span covers the full counted subtree regardless: last descendant at page-local view 2.
+    expect(rm.getSubtreeEndViewIndex!(groupNodeId(["EMEA"]))).toBe(2);
+    // The unloaded slot still resolves its ancestor chain (root-first, loaded group nodes).
+    const chain = rm.getAncestorChainAtViewIndex!(2);
+    expect(chain.map(n => n.id)).toEqual([groupNodeId(["EMEA"])]);
+    // A collapsed group's span is its own row.
+    const apacView = rm.getRowNode(groupNodeId(["APAC"]))!.viewIndex;
+    expect(rm.getSubtreeEndViewIndex!(groupNodeId(["APAC"]))).toBe(apacView);
+  });
+
   it("collapsing hides the subtree without new requests; re-expanding reuses the cache", async () => {
     const { core, ds } = makeGrid();
     await flush();

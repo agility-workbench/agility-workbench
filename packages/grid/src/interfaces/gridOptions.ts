@@ -807,7 +807,10 @@ export interface GridOptions {
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   /**
    * When true, the expanded ancestor groups of the first visible body row stack in a frozen band
-   * beneath pinnedTopRowData and explicitly pinned top rows. Client-side grouping only.
+   * beneath pinnedTopRowData and explicitly pinned top rows. Works with client-side grouping and
+   * server-side grouping. Server-side note: a group whose listing has not reported `totalRows`
+   * has a provisional block end, so its docked header stays docked while further children load
+   * (the sticky span extends as blocks arrive, mirroring the pager's provisional "N+" semantics).
    */
   groupRowsSticky?: boolean;
   /**
