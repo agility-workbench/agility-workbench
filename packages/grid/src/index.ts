@@ -144,6 +144,7 @@ export type {
 export type {
   IRowModel,
   RowModelType,
+  ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
 
 export type {
@@ -153,6 +154,7 @@ export type {
   IServerSideDataSource,
   IServerSideFilter,
   IServerSideGetRowsParams,
+  IServerSideGroupKey,
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,

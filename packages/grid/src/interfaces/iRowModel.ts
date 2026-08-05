@@ -7,6 +7,17 @@ import { SortModel } from "./sort";
 import { GroupSortMode, QuickFilterMatchMode } from "./gridOptions";
 
 export type RowModelType = "clientSide" | "serverSide";
+
+/** Scope/behavior of a server-side data refresh (see IGridAPI.refreshServerSideData). */
+export interface ServerSideRefreshOptions {
+  /** Group path identifying the subtree to refresh (that parent's listing and every descendant
+   * listing). Omitted = the whole store. Each entry is a grouped column key + raw group value. */
+  groupKeys?: Array<{ key: string; value: any }>;
+  /** True drops the affected rows and counts immediately (loading state, exact reload). False
+   * (default) keeps current rows rendered while visible blocks refetch and swap in place;
+   * off-screen blocks are dropped and lazily reload on scroll. */
+  purge?: boolean;
+}
 export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
 
 export interface RowTransaction<Row = any> {
@@ -83,6 +94,15 @@ export interface IRowModel<Row = any> {
 
   // identity
   getRowNode(id: string): IRowNode<Row> | undefined;
+
+  /** Whether the total row count is exact. The server-side model returns false while any listing
+   * contributing to the flattened count is open-ended (no `totalRows` reported and end not yet
+   * reached). Absent = always known (client-side model). */
+  isTotalRowCountKnown?(): boolean;
+
+  /** Server-side only: re-invoke the data source for the whole store or one group subtree.
+   * `requestId` is a fresh core request id used for the resulting listener callbacks. */
+  refreshServerSideData?(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean>;
 
   // in-place cell edit: mutate a single field of a row's data. Returns true if the row exists.
   setCellValue(rowId: string, key: string, value: any): boolean;

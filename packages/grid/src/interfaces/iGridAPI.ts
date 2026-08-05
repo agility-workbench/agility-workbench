@@ -11,6 +11,7 @@ import {
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
 import { GridViewState } from "./gridView";
+import { ServerSideRefreshOptions } from "./iRowModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -61,6 +62,17 @@ export interface IGridAPI {
 
   /** Set the row data. */
   setRowData(rows: RowData[]): void;
+
+  /**
+   * Server-side row model only: re-invoke the data source because the server's data changed —
+   * distinct from a plain redraw. `groupKeys` scopes the refresh to one group subtree (that
+   * parent's listing and everything below it); omitted = the whole store. `purge: true` drops the
+   * affected rows and counts immediately (loading state); the default keeps current rows rendered
+   * while blocks in the current view refetch and swap in place, and drops off-screen blocks to
+   * reload lazily on scroll. Expansion state is kept either way. Resolves true if a refresh was
+   * issued.
+   */
+  refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean>;
 
   /** Replace the application-owned rows in the frozen top band. */
   setPinnedTopRowData(rows: RowData[]): void;

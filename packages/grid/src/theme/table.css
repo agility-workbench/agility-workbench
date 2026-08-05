@@ -1687,6 +1687,13 @@
   min-width: 140px;
 }
 
+/* Total row count is provisional (server-side listing without totalRows, end not reached): the
+   page count carries a "+" suffix and reads slightly muted until the true end is discovered. */
+.pte-pagination-approx .pte-pagination-page-select {
+  color: var(--pte-muted-text-color);
+  font-style: italic;
+}
+
 .pte-pagination-btn {
   cursor: pointer;
 }

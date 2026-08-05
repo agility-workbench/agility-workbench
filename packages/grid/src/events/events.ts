@@ -129,6 +129,10 @@ export type GridEventPaginationChangedParams = {
   pageSize: number;
   totalRowCount: number;
   totalPageCount: number;
+  /** False while the total is provisional: a server-side listing has not reported `totalRows` and
+   * its end has not been reached, so totalRowCount/totalPageCount may still grow as rows load.
+   * Always true for the client-side row model. */
+  totalRowCountKnown: boolean;
   pageSizes: number[];
 };
 

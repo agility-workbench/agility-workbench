@@ -127,7 +127,7 @@ Grouped by area; each maps to a §5 sub-table.
 
 4. **Virtual scrolling.** Only visible rows (+ overscan) are DOM-rendered via a row pool. Vertical and horizontal scrolling are synchronized across all sections.
 
-5. **Server-side integration.** The `ServerSideRowModel` delegates filtering, sorting, pagination, and aggregation to a user-provided `IServerSideDataSource`. The grid manages request deduplication, stale-result rejection, and loading overlays.
+5. **Server-side integration.** The `ServerSideRowModel` delegates filtering, sorting, pagination, grouping, and aggregation to a user-provided `IServerSideDataSource`. Row grouping is lazy and per-parent: the grid requests one group path's children at a time (`groupBy` + `groupKeys` on the request), keeps a hierarchical block store, and flattens expanded listings into the display list. Listings without `totalRows` are open-ended — the grid probes past the loaded edge via a phantom slot, the pagination footer shows a provisional "N+" page count, and the end pins when a short block returns. `refreshServerSideData` re-invokes the data source for the whole store or one subtree (soft in-place swap or purge).
 
 ---
 
@@ -323,7 +323,7 @@ packages/grid/src/
 │       └── selectionRenderer.ts  Cell/range/row/column selection CSS class application
 │
 ├── ssrm/                      Server-Side Row Model
-│   └── serverSide.ts          Async row loading, block management, server aggregation, schema inference
+│   └── serverSide.ts          Async row loading, hierarchical block store (lazy grouping), open-ended count probing, server aggregation, schema inference
 │
 ├── theme/                     Theme assets
 │   ├── table.css              Core grid CSS (~2100 lines)

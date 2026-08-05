@@ -20,6 +20,7 @@ export class PaginationRenderer {
   lastPageBtn!: HTMLButtonElement;
   aggregateScopeSelect!: HTMLSelectElement;
   aggregateClearBtn!: HTMLButtonElement;
+  private navSection: HTMLDivElement | null = null;
   private paginator: HTMLDivElement;
   private controlsPaginationEnabled: boolean | null = null;
   private controlsAggregationAvailable: boolean | null = null;
@@ -42,6 +43,7 @@ export class PaginationRenderer {
       pageIndex,
       pageSize,
       totalPageCount,
+      totalRowCountKnown,
       pageSizes,
     } = core.getPaginationInfo();
     this.controlsPaginationEnabled = paginationEnabled;
@@ -128,10 +130,11 @@ export class PaginationRenderer {
     navSection.appendChild(this.pageSelect);
     navSection.appendChild(this.nextPageBtn);
     navSection.appendChild(this.lastPageBtn);
+    this.navSection = navSection;
 
     paginator.appendChild(sizeSection);
     paginator.appendChild(navSection);
-    this.populatePageSelect(pageIndex, totalPageCount);
+    this.populatePageSelect(pageIndex, totalPageCount, totalRowCountKnown);
     this.updateControls();
   }
 
@@ -179,27 +182,40 @@ export class PaginationRenderer {
     return aggSection;
   }
 
-  populatePageSelect(pageIndex: number, totalPageCount: number) {
+  populatePageSelect(pageIndex: number, totalPageCount: number, totalRowCountKnown: boolean = true) {
     if (!this.pageSelect) return;
     const totalPages = Math.max(totalPageCount, 1);
+    // A provisional total (server hasn't reported it and the end hasn't been reached) renders with
+    // a "+" suffix — "3 of 12+" — so a growing page count reads as discovery, not as a bug.
+    const totalLabel = totalRowCountKnown ? String(totalPages) : `${totalPages}+`;
     if (this.pageSelect.options.length !== totalPages) {
       this.pageSelect.innerHTML = "";
       for (let i = 0; i < totalPages; i++) {
         const option = document.createElement("option");
         option.value = String(i);
-        option.textContent = `${i + 1} of ${totalPages}`;
+        option.textContent = `${i + 1} of ${totalLabel}`;
         this.pageSelect.appendChild(option);
       }
     } else {
       for (let i = 0; i < totalPages; i++) {
         const option = this.pageSelect.options[i];
-        const desiredText = `${i + 1} of ${totalPages}`;
+        const desiredText = `${i + 1} of ${totalLabel}`;
         if (option.textContent !== desiredText) {
           option.textContent = desiredText;
         }
       }
     }
     this.pageSelect.value = String(Math.min(pageIndex, totalPages - 1));
+
+    const tooltip = totalRowCountKnown
+      ? ""
+      : this.params.core.options.paginationUnknownTotalTooltip;
+    if (this.pageSelect.title !== tooltip) this.pageSelect.title = tooltip;
+    const ariaLabel = totalRowCountKnown
+      ? `Page ${Math.min(pageIndex, totalPages - 1) + 1} of ${totalPages}`
+      : `Page ${Math.min(pageIndex, totalPages - 1) + 1} of at least ${totalPages}. ${tooltip}`;
+    this.pageSelect.setAttribute("aria-label", ariaLabel);
+    this.navSection?.classList.toggle("pte-pagination-approx", !totalRowCountKnown);
   }
 
   updateControls(params?: GridEventPaginationChangedParams) {
@@ -209,6 +225,7 @@ export class PaginationRenderer {
       pageSize,
       totalRowCount,
       totalPageCount,
+      totalRowCountKnown,
     } = params || this.params.core.getPaginationInfo();
     if (
       this.controlsPaginationEnabled !== paginationEnabled
@@ -229,10 +246,14 @@ export class PaginationRenderer {
       this.pageSizeSelect.value = String(pageSize);
     }
 
-    this.populatePageSelect(pageIndex, totalPageCount);
+    this.populatePageSelect(pageIndex, totalPageCount, totalRowCountKnown);
 
     const atFirstPage = pageIndex <= 0;
-    const atLastPage = pageIndex >= Math.max(totalPageCount - 1, 0);
+    // While the total is provisional there may be pages past the last known one: "next" stays
+    // enabled (navigating onto the frontier page is what probes for more rows) and "last" jumps to
+    // the last *known* page rather than disabling.
+    const atLastPage = pageIndex >= Math.max(totalPageCount - 1, 0) && totalRowCountKnown;
+    const atLastKnownPage = pageIndex >= Math.max(totalPageCount - 1, 0);
     const hasRows = totalRowCount > 0;
 
     if (this.pageSizeSelect) this.pageSizeSelect.disabled = !hasRows || !paginationEnabled;
@@ -240,8 +261,8 @@ export class PaginationRenderer {
     if (this.firstPageBtn) this.firstPageBtn.disabled = atFirstPage || !hasRows;
     if (this.prevPageBtn) this.prevPageBtn.disabled = atFirstPage || !hasRows;
     if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
-    if (this.lastPageBtn) this.lastPageBtn.disabled = atLastPage || !hasRows;
-    if (this.pageSelect) this.pageSelect.disabled = totalPageCount <= 1 || !hasRows;
+    if (this.lastPageBtn) this.lastPageBtn.disabled = atLastKnownPage || !hasRows;
+    if (this.pageSelect) this.pageSelect.disabled = (totalPageCount <= 1 && totalRowCountKnown) || !hasRows;
   }
 
   updateAggregateControls(_params?: GridEventAggregateChangedParams) {

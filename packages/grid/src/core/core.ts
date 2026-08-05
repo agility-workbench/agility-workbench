@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -185,6 +185,9 @@ export class GridCore implements IGridCore {
       pageSize: options.pageSize ?? 100,
       pageSizes: options.pageSizes ?? [25, 50, 100],
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
+      getGroupChildCount: options.getGroupChildCount,
+      paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
+        ?? "More rows may exist on the server; the total updates as they load",
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
@@ -759,13 +762,10 @@ export class GridCore implements IGridCore {
   }
 
   // Replace the set of columns rows are grouped by (order = grouping level). An empty list clears
-  // grouping. Client-side row model only. Synthesizes/removes auto-group columns per the configured
-  // groupDisplayType, re-derives the grouped view, and clears selection (view indices shift).
+  // grouping. Synthesizes/removes auto-group columns per the configured groupDisplayType,
+  // re-derives the grouped view, and clears selection (view indices shift). On the server-side row
+  // model this purges the block store and re-requests lazily per expanded group.
   setRowGroupModel(colIds: string[]): void {
-    if (this.rowModel.getType() !== "clientSide") {
-      console.warn("Row grouping is only supported on the 'clientSide' row model.");
-      return;
-    }
     if (this.options.treeData) {
       console.warn("Column-value row grouping cannot be combined with tree data.");
       return;
@@ -1094,6 +1094,7 @@ export class GridCore implements IGridCore {
       pageSize: pageSize,
       totalRowCount: totalRowCount,
       totalPageCount: this.totalPages,
+      totalRowCountKnown: this.rowModel.isTotalRowCountKnown?.() ?? true,
       pageSizes: this.pageSizes,
     };
   }
@@ -1165,6 +1166,17 @@ export class GridCore implements IGridCore {
     (this.rowModel as any).serverDataSource = callback;
     this.refreshRows("refresh");
     this.emit("modelUpdated", { reason: "api", step: "all" });
+  }
+
+  // Re-invoke the server-side data source because the server's data changed — distinct from
+  // refreshRows, which only re-derives/redraws. Optionally scoped to one group subtree; purge
+  // drops affected rows immediately, otherwise current rows stay rendered while replacements load.
+  async refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
+    if (this.rowModel.getType() !== "serverSide" || !this.rowModel.refreshServerSideData) {
+      console.warn("refreshServerSideData has no effect on the 'clientSide' row model.");
+      return false;
+    }
+    return this.rowModel.refreshServerSideData(options, this.requestIdCounter++);
   }
 
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null) {
@@ -2106,6 +2118,19 @@ export class GridCore implements IGridCore {
     if (params.reason !== "viewport" && this.requestIdCounter - id > 1) {
       // This means a newer request has already been made, so we can ignore these rows.
       return;
+    }
+    // Provisional "next page" navigation can land beyond the true end: once a server-side count
+    // pins and the current page start falls past it, snap back to the last real page.
+    if (this.paginationEnabled
+      && this.rowModel.getType() === "serverSide"
+      && (this.rowModel.isTotalRowCountKnown?.() ?? true)) {
+      const rowCount = this.rowModel.getRowCount();
+      const pageSize = this.pageEndIdx - this.pageStartIdx;
+      if (rowCount > 0 && pageSize > 0 && this.pageStartIdx >= rowCount) {
+        const lastPageIndex = Math.max(Math.ceil(rowCount / pageSize) - 1, 0);
+        this.applyPagination(lastPageIndex, pageSize, true);
+        return;
+      }
     }
     if (params.reason === "init" || params.reason === "refresh") {
       const isFirstRefresh = params.reason === "init" || !this.firstRefreshSeen;

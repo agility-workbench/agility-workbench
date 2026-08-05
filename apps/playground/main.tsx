@@ -7,6 +7,7 @@ import "@grid/theme/table.css";
 import App from "./App";
 import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
+import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
 import TreeDataDemo from "./TreeDataDemo";
 import ColumnStateDemo from "./ColumnStateDemo";
 import VisualStatesDemo from "./VisualStatesDemo";
@@ -29,6 +30,7 @@ const PAGES = [
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
+  { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },
   { id: "treeData", label: "Tree data", render: () => <TreeDataDemo /> },
   { id: "pinnedRows", label: "Pinned rows", render: () => <PinnedRowsDemo /> },
   { id: "stickyGroups", label: "Sticky group rows", render: () => <StickyGroupRowsDemo /> },
