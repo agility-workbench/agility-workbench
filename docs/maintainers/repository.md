@@ -33,14 +33,17 @@ agility-workbench/                 ← private workspace root
 ├── tsconfig.base.json             shared compiler options (extended by every package)
 ├── tsconfig.json                  root config for the react-playground app + editor (path aliases)
 ├── vite.config.ts                 react-playground dev server; aliases → packages/*/src
-├── vitest.config.ts               test discovery + aliases
+├── vite.angular.config.ts         angular-playground dev server (analog Angular plugin; port 5180)
+├── vitest.config.ts               test discovery + aliases (grid + react-grid)
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
 │   └── architecture/current-state.md   feature/architecture reference
 │
 ├── apps/
-│   └── react-playground/          demo app (NOT published; consumes packages via aliases)
-│       ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
+│   ├── react-playground/          demo app (NOT published; consumes packages via aliases)
+│   │   ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
+│   └── angular-playground/        Angular demo app (zoneless bootstrap; own tsconfig for the analog plugin)
+│       ├── app.component.ts, *-demo.component.ts, main.ts, index.html, style.css
 │
 └── packages/
     ├── grid/                      @agility-workbench/grid
@@ -207,10 +210,11 @@ consumable by Angular 20.3 **and newer** (`peerDependencies: { "@angular/core": 
 | --- | --- |
 | `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^0.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
 | `npm run build` | `build:grid` → `build:react` → `build:angular` — explicit order (both bindings' builds need grid's `dist/*.d.ts`; see §4B). |
-| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:angular` → `typecheck:react-playground`. Explicit, not workspace-traversal order. |
+| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:angular` → `typecheck:react-playground` → `typecheck:angular-playground`. Explicit, not workspace-traversal order. |
 | `npm test` | Runs the root Vitest suite (grid + react-grid, including the package-resolution regression guard), then `test:angular`. |
 | `npm run test:angular` | Runs the Angular binding's suite via its own vitest config (`packages/angular-grid/vitest.config.mts`) — Angular components in tests are compiled by `@analogjs/vite-plugin-angular`, so they can't join the root suite's include list. |
-| `npm run dev` | Starts the Vite demo at `http://localhost:5176`. |
+| `npm run dev` | Starts the React demo at `http://localhost:5176`. |
+| `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
 The root scripts are deliberately explicit (`build:grid`/`build:react`/`build:angular`,

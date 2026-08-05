@@ -358,6 +358,18 @@ packages/angular-grid/src/                  Angular wrapper (@agility-workbench/
 ├── menuAdapters.ts            Column/body menu adapters — stamp TemplateRef slots per menu open
 └── grid.smoke.test.ts / test-setup.ts   vitest + @analogjs/vite-plugin-angular + TestBed rig
 
+apps/angular-playground/                  Angular demo app (Vite + analog plugin; zoneless bootstrap)
+├── app.component.ts           Tab shell (21 pages, hash-linkable) + theme toggle
+├── basic-grid-demo.component.ts       Inputs/outputs/API demo (sorting, selection, editing, applyTransaction)
+├── components-demo.component.ts       Angular cellRenderer (params input), tooltip (awbInit), cell editor
+├── menus-demo.component.ts            Column/body menu customization with TemplateRef slots
+├── grid-demo.component.ts             Port of the React App.tsx flagship (trading grid, SSRM toggle, themes)
+├── *-demo.component.ts                1:1 ports of every React playground demo (selection, visual states,
+│                                       grouping, SSRM grouping, tree data, pinned rows, sticky groups,
+│                                       toolbar, responsive toolbar, saved views, column state, quick filter,
+│                                       custom headers, tooltips, ActionFrame, footer visibility, sparklines)
+├── data.ts / main.ts / index.html / style.css / tsconfig.json
+
 apps/react-playground/                    Demo app (Vite-based, not tests)
 ├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
 ├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
@@ -788,7 +800,7 @@ lifecycle; the content is a custom component.
 | SSR-safe creation (`afterNextRender`) | ✅ Complete | `grid.component.ts` constructor |
 | APF packaging: partial-Ivy FESM2022 via ng-packagr, publish from `dist/` | ✅ Complete | `ng-package.json`, `tsconfig.lib.json`; see maintainers/repository.md §5 |
 | Angular header components | ❌ Not wrapped | Parity with React: `headerComponent` is a core class contract, passed through unadapted |
-| Angular demo playground (`apps/angular-playground`) | ❌ Not started | — |
+| Angular demo playground (`apps/angular-playground`) | ✅ Complete | Zoneless Vite app (`npm run dev:angular`, port 5180): all 18 React-playground demos ported + 3 Angular-wrapper intro tabs (21 pages, hash-linkable, theme toggle) |
 
 ---
 
@@ -923,11 +935,12 @@ This is an npm-workspaces monorepo; scripts run from the repo root unless noted.
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Vite dev server for the demo app (`http://localhost:5176`) |
+| `npm run dev` | Vite dev server for the React demo app (`http://localhost:5176`) |
+| `npm run dev:angular` | Vite dev server for the Angular demo app (`http://localhost:5180`) |
 | `npm run build` | `build:grid` → `build:react` → `build:angular` (explicit order — the bindings need grid's `dist/*.d.ts`) |
 | `npm run test` | vitest single run (grid + react-grid), then `test:angular` |
 | `npm run test:angular` | Angular binding suite (own vitest config; components compiled by `@analogjs/vite-plugin-angular`) |
-| `npm run typecheck` | build grid, then typecheck grid → react → angular → react-playground |
+| `npm run typecheck` | build grid, then typecheck grid → react → angular → react-playground → angular-playground |
 | `npm run clean` | clean each package's `dist/` + root `dist-demo/` |
 
 Each package's `dist/` produces `index.js` (ESM), `index.cjs` (CJS), and `index.d.ts` / `.d.cts`
