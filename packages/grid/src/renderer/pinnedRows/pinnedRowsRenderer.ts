@@ -126,7 +126,35 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   setRowPinned(rowId: string, position: RowPinnedPosition | null): void {
     if (position || this.params.core.options.isRowPinned) this.manualPinned.set(rowId, position);
     else this.manualPinned.delete(rowId);
+    if (!position) this.unpinDescendants(rowId);
     this.render(this.lastScrollTop, true);
+  }
+
+  // A band chain is one visual unit: derived ancestors exist only as context for a pinned
+  // descendant, so unpinning any row of the chain also unpins the pinned descendants beneath it —
+  // otherwise "Unpin" on a derived ancestor would be a no-op (the descendant would immediately
+  // re-derive it). Rows a live isRowPinned callback still pins re-derive their chain; the callback
+  // owns those.
+  private unpinDescendants(rowId: string): void {
+    const model = this.params.core.getRowModel();
+    const callback = this.params.core.options.isRowPinned;
+    for (const [id, position] of Array.from(this.manualPinned)) {
+      if (id === rowId || !position) continue;
+      const node = model.getRowNode(id);
+      if (!node || !this.hasAncestor(node, rowId)) continue;
+      if (callback) this.manualPinned.set(id, null);
+      else this.manualPinned.delete(id);
+    }
+  }
+
+  private hasAncestor(node: IRowNode, ancestorId: string): boolean {
+    const model = this.params.core.getRowModel();
+    let parentId = node.parentId;
+    while (parentId) {
+      if (parentId === ancestorId) return true;
+      parentId = model.getRowNode(parentId)?.parentId;
+    }
+    return false;
   }
 
   setOptions(options: {
@@ -434,6 +462,14 @@ export class PinnedRowsRenderer implements PinnedRowsController {
         const target = position === "top" ? top : modelBottom;
         const ids = position === "top" ? topIds : bottomIds;
         if (ids.has(source.id)) continue;
+        // A pinned row carries its hierarchy context: every group/tree ancestor force-pins into the
+        // same band, directly above it (derived here, never stored — unpinning the row releases
+        // them). View-order iteration keeps shared ancestors above their first pinned descendant.
+        for (const ancestor of this.parentChainOf(source)) {
+          if (ancestor.id === source.id || ids.has(ancestor.id)) continue;
+          target.push({ node: { ...ancestor, rowPinned: position }, position });
+          ids.add(ancestor.id);
+        }
         target.push({ node: { ...source, rowPinned: position }, position });
         ids.add(source.id);
       }

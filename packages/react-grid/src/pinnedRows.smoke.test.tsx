@@ -955,6 +955,53 @@ describe("pinned and sticky rows", () => {
     container.remove();
   });
 
+  it("force-pins the ancestor chain above a pinned row and releases it as one unit", async () => {
+    const { container, apiRef, root } = await mount({
+      groupDefaultExpanded: -1,
+      pinnedBottomRowData: [{ id: "T", region: "TOTAL", country: "", sales: 150 }],
+    });
+    const core = apiRef.current!.getCore();
+    await act(async () => {
+      core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    });
+
+    const model = core.getRowModel();
+    const groupNode = (key: string) => {
+      for (let i = 0; i < model.getViewCount(); i++) {
+        const node = model.getRowNodeAtViewIndex(i);
+        if (node?.isGroup && node.groupKey === key) return node;
+      }
+      throw new Error(`group '${key}' not found`);
+    };
+    const bandIds = (band: "top" | "bottom") => Array.from(
+      container.querySelectorAll<HTMLElement>(
+        `.pte-pinned-rows-${band} .pte-pinned-rows-center .pte-pinned-row`,
+      ),
+    ).map(el => el.dataset.rowId);
+
+    // Pinning the mid-level UK group brings its EMEA parent along, above it.
+    const emea = groupNode("EMEA");
+    const uk = groupNode("UK");
+    await act(async () => apiRef.current!.setRowPinned(uk.id, "top"));
+    expect(bandIds("top")).toEqual([emea.id, uk.id]);
+
+    // Unpinning the derived ancestor releases the whole chain (cascade to pinned descendants).
+    await act(async () => apiRef.current!.setRowPinned(emea.id, null));
+    expect(bandIds("top")).toEqual([]);
+
+    // A pinned leaf carries its full chain too; the chain stays above the app data rows.
+    const france = groupNode("France");
+    await act(async () => apiRef.current!.setRowPinned("3", "bottom"));
+    expect(bandIds("bottom")).toEqual([emea.id, france.id, "3", "p:bottom:T"]);
+
+    // Unpinning the leaf releases its derived ancestors; app data rows stay.
+    await act(async () => apiRef.current!.setRowPinned("3", null));
+    expect(bandIds("bottom")).toEqual(["p:bottom:T"]);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("supports callback-based group pinning and groupRows full-width display", async () => {
     const { container, apiRef, root } = await mount({
       groupDisplayType: "groupRows",

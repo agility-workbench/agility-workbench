@@ -119,6 +119,7 @@ export function StickyGroupRowsDemo() {
           rowData={ROWS}
           columnDefs={columns}
           rowIdKey="id"
+          rowPinningMenu
           groupDefaultExpanded={-1}
           groupRowsSticky={sticky}
           groupDisplayType={displayType}
