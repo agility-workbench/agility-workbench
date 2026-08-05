@@ -462,10 +462,6 @@ export class TreeDataDemoComponent {
   }
 
   setAllExpanded(expanded: boolean): void {
-    const core = this.api?.getCore();
-    if (!core) return;
-    for (const node of core.getRowModel().getGroupNodes()) {
-      core.dispatch({ type: "groupToggleExpand", groupId: node.id, expanded });
-    }
+    this.api?.setAllGroupsExpanded(expanded);
   }
 }

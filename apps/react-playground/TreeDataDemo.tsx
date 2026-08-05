@@ -248,11 +248,7 @@ export function TreeDataDemo() {
   }, [mode]);
 
   const setAllExpanded = (expanded: boolean) => {
-    const core = apiRef.current?.getCore();
-    if (!core) return;
-    for (const node of core.getRowModel().getGroupNodes()) {
-      core.dispatch({ type: "groupToggleExpand", groupId: node.id, expanded });
-    }
+    apiRef.current?.setAllGroupsExpanded(expanded);
   };
 
   const copy = MODE_COPY[mode];

@@ -507,15 +507,25 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private applyGroupExpansion(params: IRowModelRequestParams): void {
-    const { groupId, expanded } = params.groupExpansion!;
-    const node = this.nodesMap.get(groupId);
-    if (!node || !node.isGroup) return;
-    const next = expanded ?? !node.isExpanded;
-    this.expansion.set(groupId, next);
-    node.isExpanded = next;
+    const { groupId, groupIds, all, expanded } = params.groupExpansion!;
+    const targetIds = all
+      ? this.nodesMap.keys()
+      : groupIds ?? (groupId != null ? [groupId] : []);
+    let changed = 0;
+    let anyExpanded = false;
+    for (const id of targetIds) {
+      const node = this.nodesMap.get(id);
+      if (!node || !node.isGroup) continue;
+      const next = expanded ?? !node.isExpanded;
+      this.expansion.set(id, next);
+      node.isExpanded = next;
+      changed++;
+      if (next) anyExpanded = true;
+    }
+    if (changed === 0) return;
     this.rebuildFlat();
     this.emitRows(params, "group");
-    if (next) this.ensureViewRange(params);
+    if (anyExpanded) this.ensureViewRange(params);
     void this.reAggregate(params.id, "aggregateModel", params.aggregateReason ?? "rows");
   }
 

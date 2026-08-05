@@ -224,12 +224,19 @@ export class GridAPI implements IGridAPI {
     const expansion = new Map(
       (state.groupExpansion ?? []).map(item => [item.groupId, item.expanded]),
     );
+    // Batch per direction so restoring expansion costs at most two view rebuilds, not one per node.
+    const toExpand: string[] = [];
+    const toCollapse: string[] = [];
     for (const node of this.core.getRowModel().getGroupNodes()) {
       const expanded = expansion.get(node.id) ?? false;
-      if (node.isExpanded !== expanded) {
-        this.dispatch({ type: "groupToggleExpand", groupId: node.id, expanded });
-      }
+      if (node.isExpanded !== expanded) (expanded ? toExpand : toCollapse).push(node.id);
     }
+    if (toExpand.length > 0) this.dispatch({ type: "groupSetExpanded", expanded: true, groupIds: toExpand });
+    if (toCollapse.length > 0) this.dispatch({ type: "groupSetExpanded", expanded: false, groupIds: toCollapse });
+  }
+
+  setAllGroupsExpanded(expanded: boolean): void {
+    this.dispatch({ type: "groupSetExpanded", expanded });
   }
 
   // ---------------- Selection ----------------

@@ -173,6 +173,46 @@ describe("GridCore tree data", () => {
     ])).toThrow(/parent cycle/);
   });
 
+  it("expands/collapses all groups in one pass with a single repaint", () => {
+    const core = createTree(
+      {
+        mode: "parent",
+        getParentId: (row: any) => row.parentId,
+        getLabel: (row: any) => row.name,
+      },
+      [
+        { id: "root", parentId: null, name: "Root" },
+        { id: "a", parentId: "root", name: "A" },
+        { id: "a1", parentId: "a", name: "A1" },
+        { id: "b", parentId: "root", name: "B" },
+        { id: "b1", parentId: "b", name: "B1" },
+      ],
+      { groupDefaultExpanded: -1 },
+    );
+
+    // Batching must not repaint per node: collapsing all three groups costs exactly as many
+    // rowsChanged emits as toggling a single node.
+    const repaints = vi.fn();
+    core.on("rowsChanged", repaints);
+    core.dispatch({ type: "groupToggleExpand", groupId: "a", expanded: false });
+    const perToggleEmits = repaints.mock.calls.length;
+
+    repaints.mockClear();
+    core.dispatch({ type: "groupSetExpanded", expanded: false });
+    expect(repaints).toHaveBeenCalledTimes(perToggleEmits);
+    expect(view(core).map(node => node.id)).toEqual(["root"]);
+    for (const node of core.getRowModel().getGroupNodes()) {
+      expect(node.isExpanded).toBe(false);
+    }
+
+    core.dispatch({ type: "groupSetExpanded", expanded: true });
+    expect(view(core).map(node => node.id)).toEqual(["root", "a", "a1", "b", "b1"]);
+
+    // Explicit id batch: collapse only one subtree.
+    core.dispatch({ type: "groupSetExpanded", expanded: false, groupIds: ["a"] });
+    expect(view(core).map(node => node.id)).toEqual(["root", "a", "b", "b1"]);
+  });
+
   it("clamps pagination and rebuilds the visible page when collapsing removes later pages", () => {
     const core = createTree(
       {
