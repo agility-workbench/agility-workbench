@@ -1,4 +1,5 @@
 import { GridCore } from "../core/core";
+import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { ServerSideAggregationSource } from "../ssrm/serverSide";
 
@@ -23,8 +24,8 @@ export class ServerSideController {
     this.params.renderAggregateRow();
   }
 
-  refreshData() {
-    if (this.params.core.getRowModel().getType() !== "serverSide") return;
-    this.params.core.refreshRows("refresh");
+  refreshData(options?: ServerSideRefreshOptions): Promise<boolean> {
+    if (this.params.core.getRowModel().getType() !== "serverSide") return Promise.resolve(false);
+    return this.params.core.refreshServerSideData(options);
   }
 }

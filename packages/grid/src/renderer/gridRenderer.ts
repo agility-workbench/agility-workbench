@@ -5,6 +5,7 @@ import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
 import { ServerSideAggregationSource } from "../ssrm/serverSide";
 import { IServerSideDataSource } from "../interfaces/serverSide";
+import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
@@ -1002,8 +1003,8 @@ export class GridRenderer {
     this._serverSideController.setAggregation(aggregation);
   }
 
-  refreshServerSideData() {
-    this._serverSideController.refreshData();
+  refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
+    return this._serverSideController.refreshData(options);
   }
 
   exportCSV(options: ExportOptions = {}) {

@@ -661,6 +661,20 @@ export interface GridOptions {
   serverSideDataSource?: IServerSideDataSource;
   serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
   /**
+   * Server-side grouping: reads a group row's leaf-descendant count (the "(N)" badge next to the
+   * group label) off the row object the data source returned — typically a `COUNT(*)` field of the
+   * GROUP BY result. Return null/undefined to omit the badge. Server-side row model only; the
+   * client-side model counts descendants itself.
+   */
+  getGroupChildCount?: (row: any) => number | null | undefined;
+  /**
+   * Tooltip shown on the pagination page selector while the total row count is provisional — when
+   * a server-side listing has not reported `totalRows` and its end has not been reached yet, the
+   * page count renders with a "+" suffix (e.g. "3 of 12+") and carries this tooltip. Defaults to
+   * "More rows may exist on the server; the total updates as they load".
+   */
+  paginationUnknownTotalTooltip?: string;
+  /**
    * When true, every data refresh (after the first) recomputes column widths
    * from the new data and updates affected widths in place. When false, column
    * widths are computed only on the first data load and stay fixed thereafter.
@@ -754,7 +768,7 @@ export interface GridOptions {
    */
   reevaluateOnEdit?: boolean;
   /**
-   * How grouped rows are laid out. Defaults to "singleColumn". Client-side row model only.
+   * How grouped rows are laid out. Defaults to "singleColumn".
    */
   groupDisplayType?: GroupDisplayType;
   /**
@@ -766,7 +780,9 @@ export interface GridOptions {
   /**
    * How sorts propagate through grouped rows: "local" (default) confines each sort to its own
    * grouping level or leaf rows; "hierarchy" lets grouped-column sorts reorder ancestor groups;
-   * "global" lets any sort reorder groups from the globally sorted leaf order. Client-side only.
+   * "global" lets any sort reorder groups from the globally sorted leaf order. Client-side only;
+   * the server-side row model always behaves as "local" (per-listing requests carry no
+   * cross-level ordering context).
    */
   groupSortMode?: GroupSortMode;
   /**
@@ -791,7 +807,10 @@ export interface GridOptions {
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   /**
    * When true, the expanded ancestor groups of the first visible body row stack in a frozen band
-   * beneath pinnedTopRowData and explicitly pinned top rows. Client-side grouping only.
+   * beneath pinnedTopRowData and explicitly pinned top rows. Works with client-side grouping and
+   * server-side grouping. Server-side note: a group whose listing has not reported `totalRows`
+   * has a provisional block end, so its docked header stays docked while further children load
+   * (the sticky span extends as blocks arrive, mirroring the pager's provisional "N+" semantics).
    */
   groupRowsSticky?: boolean;
   /**
@@ -917,6 +936,8 @@ export interface InternalGridOptions extends GridOptions {
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;
+  getGroupChildCount?: (row: any) => number | null | undefined;
+  paginationUnknownTotalTooltip: string;
   autosizeColumnsOnDataChange: boolean;
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;

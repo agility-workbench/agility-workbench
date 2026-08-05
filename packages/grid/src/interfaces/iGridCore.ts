@@ -1,7 +1,7 @@
 import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel, RowDataChangeReason } from "./iRowModel";
+import { IRowModel, RowDataChangeReason, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
@@ -160,6 +160,8 @@ export interface IGridCore {
 
   setServerSideDataSource(callback: IServerSideDataSource | null): void;
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;
+  /** Server-side only: re-invoke the data source (whole store or one group subtree). */
+  refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean>;
 
   /** Ensure core releases resources (timers, subscriptions). Renderer/React calls on unmount. */
   destroy(): void;

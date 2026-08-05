@@ -50,6 +50,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   if (props.pageSizes) options.pageSizes = props.pageSizes;
   if (props.serverSideBlockSize) options.serverSideBlockSize = props.serverSideBlockSize;
   if (props.rowModelType) options.rowModelType = props.rowModelType;
+  if (props.getGroupChildCount != null) options.getGroupChildCount = props.getGroupChildCount;
+  if (props.paginationUnknownTotalTooltip != null) options.paginationUnknownTotalTooltip = props.paginationUnknownTotalTooltip;
   if (props.undoLimit != null) options.undoLimit = props.undoLimit;
   if (props.editTrigger != null) options.editTrigger = props.editTrigger;
   if (props.initialSort != null) options.initialSort = props.initialSort;

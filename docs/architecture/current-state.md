@@ -12,8 +12,9 @@
 > options**, **`defaultColDef`**, **edit-trigger / keyboard-edit controls**, **visual-state options**
 > (row/column hover, zebra, active-cell highlight), **cell-selection modes**, **custom filter
 > functions**, **quick-filter layout/anchoring options**, a built-in **column panel**, and
-> **pinned/sticky rows**. The suite is now **596 tests across 75
-> files**.
+> **pinned/sticky rows**, and **server-side grouping** (lazy per-parent blocks, per-group
+> aggregates, provisional totals with a "N+" pager, targeted `refreshServerSideData`, sticky
+> group rows). The suite is now **614 tests across 78 files**.
 
 ## 0. What's new since the last refresh (branch `mono-repo`)
 
@@ -127,7 +128,7 @@ Grouped by area; each maps to a §5 sub-table.
 
 4. **Virtual scrolling.** Only visible rows (+ overscan) are DOM-rendered via a row pool. Vertical and horizontal scrolling are synchronized across all sections.
 
-5. **Server-side integration.** The `ServerSideRowModel` delegates filtering, sorting, pagination, and aggregation to a user-provided `IServerSideDataSource`. The grid manages request deduplication, stale-result rejection, and loading overlays.
+5. **Server-side integration.** The `ServerSideRowModel` delegates filtering, sorting, pagination, grouping, and aggregation to a user-provided `IServerSideDataSource`. Row grouping is lazy and per-parent: the grid requests one group path's children at a time (`groupBy` + `groupKeys` on the request), keeps a hierarchical block store, and flattens expanded listings into the display list. Listings without `totalRows` are open-ended — the grid probes past the loaded edge via a phantom slot, the pagination footer shows a provisional "N+" page count, and the end pins when a short block returns. `refreshServerSideData` re-invokes the data source for the whole store or one subtree (soft in-place swap or purge).
 
 ---
 
@@ -167,7 +168,7 @@ packages/grid/src/
 ├── csrm/                      Client-Side Row Model
 │   ├── clientSide.ts          In-memory filter + sort + paginate + group-tree build
 │   ├── filter.ts              Client-side filter evaluator (FilterItem → row predicate)
-│   └── rowGroup.ts            buildGroupTree / flattenGroupTree — multi-level value grouping (CSRM only)
+│   └── rowGroup.ts            buildGroupTree / flattenGroupTree — multi-level value grouping (CSRM builder; groupNodeId/BLANK_GROUP_KEY shared with the SSRM)
 │
 ├── events/                    Event system & action types
 │   ├── action.ts              Discriminated union of all GridAction types
@@ -323,7 +324,7 @@ packages/grid/src/
 │       └── selectionRenderer.ts  Cell/range/row/column selection CSS class application
 │
 ├── ssrm/                      Server-Side Row Model
-│   └── serverSide.ts          Async row loading, block management, server aggregation, schema inference
+│   └── serverSide.ts          Async row loading, hierarchical block store (lazy grouping), open-ended count probing, server aggregation, schema inference
 │
 ├── theme/                     Theme assets
 │   ├── table.css              Core grid CSS (~2100 lines)
@@ -350,7 +351,7 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 apps/playground/                          Demo app (Vite-based, not tests)
 ├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
 ├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
-├── ColumnStateDemo.tsx  SelectionDemo.tsx  GroupingDemo.tsx
+├── ColumnStateDemo.tsx  SelectionDemo.tsx  GroupingDemo.tsx  ServerSideGroupingDemo.tsx
 ├── QuickFilterDemo.tsx  VisualStatesDemo.tsx  helpers.ts
 ├── index.html / main.tsx / style.css / roboto-font.css
 └── dist-demo/
@@ -419,18 +420,25 @@ reflow the view. See `apps/playground/App.tsx` → `TradingGrid` for a live stre
 ### 4.4 Server-Side Flow
 
 ```
-User changes filter/sort/page
-  → Core creates IRowModelRequestParams with loadRange (block-aligned)
-  → ServerSideRowModel.requestRows(params)
-    → listener.onLoadingStart(id) → loading overlay shown
-    → serverDataSource.getRows({ request: { filters, sorts, startRow, endRow }, success, error })
-    → On success: setRows(rows, totalRows, startRow)
-    → listener.onRows(id, ...) → emit("rowsChanged")
-    → listener.onAggregates(id, ...) (page-scoped, calculated locally or via server)
-    → listener.onLoadingEnd(id) → loading overlay hidden
+User changes filter/sort/page/grouping, expands a group, or scrolls into unloaded rows
+  → Core creates IRowModelRequestParams (block-aligned loadRange, groupColumns, groupExpansion)
+  → ServerSideRowModel.applyRequest(params)
+    → structural reasons (init/refresh/sort/filter/group model) purge the block store; the
+      path-keyed expansion map survives, so expanded subtrees reload lazily
+    → ensureViewRange maps the target window to per-listing missing blocks (an uncounted
+      listing exposes a phantom slot past its loaded edge — that's the open-ended probe)
+    → fetchBlock(listing, blockStart) per missing block
+      → listener.onLoadingStart on the first outstanding fetch (loadingDepth 0→1)
+      → serverDataSource.getRows({ request:
+          { filters, sorts, startRow, endRow, groupBy, groupKeys, aggregates }, success, error })
+      → On success: ingestRows → rebuildFlat (segments + subtree spans)
+      → listener.onRows(...) → emit("rowsChanged"); chained ensureViewRange fetches any blocks
+        the window still misses
+      → listener.onAggregates(...) (grand totals; page-scoped local or via server)
+      → listener.onLoadingEnd when the last outstanding fetch settles (loadingDepth →0)
 ```
 
-Request deduplication: each request gets a monotonic `requestGeneration`. When a newer request supersedes an older one, the old result is silently dropped (`if (requestGeneration !== this.requestGeneration) return false`).
+Staleness: the store carries a monotonic `storeGeneration`, bumped on every purge — block responses from an older generation are dropped. Async completions report with the newest request id the core has issued (`latestRequestId`), so the core's request-id guard never mistakes an in-flight block for a superseded request (a renderer-issued viewport request can bump the counter while a block is in flight).
 
 ---
 
@@ -475,13 +483,15 @@ Request deduplication: each request gets a monotonic `requestGeneration`. When a
 | Schema signature dedup | ✅ Complete | `GridCore.createSchemaSignature()` — avoids redundant column rebuilds |
 | Row ID factory (getRowId / rowIdKey / WeakMap fallback) | ✅ Complete | `interfaces/iRowNode.ts` |
 | Incremental transactions (add / update / remove) | ✅ Complete | `GridCore.applyTransaction()` → `csrm/clientSide.ts` → `applyTransaction` (CSRM only; SSRM no-op) |
-| Row grouping (multi-level, value buckets) | ✅ Complete (CSRM only) | `csrm/rowGroup.ts` → `buildGroupTree` / `flattenGroupTree`; `renderer/body/groupCellRenderer.ts` |
+| Row grouping (multi-level, value buckets) | ✅ Complete (CSRM + SSRM) | CSRM: `csrm/rowGroup.ts` → `buildGroupTree` / `flattenGroupTree`; SSRM: `ssrm/serverSide.ts` hierarchical block store; shared `renderer/body/groupCellRenderer.ts` |
 | Group display types (singleColumn / multipleColumns / groupRows) | ✅ Complete | `groupDisplayType` option; `column/columnModel.ts` group-column synthesis |
 | Per-group aggregation | ✅ Complete | `csrm/clientSide.ts` computes over each group's leaf descendants via `AggregateCalculator` |
 | Group default-expanded depth + stable expansion across refresh | ✅ Complete | `groupDefaultExpanded` option; content-based `groupNodeId` |
 | Full-width rows (span all sections, pinned left of viewport) | ✅ Complete (CSRM) | `isFullWidthRow` + `fullWidthCellRenderer` options; `renderer/body/window.ts`; `groupRows` group rows are auto full-width |
 | Tree data (path / parent-id / nested-children relationships) | ✅ Complete (CSRM) | `csrm/treeData.ts`; normalized into the grouped-view pipeline |
-| **Server-side grouping** | ❌ Missing | SSRM `getGroupNodes` returns `[]` — see §10 |
+| Server-side grouping (lazy per-parent blocks) | ✅ Complete | `ssrm/serverSide.ts` — `groupBy`/`groupKeys` on `IServerSideRequest`; one listing per expanded group path; per-group aggregates inline on group rows; `getGroupChildCount` option for the "(N)" badge |
+| Open-ended listings (`totalRows` omitted) | ✅ Complete | Phantom-slot probing extends the count; a short block pins the end; pager shows a provisional "N+" (`totalRowCountKnown` on `paginationChanged`, tooltip via `paginationUnknownTotalTooltip`) |
+| Targeted server-side refresh | ✅ Complete | `api.refreshServerSideData({ groupKeys?, purge? })` — whole store or one subtree; soft in-place swap (default) or purge |
 
 ### 5.3 Filter Features
 
@@ -627,7 +637,7 @@ columns once, in `resolveRows`/`resolveColumns`.
 | Full-width row rendering | ✅ Complete | `renderer/body/window.ts` (spans all sections, pinned left of viewport) |
 | Pinned top/bottom data rows | ✅ Complete | `renderer/pinnedRows/pinnedRowsRenderer.ts`; application-owned, outside the row model |
 | Explicitly pinned generated group rows | ✅ Complete | `isRowPinned`; `api.setRowPinned()`; live chevrons + aggregates |
-| Sticky group ancestry | ✅ Complete (CSRM) | `groupRowsSticky`; ancestors mirror into an absolute overlay inside `.pte-body` (`.pte-sticky-rows`); originals stay in the body flow |
+| Sticky group ancestry | ✅ Complete (CSRM + SSRM) | `groupRowsSticky`; ancestors mirror into an absolute overlay inside `.pte-body` (`.pte-sticky-rows`); originals stay in the body flow; SSRM block ends/ancestors resolve from store metadata (`getSubtreeEndViewIndex` / `getAncestorChainAtViewIndex`), so unloaded slots dock correctly |
 | Conditional row class / style (`getRowClass` / `getRowStyle`) | ✅ Complete | `renderer/body/dynamicStyle.ts` (diffed against pooled DOM) |
 | Row hover highlighting (`rowHover`) | ✅ Complete | `renderer/body/rowHover.ts`; default on |
 | Column hover highlighting (`columnHover`) | ✅ Complete | `renderer/body/columnHover.ts`; opt-in |
@@ -647,6 +657,7 @@ columns once, in `resolveRows`/`resolveColumns`.
 | Pagination controls UI | ✅ Complete | `renderer/pagination/renderer.ts` |
 | Configurable page sizes | ✅ Complete | `pageSizes` option |
 | Page index, total pages, row count display | ✅ Complete | `GridEventPaginationChangedParams` |
+| Provisional totals ("3 of 12+") for open-ended server data | ✅ Complete | `totalRowCountKnown` on `GridEventPaginationChangedParams`; pager renders a "+" suffix, `pte-pagination-approx` class, tooltip via `paginationUnknownTotalTooltip`; "next" stays enabled on the frontier (navigating is the probe), "last" jumps to the last known page; overshoot past a freshly pinned end snaps back |
 
 ### 5.12 Menu Features
 
@@ -742,7 +753,7 @@ lifecycle; the content is a custom component.
 | Normal formatting and custom cell renderers | ✅ Complete | Reuses `BodyCellRenderer` across leading/left/center/right sections |
 | Generated group-row pinning | ✅ Complete | `isRowPinned` callback and `api.setRowPinned(groupId, position)` |
 | Live group expansion and aggregates | ✅ Complete | Mirrored nodes retain stable group id, chevron, hierarchy level, and aggregate values |
-| Automatically sticky nested ancestors | ✅ Complete (CSRM) | `groupRowsSticky`; per-depth anchors resolved against the scroll position render in a body-top overlay with position:sticky push-out semantics |
+| Automatically sticky nested ancestors | ✅ Complete (CSRM + SSRM) | `groupRowsSticky`; per-depth anchors resolved against the scroll position render in a body-top overlay with position:sticky push-out semantics; on SSRM an uncounted group's block end is provisional, so its docked header stays docked while further children load |
 | All group display modes | ✅ Complete | `singleColumn`, `multipleColumns`, and full-width `groupRows` |
 | Horizontal section synchronization | ✅ Complete | Shared scroll synchronizer updates pinned row bands with header/body/footer |
 | Independent vertical overflow | ✅ Complete | Top/bottom application-pinned bands own a scrollbar column and cap at 30%; the sticky overlay clips to its stack height and never affects layout |
@@ -789,7 +800,7 @@ Instead of creating/destroying DOM rows on scroll, the renderer maintains a fixe
 
 ### 6.5 Request Deduplication
 
-Both `GridCore` and `ServerSideRowModel` use monotonic counters (`requestIdCounter`, `requestGeneration`) to detect and discard stale async results when a newer request supersedes an older one.
+Both `GridCore` and `ServerSideRowModel` use monotonic counters to detect and discard stale async results: `requestIdCounter` in the core, and in the SSRM `storeGeneration` (bumped per purge; older block responses are dropped) plus `aggregateRequestSeq` for aggregate races. Per-listing `inFlight` sets dedupe concurrent fetches of the same block.
 
 ---
 
@@ -934,7 +945,6 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Master/detail rows** — none (full-width rows exist, but no expandable detail panel).
 
 **Tier 3 — platform features:**
-- **Server-side grouping** — grouping is CSRM-only (`ssrm` `getGroupNodes` returns `[]`).
 - **Pivoting** — appears only as a string in event `reason` enums; no model/logic.
 - **Accessibility** — ARIA is menu/filter-only; the data grid lacks `role="grid"/"row"/"gridcell"/"columnheader"`, row/col counts, and a roving-tabindex focus model.
 - **Contextual keyboard-shortcut reference** — the grid does not yet provide an in-grid view of the
@@ -943,7 +953,7 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.
-- **Server-side row model** implements `forEachNodeAfterFilterAndSort` identically to `forEachNode` **by design** — the distinction is meaningless under SSRM. The server pre-applies filter and sort, so the client's node cache only ever holds post-filter/sort rows; a "before" universe never exists client-side. Both methods iterate all loaded nodes in view order. (The distinction is real in CSRM, which holds all rows and a separate filtered/sorted index. AG Grid likewise documents its equivalent as CSRM-only.)
-- **Quick filter, grouping, full-width rows, and custom filter functions are client-side (CSRM) only.**
+- **Server-side row model** `forEachNode` vs `forEachNodeAfterFilterAndSort`: filtering and sorting never distinguish them (the server pre-applies both, so the node cache only ever holds post-filter/sort rows — a "before" universe never exists client-side). With server-side **grouping** active they do differ: `forEachNode` iterates all loaded **leaf** rows in document order regardless of expansion, while `forEachNodeAfterFilterAndSort` iterates the visible flattened order (group rows included, collapsed subtrees skipped) — mirroring the CSRM split.
+- **Quick filter, full-width rows, custom filter functions, and tree data are client-side (CSRM) only.** Row grouping and sticky group rows work on both models; SSRM group sorting always behaves as `groupSortMode: "local"`.
 - **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.

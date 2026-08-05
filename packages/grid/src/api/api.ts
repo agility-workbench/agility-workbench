@@ -11,6 +11,7 @@ import {
   TreeDataKeyboardNavigationMode,
 } from "../interfaces/gridOptions";
 import { FilterItem } from "../interfaces/filter";
+import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewState } from "../interfaces/gridView";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
@@ -102,6 +103,10 @@ export class GridAPI implements IGridAPI {
 
   setRowData(rows: RowData[]): void {
     this.dispatch({ type: "rowDataSet", rows });
+  }
+
+  refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
+    return this.core.refreshServerSideData(options);
   }
 
   setPinnedTopRowData(rows: RowData[]): void {
