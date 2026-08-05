@@ -57,6 +57,11 @@ export { isFalse, isTrue } from "./misc";
 
 export type {
   GridOptions,
+  CellValueChangedParams,
+  SortChangedParams,
+  RowClassParams,
+  GetRowClass,
+  GetRowStyle,
   GroupDisplayType,
   GroupSortMode,
   TreeDataKeyboardNavigationMode,
@@ -120,6 +125,8 @@ export type {
 
 export type {
   GridEventAggregateChangedParams,
+  GridEventCellClickedParams,
+  GridEventRowClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
   GridEventColumnsChangedParams,
@@ -146,6 +153,7 @@ export type {
   RowModelType,
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
+export type { IRowNode } from "./interfaces/iRowNode";
 
 export type {
   IServerSideAggregationParams,

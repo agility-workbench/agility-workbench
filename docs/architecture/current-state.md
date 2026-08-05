@@ -348,6 +348,16 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 ├── BodyMenuAdapter.ts         Adapter: getBodyMenuItems → MenuAdapter interface
 └── MenuAdapter.ts             Adapter: getColumnMenuItems → MenuAdapter interface
 
+packages/angular-grid/src/                  Angular wrapper (@agility-workbench/angular-grid, Angular ≥ 20.3)
+├── public-api.ts              `export * from grid` + AwbGrid, NgColDef/NgDefaultColDef, ICellRendererNgComp/ITooltipNgComp/IActionFrameNgComp/ICellEditorNgComp, NgMenuItem/NgMenuSlot
+├── grid.component.ts          <awb-grid> — signal inputs, sync effects, outputs; core created outside the NgZone
+├── factory.ts                 createCore, getGridOptions (reads signal inputs)
+├── interface.ts               NgColDef + the optional awbInit/awbRefresh component contracts
+├── adapters.ts                NgAdapters — mounts Angular components (createComponent) into core class-component slots: cellRenderer/tooltip/actionFrame/cellEditor + colDef/defaultColDef adaptation
+├── menu.ts                    NgMenuItem (slots: string | HTMLElement | TemplateRef)
+├── menuAdapters.ts            Column/body menu adapters — stamp TemplateRef slots per menu open
+└── grid.smoke.test.ts / test-setup.ts   vitest + @analogjs/vite-plugin-angular + TestBed rig
+
 apps/react-playground/                    Demo app (Vite-based, not tests)
 ├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
 ├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
@@ -765,6 +775,21 @@ lifecycle; the content is a custom component.
 | Band ordering (app data rows on the outer edges) | ✅ Complete | `pinnedTopRowData` → runtime-pinned top → body → runtime-pinned bottom → `pinnedBottomRowData`; `resolveAppRows` in `renderer/pinnedRows/pinnedRowsRenderer.ts` |
 | Ancestor chain force-pins with a pinned row | ✅ Complete | A runtime-pinned row (group or leaf) derives its group/tree ancestors into the same band directly above it; unpinning any row of the chain releases the whole chain (unpin cascades to pinned descendants); `resolveAppRows` + `unpinDescendants` |
 
+### 5.18 Angular Wrapper Features (Angular ≥ 20.3)
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| `<awb-grid>` component (signal inputs, `exportAs: "awbGrid"`, `api` getter + `gridReady` output) | ✅ Complete | `packages/angular-grid/src/grid.component.ts` |
+| Declarative inputs mirroring the React wrapper's props; reconciled via effects without remount | ✅ Complete | `grid.component.ts` (`syncEffect` / `keyedEffect`), `factory.ts` |
+| Core created outside the NgZone; outputs re-enter the zone (zoneless-compatible) | ✅ Complete | `grid.component.ts` → `create()` |
+| Angular cell renderers / tooltips / ActionFrame components (via `awbInit(params)` or a `params` input) | ✅ Complete | `adapters.ts` → `NgAdapters.mount` (per-grid injector context) |
+| Angular cell editors (component instance provides `getValue`/`focus`/…) | ✅ Complete | `adapters.ts` → `adaptCellEditor` |
+| Menu-item slots as `TemplateRef`s (column + body menus) | ✅ Complete | `menuAdapters.ts`, `menu.ts` |
+| SSR-safe creation (`afterNextRender`) | ✅ Complete | `grid.component.ts` constructor |
+| APF packaging: partial-Ivy FESM2022 via ng-packagr, publish from `dist/` | ✅ Complete | `ng-package.json`, `tsconfig.lib.json`; see maintainers/repository.md §5 |
+| Angular header components | ❌ Not wrapped | Parity with React: `headerComponent` is a core class contract, passed through unadapted |
+| Angular demo playground (`apps/angular-playground`) | ❌ Not started | — |
+
 ---
 
 ## 6. Key Design Patterns
@@ -899,9 +924,10 @@ This is an npm-workspaces monorepo; scripts run from the repo root unless noted.
 | Command | Purpose |
 |---------|---------|
 | `npm run dev` | Vite dev server for the demo app (`http://localhost:5176`) |
-| `npm run build` | `build:grid` then `build:react` (explicit order — react typecheck needs grid's `dist/*.d.ts`) |
-| `npm run test` | vitest single run across both packages |
-| `npm run typecheck` | build grid, then typecheck grid → react → react-playground |
+| `npm run build` | `build:grid` → `build:react` → `build:angular` (explicit order — the bindings need grid's `dist/*.d.ts`) |
+| `npm run test` | vitest single run (grid + react-grid), then `test:angular` |
+| `npm run test:angular` | Angular binding suite (own vitest config; components compiled by `@analogjs/vite-plugin-angular`) |
+| `npm run typecheck` | build grid, then typecheck grid → react → angular → react-playground |
 | `npm run clean` | clean each package's `dist/` + root `dist-demo/` |
 
 Each package's `dist/` produces `index.js` (ESM), `index.cjs` (CJS), and `index.d.ts` / `.d.cts`
