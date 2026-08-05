@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "dist"
+    // No path aliases here. `@agility-workbench/grid` is resolved as a normal npm
+    // workspace dependency: node_modules/@agility-workbench/grid → packages/grid,
+    // whose package.json "exports"/"types" point TypeScript at the built
+    // dist/index.d.ts. This is the exact surface consumers resolve, and it keeps
+    // the core's internal "@grid/*" aliases out of this package's compilation.
+    // Consequence: the grid package must be built before react-grid typechecks —
+    // the root "typecheck"/"build" scripts enforce that order.
+  },
+  "include": ["src", "tsup.config.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

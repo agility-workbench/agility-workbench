@@ -1,20 +1,16 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "strict": true,
-    "declaration": true,
-    "declarationDir": "dist",
-    "baseUrl": ".",
     "paths": {
-      "@grid/*": ["lib/*"]
+      "@agility-workbench/grid": ["./packages/grid/src/index"],
+      "@agility-workbench/grid/*": ["./packages/grid/src/*"],
+      "@agility-workbench/react-grid": ["./packages/react-grid/src/index"],
+      "@agility-workbench/react-grid/*": ["./packages/react-grid/src/*"],
+      "@grid": ["./packages/grid/src/index"],
+      "@grid/*": ["./packages/grid/src/*"],
+      "@react-grid": ["./packages/react-grid/src/index"],
+      "@react-grid/*": ["./packages/react-grid/src/*"]
     }
   },
-  "include": ["src", "lib", "vite.config.ts", "tsup.config.ts"]
+  "include": ["apps/playground", "vite.config.ts", "vitest.config.ts"]
 }

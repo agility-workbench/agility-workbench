@@ -1,39 +1,49 @@
 {
-  "name": "@your-scope/grid",
-  "version": "0.1.0",
-  "description": "High-performance virtualized data grid.",
-  "private": false,
+  "name": "agility-workbench",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "main": "dist/index.cjs.js",
-  "module": "dist/index.esm.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
+  "license": "MIT",
+  "description": "Monorepo for the Agility Workbench data grid and its framework bindings.",
+  "homepage": "https://agilityworkbench.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agility-workbench/agility-workbench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agility-workbench/agility-workbench/issues"
+  },
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsup",
+    "dev": "CHOKIDAR_USEPOLLING=1 vite",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
-  },
-  "peerDependencies": {
-    "react": ">=18.0.0"
-  },
-  "dependencies": {
-    "@vitejs/plugin-react": "^5.0.0",
-    "exceljs": "^4.4.0",
-    "react-dom": "^19.2.3"
+    "generate": "npm run generate --workspace @agility-workbench/grid",
+    "build:grid": "npm run build --workspace @agility-workbench/grid",
+    "build:react": "npm run build --workspace @agility-workbench/react-grid",
+    "build": "npm run build:grid && npm run build:react",
+    "typecheck:react": "npm run typecheck --workspace @agility-workbench/react-grid",
+    "typecheck:playground": "tsc --noEmit",
+    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:playground",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "npm run clean --workspaces --if-present && rm -rf dist dist-demo"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
-    "@types/react": "^18.2.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.19",
+    "exceljs": "^4.4.0",
+    "happy-dom": "^20.10.6",
     "postcss": "^8.4.38",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^2.1.9"
   }
 }

@@ -1,0 +1,264 @@
+import { GridIconMap } from "./icons";
+import type { PteVarName } from "./cssVars.generated";
+
+/**
+ * Theming API — an AG-Grid-style theme object.
+ *
+ * A {@link GridTheme} is an immutable value that resolves to a flat map of
+ * `--pte-*` CSS custom properties. The grid applies that map as inline styles on
+ * its root element (and on its portaled popups), so each grid instance can be
+ * themed independently with no global stylesheet edits and no runtime injection.
+ *
+ * Two layers of customization:
+ *  - **Semantic params** ({@link GridThemeParams}) — a small curated set
+ *    (`accentColor`, `rowHeight`, `spacing`, …). One semantic param fans out to
+ *    several atomic variables (e.g. `accentColor` drives selection, checkbox,
+ *    spinner, and filter-active colors at once).
+ *  - **Atomic escape hatch** (`vars`) — set any `--pte-*` variable directly, with
+ *    the full name autocompleted and typo-checked via {@link PteVarName}. Atomic
+ *    overrides always win over the semantic fan-out.
+ *
+ * Start from a preset and refine:
+ * ```ts
+ * themeDark.withParams({ accentColor: "#e11", rowHeight: 40 })
+ * ```
+ */
+export interface GridThemeParams {
+  /** Primary accent. Fans out to selection border, checkbox accent, select border,
+   * loading-spinner head, filter-active indicator, and selected resize handle. */
+  accentColor?: string;
+  /** Grid surface background. Fans out to root, surface, and input backgrounds. */
+  backgroundColor?: string;
+  /** Column-header background. */
+  headerBackgroundColor?: string;
+  /** Primary text color. */
+  textColor?: string;
+  /** Secondary / muted text color. */
+  mutedTextColor?: string;
+  /** Border color. Fans out to the cell/row border and the outer frame border. */
+  borderColor?: string;
+  /** Row hover background. */
+  rowHoverColor?: string;
+  /** Column hover background (highlights a column when `columnHover` is enabled). */
+  columnHoverColor?: string;
+  /** Alternating (odd) row background for zebra striping (when `zebraRows` is enabled). */
+  rowAltBackgroundColor?: string;
+  /** Active (focused) cell outline color (when `highlightActiveCell` is enabled). */
+  activeCellBorderColor?: string;
+  /** Selected row/cell background. Fans out to the base and hover selected backgrounds. */
+  selectedBackgroundColor?: string;
+  /** Base font family. */
+  fontFamily?: string;
+  /** Base font size. A number is treated as pixels. */
+  fontSize?: string | number;
+  /** Header font weight (e.g. 500 or "600"). */
+  headerFontWeight?: string | number;
+  /** Data row height. A number is treated as pixels. */
+  rowHeight?: string | number;
+  /** Left/right cell padding. A number is treated as pixels. */
+  cellHorizontalPadding?: string | number;
+  /** Top/bottom cell padding. A number is treated as pixels. */
+  cellVerticalPadding?: string | number;
+  /** Convenience: sets both horizontal and vertical cell padding at once (pixels
+   * when a number). Explicit `cellHorizontalPadding`/`cellVerticalPadding` win. */
+  spacing?: string | number;
+  /** Default (monochrome) icon color. */
+  iconColor?: string;
+  /** Scrollbar thumb color (webkit + firefox). */
+  scrollbarThumbColor?: string;
+  /** Aggregate footer background. Fans out to the aggregate row and cell backgrounds. */
+  aggregateBackgroundColor?: string;
+  /** Sparkline line color. */
+  sparklineStrokeColor?: string;
+  /** Sparkline bar/fill color. */
+  sparklineBarColor?: string;
+
+  /** Escape hatch: set any grid CSS variable directly. Wins over the semantic
+   * fan-out above. Numbers are emitted verbatim (add your own unit). */
+  vars?: Partial<Record<PteVarName, string | number>>;
+  /** Per-icon overrides. Values may be a URL, data URI, `url(...)`, or inline SVG
+   * markup. Merged into (and overridden by) `GridOptions.icons`. */
+  icons?: GridIconMap;
+}
+
+/** A resolved, immutable theme. Produce new themes with {@link GridTheme.withParams}. */
+export interface GridTheme {
+  /** The merged semantic params that produced this theme (for inspection/debugging). */
+  readonly params: Readonly<GridThemeParams>;
+  /** Resolve to the flat `--pte-*` → value map applied to the grid root. */
+  toCssVars(): Record<string, string>;
+  /** The icon overrides carried by this theme, if any. */
+  getIcons(): GridIconMap | undefined;
+  /** Return a NEW theme with `overrides` merged on top of this one. */
+  withParams(overrides: GridThemeParams): GridTheme;
+}
+
+type Fanout = { vars: PteVarName[]; px?: boolean };
+
+/** Semantic-param → atomic-variable fan-out table. `px: true` appends "px" to a
+ * bare number value. */
+const FANOUT: Record<string, Fanout> = {
+  accentColor: {
+    vars: [
+      "--pte-selected-border-color",
+      "--pte-checkbox-accent-color",
+      "--pte-select-border-color",
+      "--pte-loading-spinner-head-color",
+      "--pte-hcell-filter-active-color",
+      "--pte-selected-resize-handle-color",
+    ],
+  },
+  backgroundColor: {
+    vars: ["--pte-root-bg-color", "--pte-surface-bg-color", "--pte-input-bg-color"],
+  },
+  headerBackgroundColor: { vars: ["--pte-header-background-color"] },
+  textColor: { vars: ["--pte-text-color"] },
+  mutedTextColor: { vars: ["--pte-muted-text-color"] },
+  borderColor: { vars: ["--pte-border-color", "--pte-frame-border-color"] },
+  rowHoverColor: { vars: ["--pte-hover-bg-color"] },
+  columnHoverColor: { vars: ["--pte-column-hover-bg-color"] },
+  rowAltBackgroundColor: { vars: ["--pte-row-alt-bg-color"] },
+  activeCellBorderColor: { vars: ["--pte-active-cell-border-color"] },
+  selectedBackgroundColor: {
+    vars: ["--pte-selected-bg-color", "--pte-selected-hover-bg-color"],
+  },
+  fontFamily: { vars: ["--pte-font-family"] },
+  fontSize: { vars: ["--pte-font-size"], px: true },
+  headerFontWeight: { vars: ["--pte-header-font-weight"] },
+  rowHeight: { vars: ["--pte-row-height"], px: true },
+  cellHorizontalPadding: {
+    vars: ["--pte-cell-padding-left", "--pte-cell-padding-right"],
+    px: true,
+  },
+  cellVerticalPadding: {
+    vars: ["--pte-cell-padding-top", "--pte-cell-padding-bottom"],
+    px: true,
+  },
+  iconColor: { vars: ["--pte-icon-color"] },
+  scrollbarThumbColor: { vars: ["--pte-scrollbar-thumb-color"] },
+  aggregateBackgroundColor: {
+    vars: ["--pte-aggregate-row-bg-color", "--pte-aggregate-cell-bg-color"],
+  },
+  sparklineStrokeColor: { vars: ["--pte-sparkline-stroke-color"] },
+  sparklineBarColor: { vars: ["--pte-sparkline-bar-color"] },
+};
+
+function toCssValue(value: string | number, px: boolean): string {
+  return typeof value === "number" && px ? `${value}px` : String(value);
+}
+
+function resolveVars(params: GridThemeParams): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  // `spacing` seeds cell padding; explicit horizontal/vertical padding overrides it.
+  if (params.spacing != null) {
+    const px = FANOUT.cellHorizontalPadding.px ?? false;
+    const v = toCssValue(params.spacing, px);
+    for (const name of FANOUT.cellHorizontalPadding.vars) out[name] = v;
+    for (const name of FANOUT.cellVerticalPadding.vars) out[name] = v;
+  }
+
+  // Semantic params fan out to their atomic variables.
+  for (const [key, fan] of Object.entries(FANOUT)) {
+    const value = (params as Record<string, unknown>)[key];
+    if (value == null) continue;
+    const css = toCssValue(value as string | number, fan.px ?? false);
+    for (const name of fan.vars) out[name] = css;
+  }
+
+  // Atomic escape hatch wins over everything.
+  if (params.vars) {
+    for (const [name, value] of Object.entries(params.vars)) {
+      if (value == null) continue;
+      out[name] = String(value);
+    }
+  }
+
+  return out;
+}
+
+function mergeParams(base: GridThemeParams, overrides: GridThemeParams): GridThemeParams {
+  return {
+    ...base,
+    ...overrides,
+    // `vars` and `icons` are merged key-wise so partial overrides don't wipe the base.
+    vars: { ...base.vars, ...overrides.vars },
+    icons: { ...base.icons, ...overrides.icons },
+  };
+}
+
+/** Create a theme from raw params. Prefer the exported presets + `withParams`. */
+export function createTheme(params: GridThemeParams = {}): GridTheme {
+  const frozen = Object.freeze({ ...params });
+  return {
+    params: frozen,
+    toCssVars: () => resolveVars(frozen),
+    getIcons: () =>
+      frozen.icons && Object.keys(frozen.icons).length > 0 ? frozen.icons : undefined,
+    withParams: (overrides) => createTheme(mergeParams(frozen, overrides)),
+  };
+}
+
+/**
+ * The default light theme. Emits no inline variables — the grid falls back to the
+ * light defaults baked into the stylesheet. Use as a base for light customizations.
+ */
+export const themeLight: GridTheme = createTheme();
+
+/**
+ * Full dark-mode variable set, applied inline on the grid root (and its popups) so
+ * a single grid can be dark without any `.pte-theme-dark` ancestor class. Kept in
+ * sync with the `.pte-theme-dark` block in `src/theme/table.css`.
+ */
+export const themeDark: GridTheme = createTheme({
+  vars: {
+    "--pte-root-bg-color": "#0f172a",
+    "--pte-text-color": "#e2e8f0",
+    "--pte-muted-text-color": "#94a3b8",
+    "--pte-header-background-color": "#1f2937",
+    "--pte-frame-border-color": "#334155",
+    "--pte-border-color": "#2a364a",
+    "--pte-resize-handle-color": "#475569",
+    "--pte-selected-resize-handle-color": "#60a5fa",
+    "--pte-hover-bg-color": "#13223a",
+    "--pte-selected-bg-color": "#1e3a8a",
+    "--pte-selected-hover-bg-color": "#27459b",
+    "--pte-selected-border-color": "#60a5fa",
+    "--pte-active-cell-border-color": "#93c5fd",
+    "--pte-row-alt-bg-color": "#131f36",
+    "--pte-group-row-bg-color": "#1e293b",
+    "--pte-column-hover-bg-color": "#13223a",
+    "--pte-input-bg-color": "#111827",
+    "--pte-select-border-color": "#60a5fa",
+    "--pte-hcell-filter-active-color": "#60a5fa",
+    "--pte-icon-color": "#9ca3af",
+    "--pte-shadow-color": "rgba(0, 0, 0, 0.45)",
+    "--pte-overlay-shadow": "0 10px 30px rgba(0, 0, 0, 0.6)",
+    "--pte-drag-shadow": "0 6px 18px rgba(0, 0, 0, 0.6)",
+    "--pte-scrollbar-track-color": "#0b1220",
+    "--pte-scrollbar-thumb-color": "#334155",
+    "--pte-scrollbar-thumb-hover-color": "#475569",
+    "--pte-checkbox-accent-color": "#60a5fa",
+    "--pte-aggregate-row-bg-color": "#1e293b",
+    "--pte-aggregate-cell-bg-color": "#1e293b",
+    "--pte-surface-bg-color": "#0f172a",
+    "--pte-overlay-border-color": "rgba(148, 163, 184, 0.25)",
+    "--pte-control-border-color": "rgba(148, 163, 184, 0.35)",
+    "--pte-button-primary-bg": "#2563eb",
+    "--pte-button-primary-text": "#ffffff",
+    "--pte-loading-overlay-bg": "rgba(15, 23, 42, 0.7)",
+    "--pte-loading-spinner-track-color": "#334155",
+    "--pte-loading-spinner-head-color": "#60a5fa",
+    "--pte-loading-label-color": "#e2e8f0",
+    "--pte-column-drag-ghost-bg": "#1f2937",
+    "--pte-column-drag-ghost-border-color": "#334155",
+    "--pte-column-drag-ghost-text-color": "#e2e8f0",
+    "--pte-menu-btn-hover-bg": "#334155",
+    "--pte-not-allowed-icon-color": "#f87171",
+    "--pte-sparkline-stroke-color": "#38bdf8",
+    "--pte-sparkline-bar-color": "#60a5fa",
+    "--pte-cell-flash-up-bg-color": "rgba(34, 197, 94, 0.55)",
+    "--pte-cell-flash-down-bg-color": "rgba(239, 68, 68, 0.55)",
+    "--pte-cell-flash-neutral-bg-color": "rgba(148, 163, 184, 0.45)",
+  },
+});

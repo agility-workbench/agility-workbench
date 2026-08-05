@@ -1,0 +1,3389 @@
+:root,
+.pte-theme-light {
+  /* --pte-row-height: 43px; */
+  --pte-row-border-size: 1px;
+  --pte-font-family: Roboto, sans-serif;
+  --pte-font-size: 14px;
+  --pte-header-font-weight: 500;
+  --pte-root-bg-color: #ffffff;
+  --pte-text-color: #111827;
+  --pte-muted-text-color: #4b5563;
+  --pte-header-background-color: #f9fafb;
+  --pte-frame-border-color: #d1d5db;
+  --pte-border-color: #e5e7eb;
+  --pte-resize-handle-color: #e3e6eb;
+  --pte-selected-resize-handle-color: #84b6fb;
+  --pte-hover-bg-color: #f3f4f6;
+  --pte-selected-bg-color: #dbeafe;
+  --pte-selected-hover-bg-color: #cfe3ff;
+  --pte-selected-border-color: #3b82f6;
+  --pte-active-cell-border-color: #3b82f6;
+  --pte-row-alt-bg-color: #fafafa;
+  --pte-group-row-bg-color: #f3f4f6;
+  --pte-column-hover-bg-color: #f3f4f6;
+  --pte-input-bg-color: #ffffff;
+  --pte-select-border-color: #3b82f6;
+  --pte-cell-padding-left: 12px;
+  --pte-cell-padding-right: 12px;
+  --pte-cell-padding-top: 0px;
+  --pte-cell-padding-bottom: 0px;
+  --pte-hcell-filter-active-color: #3b82f6;
+  --pte-icon-color: #6b7280;
+  --pte-icon-first-page: url(icons/double-left.svg);
+  --pte-icon-previous-page: url(icons/left-chevron.svg);
+  --pte-icon-next-page: url(icons/right-chevron.svg);
+  --pte-icon-last-page: url(icons/double-right.svg);
+  --pte-icon-sort-asc: url(icons/up.svg);
+  --pte-icon-sort-desc: url(icons/down.svg);
+  --pte-icon-sort-clear: url(icons/down-up.svg);
+  --pte-icon-submenu: url(icons/submenu.svg);
+  --pte-icon-group-collapsed: url(icons/right-chevron.svg);
+  --pte-icon-group-expanded: url(icons/down-chevron.svg);
+  --pte-icon-check: url(icons/check.svg);
+  --pte-icon-group: url(icons/group.svg);
+  --pte-icon-column-hide: url(icons/column-hide.svg);
+  --pte-icon-count: url(icons/count.svg);
+  --pte-icon-sum: url(icons/sum.svg);
+  --pte-icon-avg: url(icons/avg.svg);
+  --pte-icon-min-string: url(icons/sort-asc-letters.svg);
+  --pte-icon-min-number: url(icons/sort-asc-numbers.svg);
+  --pte-icon-max-string: url(icons/sort-desc-letters.svg);
+  --pte-icon-max-number: url(icons/sort-desc-numbers.svg);
+  --pte-icon-median: url(icons/median.svg);
+  --pte-icon-drag: url(icons/drag.svg);
+  --pte-icon-plus-frame: url(icons/plus-frame.svg);
+  --pte-icon-minus-frame: url(icons/minus-frame.svg);
+  --pte-icon-not-allowed: url(icons/not-allowed.svg);
+  --pte-icon-filter: url(icons/filter.svg);
+  --pte-icon-menu: url(icons/menu-vertical.svg);
+  --pte-icon-pin: url(icons/pin.svg);
+  --pte-icon-copy: url(icons/copy.svg);
+  --pte-icon-cut: url(icons/cut.svg);
+  --pte-icon-paste: url(icons/paste.svg);
+  --pte-icon-export: url(icons/export.svg);
+  --pte-shadow-color: rgba(0, 0, 0, 0.1);
+  --pte-overlay-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  --pte-drag-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  --pte-scrollbar-track-color: #eef2f7;
+  --pte-scrollbar-thumb-color: #cbd5e1;
+  --pte-scrollbar-thumb-hover-color: #94a3b8;
+  --pte-scrollbar-size: 10px;
+  --pte-scrollbar-radius: 10px;
+  --pte-column-panel-gutter-width: 36px;
+  --pte-pagination-footer-height: 49px;
+  --pte-checkbox-accent-color: #3b82f6;
+  --pte-aggregate-row-bg-color: #f3f4f6;
+  --pte-aggregate-cell-bg-color: #f3f4f6;
+  --pte-surface-bg-color: #ffffff;
+  --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
+  --pte-control-border-color: rgba(0, 0, 0, 0.15);
+  --pte-button-primary-bg: rgba(0, 0, 0, 0.85);
+  --pte-button-primary-text: #ffffff;
+  --pte-loading-overlay-bg: rgba(255, 255, 255, 0.7);
+  --pte-loading-spinner-track-color: #d1d5db;
+  --pte-loading-spinner-head-color: #3b82f6;
+  --pte-loading-label-color: #374151;
+  --pte-column-drag-ghost-bg: #f9fafb;
+  --pte-column-drag-ghost-border-color: #e5e7eb;
+  --pte-column-drag-ghost-text-color: #111827;
+  --pte-menu-btn-hover-bg: #adb0b3;
+  --pte-not-allowed-icon-color: #ef4444;
+  --pte-sparkline-stroke-color: #0ea5e9;
+  --pte-sparkline-bar-color: #93c5fd;
+  --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
+  --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
+  --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-tooltip-bg: #1f2937;
+  --pte-tooltip-text-color: #f9fafb;
+  --pte-tooltip-border-color: transparent;
+  --pte-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  --pte-tooltip-max-width: 320px;
+  --pte-tooltip-radius: 6px;
+  --pte-action-frame-border-color: #7c3aed;
+  --pte-action-frame-glow: rgba(124, 58, 237, 0.25);
+  --pte-action-frame-popover-bg: #ffffff;
+  --pte-action-frame-popover-text-color: #111827;
+  --pte-action-frame-popover-border-color: #e5e7eb;
+  --pte-action-frame-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --pte-action-frame-popover-radius: 8px;
+  --pte-action-frame-popover-width: 300px;
+}
+
+.pte-theme-dark {
+  --pte-root-bg-color: #0f172a;
+  --pte-text-color: #e2e8f0;
+  --pte-muted-text-color: #94a3b8;
+  --pte-header-background-color: #1f2937;
+  --pte-frame-border-color: #334155;
+  --pte-border-color: #2a364a;
+  --pte-resize-handle-color: #475569;
+  --pte-selected-resize-handle-color: #60a5fa;
+  --pte-hover-bg-color: #13223a;
+  --pte-selected-bg-color: #1e3a8a;
+  --pte-selected-hover-bg-color: #27459b;
+  --pte-selected-border-color: #60a5fa;
+  --pte-active-cell-border-color: #93c5fd;
+  --pte-row-alt-bg-color: #131f36;
+  --pte-group-row-bg-color: #1e293b;
+  --pte-column-hover-bg-color: #13223a;
+  --pte-input-bg-color: #111827;
+  --pte-select-border-color: #60a5fa;
+  --pte-hcell-filter-active-color: #60a5fa;
+  --pte-icon-color: #9ca3af;
+  --pte-shadow-color: rgba(0, 0, 0, 0.45);
+  --pte-overlay-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --pte-drag-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  --pte-scrollbar-track-color: #0b1220;
+  --pte-scrollbar-thumb-color: #334155;
+  --pte-scrollbar-thumb-hover-color: #475569;
+  --pte-scrollbar-size: 10px;
+  --pte-scrollbar-radius: 10px;
+  --pte-checkbox-accent-color: #60a5fa;
+  --pte-aggregate-row-bg-color: #1e293b;
+  --pte-aggregate-cell-bg-color: #1e293b;
+  --pte-surface-bg-color: #0f172a;
+  --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
+  --pte-control-border-color: rgba(148, 163, 184, 0.35);
+  --pte-button-primary-bg: #2563eb;
+  --pte-button-primary-text: #ffffff;
+  --pte-loading-overlay-bg: rgba(15, 23, 42, 0.7);
+  --pte-loading-spinner-track-color: #334155;
+  --pte-loading-spinner-head-color: #60a5fa;
+  --pte-loading-label-color: #e2e8f0;
+  --pte-column-drag-ghost-bg: #1f2937;
+  --pte-column-drag-ghost-border-color: #334155;
+  --pte-column-drag-ghost-text-color: #e2e8f0;
+  --pte-menu-btn-hover-bg: #334155;
+  --pte-not-allowed-icon-color: #f87171;
+  --pte-sparkline-stroke-color: #38bdf8;
+  --pte-sparkline-bar-color: #60a5fa;
+  --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
+  --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
+  --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-tooltip-bg: #0f172a;
+  --pte-tooltip-text-color: #e2e8f0;
+  --pte-tooltip-border-color: #334155;
+  --pte-tooltip-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --pte-tooltip-max-width: 320px;
+  --pte-tooltip-radius: 6px;
+  --pte-action-frame-border-color: #a78bfa;
+  --pte-action-frame-glow: rgba(167, 139, 250, 0.3);
+  --pte-action-frame-popover-bg: #1e293b;
+  --pte-action-frame-popover-text-color: #e2e8f0;
+  --pte-action-frame-popover-border-color: #334155;
+  --pte-action-frame-popover-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
+  --pte-action-frame-popover-radius: 8px;
+  --pte-action-frame-popover-width: 300px;
+}
+
+*[class^="pte-"],
+*[class*=" pte-"] {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Custom scrollbars are driven entirely by the --pte-scrollbar-* variables (both
+ * light and dark defaults are defined above), so these rules are scoped to the
+ * grid containers directly rather than gated behind a .pte-theme-dark ancestor.
+ * This lets per-instance theming (inline vars on .pte-root) restyle scrollbars
+ * without requiring a theme class on a shared ancestor. */
+.pte-root,
+.pte-root *,
+.pte-menu,
+.pte-menu *,
+.pte-filter,
+.pte-filter * {
+  scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color);
+}
+
+.pte-root::-webkit-scrollbar,
+.pte-root *::-webkit-scrollbar,
+.pte-menu::-webkit-scrollbar,
+.pte-menu *::-webkit-scrollbar,
+.pte-filter::-webkit-scrollbar,
+.pte-filter *::-webkit-scrollbar {
+  width: var(--pte-scrollbar-size);
+  height: var(--pte-scrollbar-size);
+}
+
+.pte-root::-webkit-scrollbar-track,
+.pte-root *::-webkit-scrollbar-track,
+.pte-menu::-webkit-scrollbar-track,
+.pte-menu *::-webkit-scrollbar-track,
+.pte-filter::-webkit-scrollbar-track,
+.pte-filter *::-webkit-scrollbar-track {
+  background: var(--pte-scrollbar-track-color);
+}
+
+.pte-root::-webkit-scrollbar-thumb,
+.pte-root *::-webkit-scrollbar-thumb,
+.pte-menu::-webkit-scrollbar-thumb,
+.pte-menu *::-webkit-scrollbar-thumb,
+.pte-filter::-webkit-scrollbar-thumb,
+.pte-filter *::-webkit-scrollbar-thumb {
+  background: var(--pte-scrollbar-thumb-color);
+  border-radius: var(--pte-scrollbar-radius);
+  border: 2px solid var(--pte-scrollbar-track-color);
+}
+
+.pte-root::-webkit-scrollbar-thumb:hover,
+.pte-root *::-webkit-scrollbar-thumb:hover,
+.pte-menu::-webkit-scrollbar-thumb:hover,
+.pte-menu *::-webkit-scrollbar-thumb:hover,
+.pte-filter::-webkit-scrollbar-thumb:hover,
+.pte-filter *::-webkit-scrollbar-thumb:hover {
+  background: var(--pte-scrollbar-thumb-hover-color);
+}
+
+*[class^="pte-"]:focus,
+*[class*=" pte-"]:focus,
+*[class^="pte-"]:focus-visible,
+*[class*=" pte-"]:focus-visible {
+  outline: none;
+}
+
+.pte-root {
+  font-family: var(--pte-font-family);
+  font-size: var(--pte-font-size);
+  color: var(--pte-text-color);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pte-frame-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--pte-root-bg-color);
+  outline: none;
+  transition: padding-right 0.16s ease;
+}
+
+.pte-root.pte-column-panel-enabled.pte-column-panel-trigger-rail {
+  padding-right: var(--pte-column-panel-gutter-width);
+}
+
+.pte-root.pte-column-panel-enabled.pte-column-panel-trigger-header,
+.pte-root.pte-column-panel-enabled.pte-column-panel-trigger-footer {
+  padding-right: var(--pte-column-panel-gutter-width);
+}
+
+.pte-root.pte-column-panel-enabled.pte-column-panel-open {
+  padding-right: var(--pte-column-panel-width, 304px);
+}
+
+.pte-column-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 0;
+  z-index: 9700;
+  display: flex;
+  background: var(--pte-surface-bg-color);
+  border-left: 0 solid var(--pte-frame-border-color);
+  color: var(--pte-text-color);
+  transition: width 0.16s ease;
+  overflow: hidden;
+}
+
+.pte-root.pte-column-panel-trigger-rail .pte-column-panel {
+  width: var(--pte-column-panel-gutter-width);
+  border-left-width: 1px;
+}
+
+.pte-root.pte-column-panel-trigger-header .pte-column-panel,
+.pte-root.pte-column-panel-trigger-footer .pte-column-panel {
+  width: var(--pte-column-panel-gutter-width);
+  border-left-width: 1px;
+}
+
+.pte-root.pte-column-panel-enabled .pte-column-panel.open {
+  width: var(--pte-column-panel-width, 304px);
+  border-left-width: 1px;
+  box-shadow: -4px 0 14px var(--pte-shadow-color);
+}
+
+.pte-column-panel-rail {
+  display: none;
+  width: calc(var(--pte-column-panel-gutter-width) - 1px);
+  height: 100%;
+  flex: 0 0 calc(var(--pte-column-panel-gutter-width) - 1px);
+  border: 0;
+  border-radius: 0;
+  background: var(--pte-header-background-color);
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.pte-root.pte-column-panel-trigger-rail .pte-column-panel-rail {
+  display: block;
+}
+
+.pte-column-panel-rail:hover {
+  color: var(--pte-text-color);
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel.open .pte-column-panel-rail {
+  display: none;
+}
+
+.pte-column-panel-trigger {
+  min-width: 36px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: var(--pte-header-background-color);
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-column-panel-trigger:hover,
+.pte-column-panel-trigger[aria-expanded="true"] {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-trigger-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pte-column-panel-trigger-header-button {
+  position: absolute;
+  inset: 0 0 auto auto;
+  width: calc(var(--pte-column-panel-gutter-width) - 1px);
+  height: var(--pte-rendered-header-height, 43px);
+  border-bottom: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-column-panel-trigger-header-button .pte-column-panel-trigger-label,
+.pte-column-panel-trigger-footer-button .pte-column-panel-trigger-label {
+  display: none;
+}
+
+.pte-grid-toolbar {
+  min-height: 42px;
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--pte-frame-border-color);
+  background: var(--pte-surface-bg-color);
+}
+
+.pte-grid-toolbar-left {
+  min-width: 0;
+  align-self: stretch;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  overflow: hidden;
+}
+
+.pte-grid-toolbar-group-section,
+.pte-grid-toolbar-sort-section {
+  position: relative;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pte-grid-toolbar-group-section {
+  width: 100%;
+}
+
+.pte-grid-toolbar-sort-section {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pte-grid-toolbar-group-section + .pte-grid-toolbar-sort-section {
+  border-left: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-grid-toolbar-group-dropzone.drag-over {
+  background: var(--pte-selected-bg-color);
+  box-shadow: inset 0 0 0 1px var(--pte-selected-border-color);
+}
+
+.pte-grid-toolbar-sort-section.drag-over {
+  background: var(--pte-selected-bg-color);
+  box-shadow: inset 0 0 0 1px var(--pte-selected-border-color);
+}
+
+.pte-grid-toolbar-group-label,
+.pte-grid-toolbar-sort-label {
+  flex: 0 0 auto;
+  padding-left: 8px;
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-group-list,
+.pte-grid-toolbar-sort-list {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.pte-grid-toolbar-group-chip,
+.pte-grid-toolbar-sort-chip {
+  position: relative;
+  min-width: 0;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border: 1px solid var(--pte-frame-border-color);
+  border-radius: 4px;
+  background: var(--pte-root-bg-color);
+  color: var(--pte-text-color);
+  cursor: grab;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-group-drop-indicator,
+.pte-grid-toolbar-sort-drop-indicator {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pte-selected-border-color);
+  box-shadow:
+    0 0 0 2px var(--pte-surface-bg-color),
+    0 0 6px var(--pte-selected-border-color);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pte-grid-toolbar-group-drop-indicator::before,
+.pte-grid-toolbar-group-drop-indicator::after,
+.pte-grid-toolbar-sort-drop-indicator::before,
+.pte-grid-toolbar-sort-drop-indicator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pte-selected-border-color);
+  transform: translateX(-50%);
+}
+
+.pte-grid-toolbar-group-drop-indicator::before,
+.pte-grid-toolbar-sort-drop-indicator::before {
+  top: -2px;
+}
+
+.pte-grid-toolbar-group-drop-indicator::after,
+.pte-grid-toolbar-sort-drop-indicator::after {
+  bottom: -2px;
+}
+
+.pte-grid-toolbar-group-chip:hover,
+.pte-grid-toolbar-sort-chip:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-grid-toolbar-group-chip.dragging,
+.pte-grid-toolbar-sort-chip.dragging {
+  opacity: 0.5;
+}
+
+.pte-grid-toolbar-group-chip:focus-visible,
+.pte-grid-toolbar-sort-chip:focus-visible {
+  border-color: var(--pte-selected-border-color);
+  box-shadow: 0 0 0 1px var(--pte-selected-border-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-group-drag,
+.pte-grid-toolbar-sort-drag {
+  flex: 0 0 auto;
+  color: var(--pte-muted-text-color);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pte-grid-toolbar-group-chip-label,
+.pte-grid-toolbar-sort-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pte-grid-toolbar-group-remove,
+.pte-grid-toolbar-sort-remove {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pte-grid-toolbar-group-remove:hover,
+.pte-grid-toolbar-group-remove:focus-visible,
+.pte-grid-toolbar-sort-remove:hover,
+.pte-grid-toolbar-sort-remove:focus-visible {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-group-add,
+.pte-grid-toolbar-sort-add {
+  height: 100%;
+  min-width: 48px;
+  flex: 1 1 auto;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.pte-grid-toolbar-group-add:hover,
+.pte-grid-toolbar-group-add:focus-visible,
+.pte-grid-toolbar-sort-add:hover,
+.pte-grid-toolbar-sort-add:focus-visible {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-group-add:disabled,
+.pte-grid-toolbar-sort-add:disabled {
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pte-grid-toolbar-group-clear,
+.pte-grid-toolbar-sort-clear {
+  width: 32px;
+  height: 100%;
+  flex: 0 0 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pte-grid-toolbar-group-add + .pte-grid-toolbar-group-clear,
+.pte-grid-toolbar-sort-add + .pte-grid-toolbar-sort-clear {
+  margin-left: -6px;
+}
+
+.pte-grid-toolbar-group-clear:hover,
+.pte-grid-toolbar-group-clear:focus-visible,
+.pte-grid-toolbar-sort-clear:hover,
+.pte-grid-toolbar-sort-clear:focus-visible {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-sort-direction {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pte-grid-toolbar-sort-direction:hover,
+.pte-grid-toolbar-sort-direction:focus-visible {
+  background: var(--pte-hover-bg-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-sort-direction:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pte-grid-toolbar-sort-direction:disabled:hover {
+  background: transparent;
+}
+
+.pte-grid-toolbar-sort-direction-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+.pte-grid-toolbar-right {
+  height: 100%;
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+}
+
+.pte-grid-toolbar-views-button {
+  min-width: 104px;
+  max-width: 180px;
+  min-height: 34px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-views-button:hover,
+.pte-grid-toolbar-views-button.pte-grid-toolbar-views-active {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-views-icon {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pte-grid-toolbar-views-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pte-grid-toolbar-quick-filter {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-left: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-quick-filter.pte-quick-filter-toolbar {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  display: inline-flex;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pte-quick-filter-toolbar .pte-quick-filter-row,
+.pte-quick-filter-toolbar .pte-quick-filter-field {
+  min-width: 0;
+}
+
+.pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 160px;
+  min-width: 72px;
+}
+
+.pte-quick-filter-toolbar .pte-quick-filter-options-panel {
+  position: absolute;
+  z-index: 31;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 240px;
+  box-sizing: border-box;
+  padding: 10px;
+  margin: 0;
+  border: 1px solid var(--pte-overlay-border-color);
+  border-radius: 8px;
+  background: var(--pte-header-background-color);
+  box-shadow: var(--pte-overlay-shadow);
+}
+
+.pte-grid-toolbar-export-button {
+  min-width: 92px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-more-button {
+  width: 42px;
+  min-width: 42px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.pte-grid-toolbar-export-button:hover,
+.pte-grid-toolbar-more-button:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-export-button:disabled {
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pte-grid-toolbar-export-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.pte-grid-toolbar-more-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.pte-grid-toolbar-compact .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 112px;
+}
+
+.pte-grid-toolbar-compact .pte-grid-toolbar-export-button,
+.pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button,
+.pte-grid-toolbar-compact .pte-grid-toolbar-views-button {
+  min-width: 42px;
+  width: 42px;
+  padding: 0;
+}
+
+.pte-grid-toolbar-compact .pte-grid-toolbar-export-label,
+.pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button .pte-column-panel-trigger-label,
+.pte-grid-toolbar-compact .pte-grid-toolbar-views-label {
+  display: none;
+}
+
+.pte-grid-toolbar-overflow .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 88px;
+}
+
+.pte-grid-toolbar-overflow .pte-grid-toolbar-export-button,
+.pte-grid-toolbar-overflow .pte-column-panel-trigger-toolbar-button {
+  display: none;
+}
+
+.pte-grid-toolbar-overflow .pte-grid-toolbar-more-button {
+  display: inline-flex;
+}
+
+.pte-grid-toolbar-view-form {
+  width: 260px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-view-form-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pte-grid-toolbar-view-form-message {
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pte-grid-toolbar-view-input {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  background: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font: inherit;
+}
+
+.pte-grid-toolbar-view-input:focus {
+  border-color: var(--pte-select-border-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-view-input[aria-invalid="true"] {
+  border-color: #dc2626;
+}
+
+.pte-grid-toolbar-view-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.pte-grid-toolbar-view-form-cancel,
+.pte-grid-toolbar-view-form-submit,
+.pte-grid-toolbar-view-form-delete {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  background: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-view-form-submit {
+  border-color: var(--pte-selected-border-color);
+  background: var(--pte-selected-bg-color);
+}
+
+.pte-grid-toolbar-view-form-delete {
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+
+.pte-column-panel-trigger-toolbar-button {
+  min-width: 92px;
+  padding: 0 12px;
+  border-left: 1px solid var(--pte-frame-border-color);
+  background: transparent;
+}
+
+.pte-column-panel-trigger-footer-button {
+  position: absolute;
+  inset: auto 0 0 auto;
+  width: calc(var(--pte-column-panel-gutter-width) - 1px);
+  height: var(--pte-pagination-footer-height);
+  border-top: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-column-panel.open > .pte-column-panel-trigger-header-button,
+.pte-column-panel.open > .pte-column-panel-trigger-footer-button {
+  display: none;
+}
+
+.pte-column-panel-content {
+  width: var(--pte-column-panel-width, 304px);
+  min-width: 0;
+  height: 100%;
+  display: none;
+  flex-direction: column;
+}
+
+.pte-column-panel.open .pte-column-panel-content {
+  display: flex;
+}
+
+.pte-column-panel-header {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--pte-border-color);
+  background: var(--pte-header-background-color);
+}
+
+.pte-column-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pte-column-panel-close,
+.pte-column-panel-order,
+.pte-column-panel-reset {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  font: inherit;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.pte-column-panel-close {
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.pte-column-panel-close:hover,
+.pte-column-panel-order:hover:not(:disabled),
+.pte-column-panel-reset:hover:not(:disabled) {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-search {
+  height: 34px;
+  margin: 12px;
+  padding: 0 10px;
+  flex: 0 0 34px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  background: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font: inherit;
+}
+
+.pte-column-panel-search:focus-visible,
+.pte-column-panel-bulk-checkbox:focus-visible,
+.pte-column-panel-pin:focus-visible,
+.pte-column-panel-close:focus-visible,
+.pte-column-panel-order:focus-visible,
+.pte-column-panel-reset:focus-visible,
+.pte-column-panel-rail:focus-visible,
+.pte-column-panel-trigger:focus-visible,
+.pte-grid-toolbar-export-button:focus-visible {
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-bulk {
+  min-height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--pte-border-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.pte-column-panel-bulk:has(.pte-column-panel-bulk-checkbox:disabled) {
+  color: var(--pte-muted-text-color);
+  cursor: default;
+}
+
+.pte-column-panel-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.pte-column-panel-section + .pte-column-panel-section {
+  margin-top: 12px;
+}
+
+.pte-column-panel-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  color: var(--pte-muted-text-color);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pte-column-panel-section-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--pte-hover-bg-color);
+  font-size: 10px;
+}
+
+.pte-column-panel-tree-group-header {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.pte-column-panel-tree-group-header:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel-tree-group-header:focus-visible {
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-tree-group-chevron {
+  width: 12px;
+  color: var(--pte-muted-text-color);
+  font-size: 16px;
+  line-height: 1;
+  text-align: center;
+}
+
+.pte-column-panel-tree-group-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pte-column-panel-tree-group-count {
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-muted-text-color);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.pte-column-panel-tree-children {
+  margin-left: 11px;
+  padding-left: 5px;
+  border-left: 1px solid var(--pte-border-color);
+}
+
+.pte-column-panel-row {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 48px;
+  gap: 5px;
+  align-items: center;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.pte-column-panel-row:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel-row.dragging {
+  opacity: 0.45;
+}
+
+.pte-column-panel-row.drag-over {
+  border-top-color: var(--pte-selected-border-color);
+}
+
+.pte-column-panel-drag {
+  color: var(--pte-muted-text-color);
+  cursor: grab;
+  font-size: 11px;
+  letter-spacing: -3px;
+}
+
+.pte-column-panel-bulk-checkbox,
+.pte-column-panel-checkbox {
+  accent-color: var(--pte-checkbox-accent-color);
+}
+
+.pte-column-panel-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.pte-column-panel-pin {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 5px;
+  background: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font: inherit;
+  font-size: 11px;
+}
+
+.pte-column-panel-order-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pte-column-panel-order {
+  width: 24px;
+  height: 26px;
+}
+
+.pte-column-panel-order:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.pte-column-panel-root-dropzone {
+  display: none;
+  margin: 4px 5px 2px;
+  padding: 8px;
+  border: 1px dashed var(--pte-control-border-color);
+  border-radius: 6px;
+  color: var(--pte-muted-text-color);
+  text-align: center;
+  font-size: 11px;
+}
+
+.pte-column-panel-dragging-group-column .pte-column-panel-root-dropzone {
+  display: block;
+}
+
+.pte-column-panel-root-dropzone.drag-over {
+  border-color: var(--pte-selected-border-color);
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-empty {
+  padding: 24px 12px;
+  color: var(--pte-muted-text-color);
+  text-align: center;
+  font-size: 13px;
+}
+
+.pte-column-panel-footer {
+  flex: 0 0 auto;
+  min-height: 51px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 1px solid var(--pte-border-color);
+}
+
+.pte-column-panel-modified {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pte-muted-text-color);
+  font-size: 11px;
+}
+
+.pte-column-panel-modified::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pte-selected-border-color);
+  content: "";
+}
+
+.pte-column-panel-modified[hidden] {
+  display: none;
+}
+
+.pte-column-panel-announcer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pte-grid-announcer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 10001;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  color: var(--pte-text-color);
+  background: var(--pte-surface-bg-color);
+  box-shadow: var(--pte-overlay-shadow);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, calc(-50% - 4px));
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 0s linear 120ms;
+  white-space: nowrap;
+}
+
+.pte-grid-announcer.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%);
+  transition-delay: 0s;
+}
+
+.pte-column-panel-reset {
+  padding: 6px 8px;
+  color: var(--pte-text-color);
+  font-size: 12px;
+}
+
+.pte-column-panel-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pte-header-wrapper {
+  overflow: hidden;
+  display: flex;
+  background-color: var(--pte-header-background-color);
+  border-bottom: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-header-leading {
+  display: flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--pte-header-background-color);
+}
+
+.pte-header-leading.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-header-left {
+  display: flex;
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: relative;
+}
+
+.pte-header-left.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-header {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-right: 15px;
+  flex: 1 1 auto;
+  position: relative;
+}
+
+.pte-header-right {
+  display: flex;
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: relative;
+}
+
+.pte-header-right.visible {
+  border-left: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+}
+
+/* Frozen application rows and mirrored group rows. Each band repeats the body's four horizontal
+   sections so pinned columns remain pinned and the center follows the grid's horizontal scroll. */
+.pte-pinned-rows {
+  display: none;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--pte-root-bg-color);
+  z-index: 4;
+  box-sizing: border-box;
+}
+
+.pte-pinned-rows-top {
+  border-bottom: 1px solid var(--pte-frame-border-color);
+  box-shadow: 0 2px 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-bottom {
+  border-top: 1px solid var(--pte-frame-border-color);
+  box-shadow: 0 -2px 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-center,
+.pte-pinned-rows-right {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.pte-pinned-rows-leading::-webkit-scrollbar,
+.pte-pinned-rows-left::-webkit-scrollbar,
+.pte-pinned-rows-center::-webkit-scrollbar,
+.pte-pinned-rows-right::-webkit-scrollbar {
+  display: none;
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-center,
+.pte-pinned-rows-right {
+  pointer-events: auto;
+}
+
+/* Application-pinned top/bottom bands own a fifth, 15px-wide vertical-scroll column just like the
+   central body. Section scrollers hide their native bars and mirror this column's scrollTop. */
+.pte-pinned-rows-vertical {
+  flex: 0 0 15px;
+  width: 15px;
+  min-width: 15px;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  scrollbar-width: auto;
+}
+
+.pte-pinned-rows-vertical.scrollable {
+  overflow-x: hidden;
+  overflow-y: scroll;
+  pointer-events: auto;
+  background: var(--pte-scrollbar-track-color);
+}
+
+.pte-pinned-rows-vertical-scroller {
+  width: 1px;
+  min-height: 100%;
+}
+
+.pte-pinned-rows-leading,
+.pte-pinned-rows-left,
+.pte-pinned-rows-right {
+  flex: 0 0 auto;
+  z-index: 10;
+}
+
+.pte-pinned-rows-center {
+  flex: 1 1 auto;
+}
+
+.pte-pinned-rows-leading {
+  background: var(--pte-header-background-color);
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-pinned-rows-left {
+  border-right: 1px solid var(--pte-frame-border-color);
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-right {
+  border-left: 1px solid var(--pte-frame-border-color);
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-pinned-rows-host {
+  position: relative;
+}
+
+.pte-pinned-row {
+  background: var(--pte-root-bg-color);
+  border-bottom: var(--pte-row-border-size) solid var(--pte-border-color);
+}
+
+.pte-pinned-row:last-child {
+  border-bottom-color: transparent;
+}
+
+.pte-pinned-row.pte-group-row {
+  font-weight: 600;
+}
+
+/* Sticky group ancestors overlay the top of the body instead of pushing it down. The original rows
+   stay in the body flow and scroll beneath; each mirrored header is translated per frame, so an
+   incoming sibling pushes the outgoing header out with position:sticky semantics and chain changes
+   never shift the body layout. The container clips headers sliding out above its top edge and its
+   height tracks the lowest header.
+
+   Deliberately NO border/shadow on this container: its height snaps by a row at every sibling
+   swap (it shrinks with the outgoing header, then jumps back when the incoming one docks over its
+   pixel-identical body copy). The content is continuous through that snap, so any decoration tied
+   to the container's bottom edge would be the only thing seen jumping — the band's edge is instead
+   the last mirror row's own row border, the same pixel the body copy's border occupied. */
+.pte-sticky-rows {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  z-index: 5;
+  box-sizing: border-box;
+}
+
+.pte-sticky-rows .pte-pinned-row:last-child {
+  border-bottom-color: var(--pte-border-color);
+}
+
+.pte-sticky-rows .pte-pinned-rows-leading,
+.pte-sticky-rows .pte-pinned-rows-left,
+.pte-sticky-rows .pte-pinned-rows-center,
+.pte-sticky-rows .pte-pinned-rows-right,
+.pte-sticky-rows .pte-pinned-rows-vertical,
+.pte-sticky-rows .pte-pinned-rows-host {
+  height: 100%;
+}
+
+/* The column sections must be opaque: mirror rows don't paint every pixel of the overlay (a
+   full-width groupRows mirror renders only the center section, and rows can be narrower than the
+   viewport), and any unpainted pixel would otherwise show the body scrolling beneath. The root and
+   its 15px scrollbar lane stay transparent so the body's vertical scrollbar remains visible. */
+.pte-sticky-rows .pte-pinned-rows-left,
+.pte-sticky-rows .pte-pinned-rows-center,
+.pte-sticky-rows .pte-pinned-rows-right {
+  background: var(--pte-root-bg-color);
+}
+
+/* No will-change here: promoting each mirror to its own compositor layer switches its text from
+   subpixel to grayscale antialiasing, so a row's label would visibly shimmer at the instant it
+   docks over its pixel-identical body copy. The transforms are cheap enough without a layer. */
+.pte-row.pte-sticky-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.pte-aggregate-row {
+  display: none;
+  flex: 0 0 auto;
+  position: relative;
+  background: var(--pte-aggregate-row-bg-color);
+  border-top: 1px solid var(--pte-frame-border-color);
+  padding-right: 15px;
+}
+
+.pte-aggregate-row.visible {
+  display: flex;
+}
+
+.pte-aggregate-leading,
+.pte-aggregate-left,
+.pte-aggregate-center,
+.pte-aggregate-right {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: transparent;
+}
+
+.pte-aggregate-leading {
+  flex: 0 0 auto;
+  background: var(--pte-aggregate-row-bg-color);
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-aggregate-left,
+.pte-aggregate-right {
+  flex: 0 0 auto;
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-aggregate-center {
+  flex: 1 1 auto;
+}
+
+.pte-aggregate-right {
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-right: none;
+}
+
+.pte-aggregate-row .pte-row {
+  width: 100%;
+}
+
+.pte-aggregate-cell {
+  font-weight: 600;
+  border-top: 1px solid var(--pte-border-color);
+  display: flex !important;
+  justify-content: space-between !important;
+}
+
+.pte-aggregate-close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--pte-border-color);
+  background: var(--pte-surface-bg-color);
+  color: var(--pte-text-color);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.pte-aggregate-row:hover .pte-aggregate-close {
+  opacity: 1;
+}
+
+.pte-aggregate-close:hover {
+  background: var(--pte-hover-bg-color);
+  border-color: var(--pte-control-border-color);
+}
+
+.pte-aggregate-close:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-scroller-horizontal-container-wrapper {
+  display: flex;
+  padding-right: 15px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overflow-y: hidden;
+  min-height: 15px;
+  height: 15px;
+}
+
+.pte-pagination-wrapper {
+  display: none;
+  height: var(--pte-pagination-footer-height);
+  flex: 0 0 var(--pte-pagination-footer-height);
+  flex-direction: row;
+  align-items: center;
+  justify-content: end;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--pte-frame-border-color);
+  background: var(--pte-surface-bg-color);
+}
+
+.pte-pagination-wrapper.visible {
+  display: flex;
+}
+
+.pte-aggregate-controls {
+  margin-right: auto;
+}
+
+.pte-pagination-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pte-pagination-nav {
+  /* margin-left: auto; */
+}
+
+.pte-pagination-label {
+  font-size: 13px;
+  color: var(--pte-muted-text-color);
+  white-space: nowrap;
+}
+
+.pte-pagination-select,
+.pte-pagination-btn {
+  height: 32px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 14px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-pagination-select {
+  min-width: 82px;
+}
+
+.pte-pagination-page-select {
+  min-width: 140px;
+}
+
+.pte-pagination-btn {
+  cursor: pointer;
+}
+
+.pte-pagination-btn:disabled,
+.pte-pagination-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pte-pagination-btn-first {
+  mask-image: var(--pte-icon-first-page);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  background-color: var(--pte-icon-color);
+  width: 22px;
+  height: 22px;
+}
+
+.pte-pagination-btn-prev {
+  mask-image: var(--pte-icon-previous-page);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  background-color: var(--pte-icon-color);
+  width: 22px;
+  height: 22px;
+}
+
+.pte-pagination-btn-next {
+  mask-image: var(--pte-icon-next-page);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  background-color: var(--pte-icon-color);
+  width: 22px;
+  height: 22px;
+}
+
+.pte-pagination-btn-last {
+  mask-image: var(--pte-icon-last-page);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  background-color: var(--pte-icon-color);
+  width: 22px;
+  height: 22px;
+}
+
+.pte-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--pte-loading-overlay-bg);
+  z-index: 9999;
+  transition: opacity 0.2s ease;
+  backdrop-filter: blur(2px);
+}
+
+.pte-loading-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pte-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid var(--pte-loading-spinner-track-color);
+  border-top-color: var(--pte-loading-spinner-head-color);
+  border-radius: 50%;
+  animation: pte-spin 0.9s linear infinite;
+}
+
+.pte-loading-label {
+  color: var(--pte-loading-label-color);
+  font-weight: 500;
+}
+
+@keyframes pte-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------------- No-rows (empty) overlay ---------------- */
+.pte-norows-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Sit below the header so it doesn't cover column headers; header height varies, so keep it a
+     modest top inset that clears a single-row header and reads fine for taller ones. */
+  padding-top: 43px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pte-norows-overlay.hidden {
+  display: none;
+}
+
+.pte-norows-label {
+  color: var(--pte-muted-text-color);
+  font-size: var(--pte-font-size);
+  font-weight: 500;
+  padding: 10px 16px;
+}
+
+/* ---------------- Quick filter (global search) ---------------- */
+.pte-quick-filter-floating-host {
+  position: relative;
+  flex: 0 0 0;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  z-index: 30;
+}
+
+.pte-quick-filter {
+  position: absolute;
+  /* The zero-height floating host sits immediately after the header. The widget overrides
+     `top`/`left`/`right` inline from its resolved position options on each open. */
+  top: 6px;
+  /* Clear the vertical scrollbar gutter so the widget never sits over the scrollbar thumb. */
+  right: calc(var(--pte-scrollbar-size, 10px) + 8px);
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  padding: 6px 8px;
+  /* Tinted chrome so the white input field and the buttons on it read as distinct roles. */
+  background: var(--pte-header-background-color);
+  border: 1px solid var(--pte-overlay-border-color);
+  border-radius: 8px;
+  box-shadow: var(--pte-overlay-shadow);
+  font-family: var(--pte-font-family);
+  font-size: var(--pte-font-size);
+}
+
+.pte-quick-filter.pte-quick-filter-open,
+.pte-quick-filter.pte-quick-filter-has-indicator {
+  display: inline-flex;
+}
+
+/* In collapsed-indicator state the wrapper is shown for the pill only, so hide the search row and
+   any expanded options; conversely the pill is always laid out but only shown in that state. */
+.pte-quick-filter.pte-quick-filter-has-indicator .pte-quick-filter-row,
+.pte-quick-filter.pte-quick-filter-has-indicator .pte-quick-filter-options-panel {
+  display: none;
+}
+
+/* The collapsed pill: filter icon + the active search text, on the same tinted chrome. */
+.pte-quick-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--pte-text-color);
+  font: inherit;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.pte-quick-filter-pill[hidden] {
+  display: none;
+}
+
+.pte-quick-filter-pill:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-quick-filter-pill-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-filter);
+  /* Tint the icon with the active-filter accent so the pill reads as "a filter is on". */
+  background-color: var(--pte-hcell-filter-active-color);
+}
+
+.pte-quick-filter-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The search row: [ field ] options close. */
+.pte-quick-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The text-entry field: search icon + input + clear, on a plain input background with a border,
+   so it stands out against the tinted container. */
+.pte-quick-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  padding: 3px 6px;
+  background: var(--pte-input-bg-color);
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+}
+
+.pte-quick-filter-field:focus-within {
+  border-color: var(--pte-select-border-color);
+}
+
+.pte-quick-filter-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-filter);
+  background-color: var(--pte-icon-color);
+}
+
+.pte-quick-filter-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--pte-text-color);
+  font: inherit;
+  width: 220px;
+  padding: 2px 2px;
+}
+
+.pte-quick-filter-input::placeholder {
+  color: var(--pte-muted-text-color);
+}
+
+/* Shared base for the icon/glyph buttons in the row (clear, options, close). */
+.pte-quick-filter-clear,
+.pte-quick-filter-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--pte-muted-text-color);
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+/* Only reveal the clear button when there's text — but keep its box laid out (visibility, not
+   display) so the widget's width doesn't shift as the button appears/disappears. visibility:hidden
+   also removes it from the pointer-event target set, so the invisible button is inert. */
+.pte-quick-filter-clear[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}
+
+.pte-quick-filter-clear,
+.pte-quick-filter-close {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.pte-quick-filter-clear:hover,
+.pte-quick-filter-btn:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+/* The options button's own background is the hover highlight; its icon lives in a child span so the
+   hover background never overwrites the icon's mask fill (the previous bug that made it vanish). */
+.pte-quick-filter-options-icon {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-menu);
+  background-color: var(--pte-icon-color);
+}
+
+.pte-quick-filter-options[aria-expanded="true"] {
+  background: var(--pte-hover-bg-color);
+}
+
+/* Options panel revealed inline below the search row when the widget is expanded. */
+.pte-quick-filter-options-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 2px 4px;
+  margin-top: 6px;
+  border-top: 1px solid var(--pte-border-color);
+}
+
+.pte-quick-filter-options-panel[hidden] {
+  display: none;
+}
+
+.pte-quick-filter-option-row {
+  display: flex;
+  align-items: center;
+}
+
+/* Divider between the match-controls section and the layout-controls section of the panel. */
+.pte-quick-filter-option-sep {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--pte-border-color);
+}
+
+.pte-quick-filter-option-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pte-text-color);
+  font-size: var(--pte-font-size);
+  width: 100%;
+  justify-content: space-between;
+}
+
+/* Match the grid's other selects (e.g. the pagination page-size select). */
+.pte-quick-filter-option-select {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font: inherit;
+}
+
+.pte-quick-filter-option-select:focus,
+.pte-quick-filter-option-select:focus-visible {
+  outline: none;
+  border-color: var(--pte-select-border-color);
+}
+
+.pte-scroller-left {
+  overflow: auto;
+  overflow-anchor: none;
+  position: relative;
+  scrollbar-width: none;
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-scroller-leading {
+  overflow: hidden auto;
+  overflow-anchor: none;
+  position: relative;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+  background-color: var(--pte-header-background-color);
+}
+
+.pte-scroller-leading.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-scroller-left.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-scroller-right {
+  overflow: auto;
+  overflow-anchor: none;
+  position: relative;
+  scrollbar-width: none;
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-scroller-right.visible {
+  border-left: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-scroller {
+  overflow: auto;
+  overflow-anchor: none;
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: row-reverse;
+  scrollbar-width: none;
+}
+
+.pte-scroller-vertical-container {
+  width: 15px;
+  z-index: 1;
+  display: none;
+}
+
+.pte-scroller-vertical-spacer {
+  width: 15px;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overflow-anchor: none;
+}
+
+.pte-scroller-vertical {
+  width: 15px;
+}
+
+.pte-scroller-horizontal-left-container {
+  flex: 0 0 auto;
+  height: 15px;
+  min-height: 15px;
+  z-index: 1;
+}
+
+.pte-scroller-horizontal-leading-container {
+  flex: 0 0 auto;
+  height: 15px;
+  min-height: 15px;
+  z-index: 1;
+}
+
+.pte-scroller-horizontal-container {
+  flex: 1 1 auto;
+  height: 15px;
+  z-index: 1;
+  width: 100%;
+}
+
+.pte-scroller-horizontal-right-container {
+  flex: 0 0 auto;
+  height: 15px;
+  z-index: 1;
+}
+
+.pte-scroller-horizontal-spacer {
+  height: 15px;
+  width: 100%;
+  overflow-y: hidden;
+  overflow-x: scroll;
+}
+
+.pte-scroller-horizontal {
+  height: 15px;
+}
+
+.pte-spacer-left {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pte-spacer-leading {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.pte-spacer {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pte-spacer-right {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pte-viewport-leading,
+.pte-viewport-left,
+.pte-viewport-right,
+.pte-viewport {
+  will-change: transform;
+}
+
+.pte-viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+
+.pte-hcell {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  font-weight: var(--pte-header-font-weight);
+  user-select: none;
+  flex-direction: column;
+}
+
+.pte-hcell.selected {
+  background-color: var(--pte-selected-bg-color);
+}
+
+.pte-hcell-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.pte-hcell-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.pte-hcell-resize-handle:after {
+  content: " ";
+  position: absolute;
+  top: calc(50% - 40% / 2);
+  right: 3px;
+  height: 40%;
+  width: 2px;
+  background-color: var(--pte-resize-handle-color);
+}
+
+.pte-hcell-resize-disabled {
+  cursor: default;
+}
+
+.pte-hcell.selected .pte-hcell-resize-handle:after {
+  background-color: var(--pte-selected-resize-handle-color);
+}
+
+.pte-hcell-container {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--pte-cell-padding-top);
+  padding-bottom: var(--pte-cell-padding-bottom);
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  width: 100%;
+  border: 1px solid transparent;
+  border-bottom: none;
+}
+
+.pte-hcell:not(.pte-hcell-leaf) .pte-hcell-container {
+  border-bottom: 1px solid var(--pte-border-color);
+}
+
+.pte-hcell-container:hover {
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-hcell-row-number .pte-hcell-container,
+.pte-hcell-row-number .pte-hcell-container:hover {
+  justify-content: center;
+  background-color: var(--pte-header-background-color);
+  cursor: default;
+}
+
+.pte-hcell.selected .pte-hcell-container:hover {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
+.pte-hcell.selected .pte-hcell-container {
+  background-color: var(--pte-selected-bg-color);
+}
+
+.pte-hcell.selected-top .pte-hcell-container {
+  border-top: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-hcell.not-selected-top .pte-hcell-container {
+  border-top: 1px solid transparent;
+}
+
+.pte-hcell.selected-left .pte-hcell-container {
+  border-left: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-hcell.not-selected-left .pte-hcell-container {
+  border-left: 1px solid transparent;
+}
+
+.pte-hcell.selected-right .pte-hcell-container {
+  border-right: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-hcell.not-selected-right .pte-hcell-container {
+  border-right: 1px solid transparent;
+}
+
+.pte-hcell-container.pte-hcell-computable {
+  flex-direction: row-reverse;
+}
+
+.pte-hcell-content {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.pte-hcell-expander {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pte-hcell-expander-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-hcell-container.pte-hcell-computable .pte-hcell-content {
+  flex-direction: row-reverse;
+}
+
+/* Dedicated, clickable sort affordance. Lives inside .pte-hcell-content (after the label), so it
+   inherits the row-reverse flip on computable columns. Direction/priority state is set via the
+   pte-sort-asc / pte-sort-desc / pte-sort-none classes and pte-has-priority. */
+.pte-hcell-sort {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+/* On right-aligned (computable) columns the content is row-reversed, so mirror the sort element too:
+   the arrow stays next to the label and the priority badge moves to the outer edge. This keeps the
+   layout a true mirror of left-aligned columns and makes the badge (not the arrow) the first thing
+   clipped when the column is narrowed. */
+.pte-hcell-container.pte-hcell-computable .pte-hcell-sort {
+  flex-direction: row-reverse;
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+.pte-hcell-sort-arrow {
+  width: 22px;
+  height: 22px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: var(--pte-icon-color);
+}
+
+.pte-hcell-sort.pte-sort-asc .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-asc);
+}
+
+.pte-hcell-sort.pte-sort-desc .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-desc);
+}
+
+/* Neutral (unsorted) state: a dimmed clear/none glyph signalling the column is sortable. */
+.pte-hcell-sort.pte-sort-none .pte-hcell-sort-arrow {
+  mask-image: var(--pte-icon-sort-clear);
+  opacity: 0.4;
+}
+
+/* At rest the neutral icon is hidden; it's revealed on header hover / keyboard focus, unless the
+   column opts into a persistent neutral icon (pte-sort-persist, from unSortIcon). A column with an
+   active sort (asc/desc) always shows its arrow. */
+.pte-hcell-sort.pte-sort-none:not(.pte-sort-persist) {
+  visibility: hidden;
+}
+
+.pte-hcell:hover .pte-hcell-sort.pte-sort-none,
+.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none {
+  visibility: visible;
+}
+
+/* Multi-column sort priority badge. */
+.pte-hcell-sort-priority {
+  display: none;
+  font-size: 10px;
+  line-height: 1;
+  min-width: 12px;
+  text-align: center;
+  color: var(--pte-muted-text-color);
+}
+
+.pte-hcell-sort.pte-has-priority .pte-hcell-sort-priority {
+  display: inline-block;
+}
+
+.pte-hcell-children {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.pte-hcell-menu {
+  display: flex;
+  align-items: center;
+}
+
+.pte-hcell-container.pte-hcell-computable .pte-hcell-menu {
+  flex-direction: row-reverse;
+}
+
+.pte-hcell-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pte-hcell-menu-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.pte-hcell-menu-btn:hover {
+  background-color: var(--pte-menu-btn-hover-bg);
+}
+
+/* showColumnButtonsOnHover: hide the header menu / filter buttons until the header cell is hovered
+   or keyboard-focused. An active-filter button (pte-hcell-menu-filter-active) stays visible so a
+   filtered column is never silently hidden. */
+.pte-column-buttons-on-hover .pte-hcell-menu-btn {
+  visibility: hidden;
+}
+
+.pte-column-buttons-on-hover .pte-hcell:hover .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
+  visibility: visible;
+}
+
+.pte-hcell-menu-flyout {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 5px;
+  background-color: var(--pte-hcell-filter-active-color);
+  border-radius: 50%;
+}
+
+.pte-column-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  background-color: var(--pte-column-drag-ghost-bg);
+  border: 1px solid var(--pte-column-drag-ghost-border-color);
+  box-shadow: var(--pte-drag-shadow);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--pte-header-font-weight);
+  color: var(--pte-column-drag-ghost-text-color);
+  opacity: 0.95;
+  z-index: 10000;
+  transition: width 0.2s ease, height 0.2s ease;
+  transition-delay: .3s;
+}
+
+.pte-column-drag-ghost-content {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 25px 25px
+}
+
+.pte-column-drag-ghost-icon {
+  width: 18px;
+  height: 18px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-column-drag-ghost-label {
+  white-space: nowrap;
+}
+
+.pte-column-drop-indicator {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  background-color: var(--pte-selected-border-color);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
+
+.pte-root.pte-column-dragging,
+.pte-root.pte-column-dragging * {
+  cursor: move !important;
+}
+
+.pte-root.pte-column-dragging-not-allowed,
+.pte-root.pte-column-dragging-not-allowed * {
+  cursor: not-allowed !important;
+}
+
+.pte-hcell-menu-btn.active+.pte-hcell-menu-flyout {
+  display: block;
+}
+
+.pte-aggregate-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-aggregate-menu-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pte-icon-color);
+  cursor: pointer;
+}
+
+.pte-aggregate-menu-button:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-aggregate-menu-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-filter-icon {
+  mask-image: var(--pte-icon-filter);
+  background-color: var(--pte-icon-color);
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-menu-icon {
+  mask-image: var(--pte-icon-menu);
+  background-color: var(--pte-icon-color);
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.pte-row {
+  display: flex;
+}
+
+.pte-row-hover {
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-row-alt {
+  background-color: var(--pte-row-alt-bg-color);
+}
+
+.pte-cell.pte-col-hover {
+  background-color: var(--pte-column-hover-bg-color);
+}
+
+/* "text" cell-selection mode — revert cells to native browser text selection (plain-table feel). */
+.pte-text-selection .pte-cell {
+  user-select: text;
+  cursor: text;
+}
+
+.pte-cell {
+  padding-top: var(--pte-cell-padding-top);
+  padding-bottom: var(--pte-cell-padding-bottom);
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  /* height: calc(var(--pte-row-height) - var(--pte-row-border-size)); */
+  display: flex;
+  align-items: center;
+  cursor: default;
+  border: 1px solid transparent;
+  user-select: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pte-cell.pte-cell-custom-renderer {
+  padding: 0;
+}
+
+/* Row grouping */
+.pte-row.pte-group-row {
+  font-weight: 600;
+}
+
+.pte-cell.pte-group-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pte-group-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pte-group-toggle:hover {
+  background-color: var(--pte-menu-btn-hover-bg);
+}
+
+.pte-tree-toggle-spacer {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+}
+
+.pte-group-toggle-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+.pte-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Full-width rows (groupDisplayType "groupRows", and rows opted in via isFullWidthRow). The content
+   lives in a single host cell inside the center row and is pinned to the left edge while the body
+   scrolls horizontally. groupRows headings are column-width constrained; isFullWidthRow content
+   spans the visible center body. */
+.pte-row.pte-full-width-row {
+  font-weight: 600;
+}
+
+.pte-cell.pte-full-width-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--pte-group-row-bg-color);
+  overflow: hidden;
+}
+
+.pte-cell.pte-cell-editing {
+  padding: 0;
+  /* Drop the cell's 1px border so the input's content box spans the full cell (border-box). */
+  border: none;
+  overflow: visible;
+}
+
+.pte-cell-editor-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  /* Match the cell's own padding so text stays put when the editor opens. */
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+}
+
+/* Select / dropdown editor — fills the cell like the text input. */
+.pte-cell-editor-select {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+}
+
+/* Multi-line textarea editor — overlays the cell without forcing the row taller. */
+.pte-cell-editor-textarea {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  font: inherit;
+  color: inherit;
+  background: var(--pte-input-bg-color, #fff);
+  resize: none;
+}
+
+/* Boolean (checkbox) editor — center the checkbox within the cell. */
+.pte-cell-editor-boolean {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--pte-input-bg-color, #fff);
+}
+
+.pte-sparkline-tooltip-target {
+  pointer-events: all;
+}
+
+.pte-sparkline-path {
+  fill: none;
+  stroke: var(--pte-sparkline-stroke-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pte-sparkline-point {
+  fill: var(--pte-sparkline-stroke-color);
+  stroke: var(--pte-root-bg-color);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.pte-sparkline-bar {
+  fill: var(--pte-sparkline-bar-color);
+}
+
+.pte-cell-flash {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  box-sizing: border-box;
+}
+
+.pte-cell-flash-up {
+  background-color: var(--pte-cell-flash-up-bg-color);
+}
+
+.pte-cell-flash-down {
+  background-color: var(--pte-cell-flash-down-bg-color);
+}
+
+.pte-cell-flash-neutral {
+  background-color: var(--pte-cell-flash-neutral-bg-color);
+}
+
+.pte-cell-flash-fading.pte-cell-flash-up,
+.pte-cell-flash-fading.pte-cell-flash-down,
+.pte-cell-flash-fading.pte-cell-flash-neutral {
+  background-color: transparent;
+  transition: background-color var(--pte-cell-flash-fade-duration, 1000ms) ease-out;
+}
+
+.pte-cell-right-aligned {
+  justify-content: flex-end;
+}
+
+.pte-row-number-cell {
+  justify-content: center;
+  color: var(--pte-muted-text-color);
+  background-color: var(--pte-header-background-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.pte-aggregate-row-number-cell {
+  color: transparent;
+}
+
+.pte-row:not(:last-child) {
+  border-bottom: var(--pte-row-border-size) solid var(--pte-border-color);
+}
+
+.pte-cell.selected {
+  background-color: var(--pte-selected-bg-color);
+  border-color: transparent;
+}
+
+.pte-row-hover .pte-cell.selected {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
+.pte-cell.selected-top {
+  border-top: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-bottom {
+  border-bottom: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-left {
+  border-left: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.selected-right {
+  border-right: 1px solid var(--pte-selected-border-color);
+}
+
+.pte-cell.pte-active-cell {
+  outline: 2px solid var(--pte-active-cell-border-color);
+  outline-offset: -2px;
+}
+
+.pte-menu {
+  flex-direction: column;
+  background-color: var(--pte-surface-bg-color);
+  border: 1px solid var(--pte-overlay-border-color);
+  padding: 6px 0;
+  box-shadow: var(--pte-overlay-shadow);
+  color: var(--pte-text-color);
+}
+
+.pte-menu-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  padding: 8px 12px;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  height: 34px;
+}
+
+.pte-menu-item:hover {
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-menu-separator {
+  border: none;
+  border-top: 1px solid var(--pte-border-color);
+  margin: 8px 0;
+}
+
+.pte-menu-item-icon-left {
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  width: 22px;
+  height: 22px;
+  margin-right: 12px;
+}
+
+.pte-menu-item-icon-right {
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  width: 22px;
+  height: 22px;
+}
+
+.pte-menu-item-text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pte-text-color);
+}
+
+.pte-menu-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.pte-menu-item.disabled:hover {
+  background-color: transparent;
+}
+
+.pte-menu-item:not(:has(.pte-menu-item-icon-left ~ .pte-menu-item-text)) .pte-menu-item-text {
+  margin-left: 34px;
+}
+
+.pte-filter-root {
+  padding: 6px 12px;
+}
+
+.pte-filter-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.pte-set-filter-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pte-set-filter-options {
+  display: flex;
+  flex-direction: column;
+  /* gap: 8px; */
+  overflow-y: auto;
+}
+
+.pte-set-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pte-set-filter-option input {
+  accent-color: var(--pte-checkbox-accent-color);
+  width: 14px;
+  height: 14px;
+}
+
+.pte-filter-join-toggle-container {
+  justify-content: space-evenly;
+  padding: 0 16px;
+  display: none;
+}
+
+.pte-filter-join-toggle-container.pte-filter-join-toggle-visible {
+  display: flex;
+}
+
+.pte-filter-join-toggle {
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.pte-filter-condition-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 400px);
+  overflow-y: auto;
+  margin-right: -12px;
+  scrollbar-gutter: stable;
+}
+
+.pte-set-filter-condition-container {
+  max-height: 300px;
+}
+
+.pte-set-filter-option {
+  cursor: pointer;
+  padding: 4px;
+  border: 1px solid transparent;
+}
+
+.pte-set-filter-option.focused {
+  border: 1px solid var(--pte-select-border-color);
+}
+
+.pte-filter-condition-row {
+  display: flex;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.pte-filter-label {
+  font-size: 12px;
+  color: var(--pte-muted-text-color);
+}
+
+.pte-filter-select,
+.pte-filter-input {
+  padding: 8px;
+  border: 1px solid var(--pte-control-border-color);
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  width: 100%;
+}
+
+.pte-filter-input::-webkit-outer-spin-button,
+.pte-filter-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.pte-filter-input:focus {
+  border-color: var(--pte-select-border-color);
+}
+
+.pte-filter-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+/* Leave room for the clear button so long values don't run under it. */
+.pte-filter-input-wrap .pte-filter-input {
+  padding-right: 28px;
+}
+
+.pte-filter-input-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pte-filter-input-clear:hover {
+  color: var(--pte-text-color);
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-filter-input-clear-visible .pte-filter-input-clear {
+  display: inline-flex;
+}
+
+.pte-filter-input[type="number"] {
+  appearance: none;
+  -moz-appearance: textfield;
+}
+
+.pte-filter-separator {
+  position: relative;
+  border-top: 1px solid var(--pte-border-color);
+  margin: 5px 0;
+}
+
+.pte-filter-separator::before {
+  content: attr(data-join);
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -50%);
+  background-color: var(--pte-root-bg-color);
+  padding: 0 8px;
+}
+
+.pte-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pte-filter-btn {
+  padding: 8px 10px;
+  border: 1px solid var(--pte-control-border-color);
+  background: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.pte-filter-btn:hover {
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-filter-btn:active {
+  background-color: var(--pte-selected-hover-bg-color);
+  border-color: var(--pte-selected-bg-color);
+}
+
+.pte-filter-btn.primary {
+  border: none;
+  background: var(--pte-button-primary-bg);
+  color: var(--pte-button-primary-text);
+}
+
+.icon-asc {
+  mask-image: var(--pte-icon-sort-asc);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-desc {
+  mask-image: var(--pte-icon-sort-desc);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-clear,
+.icon-sort-clear {
+  mask-image: var(--pte-icon-sort-clear);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-arrow-right {
+  mask-image: var(--pte-icon-submenu);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-group-collapsed {
+  mask-image: var(--pte-icon-group-collapsed);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-group-expanded {
+  mask-image: var(--pte-icon-group-expanded);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-check {
+  mask-image: var(--pte-icon-check);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-group {
+  mask-image: var(--pte-icon-group);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-col-hide {
+  mask-image: var(--pte-icon-column-hide);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-count {
+  mask-image: var(--pte-icon-count);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-distinct_count {
+  mask-image: var(--pte-icon-count);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-sum {
+  mask-image: var(--pte-icon-sum);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-avg {
+  mask-image: var(--pte-icon-avg);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-min-string {
+  mask-image: var(--pte-icon-min-string);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-min-number {
+  mask-image: var(--pte-icon-min-number);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-max-string {
+  mask-image: var(--pte-icon-max-string);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-max-number {
+  mask-image: var(--pte-icon-max-number);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-median {
+  mask-image: var(--pte-icon-median);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-drag {
+  mask-image: var(--pte-icon-drag);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-plus-frame {
+  mask-image: var(--pte-icon-plus-frame);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-minus-frame {
+  mask-image: var(--pte-icon-minus-frame);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-not-allowed {
+  mask-image: var(--pte-icon-not-allowed);
+  background-color: var(--pte-not-allowed-icon-color);
+}
+
+.icon-pin {
+  mask-image: var(--pte-icon-pin);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-copy {
+  mask-image: var(--pte-icon-copy);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-cut {
+  mask-image: var(--pte-icon-cut);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-paste {
+  mask-image: var(--pte-icon-paste);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-export {
+  mask-image: var(--pte-icon-export);
+  background-color: var(--pte-icon-color);
+}
+
+.pte-select {
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-select:focus,
+.pte-select:focus-visible {
+  border: 1px solid var(--pte-select-border-color);
+}
+
+.pte-aggregate-cell-content {
+  max-width: 70%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* ---------------- Tooltips / floating layer ---------------- */
+/* Base floating overlay (shared by tooltips; ActionFrame will reuse the same layer primitive). */
+.pte-floating {
+  box-sizing: border-box;
+}
+
+.pte-tooltip {
+  background: var(--pte-tooltip-bg);
+  color: var(--pte-tooltip-text-color);
+  border: 1px solid var(--pte-tooltip-border-color);
+  border-radius: var(--pte-tooltip-radius);
+  box-shadow: var(--pte-tooltip-shadow);
+  max-width: var(--pte-tooltip-max-width);
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+/* Interactive tooltips accept pointer events so their controls are clickable. */
+.pte-tooltip.pte-tooltip-interactive {
+  pointer-events: auto;
+}
+
+.pte-tooltip-text {
+  white-space: pre-wrap;
+}
+
+.pte-tooltip-custom-root {
+  display: block;
+}
+
+/* Arrow: a small rotated square pinned to the edge opposite the placement side. */
+.pte-floating-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--pte-tooltip-bg);
+  border: 1px solid var(--pte-tooltip-border-color);
+  transform: rotate(45deg);
+  z-index: -1;
+}
+
+.pte-tooltip[data-placement="bottom"] .pte-floating-arrow {
+  top: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.pte-tooltip[data-placement="top"] .pte-floating-arrow {
+  bottom: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-left: none;
+  border-top: none;
+}
+
+.pte-tooltip[data-placement="right"] .pte-floating-arrow {
+  left: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-top: none;
+  border-right: none;
+}
+
+.pte-tooltip[data-placement="left"] .pte-floating-arrow {
+  right: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-bottom: none;
+  border-left: none;
+}
+
+/* ---------------- ActionFrame ---------------- */
+/* The persistent frame border on a cell — deliberately distinct from the active-cell outline
+   (a solid accent border + soft glow), applied via a class re-stamped on the live cell. */
+.pte-cell.pte-action-frame {
+  border: 2px solid var(--pte-action-frame-border-color);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-action-frame-glow);
+  /* Sit above neighbouring cells so the full border shows over adjacent cell borders. */
+  z-index: 3;
+}
+
+/* The attached form popover. */
+.pte-action-frame-popover {
+  background: var(--pte-action-frame-popover-bg);
+  color: var(--pte-action-frame-popover-text-color);
+  border: 1px solid var(--pte-action-frame-popover-border-color);
+  border-radius: var(--pte-action-frame-popover-radius);
+  box-shadow: var(--pte-action-frame-popover-shadow);
+  width: var(--pte-action-frame-popover-width);
+  max-width: 90vw;
+  padding: 10px;
+  box-sizing: border-box;
+  /* Persistent + interactive: always accepts pointer events (unlike a display tooltip). */
+  pointer-events: auto;
+}
+
+.pte-action-frame-custom-root {
+  display: block;
+}
+
+/* Opt-in "has content" indicator — a small corner triangle in the cell's top-right, the
+   spreadsheet comment-marker convention. Drawn with a CSS triangle so it needs no extra DOM
+   (recycle-safe: the class is toggled per cell in the styling pass). The base .pte-cell has no
+   position, so scope a positioning context to the marked cell only (avoids affecting other cells). */
+.pte-cell.pte-action-frame-indicator {
+  position: relative;
+}
+
+.pte-cell.pte-action-frame-indicator::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 6px 6px 0;
+  border-color: transparent var(--pte-action-frame-border-color) transparent transparent;
+  pointer-events: none;
+}
