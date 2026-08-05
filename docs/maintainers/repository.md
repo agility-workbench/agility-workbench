@@ -31,15 +31,15 @@ the demo app.
 agility-workbench/                 ← private workspace root
 ├── package.json                   workspaces:["packages/*"], shared devDeps, orchestration scripts
 ├── tsconfig.base.json             shared compiler options (extended by every package)
-├── tsconfig.json                  root config for the playground app + editor (path aliases)
-├── vite.config.ts                 playground dev server; aliases → packages/*/src
+├── tsconfig.json                  root config for the react-playground app + editor (path aliases)
+├── vite.config.ts                 react-playground dev server; aliases → packages/*/src
 ├── vitest.config.ts               test discovery + aliases
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
 │   └── architecture/current-state.md   feature/architecture reference
 │
 ├── apps/
-│   └── playground/                demo app (NOT published; consumes packages via aliases)
+│   └── react-playground/          demo app (NOT published; consumes packages via aliases)
 │       ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
 │
 └── packages/
@@ -183,13 +183,13 @@ built `dist/*.d.ts` (tsup bundles them away), so they never leak to a consumer.
 | --- | --- |
 | `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^0.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
 | `npm run build` | `build:grid` then `build:react` — explicit order (react's typecheck needs grid's `dist/*.d.ts`; see §4B). |
-| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:playground`. Explicit, not workspace-traversal order. |
+| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:react-playground`. Explicit, not workspace-traversal order. |
 | `npm test` | Runs the full Vitest suite (458 tests across both packages), including the package-resolution regression guard. |
 | `npm run dev` | Starts the Vite demo at `http://localhost:5176`. |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
 The root scripts are deliberately explicit (`build:grid`/`build:react`, `typecheck:react`/
-`typecheck:playground`) rather than relying on unspecified `--workspaces` traversal order, because
+`typecheck:react-playground`) rather than relying on unspecified `--workspaces` traversal order, because
 react-grid's typecheck consumes grid's **generated** declarations.
 
 ## 6. Publishing to npm

@@ -24,8 +24,8 @@
     "build:react": "npm run build --workspace @agility-workbench/react-grid",
     "build": "npm run build:grid && npm run build:react",
     "typecheck:react": "npm run typecheck --workspace @agility-workbench/react-grid",
-    "typecheck:playground": "tsc --noEmit",
-    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:playground",
+    "typecheck:react-playground": "tsc --noEmit",
+    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:react-playground",
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "npm run clean --workspaces --if-present && rm -rf dist dist-demo"

@@ -12,5 +12,5 @@
       "@react-grid/*": ["./packages/react-grid/src/*"]
     }
   },
-  "include": ["apps/playground", "vite.config.ts", "vitest.config.ts"]
+  "include": ["apps/react-playground", "vite.config.ts", "vitest.config.ts"]
 }

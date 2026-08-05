@@ -135,7 +135,7 @@ Grouped by area; each maps to a §5 sub-table.
 ## 3. Directory Structure & Module Map
 
 > Paths below are relative to `packages/grid/src/` unless noted. The React wrapper lives in
-> `packages/react-grid/src/` and the demo in `apps/playground/` (both shown at the end).
+> `packages/react-grid/src/` and the demo in `apps/react-playground/` (both shown at the end).
 
 ```
 packages/grid/src/
@@ -348,7 +348,7 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 ├── BodyMenuAdapter.ts         Adapter: getBodyMenuItems → MenuAdapter interface
 └── MenuAdapter.ts             Adapter: getColumnMenuItems → MenuAdapter interface
 
-apps/playground/                          Demo app (Vite-based, not tests)
+apps/react-playground/                    Demo app (Vite-based, not tests)
 ├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
 ├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
 ├── ColumnStateDemo.tsx  SelectionDemo.tsx  GroupingDemo.tsx  ServerSideGroupingDemo.tsx
@@ -415,7 +415,7 @@ Unlike `setRowData` (which clears undo/redo history and does a full refresh), a 
 edit history — undo/redo entries reference rows by id and stay valid for rows that still exist.
 Preserving node identity on `update` is what lets delta-aware renderers (change-flash, sparklines)
 detect changes. Pure updates keep row positions unless `reevaluateOnEdit` is set; add/remove always
-reflow the view. See `apps/playground/App.tsx` → `TradingGrid` for a live streaming example.
+reflow the view. See `apps/react-playground/App.tsx` → `TradingGrid` for a live streaming example.
 
 ### 4.4 Server-Side Flow
 
@@ -887,7 +887,7 @@ formulas, grouping/outline — read back with exceljs), `renderer/exportRenderer
 `sparklineResize`, `applyTransaction`, plus `lifecycle.strictmode.test.tsx`,
 `cellEditor.test.tsx`, `publicExports.test.ts`, and the `packageResolution.test.ts` boundary guard.
 
-The `apps/playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` (from the repo root, runs the whole workspace suite) or `npm run test:watch`.
+The `apps/react-playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` (from the repo root, runs the whole workspace suite) or `npm run test:watch`.
 
 ---
 
@@ -901,7 +901,7 @@ This is an npm-workspaces monorepo; scripts run from the repo root unless noted.
 | `npm run dev` | Vite dev server for the demo app (`http://localhost:5176`) |
 | `npm run build` | `build:grid` then `build:react` (explicit order — react typecheck needs grid's `dist/*.d.ts`) |
 | `npm run test` | vitest single run across both packages |
-| `npm run typecheck` | build grid, then typecheck grid → react → playground |
+| `npm run typecheck` | build grid, then typecheck grid → react → react-playground |
 | `npm run clean` | clean each package's `dist/` + root `dist-demo/` |
 
 Each package's `dist/` produces `index.js` (ESM), `index.cjs` (CJS), and `index.d.ts` / `.d.cts`

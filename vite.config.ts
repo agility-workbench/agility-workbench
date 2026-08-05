@@ -7,7 +7,7 @@ const reactSrc = path.resolve(__dirname, "packages/react-grid/src");
 
 export default defineConfig({
   plugins: [react()],
-  root: "apps/playground",
+  root: "apps/react-playground",
   resolve: {
     alias: {
       "@agility-workbench/grid": gridSrc,
