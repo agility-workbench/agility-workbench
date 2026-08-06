@@ -32,7 +32,7 @@
   },
   "scripts": {
     "build": "npm run clean && ng-packagr -p ng-package.json -c tsconfig.lib.json && node scripts/strip-sourcemaps.mjs",
-    "typecheck": "tsc -p tsconfig.lib.json --noEmit",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },

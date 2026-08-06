@@ -4,7 +4,9 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ColumnType } from "@agility-workbench/grid";
-import { Grid } from "./grid";
+// Imported through the public entry rather than "./grid": this doubles as a runtime assertion
+// that the core style helpers are re-exported from the React package.
+import { areGridStylesInjected, Grid } from "./index";
 
 beforeAll(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,24 +38,30 @@ async function mountGrid(extraProps: Record<string, unknown> = {}) {
   return { root, container };
 }
 
-// Assertions are written against the *change* in the count rather than an
-// absolute value, because injection dedupes per document for the lifetime of
-// the module and these tests share one happy-dom document.
+// These cases are order-dependent: delivery dedupes per document for the lifetime of the module
+// and they share one happy-dom document. The opt-out case therefore has to run before anything
+// injects, and the nonce case has to be the first mount that does.
 describe("automatic stylesheet delivery", () => {
   it("does not inject when the application opts out", async () => {
-    const before = styleCount();
     await mountGrid({ suppressStyleInjection: true });
-    expect(styleCount()).toBe(before);
+    expect(styleCount()).toBe(0);
+    expect(areGridStylesInjected()).toBe(false);
   });
 
-  it("injects the stylesheet when the grid attaches", async () => {
-    await mountGrid();
+  it("injects the stylesheet on attach, carrying a styleNonce through from props", async () => {
+    await mountGrid({ styleNonce: "test-nonce" });
+    const style = document.querySelector("#pte-grid-styles");
+
     expect(styleCount()).toBe(1);
-    expect(document.querySelector("#pte-grid-styles")?.textContent).toContain(".pte-root");
+    expect(style?.textContent).toContain(".pte-root");
+    expect(areGridStylesInjected()).toBe(true);
+    // The nonce reaches the element only when delivery runs through the renderer, which reads it
+    // from core options. A wrapper-level injectGridStyles() would land first with no nonce and
+    // then suppress the real one via the dedupe-by-id guard, leaving the grid unstyled under CSP.
+    expect(style?.getAttribute("nonce")).toBe("test-nonce");
   });
 
   it("does not add a second copy for a second grid on the page", async () => {
-    await mountGrid();
     await mountGrid();
     expect(styleCount()).toBe(1);
   });

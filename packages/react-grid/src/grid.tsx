@@ -6,7 +6,7 @@ import { createCore, getGridOptions } from "./factory";
 import type { IGridAPI } from "@agility-workbench/grid";
 import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
-import { initDomRenderer, injectGridStyles } from "@agility-workbench/grid";
+import { initDomRenderer } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
 
 type GridInstance = {
@@ -99,7 +99,6 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const instance: GridInstance = { core, renderer, api, destroyed: false };
       instanceRef.current = instance;
 
-      if (!props.suppressStyleInjection) injectGridStyles();
       renderer.attach({ current: host });
       core.dispatch({ type: "init" });
       assignRef(forwardedRef, api);

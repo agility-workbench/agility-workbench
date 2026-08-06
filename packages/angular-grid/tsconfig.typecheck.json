@@ -1,0 +1,19 @@
+{
+  // Type-checking only (`tsc --noEmit`), covering the wrapper *and* its test suite. The build
+  // config excludes tests so they never reach the published package, and tsconfig.spec.json is
+  // shaped for the analog compiler (it pulls in the core's source, whose internal "@grid/*"
+  // aliases do not resolve under plain tsc). Neither is usable here, hence a third config.
+  //
+  // Like the React package, this resolves `@agility-workbench/grid` as a normal workspace
+  // dependency — node_modules/@agility-workbench/grid → packages/grid → dist/index.d.ts — so the
+  // tests are checked against the exact surface consumers get, which catches core-interface
+  // drift. Consequence: the grid package must be built first; the root "typecheck" script
+  // enforces that order.
+  //
+  // Compiler options are inherited untouched — including `declaration`, so the declaration-emit
+  // diagnostics that guard the published surface are still reported. That makes this a strict
+  // superset of tsconfig.lib.json, which is why "typecheck" runs this one alone.
+  "extends": "./tsconfig.lib.json",
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

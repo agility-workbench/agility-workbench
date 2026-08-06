@@ -1,5 +1,9 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { generateGridCss } from "./generateGridCss";
+
+// The suite imports the core's CSS-derived modules, which are gitignored build artifacts.
+generateGridCss();
 
 const gridSrc = path.resolve(__dirname, "packages/grid/src");
 const reactSrc = path.resolve(__dirname, "packages/react-grid/src");
