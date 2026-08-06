@@ -8,9 +8,14 @@ export type MountedGridHost<T> = {
 };
 
 /** Mount a standalone host and flush AwbGrid's afterNextRender creation callback. */
-export async function mountGridHost<T>(hostType: Type<T>, height = 600): Promise<MountedGridHost<T>> {
+export async function mountGridHost<T>(
+  hostType: Type<T>,
+  height = 600,
+  configure?: (host: T) => void,
+): Promise<MountedGridHost<T>> {
   TestBed.configureTestingModule({ imports: [hostType] });
   const fixture = TestBed.createComponent(hostType);
+  configure?.(fixture.componentInstance);
   fixture.detectChanges();
 
   const gridEl = fixture.nativeElement.querySelector("awb-grid") as HTMLElement | null;

@@ -40,8 +40,11 @@ abstract class NgMenuAdapterBase {
     if (typeof slot === "string") return slot;
     if (slot instanceof HTMLElement) return slot;
 
-    if (slot instanceof TemplateRef) {
-      const { el, destroy } = this.stampTemplate(slot);
+    // Angular's concrete TemplateRef implementations are not guaranteed to preserve
+    // `instanceof TemplateRef` across compilation/runtime boundaries. Treat the public
+    // createEmbeddedView contract as the discriminator instead.
+    if (typeof (slot as TemplateRef<unknown>).createEmbeddedView === "function") {
+      const { el, destroy } = this.stampTemplate(slot as TemplateRef<unknown>);
       cleanups.push(destroy);
       return el;
     }
