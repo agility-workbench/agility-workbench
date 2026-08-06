@@ -25,6 +25,7 @@
     "build:react": "npm run build --workspace @agility-workbench/react-grid",
     "build:angular": "npm run build --workspace @agility-workbench/angular-grid",
     "build": "npm run build:grid && npm run build:react && npm run build:angular",
+    "pack:packages": "npm run build:grid && npm run build:angular && mkdir -p artifacts/npm && npm_config_cache=/tmp/agility-workbench-npm-cache npm pack ./packages/grid --ignore-scripts --pack-destination artifacts/npm && npm_config_cache=/tmp/agility-workbench-npm-cache npm pack ./packages/angular-grid/dist --ignore-scripts --pack-destination artifacts/npm",
     "typecheck:react": "npm run typecheck --workspace @agility-workbench/react-grid",
     "typecheck:angular": "npm run typecheck --workspace @agility-workbench/angular-grid",
     "typecheck:react-playground": "tsc --noEmit",
