@@ -14,6 +14,7 @@ import {
 import type { ReactColDef } from "./cellRenderer";
 import type {
   ActionFrameComponentParams,
+  CellRenderer,
   CellRendererParams,
   ICellRenderer,
   IGridAPI,
@@ -51,6 +52,8 @@ class CoreClassRenderer implements ICellRenderer {
   private el = document.createElement("span");
   init(params: CellRendererParams): void { this.el.textContent = String(params.value); }
   getGui(): HTMLElement { return this.el; }
+  refresh(): boolean { return true; }
+  destroy(): void {}
 }
 
 function rendererParams(value: unknown, extra?: object): CellRendererParams {
@@ -121,7 +124,7 @@ describe("adaptCellRenderer", () => {
     const Adapted = adaptCellRenderer(NameCell);
     expect(Adapted).not.toBe(NameCell);
     expect(adaptCellRenderer(NameCell)).toBe(Adapted);
-    expect(adaptCellRenderer(CoreClassRenderer)).toBe(CoreClassRenderer);
+    expect(adaptCellRenderer(CoreClassRenderer as unknown as CellRenderer)).toBe(CoreClassRenderer);
     expect(adaptCellRenderer(undefined)).toBeUndefined();
   });
 
@@ -152,6 +155,50 @@ describe("adaptCellRenderer", () => {
 
     const defaults = adaptReactDefaultColDef({ cellRenderer: NameCell });
     expect(defaults?.cellRenderer).toBe(group.children?.[0].cellRenderer);
+  });
+});
+
+describe("React renderer refresh reasons", () => {
+  it("delivers refreshReason='resize' to React component renderers after a column resize", async () => {
+    const refreshReasons: Array<string | undefined> = [];
+    function RecordingCell(props: CellRendererParams) {
+      refreshReasons.push(props.refreshReason);
+      return <span className="recording-cell">{String(props.value)}</span>;
+    }
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          rowData={[
+            { id: "1", region: "EMEA", sales: 10 },
+            { id: "2", region: "APAC", sales: 20 },
+          ]}
+          columnDefs={[
+            { colId: "region", key: "region", label: "Region" },
+            { colId: "sales", key: "sales", label: "Sales", cellRenderer: RecordingCell, resizable: true },
+          ]}
+          rowIdKey="id"
+        />,
+      );
+    });
+
+    const core = apiRef.current!.getCore();
+    const sales = core.getColumnModel().getByColId("sales")!;
+    refreshReasons.length = 0; // drop the initial mount renders
+
+    await act(async () => {
+      core.dispatch({ type: "columnResize", colId: sales.instanceID, widthPx: sales.computedWidth + 60 });
+    });
+
+    expect(refreshReasons.length).toBeGreaterThan(0);
+    expect(refreshReasons.every((reason) => reason === "resize")).toBe(true);
+    await act(async () => { root.unmount(); });
   });
 });
 

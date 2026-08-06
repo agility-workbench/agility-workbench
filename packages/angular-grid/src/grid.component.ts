@@ -20,6 +20,7 @@ import {
   IGridAPI,
   IGridCore,
   initDomRenderer,
+  injectGridStyles,
 } from "@agility-workbench/grid";
 import type {
   BodyMenuContext,
@@ -81,6 +82,13 @@ function destroyInstance(instance: GridInstance): void {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AwbGrid implements OnDestroy {
+  /**
+   * The grid injects its base stylesheet into `document.head` on first attach (deduped across
+   * instances). Set to true when the application delivers the CSS itself (styles.css import or a
+   * scoped `injectGridStyles(shadowRoot)`). Read once at creation — not reconciled live.
+   */
+  readonly suppressStyleInjection = input<boolean | undefined>();
+
   // --- data ---
   readonly rowData = input<unknown[] | undefined>();
   readonly columnDefs = input<NgColDef[] | ColDef[] | null | undefined>();
@@ -267,6 +275,7 @@ export class AwbGrid implements OnDestroy {
       );
       const created: GridInstance = { core, renderer, api, destroyed: false };
 
+      if (!this.suppressStyleInjection()) injectGridStyles();
       renderer.attach({ current: this.host.nativeElement });
       core.dispatch({ type: "init" });
       // Columns and rows are not GridOptions: apply them right after init, in the same synchronous

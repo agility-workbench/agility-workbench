@@ -26,6 +26,13 @@ export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWi
   /* If true, shows loading overlay */
   loading?: boolean;
 
+  /**
+   * The grid injects its base stylesheet into `document.head` on mount (deduped across instances).
+   * Set to true when the application delivers the CSS itself (styles.css import or a scoped
+   * `injectGridStyles(shadowRoot)`). Read once at mount — not reconciled live.
+   */
+  suppressStyleInjection?: boolean;
+
   /** Hook to customize column menu items */
   getColumnMenuItems?: (p: { ctx: ColumnMenuContext; items: MenuItem[] }) => MenuItem[];
 
