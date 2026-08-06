@@ -246,8 +246,12 @@ Both packages are publish-ready. Current state of the manifests:
   registry via its `^0.1.0` range. Its tarball is tiny because the core is not bundled in.
 - ✅ **Dual module formats.** Both ship ESM + CJS + type declarations, resolved through the
   `exports` map for modern bundlers and `main`/`module`/`types` for legacy resolution.
-- ✅ **CSS delivered two ways** from the core: `import "@agility-workbench/grid/styles.css"`
-  or the zero-import `injectGridStyles()`.
+- ✅ **CSS needs no setup.** The grid injects its own stylesheet on attach — a `<style>` first
+  in `<head>` for documents (so author CSS still wins at equal specificity; `styleNonce` covers
+  strict CSP), and `adoptedStyleSheets` for shadow roots (CSP-exempt, and document styles do not
+  cross the boundary). `import "@agility-workbench/grid/styles.css"` remains available as an
+  escape hatch for CSP-restricted apps and build-time CSS tooling; pair it with
+  `suppressStyleInjection` so the two copies do not fight in the cascade.
 - ✅ **Provenance** attestation is enabled (`publishConfig.provenance`), giving consumers a
   verifiable supply-chain link when published from CI with `id-token: write`.
 

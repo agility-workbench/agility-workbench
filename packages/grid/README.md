@@ -28,7 +28,6 @@ npm install @agility-workbench/react-grid react react-dom
 
 ```ts
 import { CanvasMeasurer, ColumnType, GridCore, initDomRenderer } from "@agility-workbench/grid";
-import "@agility-workbench/grid/styles.css";
 
 const core = new GridCore(new CanvasMeasurer(), {
   rowIdKey: "id",
@@ -316,20 +315,40 @@ change.
 
 ## Styling
 
-The grid needs its stylesheet loaded once. Two options:
+Nothing to do — the grid delivers its own stylesheet when it attaches, once per
+document, and once per shadow root for grids inside one. There is no CSS import
+to remember and no unstyled-grid failure mode.
 
-**1. Import the stylesheet** (recommended — cacheable, no runtime cost):
+Two cases need a little more:
+
+**Strict Content Security Policy.** Injection into a document uses a `<style>`
+element, which needs `style-src 'unsafe-inline'` or a nonce. If your CSP has
+neither, pass one:
+
+```ts
+{ styleNonce: "per-request-random-value" }
+```
+
+Nonces are page-global, so give every grid on the page the same value. Grids
+inside a shadow root need no nonce — those are styled via CSSOM, which CSP's
+`style-src` does not cover.
+
+**Loading the stylesheet yourself.** Opt out and import it instead:
 
 ```ts
 import "@agility-workbench/grid/styles.css";
+// and on every grid:
+{ suppressStyleInjection: true }
 ```
 
-**2. Inject it from JS** (zero-import, e.g. for environments where importing CSS is awkward):
+Opting out matters if you do this: without it both copies apply, and the
+injected one sorts later in the cascade, so it would start winning over
+overrides you wrote against the imported sheet. This path also suits build-time
+CSS tooling such as critical-CSS extraction, which cannot see injected styles.
 
-```ts
-import { injectGridStyles } from "@agility-workbench/grid";
-injectGridStyles(); // no-op during SSR; deduped across calls
-```
+`injectGridStyles(target?, { nonce })` remains exported if you want to place the
+stylesheet yourself, ahead of the first grid mounting. It is idempotent and a
+no-op during SSR.
 
 ## Theming
 
@@ -384,7 +403,7 @@ new GridCore(new CanvasMeasurer(), {
 | Import | Contents |
 | --- | --- |
 | `@agility-workbench/grid` | Framework-agnostic core, public enums, event payload types, theming API |
-| `@agility-workbench/grid/styles.css` | The base stylesheet (icons inlined) |
+| `@agility-workbench/grid/styles.css` | The base stylesheet (icons inlined). Optional — the grid injects it automatically; see [Styling](#styling) |
 
 Public enums and event payload types are available from the package entry point:
 

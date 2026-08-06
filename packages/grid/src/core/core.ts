@@ -229,6 +229,8 @@ export class GridCore implements IGridCore {
       cellFadeDuration: options.cellFadeDuration != null && options.cellFadeDuration >= 0 ? options.cellFadeDuration : 1000,
       icons: options.icons,
       theme: options.theme,
+      suppressStyleInjection: options.suppressStyleInjection ?? false,
+      styleNonce: options.styleNonce,
     };
   }
 

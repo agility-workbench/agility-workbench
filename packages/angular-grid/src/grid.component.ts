@@ -110,6 +110,8 @@ export class AwbGrid implements OnDestroy {
   readonly showColumnButtonsOnHover = input<GridOptions["showColumnButtonsOnHover"]>();
   readonly theme = input<GridOptions["theme"]>();
   readonly icons = input<GridOptions["icons"]>();
+  readonly suppressStyleInjection = input<GridOptions["suppressStyleInjection"]>();
+  readonly styleNonce = input<GridOptions["styleNonce"]>();
 
   // --- selection ---
   readonly rowSelection = input<GridOptions["rowSelection"]>();

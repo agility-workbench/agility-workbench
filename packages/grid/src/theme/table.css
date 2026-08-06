@@ -1,4 +1,9 @@
+/* `:host` is required alongside `:root` so the variable block still applies when
+   this stylesheet is scoped to a shadow tree (injectGridStyles(shadowRoot)).
+   `:root` matches the document element, which is not part of a shadow tree, so
+   without `:host` every --pte-* variable would be unset there. */
 :root,
+:host,
 .pte-theme-light {
   /* --pte-row-height: 43px; */
   --pte-row-border-size: 1px;

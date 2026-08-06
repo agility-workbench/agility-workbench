@@ -86,6 +86,8 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "cellFadeDuration", grid.cellFadeDuration());
   setIfDefined(options, "icons", grid.icons());
   setIfDefined(options, "theme", grid.theme());
+  setIfDefined(options, "suppressStyleInjection", grid.suppressStyleInjection());
+  setIfDefined(options, "styleNonce", grid.styleNonce());
 
   const fullWidthCellRenderer = grid.fullWidthCellRenderer();
   if (fullWidthCellRenderer != null) {

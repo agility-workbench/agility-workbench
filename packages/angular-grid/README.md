@@ -24,7 +24,6 @@ import {
   type IGridAPI,
   type NgColDef,
 } from "@agility-workbench/angular-grid";
-import "@agility-workbench/grid/styles.css";
 
 @Component({
   selector: "app-example",
@@ -61,6 +60,17 @@ export class ExampleComponent {
 
 The grid fills its host element — give `<awb-grid>` (or a wrapper) a height. The component is
 also available via template reference: `<awb-grid #grid="awbGrid" />` → `grid.api`.
+
+## Styling
+
+Nothing to do — the grid delivers its own stylesheet when it attaches, once per document, and
+once per shadow root for grids inside one.
+
+Under a strict Content Security Policy without `style-src 'unsafe-inline'`, pass a nonce via the
+`styleNonce` input (page-global, so use the same value for every grid). To load the stylesheet
+yourself instead — via `angular.json` styles or a global import of
+`@agility-workbench/grid/styles.css` — set `suppressStyleInjection` on each grid, so the two
+copies do not fight in the cascade.
 
 ## Angular components in the grid
 

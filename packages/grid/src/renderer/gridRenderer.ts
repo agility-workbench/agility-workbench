@@ -14,6 +14,7 @@ import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
 import type { GridTheme } from "../theme/theme";
+import { injectGridStyles, resolveStyleTarget } from "../theme/inject";
 import { GridModelChangeHandler } from "./modelChangeHandler";
 import {
   GridEventAggregateChangedParams,
@@ -772,6 +773,20 @@ export class GridRenderer {
 
   attach(container: RefObject<HTMLElement | null>) {
     this._rootAttachmentRenderer.attach(container);
+    this._injectStyles();
+  }
+
+  /**
+   * Deliver the base stylesheet to whichever root this grid ended up in. Runs
+   * after attach so `getRootNode()` can see the real context — a shadow tree
+   * needs its own copy, since document styles do not cross the boundary.
+   */
+  private _injectStyles() {
+    const options = this.core.getOptions();
+    if (options.suppressStyleInjection) return;
+    const target = resolveStyleTarget(this.root);
+    if (!target) return;
+    injectGridStyles(target, { nonce: options.styleNonce });
   }
 
   detach() {
