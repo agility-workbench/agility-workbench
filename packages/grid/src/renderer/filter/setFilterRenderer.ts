@@ -94,7 +94,6 @@ export class SetFilterRenderer implements IFilterRenderer {
       const activeElement = document.activeElement as HTMLElement;
       let currentIndex = Array.from(focusableOptions).findIndex(opt => opt === activeElement);
       if (currentIndex === -1) {
-        console.log(e.key);
         if (e.key === "Tab") {
           // if focus is not on an option, start from the first one
           focusableOptions[0].classList.add("focused");
