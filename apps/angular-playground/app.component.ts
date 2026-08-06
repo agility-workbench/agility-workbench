@@ -7,6 +7,7 @@ import { FooterVisibilityDemoComponent } from "./footer-visibility-demo.componen
 import { GridDemoComponent } from "./grid-demo.component";
 import { GroupingDemoComponent } from "./grouping-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
+import { KitchenSinkDemoComponent } from "./kitchen-sink-demo.component";
 import { MenusDemoComponent } from "./menus-demo.component";
 import { PinnedRowsDemoComponent } from "./pinned-rows-demo.component";
 import { QuickFilterDemoComponent } from "./quick-filter-demo.component";
@@ -43,6 +44,7 @@ const PAGES = [
   { id: "headerComponents", label: "Custom headers" },
   { id: "tooltips", label: "Tooltips" },
   { id: "actionFrame", label: "ActionFrame" },
+  { id: "kitchenSink", label: "Kitchen sink" },
   { id: "footerVisibility", label: "Footer visibility" },
   { id: "sparklines", label: "Sparklines" },
 ] as const;
@@ -61,6 +63,7 @@ type PageId = (typeof PAGES)[number]["id"];
     GridDemoComponent,
     GroupingDemoComponent,
     HeaderComponentDemoComponent,
+    KitchenSinkDemoComponent,
     MenusDemoComponent,
     PinnedRowsDemoComponent,
     QuickFilterDemoComponent,
@@ -144,6 +147,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("actionFrame") {
           <action-frame-demo />
+        }
+        @case ("kitchenSink") {
+          <kitchen-sink-demo />
         }
         @case ("footerVisibility") {
           <footer-visibility-demo />

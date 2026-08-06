@@ -138,6 +138,18 @@ body {
   }
 }
 
+/* Pinned-row bands (PinnedRowsDemo + KitchenSinkDemo apply these via getRowClass). Translucent
+ * tints layer over the band's opaque theme background, so they work in light and dark themes. */
+.demo-pinned-top .pte-cell {
+  background: rgba(37, 99, 235, 0.14);
+  font-weight: 600;
+}
+
+.demo-pinned-bottom .pte-cell {
+  background: rgba(21, 128, 61, 0.14);
+  font-weight: 600;
+}
+
 .location-cell {
   --location-accent: #2563eb;
   --location-bg: rgba(37, 99, 235, 0.13);

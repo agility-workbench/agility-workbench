@@ -22,6 +22,7 @@ import ResponsiveToolbarDemo from "./ResponsiveToolbarDemo";
 import SavedViewsDemo from "./SavedViewsDemo";
 import PinnedRowsDemo from "./PinnedRowsDemo";
 import StickyGroupRowsDemo from "./StickyGroupRowsDemo";
+import KitchenSinkDemo from "./KitchenSinkDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -46,6 +47,7 @@ const PAGES = [
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
   { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },
+  { id: "kitchenSink", label: "Kitchen sink", render: () => <KitchenSinkDemo /> },
   { id: "footerVisibility", label: "Footer visibility", render: () => <FooterVisibilityDemo /> },
   { id: "sparklines", label: "Sparklines", render: () => <SparklineDemo /> },
 ] as const;
