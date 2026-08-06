@@ -5,6 +5,7 @@ import { ColumnGroupExpanderDemoComponent } from "./column-group-expander-demo.c
 import { ColumnStateDemoComponent } from "./column-state-demo.component";
 import { ComponentsDemoComponent } from "./components-demo.component";
 import { FooterVisibilityDemoComponent } from "./footer-visibility-demo.component";
+import { FullyThemedDemoComponent } from "./fully-themed-demo.component";
 import { GridDemoComponent } from "./grid-demo.component";
 import { GroupingDemoComponent } from "./grouping-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
@@ -32,6 +33,7 @@ const PAGES = [
   { id: "grid", label: "Grid demo" },
   { id: "selection", label: "Selection & keyboard nav" },
   { id: "visualStates", label: "Hover & visual states" },
+  { id: "fullyThemed", label: "Fully themed grid" },
   { id: "grouping", label: "Row grouping" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
   { id: "treeData", label: "Tree data" },
@@ -63,6 +65,7 @@ type PageId = (typeof PAGES)[number]["id"];
     ColumnStateDemoComponent,
     ComponentsDemoComponent,
     FooterVisibilityDemoComponent,
+    FullyThemedDemoComponent,
     GridDemoComponent,
     GroupingDemoComponent,
     HeaderComponentDemoComponent,
@@ -111,6 +114,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("visualStates") {
           <visual-states-demo />
+        }
+        @case ("fullyThemed") {
+          <fully-themed-demo />
         }
         @case ("grouping") {
           <grouping-demo />
