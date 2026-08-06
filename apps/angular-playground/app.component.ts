@@ -1,6 +1,7 @@
 import { Component, effect, signal } from "@angular/core";
 import { ActionFrameDemoComponent } from "./action-frame-demo.component";
 import { BasicGridDemoComponent } from "./basic-grid-demo.component";
+import { ColumnGroupExpanderDemoComponent } from "./column-group-expander-demo.component";
 import { ColumnStateDemoComponent } from "./column-state-demo.component";
 import { ComponentsDemoComponent } from "./components-demo.component";
 import { FooterVisibilityDemoComponent } from "./footer-visibility-demo.component";
@@ -40,6 +41,7 @@ const PAGES = [
   { id: "responsiveToolbar", label: "Responsive toolbar" },
   { id: "savedViews", label: "Saved views" },
   { id: "columnState", label: "Column state save/restore" },
+  { id: "groupExpanders", label: "Group expanders" },
   { id: "quickFilter", label: "Quick filter" },
   { id: "headerComponents", label: "Custom headers" },
   { id: "tooltips", label: "Tooltips" },
@@ -57,6 +59,7 @@ type PageId = (typeof PAGES)[number]["id"];
   imports: [
     ActionFrameDemoComponent,
     BasicGridDemoComponent,
+    ColumnGroupExpanderDemoComponent,
     ColumnStateDemoComponent,
     ComponentsDemoComponent,
     FooterVisibilityDemoComponent,
@@ -135,6 +138,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("columnState") {
           <column-state-demo />
+        }
+        @case ("groupExpanders") {
+          <column-group-expander-demo />
         }
         @case ("quickFilter") {
           <quick-filter-demo />

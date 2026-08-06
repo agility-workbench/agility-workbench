@@ -23,6 +23,7 @@ import SavedViewsDemo from "./SavedViewsDemo";
 import PinnedRowsDemo from "./PinnedRowsDemo";
 import StickyGroupRowsDemo from "./StickyGroupRowsDemo";
 import KitchenSinkDemo from "./KitchenSinkDemo";
+import ColumnGroupExpanderDemo from "./ColumnGroupExpanderDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -43,6 +44,7 @@ const PAGES = [
   },
   { id: "savedViews", label: "Saved views", render: () => <SavedViewsDemo /> },
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
+  { id: "groupExpanders", label: "Group expanders", render: () => <ColumnGroupExpanderDemo /> },
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
