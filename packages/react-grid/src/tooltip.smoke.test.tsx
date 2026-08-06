@@ -117,6 +117,26 @@ describe("tooltips", () => {
     await act(async () => { root.unmount(); });
   });
 
+  it("shows tooltips on center-section cells when a column is pinned left", async () => {
+    // Regression: with a pinned column, each row slot renders multiple section row elements
+    // sharing one data-view-idx; the anchor lookup must search past the first (pinned) row.
+    const { container, apiRef, root } = await mountGrid({
+      tooltip: { showDelay: 0 },
+      columns: [
+        { colId: "name", key: "name", label: "Name", pinned: "left" },
+        { colId: "email", key: "email", label: "Email", tooltipField: "notes" },
+      ],
+    });
+    await act(async () => {
+      apiRef.current!.showTooltip({ rowId: "1", colId: apiRef.current!.getColumnModel().getByColId("email")!.instanceID });
+      await tick();
+    });
+    const el = tooltipEl(container);
+    expect(el).not.toBeNull();
+    expect(el!.textContent).toContain("short");
+    await act(async () => { root.unmount(); });
+  });
+
   it("custom tooltipComponent renders", async () => {
     const Comp = (p: TooltipComponentParams) =>
       React.createElement("span", { className: "custom-tt" }, `TT:${p.value}`);
