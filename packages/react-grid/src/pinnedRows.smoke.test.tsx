@@ -138,8 +138,8 @@ describe("pinned and sticky rows", () => {
     )!;
 
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
-    expect(pinnedCell.closest(".pte-row")?.dataset.rowPinned).toBe("top");
-    expect(pinnedCell.closest(".pte-row")?.dataset.viewIdx).toBe("0");
+    expect(pinnedCell.closest<HTMLElement>(".pte-row")?.dataset.rowPinned).toBe("top");
+    expect(pinnedCell.closest<HTMLElement>(".pte-row")?.dataset.viewIdx).toBe("0");
     expect(pinnedCell.dataset.colIdx).toBe("1");
 
     await act(async () => {
@@ -928,7 +928,7 @@ describe("pinned and sticky rows", () => {
     const core = apiRef.current!.getCore();
     const countryCol = core.getColumnModel().getLeaves()[1];
     await act(async () => {
-      core.dispatch({ type: "columnSelectSet", colId: countryCol.instanceID, mode: "set" });
+      core.dispatch({ type: "columnSelectSet", colId: countryCol.instanceID, mode: "replace" });
     });
 
     const topCell = container.querySelector<HTMLElement>(

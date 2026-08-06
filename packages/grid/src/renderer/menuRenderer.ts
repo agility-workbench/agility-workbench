@@ -346,12 +346,16 @@ export class MenuRenderer {
       }
       if (item.left) {
         const left = document.createElement("span");
-        left.className = `pte-menu-item-icon pte-menu-item-icon-left ${item.left}`;
+        left.className = "pte-menu-item-icon pte-menu-item-icon-left";
+        if (typeof item.left === "string") left.classList.add(item.left);
+        else left.appendChild(item.left);
         el.prepend(left);
       }
       if (item.right) {
         const right = document.createElement("span");
-        right.className = `pte-menu-item-icon pte-menu-item-icon-right ${item.right}`;
+        right.className = "pte-menu-item-icon pte-menu-item-icon-right";
+        if (typeof item.right === "string") right.classList.add(item.right);
+        else right.appendChild(item.right);
         el.appendChild(right);
       }
       el.setAttribute("data-item-id", item.id);

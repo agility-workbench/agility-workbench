@@ -120,8 +120,12 @@ export function injectGridStyles(
 ): void {
   if (typeof document === "undefined") return;
 
-  const root = target ?? document;
-  if (injectedRoots.has(root)) return;
+  const root: Document | ShadowRoot = target ?? document;
+  // Duck-type on nodeType rather than `instanceof Document`: the document may come from another
+  // realm (iframe, test DOM), whose Document class is not this module's global.
+  const container: ParentNode & Node =
+    root.nodeType === 9 /* DOCUMENT_NODE */ ? (root as Document).head : root;
+  if (!container) return;
 
   // A second copy would be inert (identical bytes) but would sort after the
   // first, so honour any existing element — including one from a duplicate copy
