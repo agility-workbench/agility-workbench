@@ -1,4 +1,9 @@
-import { GridEventHandler, GridEventName, Unsubscribe } from "../events/events";
+import {
+  GridEventHandler,
+  GridEventName,
+  GridEventPaginationChangedParams,
+  Unsubscribe,
+} from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
 import { IRowModel, RowDataChangeReason, ServerSideRefreshOptions } from "./iRowModel";
@@ -139,6 +144,10 @@ export interface IGridCore {
   getDisplayedPinnedRowRef(
     rowId: GridId,
   ): { node: import("./iRowNode").IRowNode; position: "top" | "bottom"; rowIndex: number } | null;
+  /** Number of body-pinned rows displayed before `viewIndex` (used to offset body row positions). */
+  getBodyPinnedRowCountBefore(viewIndex: number): number;
+  /** Current pagination state (same payload the `paginationChanged` event carries). */
+  getPaginationInfo(): GridEventPaginationChangedParams;
   getEditingCell(): CellRef | null;
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;

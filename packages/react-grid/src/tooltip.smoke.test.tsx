@@ -315,6 +315,27 @@ describe("tooltips", () => {
     await act(async () => { root.unmount(); });
   });
 
+  it("mounts a React component for a header tooltip", async () => {
+    function ReactHeaderTooltip(props: TooltipComponentParams) {
+      return <span className="react-header-tooltip">Header: {props.colDef?.label}</span>;
+    }
+    const { container, apiRef, root } = await mountGrid({
+      tooltip: { showDelay: 0 },
+      columns: [
+        { colId: "name", key: "name", label: "Name", headerTooltip: ReactHeaderTooltip },
+        { colId: "email", key: "email", label: "Email" },
+      ],
+    });
+    const instanceId = apiRef.current!.getColumnModel().getByColId("name")!.instanceID;
+    const header = container.querySelector<HTMLElement>(`.pte-hcell#${instanceId}`)!;
+    await act(async () => {
+      header.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 10, clientY: 10 }));
+      await tick();
+    });
+    expect(container.querySelector(".react-header-tooltip")?.textContent).toContain("Header: Name");
+    await act(async () => { root.unmount(); });
+  });
+
   it("column-level tooltipOptions.mode overrides the grid default", async () => {
     // Grid default is anchored; the 'name' column overrides to follow-mouse.
     const { container, root } = await mountGrid({
