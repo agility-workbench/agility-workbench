@@ -11,6 +11,8 @@
     // Consequence: the grid package must be built before react-grid typechecks —
     // the root "typecheck"/"build" scripts enforce that order.
   },
-  "include": ["src", "tsup.config.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  // Test files are part of the program on purpose: `tsc --noEmit` type-checks the test suite's
+  // use of the public surface (the Angular package gets the same via its spec tsconfig), which
+  // catches core-interface drift. tsup builds from src and ignores tests regardless.
+  "include": ["src", "tsup.config.ts"]
 }
