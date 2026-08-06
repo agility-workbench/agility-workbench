@@ -12,8 +12,10 @@ type Row = {
 
 const ROWS: Row[] = Array.from({ length: 80 }, (_, index) => ({
   id: `deal-${index + 1}`,
+  region: ["AMER", "APAC", "OCEANIC"][index % 3],
   team: ["Enterprise", "Commercial", "Growth"][index % 3],
-  owner: ["Ava", "Liam", "Mia", "Noah", "Emma"][index % 5],
+  country: ["USA", "Canada", "Brazil", "India", "France", "Denmark", "China", "Japan", "Australia", "Spain"][index % 10],
+  owner: ["Ava", "Liam", "Mia", "Noah", "Emma", "Kent", "Duke", "Frank", "Will", "Smith", "Leo", "Brad", "Oliver", "Nick", "Romeo"][index % 15],
   pipeline: 25_000 + ((index * 7_919) % 180_000),
   closed: 8_000 + ((index * 3_571) % 95_000),
 }));
@@ -25,6 +27,8 @@ export function PinnedRowsDemo() {
 
   const columns = useMemo<ReactColDef[]>(() => [
     { colId: "team", key: "team", label: "Team", width: 150, pinned: "left" },
+    { colId: "region", key: "region", label: "Region", width: 150 },
+    { colId: "country", key: "country", label: "Country", width: 150 },
     { colId: "owner", key: "owner", label: "Owner", width: 140, editable: true },
     {
       colId: "pipeline",
