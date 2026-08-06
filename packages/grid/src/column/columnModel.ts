@@ -229,21 +229,22 @@ export class ColumnModel implements IColumnModel {
    * Updates lookup maps, resolves visibility, computes depth, and assigns centralPosition.
    */
   private registerColumns(cols: Column[], appendTo: Column[], reassignCentralColumns: boolean = false): void {
-    const traverse = (col: Column, depth: number, openState: "open" | "closed" | null = null) => {
+    const traverse = (col: Column, depth: number, openState: "open" | "closed" | null = null, ignoreGroupShow: boolean = false) => {
       this.columnsById.set(col.instanceID, col);
       if (!col.isInternal()) {
         this.columnsByColId.set(col.colId, col);
         this.columnsByKey.set(col.key, col);
       }
-      col.columnGroupVisible = col.columnGroupShow === "always" || (openState !== null && openState === col.columnGroupShow);
+      col.columnGroupVisible = ignoreGroupShow || col.columnGroupShow === "always" || (openState !== null && openState === col.columnGroupShow);
       // Resolve group-controlled visibility even for manually hidden leaves. Consumers such as the
       // column panel need to distinguish "hidden by the user" from "inactive for this group state",
       // while the latter must remain owned by the column model.
       if (col.hidden) return;
       if (col.columnGroupVisible) {
         if (col.children.length > 0) {
+          const uniformToggle = this.hasUniformToggle(col);
           for (const child of col.children) {
-            traverse(child, depth + 1, col.groupExpandState);
+            traverse(child, depth + 1, col.groupExpandState, uniformToggle);
           }
           col.depth = col.children.reduce((max, c) => Math.max(max, c.depth || 1), 1) + 1;
         } else {
@@ -418,18 +419,14 @@ export class ColumnModel implements IColumnModel {
         let groupToggle = "";
         for (const child of col.children) {
           if (child.hidden) continue;
-          if (child.columnGroupShow !== "always") {
-            if (groupToggle === "") {
-              groupToggle = child.columnGroupShow || "open";
-            } else if (groupToggle !== child.columnGroupShow) {
-              groupToggle = "mixed";
-            }
-          } else {
-            col.showExpander = true;
+          if (groupToggle == "" ) {
+            groupToggle = child.columnGroupShow;
+          } else if (groupToggle != child.columnGroupShow) {
+            groupToggle = "mixed";
           }
           setExpanderRec(child);
         }
-        col.showExpander = col.showExpander || groupToggle === "mixed";
+        col.showExpander = groupToggle === "mixed";
       } else {
         col.showExpander = false;
       }
@@ -438,6 +435,25 @@ export class ColumnModel implements IColumnModel {
     for (const col of cols) {
       setExpanderRec(col);
     }
+  }
+
+  /**
+   * True when every non-hidden child carries the same non-"always" `columnGroupShow`. Such a
+   * group could only ever toggle between "all children" and "no children", so its expand state
+   * is ignored: the children render as always visible (see registerColumns) and no expander is
+   * shown (a uniform value can never make groupToggle "mixed" in setExpandersForColumns).
+   */
+  private hasUniformToggle(col: Column): boolean {
+    let show = "";
+    for (const child of col.children) {
+      if (child.hidden) continue;
+      if (show === "") {
+        show = child.columnGroupShow;
+      } else if (show !== child.columnGroupShow) {
+        return false;
+      }
+    }
+    return show !== "" && show !== "always";
   }
 
   private setExpanders() {
