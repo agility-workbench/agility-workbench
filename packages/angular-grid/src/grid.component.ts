@@ -94,6 +94,7 @@ export class AwbGrid implements OnDestroy {
   readonly overscanRowCount = input<GridOptions["overscanRowCount"]>();
   readonly minResizeWidth = input<GridOptions["minResizeWidth"]>();
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
+  readonly autosizeColumnsOnDataChange = input<GridOptions["autosizeColumnsOnDataChange"]>();
 
   // --- row identity ---
   readonly getRowId = input<GridOptions["getRowId"]>();
@@ -117,6 +118,7 @@ export class AwbGrid implements OnDestroy {
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
+  readonly clearSelectionOnBodyClick = input<GridOptions["clearSelectionOnBodyClick"]>();
 
   // --- editing ---
   readonly editTrigger = input<GridOptions["editTrigger"]>();

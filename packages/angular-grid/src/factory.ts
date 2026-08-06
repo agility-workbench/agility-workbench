@@ -32,6 +32,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
+  setIfDefined(options, "autosizeColumnsOnDataChange", grid.autosizeColumnsOnDataChange());
   setIfDefined(options, "allowExportAsCSV", grid.allowExportAsCSV());
   setIfDefined(options, "allowExportAsExcel", grid.allowExportAsExcel());
   setIfDefined(options, "pagination", grid.pagination());
@@ -48,6 +49,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "columnSelection", grid.columnSelection());
   setIfDefined(options, "showColumnButtonsOnHover", grid.showColumnButtonsOnHover());
   setIfDefined(options, "selectAllRowsOnHeaderClick", grid.selectAllRowsOnHeaderClick());
+  setIfDefined(options, "clearSelectionOnBodyClick", grid.clearSelectionOnBodyClick());
   setIfDefined(options, "pageSize", grid.pageSize());
   setIfDefined(options, "pageSizes", grid.pageSizes());
   setIfDefined(options, "serverSideBlockSize", grid.serverSideBlockSize());
