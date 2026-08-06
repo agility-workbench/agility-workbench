@@ -99,6 +99,10 @@ export interface IGridAPI {
   /** Switch tree-data keyboard navigation immediately. No-op for "hierarchy" on non-tree grids. */
   setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void;
 
+  /** Expand or collapse every group/tree node in one pass — a single view rebuild and repaint,
+   * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
+  setAllGroupsExpanded(expanded: boolean): void;
+
   /** Capture serializable column, grouping, sorting, filtering, and expansion state. */
   captureViewState(): GridViewState;
   /** Apply a captured view through the grid's existing state actions. */

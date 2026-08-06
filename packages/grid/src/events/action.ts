@@ -160,6 +160,14 @@ export type GridActionGroupToggleExpand = {
   expanded?: boolean;
 };
 
+// Expand or collapse many group nodes in one pass — one view rebuild and one repaint, regardless
+// of how many nodes change. `groupIds` omitted = every group node in the current grouping/tree.
+export type GridActionGroupSetExpanded = {
+  type: "groupSetExpanded";
+  expanded: boolean;
+  groupIds?: string[];
+};
+
 export type GridActionKeyboardNavigationModeSet = {
   type: "keyboardNavigationModeSet";
   mode: TreeDataKeyboardNavigationMode;
@@ -320,6 +328,7 @@ export type GridAction =
   | GridActionAggregateModelSet
   | GridActionRowGroupSet
   | GridActionGroupToggleExpand
+  | GridActionGroupSetExpanded
   | GridActionKeyboardNavigationModeSet
   | GridActionTreeNavigate
   | GridActionFocusSet

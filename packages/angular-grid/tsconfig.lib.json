@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist/out-tsc",
+    "declaration": true,
+    // Declaration maps and sourcemaps are both off for the published build: they
+    // reference ../src/*.ts, which the package does not ship, and `inlineSources`
+    // would embed the wrapper source in the tarball. Neither affects IDE tooltips
+    // or autocomplete — those come from index.d.ts and its JSDoc.
+    "declarationMap": false,
+    "sourceMap": false,
+    "moduleResolution": "bundler",
+    "importHelpers": true,
+    "useDefineForClassFields": false,
+    "experimentalDecorators": false,
+    "jsx": "preserve"
+  },
+  "angularCompilerOptions": {
+    "compilationMode": "partial",
+    "strictTemplates": true,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
+}

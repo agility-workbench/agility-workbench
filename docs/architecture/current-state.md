@@ -135,7 +135,7 @@ Grouped by area; each maps to a §5 sub-table.
 ## 3. Directory Structure & Module Map
 
 > Paths below are relative to `packages/grid/src/` unless noted. The React wrapper lives in
-> `packages/react-grid/src/` and the demo in `apps/playground/` (both shown at the end).
+> `packages/react-grid/src/` and the demo in `apps/react-playground/` (both shown at the end).
 
 ```
 packages/grid/src/
@@ -348,7 +348,29 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 ├── BodyMenuAdapter.ts         Adapter: getBodyMenuItems → MenuAdapter interface
 └── MenuAdapter.ts             Adapter: getColumnMenuItems → MenuAdapter interface
 
-apps/playground/                          Demo app (Vite-based, not tests)
+packages/angular-grid/src/                  Angular wrapper (@agility-workbench/angular-grid, Angular ≥ 20.3)
+├── public-api.ts              `export * from grid` + AwbGrid, NgColDef/NgDefaultColDef, ICellRendererNgComp/ITooltipNgComp/IActionFrameNgComp/ICellEditorNgComp, NgMenuItem/NgMenuSlot
+├── grid.component.ts          <awb-grid> — signal inputs, sync effects, outputs; core created outside the NgZone
+├── factory.ts                 createCore, getGridOptions (reads signal inputs)
+├── interface.ts               NgColDef + the optional awbInit/awbRefresh component contracts
+├── adapters.ts                NgAdapters — mounts Angular components (createComponent) into core class-component slots: cellRenderer/tooltip/actionFrame/cellEditor + colDef/defaultColDef adaptation
+├── menu.ts                    NgMenuItem (slots: string | HTMLElement | TemplateRef)
+├── menuAdapters.ts            Column/body menu adapters — stamp TemplateRef slots per menu open
+└── grid.smoke.test.ts / test-setup.ts   vitest + @analogjs/vite-plugin-angular + TestBed rig
+
+apps/angular-playground/                  Angular demo app (Vite + analog plugin; zoneless bootstrap)
+├── app.component.ts           Tab shell (21 pages, hash-linkable) + theme toggle
+├── basic-grid-demo.component.ts       Inputs/outputs/API demo (sorting, selection, editing, applyTransaction)
+├── components-demo.component.ts       Angular cellRenderer (params input), tooltip (awbInit), cell editor
+├── menus-demo.component.ts            Column/body menu customization with TemplateRef slots
+├── grid-demo.component.ts             Port of the React App.tsx flagship (trading grid, SSRM toggle, themes)
+├── *-demo.component.ts                1:1 ports of every React playground demo (selection, visual states,
+│                                       grouping, SSRM grouping, tree data, pinned rows, sticky groups,
+│                                       toolbar, responsive toolbar, saved views, column state, quick filter,
+│                                       custom headers, tooltips, ActionFrame, footer visibility, sparklines)
+├── data.ts / main.ts / index.html / style.css / tsconfig.json
+
+apps/react-playground/                    Demo app (Vite-based, not tests)
 ├── App.tsx                    Full demo: client-side + server-side, themes, trading grid
 ├── ActionFrameDemo.tsx  TooltipDemo.tsx  HeaderComponentDemo.tsx   feature demos
 ├── ColumnStateDemo.tsx  SelectionDemo.tsx  GroupingDemo.tsx  ServerSideGroupingDemo.tsx
@@ -415,7 +437,7 @@ Unlike `setRowData` (which clears undo/redo history and does a full refresh), a 
 edit history — undo/redo entries reference rows by id and stay valid for rows that still exist.
 Preserving node identity on `update` is what lets delta-aware renderers (change-flash, sparklines)
 detect changes. Pure updates keep row positions unless `reevaluateOnEdit` is set; add/remove always
-reflow the view. See `apps/playground/App.tsx` → `TradingGrid` for a live streaming example.
+reflow the view. See `apps/react-playground/App.tsx` → `TradingGrid` for a live streaming example.
 
 ### 4.4 Server-Side Flow
 
@@ -765,6 +787,21 @@ lifecycle; the content is a custom component.
 | Band ordering (app data rows on the outer edges) | ✅ Complete | `pinnedTopRowData` → runtime-pinned top → body → runtime-pinned bottom → `pinnedBottomRowData`; `resolveAppRows` in `renderer/pinnedRows/pinnedRowsRenderer.ts` |
 | Ancestor chain force-pins with a pinned row | ✅ Complete | A runtime-pinned row (group or leaf) derives its group/tree ancestors into the same band directly above it; unpinning any row of the chain releases the whole chain (unpin cascades to pinned descendants); `resolveAppRows` + `unpinDescendants` |
 
+### 5.18 Angular Wrapper Features (Angular ≥ 20.3)
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| `<awb-grid>` component (signal inputs, `exportAs: "awbGrid"`, `api` getter + `gridReady` output) | ✅ Complete | `packages/angular-grid/src/grid.component.ts` |
+| Declarative inputs mirroring the React wrapper's props; reconciled via effects without remount | ✅ Complete | `grid.component.ts` (`syncEffect` / `keyedEffect`), `factory.ts` |
+| Core created outside the NgZone; outputs re-enter the zone (zoneless-compatible) | ✅ Complete | `grid.component.ts` → `create()` |
+| Angular cell renderers / tooltips / ActionFrame components (via `awbInit(params)` or a `params` input) | ✅ Complete | `adapters.ts` → `NgAdapters.mount` (per-grid injector context) |
+| Angular cell editors (component instance provides `getValue`/`focus`/…) | ✅ Complete | `adapters.ts` → `adaptCellEditor` |
+| Menu-item slots as `TemplateRef`s (column + body menus) | ✅ Complete | `menuAdapters.ts`, `menu.ts` |
+| SSR-safe creation (`afterNextRender`) | ✅ Complete | `grid.component.ts` constructor |
+| APF packaging: partial-Ivy FESM2022 via ng-packagr, publish from `dist/` | ✅ Complete | `ng-package.json`, `tsconfig.lib.json`; see maintainers/repository.md §5 |
+| Angular header components | ❌ Not wrapped | Parity with React: `headerComponent` is a core class contract, passed through unadapted |
+| Angular demo playground (`apps/angular-playground`) | ✅ Complete | Zoneless Vite app (`npm run dev:angular`, port 5180): all 18 React-playground demos ported + 3 Angular-wrapper intro tabs (21 pages, hash-linkable, theme toggle) |
+
 ---
 
 ## 6. Key Design Patterns
@@ -887,7 +924,7 @@ formulas, grouping/outline — read back with exceljs), `renderer/exportRenderer
 `sparklineResize`, `applyTransaction`, plus `lifecycle.strictmode.test.tsx`,
 `cellEditor.test.tsx`, `publicExports.test.ts`, and the `packageResolution.test.ts` boundary guard.
 
-The `apps/playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` (from the repo root, runs the whole workspace suite) or `npm run test:watch`.
+The `apps/react-playground/` directory is a **Vite demo app**, not automated tests. Run tests with `npm test` (from the repo root, runs the whole workspace suite) or `npm run test:watch`.
 
 ---
 
@@ -898,10 +935,12 @@ This is an npm-workspaces monorepo; scripts run from the repo root unless noted.
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Vite dev server for the demo app (`http://localhost:5176`) |
-| `npm run build` | `build:grid` then `build:react` (explicit order — react typecheck needs grid's `dist/*.d.ts`) |
-| `npm run test` | vitest single run across both packages |
-| `npm run typecheck` | build grid, then typecheck grid → react → playground |
+| `npm run dev` | Vite dev server for the React demo app (`http://localhost:5176`) |
+| `npm run dev:angular` | Vite dev server for the Angular demo app (`http://localhost:5180`) |
+| `npm run build` | `build:grid` → `build:react` → `build:angular` (explicit order — the bindings need grid's `dist/*.d.ts`) |
+| `npm run test` | vitest single run (grid + react-grid), then `test:angular` |
+| `npm run test:angular` | Angular binding suite (own vitest config; components compiled by `@analogjs/vite-plugin-angular`) |
+| `npm run typecheck` | build grid, then typecheck grid → react → angular → react-playground → angular-playground |
 | `npm run clean` | clean each package's `dist/` + root `dist-demo/` |
 
 Each package's `dist/` produces `index.js` (ESM), `index.cjs` (CJS), and `index.d.ts` / `.d.cts`

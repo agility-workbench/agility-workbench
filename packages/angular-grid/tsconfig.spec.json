@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "outDir": "dist/out-tsc-spec"
+  },
+  "angularCompilerOptions": {
+    "compilationMode": "full",
+    "strictTemplates": true
+  },
+  "include": [
+    "src/**/*.ts",
+    // Tests alias @agility-workbench/grid to the core's source (see vitest.config.mts); the analog
+    // plugin emits empty output for any .ts file outside this program, so the core source must be
+    // part of it.
+    "../grid/src/**/*.ts"
+  ],
+  "exclude": []
+}

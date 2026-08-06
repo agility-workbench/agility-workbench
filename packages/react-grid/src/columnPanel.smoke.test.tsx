@@ -375,11 +375,19 @@ describe("column panel", () => {
   });
 
   it("lists only columns made visible by column-group expansion", async () => {
+    // The always-visible "id" child keeps the group's children mixed even while "name" is
+    // user-hidden — a group whose non-hidden children all share one columnGroupShow value stops
+    // being expansion-controlled entirely (uniform-toggle rule) and would derail this test.
     const adaptiveColumns: ReactColDef[] = [
       {
         colId: "responsive",
         label: "Responsive",
         children: [
+          {
+            colId: "id",
+            key: "id",
+            label: "Id",
+          },
           {
             colId: "name",
             key: "name",
@@ -400,8 +408,8 @@ describe("column panel", () => {
 
     expect(panelRow(container, "name")).not.toBeNull();
     expect(panelRow(container, "region")).toBeNull();
-    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["name"]);
-    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(1);
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["id", "name"]);
+    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(2);
     expect(bulk.checked).toBe(true);
 
     const nameCheckbox = panelRow(container, "name")
@@ -409,7 +417,7 @@ describe("column panel", () => {
     await act(async () => nameCheckbox.click());
     expect(panelRow(container, "name")).not.toBeNull();
     expect(nameCheckbox.checked).toBe(false);
-    expect(api.getColumnModel().getCenterLeaves()).toHaveLength(0);
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["id"]);
 
     const groupId = api.getColumnModel().getByColId("responsive")!.instanceID;
     await act(async () => {
@@ -422,8 +430,8 @@ describe("column panel", () => {
 
     expect(panelRow(container, "name")).toBeNull();
     expect(panelRow(container, "region")).not.toBeNull();
-    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["region"]);
-    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(1);
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["id", "region"]);
+    expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(2);
     expect(bulk.checked).toBe(true);
 
     await act(async () => {
@@ -437,7 +445,7 @@ describe("column panel", () => {
       .querySelector<HTMLInputElement>(".pte-column-panel-checkbox")!;
     expect(panelRow(container, "region")).toBeNull();
     expect(restoredNameCheckbox.checked).toBe(false);
-    expect(api.getColumnModel().getCenterLeaves()).toHaveLength(0);
+    expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["id"]);
     await act(async () => root.unmount());
   });
 

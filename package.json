@@ -18,19 +18,27 @@
   ],
   "scripts": {
     "dev": "CHOKIDAR_USEPOLLING=1 vite",
+    "dev:angular": "CHOKIDAR_USEPOLLING=1 vite -c vite.angular.config.ts",
     "preview": "vite preview",
     "generate": "npm run generate --workspace @agility-workbench/grid",
     "build:grid": "npm run build --workspace @agility-workbench/grid",
     "build:react": "npm run build --workspace @agility-workbench/react-grid",
-    "build": "npm run build:grid && npm run build:react",
+    "build:angular": "npm run build --workspace @agility-workbench/angular-grid",
+    "build": "npm run build:grid && npm run build:react && npm run build:angular",
+    "pack:packages": "npm run build && mkdir -p artifacts/npm && npm_config_cache=/tmp/agility-workbench-npm-cache npm pack ./packages/grid ./packages/react-grid ./packages/angular-grid/dist --ignore-scripts --pack-destination artifacts/npm",
     "typecheck:react": "npm run typecheck --workspace @agility-workbench/react-grid",
-    "typecheck:playground": "tsc --noEmit",
-    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:playground",
-    "test": "vitest run",
+    "typecheck:angular": "npm run typecheck --workspace @agility-workbench/angular-grid",
+    "typecheck:react-playground": "tsc --noEmit",
+    "typecheck:angular-playground": "tsc -p apps/angular-playground/tsconfig.json --noEmit",
+    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:angular && npm run typecheck:react-playground && npm run typecheck:angular-playground",
+    "test": "vitest run && npm run test:angular",
+    "test:angular": "vitest run -c packages/angular-grid/vitest.config.mts",
     "test:watch": "vitest",
     "clean": "npm run clean --workspaces --if-present && rm -rf dist dist-demo"
   },
   "devDependencies": {
+    "@analogjs/vite-plugin-angular": "^1.22.5",
+    "@angular/build": "~20.3.0",
     "@types/node": "^24.2.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.3",
@@ -43,7 +51,7 @@
     "react-dom": "^19.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vite": "^5.0.0",
-    "vitest": "^2.1.9"
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
   }
 }

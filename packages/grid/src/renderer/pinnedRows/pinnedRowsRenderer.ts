@@ -233,13 +233,21 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const leftWidth = this.columnsWidth(model.getLeftLeaves());
     const centerWidth = this.columnsWidth(model.getCenterLeaves());
     const rightWidth = this.columnsWidth(model.getRightLeaves());
+    // Band sections carry the same constraints as the body scrollers: left/right clamp to 35% of
+    // the grid and scroll horizontally in sync beyond that. The +1 covers the section's 1px border
+    // (border-box), matching the headers and aggregates. In non-layout test/SSR environments
+    // clientWidth is 0; leave the sections unclamped there.
+    const rootWidth = this.params.root.clientWidth;
+    const cap = rootWidth > 0 ? rootWidth * 0.35 : Infinity;
+    const sectionWidth = (contentWidth: number, clamped: boolean) =>
+      contentWidth > 0 ? Math.min(contentWidth + 1, clamped ? cap : Infinity) : 0;
 
     for (const band of [this.top, this.bottom, this.sticky]) {
       // Sections are sized explicitly: sticky overlay rows are absolutely positioned, so they
       // contribute no intrinsic width to their host and flex auto-sizing would collapse them.
-      this.sizeSection(band.leading, band.leadingHost, leadingWidth, leadingWidth);
-      this.sizeSection(band.left, band.leftHost, leftWidth, leftWidth);
-      this.sizeSection(band.right, band.rightHost, rightWidth, rightWidth);
+      this.sizeSection(band.leading, band.leadingHost, sectionWidth(leadingWidth, false), leadingWidth);
+      this.sizeSection(band.left, band.leftHost, sectionWidth(leftWidth, true), leftWidth);
+      this.sizeSection(band.right, band.rightHost, sectionWidth(rightWidth, true), rightWidth);
       band.centerHost.style.width = `${centerWidth}px`;
       band.centerHost.style.minWidth = `${centerWidth}px`;
       band.leading.style.display = leadingWidth > 0 ? "block" : "none";
@@ -858,12 +866,12 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private sizeSection(
     section: HTMLDivElement,
     host: HTMLDivElement,
-    visibleWidth: number,
+    sectionWidth: number,
     contentWidth: number,
   ): void {
-    // section.style.width = `${visibleWidth}px`;
-    // section.style.minWidth = `${visibleWidth}px`;
-    // section.style.maxWidth = `${visibleWidth}px`;
+    section.style.width = `${sectionWidth}px`;
+    section.style.minWidth = `${sectionWidth}px`;
+    section.style.maxWidth = `${sectionWidth}px`;
     host.style.width = `${contentWidth}px`;
     host.style.minWidth = `${contentWidth}px`;
   }

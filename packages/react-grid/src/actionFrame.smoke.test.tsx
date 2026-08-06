@@ -91,6 +91,27 @@ describe("ActionFrame", () => {
     await act(async () => { root.unmount(); });
   });
 
+  it("opens on a center-section cell when another column is pinned left", async () => {
+    // Regression: with a pinned column, each row slot renders multiple section row elements
+    // sharing one data-view-idx; the cell lookup must search past the first (pinned) row.
+    const { container, apiRef, root } = await mountGrid([
+      { colId: "name", key: "name", label: "Name", pinned: "left" },
+      {
+        colId: "comment", key: "comment", label: "Comment",
+        actionFrameTrigger: "click",
+        actionFrameComponent: CommentForm,
+      },
+    ]);
+    const colId = apiRef.current!.getColumnModel().getByColId("comment")!.instanceID;
+    await act(async () => {
+      apiRef.current!.openActionFrame({ rowId: "1", colId });
+      await tick();
+    });
+    expect(popover(container)).not.toBeNull();
+    expect(framedCell(container)).not.toBeNull();
+    await act(async () => { root.unmount(); });
+  });
+
   it("opens on a cell click when actionFrameTrigger is 'click'", async () => {
     const { container, root } = await mountGrid();
     const cell = commentCell(container, 0);

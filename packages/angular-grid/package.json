@@ -1,0 +1,55 @@
+{
+  "name": "@agility-workbench/angular-grid",
+  "version": "0.1.0",
+  "description": "Angular bindings for @agility-workbench/grid — a high-performance data grid. Supports Angular 20.3+.",
+  "license": "MIT",
+  "author": "Himanshu M",
+  "homepage": "https://agilityworkbench.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agility-workbench/agility-workbench.git",
+    "directory": "packages/angular-grid"
+  },
+  "bugs": {
+    "url": "https://github.com/agility-workbench/agility-workbench/issues"
+  },
+  "keywords": [
+    "data-grid",
+    "datagrid",
+    "table",
+    "angular",
+    "angular-table",
+    "virtualized",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "directory": "dist"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run clean && ng-packagr -p ng-package.json -c tsconfig.lib.json && node scripts/strip-sourcemaps.mjs",
+    "typecheck": "tsc -p tsconfig.lib.json --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@agility-workbench/grid": "^0.1.0",
+    "tslib": "^2.3.0"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=20.3.0"
+  },
+  "devDependencies": {
+    "@angular/compiler": "~20.3.27",
+    "@angular/compiler-cli": "~20.3.27",
+    "@angular/core": "~20.3.27",
+    "@angular/platform-browser": "~20.3.27",
+    "ng-packagr": "~20.3.2",
+    "rxjs": "^7.8.0",
+    "zone.js": "~0.15.0"
+  }
+}

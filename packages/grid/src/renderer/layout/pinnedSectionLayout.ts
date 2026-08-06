@@ -8,6 +8,9 @@ interface PinnedSectionLayoutRendererParams {
   rightScroller: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
   aggregateRight: HTMLDivElement;
+  /** The pinned-row bands and sticky overlay clamp their sections themselves (their widths depend
+   * on band content, not just the root), so a root resize hands off to them after the body clamp. */
+  onResize?: () => void;
 }
 
 export class PinnedSectionLayoutRenderer {
@@ -17,8 +20,10 @@ export class PinnedSectionLayoutRenderer {
 
   bind() {
     this.applyMaxWidths();
+    this.params.onResize?.();
     this.resizeObserver = new ResizeObserver(() => {
       this.applyMaxWidths();
+      this.params.onResize?.();
     });
     this.resizeObserver.observe(this.params.root);
   }

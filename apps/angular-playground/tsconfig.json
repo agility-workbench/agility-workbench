@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "useDefineForClassFields": false,
+    "paths": {
+      "@agility-workbench/grid": ["../../packages/grid/src/index"],
+      "@agility-workbench/grid/*": ["../../packages/grid/src/*"],
+      "@agility-workbench/angular-grid": ["../../packages/angular-grid/src/public-api"],
+      "@grid": ["../../packages/grid/src/index"],
+      "@grid/*": ["../../packages/grid/src/*"]
+    }
+  },
+  "angularCompilerOptions": {
+    "compilationMode": "full",
+    "strictTemplates": true
+  },
+  "include": [
+    "./**/*.ts",
+    "../../packages/angular-grid/src/**/*.ts",
+    "../../packages/grid/src/**/*.ts"
+  ],
+  "exclude": ["dist-demo", "../../packages/**/*.test.ts", "../../packages/**/*.spec.ts"]
+}

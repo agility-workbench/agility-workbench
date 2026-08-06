@@ -611,6 +611,7 @@ export class GridRenderer {
       rightScroller: bodyWrapper.rightScroller,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
+      onResize: () => this._pinnedRowsRenderer.updateLayout(),
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
       leadingScroller: bodyWrapper.leadingScroller,

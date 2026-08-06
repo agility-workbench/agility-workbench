@@ -390,15 +390,19 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
 
     // A pure expand/collapse toggle: update expansion state and re-flatten only — no filter, sort,
-    // or tree rebuild.
+    // or tree rebuild. Batched targets (`groupIds`/`all`) share the single re-flatten below.
     const expansionOnly = params.groupExpansion != null;
     if (expansionOnly) {
-      const { groupId, expanded } = params.groupExpansion!;
-      const node = this.groupNodesMap.get(groupId);
-      if (node) {
+      const { groupId, groupIds, all, expanded } = params.groupExpansion!;
+      const targetIds = all
+        ? this.groupNodesMap.keys()
+        : groupIds ?? (groupId != null ? [groupId] : []);
+      for (const id of targetIds) {
+        const node = this.groupNodesMap.get(id);
+        if (!node) continue;
         const next = expanded ?? !node.isExpanded;
         node.isExpanded = next;
-        this.groupExpansion.set(groupId, next);
+        this.groupExpansion.set(id, next);
       }
       this.setPagination(paginate, range.start, range.end);
       this.rebuildGroupedView();

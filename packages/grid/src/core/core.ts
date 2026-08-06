@@ -583,7 +583,7 @@ export class GridCore implements IGridCore {
     loadRange?: { start: number; end: number },
     paginate: boolean = this.paginationEnabled,
     aggregateReason?: IRowModelOnAggregatesParams["reason"],
-    groupExpansion?: { groupId: string; expanded?: boolean },
+    groupExpansion?: IRowModelRequestParams["groupExpansion"],
   ): IRowModelRequestParams {
     const aggregateScope = this.normalizeAggregateScope(this.aggregateScope);
     if (aggregateScope !== this.aggregateScope) {
@@ -797,6 +797,16 @@ export class GridCore implements IGridCore {
   // Expand or collapse a single group node, then re-flatten the grouped view (no filter/sort/tree
   // rebuild). When `expanded` is omitted the node's state is toggled.
   toggleGroupExpand(groupId: string, expanded?: boolean): void {
+    this.applyGroupExpansion({ groupId, expanded });
+  }
+
+  // Expand/collapse many group nodes at the cost of a single toggle: one row-model re-flatten,
+  // one selection reconcile, one repaint. `groupIds` omitted = every group node.
+  setGroupsExpanded(expanded: boolean, groupIds?: string[]): void {
+    this.applyGroupExpansion(groupIds ? { groupIds, expanded } : { all: true, expanded });
+  }
+
+  private applyGroupExpansion(groupExpansion: NonNullable<IRowModelRequestParams["groupExpansion"]>): void {
     if (this.groupColumns.length === 0 && !this.options.treeData) return;
     this.rowModel.applyRequest(this.createRowModelRequest(
       "group",
@@ -804,7 +814,7 @@ export class GridCore implements IGridCore {
       this.getInitialServerSideLoadRange(),
       this.paginationEnabled,
       undefined,
-      { groupId, expanded },
+      groupExpansion,
     ));
     // Collapsing a hierarchy can remove enough display rows to invalidate the current page. Keep
     // the core page range (not just the footer label) on the last valid page, then rebuild the
@@ -1674,6 +1684,9 @@ export class GridCore implements IGridCore {
         break;
       case "groupToggleExpand":
         this.toggleGroupExpand(action.groupId, action.expanded);
+        break;
+      case "groupSetExpanded":
+        this.setGroupsExpanded(action.expanded, action.groupIds);
         break;
       case "keyboardNavigationModeSet":
         this.setKeyboardNavigationMode(action.mode, action.source);

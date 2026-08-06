@@ -1,0 +1,115 @@
+html, body, app-root {
+  height: 100%;
+  display: block;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Roboto, sans-serif;
+  background-color: var(--pte-root-bg-color, #f9f9f9);
+  color: var(--pte-text-color, #333);
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.btn {
+  background-color: var(--pte-btn-bg-color, #007bff);
+  color: var(--pte-btn-text-color, #fff);
+  border: none;
+  padding: 6px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn:hover {
+  background-color: var(--pte-btn-hover-bg-color, #0056b3);
+}
+
+.demo-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.demo-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.demo-topbar .spacer {
+  flex: 1;
+}
+
+.demo-tab {
+  background: transparent;
+  border: 1px solid var(--pte-frame-border-color, #d1d5db);
+  color: inherit;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.demo-tab.active {
+  background-color: var(--pte-btn-bg-color, #007bff);
+  color: var(--pte-btn-text-color, #fff);
+  border-color: transparent;
+}
+
+.demo-intro {
+  padding: 10px 14px;
+  border: 1px solid var(--pte-frame-border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--pte-header-bg-color, #fff);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.demo-grid-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.demo-log {
+  font-family: monospace;
+  font-size: 12px;
+  opacity: 0.8;
+  min-height: 1.2em;
+}
+
+.menu-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Pinned-row bands (pinned-rows + kitchen-sink demos apply these via getRowClass). Translucent
+ * tints layer over the band's opaque theme background, so they work in light and dark themes. */
+.demo-pinned-top .pte-cell {
+  background: rgba(37, 99, 235, 0.14);
+  font-weight: 600;
+}
+
+.demo-pinned-bottom .pte-cell {
+  background: rgba(21, 128, 61, 0.14);
+  font-weight: 600;
+}

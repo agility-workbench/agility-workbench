@@ -222,9 +222,14 @@ export class ActionFrameRenderer {
     if (viewIdx == null || viewIdx < 0) return null;
     const colIdx = this.colIdxFor(cell.colId);
     if (colIdx < 0) return null;
-    const rowEl = this.params.body.querySelector<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
-    if (!rowEl) return null;
-    return rowEl.querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+    // A row slot renders up to four section rows (leading/left/center/right) sharing one
+    // view-idx; the cell lives in exactly one of them.
+    const rowEls = this.params.body.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
+    for (let i = 0; i < rowEls.length; i++) {
+      const cellEl = rowEls[i].querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+      if (cellEl) return cellEl;
+    }
+    return null;
   }
 
   private getCellRect(cell: CellRef): DOMRect | null {

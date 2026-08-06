@@ -31,16 +31,19 @@ the demo app.
 agility-workbench/                 ← private workspace root
 ├── package.json                   workspaces:["packages/*"], shared devDeps, orchestration scripts
 ├── tsconfig.base.json             shared compiler options (extended by every package)
-├── tsconfig.json                  root config for the playground app + editor (path aliases)
-├── vite.config.ts                 playground dev server; aliases → packages/*/src
-├── vitest.config.ts               test discovery + aliases
+├── tsconfig.json                  root config for the react-playground app + editor (path aliases)
+├── vite.config.ts                 react-playground dev server; aliases → packages/*/src
+├── vite.angular.config.ts         angular-playground dev server (analog Angular plugin; port 5180)
+├── vitest.config.ts               test discovery + aliases (grid + react-grid)
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
 │   └── architecture/current-state.md   feature/architecture reference
 │
 ├── apps/
-│   └── playground/                demo app (NOT published; consumes packages via aliases)
-│       ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
+│   ├── react-playground/          demo app (NOT published; consumes packages via aliases)
+│   │   ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
+│   └── angular-playground/        Angular demo app (zoneless bootstrap; own tsconfig for the analog plugin)
+│       ├── app.component.ts, *-demo.component.ts, main.ts, index.html, style.css
 │
 └── packages/
     ├── grid/                      @agility-workbench/grid
@@ -60,18 +63,31 @@ agility-workbench/                 ← private workspace root
     │       ├── cellRenderers/       built-in renderers (ChangeFlash, Sparkline)
     │       └── theme/               theme.ts, icons.ts, inject.ts, table.css, icons/*.svg
     │                                + *.generated.ts (build artifacts, gitignored)
-    └── react-grid/                @agility-workbench/react-grid
-        ├── package.json           depends on @agility-workbench/grid (semver); react as peer
-        ├── tsconfig.json          NO grid alias — resolves grid as a normal workspace dep
-        ├── tsup.config.ts          single entry; externalizes grid + react
-        ├── LICENSE, README.md
+    ├── react-grid/                @agility-workbench/react-grid
+    │   ├── package.json           depends on @agility-workbench/grid (semver); react as peer
+    │   ├── tsconfig.json          NO grid alias — resolves grid as a normal workspace dep
+    │   ├── tsup.config.ts          single entry; externalizes grid + react
+    │   ├── LICENSE, README.md
+    │   └── src/
+    │       ├── index.ts            public entry: Grid + `export * from grid`
+    │       ├── grid.tsx            the <Grid /> component (StrictMode-safe)
+    │       ├── factory.ts          maps React props → GridOptions, builds core
+    │       ├── cellRenderer.ts cellEditor.ts   React↔core adapters (cell/tooltip/actionFrame/header + defaultColDef)
+    │       ├── MenuAdapter.ts BodyMenuAdapter.ts menu.ts interface.ts
+    │       └── *.smoke.test.tsx *.test.tsx   co-located smoke/integration tests
+    └── angular-grid/              @agility-workbench/angular-grid (Angular ≥ 20.3, built with ng-packagr)
+        ├── package.json           depends on grid (semver); @angular/core as peer (>=20.3.0); publish from dist/
+        ├── ng-package.json         ng-packagr config (APF output: FESM2022 + partial-Ivy d.ts)
+        ├── tsconfig.lib.json       compilationMode: "partial" (consumers' linkers finish compilation)
+        ├── tsconfig.spec.json      test program: package src + ../grid/src (vitest aliases core to source)
+        ├── vitest.config.mts       analog vite plugin rig (see §5); run via root `npm run test:angular`
         └── src/
-            ├── index.ts            public entry: Grid + `export * from grid`
-            ├── grid.tsx            the <Grid /> component (StrictMode-safe)
-            ├── factory.ts          maps React props → GridOptions, builds core
-            ├── cellRenderer.ts cellEditor.ts   React↔core adapters (cell/tooltip/actionFrame/header + defaultColDef)
-            ├── MenuAdapter.ts BodyMenuAdapter.ts menu.ts interface.ts
-            └── *.smoke.test.tsx *.test.tsx   co-located smoke/integration tests
+            ├── public-api.ts       public entry: AwbGrid + `export * from grid`
+            ├── grid.component.ts   the <awb-grid> component (signal inputs, zone-isolated core)
+            ├── factory.ts          maps inputs → GridOptions, builds core
+            ├── adapters.ts         Angular↔core adapters (cell/tooltip/actionFrame/editor + defaultColDef)
+            ├── menuAdapters.ts menu.ts interface.ts
+            └── *.test.ts           co-located smoke tests (vitest + analog + TestBed)
 ```
 
 ## 3. The package boundary (important)
@@ -177,20 +193,34 @@ built `dist/*.d.ts` (tsup bundles them away), so they never leak to a consumer.
 
 `npm run build` runs `clean` → `tsup` (single entry, grid + react externalized).
 
+### Angular (`@agility-workbench/angular-grid`)
+
+`npm run build` runs `clean` → `ng-packagr` (entry `src/public-api.ts`). Angular libraries cannot
+be shipped as plain tsup output: consumers' Angular compilers must finish the compilation, so
+ng-packagr emits the Angular Package Format — `dist/fesm2022/*.mjs` compiled in **partial-Ivy**
+mode (`compilationMode: "partial"` in `tsconfig.lib.json`), flattened `index.d.ts`, and a
+generated `dist/package.json` with the `exports` map. Because the manifest is generated into
+`dist/`, **publishing happens from `dist/`** (`publishConfig.directory: "dist"`), not the package
+root. Building against Angular `~20.3` with partial compilation is what makes the package
+consumable by Angular 20.3 **and newer** (`peerDependencies: { "@angular/core": ">=20.3.0" }`).
+
 ### From the repo root
 
 | Command | Effect |
 | --- | --- |
 | `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^0.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
-| `npm run build` | `build:grid` then `build:react` — explicit order (react's typecheck needs grid's `dist/*.d.ts`; see §4B). |
-| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:playground`. Explicit, not workspace-traversal order. |
-| `npm test` | Runs the full Vitest suite (458 tests across both packages), including the package-resolution regression guard. |
-| `npm run dev` | Starts the Vite demo at `http://localhost:5176`. |
+| `npm run build` | `build:grid` → `build:react` → `build:angular` — explicit order (both bindings' builds need grid's `dist/*.d.ts`; see §4B). |
+| `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:angular` → `typecheck:react-playground` → `typecheck:angular-playground`. Explicit, not workspace-traversal order. |
+| `npm test` | Runs the root Vitest suite (grid + react-grid, including the package-resolution regression guard), then `test:angular`. |
+| `npm run test:angular` | Runs the Angular binding's suite via its own vitest config (`packages/angular-grid/vitest.config.mts`) — Angular components in tests are compiled by `@analogjs/vite-plugin-angular`, so they can't join the root suite's include list. |
+| `npm run dev` | Starts the React demo at `http://localhost:5176`. |
+| `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
-The root scripts are deliberately explicit (`build:grid`/`build:react`, `typecheck:react`/
-`typecheck:playground`) rather than relying on unspecified `--workspaces` traversal order, because
-react-grid's typecheck consumes grid's **generated** declarations.
+The root scripts are deliberately explicit (`build:grid`/`build:react`/`build:angular`,
+`typecheck:react`/`typecheck:angular`/`typecheck:react-playground`) rather than relying on
+unspecified `--workspaces` traversal order, because both bindings' typechecks consume grid's
+**generated** declarations.
 
 ## 6. Publishing to npm
 
@@ -202,6 +232,10 @@ Both packages are publish-ready. Current state of the manifests:
 - `@agility-workbench/react-grid` — same publish config; `dependencies: { "@agility-workbench/grid": "^0.1.0" }`,
   `peerDependencies: { react, react-dom }` (optional in practice — provided by the host app),
   `sideEffects: false`.
+- `@agility-workbench/angular-grid` — same publish config plus `publishConfig.directory: "dist"`
+  (ng-packagr generates the real manifest there — publish the `dist/` folder, see §5);
+  `dependencies: { "@agility-workbench/grid": "^0.1.0", tslib }`,
+  `peerDependencies: { "@angular/core": ">=20.3.0" }`.
 
 ### What is achievable today
 

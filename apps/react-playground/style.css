@@ -138,6 +138,105 @@ body {
   }
 }
 
+/* Pinned-row bands (PinnedRowsDemo + KitchenSinkDemo apply these via getRowClass). Translucent
+ * tints layer over the band's opaque theme background, so they work in light and dark themes. */
+.demo-pinned-top .pte-cell {
+  background: rgba(37, 99, 235, 0.14);
+  font-weight: 600;
+}
+
+.demo-pinned-bottom .pte-cell {
+  background: rgba(21, 128, 61, 0.14);
+  font-weight: 600;
+}
+
+.full-theme-demo {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #283b72;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(124, 58, 237, 0.24), transparent 34%),
+    radial-gradient(circle at 90% 15%, rgba(34, 211, 238, 0.14), transparent 30%),
+    #050816;
+  color: #f1f5ff;
+}
+
+.full-theme-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.full-theme-hero h2 {
+  margin: 2px 0 5px;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+
+.full-theme-hero p {
+  max-width: 760px;
+  margin: 0;
+  color: #93a4c7;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.full-theme-kicker {
+  color: #67e8f9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.full-theme-density {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.full-theme-density select {
+  border: 1px solid #52659d;
+  border-radius: 9px;
+  padding: 8px 11px;
+  background: #0b1228;
+  color: #f1f5ff;
+}
+
+.full-theme-grid-shell {
+  flex: 1;
+  min-height: 0;
+  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.5));
+}
+
+.full-theme-grid-shell .pte-root {
+  border-width: 2px;
+  border-radius: 14px;
+}
+
+.full-theme-grid-shell .pte-pinned-row .pte-cell {
+  background: #15234a;
+  color: #fef3c7;
+  font-weight: 750;
+}
+
+@media (max-width: 760px) {
+  .full-theme-demo { padding: 12px; }
+  .full-theme-hero { align-items: stretch; flex-direction: column; gap: 10px; }
+  .full-theme-density { justify-content: space-between; }
+}
+
 .location-cell {
   --location-accent: #2563eb;
   --location-bg: rgba(37, 99, 235, 0.13);

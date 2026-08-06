@@ -28,7 +28,6 @@ export class FilterMenuCoordinator {
       ) || null,
       {
         applyModel: (colId, model, meta) => {
-          console.log(model);
           if (model === null) {
             this.core.removeFilterModel(colId);
             return;

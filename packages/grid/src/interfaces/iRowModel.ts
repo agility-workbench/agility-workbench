@@ -48,9 +48,16 @@ export interface IRowModelRequestParams {
   readonly groupColumns: Column[];
   // Whether non-grouped sorts only order leaves within groups or also reorder the group buckets.
   readonly groupSortMode: GroupSortMode;
-  // When present, this request is a pure expand/collapse of a single group node — the model
-  // updates its expansion state and re-flattens the view without rebuilding the group tree.
-  readonly groupExpansion?: { groupId: string; expanded?: boolean };
+  // When present, this request is a pure expand/collapse — the model updates expansion state and
+  // re-flattens the view once, without rebuilding the group tree. Target one node via `groupId`
+  // (omitted `expanded` toggles), a batch via `groupIds`, or every group node via `all` (batch
+  // forms require an explicit `expanded`).
+  readonly groupExpansion?: {
+    groupId?: string;
+    groupIds?: string[];
+    all?: boolean;
+    expanded?: boolean;
+  };
   // Quick-filter (global search) state. Applied by the client-side model as a second predicate
   // ANDed with the column filters. Empty text disables it. Ignored by the server-side model.
   readonly quickFilter?: QuickFilterState;

@@ -515,11 +515,16 @@ export class BodyTooltipRenderer {
     return anchor.isConnected ? anchor.getBoundingClientRect() : null;
   }
 
-  /** Find the live (recycled) cell element for a location, or null if scrolled out. */
+  /** Find the live (recycled) cell element for a location, or null if scrolled out. A row slot
+   * renders up to four section rows (leading/left/center/right) sharing one view-idx; the cell
+   * lives in exactly one of them. */
   private getCellEl(viewIdx: number, colIdx: number): HTMLElement | null {
-    const rowEl = this.params.body.querySelector<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
-    if (!rowEl) return null;
-    return rowEl.querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+    const rowEls = this.params.body.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
+    for (let i = 0; i < rowEls.length; i++) {
+      const cell = rowEls[i].querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+      if (cell) return cell;
+    }
+    return null;
   }
 
   private getCellRect(viewIdx: number, colIdx: number): DOMRect | null {
