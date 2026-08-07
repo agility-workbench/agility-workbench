@@ -1,6 +1,11 @@
 import { defineConfig } from "vitest/config";
 import angular from "@analogjs/vite-plugin-angular";
 import path from "node:path";
+import { generateGridCss } from "../../generateGridCss";
+
+// These tests resolve the core against its source, including its gitignored CSS-derived modules.
+// Must happen before the analog plugin below initialises — see generateGridCss.ts for why.
+generateGridCss();
 
 const gridSrc = path.resolve(__dirname, "../grid/src");
 

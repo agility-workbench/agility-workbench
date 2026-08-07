@@ -25,7 +25,6 @@ import {
   type IGridAPI,
   type ReactColDef,
 } from "@agility-workbench/react-grid";
-import "@agility-workbench/grid/styles.css";
 
 const columnDefs: ReactColDef[] = [
   { key: "name", label: "Name", type: ColumnType.STRING },
@@ -89,17 +88,17 @@ service. The grid reports complete updated arrays and does not write to storage 
 
 ## Styling
 
-Load the stylesheet once (it lives in the core package):
+Nothing to do — the grid delivers its own stylesheet when it attaches, once per
+document, and once per shadow root for grids inside one.
+
+Under a strict Content Security Policy without `style-src 'unsafe-inline'`, pass
+a nonce via the `styleNonce` prop (page-global, so use the same value for every
+grid). To load the stylesheet yourself instead, import it and opt out with
+`suppressStyleInjection` on each grid, so the two copies do not fight in the
+cascade:
 
 ```ts
 import "@agility-workbench/grid/styles.css";
-```
-
-Or inject it from JS (zero-import, SSR-safe):
-
-```ts
-import { injectGridStyles } from "@agility-workbench/react-grid";
-injectGridStyles();
 ```
 
 ## Theming, icons, and the full API

@@ -106,6 +106,7 @@ export type { GridTheme, GridThemeParams } from "./theme/theme";
 export { createTheme, themeLight, themeDark } from "./theme/theme";
 export type { PteVarName } from "./theme/cssVars.generated";
 export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
+export type { InjectGridStylesOptions } from "./theme/inject";
 
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
 export type { ColDef, DefaultColDef } from "./interfaces/column";

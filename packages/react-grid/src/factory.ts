@@ -111,5 +111,8 @@ export function getGridOptions(props: GridProps): GridOptions {
     setIfDefined(options, "serverSideAggregationSource", props.serverSideAggregationSource);
   }
 
+  setIfDefined(options, "suppressStyleInjection", props.suppressStyleInjection);
+  setIfDefined(options, "styleNonce", props.styleNonce);
+
   return options;
 }

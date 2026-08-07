@@ -906,6 +906,21 @@ export interface GridOptions {
    * the stylesheet's default light theme.
    */
   theme?: GridTheme;
+  /**
+   * Opt out of the grid delivering its own base stylesheet on attach. Set this
+   * when the application imports `@agility-workbench/grid/styles.css` itself —
+   * otherwise both copies apply, and the injected one sorts later and would
+   * start winning over overrides written against the imported sheet.
+   */
+  suppressStyleInjection?: boolean;
+  /**
+   * CSP nonce for the injected `<style>` element, for apps served with
+   * `style-src 'nonce-...'` and without `'unsafe-inline'`. Nonces are global to
+   * a page, so every grid on the page must be given the same value. Not needed
+   * for grids inside a shadow root, which are styled via CSSOM and are exempt
+   * from `style-src`.
+   */
+  styleNonce?: string;
 }
 
 export interface InternalGridOptions extends GridOptions {
