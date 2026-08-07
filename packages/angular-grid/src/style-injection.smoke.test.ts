@@ -14,11 +14,13 @@ import { mountGridHost } from "./test-utils";
       [columnDefs]="cols"
       rowIdKey="id"
       [suppressStyleInjection]="suppress"
+      [styleNonce]="nonce"
     />
   `,
 })
 class StyleHost {
   suppress = false;
+  nonce = "ng-test-nonce";
   rows = [{ id: "1", name: "A" }];
   cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
 }
@@ -49,6 +51,9 @@ describe("AwbGrid automatic stylesheet delivery", () => {
     const styles = document.querySelectorAll("#pte-grid-styles");
     expect(styles).toHaveLength(1);
     expect(styles[0].textContent).toContain(".pte-root");
+    // Carried from the input through getGridOptions into core options, which is where the
+    // renderer reads it. Without it a CSP-restricted app gets an unstyled grid.
+    expect(styles[0].getAttribute("nonce")).toBe("ng-test-nonce");
   });
 
   it("deduplicates stylesheet injection across multiple grid instances", async () => {
