@@ -7,6 +7,8 @@ workspaces.
   TypeScript with no framework dependency.
 - **React binding** — using React? Install [`@agility-workbench/react-grid`](https://www.npmjs.com/package/@agility-workbench/react-grid),
   a thin `<Grid />` adapter built on this core.
+- **Angular binding** — using Angular 20.3+? Install [`@agility-workbench/angular-grid`](https://www.npmjs.com/package/@agility-workbench/angular-grid),
+  which provides the standalone `<awb-grid>` component on top of this core.
 - **Virtualized** rendering, client-side and server-side row models, row grouping, tree data,
   aggregation, quick filter, editing, and CSV / Excel export (zero-dependency `.xlsx` writer).
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
@@ -22,6 +24,13 @@ For React apps, install the binding instead (it depends on this package):
 
 ```bash
 npm install @agility-workbench/react-grid react react-dom
+```
+
+For Angular 20.3+ apps, install the Angular binding instead (it also depends on
+this package):
+
+```bash
+npm install @agility-workbench/angular-grid
 ```
 
 ## Quick start (core, no framework)
