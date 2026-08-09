@@ -1,0 +1,136 @@
+# Filtering
+
+## Text, number, date, boolean, and set filters
+
+```ts
+const columnDefs: ColDef[] = [
+  { key: "name", label: "Name", filter: "text" },
+  { key: "amount", label: "Amount", type: ColumnType.NUMBER, filter: "number" },
+  { key: "due", label: "Due", type: ColumnType.DATE, filter: "date" },
+  { key: "active", label: "Active", type: ColumnType.BOOLEAN, filter: "boolean" },
+  { key: "region", label: "Region", filter: "set" },
+];
+```
+
+`filter: true` selects the default UI from the column type. Active filters show
+an indicator in the header and are managed from the column's filter panel.
+
+## Static and async set-filter values
+
+```ts
+const staticSet = {
+  key: "status",
+  label: "Status",
+  filter: "set",
+  filterParams: {
+    filterValues: [
+      { value: "Open" },
+      { value: "Pending" },
+      { value: "Closed" },
+    ],
+  },
+} satisfies ColDef;
+
+const asyncSet = {
+  key: "owner",
+  label: "Owner",
+  filter: "set",
+  filterParams: {
+    filterValues: async ({ success }) => {
+      success(await (await fetch("/api/owners")).json());
+    },
+  },
+} satisfies ColDef;
+```
+
+Omit `filterValues` to derive unique set values from client-side rows.
+
+## Filter controls and multiple conditions
+
+```ts
+const column = {
+  key: "name",
+  label: "Name",
+  filter: "text",
+  filterParams: {
+    buttons: ["apply", "clear", "cancel"],
+    closeOnApply: true,
+    debounceMs: 200,
+    maxFilterItems: 2,
+    initialFilterItemsCount: 1,
+    caseSensitive: false,
+    trimValues: true,
+  },
+} satisfies ColDef;
+```
+
+When more than one condition is enabled, the filter UI lets the user join them
+with AND or OR. Inputs include their own clear button.
+
+## Restrict available operators
+
+```ts
+const column = {
+  key: "amount",
+  label: "Amount",
+  filter: "number",
+  filterParams: {
+    filterOptions: [
+      { value: FilterType.GTE, label: "At least" },
+      { value: FilterType.LTE, label: "At most" },
+      { value: FilterType.IN_RANGE, label: "Between" },
+    ],
+  },
+} satisfies ColDef;
+```
+
+The built-in operators also include contains, starts/ends with, equality,
+inequality, blank checks, inclusion, and negated forms.
+
+## Custom matcher
+
+```ts
+const column = {
+  key: "tags",
+  label: "Tags",
+  filter: (value, _node, filterValues) => {
+    const query = String(filterValues[0] ?? "").toLowerCase();
+    return value.some((tag: string) => tag.toLowerCase().includes(query));
+  },
+} satisfies ColDef;
+```
+
+## Quick filter
+
+```ts
+const options = {
+  quickFilter: {
+    mode: "always",
+    matchMode: "multiTerm",
+    caseSensitive: false,
+    debounceMs: 100,
+    showOptions: true,
+  },
+} satisfies GridOptions;
+
+api.setQuickFilter("open europe");
+api.setQuickFilter("exact phrase", { matchMode: "substring" });
+```
+
+Quick filtering is client-side. Set `toolbar.quickFilter: true` to place its UI
+in the toolbar.
+
+## Set a filter model programmatically
+
+```ts
+const amount = api.getColumnModel().getByColId("amount")!;
+
+api.dispatch({
+  type: "filterModelSet",
+  filterModel: [{
+    col: amount,
+    key: "amount",
+    filters: [{ type: FilterType.GTE, values: [100] }],
+  }],
+});
+```

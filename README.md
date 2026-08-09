@@ -176,6 +176,13 @@ The [core package guide](packages/grid/README.md) covers theming, toolbars,
 saved views, column management, sparklines, pinned rows, tree data, and the
 published entry points.
 
+## Focused examples
+
+The [examples catalog](examples/README.md) provides small, feature-specific
+snippets for the core, React, and Angular libraries. Each example isolates one
+option, API workflow, or framework adapter instead of recreating a full
+playground screen.
+
 ## Developing locally
 
 ### Prerequisites
