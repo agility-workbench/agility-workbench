@@ -405,18 +405,18 @@ api.exportDataAsExcel({ scope: "selection", groupMode: "tree" });`,
   },
   theming: {
     react: String.raw`const theme = themeDark.withParams({
-  accentColor: "#5af0c5",
-  backgroundColor: "#0d172a",
-  headerBackgroundColor: "#111d32",
+  accentColor: "#2fd2e2",
+  backgroundColor: "#0a172b",
+  headerBackgroundColor: "#0f2140",
   rowHeight: 40,
   spacing: 10,
 });
 
 <Grid rowData={rows} columnDefs={columns} theme={theme} />`,
     angular: String.raw`theme = themeDark.withParams({
-  accentColor: "#5af0c5",
-  backgroundColor: "#0d172a",
-  headerBackgroundColor: "#111d32",
+  accentColor: "#2fd2e2",
+  backgroundColor: "#0a172b",
+  headerBackgroundColor: "#0f2140",
   rowHeight: 40,
   spacing: 10,
 });
@@ -427,9 +427,9 @@ api.exportDataAsExcel({ scope: "selection", groupMode: "tree" });`,
   [theme]="theme"
 />`,
     core: String.raw`const theme = themeDark.withParams({
-  accentColor: "#5af0c5",
-  backgroundColor: "#0d172a",
-  headerBackgroundColor: "#111d32",
+  accentColor: "#2fd2e2",
+  backgroundColor: "#0a172b",
+  headerBackgroundColor: "#0f2140",
   rowHeight: 40,
   spacing: 10,
 });

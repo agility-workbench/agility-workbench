@@ -58,12 +58,12 @@ const treeRows: Order[] = [
 ];
 
 const brandTheme = themeDark.withParams({
-  accentColor: "#5af0c5",
-  backgroundColor: "#0d172a",
-  headerBackgroundColor: "#111d32",
-  borderColor: "#263651",
-  rowHoverColor: "#17263f",
-  selectedBackgroundColor: "#17483f",
+  accentColor: "#2fd2e2",
+  backgroundColor: "#0a172b",
+  headerBackgroundColor: "#0f2140",
+  borderColor: "#243b62",
+  rowHoverColor: "#122b50",
+  selectedBackgroundColor: "#123f63",
   fontFamily: "DM Sans, sans-serif",
   fontSize: 13,
   rowHeight: 39,

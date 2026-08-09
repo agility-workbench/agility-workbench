@@ -20,7 +20,7 @@
 }
 
 .label { display: flex; align-items: center; gap: .6rem; font-weight: 700; color: var(--awb-ink); }
-.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--awb-mint); box-shadow: 0 0 0 4px color-mix(in srgb, var(--awb-mint) 16%, transparent); }
+.pulse { width: 8px; height: 8px; border-radius: 2px; background: var(--awb-orange); box-shadow: 0 0 0 4px color-mix(in srgb, var(--awb-orange) 16%, transparent); }
 .hint { text-align: right; }
 .canvas { height: 390px; padding: 12px; background-image: radial-gradient(color-mix(in srgb, var(--awb-line) 65%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
 .compact .canvas { height: 350px; }

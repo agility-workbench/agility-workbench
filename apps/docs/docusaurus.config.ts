@@ -5,7 +5,7 @@ import { themes as prismThemes } from "prism-react-renderer";
 const config: Config = {
   title: "Agility Workbench",
   tagline: "A fast, composable data grid for serious web applications.",
-  favicon: "img/favicon.svg",
+  favicon: "img/favicon.png",
   url: "https://agilityworkbench.dev",
   baseUrl: "/",
   organizationName: "agility-workbench",
@@ -47,14 +47,14 @@ const config: Config = {
     ],
   ],
   themeConfig: {
-    image: "img/social-card.svg",
+    image: "img/social-card.png",
     colorMode: {
       defaultMode: "dark",
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: "Agility Workbench",
-      logo: { alt: "Agility Workbench", src: "img/logo-mark.svg" },
+      logo: { alt: "Agility Workbench", src: "img/logo.png" },
       items: [
         { type: "docSidebar", sidebarId: "docs", position: "left", label: "Documentation" },
         { to: "/docs/examples/columns", label: "Examples", position: "left" },
