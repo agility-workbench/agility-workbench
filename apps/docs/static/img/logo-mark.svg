@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agility Workbench</title>
+  <desc id="desc">A modular grid forming a forward arrow</desc>
+  <defs>
+    <linearGradient id="surface" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17243D"/>
+      <stop offset="1" stop-color="#0A1020"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="18" y1="48" x2="50" y2="15" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5AF0C5"/>
+      <stop offset="1" stop-color="#9B8CFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#surface)"/>
+  <path d="M18 18h11v11H18zM35 18h11v11H35zM18 35h11v11H18z" fill="#D9E5FF" opacity=".92"/>
+  <path d="M35 35h7.4l-5.2 5.2 6.6 6.6 5.2-5.2V49h9V26h-23z" fill="url(#signal)" transform="translate(-4 -4)"/>
+  <path d="M11 32h42" stroke="#8EA2C9" stroke-opacity=".22"/>
+  <path d="M32 11v42" stroke="#8EA2C9" stroke-opacity=".22"/>
+</svg>

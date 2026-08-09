@@ -1,0 +1,39 @@
+---
+title: Columns
+sidebar_position: 1
+description: Define, resize, reorder, pin, hide, and manage data-grid columns.
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Columns
+
+Column definitions describe identity, value access, formatting, interaction,
+and presentation. The same definition model is used by the core and both
+framework bindings.
+
+<LiveFeatureGrid feature="columns" />
+
+<FrameworkCode feature="columns" />
+
+## Essential fields
+
+| Field | Purpose |
+| --- | --- |
+| `key` | Reads a field from row data and provides a stable fallback identity |
+| `colId` | Explicit public identity for state and API calls |
+| `label` | Visible header label |
+| `type` | Selects default comparison, formatting, filtering, and editing behavior |
+| `valueGetter` | Computes a value instead of reading `key` |
+| `valueFormatter` / `valueParser` | Converts values for display and committed edits |
+
+Users can resize and reorder enabled columns directly. Initial pinning and
+visibility use `pinned` and `hidden`; the API and column panel can change both
+at runtime. Capture the resulting layout with `api.getColumnState()` and restore
+it with `api.applyColumnState(state)`.
+
+:::tip Shared behavior
+Put common capabilities such as `sortable`, `resizable`, and `filter` in
+`defaultColDef`. An explicit column value always wins.
+:::

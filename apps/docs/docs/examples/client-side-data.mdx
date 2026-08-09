@@ -1,0 +1,33 @@
+---
+title: Client-side data
+sidebar_position: 3
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Client-side row model
+
+The client-side model keeps row data in the browser and applies filtering,
+sorting, pagination, grouping, aggregation, and tree relationships locally.
+It is the default model.
+
+<LiveFeatureGrid feature="client-side-data" />
+
+<FrameworkCode feature="client-side-data" />
+
+## Stable row identity
+
+Use `rowIdKey` when the ID is a field, or `getRowId(row)` for a derived value.
+Stable IDs preserve row-node identity across transactions and let editing,
+selection, grouping, and pinned rows refer to the same record.
+
+## Replace or transact
+
+`api.setRowData(rows)` replaces the data set and resets edit history.
+`api.applyTransaction({ add, update, remove })` changes only affected rows.
+Updates preserve node identity; structural changes are sorted and filtered into
+their correct location.
+
+Transactions are client-side only. The server-side model is refreshed through
+`api.refreshServerSideData()`.

@@ -1,0 +1,35 @@
+---
+title: React
+sidebar_position: 2
+---
+
+# React quick start
+
+```tsx
+import { ColumnType, Grid, type ReactColDef } from "@agility-workbench/react-grid";
+
+const columns: ReactColDef[] = [
+  { key: "name", label: "Product" },
+  { key: "price", label: "Price", type: ColumnType.CURRENCY, editable: true },
+];
+
+export function Products() {
+  return (
+    <div style={{ height: 420 }}>
+      <Grid
+        rowIdKey="id"
+        rowData={rows}
+        columnDefs={columns}
+        onGridReady={(api) => console.log("Ready", api)}
+      />
+    </div>
+  );
+}
+```
+
+`ReactColDef` accepts React cell renderers, editors, tooltips, and ActionFrame
+components. `<Grid />` also accepts every core `GridOptions` field as a prop.
+
+Use `ref`, `apiRef`, or `onGridReady` for imperative API access. Setup and
+cleanup support React Strict Mode effect replay.
+

@@ -1,0 +1,104 @@
+---
+title: Grid options
+sidebar_position: 1
+description: Curated reference for the most important Agility Workbench grid options.
+---
+
+# Grid options
+
+These are the primary options shared by the core, React props, and Angular
+inputs. Optional fields use documented defaults when omitted.
+
+## Data and identity
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `columnDefs` | `ColDef[]` | Column and column-group definitions |
+| `rowIdKey` | `string` | Field containing a stable row ID |
+| `getRowId` | `(row) => string` | Derive a stable row ID |
+| `rowModelType` | `clientSide \| serverSide` | Select the row model |
+| `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
+| `serverSideBlockSize` | `number` | Requested block size |
+
+React and Angular expose `rowData` through their bindings; core integrations use
+`api.setRowData()`.
+
+## Layout and columns
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `rowHeight` | `number` | Theme/default row height |
+| `headerHeight` | `number` | Theme/default header height |
+| `overscanRowCount` | `number` | Viewport-derived default |
+| `rowNumbers` | `boolean` | `false` |
+| `defaultColDef` | `DefaultColDef` | `{}` |
+| `minResizeWidth` | `number` | `75` |
+| `maxColumnWidth` | `number` | `420` |
+| `columnPanel` | `boolean \| ColumnPanelOptions` | `false` |
+
+## Interaction
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `cellSelection` | `boolean \| "text"` | `true` |
+| `rangeSelection` | `boolean` | `true` |
+| `columnSelection` | `boolean` | `true` |
+| `rowSelection` | `boolean` | `false` |
+| `selectAllRowsOnHeaderClick` | `boolean` | `false` |
+| `clearSelectionOnBodyClick` | `boolean` | `true` |
+| `highlightActiveCell` | `boolean` | `false` |
+| `bodyContextMenu` | `boolean \| getter` | `true` |
+
+## Editing
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `editTrigger` | `doubleClick \| singleClick \| none` | `doubleClick` |
+| `suppressKeyboardEdit` | `boolean` | `false` |
+| `suppressTypeToEdit` | `boolean` | `false` |
+| `moveAfterEdit` | `boolean` | `true` |
+| `commitOnBlur` | `boolean` | `true` |
+| `reevaluateOnEdit` | `boolean` | `true` |
+| `undoLimit` | `number` | `100` |
+
+## Sort, filter, and pagination
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `initialSort` | `{ colId, dir }[]` | Ordered initial client-side sort |
+| `multiSortKey` | `ctrl \| shift` | Additive sort modifier |
+| `showSortPriority` | `multi \| always \| never` | Priority badge behavior |
+| `quickFilter` | `boolean \| QuickFilterOptions` | Global client-side search |
+| `filterDebounceMs` | `number` | Default column-filter debounce |
+| `pagination` | `boolean` | Enable footer pagination |
+| `pageSize` | `number` | Initial page size |
+| `pageSizes` | `number[]` | User-selectable page sizes |
+
+## Grouping and hierarchy
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `groupDisplayType` | `singleColumn \| multipleColumns \| groupRows` | Label layout |
+| `groupDefaultExpanded` | `number` | Initial expanded depth; `-1` means all |
+| `groupSortMode` | `local \| hierarchy \| global` | Client-side group ordering |
+| `groupRowsSelectable` | `boolean` | Include generated groups in selection |
+| `groupRowsSticky` | `boolean` | Dock the active ancestor chain |
+| `treeData` | `TreeDataOptions` | Enable path, parent, or children hierarchy |
+
+## Presentation and integration
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `theme` | `GridTheme` | Per-instance visual theme |
+| `icons` | `GridIconMap` | Named icon overrides |
+| `tooltip` | `boolean \| TooltipOptions` | Global tooltip behavior |
+| `toolbar` | `GridToolbarOptions` | Opt-in toolbar sections |
+| `savedViews` | `SavedViewsOptions` | Application-owned view persistence |
+| `suppressStyleInjection` | `boolean` | Use imported CSS instead |
+| `styleNonce` | `string` | CSP nonce for injected styles |
+| `loadingMessage` | `string` | Loading overlay copy |
+| `noRowsMessage` | `string` | Empty-data copy |
+
+The package's TypeScript declarations remain the source of truth for less
+common callbacks and detailed nested option types.
+

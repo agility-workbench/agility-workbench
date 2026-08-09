@@ -14,11 +14,14 @@
     "url": "https://github.com/agility-workbench/agility-workbench/issues"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/docs"
   ],
   "scripts": {
     "dev": "CHOKIDAR_USEPOLLING=1 vite",
     "dev:angular": "CHOKIDAR_USEPOLLING=1 vite -c vite.angular.config.ts",
+    "docs:dev": "npm run build:grid && npm run build:react && npm run start --workspace @agility-workbench/docs",
+    "docs:build": "npm run build:grid && npm run build:react && npm run build --workspace @agility-workbench/docs",
     "preview": "vite preview",
     "generate": "npm run generate --workspace @agility-workbench/grid",
     "build:grid": "npm run build --workspace @agility-workbench/grid",

@@ -1,0 +1,34 @@
+---
+title: Row grouping and aggregation
+sidebar_position: 9
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Row grouping and aggregation
+
+Group by one or more value columns, choose how group labels are displayed, and
+calculate aggregates over each group's leaf descendants.
+
+<LiveFeatureGrid feature="grouping" />
+
+<FrameworkCode feature="grouping" />
+
+## Display and expansion
+
+`groupDisplayType` accepts `singleColumn`, `multipleColumns`, or `groupRows`.
+`groupDefaultExpanded` sets the initial depth; later user expansion remains
+stable across refreshes. `groupRowsSticky` docks the active ancestor chain while
+the body scrolls.
+
+The toolbar provides a grouping picker, ordered chips, drag insertion, keyboard
+reordering, and clear-all behavior. The API can replace grouped columns and
+expand or collapse all groups in one update.
+
+## Aggregates
+
+Available functions are count, distinct count, sum, average, min, max, and
+median. The footer scope can be none, current page, or all rows. Server-side
+grouping requests one parent listing at a time and sends aggregate definitions
+with the request.

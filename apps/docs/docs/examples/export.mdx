@@ -1,0 +1,30 @@
+---
+title: CSV and Excel export
+sidebar_position: 11
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# CSV and Excel export
+
+Export the complete view, a selected range, or selected columns from the
+toolbar, menus, or API.
+
+<LiveFeatureGrid feature="export" />
+
+<FrameworkCode feature="export" />
+
+## Output fidelity
+
+Excel output is written without runtime dependencies and includes hierarchical
+headers, cell spans, full-width row merges, pinned panes, typed number/date/
+currency values, and application-pinned rows. Aggregate footers become live
+formulas when an equivalent Excel function exists.
+
+Grouped export supports a tree with outline levels and per-group subtotals, or
+a flat leaf mode with full group paths. Selection export prunes the group tree
+to relevant rows.
+
+Use `getDataAsCsv()` or `getDataAsExcel()` when the application needs bytes
+without triggering a browser download—for example, to upload or encrypt a file.
