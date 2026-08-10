@@ -420,6 +420,9 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       rowHeight: () => this.rowHeight,
+      onVerticalScrollbarVisibilityChanged: (visible) => {
+        this._columnLayoutRenderer?.setVerticalScrollbarVisible(visible);
+      },
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this._pinnedRowsRenderer = new PinnedRowsRenderer({
@@ -430,6 +433,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       bodyCellRenderer: this._bodyCellRenderer,
       onHeightChanged: () => {
+        this._bodyViewportRenderer.recomputeView();
         requestAnimationFrame(() => this._maybeUpdatePoolSize());
       },
       onBodyPartitionChanged: () => {
@@ -600,6 +604,7 @@ export class GridRenderer {
       aggregateCenterCells: () => this._aggregateCells,
       aggregateRight: aggregateRefs.right,
       aggregateRightCells: () => this._aggregateRightCells,
+      updateVerticalScrollLayout: () => this._bodyViewportRenderer.recomputeView(),
       updatePinnedRowsLayout: () => this._pinnedRowsRenderer.updateLayout(),
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
@@ -612,7 +617,10 @@ export class GridRenderer {
       rightScroller: bodyWrapper.rightScroller,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
-      onResize: () => this._pinnedRowsRenderer.updateLayout(),
+      onResize: () => {
+        this._bodyViewportRenderer.recomputeView();
+        this._pinnedRowsRenderer.updateLayout();
+      },
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
       leadingScroller: bodyWrapper.leadingScroller,

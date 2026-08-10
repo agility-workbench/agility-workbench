@@ -1345,7 +1345,7 @@
   display: flex;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-right: 15px;
+  padding-right: 0;
   flex: 1 1 auto;
   position: relative;
 }
@@ -1628,7 +1628,7 @@
 
 .pte-scroller-horizontal-container-wrapper {
   display: flex;
-  padding-right: 15px;
+  padding-right: 0;
   overflow-x: auto;
   scrollbar-width: none;
   overflow-y: hidden;
