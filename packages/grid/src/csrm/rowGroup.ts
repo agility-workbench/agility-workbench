@@ -90,7 +90,9 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
       || item.col.key === candidate.key
       || item.key === candidate.colId
       || item.key === candidate.key;
-    const groupSort = sortModel?.items.find(item => matchesColumn(item, col));
+    // A sort on the synthesized auto-group column ("singleColumn" display mode) has no leaf values
+    // of its own — it means "order the group buckets", and controls every grouping level at once.
+    const groupSort = sortModel?.items.find(item => item.col.isAutoGroupColumn() || matchesColumn(item, col));
     const hasDescendantGroupSort = sortModel?.items.some(item =>
       groupColumns.slice(level + 1).some(groupCol => matchesColumn(item, groupCol))
     ) ?? false;

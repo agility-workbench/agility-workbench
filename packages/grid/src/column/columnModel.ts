@@ -40,23 +40,24 @@ const ROW_NUMBER_COLUMN_DEF = {
 } satisfies ColDef & { __internalRole: "rowNumber" };
 
 const AUTO_GROUP_COL_ID = "__pte_group__";
-// Base def for a synthesized auto-group column (shown in "singleColumn"/"multipleColumns" modes).
-// The chevron + indented label are painted by the body cell renderer, which branches on
+// Base def for the synthesized auto-group column (shown in "singleColumn" display mode). The
+// chevron + indented label are painted by the body cell renderer, which branches on
 // col.isAutoGroupColumn() + row.isGroup — the column itself carries no cellRenderer so the core
-// stays free of any renderer dependency.
+// stays free of any renderer dependency. It gets no special treatment beyond that: by default it is
+// an unpinned, movable, resizable, sortable column, and clients tune it via
+// gridOptions.groupColumnDef (layered over these defaults in buildAutoGroupColDef).
 const AUTO_GROUP_COLUMN_DEF = {
   colId: AUTO_GROUP_COL_ID,
   key: AUTO_GROUP_COL_ID,
   label: "Group",
   width: 240,
   minWidth: 120,
-  pinned: "left",
-  sortable: false,
+  sortable: true,
   filter: false,
   groupable: false,
   aggregatable: false,
   resizable: true,
-  movable: false,
+  movable: true,
   hideable: false,
   exportable: false,
   __internalRole: "autoGroup",
@@ -517,7 +518,15 @@ export class ColumnModel implements IColumnModel {
   }
 
   private withInternalColumns(cols: Column[]): Column[] {
-    const userColumns = cols.filter((col) => !col.isRowNumberColumn() && !col.isAutoGroupColumn());
+    // The auto-group column is an ordinary movable/pinnable column once synthesized, so when `cols`
+    // already carries auto-group instances they keep their in-place position. A move rebuilds the
+    // dragged column as a duplicate instance (ColumnMove.duplicate), so adopt whatever `cols`
+    // carries as the canonical list. Auto-group columns absent from `cols` (fresh grouping,
+    // setColumnDefs rebuild) lead the user columns instead — the historical default position.
+    const presentAuto = cols.filter((col) => col.isAutoGroupColumn());
+    if (presentAuto.length > 0) this.autoGroupColumns = presentAuto;
+    const missingAuto = this.autoGroupColumns.filter((col) => !presentAuto.includes(col));
+    const body = cols.filter((col) => !col.isRowNumberColumn());
     const leading: Column[] = [];
     if (this.options.rowNumbers) {
       const rowNumberColumn = this.getRowNumberColumn();
@@ -525,7 +534,7 @@ export class ColumnModel implements IColumnModel {
       rowNumberColumn.hidden = false;
       leading.push(rowNumberColumn);
     }
-    return [...leading, ...this.autoGroupColumns, ...userColumns];
+    return [...leading, ...missingAuto, ...body];
   }
 
   private createTreeColumn(): Column {
@@ -569,15 +578,17 @@ export class ColumnModel implements IColumnModel {
 
     const next: Column[] = [];
     if (!treeData && groupColumns.length > 0 && mode === "singleColumn") {
-      next.push(new Column({ ...AUTO_GROUP_COLUMN_DEF }, "auto-group"));
+      next.push(this.getAutoGroupColumn());
     } else if (groupColumns.length > 0 && mode === "multipleColumns") {
       // Tag the real grouped columns so the renderer shows each level's value under its own column.
       groupColumns.forEach((gc, level) => { gc.groupLevel = level; });
     }
     this.autoGroupColumns = next;
-    // Rebuild from the current user columns (drops any previous row-group auto columns). Tree data
-    // receives a regular, client-configurable hierarchy column and preserves its runtime position.
-    const userColumns = this.columns.filter((c) => !c.isAutoGroupColumn() && !c.isRowNumberColumn());
+    // Rebuild from the current user columns (dropping auto columns from any previous grouping). A
+    // surviving auto-group column keeps its runtime position, like the tree hierarchy column.
+    const userColumns = this.columns.filter(
+      (c) => !c.isRowNumberColumn() && (!c.isAutoGroupColumn() || next.includes(c)),
+    );
     if (treeData) {
       const existingTreeColumn = userColumns.find(c => c.isTreeColumn());
       this.updateColumns(existingTreeColumn ? userColumns : [this.createTreeColumn(), ...userColumns]);
@@ -588,6 +599,35 @@ export class ColumnModel implements IColumnModel {
 
   getAutoGroupColumns(): Column[] {
     return this.autoGroupColumns;
+  }
+
+  // The singleColumn auto-group column def: the client's gridOptions.groupColumnDef layered over
+  // the defaults. Identity and the grouping machinery stay grid-owned regardless of the client def
+  // (filtering/grouping/aggregating the synthesized column has no meaningful operation).
+  private buildAutoGroupColDef(): ColDef {
+    return {
+      ...AUTO_GROUP_COLUMN_DEF,
+      ...this.options.groupColumnDef,
+      colId: AUTO_GROUP_COL_ID,
+      key: AUTO_GROUP_COL_ID,
+      children: undefined,
+      groupable: false,
+      aggregatable: false,
+      filter: false,
+      __internalRole: "autoGroup",
+    } as ColDef;
+  }
+
+  // Synthesize the auto-group column, reusing the live instance across regroups. Reuse keeps the
+  // instanceID stable, so an active sort on the group column (and its user-resized width) survives
+  // grouping changes and colDef swaps; def-driven props (label, width, pinned, flags) re-apply.
+  private getAutoGroupColumn(): Column {
+    const existing = this.autoGroupColumns[0];
+    if (existing) {
+      existing.updateFromColDef(this.buildAutoGroupColDef(), "auto-group");
+      return existing;
+    }
+    return new Column(this.buildAutoGroupColDef(), "auto-group");
   }
 
   getHierarchyColumn(): Column | undefined {
@@ -1033,7 +1073,9 @@ export class ColumnModel implements IColumnModel {
 
   resizeColumn(colId: string, width: number): string[] {
     const col = this.getById(colId);
-    if (!col || col.isInternal()) return [];
+    // Only the row-number column is layout-frozen; the auto-group column is a regular column whose
+    // resizable/movable/pinnable behavior is driven by its (client-tunable) def like any other.
+    if (!col || col.isRowNumberColumn()) return [];
     const resizedLeafIds = this.resizeActualColumn(col, width);
     // Record the user-set width on each affected leaf so it survives later auto-size recomputes
     // (grouping, move, aggregate change, data refresh). Stamped here in the public entry — not in
@@ -1047,7 +1089,7 @@ export class ColumnModel implements IColumnModel {
 
   moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {
     const col = this.getById(colId);
-    if (!col || col.isInternal()) return false;
+    if (!col || col.isRowNumberColumn()) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
     if (moveResult.length === 0) return false;
     this.updateColumns(moveResult);
@@ -1057,7 +1099,7 @@ export class ColumnModel implements IColumnModel {
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.getById(colId);
-    if (!col || col.isInternal()) return false;
+    if (!col || col.isRowNumberColumn()) return false;
 
     if (col.pinned === pin) return false;
 
@@ -1089,7 +1131,7 @@ export class ColumnModel implements IColumnModel {
     const affectedCols = new Set<Column>();
     for (const colId of colIds) {
       const col = this.getById(colId);
-      if (!col || col.isInternal()) continue;
+      if (!col || col.isRowNumberColumn()) continue;
       col.hidden = hidden;
       affectedCols.add(col);
     }

@@ -22,11 +22,12 @@ export class HeaderInteractionHandler {
     // Per-column opt-out: when columnContextMenu is false, do NOT preventDefault so the browser's
     // native context menu appears instead of the grid's column menu. (Checked before the default
     // preventDefault below, which otherwise suppresses the native menu across the whole header.)
-    if (col && !col.isInternal() && !col.columnContextMenu) return;
+    // The auto-group column takes part like any regular column; only row numbers stay inert.
+    if (col && !col.isRowNumberColumn() && !col.columnContextMenu) return;
 
     e.preventDefault();
     if (!header) return;
-    if (!col || col.isInternal()) return;
+    if (!col || col.isRowNumberColumn()) return;
     const selectedColumnIDs = this.params.selectedColumnIDs();
     const leaves = col.getLeaves();
     if (leaves.filter(l => selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
@@ -62,7 +63,7 @@ export class HeaderInteractionHandler {
     const sortIcon = (e.target as HTMLElement)?.closest(".pte-hcell-sort");
     if (sortIcon) {
       const col = this.params.core.getColumnModel().getById(header.id);
-      if (!col || col.isInternal() || !col.sortable) return;
+      if (!col || !col.sortable) return;
       const additive = this.params.core.options.multiSortKey === "shift"
         ? e.shiftKey
         : e.ctrlKey || e.metaKey;
@@ -71,7 +72,7 @@ export class HeaderInteractionHandler {
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
       const col = this.params.core.getColumnModel().getById(header.id);
-      if (!col || col.isInternal()) return;
+      if (!col || col.isRowNumberColumn()) return;
       if (e.shiftKey) {
         // Backward-compatible power-user shortcut: Shift+click on the header body sorts additively.
         return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive: true });

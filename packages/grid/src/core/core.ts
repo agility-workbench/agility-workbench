@@ -203,6 +203,7 @@ export class GridCore implements IGridCore {
       initialSort: options.initialSort,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,
       groupDisplayType: options.groupDisplayType ?? "singleColumn",
+      groupColumnDef: options.groupColumnDef,
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupSortMode: options.groupSortMode ?? "local",
       // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
@@ -1698,7 +1699,9 @@ export class GridCore implements IGridCore {
         break;
       case "headerAction":
         const col = this.columnModel.getById(action.colId);
-        if (!col || col.isInternal()) return;
+        // The auto-group column supports header actions like a regular column (toggleSort gates on
+        // col.sortable); only the row-number column stays inert.
+        if (!col || col.isRowNumberColumn()) return;
         switch (action.action) {
           case "toggleSort":
             this.toggleSort(col, action.additive ?? false);

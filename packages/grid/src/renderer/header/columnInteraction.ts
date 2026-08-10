@@ -66,7 +66,7 @@ export class ColumnInteractionRenderer {
       const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
       if (!header) return;
       const col = this.params.core.getColumnModel().getById(header.id);
-      if (!col || col.hidden || col.isInternal()) return;
+      if (!col || col.hidden || col.isRowNumberColumn()) return;
       if (!col.resizable) return;
 
       const headerRect = header.getBoundingClientRect();
@@ -83,7 +83,7 @@ export class ColumnInteractionRenderer {
     const header = (e.target as HTMLElement | null)?.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
     const col = this.params.core.getColumnModel().getById(header.id);
-    if (!col || col.hidden || col.isInternal()) return;
+    if (!col || col.hidden || col.isRowNumberColumn()) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
     const allowDrop = col.movable;
     this.maybeStartColumnDrag(col, header, e, allowDrop);
@@ -263,7 +263,7 @@ export class ColumnInteractionRenderer {
     const header = handle.closest(".pte-hcell") as HTMLDivElement | null;
     if (!header) return;
     const col = this.params.core.getColumnModel().getById(header.id);
-    if (!col || col.isInternal()) return;
+    if (!col || col.isRowNumberColumn()) return;
     this.params.core.dispatch({
       type: "columnAutosize",
       colId: header.id,
@@ -380,7 +380,7 @@ export class ColumnInteractionRenderer {
     if (
       !col
       || !col.sortable
-      || col.isInternal()
+      || col.isRowNumberColumn()
       || getSortDirections(col).length === 0
     ) return null;
     const zone = this.params.root.querySelector<HTMLElement>(".pte-grid-toolbar-sort-dropzone");
@@ -524,12 +524,12 @@ export class ColumnInteractionRenderer {
 
   private isDragSource(col: Column): boolean {
     if (!col) return false;
-    return !col.isInternal() && col.movable && col.isVisible();
+    return !col.isRowNumberColumn() && col.movable && col.isVisible();
   }
 
   private isDropAnchor(col: Column): boolean {
     if (!col) return false;
-    return !col.isInternal() && col.isVisible();
+    return !col.isRowNumberColumn() && col.isVisible();
   }
 
   private setDragCursor(active: boolean, allowDrop = true) {
