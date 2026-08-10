@@ -422,6 +422,7 @@ export class GridRenderer {
       rowHeight: () => this.rowHeight,
       onVerticalScrollbarVisibilityChanged: (visible) => {
         this._columnLayoutRenderer?.setVerticalScrollbarVisible(visible);
+        this._pinnedRowsRenderer?.setBodyVerticalScrollbarVisible(visible);
       },
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
