@@ -145,6 +145,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- grouping / tree ---
   readonly groupDisplayType = input<GridOptions["groupDisplayType"]>();
+  readonly groupColumnDef = input<GridOptions["groupColumnDef"]>();
   readonly groupDefaultExpanded = input<GridOptions["groupDefaultExpanded"]>();
   readonly groupSortMode = input<GridOptions["groupSortMode"]>();
   readonly groupRowsSelectable = input<GridOptions["groupRowsSelectable"]>();

@@ -175,7 +175,9 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     expect(gridEl.querySelector(
       `.pte-pinned-rows-top .pte-pinned-row[data-row-id='${group.id}']`,
     )).toBeNull();
-    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 0 });
+    // The chevron cell keeps focus across the unpin. Its leaf index is 1: the auto-group column is
+    // unpinned by default (no forced pin-left), so it sits after the left-pinned "region" column.
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1 });
   });
 
   it("overlays the active group ancestry and pushes headers without moving the body flow", async () => {

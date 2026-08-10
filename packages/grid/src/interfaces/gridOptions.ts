@@ -772,6 +772,16 @@ export interface GridOptions {
    */
   groupDisplayType?: GroupDisplayType;
   /**
+   * Definition for the auto-generated group column shown in `groupDisplayType: "singleColumn"`.
+   * It is a regular column: label, width, pinning, sorting, moving, resizing, visibility, and other
+   * ordinary column options apply. Defaults to an unpinned, movable, resizable, sortable column
+   * labelled "Group". Sorting it orders the group buckets at every grouping level (client-side row
+   * model; on the server-side row model the sort is forwarded to the data source keyed by the
+   * internal group column id). Identity and grouping-machinery fields (`colId`, `key`, `children`,
+   * `groupable`, `aggregatable`, `filter`) are grid-owned and cannot be overridden.
+   */
+  groupColumnDef?: Partial<ColDef>;
+  /**
    * Depth to which groups start expanded when a grouping is first applied. 0 (default) leaves all
    * groups collapsed; a value of N expands the first N levels; -1 expands all levels. Per-group
    * expansion state set by the user afterwards takes precedence.
@@ -967,6 +977,7 @@ export interface InternalGridOptions extends GridOptions {
   showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
+  groupColumnDef?: Partial<ColDef>;
   groupDefaultExpanded: number;
   groupSortMode: GroupSortMode;
   treeData?: TreeDataOptions;
