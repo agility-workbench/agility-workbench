@@ -75,6 +75,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "commitOnBlur", props.commitOnBlur);
   setIfDefined(options, "reevaluateOnEdit", props.reevaluateOnEdit);
   setIfDefined(options, "groupDisplayType", props.groupDisplayType);
+  setIfDefined(options, "groupColumnDef", props.groupColumnDef);
   setIfDefined(options, "groupDefaultExpanded", props.groupDefaultExpanded);
   setIfDefined(options, "groupSortMode", props.groupSortMode);
   setIfDefined(options, "treeData", props.treeData);

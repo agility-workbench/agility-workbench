@@ -295,6 +295,13 @@ can be supplied through `treeData.columnDef`. It is unpinned by default and part
 column movement, sorting, filtering, visibility, pinning, menus, and export. `groupDisplayType`
 continues to apply only to column-value row grouping.
 
+Column-value row grouping has the same escape hatch: the auto-generated group column shown in
+`groupDisplayType: "singleColumn"` is an ordinary column — unpinned, movable, resizable, and
+sortable by default — and `groupColumnDef` layers a normal column definition (label, width,
+`pinned`, `movable`, `resizable`, `sortable`, …) over those defaults. Sorting it orders the group
+buckets at every grouping level. Its identity and grouping-machinery fields (`colId`, `key`,
+`children`, `groupable`, `aggregatable`, `filter`) are grid-owned and cannot be overridden.
+
 Tree data has two keyboard-navigation modes:
 
 ```ts

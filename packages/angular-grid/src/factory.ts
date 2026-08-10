@@ -69,6 +69,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "commitOnBlur", grid.commitOnBlur());
   setIfDefined(options, "reevaluateOnEdit", grid.reevaluateOnEdit());
   setIfDefined(options, "groupDisplayType", grid.groupDisplayType());
+  setIfDefined(options, "groupColumnDef", grid.groupColumnDef());
   setIfDefined(options, "groupDefaultExpanded", grid.groupDefaultExpanded());
   setIfDefined(options, "groupSortMode", grid.groupSortMode());
   setIfDefined(options, "treeData", grid.treeData());
