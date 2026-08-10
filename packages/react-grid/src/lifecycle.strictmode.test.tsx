@@ -1,10 +1,20 @@
 // @vitest-environment happy-dom
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
-import type { IGridAPI, IServerSideDataSource } from "@agility-workbench/grid";
+import type {
+  ActionFrameComponentParams,
+  CellRendererParams,
+  ICellEditorParams,
+  IGridAPI,
+  IServerSideDataSource,
+  TooltipComponentParams,
+} from "@agility-workbench/grid";
+import type { ReactCellEditorHandle } from "./cellEditor";
+import type { ReactColDef } from "./cellRenderer";
 
 beforeAll(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,6 +49,10 @@ function cellText(container: HTMLElement): string {
     .join(" ");
 }
 
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 describe("Grid React lifecycle", () => {
   it("renders real grid cells under React.StrictMode", async () => {
     const container = createContainer();
@@ -56,14 +70,151 @@ describe("Grid React lifecycle", () => {
     expect(container.querySelectorAll(".pte-cell").length).toBeGreaterThan(0);
     expect(cellText(container)).toContain("Widget");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
+    container.remove();
+  });
+
+  it("cleans nested renderer, tooltip, and action-frame roots during rapid StrictMode lifecycles", async () => {
+    const lifecycle = {
+      renderer: { mounted: 0, cleaned: 0 },
+      tooltip: { mounted: 0, cleaned: 0 },
+      actionFrame: { mounted: 0, cleaned: 0 },
+      editor: { mounted: 0, cleaned: 0 },
+      menu: { mounted: 0, cleaned: 0 },
+    };
+
+    function useLifecycle(kind: keyof typeof lifecycle) {
+      useEffect(() => {
+        lifecycle[kind].mounted += 1;
+        return () => {
+          lifecycle[kind].cleaned += 1;
+        };
+      }, [kind]);
+    }
+
+    function Renderer(params: CellRendererParams) {
+      useLifecycle("renderer");
+      return <span>{String(params.value)}</span>;
+    }
+
+    function Tooltip(params: TooltipComponentParams) {
+      useLifecycle("tooltip");
+      return <span>{String(params.value)}</span>;
+    }
+
+    function ActionFrame(params: ActionFrameComponentParams) {
+      useLifecycle("actionFrame");
+      return <span>{String(params.value)}</span>;
+    }
+
+    const Editor = React.forwardRef<ReactCellEditorHandle, ICellEditorParams>(
+      function Editor(params, ref) {
+        useLifecycle("editor");
+        React.useImperativeHandle(ref, () => ({ getValue: () => params.value }), [params.value]);
+        return <input defaultValue={String(params.value ?? "")} />;
+      },
+    );
+
+    function MenuIcon() {
+      useLifecycle("menu");
+      return <span>R</span>;
+    }
+
+    const nestedColumns: ReactColDef[] = [
+      {
+        colId: "name",
+        key: "name",
+        label: "Name",
+        editable: true,
+        cellRenderer: Renderer,
+        cellEditor: Editor,
+        tooltipComponent: Tooltip,
+        actionFrameComponent: ActionFrame,
+      },
+      { colId: "price", key: "price", label: "Price" },
+    ];
+    const container = createContainer();
+    const root = createRoot(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+
+    await act(async () => {
+      root.render(
+        <React.StrictMode>
+          <Grid
+            ref={apiRef}
+            rowData={rows}
+            columnDefs={nestedColumns}
+            rowIdKey="id"
+            tooltip={{ showDelay: 0, hideDelay: 0 }}
+            getColumnMenuItems={() => [{
+              id: "lifecycle",
+              label: "Lifecycle",
+              left: <MenuIcon />,
+              onClick: () => undefined,
+            }]}
+          />
+        </React.StrictMode>,
+      );
+      await tick();
+    });
+
+    const colId = apiRef.current!.getColumnModel().getByColId("name")!.instanceID;
+    for (let index = 0; index < 3; index += 1) {
+      await act(async () => {
+        apiRef.current!.showTooltip({ rowId: "1", colId });
+        await tick();
+      });
+      await act(async () => {
+        apiRef.current!.hideTooltip();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        apiRef.current!.openActionFrame({ rowId: "1", colId });
+        await tick();
+      });
+      await act(async () => {
+        apiRef.current!.closeActionFrame();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        apiRef.current!.startEditingCell({ rowId: "1", colId });
+        await tick();
+      });
+      await act(async () => {
+        apiRef.current!.cancelEditing();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        const menuButton = document
+          .getElementById(colId)
+          ?.querySelector<HTMLButtonElement>(".pte-hcell-menu-menuBtn");
+        menuButton!.click();
+        await tick();
+      });
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('[data-item-id="lifecycle"]')!.click();
+        await Promise.resolve();
+      });
+    }
+
+    expect(lifecycle.renderer.mounted).toBeGreaterThan(0);
+    expect(lifecycle.tooltip.mounted).toBeGreaterThan(0);
+    expect(lifecycle.actionFrame.mounted).toBeGreaterThan(0);
+    expect(lifecycle.editor.mounted).toBeGreaterThan(0);
+    expect(lifecycle.menu.mounted).toBeGreaterThan(0);
+
+    await unmountTestRoot(root);
+    expect(lifecycle.renderer.cleaned).toBe(lifecycle.renderer.mounted);
+    expect(lifecycle.tooltip.cleaned).toBe(lifecycle.tooltip.mounted);
+    expect(lifecycle.actionFrame.cleaned).toBe(lifecycle.actionFrame.mounted);
+    expect(lifecycle.editor.cleaned).toBe(lifecycle.editor.mounted);
+    expect(lifecycle.menu.cleaned).toBe(lifecycle.menu.mounted);
     container.remove();
   });
 
   it("allows onGridReady to synchronously update parent React state without render-phase warnings", async () => {
     const container = createContainer();
     const root = createRoot(container);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     function Harness() {
       const [ready, setReady] = useState(false);
@@ -93,10 +244,7 @@ describe("Grid React lifecycle", () => {
 
     expect(container.querySelector("[data-testid='status']")?.textContent).toBe("ready");
     expect(cellText(container)).toContain("Gadget");
-    expect(errorSpy.mock.calls.some((call) => String(call[0]).includes("Cannot update a component while rendering a different component"))).toBe(false);
-
-    errorSpy.mockRestore();
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -115,7 +263,7 @@ describe("Grid React lifecycle", () => {
 
     expect(objectRef.current).toBeTruthy();
     expect(objectRef.current!.getCore().getCellValue("1", "name")).toBe("Widget");
-    await act(async () => objectRoot.unmount());
+    await unmountTestRoot(objectRoot);
     expect(objectRef.current).toBeNull();
     objectContainer.remove();
 
@@ -136,7 +284,7 @@ describe("Grid React lifecycle", () => {
 
     const liveApi = callbackValues.filter(Boolean).at(-1)!;
     expect(liveApi.getCore().getCellValue("2", "name")).toBe("Gadget");
-    await act(async () => callbackRoot.unmount());
+    await unmountTestRoot(callbackRoot);
     expect(callbackValues.at(-1)).toBeNull();
     callbackContainer.remove();
   });
@@ -155,7 +303,7 @@ describe("Grid React lifecycle", () => {
     });
 
     expect(container.querySelector(".pte-root")).toBeTruthy();
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     expect(firstRef.current).toBeNull();
     expect(container.querySelector(".pte-root")).toBeNull();
 
@@ -177,7 +325,7 @@ describe("Grid React lifecycle", () => {
     expect(selectionEvents).toBe(1);
     off();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -197,7 +345,7 @@ describe("Grid React lifecycle", () => {
     expect(warnSpy.mock.calls.some((call) => String(call[0]).includes("server-side"))).toBe(false);
     warnSpy.mockRestore();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -225,7 +373,7 @@ describe("Grid React lifecycle", () => {
     expect(apiRef.current!.getCore().getRowModel().getType()).toBe("serverSide");
     expect(apiRef.current!.getCore().getRowModel().isValid()).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

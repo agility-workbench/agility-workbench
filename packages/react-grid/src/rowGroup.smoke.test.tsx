@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 
@@ -83,7 +84,7 @@ describe("row grouping end-to-end via Grid", () => {
     expect(core.getRowModel().getViewCount()).toBe(4);
     expect(toggles().some(toggle => toggle.querySelector(".icon-group-expanded"))).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -105,7 +106,7 @@ describe("row grouping end-to-end via Grid", () => {
     const labels = Array.from(container.querySelectorAll<HTMLElement>(".pte-group-label")).map(e => e.textContent);
     expect(labels.some(l => l?.includes("(2)"))).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -156,7 +157,7 @@ describe("row grouping end-to-end via Grid", () => {
     expect(core.getOptions().groupDisplayType).toBe("groupRows");
     expect(groupRowEls(container).some(row => row.classList.contains("pte-full-width-row"))).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -201,7 +202,7 @@ describe("row grouping end-to-end via Grid", () => {
     });
     expect(core.getSelectionRange()).not.toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

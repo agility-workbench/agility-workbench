@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { ReactColDef } from "./cellRenderer";
 import type { IGridAPI, ActionFrameComponentParams } from "@agility-workbench/grid";
@@ -88,7 +89,7 @@ describe("ActionFrame", () => {
     expect(framedCell(container)).not.toBeNull();
     expect(container.querySelector(".af-form")?.textContent).toContain("AF:Ava");
     expect(apiRef.current!.getActionFrameCell()).toEqual({ rowId: "1", colId });
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("opens on a center-section cell when another column is pinned left", async () => {
@@ -109,7 +110,7 @@ describe("ActionFrame", () => {
     });
     expect(popover(container)).not.toBeNull();
     expect(framedCell(container)).not.toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("opens on a cell click when actionFrameTrigger is 'click'", async () => {
@@ -120,7 +121,7 @@ describe("ActionFrame", () => {
       await tick();
     });
     expect(popover(container)).not.toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("does NOT open on click for a column without a trigger", async () => {
@@ -134,7 +135,7 @@ describe("ActionFrame", () => {
       await tick();
     });
     expect(popover(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("editing the same cell closes an open frame (mutual exclusion)", async () => {
@@ -155,7 +156,7 @@ describe("ActionFrame", () => {
     });
     expect(popover(container)).toBeNull();
     expect(apiRef.current!.getActionFrameCell()).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("Escape closes the frame", async () => {
@@ -171,7 +172,7 @@ describe("ActionFrame", () => {
       await tick();
     });
     expect(popover(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("api.closeActionFrame closes the frame", async () => {
@@ -187,7 +188,7 @@ describe("ActionFrame", () => {
       await tick();
     });
     expect(popover(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("honors a per-column placement override (right)", async () => {
@@ -207,7 +208,7 @@ describe("ActionFrame", () => {
     // FloatingAnchor stamps the resolved side on data-placement. happy-dom's zero-size rects make
     // exact geometry unreliable, but the resolved side should be present and not fall back to auto.
     expect(popover(container)?.dataset.placement).toBeTruthy();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("draws the content indicator on cells matching a field, not on empty cells", async () => {
@@ -225,7 +226,7 @@ describe("ActionFrame", () => {
     // The Name column (col-idx 0) must never be marked.
     const nameCell = container.querySelector(".pte-row[data-view-idx=\"0\"] .pte-cell[data-col-idx=\"0\"]");
     expect(nameCell?.classList.contains("pte-action-frame-indicator")).toBe(false);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("indicator predicate marks only matching cells", async () => {
@@ -242,6 +243,6 @@ describe("ActionFrame", () => {
     const row1Comment = container.querySelector(".pte-row[data-view-idx=\"1\"] .pte-cell[data-col-idx=\"1\"]");
     expect(row0Comment?.classList.contains("pte-action-frame-indicator")).toBe(true);
     expect(row1Comment?.classList.contains("pte-action-frame-indicator")).toBe(false);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });

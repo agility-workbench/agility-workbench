@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { MenuItem } from "./menu";
 import type { ReactColDef } from "./cellRenderer";
@@ -73,7 +74,7 @@ describe("getColumnMenuItems with React-node slots", () => {
       menu!.querySelector<HTMLElement>('[data-item-id="custom"]')!.click();
     });
     expect(onClick).toHaveBeenCalledTimes(1);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("keeps the default items when the callback appends to them", async () => {
@@ -94,6 +95,6 @@ describe("getColumnMenuItems with React-node slots", () => {
     const menu = container.querySelector<HTMLElement>(".pte-menu")!;
     expect(menu.querySelectorAll("[data-item-id]").length).toBeGreaterThan(1);
     expect(menu.textContent).toContain("Extra");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });

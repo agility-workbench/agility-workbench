@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { ColumnType } from "@agility-workbench/grid";
 // Imported through the public entry rather than "./grid": this doubles as a runtime assertion
 // that the core style helpers are re-exported from the React package.
@@ -43,13 +44,14 @@ async function mountGrid(extraProps: Record<string, unknown> = {}) {
 // injects, and the nonce case has to be the first mount that does.
 describe("automatic stylesheet delivery", () => {
   it("does not inject when the application opts out", async () => {
-    await mountGrid({ suppressStyleInjection: true });
+    const { root } = await mountGrid({ suppressStyleInjection: true });
     expect(styleCount()).toBe(0);
     expect(areGridStylesInjected()).toBe(false);
+    await unmountTestRoot(root);
   });
 
   it("injects the stylesheet on attach, carrying a styleNonce through from props", async () => {
-    await mountGrid({ styleNonce: "test-nonce" });
+    const { root } = await mountGrid({ styleNonce: "test-nonce" });
     const style = document.querySelector("#pte-grid-styles");
 
     expect(styleCount()).toBe(1);
@@ -59,10 +61,12 @@ describe("automatic stylesheet delivery", () => {
     // from core options. A wrapper-level injectGridStyles() would land first with no nonce and
     // then suppress the real one via the dedupe-by-id guard, leaving the grid unstyled under CSP.
     expect(style?.getAttribute("nonce")).toBe("test-nonce");
+    await unmountTestRoot(root);
   });
 
   it("does not add a second copy for a second grid on the page", async () => {
-    await mountGrid();
+    const { root } = await mountGrid();
     expect(styleCount()).toBe(1);
+    await unmountTestRoot(root);
   });
 });

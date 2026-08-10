@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 
@@ -82,7 +83,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(filter.style.top).toBe("6px");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -120,7 +121,7 @@ describe("pinned and sticky rows", () => {
     expect(top.textContent).not.toContain("Target");
     expect(bottom.style.display).toBe("none");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -172,7 +173,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "bottom" });
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -215,7 +216,7 @@ describe("pinned and sticky rows", () => {
     expect(bottom.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(86);
     expect(top.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(43);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -258,7 +259,7 @@ describe("pinned and sticky rows", () => {
     )).toBeNull();
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 0 });
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -375,7 +376,7 @@ describe("pinned and sticky rows", () => {
       `.pte-body .pte-viewport [row-id='${nextParent.id}']`,
     )).toBeTruthy();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -446,7 +447,7 @@ describe("pinned and sticky rows", () => {
       previous = { top, pos: pos as number };
     }
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -481,7 +482,7 @@ describe("pinned and sticky rows", () => {
     ).length).toBe(2);
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -543,7 +544,7 @@ describe("pinned and sticky rows", () => {
       ".pte-pinned-rows-bottom .pte-pinned-row[data-view-idx='0'] .pte-cell[data-col-idx='1'].selected",
     )).toBeTruthy();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -593,7 +594,7 @@ describe("pinned and sticky rows", () => {
     expect(lines.length).toBe(3); // pinned row + body rows 0..1
 
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -636,7 +637,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(scroller.scrollTop).toBe(0);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -683,7 +684,7 @@ describe("pinned and sticky rows", () => {
     expect(lines[6].startsWith("Bottom")).toBe(true);
 
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -726,7 +727,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(topRow.country).toBe("tc");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -747,7 +748,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(core.getEditingCell()).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -772,7 +773,7 @@ describe("pinned and sticky rows", () => {
     });
     expect(core.getEditingCell()).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -820,7 +821,7 @@ describe("pinned and sticky rows", () => {
     expect(crossing.length).toBe(2);
     expect(crossing[1].startsWith("BotR")).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -852,7 +853,7 @@ describe("pinned and sticky rows", () => {
     expect(seenCtx?.rowId).toBe("p:top:target");
     expect(document.querySelector(".pte-menu")).not.toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -881,7 +882,7 @@ describe("pinned and sticky rows", () => {
     // The clicked band cell is inside the active selection, so focus must not collapse to it.
     expect(core.getSelectionRange()).toEqual(before);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -915,7 +916,7 @@ describe("pinned and sticky rows", () => {
     expect(bodyFirst.classList.contains("selected-top")).toBe(false);
     expect(bodyLast.classList.contains("selected-bottom")).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -951,7 +952,7 @@ describe("pinned and sticky rows", () => {
     expect(bodyLast.classList.contains("selected")).toBe(true);
     expect(bodyLast.classList.contains("selected-bottom")).toBe(false);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -998,7 +999,7 @@ describe("pinned and sticky rows", () => {
     await act(async () => apiRef.current!.setRowPinned("3", null));
     expect(bandIds("bottom")).toEqual(["p:bottom:T"]);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -1018,7 +1019,7 @@ describe("pinned and sticky rows", () => {
     expect(pinnedGroup.textContent).toContain("EMEA");
     expect(pinnedGroup.querySelector(".pte-full-width-cell")).toBeTruthy();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

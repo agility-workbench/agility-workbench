@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 
 beforeAll(() => {
@@ -70,7 +71,7 @@ describe("pagination footer visibility", () => {
     expect(footer).toBeTruthy();
     expect(footer!.classList.contains("visible")).toBe(false);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -84,7 +85,7 @@ describe("pagination footer visibility", () => {
     expect(footer!.classList.contains("visible")).toBe(true);
     expect(pageSize?.value).toBe("25");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -108,7 +109,7 @@ describe("pagination footer visibility", () => {
     expect(container.querySelector(pageSizeSelector)).toBeNull();
     expect(container.querySelector(".pte-pagination-nav")).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -120,7 +121,7 @@ describe("pagination footer visibility", () => {
     expect(container.querySelector(".pte-pagination-nav")).toBeTruthy();
     expect(container.querySelector(".pte-aggregate-controls")).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -138,7 +139,7 @@ describe("pagination footer visibility", () => {
     expect(container.querySelector(".pte-aggregate-controls")).toBeTruthy();
     expect(container.querySelector(".pte-pagination-nav")).toBeTruthy();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

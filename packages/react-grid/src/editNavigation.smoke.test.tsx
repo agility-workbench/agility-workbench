@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -69,7 +70,7 @@ describe("moveAfterEdit", () => {
     expect(api.getCore().getRowModel().getRowNode("1")!.data.name).toBe("Zed");
     // ...and the active cell moved down to view row 1.
     expect(active(api)).toMatchObject({ row: 1, colIdx: 0 });
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("Shift+Enter moves up", async () => {
@@ -78,7 +79,7 @@ describe("moveAfterEdit", () => {
     await openEditor(container, 1);
     await act(async () => { keyOn(editorInput(container)!, "Enter", { shiftKey: true }); });
     expect(active(api)).toMatchObject({ row: 0, colIdx: 0 });
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("Tab moves right, Shift+Tab moves left", async () => {
@@ -91,7 +92,7 @@ describe("moveAfterEdit", () => {
     await act(async () => { gridKey(container, "F2"); });
     await act(async () => { keyOn(editorInput(container)!, "Tab", { shiftKey: true }); });
     expect(active(api)).toMatchObject({ row: 0, colIdx: 0 });
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("moveAfterEdit:false commits in place without moving", async () => {
@@ -103,7 +104,7 @@ describe("moveAfterEdit", () => {
     await act(async () => { keyOn(input, "Enter"); });
     expect(api.getCore().getRowModel().getRowNode("1")!.data.name).toBe("Zed");
     expect(active(api)).toMatchObject({ row: 0, colIdx: 0 }); // stayed put
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -117,7 +118,7 @@ describe("commitOnBlur", () => {
     await act(async () => { input.dispatchEvent(new FocusEvent("blur", { bubbles: true })); });
     expect(api.getCore().getEditingCell()).toBeNull(); // editor closed
     expect(api.getCore().getRowModel().getRowNode("1")!.data.name).toBe("Blurred");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("keeps the editor open on blur when disabled", async () => {
@@ -127,6 +128,6 @@ describe("commitOnBlur", () => {
     const input = editorInput(container)!;
     await act(async () => { input.dispatchEvent(new FocusEvent("blur", { bubbles: true })); });
     expect(api.getCore().getEditingCell()).not.toBeNull(); // still editing
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

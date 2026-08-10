@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { ReactCellEditorHandle } from "./cellEditor";
 import type { ReactColDef } from "./cellRenderer";
@@ -79,7 +80,7 @@ describe("React cell editors in a live grid", () => {
     expect(apiRef.current!.getCore().getEditingCell()).not.toBeNull();
     expect(cell.querySelector<HTMLInputElement>(".react-cell-editor")?.value).toBe("AAA");
     expect(focusCalls).toBe(1);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("commits the React editor value, emits onCellValueChanged, and unmounts the editor", async () => {
@@ -99,7 +100,7 @@ describe("React cell editors in a live grid", () => {
     expect(onCellValueChanged).toHaveBeenCalledTimes(1);
     expect(onCellValueChanged.mock.calls[0][0]).toMatchObject({ rowId: "1", value: "Updated" });
     expect(unmounts).toBe(1);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });
 
@@ -124,6 +125,6 @@ describe("selection and sort event callbacks", () => {
     });
     expect(onSortChanged).toHaveBeenCalledTimes(1);
     expect(onSortChanged.mock.calls[0][0].changedColIds).toContain(name.instanceID);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });

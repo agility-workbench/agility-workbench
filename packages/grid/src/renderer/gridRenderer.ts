@@ -1037,6 +1037,8 @@ export class GridRenderer {
       this._keyboardNavigationAnnouncementTimer = undefined;
     }
     this._coreEventBinder.destroy();
+    this._cellEditRenderer.destroy();
+    this._menuRenderer.close(0);
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
     this._quickFilterFloatingHost.remove();
@@ -1047,6 +1049,8 @@ export class GridRenderer {
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
     this._actionFrameRenderer.destroy();
+    this._headerRenderer.destroy();
+    this._destroyRowPool();
     this._pinnedRowsRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
@@ -1314,6 +1318,7 @@ export class GridRenderer {
 
   _buildRowPool() {
     this._syncLeafColumns();
+    this._destroyRowPool();
     this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
 
     this._buildAggregateRow();
@@ -1322,6 +1327,14 @@ export class GridRenderer {
   _rebuildRowPool() {
     // If columns change frequently, you’d do smarter diffing.
     this._buildRowPool();
+  }
+
+  private _destroyRowPool(): void {
+    for (const slot of this._rowPool) {
+      for (const record of slot.cellRendererInstances.values()) record.runtime.destroy();
+      slot.cellRendererInstances.clear();
+    }
+    this._rowPool = [];
   }
 
   private _copySelectionToClipboard({ includeHeaders, ctx }: {
