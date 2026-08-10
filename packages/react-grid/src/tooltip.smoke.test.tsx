@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { ReactColDef } from "./cellRenderer";
 import {
@@ -99,7 +100,7 @@ describe("tooltips", () => {
     const el = tooltipEl(container);
     expect(el).not.toBeNull();
     expect(el!.textContent).toContain("short");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("tooltipField shows a value from another field on hover", async () => {
@@ -114,7 +115,7 @@ describe("tooltips", () => {
     const el = tooltipEl(container);
     expect(el).not.toBeNull();
     expect(el!.textContent).toContain("@example.com");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("shows tooltips on center-section cells when a column is pinned left", async () => {
@@ -134,7 +135,7 @@ describe("tooltips", () => {
     const el = tooltipEl(container);
     expect(el).not.toBeNull();
     expect(el!.textContent).toContain("short");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("custom tooltipComponent renders", async () => {
@@ -152,7 +153,7 @@ describe("tooltips", () => {
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelector(".custom-tt")).not.toBeNull();
     expect(container.querySelector(".custom-tt")!.textContent).toContain("TT:Ava");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("uses the grid tooltip for individual sparkline points", async () => {
@@ -205,7 +206,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(tooltipEl(container)?.textContent).toContain("Point 0: $10");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("shows tuple X and Y values in the default sparkline tooltip", async () => {
@@ -235,7 +236,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(tooltipEl(container)?.textContent).toContain("Feb: 20");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("does not show sparkline point tooltips when tooltip=false", async () => {
@@ -256,7 +257,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(tooltipEl(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("suppressAutoTooltip disables the auto-truncation tooltip", async () => {
@@ -276,7 +277,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(tooltipEl(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("does not show tooltips when tooltip=false", async () => {
@@ -292,7 +293,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(tooltipEl(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("shows a header tooltip on header hover", async () => {
@@ -312,7 +313,7 @@ describe("tooltips", () => {
     const el = tooltipEl(container);
     expect(el).not.toBeNull();
     expect(el!.textContent).toContain("The person's name");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("mounts a React component for a header tooltip", async () => {
@@ -333,7 +334,7 @@ describe("tooltips", () => {
       await tick();
     });
     expect(container.querySelector(".react-header-tooltip")?.textContent).toContain("Header: Name");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("column-level tooltipOptions.mode overrides the grid default", async () => {
@@ -353,7 +354,7 @@ describe("tooltips", () => {
     // Column 1 (email) → inherits grid anchored: placement stamp present.
     await act(async () => { hoverBodyCell(container, 1); await tick(); });
     expect(tooltipEl(container)!.dataset.placement).toBeTruthy();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("column-level tooltipOptions.interactive forces anchored even under a follow grid default", async () => {
@@ -370,7 +371,7 @@ describe("tooltips", () => {
     // interactive ⇒ anchored (placement stamped) + interactive class, despite the follow grid default.
     expect(el!.dataset.placement).toBeTruthy();
     expect(el!.classList.contains("pte-tooltip-interactive")).toBe(true);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("reconfigures the tooltip mode live when the prop changes (anchored → follow)", async () => {
@@ -402,7 +403,7 @@ describe("tooltips", () => {
     // exercised in the playground demo — happy-dom's zero-size getBoundingClientRect makes the
     // clamped left/top unreliable to assert here.)
     expect(el!.dataset.placement).toBeUndefined();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("disables tooltips live when the prop flips to false", async () => {
@@ -425,6 +426,6 @@ describe("tooltips", () => {
     await act(async () => { root.render(render(false)); });
     await act(async () => { hoverBodyCell(container, 0); await tick(); });
     expect(tooltipEl(container)).toBeNull();
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });

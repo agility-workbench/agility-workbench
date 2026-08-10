@@ -89,6 +89,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private topCount = 0;
   private bottomCount = 0;
   private bodyPartitionSignature = "";
+  private bodyHasVerticalScrollbar = false;
   // Application-pinned rows only change through API/option/model events (which force-render), so
   // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
   private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
@@ -224,6 +225,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       band.left.scrollLeft = left;
       band.center.scrollLeft = center;
       band.right.scrollLeft = right;
+    }
+  }
+
+  setBodyVerticalScrollbarVisible(visible: boolean): void {
+    this.bodyHasVerticalScrollbar = visible;
+    for (const band of [this.top, this.bottom, this.sticky]) {
+      this.updateVerticalScrollbarLane(band);
     }
   }
 
@@ -742,12 +750,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     }
     band.verticalScroller.style.height = `${contentHeight}px`;
     band.vertical.classList.toggle("scrollable", overflows);
+    this.updateVerticalScrollbarLane(band);
     band.vertical.style.pointerEvents = overflows ? "auto" : "none";
     if (!overflows) this.syncBandVertical(band, band.vertical, 0);
 
     rows.forEach(({ node, position }, rowIndex) => {
       this.renderRow(band, node, position, rowIndex);
     });
+  }
+
+  private updateVerticalScrollbarLane(band: BandElements): void {
+    // Application-pinned bands retain the lane when they need their own scrollbar. Otherwise all
+    // pinned/sticky sections mirror the central body's live scrollbar visibility.
+    const visible = this.bodyHasVerticalScrollbar || band.vertical.classList.contains("scrollable");
+    band.vertical.classList.toggle("visible", visible);
   }
 
   private renderRow(

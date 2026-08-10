@@ -41,6 +41,11 @@ export class HeaderRenderer {
     return this.elements;
   }
 
+  destroy(): void {
+    for (const { runtime } of this.components.values()) runtime.destroy();
+    this.components.clear();
+  }
+
   buildDOM(reason: string) {
     const {
       core,

@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import {
   adaptActionFrame,
@@ -96,7 +97,7 @@ describe("React cell renderers in a live grid", () => {
   it("mounts React cell-renderer components through the adapter with merged cellRendererParams", async () => {
     const { container, root } = await mountGrid();
     expect(cellTexts(container)).toEqual(["AAA:custom", "BBB:custom", "CCC:custom"]);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("forwards rowData changes into the core without recreating the grid", async () => {
@@ -113,7 +114,7 @@ describe("React cell renderers in a live grid", () => {
     expect(apiRef.current).toBe(api);
     // The new row rendered through the React cell-renderer adapter.
     expect(cellTexts(container)).toEqual(["AAA:custom", "BBB:custom", "CCC:custom", "DDD:custom"]);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });
 
@@ -198,7 +199,7 @@ describe("React renderer refresh reasons", () => {
 
     expect(refreshReasons.length).toBeGreaterThan(0);
     expect(refreshReasons.every((reason) => reason === "resize")).toBe(true);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });
 

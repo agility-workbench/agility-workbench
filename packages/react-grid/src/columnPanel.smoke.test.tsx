@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI, ReactColDef } from "./index";
 
@@ -58,7 +59,7 @@ describe("column panel", () => {
   it("is opt-in and opens from a collapsed rail", async () => {
     const off = await mount(false);
     expect(off.container.querySelector(".pte-column-panel")).toBeNull();
-    await act(async () => off.root.unmount());
+    await unmountTestRoot(off.root);
 
     const on = await mount({ defaultOpen: false, width: 330 });
     const grid = on.container.querySelector<HTMLElement>(".pte-root")!;
@@ -70,7 +71,7 @@ describe("column panel", () => {
     await act(async () => rail.click());
     expect(grid.classList.contains("pte-column-panel-open")).toBe(true);
     expect(rail.getAttribute("aria-expanded")).toBe("true");
-    await act(async () => on.root.unmount());
+    await unmountTestRoot(on.root);
   });
 
   it("searches, hides, pins, keyboard-reorders, and resets columns live", async () => {
@@ -137,7 +138,7 @@ describe("column panel", () => {
     expect(reset.disabled).toBe(true);
     expect(modified.hidden).toBe(true);
     expect(announcer.textContent).toBe("Column layout reset");
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("bulk-shows and hides eligible columns within the active search", async () => {
@@ -165,7 +166,7 @@ describe("column panel", () => {
 
     await act(async () => bulk.click());
     expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(false);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("excludes non-hideable columns from bulk visibility", async () => {
@@ -186,7 +187,7 @@ describe("column panel", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(bulk.disabled).toBe(true);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("omits suppressColumnPanel columns from the drawer without removing them from the grid", async () => {
@@ -213,7 +214,7 @@ describe("column panel", () => {
     });
     expect(container.querySelectorAll(".pte-column-panel-row")).toHaveLength(0);
     expect(bulk.disabled).toBe(true);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("renders collapsible column-group hierarchy and searches group paths", async () => {
@@ -271,7 +272,7 @@ describe("column panel", () => {
     expect(api.getColumnModel().getByColId("name")!.hidden).toBe(true);
     expect(api.getColumnModel().getByColId("region")!.hidden).toBe(true);
     expect(api.getColumnModel().getByColId("revenue")!.hidden).toBe(false);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("moves a nested leaf with its full hierarchy when dropped at the section end", async () => {
@@ -323,7 +324,7 @@ describe("column panel", () => {
       ?.classList.contains("pte-column-panel-dragging-group-column")).toBe(false);
     expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
       .toBe("Name moved to position 3 of 3");
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("duplicates only the immediate parent when a leaf moves within its top-level group", async () => {
@@ -371,7 +372,7 @@ describe("column panel", () => {
     expect(container.querySelectorAll(
       '.pte-column-panel-tree-group[data-group-col-id="contact"]',
     )).toHaveLength(2);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("lists only columns made visible by column-group expansion", async () => {
@@ -446,7 +447,7 @@ describe("column panel", () => {
     expect(panelRow(container, "region")).toBeNull();
     expect(restoredNameCheckbox.checked).toBe(false);
     expect(api.getColumnModel().getCenterLeaves().map(col => col.colId)).toEqual(["id"]);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("reorders columns by drag and drop within a pin section", async () => {
@@ -463,7 +464,7 @@ describe("column panel", () => {
     expect(api.getColumnState().map((state) => state.colId)).toEqual(["region", "revenue", "name"]);
     expect(container.querySelector(".pte-column-panel-announcer")?.textContent)
       .toBe("Name moved to position 3 of 3");
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it.each([
@@ -490,7 +491,7 @@ describe("column panel", () => {
     await act(async () => triggerButton.click());
     expect(container.querySelector(".pte-root")!.classList.contains("pte-column-panel-open")).toBe(true);
     expect(container.querySelector(".pte-column-panel-content")).not.toBeNull();
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("groups a column dropped from the header onto the toolbar grouping section", async () => {
@@ -566,7 +567,7 @@ describe("column panel", () => {
       chip => chip.textContent,
     )).toEqual(["Region", "Name", "Revenue"]);
     expect(dropZone.querySelector(".pte-grid-toolbar-group-drop-indicator")).toBeNull();
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("keeps toolbar sort priority synchronized with header indicators", async () => {
@@ -700,7 +701,7 @@ describe("column panel", () => {
     expect(core.getSortModel().items).toEqual([]);
     expect(container.querySelector(".pte-grid-toolbar-sort-chip")).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("identifies clipped grouping and sort chips with grid tooltips", async () => {
@@ -772,7 +773,7 @@ describe("column panel", () => {
     });
     expect(container.querySelector(".pte-tooltip")?.textContent).toBe("Revenue");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("offers Manage columns in both the column button menu and header context menu", async () => {
@@ -800,7 +801,7 @@ describe("column panel", () => {
       }));
     });
     expect(container.querySelector('.pte-menu-item[data-item-id="manageColumns"]')).not.toBeNull();
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("uses grid tooltips instead of native titles for panel controls", async () => {
@@ -824,7 +825,7 @@ describe("column panel", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
     expect(container.querySelector(".pte-tooltip")?.textContent).toContain(label.textContent);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("moves the trigger live without remounting the grid", async () => {
@@ -836,6 +837,6 @@ describe("column panel", () => {
     expect(container.querySelector(".pte-column-panel-trigger-header-button")).toBeNull();
     expect(container.querySelector(".pte-column-panel-trigger-toolbar-button")).not.toBeNull();
     expect(api.getCore()).toBe(coreBefore);
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 });

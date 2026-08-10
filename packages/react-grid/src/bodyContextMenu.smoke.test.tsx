@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { MenuItem } from "./menu";
@@ -77,14 +78,14 @@ describe("bodyContextMenu", () => {
     expect(ev.defaultPrevented).toBe(true);
     expect(menuOpen(container)).toBe(true);
     expect(menuLabels(container)).toContain("Copy");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("shows the default body menu when true", async () => {
     const { container, root } = await mountGrid(true);
     await act(async () => rightClick(firstCell(container)));
     expect(menuOpen(container)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("lets the native menu through when false (no grid menu, no preventDefault)", async () => {
@@ -92,7 +93,7 @@ describe("bodyContextMenu", () => {
     const ev = await act(async () => rightClick(firstCell(container)));
     expect(ev.defaultPrevented).toBe(false);
     expect(menuOpen(container)).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("renders exactly the items returned by a callback", async () => {
@@ -105,7 +106,7 @@ describe("bodyContextMenu", () => {
     const labels = menuLabels(container);
     expect(labels).toContain("Copy");
     expect(labels).toContain("My action");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("shows nothing (but suppresses the native menu) when the callback returns []", async () => {
@@ -114,6 +115,6 @@ describe("bodyContextMenu", () => {
     // Grid still owns the gesture — native menu suppressed — but no menu is rendered.
     expect(ev.defaultPrevented).toBe(true);
     expect(menuOpen(container)).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

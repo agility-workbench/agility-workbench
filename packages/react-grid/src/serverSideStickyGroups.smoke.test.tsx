@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI, IServerSideDataSource, IServerSideRequest } from "@agility-workbench/grid";
 
@@ -124,7 +125,7 @@ describe("sticky group rows on the server-side row model", () => {
     expect(headerIds()).toEqual([emeaId, secondId]);
     expect(overlay.style.height).toBe("86px");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

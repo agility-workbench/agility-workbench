@@ -1345,7 +1345,7 @@
   display: flex;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-right: 15px;
+  padding-right: 0;
   flex: 1 1 auto;
   position: relative;
 }
@@ -1418,16 +1418,23 @@
   pointer-events: auto;
 }
 
-/* Application-pinned top/bottom bands own a fifth, 15px-wide vertical-scroll column just like the
-   central body. Section scrollers hide their native bars and mirror this column's scrollTop. */
+/* Pinned-row bands expose a fifth vertical-scroll column only while the central body has a vertical
+   scrollbar, or while an application-pinned band needs its own. Section scrollers hide their
+   native bars and mirror this column's scrollTop. */
 .pte-pinned-rows-vertical {
-  flex: 0 0 15px;
-  width: 15px;
-  min-width: 15px;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
   background: transparent;
   scrollbar-width: auto;
+}
+
+.pte-pinned-rows-vertical.visible {
+  flex-basis: 15px;
+  width: 15px;
+  min-width: 15px;
 }
 
 .pte-pinned-rows-vertical.scrollable {
@@ -1628,7 +1635,7 @@
 
 .pte-scroller-horizontal-container-wrapper {
   display: flex;
-  padding-right: 15px;
+  padding-right: 0;
   overflow-x: auto;
   scrollbar-width: none;
   overflow-y: hidden;

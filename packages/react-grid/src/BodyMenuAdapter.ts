@@ -1,8 +1,8 @@
 import type { IBodyMenuAdapter, MenuItem as GridMenuItem } from "@agility-workbench/grid";
 import { BodyMenuContext } from "@agility-workbench/grid";
 import React from "react";
-import { createRoot, Root } from "react-dom/client";
 import { MenuItem, MenuSlotReact } from "./menu";
+import { ManagedReactRoot } from "./managedReactRoot";
 
 export class ReactBodyMenuAdapter implements IBodyMenuAdapter {
   constructor(private opts: {
@@ -57,8 +57,8 @@ export class ReactBodyMenuAdapter implements IBodyMenuAdapter {
     const el = document.createElement("span");
     el.style.display = "inline-flex";
     el.style.alignItems = "center";
-    const root: Root = createRoot(el);
+    const root = new ManagedReactRoot(el);
     root.render(node);
-    return { el, unmount: () => root.unmount() };
+    return { el, unmount: () => root.destroy() };
   }
 }

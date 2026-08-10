@@ -1,6 +1,6 @@
 import React from "react";
-import { createRoot, Root } from "react-dom/client";
 import type { ColDef, DefaultColDef } from "@agility-workbench/grid";
+import { ManagedReactRoot } from "./managedReactRoot";
 import type {
   CellRenderer,
   CellRendererClass,
@@ -73,7 +73,7 @@ function getRendererProps(params: CellRendererParams): CellRendererParams {
 function createReactRendererClass(Renderer: ReactCellRenderer): CellRendererClass {
   return class ReactCellRendererAdapter implements ICellRenderer {
     private el = document.createElement("span");
-    private root: Root | null = null;
+    private root: ManagedReactRoot | null = null;
 
     init(params: CellRendererParams): void {
       this.el.style.display = "inline-flex";
@@ -81,7 +81,7 @@ function createReactRendererClass(Renderer: ReactCellRenderer): CellRendererClas
       this.el.style.width = "100%";
       this.el.style.height = "100%";
       this.el.style.overflow = "hidden";
-      this.root = createRoot(this.el);
+      this.root = new ManagedReactRoot(this.el);
       this.render(params);
     }
 
@@ -95,7 +95,7 @@ function createReactRendererClass(Renderer: ReactCellRenderer): CellRendererClas
     }
 
     destroy(): void {
-      this.root?.unmount();
+      this.root?.destroy();
       this.root = null;
     }
 
@@ -129,12 +129,12 @@ function getTooltipProps(params: TooltipComponentParams): TooltipComponentParams
 function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentClass {
   return class ReactTooltipAdapter implements ITooltipComponent {
     private el = document.createElement("div");
-    private root: Root | null = null;
+    private root: ManagedReactRoot | null = null;
 
     init(params: TooltipComponentParams): void {
       // A single createRoot lives for the life of this tooltip instance; refresh re-renders into it
       // rather than remounting, so interactive content keeps its React state across repositions.
-      this.root = createRoot(this.el);
+      this.root = new ManagedReactRoot(this.el);
       this.render(params);
     }
 
@@ -148,7 +148,7 @@ function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentC
     }
 
     destroy(): void {
-      this.root?.unmount();
+      this.root?.destroy();
       this.root = null;
     }
 
@@ -192,12 +192,12 @@ function getActionFrameProps(params: ActionFrameComponentParams): ActionFrameCom
 function createReactActionFrameClass(Comp: ReactActionFrameComponent): ActionFrameComponentClass {
   return class ReactActionFrameAdapter implements IActionFrameComponent {
     private el = document.createElement("div");
-    private root: Root | null = null;
+    private root: ManagedReactRoot | null = null;
 
     init(params: ActionFrameComponentParams): void {
       // One createRoot for the life of the open frame; refresh re-renders into it so the form keeps
       // its React state across repositions (scroll tracking calls reposition, not remount).
-      this.root = createRoot(this.el);
+      this.root = new ManagedReactRoot(this.el);
       this.render(params);
     }
 
@@ -211,7 +211,7 @@ function createReactActionFrameClass(Comp: ReactActionFrameComponent): ActionFra
     }
 
     destroy(): void {
-      this.root?.unmount();
+      this.root?.destroy();
       this.root = null;
     }
 

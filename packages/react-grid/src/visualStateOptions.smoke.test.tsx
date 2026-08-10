@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 
@@ -72,13 +73,13 @@ describe("zebraRows", () => {
     expect(byIdx.get(0)!.classList.contains("pte-row-alt")).toBe(false);
     expect(byIdx.get(1)!.classList.contains("pte-row-alt")).toBe(true);
     expect(byIdx.get(2)!.classList.contains("pte-row-alt")).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("adds no stripe class when disabled (default)", async () => {
     const { container, root } = await mountGrid();
     expect(container.querySelector(".pte-row-alt")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -93,7 +94,7 @@ describe("highlightActiveCell", () => {
     });
     const active = container.querySelectorAll(".pte-active-cell");
     expect(active.length).toBe(1);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("adds no active-cell class when disabled (default)", async () => {
@@ -104,7 +105,7 @@ describe("highlightActiveCell", () => {
       api.extendRangeTo(1, 0);
     });
     expect(container.querySelector(".pte-active-cell")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -122,7 +123,7 @@ describe("columnHover", () => {
     const stray = Array.from(container.querySelectorAll<HTMLElement>(".pte-col-hover"))
       .filter((c) => c.dataset.colIdx !== colIdx);
     expect(stray).toHaveLength(0);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not highlight columns when disabled (default)", async () => {
@@ -132,7 +133,7 @@ describe("columnHover", () => {
       cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(container.querySelector(".pte-col-hover")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -144,7 +145,7 @@ describe("rowHover toggle", () => {
       cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(container.querySelector(".pte-row-hover")).not.toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not highlight the hovered row when rowHover is false", async () => {
@@ -154,7 +155,7 @@ describe("rowHover toggle", () => {
       cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(container.querySelector(".pte-row-hover")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -247,7 +248,7 @@ describe("visual and interaction options update live", () => {
     expect(core.getSelectionRange()).toBeNull();
     expect(rootEl.classList.contains("pte-text-selection")).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 
@@ -283,7 +284,7 @@ describe("visual and interaction options update live", () => {
     expect(apiRef.current).toBe(originalApi);
     expect(calls).toEqual(["latest"]);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

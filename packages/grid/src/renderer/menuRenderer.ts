@@ -47,7 +47,7 @@ export class MenuRenderer {
     } = params;
 
     if (level === 0) {
-      this.hideMenuLevels(0);
+      this.close(0);
     }
 
     this.menuProps = {
@@ -138,13 +138,10 @@ export class MenuRenderer {
   }
 
   close(level: number) {
-    while (this.menuOverlays.length > level) {
-      const overlay = this.menuOverlays.pop();
-      if (overlay && overlay.parentElement) {
-        overlay.parentElement.removeChild(overlay);
-      }
-    }
-    this.detachGlobalCloseHandlers();
+    const onClose = level === 0 ? this.menuProps.onClose : undefined;
+    this.hideMenuLevels(level);
+    if (level === 0) this.detachGlobalCloseHandlers();
+    onClose?.();
   }
 
   private handleMenuMouseMove(level: number, e: MouseEvent) {
@@ -298,18 +295,15 @@ export class MenuRenderer {
       return;
     }
 
-    const props = { ...this.menuProps };
-    if (props.onClose) {
-      props.onClose();
-    }
+    const onItemClick = this.menuProps.onItemClick;
     this.closeMenu();
-    if (props.onItemClick) {
-      props.onItemClick(item);
+    if (onItemClick) {
+      onItemClick(item);
     }
   }
 
   private closeMenu() {
-    this.hideMenuLevels(0);
+    this.close(0);
   }
 
   private renderMenuItems(container: HTMLDivElement, items: MenuItem[]) {

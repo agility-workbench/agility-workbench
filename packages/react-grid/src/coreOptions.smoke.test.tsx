@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import { getGridOptions } from "./factory";
 import type { IGridAPI } from "@agility-workbench/grid";
@@ -103,7 +104,7 @@ describe("core option forwarding (live grid)", () => {
     });
 
     expect(column.computedWidth).toBeGreaterThan(initialWidth);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("preserves computed widths after data changes when autosizeColumnsOnDataChange is disabled", async () => {
@@ -116,7 +117,7 @@ describe("core option forwarding (live grid)", () => {
     });
 
     expect(column.computedWidth).toBe(initialWidth);
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("clears the current selection on an empty-body click by default", async () => {
@@ -130,7 +131,7 @@ describe("core option forwarding (live grid)", () => {
       );
     });
     expect(apiRef.current!.getSelection().kind).toBe("none");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 
   it("preserves selection on an empty-body click when clearSelectionOnBodyClick is false", async () => {
@@ -146,6 +147,6 @@ describe("core option forwarding (live grid)", () => {
       );
     });
     expect(apiRef.current!.getSelection().kind).toBe("cell");
-    await act(async () => { root.unmount(); });
+    await unmountTestRoot(root);
   });
 });

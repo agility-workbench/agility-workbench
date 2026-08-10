@@ -35,11 +35,22 @@ interface ColumnLayoutRendererParams {
   aggregateCenterCells: () => HTMLDivElement[];
   aggregateRight: HTMLDivElement;
   aggregateRightCells: () => HTMLDivElement[];
+  updateVerticalScrollLayout?: () => void;
   updatePinnedRowsLayout?: () => void;
 }
 
+const VERTICAL_SCROLLBAR_GUTTER_WIDTH = 15;
+
 export class ColumnLayoutRenderer {
+  private hasVerticalScrollbar = false;
+  private rightSectionWidth = 0;
+
   constructor(private params: ColumnLayoutRendererParams) {}
+
+  setVerticalScrollbarVisible(visible: boolean): void {
+    this.hasVerticalScrollbar = visible;
+    this.applyVerticalScrollbarCompensation();
+  }
 
   applyLeadingColumnWidths(colIDs: string[] = []): number {
     let maxWidth = 0;
@@ -190,7 +201,6 @@ export class ColumnLayoutRenderer {
     }
     this.params.rightViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateRightCells(), this.params.core.getColumnModel().getRightLeaves(), colIDs);
-    this.params.rightHeader.style.paddingRight = `${maxWidth > 0 ? 15 : 0}px`;
     this.params.hScrollerRight.style.width = `${maxWidth}px`;
     this.params.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
     const totalWidth = maxWidth;
@@ -202,8 +212,7 @@ export class ColumnLayoutRenderer {
       }
       this.params.hScrollRightParent.style.width = `${maxWidth}px`;
       this.params.hScrollRightParent.style.minWidth = `${maxWidth}px`;
-      this.params.rightHeader.style.width = `${maxWidth + 16}px`;
-      this.params.rightHeader.style.minWidth = `${maxWidth + 16}px`;
+      this.rightSectionWidth = maxWidth;
       this.params.aggregateRight.style.width = `${maxWidth + 1}px`;
       this.params.aggregateRight.style.minWidth = `${maxWidth + 1}px`;
       this.params.aggregateRight.style.display = "block";
@@ -211,6 +220,7 @@ export class ColumnLayoutRenderer {
       this.params.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
       this.params.rightScroller.classList.remove("visible");
+      this.rightSectionWidth = 0;
       this.params.rightHeader.style.width = "0px";
       this.params.rightHeader.style.minWidth = "0px";
       this.params.rightHeader.classList.remove("visible");
@@ -220,7 +230,7 @@ export class ColumnLayoutRenderer {
       this.params.aggregateRight.style.minWidth = "0px";
       this.params.aggregateRight.style.display = "none";
     }
-    this.params.centerHeader.style.paddingRight = `${maxWidth > 0 ? 0 : 15}px`;
+    this.applyVerticalScrollbarCompensation();
     return totalWidth;
   }
 
@@ -254,7 +264,25 @@ export class ColumnLayoutRenderer {
     const chromeHeight = headerHeight
       + (this.params.hScrollContainer.style.display === "flex" ? hScrollHeight : 0);
     this.params.body.style.height = `calc(100% - ${chromeHeight}px)`;
+    this.params.updateVerticalScrollLayout?.();
     this.params.updatePinnedRowsLayout?.();
+  }
+
+  private applyVerticalScrollbarCompensation(): void {
+    const gutterWidth = this.hasVerticalScrollbar ? VERTICAL_SCROLLBAR_GUTTER_WIDTH : 0;
+    const hasRightSection = this.rightSectionWidth > 0;
+
+    this.params.centerHeader.style.paddingRight = `${hasRightSection ? 0 : gutterWidth}px`;
+    this.params.rightHeader.style.paddingRight = `${hasRightSection ? gutterWidth : 0}px`;
+    this.params.hScrollContainer.style.paddingRight = `${gutterWidth}px`;
+
+    if (hasRightSection) {
+      // The extra pixel covers the pinned section's border; the remaining width is the live
+      // vertical-scrollbar lane, when present.
+      const headerWidth = this.rightSectionWidth + gutterWidth + 1;
+      this.params.rightHeader.style.width = `${headerWidth}px`;
+      this.params.rightHeader.style.minWidth = `${headerWidth}px`;
+    }
   }
 
   private applyAggregateColumnWidths(cells: HTMLDivElement[], columns: Column[], colIDs: string[]): void {

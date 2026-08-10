@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -54,7 +55,7 @@ describe("editTrigger", () => {
     expect(editing(api)).toBe(false);
     await act(async () => { dbl(nameCell(container, 0)); });
     expect(editing(api)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("singleClick: a single click selects and edits together", async () => {
@@ -63,7 +64,7 @@ describe("editTrigger", () => {
     await act(async () => { md(nameCell(container, 0)); });
     expect(editing(api)).toBe(true);
     expect(api.getSelection().kind).toBe("cell"); // also selected
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("none: no mouse gesture edits (double-click / single click), but keyboard still works", async () => {
@@ -74,7 +75,7 @@ describe("editTrigger", () => {
     // editTrigger only governs the mouse; F2 still edits (keyboard is governed separately).
     await act(async () => { md(nameCell(container, 0)); key(container, "F2"); });
     expect(editing(api)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("none + suppressKeyboardEdit: fully API-only editing", async () => {
@@ -87,7 +88,7 @@ describe("editTrigger", () => {
     // API can still start editing.
     await act(async () => { api.startEditingCell({ rowId: "1", colId: api.getColumnModel().getByColId("name")!.instanceID }); });
     expect(editing(api)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -102,7 +103,7 @@ describe("suppressKeyboardEdit", () => {
     // Double-click still edits (default editTrigger).
     await act(async () => { dbl(nameCell(container, 0)); });
     expect(editing(api)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -116,6 +117,6 @@ describe("suppressTypeToEdit", () => {
     // F2 still edits.
     await act(async () => { key(container, "F2"); });
     expect(editing(api)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

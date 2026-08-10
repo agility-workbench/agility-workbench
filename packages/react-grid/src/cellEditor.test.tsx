@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import React, { forwardRef, useImperativeHandle } from "react";
+import React, { act, forwardRef, useImperativeHandle } from "react";
 import { adaptCellEditor, ReactCellEditorHandle } from "./cellEditor";
+import { flushPendingReactRootUnmounts } from "./managedReactRoot";
 import type { ICellEditor, ICellEditorParams } from "@agility-workbench/grid";
 
 // A minimal core editor class (implements the public ICellEditor contract) used to
@@ -59,7 +60,7 @@ describe("adaptCellEditor discrimination", () => {
     expect(a).toBe(b); // cached
   });
 
-  it("wrapped editor bridges getValue / isParsed / focus through the imperative handle", () => {
+  it("wrapped editor bridges getValue / isParsed / focus through the imperative handle", async () => {
     let focused = false;
     const Comp = forwardRef<ReactCellEditorHandle, ICellEditorParams>(function Comp(params, ref) {
       useImperativeHandle(ref, () => ({
@@ -72,13 +73,16 @@ describe("adaptCellEditor discrimination", () => {
 
     const EditorClass = adaptCellEditor(Comp) as new () => ICellEditor;
     const editor = new EditorClass();
-    editor.init(initParams("hello"));
+    await act(async () => editor.init(initParams("hello")));
 
     expect(editor.getValue()).toBe("edited:hello");
     expect(editor.isParsed?.()).toBe(true);
     editor.focus?.();
     expect(focused).toBe(true);
     expect(editor.getGui()).toBeInstanceOf(HTMLElement);
-    editor.destroy?.();
+    await act(async () => {
+      editor.destroy?.();
+      await flushPendingReactRootUnmounts();
+    });
   });
 });

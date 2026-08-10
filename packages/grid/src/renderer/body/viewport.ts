@@ -5,6 +5,7 @@ interface BodyViewportRendererParams {
   core: GridCore;
   root: HTMLElement;
   rowHeight: () => number;
+  onVerticalScrollbarVisibilityChanged?: (visible: boolean) => void;
 }
 
 export class BodyViewportRenderer {
@@ -26,7 +27,9 @@ export class BodyViewportRenderer {
     this.elements.centerSpacer.style.height = `${verticalSize}px`;
     this.elements.rightSpacer.style.height = `${verticalSize}px`;
     this.elements.vScroller.style.height = `${verticalSize}px`;
-    this.elements.vScrollParent.style.display = verticalSize > this.elements.body.clientHeight ? "block" : "none";
+    const hasVerticalScrollbar = verticalSize > this.elements.body.clientHeight;
+    this.elements.vScrollParent.style.display = hasVerticalScrollbar ? "block" : "none";
+    this.params.onVerticalScrollbarVisibilityChanged?.(hasVerticalScrollbar);
   }
 
   resetScrollPosition() {

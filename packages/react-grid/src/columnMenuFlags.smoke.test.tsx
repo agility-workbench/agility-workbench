@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -55,7 +56,7 @@ describe("showColumnMenu", () => {
   it("renders the menu button by default", async () => {
     const { container, apiRef, root } = await mountGrid(COLS);
     expect(menuBtn(headerFor(container, apiRef.current!, "name"))).not.toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("omits the menu button when showColumnMenu is false", async () => {
@@ -67,7 +68,7 @@ describe("showColumnMenu", () => {
     expect(menuBtn(headerFor(container, api, "name"))).toBeNull();
     // Other columns keep their button.
     expect(menuBtn(headerFor(container, api, "id"))).not.toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -87,7 +88,7 @@ describe("columnContextMenu", () => {
     const ev = await act(async () => rightClick(header));
     expect(ev.defaultPrevented).toBe(true);
     expect(columnMenuOpen(container)).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("lets the native menu through when columnContextMenu is false", async () => {
@@ -99,7 +100,7 @@ describe("columnContextMenu", () => {
     const ev = await act(async () => rightClick(header));
     expect(ev.defaultPrevented).toBe(false);
     expect(columnMenuOpen(container)).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -107,10 +108,10 @@ describe("showColumnButtonsOnHover", () => {
   it("adds the root class only when enabled", async () => {
     const off = await mountGrid(COLS);
     expect(off.container.querySelector("[data-pte-grid-id]")!.classList.contains("pte-column-buttons-on-hover")).toBe(false);
-    off.root.unmount();
+    await unmountTestRoot(off.root);
 
     const on = await mountGrid(COLS, { showColumnButtonsOnHover: true });
     expect(on.container.querySelector("[data-pte-grid-id]")!.classList.contains("pte-column-buttons-on-hover")).toBe(true);
-    on.root.unmount();
+    await unmountTestRoot(on.root);
   });
 });
