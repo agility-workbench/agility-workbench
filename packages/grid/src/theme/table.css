@@ -2493,9 +2493,25 @@
  * keeps the cursor clear of the resize handle straddling the boundary between two header cells.
  *
  * A class rather than `:focus-visible`, because DOM focus stays on the grid root — the cursor is
- * named for AT through `aria-activedescendant` instead. */
-.pte-hcell-active {
-  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
+ * named for AT through `aria-activedescendant` instead.
+ *
+ * Drawn as an overlay pseudo-element rather than an inset box-shadow on `.pte-hcell`: an inset
+ * shadow paints in its own element's background layer, so the hover background on the descendant
+ * `.pte-hcell-container` covered it. */
+.pte-hcell-active .pte-hcell-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* `.pte-header-wrapper` is border-box at exactly the header height and carries the header's 1px
+     bottom border, while each header section is sized to that full height — so the last pixel row
+     of every header cell is clipped. Nothing else paints there; the ring would lose half its bottom
+     edge, so it is drawn against the visible area instead. */
+  bottom: 1px;
+  border: 2px solid var(--pte-focus-ring-color);
+  border-radius: 2px;
+  /* Above the resize handle (z-index 1) so the ring is unbroken; never steals its drag. */
+  z-index: 2;
+  pointer-events: none;
 }
 
 .pte-hcell-menu-item {

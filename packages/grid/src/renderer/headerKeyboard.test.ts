@@ -156,6 +156,42 @@ describe("entering and leaving the header", () => {
     // user can no longer see the cursor in.
     expect(core.getSelectionRange()).toBeNull();
   });
+
+  /**
+   * The mirror of the rule above, and the half that shipped broken: clicking a body cell has to take
+   * the cursor out of the header. Driven through a real mousedown rather than the `rangeSelectSet`
+   * action, because the defect was precisely that the click path did not know the header cursor
+   * existed — dispatching the action directly would have tested the fix and missed the bug.
+   */
+  it("takes the cursor out of the header when a body cell is clicked", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    press(root, "ArrowRight");
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+
+    const cell = root.querySelectorAll<HTMLElement>(".pte-viewport .pte-cell")[2];
+    cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(core.getHeaderFocusColIdx()).toBeNull();
+    expect(activeHeader(root)).toBeNull();
+    expect(core.getActiveCell()).not.toBeNull();
+  });
+
+  it("routes arrow keys to the body after a click, from the clicked cell", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    press(root, "ArrowRight"); // cursor on the header, column 1
+
+    const cells = [...root.querySelectorAll<HTMLElement>(".pte-viewport .pte-row")[2]
+      .querySelectorAll<HTMLElement>(".pte-cell")];
+    cells[1].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    const clicked = core.getActiveCell()!;
+
+    // The reported symptom: arrows kept walking the header instead of moving the clicked cell.
+    press(root, "ArrowDown");
+    expect(core.getHeaderFocusColIdx()).toBeNull();
+    expect(core.getActiveCell()).toEqual({ ...clicked, row: clicked.row + 1 });
+  });
 });
 
 describe("moving along the header", () => {
@@ -187,6 +223,126 @@ describe("moving along the header", () => {
     press(root, "ArrowRight");
     expect(root.querySelectorAll(".pte-hcell-active")).toHaveLength(1);
     expect(activeDescendantEl(root)).toBe(activeHeader(root));
+  });
+});
+
+describe("a click on a header cell moves the cursor", () => {
+  /** Click a leaf header cell's label, the way a user reaching for that column would. */
+  const clickHeader = (root: HTMLElement, core: GridCore, colId: string) => {
+    const col = core.getColumnModel().getLeaves().find(c => c.colId === colId)!;
+    const target = document.getElementById(col.instanceID)!
+      .querySelector<HTMLElement>(".pte-hcell-content")!;
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    return core.getColumnModel().getLeaves().findIndex(c => c.colId === colId);
+  };
+
+  it("focuses the clicked cell instead of leaving the cursor where it was", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    expect(core.getHeaderFocusColIdx()).toBe(0);
+
+    const expected = clickHeader(root, core, "total");
+    expect(core.getHeaderFocusColIdx()).toBe(expected);
+    expect(activeHeader(root)?.id).toBe(core.getColumnModel().getLeaves()[expected].instanceID);
+    expect(root.querySelectorAll(".pte-hcell-active")).toHaveLength(1);
+  });
+
+  it("resumes arrow navigation from the clicked cell", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    press(root, "ArrowRight"); // cursor at 1, deliberately away from the click target
+
+    const clicked = clickHeader(root, core, "total");
+    press(root, "ArrowLeft");
+    expect(core.getHeaderFocusColIdx()).toBe(clicked - 1);
+  });
+
+  /**
+   * Moving the cursor is not a selection reset. A header click does replace the *column* selection
+   * with the clicked column — long-standing mouse behaviour, nothing to do with the cursor — and what
+   * matters here is that arrow keys carry on from there, so a click followed by arrows and
+   * Ctrl+Shift+Space still builds up a multi-column selection.
+   */
+  it("lets arrows keep building a multi-column selection after a click", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    root.focus();
+
+    clickHeader(root, core, "region");
+    const colIds = () => [...core.getSelectedColumnIds()]
+      .map(id => core.getColumnModel().getById(id)?.colId).sort();
+    expect(colIds()).toEqual(["region"]);
+
+    press(root, "ArrowRight"); // cursor onto "name" — navigating selects nothing by itself
+    expect(colIds()).toEqual(["region"]);
+    press(root, " ", { ctrlKey: true, shiftKey: true }); // additive
+    expect(colIds()).toEqual(["name", "region"]);
+  });
+
+  // columnSelection off deliberately: with it on, the click's own column-select path clears the cell
+  // range too, and this test would pass whether or not the cursor move did its job.
+  it("takes the cursor off a body cell when a header is clicked", () => {
+    const { core, root } = mountGrid(10, { columnSelection: false });
+    root.focus();
+    press(root, "ArrowDown"); // into the body
+    expect(core.getActiveCell()).not.toBeNull();
+
+    clickHeader(root, core, "name");
+    // Same rule as entering the header with ArrowUp: the cell cursor cannot outlive the move, or
+    // Ctrl+C would copy a range the user can no longer see the cursor in.
+    expect(core.getActiveCell()).toBeNull();
+    expect(core.getSelectionRange()).toBeNull();
+    expect(core.getHeaderFocusColIdx()).not.toBeNull();
+  });
+
+  /**
+   * Caught by a pre-existing real-browser check when the first version of this moved the cursor on
+   * *any* header click: opening a column menu wiped the user's cell selection. A button inside the
+   * header is a control, not a choice of cell — and Alt+ArrowDown opens the menu for the column the
+   * cursor already occupies, so the keyboard route never moves it either.
+   */
+  it("leaves the cursor and the cell selection alone when a header button is clicked", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    press(root, "ArrowDown"); // cursor into the body, with a 1x1 range
+    const active = core.getActiveCell();
+    expect(active).not.toBeNull();
+
+    const menuBtn = root.querySelector<HTMLElement>(".pte-header .pte-hcell-menu-menuBtn")!;
+    menuBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(core.getHeaderFocusColIdx()).toBeNull();
+    expect(core.getActiveCell()).toEqual(active);
+    expect(core.getSelectionRange()).not.toBeNull();
+
+    // Close it again: an open menu owns the arrow keys (6.5), and these grids are never unmounted, so
+    // leaving it open swallows the arrows of whichever test runs next.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(document.querySelector(".pte-menu")).toBeNull();
+  });
+
+  it("ignores a click on a parent group header, which the cursor cannot reach", () => {
+    const { core, root } = mountGrid(10, {}, [
+      { colId: "region", key: "region", label: "Region" },
+      {
+        colId: "grp", label: "Group", children: [
+          { colId: "name", key: "name", label: "Name" },
+          { colId: "total", key: "total", label: "Total", type: ColumnType.NUMBER },
+        ],
+      },
+    ]);
+    root.focus();
+    // Away from leaf 0, so a cursor that wrongly snaps to the first column is visible here.
+    press(root, "ArrowRight");
+    press(root, "ArrowRight");
+    const before = core.getHeaderFocusColIdx();
+    expect(before).toBe(2);
+
+    const parent = [...root.querySelectorAll<HTMLElement>(".pte-hcell")]
+      .find(h => !h.classList.contains("pte-hcell-leaf"))!;
+    parent.querySelector<HTMLElement>(".pte-hcell-content")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(core.getHeaderFocusColIdx()).toBe(before);
   });
 });
 

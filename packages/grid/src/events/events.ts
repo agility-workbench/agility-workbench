@@ -123,7 +123,8 @@ export type GridEventHeaderFocusChangedParams = {
   /** Index into the visible leaf columns, or undefined when the header no longer holds the cursor. */
   colIdx?: number;
   colId?: string;
-  reason?: "keyboard" | "api";
+  /** `"mouse"` only ever clears the cursor — a click that places the body cursor takes it out of the header. */
+  reason?: "keyboard" | "api" | "mouse";
 };
 
 export type GridEventEditingChangedParams = {

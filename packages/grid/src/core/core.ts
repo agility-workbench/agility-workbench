@@ -1344,17 +1344,22 @@ export class GridCore implements IGridCore {
   /**
    * Put the keyboard cursor on a header cell, or clear it with `null`. Entering the header clears
    * the cell selection: the cursor has left the body, and leaving a painted range behind would both
-   * look wrong and leave Ctrl+C copying something the user can no longer see the cursor in.
+   * look wrong and leave Ctrl+C copying something the user can no longer see the cursor in. That
+   * holds however the header was entered — `"mouse"` is a click on a header cell, which is as much a
+   * choice of cursor position as an arrow key is.
+   *
+   * Only the *cell* selection goes: the column selection is untouched, so arrow keys after a click
+   * still build up a multi-column selection.
    */
-  setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" = "keyboard"): void {
+  setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" | "mouse" = "keyboard"): void {
     const leaves = this.columnModel.getLeaves();
     const next = colIdx == null ? null : (colIdx >= 0 && colIdx < leaves.length ? colIdx : null);
     if (next === this.headerFocusColIdx) return;
     this.headerFocusColIdx = next;
     if (next != null && this.selectionModel.getActiveCell()) {
       this.selectionModel.clearRange();
-      this.emitSelectionChanged("keyboard");
-      this.emitFocusChanged(null, reason === "api" ? "api" : "keyboard");
+      this.emitSelectionChanged(reason);
+      this.emitFocusChanged(null, reason);
     }
     this.emit("headerFocusChanged", {
       colIdx: next ?? undefined,
@@ -2200,7 +2205,20 @@ export class GridCore implements IGridCore {
     if (changed) this.emitSelectionChanged("model");
   }
 
+  /**
+   * The body cursor and the header cursor are mutually exclusive (plan 6.9). Enforced at this funnel
+   * rather than at each call site that places the body cursor: the first version relied on every such
+   * path knowing about the header cursor, and a mouse click on a cell — which goes through
+   * `rangeSelectSet` — did not, so the ring stayed painted and arrow keys kept walking the header.
+   */
+  private clearHeaderFocusForBodyCursor(reason: "mouse" | "keyboard" | "api"): void {
+    if (this.headerFocusColIdx == null) return;
+    this.headerFocusColIdx = null;
+    this.emit("headerFocusChanged", { reason });
+  }
+
   private emitFocusChanged(active: CellPos | null, reason: "mouse" | "keyboard" | "api"): void {
+    if (active) this.clearHeaderFocusForBodyCursor(reason);
     const params: GridEventFocusChangedParams = { reason };
     if (active) {
       params.viewIdx = active.row;

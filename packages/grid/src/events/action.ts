@@ -213,7 +213,7 @@ export type GridActionHeaderFocusSet = {
   type: "headerFocusSet";
   /** Index into the visible leaf columns, or null to leave the header. */
   colIdx: number | null;
-  reason?: "keyboard" | "api";
+  reason?: "keyboard" | "api" | "mouse";
 };
 
 /** Step the header cursor. `down` leaves the header for the first body row in the same column. */

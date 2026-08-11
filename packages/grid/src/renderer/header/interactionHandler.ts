@@ -128,6 +128,30 @@ export class HeaderInteractionHandler {
     this.params.openColumnMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
   }
 
+  /**
+   * A click on a header cell is also a cursor move (plan 6.9): the keyboard cursor belongs on the
+   * cell the user last interacted with, or the painted ring and the next arrow key disagree about
+   * where they are. Deliberately driven from the *click* rather than the mousedown, so a column drag
+   * or a resize — which start on a header but are not a choice of cell — leave the cursor alone.
+   *
+   * Leaf cells only, which is the space the cursor walks; a click on a parent (group) header cell
+   * leaves the cursor where it is (6.9 limitation 2). Moving the cursor does not touch the column
+   * selection, so arrow keys afterwards still build a multi-column selection the same way.
+   */
+  private moveCursorToClickedHeader(e: MouseEvent, header: Element) {
+    // A click on a button inside the header — menu, filter, group expander — is operating a control,
+    // not choosing a cell. The keyboard agrees: Alt+ArrowDown opens the menu for the column the
+    // cursor is already on, so that route never moves it either. It also keeps a cell selection
+    // alive, which the menu action the user is reaching for may well be about.
+    if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
+    const core = this.params.core;
+    const col = core.getColumnModel().getById(header.id);
+    if (!col) return;
+    const colIdx = core.getColumnModel().getLeaves().findIndex(l => l.instanceID === col.instanceID);
+    if (colIdx < 0) return;
+    core.dispatch({ type: "headerFocusSet", colIdx, reason: "mouse" });
+  }
+
   onHeaderCellClick(e: MouseEvent) {
     // Routing keys off the header CSS classes (.pte-hcell-sort, .pte-hcell-content,
     // .pte-hcell-menu-btn / -filterBtn). Custom header components (ColDef.headerComponent /
@@ -135,6 +159,7 @@ export class HeaderInteractionHandler {
     // their own controls drive interactions via the callbacks on HeaderComponentParams instead.
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
+    this.moveCursorToClickedHeader(e, header);
     // Clicking the row-number header toggles all-rows selection (consistent with clicking any other
     // header cell), when enabled via selectAllRowsOnHeaderClick. The row-number column is internal,
     // so the normal column-select/sort path below would no-op for it anyway.
