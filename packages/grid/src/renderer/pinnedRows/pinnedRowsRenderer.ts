@@ -6,6 +6,7 @@ import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
+import { markPresentational, stampGridCellAria, stitchAriaRow } from "../aria";
 
 interface BandElements {
   root: HTMLDivElement;
@@ -441,6 +442,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       vertical,
       verticalScroller,
     };
+    // ARIA (plan 2.1): sticky bands mirror live body rows — the body copy stays exposed, so
+    // the whole mirror is hidden from AT to avoid double announcement. Pinned bands hold the
+    // only copy of their rows; their wrapper machinery is presentational and renderRow
+    // stitches each row like the body pool does.
+    if (kind === "sticky") {
+      root.setAttribute("aria-hidden", "true");
+    } else {
+      markPresentational(
+        root,
+        leading.outer, left.outer, center.outer, right.outer,
+        leading.host, left.host, center.host, right.host,
+      );
+      vertical.setAttribute("aria-hidden", "true");
+    }
     if (kind !== "sticky") {
       for (const scroller of [band.leading, band.left, band.center, band.right, band.vertical]) {
         scroller.addEventListener("scroll", () => this.syncBandVertical(band, scroller));
@@ -788,9 +803,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.dataset.colIdx = String(model.getLeadingLeaves().length);
       cell.style.display = "flex";
       cell.style.width = `${this.columnsWidth(model.getCenterLeaves())}px`;
+      stampGridCellAria(cell);
+      cell.setAttribute("aria-colindex", "1");
+      cell.setAttribute("aria-colspan", String(model.leafColumnLookup.size));
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
+      this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex);
       return;
     }
 
@@ -798,6 +817,26 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned);
+    this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex);
+  }
+
+  // ARIA (plan 2.1): band rows are stitched like body pool rows — center fragment is THE row,
+  // owning every section's cells in visual order. Band rows carry no aria-rowindex: they sit
+  // outside the view sequence and show a blank row number by design. Bands are rebuilt from
+  // scratch on each render, so creation-time stamping stays correct.
+  private stitchBandRowAria(
+    leading: HTMLDivElement,
+    left: HTMLDivElement,
+    center: HTMLDivElement,
+    right: HTMLDivElement,
+    pinned: RowPinnedPosition | null,
+    rowIndex: number,
+  ): void {
+    markPresentational(leading, left, right);
+    const cells = [
+      ...leading.children, ...left.children, ...center.children, ...right.children,
+    ] as HTMLElement[];
+    stitchAriaRow(center, cells, `${this.params.core.id}-${pinned ?? "sticky"}${rowIndex}`);
   }
 
   private createSectionRow(
@@ -862,6 +901,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.dataset.colId = column.instanceID;
       const meta = this.params.core.getColumnModel().leafColumnLookup.get(column.instanceID);
       if (meta) cell.dataset.colIdx = String(meta.globalIndex);
+      stampGridCellAria(cell, meta?.globalIndex);
       cell.style.flex = "0 0 auto";
       cell.style.width = `${column.computedWidth}px`;
       if (column.isComputableType()) cell.classList.add("pte-cell-right-aligned");

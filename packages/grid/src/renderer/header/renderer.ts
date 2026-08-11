@@ -100,6 +100,7 @@ export class HeaderRenderer {
         rightHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
       }
     }
+    this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
     const containerEl = this.params.getContainerEl();
     const headerProbe = getComputedStyle(centerHeader.querySelector(".pte-hcell") || containerEl);
     const cellProbe = getComputedStyle(body.querySelector(".pte-cell") || containerEl);
@@ -109,6 +110,37 @@ export class HeaderRenderer {
       cellFont: `${cellProbe.fontWeight} ${cellProbe.fontSize} ${cellProbe.fontFamily}`,
       reason: reason,
     });
+  }
+
+  /**
+   * ARIA (plan 2.1): the center header section is THE header row (role stamped by
+   * createHeaderWrapper); leaf header cells across all four sections become its
+   * columnheaders via aria-owns in visual order. Group (parent) header cells are
+   * presentational — v1 does not expose the group-header hierarchy. Rebuilt with the header
+   * DOM on every column change.
+   */
+  private applyHeaderAria(
+    leadingHeader: HTMLDivElement,
+    leftHeader: HTMLDivElement,
+    centerHeader: HTMLDivElement,
+    rightHeader: HTMLDivElement,
+  ) {
+    const lookup = this.params.core.getColumnModel().leafColumnLookup;
+    const ownedIds: string[] = [];
+    for (const section of [leadingHeader, leftHeader, centerHeader, rightHeader]) {
+      for (const hcell of section.querySelectorAll<HTMLElement>(".pte-hcell")) {
+        const meta = lookup.get(hcell.id);
+        if (hcell.classList.contains("pte-hcell-leaf") && meta) {
+          hcell.setAttribute("role", "columnheader");
+          hcell.setAttribute("aria-colindex", String(meta.globalIndex + 1));
+          ownedIds.push(hcell.id);
+        } else {
+          hcell.setAttribute("role", "presentation");
+        }
+      }
+    }
+    if (ownedIds.length) centerHeader.setAttribute("aria-owns", ownedIds.join(" "));
+    else centerHeader.removeAttribute("aria-owns");
   }
 
   buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {

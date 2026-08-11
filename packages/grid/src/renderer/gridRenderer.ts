@@ -203,6 +203,10 @@ export class GridRenderer {
     this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
+    // ARIA (plan 2.1): the root is the single focusable element and therefore THE grid —
+    // aria-activedescendant (PR 2) must live on the focused element. Counts are refreshed by
+    // _refreshAriaCounts whenever data or columns change.
+    this.root.setAttribute("role", "grid");
     this._keyboardNavigationAnnouncer = div("pte-grid-announcer");
     this._keyboardNavigationAnnouncer.setAttribute("role", "status");
     this._keyboardNavigationAnnouncer.setAttribute("aria-live", "polite");
@@ -242,6 +246,7 @@ export class GridRenderer {
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
+        this._refreshAriaCounts();
       },
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
@@ -515,6 +520,7 @@ export class GridRenderer {
       leftPinnedLeafColumns: () => this._leftPinnedLeafColumns,
       centerLeafColumns: () => this._centerLeafColumns,
       rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
+      ariaIdPrefix: () => this.core.id,
     });
 
     this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
@@ -1331,6 +1337,16 @@ export class GridRenderer {
     this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
 
     this._buildAggregateRow();
+    this._refreshAriaCounts();
+  }
+
+  // Dataset-scoped ARIA dimensions (plan 2.1): rowcount = header + full view row count
+  // (virtualization/pagination-independent); colcount = visible leaf columns. Band rows and
+  // the aggregate row are unindexed (they show blank row numbers by design), so they are
+  // not counted.
+  private _refreshAriaCounts() {
+    this.root.setAttribute("aria-colcount", String(this.core.getColumnModel().leafColumnLookup.size));
+    this.root.setAttribute("aria-rowcount", String(this.core.getRowModel().getViewCount() + 1));
   }
 
   _rebuildRowPool() {

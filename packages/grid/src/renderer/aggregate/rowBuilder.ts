@@ -1,4 +1,5 @@
 import { Column } from "../../column/column";
+import { markPresentational, stampGridCellAria, stitchAriaRow } from "../aria";
 import { AggregateRowRenderer } from "./wrapper";
 
 type LeafColumnMeta = {
@@ -15,6 +16,8 @@ type AggregateRowBuilderParams = {
   leftPinnedLeafColumns: () => Column[];
   centerLeafColumns: () => Column[];
   rightPinnedLeafColumns: () => Column[];
+  /** Grid instance id (core.id) — prefixes ARIA cell ids so multiple grids never collide. */
+  ariaIdPrefix: () => string;
 };
 
 export type AggregateRowBuildResult = {
@@ -73,6 +76,17 @@ export class AggregateRowBuilder {
       aggregateRight.appendChild(row);
     }
 
+    // ARIA (plan 2.1): center aggregate row is THE row, owning every section's cells in
+    // visual order; the other section rows are presentational.
+    markPresentational(aggregateLeading.firstElementChild as HTMLElement | null,
+      aggregateLeft.firstElementChild as HTMLElement | null,
+      aggregateRight.firstElementChild as HTMLElement | null);
+    stitchAriaRow(
+      centerRow,
+      [...leadingCells, ...leftCells, ...centerCells, ...rightCells],
+      `${this.params.ariaIdPrefix()}-agg`,
+    );
+
     this.params.aggregateRowRenderer.setHeight(this.params.rowHeight());
 
     return {
@@ -99,6 +113,7 @@ export class AggregateRowBuilder {
       } else {
         cell.dataset.colIdx = String(fallbackIdx);
       }
+      stampGridCellAria(cell, meta?.globalIndex);
       if (col.isComputableType()) cell.classList.add("pte-cell-right-aligned");
       row.appendChild(cell);
       cells.push(cell);

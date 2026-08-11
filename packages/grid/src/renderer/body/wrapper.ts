@@ -17,6 +17,8 @@ export interface BodyWrapperElements {
   rightViewport: HTMLDivElement;
 }
 
+import { markPresentational } from "../aria";
+
 export function createBodyWrapper(): BodyWrapperElements {
   const body = document.createElement("div");
   body.className = "pte-body";
@@ -80,6 +82,18 @@ export function createBodyWrapper(): BodyWrapperElements {
   const rightViewport = document.createElement("div");
   rightViewport.className = "pte-viewport-right";
   rightSpacer.appendChild(rightViewport);
+
+  // ARIA (plan 2.1, owns-ordered topology): the center viewport is the grid's only rowgroup —
+  // pinned/leading fragments are presentational and their cells are aria-owns-stitched into the
+  // center rows. Scroll machinery carries no semantics.
+  centerViewport.setAttribute("role", "rowgroup");
+  markPresentational(
+    body,
+    leadingScroller, leftScroller, centerScroller, rightScroller,
+    leadingSpacer, leftSpacer, centerSpacer, rightSpacer,
+    leadingViewport, leftViewport, rightViewport,
+  );
+  vScrollParent.setAttribute("aria-hidden", "true");
 
   return {
     body,

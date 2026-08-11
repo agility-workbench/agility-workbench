@@ -1,6 +1,7 @@
 import { GridCore } from "../../core/core";
 import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
+import { stampGridCellAria, stitchAriaRow } from "../aria";
 
 interface BodyRowPoolRendererParams {
   core: GridCore;
@@ -91,6 +92,25 @@ export class BodyRowPoolRenderer {
         rightViewport.appendChild(row.rightRowEl);
       }
 
+      // ARIA (plan 2.1): stitch this slot's fragments into one owned row, in visual order. The
+      // physical row/cell pairing never changes across scroll recycling, so this is stamped once
+      // per pool build. The full-width host rides last: it is display:none (out of the ARIA tree)
+      // except in full-width layout, where it is the row's only visible cell.
+      for (const el of [row.leadingRowEl, row.leftRowEl, row.rightRowEl]) {
+        el?.setAttribute("role", "presentation");
+      }
+      stitchAriaRow(
+        row.rowEl,
+        [
+          ...(row.leadingCellEls ?? []),
+          ...row.leftCellEls,
+          ...row.cellEls,
+          ...row.rightCellEls,
+          row.fullWidthCellEl,
+        ],
+        `${core.id}-r${i}`,
+      );
+
       rowPool.push(row);
     }
 
@@ -110,6 +130,8 @@ export class BodyRowPoolRenderer {
     const cell = document.createElement("div");
     cell.className = "pte-cell pte-full-width-cell";
     cell.style.display = "none";
+    // aria-colindex/-colspan are stamped by applyFullWidthLayout when the host activates.
+    cell.setAttribute("role", "gridcell");
     return cell;
   }
 
@@ -125,6 +147,7 @@ export class BodyRowPoolRenderer {
       cell.dataset.colId = colId;
       cell.dataset.colIdx = String(meta.globalIndex);
     }
+    stampGridCellAria(cell, meta?.globalIndex);
     if (isRightAligned) cell.classList.add("pte-cell-right-aligned");
     return cell;
   }

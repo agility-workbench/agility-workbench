@@ -28,6 +28,8 @@ export class HorizontalScrollRenderer {
 export function createHorizontalScroll(): HorizontalScrollElements {
   const container = document.createElement("div");
   container.className = "pte-scroller-horizontal-container-wrapper";
+  // Scrollbar machinery carries no semantics for AT.
+  container.setAttribute("aria-hidden", "true");
 
   const leadingParent = document.createElement("div");
   leadingParent.className = "pte-scroller-horizontal-leading-container";
