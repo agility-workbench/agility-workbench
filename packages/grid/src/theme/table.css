@@ -1254,7 +1254,10 @@
   display: none;
 }
 
-.pte-column-panel-announcer {
+/* Screen-reader-only live regions: present in the accessibility tree, never painted. The grid
+   announcer below is a *visible* toast and is deliberately not part of this rule. */
+.pte-column-panel-announcer,
+.pte-grid-sr-announcer {
   position: absolute;
   width: 1px;
   height: 1px;

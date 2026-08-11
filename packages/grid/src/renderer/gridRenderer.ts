@@ -1,5 +1,6 @@
 import { RefObject } from "react";
 import { AggregateType } from "../interfaces/aggregate";
+import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
@@ -159,6 +160,8 @@ export class GridRenderer {
   // Shared by every renderer that paints the active cell (body pool, pinned bands) — one tracker
   // per grid, because they arbitrate ownership of a single root attribute between themselves.
   _activeDescendant: ActiveDescendantTracker;
+  /** sr-only live region for sort/selection/loading. Distinct from the visible toast below. */
+  _announcer: GridAnnouncer;
   private _keyboardNavigationAnnouncer: HTMLDivElement;
   private _keyboardNavigationAnnouncementTimer?: ReturnType<typeof setTimeout>;
   _aggregateLeadingCells: HTMLDivElement[];
@@ -217,6 +220,9 @@ export class GridRenderer {
     this._keyboardNavigationAnnouncer.setAttribute("aria-live", "polite");
     this._keyboardNavigationAnnouncer.setAttribute("aria-atomic", "true");
     this.root.appendChild(this._keyboardNavigationAnnouncer);
+    // The toast above is visible and hidden while idle, so AT never sees it. This second region is
+    // sr-only and carries the grid's state announcements (plan 4.1).
+    this._announcer = new GridAnnouncer(this.root);
     // In "text" cell-selection mode, revert body cells to native browser text selection (like a
     // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
     if (this.core.options.cellSelection === "text") {
@@ -243,6 +249,7 @@ export class GridRenderer {
       onColumnsChanged: (params) => {
         this._modelChangeHandler.onColumnsChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
+        if (params.reason === "sort") this._announceSort();
       },
       onColumnWidthsChanged: (params) => {
         this._modelChangeHandler.onColumnWidthsChanged(params);
@@ -259,6 +266,7 @@ export class GridRenderer {
       onSelectionChanged: () => {
         this._selectionRenderer.onSelectionChanged();
         this._pinnedRowsRenderer?.refreshSelectionStyles();
+        this._announceSelection();
       },
       onFocusChanged: (params) => {
         this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.rowPinned);
@@ -996,6 +1004,33 @@ export class GridRenderer {
     const next = isTrue(isLoading);
     if (this._loadingOverlayRenderer.getLoading() === next) return;
     this._loadingOverlayRenderer.setLoading(next);
+    this._announcer.loadingChanged(next, this.core.getRowModel().getViewCount());
+  }
+
+  /** Announce the sort model in reading order (primary first). */
+  private _announceSort() {
+    this._announcer.sortChanged(
+      this.core.getSortModel().items.map(item => ({ label: item.col.label, dir: item.dir })),
+    );
+  }
+
+  /**
+   * Announce the size of the selection. Row and column selection are counted directly; a cell
+   * range is reported by its dimensions, and a single-cell range says nothing at all because
+   * aria-activedescendant already moves AT onto that cell.
+   */
+  private _announceSelection() {
+    const range = this.core.getSelectionRange();
+    this._announcer.selectionChanged({
+      rows: this.core.getSelectedRowIds().size,
+      columns: this.core.getSelectedColumnIds().size,
+      range: range
+        ? {
+          rows: Math.abs(range.rowEnd - range.rowStart) + 1,
+          columns: Math.abs(range.colEnd - range.colStart) + 1,
+        }
+        : null,
+    });
   }
 
   setEmpty(isEmpty: boolean) {
@@ -1058,6 +1093,7 @@ export class GridRenderer {
       clearTimeout(this._keyboardNavigationAnnouncementTimer);
       this._keyboardNavigationAnnouncementTimer = undefined;
     }
+    this._announcer.destroy();
     this._coreEventBinder.destroy();
     this._cellEditRenderer.destroy();
     this._menuRenderer.close(0);
