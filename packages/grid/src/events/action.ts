@@ -201,6 +201,27 @@ export type GridActionHeaderAction = {
   additive?: boolean;
 };
 
+/**
+ * Move or clear the header keyboard cursor (accessibility plan 6.9).
+ *
+ * Deliberately separate from `focusSet`: the selection model's active cell is a *selection* cursor
+ * (it carries a 1×1 range, feeds copy/edit/ActionFrame and gets clamped to the row view), and a
+ * header position is none of those things. Keeping it out of `CellPos` means no consumer of the
+ * active cell has to learn about a position that can never be a data cell.
+ */
+export type GridActionHeaderFocusSet = {
+  type: "headerFocusSet";
+  /** Index into the visible leaf columns, or null to leave the header. */
+  colIdx: number | null;
+  reason?: "keyboard" | "api";
+};
+
+/** Step the header cursor. `down` leaves the header for the first body row in the same column. */
+export type GridActionHeaderNavigate = {
+  type: "headerNavigate";
+  dir: "left" | "right" | "down" | "home" | "end";
+};
+
 export type GridActionRowSelectSet = {
   type: "rowSelectSet";
   viewIdx: number;
@@ -333,6 +354,8 @@ export type GridAction =
   | GridActionTreeNavigate
   | GridActionFocusSet
   | GridActionHeaderAction
+  | GridActionHeaderFocusSet
+  | GridActionHeaderNavigate
   | GridActionSelectionClear
   | GridActionRowSelectSet
   | GridActionRowSelectAll

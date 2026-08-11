@@ -277,6 +277,7 @@ export class GridRenderer {
           this._bodyTooltipRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.reason);
         }
       },
+      onHeaderFocusChanged: (params) => this._onHeaderFocusChanged(params.colIdx ?? null),
       onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
       onCellsChanged: (params) => this._onCellsChanged(params),
       onKeyboardNavigationModeChanged: ({ mode }) => {
@@ -594,6 +595,7 @@ export class GridRenderer {
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
       onKeyDown: (e) => this._onKeyDown(e),
+      onRootFocus: () => this._onRootFocus(),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -1009,6 +1011,19 @@ export class GridRenderer {
       this._quickFilterWidget.show();
       return;
     }
+    // The header cursor gets the keys first and only while it holds the cursor (plan 6.9). Routing
+    // by position rather than by key is what keeps the body's meanings intact: the body handler
+    // treats Enter as "edit this cell" and any printable character as type-to-edit, and neither
+    // should happen because the user pressed Enter on a column header.
+    //
+    // Gated on the event originating at the root itself, which is precisely where this cursor
+    // lives: DOM focus never leaves the root in the activedescendant model, so a keydown from
+    // anywhere else came from a real control inside the grid (a pagination button, the quick-filter
+    // input, a cell editor) and belongs to that control.
+    if (e.target === this.root && this._headerInteractionHandler.onKeyDown(e)) {
+      e.preventDefault();
+      return;
+    }
     this._selectionRenderer.onKeyDown(e);
   }
 
@@ -1021,6 +1036,33 @@ export class GridRenderer {
     if (next) this.root.setAttribute("aria-busy", "true");
     else this.root.removeAttribute("aria-busy");
     this._announcer.loadingChanged(next, this.core.getRowModel().getViewCount());
+  }
+
+  /**
+   * Paint the header cursor and name it for AT (plan 6.9).
+   *
+   * The tracker takes any element with an id, and header cells are keyed on the column's
+   * instanceID, so a columnheader can be the activedescendant exactly as a gridcell can — the PR-0
+   * spike verified Chrome resolves both. `this` owns the claim rather than a pool slot, because the
+   * header has no recycling: nothing else will repaint over it.
+   */
+  private _onHeaderFocusChanged(colIdx: number | null) {
+    const el = this._headerRenderer.setActiveHeader(colIdx);
+    if (el) this._activeDescendant.claim(el, this);
+    else this._activeDescendant.release(this);
+    if (colIdx != null) this.ensureColumnVisible(colIdx);
+  }
+
+  /**
+   * Where the keyboard cursor lands when focus enters the grid (plan 6.9): back where it was, or
+   * the first column header on a first visit. Restoring matters because the surrounding chrome —
+   * toolbar, paginator, quick filter — is all tab-reachable, so leaving and returning is routine
+   * and losing your place each time would make the grid tiring to use.
+   */
+  private _onRootFocus() {
+    if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;
+    if (this.core.getColumnModel().getLeaves().length === 0) return;
+    this.core.setHeaderFocus(0, "keyboard");
   }
 
   /** Announce the sort model in reading order (primary first). */
@@ -1203,6 +1245,11 @@ export class GridRenderer {
     this.core.pruneColumnSelection();
     this._selectionRenderer.applyColumnSelectionStyles();
     this._pinnedRowsRenderer?.render(undefined, true);
+    // The rebuild replaced every header cell, so the keyboard cursor's painted class and the
+    // activedescendant id both point at detached elements (plan 6.9).
+    const el = this._headerRenderer.restoreActiveHeader();
+    if (el) this._activeDescendant.claim(el, this);
+    else this._activeDescendant.release(this);
   }
 
   private buildPaginationControls() {
@@ -1369,12 +1416,22 @@ export class GridRenderer {
       }
     }
 
-    // Horizontal: only center-section columns scroll; leading/pinned are always visible.
+    this.ensureColumnVisible(colIdx);
+  }
+
+  /**
+   * Scroll a column into view horizontally. Split out of `_ensureCellVisible` for the header
+   * cursor (plan 6.9), which moves along a row that has no vertical dimension.
+   *
+   * Only center-section columns scroll; leading and pinned columns are always visible.
+   */
+  ensureColumnVisible(colIdx: number) {
     const col = this._leafColumns[colIdx];
     if (!col) return;
     const meta = this._leafColumnLookup.get(col.instanceID);
     if (!meta || meta.section !== "center" || col.centralPosition == null) return;
 
+    const refs = this._bodyViewportRenderer.getRefs();
     const centerLeaves = this.core.getColumnModel().getCenterLeaves();
     let colLeft = 0;
     for (let i = 0; i < col.centralPosition; i++) {

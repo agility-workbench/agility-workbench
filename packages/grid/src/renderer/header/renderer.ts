@@ -31,6 +31,8 @@ export class HeaderRenderer {
   private elements: HeaderWrapperElements;
   /** Live custom header components, keyed by column instanceID. Rebuilt each buildDOM. */
   private components = new Map<string, MountedHeaderComponent>();
+  /** The header cell currently painted as holding the keyboard cursor (plan 6.9). */
+  private activeHeaderEl: HTMLElement | null = null;
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
@@ -377,6 +379,32 @@ export class HeaderRenderer {
     const sorted = this.params.core.getSortModel().items
       .find(s => s.col.instanceID === col.instanceID);
     el.setAttribute("aria-sort", !sorted ? "none" : sorted.dir === "asc" ? "ascending" : "descending");
+  }
+
+  /**
+   * Paint the header cursor (accessibility plan 6.9), and return the cell it landed on so the
+   * caller can name it in `aria-activedescendant`.
+   *
+   * A class rather than DOM focus, because the grid's focus model keeps DOM focus on the root — but
+   * that means the `:focus-within` rules which reveal the sort icon and the hover-only buttons never
+   * fire, so `.pte-hcell-active` is wired into those same rules in the stylesheet.
+   */
+  setActiveHeader(colIdx: number | null): HTMLElement | null {
+    const target = colIdx == null
+      ? null
+      : this.params.core.getColumnModel().getLeaves()[colIdx] ?? null;
+    const targetEl = target ? document.getElementById(target.instanceID) : null;
+    if (this.activeHeaderEl === targetEl) return targetEl;
+    this.activeHeaderEl?.classList.remove("pte-hcell-active");
+    this.activeHeaderEl = targetEl;
+    targetEl?.classList.add("pte-hcell-active");
+    return targetEl;
+  }
+
+  /** Re-apply the cursor after a header rebuild, which replaces the element it was painted on. */
+  restoreActiveHeader(): HTMLElement | null {
+    this.activeHeaderEl = null;
+    return this.setActiveHeader(this.params.core.getHeaderFocusColIdx());
   }
 
   /**

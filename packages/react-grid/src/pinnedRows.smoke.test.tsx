@@ -524,9 +524,14 @@ describe("pinned and sticky rows", () => {
     )).toBeTruthy();
     await key("ArrowUp");
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    // From the band's top row, Up leaves the rows entirely for the column header — the header is
+    // row 0 of the grid (accessibility plan 6.9). It used to clamp here.
     await key("ArrowUp");
+    expect(core.getActiveCell()).toBeNull();
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+    // Down comes back to the row directly below the header, which is the band, then the body.
+    await key("ArrowDown");
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
-    // Down walks back through the band and re-enters the body.
     await key("ArrowDown");
     await key("ArrowDown");
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1 });

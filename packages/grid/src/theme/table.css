@@ -2451,7 +2451,10 @@
 }
 
 .pte-hcell:hover .pte-hcell-sort.pte-sort-none,
-.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none {
+.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none,
+/* The keyboard cursor is a painted class, not DOM focus (the grid keeps focus on its root), so
+   `:focus-within` never fires for it — see .pte-hcell-active below. */
+.pte-hcell-active .pte-hcell-sort.pte-sort-none {
   visibility: visible;
 }
 
@@ -2483,6 +2486,18 @@
   flex-direction: row-reverse;
 }
 
+/* The header keyboard cursor (accessibility plan 6.9).
+ *
+ * An inset ring for the same reason every other control uses one (6.8): `.pte-root` clips anything
+ * painted outside a box, and the first and last header cells sit flush against that edge. Inset also
+ * keeps the cursor clear of the resize handle straddling the boundary between two header cells.
+ *
+ * A class rather than `:focus-visible`, because DOM focus stays on the grid root — the cursor is
+ * named for AT through `aria-activedescendant` instead. */
+.pte-hcell-active {
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
+}
+
 .pte-hcell-menu-item {
   position: relative;
   display: flex;
@@ -2511,6 +2526,7 @@
 
 .pte-column-buttons-on-hover .pte-hcell:hover .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell-active .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
   visibility: visible;
 }

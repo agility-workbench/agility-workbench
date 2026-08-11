@@ -525,6 +525,14 @@ export class SelectionRenderer {
         }
         return;
     }
+    // ArrowUp off the top of the grid moves to the column header, which is row 0 of the grid for
+    // navigation purposes (plan 6.9). Not while extending a range — Shift+ArrowUp is a selection
+    // gesture and the header holds nothing selectable.
+    if (dir === "up" && !extend && !ctrl && this.params.core.tryEnterHeaderFromTop()) {
+      e.preventDefault();
+      return;
+    }
+
     e.preventDefault();
     this.params.core.dispatch({
       type: "navigate",

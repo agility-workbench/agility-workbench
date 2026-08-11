@@ -6,6 +6,7 @@ import {
   GridEventCellsChangedParams,
   GridEventEditingChangedParams,
   GridEventFocusChangedParams,
+  GridEventHeaderFocusChangedParams,
   GridEventPaginationChangedParams,
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
@@ -28,6 +29,7 @@ interface GridRendererCoreEventBinderParams {
   renderAggregateRow: () => void;
   onSelectionChanged: (params: GridEventSelectionChangedParams) => void;
   onFocusChanged: (params: GridEventFocusChangedParams) => void;
+  onHeaderFocusChanged: (params: GridEventHeaderFocusChangedParams) => void;
   onEditingChanged: (params: GridEventEditingChangedParams) => void;
   onCellsChanged: (params: GridEventCellsChangedParams) => void;
   onKeyboardNavigationModeChanged: (params: GridEventKeyboardNavigationModeChangedParams) => void;
@@ -75,6 +77,9 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("focusChanged", (params: GridEventFocusChangedParams) => {
         this.params.onFocusChanged(params);
+      }),
+      this.params.core.on("headerFocusChanged", (params: GridEventHeaderFocusChangedParams) => {
+        this.params.onHeaderFocusChanged(params);
       }),
       this.params.core.on("editingChanged", (params: GridEventEditingChangedParams) => {
         this.params.onEditingChanged(params);

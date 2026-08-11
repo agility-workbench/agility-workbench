@@ -19,6 +19,8 @@ interface GridInteractionEventBinderParams {
   shouldSuppressClick: () => boolean;
   onClick: (e: MouseEvent) => void;
   onKeyDown: (e: KeyboardEvent) => void;
+  /** Focus entering the grid root — where the keyboard cursor lands on entry (plan 6.9). */
+  onRootFocus: () => void;
 }
 
 export class GridInteractionEventBinder {
@@ -71,6 +73,13 @@ export class GridInteractionEventBinder {
     this.params.onKeyDown(e);
   };
 
+  // Only a focus landing on the root itself counts as entering the grid; focus moving to a control
+  // inside it (a pagination button, the quick filter) bubbles here too and must not move the cursor.
+  private handleRootFocus = (e: FocusEvent) => {
+    if (e.target !== this.params.root) return;
+    this.params.onRootFocus();
+  };
+
   constructor(private params: GridInteractionEventBinderParams) { }
 
   bind() {
@@ -91,6 +100,7 @@ export class GridInteractionEventBinder {
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
     this.params.root.addEventListener("click", this.handleDocumentClick);
     this.params.root.addEventListener("keydown", this.handleKeyDown);
+    this.params.root.addEventListener("focus", this.handleRootFocus);
   }
 
   destroy() {
@@ -107,6 +117,7 @@ export class GridInteractionEventBinder {
       container.removeEventListener("dblclick", this.handleCellDoubleClick);
       container.removeEventListener("contextmenu", this.handleBodyContextMenu);
     }
+    this.params.root.removeEventListener("focus", this.handleRootFocus);
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);
     this.params.root.removeEventListener("click", this.handleDocumentClick);

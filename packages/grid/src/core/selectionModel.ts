@@ -68,7 +68,8 @@ export class SelectionModel {
   // Pinned bands are only entered by a plain single arrow step from the body's content edge, so
   // first/last resolve to the BODY edge whenever body rows exist; jumps land there and it takes
   // one more arrow to hand navigation over to the band. Bands are the fallback for an empty body.
-  private firstRowPosition(): CellPos | null {
+  /** Public so the header cursor can hand navigation back to the body's first row (plan 6.9). */
+  firstRowPosition(): CellPos | null {
     if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(0, 1), colIdx: 0 };
     if ((this.deps.getPinnedRowCount?.("top") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "top" };
     if ((this.deps.getPinnedRowCount?.("bottom") ?? 0) > 0) return { row: 0, colIdx: 0, rowPinned: "bottom" };

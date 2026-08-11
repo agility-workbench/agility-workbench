@@ -16,6 +16,97 @@ type HeaderInteractionHandlerParams = {
 export class HeaderInteractionHandler {
   constructor(private params: HeaderInteractionHandlerParams) {}
 
+  /**
+   * Keyboard interaction for the header cursor (accessibility plan 6.9).
+   *
+   * Called from the grid root's keydown handler *before* the body handlers, and only while the
+   * header holds the cursor, so the body's own meanings for these keys (Enter = edit, printable =
+   * type-to-edit) never fire on a header cell. Returns true when the key was consumed.
+   *
+   * The actions dispatched here are the same ones the mouse path uses, so behaviour cannot drift
+   * between clicking a header and operating it by keyboard.
+   */
+  onKeyDown(e: KeyboardEvent): boolean {
+    const core = this.params.core;
+    const colIdx = core.getHeaderFocusColIdx();
+    if (colIdx == null) return false;
+    const col = core.getHeaderFocusColumn();
+    const ctrl = e.ctrlKey || e.metaKey;
+
+    const nav = (dir: "left" | "right" | "down" | "home" | "end") => {
+      core.dispatch({ type: "headerNavigate", dir });
+      return true;
+    };
+
+    // Alt+Down opens the column menu, Shift+Alt+Down the filter — checked before the bare arrows.
+    if (e.altKey && e.key === "ArrowDown") {
+      if (!col || col.isRowNumberColumn()) return true;
+      const headerEl = document.getElementById(col.instanceID) ?? undefined;
+      if (e.shiftKey) {
+        const anchor = headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-filterBtn") ?? headerEl;
+        if (anchor) {
+          core.dispatch({ type: "headerAction", action: "filterClick", colId: col.instanceID });
+          this.params.openColumnFilter(col.instanceID, anchor);
+        }
+      } else {
+        core.dispatch({ type: "headerAction", action: "menuClick", colId: col.instanceID });
+        this.params.openColumnMenu("columnMenuButton", col.instanceID, {
+          anchorEl: headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-menuBtn") ?? headerEl,
+        });
+      }
+      return true;
+    }
+
+    switch (e.key) {
+      case "ArrowLeft": return nav("left");
+      case "ArrowRight": return nav("right");
+      case "ArrowDown": return nav("down");
+      // Already on row 0. Consumed anyway: letting it through would move the body cursor behind a
+      // header the user is still looking at — the same leak that bit the menus in 6.5.
+      case "ArrowUp": return true;
+      case "Home": return nav("home");
+      case "End": return nav("end");
+      default: break;
+    }
+
+    const isActivate = e.key === "Enter" || e.key === " " || e.code === "Space";
+    if (!isActivate) {
+      // Anything else with no header meaning is left alone, so page-level and app shortcuts still
+      // work while the cursor sits in the header.
+      return false;
+    }
+    if (!col) return true;
+
+    // Ctrl+Space selects the column (Excel's binding), and is the only activation the row-number
+    // column ignores — it has no column of its own to select.
+    if (ctrl) {
+      if (!col.isRowNumberColumn() && core.options.columnSelection) {
+        this.params.toggleColumnSelection(col.instanceID, e.shiftKey ? "toggle" : "replace");
+      }
+      return true;
+    }
+
+    // The row-number header's only action is select-all, matching a click on it.
+    if (col.isRowNumberColumn()) {
+      if (core.options.selectAllRowsOnHeaderClick) {
+        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
+      }
+      return true;
+    }
+
+    // A leaf carrying the group expander toggles it; otherwise activation sorts. Parent (group)
+    // header cells are not reachable by this cursor at all — see the 6.9 limitations.
+    if (col.showExpander) {
+      core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
+      return true;
+    }
+    if (col.sortable) {
+      const additive = core.options.multiSortKey === "shift" ? e.shiftKey : ctrl;
+      core.dispatch({ type: "headerAction", action: "toggleSort", colId: col.instanceID, additive });
+    }
+    return true;
+  }
+
   onHeaderContextMenu(e: MouseEvent) {
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     const col = header ? this.params.core.getColumnModel().getById(header.id) : undefined;
