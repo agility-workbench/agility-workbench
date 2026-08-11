@@ -42,6 +42,44 @@ export function markPresentational(...elements: Array<HTMLElement | null | undef
 }
 
 /**
+ * Mirror selection onto a cell or row, writing only on a transition.
+ *
+ * `aria-selected` is *present and true* when selected and *absent* otherwise, rather than an
+ * explicit "false": the grid recycles ~600 cells per scroll frame and an unconditional write per
+ * cell is measurable, while an absent attribute already means "not selected" to AT.
+ *
+ * `wasSelected` is the caller's own cheap record of the previous state (the paint class it is
+ * about to toggle, or the attribute itself for rows) — passing it in keeps the steady state at
+ * zero DOM writes without this helper having to read the attribute back on every cell.
+ */
+export function setAriaSelected(el: HTMLElement, selected: boolean, wasSelected: boolean): void {
+  if (selected === wasSelected) return;
+  if (selected) el.setAttribute("aria-selected", "true");
+  else el.removeAttribute("aria-selected");
+}
+
+/**
+ * Put expand/collapse state on the ARIA row itself, which is where the grid pattern expects it.
+ * The chevron span keeps its own `aria-expanded` — duplicated, deliberately not moved, because
+ * `[aria-expanded]` on the toggle is selected by tests and by client CSS (plan 4.2).
+ *
+ * `aria-level` is 1-based and is written only when the row genuinely carries a depth: group and
+ * tree rows do, but a leaf row under a CSRM group reports `level: 0` like a top-level row, and
+ * announcing every data row as "level 1" would be worse than announcing no level at all.
+ */
+export function stampRowHierarchyAria(
+  rowEl: HTMLElement,
+  row: { isGroup?: boolean; isExpanded?: boolean; level?: number; children?: unknown[] },
+): void {
+  const expandable = !!row.isGroup || (row.children?.length ?? 0) > 0;
+  if (expandable) rowEl.setAttribute("aria-expanded", String(!!row.isExpanded));
+  else rowEl.removeAttribute("aria-expanded");
+  const level = row.level ?? 0;
+  if (expandable || level > 0) rowEl.setAttribute("aria-level", String(level + 1));
+  else rowEl.removeAttribute("aria-level");
+}
+
+/**
  * Owns `aria-activedescendant` on the grid root (accessibility plan 6 PR 2).
  *
  * Keyboard navigation never moves DOM focus off the root — it paints a class on the active

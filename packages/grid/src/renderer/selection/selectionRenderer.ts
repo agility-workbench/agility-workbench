@@ -2,7 +2,7 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
-import { ActiveDescendantTracker } from "../aria";
+import { ActiveDescendantTracker, setAriaSelected } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
 import { RowPoolDef } from "../types";
 
@@ -119,6 +119,11 @@ export class SelectionRenderer {
         if (isActive) focusedCellEl = cell;
 
         const cls = cell.classList;
+        // ARIA mirrors the paint (plan 6.3): `selected` is true for a cell inside the range, in a
+        // selected column, or in a selected row — which is exactly "this cell is in the selection".
+        // Read the class before toggling it to get the previous state, so the steady state (nothing
+        // selected, scrolling) costs one class lookup per cell and no attribute writes at all.
+        setAriaSelected(cell, selected, cls.contains("selected"));
         cls.toggle("selected", selected);
         cls.toggle("selected-top", selected && isTop);
         cls.toggle("selected-bottom", selected && isBottom);
@@ -135,6 +140,11 @@ export class SelectionRenderer {
 
     focusedCellEl = this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell, highlight)
       ?? focusedCellEl;
+
+    // Row-level selected state is net-new (plan 3): row selection has always been painted per
+    // cell, with no row element carrying it. It goes on the center fragment, which is the ARIA row.
+    // Rows are never selected when rowSelection is off, so this needs no separate gate.
+    setAriaSelected(slot.rowEl, rowSelected, slot.rowEl.getAttribute("aria-selected") === "true");
 
     // A slot releases only the pointer it still owns, so slots that lost the active cell cannot
     // undo the claim of the slot that gained it, whatever order the pool is walked in.
@@ -161,15 +171,18 @@ export class SelectionRenderer {
     const cls = host.classList;
     const cellSelectable = host.style.display !== "none" && host.dataset.colIdx != null;
     if (!cellSelectable) {
-      cls.remove("selected", "selected-top", "selected-bottom", "selected-left", "selected-right", "pte-active-cell");
+      cls.remove("selected-top", "selected-bottom", "selected-left", "selected-right", "pte-active-cell");
       // Row selection still applies to a non-cell-selectable host (e.g. a full-width row selected via
       // the row-number checkbox); keep just the row-scoped "selected" fill.
-      cls.toggle("selected", host.style.display !== "none" && rowSelected);
+      const fill = host.style.display !== "none" && rowSelected;
+      setAriaSelected(host, fill, cls.contains("selected"));
+      cls.toggle("selected", fill);
       return null;
     }
 
     const selected = rowSelected || rangeRow;
     const isActive = !!activeCell && !activeCell.rowPinned && viewIndex === activeCell.row;
+    setAriaSelected(host, selected, cls.contains("selected"));
     cls.toggle("selected", selected);
     // A one-cell row is bordered on all four sides whenever selected.
     cls.toggle("selected-top", selected);

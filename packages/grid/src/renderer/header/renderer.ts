@@ -249,6 +249,7 @@ export class HeaderRenderer {
         this.updateSortIcon(col, sortEl);
       }
     }
+    this.updateSortAria(col, header);
     return header;
   }
 
@@ -352,6 +353,27 @@ export class HeaderRenderer {
   }
 
   /**
+   * `aria-sort` on the OUTER `.pte-hcell` (plan 3): a level-2 custom header component owns the
+   * cell interior, but the outer element is grid-owned in every case.
+   *
+   * Kept separate from updateSortIcon because the two do not have the same audience: a column with
+   * `sortIconVisibility: "never"` has no icon element and updateSortIcon returns early, yet it is
+   * still sortable and still needs to say so. Sortable-but-unsorted columns carry `aria-sort="none"`
+   * rather than nothing, which is what tells AT the column is sortable at all.
+   */
+  private updateSortAria(col: Column, hcell?: HTMLElement | null) {
+    const el = hcell ?? document.getElementById(col.instanceID);
+    if (!el) return;
+    if (!col.sortable || col.children.length > 0 || col.isRowNumberColumn()) {
+      el.removeAttribute("aria-sort");
+      return;
+    }
+    const sorted = this.params.core.getSortModel().items
+      .find(s => s.col.instanceID === col.instanceID);
+    el.setAttribute("aria-sort", !sorted ? "none" : sorted.dir === "asc" ? "ascending" : "descending");
+  }
+
+  /**
    * Refresh sort icons across all sortable columns. Called on every sort change because adding or
    * removing a sorted column renumbers the priority badges of the others — a per-changed-column
    * update would leave stale numbers behind.
@@ -359,6 +381,9 @@ export class HeaderRenderer {
   refreshSortIndicators() {
     for (const col of this.params.core.getColumnModel().getLeaves()) {
       if (col.sortable) this.updateSortIcon(col);
+      // Every leaf, not just sortable ones: a column that stopped being sortable has to lose its
+      // aria-sort, and only this pass would clear it.
+      this.updateSortAria(col);
     }
     this.refreshHeaderComponents();
   }

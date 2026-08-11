@@ -6,7 +6,9 @@ import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
-import { ActiveDescendantTracker, markPresentational, stampGridCellAria, stitchAriaRow } from "../aria";
+import {
+  ActiveDescendantTracker, markPresentational, setAriaSelected, stampGridCellAria, stampRowHierarchyAria, stitchAriaRow,
+} from "../aria";
 
 interface BandElements {
   root: HTMLDivElement;
@@ -373,6 +375,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     right: boolean;
     active: boolean;
   }): void {
+    // ARIA mirrors the paint, same rule as the body pool. Band cells carry no row-level selected
+    // state because bands paint none: a band cell is selected only via a range or a column.
+    setAriaSelected(cell, state.selected, cell.classList.contains("selected"));
     cell.classList.toggle("selected", state.selected);
     cell.classList.toggle("selected-top", state.top);
     cell.classList.toggle("selected-bottom", state.bottom);
@@ -821,7 +826,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
-      this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex);
+      this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
       return;
     }
 
@@ -829,7 +834,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned);
-    this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex);
+    this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
   }
 
   // ARIA (plan 2.1): band rows are stitched like body pool rows — center fragment is THE row,
@@ -843,12 +848,14 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     right: HTMLDivElement,
     pinned: RowPinnedPosition | null,
     rowIndex: number,
+    row: IRowNode,
   ): void {
     markPresentational(leading, left, right);
     const cells = [
       ...leading.children, ...left.children, ...center.children, ...right.children,
     ] as HTMLElement[];
     stitchAriaRow(center, cells, `${this.params.core.id}-${pinned ?? "sticky"}${rowIndex}`);
+    stampRowHierarchyAria(center, row);
   }
 
   private createSectionRow(

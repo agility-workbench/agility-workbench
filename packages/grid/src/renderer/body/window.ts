@@ -2,6 +2,7 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { GridEventRowsChangedParams } from "../../events/events";
 import { IRowNode } from "../../interfaces/iRowNode";
+import { stampRowHierarchyAria } from "../aria";
 import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
@@ -263,6 +264,8 @@ export class BodyWindowRenderer {
       if (isGroup) el.setAttribute("data-group-id", row.id);
       else el.removeAttribute("data-group-id");
     }
+    // Only the center fragment is the ARIA row, so hierarchy state goes there alone.
+    stampRowHierarchyAria(slot.rowEl, row);
   }
 
   /**
@@ -312,6 +315,10 @@ export class BodyWindowRenderer {
       element.removeAttribute("data-view-idx");
       element.removeAttribute("data-group-id");
       element.removeAttribute("aria-rowindex");
+      // markGroupRow is skipped for emptied slots, so hierarchy state has to be cleared here or a
+      // blank slot keeps claiming to be an expanded group.
+      element.removeAttribute("aria-expanded");
+      element.removeAttribute("aria-level");
       element.classList.remove("pte-group-row");
     }
   }

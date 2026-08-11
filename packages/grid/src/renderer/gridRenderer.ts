@@ -1354,6 +1354,11 @@ export class GridRenderer {
   private _refreshAriaCounts() {
     this.root.setAttribute("aria-colcount", String(this.core.getColumnModel().leafColumnLookup.size));
     this.root.setAttribute("aria-rowcount", String(this.core.getRowModel().getViewCount() + 1));
+    // More than one thing can be selected at once when cells can be dragged into a range or rows
+    // can be picked individually. Cell selection set to "text"/false leaves only row selection.
+    const multi = (this.core.options.cellSelection === true && !!this.core.options.rangeSelection)
+      || !!this.core.options.rowSelection;
+    this.root.setAttribute("aria-multiselectable", String(multi));
   }
 
   _rebuildRowPool() {
