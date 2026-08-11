@@ -137,10 +137,9 @@ export interface IGridCore {
   getSelectionAnchor(): CellPos | null;
   getActiveCell(): CellPos | null;
   /**
-   * Index of the column header holding the keyboard cursor, or null when the body holds it. The
-   * header is row 0 of the grid for navigation, but its cursor is deliberately not a `CellPos` —
-   * it selects nothing and cannot be edited or copied (accessibility plan 6.9). Mutually
-   * exclusive with `getActiveCell()`.
+   * Index of the column header holding the keyboard cursor, or null when the body holds it. The header is
+   * row 0 of the grid for navigation, but its cursor is deliberately not a `CellPos`: it selects nothing
+   * and cannot be edited or copied. Mutually exclusive with `getActiveCell()`.
    */
   getHeaderFocusColIdx(): number | null;
   /** Row node rendered at `rowIndex` of a pinned band, or null. Band-local indexing. */

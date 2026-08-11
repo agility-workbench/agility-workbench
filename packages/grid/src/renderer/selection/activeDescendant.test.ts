@@ -7,7 +7,7 @@ import type { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { ActiveDescendantTracker } from "../aria";
 import { initDomRenderer } from "../dom";
 
-// Focus model (accessibility plan 6 PR 2): keyboard navigation keeps DOM focus on the root and
+// Focus model: keyboard navigation keeps DOM focus on the root and
 // paints a class on the active cell, so the root's aria-activedescendant is the only thing that
 // tells AT where focus is. The pointer is re-derived by whichever renderer paints the active
 // cell, which is what makes it survive scroll recycling and band rebuilds.
@@ -221,10 +221,10 @@ describe("aria-activedescendant focus model", () => {
 });
 
 // A docked group row exists twice: the sticky mirror on top and the live body row beneath it.
-// The mirror band is aria-hidden (PR 1) so the row is announced once, which means the mirror can
-// never be named — a pointer into an aria-hidden subtree names a node that is not in the
-// accessibility tree at all. The mirror still paints the active-cell outline, because it covers
-// the body copy visually, so the two must be kept apart deliberately.
+// The mirror band is aria-hidden so the row is announced once, which means the mirror can never be
+// named — a pointer into an aria-hidden subtree names a node that is not in the accessibility tree at
+// all. The mirror still paints the active-cell outline, since it covers the body copy visually, so the
+// two are kept apart deliberately.
 describe("aria-activedescendant with sticky group rows", () => {
   async function mountGrouped() {
     const container = document.createElement("div");
@@ -300,7 +300,7 @@ describe("aria-activedescendant with sticky group rows", () => {
 
     const cell = activeDescendantEl(root);
     if (cell) expect(cell.closest(".pte-sticky-row")).toBeNull();
-    // Known v1 limitation of the aria-hidden mirror (plan 6.2): the row is visible but absent
+    // Known v1 limitation of the aria-hidden mirror: the row is visible but absent
     // from the accessibility tree, so focus on it cannot be expressed at all.
     expect(root.hasAttribute("aria-activedescendant")).toBe(false);
   });

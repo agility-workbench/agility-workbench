@@ -6,7 +6,7 @@ import type { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import type { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { initDomRenderer } from "./dom";
 
-// State ARIA (accessibility plan 6 PR 3): aria-sort on header cells, aria-selected on cells and
+// State ARIA: aria-sort on header cells, aria-selected on cells and
 // rows, aria-expanded/aria-level on group rows. The rule throughout is that ARIA mirrors what the
 // grid paints, so a state the user can see is a state AT can read.
 
@@ -196,7 +196,7 @@ describe("aria-expanded / aria-level on group rows", () => {
     // aria-level is 1-based; a top-level group is level 1.
     expect(groupRow.getAttribute("aria-level")).toBe("1");
 
-    // Duplicated onto the row, deliberately NOT moved off the chevron (plan 4.2): existing tests
+    // Duplicated onto the row, deliberately NOT moved off the chevron: existing tests
     // and client CSS select [aria-expanded] on the toggle.
     const toggle = groupRow.querySelector<HTMLElement>(".pte-group-toggle")!;
     expect(toggle.getAttribute("aria-expanded")).toBe("true");

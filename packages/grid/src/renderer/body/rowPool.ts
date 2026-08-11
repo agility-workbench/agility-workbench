@@ -92,7 +92,7 @@ export class BodyRowPoolRenderer {
         rightViewport.appendChild(row.rightRowEl);
       }
 
-      // ARIA (plan 2.1): stitch this slot's fragments into one owned row, in visual order. The
+      // ARIA: stitch this slot's fragments into one owned row, in visual order. The
       // physical row/cell pairing never changes across scroll recycling, so this is stamped once
       // per pool build. The full-width host rides last: it is display:none (out of the ARIA tree)
       // except in full-width layout, where it is the row's only visible cell.

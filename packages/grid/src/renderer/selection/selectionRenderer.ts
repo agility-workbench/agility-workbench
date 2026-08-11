@@ -119,7 +119,7 @@ export class SelectionRenderer {
         if (isActive) focusedCellEl = cell;
 
         const cls = cell.classList;
-        // ARIA mirrors the paint (plan 6.3): `selected` is true for a cell inside the range, in a
+        // ARIA mirrors the paint: `selected` is true for a cell inside the range, in a
         // selected column, or in a selected row — which is exactly "this cell is in the selection".
         // Read the class before toggling it to get the previous state, so the steady state (nothing
         // selected, scrolling) costs one class lookup per cell and no attribute writes at all.
@@ -141,7 +141,7 @@ export class SelectionRenderer {
     focusedCellEl = this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell, highlight)
       ?? focusedCellEl;
 
-    // Row-level selected state is net-new (plan 3): row selection has always been painted per
+    // Row-level selected state is net-new: row selection has always been painted per
     // cell, with no row element carrying it. It goes on the center fragment, which is the ARIA row.
     // Rows are never selected when rowSelection is off, so this needs no separate gate.
     setAriaSelected(slot.rowEl, rowSelected, slot.rowEl.getAttribute("aria-selected") === "true");
@@ -525,9 +525,8 @@ export class SelectionRenderer {
         }
         return;
     }
-    // ArrowUp off the top of the grid moves to the column header, which is row 0 of the grid for
-    // navigation purposes (plan 6.9). Not while extending a range — Shift+ArrowUp is a selection
-    // gesture and the header holds nothing selectable.
+    // ArrowUp off the top row moves to the column header, row 0 of the grid. Not while extending a
+    // range: Shift+ArrowUp is a selection gesture and the header holds nothing selectable.
     if (dir === "up" && !extend && !ctrl && this.params.core.tryEnterHeaderFromTop()) {
       e.preventDefault();
       return;

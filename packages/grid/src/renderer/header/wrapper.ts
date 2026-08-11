@@ -28,7 +28,7 @@ export function createHeaderWrapper(): HeaderWrapperElements {
   right.className = "pte-header-right";
   wrapper.appendChild(right);
 
-  // ARIA (plan 2.1): the center section is THE header row (aria-rowindex 1); the other
+  // ARIA: the center section is THE header row (aria-rowindex 1); the other
   // sections are presentational — their leaf header cells are aria-owns-stitched into the
   // center row by the header renderer on every buildDOM.
   center.setAttribute("role", "row");

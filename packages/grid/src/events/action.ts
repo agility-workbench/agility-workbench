@@ -202,12 +202,10 @@ export type GridActionHeaderAction = {
 };
 
 /**
- * Move or clear the header keyboard cursor (accessibility plan 6.9).
- *
- * Deliberately separate from `focusSet`: the selection model's active cell is a *selection* cursor
- * (it carries a 1×1 range, feeds copy/edit/ActionFrame and gets clamped to the row view), and a
- * header position is none of those things. Keeping it out of `CellPos` means no consumer of the
- * active cell has to learn about a position that can never be a data cell.
+ * Move or clear the header keyboard cursor. Separate from `focusSet`: the active cell is a *selection*
+ * cursor (a 1×1 range that feeds copy/edit/ActionFrame and is clamped to the row view) and a header
+ * position is none of that. Keeping it out of `CellPos` means no consumer of the active cell has to learn
+ * about a position that can never be a data cell.
  */
 export type GridActionHeaderFocusSet = {
   type: "headerFocusSet";

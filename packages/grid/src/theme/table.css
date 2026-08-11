@@ -2486,31 +2486,24 @@
   flex-direction: row-reverse;
 }
 
-/* The header keyboard cursor (accessibility plan 6.9).
- *
- * An inset ring for the same reason every other control uses one (6.8): `.pte-root` clips anything
- * painted outside a box, and the first and last header cells sit flush against that edge. Inset also
- * keeps the cursor clear of the resize handle straddling the boundary between two header cells.
- *
- * A class rather than `:focus-visible`, because DOM focus stays on the grid root — the cursor is
- * named for AT through `aria-activedescendant` instead.
- *
- * Drawn as an overlay pseudo-element rather than an inset box-shadow on `.pte-hcell`: an inset
- * shadow paints in its own element's background layer, so the hover background on the descendant
- * `.pte-hcell-container` covered it. */
+/* The header keyboard cursor: a class, not `:focus-visible`, because DOM focus stays on the grid root
+   and the cursor is named for AT via `aria-activedescendant`.
+
+   An overlay pseudo-element, not an inset box-shadow: an inset shadow paints in its own element's
+   background layer, so the hover background on the descendant `.pte-hcell-container` covers it.
+   Inset rather than outside the box because `.pte-root` clips anything painted beyond it and the edge
+   header cells sit flush against it. */
 .pte-hcell-active .pte-hcell-wrapper::after {
   content: "";
   position: absolute;
   inset: 0;
-  /* `.pte-header-wrapper` is border-box at exactly the header height and carries the header's 1px
-     bottom border, while each header section is sized to that full height — so the last pixel row
-     of every header cell is clipped. Nothing else paints there; the ring would lose half its bottom
-     edge, so it is drawn against the visible area instead. */
+  /* `.pte-header-wrapper` is border-box at the header height and carries the header's 1px bottom
+     border, while each section is sized to that full height — so every header cell's last pixel row
+     is clipped. Drawn against the visible area, or the ring loses half its bottom edge. */
   bottom: 1px;
   border: 2px solid var(--pte-focus-ring-color);
   border-radius: 2px;
-  /* Above the resize handle (z-index 1) so the ring is unbroken; never steals its drag. */
-  z-index: 2;
+  z-index: 2; /* above the resize handle; pointer-events none so it never steals the drag */
   pointer-events: none;
 }
 

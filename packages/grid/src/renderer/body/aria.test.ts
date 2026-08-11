@@ -6,7 +6,7 @@ import type { IMenuAdapter } from "../../interfaces/iMenuAdapter";
 import type { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { initDomRenderer } from "../dom";
 
-// ARIA topology cover (accessibility plan 2.1, owns-ordered): the center fragment of every
+// ARIA topology cover (owns-ordered): the center fragment of every
 // logical row is THE aria row, owning all four sections' cells in visual order; only the
 // center row carries aria-rowindex, written in the patchRows recycle loop and cleared with
 // slot identity. This suite exercises the recycle path directly — the framework smoke suites

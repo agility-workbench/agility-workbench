@@ -31,7 +31,7 @@ export class HeaderRenderer {
   private elements: HeaderWrapperElements;
   /** Live custom header components, keyed by column instanceID. Rebuilt each buildDOM. */
   private components = new Map<string, MountedHeaderComponent>();
-  /** The header cell currently painted as holding the keyboard cursor (plan 6.9). */
+  /** The header cell currently painted as holding the keyboard cursor. */
   private activeHeaderEl: HTMLElement | null = null;
 
   constructor(private params: HeaderRendererParams) {
@@ -115,11 +115,10 @@ export class HeaderRenderer {
   }
 
   /**
-   * ARIA (plan 2.1): the center header section is THE header row (role stamped by
-   * createHeaderWrapper); leaf header cells across all four sections become its
-   * columnheaders via aria-owns in visual order. Group (parent) header cells are
-   * presentational — v1 does not expose the group-header hierarchy. Rebuilt with the header
-   * DOM on every column change.
+   * ARIA: the center header section is THE header row (role stamped by createHeaderWrapper); leaf
+   * header cells across all four sections become its columnheaders via aria-owns, in visual order.
+   * Group (parent) header cells are presentational — the group hierarchy is not exposed. Rebuilt with
+   * the header DOM on every column change.
    */
   private applyHeaderAria(
     leadingHeader: HTMLDivElement,
@@ -361,12 +360,10 @@ export class HeaderRenderer {
   }
 
   /**
-   * `aria-sort` on the OUTER `.pte-hcell` (plan 3): a level-2 custom header component owns the
-   * cell interior, but the outer element is grid-owned in every case.
-   *
-   * Kept separate from updateSortIcon because the two do not have the same audience: a column with
-   * `sortIconVisibility: "never"` has no icon element and updateSortIcon returns early, yet it is
-   * still sortable and still needs to say so. Sortable-but-unsorted columns carry `aria-sort="none"`
+   * `aria-sort` on the OUTER `.pte-hcell`: a custom header component may own the cell interior, but the
+   * outer element is grid-owned in every case. Separate from updateSortIcon because the audiences
+   * differ — a column with `sortIconVisibility: "never"` has no icon element and updateSortIcon returns
+   * early, yet it is still sortable and must say so. Sortable-but-unsorted carries `aria-sort="none"`
    * rather than nothing, which is what tells AT the column is sortable at all.
    */
   private updateSortAria(col: Column, hcell?: HTMLElement | null) {
@@ -382,12 +379,10 @@ export class HeaderRenderer {
   }
 
   /**
-   * Paint the header cursor (accessibility plan 6.9), and return the cell it landed on so the
-   * caller can name it in `aria-activedescendant`.
-   *
-   * A class rather than DOM focus, because the grid's focus model keeps DOM focus on the root — but
-   * that means the `:focus-within` rules which reveal the sort icon and the hover-only buttons never
-   * fire, so `.pte-hcell-active` is wired into those same rules in the stylesheet.
+   * Paint the header cursor, returning the cell it landed on so the caller can name it in
+   * `aria-activedescendant`. A class rather than DOM focus, since focus stays on the root — which also
+   * means the `:focus-within` rules revealing the sort icon and hover-only buttons never fire, so
+   * `.pte-hcell-active` is wired into those rules in the stylesheet.
    */
   setActiveHeader(colIdx: number | null): HTMLElement | null {
     const target = colIdx == null

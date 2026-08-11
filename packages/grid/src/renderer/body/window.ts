@@ -175,7 +175,7 @@ export class BodyWindowRenderer {
       }
 
       const rowNumber = this.params.core.getRowNumberForViewIndex(viewIndex);
-      // Dataset-scoped ARIA row index (plan 2.1): header row is 1, body rows follow their
+      // Dataset-scoped ARIA row index: header row is 1, body rows follow their
       // absolute display number. Only the center fragment carries it — one write per row.
       slot.rowEl.setAttribute("aria-rowindex", String(rowNumber + 1));
       this.applyRowStyling(slot, row, viewIndex);

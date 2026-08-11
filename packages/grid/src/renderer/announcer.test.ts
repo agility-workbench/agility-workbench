@@ -7,7 +7,7 @@ import type { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { GridAnnouncer, describeSelection, describeSort } from "./announcer";
 import { initDomRenderer } from "./dom";
 
-// Live region (accessibility plan 6 PR 4): a second, permanently sr-only region that announces
+// Live region: a second, permanently sr-only region that announces
 // sort/selection/loading. The visible keyboard-navigation toast is left alone — see 4.1.
 
 beforeAll(() => {

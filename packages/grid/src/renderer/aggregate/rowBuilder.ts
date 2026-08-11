@@ -76,7 +76,7 @@ export class AggregateRowBuilder {
       aggregateRight.appendChild(row);
     }
 
-    // ARIA (plan 2.1): center aggregate row is THE row, owning every section's cells in
+    // ARIA: center aggregate row is THE row, owning every section's cells in
     // visual order; the other section rows are presentational.
     markPresentational(aggregateLeading.firstElementChild as HTMLElement | null,
       aggregateLeft.firstElementChild as HTMLElement | null,

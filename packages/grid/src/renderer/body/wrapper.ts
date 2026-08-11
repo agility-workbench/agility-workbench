@@ -83,7 +83,7 @@ export function createBodyWrapper(): BodyWrapperElements {
   rightViewport.className = "pte-viewport-right";
   rightSpacer.appendChild(rightViewport);
 
-  // ARIA (plan 2.1, owns-ordered topology): the center viewport is the grid's only rowgroup —
+  // ARIA (owns-ordered topology): the center viewport is the grid's only rowgroup —
   // pinned/leading fragments are presentational and their cells are aria-owns-stitched into the
   // center rows. Scroll machinery carries no semantics.
   centerViewport.setAttribute("role", "rowgroup");

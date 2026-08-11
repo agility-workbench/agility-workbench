@@ -210,7 +210,7 @@ export class GridRenderer {
     this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
-    // ARIA (plan 2.1): the root is the single focusable element and therefore THE grid — so it
+    // ARIA: the root is the single focusable element and therefore THE grid — so it
     // is also where aria-activedescendant names the active cell. Counts are refreshed by
     // _refreshAriaCounts whenever data or columns change.
     this.root.setAttribute("role", "grid");
@@ -223,7 +223,7 @@ export class GridRenderer {
     this._keyboardNavigationAnnouncer.setAttribute("aria-atomic", "true");
     this.root.appendChild(this._keyboardNavigationAnnouncer);
     // The toast above is visible and hidden while idle, so AT never sees it. This second region is
-    // sr-only and carries the grid's state announcements (plan 4.1).
+    // sr-only and carries the grid's state announcements.
     this._announcer = new GridAnnouncer(this.root);
     // In "text" cell-selection mode, revert body cells to native browser text selection (like a
     // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
@@ -1011,15 +1011,13 @@ export class GridRenderer {
       this._quickFilterWidget.show();
       return;
     }
-    // The header cursor gets the keys first and only while it holds the cursor (plan 6.9). Routing
-    // by position rather than by key is what keeps the body's meanings intact: the body handler
-    // treats Enter as "edit this cell" and any printable character as type-to-edit, and neither
-    // should happen because the user pressed Enter on a column header.
+    // The header cursor gets the keys first, and only while it holds the cursor. Routing by position
+    // rather than by key keeps the body's meanings intact: the body handler treats Enter as "edit this
+    // cell" and any printable character as type-to-edit, neither of which should happen on a header.
     //
-    // Gated on the event originating at the root itself, which is precisely where this cursor
-    // lives: DOM focus never leaves the root in the activedescendant model, so a keydown from
-    // anywhere else came from a real control inside the grid (a pagination button, the quick-filter
-    // input, a cell editor) and belongs to that control.
+    // Gated on the event originating at the root itself, where this cursor lives: DOM focus never leaves
+    // the root in the activedescendant model, so a keydown from anywhere else came from a real control
+    // inside the grid (a pagination button, the quick filter, a cell editor) and belongs to it.
     if (e.target === this.root && this._headerInteractionHandler.onKeyDown(e)) {
       e.preventDefault();
       return;
@@ -1039,12 +1037,10 @@ export class GridRenderer {
   }
 
   /**
-   * Paint the header cursor and name it for AT (plan 6.9).
-   *
-   * The tracker takes any element with an id, and header cells are keyed on the column's
-   * instanceID, so a columnheader can be the activedescendant exactly as a gridcell can — the PR-0
-   * spike verified Chrome resolves both. `this` owns the claim rather than a pool slot, because the
-   * header has no recycling: nothing else will repaint over it.
+   * Paint the header cursor and name it for AT. The tracker takes any element with an id and header
+   * cells are keyed on the column's instanceID, so a columnheader can be the activedescendant exactly
+   * as a gridcell can (verified in Chrome). `this` owns the claim rather than a pool slot: the header
+   * has no recycling, so nothing else repaints over it.
    */
   private _onHeaderFocusChanged(colIdx: number | null) {
     const el = this._headerRenderer.setActiveHeader(colIdx);
@@ -1054,10 +1050,9 @@ export class GridRenderer {
   }
 
   /**
-   * Where the keyboard cursor lands when focus enters the grid (plan 6.9): back where it was, or
-   * the first column header on a first visit. Restoring matters because the surrounding chrome —
-   * toolbar, paginator, quick filter — is all tab-reachable, so leaving and returning is routine
-   * and losing your place each time would make the grid tiring to use.
+   * Where the keyboard cursor lands when focus enters the grid: back where it was, or the first column
+   * header on a first visit. The surrounding chrome — toolbar, paginator, quick filter — is all
+   * tab-reachable, so leaving and returning is routine and losing your place each time would be tiring.
    */
   private _onRootFocus() {
     if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;
@@ -1246,7 +1241,7 @@ export class GridRenderer {
     this._selectionRenderer.applyColumnSelectionStyles();
     this._pinnedRowsRenderer?.render(undefined, true);
     // The rebuild replaced every header cell, so the keyboard cursor's painted class and the
-    // activedescendant id both point at detached elements (plan 6.9).
+    // activedescendant id both point at detached elements.
     const el = this._headerRenderer.restoreActiveHeader();
     if (el) this._activeDescendant.claim(el, this);
     else this._activeDescendant.release(this);
@@ -1420,10 +1415,9 @@ export class GridRenderer {
   }
 
   /**
-   * Scroll a column into view horizontally. Split out of `_ensureCellVisible` for the header
-   * cursor (plan 6.9), which moves along a row that has no vertical dimension.
-   *
-   * Only center-section columns scroll; leading and pinned columns are always visible.
+   * Scroll a column into view horizontally. Split out of `_ensureCellVisible` for the header cursor,
+   * which moves along a row with no vertical dimension. Only center-section columns scroll; leading and
+   * pinned columns are always visible.
    */
   ensureColumnVisible(colIdx: number) {
     const col = this._leafColumns[colIdx];
@@ -1456,7 +1450,7 @@ export class GridRenderer {
     this._refreshAriaCounts();
   }
 
-  // Dataset-scoped ARIA dimensions (plan 2.1): rowcount = header + full view row count
+  // Dataset-scoped ARIA dimensions: rowcount = header + full view row count
   // (virtualization/pagination-independent); colcount = visible leaf columns. Band rows and
   // the aggregate row are unindexed (they show blank row numbers by design), so they are
   // not counted.

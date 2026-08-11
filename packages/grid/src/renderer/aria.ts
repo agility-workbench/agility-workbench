@@ -1,16 +1,14 @@
 /**
- * ARIA helpers for the owns-ordered grid topology (accessibility plan 2.1).
+ * ARIA helpers for the owns-ordered grid topology.
  *
- * A logical row is rendered as up to four sibling section fragments (leading / pinned-left /
- * center / pinned-right). Only the CENTER fragment is exposed as the ARIA row; the other
- * fragments are presentational and their cells are stitched into the center row via
- * `aria-owns`, listing every cell — the center row's own DOM children included — in visual
- * order (Chrome honors the listed order, which fixes reading order).
+ * A logical row renders as up to four sibling section fragments (leading / pinned-left / center /
+ * pinned-right). Only the CENTER fragment is the ARIA row; the others are presentational and their
+ * cells are stitched into it via `aria-owns`, listing every cell — the center row's own children
+ * included — in visual order, which is the order Chrome reads.
  *
- * The stitching is creation-time only: pool slots and band rows pair the same physical
- * elements across sections for their whole lifetime, so ids and `aria-owns` never need
- * touching in the scroll hot path. Cells hidden by colSpan shadowing or full-width layout
- * are `display:none` and drop out of the accessibility tree automatically.
+ * Stitching is creation-time only: pool slots and band rows pair the same physical elements across
+ * sections for their whole lifetime, so ids and `aria-owns` are never touched in the scroll hot path.
+ * Cells hidden by colSpan shadowing or full-width layout are `display:none` and leave the tree.
  */
 
 /**
@@ -42,15 +40,12 @@ export function markPresentational(...elements: Array<HTMLElement | null | undef
 }
 
 /**
- * Mirror selection onto a cell or row, writing only on a transition.
- *
- * `aria-selected` is *present and true* when selected and *absent* otherwise, rather than an
- * explicit "false": the grid recycles ~600 cells per scroll frame and an unconditional write per
- * cell is measurable, while an absent attribute already means "not selected" to AT.
- *
- * `wasSelected` is the caller's own cheap record of the previous state (the paint class it is
- * about to toggle, or the attribute itself for rows) — passing it in keeps the steady state at
- * zero DOM writes without this helper having to read the attribute back on every cell.
+ * Mirror selection onto a cell or row, writing only on a transition. `aria-selected` is present-and-true
+ * when selected and *absent* otherwise rather than an explicit "false": the grid recycles ~600 cells per
+ * scroll frame, an unconditional write per cell is measurable, and an absent attribute already means
+ * "not selected" to AT. `wasSelected` is the caller's cheap record of the previous state (the paint
+ * class it is about to toggle, or the attribute itself for rows), which keeps the steady state at zero
+ * DOM writes without reading the attribute back per cell.
  */
 export function setAriaSelected(el: HTMLElement, selected: boolean, wasSelected: boolean): void {
   if (selected === wasSelected) return;
@@ -59,13 +54,11 @@ export function setAriaSelected(el: HTMLElement, selected: boolean, wasSelected:
 }
 
 /**
- * Put expand/collapse state on the ARIA row itself, which is where the grid pattern expects it.
- * The chevron span keeps its own `aria-expanded` — duplicated, deliberately not moved, because
- * `[aria-expanded]` on the toggle is selected by tests and by client CSS (plan 4.2).
- *
- * `aria-level` is 1-based and is written only when the row genuinely carries a depth: group and
- * tree rows do, but a leaf row under a CSRM group reports `level: 0` like a top-level row, and
- * announcing every data row as "level 1" would be worse than announcing no level at all.
+ * Put expand/collapse state on the ARIA row itself, where the grid pattern expects it. The chevron span
+ * keeps its own `aria-expanded` — duplicated, not moved, because `[aria-expanded]` on the toggle is
+ * selected by tests and client CSS. `aria-level` is 1-based and written only when the row genuinely has
+ * a depth: a leaf row under a CSRM group reports `level: 0` like a top-level row, and announcing every
+ * data row as "level 1" is worse than announcing no level at all.
  */
 export function stampRowHierarchyAria(
   rowEl: HTMLElement,
@@ -80,21 +73,19 @@ export function stampRowHierarchyAria(
 }
 
 /**
- * Owns `aria-activedescendant` on the grid root (accessibility plan 6 PR 2).
+ * Owns `aria-activedescendant` on the grid root.
  *
- * Keyboard navigation never moves DOM focus off the root — it paints a class on the active
- * cell — so the root is the only element AT reads focus from, and the active cell has to be
- * named there by id. The cell's element is not stable: pool slots recycle under scroll and
- * bands are rebuilt wholesale, so the pointer is re-derived by whichever renderer paints the
- * active cell rather than held across a render.
+ * Keyboard navigation never moves DOM focus off the root — it paints a class on the active cell — so the
+ * root is the only element AT reads focus from, and the active cell must be named there by id. That
+ * element is not stable (pool slots recycle, bands are rebuilt wholesale), so the pointer is re-derived
+ * by whichever renderer paints the active cell rather than held across a render.
  *
- * Two renderers paint it (the body pool and the pinned bands) and they run in an order that
- * depends on which one the focus moved away from. Each claims for itself and releases only
- * what it still owns, so a claim by the new owner is never undone by the old owner's release,
- * whichever runs second.
+ * Two renderers paint it (body pool, pinned bands), in an order that depends on which one focus left.
+ * Each claims for itself and releases only what it still owns, so the new owner's claim survives the old
+ * owner's release whichever runs second.
  *
- * Deliberately NOT gated on `highlightActiveCell`: that option draws a visual outline and
- * defaults to false, while AT focus tracking has to work in every configuration.
+ * NOT gated on `highlightActiveCell`: that option draws a visual outline and defaults to false, while AT
+ * focus tracking has to work in every configuration.
  */
 export class ActiveDescendantTracker {
   private cell: HTMLElement | null = null;

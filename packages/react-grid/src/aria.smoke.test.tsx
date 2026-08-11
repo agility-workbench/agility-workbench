@@ -9,16 +9,13 @@ import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
 
 /**
- * End-to-end ARIA contract through the React wrapper (accessibility plan 6 PR 6).
+ * End-to-end ARIA contract through the React wrapper. The suites in `packages/grid` test each renderer in
+ * isolation; this one mounts a real grid through `<Grid>` and asserts the shipped contract from the
+ * outside, as an AT would read it — catching a wrapper or renderer refactor that silently drops ARIA the
+ * unit tests still pass on. The wrapper needs zero ARIA-specific code, and this is what keeps that true.
  *
- * The per-phase suites in `packages/grid` test each renderer in isolation; this one mounts a
- * real grid through `<Grid>` and asserts the whole shipped contract from the outside, the way
- * an AT would read it. Its job is to catch a wrapper (or a renderer refactor) silently dropping
- * ARIA that the unit tests still pass on — the wrapper needed zero ARIA-specific code, and this
- * suite is what keeps that true.
- *
- * All four column sections are populated (row-number leading, pinned left, center, pinned
- * right) because the owns-ordered topology (plan 2.1) only exists when a row is split.
+ * All four column sections are populated (row-number leading, pinned left, center, pinned right) because
+ * the owns-ordered topology only exists when a row is split.
  */
 
 // happy-dom's <canvas> has no 2D context; CanvasMeasurer needs one so the real renderer can mount.
@@ -300,7 +297,7 @@ describe("ARIA contract through the React wrapper", () => {
 
     const rows = centerBodyRows(gridRoot);
     expect(rows[2].getAttribute("aria-selected")).toBe("true");
-    // Absent, not "false", on the unselected ones (plan 4.2 — no write per recycled cell).
+    // Absent, not "false", on the unselected ones (no write per recycled cell).
     expect(rows[0].hasAttribute("aria-selected")).toBe(false);
     // Every cell of that row is selected, including the ones living in other sections.
     const cells = visibleOwnedCells(rows[2]);
@@ -339,7 +336,7 @@ describe("ARIA contract through the React wrapper", () => {
     const groups = expanded.filter(r => r.hasAttribute("aria-expanded"));
     expect(groups).toHaveLength(2);
     expect(groups.every(r => r.getAttribute("aria-expanded") === "true")).toBe(true);
-    // Leaf rows are not expandable and (plan 4.2) carry no misleading level.
+    // Leaf rows are not expandable and carry no misleading level.
     const leaves = expanded.filter(r => !r.hasAttribute("aria-expanded"));
     expect(leaves).toHaveLength(ROWS.length);
     expect(leaves.every(r => !r.hasAttribute("aria-level"))).toBe(true);

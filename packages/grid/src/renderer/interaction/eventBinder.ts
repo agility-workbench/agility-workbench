@@ -19,7 +19,7 @@ interface GridInteractionEventBinderParams {
   shouldSuppressClick: () => boolean;
   onClick: (e: MouseEvent) => void;
   onKeyDown: (e: KeyboardEvent) => void;
-  /** Focus entering the grid root — where the keyboard cursor lands on entry (plan 6.9). */
+  /** Focus entering the grid root — where the keyboard cursor lands on entry. */
   onRootFocus: () => void;
 }
 

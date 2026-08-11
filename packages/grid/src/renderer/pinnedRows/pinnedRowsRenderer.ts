@@ -459,7 +459,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       vertical,
       verticalScroller,
     };
-    // ARIA (plan 2.1): sticky bands mirror live body rows — the body copy stays exposed, so
+    // ARIA: sticky bands mirror live body rows — the body copy stays exposed, so
     // the whole mirror is hidden from AT to avoid double announcement. Pinned bands hold the
     // only copy of their rows; their wrapper machinery is presentational and renderRow
     // stitches each row like the body pool does.
@@ -837,7 +837,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
   }
 
-  // ARIA (plan 2.1): band rows are stitched like body pool rows — center fragment is THE row,
+  // ARIA: band rows are stitched like body pool rows — center fragment is THE row,
   // owning every section's cells in visual order. Band rows carry no aria-rowindex: they sit
   // outside the view sequence and show a blank row number by design. Bands are rebuilt from
   // scratch on each render, so creation-time stamping stays correct.

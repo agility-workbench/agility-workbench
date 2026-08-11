@@ -49,7 +49,7 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
   row.appendChild(right);
   row.appendChild(closeButton);
 
-  // ARIA (plan 2.1): wrapper machinery is presentational; the builder stitches the center
+  // ARIA: wrapper machinery is presentational; the builder stitches the center
   // aggregate row as THE row owning every section's cells. Like band rows, the aggregate row
   // carries no aria-rowindex (it is a summary footer outside the view sequence).
   markPresentational(row, leading, left, center, right);

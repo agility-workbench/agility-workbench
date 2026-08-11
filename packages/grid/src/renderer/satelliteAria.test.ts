@@ -7,7 +7,7 @@ import type { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { initDomRenderer } from "./dom";
 import { MenuRenderer } from "./menuRenderer";
 
-// Satellite ARIA (accessibility plan 6 PR 5): menu roles + the keyboard pattern that makes them
+// Satellite ARIA: menu roles + the keyboard pattern that makes them
 // truthful, tooltip aria-describedby, ActionFrame popup state, overlay aria-busy.
 
 beforeAll(() => {
@@ -198,7 +198,7 @@ describe("menu roles and keyboard pattern", () => {
   });
 });
 
-// Regressions found by manual testing of the PR-5 menu work. All four were invisible to the
+// Regressions found by manual testing of the menu work. All four were invisible to the
 // original suite because it drove the menu in isolation, where nothing else competes for the keys.
 describe("menu keys do not leak to the grid", () => {
   function mountWithMenu() {

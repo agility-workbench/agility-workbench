@@ -6,13 +6,11 @@ import type { NgColDef } from "./interface";
 import { mountGridHost, syncGridInputs } from "./test-utils";
 
 /**
- * End-to-end ARIA contract through the Angular wrapper (accessibility plan 6 PR 6).
- *
- * Mirror of `packages/react-grid/src/aria.smoke.test.tsx`. The wrapper contributes no
- * ARIA-specific code — the renderer owns all of it — and this suite is what keeps that true:
- * it fails if a binding path, a change-detection quirk, or a renderer refactor drops the
- * attributes an AT reads. All four column sections are populated, since the owns-ordered
- * topology (plan 2.1) only exists when a row is split across sections.
+ * End-to-end ARIA contract through the Angular wrapper. Mirror of
+ * `packages/react-grid/src/aria.smoke.test.tsx`. The wrapper contributes no ARIA-specific code — the
+ * renderer owns all of it — and this suite fails if a binding path, a change-detection quirk or a
+ * renderer refactor drops the attributes an AT reads. All four column sections are populated, since the
+ * owns-ordered topology only exists when a row is split across sections.
  */
 
 type Row = { id: string; region: string; product: string; sales: number; note: string };
@@ -206,7 +204,7 @@ describe("ARIA contract through the Angular wrapper", () => {
 
     const rows = centerBodyRows(gridRoot);
     expect(rows[2].getAttribute("aria-selected")).toBe("true");
-    // Absent rather than "false" on unselected rows (plan 4.2).
+    // Absent rather than "false" on unselected rows.
     expect(rows[0].hasAttribute("aria-selected")).toBe(false);
     const cells = visibleOwnedCells(rows[2]);
     expect(cells).toHaveLength(5);

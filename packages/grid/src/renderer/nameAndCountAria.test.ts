@@ -8,15 +8,13 @@ import type { IServerSideDataSource } from "../interfaces/serverSide";
 import { initDomRenderer } from "./dom";
 
 /**
- * Naming and the row-count contract (accessibility plan 6 PR 7).
+ * Naming and the row-count contract. Two defects the earlier ARIA suites could not have caught, because
+ * every one of them ran an unpaginated, unfiltered, unnamed grid:
  *
- * Two things an external audit flagged that the PR 1–6 suites could not have caught, because every
- * one of them ran an unpaginated, unfiltered, unnamed grid:
- *
- * 1. The focusable element carrying `role="grid"` had no accessible name, and no option could give
- *    it one — the host page cannot supply it, since that element lives inside the container.
- * 2. `aria-rowcount` reported the current *page* while `aria-rowindex` counts absolutely across
- *    pages, so page 2 of 10 declared 11 rows and then numbered them 12–21.
+ * 1. The focusable element carrying `role="grid"` had no accessible name and no option could give it one
+ *    — the host page cannot supply it, since that element lives inside the container.
+ * 2. `aria-rowcount` reported the current *page* while `aria-rowindex` counts absolutely across pages, so
+ *    page 2 of 10 declared 11 rows and then numbered them 12–21.
  */
 
 beforeAll(() => {
@@ -294,7 +292,7 @@ describe("controls that AT would otherwise meet unnamed", () => {
     const { root } = mountGrid(40, { pagination: true, pageSize: 10 });
     await raf();
 
-    // Load-bearing structure, not decoration (plan 6.8): the glyph is a CSS mask, and a mask clips
+    // Load-bearing structure, not decoration: the glyph is a CSS mask, and a mask clips
     // every pixel its own element paints — background, border, shadow, outline. While the mask sat
     // on the <button> these four could not show a focus indicator at all, whatever CSS was applied.
     // Collapsing the span back into the button would silently reintroduce that.

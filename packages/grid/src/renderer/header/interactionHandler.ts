@@ -17,14 +17,10 @@ export class HeaderInteractionHandler {
   constructor(private params: HeaderInteractionHandlerParams) {}
 
   /**
-   * Keyboard interaction for the header cursor (accessibility plan 6.9).
-   *
-   * Called from the grid root's keydown handler *before* the body handlers, and only while the
-   * header holds the cursor, so the body's own meanings for these keys (Enter = edit, printable =
-   * type-to-edit) never fire on a header cell. Returns true when the key was consumed.
-   *
-   * The actions dispatched here are the same ones the mouse path uses, so behaviour cannot drift
-   * between clicking a header and operating it by keyboard.
+   * Keyboard interaction for the header cursor. Runs from the root's keydown handler before the body
+   * handlers and only while the header holds the cursor, so the body's meanings for these keys (Enter
+   * = edit, printable = type-to-edit) never fire on a header cell. Returns true when consumed.
+   * Dispatches the same actions as the mouse path, so the two cannot drift.
    */
   onKeyDown(e: KeyboardEvent): boolean {
     const core = this.params.core;
@@ -94,8 +90,8 @@ export class HeaderInteractionHandler {
       return true;
     }
 
-    // A leaf carrying the group expander toggles it; otherwise activation sorts. Parent (group)
-    // header cells are not reachable by this cursor at all — see the 6.9 limitations.
+    // A leaf carrying the group expander toggles it; otherwise activation sorts. Parent (group) header
+    // cells are not reachable by this cursor at all.
     if (col.showExpander) {
       core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
       return true;
@@ -129,20 +125,16 @@ export class HeaderInteractionHandler {
   }
 
   /**
-   * A click on a header cell is also a cursor move (plan 6.9): the keyboard cursor belongs on the
-   * cell the user last interacted with, or the painted ring and the next arrow key disagree about
-   * where they are. Deliberately driven from the *click* rather than the mousedown, so a column drag
-   * or a resize — which start on a header but are not a choice of cell — leave the cursor alone.
-   *
-   * Leaf cells only, which is the space the cursor walks; a click on a parent (group) header cell
-   * leaves the cursor where it is (6.9 limitation 2). Moving the cursor does not touch the column
-   * selection, so arrow keys afterwards still build a multi-column selection the same way.
+   * A click on a header cell is also a cursor move, or the painted ring and the next arrow key
+   * disagree about where they are. Driven from the *click*, not the mousedown, so a column drag or a
+   * resize — which start on a header but are not a choice of cell — leave the cursor alone. Leaf cells
+   * only, the space the cursor walks; a click on a parent (group) header leaves it where it is. The
+   * column selection is untouched, so arrow keys afterwards still build one up.
    */
   private moveCursorToClickedHeader(e: MouseEvent, header: Element) {
-    // A click on a button inside the header — menu, filter, group expander — is operating a control,
-    // not choosing a cell. The keyboard agrees: Alt+ArrowDown opens the menu for the column the
-    // cursor is already on, so that route never moves it either. It also keeps a cell selection
-    // alive, which the menu action the user is reaching for may well be about.
+    // A button inside the header — menu, filter, group expander — is a control, not a choice of cell.
+    // Alt+ArrowDown likewise opens the menu for the column the cursor already occupies, so neither
+    // route moves it; that also spares a cell selection the menu action may be about.
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
     const core = this.params.core;
     const col = core.getColumnModel().getById(header.id);

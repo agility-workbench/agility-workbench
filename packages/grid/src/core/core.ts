@@ -1325,11 +1325,10 @@ export class GridCore implements IGridCore {
   }
 
   /**
-   * Index of the column header holding the keyboard cursor, or null when the cursor is in the body
-   * (accessibility plan 6.9). The header is row 0 of the grid for navigation purposes, but its
-   * cursor lives here rather than in the selection model: `active` is a *selection* cursor that
-   * carries a 1×1 range and feeds copy/edit/ActionFrame, none of which a header position can do.
-   * The two are mutually exclusive — entering one clears the other.
+   * Index of the column header holding the keyboard cursor, or null when the cursor is in the body.
+   * The header is row 0 of the grid for navigation, but its cursor lives here rather than in the
+   * selection model: `active` is a *selection* cursor carrying a 1×1 range that feeds
+   * copy/edit/ActionFrame, none of which a header position can do. Mutually exclusive with `active`.
    */
   getHeaderFocusColIdx(): number | null {
     return this.headerFocusColIdx;
@@ -1342,14 +1341,9 @@ export class GridCore implements IGridCore {
   }
 
   /**
-   * Put the keyboard cursor on a header cell, or clear it with `null`. Entering the header clears
-   * the cell selection: the cursor has left the body, and leaving a painted range behind would both
-   * look wrong and leave Ctrl+C copying something the user can no longer see the cursor in. That
-   * holds however the header was entered — `"mouse"` is a click on a header cell, which is as much a
-   * choice of cursor position as an arrow key is.
-   *
-   * Only the *cell* selection goes: the column selection is untouched, so arrow keys after a click
-   * still build up a multi-column selection.
+   * Put the keyboard cursor on a header cell, or clear it with `null`. Entering the header clears the
+   * *cell* selection — however it was entered, `"mouse"` included — or Ctrl+C would copy a range the
+   * cursor is no longer in. The column selection survives, so arrow keys can keep building one.
    */
   setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" | "mouse" = "keyboard"): void {
     const leaves = this.columnModel.getLeaves();
@@ -1369,11 +1363,9 @@ export class GridCore implements IGridCore {
   }
 
   /**
-   * ArrowUp from the topmost row hands the cursor to the header, making the header row 0 of the
-   * grid (plan 6.9). Returns true when it took the key.
-   *
-   * Only fires when there is genuinely no row above: with a pinned-top band present, ArrowUp from
-   * body row 0 still steps into the band first, and it takes one more press to reach the header.
+   * ArrowUp from the topmost row hands the cursor to the header. Returns true when it took the key.
+   * Only fires when there is genuinely no row above: with a pinned-top band present, ArrowUp from body
+   * row 0 steps into the band first, and it takes one more press to reach the header.
    */
   tryEnterHeaderFromTop(): boolean {
     const active = this.selectionModel.getActiveCell();
@@ -1400,9 +1392,9 @@ export class GridCore implements IGridCore {
       // setHeaderFocus's own "entering the header" branch.
       this.headerFocusColIdx = null;
       this.emit("headerFocusChanged", { reason: "keyboard" });
-      // Down goes to whatever row sits directly below the header on screen. That is the pinned-top
-      // band when one is displayed — `firstRowPosition()` deliberately prefers the body, because it
-      // answers a different question (which row a jump from inside the body lands on).
+      // Down goes to the row directly below the header on screen — the pinned-top band when one is
+      // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
+      // from inside the body lands).
       const first = this.getDisplayedPinnedRowCount("top") > 0
         ? { row: 0, rowPinned: "top" as const }
         : this.selectionModel.firstRowPosition();
@@ -1600,7 +1592,7 @@ export class GridCore implements IGridCore {
     // The header cursor is a leaf index, so hiding, removing or reordering columns can leave it past
     // the end — or on a column the user never put it on. Clamped here rather than when the defs
     // change, because this runs after the new leaves are in place; doing it earlier compares against
-    // the old column list and silently does nothing (plan 6.9).
+    // the old column list and silently does nothing.
     if (this.headerFocusColIdx == null) return;
     const leafCount = this.columnModel.getLeaves().length;
     if (leafCount === 0) this.setHeaderFocus(null, "api");
@@ -2206,10 +2198,10 @@ export class GridCore implements IGridCore {
   }
 
   /**
-   * The body cursor and the header cursor are mutually exclusive (plan 6.9). Enforced at this funnel
-   * rather than at each call site that places the body cursor: the first version relied on every such
-   * path knowing about the header cursor, and a mouse click on a cell — which goes through
-   * `rangeSelectSet` — did not, so the ring stayed painted and arrow keys kept walking the header.
+   * The body cursor and the header cursor are mutually exclusive. Enforced at this funnel, which every
+   * body-cursor path already goes through, rather than at each call site: relying on call sites to know
+   * about the header cursor is what left the ring painted after a click (`rangeSelectSet`) while arrow
+   * keys carried on walking the header.
    */
   private clearHeaderFocusForBodyCursor(reason: "mouse" | "keyboard" | "api"): void {
     if (this.headerFocusColIdx == null) return;

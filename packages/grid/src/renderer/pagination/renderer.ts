@@ -12,12 +12,10 @@ interface PaginationRendererParams {
 }
 
 /**
- * The glyph for a page-navigation button, as a child rather than the button itself.
- *
- * The icon is drawn with a CSS mask, and a mask clips everything its element paints — background,
- * border, shadow, outline. While the mask sat on the `<button>` those four buttons could not render
- * a focus ring at all (accessibility plan 6.8); one level down, the button paints freely. The span
- * is decorative — the button carries the accessible name.
+ * The glyph for a page-navigation button, as a child rather than on the button itself: the icon is a CSS
+ * mask, and a mask clips everything its element paints — background, border, shadow, outline. With the
+ * mask on the `<button>` these buttons could not render a focus ring at all. The span is decorative; the
+ * button carries the accessible name.
  */
 function paginationIcon(): HTMLSpanElement {
   const icon = document.createElement("span");

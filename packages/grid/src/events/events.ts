@@ -115,9 +115,9 @@ export type GridEventFocusChangedParams = {
 };
 
 /**
- * The header keyboard cursor moved (accessibility plan 6.9). Separate from `focusChanged` because
- * the two are mutually exclusive positions with different semantics — a header cursor selects
- * nothing, cannot be edited or copied, and is not clamped to the row view.
+ * The header keyboard cursor moved. Separate from `focusChanged`: the two are mutually exclusive
+ * positions, and a header cursor selects nothing, cannot be edited or copied, and is not clamped to the
+ * row view.
  */
 export type GridEventHeaderFocusChangedParams = {
   /** Index into the visible leaf columns, or undefined when the header no longer holds the cursor. */

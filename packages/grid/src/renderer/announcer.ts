@@ -1,20 +1,18 @@
 import { SortDir } from "../interfaces/sort";
 
 /**
- * Screen-reader announcements for grid-level state changes (accessibility plan 6 PR 4).
+ * Screen-reader announcements for grid-level state changes.
  *
- * This is a SECOND live region, deliberately separate from `.pte-grid-announcer` (4.1). That one
- * is a visible toast for keyboard-navigation mode switches: it is `visibility: hidden` while idle,
- * which also hides it from AT, and making it AT-visible would mean either announcing nothing while
- * idle anyway or leaving a permanently visible box on screen. So the toast keeps doing its visual
- * job untouched and this region — permanently sr-only, never painted — does the AT one.
+ * A SECOND live region, separate from `.pte-grid-announcer`: that one is a visible toast for
+ * keyboard-navigation mode switches and is `visibility: hidden` while idle, which hides it from AT too.
+ * So the toast keeps its visual job and this region — permanently sr-only, never painted — does the AT
+ * one.
  *
- * Announcements are coalesced rather than queued. Dragging a selection dispatches
- * `selectionChanged` on every mousemove, and a queue would leave AT reading a trail of stale
- * intermediate sizes long after the user stopped. Collapsing to the latest message in a short
- * window means the user hears where the selection *ended up*. The same property is what makes
- * sorting announce cleanly: sorting clears the selection first, so both events fire together and
- * the sort message — the salient one — replaces "Selection cleared".
+ * Announcements coalesce rather than queue. A selection drag dispatches `selectionChanged` on every
+ * mousemove, and a queue would leave AT reading stale intermediate sizes long after the user stopped;
+ * collapsing to the latest message in a short window says where the selection *ended up*. The same
+ * property makes sorting announce cleanly: sorting clears the selection first, so both events fire
+ * together and the salient sort message replaces "Selection cleared".
  */
 
 const COALESCE_MS = 150;
@@ -32,11 +30,9 @@ export interface SelectionSummary {
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /**
- * Describe a selection, or `null` when there is nothing worth saying.
- *
- * A single focused cell returns `null` on purpose: `aria-activedescendant` already moves AT's
- * focus onto that cell and it gets read out, so announcing "1 cell selected" alongside it would
- * double up on every arrow keypress.
+ * Describe a selection, or `null` when there is nothing worth saying. A single focused cell returns
+ * `null` on purpose: `aria-activedescendant` already moves AT's focus there and it gets read out, so
+ * "1 cell selected" would double up on every arrow keypress.
  */
 export function describeSelection(summary: SelectionSummary): string | null {
   if (summary.rows > 0) return `${plural(summary.rows, "row")} selected`;

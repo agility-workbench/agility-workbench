@@ -7,12 +7,10 @@ import type { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { initDomRenderer } from "./dom";
 
 /**
- * The header keyboard cursor (accessibility plan 6.9).
- *
- * The header is row 0 of the grid: ArrowUp off the top row reaches it, arrows move along it, and
- * ArrowDown hands the cursor back to the body. Every affordance that was pointer-only — sort, menu,
- * filter, column selection, select-all — has a key here, dispatching the same actions the mouse path
- * does so the two cannot drift.
+ * The header keyboard cursor. The header is row 0 of the grid: ArrowUp off the top row reaches it, arrows
+ * move along it, ArrowDown hands the cursor back to the body. Every affordance that was pointer-only —
+ * sort, menu, filter, column selection, select-all — has a key here, dispatching the same actions as the
+ * mouse path so the two cannot drift.
  */
 
 beforeAll(() => {
@@ -157,12 +155,9 @@ describe("entering and leaving the header", () => {
     expect(core.getSelectionRange()).toBeNull();
   });
 
-  /**
-   * The mirror of the rule above, and the half that shipped broken: clicking a body cell has to take
-   * the cursor out of the header. Driven through a real mousedown rather than the `rangeSelectSet`
-   * action, because the defect was precisely that the click path did not know the header cursor
-   * existed — dispatching the action directly would have tested the fix and missed the bug.
-   */
+  // The mirror of the rule above. Driven through a real mousedown rather than the `rangeSelectSet`
+  // action, because the defect was that the click path did not know the header cursor existed —
+  // dispatching the action would have tested the fix and missed the bug.
   it("takes the cursor out of the header when a body cell is clicked", () => {
     const { core, root } = mountGrid();
     root.focus();
@@ -227,7 +222,7 @@ describe("moving along the header", () => {
 });
 
 describe("a click on a header cell moves the cursor", () => {
-  /** Click a leaf header cell's label, the way a user reaching for that column would. */
+  /** Click a leaf header cell's label, as a user reaching for that column would. */
   const clickHeader = (root: HTMLElement, core: GridCore, colId: string) => {
     const col = core.getColumnModel().getLeaves().find(c => c.colId === colId)!;
     const target = document.getElementById(col.instanceID)!
@@ -257,12 +252,9 @@ describe("a click on a header cell moves the cursor", () => {
     expect(core.getHeaderFocusColIdx()).toBe(clicked - 1);
   });
 
-  /**
-   * Moving the cursor is not a selection reset. A header click does replace the *column* selection
-   * with the clicked column — long-standing mouse behaviour, nothing to do with the cursor — and what
-   * matters here is that arrow keys carry on from there, so a click followed by arrows and
-   * Ctrl+Shift+Space still builds up a multi-column selection.
-   */
+  // A header click replaces the *column* selection with the clicked column — long-standing mouse
+  // behaviour, nothing to do with the cursor. What matters is that arrows carry on from there, so a
+  // click plus arrows plus Ctrl+Shift+Space still builds a multi-column selection.
   it("lets arrows keep building a multi-column selection after a click", () => {
     const { core, root } = mountGrid(10, { columnSelection: true });
     root.focus();
@@ -294,12 +286,9 @@ describe("a click on a header cell moves the cursor", () => {
     expect(core.getHeaderFocusColIdx()).not.toBeNull();
   });
 
-  /**
-   * Caught by a pre-existing real-browser check when the first version of this moved the cursor on
-   * *any* header click: opening a column menu wiped the user's cell selection. A button inside the
-   * header is a control, not a choice of cell — and Alt+ArrowDown opens the menu for the column the
-   * cursor already occupies, so the keyboard route never moves it either.
-   */
+  // Moving the cursor on *any* header click meant opening a column menu wiped the user's cell
+  // selection. A button inside the header is a control, not a choice of cell — and Alt+ArrowDown opens
+  // the menu for the column the cursor already occupies, so the keyboard route never moves it either.
   it("leaves the cursor and the cell selection alone when a header button is clicked", () => {
     const { core, root } = mountGrid();
     root.focus();
@@ -314,8 +303,8 @@ describe("a click on a header cell moves the cursor", () => {
     expect(core.getActiveCell()).toEqual(active);
     expect(core.getSelectionRange()).not.toBeNull();
 
-    // Close it again: an open menu owns the arrow keys (6.5), and these grids are never unmounted, so
-    // leaving it open swallows the arrows of whichever test runs next.
+    // Close it again: an open menu owns the arrow keys, and these grids are never unmounted, so leaving
+    // it open swallows the arrows of whichever test runs next.
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect(document.querySelector(".pte-menu")).toBeNull();
   });
