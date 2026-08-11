@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { GridCore } from "../../core/core";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { BodyCellRenderer } from "../body/cellRenderer";
+import { ActiveDescendantTracker } from "../aria";
 import { PinnedRowsRenderer } from "./pinnedRowsRenderer";
 
 function createRenderer() {
@@ -14,6 +15,7 @@ function createRenderer() {
     core: {} as GridCore,
     api: {} as IGridAPI,
     root,
+    activeDescendant: new ActiveDescendantTracker(root),
     body,
     rowHeight: () => 40,
     bodyCellRenderer: {} as BodyCellRenderer,

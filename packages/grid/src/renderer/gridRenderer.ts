@@ -1,5 +1,6 @@
 import { RefObject } from "react";
 import { AggregateType } from "../interfaces/aggregate";
+import { ActiveDescendantTracker } from "./aria";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
@@ -155,6 +156,9 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
+  // Shared by every renderer that paints the active cell (body pool, pinned bands) — one tracker
+  // per grid, because they arbitrate ownership of a single root attribute between themselves.
+  _activeDescendant: ActiveDescendantTracker;
   private _keyboardNavigationAnnouncer: HTMLDivElement;
   private _keyboardNavigationAnnouncementTimer?: ReturnType<typeof setTimeout>;
   _aggregateLeadingCells: HTMLDivElement[];
@@ -203,10 +207,11 @@ export class GridRenderer {
     this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
-    // ARIA (plan 2.1): the root is the single focusable element and therefore THE grid —
-    // aria-activedescendant (PR 2) must live on the focused element. Counts are refreshed by
+    // ARIA (plan 2.1): the root is the single focusable element and therefore THE grid — so it
+    // is also where aria-activedescendant names the active cell. Counts are refreshed by
     // _refreshAriaCounts whenever data or columns change.
     this.root.setAttribute("role", "grid");
+    this._activeDescendant = new ActiveDescendantTracker(this.root);
     this._keyboardNavigationAnnouncer = div("pte-grid-announcer");
     this._keyboardNavigationAnnouncer.setAttribute("role", "status");
     this._keyboardNavigationAnnouncer.setAttribute("aria-live", "polite");
@@ -302,6 +307,7 @@ export class GridRenderer {
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
       root: this.root,
+      activeDescendant: this._activeDescendant,
       clipboard: () => this._clipboardRenderer,
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
@@ -435,6 +441,7 @@ export class GridRenderer {
       core: this.core,
       api: this.api,
       root: this.root,
+      activeDescendant: this._activeDescendant,
       body: bodyWrapper.body,
       rowHeight: () => this.rowHeight,
       bodyCellRenderer: this._bodyCellRenderer,

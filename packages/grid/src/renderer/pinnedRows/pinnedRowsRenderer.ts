@@ -6,7 +6,7 @@ import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
-import { markPresentational, stampGridCellAria, stitchAriaRow } from "../aria";
+import { ActiveDescendantTracker, markPresentational, stampGridCellAria, stitchAriaRow } from "../aria";
 
 interface BandElements {
   root: HTMLDivElement;
@@ -44,6 +44,7 @@ interface PinnedRowsRendererParams {
   core: GridCore;
   api: IGridAPI;
   root: HTMLDivElement;
+  activeDescendant: ActiveDescendantTracker;
   body: HTMLDivElement;
   rowHeight: () => number;
   bodyCellRenderer: BodyCellRenderer;
@@ -285,6 +286,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       { band: this.top, position: "top" as const },
       { band: this.bottom, position: "bottom" as const },
     ]) {
+      // The band cell holding focus, claimed as the root's aria-activedescendant below. Like the
+      // body pool, a band releases only the pointer it still owns, so whichever of the two
+      // renderers repaints second cannot clobber the other's claim.
+      let focusedCellEl: HTMLElement | null = null;
       const segment = position === "top" ? range?.pinnedTop : range?.pinnedBottom;
       const continuesBelow = position === "top" && (bodyRangeRows || !!range?.pinnedBottom);
       const continuesAbove = position === "bottom" && (bodyRangeRows || !!range?.pinnedTop);
@@ -305,6 +310,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
           && active.rowPinned === position
           && active.row === rowIndex
           && active.colIdx === colIndex;
+        if (isActive) focusedCellEl = cell;
         this.applyCellSelectionClasses(cell, {
           selected,
           top: rangeSelected && rowIndex === segment!.start && !continuesAbove,
@@ -320,11 +326,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
           active: isActive && highlight,
         });
       });
+      if (focusedCellEl) this.params.activeDescendant.claim(focusedCellEl, band);
+      else this.params.activeDescendant.release(band);
     }
 
     // Sticky mirrors cover their live body rows (even at rest), so range/column/focus styling must
     // appear on the mirror too or the covered body copy's would be invisible. Mirrors carry the
     // row's real view index and no rowPinned tag — body-range coordinates match directly.
+    //
+    // The mirror never claims aria-activedescendant: the whole sticky band is aria-hidden (it is a
+    // second copy of a row the body pool still exposes), so naming a cell inside it would point AT
+    // at a node that is not in the accessibility tree. The body copy's own paint claims it.
     this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
       const row = cell.closest<HTMLElement>(".pte-row");
       const rowIndex = Number(row?.dataset.viewIdx);

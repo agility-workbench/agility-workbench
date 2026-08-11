@@ -2,12 +2,14 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
+import { ActiveDescendantTracker } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
 import { RowPoolDef } from "../types";
 
 interface SelectionRendererParams {
   core: GridCore;
   root: HTMLDivElement;
+  activeDescendant: ActiveDescendantTracker;
   clipboard: () => ClipboardRenderer;
   rowPool: () => RowPoolDef[];
   startIndex: () => number;
@@ -36,9 +38,14 @@ export class SelectionRenderer {
     const range = this.params.core.getSelectionRange();
     const selectedRowIDs = this.params.core.getSelectedRowIds();
     const selectedColumnIDs = this.params.core.getSelectedColumnIds();
-    const activeCell = this.params.core.options.highlightActiveCell
-      ? this.params.core.getActiveCell()
-      : null;
+    // The focused cell drives two independent things: the optional visual outline
+    // (highlightActiveCell, off by default) and aria-activedescendant, which must track focus
+    // in every configuration. So resolve focus unconditionally and gate only the class.
+    const activeCell = this.params.core.getActiveCell();
+    const highlight = !!this.params.core.options.highlightActiveCell;
+    // The cell this slot paints as focused, if any — claimed as the root's activedescendant
+    // once both the per-column and full-width passes below have had their say.
+    let focusedCellEl: HTMLElement | null = null;
     const rangeRow = !!range && viewIndex != null && viewIndex >= range.rowStart && viewIndex <= range.rowEnd;
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
     const hasBottomBand = this.params.core.getDisplayedPinnedRowCount("bottom") > 0;
@@ -109,6 +116,7 @@ export class SelectionRenderer {
         const isActive = !!activeCell && Number.isFinite(colIdx)
           && !activeCell.rowPinned
           && viewIndex === activeCell.row && activeCell.colIdx >= colIdx && activeCell.colIdx <= colEnd;
+        if (isActive) focusedCellEl = cell;
 
         const cls = cell.classList;
         cls.toggle("selected", selected);
@@ -116,7 +124,7 @@ export class SelectionRenderer {
         cls.toggle("selected-bottom", selected && isBottom);
         cls.toggle("selected-left", selected && isLeft);
         cls.toggle("selected-right", selected && isRight);
-        cls.toggle("pte-active-cell", isActive);
+        cls.toggle("pte-active-cell", isActive && highlight);
       }
     };
 
@@ -125,7 +133,13 @@ export class SelectionRenderer {
     apply(slot.cellEls);
     apply(slot.rightCellEls);
 
-    this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell);
+    focusedCellEl = this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell, highlight)
+      ?? focusedCellEl;
+
+    // A slot releases only the pointer it still owns, so slots that lost the active cell cannot
+    // undo the claim of the slot that gained it, whatever order the pool is walked in.
+    if (focusedCellEl) this.params.activeDescendant.claim(focusedCellEl, slot);
+    else this.params.activeDescendant.release(slot);
   }
 
   // Paint the single full-width host cell (group full-width rows, or isFullWidthRow rows). Column
@@ -133,13 +147,16 @@ export class SelectionRenderer {
   // "selected" when the row is row-selected or the active cell / cell-range falls on this view row.
   // When the host isn't shown (normal row) or carries no colIdx (non-group full-width row, which is
   // not cell-selectable), all selection classes are cleared.
+  // Returns the host when it holds the focused cell, so the caller can name it as the root's
+  // aria-activedescendant — in full-width layout it is the row's only visible cell.
   private applySelectionToFullWidthCell(
     slot: RowPoolDef,
     viewIndex: number | null,
     rangeRow: boolean,
     rowSelected: boolean,
     activeCell: { row: number; colIdx: number; rowPinned?: "top" | "bottom" } | null,
-  ) {
+    highlight: boolean,
+  ): HTMLElement | null {
     const host = slot.fullWidthCellEl;
     const cls = host.classList;
     const cellSelectable = host.style.display !== "none" && host.dataset.colIdx != null;
@@ -148,7 +165,7 @@ export class SelectionRenderer {
       // Row selection still applies to a non-cell-selectable host (e.g. a full-width row selected via
       // the row-number checkbox); keep just the row-scoped "selected" fill.
       cls.toggle("selected", host.style.display !== "none" && rowSelected);
-      return;
+      return null;
     }
 
     const selected = rowSelected || rangeRow;
@@ -159,7 +176,8 @@ export class SelectionRenderer {
     cls.toggle("selected-bottom", selected);
     cls.toggle("selected-left", selected);
     cls.toggle("selected-right", selected);
-    cls.toggle("pte-active-cell", isActive);
+    cls.toggle("pte-active-cell", isActive && highlight);
+    return isActive ? host : null;
   }
 
   private isViewIndexRowSelected(viewIndex: number | null, selectedRowIDs: Set<string>): boolean {
@@ -261,12 +279,14 @@ export class SelectionRenderer {
     this.applyColumnSelectionStyles();
   }
 
-  /** Called when core emits focusChanged — scroll the active cell into view and, when the
-   * active-cell highlight is enabled, repaint so the outline follows the focused cell. */
+  /** Called when core emits focusChanged — scroll the active cell into view and repaint so the
+   * outline (when enabled) and the root's aria-activedescendant follow the focused cell. The
+   * repaint is unconditional: with highlightActiveCell off there is nothing to draw, but the
+   * ARIA pointer still has to move, and the paint pass is what re-derives it. */
   onFocusChanged(viewIdx?: number, colIdx?: number, rowPinned?: "top" | "bottom") {
     if (viewIdx == null || colIdx == null) return;
     this.params.ensureCellVisible(viewIdx, colIdx, rowPinned);
-    if (this.params.core.options.highlightActiveCell) this.refreshSelectionStyles();
+    this.refreshSelectionStyles();
   }
 
   // ---------------- DOM resolution ----------------
