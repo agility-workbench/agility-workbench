@@ -175,16 +175,28 @@ export class ActionFrameRenderer {
   // ---------------- frame border (recycle-safe) ----------------
 
   /** Re-stamp the `.pte-action-frame` class on the open cell's live element (if currently
-   * rendered), clearing it from any stale element. A no-op-safe pure function of `openCell`. */
+   * rendered), clearing it from any stale element. A no-op-safe pure function of `openCell`.
+   *
+   * ARIA rides along with the class rather than being tracked separately: the anchor is a pooled
+   * cell, so the same re-stamp-and-sweep that keeps the border on the right element is exactly what
+   * keeps `aria-haspopup`/`aria-expanded` off a recycled one. */
   private refreshFrame() {
     this.clearFrame();
     if (!this.openCell) return;
     const el = this.getCellEl(this.openCell);
-    if (el) el.classList.add("pte-action-frame");
+    if (el) {
+      el.classList.add("pte-action-frame");
+      el.setAttribute("aria-haspopup", "dialog");
+      el.setAttribute("aria-expanded", "true");
+    }
   }
 
   private clearFrame() {
-    this.params.body.querySelectorAll(".pte-action-frame").forEach((c) => c.classList.remove("pte-action-frame"));
+    this.params.body.querySelectorAll(".pte-action-frame").forEach((c) => {
+      c.classList.remove("pte-action-frame");
+      c.removeAttribute("aria-haspopup");
+      c.removeAttribute("aria-expanded");
+    });
   }
 
   // ---------------- dismissal ----------------

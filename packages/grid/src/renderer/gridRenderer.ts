@@ -1004,6 +1004,10 @@ export class GridRenderer {
     const next = isTrue(isLoading);
     if (this._loadingOverlayRenderer.getLoading() === next) return;
     this._loadingOverlayRenderer.setLoading(next);
+    // aria-busy tells AT the grid's content is in flux, so it can hold off describing rows that are
+    // about to be replaced. Set on the root — the element carrying role="grid".
+    if (next) this.root.setAttribute("aria-busy", "true");
+    else this.root.removeAttribute("aria-busy");
     this._announcer.loadingChanged(next, this.core.getRowModel().getViewCount());
   }
 
