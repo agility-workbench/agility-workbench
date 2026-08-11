@@ -214,6 +214,8 @@ export class GridRenderer {
     // is also where aria-activedescendant names the active cell. Counts are refreshed by
     // _refreshAriaCounts whenever data or columns change.
     this.root.setAttribute("role", "grid");
+    // A grid must have an accessible name, and only the application knows what this one is called.
+    this._applyGridLabel();
     this._activeDescendant = new ActiveDescendantTracker(this.root);
     this._keyboardNavigationAnnouncer = div("pte-grid-announcer");
     this._keyboardNavigationAnnouncer.setAttribute("role", "status");
@@ -973,6 +975,16 @@ export class GridRenderer {
     this.root.classList.toggle("pte-text-selection", options.cellSelection === "text");
     this.root.classList.toggle("pte-column-buttons-on-hover", options.showColumnButtonsOnHover);
 
+    if (previous.ariaLabel !== options.ariaLabel || previous.ariaLabelledBy !== options.ariaLabelledBy) {
+      this._applyGridLabel();
+    }
+    // Column selection is one of the routes that makes the grid multi-selectable.
+    if (previous.columnSelection !== options.columnSelection
+      || previous.cellSelection !== options.cellSelection
+      || previous.rangeSelection !== options.rangeSelection) {
+      this._refreshAriaCounts();
+    }
+
     const rowPaintChanged =
       previous.zebraRows !== options.zebraRows
       || previous.getRowClass !== options.getRowClass
@@ -1392,13 +1404,43 @@ export class GridRenderer {
   // the aggregate row are unindexed (they show blank row numbers by design), so they are
   // not counted.
   private _refreshAriaCounts() {
+    const rowModel = this.core.getRowModel();
     this.root.setAttribute("aria-colcount", String(this.core.getColumnModel().leafColumnLookup.size));
-    this.root.setAttribute("aria-rowcount", String(this.core.getRowModel().getViewCount() + 1));
-    // More than one thing can be selected at once when cells can be dragged into a range or rows
-    // can be picked individually. Cell selection set to "text"/false leaves only row selection.
+    // aria-rowcount is the size of the WHOLE set, not of what is currently rendered or paged to,
+    // and `aria-rowindex` counts absolutely across pages (`getRowNumberForViewIndex` adds the page
+    // offset). Using the page size here made page 2 of 10 report 11 rows with indices 12-21 — every
+    // index past the declared count. Filtering does belong in the number, which is why this is
+    // `getViewTotalCount()` and not `getRowCount()`.
+    //
+    // -1 means "count unknown" and is the honest answer while the server-side model's total is
+    // still an estimate; publishing the estimate as exact tells AT the last row is reachable when
+    // it may not be.
+    const totalKnown = rowModel.isTotalRowCountKnown?.() ?? true;
+    this.root.setAttribute(
+      "aria-rowcount",
+      totalKnown ? String(rowModel.getViewTotalCount() + 1) : "-1",
+    );
+    // More than one thing can be selected at once when cells can be dragged into a range, rows can
+    // be picked individually, or columns can be (column selection accumulates, and selecting a
+    // column marks all of its cells selected). Cell selection set to "text"/false leaves the
+    // row/column routes.
     const multi = (this.core.options.cellSelection === true && !!this.core.options.rangeSelection)
-      || !!this.core.options.rowSelection;
+      || !!this.core.options.rowSelection
+      || !!this.core.options.columnSelection;
     this.root.setAttribute("aria-multiselectable", String(multi));
+  }
+
+  /**
+   * The grid's accessible name. `aria-labelledby` wins when both are set, which is how the two
+   * attributes resolve anyway; both are removed when unset so a cleared option does not leave a
+   * stale name behind.
+   */
+  private _applyGridLabel() {
+    const { ariaLabel, ariaLabelledBy } = this.core.options;
+    if (ariaLabelledBy) this.root.setAttribute("aria-labelledby", ariaLabelledBy);
+    else this.root.removeAttribute("aria-labelledby");
+    if (ariaLabel && !ariaLabelledBy) this.root.setAttribute("aria-label", ariaLabel);
+    else this.root.removeAttribute("aria-label");
   }
 
   _rebuildRowPool() {

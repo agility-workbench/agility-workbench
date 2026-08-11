@@ -247,13 +247,23 @@ describe("aria-multiselectable", () => {
     expect(root.getAttribute("aria-multiselectable")).toBe("true");
   });
 
-  it("is false when neither range nor row selection is available", () => {
-    const { root } = mountGrid(10, { rangeSelection: false, rowSelection: false });
+  it("is false only when every multi-select route is off", () => {
+    const { root } = mountGrid(10, { rangeSelection: false, rowSelection: false, columnSelection: false });
     expect(root.getAttribute("aria-multiselectable")).toBe("false");
   });
 
   it("is true on row selection alone, even with cell selection off", () => {
-    const { root } = mountGrid(10, { cellSelection: false, rangeSelection: false, rowSelection: true });
+    const { root } = mountGrid(10, {
+      cellSelection: false, rangeSelection: false, rowSelection: true, columnSelection: false,
+    });
+    expect(root.getAttribute("aria-multiselectable")).toBe("true");
+  });
+
+  it("is true on column selection alone — which is on by default", () => {
+    // Column selection accumulates (a second column adds to the set) and marks every cell of each
+    // selected column, so a grid with only this route enabled is still multi-selectable. Reporting
+    // false here was a lie in the DEFAULT configuration, since columnSelection defaults to true.
+    const { root } = mountGrid(10, { cellSelection: false, rangeSelection: false, rowSelection: false });
     expect(root.getAttribute("aria-multiselectable")).toBe("true");
   });
 });

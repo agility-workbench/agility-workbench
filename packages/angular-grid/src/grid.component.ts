@@ -106,6 +106,8 @@ export class AwbGrid implements OnDestroy {
   readonly zebraRows = input<GridOptions["zebraRows"]>();
   readonly getRowClass = input<GridOptions["getRowClass"]>();
   readonly getRowStyle = input<GridOptions["getRowStyle"]>();
+  readonly ariaLabel = input<GridOptions["ariaLabel"]>();
+  readonly ariaLabelledBy = input<GridOptions["ariaLabelledBy"]>();
   readonly highlightActiveCell = input<GridOptions["highlightActiveCell"]>();
   readonly rowNumbers = input<GridOptions["rowNumbers"]>();
   readonly showColumnButtonsOnHover = input<GridOptions["showColumnButtonsOnHover"]>();
@@ -357,6 +359,8 @@ export class AwbGrid implements OnDestroy {
         zebraRows: this.zebraRows() ?? false,
         getRowClass: this.getRowClass(),
         getRowStyle: this.getRowStyle(),
+        ariaLabel: this.ariaLabel(),
+        ariaLabelledBy: this.ariaLabelledBy(),
         highlightActiveCell: this.highlightActiveCell() ?? false,
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,

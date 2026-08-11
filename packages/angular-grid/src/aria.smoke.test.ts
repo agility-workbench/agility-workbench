@@ -3,7 +3,7 @@ import { Component } from "@angular/core";
 import type { IGridAPI } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
 import type { NgColDef } from "./interface";
-import { mountGridHost } from "./test-utils";
+import { mountGridHost, syncGridInputs } from "./test-utils";
 
 /**
  * End-to-end ARIA contract through the Angular wrapper (accessibility plan 6 PR 6).
@@ -35,6 +35,7 @@ const ROWS: Row[] = [
       rowIdKey="id"
       [rowNumbers]="true"
       [rowSelection]="rowSelection"
+      [ariaLabel]="ariaLabel"
       (gridReady)="api = $event"
     />
   `,
@@ -42,6 +43,7 @@ const ROWS: Row[] = [
 class AriaHost {
   api: IGridAPI | null = null;
   rowSelection = true;
+  ariaLabel: string | undefined = undefined;
   rows: Row[] = ROWS;
   cols: NgColDef[] = [
     { colId: "region", key: "region", label: "Region", pinned: "left" },
@@ -110,6 +112,21 @@ describe("ARIA contract through the Angular wrapper", () => {
     expect(gridRoot.getAttribute("aria-colcount")).toBe("5"); // 4 columns + the row-number gutter
     expect(gridRoot.getAttribute("aria-multiselectable")).toBe("true");
     expect(gridRoot.tabIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it("passes the grid's accessible name through, and updates it on an input change", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(AriaHost, 600, (instance) => {
+      instance.ariaLabel = "Open invoices";
+    });
+    expect(gridRootOf(gridEl).getAttribute("aria-label")).toBe("Open invoices");
+
+    host.ariaLabel = "Closed invoices";
+    await syncGridInputs(fixture);
+    expect(gridRootOf(gridEl).getAttribute("aria-label")).toBe("Closed invoices");
+
+    host.ariaLabel = undefined;
+    await syncGridInputs(fixture);
+    expect(gridRootOf(gridEl).hasAttribute("aria-label")).toBe(false);
   });
 
   it("exposes one header row owning every leaf columnheader in visual order", async () => {

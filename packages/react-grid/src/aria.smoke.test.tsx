@@ -67,11 +67,28 @@ async function mountGrid(props: Record<string, unknown> = {}, columnDefs: ReactC
     );
   });
   const api = apiRef.current!;
+  /** Re-render with different props, for the options that must survive an update. */
+  const rerender = async (nextProps: Record<string, unknown>) => {
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={ROWS}
+          columnDefs={columnDefs}
+          rowIdKey="id"
+          rowNumbers
+          rowSelection
+          {...nextProps}
+        />,
+      );
+    });
+  };
   return {
     container,
     api,
     core: api.getCore(),
     root,
+    rerender,
     gridRoot: container.querySelector<HTMLElement>(".pte-root")!,
   };
 }
@@ -125,8 +142,26 @@ describe("ARIA contract through the React wrapper", () => {
   });
 
   it("reports aria-multiselectable=false when nothing can be multi-selected", async () => {
-    const { gridRoot, root } = await mountGrid({ rowSelection: false, cellSelection: "text" });
+    const { gridRoot, root } = await mountGrid({
+      rowSelection: false, cellSelection: "text", columnSelection: false,
+    });
     expect(gridRoot.getAttribute("aria-multiselectable")).toBe("false");
+    await unmountTestRoot(root);
+  });
+
+  it("passes the grid's accessible name through, and updates it on a prop change", async () => {
+    const { gridRoot, root, rerender } = await mountGrid({ ariaLabel: "Open invoices" });
+    expect(gridRoot.getAttribute("aria-label")).toBe("Open invoices");
+
+    // The label is a runtime option, so a changed prop has to reach the root — the wrapper plumbing
+    // this suite exists to guard.
+    await rerender({ ariaLabel: "Closed invoices" });
+    expect(gridRoot.getAttribute("aria-label")).toBe("Closed invoices");
+
+    await rerender({ ariaLabelledBy: "some-heading" });
+    expect(gridRoot.getAttribute("aria-labelledby")).toBe("some-heading");
+    expect(gridRoot.hasAttribute("aria-label")).toBe(false);
+
     await unmountTestRoot(root);
   });
 

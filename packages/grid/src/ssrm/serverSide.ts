@@ -201,6 +201,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return Math.max(0, Math.min(this.flatTotal, this.viewEndRow) - this.viewStartRow);
   }
 
+  getViewTotalCount() {
+    // Server-side filtering happens on the server, so the flattened total already reflects it.
+    // It may be an estimate while a listing is open-ended — `isTotalRowCountKnown()` reports that,
+    // and callers that must not guess (aria-rowcount) check it.
+    return this.flatTotal;
+  }
+
   getRowNodeAt(index: number): IRowNode<Row> | undefined {
     return this.getRowNodeAtViewIndex(index);
   }

@@ -173,6 +173,8 @@ export class GridCore implements IGridCore {
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
+      ariaLabel: options.ariaLabel,
+      ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: isTrue(options.rowSelection),
       cellSelection: options.cellSelection ?? true, // true | false | "text"
