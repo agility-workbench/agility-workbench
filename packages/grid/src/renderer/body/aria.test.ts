@@ -113,8 +113,10 @@ describe("body ARIA topology (owns-ordered)", () => {
 
   it("writes aria-rowindex in the recycle loop and keeps it consistent after scrolling", async () => {
     const { container, core } = mountGrid(500);
-    for (const row of centerRows(container)) {
-      if (row.style.display === "none") continue;
+    const populated = centerRows(container).filter(row => row.style.display !== "none");
+    // Without this the loop below would pass vacuously if the pool never filled.
+    expect(populated.length).toBeGreaterThan(0);
+    for (const row of populated) {
       const viewIdx = Number(row.getAttribute("data-view-idx"));
       // Header is aria row 1; body rows follow their absolute display number (viewIdx + 1).
       expect(row.getAttribute("aria-rowindex")).toBe(String(viewIdx + 2));

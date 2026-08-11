@@ -2883,13 +2883,13 @@
   height: 34px;
 }
 
-/* The current item, whether the mouse or the keyboard put it there. Hovering an item moves focus to
-   it (see handleMenuMouseMove), so these two selectors resolve to the same element and exactly one
-   item is ever highlighted — styling them identically is what keeps mouse and keyboard consistent.
+/* The current item — focus and nothing else, so exactly one item is ever highlighted across all
+   open levels. Hovering still highlights, because hovering moves focus (see handleMenuMouseMove);
+   adding `:hover` here as well would double up the moment the pointer came to rest and the keyboard
+   moved on, leaving the hovered item AND the focused item both looking current.
    Plain `:focus`, not `:focus-visible`: focus is moved programmatically here, and after a
    mouse-driven open the focus-visible heuristic would suppress the highlight entirely.
    `outline: none` because the background alone is the indicator. */
-.pte-menu-item:hover,
 .pte-menu-item:focus {
   background-color: var(--pte-hover-bg-color);
   outline: none;

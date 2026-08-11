@@ -133,6 +133,12 @@ export class HeaderRenderer {
         if (hcell.classList.contains("pte-hcell-leaf") && meta) {
           hcell.setAttribute("role", "columnheader");
           hcell.setAttribute("aria-colindex", String(meta.globalIndex + 1));
+          // The row-number gutter renders a deliberately blank label, which leaves its
+          // columnheader with no accessible name (axe: empty-table-header). Name it here rather
+          // than painting text into the cell.
+          if (hcell.classList.contains("pte-hcell-row-number")) {
+            hcell.setAttribute("aria-label", "Row number");
+          }
           ownedIds.push(hcell.id);
         } else {
           hcell.setAttribute("role", "presentation");
