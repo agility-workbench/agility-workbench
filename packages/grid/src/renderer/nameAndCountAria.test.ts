@@ -289,4 +289,24 @@ describe("controls that AT would otherwise meet unnamed", () => {
       expect(document.getElementById(labelId!)?.textContent).toBeTruthy();
     }
   });
+
+  it("draws each page-nav glyph in a child span, so the button can paint a focus ring", async () => {
+    const { root } = mountGrid(40, { pagination: true, pageSize: 10 });
+    await raf();
+
+    // Load-bearing structure, not decoration (plan 6.8): the glyph is a CSS mask, and a mask clips
+    // every pixel its own element paints — background, border, shadow, outline. While the mask sat
+    // on the <button> these four could not show a focus indicator at all, whatever CSS was applied.
+    // Collapsing the span back into the button would silently reintroduce that.
+    for (const cls of ["first", "prev", "next", "last"]) {
+      const btn = root.querySelector<HTMLElement>(`.pte-pagination-btn-${cls}`)!;
+      expect(btn, `.pte-pagination-btn-${cls} missing`).not.toBeNull();
+      const icon = btn.querySelector<HTMLElement>(".pte-pagination-btn-icon");
+      expect(icon, `.pte-pagination-btn-${cls} has no icon span`).not.toBeNull();
+      // The glyph is decorative; the button owns the accessible name.
+      expect(icon!.getAttribute("aria-hidden")).toBe("true");
+      expect(btn.getAttribute("aria-label")).toBeTruthy();
+      expect(icon!.textContent).toBe("");
+    }
+  });
 });

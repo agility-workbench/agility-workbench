@@ -11,6 +11,21 @@ interface PaginationRendererParams {
   setAggregateScope: (scope: AggregateScope) => void;
 }
 
+/**
+ * The glyph for a page-navigation button, as a child rather than the button itself.
+ *
+ * The icon is drawn with a CSS mask, and a mask clips everything its element paints — background,
+ * border, shadow, outline. While the mask sat on the `<button>` those four buttons could not render
+ * a focus ring at all (accessibility plan 6.8); one level down, the button paints freely. The span
+ * is decorative — the button carries the accessible name.
+ */
+function paginationIcon(): HTMLSpanElement {
+  const icon = document.createElement("span");
+  icon.className = "pte-pagination-btn-icon";
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 export class PaginationRenderer {
   pageSizeSelect!: HTMLSelectElement;
   pageSelect!: HTMLSelectElement;
@@ -96,12 +111,14 @@ export class PaginationRenderer {
     this.firstPageBtn.type = "button";
     this.firstPageBtn.className = "pte-pagination-btn pte-pagination-btn-first";
     this.firstPageBtn.setAttribute("aria-label", "First page");
+    this.firstPageBtn.appendChild(paginationIcon());
     this.firstPageBtn.addEventListener("click", () => this.goToPage(0));
 
     this.prevPageBtn = document.createElement("button");
     this.prevPageBtn.type = "button";
     this.prevPageBtn.className = "pte-pagination-btn pte-pagination-btn-prev";
     this.prevPageBtn.setAttribute("aria-label", "Previous page");
+    this.prevPageBtn.appendChild(paginationIcon());
     this.prevPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().pageIndex - 1);
     });
@@ -125,6 +142,7 @@ export class PaginationRenderer {
     this.nextPageBtn.type = "button";
     this.nextPageBtn.className = "pte-pagination-btn pte-pagination-btn-next";
     this.nextPageBtn.setAttribute("aria-label", "Next page");
+    this.nextPageBtn.appendChild(paginationIcon());
     this.nextPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().pageIndex + 1);
     });
@@ -133,6 +151,7 @@ export class PaginationRenderer {
     this.lastPageBtn.type = "button";
     this.lastPageBtn.className = "pte-pagination-btn pte-pagination-btn-last";
     this.lastPageBtn.setAttribute("aria-label", "Last page");
+    this.lastPageBtn.appendChild(paginationIcon());
     this.lastPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().totalPageCount - 1);
     });
