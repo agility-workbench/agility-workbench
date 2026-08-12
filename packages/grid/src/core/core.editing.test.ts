@@ -37,6 +37,11 @@ function colId(core: GridCore, key: string): string {
   return core.getColumnModel().getByColId(key)!.instanceID;
 }
 
+// Emitted CellRefs are normalized: public colId + the internal instance id.
+function emittedCell(core: GridCore, rowId: string, key: string) {
+  return { rowId, colId: key, colInstanceId: colId(core, key) };
+}
+
 describe("GridCore editing", () => {
   let core: GridCore;
   let editingEvents: GridEventEditingChangedParams[];
@@ -53,14 +58,14 @@ describe("GridCore editing", () => {
   it("starts editing an editable cell and tracks the editing cell", () => {
     const cell = { rowId: "1", colId: colId(core, "name") };
     core.dispatch({ type: "editStart", cell });
-    expect(core.getEditingCell()).toEqual(cell);
-    expect(editingEvents).toEqual([{ state: "started", cell }]);
+    expect(core.getEditingCell()).toEqual(emittedCell(core, "1", "name"));
+    expect(editingEvents).toEqual([{ state: "started", cell: emittedCell(core, "1", "name") }]);
   });
 
   it("forwards charPress on the started event (edit-on-typing)", () => {
     const cell = { rowId: "1", colId: colId(core, "name") };
     core.dispatch({ type: "editStart", cell, source: "keyboard", charPress: "q" });
-    expect(editingEvents.at(-1)).toMatchObject({ state: "started", cell, charPress: "q" });
+    expect(editingEvents.at(-1)).toMatchObject({ state: "started", cell: emittedCell(core, "1", "name"), charPress: "q" });
   });
 
   it("refuses to start editing a non-editable column", () => {
@@ -79,9 +84,11 @@ describe("GridCore editing", () => {
     expect(core.getEditingCell()).toBeNull();
     expect(core.getRowModel().getRowNode("1")!.data.name).toBe("ALICE");
     expect(cellsEvents).toEqual([
-      { reason: "editCommit", rowIds: ["1"], colIds: [cId] },
+      { reason: "editCommit", rowIds: ["1"], colIds: ["name"], colInstanceIds: [cId] },
     ]);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: "ALICE", oldValue: "alice" });
+    expect(editingEvents.at(-1)).toEqual({
+      state: "committed", cell: emittedCell(core, "1", "name"), value: "ALICE", oldValue: "alice",
+    });
   });
 
   it("runs the column valueParser on commit", () => {
@@ -89,7 +96,9 @@ describe("GridCore editing", () => {
     const cell = { rowId: "2", colId: cId };
     core.dispatch({ type: "editCommit", cell, value: "99" });
     expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(99);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 99, oldValue: 7 });
+    expect(editingEvents.at(-1)).toEqual({
+      state: "committed", cell: emittedCell(core, "2", "qty"), value: 99, oldValue: 7,
+    });
   });
 
   it("stores the value directly and skips valueParser when parsed=true", () => {
@@ -98,7 +107,9 @@ describe("GridCore editing", () => {
     // A typed editor commits a real number with parsed:true — valueParser must not run.
     core.dispatch({ type: "editCommit", cell, value: 123, parsed: true });
     expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(123);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 123, oldValue: 7 });
+    expect(editingEvents.at(-1)).toEqual({
+      state: "committed", cell: emittedCell(core, "2", "qty"), value: 123, oldValue: 7,
+    });
   });
 
   it("cancels an edit without changing the value", () => {
@@ -110,6 +121,6 @@ describe("GridCore editing", () => {
     expect(core.getEditingCell()).toBeNull();
     expect(core.getRowModel().getRowNode("1")!.data.name).toBe("alice");
     expect(cellsEvents).toEqual([]);
-    expect(editingEvents.at(-1)).toEqual({ state: "cancelled", cell });
+    expect(editingEvents.at(-1)).toEqual({ state: "cancelled", cell: emittedCell(core, "1", "name") });
   });
 });

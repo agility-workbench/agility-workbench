@@ -65,12 +65,17 @@ export type GridEventViewportChangedParams = {
 
 export type GridEventColumnsChangedParams = {
   reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "group" | "add";
+  /** Public ColDef colIds of the affected columns. */
   changedColIds?: ColId[];
+  /** Internal instance ids of the affected columns (unique; renderer-facing). */
+  changedColInstanceIds?: string[];
 };
 
 export type GridEventColumnWidthsChangedParams = {
-  /** Columns whose computedWidth changed. Empty array means "all visible columns". */
+  /** Public colIds of the columns whose computedWidth changed. Empty = "all visible columns". */
   changedColIds: ColId[];
+  /** Internal instance ids, parallel to `changedColIds` (unique; renderer-facing). */
+  changedColInstanceIds: string[];
 };
 
 export type GridEventRowsChangedParams = {
@@ -93,7 +98,10 @@ export type GridEventAggregateChangedParams = {
 export type GridEventCellsChangedParams = {
   reason: "data" | "format" | "style" | "editCommit" | "refresh";
   rowIds: GridId[];
+  /** Public ColDef colIds of the affected columns. */
   colIds: ColId[];
+  /** Internal instance ids of the affected columns (unique; renderer-facing). */
+  colInstanceIds: string[];
   // If true, renderer may want to recreate cell content (e.g. renderer changed)
   force?: boolean;
 };
@@ -105,8 +113,9 @@ export type GridEventSelectionChangedParams = {
 };
 
 export type GridEventFocusChangedParams = {
-  prev?: { rowId: GridId; colId: ColId; rowPinned?: "top" | "bottom" };
-  next?: { rowId: GridId; colId: ColId; rowPinned?: "top" | "bottom" };
+  prev?: { rowId: GridId; colId: ColId; colInstanceId?: string; rowPinned?: "top" | "bottom" };
+  /** `colId` is the public ColDef colId; `colInstanceId` the internal instance id. */
+  next?: { rowId: GridId; colId: ColId; colInstanceId?: string; rowPinned?: "top" | "bottom" };
   // active cell position in its row section (for scroll-into-view; survives unloaded body rows)
   viewIdx?: number;
   colIdx?: number;
@@ -123,14 +132,18 @@ export type GridEventFocusChangedParams = {
 export type GridEventHeaderFocusChangedParams = {
   /** Index into the visible leaf columns, or undefined when the header no longer holds the cursor. */
   colIdx?: number;
+  /** Public ColDef colId of the header holding the cursor. */
   colId?: string;
+  /** Internal instance id of that column. */
+  colInstanceId?: string;
   /** `"mouse"` only ever clears the cursor — a click that places the body cursor takes it out of the header. */
   reason?: "keyboard" | "api" | "mouse";
 };
 
 export type GridEventEditingChangedParams = {
   state: "started" | "stopped" | "cancelled" | "committed";
-  cell?: { rowId: GridId; colId: ColId };
+  /** Normalized on emit: public colId + colInstanceId. */
+  cell?: CellRef;
   // committed value (only for committed)
   value?: unknown;
   // the cell's value before the commit (only for committed)
@@ -151,7 +164,8 @@ export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "undo" 
  * cell now holds).
  */
 export type GridEventCellValueChangedParams = {
-  cell: { rowId: GridId; colId: ColId };
+  /** Normalized on emit: public colId + colInstanceId. */
+  cell: CellRef;
   oldValue: unknown;
   value: unknown;
   source: CellValueChangeSource;
@@ -172,7 +186,10 @@ export type GridEventPaginationChangedParams = {
 
 export type GridEventCellClickedParams = {
   rowId: GridId;
+  /** Public ColDef colId of the clicked column. */
   colId: ColId;
+  /** Internal instance id of the clicked column. */
+  colInstanceId: string;
   /** View index of the clicked row. */
   viewIdx: number;
   /** Global leaf-column index of the clicked cell. */
@@ -200,8 +217,10 @@ export type GridEventRowClickedParams = {
 export type GridEventTooltipParams = {
   /** Where the tooltip is anchored. */
   location: "body" | "header" | "ui";
-  /** Column instance id for body/header tooltips; null for grid UI tooltips. */
+  /** Public ColDef colId for body/header tooltips; null for grid UI tooltips. */
   colId: ColId | null;
+  /** Internal instance id for body/header tooltips; null for grid UI tooltips. */
+  colInstanceId?: string | null;
   /** Row id (body tooltips only; null for header tooltips). */
   rowId: GridId | null;
   /** Global leaf-column index (body tooltips; null for header tooltips). */

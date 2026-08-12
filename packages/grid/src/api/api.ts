@@ -78,7 +78,12 @@ export class GridAPI implements IGridAPI {
   showTooltip(cell: CellRef): void {
     if (!this._tooltip) return;
     const viewIdx = this.core.getViewIndexForRowId(cell.rowId);
-    const colIdx = this.core.getColumnModel().getLeaves().findIndex((c) => c.instanceID === cell.colId);
+    const col = cell.colInstanceId
+      ? this.core.getColumnModel().getById(cell.colInstanceId)
+      : this.core.getColumnModel().resolve(cell.colId);
+    const colIdx = col
+      ? this.core.getColumnModel().getLeaves().findIndex((c) => c.instanceID === col.instanceID)
+      : -1;
     if (viewIdx == null || viewIdx < 0 || colIdx < 0) return;
     this._tooltip.showBodyTooltip(viewIdx, colIdx);
   }

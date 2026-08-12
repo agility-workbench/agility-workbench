@@ -718,7 +718,7 @@ export class SelectionRenderer {
     if (!col) return;
     const value = rowNode && !isGroup ? col.getValue(rowNode) : undefined;
     this.params.core.emit("cellClicked", {
-      rowId, colId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value, event: e,
+      rowId, colId: col.colId, colInstanceId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value, event: e,
     });
   }
 }

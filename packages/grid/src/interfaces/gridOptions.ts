@@ -21,11 +21,10 @@ import type { SavedViewsOptions } from "./gridView";
  */
 export interface CellValueChangedParams {
   rowId: string;
-  /**
-   * The column's internal instance id (NOT the user-supplied `ColDef.colId`). Translate with
-   * `api.getColumnModel().getById(colId)?.colId`.
-   */
+  /** The column's public `ColDef.colId`. */
   colId: string;
+  /** The column's internal instance id. */
+  colInstanceId?: string;
   /** The newly committed (parsed) value. */
   value: unknown;
   /** The cell's stored value before the write. */
@@ -36,8 +35,10 @@ export interface CellValueChangedParams {
 
 /** Payload for the `onSortChanged` option. */
 export interface SortChangedParams {
-  /** Column ids whose sort state changed (when known). */
+  /** Public ColDef colIds whose sort state changed (when known). */
   changedColIds?: string[];
+  /** Internal instance ids of those columns. */
+  changedColInstanceIds?: string[];
 }
 
 /** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */

@@ -70,13 +70,15 @@ export class CellEditRenderer {
     this.teardown();
 
     const core = this.params.core;
-    const col = core.getColumnModel().getById(cell.colId);
+    const col = cell.colInstanceId
+      ? core.getColumnModel().getById(cell.colInstanceId)
+      : core.getColumnModel().resolve(cell.colId);
     // Application-pinned data rows never enter the row model; resolve them from the band.
     const pinnedRef = cell.rowPinned ? core.getDisplayedPinnedRowRef(cell.rowId) : null;
     const row = pinnedRef?.node ?? core.getRowModel().getRowNode(cell.rowId);
     if (!col || !row) return;
 
-    const lookup = this.params.leafColumnLookup().get(cell.colId);
+    const lookup = this.params.leafColumnLookup().get(col.instanceID);
     if (!lookup) return;
 
     let cellEl: HTMLDivElement | null;
@@ -157,7 +159,7 @@ export class CellEditRenderer {
     // Restore the cell's rendered content during ordinary editing. Grid teardown destroys the
     // row pool immediately afterwards, so repainting then would only create a replacement renderer
     // that also needs to be destroyed.
-    if (repaint) this.params.repaintCell(cell.rowId, cell.colId);
+    if (repaint) this.params.repaintCell(cell.rowId, cell.colInstanceId ?? cell.colId);
     if (returnFocus) this.params.root.focus();
     this.tearingDown = false;
   }

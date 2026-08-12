@@ -2,7 +2,7 @@
  * The declarative on* GridOptions callbacks bridge to the underlying core events:
  *  - onCellClicked / onRowClicked  → cellClicked / rowClicked
  *  - onSelectionChanged            → selectionChanged
- *  - onCellValueChanged            → cellValueChanged (every write path)
+ *  - onCellValueChanged            → cellValueChanged (every write path; colId = public colId)
  *  - onSortChanged                 → columnsChanged (reason "sort")
  * Consumers can use either the option callback or api.on(...) interchangeably.
  */
@@ -49,7 +49,8 @@ describe("declarative on* callbacks", () => {
     expect(onCellValueChanged).toHaveBeenCalledTimes(1);
     expect(onCellValueChanged.mock.calls[0][0]).toEqual({
       rowId: "1",
-      colId: name,
+      colId: "name",
+      colInstanceId: name,
       value: "ALICE",
       oldValue: "alice",
       source: "edit",
@@ -71,24 +72,24 @@ describe("declarative on* callbacks", () => {
     });
     expect(onCellValueChanged).toHaveBeenCalledTimes(2);
     expect(onCellValueChanged.mock.calls[0][0]).toEqual({
-      rowId: "1", colId: name, value: "x", oldValue: "alice", source: "paste",
+      rowId: "1", colId: "name", colInstanceId: name, value: "x", oldValue: "alice", source: "paste",
     });
     expect(onCellValueChanged.mock.calls[1][0]).toEqual({
-      rowId: "2", colId: qty, value: "9", oldValue: 7, source: "paste",
+      rowId: "2", colId: "qty", colInstanceId: qty, value: "9", oldValue: 7, source: "paste",
     });
 
     // Undo reports the write back to the old value; redo the write forward again.
     core.dispatch({ type: "undo" });
     const undoCalls = onCellValueChanged.mock.calls.slice(2, 4).map(call => call[0]);
     expect(undoCalls).toEqual(expect.arrayContaining([
-      { rowId: "1", colId: name, value: "alice", oldValue: "x", source: "undo" },
-      { rowId: "2", colId: qty, value: 7, oldValue: "9", source: "undo" },
+      { rowId: "1", colId: "name", colInstanceId: name, value: "alice", oldValue: "x", source: "undo" },
+      { rowId: "2", colId: "qty", colInstanceId: qty, value: 7, oldValue: "9", source: "undo" },
     ]));
     core.dispatch({ type: "redo" });
     const redoCalls = onCellValueChanged.mock.calls.slice(4, 6).map(call => call[0]);
     expect(redoCalls).toEqual(expect.arrayContaining([
-      { rowId: "1", colId: name, value: "x", oldValue: "alice", source: "redo" },
-      { rowId: "2", colId: qty, value: "9", oldValue: 7, source: "redo" },
+      { rowId: "1", colId: "name", colInstanceId: name, value: "x", oldValue: "alice", source: "redo" },
+      { rowId: "2", colId: "qty", colInstanceId: qty, value: "9", oldValue: 7, source: "redo" },
     ]));
   });
 

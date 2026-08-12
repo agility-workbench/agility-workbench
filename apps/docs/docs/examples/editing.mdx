@@ -42,8 +42,8 @@ clear, and undo/redo — with `{ rowId, colId, value, oldValue, source }`.
 the cell (`"edit"`, `"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff
 consumers (dirty tracking, server sync, analytics) need no shadow copy of the
 data. The `editingChanged` event additionally carries `oldValue` on its
-`committed` state. Note that `colId` in these payloads is the column's internal
-instance ID — see the Grid API page for translating it to your `ColDef.colId`.
+`committed` state. `colId` in these payloads is the public `ColDef.colId`; the
+internal instance id rides on `colInstanceId`.
 
 ## Clipboard and history
 

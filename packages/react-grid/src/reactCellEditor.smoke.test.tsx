@@ -124,7 +124,8 @@ describe("selection and sort event callbacks", () => {
       api.dispatch({ type: "headerAction", action: "toggleSort", colId: name.instanceID });
     });
     expect(onSortChanged).toHaveBeenCalledTimes(1);
-    expect(onSortChanged.mock.calls[0][0].changedColIds).toContain(name.instanceID);
+    // Payload colIds are the public ColDef colIds; the instance id rides on changedColInstanceIds.
+    expect(onSortChanged.mock.calls[0][0].changedColIds).toContain("name");
     await unmountTestRoot(root);
   });
 });

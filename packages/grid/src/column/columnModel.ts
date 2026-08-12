@@ -351,6 +351,16 @@ export class ColumnModel implements IColumnModel {
     return this.columnsByKey.get(key);
   }
 
+  /**
+   * Tolerant lookup: accepts an internal instance id, a public ColDef colId, or a key — in that
+   * order. Instance id wins because it is unique (public colIds can be shared by split/moved
+   * duplicates, where getByColId returns whichever registered last). Use this for every id that
+   * crosses the public boundary (actions, API arguments, CellRefs).
+   */
+  resolve(id: string): Column | undefined {
+    return this.columnsById.get(id) ?? this.columnsByColId.get(id) ?? this.columnsByKey.get(id);
+  }
+
   getColumns(): Column[] {
     return this.columns;
   }
@@ -1072,7 +1082,7 @@ export class ColumnModel implements IColumnModel {
   }
 
   resizeColumn(colId: string, width: number): string[] {
-    const col = this.getById(colId);
+    const col = this.resolve(colId);
     // Only the row-number column is layout-frozen; the auto-group column is a regular column whose
     // resizable/movable/pinnable behavior is driven by its (client-tunable) def like any other.
     if (!col || col.isRowNumberColumn()) return [];
@@ -1088,7 +1098,7 @@ export class ColumnModel implements IColumnModel {
   }
 
   moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {
-    const col = this.getById(colId);
+    const col = this.resolve(colId);
     if (!col || col.isRowNumberColumn()) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
     if (moveResult.length === 0) return false;
@@ -1098,7 +1108,7 @@ export class ColumnModel implements IColumnModel {
   }
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
-    const col = this.getById(colId);
+    const col = this.resolve(colId);
     if (!col || col.isRowNumberColumn()) return false;
 
     if (col.pinned === pin) return false;
@@ -1130,7 +1140,7 @@ export class ColumnModel implements IColumnModel {
   toggleVisibility(colIds: string[], hidden: boolean): string[] {
     const affectedCols = new Set<Column>();
     for (const colId of colIds) {
-      const col = this.getById(colId);
+      const col = this.resolve(colId);
       if (!col || col.isRowNumberColumn()) continue;
       col.hidden = hidden;
       affectedCols.add(col);

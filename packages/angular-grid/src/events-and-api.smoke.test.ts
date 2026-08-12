@@ -76,7 +76,8 @@ describe("AwbGrid outputs and imperative API", () => {
     const price = host.api!.getColumnModel().getByColId("price")!;
     host.api!.dispatch({ type: "headerAction", action: "toggleSort", colId: price.instanceID });
     expect(host.onSortChanged).toHaveBeenCalledTimes(1);
-    expect(host.onSortChanged.mock.calls[0][0].changedColIds).toContain(price.instanceID);
+    // Payload colIds are the public ColDef colIds; instance ids ride on changedColInstanceIds.
+    expect(host.onSortChanged.mock.calls[0][0].changedColIds).toContain("price");
   });
 
   it("updates, adds, and removes rows through applyTransaction", async () => {

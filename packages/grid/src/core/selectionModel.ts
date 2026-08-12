@@ -230,6 +230,9 @@ export class SelectionModel {
       active: this.active ? { ...this.active } : null,
       selectedRowIds: Array.from(this.selectedRowIds),
       selectedColumnIds: Array.from(this.selectedColumnIds),
+      selectedColIds: Array.from(this.selectedColumnIds)
+        .map(id => this.deps.getColumnModel().getById(id)?.colId)
+        .filter((id): id is string => id != null),
     };
 
     if (resolveIds) {
@@ -258,10 +261,10 @@ export class SelectionModel {
   // are omitted, so this yields loaded cells only.
   private resolveRangeCells(range: SelectionRange): CellRef[] {
     const leaves = this.leafColumns();
-    const colIds: string[] = [];
+    const colIds: { colId: string; colInstanceId: string }[] = [];
     for (let c = range.colStart; c <= range.colEnd; c++) {
       const col = leaves[c];
-      if (col) colIds.push(col.instanceID);
+      if (col) colIds.push({ colId: col.colId, colInstanceId: col.instanceID });
     }
     const cells: CellRef[] = [];
     const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
@@ -269,8 +272,8 @@ export class SelectionModel {
       for (let r = segment.start; r <= segment.end; r++) {
         const node = this.deps.getPinnedRowNode?.(position, r);
         if (!node) continue;
-        for (const colId of colIds) {
-          cells.push({ rowId: node.id, colId, rowPinned: position });
+        for (const ids of colIds) {
+          cells.push({ rowId: node.id, ...ids, rowPinned: position });
         }
       }
     };
@@ -278,8 +281,8 @@ export class SelectionModel {
     for (let r = range.rowStart; r <= range.rowEnd; r++) {
       const rowId = this.deps.getRowIdAtViewIndex(r);
       if (!rowId) continue;
-      for (const colId of colIds) {
-        cells.push({ rowId, colId });
+      for (const ids of colIds) {
+        cells.push({ rowId, ...ids });
       }
     }
     pushPinned("bottom", range.pinnedBottom);
@@ -625,7 +628,7 @@ export class SelectionModel {
     this.clearRange();
     this.clearRows();
     const columnModel = this.deps.getColumnModel();
-    const col = columnModel.getById(colId);
+    const col = columnModel.resolve(colId);
     if (!col || col.isInternal()) return;
 
     const leaves = col.getVisibleLeaves();

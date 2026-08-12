@@ -490,7 +490,7 @@ export class GridRenderer {
       headerWrapper: headerRefs.wrapper,
       floating: this._tooltipFloating,
       leafColumns: () => this._leafColumns,
-      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      getColumnById: (id) => this.core.getColumnModel().resolve(id),
       options: () => resolveTooltipOptions(this._tooltipOptions),
     });
     // Expose programmatic tooltip control on the public API (api.showTooltip / hideTooltip). Probe
@@ -515,7 +515,7 @@ export class GridRenderer {
       root: this.root,
       floating: this._actionFrameFloating,
       leafColumns: () => this._leafColumns,
-      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      getColumnById: (id) => this.core.getColumnModel().resolve(id),
       ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
     });
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
@@ -1295,7 +1295,9 @@ export class GridRenderer {
   // committed edit and to restore a cell when its editor is torn down.
   _repaintCell(rowId: string, colId: string) {
     const viewIdx = this.core.getViewIndexForRowId(rowId);
-    const lookup = this._leafColumnLookup.get(colId);
+    // Accept either id space (payloads carry the public colId; internal callers pass instance ids).
+    const col = this.core.getColumnModel().resolve(colId);
+    const lookup = col ? this._leafColumnLookup.get(col.instanceID) : undefined;
     // Pinned band rows (application data rows) have no body view index — rebuild the bands so the
     // edited/restored cell content re-renders there.
     if (viewIdx == null && this.core.getDisplayedPinnedRowRef(rowId)) {
@@ -1305,7 +1307,6 @@ export class GridRenderer {
     if (viewIdx == null || !lookup) return;
     const slot = this._rowPool[viewIdx - this._startIndex];
     if (!slot) return;
-    const col = this.core.getColumnModel().getById(colId);
     const row = this.core.getRowModel().getRowNode(rowId);
     if (!col || !row) return;
     const cells = lookup.section === "left" ? slot.leftCellEls
@@ -1328,7 +1329,7 @@ export class GridRenderer {
       return;
     }
     for (const rowId of params.rowIds) {
-      for (const colId of params.colIds) {
+      for (const colId of params.colInstanceIds) {
         this._repaintCell(rowId, colId);
       }
     }

@@ -75,18 +75,18 @@ cells by stable row and column IDs. `setPinnedTopRowData`,
 Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
 function. `destroy()` releases the grid when a custom host owns its lifecycle.
 
-:::warning `colId` in event payloads is the internal instance ID
+### Column identity in payloads and inputs
 
-The `colId` fields carried by event payloads (`cellsChanged`, `cellValueChanged`,
-`editingChanged`, `columnsChanged`, `onCellValueChanged`, …) hold the column's
-internal instance ID — a per-instance UUID — **not** the `colId` you set on the
-column definition. Translate before comparing against your own IDs:
+Every `colId` field carried by event payloads (`cellsChanged`, `cellValueChanged`,
+`editingChanged`, `columnsChanged`, `columnWidthsChanged`, `cellClicked`, tooltip
+and focus events, `onCellValueChanged`, `onSortChanged`, selection `rangeCells`, …)
+holds the **public `ColDef.colId`** — the id you defined. The column's internal
+per-instance UUID rides alongside in a `colInstanceId` / `colInstanceIds` /
+`changedColInstanceIds` field; you only need it to disambiguate the rare case of
+split/moved column duplicates that share a `colId`, or to key caches that must
+survive such splits.
 
-```ts
-const publicColId = api.getColumnModel().getById(ev.colId)?.colId;
-```
-
-The reverse lookup is `api.getColumnModel().getByColId(myColId)?.instanceID`.
-
-:::
+Every column id the grid **accepts** (API methods, dispatched actions, `CellRef`
+inputs) is resolved tolerantly — instance id, public colId, or key all work —
+so `api.startEditingCell({ rowId: "1", colId: "price" })` just works.
 

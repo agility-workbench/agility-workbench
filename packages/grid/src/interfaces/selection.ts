@@ -1,6 +1,17 @@
 export interface CellRef {
   rowId: string;
+  /**
+   * The column's public ColDef colId in every CellRef the grid emits. As an INPUT (API methods,
+   * dispatched actions) it is resolved tolerantly: an internal instance id, a public colId, or a
+   * key all work.
+   */
   colId: string;
+  /**
+   * The column's internal instance id (unique even when split/moved column duplicates share a
+   * public colId). Present on every CellRef the grid emits; optional on input, where it wins over
+   * `colId` when set.
+   */
+  colInstanceId?: string;
   /** Present when the cell belongs to a pinned top/bottom row section. */
   rowPinned?: "top" | "bottom";
 }
@@ -51,7 +62,10 @@ export interface SelectionSnapshot {
   anchor: CellPos | null;
   active: CellPos | null;
   selectedRowIds: string[];
+  /** Internal instance ids of the selected columns (unique; renderer-facing). */
   selectedColumnIds: string[];
+  /** Public ColDef colIds of the selected columns (parallel to `selectedColumnIds`). */
+  selectedColIds?: string[];
   /**
    * Resolved-identity projection of `range` as a flat, row-major list of cells — computed on read
    * (only populated when the snapshot is requested with id resolution). Rows that are not

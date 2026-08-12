@@ -6,6 +6,8 @@ export interface IColumnModel {
   setColumnDefs(colDefs: any[]): void;
   addColumnDef(colDef: any, section?: ColumnSection, measureCtx?: any, params?: any, rows?: any[]): string;
   getById(id: string): Column | undefined;
+  /** Tolerant lookup: instance id, then public colId, then key. */
+  resolve(id: string): Column | undefined;
   getByColId(colId: string): Column | undefined;
   getByKey(key: string): Column | undefined;
   getColumnState(): ColumnState[];
