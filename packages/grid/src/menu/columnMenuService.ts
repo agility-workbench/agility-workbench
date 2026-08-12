@@ -103,7 +103,9 @@ export class ColumnMenuService {
       items.push(item);
     }
     if (cap.pinning !== "mixed") {
-      items.push({ isSeparator: true });
+      if (items.length > 0) {
+        items.push({ isSeparator: true });
+      }
       const pinMenus: MenuItem[] = [];
       if (cap.pinning === "left") {
         pinMenus.push({ id: "unpinColumns", label: `Unpin ${s("Column")}`, command: "column.pinMany", payload: { colIDs, pinned: null } });
@@ -123,7 +125,7 @@ export class ColumnMenuService {
         if (items.length > 0) {
           items.push({ isSeparator: true });
         }
-        items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems});
+        items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
       }
     }
     const panelOptions = resolveColumnPanelOptions(this.core.getOptions().columnPanel);
@@ -153,6 +155,10 @@ export class ColumnMenuService {
           ]
         });
       }
+    }
+
+    if (items[items.length - 1].isSeparator) {
+      return items.slice(0, -1);
     }
 
     return items;
