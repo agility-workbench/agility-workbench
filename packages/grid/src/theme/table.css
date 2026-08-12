@@ -3560,4 +3560,5 @@
 
 .pte-hcell-checkbox .pte-hcell-content {
   justify-content: center;
+  gap: 0;
 }
