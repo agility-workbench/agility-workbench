@@ -18,6 +18,13 @@ import { GridHistoryState } from "../core/historyModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
+/**
+ * Where a row should end up when scrolled to. "auto" scrolls the least amount needed and leaves an
+ * already-visible row where it is; the others place the row deliberately even when it is already on
+ * screen. "top" means the top of the usable viewport — below any sticky group headers docked there.
+ */
+export type RowScrollPosition = "auto" | "top" | "middle" | "bottom";
+
 /** Which rows/columns an export covers. */
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -206,6 +213,33 @@ export interface IGridAPI {
    * parser its say.
    */
   setCellValue(cell: CellRef, value: unknown): void;
+
+  /* ----- Scrolling ----- */
+  /**
+   * Scroll a row into view, doing whatever it takes to give it a slot first: collapsed group/tree
+   * ancestors are expanded, and under pagination the grid pages to the row (one page change, so
+   * `paginationChanged` fires once). Returns whether the row ended up visible — false means it has
+   * no slot at all: an unknown id, a row the current filter excludes, or, on the server-side row
+   * model, a row that is not loaded (the server owns the row order, so the grid cannot work out
+   * which page an unloaded row is on — reveal it by paging or refiltering to it instead).
+   *
+   * A row mirrored into a frozen top/bottom band is already on screen; the band scrolls if it is
+   * itself taller than the space it has.
+   */
+  ensureRowVisible(rowId: GridId, opts?: { position?: RowScrollPosition }): boolean;
+  /**
+   * Scroll a column into view horizontally. Returns whether the column is visible afterwards —
+   * false for an unknown colId or a hidden column (including one hidden by a collapsed column
+   * group; this does not expand groups). Leading, left- and right-pinned columns are always in
+   * view, so revealing one is a no-op that reports true.
+   */
+  ensureColumnVisible(colId: string): boolean;
+  /**
+   * Scroll a cell into view on both axes — {@link ensureRowVisible} plus
+   * {@link ensureColumnVisible}. Returns true only when both halves succeeded; the successful half
+   * still scrolls (a row that exists is revealed even if the colId is bogus).
+   */
+  ensureCellVisible(cell: CellRef, opts?: { position?: RowScrollPosition }): boolean;
 
   /* ----- Tooltips ----- */
   /** Programmatically show the tooltip for a body cell (bypasses the hover delay). No-op if the

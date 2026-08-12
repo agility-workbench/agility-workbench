@@ -1,6 +1,6 @@
 import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
-import { ExportParams, IGridAPI, NavDir } from "../interfaces/iGridAPI";
+import { ExportParams, IGridAPI, NavDir, RowScrollPosition } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
@@ -47,6 +47,12 @@ export interface GridApiTooltipController {
   hideTooltip: () => void;
 }
 
+/** Scroll hooks provided by the renderer once it's attached (it owns the scrollers). */
+export interface GridApiScrollController {
+  ensureRowVisible: (viewIdx: number, rowPinned?: RowPinnedPosition, position?: RowScrollPosition) => void;
+  ensureColumnVisible: (colIdx: number) => void;
+}
+
 export interface GridApiPinnedRowsController {
   setPinnedTopRowData: (rows: RowData[]) => void;
   setPinnedBottomRowData: (rows: RowData[]) => void;
@@ -57,6 +63,7 @@ export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
+  private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
 
@@ -72,8 +79,63 @@ export class GridAPI implements IGridAPI {
     this._tooltip = controller;
   }
 
+  /** Wire the scrollers. Called by the renderer on attach; before that these are no-ops. */
+  setScrollController(controller: GridApiScrollController): void {
+    this._scroll = controller;
+  }
+
   setPinnedRowsController(controller: GridApiPinnedRowsController): void {
     this._pinnedRows = controller;
+  }
+
+  // ---------------- Scrolling ----------------
+  ensureRowVisible(rowId: GridId, opts?: { position?: RowScrollPosition }): boolean {
+    if (!this._scroll) {
+      console.warn("ensureRowVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    // The core does the model half — expand ancestors, page to the row — and reports the slot the
+    // renderer will draw it at. No slot means no amount of scrolling would show it.
+    const target = this.core.revealRow(rowId);
+    if (!target) return false;
+    this._scroll.ensureRowVisible(target.viewIndex, target.rowPinned, opts?.position ?? "auto");
+    return true;
+  }
+
+  ensureColumnVisible(colId: string): boolean {
+    if (!this._scroll) {
+      console.warn("ensureColumnVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    const colIdx = this.leafColumnIndex(colId);
+    if (colIdx < 0) return false;
+    this._scroll.ensureColumnVisible(colIdx);
+    return true;
+  }
+
+  ensureCellVisible(cell: CellRef, opts?: { position?: RowScrollPosition }): boolean {
+    // Checked here as well as in each half, so an unrendered grid warns once per call, not twice.
+    if (!this._scroll) {
+      console.warn("ensureCellVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    // Deliberately not short-circuiting: each axis is independently useful, so a bad colId still
+    // gets you to the row.
+    const rowVisible = this.ensureRowVisible(cell.rowId, opts);
+    const colVisible = this.ensureColumnVisible(cell.colInstanceId ?? cell.colId);
+    return rowVisible && colVisible;
+  }
+
+  /** Index of a column among the visible leaves (what the renderer indexes cells by); -1 if it
+   * isn't one — unknown id, or hidden (directly or by a collapsed column group). */
+  private leafColumnIndex(colId: string | undefined): number {
+    if (colId == null) return -1;
+    const model = this.core.getColumnModel();
+    // resolve() is instance-id first, then public colId, then field key (A3: public colIds are not
+    // unique), which is exactly the precedence every other id input on this API uses.
+    const col = model.resolve(colId);
+    if (!col || col.hidden) return -1;
+    return model.getLeaves().findIndex(c => c.instanceID === col.instanceID);
   }
 
   showTooltip(cell: CellRef): void {

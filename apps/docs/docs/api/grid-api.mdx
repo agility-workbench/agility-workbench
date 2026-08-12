@@ -51,6 +51,50 @@ selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
 (always copies — safe to mutate). `selectAllRows`/`areAllRowsSelected` span the
 whole filtered set by default (`selectAllScope` option).
 
+## Scrolling to a row, column, or cell
+
+| Method | Purpose |
+| --- | --- |
+| `ensureRowVisible(rowId, { position }?)` | Scroll a row into view by stable row id |
+| `ensureColumnVisible(colId)` | Scroll a column into view horizontally |
+| `ensureCellVisible(cell, { position }?)` | Both axes at once |
+
+These are for "jump to row" flows — a validation error, a find-in-grid result, a
+row a notification just arrived about — and they do whatever it takes to get the
+row on screen first: collapsed group/tree ancestors are expanded (batched into
+one repaint), and under pagination the grid pages to the row, firing
+`paginationChanged` once. Rows are addressed by stable row id and columns by
+`colId`, so you never compute a page or a view index yourself.
+
+`position` says where the row should land: `"auto"` (default) scrolls the
+minimum needed and leaves an already-visible row alone; `"top"`, `"middle"`, and
+`"bottom"` place it deliberately even when it is already on screen — a jump the
+user asked for is easier to follow when the row moves somewhere predictable.
+`"top"` means the top of the *usable* viewport, below any sticky group headers
+docked there.
+
+Each method returns whether the target is visible afterwards. `false` means no
+amount of scrolling would have shown it:
+
+- an unknown row id or `colId`;
+- a row the active filter excludes, or a column that is hidden (including one
+  hidden by a collapsed column group — these do not expand column groups);
+- on the server-side row model, a row that is not loaded. The server owns the
+  row order, so the grid cannot work out which page an unloaded row is on; page
+  or filter to it instead, then scroll.
+
+A row mirrored into a frozen top/bottom band is already on screen, so revealing
+it succeeds without moving the body (the band itself scrolls if it is taller
+than the space it has). Both halves of `ensureCellVisible` are attempted
+independently — a bad `colId` still gets you to the row — but it returns `true`
+only when both succeeded.
+
+```ts
+if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { position: "middle" })) {
+  // The row is filtered out or unloaded — clear the filter (or page to it) and try again.
+}
+```
+
 ## Editing and clipboard
 
 | Method | Purpose |

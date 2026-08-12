@@ -15,6 +15,7 @@ import {
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
+  RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
@@ -97,6 +98,13 @@ export interface IGridCore {
 
   /** Returns displayed index for a rowId if currently displayed; null if filtered out. */
   getViewIndexForRowId(rowId: GridId): number | null;
+
+  /**
+   * Expand a row's collapsed ancestors and page to it, then report the view slot it occupies (with
+   * the frozen band when it is pinned into one), or null when it has no slot at all. Does not
+   * scroll — the renderer pairs this with the scroll half for `api.ensureRowVisible`.
+   */
+  revealRow(rowId: GridId): { viewIndex: number; rowPinned?: RowPinnedPosition } | null;
 
   /** Returns cell value (raw). */
   getCellValue(rowId: GridId, colId: ColId): unknown;

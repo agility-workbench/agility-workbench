@@ -224,6 +224,17 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return this.nodesMap.get(id);
   }
 
+  getViewIndexInFullView(id: string): number | undefined {
+    const node = this.nodesMap.get(id);
+    if (!node || node.viewIndex < 0) return undefined;
+    // Only slots inside the current window get their (page-local) viewIndex restamped, so a node the
+    // store still holds from an earlier page or an out-of-window block carries a stale one. The
+    // server owns the row order, so there is nothing to recompute from here: confirm the slot really
+    // is this row's and otherwise report "no slot" rather than guessing.
+    if (this.getRowNodeAtViewIndex(node.viewIndex)?.id !== id) return undefined;
+    return (this.paginate ? this.viewStartRow : 0) + node.viewIndex;
+  }
+
   // View index of a group's last visible descendant (its own index when collapsed or empty).
   // Derived from the flattened spans, so it stays correct when the group's rows are not loaded —
   // the sticky overlay needs the block end of groups whose children are still lazy blocks. For an

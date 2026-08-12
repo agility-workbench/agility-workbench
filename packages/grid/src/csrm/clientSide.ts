@@ -300,6 +300,26 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     return this.nodesMap.get(id) ?? this.groupNodesMap.get(id);
   }
 
+  getViewIndexInFullView(id: string): number | undefined {
+    if (this.grouped) {
+      const node = this.getRowNode(id);
+      if (!node) return undefined;
+      // While grouping, viewIndex is stamped over the full flattened list (pagination slices it
+      // afterwards), so it is already the answer — but a node whose subtree got collapsed keeps the
+      // index it last held, so confirm the slot is still this row's before trusting it.
+      return this.groupedFlatAll[node.viewIndex]?.id === id ? node.viewIndex : undefined;
+    }
+    const node = this.nodesMap.get(id);
+    if (!node) return undefined;
+    // Flat view: viewIndex is page-local, so it says nothing about rows on other pages. The row's
+    // rank in the filtered+sorted order is the page-independent answer, and a filtered-out row is
+    // simply absent from it. Linear, but this runs per explicit API call, not per frame.
+    for (let i = 0; i < this.sortedIdx.length; i++) {
+      if (this.nodes[this.sortedIdx[i]] === node) return i;
+    }
+    return undefined;
+  }
+
   setCellValue(rowId: string, key: string, value: any): boolean {
     const node = this.nodesMap.get(rowId);
     if (!node) return false;

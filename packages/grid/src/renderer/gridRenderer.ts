@@ -11,7 +11,7 @@ import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { IGridAPI } from "../interfaces/iGridAPI";
+import { IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -480,6 +480,24 @@ export class GridRenderer {
       }) => void;
     };
     apiWithPinnedRows.setPinnedRowsController?.(this._pinnedRowsRenderer);
+    // Expose scrolling on the public API (api.ensureRowVisible / ensureColumnVisible /
+    // ensureCellVisible): the core resolves a row id to a view slot, the renderer owns the scrollers.
+    // Probed structurally to avoid a renderer→api import cycle, matching the exporter hook above.
+    const apiWithScroll = this.api as unknown as {
+      setScrollController?: (c: {
+        ensureRowVisible: (
+          viewIdx: number,
+          rowPinned?: "top" | "bottom",
+          position?: RowScrollPosition,
+        ) => void;
+        ensureColumnVisible: (colIdx: number) => void;
+      }) => void;
+    };
+    apiWithScroll.setScrollController?.({
+      ensureRowVisible: (viewIdx, rowPinned, position) =>
+        this.ensureRowVisible(viewIdx, rowPinned, position),
+      ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
+    });
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.root);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
     // Tooltips sit below the menu band (menus use 9999+) so a column/context menu covers a tooltip.
@@ -1395,27 +1413,53 @@ export class GridRenderer {
     colIdx: number,
     rowPinned?: "top" | "bottom",
   ) {
-    const refs = this._bodyViewportRenderer.getRefs();
+    this.ensureRowVisible(viewIdx, rowPinned);
+    this.ensureColumnVisible(colIdx);
+  }
 
-    // Vertical: scroll centerScroller so the row is fully in view. Body positions are compacted
-    // for application-pinned model rows, and the effective viewport top is inset by the sticky
-    // ancestor chain that will dock above the row — otherwise the row would technically be in
-    // view but sitting hidden underneath the overlay.
+  /**
+   * Scroll a row into view vertically. Split out of `_ensureCellVisible` for `api.ensureRowVisible`,
+   * which has no column to move to. `position` is where the row should end up: "auto" scrolls the
+   * minimum needed and leaves an already-visible row alone, the others place it deliberately even
+   * when it is on screen already (a "jump to row" flow wants the row where the eye is).
+   */
+  ensureRowVisible(
+    viewIdx: number,
+    rowPinned?: "top" | "bottom",
+    position: RowScrollPosition = "auto",
+  ) {
     if (rowPinned) {
       this._pinnedRowsRenderer.ensureCellVisible(rowPinned, viewIdx);
-    } else {
-      const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
-      const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
-      const viewH = refs.body.clientHeight;
-      const st = refs.centerScroller.scrollTop;
+      return;
+    }
+
+    const refs = this._bodyViewportRenderer.getRefs();
+    // Body positions are compacted for application-pinned model rows, and the effective viewport top
+    // is inset by the sticky ancestor chain that will dock above the row — otherwise the row would
+    // technically be in view but sitting hidden underneath the overlay.
+    const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+    const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
+    const viewH = refs.body.clientHeight;
+    const st = refs.centerScroller.scrollTop;
+
+    if (position === "auto") {
       if (rowTop - clearance < st) {
         refs.centerScroller.scrollTop = Math.max(0, rowTop - clearance);
       } else if (rowTop + this.rowHeight > st + viewH) {
         refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
       }
+      return;
     }
 
-    this.ensureColumnVisible(colIdx);
+    const desired = position === "top"
+      ? rowTop
+      : position === "bottom"
+        ? rowTop + this.rowHeight - viewH
+        : rowTop - (viewH - this.rowHeight) / 2;
+    // `rowTop - clearance` is the largest scrollTop that still keeps the row clear of the sticky
+    // overlay, so it caps every placement — in a viewport too short to honor the request, docking
+    // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
+    refs.centerScroller.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
   }
 
   /**

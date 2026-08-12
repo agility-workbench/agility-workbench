@@ -115,6 +115,15 @@ export interface IRowModel<Row = any> {
    * reached). Absent = always known (client-side model). */
   isTotalRowCountKnown?(): boolean;
 
+  /**
+   * Index of a row in the whole displayed view — after filter/sort/grouping but BEFORE pagination —
+   * or undefined when it has no slot there (unknown id, excluded by the filter, inside a collapsed
+   * group, or not loaded). Deliberately not `node.viewIndex`, which is page-local on some models
+   * and absolute on others, and goes stale for rows that lost their slot; a caller that must decide
+   * WHICH page a row lives on needs a page-independent answer.
+   */
+  getViewIndexInFullView?(rowId: string): number | undefined;
+
   /** View index of a group's last visible descendant (its own index when collapsed/empty),
    * answered from store metadata so it works when the rows themselves are not loaded. Absent on
    * models where every visible row is materialized (client-side) — callers scan rows instead. */

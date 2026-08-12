@@ -1394,6 +1394,55 @@ export class GridCore implements IGridCore {
     return this.rowModel.getRowNode(rowId)?.viewIndex ?? null;
   }
 
+  /**
+   * Give a row a slot in what is currently displayed: expand its collapsed ancestors and page to it
+   * when it lives on another page. Returns where the row sits afterwards — the view index the
+   * renderer draws it at, plus the frozen band when the row is mirrored into one — or null when the
+   * row has no slot at all (unknown id, excluded by the filter, or, on the server-side model, not
+   * loaded). Moves the model only; scrolling to the returned slot is the renderer's half.
+   */
+  revealRow(rowId: GridId): { viewIndex: number; rowPinned?: RowPinnedPosition } | null {
+    // A row mirrored into a frozen band is on screen wherever the body is scrolled, so the band
+    // slot is the answer (that band's own scroller may still need to move).
+    const pinned = this.getDisplayedPinnedRowRef(rowId);
+    if (pinned) return { viewIndex: pinned.rowIndex, rowPinned: pinned.position };
+
+    this.expandAncestorsOf(rowId);
+
+    const fullViewIdx = this.rowModel.getViewIndexInFullView?.(rowId);
+    if (fullViewIdx == null || fullViewIdx < 0) return null;
+
+    if (this.paginationEnabled) {
+      const pageSize = this.pageEndIdx - this.pageStartIdx;
+      if (pageSize <= 0) return null;
+      const targetPage = Math.floor(fullViewIdx / pageSize);
+      if (targetPage !== Math.floor(this.pageStartIdx / pageSize)) {
+        this.applyPagination(targetPage, pageSize, true);
+      }
+    }
+
+    const viewIndex = fullViewIdx - this.getPageStartIdx();
+    if (viewIndex < 0 || viewIndex >= this.rowModel.getViewCount()) return null;
+    return { viewIndex };
+  }
+
+  // Expand every collapsed group/tree ancestor of a row so it occupies a view slot. Batched into a
+  // single expansion request, so even a deep chain costs one re-flatten and one repaint.
+  private expandAncestorsOf(rowId: GridId): void {
+    if (this.groupColumns.length === 0 && !this.options.treeData) return;
+    const node = this.rowModel.getRowNode(rowId);
+    if (!node) return;
+    const collapsed: string[] = [];
+    let parentId = node.parentId;
+    while (parentId != null) {
+      const parent = this.rowModel.getRowNode(parentId);
+      if (!parent) break;
+      if (!parent.isExpanded) collapsed.push(parent.id);
+      parentId = parent.parentId;
+    }
+    if (collapsed.length > 0) this.setGroupsExpanded(true, collapsed);
+  }
+
   getCellValue(rowId: GridId, colId: ColId): unknown {
     const row = this.rowModel.getRowNode(rowId);
     if (!row) return null;

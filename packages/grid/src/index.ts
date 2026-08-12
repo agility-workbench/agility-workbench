@@ -1,5 +1,18 @@
 export type { IGridCore } from "./interfaces/iGridCore";
-export type { IGridAPI } from "./interfaces/iGridAPI";
+export type {
+  ExportParams,
+  ExportScope,
+  IGridAPI,
+  NavDir,
+  RowScrollPosition,
+} from "./interfaces/iGridAPI";
+export type {
+  CellPos,
+  CellRef,
+  SelectionKind,
+  SelectionRange,
+  SelectionSnapshot,
+} from "./interfaces/selection";
 export type { Column } from "./column/column";
 export type { GridAction } from "./events/action";
 export { GridCore } from "./core/core";
