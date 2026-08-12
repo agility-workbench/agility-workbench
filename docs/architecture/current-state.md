@@ -527,7 +527,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | AND/OR join between conditions | ✅ Complete | `FilterItem.join` |
 | Filter panel (column menu integration) | ✅ Complete | `filter/filterMenuController.ts`, `filter/filterMenuCoordinator.ts` |
 | Filter indicators on headers | ✅ Complete | `renderer/header/renderer.ts` → `setFilterIndicators` |
-| debounceMs, maxFilterItems, button customization | ✅ Complete | `FilterParams`; grid-wide default via `filterDebounceMs` option |
+| debounceMs, maxNumConditions, button customization | ✅ Complete | `FilterParams`; grid-wide default via `filterDebounceMs` option |
 | Custom filter function (`ColDef.filter` as matcher) | ✅ Complete | `(val, node, filterValues, filterType) => boolean` bypasses the operator switch; `csrm/customFilter.test.ts` |
 | Clear button on filter inputs | ✅ Complete | `renderer/filter/basicFilterRenderer.ts` |
 

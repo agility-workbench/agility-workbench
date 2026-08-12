@@ -32,7 +32,7 @@ export class ColumnFilterMenuService {
       },
       params: filterParams,
       limits: {
-        maxNumConditions: typeof filterParams.maxFilterItems === "number" ? filterParams.maxFilterItems : 1,
+        maxNumConditions: typeof filterParams.maxNumConditions === "number" ? filterParams.maxNumConditions : 1,
         defaultNumConditions: typeof filterParams.initialFilterItemsCount === "number" ? filterParams.initialFilterItemsCount : 1,
         exceededByModel: false,
       },

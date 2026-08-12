@@ -376,7 +376,6 @@ export class GridAPI implements IGridAPI {
         (row) => spec.column.getValue(row),
         spec.valueKey ?? defaultValueKey,
         spec.valueLabel ?? ((x: any) => String(x)),
-        typeof spec.params.maxFilterItems === "number" ? spec.params.maxFilterItems : undefined,
       ));
     }
     return new Promise((resolve, reject) => {

@@ -15,7 +15,14 @@ const measurer: ITextMeasurer = { measure: text => text.length * 7 };
 function makeGrid(rows: Record<string, unknown>[]) {
   const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
   core.setColumnDefsFromProps([
-    { colId: "region", key: "region", label: "Region", filter: "set" },
+    {
+      colId: "region",
+      key: "region",
+      label: "Region",
+      filter: "set",
+      // Condition-count configuration must not truncate the set-filter value universe.
+      filterParams: { maxNumConditions: 2 },
+    },
     { colId: "qty", key: "qty", label: "Qty", type: ColumnType.NUMBER, filter: "set" },
     { colId: "name", key: "name", label: "Name" }, // text filter — not a set column
   ]);
@@ -45,7 +52,7 @@ function viewIds(core: GridCore): string[] {
 }
 
 describe("IGridAPI set-filter helpers", () => {
-  it("getSetFilterValues returns the universe (sorted, deduped, null = blanks bucket)", async () => {
+  it("getSetFilterValues returns the complete universe regardless of maxNumConditions", async () => {
     const { api } = makeGrid(ROWS);
     expect(await api.getSetFilterValues("region")).toEqual([null, "APAC", "EMEA"]);
     expect(await api.getSetFilterValues("qty")).toEqual([1, 2, 3]);

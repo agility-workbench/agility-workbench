@@ -438,7 +438,6 @@ export class FilterController implements IFilterController {
       (row: IRowNode) => this.spec.column.getValue(row),
       this.spec.valueKey ?? defaultValueKey,
       this.spec.valueLabel ?? ((x: any) => String(x)),
-      typeof this.spec.params.maxFilterItems === "number" ? this.spec.params.maxFilterItems : undefined,
     );
   }
 

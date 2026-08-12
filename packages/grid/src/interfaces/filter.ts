@@ -120,7 +120,7 @@ export interface FilterParams {
   caseSensitive?: boolean;
   trimValues?: boolean;
   filterOptions?: FilterOption[];
-  maxFilterItems?: number;
+  maxNumConditions?: number;
   initialFilterItemsCount?: number;
   filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
   textFormatter?: (value: any) => string;

@@ -84,13 +84,12 @@ export function buildSetOptions(
   return options;
 }
 
-/** Distinct column values across rows (dedupe by key, sorted by label, optionally capped). */
+/** Complete distinct column-value universe across rows, deduped by key and sorted by label. */
 export function computeUniqueValues(
   forEachRow: (callback: (row: any, idx: number) => void) => void,
   getValue: (row: any) => any,
   keyFn: ValueKeyFn = defaultValueKey,
   labelFn: ValueLabelFn = defaultValueLabel,
-  maxItems?: number,
 ): any[] {
   const seen = new Set<string>();
   const out: any[] = [];
@@ -110,9 +109,6 @@ export function computeUniqueValues(
     return la < lb ? -1 : la > lb ? 1 : 0;
   });
 
-  if (typeof maxItems === "number" && maxItems > 0 && out.length > maxItems) {
-    return out.slice(0, maxItems);
-  }
   return out;
 }
 
