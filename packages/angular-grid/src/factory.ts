@@ -29,6 +29,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "pinnedBottomRowData", grid.pinnedBottomRowData());
   setIfDefined(options, "getRowId", grid.getRowId());
   setIfDefined(options, "rowIdKey", grid.rowIdKey());
+  setIfDefined(options, "rowDataMode", grid.rowDataMode());
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());

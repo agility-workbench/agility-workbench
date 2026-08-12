@@ -30,6 +30,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "pinnedBottomRowData", props.pinnedBottomRowData);
   setIfDefined(options, "getRowId", props.getRowId);
   setIfDefined(options, "rowIdKey", props.rowIdKey);
+  setIfDefined(options, "rowDataMode", props.rowDataMode);
   setIfDefined(options, "overscanRowCount", props.overscanRowCount);
   setIfDefined(options, "minResizeWidth", props.minResizeWidth);
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);

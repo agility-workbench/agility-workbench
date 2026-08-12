@@ -24,7 +24,8 @@ selection, grouping, and pinned rows refer to the same record.
 
 ## Replace or transact
 
-`api.setRowData(rows)` replaces the data set and resets edit history.
+`api.setRowData(rows)` supplies a whole data set; whether that resets the grid
+or is diffed into it depends on `rowDataMode` (see below).
 `api.applyTransaction({ add, update, remove })` changes only affected rows and
 returns `{ added, updated, removed }` counts of what was actually applied
 (unknown row IDs are skipped). Updates preserve node identity; structural
@@ -33,16 +34,39 @@ changes are sorted and filtered into their correct location.
 Transactions are client-side only. The server-side model is refreshed through
 `api.refreshServerSideData()`.
 
-:::warning A new `rowData` reference is a full data replacement
+## How a new `rowData` reference is applied
 
-The React and Angular bindings compare `rowData` by reference. Passing a new
-array — including the fresh arrays produced by immutable-update patterns
-(`[...rows]`, reducers, signals/state setters) — re-ingests the whole data set:
-**undo/redo history is discarded and the grid returns to page 1**. Sort, filter,
-quick-filter, and column state survive.
+The React and Angular bindings compare `rowData` by reference, so the immutable
+update patterns those frameworks encourage (`[...rows]`, reducers, signals and
+state setters) hand the grid a replacement array on every change. What the grid
+does with it depends on `rowDataMode`:
 
-If you own updates in an external store, prefer `api.applyTransaction()` for
-incremental changes and reserve new `rowData` references for genuine data-set
-replacement.
+| `rowDataMode` | What happens |
+| --- | --- |
+| `"diff"` | The new array is diffed against the current rows by ID and applied as a transaction. Row nodes keep their identity, and **undo/redo history and the page index survive**. |
+| `"reset"` | The whole data set is re-ingested: **undo/redo history is discarded and the grid returns to page 1**. |
+| `"auto"` (default) | `"diff"` when it is available, `"reset"` otherwise. |
+
+Sort, filter, quick-filter, column state, row selection and group expansion
+survive in either mode.
+
+Diffing needs a stable identity for each row, so it is used only when the
+client-side row model is in play and `rowIdKey` or `getRowId` is set — without
+one the grid cannot tell an edited row from a new one. Tree data always resets,
+because its hierarchy is derived from the array rather than from row membership
+alone. Setting `rowDataMode="diff"` explicitly when those conditions are not met
+logs a warning and falls back.
+
+:::warning Diffing compares row objects by reference
+
+A row counts as changed only when its **object reference** differs from the one
+the grid already holds. That matches immutable updates, where a changed row is a
+new object. If your application **mutates row objects in place** and then passes
+a new array wrapper around them, the diff sees nothing to update and the display
+goes stale — use `rowDataMode="reset"` in that case.
 
 :::
+
+`api.setRowData(rows)` follows the same rules; `api.applyTransaction({ add,
+update, remove })` remains the most direct way to express an incremental change
+when you already know what changed.

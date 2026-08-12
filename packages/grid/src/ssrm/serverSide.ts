@@ -119,6 +119,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return { added: 0, updated: 0, removed: 0 };
   }
 
+  diffRows(_rows: Row[]): null {
+    // The server owns the row set, so there is nothing local to diff against; the core falls back
+    // to a replacement. Both wrappers skip rowData entirely on this model.
+    return null;
+  }
+
   isValid(): boolean {
     return this.serverDataSource?.getRows != null;
   }

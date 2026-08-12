@@ -32,6 +32,16 @@ export interface RowTransactionResult {
   removed: number;
 }
 
+/**
+ * A row-level diff of an incoming `rowData` array against the rows already in the model, so a new
+ * array reference can be applied as a transaction instead of a wholesale replacement. See
+ * `IRowModel.diffRows`.
+ */
+export interface RowDataDiff<Row = any> extends RowTransaction<Row> {
+  /** Row ids in the order the incoming array supplied them — the display order when unsorted. */
+  order: string[];
+}
+
 export interface IRowModelRequestParams {
   readonly id: number;
   readonly reason: RowDataChangeReason;
@@ -81,7 +91,21 @@ export interface IRowModel<Row = any> {
   // Incremental add / update / remove of rows without a full data replacement. Node identity is
   // preserved for updated rows so renderers (e.g. change-flash) can detect deltas. Returns counts
   // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards.
-  applyTransaction(tx: RowTransaction): RowTransactionResult;
+  // `order`, when given, is the full set of row ids in the order the nodes should end up in —
+  // adds otherwise land at the end, which is wrong when the caller supplied a whole ordered array.
+  applyTransaction(tx: RowTransaction, order?: string[]): RowTransactionResult;
+
+  /**
+   * Diff an incoming `rowData` array against the current nodes so a new array reference can be
+   * applied as a transaction (preserving node identity, edit history and the page) instead of a
+   * wholesale replacement. A row is "updated" only when its object reference differs — diffing
+   * therefore assumes the caller produces new row objects for changed rows.
+   *
+   * Returns null when this model cannot diff and the caller must fall back to `setRows`: no stable
+   * row id configured, or a data shape the diff does not cover. Pure — computes only, mutates
+   * nothing.
+   */
+  diffRows?(rows: Row[]): RowDataDiff<Row> | null;
 
   // accessors for what the viewport needs
   getRowCount(): number;                    // total displayed (may be estimate)

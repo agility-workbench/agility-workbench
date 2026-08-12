@@ -16,6 +16,7 @@ inputs. Optional fields use documented defaults when omitted.
 | `columnDefs` | `ColDef[]` | Column and column-group definitions |
 | `rowIdKey` | `string` | Field containing a stable row ID |
 | `getRowId` | `(row) => string` | Derive a stable row ID |
+| `rowDataMode` | `auto \| reset \| diff` | Whether a replacement `rowData` array is diffed into the grid (keeping history and page) or re-ingested. Default `auto` |
 | `rowModelType` | `clientSide \| serverSide` | Select the row model |
 | `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
 | `serverSideBlockSize` | `number` | Requested block size |

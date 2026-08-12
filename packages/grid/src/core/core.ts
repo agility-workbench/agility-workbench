@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -183,6 +183,14 @@ export class GridCore implements IGridCore {
       pageSizes.push(pageSize);
       pageSizes.sort((a, b) => a - b);
     }
+    // Diffing keys rows by id, so without a stable one every replacement row would mint a fresh id
+    // and the diff would degrade to "remove all, add all". "auto" falls back silently — the caller
+    // did not ask for diffing — but an explicit request that cannot be honoured is worth saying.
+    if (options.rowDataMode === "diff" && options.getRowId == null && options.rowIdKey == null) {
+      console.warn(
+        "rowDataMode 'diff' needs a stable row id; set getRowId or rowIdKey. Falling back to 'reset'.",
+      );
+    }
     return {
       headerHeight: options.headerHeight ?? 43,
       leafHeaderHeight: options.leafHeaderHeight ?? 43,
@@ -192,6 +200,7 @@ export class GridCore implements IGridCore {
       pinnedBottomRowData: options.pinnedBottomRowData ?? [],
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
+      rowDataMode: options.rowDataMode ?? "auto",
       overscanRowCount: options.overscanRowCount ?? 10,
       minResizeWidth: options.minResizeWidth != null && options.minResizeWidth > 0 ? options.minResizeWidth : 75,
       maxColumnWidth: options.maxColumnWidth != null && options.maxColumnWidth > 0 ? options.maxColumnWidth : 420,
@@ -693,6 +702,16 @@ export class GridCore implements IGridCore {
   }
 
   setRowData(rows: RowData[]): void {
+    // Unless asked to replace outright, try to apply the new array as a diff against what is
+    // already here: node identity, edit history and the page all survive that. The row model has
+    // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
+    if (this.options.rowDataMode !== "reset") {
+      const diff = this.rowModel.diffRows?.(rows);
+      if (diff) {
+        this.applyRowDataDiff(diff);
+        return;
+      }
+    }
     // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
     // exist, so discard the edit history.
     if (this.history.clear()) this.emitHistoryChanged("clear");
@@ -704,6 +723,34 @@ export class GridCore implements IGridCore {
     this.identifyComparatorsFromCurrentRows();
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+  }
+
+  /**
+   * Apply a replacement `rowData` array as an incremental transaction rather than a reset. Keeps
+   * the edit history, the current page (clamped when rows disappear from under it), and node
+   * identity for rows that survive, so change-flash and sparklines keep their baseline.
+   *
+   * Everything else is deliberately identical to the replacement path above, including the
+   * "refresh" reason: from the outside this IS a rowData refresh and diffing is an internal
+   * optimization, so first-load autosizing, the no-rows overlay and re-evaluated filter/sort must
+   * all still happen — even when the diff turns out to be empty.
+   */
+  private applyRowDataDiff(diff: RowDataDiff): void {
+    const wasEmpty = this.rowModel.getRowCount() === 0;
+    this.rowModel.applyTransaction(
+      { add: diff.add, update: diff.update, remove: diff.remove },
+      diff.order,
+    );
+    // Comparators are derived from sample values, so a grid that had no rows until now has none
+    // resolved; resolve them before the refresh applies any seeded initial sort.
+    if (wasEmpty) this.identifyComparatorsFromCurrentRows();
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "refresh",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+    ));
+    // Rows removed by the diff can shrink the view past the page the user is on.
+    this.clampPageToLastPage();
   }
 
   // Re-derive every leaf column's sort comparator from the current row nodes. Cheap no-op when there
@@ -721,10 +768,16 @@ export class GridCore implements IGridCore {
       return { added: 0, updated: 0, removed: 0 };
     }
 
+    const wasEmpty = this.rowModel.getRowCount() === 0;
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
     if (result.added === 0 && result.updated === 0 && result.removed === 0) return result;
+
+    // Comparators are derived from sample values, so a grid that had no rows until now has none
+    // resolved and any seeded initial sort would be silently skipped. Resolve them before the
+    // refresh below, matching setRowData. Only on the first rows — this walks every node.
+    if (wasEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
 
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
@@ -737,6 +790,9 @@ export class GridCore implements IGridCore {
         { start: this.pageStartIdx, end: this.pageEndIdx },
         this.getInitialServerSideLoadRange(),
       ));
+      // Removing rows can shrink the view past the page the user is on, stranding them on a blank
+      // page. The filter/quick-filter/group paths already clamp for the same reason.
+      this.clampPageToLastPage();
       this.emit("rowsChanged", { reason: "transaction" });
       this.emit("paginationChanged", this.getPaginationInfo());
     } else if (tx.update?.length) {

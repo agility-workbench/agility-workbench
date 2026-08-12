@@ -84,6 +84,7 @@ export type {
   RowSelectionOptions,
   SortChangedParams,
   ResetPageTrigger,
+  RowDataMode,
   RowClassParams,
   GetRowClass,
   GetRowStyle,
@@ -187,6 +188,7 @@ export type { GridHistoryState } from "./core/historyModel";
 
 export type {
   IRowModel,
+  RowDataDiff,
   RowModelType,
   RowTransactionResult,
   ServerSideRefreshOptions,

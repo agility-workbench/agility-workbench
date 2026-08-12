@@ -132,14 +132,28 @@ describe("historyChanged event", () => {
     expect(core.canUndo()).toBe(false);
   });
 
-  it("fires clear when rowData is replaced, discarding row-keyed entries", () => {
-    const { core, api } = makeGrid();
+  it('fires clear when rowData is replaced under rowDataMode "reset"', () => {
+    const { core, api } = makeGrid({ rowDataMode: "reset" });
     api.setCellValue(cell(core, "1", "name"), "ALICE");
     const events = watchHistory(core);
 
     core.setRowData([{ id: "9", name: "new", qty: 1 }]);
     expect(events.map(e => e.reason)).toEqual(["clear"]);
     expect(core.canUndo()).toBe(false);
+  });
+
+  it("keeps history when rowData is replaced and the grid can diff it (B6)", () => {
+    // Diffing is the default where it is possible, and it applies the new array as a transaction —
+    // which preserves history. Entries keyed to rows the diff removed simply no-op on replay.
+    const { core, api } = makeGrid();
+    api.setCellValue(cell(core, "1", "name"), "ALICE");
+    const events = watchHistory(core);
+
+    core.setRowData([{ id: "1", name: "alice", qty: 3 }, { id: "9", name: "new", qty: 1 }]);
+    expect(events).toEqual([]);
+    expect(core.canUndo()).toBe(true);
+    core.dispatch({ type: "undo" });
+    expect(val(core, "1", "name")).toBe("alice");
   });
 
   it("stays silent under readOnlyEdit — the application owns the write and the history", () => {

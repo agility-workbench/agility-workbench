@@ -101,6 +101,7 @@ export class AwbGrid implements OnDestroy {
   // --- row identity ---
   readonly getRowId = input<GridOptions["getRowId"]>();
   readonly rowIdKey = input<GridOptions["rowIdKey"]>();
+  readonly rowDataMode = input<GridOptions["rowDataMode"]>();
 
   // --- appearance / interaction ---
   readonly rowHover = input<GridOptions["rowHover"]>();

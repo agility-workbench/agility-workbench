@@ -64,6 +64,9 @@ export interface BeforeCellCommitParams {
 /** Model changes that snap pagination back to the first page. See {@link GridOptions.resetPageOn}. */
 export type ResetPageTrigger = "filter" | "sort" | "quickFilter";
 
+/** How a replacement `rowData` array is applied. See {@link GridOptions.rowDataMode}. */
+export type RowDataMode = "auto" | "reset" | "diff";
+
 /** Payload for the `onSortChanged` option. */
 export interface SortChangedParams {
   /** Public ColDef colIds whose sort state changed (when known). */
@@ -592,6 +595,24 @@ export interface GridOptions {
   pinnedBottomRowData?: any[];
   getRowId?: (row: object) => string;
   rowIdKey?: string;
+  /**
+   * How a replacement `rowData` array is applied. The React and Angular bindings compare `rowData`
+   * by reference, so immutable-update patterns hand the grid a new array on every change.
+   *
+   * - `"diff"` — diff the incoming array against the current rows by id and apply the result as a
+   *   transaction: row nodes keep their identity, and undo/redo history and the page index survive.
+   *   A row counts as changed only when its **object reference** differs, so this assumes changed
+   *   rows are replaced rather than mutated in place.
+   * - `"reset"` — re-ingest the whole data set: history is discarded and the grid returns to page 1.
+   *   Sort, filter, column state, selection and group expansion survive either way. Use this when
+   *   the application mutates row objects in place and passes a new array wrapper, since reference
+   *   comparison cannot see those edits.
+   * - `"auto"` (default) — `"diff"` when it is available (client-side row model, `getRowId` or
+   *   `rowIdKey` set, no tree data), `"reset"` otherwise.
+   *
+   * Applies to `api.setRowData` as well as to the bindings. Set at construction only.
+   */
+  rowDataMode?: RowDataMode;
   overscanRowCount?: number;
   /**
    * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
@@ -1075,6 +1096,9 @@ export interface InternalGridOptions extends GridOptions {
   rowHeight: number;
   pinnedTopRowData: any[];
   pinnedBottomRowData: any[];
+  /** Resolved from the public `"auto"` default — the row model is consulted at data-set time for
+   * whether a diff is actually possible, so this only records what was asked for. */
+  rowDataMode: RowDataMode;
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;

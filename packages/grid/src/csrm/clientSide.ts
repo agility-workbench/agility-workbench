@@ -1,7 +1,7 @@
 import { FilterModel } from "../interfaces/filter";
 import { SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter, performQuickFilter } from "../csrm/filter";
 import { GridOptions, GroupSortMode, QuickFilterMatchMode, TreeDataOptions } from "../interfaces/gridOptions";
@@ -51,9 +51,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   endIdx = 100;
 
   private getId: (row: Row) => string;
+  // Whether ids come from the data rather than from createRowIdFactory's per-object fallback.
+  // Without this a diff would mint a fresh id for every cloned row and report "remove all, add all".
+  private readonly hasStableRowId: boolean;
 
   constructor(opts: GridOptions, readonly listener: IRowModelListener) {
     this.getId = createRowIdFactory(opts);
+    this.hasStableRowId = opts.getRowId != null || opts.rowIdKey != null;
     this.groupDefaultExpanded = opts.groupDefaultExpanded ?? 0;
     this.treeData = opts.treeData as TreeDataOptions<Row> | undefined;
   }
@@ -111,7 +115,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // Apply an incremental add / update / remove against the current node set. This only mutates the
   // node store; the caller re-derives filter/sort/view via applyRequest afterwards. Removes are
   // applied first, then updates (data replaced in place, node identity kept), then adds appended.
-  applyTransaction(tx: RowTransaction<Row>): RowTransactionResult {
+  applyTransaction(tx: RowTransaction<Row>, order?: string[]): RowTransactionResult {
     let removed = 0;
     if (tx.remove?.length) {
       const removeIds = new Set(tx.remove);
@@ -176,7 +180,65 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       }
     }
 
+    // Adds land at the end above, which is only right for a caller adding rows to an existing set.
+    // A caller replacing the whole array supplies the order it wants; honour it. Ids the map does
+    // not know are skipped, and any node the order omits keeps its relative position at the end.
+    if (order) this.reorderNodes(order);
+
     return { added, updated, removed };
+  }
+
+  private reorderNodes(order: string[]): void {
+    const ordered: IRowNode<Row>[] = [];
+    const placed = new Set<string>();
+    for (const id of order) {
+      const node = this.nodesMap.get(id);
+      if (!node || placed.has(id)) continue;
+      ordered.push(node);
+      placed.add(id);
+    }
+    if (ordered.length < this.nodes.length) {
+      for (const node of this.nodes) {
+        if (!placed.has(node.id)) ordered.push(node);
+      }
+    }
+    this.nodes = ordered;
+  }
+
+  // Diff an incoming rowData array against the current nodes. Pure: nothing here mutates the model.
+  // Null means "cannot diff, replace instead" — tree data derives a hierarchy from the flat array
+  // (re-parenting, not just membership), which a row-level diff does not model.
+  diffRows(rows: Row[]): RowDataDiff<Row> | null {
+    if (!this.hasStableRowId || this.treeData) return null;
+
+    const add: Row[] = [];
+    const update: { rowId: string; row: Row }[] = [];
+    const order: string[] = [];
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+      const id = this.getId(row);
+      // A duplicate id within the incoming array would otherwise be added twice and desync the
+      // order; the first occurrence wins, matching how setRows' nodesMap build behaves.
+      if (seen.has(id)) continue;
+      seen.add(id);
+      order.push(id);
+      const existing = this.nodesMap.get(id);
+      if (!existing) {
+        add.push(row);
+      } else if (existing.data !== row) {
+        // Reference inequality is the change signal: an application that mutates row objects in
+        // place is invisible here by design (documented on the rowDataMode option).
+        update.push({ rowId: id, row });
+      }
+    }
+
+    const remove: string[] = [];
+    for (const node of this.nodes) {
+      if (!seen.has(node.id)) remove.push(node.id);
+    }
+
+    return { add, update, remove, order };
   }
 
   getRowCount(): number {
