@@ -340,7 +340,8 @@ export class GridCore implements IGridCore {
     this.columnModel.setColumnDefs(colDefs);
     const seededSort = this.seedInitialSort();
     const changedSortColIds = this.reconcileSortModelColumns();
-    const { changedColIds: changedFilterColIds, droppedCols: droppedFilterCols } = this.reconcileFilterModelColumns();
+    const { droppedCols: droppedFilterCols } = this.reconcileFilterModelColumns();
+    const filtersDropped = droppedFilterCols.length > 0;
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
     this.autosizeColumns();
@@ -348,25 +349,37 @@ export class GridCore implements IGridCore {
       item => sortedComparatorSnapshot.get(item.col.instanceID) !== item.col.userComparator,
     );
     // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
-    if (seededSort || activeComparatorChanged) {
+    // Dropping a filtered column changes the effective row set. A "filter" request re-runs both
+    // filtering and sorting; a "sort" request deliberately skips filtering, which previously left
+    // rows constrained by a filter that no longer existed until the next full model refresh.
+    if (filtersDropped) {
+      const range = this.pageRangeFor("filter");
+      this.rowModel.applyRequest(this.createRowModelRequest(
+        "filter",
+        range,
+        this.getInitialServerSideLoadRange(),
+      ));
+      if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
+    } else if (seededSort || activeComparatorChanged) {
       this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
-    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged);
+    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged, filtersDropped);
     this.emit("columnsChanged", { reason: "defs" });
-    if (changedFilterColIds.length > 0) {
-      this.emit("columnsChanged", { reason: "filter", ...this.columnsChangedIds(changedFilterColIds) });
-    }
     if (changedSortColIds.length > 0) {
       this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedSortColIds) });
     }
-    // Canonical filter signal: only when the columnDefs update actually removed an active filter.
-    // (The `columnsChanged {reason:"filter"}` emit above fires whenever any filter merely survives
-    // a defs update, which would be spurious here.)
-    if (droppedFilterCols.length > 0) {
+    // Both the canonical and legacy filter signals describe an effective filter-model change, not
+    // the internal re-binding of an unchanged filter to freshly-created Column instances.
+    if (filtersDropped) {
       const pair = this.eventColIds(droppedFilterCols);
+      this.emit("columnsChanged", {
+        reason: "filter",
+        changedColIds: pair.colIds,
+        changedColInstanceIds: pair.colInstanceIds,
+      });
       this.emit("filterChanged", { source: "columns", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
     }
   }
@@ -425,9 +438,8 @@ export class GridCore implements IGridCore {
     return JSON.stringify(normalize(colDefs));
   }
 
-  private reconcileFilterModelColumns(): { changedColIds: string[]; droppedCols: Column[] } {
+  private reconcileFilterModelColumns(): { droppedCols: Column[] } {
     const nextItems: FilterItem[] = [];
-    const changedColIds: string[] = [];
     // Columns whose filter items are removed by this reconcile (column gone, or a duplicate item) —
     // captured as Column objects because a dropped column may no longer resolve through the model.
     const droppedCols: Column[] = [];
@@ -449,7 +461,6 @@ export class GridCore implements IGridCore {
       }
 
       seenColIds.add(col.instanceID);
-      changedColIds.push(col.instanceID);
       if (item.col !== col || item.key !== col.key) changed = true;
       nextItems.push({ ...item, col, key: col.key });
     }
@@ -458,7 +469,7 @@ export class GridCore implements IGridCore {
       this.filters.setItems(nextItems);
     }
 
-    return { changedColIds, droppedCols };
+    return { droppedCols };
   }
 
   /**
@@ -2600,10 +2611,19 @@ export class GridCore implements IGridCore {
   private reconcileSelectionAfterColumnDefs(
     snapshot: RangeColumnSnapshot | null,
     rowOrderChanged: boolean,
+    filterChanged: boolean,
   ): void {
-    let changed = false;
+    // Match ordinary filter changes: the cell range always clears, while row ids survive only
+    // under selectionPersistence:"keep". Treat the model change as observable even when there was
+    // no selection, matching applyFilters()/setQuickFilter().
+    let changed = filterChanged;
 
-    if (snapshot) {
+    if (filterChanged) {
+      this.selectionModel.clearRange();
+      if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+    }
+
+    if (snapshot && !filterChanged) {
       if (rowOrderChanged) {
         this.selectionModel.clearRange();
         changed = true;

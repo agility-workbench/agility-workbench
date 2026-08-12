@@ -3,7 +3,7 @@
  * {colId, filters, join} shapes addressed by the PUBLIC colId — no getCore() cast, no Column
  * objects, no captureViewState() detour.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GridAPI } from "./api";
 import { GridCore } from "../core/core";
 import { FilterType } from "../interfaces/filter";
@@ -132,21 +132,50 @@ describe("canonical filterChanged event", () => {
       { colId: "country", filters: [{ type: FilterType.CONTAINS, values: ["Fran"] }] },
     ]);
     const events: Array<{ source: string; changedColIds: string[] }> = [];
+    const legacyEvents: string[][] = [];
     core.on("filterChanged", ev => events.push({ source: ev.source, changedColIds: ev.changedColIds }));
+    core.on("columnsChanged", ev => {
+      if (ev.reason === "filter") legacyEvents.push(ev.changedColIds ?? []);
+    });
 
-    // Unrelated defs update — the country filter survives, so no canonical event fires
-    // (the legacy columnsChanged {reason:"filter"} is deliberately broader).
+    // Unrelated defs update — the country filter survives, so neither filter signal fires.
     core.setColumnDefsFromProps([
       { colId: "region", key: "region", label: "Region (renamed)" },
       { colId: "country", key: "country", label: "Country" },
     ]);
     expect(events).toEqual([]);
+    expect(legacyEvents).toEqual([]);
+    expect(viewIds(core)).toEqual(["2"]);
 
-    // Defs update that removes the filtered column — the filter is dropped.
+    // Defs update that removes the filtered column — the filter is dropped, the row model is
+    // immediately re-filtered, and both signals identify only the removed filtered column.
     core.setColumnDefsFromProps([
       { colId: "region", key: "region", label: "Region" },
     ]);
     expect(events).toEqual([{ source: "columns", changedColIds: ["country"] }]);
+    expect(legacyEvents).toEqual([["country"]]);
     expect(api.getFilterModel()).toEqual([]);
+    expect(viewIds(core)).toEqual(["1", "2", "3"]);
+  });
+
+  it("re-requests the server-side row model when a columnDefs update drops a filter", () => {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "serverSide" });
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "country", key: "country", label: "Country" },
+    ]);
+    const api = new GridAPI(core);
+    api.setFilterModel([
+      { colId: "country", filters: [{ type: FilterType.CONTAINS, values: ["Fran"] }] },
+    ]);
+
+    const applyRequest = vi.spyOn(core.getRowModel(), "applyRequest");
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+    ]);
+
+    expect(applyRequest).toHaveBeenCalledTimes(1);
+    expect(applyRequest.mock.calls[0][0].reason).toBe("filter");
+    expect(applyRequest.mock.calls[0][0].filterModel.items).toEqual([]);
   });
 });
