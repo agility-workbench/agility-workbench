@@ -6,11 +6,13 @@ import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import {
+  CellCommitSource,
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
   InternalGridOptions,
   QuickFilterMatchMode,
+  REJECT,
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
@@ -196,6 +198,7 @@ export class GridCore implements IGridCore {
       getRowStyle: options.getRowStyle,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
+      onBeforeCellCommit: options.onBeforeCellCommit,
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
@@ -227,6 +230,7 @@ export class GridCore implements IGridCore {
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       editTrigger: options.editTrigger ?? "doubleClick",
+      readOnlyEdit: isTrue(options.readOnlyEdit),
       pinnedRowsEditable: isTrue(options.pinnedRowsEditable),
       rowPinningMenu: isTrue(options.rowPinningMenu),
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
@@ -1540,6 +1544,31 @@ export class GridCore implements IGridCore {
       ?? null;
   }
 
+  // A5: run the application's pre-commit hook for one proposed write. The hook sees the stored
+  // (post-valueParser) form and may veto (REJECT → null), transform (any other value), or accept
+  // (undefined) the write. `cell` must already be normalized (public colId + instance id).
+  private beforeCellCommit(
+    cell: CellRef,
+    row: IRowNode,
+    oldValue: unknown,
+    value: unknown,
+    source: CellCommitSource,
+  ): { value: unknown } | null {
+    const hook = this.options.onBeforeCellCommit;
+    if (!hook) return { value };
+    const result = hook({
+      rowId: cell.rowId,
+      colId: cell.colId,
+      colInstanceId: cell.colInstanceId,
+      data: row.data,
+      value,
+      oldValue,
+      source,
+    });
+    if (result === REJECT) return null;
+    return { value: result === undefined ? value : result };
+  }
+
   // Write a cell value wherever the row lives: through the row model, or — for application-pinned
   // data rows — directly into the application-provided data object (mirroring setCellValue).
   private writeCellValue(cell: CellRef, key: string, value: unknown): boolean {
@@ -2092,25 +2121,41 @@ export class GridCore implements IGridCore {
         }
         const cell = this.normalizeCellRef(action.cell, col);
         const oldValue = col.getValue(row);
-        const newValue = action.parsed
+        const proposed = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
-        this.writeCellValue(cell, col.key, newValue);
-        if (!this.applyingHistory) {
-          this.history.push({ label: "edit", edits: [{ cell, oldValue, newValue }] });
+        const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, "edit");
+        if (!hooked) {
+          // Vetoed: the editor still tears down (and the cell repaints with its old value), but
+          // nothing is written, recorded, or reported as a value change.
+          this.emit("editingChanged", { state: "rejected", cell, value: proposed, oldValue });
+          break;
+        }
+        const newValue = hooked.value;
+        // B7 readOnlyEdit: the application owns the write — run the full pipeline and report the
+        // accepted value (editingChanged + cellValueChanged), but leave the row object untouched
+        // and keep the step out of undo history (there is nothing of ours to undo).
+        const readOnly = this.options.readOnlyEdit;
+        if (!readOnly) {
+          this.writeCellValue(cell, col.key, newValue);
+          if (!this.applyingHistory) {
+            this.history.push({ label: "edit", edits: [{ cell, oldValue, newValue }] });
+          }
         }
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
         // first would detach the focused input and drop keyboard focus to <body>.
         this.emit("editingChanged", { state: "committed", cell, value: newValue, oldValue });
         this.emit("cellValueChanged", { cell, oldValue, value: newValue, source: "edit" });
-        this.emit("cellsChanged", {
-          reason: "editCommit",
-          rowIds: [cell.rowId],
-          colIds: [col.colId],
-          colInstanceIds: [col.instanceID],
-        });
-        if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
+        if (!readOnly) {
+          this.emit("cellsChanged", {
+            reason: "editCommit",
+            rowIds: [cell.rowId],
+            colIds: [col.colId],
+            colInstanceIds: [col.instanceID],
+          });
+          if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
+        }
         break;
       }
       case "editCancel": {
@@ -2122,40 +2167,47 @@ export class GridCore implements IGridCore {
         const changedRowIds = new Set<string>();
         const changedColIds = new Set<string>();
         const recorded: CellEdit[] = [];
+        const source: CellCommitSource = action.reason === "cut" ? "cut"
+          : action.reason === "clear" ? "clear"
+            : action.reason === "api" ? "edit"
+              : "paste";
         for (const edit of action.edits) {
           const col = this.resolveCellColumn(edit.cell);
           const row = this.resolveCellRow(edit.cell);
           if (!col || !row) continue;
+          const cell = this.normalizeCellRef(edit.cell, col);
           const oldValue = col.getValue(row);
-          const newValue = col.parseValue(String(edit.value ?? ""), row, oldValue);
-          if (this.writeCellValue(edit.cell, col.key, newValue)) {
+          const proposed = col.parseValue(String(edit.value ?? ""), row, oldValue);
+          // Vetoed cells drop out of the batch: not written, not recorded, no event.
+          const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
+          if (!hooked) continue;
+          // B7 readOnlyEdit: report every accepted cell but write none (see editCommit).
+          if (this.options.readOnlyEdit || this.writeCellValue(edit.cell, col.key, hooked.value)) {
             changedRowIds.add(edit.cell.rowId);
             changedColIds.add(col.instanceID);
-            recorded.push({ cell: this.normalizeCellRef(edit.cell, col), oldValue, newValue });
+            recorded.push({ cell, oldValue, newValue: hooked.value });
           }
         }
-        if (!this.applyingHistory && recorded.length > 0) {
+        if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
           const label = action.reason === "cut" ? "cut"
             : action.reason === "clear" ? "clear"
               : "paste";
           this.history.push({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {
-          const source = action.reason === "cut" ? "cut"
-            : action.reason === "clear" ? "clear"
-              : action.reason === "api" ? "edit"
-                : "paste";
           for (const edit of recorded) {
             this.emit("cellValueChanged", { cell: edit.cell, oldValue: edit.oldValue, value: edit.newValue, source });
           }
-          const pair = this.columnsChangedIds(changedColIds);
-          this.emit("cellsChanged", {
-            reason: "editCommit",
-            rowIds: [...changedRowIds],
-            colIds: pair.changedColIds,
-            colInstanceIds: pair.changedColInstanceIds,
-          });
-          if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
+          if (!this.options.readOnlyEdit) {
+            const pair = this.columnsChangedIds(changedColIds);
+            this.emit("cellsChanged", {
+              reason: "editCommit",
+              rowIds: [...changedRowIds],
+              colIds: pair.changedColIds,
+              colInstanceIds: pair.changedColInstanceIds,
+            });
+            if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
+          }
         }
         break;
       }

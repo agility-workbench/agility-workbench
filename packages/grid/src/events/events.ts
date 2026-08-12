@@ -141,12 +141,14 @@ export type GridEventHeaderFocusChangedParams = {
 };
 
 export type GridEventEditingChangedParams = {
-  state: "started" | "stopped" | "cancelled" | "committed";
+  // "rejected" = an editor commit was vetoed by `onBeforeCellCommit`: the editor closes and the
+  // cell keeps its old value (no write, no undo entry, no cellValueChanged).
+  state: "started" | "stopped" | "cancelled" | "committed" | "rejected";
   /** Normalized on emit: public colId + colInstanceId. */
   cell?: CellRef;
-  // committed value (only for committed)
+  // committed value (for committed), or the vetoed proposed value (for rejected)
   value?: unknown;
-  // the cell's value before the commit (only for committed)
+  // the cell's value before the commit (committed / rejected)
   oldValue?: unknown;
   // For state "started" via edit-on-typing: the printable character that opened the editor, so
   // the renderer can seed the editor with it.

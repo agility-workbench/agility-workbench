@@ -66,6 +66,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "paginationUnknownTotalTooltip", props.paginationUnknownTotalTooltip);
   setIfDefined(options, "undoLimit", props.undoLimit);
   setIfDefined(options, "editTrigger", props.editTrigger);
+  setIfDefined(options, "readOnlyEdit", props.readOnlyEdit);
   setIfDefined(options, "initialSort", props.initialSort);
   setIfDefined(options, "multiSortKey", props.multiSortKey);
   setIfDefined(options, "showSortPriority", props.showSortPriority);

@@ -128,6 +128,10 @@ export class AwbGrid implements OnDestroy {
 
   // --- editing ---
   readonly editTrigger = input<GridOptions["editTrigger"]>();
+  // Value-returning pre-commit hook (A5). An input rather than an output because outputs cannot
+  // return the veto/transform result to the grid.
+  readonly onBeforeCellCommit = input<GridOptions["onBeforeCellCommit"]>();
+  readonly readOnlyEdit = input<GridOptions["readOnlyEdit"]>();
   readonly pinnedRowsEditable = input<GridOptions["pinnedRowsEditable"]>();
   readonly suppressKeyboardEdit = input<GridOptions["suppressKeyboardEdit"]>();
   readonly suppressTypeToEdit = input<GridOptions["suppressTypeToEdit"]>();
@@ -255,6 +259,12 @@ export class AwbGrid implements OnDestroy {
       options.onCellValueChanged = (ev) => this.zone.run(() => this.cellValueChanged.emit(ev));
       options.onSelectionChanged = (ev) => this.zone.run(() => this.selectionChanged.emit(ev));
       options.onSortChanged = (ev) => this.zone.run(() => this.sortChanged.emit(ev));
+      // Value-returning hook, read through the signal so it stays reactive to input changes.
+      // zone.run propagates the return value, so veto/transform results reach the grid.
+      options.onBeforeCellCommit = (params) => {
+        const hook = this.onBeforeCellCommit();
+        return hook ? this.zone.run(() => hook(params)) : undefined;
+      };
 
       const core = createCore(options);
       const { renderer, api } = initDomRenderer(
@@ -370,6 +380,7 @@ export class AwbGrid implements OnDestroy {
         // whether the browser-native mode disables the grid menu entirely.
         bodyContextMenu: this.bodyContextMenu() === false ? (false as const) : (true as const),
         editTrigger: this.editTrigger() ?? "doubleClick",
+        readOnlyEdit: this.readOnlyEdit() ?? false,
         pinnedRowsEditable: this.pinnedRowsEditable() ?? false,
         rowPinningMenu: this.rowPinningMenu() ?? false,
         suppressKeyboardEdit: this.suppressKeyboardEdit() ?? false,

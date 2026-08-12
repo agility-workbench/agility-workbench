@@ -33,6 +33,32 @@ export interface CellValueChangedParams {
   source: CellValueChangeSource;
 }
 
+/**
+ * Sentinel returned from {@link GridOptions.onBeforeCellCommit} to veto a write: the cell keeps its
+ * old value, nothing enters undo history, and no `cellValueChanged` fires.
+ */
+export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commit");
+
+/** Write paths that run the pre-commit hook. Undo/redo replay already-accepted values and skip it. */
+export type CellCommitSource = Exclude<CellValueChangeSource, "undo" | "redo">;
+
+/** Payload for the `onBeforeCellCommit` option. Mirrors {@link CellValueChangedParams}. */
+export interface BeforeCellCommitParams {
+  rowId: string;
+  /** The column's public `ColDef.colId`. */
+  colId: string;
+  /** The column's internal instance id. */
+  colInstanceId?: string;
+  /** The row's underlying data object (not yet mutated). */
+  data: unknown;
+  /** The proposed value in its stored form — the column's `valueParser` has already run. */
+  value: unknown;
+  /** The cell's current stored value. */
+  oldValue: unknown;
+  /** What is writing the cell: "edit" (editor commit / `setCellValue`) or a clipboard batch. */
+  source: CellCommitSource;
+}
+
 /** Payload for the `onSortChanged` option. */
 export interface SortChangedParams {
   /** Public ColDef colIds whose sort state changed (when known). */
@@ -613,6 +639,19 @@ export interface GridOptions {
    */
   onRowClicked?: (params: GridEventRowClickedParams) => void;
   /**
+   * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
+   * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's
+   * `valueParser`, so `params.value` is the proposed stored form. Return:
+   *   - {@link REJECT} to veto the write — the cell keeps its old value, nothing enters undo
+   *     history, no `cellValueChanged` fires (an editor commit emits
+   *     `editingChanged {state: "rejected"}` instead);
+   *   - a value to store it in place of the proposed one (coerce/clamp);
+   *   - `undefined` to accept the proposed value unchanged (store an empty value by returning
+   *     `null` instead).
+   * Undo/redo replay already-accepted values and do not run the hook.
+   */
+  onBeforeCellCommit?: (params: BeforeCellCommitParams) => unknown;
+  /**
    * Called when a cell edit is committed with a new value. Convenience wrapper over the
    * `editingChanged` event (state "committed").
    */
@@ -758,6 +797,17 @@ export interface GridOptions {
    * by `suppressKeyboardEdit`. Non-editable columns and group rows never enter edit regardless.
    */
   editTrigger?: EditTrigger;
+  /**
+   * When true, the grid never writes committed edits into your row objects — the application owns
+   * the write-back. Every user write path (editor commit, `setCellValue`, paste/cut/clear) still
+   * runs the full pipeline — `valueParser`, `onBeforeCellCommit`, `editingChanged`, and
+   * `cellValueChanged` with `oldValue`/`value`/`source` — but the row data is left untouched and
+   * nothing enters undo history (undo/redo have nothing to replay; drive changes through your
+   * store instead). Handle `onCellValueChanged` and feed the accepted value back via your own
+   * state update (`rowData` or `applyTransaction`). Built for immutable-store consumers; see also
+   * the editing guide's "Edits write into your row objects" note. Defaults to false.
+   */
+  readOnlyEdit?: boolean;
   /**
    * Initial sort applied once when the grid first sets up its columns — an ordered list of
    * `{ colId, dir }` (first = primary sort). Per-column `ColDef.sort` / `sortIndex` take precedence:
@@ -1032,6 +1082,7 @@ export interface InternalGridOptions extends GridOptions {
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
   editTrigger: EditTrigger;
+  readOnlyEdit: boolean;
   pinnedRowsEditable: boolean;
   rowPinningMenu: boolean;
   suppressKeyboardEdit: boolean;
@@ -1085,6 +1136,7 @@ export type RuntimeGridOptions = Pick<
   | "showColumnButtonsOnHover"
   | "bodyContextMenu"
   | "editTrigger"
+  | "readOnlyEdit"
   | "pinnedRowsEditable"
   | "rowPinningMenu"
   | "suppressKeyboardEdit"

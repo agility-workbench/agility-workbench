@@ -41,6 +41,25 @@ Editing starts with double-click, F2, Enter, or a printable character. Configure
 single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
 with grid options.
 
+## Validating commits: `onBeforeCellCommit`
+
+A synchronous pre-commit hook runs before any user-initiated write — editor
+commits, `setCellValue`, and each cell of a paste/cut/clear batch — *after* the
+column's `valueParser`, so it sees `{ rowId, colId, data, value, oldValue,
+source }` with `value` in its stored form. Return:
+
+- **`REJECT`** (exported sentinel) to veto the write: the cell keeps its old
+  value, nothing enters undo history, no `cellValueChanged` fires, and an
+  editor commit emits `editingChanged { state: "rejected" }` instead;
+- **a value** to store it in place of the proposed one (coerce/clamp);
+- **`undefined`** (or nothing) to accept the proposed value — return `null`
+  when you mean "store an empty value".
+
+Undo/redo replay already-accepted values and skip the hook. Server-validated
+edits that need an *async* veto should combine the sync hook (for what can be
+checked locally) with `readOnlyEdit` below — commit nothing, validate on the
+server, write back through your store.
+
 ## Edits write into your row objects
 
 Committed edits are written **in place** into the exact row objects you passed
@@ -48,6 +67,17 @@ as `rowData` — the grid does not copy on ingest or on write. If your
 application store assumes immutability (Redux, NgRx, signals with reference
 equality), hand the grid copies of your rows, or treat the grid's data as
 grid-owned and sync changes back through `onCellValueChanged`.
+
+### `readOnlyEdit`: the application owns the write
+
+Set `readOnlyEdit: true` and the grid never touches your row objects: every
+write path still runs the full pipeline — `valueParser`,
+`onBeforeCellCommit`, `editingChanged`, `cellValueChanged` — but the value is
+**not** written and nothing enters undo history (there is nothing of the
+grid's to undo). Treat `cellValueChanged` as the edit *request*: apply it to
+your store and pass the new data back via `rowData` or `applyTransaction`.
+This is the intended mode for immutable stores, replacing hand-rolled
+commit-then-rollback flows.
 
 ## Reacting to value changes
 
@@ -57,9 +87,12 @@ clear, and undo/redo — with `{ rowId, colId, value, oldValue, source }`.
 `value`/`oldValue` are the stored (parsed) forms, and `source` says what wrote
 the cell (`"edit"`, `"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff
 consumers (dirty tracking, server sync, analytics) need no shadow copy of the
-data. The `editingChanged` event additionally carries `oldValue` on its
-`committed` state. `colId` in these payloads is the public `ColDef.colId`; the
-internal instance id rides on `colInstanceId`.
+data. (Under `readOnlyEdit` it fires for every *accepted* write — the value it
+reports is what the grid would have written.) The `editingChanged` event
+additionally carries `oldValue` on its `committed` state, and reports
+`onBeforeCellCommit` vetoes of editor commits as `state: "rejected"`. `colId`
+in these payloads is the public `ColDef.colId`; the internal instance id rides
+on `colInstanceId`.
 
 ## Clipboard and history
 

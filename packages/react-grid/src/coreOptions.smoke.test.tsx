@@ -134,6 +134,32 @@ describe("core option forwarding (live grid)", () => {
     await unmountTestRoot(root);
   });
 
+  it("bridges onBeforeCellCommit (return value included) and honors readOnlyEdit", async () => {
+    const row = { id: "1", name: "A" };
+    const hookCalls: unknown[] = [];
+    const changes: Array<Record<string, unknown>> = [];
+    const { apiRef, root } = await mount({
+      rowData: [row],
+      readOnlyEdit: true,
+      onBeforeCellCommit: (p: { value: unknown }) => {
+        hookCalls.push(p);
+        return `${p.value}!`; // transform must round-trip through the wrapper bridge
+      },
+      onCellValueChanged: (p: Record<string, unknown>) => changes.push(p),
+    });
+
+    await act(async () => {
+      apiRef.current!.setCellValue({ rowId: "1", colId: "name" }, "B");
+    });
+
+    expect(hookCalls).toHaveLength(1);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ value: "B!", oldValue: "A", source: "edit" });
+    // readOnlyEdit: the application-owned row object is untouched.
+    expect(row.name).toBe("A");
+    await unmountTestRoot(root);
+  });
+
   it("preserves selection on an empty-body click when clearSelectionOnBodyClick is false", async () => {
     const { container, apiRef, root } = await mount({
       rowData: [{ id: "1", name: "A" }],

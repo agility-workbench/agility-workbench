@@ -60,6 +60,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "paginationUnknownTotalTooltip", grid.paginationUnknownTotalTooltip());
   setIfDefined(options, "undoLimit", grid.undoLimit());
   setIfDefined(options, "editTrigger", grid.editTrigger());
+  setIfDefined(options, "readOnlyEdit", grid.readOnlyEdit());
   setIfDefined(options, "initialSort", grid.initialSort());
   setIfDefined(options, "multiSortKey", grid.multiSortKey());
   setIfDefined(options, "showSortPriority", grid.showSortPriority());

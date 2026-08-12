@@ -57,9 +57,13 @@ export type { BodyMenuContext } from "./menu";
 export type { ColumnMenuContext } from "./menu";
 export { isFalse, isTrue } from "./misc";
 
+export { REJECT } from "./interfaces/gridOptions";
 export type {
   GridOptions,
   CellValueChangedParams,
+  BeforeCellCommitParams,
+  CellCommitSource,
+  RowSelectionOptions,
   SortChangedParams,
   RowClassParams,
   GetRowClass,
