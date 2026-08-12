@@ -625,6 +625,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Full-width rows → single merged cell | ✅ Complete | `export/export.ts`; a full-width row exports as one value merged across the first columns |
 | Frozen panes in Excel (pinned cols + header) | ✅ Complete | `writeXlsx.ts` → `<pane>` xSplit/ySplit |
 | Currency/date/number formatting in Excel | ✅ Complete | `resolveNumberFormat`, `toCellValue`, `styleRegistry` |
+| Excel data-cell customization hook | ✅ Complete | `ExportParams.processCellForExcel`; value replacement + `numFmt`/bold/alignment for body and pinned rows |
 | Aggregate footer as **live formulas** (SUM/AVG/MEDIAN/MIN/MAX/COUNTA) | ✅ Complete | `export.ts` → `buildAggregateFooter` / `aggregateCell` |
 | Row grouping → **Excel outline levels + per-group SUBTOTAL** | ✅ Complete | `export.ts` → `buildGroupedBody`; `writeXlsx.ts` `RowMeta`/`<outlinePr>` |
 | SUBTOTAL codes 1–11 (nested subtotals don't double-count) | ✅ Complete | `export.ts` → `subtotalCode` |

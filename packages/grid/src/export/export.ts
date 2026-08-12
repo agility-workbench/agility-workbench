@@ -8,6 +8,11 @@ import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
 import { resolveColSpan } from "../renderer/body/colSpan";
+import type {
+  ExcelExportCellProcessor,
+  ExcelExportCellStyle,
+  ExcelExportRowType,
+} from "../interfaces/iGridAPI";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
@@ -18,6 +23,7 @@ export interface ExportOptions {
   includeHeaders?: boolean;
   /** For a grouped export: "tree" (headers + subtotals, default) or "leaves" (flat leaf rows). */
   groupMode?: "tree" | "leaves";
+  processCellForExcel?: ExcelExportCellProcessor;
 }
 
 export interface ExportSelectionRange {
@@ -103,6 +109,8 @@ export interface ExportConfig {
    * empty. Only consulted for rows {@link isFullWidthRow} marks full-width.
    */
   fullWidthText?: (rowData: any) => string;
+  /** Public, Excel-only customization hook forwarded by ExportRenderer. */
+  processCellForExcel?: ExcelExportCellProcessor;
 }
 
 interface HeaderCell {
@@ -375,6 +383,56 @@ interface BodyRowCells {
   fullWidth: boolean;
 }
 
+type ExportValueOverride = (
+  col: Column,
+  colIndex: number,
+  current: ValueBundle,
+) => ValueBundle | undefined;
+
+const mergeExcelCellStyle = (
+  base: CellStyle | undefined,
+  override: ExcelExportCellStyle | undefined,
+): CellStyle | undefined => {
+  if (!override) return base;
+  return {
+    ...base,
+    ...override,
+    alignment: override.alignment
+      ? { ...base?.alignment, ...override.alignment }
+      : base?.alignment,
+  };
+};
+
+/** Build a typed sheet cell, applying the public Excel-only override after grid value formatting. */
+const exportDataCell = (
+  rowData: any,
+  col: Column,
+  bundle: ValueBundle,
+  defaultStyle: CellStyle | undefined,
+  config: ExportConfig,
+  rowIndex: number,
+  rowType: ExcelExportRowType,
+): SheetCell => {
+  const override = config.processCellForExcel?.({
+    value: bundle.raw,
+    formattedValue: bundle.formatted,
+    data: rowData,
+    rowIndex,
+    rowType,
+    column: col,
+  });
+  const hasValueOverride = override != null
+    && Object.prototype.hasOwnProperty.call(override, "value");
+  const value = hasValueOverride ? override!.value : bundle.raw;
+  const processedBundle = hasValueOverride
+    ? { raw: value, formatted: value == null ? "" : String(value) }
+    : bundle;
+  return {
+    value: toCellValue(processedBundle, col),
+    style: mergeExcelCellStyle(defaultStyle, override?.style),
+  };
+};
+
 /**
  * Build one leaf/data row's cells, honoring full-width rows and per-cell colSpan (both mirroring the
  * grid). Full-width → the row's text in column 0, empty elsewhere, merged across all columns. colSpan
@@ -387,12 +445,22 @@ const emitDataRowCells = (
   bodyStyles: (CellStyle | undefined)[],
   config: ExportConfig,
   rowIndex: number,
+  rowType: ExcelExportRowType = "body",
+  valueOverride?: ExportValueOverride,
 ): BodyRowCells => {
   if (config.isFullWidthRow?.(rowData)) {
     const text = config.fullWidthText?.(rowData) ?? "";
     const cells = columns.map((_, colIdx) =>
       colIdx === 0
-        ? { value: { kind: "string", value: text } as CellValue, style: bodyStyles[0] }
+        ? exportDataCell(
+            rowData,
+            columns[0],
+            { raw: text, formatted: text },
+            bodyStyles[0],
+            config,
+            rowIndex,
+            rowType,
+          )
         : { value: { kind: "empty" } as CellValue },
     );
     return {
@@ -404,10 +472,11 @@ const emitDataRowCells = (
 
   if (!config.getCellColSpan) {
     return {
-      cells: columns.map((col, colIdx) => ({
-        value: toCellValue(getValueBundle(rowData, col), col),
-        style: bodyStyles[colIdx],
-      })),
+      cells: columns.map((col, colIdx) => {
+        const current = getValueBundle(rowData, col);
+        const bundle = valueOverride?.(col, colIdx, current) ?? current;
+        return exportDataCell(rowData, col, bundle, bodyStyles[colIdx], config, rowIndex, rowType);
+      }),
       spanMerges: [],
       fullWidth: false,
     };
@@ -423,7 +492,9 @@ const emitDataRowCells = (
       continue;
     }
     const col = columns[colIdx];
-    cells.push({ value: toCellValue(getValueBundle(rowData, col), col), style: bodyStyles[colIdx] });
+    const current = getValueBundle(rowData, col);
+    const bundle = valueOverride?.(col, colIdx, current) ?? current;
+    cells.push(exportDataCell(rowData, col, bundle, bodyStyles[colIdx], config, rowIndex, rowType));
     if (span > 1) spanMerges.push({ colStart: colIdx, span });
   }
   return { cells, spanMerges, fullWidth: false };
@@ -830,12 +901,20 @@ const buildFlatLeafBody = (
         walk(child, [...path, String(child.groupKey ?? "")]);
       } else {
         const data = child.data;
-        const built = emitDataRowCells(data, columns, bodyStyles, config, leafIndex++);
-        // singleColumn's prepended Group column (index 0) carries the leaf's full group path. It
-        // never spans (the internal auto-group column has no colSpan), so this override is safe.
-        if (groupPathCol0 && built.cells.length > 0) {
-          built.cells[0] = { value: { kind: "string", value: path.join(" / ") } as CellValue, style: bodyStyles[0] };
-        }
+        const groupPath = path.join(" / ");
+        // The synthesized Group column's path is the value the processor should observe, rather
+        // than the empty value its internal column would resolve from the leaf data.
+        const built = emitDataRowCells(
+          data,
+          columns,
+          bodyStyles,
+          config,
+          leafIndex++,
+          "body",
+          (_col, colIdx) => groupPathCol0 && colIdx === 0
+            ? { raw: groupPath, formatted: groupPath }
+            : undefined,
+        );
         rows.push(built.cells);
         merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
         leafRows.push(data);
@@ -893,16 +972,18 @@ const buildTreeDataBody = (
         });
       }
     } else {
-      const built = emitDataRowCells(node.data, columns, bodyStyles, config, dataIndex++);
-      if (treeColumnIndex >= 0) {
-        built.cells[treeColumnIndex] = {
-          value: {
-            kind: "string",
-            value: flat ? nextPath.join(" / ") : String(label),
-          },
-          style: bodyStyles[treeColumnIndex],
-        };
-      }
+      const treeValue = flat ? nextPath.join(" / ") : String(label);
+      const built = emitDataRowCells(
+        node.data,
+        columns,
+        bodyStyles,
+        config,
+        dataIndex++,
+        "body",
+        (_col, colIdx) => colIdx === treeColumnIndex
+          ? { raw: treeValue, formatted: treeValue }
+          : undefined,
+      );
       rows.push(built.cells);
       merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
       rowMeta.push(flat ? {} : {
@@ -986,7 +1067,7 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     const pinnedTopRows = config.pinnedTopRows ?? [];
     const pinnedBottomRows = config.pinnedBottomRows ?? [];
     pinnedTopRows.forEach((row, rowIndex) => {
-      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex);
+      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex, "pinnedTop");
       sheetRows.push(built.cells);
       merges.push(...spanMergesToRanges(built.spanMerges, sheetRows.length));
     });
@@ -1051,7 +1132,7 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     const dataEndRow = sheetRows.length;
 
     pinnedBottomRows.forEach((row, rowIndex) => {
-      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex);
+      const built = emitDataRowCells(row, columns, bodyStyles, config, rowIndex, "pinnedBottom");
       sheetRows.push(built.cells);
       merges.push(...spanMergesToRanges(built.spanMerges, sheetRows.length));
       if (rowMeta) rowMeta.push({}); // pinned rows sit at the top outline level

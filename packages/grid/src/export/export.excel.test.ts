@@ -11,7 +11,7 @@ import ExcelJS from "exceljs";
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { ColDef } from "../interfaces/column";
-import { exportExcel, ExportConfig } from "./export";
+import { buildCSV, exportExcel, ExportConfig } from "./export";
 import { AggregateType } from "../interfaces/aggregate";
 import { writeXlsx } from "./xlsx/writeXlsx";
 import { createZip } from "./xlsx/zip";
@@ -108,6 +108,63 @@ describe("hand-rolled xlsx writer", () => {
     const ws = await readBack(captured!);
     expect(ws.getCell("A2").numFmt).toContain("$");
     expect(ws.getCell("B2").numFmt).toBe("yyyy-mm-dd");
+  });
+
+  it("customizes Excel data-cell values and supported styles with row-segment context", async () => {
+    const columns = [
+      col({ key: "name", label: "Name" }),
+      col({ key: "ratio", label: "Ratio", type: ColumnType.NUMBER, format: "0.00" }),
+    ];
+    const seen: string[] = [];
+    const config: ExportConfig = {
+      columns,
+      rows: [{ name: "body", ratio: 0.25 }],
+      pinnedTopRows: [{ name: "top", ratio: 1 }],
+      pinnedBottomRows: [{ name: "bottom", ratio: 0 }],
+      processCellForExcel: params => {
+        seen.push(`${params.rowType}:${params.rowIndex}:${params.column.key}:${params.formattedValue}`);
+        if (params.column.key !== "ratio") return undefined;
+        if (params.rowType === "pinnedTop") {
+          return { value: 0.5, style: { numFmt: "0%", bold: true } };
+        }
+        if (params.rowType === "body") {
+          // Omitting numFmt keeps the column's default "0.00" format.
+          return { style: { alignment: { horizontal: "right", vertical: "middle", wrapText: true } } };
+        }
+        return { value: null };
+      },
+    };
+
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+
+    // Header, pinned top, body, pinned bottom.
+    expect(ws.getCell("B2").value).toBe(0.5);
+    expect(ws.getCell("B2").numFmt).toBe("0%");
+    expect(ws.getCell("B2").font.bold).toBe(true);
+    expect(ws.getCell("B3").value).toBe(0.25);
+    expect(ws.getCell("B3").numFmt).toBe("0.00");
+    expect(ws.getCell("B3").alignment).toMatchObject({
+      horizontal: "right",
+      vertical: "middle",
+      wrapText: true,
+    });
+    expect(ws.getCell("B4").value).toBeNull();
+    expect(seen).toContain("pinnedTop:0:ratio:1");
+    expect(seen).toContain("body:0:ratio:0.25");
+    expect(seen).toContain("pinnedBottom:0:ratio:0");
+  });
+
+  it("does not invoke the Excel cell processor for CSV output", () => {
+    const processCellForExcel = vi.fn(() => ({ value: "changed" }));
+    const csv = buildCSV({
+      columns: [col({ key: "name", label: "Name" })],
+      rows: [{ name: "original" }],
+      processCellForExcel,
+    });
+
+    expect(csv).toBe("Name\noriginal");
+    expect(processCellForExcel).not.toHaveBeenCalled();
   });
 
   it("builds merged hierarchical headers", async () => {

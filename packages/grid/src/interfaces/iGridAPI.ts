@@ -15,6 +15,7 @@ import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
+import type { Column } from "../column/column";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -28,6 +29,49 @@ export type RowScrollPosition = "auto" | "top" | "middle" | "bottom";
 /** Which rows/columns an export covers. */
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
+/** The data-row segment currently being written to an Excel workbook. */
+export type ExcelExportRowType = "body" | "pinnedTop" | "pinnedBottom";
+
+/**
+ * The intentionally small set of Excel cell styles supported by the built-in OOXML writer.
+ * Colors, fills, borders, and arbitrary browser CSS are outside this contract.
+ */
+export interface ExcelExportCellStyle {
+  /** Excel number-format code (for example `0.00%` or `yyyy-mm-dd`). */
+  numFmt?: string;
+  bold?: boolean;
+  alignment?: {
+    horizontal?: "left" | "center" | "right";
+    vertical?: "top" | "middle" | "bottom";
+    wrapText?: boolean;
+  };
+}
+
+/** Context supplied for each real data cell written to an Excel workbook. */
+export interface ExcelExportCellParams {
+  /** Raw value resolved from the column before export customization. */
+  value: unknown;
+  /** Value after the column's value formatter, before export customization. */
+  formattedValue: string;
+  data: unknown;
+  /** Zero-based index within the row segment identified by `rowType`. */
+  rowIndex: number;
+  rowType: ExcelExportRowType;
+  column: Column;
+}
+
+/** A cell override returned by {@link ExportParams.processCellForExcel}. */
+export interface ExcelExportCellResult {
+  /** Replacement exported value. Omit to keep the grid-resolved value; `null` clears the cell. */
+  value?: unknown;
+  /** Style properties merge over the grid's default number format for this column. */
+  style?: ExcelExportCellStyle;
+}
+
+export type ExcelExportCellProcessor = (
+  params: ExcelExportCellParams,
+) => ExcelExportCellResult | undefined;
+
 /** Options for a programmatic CSV/Excel export (all optional). */
 export interface ExportParams {
   /** "all" (default) exports the full view; "selection" a cell range; "selectedColumns" the picked columns. */
@@ -40,6 +84,12 @@ export interface ExportParams {
   includeHeaders?: boolean;
   /** For a row-grouped grid: "tree" (group headers + subtotals, default) or "leaves" (flat rows). */
   groupMode?: "tree" | "leaves";
+  /**
+   * Customize real data cells in Excel exports without changing grid data. Supports replacement
+   * values plus number format, bold, and alignment. Applies to body and pinned rows; synthetic
+   * group headers/subtotals and CSV output are unchanged.
+   */
+  processCellForExcel?: ExcelExportCellProcessor;
 }
 
 export interface IGridAPI {

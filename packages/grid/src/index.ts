@@ -1,5 +1,10 @@
 export type { IGridCore } from "./interfaces/iGridCore";
 export type {
+  ExcelExportCellParams,
+  ExcelExportCellProcessor,
+  ExcelExportCellResult,
+  ExcelExportCellStyle,
+  ExcelExportRowType,
   ExportParams,
   ExportScope,
   IGridAPI,
