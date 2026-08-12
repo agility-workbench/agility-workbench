@@ -121,6 +121,12 @@ configured, while `setCellValue(cell, "99")` gives the parser its say.
 cells by stable row and column IDs. `setPinnedTopRowData`,
 `setPinnedBottomRowData`, and `setRowPinned` update frozen row bands.
 
+Rows supplied through `pinnedTopRowData` or `pinnedBottomRowData` stay fixed in
+their band: filtering, sorting, and pagination apply only to body rows. They
+are also outside row selection, so `selectAllRows()`, `selectRowsById()`, and
+the selected-row APIs do not include them. Pinned cells can still be focused,
+edited, and included in cell-range or column selections.
+
 ## Export
 
 `exportDataAsCsv` and `exportDataAsExcel` download files. `getDataAsCsv` and
@@ -165,4 +171,3 @@ survive such splits.
 Every column id the grid **accepts** (API methods, dispatched actions, `CellRef`
 inputs) is resolved tolerantly — instance id, public colId, or key all work —
 so `api.startEditingCell({ rowId: "1", colId: "price" })` just works.
-
