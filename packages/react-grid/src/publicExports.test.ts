@@ -4,6 +4,8 @@ import {
   ColumnType,
   FilterType,
   type GridEventEditingChangedParams,
+  type GridEventFilterChangedParams,
+  type ResetPageTrigger,
 } from "./index";
 
 describe("react-grid public exports", () => {
@@ -17,5 +19,17 @@ describe("react-grid public exports", () => {
     expect(AggregateType.SUM).toBe("sum");
     expect(FilterType.CONTAINS).toBe("contains");
     expect(event.cell?.colId).toBe("name");
+  });
+
+  it("re-exports the filterChanged payload and ResetPageTrigger types", () => {
+    const event: GridEventFilterChangedParams = {
+      source: "filter",
+      changedColIds: ["name"],
+      changedColInstanceIds: ["uuid-1"],
+    };
+    const triggers: ResetPageTrigger[] = ["filter", "sort", "quickFilter"];
+
+    expect(event.source).toBe("filter");
+    expect(triggers).toHaveLength(3);
   });
 });

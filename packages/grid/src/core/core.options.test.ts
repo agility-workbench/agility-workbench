@@ -67,6 +67,16 @@ describe("Tier-2 option resolution", () => {
   });
 });
 
+describe("resetPageOn resolution", () => {
+  it("defaults to [] — no model change resets the page", () => {
+    expect(resolved().resetPageOn).toEqual([]);
+  });
+
+  it("honors an explicit trigger list", () => {
+    expect(resolved({ resetPageOn: ["filter", "sort"] }).resetPageOn).toEqual(["filter", "sort"]);
+  });
+});
+
 describe("pageSize / pageSizes resolution", () => {
   it("keeps matching defaults untouched", () => {
     const o = resolved();

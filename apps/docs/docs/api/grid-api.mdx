@@ -78,10 +78,21 @@ cells by stable row and column IDs. `setPinnedTopRowData`,
 Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
 function. `destroy()` releases the grid when a custom host owns its lifecycle.
 
+`filterChanged` is the canonical "effective filter changed" signal: it fires
+once for every column-filter model change (API, filter menu, dispatch), every
+quick-filter change (`source: "quickFilter"`, client-side row model only), and
+any columnDefs update that drops an active filter (`source: "columns"`) — no
+need to subscribe to both `columnsChanged {reason:"filter"}` and
+`modelUpdated {reason:"filter"}` (both still fire for back-compat). On the
+client-side row model the handler runs after the view is re-derived, so row
+counts and `getPaginationInfo()` read post-filter state. The declarative
+`onFilterChanged` option callback wraps it.
+
 ### Column identity in payloads and inputs
 
 Every `colId` field carried by event payloads (`cellsChanged`, `cellValueChanged`,
-`editingChanged`, `columnsChanged`, `columnWidthsChanged`, `cellClicked`, tooltip
+`editingChanged`, `columnsChanged`, `columnWidthsChanged`, `cellClicked`,
+`filterChanged`, tooltip
 and focus events, `onCellValueChanged`, `onSortChanged`, selection `rangeCells`, …)
 holds the **public `ColDef.colId`** — the id you defined. The column's internal
 per-instance UUID rides alongside in a `colInstanceId` / `colInstanceIds` /

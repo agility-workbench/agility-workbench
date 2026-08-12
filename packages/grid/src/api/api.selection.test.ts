@@ -125,6 +125,22 @@ describe("selectionPersistence", () => {
     expect(api.getSelection().selectedRowIds).toEqual([]);
   });
 
+  it("default 'clear': header-click sort (toggleSort) clears the selection like API sort", () => {
+    const { core, api } = makeGrid();
+    api.selectRowsById(["1", "2"]);
+    const nameCol = core.getColumnModel().getByColId("name")!;
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: nameCol.instanceID });
+    expect(api.getSelection().selectedRowIds).toEqual([]);
+  });
+
+  it("'keep': the row selection survives header-click sort (toggleSort)", () => {
+    const { core, api } = makeGrid({ selectionPersistence: "keep" });
+    api.selectRowsById(["1", "2"]);
+    const nameCol = core.getColumnModel().getByColId("name")!;
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: nameCol.instanceID });
+    expect(selectedIds(api)).toEqual(["1", "2"]);
+  });
+
   it("'keep': the row selection survives filter, sort, and quick-filter changes", () => {
     const { core, api } = makeGrid({ selectionPersistence: "keep" });
     const reasons: (string | undefined)[] = [];

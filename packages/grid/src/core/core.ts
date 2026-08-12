@@ -13,6 +13,7 @@ import {
   InternalGridOptions,
   QuickFilterMatchMode,
   REJECT,
+  ResetPageTrigger,
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
@@ -158,6 +159,7 @@ export class GridCore implements IGridCore {
         });
       }
     });
+    this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -202,6 +204,7 @@ export class GridCore implements IGridCore {
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
+      onFilterChanged: options.onFilterChanged,
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
@@ -220,6 +223,7 @@ export class GridCore implements IGridCore {
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
       selectAllScope: options.selectAllScope ?? "filtered",
       selectionPersistence: options.selectionPersistence ?? "clear",
+      resetPageOn: options.resetPageOn ?? [],
       pageSize,
       pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
@@ -320,7 +324,7 @@ export class GridCore implements IGridCore {
     this.columnModel.setColumnDefs(colDefs);
     const seededSort = this.seedInitialSort();
     const changedSortColIds = this.reconcileSortModelColumns();
-    const changedFilterColIds = this.reconcileFilterModelColumns();
+    const { changedColIds: changedFilterColIds, droppedCols: droppedFilterCols } = this.reconcileFilterModelColumns();
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
     this.autosizeColumns();
@@ -341,6 +345,13 @@ export class GridCore implements IGridCore {
     }
     if (changedSortColIds.length > 0) {
       this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedSortColIds) });
+    }
+    // Canonical filter signal: only when the columnDefs update actually removed an active filter.
+    // (The `columnsChanged {reason:"filter"}` emit above fires whenever any filter merely survives
+    // a defs update, which would be spurious here.)
+    if (droppedFilterCols.length > 0) {
+      const pair = this.eventColIds(droppedFilterCols);
+      this.emit("filterChanged", { source: "columns", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
     }
   }
 
@@ -398,20 +409,25 @@ export class GridCore implements IGridCore {
     return JSON.stringify(normalize(colDefs));
   }
 
-  private reconcileFilterModelColumns(): string[] {
+  private reconcileFilterModelColumns(): { changedColIds: string[]; droppedCols: Column[] } {
     const nextItems: FilterItem[] = [];
     const changedColIds: string[] = [];
+    // Columns whose filter items are removed by this reconcile (column gone, or a duplicate item) —
+    // captured as Column objects because a dropped column may no longer resolve through the model.
+    const droppedCols: Column[] = [];
     const seenColIds = new Set<string>();
     let changed = false;
 
     for (const item of this.filters.items) {
       const col = this.resolveModelColumn(item);
       if (!col) {
+        droppedCols.push(item.col);
         changed = true;
         continue;
       }
 
       if (seenColIds.has(col.instanceID)) {
+        droppedCols.push(col);
         changed = true;
         continue;
       }
@@ -426,7 +442,7 @@ export class GridCore implements IGridCore {
       this.filters.setItems(nextItems);
     }
 
-    return changedColIds;
+    return { changedColIds, droppedCols };
   }
 
   /**
@@ -757,19 +773,23 @@ export class GridCore implements IGridCore {
   }
 
   private applyFilters(changedColIds: string[]) {
-    const range = this.resetPageBlocks();
+    const range = this.pageRangeFor("filter");
     this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
+    if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "filter", ...this.columnsChangedIds(changedColIds) })
+    this.emit("filterChanged", { source: "filter", ...this.columnsChangedIds(changedColIds) });
   }
 
   /**
    * Set the quick-filter (global search) state. `text` is the raw search string; the optional
    * `matchMode` / `caseSensitive` override the resolved defaults (the widget passes them so the
-   * user's popover choices take effect). Resets to page 1 and clears the selection (which may point
-   * at rows about to be hidden). No-op for the server-side row model.
+   * user's popover choices take effect). Keeps the current page (clamped to the last page when the
+   * result shrinks past it) unless "quickFilter" is in `resetPageOn`; clears the selection per
+   * `selectionPersistence` (it may point at rows about to be hidden). No-op for the server-side
+   * row model.
    */
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
     if (this.rowModel.getType() === "serverSide") return;
@@ -781,12 +801,14 @@ export class GridCore implements IGridCore {
     this.quickFilterText = text;
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
-    const range = this.resetPageBlocks();
+    const range = this.pageRangeFor("quickFilter");
     this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
+    this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("modelUpdated", { reason: "filter", step: "all" });
+    this.emit("filterChanged", { source: "quickFilter", changedColIds: [], changedColInstanceIds: [] });
   }
 
   getQuickFilterText(): string {
@@ -804,11 +826,20 @@ export class GridCore implements IGridCore {
       }
     }
     if (changedColIDs.length === 0) return;
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    this.applySortRequest(changedColIDs);
+  }
+
+  // Shared tail of every user sort gesture (`setSortModel` and header-click `toggleSort`): apply
+  // the re-sort with the `resetPageOn`-resolved page range, clear the (positionally stale) cell
+  // range, honor `selectionPersistence` for row selection, and emit the sort signals. Sorting
+  // never changes the row count, so the keep-page path needs no clamp.
+  private applySortRequest(changedColIds: string[]): void {
+    const range = this.pageRangeFor("sort");
+    this.rowModel.applyRequest(this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
-    this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIDs) });
+    this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIds) });
   }
 
   // Replace the set of columns rows are grouped by (order = grouping level). An empty list clears
@@ -866,26 +897,8 @@ export class GridCore implements IGridCore {
       undefined,
       groupExpansion,
     ));
-    // Collapsing a hierarchy can remove enough display rows to invalidate the current page. Keep
-    // the core page range (not just the footer label) on the last valid page, then rebuild the
-    // paginated row slice so the viewport cannot remain empty with a stale out-of-range offset.
-    if (this.paginationEnabled) {
-      const pageSize = this.pageEndIdx - this.pageStartIdx;
-      const lastPageIndex = pageSize > 0
-        ? Math.max(Math.ceil(this.rowModel.getRowCount() / pageSize) - 1, 0)
-        : 0;
-      const currentPageIndex = pageSize > 0 ? Math.floor(this.pageStartIdx / pageSize) : 0;
-      if (currentPageIndex > lastPageIndex) {
-        this.pageStartIdx = lastPageIndex * pageSize;
-        this.pageEndIdx = this.pageStartIdx + pageSize;
-        this.rowModel.applyRequest(this.createRowModelRequest(
-          "pagination",
-          { start: this.pageStartIdx, end: this.pageEndIdx },
-          this.getInitialServerSideLoadRange(),
-          true,
-        ));
-      }
-    }
+    // Collapsing a hierarchy can remove enough display rows to invalidate the current page.
+    this.clampPageToLastPage();
     this.clearSelectionForColumnChange();
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("paginationChanged", this.getPaginationInfo());
@@ -1136,8 +1149,7 @@ export class GridCore implements IGridCore {
       ...clearedIds,
       ...(col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID]),
     ];
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
-    this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIds) });
+    this.applySortRequest(changedColIds);
   }
 
   getPageStartIdx(): number {
@@ -1146,7 +1158,10 @@ export class GridCore implements IGridCore {
 
   getPaginationInfo(): GridEventPaginationChangedParams {
     const pageSize = this.pageEndIdx - this.pageStartIdx;
-    const totalRowCount = this.rowModel.getRowCount();
+    // getViewTotalCount, not getRowCount: pagination pages over the filtered view. On the
+    // server-side model and while grouping the two are identical; on the client-side model
+    // getRowCount ignores filtering and would overcount pages under an active filter.
+    const totalRowCount = this.rowModel.getViewTotalCount();
     this.totalPages = pageSize > 0 ? Math.ceil(totalRowCount / pageSize) : 1;
     return {
       paginationEnabled: this.paginationEnabled,
@@ -1168,6 +1183,40 @@ export class GridCore implements IGridCore {
     this.pageStartIdx = 0;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     return { start: this.pageStartIdx, end: this.pageEndIdx };
+  }
+
+  // Page range for a filter/sort/quickFilter model change: reset to page 1 when the trigger is in
+  // `resetPageOn`, otherwise keep the current page (the caller clamps afterwards if the change
+  // shrank the row count past it). Mutates the page indices — must run BEFORE
+  // getInitialServerSideLoadRange(), which reads them.
+  private pageRangeFor(trigger: ResetPageTrigger): { start: number; end: number } {
+    if (!this.paginationEnabled || this.options.resetPageOn.includes(trigger)) {
+      return this.resetPageBlocks();
+    }
+    return { start: this.pageStartIdx, end: this.pageEndIdx };
+  }
+
+  // A model change can remove enough rows to invalidate the current page. Keep the core page range
+  // on the last valid page and rebuild the paginated slice so the viewport cannot remain empty with
+  // a stale out-of-range offset. Client-side only at the filter call sites — the server-side row
+  // count is provisional right after a purge, and its onRows snap-back already clamps once the
+  // total pins down.
+  private clampPageToLastPage(): void {
+    if (!this.paginationEnabled) return;
+    const pageSize = this.pageEndIdx - this.pageStartIdx;
+    const lastPageIndex = pageSize > 0
+      ? Math.max(Math.ceil(this.rowModel.getViewTotalCount() / pageSize) - 1, 0)
+      : 0;
+    const currentPageIndex = pageSize > 0 ? Math.floor(this.pageStartIdx / pageSize) : 0;
+    if (currentPageIndex <= lastPageIndex) return;
+    this.pageStartIdx = lastPageIndex * pageSize;
+    this.pageEndIdx = this.pageStartIdx + pageSize;
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "pagination",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+      true,
+    ));
   }
 
   applyPagination(pageIdx: number, pageSize: number, enabled: boolean = this.paginationEnabled) {

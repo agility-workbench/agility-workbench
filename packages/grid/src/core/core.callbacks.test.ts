@@ -4,6 +4,7 @@
  *  - onSelectionChanged            → selectionChanged
  *  - onCellValueChanged            → cellValueChanged (every write path; colId = public colId)
  *  - onSortChanged                 → columnsChanged (reason "sort")
+ *  - onFilterChanged               → filterChanged (canonical: column filters + quick filter)
  * Consumers can use either the option callback or api.on(...) interchangeably.
  */
 import { describe, it, expect, vi } from "vitest";
@@ -98,6 +99,54 @@ describe("declarative on* callbacks", () => {
     const core = makeGrid({ onSortChanged });
     core.dispatch({ type: "headerAction", action: "toggleSort", colId: colId(core, "qty") });
     expect(onSortChanged).toHaveBeenCalled();
+  });
+
+  it("onFilterChanged fires for column-filter changes with public colIds, and legacy events still fire", () => {
+    const onFilterChanged = vi.fn();
+    const core = makeGrid({ onFilterChanged });
+    const legacy: string[] = [];
+    core.on("columnsChanged", ev => { if (ev.reason === "filter") legacy.push("columnsChanged"); });
+    const nameCol = core.getColumnModel().getByColId("name")!;
+    core.setFilterModel([{ col: nameCol, key: "name", filters: [{ type: "contains" as any, values: ["ali"] }] }]);
+    expect(onFilterChanged).toHaveBeenCalledTimes(1);
+    expect(onFilterChanged.mock.calls[0][0]).toEqual({
+      source: "filter",
+      changedColIds: ["name"],
+      changedColInstanceIds: [nameCol.instanceID],
+    });
+    expect(legacy).toEqual(["columnsChanged"]);
+  });
+
+  it("onFilterChanged fires for quick-filter changes with empty colIds, alongside modelUpdated", () => {
+    const onFilterChanged = vi.fn();
+    const core = makeGrid({ onFilterChanged });
+    const legacy: string[] = [];
+    core.on("modelUpdated", ev => { if (ev.reason === "filter") legacy.push("modelUpdated"); });
+    core.dispatch({ type: "quickFilterSet", text: "alice" });
+    expect(onFilterChanged).toHaveBeenCalledTimes(1);
+    expect(onFilterChanged.mock.calls[0][0]).toEqual({
+      source: "quickFilter",
+      changedColIds: [],
+      changedColInstanceIds: [],
+    });
+    expect(legacy).toEqual(["modelUpdated"]);
+  });
+
+  it("onFilterChanged does not fire for sort changes", () => {
+    const onFilterChanged = vi.fn();
+    const core = makeGrid({ onFilterChanged });
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: colId(core, "qty") });
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: "name", dir: "desc" }] });
+    expect(onFilterChanged).not.toHaveBeenCalled();
+  });
+
+  it("a filterChanged handler observes post-filter state (client-side apply is synchronous)", () => {
+    const seen: number[] = [];
+    const core = makeGrid({
+      onFilterChanged: () => seen.push(core.getRowModel().getViewCount()),
+    });
+    core.dispatch({ type: "quickFilterSet", text: "alice" });
+    expect(seen).toEqual([1]);
   });
 
   it("onCellClicked / onRowClicked forward the corresponding events", () => {

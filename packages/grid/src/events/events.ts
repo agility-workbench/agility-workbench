@@ -18,6 +18,7 @@ export type GridEventName =
   | "headerFocusChanged"
   | "editingChanged"
   | "cellValueChanged"
+  | "filterChanged"
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
@@ -173,6 +174,25 @@ export type GridEventCellValueChangedParams = {
   source: CellValueChangeSource;
 };
 
+/**
+ * The effective row filter changed: a column-filter model edit (add/update/remove/set), a
+ * quick-filter change, or a columnDefs update that dropped an active filter. The canonical filter
+ * signal — fires for every path that used to require subscribing to both
+ * `columnsChanged {reason:"filter"}` and `modelUpdated {reason:"filter"}` (both still fire for
+ * back-compat). Emitted after the row model has re-derived the view: on the client-side row model,
+ * `getPaginationInfo()` / row counts read inside a handler are post-filter; on the server-side row
+ * model rows refetch asynchronously and land via `rowsChanged` / `paginationChanged`. The quick
+ * filter is client-side only, so `source: "quickFilter"` never fires on the server-side row model.
+ */
+export type GridEventFilterChangedParams = {
+  /** What changed the filter: a column-filter model edit, the quick filter, or a columnDefs update. */
+  source: "filter" | "quickFilter" | "columns";
+  /** Public ColDef colIds of the affected columns. Empty for `source: "quickFilter"`. */
+  changedColIds: ColId[];
+  /** Internal instance ids of those columns (unique; renderer-facing). */
+  changedColInstanceIds: string[];
+};
+
 export type GridEventPaginationChangedParams = {
   paginationEnabled: boolean;
   pageIndex: number;
@@ -264,6 +284,7 @@ export interface GridEventMap {
   headerFocusChanged: GridEventHeaderFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
   cellValueChanged: GridEventCellValueChangedParams;
+  filterChanged: GridEventFilterChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;

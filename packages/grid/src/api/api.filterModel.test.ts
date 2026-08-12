@@ -104,3 +104,49 @@ describe("GridAPI filter model", () => {
     expect(api.getFilterModel()[0].filters[0].values).toEqual(["EMEA"]);
   });
 });
+
+describe("canonical filterChanged event", () => {
+  it("fires exactly once per set/add/remove, with source 'filter' and public colIds", () => {
+    const { core, api } = makeGrid();
+    const events: Array<{ source: string; changedColIds: string[] }> = [];
+    core.on("filterChanged", ev => events.push({ source: ev.source, changedColIds: ev.changedColIds }));
+
+    api.setFilterModel([
+      { colId: "region", filters: [{ type: FilterType.EQ, values: ["EMEA"] }] },
+    ]);
+    api.addFilterModel({ colId: "country", filters: [{ type: FilterType.CONTAINS, values: ["Fran"] }] });
+    api.removeFilterModel("country");
+
+    // The API funnels through the filterModelSet action, whose changed set is the union of the
+    // previous and next filtered columns (same ids the legacy columnsChanged emit carries).
+    expect(events).toEqual([
+      { source: "filter", changedColIds: ["region"] },
+      { source: "filter", changedColIds: ["region", "country"] },
+      { source: "filter", changedColIds: ["region", "country"] },
+    ]);
+  });
+
+  it("fires with source 'columns' when a columnDefs update drops an active filter", () => {
+    const { core, api } = makeGrid();
+    api.setFilterModel([
+      { colId: "country", filters: [{ type: FilterType.CONTAINS, values: ["Fran"] }] },
+    ]);
+    const events: Array<{ source: string; changedColIds: string[] }> = [];
+    core.on("filterChanged", ev => events.push({ source: ev.source, changedColIds: ev.changedColIds }));
+
+    // Unrelated defs update — the country filter survives, so no canonical event fires
+    // (the legacy columnsChanged {reason:"filter"} is deliberately broader).
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region (renamed)" },
+      { colId: "country", key: "country", label: "Country" },
+    ]);
+    expect(events).toEqual([]);
+
+    // Defs update that removes the filtered column — the filter is dropped.
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+    ]);
+    expect(events).toEqual([{ source: "columns", changedColIds: ["country"] }]);
+    expect(api.getFilterModel()).toEqual([]);
+  });
+});

@@ -10,6 +10,7 @@ import type { ColDef, DefaultColDef } from "./column";
 import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
+  GridEventFilterChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
@@ -58,6 +59,9 @@ export interface BeforeCellCommitParams {
   /** What is writing the cell: "edit" (editor commit / `setCellValue`) or a clipboard batch. */
   source: CellCommitSource;
 }
+
+/** Model changes that snap pagination back to the first page. See {@link GridOptions.resetPageOn}. */
+export type ResetPageTrigger = "filter" | "sort" | "quickFilter";
 
 /** Payload for the `onSortChanged` option. */
 export interface SortChangedParams {
@@ -666,6 +670,12 @@ export interface GridOptions {
    */
   onSortChanged?: (params: SortChangedParams) => void;
   /**
+   * Called when the effective row filter changes — column-filter model edits, quick-filter
+   * changes, and columnDefs updates that drop an active filter. Convenience wrapper over the
+   * canonical `filterChanged` event.
+   */
+  onFilterChanged?: (params: GridEventFilterChangedParams) => void;
+  /**
    * Accessible name for the grid, applied as `aria-label` on the element carrying `role="grid"`.
    *
    * A grid is required to have an accessible name, and the host page cannot supply one from
@@ -752,6 +762,14 @@ export interface GridOptions {
    * cleared (view indices shift).
    */
   selectionPersistence?: "clear" | "keep";
+  /**
+   * Which model changes reset pagination to the first page. Defaults to `[]`: no change resets
+   * the page — the grid keeps the current page and, when the change shrinks the row count past
+   * it, clamps to the last page (client-side row model; the server-side model snaps back once
+   * the total count is known). Add "filter" (column-filter model edits), "quickFilter", and/or
+   * "sort" to restore jump-to-page-1 for that trigger.
+   */
+  resetPageOn?: ResetPageTrigger[];
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
@@ -1073,6 +1091,7 @@ export interface InternalGridOptions extends GridOptions {
   selectAllRowsOnHeaderClick: boolean;
   selectAllScope: "page" | "filtered";
   selectionPersistence: "clear" | "keep";
+  resetPageOn: ResetPageTrigger[];
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;

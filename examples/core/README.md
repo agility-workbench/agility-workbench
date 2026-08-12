@@ -50,6 +50,7 @@ const options = {
   onCellValueChanged: ({ rowId, colId, value }) => save(rowId, colId, value),
   onSelectionChanged: ({ snapshot }) => console.log(snapshot),
   onSortChanged: ({ changedColIds }) => console.log(changedColIds),
+  onFilterChanged: ({ source, changedColIds }) => console.log(source, changedColIds),
 } satisfies GridOptions;
 ```
 

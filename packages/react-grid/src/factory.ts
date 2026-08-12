@@ -18,7 +18,7 @@ function setIfDefined<K extends keyof GridOptions>(
 /**
  * Snapshot the props into core GridOptions. Explicit `false`/`0` values are forwarded (only
  * null/undefined fall back to core defaults). Mirrors the Angular wrapper's `getGridOptions`.
- * The five `on*` event callbacks are bridged by the component (stable-ref closures), not here.
+ * The six `on*` event callbacks are bridged by the component (stable-ref closures), not here.
  */
 export function getGridOptions(props: GridProps): GridOptions {
   const options: GridOptions = {};
@@ -48,6 +48,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "onCellValueChanged", props.onCellValueChanged);
   setIfDefined(options, "onSelectionChanged", props.onSelectionChanged);
   setIfDefined(options, "onSortChanged", props.onSortChanged);
+  setIfDefined(options, "onFilterChanged", props.onFilterChanged);
   setIfDefined(options, "ariaLabel", props.ariaLabel);
   setIfDefined(options, "ariaLabelledBy", props.ariaLabelledBy);
   setIfDefined(options, "highlightActiveCell", props.highlightActiveCell);
@@ -58,6 +59,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "showColumnButtonsOnHover", props.showColumnButtonsOnHover);
   setIfDefined(options, "selectAllRowsOnHeaderClick", props.selectAllRowsOnHeaderClick);
   setIfDefined(options, "clearSelectionOnBodyClick", props.clearSelectionOnBodyClick);
+  setIfDefined(options, "resetPageOn", props.resetPageOn);
   setIfDefined(options, "pageSize", props.pageSize);
   setIfDefined(options, "pageSizes", props.pageSizes);
   setIfDefined(options, "serverSideBlockSize", props.serverSideBlockSize);

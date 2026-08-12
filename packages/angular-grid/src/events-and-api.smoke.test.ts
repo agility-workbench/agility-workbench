@@ -2,6 +2,7 @@ import { Component } from "@angular/core";
 import { describe, expect, it, vi } from "vitest";
 import type {
   GridEventCellClickedParams,
+  GridEventFilterChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
   IGridAPI,
@@ -29,6 +30,7 @@ type Row = { symbol: string; price: number };
       (rowClicked)="onRowClicked($event)"
       (selectionChanged)="onSelectionChanged($event)"
       (sortChanged)="onSortChanged($event)"
+      (filterChanged)="onFilterChanged($event)"
     />
   `,
 })
@@ -46,6 +48,7 @@ class EventsHost {
   onRowClicked = vi.fn<(event: GridEventRowClickedParams) => void>();
   onSelectionChanged = vi.fn<(event: GridEventSelectionChangedParams) => void>();
   onSortChanged = vi.fn<(event: SortChangedParams) => void>();
+  onFilterChanged = vi.fn<(event: GridEventFilterChangedParams) => void>();
 }
 
 describe("AwbGrid outputs and imperative API", () => {
@@ -78,6 +81,21 @@ describe("AwbGrid outputs and imperative API", () => {
     expect(host.onSortChanged).toHaveBeenCalledTimes(1);
     // Payload colIds are the public ColDef colIds; instance ids ride on changedColInstanceIds.
     expect(host.onSortChanged.mock.calls[0][0].changedColIds).toContain("price");
+  });
+
+  it("bridges the canonical filterChanged event through the Angular output", async () => {
+    const { host } = await mountGridHost(EventsHost);
+
+    host.api!.setFilterModel([{ colId: "symbol", filters: [{ type: "contains" as any, values: ["AA"] }] }]);
+    expect(host.onFilterChanged).toHaveBeenCalledTimes(1);
+    expect(host.onFilterChanged.mock.calls[0][0]).toMatchObject({
+      source: "filter",
+      changedColIds: ["symbol"],
+    });
+
+    host.api!.setQuickFilter("AAA");
+    expect(host.onFilterChanged).toHaveBeenCalledTimes(2);
+    expect(host.onFilterChanged.mock.calls[1][0]).toMatchObject({ source: "quickFilter", changedColIds: [] });
   });
 
   it("updates, adds, and removes rows through applyTransaction", async () => {

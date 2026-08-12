@@ -128,4 +128,21 @@ describe("selection and sort event callbacks", () => {
     expect(onSortChanged.mock.calls[0][0].changedColIds).toContain("name");
     await unmountTestRoot(root);
   });
+
+  it("fires onFilterChanged through the stable bridge for column and quick filters", async () => {
+    const onFilterChanged = vi.fn();
+    const { apiRef, root } = await mount({ onFilterChanged });
+    const api = apiRef.current!;
+
+    await act(async () => {
+      api.setFilterModel([{ colId: "name", filters: [{ type: "contains" as any, values: ["A"] }] }]);
+    });
+    expect(onFilterChanged).toHaveBeenCalledTimes(1);
+    expect(onFilterChanged.mock.calls[0][0]).toMatchObject({ source: "filter", changedColIds: ["name"] });
+
+    await act(async () => { api.setQuickFilter("A"); });
+    expect(onFilterChanged).toHaveBeenCalledTimes(2);
+    expect(onFilterChanged.mock.calls[1][0]).toMatchObject({ source: "quickFilter", changedColIds: [] });
+    await unmountTestRoot(root);
+  });
 });

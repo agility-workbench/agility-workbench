@@ -403,7 +403,8 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
 
-    // Restore the page AFTER the filter/quick-filter dispatches above — both reset to page 1.
+    // Restore the page AFTER the filter/quick-filter dispatches above — depending on
+    // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.
     // Old captures without a pagination field leave the page untouched.
     const pagination = this.core.getPaginationInfo();
     if (state.pagination && pagination.paginationEnabled && state.pagination.pageSize > 0) {

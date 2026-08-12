@@ -70,3 +70,25 @@ filter, or `mode: "onDemand"` can open its floating UI with Ctrl/Cmd+F.
 
 Quick filtering is client-side. Server-side applications receive structured
 column filters in each data-source request.
+
+## Reacting to filter changes
+
+Subscribe to the canonical `filterChanged` event (or pass the `onFilterChanged`
+callback / bind the wrapper's `filterChanged` output) to recompute anything
+filter-derived — footer aggregates, counts, external summaries. It fires once
+per effective filter change, whatever the path:
+
+- `source: "filter"` — a column-filter model change (menu, API, dispatch), with
+  the affected public `changedColIds`;
+- `source: "quickFilter"` — a quick-filter change (`changedColIds` is empty;
+  client-side row model only, since the quick filter is a no-op on the
+  server-side model);
+- `source: "columns"` — a columnDefs update dropped an active filter.
+
+On the client-side row model the handler runs after the view is re-derived, so
+row counts and `getPaginationInfo()` already reflect the new filter.
+
+By default a filter change keeps the user's current page, clamping to the last
+page when the result shrinks past it; list `"filter"` / `"quickFilter"` in
+[`resetPageOn`](../api/grid-options.mdx#sort-filter-and-pagination) to jump
+back to page 1 instead.

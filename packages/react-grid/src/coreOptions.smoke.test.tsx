@@ -84,6 +84,11 @@ describe("getGridOptions option forwarding", () => {
     expect(options.clearSelectionOnBodyClick).toBe(false);
   });
 
+  it("forwards resetPageOn (including the explicit empty list)", () => {
+    expect(getGridOptions({ resetPageOn: ["filter", "sort"] }).resetPageOn).toEqual(["filter", "sort"]);
+    expect(getGridOptions({ resetPageOn: [] }).resetPageOn).toEqual([]);
+  });
+
   it("omits keys that were not provided so core defaults apply", () => {
     expect(Object.keys(getGridOptions({}))).toEqual([]);
   });
