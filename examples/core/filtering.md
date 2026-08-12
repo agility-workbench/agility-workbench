@@ -56,7 +56,7 @@ const column = {
     buttons: ["apply", "clear", "cancel"],
     closeOnApply: true,
     debounceMs: 200,
-    maxFilterItems: 2,
+    maxNumConditions: 2,
     initialFilterItemsCount: 1,
     caseSensitive: false,
     trimValues: true,

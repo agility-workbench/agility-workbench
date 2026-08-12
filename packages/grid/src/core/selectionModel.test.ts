@@ -29,6 +29,7 @@ function makeHarness(
   // of a row node's `data` array. Leading columns are "internal" (not selectable).
   const leaves = Array.from({ length: totalCols }, (_, colIdx) => ({
     instanceID: `col${colIdx}`,
+    colId: `c${colIdx}`,
     hidden: false,
     children: [] as unknown[],
     isInternal: () => colIdx < leadingCols,
@@ -50,6 +51,7 @@ function makeHarness(
     getLeadingLeaves: () => leaves.slice(0, leadingCols),
     getColumns: () => leaves,
     getById: (id: string) => leafById.get(id),
+    resolve: (id: string) => leafById.get(id) ?? leaves.find(l => l.colId === id),
     getAncestors: (id: string) => (leafById.has(id) ? [leafById.get(id)] : []),
   };
 
@@ -492,6 +494,7 @@ describe("SelectionModel — select all rows", () => {
         getLeadingLeaves: () => [],
         getColumns: () => [],
         getById: () => undefined,
+        resolve: () => undefined,
         getAncestors: () => [],
       }) as any,
       getRowIdAtViewIndex: (i: number) => `r${i}`,
@@ -599,10 +602,10 @@ describe("SelectionModel — snapshot", () => {
     m.updateRange(1, 2); // rows 0-1 × cols 1-2
     const snap = m.getSnapshot(true);
     expect(snap.rangeCells).toEqual([
-      { rowId: "r0", colId: "col1" },
-      { rowId: "r0", colId: "col2" },
-      { rowId: "r1", colId: "col1" },
-      { rowId: "r1", colId: "col2" },
+      { rowId: "r0", colId: "c1", colInstanceId: "col1" },
+      { rowId: "r0", colId: "c2", colInstanceId: "col2" },
+      { rowId: "r1", colId: "c1", colInstanceId: "col1" },
+      { rowId: "r1", colId: "c2", colInstanceId: "col2" },
     ]);
   });
 

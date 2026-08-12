@@ -5,7 +5,7 @@
  *  - filterDebounceMs / cellFlashDuration / cellFadeDuration (timing defaults)
  * Verifies defaults, explicit overrides, and clamping of invalid values.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GridCore } from "./core";
 import { InternalGridOptions, GridOptions } from "../interfaces/gridOptions";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
@@ -64,5 +64,53 @@ describe("Tier-2 option resolution", () => {
     expect(o.filterDebounceMs).toBe(300);
     expect(o.cellFlashDuration).toBe(500);
     expect(o.cellFadeDuration).toBe(1000);
+  });
+});
+
+describe("resetPageOn resolution", () => {
+  it("defaults to [] — no model change resets the page", () => {
+    expect(resolved().resetPageOn).toEqual([]);
+  });
+
+  it("honors an explicit trigger list", () => {
+    expect(resolved({ resetPageOn: ["filter", "sort"] }).resetPageOn).toEqual(["filter", "sort"]);
+  });
+});
+
+describe("pageSize / pageSizes resolution", () => {
+  it("keeps matching defaults untouched", () => {
+    const o = resolved();
+    expect(o.pageSize).toBe(100);
+    expect(o.pageSizes).toEqual([25, 50, 100]);
+  });
+
+  it("auto-includes a pageSize missing from the default pageSizes (no warning)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const o = resolved({ pageSize: 75 });
+      expect(o.pageSize).toBe(75);
+      expect(o.pageSizes).toEqual([25, 50, 75, 100]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("warns and auto-includes when an explicit pageSizes list omits the pageSize", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const o = resolved({ pageSize: 75, pageSizes: [10, 20] });
+      expect(o.pageSize).toBe(75);
+      expect(o.pageSizes).toEqual([10, 20, 75]);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("normalizes pageSizes: sorted, invalid entries dropped, empty list replaced", () => {
+    expect(resolved({ pageSizes: [50, 25, 100] }).pageSizes).toEqual([25, 50, 100]);
+    expect(resolved({ pageSize: 25, pageSizes: [25, -1, 0, NaN] }).pageSizes).toEqual([25]);
+    expect(resolved({ pageSizes: [] }).pageSizes).toEqual([25, 50, 100]);
   });
 });

@@ -86,7 +86,7 @@ export class GridModelChangeHandler {
     // Apply the new widths to the cell/header boxes first, then let renderers remeasure: a
     // pixel-drawing renderer (e.g. the sparkline) reads its cell's box in refresh(), so the box
     // must already be resized before we invoke it.
-    this.params.updateColumnWidths(params.changedColIds);
-    this.params.refreshCellsForColumns(params.changedColIds, "resize");
+    this.params.updateColumnWidths(params.changedColInstanceIds);
+    this.params.refreshCellsForColumns(params.changedColInstanceIds, "resize");
   }
 }

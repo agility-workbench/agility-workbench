@@ -456,18 +456,29 @@ export class BodyTooltipRenderer {
 
   private eventParams(target: TooltipTarget) {
     if (target.kind === "body") {
+      const col = this.params.leafColumns()[target.colIdx];
       return {
         location: "body" as const,
-        colId: this.params.leafColumns()[target.colIdx]?.instanceID ?? null,
+        colId: col?.colId ?? null,
+        colInstanceId: col?.instanceID ?? null,
         rowId: this.params.core.getRowIdAtViewIndex(target.viewIdx),
         colIdx: target.colIdx,
         viewIdx: target.viewIdx,
       };
     }
     if (target.kind === "header") {
-      return { location: "header" as const, colId: target.colId, rowId: null, colIdx: null, viewIdx: null };
+      // target.colId is the header element id = the column's instance id; report both spaces.
+      const col = this.params.getColumnById(target.colId);
+      return {
+        location: "header" as const,
+        colId: col?.colId ?? target.colId,
+        colInstanceId: col?.instanceID ?? target.colId,
+        rowId: null,
+        colIdx: null,
+        viewIdx: null,
+      };
     }
-    return { location: "ui" as const, colId: null, rowId: null, colIdx: null, viewIdx: null };
+    return { location: "ui" as const, colId: null, colInstanceId: null, rowId: null, colIdx: null, viewIdx: null };
   }
 
   // ---------------- DOM helpers ----------------
@@ -486,6 +497,7 @@ export class BodyTooltipRenderer {
     const cell = el.closest?.(".pte-cell") as HTMLElement | null;
     if (!cell || !this.params.body.contains(cell)) return null;
     if (cell.classList.contains("pte-row-number-cell")) return null;
+    if (cell.classList.contains("pte-checkbox-cell")) return null;
     const rowEl = cell.closest(".pte-row") as HTMLElement | null;
     if (!rowEl || rowEl.classList.contains("pte-group-row")) return null;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));

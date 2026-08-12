@@ -13,7 +13,7 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `setRowData(rows)` | Replace client-side rows |
-| `applyTransaction(tx)` | Add, update, or remove client-side rows |
+| `applyTransaction(tx)` | Add, update, or remove client-side rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted) |
 | `setColumnDefs(defs)` | Replace column definitions |
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
@@ -25,19 +25,75 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `setQuickFilter(text, options?)` | Apply client-side global search |
+| `getFilterModel()` | Read the per-column filters as serializable `{ colId, filters, join }` items |
+| `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
+| `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |
+| `removeFilterModel(colId)` | Remove one column's filter (no-op when it has none) |
+| `getSetFilterValues(colId)` | Set-filter columns: the value universe (null = blanks) |
+| `getSetFilterState(colId)` | Intent-level `{ mode, checked, unchecked }`, or null when unfiltered |
+| `checkSetFilterValue(colId, value)` / `uncheckSetFilterValue(colId, value)` | Toggle one value by intent |
+| `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
-| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion |
+| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation |
 
-Grouping columns and explicit sort/filter models use typed `dispatch()` actions.
+Filter methods address columns by the public `ColDef.colId`. Grouping columns
+and explicit sort models use typed `dispatch()` actions.
 
 ## Selection and navigation
 
 `setFocusedCell`, `selectRange`, `extendRangeTo`, `selectRow`, `selectColumn`,
 `selectAll`, `selectAllRows`, `clearSelection`, and `navigate` mirror rendered
-keyboard and pointer behavior. `getSelection`, `getSelectedRows`, and
-`getSelectedNodes` return current state.
+keyboard and pointer behavior. `selectRowsById(ids, mode?)` drives row
+selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
+`getSelection`, `getSelectedRows`, and `getSelectedNodes` return current state
+(always copies — safe to mutate). `selectAllRows`/`areAllRowsSelected` span the
+whole filtered set by default (`selectAllScope` option).
+
+## Scrolling to a row, column, or cell
+
+| Method | Purpose |
+| --- | --- |
+| `ensureRowVisible(rowId, { position }?)` | Scroll a row into view by stable row id |
+| `ensureColumnVisible(colId)` | Scroll a column into view horizontally |
+| `ensureCellVisible(cell, { position }?)` | Both axes at once |
+
+These are for "jump to row" flows — a validation error, a find-in-grid result, a
+row a notification just arrived about — and they do whatever it takes to get the
+row on screen first: collapsed group/tree ancestors are expanded (batched into
+one repaint), and under pagination the grid pages to the row, firing
+`paginationChanged` once. Rows are addressed by stable row id and columns by
+`colId`, so you never compute a page or a view index yourself.
+
+`position` says where the row should land: `"auto"` (default) scrolls the
+minimum needed and leaves an already-visible row alone; `"top"`, `"middle"`, and
+`"bottom"` place it deliberately even when it is already on screen — a jump the
+user asked for is easier to follow when the row moves somewhere predictable.
+`"top"` means the top of the *usable* viewport, below any sticky group headers
+docked there.
+
+Each method returns whether the target is visible afterwards. `false` means no
+amount of scrolling would have shown it:
+
+- an unknown row id or `colId`;
+- a row the active filter excludes, or a column that is hidden (including one
+  hidden by a collapsed column group — these do not expand column groups);
+- on the server-side row model, a row that is not loaded. The server owns the
+  row order, so the grid cannot work out which page an unloaded row is on; page
+  or filter to it instead, then scroll.
+
+A row mirrored into a frozen top/bottom band is already on screen, so revealing
+it succeeds without moving the body (the band itself scrolls if it is taller
+than the space it has). Both halves of `ensureCellVisible` are attempted
+independently — a bad `colId` still gets you to the row — but it returns `true`
+only when both succeeded.
+
+```ts
+if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { position: "middle" })) {
+  // The row is filtered out or unloaded — clear the filter (or page to it) and try again.
+}
+```
 
 ## Editing and clipboard
 
@@ -45,16 +101,31 @@ keyboard and pointer behavior. `getSelection`, `getSelectedRows`, and
 | --- | --- |
 | `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
 | `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
-| `setCellValue(cell, value)` | Parse and write without opening an editor |
+| `setCellValue(cell, value)` | Write one cell without opening an editor |
+| `setCellValues(edits)` | Write many cells as **one** undo step |
 | `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
 | `undo()` / `redo()` | Traverse edit history |
 | `canUndo()` / `canRedo()` / `clearHistory()` | Inspect or reset history |
+| `getHistoryState()` | `{ canUndo, canRedo, undoDepth, redoDepth }` |
+| `withUndoGroup(fn)` | Coalesce the writes in `fn` into one undo step |
+| `withoutUndoHistory(fn)` | Apply the writes in `fn` without recording them |
+
+A programmatic write states its own type: a **string** `value` runs through the
+column's `valueParser` (like typed input), anything else is stored as the final
+value. So `setCellValue(cell, 99)` stores the number `99` even with no parser
+configured, while `setCellValue(cell, "99")` gives the parser its say.
 
 ## Floating UI and pinned rows
 
 `showTooltip`, `hideTooltip`, `openActionFrame`, and `closeActionFrame` address
 cells by stable row and column IDs. `setPinnedTopRowData`,
 `setPinnedBottomRowData`, and `setRowPinned` update frozen row bands.
+
+Rows supplied through `pinnedTopRowData` or `pinnedBottomRowData` stay fixed in
+their band: filtering, sorting, and pagination apply only to body rows. They
+are also outside row selection, so `selectAllRows()`, `selectRowsById()`, and
+the selected-row APIs do not include them. Pinned cells can still be focused,
+edited, and included in cell-range or column selections.
 
 ## Export
 
@@ -66,3 +137,37 @@ cells by stable row and column IDs. `setPinnedTopRowData`,
 Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
 function. `destroy()` releases the grid when a custom host owns its lifecycle.
 
+`filterChanged` is the canonical "effective filter changed" signal: it fires
+once for every column-filter model change (API, filter menu, dispatch), every
+quick-filter change (`source: "quickFilter"`, client-side row model only), and
+any columnDefs update that drops an active filter (`source: "columns"`) — no
+need to subscribe to both `columnsChanged {reason:"filter"}` and
+`modelUpdated {reason:"filter"}` (both still fire for back-compat). On the
+client-side row model the handler runs after the view is re-derived, so row
+counts and `getPaginationInfo()` read post-filter state. The declarative
+`onFilterChanged` option callback wraps it.
+
+`historyChanged` fires whenever the undo/redo stacks move, with
+`{ reason, canUndo, canRedo, undoDepth, redoDepth }` — enough to drive toolbar
+button state without polling. It follows the write's own `cellValueChanged` /
+`cellsChanged` events, so a handler reading `getHistoryState()` sees the value
+and the history agree. Writes that never enter history — a vetoed commit,
+anything under `readOnlyEdit`, `applyTransaction`, or a write inside
+`withoutUndoHistory` — do not fire it, and a whole `withUndoGroup` scope fires
+once on exit. The declarative option callback is `onHistoryChanged`.
+
+### Column identity in payloads and inputs
+
+Every `colId` field carried by event payloads (`cellsChanged`, `cellValueChanged`,
+`editingChanged`, `columnsChanged`, `columnWidthsChanged`, `cellClicked`,
+`filterChanged`, tooltip
+and focus events, `onCellValueChanged`, `onSortChanged`, selection `rangeCells`, …)
+holds the **public `ColDef.colId`** — the id you defined. The column's internal
+per-instance UUID rides alongside in a `colInstanceId` / `colInstanceIds` /
+`changedColInstanceIds` field; you only need it to disambiguate the rare case of
+split/moved column duplicates that share a `colId`, or to key caches that must
+survive such splits.
+
+Every column id the grid **accepts** (API methods, dispatched actions, `CellRef`
+inputs) is resolved tolerantly — instance id, public colId, or key all work —
+so `api.startEditingCell({ rowId: "1", colId: "price" })` just works.

@@ -144,4 +144,17 @@ describe("GridCore applyTransaction", () => {
     core.dispatch({ type: "rowTransactionApply", add: [{ id: "4", name: "dave", qty: 9 }] });
     expect(viewOrder(core)).toEqual(["1", "2", "3", "4"]);
   });
+
+  it("returns what was actually applied; unknown ids are not counted", () => {
+    const result = core.applyTransaction({
+      add: [{ id: "4", name: "dave", qty: 9 }],
+      update: [
+        { rowId: "2", row: { id: "2", name: "bob", qty: 42 } },
+        { rowId: "ghost", row: { id: "ghost" } },
+      ],
+      remove: ["3", "phantom"],
+    });
+    expect(result).toEqual({ added: 1, updated: 1, removed: 1 });
+    expect(core.applyTransaction({})).toEqual({ added: 0, updated: 0, removed: 0 });
+  });
 });

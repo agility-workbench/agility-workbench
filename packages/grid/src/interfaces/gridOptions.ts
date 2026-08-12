@@ -8,24 +8,71 @@ import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { ColDef, DefaultColDef } from "./column";
 import type {
+  CellValueChangeSource,
   GridEventCellClickedParams,
+  GridEventFilterChangedParams,
+  GridEventHistoryChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions } from "./gridView";
 
-/** Payload for the `onCellValueChanged` option: a cell edit was committed. */
+/**
+ * Payload for the `onCellValueChanged` option: a cell's stored value changed. Fires for every
+ * write path — editor commits, `setCellValue`, paste/cut/clear batches, and undo/redo.
+ */
 export interface CellValueChangedParams {
   rowId: string;
+  /** The column's public `ColDef.colId`. */
   colId: string;
-  /** The newly committed value. */
+  /** The column's internal instance id. */
+  colInstanceId?: string;
+  /** The newly committed (parsed) value. */
   value: unknown;
+  /** The cell's stored value before the write. */
+  oldValue: unknown;
+  /** What wrote the cell: "edit" (editor commit / setCellValue), clipboard batch, or undo/redo. */
+  source: CellValueChangeSource;
 }
+
+/**
+ * Sentinel returned from {@link GridOptions.onBeforeCellCommit} to veto a write: the cell keeps its
+ * old value, nothing enters undo history, and no `cellValueChanged` fires.
+ */
+export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commit");
+
+/** Write paths that run the pre-commit hook. Undo/redo replay already-accepted values and skip it. */
+export type CellCommitSource = Exclude<CellValueChangeSource, "undo" | "redo">;
+
+/** Payload for the `onBeforeCellCommit` option. Mirrors {@link CellValueChangedParams}. */
+export interface BeforeCellCommitParams {
+  rowId: string;
+  /** The column's public `ColDef.colId`. */
+  colId: string;
+  /** The column's internal instance id. */
+  colInstanceId?: string;
+  /** The row's underlying data object (not yet mutated). */
+  data: unknown;
+  /** The proposed value in its stored form — the column's `valueParser` has already run. */
+  value: unknown;
+  /** The cell's current stored value. */
+  oldValue: unknown;
+  /** What is writing the cell: "edit" (editor commit / `setCellValue`) or a clipboard batch. */
+  source: CellCommitSource;
+}
+
+/** Model changes that snap pagination back to the first page. See {@link GridOptions.resetPageOn}. */
+export type ResetPageTrigger = "filter" | "sort" | "quickFilter";
+
+/** How a replacement `rowData` array is applied. See {@link GridOptions.rowDataMode}. */
+export type RowDataMode = "auto" | "reset" | "diff";
 
 /** Payload for the `onSortChanged` option. */
 export interface SortChangedParams {
-  /** Column ids whose sort state changed (when known). */
+  /** Public ColDef colIds whose sort state changed (when known). */
   changedColIds?: string[];
+  /** Internal instance ids of those columns. */
+  changedColInstanceIds?: string[];
 }
 
 /** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */
@@ -151,6 +198,20 @@ export interface IsRowPinnedParams {
   rowId: string;
   rowIndex: number;
   isGroup: boolean;
+}
+
+/**
+ * Object form of `rowSelection`: enables row selection AND configures the selection checkbox
+ * column. `rowSelection: true` stays valid (row selection via the row-number cells, no
+ * checkboxes).
+ */
+export interface RowSelectionOptions {
+  /** Show a dedicated leading checkbox column: click toggles the row, Shift+click selects a
+   * range. Independent of `rowNumbers`. Defaults to false. */
+  checkboxes?: boolean;
+  /** Tri-state select-all checkbox in the checkbox column's header, covering the select-all
+   * scope (`selectAllScope`). Defaults to true when `checkboxes` is on. */
+  headerCheckbox?: boolean;
 }
 
 /** How the quick-filter search string is matched against each row. */
@@ -534,6 +595,24 @@ export interface GridOptions {
   pinnedBottomRowData?: any[];
   getRowId?: (row: object) => string;
   rowIdKey?: string;
+  /**
+   * How a replacement `rowData` array is applied. The React and Angular bindings compare `rowData`
+   * by reference, so immutable-update patterns hand the grid a new array on every change.
+   *
+   * - `"diff"` — diff the incoming array against the current rows by id and apply the result as a
+   *   transaction: row nodes keep their identity, and undo/redo history and the page index survive.
+   *   A row counts as changed only when its **object reference** differs, so this assumes changed
+   *   rows are replaced rather than mutated in place.
+   * - `"reset"` — re-ingest the whole data set: history is discarded and the grid returns to page 1.
+   *   Sort, filter, column state, selection and group expansion survive either way. Use this when
+   *   the application mutates row objects in place and passes a new array wrapper, since reference
+   *   comparison cannot see those edits.
+   * - `"auto"` (default) — `"diff"` when it is available (client-side row model, `getRowId` or
+   *   `rowIdKey` set, no tree data), `"reset"` otherwise.
+   *
+   * Applies to `api.setRowData` as well as to the bindings. Set at construction only.
+   */
+  rowDataMode?: RowDataMode;
   overscanRowCount?: number;
   /**
    * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
@@ -586,6 +665,19 @@ export interface GridOptions {
    */
   onRowClicked?: (params: GridEventRowClickedParams) => void;
   /**
+   * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
+   * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's
+   * `valueParser`, so `params.value` is the proposed stored form. Return:
+   *   - {@link REJECT} to veto the write — the cell keeps its old value, nothing enters undo
+   *     history, no `cellValueChanged` fires (an editor commit emits
+   *     `editingChanged {state: "rejected"}` instead);
+   *   - a value to store it in place of the proposed one (coerce/clamp);
+   *   - `undefined` to accept the proposed value unchanged (store an empty value by returning
+   *     `null` instead).
+   * Undo/redo replay already-accepted values and do not run the hook.
+   */
+  onBeforeCellCommit?: (params: BeforeCellCommitParams) => unknown;
+  /**
    * Called when a cell edit is committed with a new value. Convenience wrapper over the
    * `editingChanged` event (state "committed").
    */
@@ -599,6 +691,19 @@ export interface GridOptions {
    * over the `columnsChanged` event with reason "sort".
    */
   onSortChanged?: (params: SortChangedParams) => void;
+  /**
+   * Called when the effective row filter changes — column-filter model edits, quick-filter
+   * changes, and columnDefs updates that drop an active filter. Convenience wrapper over the
+   * canonical `filterChanged` event.
+   */
+  onFilterChanged?: (params: GridEventFilterChangedParams) => void;
+  /**
+   * Called when the undo/redo stacks move — a step recorded, undone, redone, or the history
+   * cleared. Convenience wrapper over the `historyChanged` event; the payload carries
+   * `canUndo`/`canRedo`/`undoDepth`/`redoDepth`, so undo/redo toolbar buttons can bind to it
+   * instead of polling `api.canUndo()`.
+   */
+  onHistoryChanged?: (params: GridEventHistoryChangedParams) => void;
   /**
    * Accessible name for the grid, applied as `aria-label` on the element carrying `role="grid"`.
    *
@@ -627,7 +732,7 @@ export interface GridOptions {
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
    */
-  rowSelection?: boolean;
+  rowSelection?: boolean | RowSelectionOptions;
   /**
    * Controls how the mouse interacts with body cells:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
@@ -672,6 +777,28 @@ export interface GridOptions {
    * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
    */
   selectAllRowsOnHeaderClick?: boolean;
+  /**
+   * Scope of select-all operations (the row-number header click, `api.selectAllRows()`, and
+   * `api.areAllRowsSelected()`): "filtered" (default) covers every selectable data row that
+   * passes the current filters — all pages; "page" covers only the current page's view. On the
+   * server-side row model "filtered" covers loaded rows.
+   */
+  selectAllScope?: "page" | "filtered";
+  /**
+   * What happens to the row selection when the filter / sort / quick-filter model changes:
+   * "clear" (default) discards it; "keep" retains the selected row ids — selection is id-based,
+   * so it survives rows moving pages or leaving the filtered view. The cell range is always
+   * cleared (view indices shift).
+   */
+  selectionPersistence?: "clear" | "keep";
+  /**
+   * Which model changes reset pagination to the first page. Defaults to `[]`: no change resets
+   * the page — the grid keeps the current page and, when the change shrinks the row count past
+   * it, clamps to the last page (client-side row model; the server-side model snaps back once
+   * the total count is known). Add "filter" (column-filter model edits), "quickFilter", and/or
+   * "sort" to restore jump-to-page-1 for that trigger.
+   */
+  resetPageOn?: ResetPageTrigger[];
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
@@ -717,6 +844,17 @@ export interface GridOptions {
    * by `suppressKeyboardEdit`. Non-editable columns and group rows never enter edit regardless.
    */
   editTrigger?: EditTrigger;
+  /**
+   * When true, the grid never writes committed edits into your row objects — the application owns
+   * the write-back. Every user write path (editor commit, `setCellValue`, paste/cut/clear) still
+   * runs the full pipeline — `valueParser`, `onBeforeCellCommit`, `editingChanged`, and
+   * `cellValueChanged` with `oldValue`/`value`/`source` — but the row data is left untouched and
+   * nothing enters undo history (undo/redo have nothing to replay; drive changes through your
+   * store instead). Handle `onCellValueChanged` and feed the accepted value back via your own
+   * state update (`rowData` or `applyTransaction`). Built for immutable-store consumers; see also
+   * the editing guide's "Edits write into your row objects" note. Defaults to false.
+   */
+  readOnlyEdit?: boolean;
   /**
    * Initial sort applied once when the grid first sets up its columns — an ordered list of
    * `{ colId, dir }` (first = primary sort). Per-column `ColDef.sort` / `sortIndex` take precedence:
@@ -958,6 +1096,9 @@ export interface InternalGridOptions extends GridOptions {
   rowHeight: number;
   pinnedTopRowData: any[];
   pinnedBottomRowData: any[];
+  /** Resolved from the public `"auto"` default — the row model is consulted at data-set time for
+   * whether a diff is actually possible, so this only records what was asked for. */
+  rowDataMode: RowDataMode;
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;
@@ -972,12 +1113,17 @@ export interface InternalGridOptions extends GridOptions {
   ariaLabelledBy?: string;
   highlightActiveCell: boolean;
   rowSelection: boolean;
+  rowSelectionCheckboxes: boolean;
+  rowSelectionHeaderCheckbox: boolean;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
   showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
+  selectAllScope: "page" | "filtered";
+  selectionPersistence: "clear" | "keep";
+  resetPageOn: ResetPageTrigger[];
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;
@@ -987,6 +1133,7 @@ export interface InternalGridOptions extends GridOptions {
   clearSelectionOnBodyClick: boolean;
   undoLimit: number;
   editTrigger: EditTrigger;
+  readOnlyEdit: boolean;
   pinnedRowsEditable: boolean;
   rowPinningMenu: boolean;
   suppressKeyboardEdit: boolean;
@@ -1040,6 +1187,7 @@ export type RuntimeGridOptions = Pick<
   | "showColumnButtonsOnHover"
   | "bodyContextMenu"
   | "editTrigger"
+  | "readOnlyEdit"
   | "pinnedRowsEditable"
   | "rowPinningMenu"
   | "suppressKeyboardEdit"

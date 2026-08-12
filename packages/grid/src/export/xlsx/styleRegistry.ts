@@ -107,7 +107,8 @@ export class StyleRegistry {
           if (a) {
             const parts: string[] = [];
             if (a.horizontal) parts.push(`horizontal="${a.horizontal}"`);
-            if (a.vertical) parts.push(`vertical="${a.vertical}"`);
+            // Public/grid terminology uses "middle"; OOXML calls the same alignment "center".
+            if (a.vertical) parts.push(`vertical="${a.vertical === "middle" ? "center" : a.vertical}"`);
             if (a.wrapText) parts.push(`wrapText="1"`);
             return (
               `<xf numFmtId="${xf.numFmtId}" fontId="${xf.fontId}" fillId="0" borderId="0"` +

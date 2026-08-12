@@ -88,7 +88,9 @@ describe("ActionFrame", () => {
     expect(popover(container)).not.toBeNull();
     expect(framedCell(container)).not.toBeNull();
     expect(container.querySelector(".af-form")?.textContent).toContain("AF:Ava");
-    expect(apiRef.current!.getActionFrameCell()).toEqual({ rowId: "1", colId });
+    expect(apiRef.current!.getActionFrameCell()).toEqual({
+      rowId: "1", colId: "comment", colInstanceId: colId,
+    });
     await unmountTestRoot(root);
   });
 

@@ -86,7 +86,9 @@ describe("GridCore tree data", () => {
 
     const nameCol = core.getColumnModel().getByColId("name")!;
     core.dispatch({ type: "editStart", cell: { rowId: "europe", colId: nameCol.instanceID } });
-    expect(core.getEditingCell()).toEqual({ rowId: "europe", colId: nameCol.instanceID });
+    expect(core.getEditingCell()).toEqual({
+      rowId: "europe", colId: "name", colInstanceId: nameCol.instanceID,
+    });
   });
 
   it("builds parent-reference trees independently of input order and sorts siblings locally", () => {

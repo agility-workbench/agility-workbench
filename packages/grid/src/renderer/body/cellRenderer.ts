@@ -97,6 +97,12 @@ export class BodyCellRenderer {
     rowNumber: number = viewIndex + 1,
     refreshReason: CellRefreshReason = "data",
   ) {
+    if (col.isSelectionCheckboxColumn()) {
+      // Content is the static decorative checkbox span created by the row pool; checked state is
+      // CSS-driven from the "selected" class. Nothing to render per row.
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+      return;
+    }
     if (col.isRowNumberColumn()) {
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);

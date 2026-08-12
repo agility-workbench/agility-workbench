@@ -10,13 +10,67 @@ import {
   RowPinnedPosition,
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
-import { GridViewState } from "./gridView";
-import { ServerSideRefreshOptions } from "./iRowModel";
+import { GridViewFilterState, GridViewState } from "./gridView";
+import { SetFilterMode } from "./filter";
+import { SetFilterSelection } from "../filter/setFilterCore";
+import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
+import { GridHistoryState } from "../core/historyModel";
+import type { Column } from "../column/column";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
+/**
+ * Where a row should end up when scrolled to. "auto" scrolls the least amount needed and leaves an
+ * already-visible row where it is; the others place the row deliberately even when it is already on
+ * screen. "top" means the top of the usable viewport — below any sticky group headers docked there.
+ */
+export type RowScrollPosition = "auto" | "top" | "middle" | "bottom";
+
 /** Which rows/columns an export covers. */
 export type ExportScope = "all" | "selection" | "selectedColumns";
+
+/** The data-row segment currently being written to an Excel workbook. */
+export type ExcelExportRowType = "body" | "pinnedTop" | "pinnedBottom";
+
+/**
+ * The intentionally small set of Excel cell styles supported by the built-in OOXML writer.
+ * Colors, fills, borders, and arbitrary browser CSS are outside this contract.
+ */
+export interface ExcelExportCellStyle {
+  /** Excel number-format code (for example `0.00%` or `yyyy-mm-dd`). */
+  numFmt?: string;
+  bold?: boolean;
+  alignment?: {
+    horizontal?: "left" | "center" | "right";
+    vertical?: "top" | "middle" | "bottom";
+    wrapText?: boolean;
+  };
+}
+
+/** Context supplied for each real data cell written to an Excel workbook. */
+export interface ExcelExportCellParams {
+  /** Raw value resolved from the column before export customization. */
+  value: unknown;
+  /** Value after the column's value formatter, before export customization. */
+  formattedValue: string;
+  data: unknown;
+  /** Zero-based index within the row segment identified by `rowType`. */
+  rowIndex: number;
+  rowType: ExcelExportRowType;
+  column: Column;
+}
+
+/** A cell override returned by {@link ExportParams.processCellForExcel}. */
+export interface ExcelExportCellResult {
+  /** Replacement exported value. Omit to keep the grid-resolved value; `null` clears the cell. */
+  value?: unknown;
+  /** Style properties merge over the grid's default number format for this column. */
+  style?: ExcelExportCellStyle;
+}
+
+export type ExcelExportCellProcessor = (
+  params: ExcelExportCellParams,
+) => ExcelExportCellResult | undefined;
 
 /** Options for a programmatic CSV/Excel export (all optional). */
 export interface ExportParams {
@@ -30,6 +84,12 @@ export interface ExportParams {
   includeHeaders?: boolean;
   /** For a row-grouped grid: "tree" (group headers + subtotals, default) or "leaves" (flat rows). */
   groupMode?: "tree" | "leaves";
+  /**
+   * Customize real data cells in Excel exports without changing grid data. Supports replacement
+   * values plus number format, bold, and alignment. Applies to body and pinned rows; synthetic
+   * group headers/subtotals and CSV output are unchanged.
+   */
+  processCellForExcel?: ExcelExportCellProcessor;
 }
 
 export interface IGridAPI {
@@ -86,13 +146,50 @@ export interface IGridAPI {
    */
   setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void;
 
-  /** Apply a transaction to the row data. */
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): void;
+  /** Apply a transaction to the row data (client-side row model only). Returns what was actually
+   * applied; all-zero counts on the server-side row model or when nothing matched. */
+  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): RowTransactionResult;
 
   /** Set the quick-filter (global search) text. Client-side row model only. */
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
   /** Current quick-filter text ("" when inactive). */
   getQuickFilterText(): string;
+
+  /* ----- Filtering ----- */
+  /** Current per-column filters in serializable form (`colId` is the public ColDef colId). */
+  getFilterModel(): GridViewFilterState[];
+  /** Replace all column filters. Unknown colIds drop out; an empty array clears every filter.
+   * Applying filters resets to page 1 and clears the selection. */
+  setFilterModel(filters: GridViewFilterState[]): void;
+  /** Add or replace the filter for one column, keeping every other column's filter. */
+  addFilterModel(filter: GridViewFilterState): void;
+  /** Remove one column's filter. No-op (no page reset, no selection clear) when it has none. */
+  removeFilterModel(colId: string): void;
+
+  /* ----- Set filter (columns with `filter: "set"`) -----
+   * Intent-level helpers: express WHICH values are checked/unchecked and the set filter manages
+   * its own storage. Inputs are resolved against the column's value universe (so a string "5"
+   * finds the numeric 5 the rows hold); null addresses the "(Blanks)" bucket. All methods are
+   * async because a column's filter values may come from an async source; with the default
+   * from-rows universe they resolve immediately. On non-set columns they warn and no-op. */
+  /** The column's full value universe (distinct values as shown in the menu; null = blanks). */
+  getSetFilterValues(colId: string): Promise<unknown[]>;
+  /** Intent-level view of the column's active set filter, or null when it has none (all values
+   * visible). `mode` says what happens to values that arrive after filtering: "exclude" shows
+   * them, "include" hides them. */
+  getSetFilterState(colId: string): Promise<SetFilterSelection | null>;
+  /** Check one value (make rows with it visible). No-op if already checked. */
+  checkSetFilterValue(colId: string, value: unknown): Promise<void>;
+  /** Uncheck one value (hide rows with it). No-op if already unchecked. */
+  uncheckSetFilterValue(colId: string, value: unknown): Promise<void>;
+  /**
+   * Replace the column's set filter wholesale. With `mode: "include"` (default) `values` is the
+   * checked set — everything else, including values that arrive later, is hidden. With
+   * `mode: "exclude"` `values` is the unchecked set — everything else, including later arrivals,
+   * stays visible. An explicit mode is pinned: subsequent menu or helper toggles keep the
+   * representation instead of optimizing it to the shorter list.
+   */
+  setSetFilterValues(colId: string, values: unknown[], opts?: { mode?: SetFilterMode }): Promise<void>;
 
   /** Current tree-data keyboard navigation mode. Non-tree grids always report "grid". */
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
@@ -103,7 +200,7 @@ export interface IGridAPI {
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
   setAllGroupsExpanded(expanded: boolean): void;
 
-  /** Capture serializable column, grouping, sorting, filtering, and expansion state. */
+  /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;
   /** Apply a captured view through the grid's existing state actions. */
   applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void;
@@ -133,12 +230,19 @@ export interface IGridAPI {
   getSelectedRows(): unknown[];
   /** Currently-selected row nodes (unloaded / no-longer-present rows are omitted). */
   getSelectedNodes(): IRowNode[];
-  /** Select every selectable data row in the current view (skips group rows). */
+  /** Select every selectable data row in the select-all scope — the whole filtered set by
+   * default, or the current page under `selectAllScope: "page"`. Skips group rows. */
   selectAllRows(): void;
   /** Clear the row selection. */
   deselectAllRows(): void;
-  /** Whether every selectable data row in the current view is currently selected. */
+  /** Whether every selectable data row in the select-all scope is currently selected. */
   areAllRowsSelected(): boolean;
+  /**
+   * Programmatic row selection by stable row id — for an external selection owner driving the
+   * grid. "set" (default) replaces the selection; "add"/"remove" adjust it. Unknown or
+   * non-selectable ids are dropped (client-side row model). Emits selectionChanged reason "api".
+   */
+  selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
 
   /* ----- Editing ----- */
   /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */
@@ -149,8 +253,43 @@ export interface IGridAPI {
   cancelEditing(): void;
   /** The cell currently being edited, or null when not editing. */
   getEditingCell(): CellRef | null;
-  /** Set a cell's value directly (bypasses the inline editor; runs the column's valueParser). */
+  /**
+   * Set a cell's value directly, bypassing the inline editor but running the rest of the write
+   * pipeline (`onBeforeCellCommit`, `cellValueChanged`, one undo step).
+   *
+   * A **string** `value` is treated as user-style input and passed through the column's
+   * `valueParser`; any other type is taken as the final stored value. So `setCellValue(cell, 99)`
+   * stores the number 99 even on a column with no parser, while `setCellValue(cell, "99")` gives the
+   * parser its say.
+   */
   setCellValue(cell: CellRef, value: unknown): void;
+
+  /* ----- Scrolling ----- */
+  /**
+   * Scroll a row into view, doing whatever it takes to give it a slot first: collapsed group/tree
+   * ancestors are expanded, and under pagination the grid pages to the row (one page change, so
+   * `paginationChanged` fires once). Returns whether the row ended up visible — false means it has
+   * no slot at all: an unknown id, a row the current filter excludes, or, on the server-side row
+   * model, a row that is not loaded (the server owns the row order, so the grid cannot work out
+   * which page an unloaded row is on — reveal it by paging or refiltering to it instead).
+   *
+   * A row mirrored into a frozen top/bottom band is already on screen; the band scrolls if it is
+   * itself taller than the space it has.
+   */
+  ensureRowVisible(rowId: GridId, opts?: { position?: RowScrollPosition }): boolean;
+  /**
+   * Scroll a column into view horizontally. Returns whether the column is visible afterwards —
+   * false for an unknown colId or a hidden column (including one hidden by a collapsed column
+   * group; this does not expand groups). Leading, left- and right-pinned columns are always in
+   * view, so revealing one is a no-op that reports true.
+   */
+  ensureColumnVisible(colId: string): boolean;
+  /**
+   * Scroll a cell into view on both axes — {@link ensureRowVisible} plus
+   * {@link ensureColumnVisible}. Returns true only when both halves succeeded; the successful half
+   * still scrolls (a row that exists is revealed even if the colId is bogus).
+   */
+  ensureCellVisible(cell: CellRef, opts?: { position?: RowScrollPosition }): boolean;
 
   /* ----- Tooltips ----- */
   /** Programmatically show the tooltip for a body cell (bypasses the hover delay). No-op if the
@@ -185,8 +324,45 @@ export interface IGridAPI {
   canUndo(): boolean;
   /** Whether there is a step to redo. */
   canRedo(): boolean;
+  /**
+   * Undo/redo stack snapshot — `canUndo`/`canRedo` plus the depth of each stack. The same payload
+   * the `historyChanged` event carries, for reading the state on demand (initial toolbar render)
+   * rather than reacting to it.
+   */
+  getHistoryState(): GridHistoryState;
   /** Clear the undo/redo history. */
   clearHistory(): void;
+  /**
+   * Write many cells in one step. Each value runs the full write pipeline for its own destination
+   * (the column's `valueParser`, then `onBeforeCellCommit`, which can transform or veto that cell),
+   * emits one `cellValueChanged {source:"edit"}`, and the batch lands as a **single** undo step —
+   * the programmatic counterpart to a multi-cell paste. Vetoed cells drop out of the write, the
+   * undo step, and the events. Under `readOnlyEdit` nothing is written and nothing enters history.
+   *
+   * Values follow the same string-vs-typed rule as {@link setCellValue}, per cell.
+   */
+  setCellValues(edits: { cell: CellRef; value: unknown }[]): void;
+  /**
+   * Run `fn` with every cell write inside it coalesced into a **single** undo step, so a bulk
+   * programmatic update (a loop of `setCellValue` calls, or several batches) undoes as one user
+   * action instead of N. Returns whatever `fn` returns.
+   *
+   * Synchronous only: writes made after `fn` returns — inside a promise, timer, or event handler it
+   * schedules — fall outside the group and record normally. Nested scopes inherit the outermost
+   * mode, so a `withUndoGroup` helper called inside `withoutUndoHistory` stays suppressed.
+   */
+  withUndoGroup<T>(fn: () => T): T;
+  /**
+   * Run `fn` with undo recording suppressed — writes apply and emit their normal events, but
+   * nothing enters history and the user's undo stack is left exactly as it was. For applying
+   * external changes the user did not make (op-protocol reconciliation, server pushes, recomputed
+   * derived columns), which should not be undoable as if they were the user's own edits.
+   *
+   * `applyTransaction` never enters undo history and needs no scope; this is for the cell-write
+   * paths (`setCellValue`, `setCellValues`) that do. Same synchronous/nesting rules as
+   * {@link withUndoGroup}.
+   */
+  withoutUndoHistory<T>(fn: () => T): T;
 
   /* ----- Export ----- */
   /**

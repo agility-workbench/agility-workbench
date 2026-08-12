@@ -91,12 +91,12 @@ export class ActionFrameRenderer {
   }
 
   private onCellClicked(p: GridEventCellClickedParams) {
-    const col = this.params.getColumnById(String(p.colId));
+    const col = this.params.getColumnById(p.colInstanceId ?? String(p.colId));
     if (!col || col.actionFrameTrigger !== "click") return;
     if (!col.actionFrameComponent) return;
     this.params.core.dispatch({
       type: "actionFrameOpen",
-      cell: { rowId: String(p.rowId), colId: String(p.colId) },
+      cell: { rowId: String(p.rowId), colId: col.colId, colInstanceId: col.instanceID },
       source: "mouse",
     });
   }
@@ -107,7 +107,7 @@ export class ActionFrameRenderer {
     // Replace any previous frame (only one open at a time — core enforces this, but be safe).
     this.teardown();
 
-    const col = this.params.getColumnById(cell.colId);
+    const col = this.params.getColumnById(cell.colInstanceId ?? cell.colId);
     if (!col) return;
     const comp = col.actionFrameComponent;
     if (!comp) return;
@@ -116,7 +116,7 @@ export class ActionFrameRenderer {
     if (!rowNode || rowNode.isGroup) return;
 
     const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
-    const colIdx = this.colIdxFor(cell.colId);
+    const colIdx = this.colIdxFor(cell.colInstanceId ?? cell.colId);
     if (viewIdx == null || viewIdx < 0 || colIdx < 0) return;
 
     // Scroll the cell into the pool so the initial anchor rect resolves.
@@ -226,13 +226,15 @@ export class ActionFrameRenderer {
   }
 
   private colIdxFor(colId: string): number {
-    return this.params.leafColumns().findIndex((c) => c.instanceID === colId);
+    const col = this.params.getColumnById(colId);
+    if (!col) return -1;
+    return this.params.leafColumns().findIndex((c) => c.instanceID === col.instanceID);
   }
 
   private getCellEl(cell: CellRef): HTMLElement | null {
     const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
     if (viewIdx == null || viewIdx < 0) return null;
-    const colIdx = this.colIdxFor(cell.colId);
+    const colIdx = this.colIdxFor(cell.colInstanceId ?? cell.colId);
     if (colIdx < 0) return null;
     // A row slot renders up to four section rows (leading/left/center/right) sharing one
     // view-idx; the cell lives in exactly one of them.

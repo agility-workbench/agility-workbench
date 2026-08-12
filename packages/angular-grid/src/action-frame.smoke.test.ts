@@ -64,7 +64,9 @@ describe("AwbGrid ActionFrame integration", () => {
     expect(gridEl.querySelector(".pte-action-frame-popover")).toBeTruthy();
     expect(gridEl.querySelector(".pte-cell.pte-action-frame")).toBeTruthy();
     expect(gridEl.querySelector(".angular-action-frame")?.textContent).toContain("AF:Ava");
-    expect(host.api!.getActionFrameCell()).toEqual({ rowId: "1", colId });
+    expect(host.api!.getActionFrameCell()).toEqual({
+      rowId: "1", colId: "comment", colInstanceId: colId,
+    });
   });
 
   it("opens from the configured cell click trigger", async () => {

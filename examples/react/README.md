@@ -131,6 +131,7 @@ live setup is cleaned up.
   onCellValueChanged={(event) => saveChange(event)}
   onSelectionChanged={(event) => console.log(event.snapshot)}
   onSortChanged={(event) => console.log(event.changedColIds)}
+  onFilterChanged={(event) => console.log(event.source, event.changedColIds)}
 />
 ```
 

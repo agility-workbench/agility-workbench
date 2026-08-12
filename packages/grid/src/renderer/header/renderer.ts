@@ -33,6 +33,8 @@ export class HeaderRenderer {
   private components = new Map<string, MountedHeaderComponent>();
   /** The header cell currently painted as holding the keyboard cursor. */
   private activeHeaderEl: HTMLElement | null = null;
+  /** The select-all checkbox visual in the checkbox column's header, when rendered. */
+  private selectAllCheckboxEl: HTMLElement | null = null;
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
@@ -78,6 +80,7 @@ export class HeaderRenderer {
     // class components can release listeners/state. buildHeaderCell repopulates this map.
     for (const { runtime } of this.components.values()) runtime.destroy();
     this.components.clear();
+    this.selectAllCheckboxEl = null;
     leadingHeader.innerHTML = "";
     leftHeader.innerHTML = "";
     centerHeader.innerHTML = "";
@@ -140,6 +143,9 @@ export class HeaderRenderer {
           if (hcell.classList.contains("pte-hcell-row-number")) {
             hcell.setAttribute("aria-label", "Row number");
           }
+          if (hcell.classList.contains("pte-hcell-checkbox")) {
+            hcell.setAttribute("aria-label", "Select all rows");
+          }
           ownedIds.push(hcell.id);
         } else {
           hcell.setAttribute("role", "presentation");
@@ -153,9 +159,11 @@ export class HeaderRenderer {
   buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
-    const isRowNumberColumn = col.isRowNumberColumn();
-    if (isRowNumberColumn) {
+    const isRowNumberColumn = col.isLeadingUtilityColumn();
+    if (col.isRowNumberColumn()) {
       header.classList.add("pte-hcell-row-number");
+    } else if (col.isSelectionCheckboxColumn()) {
+      header.classList.add("pte-hcell-checkbox");
     }
     if (col.children.length === 0) {
       header.classList.add("pte-hcell-leaf");
@@ -220,6 +228,14 @@ export class HeaderRenderer {
     headerLabel.className = "pte-hcell-label";
     headerLabel.textContent = isRowNumberColumn ? "" : col.label ?? col.key;
     headerContent.appendChild(headerLabel);
+    if (col.isSelectionCheckboxColumn() && this.params.core.options.rowSelectionHeaderCheckbox) {
+      // Tri-state select-all visual. State classes are driven by refreshSelectAllCheckbox();
+      // semantics live on the hcell's aria-label (a columnheader cannot carry aria-checked).
+      this.selectAllCheckboxEl = createElement("span", "pte-checkbox pte-select-all-checkbox");
+      this.selectAllCheckboxEl.setAttribute("aria-hidden", "true");
+      headerContent.appendChild(this.selectAllCheckboxEl);
+      this.refreshSelectAllCheckbox();
+    }
     this.appendHeaderChildren(col, header, maxDepth);
     if (col.children.length === 0) {
       header.style.width = `${col.computedWidth}px`;
@@ -407,6 +423,23 @@ export class HeaderRenderer {
    * removing a sorted column renumbers the priority badges of the others — a per-changed-column
    * update would leave stale numbers behind.
    */
+  /**
+   * Sync the header select-all checkbox with the current selection: checked when every row in the
+   * select-all scope is selected, indeterminate when some are, empty otherwise. The hcell's
+   * aria-label mirrors the action a click would perform.
+   */
+  refreshSelectAllCheckbox() {
+    const box = this.selectAllCheckboxEl;
+    if (!box) return;
+    const core = this.params.core;
+    const all = core.areAllRowsSelected();
+    const some = !all && core.getSelectedRowIds().size > 0;
+    box.classList.toggle("selected", all);
+    box.classList.toggle("pte-checkbox-indeterminate", some);
+    const hcell = box.closest(".pte-hcell");
+    hcell?.setAttribute("aria-label", all ? "Deselect all rows" : "Select all rows");
+  }
+
   refreshSortIndicators() {
     for (const col of this.params.core.getColumnModel().getLeaves()) {
       if (col.sortable) this.updateSortIcon(col);

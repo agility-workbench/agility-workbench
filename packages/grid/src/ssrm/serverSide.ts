@@ -119,6 +119,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return { added: 0, updated: 0, removed: 0 };
   }
 
+  diffRows(_rows: Row[]): null {
+    // The server owns the row set, so there is nothing local to diff against; the core falls back
+    // to a replacement. Both wrappers skip rowData entirely on this model.
+    return null;
+  }
+
   isValid(): boolean {
     return this.serverDataSource?.getRows != null;
   }
@@ -222,6 +228,17 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   getRowNode(id: string): IRowNode<Row> | undefined {
     return this.nodesMap.get(id);
+  }
+
+  getViewIndexInFullView(id: string): number | undefined {
+    const node = this.nodesMap.get(id);
+    if (!node || node.viewIndex < 0) return undefined;
+    // Only slots inside the current window get their (page-local) viewIndex restamped, so a node the
+    // store still holds from an earlier page or an out-of-window block carries a stale one. The
+    // server owns the row order, so there is nothing to recompute from here: confirm the slot really
+    // is this row's and otherwise report "no slot" rather than guessing.
+    if (this.getRowNodeAtViewIndex(node.viewIndex)?.id !== id) return undefined;
+    return (this.paginate ? this.viewStartRow : 0) + node.viewIndex;
   }
 
   // View index of a group's last visible descendant (its own index when collapsed or empty).
@@ -851,6 +868,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         filters: item.filters.map(filter => ({
           type: filter.type,
           values: filter.values,
+          ...(filter.mode ? { mode: filter.mode } : {}),
         })),
         join: item.join,
       });

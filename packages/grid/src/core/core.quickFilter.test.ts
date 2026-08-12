@@ -70,12 +70,51 @@ describe("GridCore quick filter", () => {
     expect(ss.getQuickFilterText()).toBe("");
   });
 
-  it("resets to the first page when the search changes", () => {
-    const paged = makeGrid({ pagination: true, pageSize: 2 });
-    // Move to page 2 first (pageIndex is 0-based).
+  // Six rows so the filtered set ("acme" matches 1-4) still spans two pages at pageSize 2.
+  function makePagedGrid(options: Record<string, any> = {}) {
+    const paged = new GridCore(measurer, {
+      rowIdKey: "id", rowModelType: "clientSide", quickFilter: true,
+      pagination: true, pageSize: 2, pageSizes: [2], ...options,
+    });
+    paged.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    paged.setRowData([
+      { id: "1", name: "Acme Corp" },
+      { id: "2", name: "Acme Labs" },
+      { id: "3", name: "Acme Ltd" },
+      { id: "4", name: "Acme Inc" },
+      { id: "5", name: "Globex" },
+      { id: "6", name: "Initech" },
+    ]);
+    paged.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name", type: ColumnType.STRING },
+    ]);
+    return paged;
+  }
+
+  it("keeps the current page when the search changes (default resetPageOn: [])", () => {
+    const paged = makePagedGrid();
     paged.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 2 });
     paged.dispatch({ type: "quickFilterSet", text: "acme" });
-    // After filtering to 2 rows with pageSize 2, both are on page 1.
-    expect(viewIds(paged).sort()).toEqual(["1", "2"]);
+    // 4 matches at pageSize 2 = 2 pages; page 2 is still valid and shows filtered rows 3-4.
+    expect(paged.getPaginationInfo().pageIndex).toBe(1);
+    expect(viewIds(paged)).toEqual(["3", "4"]);
+  });
+
+  it("clamps to the last page when the kept page falls out of range", () => {
+    const paged = makePagedGrid();
+    paged.dispatch({ type: "paginationSet", enabled: true, pageIndex: 2, pageSize: 2 });
+    expect(viewIds(paged)).toEqual(["5", "6"]);
+    paged.dispatch({ type: "quickFilterSet", text: "acme" });
+    // 4 matches = 2 pages; page 3 no longer exists, so the grid lands on the last page (index 1).
+    expect(paged.getPaginationInfo().pageIndex).toBe(1);
+    expect(viewIds(paged)).toEqual(["3", "4"]);
+  });
+
+  it("resets to the first page when 'quickFilter' is in resetPageOn", () => {
+    const paged = makePagedGrid({ resetPageOn: ["quickFilter"] });
+    paged.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 2 });
+    paged.dispatch({ type: "quickFilterSet", text: "acme" });
+    expect(paged.getPaginationInfo().pageIndex).toBe(0);
+    expect(viewIds(paged)).toEqual(["1", "2"]);
   });
 });

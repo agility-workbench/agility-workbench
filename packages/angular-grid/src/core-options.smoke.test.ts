@@ -1,6 +1,6 @@
 import { Component } from "@angular/core";
 import { describe, expect, it } from "vitest";
-import type { IGridAPI } from "@agility-workbench/grid";
+import type { GridOptions, IGridAPI } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
 import type { NgColDef } from "./interface";
 import { mountGridHost, syncGridInputs } from "./test-utils";
@@ -16,6 +16,7 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
       rowIdKey="id"
       [autosizeColumnsOnDataChange]="autosize"
       [clearSelectionOnBodyClick]="clearOnBodyClick"
+      [resetPageOn]="resetPageOn"
       (gridReady)="api = $event"
     />
   `,
@@ -24,6 +25,7 @@ class CoreOptionsHost {
   api: IGridAPI | null = null;
   autosize = false;
   clearOnBodyClick = true;
+  resetPageOn: GridOptions["resetPageOn"];
   rows = [{ id: "1", name: "A" }];
   cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
 }
@@ -74,5 +76,17 @@ describe("AwbGrid core option forwarding", () => {
       new MouseEvent("mousedown", { bubbles: true, button: 0 }),
     );
     expect(host.api!.getSelection().kind).toBe("cell");
+  });
+
+  it("resolves resetPageOn to the [] default when the input is omitted", async () => {
+    const { host } = await mountGridHost(CoreOptionsHost);
+    expect(host.api!.getCore().getOptions().resetPageOn).toEqual([]);
+  });
+
+  it("forwards an explicit resetPageOn input to core", async () => {
+    const { host } = await mountGridHost(CoreOptionsHost, 600, (instance) => {
+      instance.resetPageOn = ["filter", "sort"];
+    });
+    expect(host.api!.getCore().getOptions().resetPageOn).toEqual(["filter", "sort"]);
   });
 });

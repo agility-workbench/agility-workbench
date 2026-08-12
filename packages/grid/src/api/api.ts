@@ -1,6 +1,6 @@
 import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
-import { ExportParams, IGridAPI, NavDir } from "../interfaces/iGridAPI";
+import { ExportParams, IGridAPI, NavDir, RowScrollPosition } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
@@ -10,11 +10,28 @@ import {
   RowPinnedPosition,
   TreeDataKeyboardNavigationMode,
 } from "../interfaces/gridOptions";
-import { FilterItem } from "../interfaces/filter";
-import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { GridViewState } from "../interfaces/gridView";
+import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
+import { RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { Column } from "../column/column";
+import { ColumnFilterMenuService } from "../filter/filterMenuService";
+import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
+import {
+  computeUniqueValues,
+  buildSetOptions,
+  defaultValueKey,
+  defFromCheckedKeys,
+  isValueChecked,
+  resolveOption,
+  selectionSummary,
+  SetFilterSelection,
+  toggleOption,
+  ValueKeyFn,
+  valueOptions,
+} from "../filter/setFilterCore";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
+import { GridHistoryState } from "../core/historyModel";
 
 /** Export hooks provided by the renderer once it's attached (it owns the leaf columns + widths). */
 export interface GridApiExporter {
@@ -30,6 +47,12 @@ export interface GridApiTooltipController {
   hideTooltip: () => void;
 }
 
+/** Scroll hooks provided by the renderer once it's attached (it owns the scrollers). */
+export interface GridApiScrollController {
+  ensureRowVisible: (viewIdx: number, rowPinned?: RowPinnedPosition, position?: RowScrollPosition) => void;
+  ensureColumnVisible: (colIdx: number) => void;
+}
+
 export interface GridApiPinnedRowsController {
   setPinnedTopRowData: (rows: RowData[]) => void;
   setPinnedBottomRowData: (rows: RowData[]) => void;
@@ -40,7 +63,9 @@ export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
+  private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
+  private filterMenuService?: ColumnFilterMenuService;
 
   constructor(private core: IGridCore) {}
 
@@ -54,14 +79,74 @@ export class GridAPI implements IGridAPI {
     this._tooltip = controller;
   }
 
+  /** Wire the scrollers. Called by the renderer on attach; before that these are no-ops. */
+  setScrollController(controller: GridApiScrollController): void {
+    this._scroll = controller;
+  }
+
   setPinnedRowsController(controller: GridApiPinnedRowsController): void {
     this._pinnedRows = controller;
+  }
+
+  // ---------------- Scrolling ----------------
+  ensureRowVisible(rowId: GridId, opts?: { position?: RowScrollPosition }): boolean {
+    if (!this._scroll) {
+      console.warn("ensureRowVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    // The core does the model half — expand ancestors, page to the row — and reports the slot the
+    // renderer will draw it at. No slot means no amount of scrolling would show it.
+    const target = this.core.revealRow(rowId);
+    if (!target) return false;
+    this._scroll.ensureRowVisible(target.viewIndex, target.rowPinned, opts?.position ?? "auto");
+    return true;
+  }
+
+  ensureColumnVisible(colId: string): boolean {
+    if (!this._scroll) {
+      console.warn("ensureColumnVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    const colIdx = this.leafColumnIndex(colId);
+    if (colIdx < 0) return false;
+    this._scroll.ensureColumnVisible(colIdx);
+    return true;
+  }
+
+  ensureCellVisible(cell: CellRef, opts?: { position?: RowScrollPosition }): boolean {
+    // Checked here as well as in each half, so an unrendered grid warns once per call, not twice.
+    if (!this._scroll) {
+      console.warn("ensureCellVisible called before the grid was rendered; ignoring.");
+      return false;
+    }
+    // Deliberately not short-circuiting: each axis is independently useful, so a bad colId still
+    // gets you to the row.
+    const rowVisible = this.ensureRowVisible(cell.rowId, opts);
+    const colVisible = this.ensureColumnVisible(cell.colInstanceId ?? cell.colId);
+    return rowVisible && colVisible;
+  }
+
+  /** Index of a column among the visible leaves (what the renderer indexes cells by); -1 if it
+   * isn't one — unknown id, or hidden (directly or by a collapsed column group). */
+  private leafColumnIndex(colId: string | undefined): number {
+    if (colId == null) return -1;
+    const model = this.core.getColumnModel();
+    // resolve() is instance-id first, then public colId, then field key (A3: public colIds are not
+    // unique), which is exactly the precedence every other id input on this API uses.
+    const col = model.resolve(colId);
+    if (!col || col.hidden) return -1;
+    return model.getLeaves().findIndex(c => c.instanceID === col.instanceID);
   }
 
   showTooltip(cell: CellRef): void {
     if (!this._tooltip) return;
     const viewIdx = this.core.getViewIndexForRowId(cell.rowId);
-    const colIdx = this.core.getColumnModel().getLeaves().findIndex((c) => c.instanceID === cell.colId);
+    const col = cell.colInstanceId
+      ? this.core.getColumnModel().getById(cell.colInstanceId)
+      : this.core.getColumnModel().resolve(cell.colId);
+    const colIdx = col
+      ? this.core.getColumnModel().getLeaves().findIndex((c) => c.instanceID === col.instanceID)
+      : -1;
     if (viewIdx == null || viewIdx < 0 || colIdx < 0) return;
     this._tooltip.showBodyTooltip(viewIdx, colIdx);
   }
@@ -137,8 +222,8 @@ export class GridAPI implements IGridAPI {
     add?: RowData[];
     update?: { rowId: GridId; row: RowData }[];
     remove?: GridId[];
-  }): void {
-    this.dispatch({ type: "rowTransactionApply", add: tx.add, update: tx.update, remove: tx.remove });
+  }): RowTransactionResult {
+    return this.core.applyTransaction(tx);
   }
 
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
@@ -147,6 +232,183 @@ export class GridAPI implements IGridAPI {
 
   getQuickFilterText(): string {
     return this.core.getQuickFilterText();
+  }
+
+  // ---------------- Filtering ----------------
+  getFilterModel(): GridViewFilterState[] {
+    return this.core.getFilterModel().items.map(item => ({
+      colId: item.col.colId,
+      filters: item.filters.map(filter => ({
+        type: filter.type,
+        values: cloneViewValue(filter.values),
+        ...(filter.mode ? { mode: filter.mode } : {}),
+      })),
+      join: item.join,
+    }));
+  }
+
+  setFilterModel(filters: GridViewFilterState[]): void {
+    this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(filters ?? []) });
+  }
+
+  addFilterModel(filter: GridViewFilterState): void {
+    const [item] = this.toFilterItems([filter]);
+    if (!item) return;
+    const others = this.core.getFilterModel().items
+      .filter(existing => existing.col.instanceID !== item.col.instanceID);
+    this.dispatch({ type: "filterModelSet", filterModel: [...others, item] });
+  }
+
+  removeFilterModel(colId: string): void {
+    const col = this.resolveColumn(colId);
+    if (!col) return;
+    const items = this.core.getFilterModel().items;
+    const next = items.filter(existing => existing.col.instanceID !== col.instanceID);
+    // No filter on that column — skip the dispatch, which would reset the page and clear selection.
+    if (next.length === items.length) return;
+    this.dispatch({ type: "filterModelSet", filterModel: next });
+  }
+
+  // ---------------- Set filter ----------------
+  async getSetFilterValues(colId: string): Promise<unknown[]> {
+    const session = await this.loadSetFilterSession(colId);
+    return session ? valueOptions(session.options).map(o => o.raw) : [];
+  }
+
+  async getSetFilterState(colId: string): Promise<SetFilterSelection | null> {
+    const col = this.resolveColumn(colId);
+    if (!col) return null;
+    const def = this.currentSetDef(col);
+    if (!def) return null;
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return null;
+    return selectionSummary(def, session.options, session.keyFn);
+  }
+
+  checkSetFilterValue(colId: string, value: unknown): Promise<void> {
+    return this.toggleSetFilterValue(colId, value, true);
+  }
+
+  uncheckSetFilterValue(colId: string, value: unknown): Promise<void> {
+    return this.toggleSetFilterValue(colId, value, false);
+  }
+
+  async setSetFilterValues(colId: string, values: unknown[], opts?: { mode?: SetFilterMode }): Promise<void> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return;
+    const mode = opts?.mode ?? "include";
+
+    const resolved = new Set<string>();
+    for (const value of values ?? []) {
+      const option = resolveOption(session.options, value, session.keyFn);
+      if (option) resolved.add(option.key);
+      else console.warn(`Set filter on "${colId}": value ${JSON.stringify(value)} is not in the value universe; ignoring it.`);
+    }
+    const checked = mode === "include"
+      ? resolved
+      : new Set(valueOptions(session.options).map(o => o.key).filter(key => !resolved.has(key)));
+    this.applySetDef(session.col, defFromCheckedKeys(checked, session.options, { mode }));
+  }
+
+  private async toggleSetFilterValue(colId: string, value: unknown, checked: boolean): Promise<void> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return;
+    const option = resolveOption(session.options, value, session.keyFn);
+    if (!option) {
+      console.warn(`Set filter on "${colId}": value ${JSON.stringify(value)} is not in the value universe; ignoring it.`);
+      return;
+    }
+    const def = this.currentSetDef(session.col);
+    // Already in the requested state — skip the dispatch (which resets the page and selection).
+    if (isValueChecked(def, option, session.keyFn) === checked) return;
+    this.applySetDef(session.col, toggleOption(def, option, checked, session.options, session.keyFn));
+  }
+
+  /** The column's active in/notIn def, or null when it has no set filter. */
+  private currentSetDef(col: Column): FilterDef | null {
+    const item = this.core.getFilterModel().items.find(i => i.col.instanceID === col.instanceID);
+    return item?.filters.find(f => f.type === FilterType.IN || f.type === FilterType.NOT_IN) ?? null;
+  }
+
+  /** Replace the column's whole filter with one set def (null removes it). */
+  private applySetDef(col: Column, def: FilterDef | null): void {
+    const items = this.core.getFilterModel().items;
+    const others = items.filter(i => i.col.instanceID !== col.instanceID);
+    if (def === null) {
+      if (others.length === items.length) return;
+      this.dispatch({ type: "filterModelSet", filterModel: others });
+      return;
+    }
+    this.dispatch({
+      type: "filterModelSet",
+      filterModel: [...others, { col, key: col.key, filters: [def], join: "and" }],
+    });
+  }
+
+  /** Build the column's set-filter universe headlessly (same spec + sources the menu uses). */
+  private async loadSetFilterSession(
+    colId: string,
+  ): Promise<{ col: Column; options: SetFilterOptions[]; keyFn: ValueKeyFn } | null> {
+    const col = this.resolveColumn(colId);
+    if (!col) {
+      console.warn(`Set filter: unknown column "${colId}".`);
+      return null;
+    }
+    if (!this.filterMenuService) this.filterMenuService = new ColumnFilterMenuService(this.core);
+    const spec = this.filterMenuService.buildFilterMenu({ trigger: "api", targetCol: col });
+    if (spec.kind !== "set") {
+      console.warn(`Set filter: column "${colId}" does not use the set filter (kind "${spec.kind}").`);
+      return null;
+    }
+    const keyFn = spec.valueKey ?? defaultValueKey;
+    const values = await this.loadSetFilterSourceValues(spec);
+    return { col, options: buildSetOptions(values, keyFn, spec.valueLabel), keyFn };
+  }
+
+  private loadSetFilterSourceValues(spec: FilterPanelSpec): Promise<any[]> {
+    const source = spec.conditionTemplate.valueSource;
+    if (!source || source.kind === "static") {
+      return Promise.resolve((source && source.values) ?? []);
+    }
+    if (source.kind === "fromRows") {
+      return Promise.resolve(computeUniqueValues(
+        (callback) => this.core.getRowModel().forEachNode(callback),
+        (row) => spec.column.getValue(row),
+        spec.valueKey ?? defaultValueKey,
+        spec.valueLabel ?? ((x: any) => String(x)),
+      ));
+    }
+    return new Promise((resolve, reject) => {
+      const abort = new AbortController();
+      const res = new FilterValueAsyncSourceParamsImpl(spec.column.col, abort.signal);
+      res.onSuccess(values => resolve(values ?? []));
+      res.onError(err => reject(err instanceof Error ? err : new Error(String(err ?? "Failed to load filter values"))));
+      void source.load(res);
+    });
+  }
+
+  /** Resolve a public colId (falling back to instance id, then key) to a live column. */
+  private resolveColumn(colId: string): Column | undefined {
+    const model = this.core.getColumnModel();
+    return model.getByColId(colId) ?? model.getById(colId) ?? model.getByKey(colId);
+  }
+
+  /** Convert serializable per-column filter state into core FilterItems; unknown colIds drop out. */
+  private toFilterItems(states: GridViewFilterState[]): FilterItem[] {
+    return states.flatMap(item => {
+      const col = this.resolveColumn(item.colId);
+      if (!col) return [];
+      return [{
+        col,
+        key: col.key,
+        filters: item.filters.map(filter => ({
+          type: filter.type,
+          values: cloneViewValue(filter.values),
+          ...(filter.mode ? { mode: filter.mode } : {}),
+        })),
+        join: item.join,
+      }];
+    });
   }
 
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
@@ -158,6 +420,7 @@ export class GridAPI implements IGridAPI {
   }
 
   captureViewState(): GridViewState {
+    const pagination = this.core.getPaginationInfo();
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
@@ -166,19 +429,15 @@ export class GridAPI implements IGridAPI {
         colId: item.col.colId,
         dir: item.dir,
       })),
-      filterModel: this.core.getFilterModel().items.map(item => ({
-        colId: item.col.colId,
-        filters: item.filters.map(filter => ({
-          type: filter.type,
-          values: cloneViewValue(filter.values),
-        })),
-        join: item.join,
-      })),
+      filterModel: this.getFilterModel(),
       quickFilterText: this.core.getQuickFilterText(),
       groupExpansion: this.core.getRowModel().getGroupNodes().map(node => ({
         groupId: node.id,
         expanded: node.isExpanded,
       })),
+      ...(pagination.paginationEnabled
+        ? { pagination: { pageIndex: pagination.pageIndex, pageSize: pagination.pageSize } }
+        : {}),
     };
   }
 
@@ -203,23 +462,26 @@ export class GridAPI implements IGridAPI {
       ],
     });
 
-    const filters: FilterItem[] = (state.filterModel ?? []).flatMap(item => {
-      const col = this.core.getColumnModel().getByColId(item.colId)
-        ?? this.core.getColumnModel().getById(item.colId)
-        ?? this.core.getColumnModel().getByKey(item.colId);
-      if (!col) return [];
-      return [{
-        col,
-        key: col.key,
-        filters: item.filters.map(filter => ({
-          type: filter.type,
-          values: cloneViewValue(filter.values),
-        })),
-        join: item.join,
-      }];
-    });
-    this.dispatch({ type: "filterModelSet", filterModel: filters });
+    this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
+
+    // Restore the page AFTER the filter/quick-filter dispatches above — depending on
+    // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.
+    // Old captures without a pagination field leave the page untouched.
+    const pagination = this.core.getPaginationInfo();
+    if (state.pagination && pagination.paginationEnabled && state.pagination.pageSize > 0) {
+      const { pageIndex, pageSize } = state.pagination;
+      // Clamp to the last page of the CURRENT (possibly smaller) dataset when the total is known.
+      const lastPage = pagination.totalRowCountKnown
+        ? Math.max(0, Math.ceil(pagination.totalRowCount / pageSize) - 1)
+        : Number.POSITIVE_INFINITY;
+      this.dispatch({
+        type: "paginationSet",
+        enabled: true,
+        pageIndex: Math.max(0, Math.min(pageIndex, lastPage)),
+        pageSize,
+      });
+    }
 
     const expansion = new Map(
       (state.groupExpansion ?? []).map(item => [item.groupId, item.expanded]),
@@ -302,6 +564,10 @@ export class GridAPI implements IGridAPI {
     return this.core.areAllRowsSelected();
   }
 
+  selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
+    this.core.dispatch({ type: "rowSelectByIds", rowIds, mode });
+  }
+
   // ---------------- Editing ----------------
   startEditingCell(cell: CellRef): void {
     this.core.dispatch({ type: "editStart", cell, source: "api" });
@@ -323,8 +589,20 @@ export class GridAPI implements IGridAPI {
     return this.core.getEditingCell();
   }
 
+  // A programmatic write states its own type: a string is user-style input and runs through the
+  // column's valueParser, anything else is already the typed value to store. Without this,
+  // setCellValue(cell, 99) on a parser-less numeric column stores the string "99".
   setCellValue(cell: CellRef, value: unknown): void {
-    this.core.dispatch({ type: "editCommit", cell, value });
+    this.core.dispatch({ type: "editCommit", cell, value, parsed: typeof value !== "string" });
+  }
+
+  setCellValues(edits: { cell: CellRef; value: unknown }[]): void {
+    if (edits.length === 0) return;
+    this.core.dispatch({
+      type: "cellsCommit",
+      reason: "api",
+      edits: edits.map(e => ({ ...e, parsed: typeof e.value !== "string" })),
+    });
   }
 
   // ---------------- Clipboard ----------------
@@ -362,8 +640,20 @@ export class GridAPI implements IGridAPI {
     return this.core.canRedo();
   }
 
+  getHistoryState(): GridHistoryState {
+    return this.core.getHistoryState();
+  }
+
   clearHistory(): void {
     this.core.clearHistory();
+  }
+
+  withUndoGroup<T>(fn: () => T): T {
+    return this.core.runInHistoryScope("group", fn);
+  }
+
+  withoutUndoHistory<T>(fn: () => T): T {
+    return this.core.runInHistoryScope("skip", fn);
   }
 
   // ---------------- Export ----------------

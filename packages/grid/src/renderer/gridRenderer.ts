@@ -11,7 +11,7 @@ import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { IGridAPI } from "../interfaces/iGridAPI";
+import { IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -259,6 +259,8 @@ export class GridRenderer {
       },
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
+        // Filter/sort/pagination changes move rows through the select-all scope.
+        this._headerRenderer.refreshSelectAllCheckbox();
         this._pinnedRowsRenderer?.render(undefined, true);
         this._refreshAriaCounts();
       },
@@ -268,6 +270,7 @@ export class GridRenderer {
       onSelectionChanged: () => {
         this._selectionRenderer.onSelectionChanged();
         this._pinnedRowsRenderer?.refreshSelectionStyles();
+        this._headerRenderer.refreshSelectAllCheckbox();
         this._announceSelection();
       },
       onFocusChanged: (params) => {
@@ -477,6 +480,24 @@ export class GridRenderer {
       }) => void;
     };
     apiWithPinnedRows.setPinnedRowsController?.(this._pinnedRowsRenderer);
+    // Expose scrolling on the public API (api.ensureRowVisible / ensureColumnVisible /
+    // ensureCellVisible): the core resolves a row id to a view slot, the renderer owns the scrollers.
+    // Probed structurally to avoid a renderer→api import cycle, matching the exporter hook above.
+    const apiWithScroll = this.api as unknown as {
+      setScrollController?: (c: {
+        ensureRowVisible: (
+          viewIdx: number,
+          rowPinned?: "top" | "bottom",
+          position?: RowScrollPosition,
+        ) => void;
+        ensureColumnVisible: (colIdx: number) => void;
+      }) => void;
+    };
+    apiWithScroll.setScrollController?.({
+      ensureRowVisible: (viewIdx, rowPinned, position) =>
+        this.ensureRowVisible(viewIdx, rowPinned, position),
+      ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
+    });
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.root);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
     // Tooltips sit below the menu band (menus use 9999+) so a column/context menu covers a tooltip.
@@ -490,7 +511,7 @@ export class GridRenderer {
       headerWrapper: headerRefs.wrapper,
       floating: this._tooltipFloating,
       leafColumns: () => this._leafColumns,
-      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      getColumnById: (id) => this.core.getColumnModel().resolve(id),
       options: () => resolveTooltipOptions(this._tooltipOptions),
     });
     // Expose programmatic tooltip control on the public API (api.showTooltip / hideTooltip). Probe
@@ -515,7 +536,7 @@ export class GridRenderer {
       root: this.root,
       floating: this._actionFrameFloating,
       leafColumns: () => this._leafColumns,
-      getColumnById: (id) => this.core.getColumnModel().getById(id),
+      getColumnById: (id) => this.core.getColumnModel().resolve(id),
       ensureCellVisible: (viewIdx, colIdx) => this._ensureCellVisible(viewIdx, colIdx),
     });
     this._aggregateRowRenderer = new AggregateRowRenderer(this.root, this.rowHeight, (e) => {
@@ -1295,7 +1316,9 @@ export class GridRenderer {
   // committed edit and to restore a cell when its editor is torn down.
   _repaintCell(rowId: string, colId: string) {
     const viewIdx = this.core.getViewIndexForRowId(rowId);
-    const lookup = this._leafColumnLookup.get(colId);
+    // Accept either id space (payloads carry the public colId; internal callers pass instance ids).
+    const col = this.core.getColumnModel().resolve(colId);
+    const lookup = col ? this._leafColumnLookup.get(col.instanceID) : undefined;
     // Pinned band rows (application data rows) have no body view index — rebuild the bands so the
     // edited/restored cell content re-renders there.
     if (viewIdx == null && this.core.getDisplayedPinnedRowRef(rowId)) {
@@ -1305,7 +1328,6 @@ export class GridRenderer {
     if (viewIdx == null || !lookup) return;
     const slot = this._rowPool[viewIdx - this._startIndex];
     if (!slot) return;
-    const col = this.core.getColumnModel().getById(colId);
     const row = this.core.getRowModel().getRowNode(rowId);
     if (!col || !row) return;
     const cells = lookup.section === "left" ? slot.leftCellEls
@@ -1328,7 +1350,7 @@ export class GridRenderer {
       return;
     }
     for (const rowId of params.rowIds) {
-      for (const colId of params.colIds) {
+      for (const colId of params.colInstanceIds) {
         this._repaintCell(rowId, colId);
       }
     }
@@ -1391,27 +1413,53 @@ export class GridRenderer {
     colIdx: number,
     rowPinned?: "top" | "bottom",
   ) {
-    const refs = this._bodyViewportRenderer.getRefs();
+    this.ensureRowVisible(viewIdx, rowPinned);
+    this.ensureColumnVisible(colIdx);
+  }
 
-    // Vertical: scroll centerScroller so the row is fully in view. Body positions are compacted
-    // for application-pinned model rows, and the effective viewport top is inset by the sticky
-    // ancestor chain that will dock above the row — otherwise the row would technically be in
-    // view but sitting hidden underneath the overlay.
+  /**
+   * Scroll a row into view vertically. Split out of `_ensureCellVisible` for `api.ensureRowVisible`,
+   * which has no column to move to. `position` is where the row should end up: "auto" scrolls the
+   * minimum needed and leaves an already-visible row alone, the others place it deliberately even
+   * when it is on screen already (a "jump to row" flow wants the row where the eye is).
+   */
+  ensureRowVisible(
+    viewIdx: number,
+    rowPinned?: "top" | "bottom",
+    position: RowScrollPosition = "auto",
+  ) {
     if (rowPinned) {
       this._pinnedRowsRenderer.ensureCellVisible(rowPinned, viewIdx);
-    } else {
-      const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
-      const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
-      const viewH = refs.body.clientHeight;
-      const st = refs.centerScroller.scrollTop;
+      return;
+    }
+
+    const refs = this._bodyViewportRenderer.getRefs();
+    // Body positions are compacted for application-pinned model rows, and the effective viewport top
+    // is inset by the sticky ancestor chain that will dock above the row — otherwise the row would
+    // technically be in view but sitting hidden underneath the overlay.
+    const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+    const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
+    const viewH = refs.body.clientHeight;
+    const st = refs.centerScroller.scrollTop;
+
+    if (position === "auto") {
       if (rowTop - clearance < st) {
         refs.centerScroller.scrollTop = Math.max(0, rowTop - clearance);
       } else if (rowTop + this.rowHeight > st + viewH) {
         refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
       }
+      return;
     }
 
-    this.ensureColumnVisible(colIdx);
+    const desired = position === "top"
+      ? rowTop
+      : position === "bottom"
+        ? rowTop + this.rowHeight - viewH
+        : rowTop - (viewH - this.rowHeight) / 2;
+    // `rowTop - clearance` is the largest scrollTop that still keeps the row clear of the sticky
+    // overlay, so it caps every placement — in a viewport too short to honor the request, docking
+    // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
+    refs.centerScroller.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
   }
 
   /**

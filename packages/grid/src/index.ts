@@ -1,5 +1,25 @@
 export type { IGridCore } from "./interfaces/iGridCore";
-export type { IGridAPI } from "./interfaces/iGridAPI";
+export type {
+  ExcelExportCellParams,
+  ExcelExportCellProcessor,
+  ExcelExportCellResult,
+  ExcelExportCellStyle,
+  ExcelExportRowType,
+  ExportParams,
+  ExportScope,
+  IGridAPI,
+  NavDir,
+  RowScrollPosition,
+} from "./interfaces/iGridAPI";
+export type {
+  CellPos,
+  CellRef,
+  SelectionKind,
+  SelectionRange,
+  SelectionSnapshot,
+} from "./interfaces/selection";
+export type { Column } from "./column/column";
+export type { GridAction } from "./events/action";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
 export { SparklineRenderer } from "./cellRenderers/sparklineRenderer";
@@ -55,10 +75,16 @@ export type { BodyMenuContext } from "./menu";
 export type { ColumnMenuContext } from "./menu";
 export { isFalse, isTrue } from "./misc";
 
+export { REJECT } from "./interfaces/gridOptions";
 export type {
   GridOptions,
   CellValueChangedParams,
+  BeforeCellCommitParams,
+  CellCommitSource,
+  RowSelectionOptions,
   SortChangedParams,
+  ResetPageTrigger,
+  RowDataMode,
   RowClassParams,
   GetRowClass,
   GetRowStyle,
@@ -94,6 +120,7 @@ export type {
 export type {
   GridViewFilterState,
   GridViewGroupExpansionState,
+  GridViewPaginationState,
   GridViewSortState,
   GridViewState,
   SavedGridView,
@@ -120,13 +147,21 @@ export type {
   FilterDef,
   FilterInputType,
   FilterItem,
+  FilterModel,
   FilterOption,
   FilterParams,
+  SetFilterMode,
 } from "./interfaces/filter";
+export type { SetFilterSelection } from "./filter/setFilterCore";
 
 export type {
+  CellValueChangeSource,
   GridEventAggregateChangedParams,
   GridEventCellClickedParams,
+  GridEventCellValueChangedParams,
+  GridEventFilterChangedParams,
+  GridEventHistoryChangedParams,
+  HistoryChangeReason,
   GridEventRowClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
@@ -149,9 +184,13 @@ export type {
   Unsubscribe,
 } from "./events/events";
 
+export type { GridHistoryState } from "./core/historyModel";
+
 export type {
   IRowModel,
+  RowDataDiff,
   RowModelType,
+  RowTransactionResult,
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
 export type { IRowNode } from "./interfaces/iRowNode";

@@ -175,10 +175,10 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           if (!(Number(cell) <= Number(f.v))) ok = false;
           break;
         case "in":
-          if (!Array.isArray(f.v) || !f.v.includes(cell)) ok = false;
+          if (!Array.isArray(f.v) || !setValuesInclude(f.v, cell)) ok = false;
           break;
         case "notIn":
-          if (Array.isArray(f.v) && f.v.includes(cell)) ok = false;
+          if (Array.isArray(f.v) && setValuesInclude(f.v, cell)) ok = false;
           break;
         case "isBlank":
           if (cell != null && cell !== "") ok = false;
@@ -208,4 +208,13 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
 
   out.length = outLen;
   return out;
+}
+
+// Membership test for set-filter (in/notIn) value lists. A null entry represents the "(Blanks)"
+// bucket and matches every blank cell (null, undefined, or empty string) — the set-filter menu and
+// API store the bucket as null, while rows may hold any of the three.
+function setValuesInclude(values: any[], cell: any): boolean {
+  if (values.includes(cell)) return true;
+  const cellIsBlank = cell == null || cell === "";
+  return cellIsBlank && values.includes(null);
 }

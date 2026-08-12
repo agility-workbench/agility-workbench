@@ -32,6 +32,16 @@ export interface RowTransactionResult {
   removed: number;
 }
 
+/**
+ * A row-level diff of an incoming `rowData` array against the rows already in the model, so a new
+ * array reference can be applied as a transaction instead of a wholesale replacement. See
+ * `IRowModel.diffRows`.
+ */
+export interface RowDataDiff<Row = any> extends RowTransaction<Row> {
+  /** Row ids in the order the incoming array supplied them — the display order when unsorted. */
+  order: string[];
+}
+
 export interface IRowModelRequestParams {
   readonly id: number;
   readonly reason: RowDataChangeReason;
@@ -81,7 +91,21 @@ export interface IRowModel<Row = any> {
   // Incremental add / update / remove of rows without a full data replacement. Node identity is
   // preserved for updated rows so renderers (e.g. change-flash) can detect deltas. Returns counts
   // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards.
-  applyTransaction(tx: RowTransaction): RowTransactionResult;
+  // `order`, when given, is the full set of row ids in the order the nodes should end up in —
+  // adds otherwise land at the end, which is wrong when the caller supplied a whole ordered array.
+  applyTransaction(tx: RowTransaction, order?: string[]): RowTransactionResult;
+
+  /**
+   * Diff an incoming `rowData` array against the current nodes so a new array reference can be
+   * applied as a transaction (preserving node identity, edit history and the page) instead of a
+   * wholesale replacement. A row is "updated" only when its object reference differs — diffing
+   * therefore assumes the caller produces new row objects for changed rows.
+   *
+   * Returns null when this model cannot diff and the caller must fall back to `setRows`: no stable
+   * row id configured, or a data shape the diff does not cover. Pure — computes only, mutates
+   * nothing.
+   */
+  diffRows?(rows: Row[]): RowDataDiff<Row> | null;
 
   // accessors for what the viewport needs
   getRowCount(): number;                    // total displayed (may be estimate)
@@ -114,6 +138,15 @@ export interface IRowModel<Row = any> {
    * contributing to the flattened count is open-ended (no `totalRows` reported and end not yet
    * reached). Absent = always known (client-side model). */
   isTotalRowCountKnown?(): boolean;
+
+  /**
+   * Index of a row in the whole displayed view — after filter/sort/grouping but BEFORE pagination —
+   * or undefined when it has no slot there (unknown id, excluded by the filter, inside a collapsed
+   * group, or not loaded). Deliberately not `node.viewIndex`, which is page-local on some models
+   * and absolute on others, and goes stale for rows that lost their slot; a caller that must decide
+   * WHICH page a row lives on needs a page-independent answer.
+   */
+  getViewIndexInFullView?(rowId: string): number | undefined;
 
   /** View index of a group's last visible descendant (its own index when collapsed/empty),
    * answered from store metadata so it works when the rows themselves are not loaded. Absent on

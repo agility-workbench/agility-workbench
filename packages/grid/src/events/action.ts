@@ -223,10 +223,19 @@ export type GridActionHeaderNavigate = {
 export type GridActionRowSelectSet = {
   type: "rowSelectSet";
   viewIdx: number;
-  mode: "replace" | "toggle" | "range";
+  // "range" replaces with anchor..row (row-number gesture); "rangeAdd" unions it in (checkbox).
+  mode: "replace" | "toggle" | "range" | "rangeAdd";
 };
 
 // Select or clear all selectable data rows in the current view (row-number header click).
+// Programmatic row selection by stable row id — lets an external selection owner drive the grid.
+export type GridActionRowSelectByIds = {
+  type: "rowSelectByIds";
+  rowIds: string[];
+  // "set" (default) replaces the row selection; "add"/"remove" adjust it.
+  mode?: "set" | "add" | "remove";
+};
+
 export type GridActionRowSelectAll = {
   type: "rowSelectAll";
   selected: boolean;
@@ -276,7 +285,9 @@ export type GridActionEditCancel = {
 // through its column's valueParser, and a single cellsChanged is emitted for the whole batch.
 export type GridActionCellsCommit = {
   type: "cellsCommit";
-  edits: { cell: CellRef; value: unknown }[];
+  // Per-edit `parsed` mirrors editCommit's flag: when true the value is already the final typed
+  // form and the column's valueParser is skipped. Clipboard edits are raw text and leave it unset.
+  edits: { cell: CellRef; value: unknown; parsed?: boolean }[];
   reason?: "paste" | "cut" | "clear" | "api";
 };
 
@@ -357,6 +368,7 @@ export type GridAction =
   | GridActionSelectionClear
   | GridActionRowSelectSet
   | GridActionRowSelectAll
+  | GridActionRowSelectByIds
   | GridActionColumnSelectSet
   | GridActionRangeSelectSet
   | GridActionEditStart

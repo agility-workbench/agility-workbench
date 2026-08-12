@@ -363,7 +363,7 @@ function App() {
 
         if (col.key == "fy2026") {
           col.filterParams = {
-            maxFilterItems: 7,
+            maxNumConditions: 7,
             buttons: ["apply", "cancel", "clear", "reset"],
           }
         }

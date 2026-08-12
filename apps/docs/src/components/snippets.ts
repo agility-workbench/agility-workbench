@@ -168,6 +168,7 @@ await api.refreshServerSideData({ purge: false });`,
   columnDefs={columns}
   toolbar={{ quickFilter: true }}
   quickFilter={{ matchMode: "multiTerm" }}
+  onFilterChanged={(ev) => recomputeSummary(ev.source, ev.changedColIds)}
 />`,
     angular: String.raw`columns: NgColDef[] = [
   { key: "customer", label: "Customer", filter: "text" },
@@ -179,6 +180,7 @@ await api.refreshServerSideData({ purge: false });`,
   [rowData]="rows"
   [columnDefs]="columns"
   [toolbar]="{ quickFilter: true }"
+  (filterChanged)="recomputeSummary($event)"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs: [
@@ -189,7 +191,9 @@ await api.refreshServerSideData({ purge: false });`,
   quickFilter: { matchMode: "multiTerm" },
 });
 
-api.setQuickFilter("EMEA on track");`,
+api.setQuickFilter("EMEA on track");
+// One canonical signal for column filters AND quick filter:
+api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));`,
   },
   sorting: {
     react: String.raw`<Grid

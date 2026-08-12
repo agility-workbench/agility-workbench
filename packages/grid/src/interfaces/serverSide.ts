@@ -8,6 +8,10 @@ export interface IServerSideFilter {
   filters: Array<{
     type: FilterType;
     values: any;
+    /** Set filters (in/notIn) only: the pinned user intent — "include" (only the listed values
+     * pass, unknown/new values are hidden) or "exclude" (listed values are hidden, everything
+     * else passes). Absent on filters driven purely by the menu. */
+    mode?: "include" | "exclude";
   }>;
   join?: "and" | "or";
 }

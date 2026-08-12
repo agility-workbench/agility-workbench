@@ -122,6 +122,7 @@ headers use the core DOM component contract.
   (cellValueChanged)="saveChange($event)"
   (selectionChanged)="selectionChanged($event)"
   (sortChanged)="sortChanged($event)"
+  (filterChanged)="filterChanged($event)"
 />
 ```
 

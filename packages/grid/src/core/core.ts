@@ -1,16 +1,19 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import {
+  CellCommitSource,
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
   InternalGridOptions,
   QuickFilterMatchMode,
+  REJECT,
+  ResetPageTrigger,
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
@@ -23,9 +26,10 @@ import {
   GridEventMap,
   GridEventName,
   GridEventPaginationChangedParams,
+  HistoryChangeReason,
   Unsubscribe,
 } from "../events/events";
-import { isTrue } from "../misc";
+import { isTrue, validatePageSizes } from "../misc";
 import { ColDef } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
@@ -34,7 +38,7 @@ import { GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel } from "./selectionModel";
-import { CellEdit, HistoryModel } from "./historyModel";
+import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
@@ -102,6 +106,10 @@ export class GridCore implements IGridCore {
   private bodyPinnedViewIndices: number[] = [];
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
+  // Active runInHistoryScope: "group" collects every step's edits into one entry pushed on exit,
+  // "skip" discards them. Null outside a scope. Nested scopes inherit the outermost mode.
+  private historyScopeMode: "group" | "skip" | null = null;
+  private historyScopeEdits: CellEdit[] = [];
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
@@ -138,17 +146,51 @@ export class GridCore implements IGridCore {
     this.on("cellClicked", (ev) => o.onCellClicked?.(ev));
     this.on("rowClicked", (ev) => o.onRowClicked?.(ev));
     this.on("selectionChanged", (ev) => o.onSelectionChanged?.(ev));
-    this.on("editingChanged", (ev) => {
-      if (ev.state === "committed" && ev.cell) {
-        o.onCellValueChanged?.({ rowId: ev.cell.rowId, colId: ev.cell.colId, value: ev.value });
-      }
+    this.on("cellValueChanged", (ev) => {
+      o.onCellValueChanged?.({
+        rowId: ev.cell.rowId,
+        colId: ev.cell.colId,
+        colInstanceId: ev.cell.colInstanceId,
+        value: ev.value,
+        oldValue: ev.oldValue,
+        source: ev.source,
+      });
     });
     this.on("columnsChanged", (ev) => {
-      if (ev.reason === "sort") o.onSortChanged?.({ changedColIds: ev.changedColIds });
+      if (ev.reason === "sort") {
+        o.onSortChanged?.({
+          changedColIds: ev.changedColIds,
+          changedColInstanceIds: ev.changedColInstanceIds,
+        });
+      }
     });
+    this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
+    this.on("historyChanged", (ev) => o.onHistoryChanged?.(ev));
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
+    const pageSize = options.pageSize ?? 100;
+    // Normalize pageSizes and make sure the configured pageSize is offered by the page-size
+    // selector — a <select> assigned a value with no matching option renders blank, and the
+    // configured size would become unreachable after the user's first change.
+    const pageSizes = validatePageSizes(options.pageSizes ?? [25, 50, 100], [25, 50, 100]);
+    if (!pageSizes.includes(pageSize)) {
+      if (options.pageSizes != null) {
+        console.warn(
+          `pageSize ${pageSize} is not one of pageSizes [${pageSizes.join(", ")}]; adding it to the page-size options.`,
+        );
+      }
+      pageSizes.push(pageSize);
+      pageSizes.sort((a, b) => a - b);
+    }
+    // Diffing keys rows by id, so without a stable one every replacement row would mint a fresh id
+    // and the diff would degrade to "remove all, add all". "auto" falls back silently — the caller
+    // did not ask for diffing — but an explicit request that cannot be honoured is worth saying.
+    if (options.rowDataMode === "diff" && options.getRowId == null && options.rowIdKey == null) {
+      console.warn(
+        "rowDataMode 'diff' needs a stable row id; set getRowId or rowIdKey. Falling back to 'reset'.",
+      );
+    }
     return {
       headerHeight: options.headerHeight ?? 43,
       leafHeaderHeight: options.leafHeaderHeight ?? 43,
@@ -158,6 +200,7 @@ export class GridCore implements IGridCore {
       pinnedBottomRowData: options.pinnedBottomRowData ?? [],
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
+      rowDataMode: options.rowDataMode ?? "auto",
       overscanRowCount: options.overscanRowCount ?? 10,
       minResizeWidth: options.minResizeWidth != null && options.minResizeWidth > 0 ? options.minResizeWidth : 75,
       maxColumnWidth: options.maxColumnWidth != null && options.maxColumnWidth > 0 ? options.maxColumnWidth : 420,
@@ -172,13 +215,21 @@ export class GridCore implements IGridCore {
       getRowStyle: options.getRowStyle,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
+      onBeforeCellCommit: options.onBeforeCellCommit,
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
+      onFilterChanged: options.onFilterChanged,
+      onHistoryChanged: options.onHistoryChanged,
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
-      rowSelection: isTrue(options.rowSelection),
+      rowSelection: typeof options.rowSelection === "object" ? true : isTrue(options.rowSelection),
+      rowSelectionCheckboxes: typeof options.rowSelection === "object"
+        && isTrue(options.rowSelection.checkboxes),
+      rowSelectionHeaderCheckbox: typeof options.rowSelection === "object"
+        && isTrue(options.rowSelection.checkboxes)
+        && (options.rowSelection.headerCheckbox ?? true),
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
@@ -186,8 +237,11 @@ export class GridCore implements IGridCore {
       bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
 
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
-      pageSize: options.pageSize ?? 100,
-      pageSizes: options.pageSizes ?? [25, 50, 100],
+      selectAllScope: options.selectAllScope ?? "filtered",
+      selectionPersistence: options.selectionPersistence ?? "clear",
+      resetPageOn: options.resetPageOn ?? [],
+      pageSize,
+      pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       getGroupChildCount: options.getGroupChildCount,
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
@@ -196,6 +250,7 @@ export class GridCore implements IGridCore {
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
       editTrigger: options.editTrigger ?? "doubleClick",
+      readOnlyEdit: isTrue(options.readOnlyEdit),
       pinnedRowsEditable: isTrue(options.pinnedRowsEditable),
       rowPinningMenu: isTrue(options.rowPinningMenu),
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
@@ -285,7 +340,8 @@ export class GridCore implements IGridCore {
     this.columnModel.setColumnDefs(colDefs);
     const seededSort = this.seedInitialSort();
     const changedSortColIds = this.reconcileSortModelColumns();
-    const changedFilterColIds = this.reconcileFilterModelColumns();
+    const { droppedCols: droppedFilterCols } = this.reconcileFilterModelColumns();
+    const filtersDropped = droppedFilterCols.length > 0;
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
     this.autosizeColumns();
@@ -293,19 +349,38 @@ export class GridCore implements IGridCore {
       item => sortedComparatorSnapshot.get(item.col.instanceID) !== item.col.userComparator,
     );
     // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
-    if (seededSort || activeComparatorChanged) {
+    // Dropping a filtered column changes the effective row set. A "filter" request re-runs both
+    // filtering and sorting; a "sort" request deliberately skips filtering, which previously left
+    // rows constrained by a filter that no longer existed until the next full model refresh.
+    if (filtersDropped) {
+      const range = this.pageRangeFor("filter");
+      this.rowModel.applyRequest(this.createRowModelRequest(
+        "filter",
+        range,
+        this.getInitialServerSideLoadRange(),
+      ));
+      if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
+    } else if (seededSort || activeComparatorChanged) {
       this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
-    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged);
+    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged, filtersDropped);
     this.emit("columnsChanged", { reason: "defs" });
-    if (changedFilterColIds.length > 0) {
-      this.emit("columnsChanged", { reason: "filter", changedColIds: changedFilterColIds });
-    }
     if (changedSortColIds.length > 0) {
-      this.emit("columnsChanged", { reason: "sort", changedColIds: changedSortColIds });
+      this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedSortColIds) });
+    }
+    // Both the canonical and legacy filter signals describe an effective filter-model change, not
+    // the internal re-binding of an unchanged filter to freshly-created Column instances.
+    if (filtersDropped) {
+      const pair = this.eventColIds(droppedFilterCols);
+      this.emit("columnsChanged", {
+        reason: "filter",
+        changedColIds: pair.colIds,
+        changedColInstanceIds: pair.colInstanceIds,
+      });
+      this.emit("filterChanged", { source: "columns", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
     }
   }
 
@@ -316,7 +391,13 @@ export class GridCore implements IGridCore {
   private applyColumnState(state: ColumnState[], defaultState?: Partial<ColumnState>): void {
     this.columnModel.applyColumnState(state, { defaultState });
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "state", changedColIds: state.map(s => s.colId) });
+    this.emit("columnsChanged", {
+      reason: "state",
+      ...(() => {
+        const pair = this.eventColIds(state.map(s => this.columnModel.resolve(s.colId)));
+        return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds };
+      })(),
+    });
     this.emit("rowsChanged", { reason: "state", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
@@ -357,26 +438,29 @@ export class GridCore implements IGridCore {
     return JSON.stringify(normalize(colDefs));
   }
 
-  private reconcileFilterModelColumns(): string[] {
+  private reconcileFilterModelColumns(): { droppedCols: Column[] } {
     const nextItems: FilterItem[] = [];
-    const changedColIds: string[] = [];
+    // Columns whose filter items are removed by this reconcile (column gone, or a duplicate item) —
+    // captured as Column objects because a dropped column may no longer resolve through the model.
+    const droppedCols: Column[] = [];
     const seenColIds = new Set<string>();
     let changed = false;
 
     for (const item of this.filters.items) {
       const col = this.resolveModelColumn(item);
       if (!col) {
+        droppedCols.push(item.col);
         changed = true;
         continue;
       }
 
       if (seenColIds.has(col.instanceID)) {
+        droppedCols.push(col);
         changed = true;
         continue;
       }
 
       seenColIds.add(col.instanceID);
-      changedColIds.push(col.instanceID);
       if (item.col !== col || item.key !== col.key) changed = true;
       nextItems.push({ ...item, col, key: col.key });
     }
@@ -385,7 +469,7 @@ export class GridCore implements IGridCore {
       this.filters.setItems(nextItems);
     }
 
-    return changedColIds;
+    return { droppedCols };
   }
 
   /**
@@ -559,7 +643,7 @@ export class GridCore implements IGridCore {
   }
 
   private autosizeColumn(colID: string): string[] {
-    const col = this.columnModel.getById(colID);
+    const col = this.columnModel.resolve(colID);
     if (!col) return [];
     if (col.children.length > 0) {
       this.autosizeParentColumn(col);
@@ -629,9 +713,19 @@ export class GridCore implements IGridCore {
   }
 
   setRowData(rows: RowData[]): void {
+    // Unless asked to replace outright, try to apply the new array as a diff against what is
+    // already here: node identity, edit history and the page all survive that. The row model has
+    // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
+    if (this.options.rowDataMode !== "reset") {
+      const diff = this.rowModel.diffRows?.(rows);
+      if (diff) {
+        this.applyRowDataDiff(diff);
+        return;
+      }
+    }
     // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
     // exist, so discard the edit history.
-    this.history.clear();
+    if (this.history.clear()) this.emitHistoryChanged("clear");
     this.rowModel.setRows(rows);
     // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
     // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
@@ -640,6 +734,34 @@ export class GridCore implements IGridCore {
     this.identifyComparatorsFromCurrentRows();
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+  }
+
+  /**
+   * Apply a replacement `rowData` array as an incremental transaction rather than a reset. Keeps
+   * the edit history, the current page (clamped when rows disappear from under it), and node
+   * identity for rows that survive, so change-flash and sparklines keep their baseline.
+   *
+   * Everything else is deliberately identical to the replacement path above, including the
+   * "refresh" reason: from the outside this IS a rowData refresh and diffing is an internal
+   * optimization, so first-load autosizing, the no-rows overlay and re-evaluated filter/sort must
+   * all still happen — even when the diff turns out to be empty.
+   */
+  private applyRowDataDiff(diff: RowDataDiff): void {
+    const wasEmpty = this.rowModel.getRowCount() === 0;
+    this.rowModel.applyTransaction(
+      { add: diff.add, update: diff.update, remove: diff.remove },
+      diff.order,
+    );
+    // Comparators are derived from sample values, so a grid that had no rows until now has none
+    // resolved; resolve them before the refresh applies any seeded initial sort.
+    if (wasEmpty) this.identifyComparatorsFromCurrentRows();
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "refresh",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+    ));
+    // Rows removed by the diff can shrink the view past the page the user is on.
+    this.clampPageToLastPage();
   }
 
   // Re-derive every leaf column's sort comparator from the current row nodes. Cheap no-op when there
@@ -651,16 +773,22 @@ export class GridCore implements IGridCore {
     this.columnModel.identifyComparators(nodes);
   }
 
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
+  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): RowTransactionResult {
     if (this.rowModel.getType() !== "clientSide") {
       console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
-      return;
+      return { added: 0, updated: 0, removed: 0 };
     }
 
+    const wasEmpty = this.rowModel.getRowCount() === 0;
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
-    if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) return result;
+
+    // Comparators are derived from sample values, so a grid that had no rows until now has none
+    // resolved and any seeded initial sort would be silently skipped. Resolve them before the
+    // refresh below, matching setRowData. Only on the first rows — this walks every node.
+    if (wasEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
 
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
@@ -673,17 +801,22 @@ export class GridCore implements IGridCore {
         { start: this.pageStartIdx, end: this.pageEndIdx },
         this.getInitialServerSideLoadRange(),
       ));
+      // Removing rows can shrink the view past the page the user is on, stranding them on a blank
+      // page. The filter/quick-filter/group paths already clamp for the same reason.
+      this.clampPageToLastPage();
       this.emit("rowsChanged", { reason: "transaction" });
       this.emit("paginationChanged", this.getPaginationInfo());
     } else if (tx.update?.length) {
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
-      const colIds = this.columnModel.getLeaves().filter(c => !c.isInternal()).map(c => c.instanceID);
+      const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
       this.emit("cellsChanged", {
         reason: "data",
         rowIds: tx.update.map(u => u.rowId),
-        colIds,
+        colIds: pair.colIds,
+        colInstanceIds: pair.colInstanceIds,
       });
     }
+    return result;
   }
 
   addFilterModel(filter: FilterItem) {
@@ -714,19 +847,23 @@ export class GridCore implements IGridCore {
   }
 
   private applyFilters(changedColIds: string[]) {
-    const range = this.resetPageBlocks();
+    const range = this.pageRangeFor("filter");
     this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
+    if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
-    this.emit("columnsChanged", { reason: "filter", changedColIds })
+    this.emit("columnsChanged", { reason: "filter", ...this.columnsChangedIds(changedColIds) })
+    this.emit("filterChanged", { source: "filter", ...this.columnsChangedIds(changedColIds) });
   }
 
   /**
    * Set the quick-filter (global search) state. `text` is the raw search string; the optional
    * `matchMode` / `caseSensitive` override the resolved defaults (the widget passes them so the
-   * user's popover choices take effect). Resets to page 1 and clears the selection (which may point
-   * at rows about to be hidden). No-op for the server-side row model.
+   * user's popover choices take effect). Keeps the current page (clamped to the last page when the
+   * result shrinks past it) unless "quickFilter" is in `resetPageOn`; clears the selection per
+   * `selectionPersistence` (it may point at rows about to be hidden). No-op for the server-side
+   * row model.
    */
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
     if (this.rowModel.getType() === "serverSide") return;
@@ -738,12 +875,14 @@ export class GridCore implements IGridCore {
     this.quickFilterText = text;
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
-    const range = this.resetPageBlocks();
+    const range = this.pageRangeFor("quickFilter");
     this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
+    this.clampPageToLastPage();
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("modelUpdated", { reason: "filter", step: "all" });
+    this.emit("filterChanged", { source: "quickFilter", changedColIds: [], changedColInstanceIds: [] });
   }
 
   getQuickFilterText(): string {
@@ -761,11 +900,20 @@ export class GridCore implements IGridCore {
       }
     }
     if (changedColIDs.length === 0) return;
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    this.applySortRequest(changedColIDs);
+  }
+
+  // Shared tail of every user sort gesture (`setSortModel` and header-click `toggleSort`): apply
+  // the re-sort with the `resetPageOn`-resolved page range, clear the (positionally stale) cell
+  // range, honor `selectionPersistence` for row selection, and emit the sort signals. Sorting
+  // never changes the row count, so the keep-page path needs no clamp.
+  private applySortRequest(changedColIds: string[]): void {
+    const range = this.pageRangeFor("sort");
+    this.rowModel.applyRequest(this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
-    this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIDs });
+    this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIds) });
   }
 
   // Replace the set of columns rows are grouped by (order = grouping level). An empty list clears
@@ -796,7 +944,7 @@ export class GridCore implements IGridCore {
     // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
     // live on the group nodes built during applyRequest).
     const changedColIds = this.autosizeColumns();
-    if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
+    if (changedColIds.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("paginationChanged", this.getPaginationInfo());
   }
@@ -823,26 +971,8 @@ export class GridCore implements IGridCore {
       undefined,
       groupExpansion,
     ));
-    // Collapsing a hierarchy can remove enough display rows to invalidate the current page. Keep
-    // the core page range (not just the footer label) on the last valid page, then rebuild the
-    // paginated row slice so the viewport cannot remain empty with a stale out-of-range offset.
-    if (this.paginationEnabled) {
-      const pageSize = this.pageEndIdx - this.pageStartIdx;
-      const lastPageIndex = pageSize > 0
-        ? Math.max(Math.ceil(this.rowModel.getRowCount() / pageSize) - 1, 0)
-        : 0;
-      const currentPageIndex = pageSize > 0 ? Math.floor(this.pageStartIdx / pageSize) : 0;
-      if (currentPageIndex > lastPageIndex) {
-        this.pageStartIdx = lastPageIndex * pageSize;
-        this.pageEndIdx = this.pageStartIdx + pageSize;
-        this.rowModel.applyRequest(this.createRowModelRequest(
-          "pagination",
-          { start: this.pageStartIdx, end: this.pageEndIdx },
-          this.getInitialServerSideLoadRange(),
-          true,
-        ));
-      }
-    }
+    // Collapsing a hierarchy can remove enough display rows to invalidate the current page.
+    this.clampPageToLastPage();
     this.clearSelectionForColumnChange();
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("paginationChanged", this.getPaginationInfo());
@@ -868,7 +998,7 @@ export class GridCore implements IGridCore {
     this.emit("columnsChanged", { reason: "group" });
 
     const changedColIds = this.autosizeColumns();
-    if (changedColIds.length > 0) this.emit("columnWidthsChanged", { changedColIds });
+    if (changedColIds.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
   }
 
   setGroupSortMode(groupSortMode: GroupSortMode): void {
@@ -1093,8 +1223,7 @@ export class GridCore implements IGridCore {
       ...clearedIds,
       ...(col.children.length > 0 ? col.getVisibleLeaves().map(c => c.instanceID) : [col.instanceID]),
     ];
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
-    this.emit("columnsChanged", { reason: "sort", changedColIds: changedColIds });
+    this.applySortRequest(changedColIds);
   }
 
   getPageStartIdx(): number {
@@ -1103,7 +1232,10 @@ export class GridCore implements IGridCore {
 
   getPaginationInfo(): GridEventPaginationChangedParams {
     const pageSize = this.pageEndIdx - this.pageStartIdx;
-    const totalRowCount = this.rowModel.getRowCount();
+    // getViewTotalCount, not getRowCount: pagination pages over the filtered view. On the
+    // server-side model and while grouping the two are identical; on the client-side model
+    // getRowCount ignores filtering and would overcount pages under an active filter.
+    const totalRowCount = this.rowModel.getViewTotalCount();
     this.totalPages = pageSize > 0 ? Math.ceil(totalRowCount / pageSize) : 1;
     return {
       paginationEnabled: this.paginationEnabled,
@@ -1125,6 +1257,40 @@ export class GridCore implements IGridCore {
     this.pageStartIdx = 0;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     return { start: this.pageStartIdx, end: this.pageEndIdx };
+  }
+
+  // Page range for a filter/sort/quickFilter model change: reset to page 1 when the trigger is in
+  // `resetPageOn`, otherwise keep the current page (the caller clamps afterwards if the change
+  // shrank the row count past it). Mutates the page indices — must run BEFORE
+  // getInitialServerSideLoadRange(), which reads them.
+  private pageRangeFor(trigger: ResetPageTrigger): { start: number; end: number } {
+    if (!this.paginationEnabled || this.options.resetPageOn.includes(trigger)) {
+      return this.resetPageBlocks();
+    }
+    return { start: this.pageStartIdx, end: this.pageEndIdx };
+  }
+
+  // A model change can remove enough rows to invalidate the current page. Keep the core page range
+  // on the last valid page and rebuild the paginated slice so the viewport cannot remain empty with
+  // a stale out-of-range offset. Client-side only at the filter call sites — the server-side row
+  // count is provisional right after a purge, and its onRows snap-back already clamps once the
+  // total pins down.
+  private clampPageToLastPage(): void {
+    if (!this.paginationEnabled) return;
+    const pageSize = this.pageEndIdx - this.pageStartIdx;
+    const lastPageIndex = pageSize > 0
+      ? Math.max(Math.ceil(this.rowModel.getViewTotalCount() / pageSize) - 1, 0)
+      : 0;
+    const currentPageIndex = pageSize > 0 ? Math.floor(this.pageStartIdx / pageSize) : 0;
+    if (currentPageIndex <= lastPageIndex) return;
+    this.pageStartIdx = lastPageIndex * pageSize;
+    this.pageEndIdx = this.pageStartIdx + pageSize;
+    this.rowModel.applyRequest(this.createRowModelRequest(
+      "pagination",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+      this.getInitialServerSideLoadRange(),
+      true,
+    ));
   }
 
   applyPagination(pageIdx: number, pageSize: number, enabled: boolean = this.paginationEnabled) {
@@ -1262,9 +1428,24 @@ export class GridCore implements IGridCore {
   // are skipped unless groupRowsSelectable is enabled; all leaf rows are selectable.
   private isViewRowSelectable(viewIdx: number): boolean {
     const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
-    if (node && this.isBodyRowPinned(node.id)) return false;
+    return !node || this.isNodeSelectable(node);
+  }
+
+  private isNodeSelectable(node: IRowNode): boolean {
+    if (this.isBodyRowPinned(node.id)) return false;
     if (this.options.groupRowsSelectable) return true;
-    return !node || !node.isGroup;
+    return !node.isGroup;
+  }
+
+  // Ids of every selectable data row in the whole filtered/sorted set (all pages). Group nodes
+  // are not part of the flat client-side iteration; on the server-side model this covers loaded
+  // rows only.
+  private getFilteredSelectableRowIds(): string[] {
+    const ids: string[] = [];
+    this.rowModel.forEachNodeAfterFilterAndSort((node) => {
+      if (node && !node.isGroup && this.isNodeSelectable(node)) ids.push(node.id);
+    });
+    return ids;
   }
 
   // Whether a row node renders as a full-width row: its content spans the whole body width instead
@@ -1278,6 +1459,55 @@ export class GridCore implements IGridCore {
 
   getViewIndexForRowId(rowId: GridId): number | null {
     return this.rowModel.getRowNode(rowId)?.viewIndex ?? null;
+  }
+
+  /**
+   * Give a row a slot in what is currently displayed: expand its collapsed ancestors and page to it
+   * when it lives on another page. Returns where the row sits afterwards — the view index the
+   * renderer draws it at, plus the frozen band when the row is mirrored into one — or null when the
+   * row has no slot at all (unknown id, excluded by the filter, or, on the server-side model, not
+   * loaded). Moves the model only; scrolling to the returned slot is the renderer's half.
+   */
+  revealRow(rowId: GridId): { viewIndex: number; rowPinned?: RowPinnedPosition } | null {
+    // A row mirrored into a frozen band is on screen wherever the body is scrolled, so the band
+    // slot is the answer (that band's own scroller may still need to move).
+    const pinned = this.getDisplayedPinnedRowRef(rowId);
+    if (pinned) return { viewIndex: pinned.rowIndex, rowPinned: pinned.position };
+
+    this.expandAncestorsOf(rowId);
+
+    const fullViewIdx = this.rowModel.getViewIndexInFullView?.(rowId);
+    if (fullViewIdx == null || fullViewIdx < 0) return null;
+
+    if (this.paginationEnabled) {
+      const pageSize = this.pageEndIdx - this.pageStartIdx;
+      if (pageSize <= 0) return null;
+      const targetPage = Math.floor(fullViewIdx / pageSize);
+      if (targetPage !== Math.floor(this.pageStartIdx / pageSize)) {
+        this.applyPagination(targetPage, pageSize, true);
+      }
+    }
+
+    const viewIndex = fullViewIdx - this.getPageStartIdx();
+    if (viewIndex < 0 || viewIndex >= this.rowModel.getViewCount()) return null;
+    return { viewIndex };
+  }
+
+  // Expand every collapsed group/tree ancestor of a row so it occupies a view slot. Batched into a
+  // single expansion request, so even a deep chain costs one re-flatten and one repaint.
+  private expandAncestorsOf(rowId: GridId): void {
+    if (this.groupColumns.length === 0 && !this.options.treeData) return;
+    const node = this.rowModel.getRowNode(rowId);
+    if (!node) return;
+    const collapsed: string[] = [];
+    let parentId = node.parentId;
+    while (parentId != null) {
+      const parent = this.rowModel.getRowNode(parentId);
+      if (!parent) break;
+      if (!parent.isExpanded) collapsed.push(parent.id);
+      parentId = parent.parentId;
+    }
+    if (collapsed.length > 0) this.setGroupsExpanded(true, collapsed);
   }
 
   getCellValue(rowId: GridId, colId: ColId): unknown {
@@ -1357,7 +1587,8 @@ export class GridCore implements IGridCore {
     }
     this.emit("headerFocusChanged", {
       colIdx: next ?? undefined,
-      colId: next == null ? undefined : leaves[next]?.instanceID,
+      colId: next == null ? undefined : leaves[next]?.colId,
+      colInstanceId: next == null ? undefined : leaves[next]?.instanceID,
       reason,
     });
   }
@@ -1485,6 +1716,31 @@ export class GridCore implements IGridCore {
       ?? null;
   }
 
+  // A5: run the application's pre-commit hook for one proposed write. The hook sees the stored
+  // (post-valueParser) form and may veto (REJECT → null), transform (any other value), or accept
+  // (undefined) the write. `cell` must already be normalized (public colId + instance id).
+  private beforeCellCommit(
+    cell: CellRef,
+    row: IRowNode,
+    oldValue: unknown,
+    value: unknown,
+    source: CellCommitSource,
+  ): { value: unknown } | null {
+    const hook = this.options.onBeforeCellCommit;
+    if (!hook) return { value };
+    const result = hook({
+      rowId: cell.rowId,
+      colId: cell.colId,
+      colInstanceId: cell.colInstanceId,
+      data: row.data,
+      value,
+      oldValue,
+      source,
+    });
+    if (result === REJECT) return null;
+    return { value: result === undefined ? value : result };
+  }
+
   // Write a cell value wherever the row lives: through the row model, or — for application-pinned
   // data rows — directly into the application-provided data object (mirroring setCellValue).
   private writeCellValue(cell: CellRef, key: string, value: unknown): boolean {
@@ -1493,6 +1749,53 @@ export class GridCore implements IGridCore {
     if (!pinned) return false;
     (pinned.node.data as any)[key] = value;
     return true;
+  }
+
+  /* ----- Column id normalization (public colId ⇄ internal instance id) -----
+   * Inputs (actions, API arguments, CellRefs) are resolved tolerantly so callers may pass either
+   * id space; outputs (event payloads) always carry the public colId with the internal instance
+   * id alongside (`colInstanceId(s)`), because split/moved column duplicates can share a colId. */
+
+  // Resolve the column a CellRef addresses: the instance id (if present) wins, then tolerant.
+  private resolveCellColumn(cell: CellRef): Column | undefined {
+    if (cell.colInstanceId) {
+      const byInstance = this.columnModel.getById(cell.colInstanceId);
+      if (byInstance) return byInstance;
+    }
+    return this.columnModel.resolve(cell.colId);
+  }
+
+  // Emit-side CellRef normalization: public colId + instance id, whatever the input carried.
+  private normalizeCellRef(cell: CellRef, col?: Column): CellRef {
+    const resolved = col ?? this.resolveCellColumn(cell);
+    if (!resolved) return cell;
+    const next: CellRef = { rowId: cell.rowId, colId: resolved.colId, colInstanceId: resolved.instanceID };
+    if (cell.rowPinned) next.rowPinned = cell.rowPinned;
+    return next;
+  }
+
+  // Both event id spaces for a set of columns (dedupes; unresolved entries drop out).
+  private eventColIds(cols: Array<Column | undefined>): { colIds: string[]; colInstanceIds: string[] } {
+    const colIds = new Set<string>();
+    const colInstanceIds = new Set<string>();
+    for (const col of cols) {
+      if (!col) continue;
+      colIds.add(col.colId);
+      colInstanceIds.add(col.instanceID);
+    }
+    return { colIds: [...colIds], colInstanceIds: [...colInstanceIds] };
+  }
+
+  // columnWidthsChanged payload from instance ids (empty stays empty = "all visible columns").
+  private widthsChangedPayload(instanceIds: string[]): GridEventMap["columnWidthsChanged"] {
+    const pair = this.eventColIds(instanceIds.map(id => this.columnModel.getById(id)));
+    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds };
+  }
+
+  // columnsChanged payload fields from instance ids.
+  private columnsChangedIds(instanceIds: Iterable<string>): { changedColIds: string[]; changedColInstanceIds: string[] } {
+    const pair = this.eventColIds([...instanceIds].map(id => this.columnModel.getById(id)));
+    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds };
   }
 
   isBodyRowPinned(rowId: GridId): boolean {
@@ -1534,16 +1837,64 @@ export class GridCore implements IGridCore {
     return this.history.canRedo();
   }
 
+  getHistoryState(): GridHistoryState {
+    return this.history.getState();
+  }
+
   clearHistory(): void {
-    this.history.clear();
+    if (this.history.clear()) this.emitHistoryChanged("clear");
   }
 
+  /**
+   * Route a step that has already been written to the row data into undo history, honouring any
+   * active scope. Returns whether the undo stack moved — the caller announces `historyChanged` only
+   * then, and only after its own value/cell events, so a handler reading `getHistoryState()` sees
+   * the write and the history state agree.
+   */
+  private recordHistory(entry: HistoryEntry): boolean {
+    if (this.historyScopeMode === "skip") return false;
+    if (this.historyScopeMode === "group") {
+      this.historyScopeEdits.push(...entry.edits);
+      return false;
+    }
+    return this.history.push(entry);
+  }
+
+  /**
+   * Run `fn` with undo recording redirected: "group" coalesces every step committed inside it into
+   * a single undo entry (pushed on exit, one `historyChanged {reason:"commit"}`), "skip" keeps them
+   * out of history entirely. Synchronous — writes made after `fn` returns (in a promise or timer)
+   * are outside the scope. Nested scopes inherit the outermost mode rather than opening their own,
+   * so a `withUndoGroup` helper called inside `withoutUndoHistory` stays suppressed.
+   */
+  runInHistoryScope<T>(mode: "group" | "skip", fn: () => T): T {
+    if (this.historyScopeMode !== null) return fn();
+    this.historyScopeMode = mode;
+    this.historyScopeEdits = [];
+    try {
+      return fn();
+    } finally {
+      const edits = this.historyScopeEdits;
+      this.historyScopeMode = null;
+      this.historyScopeEdits = [];
+      if (mode === "group" && this.history.push({ label: "group", edits })) {
+        this.emitHistoryChanged("commit");
+      }
+    }
+  }
+
+  private emitHistoryChanged(reason: HistoryChangeReason): void {
+    this.emit("historyChanged", { reason, ...this.history.getState() });
+  }
+
+  /** Instance ids of the selected columns. Returns a COPY — mutating it never affects the grid. */
   getSelectedColumnIds(): Set<string> {
-    return this.selectionModel.getSelectedColumnIds();
+    return new Set(this.selectionModel.getSelectedColumnIds());
   }
 
+  /** Stable ids of the selected rows. Returns a COPY — mutating it never affects the grid. */
   getSelectedRowIds(): Set<string> {
-    return this.selectionModel.getSelectedRowIds();
+    return new Set(this.selectionModel.getSelectedRowIds());
   }
 
   /** Currently-selected row nodes (unloaded / no-longer-present ids are omitted). */
@@ -1561,14 +1912,37 @@ export class GridCore implements IGridCore {
     return this.getSelectedNodes().map(n => n.data);
   }
 
-  /** Whether every selectable data row in the current view is selected. */
+  /** Whether every selectable data row in the select-all scope (filtered set or page) is selected. */
   areAllRowsSelected(): boolean {
-    return this.selectionModel.areAllRowsSelected();
+    if (this.options.selectAllScope === "page") return this.selectionModel.areAllRowsSelected();
+    const ids = this.getFilteredSelectableRowIds();
+    if (ids.length === 0) return false;
+    const selected = this.selectionModel.getSelectedRowIds();
+    return ids.every(id => selected.has(id));
   }
 
-  /** Select every selectable data row in the current view. */
+  /** Select every selectable data row in the select-all scope (filtered set or page). */
   selectAllRows(): void {
-    this.selectionModel.selectAllRows();
+    if (this.options.selectAllScope === "page") {
+      this.selectionModel.selectAllRows();
+    } else {
+      this.selectionModel.setSelectedRowIds(this.getFilteredSelectableRowIds(), "set");
+    }
+    this.emitSelectionChanged("api");
+  }
+
+  /**
+   * Programmatic row selection by stable row id. Unknown / non-selectable ids are dropped on the
+   * client-side row model; the server-side model accepts ids verbatim (rows may not be loaded).
+   */
+  selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
+    const validated = this.rowModel.getType() === "serverSide"
+      ? rowIds
+      : rowIds.filter(id => {
+        const node = this.rowModel.getRowNode(id);
+        return node != null && this.isNodeSelectable(node);
+      });
+    this.selectionModel.setSelectedRowIds(validated, mode);
     this.emitSelectionChanged("api");
   }
 
@@ -1655,7 +2029,7 @@ export class GridCore implements IGridCore {
         if (action.reason !== "visibility" && action.reason !== "pin") {
           themeFontChangedColIds = this.autosizeColumns(false);
         }
-        this.emit("columnWidthsChanged", { changedColIds: themeFontChangedColIds });
+        this.emit("columnWidthsChanged", this.widthsChangedPayload(themeFontChangedColIds));
         break;
       case "rowDataSet":
         this.setRowData(action.rows);
@@ -1670,13 +2044,13 @@ export class GridCore implements IGridCore {
       case "columnAutosize":
         const autosizedColIds = this.autosizeColumn(action.colId);
         if (autosizedColIds.length > 0) {
-          this.emit("columnWidthsChanged", { changedColIds: autosizedColIds });
+          this.emit("columnWidthsChanged", this.widthsChangedPayload(autosizedColIds));
         }
         break;
       case "columnResize":
         const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
         if (resizedColIds.length > 0) {
-          this.emit("columnWidthsChanged", { changedColIds: resizedColIds });
+          this.emit("columnWidthsChanged", this.widthsChangedPayload(resizedColIds));
         }
         break;
       case "sortModelSet":
@@ -1690,19 +2064,28 @@ export class GridCore implements IGridCore {
         break;
       case "columnPin":
         this.columnModel.setPinneds(action.colIds, action.pinned);
-        this.emit("columnsChanged", { reason: "pin", changedColIds: action.colIds });
+        {
+          const pair = this.eventColIds(action.colIds.map(id => this.columnModel.resolve(id)));
+          this.emit("columnsChanged", { reason: "pin", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+        }
         this.emit("rowsChanged", { reason: "pin", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "columnVisibility":
         this.columnModel.toggleVisibility(action.colIds, action.hidden);
         this.clearSelectionForColumnChange();
-        this.emit("columnsChanged", { reason: "visibility", changedColIds: action.colIds });
+        {
+          const pair = this.eventColIds(action.colIds.map(id => this.columnModel.resolve(id)));
+          this.emit("columnsChanged", { reason: "visibility", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+        }
         this.emit("rowsChanged", { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "columnMove":
         this.columnModel.moveColumnTo(action.colId, action.toIndex, action.toSection);
         this.clearSelectionForColumnChange();
-        this.emit("columnsChanged", { reason: "order", changedColIds: [action.colId] });
+        {
+          const pair = this.eventColIds([this.columnModel.resolve(action.colId)]);
+          this.emit("columnsChanged", { reason: "order", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+        }
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       case "addSparklineColumn": {
@@ -1772,7 +2155,7 @@ export class GridCore implements IGridCore {
         const allRows: IRowNode[] = [];
         this.rowModel.forEachNode((node: IRowNode) => allRows.push(node));
         const instanceID = this.columnModel.addColumnDef(colDef, "center", this.measureCtx, this.textMeasureParams, allRows);
-        this.emit("columnsChanged", { reason: "add", changedColIds: [instanceID] });
+        this.emit("columnsChanged", { reason: "add", ...this.columnsChangedIds([instanceID]) });
         this.emit("rowsChanged", { reason: "add", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       }
@@ -1798,7 +2181,7 @@ export class GridCore implements IGridCore {
         this.navigateTree(action.command);
         break;
       case "headerAction":
-        const col = this.columnModel.getById(action.colId);
+        const col = this.columnModel.resolve(action.colId);
         // The auto-group column supports header actions like a regular column (toggleSort gates on
         // col.sortable); only the row-number column stays inert.
         if (!col || col.isRowNumberColumn()) return;
@@ -1827,7 +2210,7 @@ export class GridCore implements IGridCore {
                 this.applyAggregateRequest("aggregateModel", "columns");
               }
               this.clearSelectionForColumnChange();
-              this.emit("columnsChanged", { reason: "state", changedColIds: [col.instanceID] });
+              this.emit("columnsChanged", { reason: "state", changedColIds: [col.colId], changedColInstanceIds: [col.instanceID] });
               this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
             }
             break;
@@ -1895,6 +2278,9 @@ export class GridCore implements IGridCore {
         if (action.selected) this.selectAllRows();
         else this.deselectAllRows();
         break;
+      case "rowSelectByIds":
+        this.selectRowsById(action.rowIds, action.mode ?? "set");
+        break;
       case "columnSelectSet":
         this.selectionModel.toggleColumn(action.colId, action.mode ?? "toggle");
         this.emitSelectionChanged("mouse");
@@ -1909,7 +2295,7 @@ export class GridCore implements IGridCore {
         this.emitSelectionChanged("api");
         break;
       case "editStart": {
-        const col = this.columnModel.getById(action.cell.colId);
+        const col = this.resolveCellColumn(action.cell);
         const row = this.resolveCellRow(action.cell);
         if (!col || !row || row.isGroup || !col.isCellEditable(row)) break;
         // Pinned cells are editable only when opted in. Synthetic group headers stay blocked by
@@ -1917,12 +2303,13 @@ export class GridCore implements IGridCore {
         if (action.cell.rowPinned && !this.options.pinnedRowsEditable) break;
         // Editing and ActionFrame are mutually exclusive: opening the editor closes any open frame.
         this.closeActionFrameIfOpen();
-        this.editingCell = action.cell;
-        this.emit("editingChanged", { state: "started", cell: action.cell, charPress: action.charPress });
+        const cell = this.normalizeCellRef(action.cell, col);
+        this.editingCell = cell;
+        this.emit("editingChanged", { state: "started", cell, charPress: action.charPress });
         break;
       }
       case "actionFrameOpen": {
-        const col = this.columnModel.getById(action.cell.colId);
+        const col = this.resolveCellColumn(action.cell);
         const row = this.rowModel.getRowNode(action.cell.rowId);
         if (!col || !row || row.isGroup) break;
         // No frame to show if the column has no form component (a `defaultColDef` value, if any,
@@ -1934,8 +2321,8 @@ export class GridCore implements IGridCore {
           this.editingCell = null;
           this.emit("editingChanged", { state: "cancelled", cell: editing });
         }
-        this.actionFrameCell = action.cell;
-        this.emit("actionFrameChanged", { state: "opened", cell: action.cell });
+        this.actionFrameCell = this.normalizeCellRef(action.cell, col);
+        this.emit("actionFrameChanged", { state: "opened", cell: this.actionFrameCell });
         break;
       }
       case "actionFrameClose": {
@@ -1943,78 +2330,124 @@ export class GridCore implements IGridCore {
         break;
       }
       case "editCommit": {
-        const col = this.columnModel.getById(action.cell.colId);
+        const col = this.resolveCellColumn(action.cell);
         const row = this.resolveCellRow(action.cell);
         this.editingCell = null;
         if (!col || !row) {
           this.emit("editingChanged", { state: "stopped", cell: action.cell });
           break;
         }
+        const cell = this.normalizeCellRef(action.cell, col);
         const oldValue = col.getValue(row);
-        const newValue = action.parsed
+        const proposed = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
-        this.writeCellValue(action.cell, col.key, newValue);
-        if (!this.applyingHistory) {
-          this.history.push({ label: "edit", edits: [{ cell: action.cell, oldValue, newValue }] });
+        const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, "edit");
+        if (!hooked) {
+          // Vetoed: the editor still tears down (and the cell repaints with its old value), but
+          // nothing is written, recorded, or reported as a value change.
+          this.emit("editingChanged", { state: "rejected", cell, value: proposed, oldValue });
+          break;
+        }
+        const newValue = hooked.value;
+        // B7 readOnlyEdit: the application owns the write — run the full pipeline and report the
+        // accepted value (editingChanged + cellValueChanged), but leave the row object untouched
+        // and keep the step out of undo history (there is nothing of ours to undo).
+        const readOnly = this.options.readOnlyEdit;
+        let recordedStep = false;
+        if (!readOnly) {
+          this.writeCellValue(cell, col.key, newValue);
+          if (!this.applyingHistory) {
+            recordedStep = this.recordHistory({ label: "edit", edits: [{ cell, oldValue, newValue }] });
+          }
         }
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
         // first would detach the focused input and drop keyboard focus to <body>.
-        this.emit("editingChanged", { state: "committed", cell: action.cell, value: newValue });
-        this.emit("cellsChanged", {
-          reason: "editCommit",
-          rowIds: [action.cell.rowId],
-          colIds: [col.instanceID],
-        });
-        if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
+        this.emit("editingChanged", { state: "committed", cell, value: newValue, oldValue });
+        this.emit("cellValueChanged", { cell, oldValue, value: newValue, source: "edit" });
+        if (!readOnly) {
+          this.emit("cellsChanged", {
+            reason: "editCommit",
+            rowIds: [cell.rowId],
+            colIds: [col.colId],
+            colInstanceIds: [col.instanceID],
+          });
+          if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
+        }
+        if (recordedStep) this.emitHistoryChanged("commit");
         break;
       }
       case "editCancel": {
         this.editingCell = null;
-        this.emit("editingChanged", { state: "cancelled", cell: action.cell });
+        this.emit("editingChanged", { state: "cancelled", cell: this.normalizeCellRef(action.cell) });
         break;
       }
       case "cellsCommit": {
         const changedRowIds = new Set<string>();
         const changedColIds = new Set<string>();
         const recorded: CellEdit[] = [];
+        const source: CellCommitSource = action.reason === "cut" ? "cut"
+          : action.reason === "clear" ? "clear"
+            : action.reason === "api" ? "edit"
+              : "paste";
         for (const edit of action.edits) {
-          const col = this.columnModel.getById(edit.cell.colId);
+          const col = this.resolveCellColumn(edit.cell);
           const row = this.resolveCellRow(edit.cell);
           if (!col || !row) continue;
+          const cell = this.normalizeCellRef(edit.cell, col);
           const oldValue = col.getValue(row);
-          const newValue = col.parseValue(String(edit.value ?? ""), row, oldValue);
-          if (this.writeCellValue(edit.cell, col.key, newValue)) {
+          const proposed = edit.parsed
+            ? edit.value
+            : col.parseValue(String(edit.value ?? ""), row, oldValue);
+          // Vetoed cells drop out of the batch: not written, not recorded, no event.
+          const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
+          if (!hooked) continue;
+          // B7 readOnlyEdit: report every accepted cell but write none (see editCommit).
+          if (this.options.readOnlyEdit || this.writeCellValue(edit.cell, col.key, hooked.value)) {
             changedRowIds.add(edit.cell.rowId);
             changedColIds.add(col.instanceID);
-            recorded.push({ cell: edit.cell, oldValue, newValue });
+            recorded.push({ cell, oldValue, newValue: hooked.value });
           }
         }
-        if (!this.applyingHistory && recorded.length > 0) {
+        let recordedBatch = false;
+        if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
           const label = action.reason === "cut" ? "cut"
             : action.reason === "clear" ? "clear"
-              : "paste";
-          this.history.push({ label, edits: recorded });
+              : action.reason === "api" ? "api"
+                : "paste";
+          recordedBatch = this.recordHistory({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {
-          this.emit("cellsChanged", {
-            reason: "editCommit",
-            rowIds: [...changedRowIds],
-            colIds: [...changedColIds],
-          });
-          if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
+          for (const edit of recorded) {
+            this.emit("cellValueChanged", { cell: edit.cell, oldValue: edit.oldValue, value: edit.newValue, source });
+          }
+          if (!this.options.readOnlyEdit) {
+            const pair = this.columnsChangedIds(changedColIds);
+            this.emit("cellsChanged", {
+              reason: "editCommit",
+              rowIds: [...changedRowIds],
+              colIds: pair.changedColIds,
+              colInstanceIds: pair.changedColInstanceIds,
+            });
+            if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
+          }
         }
+        if (recordedBatch) this.emitHistoryChanged("commit");
         break;
       }
       case "undo": {
         const entry = this.history.popUndo();
-        if (entry) this.applyHistoryEdits(entry.edits, "undo");
+        if (!entry) break;
+        this.applyHistoryEdits(entry.edits, "undo");
+        this.emitHistoryChanged("undo");
         break;
       }
       case "redo": {
         const entry = this.history.popRedo();
-        if (entry) this.applyHistoryEdits(entry.edits, "redo");
+        if (!entry) break;
+        this.applyHistoryEdits(entry.edits, "redo");
+        this.emitHistoryChanged("redo");
         break;
       }
       default:
@@ -2029,14 +2462,16 @@ export class GridCore implements IGridCore {
     this.applyingHistory = true;
     const changedRowIds = new Set<string>();
     const changedColIds = new Set<string>();
+    const applied: CellEdit[] = [];
     try {
       for (const edit of edits) {
-        const col = this.columnModel.getById(edit.cell.colId);
+        const col = this.resolveCellColumn(edit.cell);
         if (!col) continue;
         const value = dir === "undo" ? edit.oldValue : edit.newValue;
         if (this.writeCellValue(edit.cell, col.key, value)) {
           changedRowIds.add(edit.cell.rowId);
           changedColIds.add(col.instanceID);
+          applied.push({ ...edit, cell: this.normalizeCellRef(edit.cell, col) });
         }
       }
     } finally {
@@ -2044,10 +2479,22 @@ export class GridCore implements IGridCore {
     }
     if (changedRowIds.size === 0) return;
 
+    // Report each write in the direction it happened: an undo takes the cell from newValue back
+    // to oldValue, so oldValue/value are swapped relative to the recorded edit.
+    for (const edit of applied) {
+      this.emit("cellValueChanged", {
+        cell: edit.cell,
+        oldValue: dir === "undo" ? edit.newValue : edit.oldValue,
+        value: dir === "undo" ? edit.oldValue : edit.newValue,
+        source: dir,
+      });
+    }
+    const pair = this.columnsChangedIds(changedColIds);
     this.emit("cellsChanged", {
       reason: "editCommit",
       rowIds: [...changedRowIds],
-      colIds: [...changedColIds],
+      colIds: pair.changedColIds,
+      colInstanceIds: pair.changedColInstanceIds,
     });
     // Re-sort/re-filter first (rows may move), then place selection using the new view indices.
     this.reevaluateAfterEdit(changedColIds, false);
@@ -2062,7 +2509,8 @@ export class GridCore implements IGridCore {
     let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
     for (const edit of edits) {
       const viewIdx = this.getViewIndexForRowId(edit.cell.rowId);
-      const colIdx = leaves.findIndex(c => c.instanceID === edit.cell.colId);
+      const editCol = this.resolveCellColumn(edit.cell);
+      const colIdx = editCol ? leaves.findIndex(c => c.instanceID === editCol.instanceID) : -1;
       if (viewIdx == null || colIdx < 0) continue;
       minRow = Math.min(minRow, viewIdx); maxRow = Math.max(maxRow, viewIdx);
       minCol = Math.min(minCol, colIdx); maxCol = Math.max(maxCol, colIdx);
@@ -2163,10 +2611,19 @@ export class GridCore implements IGridCore {
   private reconcileSelectionAfterColumnDefs(
     snapshot: RangeColumnSnapshot | null,
     rowOrderChanged: boolean,
+    filterChanged: boolean,
   ): void {
-    let changed = false;
+    // Match ordinary filter changes: the cell range always clears, while row ids survive only
+    // under selectionPersistence:"keep". Treat the model change as observable even when there was
+    // no selection, matching applyFilters()/setQuickFilter().
+    let changed = filterChanged;
 
-    if (snapshot) {
+    if (filterChanged) {
+      this.selectionModel.clearRange();
+      if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+    }
+
+    if (snapshot && !filterChanged) {
       if (rowOrderChanged) {
         this.selectionModel.clearRange();
         changed = true;
@@ -2221,7 +2678,7 @@ export class GridCore implements IGridCore {
         : this.getRowIdAtViewIndex(active.row);
       const col = this.columnModel.getLeaves()[active.colIdx];
       if (rowId && col) {
-        params.next = { rowId, colId: col.instanceID, rowPinned: active.rowPinned };
+        params.next = { rowId, colId: col.colId, colInstanceId: col.instanceID, rowPinned: active.rowPinned };
       }
     }
     this.emit("focusChanged", params);
@@ -2276,14 +2733,14 @@ export class GridCore implements IGridCore {
       if (shouldAutosize) {
         const changedColIds = this.autosizeColumns();
         if (changedColIds.length > 0) {
-          this.emit("columnWidthsChanged", { changedColIds });
+          this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
         }
       }
     } else if (params.reason === "aggregateModel" && this.groupColumns.length > 0) {
       // Aggregate model changed while grouping: re-fit columns to the new per-group totals.
       const changedColIds = this.autosizeColumns();
       if (changedColIds.length > 0) {
-        this.emit("columnWidthsChanged", { changedColIds });
+        this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
       }
     }
     this.emit("rowsChanged", {

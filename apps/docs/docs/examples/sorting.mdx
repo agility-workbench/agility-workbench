@@ -27,3 +27,9 @@ Set a custom order such as `["desc", "asc", null]` through a column or
 
 The grid derives comparison from `ColumnType`. Use `comparator(a, b, nodeA,
 nodeB)` for domain-specific orders such as severity or workflow stage.
+
+Under pagination, sorting keeps the user's current page by default. Add
+`"sort"` to [`resetPageOn`](../api/grid-options.mdx#sort-filter-and-pagination)
+to jump back to page 1 on every sort change — the policy applies to header
+clicks and API sorting alike. A sort change also clears the row selection
+unless `selectionPersistence: "keep"` is set.

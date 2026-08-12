@@ -230,6 +230,9 @@ export class SelectionModel {
       active: this.active ? { ...this.active } : null,
       selectedRowIds: Array.from(this.selectedRowIds),
       selectedColumnIds: Array.from(this.selectedColumnIds),
+      selectedColIds: Array.from(this.selectedColumnIds)
+        .map(id => this.deps.getColumnModel().getById(id)?.colId)
+        .filter((id): id is string => id != null),
     };
 
     if (resolveIds) {
@@ -258,10 +261,10 @@ export class SelectionModel {
   // are omitted, so this yields loaded cells only.
   private resolveRangeCells(range: SelectionRange): CellRef[] {
     const leaves = this.leafColumns();
-    const colIds: string[] = [];
+    const colIds: { colId: string; colInstanceId: string }[] = [];
     for (let c = range.colStart; c <= range.colEnd; c++) {
       const col = leaves[c];
-      if (col) colIds.push(col.instanceID);
+      if (col) colIds.push({ colId: col.colId, colInstanceId: col.instanceID });
     }
     const cells: CellRef[] = [];
     const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
@@ -269,8 +272,8 @@ export class SelectionModel {
       for (let r = segment.start; r <= segment.end; r++) {
         const node = this.deps.getPinnedRowNode?.(position, r);
         if (!node) continue;
-        for (const colId of colIds) {
-          cells.push({ rowId: node.id, colId, rowPinned: position });
+        for (const ids of colIds) {
+          cells.push({ rowId: node.id, ...ids, rowPinned: position });
         }
       }
     };
@@ -278,8 +281,8 @@ export class SelectionModel {
     for (let r = range.rowStart; r <= range.rowEnd; r++) {
       const rowId = this.deps.getRowIdAtViewIndex(r);
       if (!rowId) continue;
-      for (const colId of colIds) {
-        cells.push({ rowId, colId });
+      for (const ids of colIds) {
+        cells.push({ rowId, ...ids });
       }
     }
     pushPinned("bottom", range.pinnedBottom);
@@ -625,7 +628,7 @@ export class SelectionModel {
     this.clearRange();
     this.clearRows();
     const columnModel = this.deps.getColumnModel();
-    const col = columnModel.getById(colId);
+    const col = columnModel.resolve(colId);
     if (!col || col.isInternal()) return;
 
     const leaves = col.getVisibleLeaves();
@@ -698,15 +701,17 @@ export class SelectionModel {
   }
 
   // ---------------- Row selection ----------------
-  toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range") {
+  toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range" | "rangeAdd") {
     const rowId = this.deps.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
 
-    if (mode === "range" && this.rowAnchorViewIdx != null) {
+    // "range" replaces the selection with anchor..row (Excel-style, the row-number gesture);
+    // "rangeAdd" unions it in (checkbox-style — shift-click never clears the rest).
+    if ((mode === "range" || mode === "rangeAdd") && this.rowAnchorViewIdx != null) {
       const anchorIdx = this.rowAnchorViewIdx;
       const start = Math.min(anchorIdx, viewIdx);
       const end = Math.max(anchorIdx, viewIdx);
-      this.selectedRowIds.clear();
+      if (mode === "range") this.selectedRowIds.clear();
       for (let i = start; i <= end; i++) {
         const id = this.deps.getRowIdAtViewIndex(i);
         if (id) this.selectedRowIds.add(id);
@@ -729,6 +734,22 @@ export class SelectionModel {
     }
 
     this.replaceRow(rowId, viewIdx);
+  }
+
+  /**
+   * Programmatic row selection by stable row id (ids are validated by the caller). "set"
+   * replaces the selection, "add"/"remove" adjust it. Clears the other selection kinds
+   * (mutually exclusive) and drops the range anchor — by-id selection has no view position.
+   */
+  setSelectedRowIds(rowIds: Iterable<string>, mode: "set" | "add" | "remove"): void {
+    this.clearRange();
+    this.clearColumns();
+    if (mode === "set") this.selectedRowIds.clear();
+    for (const id of rowIds) {
+      if (mode === "remove") this.selectedRowIds.delete(id);
+      else this.selectedRowIds.add(id);
+    }
+    this.rowAnchorViewIdx = null;
   }
 
   // Select every selectable data row in the current view (group rows are skipped unless

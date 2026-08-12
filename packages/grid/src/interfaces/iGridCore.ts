@@ -6,7 +6,7 @@ import {
 } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel, RowDataChangeReason, ServerSideRefreshOptions } from "./iRowModel";
+import { IRowModel, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
@@ -15,6 +15,7 @@ import {
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
+  RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
@@ -98,6 +99,13 @@ export interface IGridCore {
   /** Returns displayed index for a rowId if currently displayed; null if filtered out. */
   getViewIndexForRowId(rowId: GridId): number | null;
 
+  /**
+   * Expand a row's collapsed ancestors and page to it, then report the view slot it occupies (with
+   * the frozen band when it is pinned into one), or null when it has no slot at all. Does not
+   * scroll — the renderer pairs this with the scroll half for `api.ensureRowVisible`.
+   */
+  revealRow(rowId: GridId): { viewIndex: number; rowPinned?: RowPinnedPosition } | null;
+
   /** Returns cell value (raw). */
   getCellValue(rowId: GridId, colId: ColId): unknown;
 
@@ -158,7 +166,12 @@ export interface IGridCore {
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;
   canRedo(): boolean;
+  /** Undo/redo stack snapshot (same payload the `historyChanged` event carries, minus `reason`). */
+  getHistoryState(): import("../core/historyModel").GridHistoryState;
   clearHistory(): void;
+  /** Redirect undo recording for the duration of `fn`: coalesce every step into one entry
+   * ("group") or keep them out of history ("skip"). Synchronous; nested scopes inherit the mode. */
+  runInHistoryScope<T>(mode: "group" | "skip", fn: () => T): T;
   getSelectedColumnIds(): Set<string>;
   getSelectedRowIds(): Set<string>;
   getSelectedNodes(): unknown[];
@@ -166,12 +179,22 @@ export interface IGridCore {
   areAllRowsSelected(): boolean;
   selectAllRows(): void;
   deselectAllRows(): void;
+  /** Programmatic row selection by stable row id ("set" replaces, "add"/"remove" adjust). */
+  selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;
   getSelectionSnapshot(resolveIds?: boolean): SelectionSnapshot;
   pruneColumnSelection(): void;
   clampSelectionToView(): void;
 
   refreshRows(reason?: RowDataChangeReason, range?: { start: number; end: number }): void;
+
+  /** Client-side row model only: apply an add/update/remove transaction. Returns what was
+   * actually applied; all-zero counts on the server-side row model or when nothing matched. */
+  applyTransaction(tx: {
+    add?: RowData[];
+    update?: { rowId: GridId; row: RowData }[];
+    remove?: GridId[];
+  }): RowTransactionResult;
 
   setServerSideDataSource(callback: IServerSideDataSource | null): void;
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;

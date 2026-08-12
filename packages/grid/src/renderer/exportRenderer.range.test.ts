@@ -12,6 +12,7 @@ import { GridCore } from "../core/core";
 import { ExportRenderer } from "./exportRenderer";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
+import type { ExcelExportCellParams } from "../interfaces/iGridAPI";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -172,5 +173,29 @@ describe("streamable getData output (no download)", () => {
     const ws = wb.worksheets[0];
     expect(ws.getCell("A1").value).toBe("Name");
     expect(ws.getCell("A2").value).toBe("Alice");
+  });
+
+  it("forwards the public Excel cell processor into workbook construction", async () => {
+    const core = makeGrid();
+    const processor = vi.fn((params: ExcelExportCellParams) => params.column.key === "qty"
+      ? { value: Number(params.value) * 2, style: { bold: true } }
+      : undefined);
+
+    const bytes = await makeExporter(core).getDataAsExcel({
+      scope: "all",
+      processCellForExcel: processor,
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(bytes!) as unknown as ArrayBuffer);
+    const ws = wb.worksheets[0];
+
+    expect(ws.getCell("B2").value).toBe(20);
+    expect(ws.getCell("B2").font.bold).toBe(true);
+    expect(processor).toHaveBeenCalledWith(expect.objectContaining({
+      value: 10,
+      data: ROWS[0],
+      rowIndex: 0,
+      rowType: "body",
+    }));
   });
 });

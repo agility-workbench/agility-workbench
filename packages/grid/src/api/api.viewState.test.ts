@@ -78,6 +78,46 @@ describe("GridAPI saved view state", () => {
       .toBe(true);
   });
 
+  it("round-trips the page under pagination, clamped to the current dataset", () => {
+    const core = new GridCore(measurer, {
+      rowIdKey: "id",
+      rowModelType: "clientSide",
+      pagination: true,
+      pageSize: 2,
+      pageSizes: [2, 4],
+    });
+    core.setColumnDefsFromProps([{ colId: "name", key: "name", label: "Name" }]);
+    core.dispatch({
+      type: "themeFontSet",
+      headerFont: "12px sans-serif",
+      cellFont: "12px sans-serif",
+      reason: "test",
+    });
+    core.setRowData(Array.from({ length: 10 }, (_, i) => ({ id: String(i), name: `row ${i}` })));
+    const api = new GridAPI(core);
+
+    core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 3, pageSize: 2 });
+    const captured = api.captureViewState();
+    expect(captured.pagination).toEqual({ pageIndex: 3, pageSize: 2 });
+
+    core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 0, pageSize: 4 });
+    api.applyViewState(captured);
+    expect(core.getPaginationInfo()).toMatchObject({ pageIndex: 3, pageSize: 2 });
+
+    // A shrunk dataset clamps the restored page to the new last page.
+    core.setRowData(Array.from({ length: 3 }, (_, i) => ({ id: String(i), name: `row ${i}` })));
+    api.applyViewState(captured);
+    expect(core.getPaginationInfo()).toMatchObject({ pageIndex: 1, pageSize: 2 });
+  });
+
+  it("omits pagination when disabled and leaves the page untouched for old captures", () => {
+    const { core, api } = makeGrid();
+    const captured = api.captureViewState();
+    expect(captured.pagination).toBeUndefined();
+    expect(() => api.applyViewState(JSON.parse(JSON.stringify(captured)))).not.toThrow();
+    expect(core.getPaginationInfo().paginationEnabled).toBe(false);
+  });
+
   it("supports exact and merge column restoration", () => {
     const { core, api } = makeGrid();
     const state = api.captureViewState();

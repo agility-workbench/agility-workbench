@@ -55,6 +55,8 @@ class AngularEditor implements ICellEditorNgComp {
       [suppressTypeToEdit]="suppressTypeToEdit"
       [moveAfterEdit]="moveAfterEdit"
       [commitOnBlur]="commitOnBlur"
+      [readOnlyEdit]="readOnlyEdit"
+      [onBeforeCellCommit]="beforeCellCommit"
       (gridReady)="api = $event"
       (cellValueChanged)="onCellValueChanged($event)"
     />
@@ -67,6 +69,8 @@ class EditingHost {
   suppressTypeToEdit = false;
   moveAfterEdit = true;
   commitOnBlur = true;
+  readOnlyEdit = false;
+  beforeCellCommit?: (params: { value: unknown }) => unknown;
   rows = [{ id: "1", name: "AAA" }, { id: "2", name: "BBB" }];
   cols: NgColDef[] = [
     { colId: "id", key: "id", label: "ID" },
@@ -192,6 +196,31 @@ describe("AwbGrid editing", () => {
 
     expect(host.api!.getCore().getCellValue("1", "name")).toBe("Stayed");
     expect(host.api!.getCore().getActiveCell()).toMatchObject({ row: 0, colIdx: 1 });
+  });
+
+  it("bridges the onBeforeCellCommit return value and honors readOnlyEdit", async () => {
+    const { gridEl, host } = await mountGridHost(EditingHost, 600, (instance) => {
+      instance.readOnlyEdit = true;
+      instance.beforeCellCommit = (p) => `${p.value}!`;
+    });
+    const cell = cellWithText(gridEl, "AAA");
+    cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    key(gridEl, "F2");
+    const editor = gridEl.querySelector<HTMLInputElement>(".angular-cell-editor")!;
+    editor.value = "Hooked";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    // readOnlyEdit: the stored value is untouched; the event reports the hook-transformed value.
+    expect(host.api!.getCore().getCellValue("1", "name")).toBe("AAA");
+    expect(host.onCellValueChanged).toHaveBeenCalledTimes(1);
+    expect(host.onCellValueChanged.mock.calls[0][0]).toMatchObject({
+      rowId: "1",
+      value: "Hooked!",
+      oldValue: "AAA",
+      source: "edit",
+    });
   });
 
   it("keeps an editor open on blur when commitOnBlur is false", async () => {

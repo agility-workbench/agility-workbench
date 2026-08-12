@@ -21,9 +21,90 @@ Choose `text`, `number`, `date`, `boolean`, `select`, or `textarea`. If
 `cellEditor` is omitted, the grid chooses from `ColumnType`. `valueParser`
 converts raw text before writing; typed editors can report already-parsed values.
 
+### Number editor
+
+The `number` editor is a free-text input with numeric augmentation — not a
+native `<input type="number">` — so formatted values are editable.
+ArrowUp/ArrowDown step by `cellEditorParams.step` (default `1`), clamped to
+`min`/`max` and quantized to the step's decimal precision; mobile keyboards get
+a decimal keypad via `inputmode`.
+
+- **Without a `valueParser`** the raw text is parsed as a plain number on
+  commit — clamped to `min`/`max`, `null` when blank or invalid.
+- **With a `valueParser`** the editor seeds with the column's *formatted*
+  display value and commits the raw string through your parser, so formats the
+  cell renders — `1,234.5`, `45%`, `$50` — round-trip through editing. Arrow
+  stepping goes parse → ±step → format (`12.5%` steps to `13%`), and `min`/
+  `max` only bound stepping: commit-time validation belongs to the parser.
+
+### Date editor
+
+The `date` editor is the native `<input type="date">` calendar by default
+(`min`/`max` bound it; commits are ISO `yyyy-mm-dd` strings, `null` when
+blank). **With a `valueParser`** it switches to typed-format entry, the same
+mechanism as the number editor: a text input seeded with the column's
+*formatted* display value that commits the raw string through your parser — so
+a `MM/DD/YYYY` formatter/parser pair lets users type `12/25/2026` directly.
+ArrowUp/ArrowDown step the date by `cellEditorParams.step` days (default `1`),
+round-tripping parse → ±step days → format; a blank input steps from the
+cell's original value. Validation belongs to the parser.
+
 Editing starts with double-click, F2, Enter, or a printable character. Configure
 single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
 with grid options.
+
+## Validating commits: `onBeforeCellCommit`
+
+A synchronous pre-commit hook runs before any user-initiated write — editor
+commits, `setCellValue`, and each cell of a paste/cut/clear batch — *after* the
+column's `valueParser`, so it sees `{ rowId, colId, data, value, oldValue,
+source }` with `value` in its stored form. Return:
+
+- **`REJECT`** (exported sentinel) to veto the write: the cell keeps its old
+  value, nothing enters undo history, no `cellValueChanged` fires, and an
+  editor commit emits `editingChanged { state: "rejected" }` instead;
+- **a value** to store it in place of the proposed one (coerce/clamp);
+- **`undefined`** (or nothing) to accept the proposed value — return `null`
+  when you mean "store an empty value".
+
+Undo/redo replay already-accepted values and skip the hook. Server-validated
+edits that need an *async* veto should combine the sync hook (for what can be
+checked locally) with `readOnlyEdit` below — commit nothing, validate on the
+server, write back through your store.
+
+## Edits write into your row objects
+
+Committed edits are written **in place** into the exact row objects you passed
+as `rowData` — the grid does not copy on ingest or on write. If your
+application store assumes immutability (Redux, NgRx, signals with reference
+equality), hand the grid copies of your rows, or treat the grid's data as
+grid-owned and sync changes back through `onCellValueChanged`.
+
+### `readOnlyEdit`: the application owns the write
+
+Set `readOnlyEdit: true` and the grid never touches your row objects: every
+write path still runs the full pipeline — `valueParser`,
+`onBeforeCellCommit`, `editingChanged`, `cellValueChanged` — but the value is
+**not** written and nothing enters undo history (there is nothing of the
+grid's to undo). Treat `cellValueChanged` as the edit *request*: apply it to
+your store and pass the new data back via `rowData` or `applyTransaction`.
+This is the intended mode for immutable stores, replacing hand-rolled
+commit-then-rollback flows.
+
+## Reacting to value changes
+
+`onCellValueChanged` (and the `cellValueChanged` event) fires once per written
+cell for **every** write path — editor commits, `setCellValue`, paste, cut,
+clear, and undo/redo — with `{ rowId, colId, value, oldValue, source }`.
+`value`/`oldValue` are the stored (parsed) forms, and `source` says what wrote
+the cell (`"edit"`, `"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff
+consumers (dirty tracking, server sync, analytics) need no shadow copy of the
+data. (Under `readOnlyEdit` it fires for every *accepted* write — the value it
+reports is what the grid would have written.) The `editingChanged` event
+additionally carries `oldValue` on its `committed` state, and reports
+`onBeforeCellCommit` vetoes of editor commits as `state: "rejected"`. `colId`
+in these payloads is the public `ColDef.colId`; the internal instance id rides
+on `colInstanceId`.
 
 ## Clipboard and history
 
@@ -33,3 +114,42 @@ block tiles across a larger selected range when its dimensions divide evenly.
 
 Every edit, paste, cut, or batch clear is one undo step. Set `undoLimit: 0` to
 disable history.
+
+`api.undo()` / `api.redo()` traverse it, and `historyChanged` (or the
+`onHistoryChanged` option) fires whenever the stacks move, carrying
+`{ reason, canUndo, canRedo, undoDepth, redoDepth }` — bind toolbar buttons to
+it instead of polling. `reason` is `"commit"`, `"undo"`, `"redo"`, or `"clear"`.
+Replacing `rowData` clears history (its entries reference rows by id) and
+reports `reason: "clear"`. `getHistoryState()` reads the same snapshot on demand,
+for the toolbar's first render.
+
+### Programmatic writes and history
+
+A bulk programmatic update should undo as one user action, not N:
+
+```ts
+// One undo step for the whole batch.
+api.setCellValues([
+  { cell: { rowId: "r1", colId: "salary" }, value: 120000 },
+  { cell: { rowId: "r2", colId: "salary" }, value: 95000 },
+]);
+
+// Same, for writes spread across several calls or helpers.
+api.withUndoGroup(() => {
+  for (const row of affected) api.setCellValue({ rowId: row.id, colId: "band" }, row.band);
+});
+```
+
+Changes the user did not make — server pushes, op-protocol reconciliation,
+recomputed derived columns — should not land on their undo stack at all:
+
+```ts
+// Writes apply and emit their normal events; the undo stack is left untouched.
+api.withoutUndoHistory(() => api.setCellValues(incomingOps));
+```
+
+Both scopes are synchronous: writes made after the callback returns (in a
+promise or timer it schedules) fall outside the scope. Nested scopes inherit the
+outermost mode, so a `withUndoGroup` helper called inside `withoutUndoHistory`
+stays suppressed. `applyTransaction` never enters undo history and needs
+neither.

@@ -55,6 +55,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onCellValueChangedRef = useRef(props.onCellValueChanged);
     const onSelectionChangedRef = useRef(props.onSelectionChanged);
     const onSortChangedRef = useRef(props.onSortChanged);
+    const onFilterChangedRef = useRef(props.onFilterChanged);
+    const onHistoryChangedRef = useRef(props.onHistoryChanged);
+    const onBeforeCellCommitRef = useRef(props.onBeforeCellCommit);
 
     onGridReadyRef.current = props.onGridReady;
     getColumnMenuItemsRef.current = props.getColumnMenuItems;
@@ -64,6 +67,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onCellValueChangedRef.current = props.onCellValueChanged;
     onSelectionChangedRef.current = props.onSelectionChanged;
     onSortChangedRef.current = props.onSortChanged;
+    onFilterChangedRef.current = props.onFilterChanged;
+    onHistoryChangedRef.current = props.onHistoryChanged;
+    onBeforeCellCommitRef.current = props.onBeforeCellCommit;
 
     // Create, attach, announce, and destroy the lifecycle-sensitive grid resources
     // from the layout effect so React render stays pure and StrictMode can replay it safely.
@@ -79,6 +85,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onCellValueChanged = (ev) => onCellValueChangedRef.current?.(ev);
       options.onSelectionChanged = (ev) => onSelectionChangedRef.current?.(ev);
       options.onSortChanged = (ev) => onSortChangedRef.current?.(ev);
+      options.onFilterChanged = (ev) => onFilterChangedRef.current?.(ev);
+      options.onHistoryChanged = (ev) => onHistoryChangedRef.current?.(ev);
+      // Value-returning hook: an absent callback returns undefined, which core reads as "accept".
+      options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);
 
       const core = createCore(options);
       const { renderer, api } = initDomRenderer(
@@ -204,6 +214,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         // Core only owns whether the browser-native mode disables the grid menu entirely.
         bodyContextMenu: props.bodyContextMenu === false ? false : true,
         editTrigger: props.editTrigger ?? "doubleClick",
+        readOnlyEdit: props.readOnlyEdit ?? false,
         pinnedRowsEditable: props.pinnedRowsEditable ?? false,
         rowPinningMenu: props.rowPinningMenu ?? false,
         suppressKeyboardEdit: props.suppressKeyboardEdit ?? false,
@@ -226,6 +237,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.showColumnButtonsOnHover,
       props.bodyContextMenu,
       props.editTrigger,
+      props.readOnlyEdit,
       props.pinnedRowsEditable,
       props.rowPinningMenu,
       props.suppressKeyboardEdit,

@@ -29,6 +29,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "pinnedBottomRowData", grid.pinnedBottomRowData());
   setIfDefined(options, "getRowId", grid.getRowId());
   setIfDefined(options, "rowIdKey", grid.rowIdKey());
+  setIfDefined(options, "rowDataMode", grid.rowDataMode());
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
@@ -52,6 +53,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "showColumnButtonsOnHover", grid.showColumnButtonsOnHover());
   setIfDefined(options, "selectAllRowsOnHeaderClick", grid.selectAllRowsOnHeaderClick());
   setIfDefined(options, "clearSelectionOnBodyClick", grid.clearSelectionOnBodyClick());
+  setIfDefined(options, "resetPageOn", grid.resetPageOn());
   setIfDefined(options, "pageSize", grid.pageSize());
   setIfDefined(options, "pageSizes", grid.pageSizes());
   setIfDefined(options, "serverSideBlockSize", grid.serverSideBlockSize());
@@ -60,6 +62,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "paginationUnknownTotalTooltip", grid.paginationUnknownTotalTooltip());
   setIfDefined(options, "undoLimit", grid.undoLimit());
   setIfDefined(options, "editTrigger", grid.editTrigger());
+  setIfDefined(options, "readOnlyEdit", grid.readOnlyEdit());
   setIfDefined(options, "initialSort", grid.initialSort());
   setIfDefined(options, "multiSortKey", grid.multiSortKey());
   setIfDefined(options, "showSortPriority", grid.showSortPriority());
