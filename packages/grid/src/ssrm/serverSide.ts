@@ -851,6 +851,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         filters: item.filters.map(filter => ({
           type: filter.type,
           values: filter.values,
+          ...(filter.mode ? { mode: filter.mode } : {}),
         })),
         join: item.join,
       });

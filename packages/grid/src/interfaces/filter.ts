@@ -40,9 +40,20 @@ export enum FilterType {
 
 export type ComparatorFn = (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => number;
 
+/**
+ * Explicit set-filter intent. When present on an in/notIn FilterDef, the stored representation
+ * always follows the mode — "include" stores the checked values as `in`, "exclude" stores the
+ * unchecked values as `notIn` — and the menu's usual storage optimization (flipping to whichever
+ * list is shorter) is suppressed. The observable difference is what happens to values that arrive
+ * AFTER filtering (new rows, edited cells): "exclude" shows them, "include" hides them.
+ */
+export type SetFilterMode = "include" | "exclude";
+
 export interface FilterDef {
   type: FilterType;
   values: any;
+  /** Set-filter (in/notIn) only: pins the representation to the user's intent. */
+  mode?: SetFilterMode;
 }
 
 export interface FilterItem {

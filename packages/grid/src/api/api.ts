@@ -10,10 +10,25 @@ import {
   RowPinnedPosition,
   TreeDataKeyboardNavigationMode,
 } from "../interfaces/gridOptions";
-import { FilterItem } from "../interfaces/filter";
+import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
 import { Column } from "../column/column";
+import { ColumnFilterMenuService } from "../filter/filterMenuService";
+import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
+import {
+  computeUniqueValues,
+  buildSetOptions,
+  defaultValueKey,
+  defFromCheckedKeys,
+  isValueChecked,
+  resolveOption,
+  selectionSummary,
+  SetFilterSelection,
+  toggleOption,
+  ValueKeyFn,
+  valueOptions,
+} from "../filter/setFilterCore";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
@@ -42,6 +57,7 @@ export class GridAPI implements IGridAPI {
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
+  private filterMenuService?: ColumnFilterMenuService;
 
   constructor(private core: IGridCore) {}
 
@@ -157,6 +173,7 @@ export class GridAPI implements IGridAPI {
       filters: item.filters.map(filter => ({
         type: filter.type,
         values: cloneViewValue(filter.values),
+        ...(filter.mode ? { mode: filter.mode } : {}),
       })),
       join: item.join,
     }));
@@ -184,6 +201,125 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "filterModelSet", filterModel: next });
   }
 
+  // ---------------- Set filter ----------------
+  async getSetFilterValues(colId: string): Promise<unknown[]> {
+    const session = await this.loadSetFilterSession(colId);
+    return session ? valueOptions(session.options).map(o => o.raw) : [];
+  }
+
+  async getSetFilterState(colId: string): Promise<SetFilterSelection | null> {
+    const col = this.resolveColumn(colId);
+    if (!col) return null;
+    const def = this.currentSetDef(col);
+    if (!def) return null;
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return null;
+    return selectionSummary(def, session.options, session.keyFn);
+  }
+
+  checkSetFilterValue(colId: string, value: unknown): Promise<void> {
+    return this.toggleSetFilterValue(colId, value, true);
+  }
+
+  uncheckSetFilterValue(colId: string, value: unknown): Promise<void> {
+    return this.toggleSetFilterValue(colId, value, false);
+  }
+
+  async setSetFilterValues(colId: string, values: unknown[], opts?: { mode?: SetFilterMode }): Promise<void> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return;
+    const mode = opts?.mode ?? "include";
+
+    const resolved = new Set<string>();
+    for (const value of values ?? []) {
+      const option = resolveOption(session.options, value, session.keyFn);
+      if (option) resolved.add(option.key);
+      else console.warn(`Set filter on "${colId}": value ${JSON.stringify(value)} is not in the value universe; ignoring it.`);
+    }
+    const checked = mode === "include"
+      ? resolved
+      : new Set(valueOptions(session.options).map(o => o.key).filter(key => !resolved.has(key)));
+    this.applySetDef(session.col, defFromCheckedKeys(checked, session.options, { mode }));
+  }
+
+  private async toggleSetFilterValue(colId: string, value: unknown, checked: boolean): Promise<void> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return;
+    const option = resolveOption(session.options, value, session.keyFn);
+    if (!option) {
+      console.warn(`Set filter on "${colId}": value ${JSON.stringify(value)} is not in the value universe; ignoring it.`);
+      return;
+    }
+    const def = this.currentSetDef(session.col);
+    // Already in the requested state — skip the dispatch (which resets the page and selection).
+    if (isValueChecked(def, option, session.keyFn) === checked) return;
+    this.applySetDef(session.col, toggleOption(def, option, checked, session.options, session.keyFn));
+  }
+
+  /** The column's active in/notIn def, or null when it has no set filter. */
+  private currentSetDef(col: Column): FilterDef | null {
+    const item = this.core.getFilterModel().items.find(i => i.col.instanceID === col.instanceID);
+    return item?.filters.find(f => f.type === FilterType.IN || f.type === FilterType.NOT_IN) ?? null;
+  }
+
+  /** Replace the column's whole filter with one set def (null removes it). */
+  private applySetDef(col: Column, def: FilterDef | null): void {
+    const items = this.core.getFilterModel().items;
+    const others = items.filter(i => i.col.instanceID !== col.instanceID);
+    if (def === null) {
+      if (others.length === items.length) return;
+      this.dispatch({ type: "filterModelSet", filterModel: others });
+      return;
+    }
+    this.dispatch({
+      type: "filterModelSet",
+      filterModel: [...others, { col, key: col.key, filters: [def], join: "and" }],
+    });
+  }
+
+  /** Build the column's set-filter universe headlessly (same spec + sources the menu uses). */
+  private async loadSetFilterSession(
+    colId: string,
+  ): Promise<{ col: Column; options: SetFilterOptions[]; keyFn: ValueKeyFn } | null> {
+    const col = this.resolveColumn(colId);
+    if (!col) {
+      console.warn(`Set filter: unknown column "${colId}".`);
+      return null;
+    }
+    if (!this.filterMenuService) this.filterMenuService = new ColumnFilterMenuService(this.core);
+    const spec = this.filterMenuService.buildFilterMenu({ trigger: "api", targetCol: col });
+    if (spec.kind !== "set") {
+      console.warn(`Set filter: column "${colId}" does not use the set filter (kind "${spec.kind}").`);
+      return null;
+    }
+    const keyFn = spec.valueKey ?? defaultValueKey;
+    const values = await this.loadSetFilterSourceValues(spec);
+    return { col, options: buildSetOptions(values, keyFn, spec.valueLabel), keyFn };
+  }
+
+  private loadSetFilterSourceValues(spec: FilterPanelSpec): Promise<any[]> {
+    const source = spec.conditionTemplate.valueSource;
+    if (!source || source.kind === "static") {
+      return Promise.resolve((source && source.values) ?? []);
+    }
+    if (source.kind === "fromRows") {
+      return Promise.resolve(computeUniqueValues(
+        (callback) => this.core.getRowModel().forEachNode(callback),
+        (row) => spec.column.getValue(row),
+        spec.valueKey ?? defaultValueKey,
+        spec.valueLabel ?? ((x: any) => String(x)),
+        typeof spec.params.maxFilterItems === "number" ? spec.params.maxFilterItems : undefined,
+      ));
+    }
+    return new Promise((resolve, reject) => {
+      const abort = new AbortController();
+      const res = new FilterValueAsyncSourceParamsImpl(spec.column.col, abort.signal);
+      res.onSuccess(values => resolve(values ?? []));
+      res.onError(err => reject(err instanceof Error ? err : new Error(String(err ?? "Failed to load filter values"))));
+      void source.load(res);
+    });
+  }
+
   /** Resolve a public colId (falling back to instance id, then key) to a live column. */
   private resolveColumn(colId: string): Column | undefined {
     const model = this.core.getColumnModel();
@@ -201,6 +337,7 @@ export class GridAPI implements IGridAPI {
         filters: item.filters.map(filter => ({
           type: filter.type,
           values: cloneViewValue(filter.values),
+          ...(filter.mode ? { mode: filter.mode } : {}),
         })),
         join: item.join,
       }];

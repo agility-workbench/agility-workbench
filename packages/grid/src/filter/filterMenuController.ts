@@ -11,7 +11,17 @@ import {
   FilterValueAsyncSourceParamsImpl,
 } from "./types";
 import { FilterDef, FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
-import { isNullOrUndefined } from "../misc";
+import {
+  buildSetOptions,
+  computeUniqueValues,
+  defaultValueKey,
+  defFromCheckedKeys,
+  isValueChecked,
+  pruneToUniverse,
+  setAllChecked,
+  toggleOption,
+  valueOptions,
+} from "./setFilterCore";
 
 export class FilterController implements IFilterController {
   private spec: FilterPanelSpec;
@@ -148,45 +158,17 @@ export class FilterController implements IFilterController {
     if (!option) return;
 
     ui.selectedIdx = optionIdx;
-    const type = option.type;
-    let value = option.raw;
-
     const d = this.state.draft[id];
     // default type for set filter should be "notIn"
     if (!d.type) d.type = this.spec.defaultOp ?? FilterType.NOT_IN;
-    if (type === "select_all") {
-      if (selected) {
-        d.type = FilterType.NOT_IN;
-        d.values = [];
-      } else {
-        d.type = FilterType.IN;
-        d.values = [];
-      }
-    } else {
-      d.values = d.values ?? [];
-      const insert = d.type === FilterType.IN && selected || d.type === FilterType.NOT_IN && !selected;
-      if (insert) {
-        if (type === "blanks") {
-          value = this.state.ui[id]?.options?.find(o => o.key === "" || isNullOrUndefined(o.key))?.raw;
-        }
-        if (!d.values.includes(value)) {
-          d.values.push(value);
-        }
-      } else {
-        d.values = d.values.filter((v: any) => {
-          const keyFn = this.spec.valueKey ?? defaultValueKey;
-          const k = keyFn(v);
-          return k !== value;
-        });
-      }
-      if (d.type === FilterType.IN && d.values.length == this.state.ui[id].options?.length) {
-        d.type = FilterType.NOT_IN;
-        d.values = [];
-      } else if (d.type === FilterType.NOT_IN && d.values.length == this.state.ui[id].options?.length) {
-        d.type = FilterType.IN;
-        d.values = [];
-      }
-    }
+
+    const keyFn = this.spec.valueKey ?? defaultValueKey;
+    const def = draftToDef(d);
+    const next = option.type === "select_all"
+      ? setAllChecked(selected, ui.options ?? [], def?.mode)
+      : toggleOption(def, option, selected, ui.options ?? [], keyFn);
+    applyDefToDraft(next, d);
+
     this.normalizeAfterEdit({ reason: "setValueToggle" });
 
     this.emit();
@@ -205,24 +187,25 @@ export class FilterController implements IFilterController {
     const ui = this.state.ui[id];
     if (!ui || !ui.options) return { selected, indeterminate };
 
+    const keyFn = this.spec.valueKey ?? defaultValueKey;
+    const def = draftToDef(d);
+
     if (type === "select_all") {
-      selected = d.type === FilterType.NOT_IN && d.values?.length === 0;
-      indeterminate = d.values ? d.values.length > 0 : false;
-      if ((ui.miniFilter || "").length > 0) {
-        // If mini-filter is active, "select all" only applies to filtered options, so we need to check if all filtered options are selected.
-        const filteredOptionValues = new Set(ui.options.filter(o => !o.hidden && o.type === "value").map(o => o.raw));
-        const selectedCount = d.values?.filter((v: any) => filteredOptionValues.has(v)).length ?? 0;
-        selected = d.type === FilterType.NOT_IN ? selectedCount === 0 : selectedCount === filteredOptionValues.size;
-        indeterminate = selectedCount > 0 && selectedCount < filteredOptionValues.size;
-      }
-    } else {
-      if (type === "blanks") {
-        const blankOption = this.state.ui[id]?.options?.find(o => o.key === "" || isNullOrUndefined(o.key));
-        if (!blankOption) return { selected, indeterminate };
-        value = blankOption.raw;
-      }
-      selected = (d.type === FilterType.IN) ? d.values?.includes(value) : !d.values?.includes(value);
+      // With an active mini-filter, select-all describes only the visible options.
+      const scope = (ui.miniFilter || "").length > 0
+        ? valueOptions(ui.options).filter(o => !o.hidden)
+        : valueOptions(ui.options);
+      const checkedCount = scope.filter(o => isValueChecked(def, o, keyFn)).length;
+      selected = checkedCount === scope.length;
+      indeterminate = checkedCount > 0 && checkedCount < scope.length;
+      return { selected, indeterminate };
     }
+
+    const option = type === "blanks"
+      ? ui.options.find(o => o.type === "blanks")
+      : ui.options.find(o => o.type === "value" && o.key === keyFn(value));
+    if (!option) return { selected, indeterminate };
+    selected = isValueChecked(def, option, keyFn);
     return { selected, indeterminate };
   }
 
@@ -235,29 +218,19 @@ export class FilterController implements IFilterController {
     if (!ui.options) return;
 
     const filterLc = filter.toLowerCase();
-    const filteredOptions: SetFilterOptions[] = [];
     for (const o of ui.options) {
-      if (o.label.toLowerCase().includes(filterLc)) {
-        o.hidden = false;
-        filteredOptions.push(o);
-      } else {
-        o.hidden = o.type !== "select_all";
-      }
+      o.hidden = o.type !== "select_all" && !o.label.toLowerCase().includes(filterLc);
     }
-    const filteredValues = new Set(filteredOptions.map(f => f.key));
+
+    // Check exactly the matching options: the visible set becomes the checked set.
     const d = this.state.draft[id];
-    if (d.type === FilterType.IN) {
-      d.values = [];
-      for (const f of filteredValues) {
-        d.values.push(f);
-      }
-    } else if (d.type === FilterType.NOT_IN) {
-      d.values = ui.options.filter((v: SetFilterOptions) => !filteredValues.has(v.key)).map((o: any) => o.raw);
-    }
-    if (d.values.length === ui.options.length) {
-      d.type = d.type === FilterType.IN ? FilterType.NOT_IN : FilterType.IN;
-      d.values = [];
-    }
+    const def = draftToDef(d);
+    const visibleKeys = new Set(valueOptions(ui.options).filter(o => !o.hidden).map(o => o.key));
+    const next = defFromCheckedKeys(visibleKeys, ui.options, {
+      mode: def?.mode,
+      preferType: def?.type === FilterType.IN ? FilterType.IN : FilterType.NOT_IN,
+    });
+    applyDefToDraft(next, d);
     ui.miniFilter = filter;
     this.normalizeAfterEdit({ reason: "setValueToggle" });
     this.emit();
@@ -417,9 +390,13 @@ export class FilterController implements IFilterController {
     const finalize = (options?: SetFilterOptions[], error?: string) => {
       if (this.disposed) return;
       if (requestId !== this.optionsRequestId) return; // stale
-      const availableOptionValues = new Set(options?.map(o => o.raw));
+      const keyFn = this.spec.valueKey ?? defaultValueKey;
       for (const id of this.state.conditionOrder) {
-        this.state.draft[id].values = (this.state.draft[id].values ?? []).filter((v: any) => availableOptionValues.has(v));
+        // Restrict stored values to the loaded universe (healing typed mismatches). Only when a
+        // universe actually loaded — a load error must not wipe the stored values.
+        if (options) {
+          this.state.draft[id].values = pruneToUniverse(this.state.draft[id].values ?? [], options, keyFn);
+        }
         this.state.ui[id] = {
           ...(this.state.ui[id] ?? {}),
           loading: false,
@@ -456,71 +433,17 @@ export class FilterController implements IFilterController {
   }
 
   private computeUniqueValuesFromRows(): any[] {
-    const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const seen = new Set<string>();
-    const out: any[] = [];
-
-    this.hooks.getAllRows((row: IRowNode, idx: number) => {
-      const v = this.spec.column.getValue(row);
-      // v could possibly be undefined/null; we'll allow that and let the keyFn handle it (e.g. return "" for blanks) and dedupe accordingly
-      const k = keyFn(v);
-      if (!seen.has(k)) {
-        seen.add(k);
-        out.push(v);
-      }
-    });
-
-    // optional: sort by label
-    const labelFn = this.spec.valueLabel ?? ((x: any) => String(x));
-    out.sort((a, b) => {
-      const la = labelFn(a);
-      const lb = labelFn(b);
-      return la < lb ? -1 : la > lb ? 1 : 0;
-    });
-
-    // optional cap
-    const maxItems = this.spec.params.maxFilterItems;
-    if (typeof maxItems === "number" && maxItems > 0 && out.length > maxItems) {
-      return out.slice(0, maxItems);
-    }
-
-    return out;
+    return computeUniqueValues(
+      (callback) => this.hooks.getAllRows(callback),
+      (row: IRowNode) => this.spec.column.getValue(row),
+      this.spec.valueKey ?? defaultValueKey,
+      this.spec.valueLabel ?? ((x: any) => String(x)),
+      typeof this.spec.params.maxFilterItems === "number" ? this.spec.params.maxFilterItems : undefined,
+    );
   }
 
   private mapToOptions(values: any[]): SetFilterOptions[] {
-    const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const labelFn = this.spec.valueLabel ?? ((x: any) => String(x));
-
-    const options: SetFilterOptions[] = [
-      { type: "select_all", key: "__select_all__", label: "(Select All)", raw: "__select_all__", hidden: false },
-    ];
-    const seen = new Set<string>(["__select_all__"]);
-
-    let hasBlanks = false;
-
-    for (const v of values ?? []) {
-      const key = keyFn(v);
-      if (key === "" || isNullOrUndefined(key)) {
-        // we'll add a single "(Blanks)" option later if there are any blank/undefined/null keys; for now just track that we have blanks
-        hasBlanks = true;
-        continue;
-      }
-      if (seen.has(key)) continue;
-      seen.add(key);
-      options.push({ type: "value", key, label: labelFn(v), raw: v, hidden: false });
-    }
-
-    if (hasBlanks) {
-      options.splice(1, 0, {
-        type: "blanks",
-        key: "__blanks__",
-        label: "(Blanks)",
-        raw: null,
-        hidden: false,
-      });
-    }
-
-    return options;
+    return buildSetOptions(values, this.spec.valueKey ?? defaultValueKey, this.spec.valueLabel);
   }
 
   // --------------------------
@@ -709,7 +632,9 @@ export class FilterController implements IFilterController {
       if (!this.isConditionValid(d.type, d.values)) continue;
 
       // normalize values (trim/caseSensitive etc. can be done in filter engine)
-      filters.push({ type: d.type, values: [...(d.values ?? [])] });
+      const def: FilterDef = { type: d.type, values: [...(d.values ?? [])] };
+      if (d.mode) def.mode = d.mode;
+      filters.push(def);
     }
 
     if (filters.length === 0) return null;
@@ -738,6 +663,7 @@ export class FilterController implements IFilterController {
       const id = condId(i);
       order.push(id);
       draft[id] = { type: model.filters[i].type, values: [...model.filters[i].values] };
+      if (model.filters[i].mode) draft[id].mode = model.filters[i].mode;
       ui[id] = {};
     }
 
@@ -787,7 +713,8 @@ export class FilterController implements IFilterController {
     return {
       join: this.state.join,
       conditionOrder: [...this.state.conditionOrder],
-      draft: Object.fromEntries(Object.entries(this.state.draft).map(([k, v]) => [k, { type: v.type, values: [...(v.values ?? [])] }])),
+      draft: Object.fromEntries(Object.entries(this.state.draft).map(([k, v]) =>
+        [k, { type: v.type, values: [...(v.values ?? [])], ...(v.mode ? { mode: v.mode } : {}) }])),
       ui: Object.fromEntries(Object.entries(this.state.ui).map(([k, v]) => [k, { ...v, options: v.options ? [...v.options] : v.options }])),
     };
   }
@@ -819,13 +746,31 @@ function deepCloneModel(m: FilterItem): FilterItem {
     col: m.col,
     key: m.key,
     join: m.join,
-    filters: m.filters.map(c => ({ type: c.type, values: [...c.values] })),
+    filters: m.filters.map(c => ({ ...c, values: [...c.values] })),
   };
 }
 
-// fallback
-function defaultValueKey(v: any): string {
-  if (v == null) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+/**
+ * Draft ⇄ def mapping for set filters. A draft always holds a concrete {type, values} so the
+ * renderer has something to bind, while the pure module reasons about `null` = "no filter":
+ * an un-moded `notIn []` draft (matches everything) is the draft encoding of null.
+ */
+function draftToDef(d: FilterDef): FilterDef | null {
+  if (d.type === FilterType.NOT_IN && (d.values?.length ?? 0) === 0 && !d.mode) return null;
+  const def: FilterDef = { type: d.type, values: [...(d.values ?? [])] };
+  if (d.mode) def.mode = d.mode;
+  return def;
+}
+
+function applyDefToDraft(next: FilterDef | null, d: FilterDef): void {
+  if (next === null) {
+    d.type = FilterType.NOT_IN;
+    d.values = [];
+    delete d.mode;
+    return;
+  }
+  d.type = next.type;
+  d.values = [...next.values];
+  if (next.mode) d.mode = next.mode;
+  else delete d.mode;
 }

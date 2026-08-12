@@ -29,6 +29,10 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
 | `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |
 | `removeFilterModel(colId)` | Remove one column's filter (no-op when it has none) |
+| `getSetFilterValues(colId)` | Set-filter columns: the value universe (null = blanks) |
+| `getSetFilterState(colId)` | Intent-level `{ mode, checked, unchecked }`, or null when unfiltered |
+| `checkSetFilterValue(colId, value)` / `uncheckSetFilterValue(colId, value)` | Toggle one value by intent |
+| `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |

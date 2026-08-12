@@ -26,6 +26,42 @@ Set-filter values can come from loaded rows, a static list, or an asynchronous
 loader. A function supplied as `filter` becomes a custom row matcher while the
 standard filter panel still owns its model and inputs.
 
+## Programmatic filters
+
+`getFilterModel()` / `setFilterModel(filters)` / `addFilterModel(filter)` /
+`removeFilterModel(colId)` read and write all column filters as serializable
+`{ colId, filters, join }` items addressed by the public `ColDef.colId`.
+
+## Set filter by intent
+
+For set-filter columns, prefer the intent-level helpers over manipulating
+`in`/`notIn` defs directly — the set filter manages its own storage:
+
+```ts
+await api.getSetFilterValues("region");            // the value universe (null = blanks)
+await api.uncheckSetFilterValue("region", "EMEA"); // hide EMEA rows
+await api.checkSetFilterValue("region", "EMEA");   // show them again
+await api.getSetFilterState("region");             // { mode, checked, unchecked } or null
+await api.setSetFilterValues("region", ["EMEA"], { mode: "include" });
+```
+
+Inputs are resolved against the column's value universe, so a string `"5"`
+finds the numeric `5` your rows hold, and `null` addresses the "(Blanks)"
+bucket. The methods are async because filter values may come from an async
+source; with the default from-rows universe they resolve immediately.
+
+The one semantic worth choosing deliberately is `mode` — what happens to
+values that **arrive after filtering** (new rows, edited cells):
+
+- `"exclude"` (the menu's default behavior): the unchecked values are stored;
+  anything else, including later arrivals, stays visible.
+- `"include"`: the checked values are stored; anything else, including later
+  arrivals, is hidden — "show only what I checked".
+
+An explicit `mode` passed to `setSetFilterValues` is pinned on the filter:
+subsequent menu or helper toggles keep that representation instead of
+optimizing storage to the shorter list.
+
 ## Quick filter
 
 `multiTerm` requires every whitespace-separated term to match somewhere in the

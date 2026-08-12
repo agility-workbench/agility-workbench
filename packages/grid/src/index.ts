@@ -126,7 +126,9 @@ export type {
   FilterModel,
   FilterOption,
   FilterParams,
+  SetFilterMode,
 } from "./interfaces/filter";
+export type { SetFilterSelection } from "./filter/setFilterCore";
 
 export type {
   CellValueChangeSource,

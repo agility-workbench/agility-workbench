@@ -11,6 +11,8 @@ import {
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
+import { SetFilterMode } from "./filter";
+import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
@@ -105,6 +107,31 @@ export interface IGridAPI {
   addFilterModel(filter: GridViewFilterState): void;
   /** Remove one column's filter. No-op (no page reset, no selection clear) when it has none. */
   removeFilterModel(colId: string): void;
+
+  /* ----- Set filter (columns with `filter: "set"`) -----
+   * Intent-level helpers: express WHICH values are checked/unchecked and the set filter manages
+   * its own storage. Inputs are resolved against the column's value universe (so a string "5"
+   * finds the numeric 5 the rows hold); null addresses the "(Blanks)" bucket. All methods are
+   * async because a column's filter values may come from an async source; with the default
+   * from-rows universe they resolve immediately. On non-set columns they warn and no-op. */
+  /** The column's full value universe (distinct values as shown in the menu; null = blanks). */
+  getSetFilterValues(colId: string): Promise<unknown[]>;
+  /** Intent-level view of the column's active set filter, or null when it has none (all values
+   * visible). `mode` says what happens to values that arrive after filtering: "exclude" shows
+   * them, "include" hides them. */
+  getSetFilterState(colId: string): Promise<SetFilterSelection | null>;
+  /** Check one value (make rows with it visible). No-op if already checked. */
+  checkSetFilterValue(colId: string, value: unknown): Promise<void>;
+  /** Uncheck one value (hide rows with it). No-op if already unchecked. */
+  uncheckSetFilterValue(colId: string, value: unknown): Promise<void>;
+  /**
+   * Replace the column's set filter wholesale. With `mode: "include"` (default) `values` is the
+   * checked set — everything else, including values that arrive later, is hidden. With
+   * `mode: "exclude"` `values` is the unchecked set — everything else, including later arrivals,
+   * stays visible. An explicit mode is pinned: subsequent menu or helper toggles keep the
+   * representation instead of optimizing it to the shorter list.
+   */
+  setSetFilterValues(colId: string, values: unknown[], opts?: { mode?: SetFilterMode }): Promise<void>;
 
   /** Current tree-data keyboard navigation mode. Non-tree grids always report "grid". */
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
