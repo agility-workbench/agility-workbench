@@ -44,13 +44,20 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `cellSelection` | `boolean \| "text"` | `true` |
 | `rangeSelection` | `boolean` | `true` |
 | `columnSelection` | `boolean` | `true` |
-| `rowSelection` | `boolean \| { checkboxes?, headerCheckbox? }` | `false` (object form adds the checkbox column) |
+| `rowSelection` | `boolean \| RowSelectionOptions` | `false` (object form configures mode and the checkbox column) |
 | `selectAllScope` | `"filtered" \| "page"` | `"filtered"` (select-all and `areAllRowsSelected` span the whole filtered set) |
 | `selectionPersistence` | `"clear" \| "keep"` | `"clear"` (row selection on filter/sort/quick-filter changes) |
 | `selectAllRowsOnHeaderClick` | `boolean` | `false` |
 | `clearSelectionOnBodyClick` | `boolean` | `true` |
 | `highlightActiveCell` | `boolean` | `false` |
 | `bodyContextMenu` | `boolean \| getter` | `true` |
+
+`RowSelectionOptions` accepts `mode: "single" | "multiple"` (default
+`"multiple"`), `checkboxes`, and `headerCheckbox`. Single mode always hides the
+header checkbox. Checkbox-column placement uses two independent options:
+`checkboxColumnPinned: "left" | "right" | null` chooses its initial position
+(default `"left"`), while `checkboxColumnPinnable` controls whether users can
+change that position later (default `true`).
 
 ## Editing
 
@@ -123,4 +130,3 @@ row count is known; the quick filter is client-side only.)
 
 The package's TypeScript declarations remain the source of truth for less
 common callbacks and detailed nested option types.
-

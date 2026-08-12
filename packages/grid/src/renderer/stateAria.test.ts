@@ -259,6 +259,16 @@ describe("aria-multiselectable", () => {
     expect(root.getAttribute("aria-multiselectable")).toBe("true");
   });
 
+  it("is false when single-row selection is the only selection route", () => {
+    const { root } = mountGrid(10, {
+      cellSelection: false,
+      rangeSelection: false,
+      rowSelection: { mode: "single", checkboxes: true },
+      columnSelection: false,
+    });
+    expect(root.getAttribute("aria-multiselectable")).toBe("false");
+  });
+
   it("is true on column selection alone — which is on by default", () => {
     // Column selection accumulates (a second column adds to the set) and marks every cell of each
     // selected column, so a grid with only this route enabled is still multi-selectable. Reporting

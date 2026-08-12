@@ -14,6 +14,9 @@ type OrderRow = {
   total: number;
 };
 
+type SelectionMode = "single" | "multiple";
+type CheckboxPin = "left" | "right" | null;
+
 const CUSTOMERS = ["Acme", "Globex", "Initech", "Umbrella", "Stark", "Wayne", "Wonka", "Hooli"];
 const REGIONS = ["North", "South", "East", "West"];
 const STATUSES = ["Ready", "Review", "Blocked"];
@@ -35,6 +38,9 @@ export function RowSelectionCheckboxDemo() {
   const apiRef = useRef<IGridAPI | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastReason, setLastReason] = useState("ready");
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("multiple");
+  const [checkboxPin, setCheckboxPin] = useState<CheckboxPin>("left");
+  const [checkboxPinnable, setCheckboxPinnable] = useState(true);
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "Order", width: 110 },
@@ -83,13 +89,58 @@ export function RowSelectionCheckboxDemo() {
         </div>
       </div>
 
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", padding: "8px 12px",
+          border: "1px solid var(--pte-frame-border-color, #d1d5db)", borderRadius: 8,
+        }}
+      >
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          Selection mode
+          <select
+            value={selectionMode}
+            onChange={(event) => setSelectionMode(event.target.value as SelectionMode)}
+          >
+            <option value="multiple">Multiple</option>
+            <option value="single">Single</option>
+          </select>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          Initial checkbox pin
+          <select
+            value={checkboxPin ?? "none"}
+            onChange={(event) => setCheckboxPin(
+              event.target.value === "none" ? null : event.target.value as Exclude<CheckboxPin, null>,
+            )}
+          >
+            <option value="left">Left</option>
+            <option value="none">No pin</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={checkboxPinnable}
+            onChange={(event) => setCheckboxPinnable(event.target.checked)}
+          />
+          Can be repinned
+        </label>
+      </div>
+
       <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <Grid
+            key={`${selectionMode}-${checkboxPin ?? "none"}-${checkboxPinnable}`}
             rowData={rows}
             columnDefs={columnDefs}
             rowIdKey="id"
-            rowSelection={{ checkboxes: true }}
+            rowSelection={{
+              mode: selectionMode,
+              checkboxes: true,
+              checkboxColumnPinned: checkboxPin,
+              checkboxColumnPinnable: checkboxPinnable,
+            }}
             quickFilter
             pagination
             pageSize={15}

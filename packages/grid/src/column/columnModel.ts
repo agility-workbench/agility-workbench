@@ -40,10 +40,9 @@ const ROW_NUMBER_COLUMN_DEF = {
 } satisfies ColDef & { __internalRole: "rowNumber" };
 
 const CHECKBOX_COL_ID = "__pte_checkbox__";
-// Selection checkbox column (rowSelection: { checkboxes: true }). It defaults to the left-pinned
-// section but, unlike the layout-frozen row-number gutter, can be pinned right or unpinned from its
-// header menu. The checkbox visual is CSS-driven off the cell's "selected" class, so body cells
-// carry no per-cell listeners or state.
+// Selection checkbox column (rowSelection: { checkboxes: true }). Its initial pin and whether that
+// pin can subsequently change are grid options. The checkbox visual is CSS-driven off the cell's
+// "selected" class, so body cells carry no per-cell listeners or state.
 const CHECKBOX_COLUMN_DEF = {
   colId: CHECKBOX_COL_ID,
   key: CHECKBOX_COL_ID,
@@ -51,7 +50,6 @@ const CHECKBOX_COLUMN_DEF = {
   width: 44,
   minWidth: 44,
   maxWidth: 44,
-  pinned: "left",
   sortable: false,
   filter: false,
   groupable: false,
@@ -689,7 +687,11 @@ export class ColumnModel implements IColumnModel {
     // Keep the live pinned state across every layout rebuild. The checkbox definition is static;
     // reapplying it here would silently snap a user-unpinned/right-pinned checkbox back to left.
     if (this.checkboxColumn) return this.checkboxColumn;
-    this.checkboxColumn = new Column({ ...CHECKBOX_COLUMN_DEF }, "checkbox");
+    this.checkboxColumn = new Column({
+      ...CHECKBOX_COLUMN_DEF,
+      pinned: this.options.rowSelectionCheckboxColumnPinned ?? undefined,
+      __pinnable: this.options.rowSelectionCheckboxColumnPinnable,
+    } as ColDef, "checkbox");
     return this.checkboxColumn;
   }
 
@@ -1149,7 +1151,7 @@ export class ColumnModel implements IColumnModel {
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.resolve(colId);
-    if (!col || col.isRowNumberColumn()) return false;
+    if (!col || col.isRowNumberColumn() || !col.pinnable) return false;
 
     if (col.pinned === pin) return false;
 

@@ -11,6 +11,7 @@ type CapSummary = {
   groupable: boolean;
   aggregatable: boolean;
   hideable: boolean;
+  pinnable: boolean;
   pinning: "left" | "right" | "mixed" | null;
   sortDir: "asc" | "desc" | "mixed" | null;
   aggType: string;
@@ -102,7 +103,7 @@ export class ColumnMenuService {
       }
       items.push(item);
     }
-    if (cap.pinning !== "mixed") {
+    if (cap.pinnable && cap.pinning !== "mixed") {
       if (items.length > 0) {
         items.push({ isSeparator: true });
       }
@@ -157,7 +158,7 @@ export class ColumnMenuService {
       }
     }
 
-    if (items[items.length - 1].isSeparator) {
+    if (items[items.length - 1]?.isSeparator) {
       return items.slice(0, -1);
     }
 
@@ -225,6 +226,7 @@ export class ColumnMenuService {
     let groupable = true;
     let aggregatable = true;
     let hideable = true;
+    let pinnable = true;
     let colTypes: ColumnType | "mixed" | null = null;
     let sortDir: "asc" | "desc" | "mixed" | null = null;
     let pinning: "left" | "right" | "mixed" | null = null;
@@ -245,6 +247,7 @@ export class ColumnMenuService {
       if (!col.groupable) groupable = false;
       if (!col.aggregatable) aggregatable = false;
       if (!col.hideable) hideable = false;
+      if (!col.pinnable) pinnable = false;
       if (col.children.length == 0) {
         const colType = col.type || ColumnType.STRING;
         if (!colTypes) {
@@ -282,6 +285,7 @@ export class ColumnMenuService {
       aggregatable,
       sortDir,
       hideable,
+      pinnable,
       pinning,
       aggType,
       aggregated,

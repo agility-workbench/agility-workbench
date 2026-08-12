@@ -225,11 +225,22 @@ export class GridCore implements IGridCore {
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: typeof options.rowSelection === "object" ? true : isTrue(options.rowSelection),
+      rowSelectionMode: typeof options.rowSelection === "object"
+        ? (options.rowSelection.mode ?? "multiple")
+        : "multiple",
       rowSelectionCheckboxes: typeof options.rowSelection === "object"
         && isTrue(options.rowSelection.checkboxes),
       rowSelectionHeaderCheckbox: typeof options.rowSelection === "object"
         && isTrue(options.rowSelection.checkboxes)
+        && options.rowSelection.mode !== "single"
         && (options.rowSelection.headerCheckbox ?? true),
+      rowSelectionCheckboxColumnPinnable: typeof options.rowSelection !== "object"
+        || (options.rowSelection.checkboxColumnPinnable ?? true),
+      rowSelectionCheckboxColumnPinned: typeof options.rowSelection === "object"
+        ? (options.rowSelection.checkboxColumnPinned === undefined
+          ? "left"
+          : options.rowSelection.checkboxColumnPinned)
+        : "left",
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
@@ -1448,6 +1459,19 @@ export class GridCore implements IGridCore {
     return ids;
   }
 
+  // Ids of selectable rows in the current rendered page/view. Kept here (rather than relying on
+  // SelectionModel.selectAllRows) so single-selection select-all can safely choose just one row.
+  private getPageSelectableRowIds(): string[] {
+    const ids: string[] = [];
+    const viewCount = this.rowModel.getViewCount();
+    for (let i = 0; i < viewCount; i++) {
+      if (!this.isViewRowSelectable(i)) continue;
+      const id = this.getRowIdAtViewIndex(i);
+      if (id) ids.push(id);
+    }
+    return ids;
+  }
+
   // Whether a row node renders as a full-width row: its content spans the whole body width instead
   // of per-column cells. True for group rows in "groupRows" display mode, or any node the
   // isFullWidthRow option opts in. Single source of truth for the renderer.
@@ -1941,11 +1965,13 @@ export class GridCore implements IGridCore {
 
   /** Select every selectable data row in the select-all scope (filtered set or page). */
   selectAllRows(): void {
-    if (this.options.selectAllScope === "page") {
-      this.selectionModel.selectAllRows();
-    } else {
-      this.selectionModel.setSelectedRowIds(this.getFilteredSelectableRowIds(), "set");
-    }
+    const ids = this.options.selectAllScope === "page"
+      ? this.getPageSelectableRowIds()
+      : this.getFilteredSelectableRowIds();
+    this.selectionModel.setSelectedRowIds(
+      this.options.rowSelectionMode === "single" ? ids.slice(0, 1) : ids,
+      "set",
+    );
     this.emitSelectionChanged("api");
   }
 
@@ -1960,7 +1986,14 @@ export class GridCore implements IGridCore {
         const node = this.rowModel.getRowNode(id);
         return node != null && this.isNodeSelectable(node);
       });
-    this.selectionModel.setSelectedRowIds(validated, mode);
+    if (this.options.rowSelectionMode === "single" && mode !== "remove") {
+      const first = validated[0];
+      // An empty additive request is a no-op; an empty set request still clears the selection.
+      if (first !== undefined) this.selectionModel.setSelectedRowIds([first], "set");
+      else if (mode === "set") this.selectionModel.setSelectedRowIds([], "set");
+    } else {
+      this.selectionModel.setSelectedRowIds(validated, mode);
+    }
     this.emitSelectionChanged("api");
   }
 
@@ -2290,7 +2323,10 @@ export class GridCore implements IGridCore {
       }
       case "rowSelectSet":
         const checkboxFocus = action.preserveFocus ? this.selectionModel.getActiveCell() : null;
-        this.selectionModel.toggleRow(action.viewIdx, action.mode);
+        this.selectionModel.toggleRow(
+          action.viewIdx,
+          this.options.rowSelectionMode === "single" ? "replace" : action.mode,
+        );
         if (checkboxFocus) this.selectionModel.focusCheckboxCell(checkboxFocus);
         this.emitSelectionChanged(action.reason ?? "mouse");
         if (checkboxFocus) this.emitFocusChanged(checkboxFocus, action.reason ?? "mouse");

@@ -206,6 +206,9 @@ export interface IsRowPinnedParams {
  * checkboxes).
  */
 export interface RowSelectionOptions {
+  /** Whether row selection holds one row or many. Defaults to "multiple". In single mode the
+   * checkbox-column header checkbox is hidden and additive/range gestures replace the selection. */
+  mode?: "single" | "multiple";
   /** Show a dedicated checkbox column: click toggles the row, Shift+click selects a range. It is
    * independent of `rowNumbers`, defaults to pinned left, and can be pinned right or unpinned from
    * its header menu. Defaults to false. */
@@ -213,6 +216,13 @@ export interface RowSelectionOptions {
   /** Tri-state select-all checkbox in the checkbox column's header, covering the select-all
    * scope (`selectAllScope`). Defaults to true when `checkboxes` is on. */
   headerCheckbox?: boolean;
+  /** Whether the checkbox column can be moved between left-pinned, unpinned, and right-pinned
+   * sections after creation. Defaults to true. */
+  checkboxColumnPinnable?: boolean;
+  /** Initial pin position of the checkbox column. `null` leaves it unpinned. Defaults to "left".
+   * This is independent of `checkboxColumnPinnable`, so a column can start in a chosen section and
+   * be locked there. */
+  checkboxColumnPinned?: "left" | "right" | null;
 }
 
 /** How the quick-filter search string is matched against each row. */
@@ -1114,8 +1124,11 @@ export interface InternalGridOptions extends GridOptions {
   ariaLabelledBy?: string;
   highlightActiveCell: boolean;
   rowSelection: boolean;
+  rowSelectionMode: "single" | "multiple";
   rowSelectionCheckboxes: boolean;
   rowSelectionHeaderCheckbox: boolean;
+  rowSelectionCheckboxColumnPinnable: boolean;
+  rowSelectionCheckboxColumnPinned: "left" | "right" | null;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;

@@ -1519,12 +1519,12 @@ export class GridRenderer {
       "aria-rowcount",
       totalKnown ? String(rowModel.getViewTotalCount() + 1) : "-1",
     );
-    // More than one thing can be selected at once when cells can be dragged into a range, rows can
-    // be picked individually, or columns can be (column selection accumulates, and selecting a
-    // column marks all of its cells selected). Cell selection set to "text"/false leaves the
-    // row/column routes.
+    // More than one thing can be selected at once when cells can be dragged into a range, row
+    // selection is in multiple mode, or columns can be selected (column selection accumulates, and
+    // selecting a column marks all of its cells selected). Cell selection set to "text"/false
+    // leaves the row/column routes.
     const multi = (this.core.options.cellSelection === true && !!this.core.options.rangeSelection)
-      || !!this.core.options.rowSelection
+      || (!!this.core.options.rowSelection && this.core.options.rowSelectionMode === "multiple")
       || !!this.core.options.columnSelection;
     this.root.setAttribute("aria-multiselectable", String(multi));
   }

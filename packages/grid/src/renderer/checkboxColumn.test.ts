@@ -119,6 +119,39 @@ describe("checkbox column structure", () => {
     expect(core.getColumnModel().getLeftLeaves()).toContain(checkbox);
   });
 
+  it("configures initial pin separately from whether the checkbox column can be repinned", () => {
+    const { core } = mountGrid({
+      rowSelection: {
+        checkboxes: true,
+        checkboxColumnPinned: "right",
+        checkboxColumnPinnable: false,
+      },
+    });
+    const checkbox = core.getColumnModel().getRightLeaves()[0];
+    expect(checkbox.isSelectionCheckboxColumn()).toBe(true);
+
+    const ctx = {
+      trigger: "headerContextMenu" as const,
+      targetColId: checkbox.instanceID,
+      colIds: [checkbox.instanceID],
+    };
+    const service = new ColumnMenuService(core);
+    expect(service.buildDefaultColumnMenu(ctx).find(item => item.id === "pinning")).toBeUndefined();
+
+    core.dispatch({ type: "columnPin", colIds: [checkbox.instanceID], pinned: null });
+    expect(checkbox.pinned).toBe("right");
+    expect(core.getColumnModel().getRightLeaves()).toContain(checkbox);
+  });
+
+  it("allows the checkbox column to start unpinned", () => {
+    const { core } = mountGrid({
+      rowSelection: { checkboxes: true, checkboxColumnPinned: null },
+    });
+    const checkbox = core.getColumnModel().getCenterLeaves()[0];
+    expect(checkbox.isSelectionCheckboxColumn()).toBe(true);
+    expect(checkbox.pinned).toBeNull();
+  });
+
   it("stays out of column state, exports, and cell selection", () => {
     const { core, api, root } = mountGrid();
     expect(api.getColumnState().some(s => s.colId === "__pte_checkbox__")).toBe(false);
@@ -220,6 +253,34 @@ describe("body checkbox gestures", () => {
     expect([...core.getSelectedRowIds()].sort()).toEqual(["r1", "r2"]);
     expect(core.getActiveCell()?.row).toBe(2);
   });
+
+  it("single mode replaces selection for pointer, keyboard, select-all, and by-id API calls", () => {
+    const { core, root } = mountGrid({
+      rowSelection: { mode: "single", checkboxes: true },
+    });
+    expect(root.querySelector(".pte-select-all-checkbox")).toBeNull();
+
+    click(checkboxCell(root, 1));
+    click(checkboxCell(root, 3), { ctrlKey: true });
+    expect([...core.getSelectedRowIds()]).toEqual(["r3"]);
+
+    click(checkboxCell(root, 5), { shiftKey: true });
+    expect([...core.getSelectedRowIds()]).toEqual(["r5"]);
+
+    const checkboxColIdx = core.getColumnModel().getLeaves()
+      .findIndex(col => col.isSelectionCheckboxColumn());
+    core.dispatch({ type: "focusSet", viewIdx: 2, colIdx: checkboxColIdx, reason: "keyboard" });
+    root.focus();
+    press(root, "Enter");
+    expect([...core.getSelectedRowIds()]).toEqual(["r2"]);
+    expect(checkboxCell(root, 2).classList.contains("selected")).toBe(true);
+
+    core.selectRowsById(["r4", "r0"], "add");
+    expect([...core.getSelectedRowIds()]).toEqual(["r4"]);
+
+    core.selectAllRows();
+    expect([...core.getSelectedRowIds()]).toEqual(["r0"]);
+  });
 });
 
 describe("header select-all checkbox", () => {
@@ -250,6 +311,14 @@ describe("header select-all checkbox", () => {
 
   it("headerCheckbox: false renders no header checkbox but keeps body checkboxes", () => {
     const { root } = mountGrid({ rowSelection: { checkboxes: true, headerCheckbox: false } });
+    expect(root.querySelector(".pte-select-all-checkbox")).toBeNull();
+    expect(root.querySelectorAll(".pte-checkbox-cell").length).toBeGreaterThan(0);
+  });
+
+  it("single mode hides the header checkbox even when headerCheckbox is true", () => {
+    const { root } = mountGrid({
+      rowSelection: { mode: "single", checkboxes: true, headerCheckbox: true },
+    });
     expect(root.querySelector(".pte-select-all-checkbox")).toBeNull();
     expect(root.querySelectorAll(".pte-checkbox-cell").length).toBeGreaterThan(0);
   });

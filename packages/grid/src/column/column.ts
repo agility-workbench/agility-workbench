@@ -15,6 +15,7 @@ import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions
 type InternalColumnRole = "rowNumber" | "selectionCheckbox" | "autoGroup";
 type InternalColDef = ColDef & {
   __internalRole?: InternalColumnRole;
+  __pinnable?: boolean;
   __groupLevel?: number;
   __treeColumn?: boolean;
 };
@@ -77,6 +78,7 @@ export class Column {
   aggregatable: boolean;
   resizable: boolean;
   movable: boolean;
+  pinnable: boolean;
   hideable?: boolean;
   suppressColumnPanel: boolean = false;
   showColumnMenu: boolean;
@@ -120,6 +122,7 @@ export class Column {
     this.aggregatable = true;
     this.resizable = true;
     this.movable = true;
+    this.pinnable = true;
     this.showColumnMenu = true;
     this.columnContextMenu = true;
     this.columnGroupShow = "always";
@@ -185,6 +188,7 @@ export class Column {
     this.aggregatable = !isFalse(col.aggregatable);
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
+    this.pinnable = !isFalse((col as InternalColDef).__pinnable);
     this.hideable = !isFalse(col.hideable);
     this.suppressColumnPanel = isTrue(col.suppressColumnPanel);
     this.showColumnMenu = !isFalse(col.showColumnMenu);
