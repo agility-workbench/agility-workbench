@@ -26,12 +26,14 @@ import StickyGroupRowsDemo from "./StickyGroupRowsDemo";
 import KitchenSinkDemo from "./KitchenSinkDemo";
 import ColumnGroupExpanderDemo from "./ColumnGroupExpanderDemo";
 import FullyThemedDemo from "./FullyThemedDemo";
+import RowSelectionCheckboxDemo from "./RowSelectionCheckboxDemo";
 import "./roboto-font.css";
 import "./style.css";
 
 const PAGES = [
   { id: "grid", label: "Grid demo", render: () => <App /> },
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
+  { id: "rowSelectionCheckboxes", label: "Row selection checkboxes", render: () => <RowSelectionCheckboxDemo /> },
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "fullyThemed", label: "Fully themed grid", render: () => <FullyThemedDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },

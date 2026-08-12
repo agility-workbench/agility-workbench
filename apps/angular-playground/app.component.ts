@@ -14,6 +14,7 @@ import { MenusDemoComponent } from "./menus-demo.component";
 import { PinnedRowsDemoComponent } from "./pinned-rows-demo.component";
 import { QuickFilterDemoComponent } from "./quick-filter-demo.component";
 import { ResponsiveToolbarDemoComponent } from "./responsive-toolbar-demo.component";
+import { RowSelectionCheckboxDemoComponent } from "./row-selection-checkbox-demo.component";
 import { SavedViewsDemoComponent } from "./saved-views-demo.component";
 import { SelectionDemoComponent } from "./selection-demo.component";
 import { ServerSideGroupingDemoComponent } from "./server-side-grouping-demo.component";
@@ -32,6 +33,7 @@ const PAGES = [
   { id: "menus", label: "Menus & templates" },
   { id: "grid", label: "Grid demo" },
   { id: "selection", label: "Selection & keyboard nav" },
+  { id: "rowSelectionCheckboxes", label: "Row selection checkboxes" },
   { id: "visualStates", label: "Hover & visual states" },
   { id: "fullyThemed", label: "Fully themed grid" },
   { id: "grouping", label: "Row grouping" },
@@ -74,6 +76,7 @@ type PageId = (typeof PAGES)[number]["id"];
     PinnedRowsDemoComponent,
     QuickFilterDemoComponent,
     ResponsiveToolbarDemoComponent,
+    RowSelectionCheckboxDemoComponent,
     SavedViewsDemoComponent,
     SelectionDemoComponent,
     ServerSideGroupingDemoComponent,
@@ -111,6 +114,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("selection") {
           <selection-demo />
+        }
+        @case ("rowSelectionCheckboxes") {
+          <row-selection-checkbox-demo />
         }
         @case ("visualStates") {
           <visual-states-demo />
