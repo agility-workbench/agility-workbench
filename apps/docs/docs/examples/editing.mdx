@@ -37,6 +37,18 @@ a decimal keypad via `inputmode`.
   stepping goes parse → ±step → format (`12.5%` steps to `13%`), and `min`/
   `max` only bound stepping: commit-time validation belongs to the parser.
 
+### Date editor
+
+The `date` editor is the native `<input type="date">` calendar by default
+(`min`/`max` bound it; commits are ISO `yyyy-mm-dd` strings, `null` when
+blank). **With a `valueParser`** it switches to typed-format entry, the same
+mechanism as the number editor: a text input seeded with the column's
+*formatted* display value that commits the raw string through your parser — so
+a `MM/DD/YYYY` formatter/parser pair lets users type `12/25/2026` directly.
+ArrowUp/ArrowDown step the date by `cellEditorParams.step` days (default `1`),
+round-tripping parse → ±step days → format; a blank input steps from the
+cell's original value. Validation belongs to the parser.
+
 Editing starts with double-click, F2, Enter, or a printable character. Configure
 single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
 with grid options.

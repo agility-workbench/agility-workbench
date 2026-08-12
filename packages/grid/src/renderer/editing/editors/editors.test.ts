@@ -239,3 +239,76 @@ describe("NumberCellEditor (text-based numeric input)", () => {
     expect((e.getGui() as HTMLInputElement).value).toBe("%");
   });
 });
+
+describe("DateCellEditor (typed-format parser mode)", () => {
+  const arrow = (input: HTMLInputElement, key: "ArrowUp" | "ArrowDown") =>
+    input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+  // "MM/DD/YYYY"-style pair: stored ISO yyyy-mm-dd string, displayed US format.
+  const usDateCol = () => col({
+    type: ColumnType.DATE,
+    valueFormatter: ({ value }: any) => {
+      if (value == null || value === "") return "";
+      const [y, m, d] = String(value).split("-");
+      return `${m}/${d}/${y}`;
+    },
+    valueParser: ({ value }: any) => {
+      const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(value).trim());
+      if (!m) return null;
+      return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    },
+  });
+
+  it("stays a native date input without a valueParser", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: col({ type: ColumnType.DATE }) });
+    expect((e.getGui() as HTMLInputElement).type).toBe("date");
+    expect(e.isParsed?.()).toBe(true);
+  });
+
+  it("with a valueParser: seeds the formatted value and returns the raw string unparsed", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol() });
+    const input = e.getGui() as HTMLInputElement;
+    expect(input.type).toBe("text");
+    expect(input.value).toBe("07/07/2026"); // edits what the cell displays
+    expect(e.isParsed?.()).toBe(false);
+    input.value = "12/25/2026";
+    expect(e.getValue()).toBe("12/25/2026"); // commit path runs the column's valueParser
+    input.value = "";
+    expect(e.getValue()).toBe(""); // blank goes to the parser too — it decides what empty means
+  });
+
+  it("arrow stepping round-trips parse → ±step days → format, across month ends", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol() });
+    const input = e.getGui() as HTMLInputElement;
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("07/08/2026");
+    input.value = "12/31/2026";
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("01/01/2027"); // local-date stepping, no UTC off-by-one
+    arrow(input, "ArrowDown");
+    expect(input.value).toBe("12/31/2026");
+  });
+
+  it("steps by editorParams.step days", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol(), editorParams: { step: 7 } });
+    const input = e.getGui() as HTMLInputElement;
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("07/14/2026");
+  });
+
+  it("steps from blank using the cell's original value and ignores unparseable text", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol() });
+    const input = e.getGui() as HTMLInputElement;
+    input.value = "";
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("07/08/2026");
+    input.value = "not a date";
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("not a date"); // no guess
+  });
+
+  it("seeds charPress verbatim (edit-on-typing)", () => {
+    const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol(), charPress: "1" });
+    expect((e.getGui() as HTMLInputElement).value).toBe("1");
+  });
+});
