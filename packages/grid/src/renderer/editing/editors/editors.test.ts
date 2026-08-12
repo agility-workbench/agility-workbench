@@ -156,3 +156,86 @@ describe("createEditorForColumn resolution", () => {
     expect(createEditorForColumn(col({ cellEditor: NumberCellEditor }))).toBeInstanceOf(NumberCellEditor);
   });
 });
+
+describe("NumberCellEditor (text-based numeric input)", () => {
+  const arrow = (input: HTMLInputElement, key: "ArrowUp" | "ArrowDown") =>
+    input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+
+  const numCol = (def: any = {}) => col({ type: ColumnType.NUMBER, ...def });
+
+  // "12.5%"-style pair: stored fraction, displayed percent.
+  const pctCol = () => numCol({
+    valueFormatter: ({ value }: any) => (value == null ? "" : `${+(Number(value) * 100).toFixed(6)}%`),
+    valueParser: ({ value }: any) => {
+      const n = Number(String(value).trim().replace(/%$/, ""));
+      return Number.isNaN(n) ? null : n / 100;
+    },
+  });
+
+  it("renders a text input with a decimal inputmode (no native number input)", () => {
+    const e = mount(new NumberCellEditor(), { value: 5, col: numCol() });
+    const input = e.getGui() as HTMLInputElement;
+    expect(input.type).toBe("text");
+    expect(input.inputMode).toBe("decimal");
+  });
+
+  it("clamps the committed number to min/max (plain mode)", () => {
+    const e = mount(new NumberCellEditor(), { value: 5, col: numCol(), editorParams: { min: 0, max: 10 } });
+    const input = e.getGui() as HTMLInputElement;
+    input.value = "99";
+    expect(e.getValue()).toBe(10);
+    input.value = "-3";
+    expect(e.getValue()).toBe(0);
+    input.value = "abc";
+    expect(e.getValue()).toBeNull(); // invalid text still commits null, as before
+  });
+
+  it("steps with ArrowUp/ArrowDown, clamped and quantized to the step precision", () => {
+    const e = mount(new NumberCellEditor(), { value: 0.2, col: numCol(), editorParams: { step: 0.1, max: 0.4 } });
+    const input = e.getGui() as HTMLInputElement;
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("0.3"); // not 0.30000000000000004
+    arrow(input, "ArrowUp");
+    arrow(input, "ArrowUp"); // clamped at max
+    expect(input.value).toBe("0.4");
+    arrow(input, "ArrowDown");
+    expect(input.value).toBe("0.3");
+  });
+
+  it("steps from blank as 0 and ignores stepping on unparseable text", () => {
+    const e = mount(new NumberCellEditor(), { value: null, col: numCol() });
+    const input = e.getGui() as HTMLInputElement;
+    expect(input.value).toBe("");
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("1");
+    input.value = "abc";
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("abc"); // no guess
+  });
+
+  it("with a valueParser: seeds the formatted value and returns the raw string unparsed", () => {
+    const e = mount(new NumberCellEditor(), { value: 0.125, col: pctCol() });
+    const input = e.getGui() as HTMLInputElement;
+    expect(input.value).toBe("12.5%"); // edits what the cell displays
+    expect(e.isParsed?.()).toBe(false);
+    input.value = "45%";
+    expect(e.getValue()).toBe("45%"); // commit path runs the column's valueParser
+    input.value = "";
+    expect(e.getValue()).toBe(""); // blank goes to the parser too — it decides what empty means
+  });
+
+  it("with a valueParser: arrow stepping round-trips parse → ±step → format", () => {
+    const e = mount(new NumberCellEditor(), { value: 0.125, col: pctCol(), editorParams: { step: 0.005 } });
+    const input = e.getGui() as HTMLInputElement;
+    arrow(input, "ArrowUp");
+    expect(input.value).toBe("13%");
+    arrow(input, "ArrowDown");
+    arrow(input, "ArrowDown");
+    expect(input.value).toBe("12%");
+  });
+
+  it("seeds a non-numeric charPress verbatim (type=number used to blank it)", () => {
+    const e = mount(new NumberCellEditor(), { value: 0.125, col: pctCol(), charPress: "%" });
+    expect((e.getGui() as HTMLInputElement).value).toBe("%");
+  });
+});
