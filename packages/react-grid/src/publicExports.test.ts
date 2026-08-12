@@ -5,6 +5,9 @@ import {
   FilterType,
   type GridEventEditingChangedParams,
   type GridEventFilterChangedParams,
+  type GridEventHistoryChangedParams,
+  type GridHistoryState,
+  type HistoryChangeReason,
   type ResetPageTrigger,
 } from "./index";
 
@@ -31,5 +34,14 @@ describe("react-grid public exports", () => {
 
     expect(event.source).toBe("filter");
     expect(triggers).toHaveLength(3);
+  });
+
+  it("re-exports the historyChanged payload and history state types", () => {
+    const state: GridHistoryState = { canUndo: true, canRedo: false, undoDepth: 2, redoDepth: 0 };
+    const event: GridEventHistoryChangedParams = { reason: "commit", ...state };
+    const reasons: HistoryChangeReason[] = ["commit", "undo", "redo", "clear"];
+
+    expect(event.undoDepth).toBe(2);
+    expect(reasons).toHaveLength(4);
   });
 });

@@ -11,6 +11,7 @@ import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
   GridEventFilterChangedParams,
+  GridEventHistoryChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
@@ -675,6 +676,13 @@ export interface GridOptions {
    * canonical `filterChanged` event.
    */
   onFilterChanged?: (params: GridEventFilterChangedParams) => void;
+  /**
+   * Called when the undo/redo stacks move — a step recorded, undone, redone, or the history
+   * cleared. Convenience wrapper over the `historyChanged` event; the payload carries
+   * `canUndo`/`canRedo`/`undoDepth`/`redoDepth`, so undo/redo toolbar buttons can bind to it
+   * instead of polling `api.canUndo()`.
+   */
+  onHistoryChanged?: (params: GridEventHistoryChangedParams) => void;
   /**
    * Accessible name for the grid, applied as `aria-label` on the element carrying `role="grid"`.
    *

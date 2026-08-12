@@ -57,10 +57,19 @@ whole filtered set by default (`selectAllScope` option).
 | --- | --- |
 | `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
 | `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
-| `setCellValue(cell, value)` | Parse and write without opening an editor |
+| `setCellValue(cell, value)` | Write one cell without opening an editor |
+| `setCellValues(edits)` | Write many cells as **one** undo step |
 | `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
 | `undo()` / `redo()` | Traverse edit history |
 | `canUndo()` / `canRedo()` / `clearHistory()` | Inspect or reset history |
+| `getHistoryState()` | `{ canUndo, canRedo, undoDepth, redoDepth }` |
+| `withUndoGroup(fn)` | Coalesce the writes in `fn` into one undo step |
+| `withoutUndoHistory(fn)` | Apply the writes in `fn` without recording them |
+
+A programmatic write states its own type: a **string** `value` runs through the
+column's `valueParser` (like typed input), anything else is stored as the final
+value. So `setCellValue(cell, 99)` stores the number `99` even with no parser
+configured, while `setCellValue(cell, "99")` gives the parser its say.
 
 ## Floating UI and pinned rows
 
@@ -87,6 +96,15 @@ need to subscribe to both `columnsChanged {reason:"filter"}` and
 client-side row model the handler runs after the view is re-derived, so row
 counts and `getPaginationInfo()` read post-filter state. The declarative
 `onFilterChanged` option callback wraps it.
+
+`historyChanged` fires whenever the undo/redo stacks move, with
+`{ reason, canUndo, canRedo, undoDepth, redoDepth }` — enough to drive toolbar
+button state without polling. It follows the write's own `cellValueChanged` /
+`cellsChanged` events, so a handler reading `getHistoryState()` sees the value
+and the history agree. Writes that never enter history — a vetoed commit,
+anything under `readOnlyEdit`, `applyTransaction`, or a write inside
+`withoutUndoHistory` — do not fire it, and a whole `withUndoGroup` scope fires
+once on exit. The declarative option callback is `onHistoryChanged`.
 
 ### Column identity in payloads and inputs
 

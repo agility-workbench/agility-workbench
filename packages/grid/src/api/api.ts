@@ -31,6 +31,7 @@ import {
 } from "../filter/setFilterCore";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
+import { GridHistoryState } from "../core/historyModel";
 
 /** Export hooks provided by the renderer once it's attached (it owns the leaf columns + widths). */
 export interface GridApiExporter {
@@ -527,8 +528,20 @@ export class GridAPI implements IGridAPI {
     return this.core.getEditingCell();
   }
 
+  // A programmatic write states its own type: a string is user-style input and runs through the
+  // column's valueParser, anything else is already the typed value to store. Without this,
+  // setCellValue(cell, 99) on a parser-less numeric column stores the string "99".
   setCellValue(cell: CellRef, value: unknown): void {
-    this.core.dispatch({ type: "editCommit", cell, value });
+    this.core.dispatch({ type: "editCommit", cell, value, parsed: typeof value !== "string" });
+  }
+
+  setCellValues(edits: { cell: CellRef; value: unknown }[]): void {
+    if (edits.length === 0) return;
+    this.core.dispatch({
+      type: "cellsCommit",
+      reason: "api",
+      edits: edits.map(e => ({ ...e, parsed: typeof e.value !== "string" })),
+    });
   }
 
   // ---------------- Clipboard ----------------
@@ -566,8 +579,20 @@ export class GridAPI implements IGridAPI {
     return this.core.canRedo();
   }
 
+  getHistoryState(): GridHistoryState {
+    return this.core.getHistoryState();
+  }
+
   clearHistory(): void {
     this.core.clearHistory();
+  }
+
+  withUndoGroup<T>(fn: () => T): T {
+    return this.core.runInHistoryScope("group", fn);
+  }
+
+  withoutUndoHistory<T>(fn: () => T): T {
+    return this.core.runInHistoryScope("skip", fn);
   }
 
   // ---------------- Export ----------------

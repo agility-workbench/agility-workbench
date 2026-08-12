@@ -26,6 +26,7 @@ import {
   GridEventMap,
   GridEventName,
   GridEventPaginationChangedParams,
+  HistoryChangeReason,
   Unsubscribe,
 } from "../events/events";
 import { isTrue, validatePageSizes } from "../misc";
@@ -37,7 +38,7 @@ import { GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel } from "./selectionModel";
-import { CellEdit, HistoryModel } from "./historyModel";
+import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
@@ -105,6 +106,10 @@ export class GridCore implements IGridCore {
   private bodyPinnedViewIndices: number[] = [];
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
+  // Active runInHistoryScope: "group" collects every step's edits into one entry pushed on exit,
+  // "skip" discards them. Null outside a scope. Nested scopes inherit the outermost mode.
+  private historyScopeMode: "group" | "skip" | null = null;
+  private historyScopeEdits: CellEdit[] = [];
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.options = this.initializeGridOptions(options);
@@ -160,6 +165,7 @@ export class GridCore implements IGridCore {
       }
     });
     this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
+    this.on("historyChanged", (ev) => o.onHistoryChanged?.(ev));
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -205,6 +211,7 @@ export class GridCore implements IGridCore {
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
       onFilterChanged: options.onFilterChanged,
+      onHistoryChanged: options.onHistoryChanged,
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
@@ -688,7 +695,7 @@ export class GridCore implements IGridCore {
   setRowData(rows: RowData[]): void {
     // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
     // exist, so discard the edit history.
-    this.history.clear();
+    if (this.history.clear()) this.emitHistoryChanged("clear");
     this.rowModel.setRows(rows);
     // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
     // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
@@ -1714,8 +1721,54 @@ export class GridCore implements IGridCore {
     return this.history.canRedo();
   }
 
+  getHistoryState(): GridHistoryState {
+    return this.history.getState();
+  }
+
   clearHistory(): void {
-    this.history.clear();
+    if (this.history.clear()) this.emitHistoryChanged("clear");
+  }
+
+  /**
+   * Route a step that has already been written to the row data into undo history, honouring any
+   * active scope. Returns whether the undo stack moved — the caller announces `historyChanged` only
+   * then, and only after its own value/cell events, so a handler reading `getHistoryState()` sees
+   * the write and the history state agree.
+   */
+  private recordHistory(entry: HistoryEntry): boolean {
+    if (this.historyScopeMode === "skip") return false;
+    if (this.historyScopeMode === "group") {
+      this.historyScopeEdits.push(...entry.edits);
+      return false;
+    }
+    return this.history.push(entry);
+  }
+
+  /**
+   * Run `fn` with undo recording redirected: "group" coalesces every step committed inside it into
+   * a single undo entry (pushed on exit, one `historyChanged {reason:"commit"}`), "skip" keeps them
+   * out of history entirely. Synchronous — writes made after `fn` returns (in a promise or timer)
+   * are outside the scope. Nested scopes inherit the outermost mode rather than opening their own,
+   * so a `withUndoGroup` helper called inside `withoutUndoHistory` stays suppressed.
+   */
+  runInHistoryScope<T>(mode: "group" | "skip", fn: () => T): T {
+    if (this.historyScopeMode !== null) return fn();
+    this.historyScopeMode = mode;
+    this.historyScopeEdits = [];
+    try {
+      return fn();
+    } finally {
+      const edits = this.historyScopeEdits;
+      this.historyScopeMode = null;
+      this.historyScopeEdits = [];
+      if (mode === "group" && this.history.push({ label: "group", edits })) {
+        this.emitHistoryChanged("commit");
+      }
+    }
+  }
+
+  private emitHistoryChanged(reason: HistoryChangeReason): void {
+    this.emit("historyChanged", { reason, ...this.history.getState() });
   }
 
   /** Instance ids of the selected columns. Returns a COPY — mutating it never affects the grid. */
@@ -2185,10 +2238,11 @@ export class GridCore implements IGridCore {
         // accepted value (editingChanged + cellValueChanged), but leave the row object untouched
         // and keep the step out of undo history (there is nothing of ours to undo).
         const readOnly = this.options.readOnlyEdit;
+        let recordedStep = false;
         if (!readOnly) {
           this.writeCellValue(cell, col.key, newValue);
           if (!this.applyingHistory) {
-            this.history.push({ label: "edit", edits: [{ cell, oldValue, newValue }] });
+            recordedStep = this.recordHistory({ label: "edit", edits: [{ cell, oldValue, newValue }] });
           }
         }
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
@@ -2205,6 +2259,7 @@ export class GridCore implements IGridCore {
           });
           if (!this.applyingHistory) this.reevaluateAfterEdit(new Set([col.instanceID]));
         }
+        if (recordedStep) this.emitHistoryChanged("commit");
         break;
       }
       case "editCancel": {
@@ -2226,7 +2281,9 @@ export class GridCore implements IGridCore {
           if (!col || !row) continue;
           const cell = this.normalizeCellRef(edit.cell, col);
           const oldValue = col.getValue(row);
-          const proposed = col.parseValue(String(edit.value ?? ""), row, oldValue);
+          const proposed = edit.parsed
+            ? edit.value
+            : col.parseValue(String(edit.value ?? ""), row, oldValue);
           // Vetoed cells drop out of the batch: not written, not recorded, no event.
           const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
           if (!hooked) continue;
@@ -2237,11 +2294,13 @@ export class GridCore implements IGridCore {
             recorded.push({ cell, oldValue, newValue: hooked.value });
           }
         }
+        let recordedBatch = false;
         if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
           const label = action.reason === "cut" ? "cut"
             : action.reason === "clear" ? "clear"
-              : "paste";
-          this.history.push({ label, edits: recorded });
+              : action.reason === "api" ? "api"
+                : "paste";
+          recordedBatch = this.recordHistory({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {
           for (const edit of recorded) {
@@ -2258,16 +2317,21 @@ export class GridCore implements IGridCore {
             if (!this.applyingHistory) this.reevaluateAfterEdit(changedColIds);
           }
         }
+        if (recordedBatch) this.emitHistoryChanged("commit");
         break;
       }
       case "undo": {
         const entry = this.history.popUndo();
-        if (entry) this.applyHistoryEdits(entry.edits, "undo");
+        if (!entry) break;
+        this.applyHistoryEdits(entry.edits, "undo");
+        this.emitHistoryChanged("undo");
         break;
       }
       case "redo": {
         const entry = this.history.popRedo();
-        if (entry) this.applyHistoryEdits(entry.edits, "redo");
+        if (!entry) break;
+        this.applyHistoryEdits(entry.edits, "redo");
+        this.emitHistoryChanged("redo");
         break;
       }
       default:

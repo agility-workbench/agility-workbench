@@ -10,7 +10,18 @@ export interface CellEdit {
 /** One undoable step. A single edit records a 1-edit entry; a paste/cut batch records many. */
 export interface HistoryEntry {
   edits: CellEdit[];
-  label: "edit" | "paste" | "cut" | "clear";
+  /** How the step was produced. Informational — every label undoes identically. */
+  label: "edit" | "paste" | "cut" | "clear" | "api" | "group";
+}
+
+/** Snapshot of the undo/redo stacks, for toolbar enablement and depth read-outs. */
+export interface GridHistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Number of steps that can still be undone. */
+  undoDepth: number;
+  /** Number of undone steps that can be redone. */
+  redoDepth: number;
 }
 
 /**
@@ -19,7 +30,9 @@ export interface HistoryEntry {
  * entry (writing values, emitting events) is the core's job; this model is pure bookkeeping.
  *
  * Granularity is per commit action: one editCommit or one cellsCommit batch = one entry. Any new
- * commit clears the redo stack.
+ * commit clears the redo stack. The core can widen or drop that granularity around a scope
+ * (`runInHistoryScope`) — coalescing many commits into one entry, or recording none — which is why
+ * the core, not this model, decides what reaches `push`.
  */
 export class HistoryModel {
   private undoStack: HistoryEntry[] = [];
@@ -33,13 +46,15 @@ export class HistoryModel {
 
   /**
    * Record a committed step and clear the redo stack. No-op for empty edit lists, and a no-op
-   * entirely when the limit is 0 (history disabled).
+   * entirely when the limit is 0 (history disabled). Returns whether the stacks changed, so the
+   * caller knows when to announce a `historyChanged`.
    */
-  push(entry: HistoryEntry): void {
-    if (this.limit <= 0 || entry.edits.length === 0) return;
+  push(entry: HistoryEntry): boolean {
+    if (this.limit <= 0 || entry.edits.length === 0) return false;
     this.undoStack.push(entry);
     if (this.undoStack.length > this.limit) this.undoStack.shift();
     this.redoStack = [];
+    return true;
   }
 
   canUndo(): boolean {
@@ -48,6 +63,15 @@ export class HistoryModel {
 
   canRedo(): boolean {
     return this.redoStack.length > 0;
+  }
+
+  getState(): GridHistoryState {
+    return {
+      canUndo: this.undoStack.length > 0,
+      canRedo: this.redoStack.length > 0,
+      undoDepth: this.undoStack.length,
+      redoDepth: this.redoStack.length,
+    };
   }
 
   /** Pop the next entry to undo, moving it onto the redo stack. Returns null when nothing to undo. */
@@ -66,8 +90,11 @@ export class HistoryModel {
     return entry;
   }
 
-  clear(): void {
+  /** Drop both stacks. Returns whether anything was actually discarded. */
+  clear(): boolean {
+    if (this.undoStack.length === 0 && this.redoStack.length === 0) return false;
     this.undoStack = [];
     this.redoStack = [];
+    return true;
   }
 }

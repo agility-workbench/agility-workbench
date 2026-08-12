@@ -49,6 +49,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "onSelectionChanged", props.onSelectionChanged);
   setIfDefined(options, "onSortChanged", props.onSortChanged);
   setIfDefined(options, "onFilterChanged", props.onFilterChanged);
+  setIfDefined(options, "onHistoryChanged", props.onHistoryChanged);
   setIfDefined(options, "ariaLabel", props.ariaLabel);
   setIfDefined(options, "ariaLabelledBy", props.ariaLabelledBy);
   setIfDefined(options, "highlightActiveCell", props.highlightActiveCell);

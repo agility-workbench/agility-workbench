@@ -1,4 +1,5 @@
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
+import { GridHistoryState } from "../core/historyModel";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
@@ -18,6 +19,7 @@ export type GridEventName =
   | "headerFocusChanged"
   | "editingChanged"
   | "cellValueChanged"
+  | "historyChanged"
   | "filterChanged"
   | "paginationChanged"
   | "cellClicked"
@@ -174,6 +176,28 @@ export type GridEventCellValueChangedParams = {
   source: CellValueChangeSource;
 };
 
+/** What moved the undo/redo stacks. */
+export type HistoryChangeReason =
+  /** A step was recorded (an edit, a paste/cut/clear batch, an `setCellValues` write, or a closed undo group). */
+  | "commit"
+  /** A step was undone, moving it onto the redo stack. */
+  | "undo"
+  /** A step was redone, moving it back onto the undo stack. */
+  | "redo"
+  /** Both stacks were discarded — `clearHistory()` or a `rowData` replacement. */
+  | "clear";
+
+/**
+ * The undo/redo stacks moved. Emitted only when they actually change, so a toolbar can bind its
+ * undo/redo buttons to `canUndo`/`canRedo` without polling. Writes that never enter history — a
+ * vetoed commit, anything under `readOnlyEdit`, `applyTransaction`, or a write inside
+ * `withoutUndoHistory` — do not fire it, and a whole `withUndoGroup` scope fires once on exit.
+ * `historyChanged` follows the `cellValueChanged`/`cellsChanged` events of the write that caused it.
+ */
+export type GridEventHistoryChangedParams = GridHistoryState & {
+  reason: HistoryChangeReason;
+};
+
 /**
  * The effective row filter changed: a column-filter model edit (add/update/remove/set), a
  * quick-filter change, or a columnDefs update that dropped an active filter. The canonical filter
@@ -284,6 +308,7 @@ export interface GridEventMap {
   headerFocusChanged: GridEventHeaderFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
   cellValueChanged: GridEventCellValueChangedParams;
+  historyChanged: GridEventHistoryChangedParams;
   filterChanged: GridEventFilterChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;

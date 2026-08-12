@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   GridEventCellClickedParams,
   GridEventFilterChangedParams,
+  GridEventHistoryChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
   IGridAPI,
@@ -31,6 +32,7 @@ type Row = { symbol: string; price: number };
       (selectionChanged)="onSelectionChanged($event)"
       (sortChanged)="onSortChanged($event)"
       (filterChanged)="onFilterChanged($event)"
+      (historyChanged)="onHistoryChanged($event)"
     />
   `,
 })
@@ -49,6 +51,7 @@ class EventsHost {
   onSelectionChanged = vi.fn<(event: GridEventSelectionChangedParams) => void>();
   onSortChanged = vi.fn<(event: SortChangedParams) => void>();
   onFilterChanged = vi.fn<(event: GridEventFilterChangedParams) => void>();
+  onHistoryChanged = vi.fn<(event: GridEventHistoryChangedParams) => void>();
 }
 
 describe("AwbGrid outputs and imperative API", () => {
@@ -96,6 +99,32 @@ describe("AwbGrid outputs and imperative API", () => {
     host.api!.setQuickFilter("AAA");
     expect(host.onFilterChanged).toHaveBeenCalledTimes(2);
     expect(host.onFilterChanged.mock.calls[1][0]).toMatchObject({ source: "quickFilter", changedColIds: [] });
+  });
+
+  it("bridges historyChanged through the Angular output", async () => {
+    const { host } = await mountGridHost(EventsHost);
+    const api = host.api!;
+    const price = api.getColumnModel().getByColId("price")!;
+
+    api.setCellValue({ rowId: "AAA", colId: price.instanceID }, 137);
+    expect(host.onHistoryChanged).toHaveBeenCalledTimes(1);
+    expect(host.onHistoryChanged.mock.calls[0][0]).toMatchObject({
+      reason: "commit", canUndo: true, canRedo: false, undoDepth: 1,
+    });
+
+    api.undo();
+    expect(host.onHistoryChanged).toHaveBeenCalledTimes(2);
+    expect(host.onHistoryChanged.mock.calls[1][0]).toMatchObject({
+      reason: "undo", canUndo: false, canRedo: true,
+    });
+
+    // A grouped bulk write announces itself once, not once per cell.
+    api.withUndoGroup(() => {
+      api.setCellValue({ rowId: "AAA", colId: price.instanceID }, 1);
+      api.setCellValue({ rowId: "BBB", colId: price.instanceID }, 2);
+    });
+    expect(host.onHistoryChanged).toHaveBeenCalledTimes(3);
+    expect(api.getHistoryState().undoDepth).toBe(1);
   });
 
   it("updates, adds, and removes rows through applyTransaction", async () => {

@@ -14,6 +14,7 @@ import { GridViewFilterState, GridViewState } from "./gridView";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
+import { GridHistoryState } from "../core/historyModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -195,7 +196,15 @@ export interface IGridAPI {
   cancelEditing(): void;
   /** The cell currently being edited, or null when not editing. */
   getEditingCell(): CellRef | null;
-  /** Set a cell's value directly (bypasses the inline editor; runs the column's valueParser). */
+  /**
+   * Set a cell's value directly, bypassing the inline editor but running the rest of the write
+   * pipeline (`onBeforeCellCommit`, `cellValueChanged`, one undo step).
+   *
+   * A **string** `value` is treated as user-style input and passed through the column's
+   * `valueParser`; any other type is taken as the final stored value. So `setCellValue(cell, 99)`
+   * stores the number 99 even on a column with no parser, while `setCellValue(cell, "99")` gives the
+   * parser its say.
+   */
   setCellValue(cell: CellRef, value: unknown): void;
 
   /* ----- Tooltips ----- */
@@ -231,8 +240,45 @@ export interface IGridAPI {
   canUndo(): boolean;
   /** Whether there is a step to redo. */
   canRedo(): boolean;
+  /**
+   * Undo/redo stack snapshot — `canUndo`/`canRedo` plus the depth of each stack. The same payload
+   * the `historyChanged` event carries, for reading the state on demand (initial toolbar render)
+   * rather than reacting to it.
+   */
+  getHistoryState(): GridHistoryState;
   /** Clear the undo/redo history. */
   clearHistory(): void;
+  /**
+   * Write many cells in one step. Each value runs the full write pipeline for its own destination
+   * (the column's `valueParser`, then `onBeforeCellCommit`, which can transform or veto that cell),
+   * emits one `cellValueChanged {source:"edit"}`, and the batch lands as a **single** undo step —
+   * the programmatic counterpart to a multi-cell paste. Vetoed cells drop out of the write, the
+   * undo step, and the events. Under `readOnlyEdit` nothing is written and nothing enters history.
+   *
+   * Values follow the same string-vs-typed rule as {@link setCellValue}, per cell.
+   */
+  setCellValues(edits: { cell: CellRef; value: unknown }[]): void;
+  /**
+   * Run `fn` with every cell write inside it coalesced into a **single** undo step, so a bulk
+   * programmatic update (a loop of `setCellValue` calls, or several batches) undoes as one user
+   * action instead of N. Returns whatever `fn` returns.
+   *
+   * Synchronous only: writes made after `fn` returns — inside a promise, timer, or event handler it
+   * schedules — fall outside the group and record normally. Nested scopes inherit the outermost
+   * mode, so a `withUndoGroup` helper called inside `withoutUndoHistory` stays suppressed.
+   */
+  withUndoGroup<T>(fn: () => T): T;
+  /**
+   * Run `fn` with undo recording suppressed — writes apply and emit their normal events, but
+   * nothing enters history and the user's undo stack is left exactly as it was. For applying
+   * external changes the user did not make (op-protocol reconciliation, server pushes, recomputed
+   * derived columns), which should not be undoable as if they were the user's own edits.
+   *
+   * `applyTransaction` never enters undo history and needs no scope; this is for the cell-write
+   * paths (`setCellValue`, `setCellValues`) that do. Same synchronous/nesting rules as
+   * {@link withUndoGroup}.
+   */
+  withoutUndoHistory<T>(fn: () => T): T;
 
   /* ----- Export ----- */
   /**

@@ -285,7 +285,9 @@ export type GridActionEditCancel = {
 // through its column's valueParser, and a single cellsChanged is emitted for the whole batch.
 export type GridActionCellsCommit = {
   type: "cellsCommit";
-  edits: { cell: CellRef; value: unknown }[];
+  // Per-edit `parsed` mirrors editCommit's flag: when true the value is already the final typed
+  // form and the column's valueParser is skipped. Clipboard edits are raw text and leave it unset.
+  edits: { cell: CellRef; value: unknown; parsed?: boolean }[];
   reason?: "paste" | "cut" | "clear" | "api";
 };
 

@@ -141,6 +141,8 @@ export type {
   GridEventCellClickedParams,
   GridEventCellValueChangedParams,
   GridEventFilterChangedParams,
+  GridEventHistoryChangedParams,
+  HistoryChangeReason,
   GridEventRowClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
@@ -162,6 +164,8 @@ export type {
   GridEventViewportChangedParams,
   Unsubscribe,
 } from "./events/events";
+
+export type { GridHistoryState } from "./core/historyModel";
 
 export type {
   IRowModel,

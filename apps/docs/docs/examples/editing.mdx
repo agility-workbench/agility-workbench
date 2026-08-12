@@ -114,3 +114,42 @@ block tiles across a larger selected range when its dimensions divide evenly.
 
 Every edit, paste, cut, or batch clear is one undo step. Set `undoLimit: 0` to
 disable history.
+
+`api.undo()` / `api.redo()` traverse it, and `historyChanged` (or the
+`onHistoryChanged` option) fires whenever the stacks move, carrying
+`{ reason, canUndo, canRedo, undoDepth, redoDepth }` — bind toolbar buttons to
+it instead of polling. `reason` is `"commit"`, `"undo"`, `"redo"`, or `"clear"`.
+Replacing `rowData` clears history (its entries reference rows by id) and
+reports `reason: "clear"`. `getHistoryState()` reads the same snapshot on demand,
+for the toolbar's first render.
+
+### Programmatic writes and history
+
+A bulk programmatic update should undo as one user action, not N:
+
+```ts
+// One undo step for the whole batch.
+api.setCellValues([
+  { cell: { rowId: "r1", colId: "salary" }, value: 120000 },
+  { cell: { rowId: "r2", colId: "salary" }, value: 95000 },
+]);
+
+// Same, for writes spread across several calls or helpers.
+api.withUndoGroup(() => {
+  for (const row of affected) api.setCellValue({ rowId: row.id, colId: "band" }, row.band);
+});
+```
+
+Changes the user did not make — server pushes, op-protocol reconciliation,
+recomputed derived columns — should not land on their undo stack at all:
+
+```ts
+// Writes apply and emit their normal events; the undo stack is left untouched.
+api.withoutUndoHistory(() => api.setCellValues(incomingOps));
+```
+
+Both scopes are synchronous: writes made after the callback returns (in a
+promise or timer it schedules) fall outside the scope. Nested scopes inherit the
+outermost mode, so a `withUndoGroup` helper called inside `withoutUndoHistory`
+stays suppressed. `applyTransaction` never enters undo history and needs
+neither.

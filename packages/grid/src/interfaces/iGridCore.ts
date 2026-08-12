@@ -158,7 +158,12 @@ export interface IGridCore {
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;
   canRedo(): boolean;
+  /** Undo/redo stack snapshot (same payload the `historyChanged` event carries, minus `reason`). */
+  getHistoryState(): import("../core/historyModel").GridHistoryState;
   clearHistory(): void;
+  /** Redirect undo recording for the duration of `fn`: coalesce every step into one entry
+   * ("group") or keep them out of history ("skip"). Synchronous; nested scopes inherit the mode. */
+  runInHistoryScope<T>(mode: "group" | "skip", fn: () => T): T;
   getSelectedColumnIds(): Set<string>;
   getSelectedRowIds(): Set<string>;
   getSelectedNodes(): unknown[];
