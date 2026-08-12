@@ -43,6 +43,7 @@ export class ColumnMenuOpener {
       parentId: null,
       parentEl: null,
       position: "bottom-left",
+      ariaLabel: "Column menu",
       onItemClick: session.onItemClick,
       onClose: session.onClose,
     });
@@ -97,6 +98,7 @@ export class ColumnMenuOpener {
       clientY: rect.top - 4,
       items,
       position: "top-left",
+      ariaLabel: "Column menu",
       onItemClick: session.onItemClick,
       onClose: session.onClose,
     });

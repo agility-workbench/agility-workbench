@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { GridProps } from "./interface";
 import type { IGridAPI } from "@agility-workbench/grid";
@@ -89,7 +90,7 @@ describe("rowPinningMenu", () => {
     const { container, root } = await mountGrid();
     await rightClick(bodyCell(container, 0));
     expect(menuItem(container, "Pin row")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("pins the clicked row to the top band and unpins it again", async () => {
@@ -110,7 +111,7 @@ describe("rowPinningMenu", () => {
     await clickMenuItem(container, "Unpin row");
     expect(pinnedRowIds(container, "top")).toEqual([]);
 
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("pins to the bottom band, above the pinnedBottomRowData rows", async () => {
@@ -130,7 +131,7 @@ describe("rowPinningMenu", () => {
     await clickMenuItem(container, "Pin row");
     await clickMenuItem(container, "Pin to top");
     expect(pinnedRowIds(container, "top")).toEqual(["p:top:8", "2"]);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("menu unpin overrides an isRowPinned callback", async () => {
@@ -154,6 +155,6 @@ describe("rowPinningMenu", () => {
     await act(async () => apiRef.current!.setRowPinned("1", "top"));
     expect(pinnedRowIds(container, "top")).toEqual(["1"]);
 
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

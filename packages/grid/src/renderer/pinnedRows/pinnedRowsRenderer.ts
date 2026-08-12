@@ -6,6 +6,9 @@ import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
+import {
+  ActiveDescendantTracker, markPresentational, setAriaSelected, stampGridCellAria, stampRowHierarchyAria, stitchAriaRow,
+} from "../aria";
 
 interface BandElements {
   root: HTMLDivElement;
@@ -43,6 +46,7 @@ interface PinnedRowsRendererParams {
   core: GridCore;
   api: IGridAPI;
   root: HTMLDivElement;
+  activeDescendant: ActiveDescendantTracker;
   body: HTMLDivElement;
   rowHeight: () => number;
   bodyCellRenderer: BodyCellRenderer;
@@ -89,6 +93,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private topCount = 0;
   private bottomCount = 0;
   private bodyPartitionSignature = "";
+  private bodyHasVerticalScrollbar = false;
   // Application-pinned rows only change through API/option/model events (which force-render), so
   // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
   private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
@@ -227,6 +232,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     }
   }
 
+  setBodyVerticalScrollbarVisible(visible: boolean): void {
+    this.bodyHasVerticalScrollbar = visible;
+    for (const band of [this.top, this.bottom, this.sticky]) {
+      this.updateVerticalScrollbarLane(band);
+    }
+  }
+
   updateLayout(): void {
     const model = this.params.core.getColumnModel();
     const leadingWidth = this.columnsWidth(model.getLeadingLeaves());
@@ -276,6 +288,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       { band: this.top, position: "top" as const },
       { band: this.bottom, position: "bottom" as const },
     ]) {
+      // The band cell holding focus, claimed as the root's aria-activedescendant below. Like the
+      // body pool, a band releases only the pointer it still owns, so whichever of the two
+      // renderers repaints second cannot clobber the other's claim.
+      let focusedCellEl: HTMLElement | null = null;
       const segment = position === "top" ? range?.pinnedTop : range?.pinnedBottom;
       const continuesBelow = position === "top" && (bodyRangeRows || !!range?.pinnedBottom);
       const continuesAbove = position === "bottom" && (bodyRangeRows || !!range?.pinnedTop);
@@ -296,6 +312,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
           && active.rowPinned === position
           && active.row === rowIndex
           && active.colIdx === colIndex;
+        if (isActive) focusedCellEl = cell;
         this.applyCellSelectionClasses(cell, {
           selected,
           top: rangeSelected && rowIndex === segment!.start && !continuesAbove,
@@ -311,11 +328,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
           active: isActive && highlight,
         });
       });
+      if (focusedCellEl) this.params.activeDescendant.claim(focusedCellEl, band);
+      else this.params.activeDescendant.release(band);
     }
 
     // Sticky mirrors cover their live body rows (even at rest), so range/column/focus styling must
     // appear on the mirror too or the covered body copy's would be invisible. Mirrors carry the
     // row's real view index and no rowPinned tag — body-range coordinates match directly.
+    //
+    // The mirror never claims aria-activedescendant: the whole sticky band is aria-hidden (it is a
+    // second copy of a row the body pool still exposes), so naming a cell inside it would point AT
+    // at a node that is not in the accessibility tree. The body copy's own paint claims it.
     this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
       const row = cell.closest<HTMLElement>(".pte-row");
       const rowIndex = Number(row?.dataset.viewIdx);
@@ -352,6 +375,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     right: boolean;
     active: boolean;
   }): void {
+    // ARIA mirrors the paint, same rule as the body pool. Band cells carry no row-level selected
+    // state because bands paint none: a band cell is selected only via a range or a column.
+    setAriaSelected(cell, state.selected, cell.classList.contains("selected"));
     cell.classList.toggle("selected", state.selected);
     cell.classList.toggle("selected-top", state.top);
     cell.classList.toggle("selected-bottom", state.bottom);
@@ -433,6 +459,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       vertical,
       verticalScroller,
     };
+    // ARIA: sticky bands mirror live body rows — the body copy stays exposed, so
+    // the whole mirror is hidden from AT to avoid double announcement. Pinned bands hold the
+    // only copy of their rows; their wrapper machinery is presentational and renderRow
+    // stitches each row like the body pool does.
+    if (kind === "sticky") {
+      root.setAttribute("aria-hidden", "true");
+    } else {
+      markPresentational(
+        root,
+        leading.outer, left.outer, center.outer, right.outer,
+        leading.host, left.host, center.host, right.host,
+      );
+      vertical.setAttribute("aria-hidden", "true");
+    }
     if (kind !== "sticky") {
       for (const scroller of [band.leading, band.left, band.center, band.right, band.vertical]) {
         scroller.addEventListener("scroll", () => this.syncBandVertical(band, scroller));
@@ -742,12 +782,20 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     }
     band.verticalScroller.style.height = `${contentHeight}px`;
     band.vertical.classList.toggle("scrollable", overflows);
+    this.updateVerticalScrollbarLane(band);
     band.vertical.style.pointerEvents = overflows ? "auto" : "none";
     if (!overflows) this.syncBandVertical(band, band.vertical, 0);
 
     rows.forEach(({ node, position }, rowIndex) => {
       this.renderRow(band, node, position, rowIndex);
     });
+  }
+
+  private updateVerticalScrollbarLane(band: BandElements): void {
+    // Application-pinned bands retain the lane when they need their own scrollbar. Otherwise all
+    // pinned/sticky sections mirror the central body's live scrollbar visibility.
+    const visible = this.bodyHasVerticalScrollbar || band.vertical.classList.contains("scrollable");
+    band.vertical.classList.toggle("visible", visible);
   }
 
   private renderRow(
@@ -772,9 +820,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.dataset.colIdx = String(model.getLeadingLeaves().length);
       cell.style.display = "flex";
       cell.style.width = `${this.columnsWidth(model.getCenterLeaves())}px`;
+      stampGridCellAria(cell);
+      cell.setAttribute("aria-colindex", "1");
+      cell.setAttribute("aria-colspan", String(model.leafColumnLookup.size));
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
       this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
+      this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
       return;
     }
 
@@ -782,6 +834,28 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned);
     this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned);
+    this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
+  }
+
+  // ARIA: band rows are stitched like body pool rows — center fragment is THE row,
+  // owning every section's cells in visual order. Band rows carry no aria-rowindex: they sit
+  // outside the view sequence and show a blank row number by design. Bands are rebuilt from
+  // scratch on each render, so creation-time stamping stays correct.
+  private stitchBandRowAria(
+    leading: HTMLDivElement,
+    left: HTMLDivElement,
+    center: HTMLDivElement,
+    right: HTMLDivElement,
+    pinned: RowPinnedPosition | null,
+    rowIndex: number,
+    row: IRowNode,
+  ): void {
+    markPresentational(leading, left, right);
+    const cells = [
+      ...leading.children, ...left.children, ...center.children, ...right.children,
+    ] as HTMLElement[];
+    stitchAriaRow(center, cells, `${this.params.core.id}-${pinned ?? "sticky"}${rowIndex}`);
+    stampRowHierarchyAria(center, row);
   }
 
   private createSectionRow(
@@ -846,6 +920,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.dataset.colId = column.instanceID;
       const meta = this.params.core.getColumnModel().leafColumnLookup.get(column.instanceID);
       if (meta) cell.dataset.colIdx = String(meta.globalIndex);
+      stampGridCellAria(cell, meta?.globalIndex);
       cell.style.flex = "0 0 auto";
       cell.style.width = `${column.computedWidth}px`;
       if (column.isComputableType()) cell.classList.add("pte-cell-right-aligned");

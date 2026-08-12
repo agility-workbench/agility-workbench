@@ -2,6 +2,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import type { IGridAPI } from "@agility-workbench/grid";
 import { Grid } from "./grid";
 
@@ -173,7 +174,7 @@ describe("tree data end-to-end via Grid", () => {
     expect(container.querySelector(".pte-body .pte-viewport [row-id='root']")).toBeTruthy();
     expect(container.querySelector<HTMLElement>(".pte-sticky-rows")!.style.display).toBe("none");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

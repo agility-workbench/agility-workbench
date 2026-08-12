@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI, SortIconVisibility } from "@agility-workbench/grid";
 
@@ -58,7 +59,7 @@ describe("sortIconVisibility", () => {
   it("renders a sort icon by default (hover mode)", async () => {
     const { container, apiRef, root } = await mountGrid();
     expect(sortIconFor(container, apiRef.current!, "name")).not.toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("renders a sort icon in 'always' mode, with the persist class", async () => {
@@ -66,13 +67,13 @@ describe("sortIconVisibility", () => {
     const icon = sortIconFor(container, apiRef.current!, "name");
     expect(icon).not.toBeNull();
     expect(icon!.classList.contains("pte-sort-persist")).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("renders NO sort icon in 'never' mode", async () => {
     const { container, apiRef, root } = await mountGrid({ sortIconVisibility: "never" });
     expect(sortIconFor(container, apiRef.current!, "name")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("a column stays sortable in 'never' mode (menu / API still work)", async () => {
@@ -82,7 +83,7 @@ describe("sortIconVisibility", () => {
     // No icon to click, but the sort path still works via dispatch (menu/Shift+click/API route here).
     await act(async () => { api.dispatch({ type: "headerAction", action: "toggleSort", colId: nId }); });
     expect(api.getCore().getSortModel().items.map(s => s.key)).toEqual(["id"]);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("column-level 'never' overrides a grid-level 'always'", async () => {
@@ -91,6 +92,6 @@ describe("sortIconVisibility", () => {
     // "id" inherits grid "always" → icon present; "name" overrides to "never" → no icon.
     expect(sortIconFor(container, api, "id")).not.toBeNull();
     expect(sortIconFor(container, api, "name")).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

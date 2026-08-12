@@ -278,6 +278,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     return this.grouped ? this.viewNodes.length : this.viewIdx.length;
   }
 
+  getViewTotalCount() {
+    // The un-paginated sources the view is sliced from: the whole flattened group list, or the
+    // filtered+sorted index. Not `nodes.length`, which is every loaded row regardless of filter.
+    return this.grouped ? this.groupedFlatAll.length : this.sortedIdx.length;
+  }
+
   getRowNodeAt(index: number): IRowNode<Row> | undefined {
     if (index < 0 || index >= this.nodes.length) return undefined;
     return this.nodes[index];

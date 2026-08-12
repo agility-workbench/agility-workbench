@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { ReactColDef } from "./cellRenderer";
 
@@ -54,7 +55,7 @@ describe("onCellClicked / onRowClicked (DOM click path)", () => {
 
     expect(onCellClicked).toHaveBeenCalledTimes(1);
     expect(onCellClicked.mock.calls[0][0]).toMatchObject({ rowId: "2", value: "BBB" });
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("fires row click callbacks even when cellSelection is 'text' (read-only mode)", async () => {
@@ -62,6 +63,6 @@ describe("onCellClicked / onRowClicked (DOM click path)", () => {
     const { container, root } = await mount({ onRowClicked, cellSelection: "text" });
     await act(async () => { click(dataCell(container, 0, 0)); });
     expect(onRowClicked).toHaveBeenCalledTimes(1);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

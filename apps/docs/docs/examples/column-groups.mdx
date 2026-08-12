@@ -1,0 +1,32 @@
+---
+title: Column groups
+sidebar_position: 2
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Column groups
+
+Nest `children` to create multi-row headers. Groups may be nested to any depth,
+and leaf columns keep their ordinary pinning, filtering, sizing, and state.
+
+<LiveFeatureGrid feature="column-groups" />
+
+<FrameworkCode feature="column-groups" />
+
+## Expansion
+
+`openByDefault` controls a group's initial state. A leaf with
+`columnGroupShow: "open"` is visible only while its parent is expanded;
+`"closed"` provides the inverse behavior. Manually hidden active leaves remain
+hidden when the group state changes.
+
+Groups also appear as collapsible branches in the column panel. Searching a
+group name reveals its descendants, while reordering remains constrained to a
+valid hierarchy.
+
+:::note Pinned boundaries
+A group can contain leaves in different pinned sections, but cell spans and
+drag targets never cross a pinned-section boundary.
+:::

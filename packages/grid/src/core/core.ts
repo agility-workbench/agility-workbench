@@ -95,6 +95,8 @@ export class GridCore implements IGridCore {
   // time (like editing); opening the editor closes it.
   private actionFrameCell: CellRef | null = null;
   private keyboardNavigationMode: TreeDataKeyboardNavigationMode;
+  /** Header keyboard cursor: index into visible leaf columns, or null when the body holds it. */
+  private headerFocusColIdx: number | null = null;
   private displayedPinnedRows: Record<RowPinnedPosition, IRowNode[]> = { top: [], bottom: [] };
   private bodyPinnedRowIds = new Set<GridId>();
   private bodyPinnedViewIndices: number[] = [];
@@ -173,6 +175,8 @@ export class GridCore implements IGridCore {
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
+      ariaLabel: options.ariaLabel,
+      ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: isTrue(options.rowSelection),
       cellSelection: options.cellSelection ?? true, // true | false | "text"
@@ -1320,6 +1324,94 @@ export class GridCore implements IGridCore {
     return this.selectionModel.getActiveCell();
   }
 
+  /**
+   * Index of the column header holding the keyboard cursor, or null when the cursor is in the body.
+   * The header is row 0 of the grid for navigation, but its cursor lives here rather than in the
+   * selection model: `active` is a *selection* cursor carrying a 1×1 range that feeds
+   * copy/edit/ActionFrame, none of which a header position can do. Mutually exclusive with `active`.
+   */
+  getHeaderFocusColIdx(): number | null {
+    return this.headerFocusColIdx;
+  }
+
+  /** The column under the header cursor, or null. */
+  getHeaderFocusColumn(): Column | null {
+    if (this.headerFocusColIdx == null) return null;
+    return this.columnModel.getLeaves()[this.headerFocusColIdx] ?? null;
+  }
+
+  /**
+   * Put the keyboard cursor on a header cell, or clear it with `null`. Entering the header clears the
+   * *cell* selection — however it was entered, `"mouse"` included — or Ctrl+C would copy a range the
+   * cursor is no longer in. The column selection survives, so arrow keys can keep building one.
+   */
+  setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" | "mouse" = "keyboard"): void {
+    const leaves = this.columnModel.getLeaves();
+    const next = colIdx == null ? null : (colIdx >= 0 && colIdx < leaves.length ? colIdx : null);
+    if (next === this.headerFocusColIdx) return;
+    this.headerFocusColIdx = next;
+    if (next != null && this.selectionModel.getActiveCell()) {
+      this.selectionModel.clearRange();
+      this.emitSelectionChanged(reason);
+      this.emitFocusChanged(null, reason);
+    }
+    this.emit("headerFocusChanged", {
+      colIdx: next ?? undefined,
+      colId: next == null ? undefined : leaves[next]?.instanceID,
+      reason,
+    });
+  }
+
+  /**
+   * ArrowUp from the topmost row hands the cursor to the header. Returns true when it took the key.
+   * Only fires when there is genuinely no row above: with a pinned-top band present, ArrowUp from body
+   * row 0 steps into the band first, and it takes one more press to reach the header.
+   */
+  tryEnterHeaderFromTop(): boolean {
+    const active = this.selectionModel.getActiveCell();
+    if (!active) return false;
+    if (active.rowPinned === "bottom") return false;
+    if (active.rowPinned === "top") {
+      if (active.row !== 0) return false;
+    } else {
+      const first = this.selectionModel.firstRowPosition();
+      if (!first || first.rowPinned || active.row !== first.row) return false;
+      if (this.getDisplayedPinnedRowCount("top") > 0) return false;
+    }
+    this.setHeaderFocus(active.colIdx, "keyboard");
+    return true;
+  }
+
+  /** Step the header cursor. `down` hands the cursor back to the body in the same column. */
+  navigateHeader(dir: "left" | "right" | "down" | "home" | "end"): void {
+    const leaves = this.columnModel.getLeaves();
+    if (leaves.length === 0) return;
+    const from = this.headerFocusColIdx ?? 0;
+    if (dir === "down") {
+      // Leaving the header: clear the cursor first so the selection change below is not undone by
+      // setHeaderFocus's own "entering the header" branch.
+      this.headerFocusColIdx = null;
+      this.emit("headerFocusChanged", { reason: "keyboard" });
+      // Down goes to the row directly below the header on screen — the pinned-top band when one is
+      // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
+      // from inside the body lands).
+      const first = this.getDisplayedPinnedRowCount("top") > 0
+        ? { row: 0, rowPinned: "top" as const }
+        : this.selectionModel.firstRowPosition();
+      if (!first) return;
+      this.selectionModel.selectSingleCell(first.row, from, first.rowPinned);
+      this.emitSelectionChanged("keyboard");
+      this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
+      return;
+    }
+    const next = dir === "left" ? from - 1
+      : dir === "right" ? from + 1
+        : dir === "home" ? 0
+          : leaves.length - 1;
+    // Clamp rather than wrap: the header is a row, and arrowing off the end of a row does nothing.
+    this.setHeaderFocus(Math.max(0, Math.min(leaves.length - 1, next)));
+  }
+
   setDisplayedPinnedRows(
     top: IRowNode[],
     bottom: IRowNode[],
@@ -1497,6 +1589,14 @@ export class GridCore implements IGridCore {
   /** Prune column selection to still-existing columns (called after column model rebuilds). */
   pruneColumnSelection() {
     this.selectionModel.pruneColumns();
+    // The header cursor is a leaf index, so hiding, removing or reordering columns can leave it past
+    // the end — or on a column the user never put it on. Clamped here rather than when the defs
+    // change, because this runs after the new leaves are in place; doing it earlier compares against
+    // the old column list and silently does nothing.
+    if (this.headerFocusColIdx == null) return;
+    const leafCount = this.columnModel.getLeaves().length;
+    if (leafCount === 0) this.setHeaderFocus(null, "api");
+    else if (this.headerFocusColIdx >= leafCount) this.setHeaderFocus(leafCount - 1, "api");
   }
 
   /** Clamp the active range/anchor to the current view bounds (called after view recompute). */
@@ -1732,6 +1832,12 @@ export class GridCore implements IGridCore {
             }
             break;
         }
+        break;
+      case "headerFocusSet":
+        this.setHeaderFocus(action.colIdx, action.reason ?? "api");
+        break;
+      case "headerNavigate":
+        this.navigateHeader(action.dir);
         break;
       case "navigate": {
         const active = this.selectionModel.navigate(action.dir, {
@@ -2091,7 +2197,20 @@ export class GridCore implements IGridCore {
     if (changed) this.emitSelectionChanged("model");
   }
 
+  /**
+   * The body cursor and the header cursor are mutually exclusive. Enforced at this funnel, which every
+   * body-cursor path already goes through, rather than at each call site: relying on call sites to know
+   * about the header cursor is what left the ring painted after a click (`rangeSelectSet`) while arrow
+   * keys carried on walking the header.
+   */
+  private clearHeaderFocusForBodyCursor(reason: "mouse" | "keyboard" | "api"): void {
+    if (this.headerFocusColIdx == null) return;
+    this.headerFocusColIdx = null;
+    this.emit("headerFocusChanged", { reason });
+  }
+
   private emitFocusChanged(active: CellPos | null, reason: "mouse" | "keyboard" | "api"): void {
+    if (active) this.clearHeaderFocusForBodyCursor(reason);
     const params: GridEventFocusChangedParams = { reason };
     if (active) {
       params.viewIdx = active.row;

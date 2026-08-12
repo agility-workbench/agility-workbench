@@ -1,0 +1,32 @@
+---
+title: Framework-neutral core
+sidebar_position: 4
+---
+
+# Framework-neutral quick start
+
+```ts
+import {
+  CanvasMeasurer,
+  GridCore,
+  initDomRenderer,
+  type IMenuAdapter,
+} from "@agility-workbench/grid";
+
+const core = new GridCore(new CanvasMeasurer(), { columnDefs });
+const menus: IMenuAdapter = {
+  resolveMenuItems: (_context, defaults) => ({
+    items: defaults,
+    cleanup: () => undefined,
+  }),
+};
+
+const { renderer, api } = initDomRenderer(core, menus);
+renderer.attach({ current: document.querySelector("#grid")! });
+core.dispatch({ type: "init" });
+api.setRowData(rows);
+```
+
+The core exposes the same `IGridAPI` used by both bindings. A custom host owns
+attachment, framework component adaptation, menu normalization, and teardown.
+

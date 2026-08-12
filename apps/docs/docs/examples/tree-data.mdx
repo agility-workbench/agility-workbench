@@ -1,0 +1,36 @@
+---
+title: Tree data
+sidebar_position: 10
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Tree data
+
+Tree data represents real hierarchical records rather than value buckets. Real
+parent rows remain data-bearing, selectable, editable, sortable, and filterable.
+
+<LiveFeatureGrid feature="tree-data" />
+
+<FrameworkCode feature="tree-data" />
+
+## Relationship modes
+
+| Mode | Supply |
+| --- | --- |
+| `path` | `getPath(row)` returning the complete hierarchy path |
+| `parent` | Stable IDs plus `getParentId(row)` |
+| `children` | Root objects plus `getChildren(row)` |
+
+All modes support ancestor-preserving filtering, sibling sorting, saved
+expansion, sticky ancestors, selection, editing, and export. A generated
+hierarchy column can be configured through `treeData.columnDef`.
+
+Tree navigation defaults to ordinary grid behavior. Hierarchy mode maps
+Ctrl/Cmd+Right to expand and Ctrl/Cmd+Left to collapse or move to the parent.
+Applications may allow users to switch modes at runtime.
+
+:::note
+Tree data is client-side and cannot be combined with value-based row grouping.
+:::

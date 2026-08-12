@@ -183,6 +183,11 @@ snippets for the core, React, and Angular libraries. Each example isolates one
 option, API workflow, or framework adapter instead of recreating a full
 playground screen.
 
+The deployable documentation site lives in [`apps/docs`](apps/docs). Its first
+curated release pairs 12 interactive React examples with switchable React,
+Angular, and framework-neutral code, plus getting-started guides, limitations,
+and a manually maintained API reference.
+
 ## Developing locally
 
 ### Prerequisites
@@ -201,6 +206,7 @@ Start either playground to explore features and develop against package source:
 ```bash
 npm run dev          # React playground at http://localhost:5176
 npm run dev:angular  # Angular playground at http://localhost:5180
+npm run docs:dev     # Documentation site at http://localhost:3000
 ```
 
 Useful root commands:
@@ -208,6 +214,7 @@ Useful root commands:
 | Command | Purpose |
 | --- | --- |
 | `npm run build` | Build core, React, and Angular packages in dependency order |
+| `npm run docs:build` | Build the static documentation site for deployment |
 | `npm test` | Run the core, React, and Angular test suites once |
 | `npm run test:watch` | Run the core and React Vitest suite in watch mode |
 | `npm run typecheck` | Build core declarations and type-check all packages and playgrounds |
@@ -231,6 +238,7 @@ plugin; the root `npm test` command runs both configurations for you.
 ```text
 .
 ├── apps/
+│   ├── docs/                   Deployable documentation and examples site
 │   ├── react-playground/       React feature gallery
 │   └── angular-playground/     Angular feature gallery
 ├── packages/

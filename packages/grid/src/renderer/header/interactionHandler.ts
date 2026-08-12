@@ -16,6 +16,93 @@ type HeaderInteractionHandlerParams = {
 export class HeaderInteractionHandler {
   constructor(private params: HeaderInteractionHandlerParams) {}
 
+  /**
+   * Keyboard interaction for the header cursor. Runs from the root's keydown handler before the body
+   * handlers and only while the header holds the cursor, so the body's meanings for these keys (Enter
+   * = edit, printable = type-to-edit) never fire on a header cell. Returns true when consumed.
+   * Dispatches the same actions as the mouse path, so the two cannot drift.
+   */
+  onKeyDown(e: KeyboardEvent): boolean {
+    const core = this.params.core;
+    const colIdx = core.getHeaderFocusColIdx();
+    if (colIdx == null) return false;
+    const col = core.getHeaderFocusColumn();
+    const ctrl = e.ctrlKey || e.metaKey;
+
+    const nav = (dir: "left" | "right" | "down" | "home" | "end") => {
+      core.dispatch({ type: "headerNavigate", dir });
+      return true;
+    };
+
+    // Alt+Down opens the column menu, Shift+Alt+Down the filter — checked before the bare arrows.
+    if (e.altKey && e.key === "ArrowDown") {
+      if (!col || col.isRowNumberColumn()) return true;
+      const headerEl = document.getElementById(col.instanceID) ?? undefined;
+      if (e.shiftKey) {
+        const anchor = headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-filterBtn") ?? headerEl;
+        if (anchor) {
+          core.dispatch({ type: "headerAction", action: "filterClick", colId: col.instanceID });
+          this.params.openColumnFilter(col.instanceID, anchor);
+        }
+      } else {
+        core.dispatch({ type: "headerAction", action: "menuClick", colId: col.instanceID });
+        this.params.openColumnMenu("columnMenuButton", col.instanceID, {
+          anchorEl: headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-menuBtn") ?? headerEl,
+        });
+      }
+      return true;
+    }
+
+    switch (e.key) {
+      case "ArrowLeft": return nav("left");
+      case "ArrowRight": return nav("right");
+      case "ArrowDown": return nav("down");
+      // Already on row 0. Consumed anyway: letting it through would move the body cursor behind a
+      // header the user is still looking at — the same leak that bit the menus in 6.5.
+      case "ArrowUp": return true;
+      case "Home": return nav("home");
+      case "End": return nav("end");
+      default: break;
+    }
+
+    const isActivate = e.key === "Enter" || e.key === " " || e.code === "Space";
+    if (!isActivate) {
+      // Anything else with no header meaning is left alone, so page-level and app shortcuts still
+      // work while the cursor sits in the header.
+      return false;
+    }
+    if (!col) return true;
+
+    // Ctrl+Space selects the column (Excel's binding), and is the only activation the row-number
+    // column ignores — it has no column of its own to select.
+    if (ctrl) {
+      if (!col.isRowNumberColumn() && core.options.columnSelection) {
+        this.params.toggleColumnSelection(col.instanceID, e.shiftKey ? "toggle" : "replace");
+      }
+      return true;
+    }
+
+    // The row-number header's only action is select-all, matching a click on it.
+    if (col.isRowNumberColumn()) {
+      if (core.options.selectAllRowsOnHeaderClick) {
+        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
+      }
+      return true;
+    }
+
+    // A leaf carrying the group expander toggles it; otherwise activation sorts. Parent (group) header
+    // cells are not reachable by this cursor at all.
+    if (col.showExpander) {
+      core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
+      return true;
+    }
+    if (col.sortable) {
+      const additive = core.options.multiSortKey === "shift" ? e.shiftKey : ctrl;
+      core.dispatch({ type: "headerAction", action: "toggleSort", colId: col.instanceID, additive });
+    }
+    return true;
+  }
+
   onHeaderContextMenu(e: MouseEvent) {
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     const col = header ? this.params.core.getColumnModel().getById(header.id) : undefined;
@@ -37,6 +124,26 @@ export class HeaderInteractionHandler {
     this.params.openColumnMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
   }
 
+  /**
+   * A click on a header cell is also a cursor move, or the painted ring and the next arrow key
+   * disagree about where they are. Driven from the *click*, not the mousedown, so a column drag or a
+   * resize — which start on a header but are not a choice of cell — leave the cursor alone. Leaf cells
+   * only, the space the cursor walks; a click on a parent (group) header leaves it where it is. The
+   * column selection is untouched, so arrow keys afterwards still build one up.
+   */
+  private moveCursorToClickedHeader(e: MouseEvent, header: Element) {
+    // A button inside the header — menu, filter, group expander — is a control, not a choice of cell.
+    // Alt+ArrowDown likewise opens the menu for the column the cursor already occupies, so neither
+    // route moves it; that also spares a cell selection the menu action may be about.
+    if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
+    const core = this.params.core;
+    const col = core.getColumnModel().getById(header.id);
+    if (!col) return;
+    const colIdx = core.getColumnModel().getLeaves().findIndex(l => l.instanceID === col.instanceID);
+    if (colIdx < 0) return;
+    core.dispatch({ type: "headerFocusSet", colIdx, reason: "mouse" });
+  }
+
   onHeaderCellClick(e: MouseEvent) {
     // Routing keys off the header CSS classes (.pte-hcell-sort, .pte-hcell-content,
     // .pte-hcell-menu-btn / -filterBtn). Custom header components (ColDef.headerComponent /
@@ -44,6 +151,7 @@ export class HeaderInteractionHandler {
     // their own controls drive interactions via the callbacks on HeaderComponentParams instead.
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     if (!header) return;
+    this.moveCursorToClickedHeader(e, header);
     // Clicking the row-number header toggles all-rows selection (consistent with clicking any other
     // header cell), when enabled via selectAllRowsOnHeaderClick. The row-number column is internal,
     // so the normal column-select/sort path below would no-op for it anyway.

@@ -1,0 +1,35 @@
+---
+title: Editing and clipboard
+sidebar_position: 8
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Editing and clipboard
+
+Editable cells support typed built-in editors, framework components, parsing,
+navigation after commit, history, and spreadsheet-style clipboard workflows.
+
+<LiveFeatureGrid feature="editing" />
+
+<FrameworkCode feature="editing" />
+
+## Built-in editors
+
+Choose `text`, `number`, `date`, `boolean`, `select`, or `textarea`. If
+`cellEditor` is omitted, the grid chooses from `ColumnType`. `valueParser`
+converts raw text before writing; typed editors can report already-parsed values.
+
+Editing starts with double-click, F2, Enter, or a printable character. Configure
+single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
+with grid options.
+
+## Clipboard and history
+
+Copy serializes the selection as TSV. Cut clears editable destinations, paste
+applies each destination parser, and Delete/Backspace clears contents. A pasted
+block tiles across a larger selected range when its dimensions divide evenly.
+
+Every edit, paste, cut, or batch clear is one undo step. Set `undoLimit: 0` to
+disable history.

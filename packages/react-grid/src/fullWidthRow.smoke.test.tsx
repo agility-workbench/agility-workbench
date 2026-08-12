@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -65,7 +66,7 @@ describe("isFullWidthRow", () => {
     expect(normal.classList.contains("pte-full-width-row")).toBe(false);
     const normalHost = normal.querySelector<HTMLElement>(".pte-full-width-cell")!;
     expect(normalHost.style.display).toBe("none");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("renders full-width content via fullWidthCellRenderer", async () => {
@@ -78,7 +79,7 @@ describe("isFullWidthRow", () => {
     );
     const host = rowEl(container, 1).querySelector<HTMLElement>(".pte-full-width-cell")!;
     expect(host.textContent).toContain("Section: spacer");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -123,7 +124,7 @@ describe("groupDisplayType='groupRows' renders true full-width group rows", () =
       toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     });
     expect(core.getRowModel().getViewCount()).toBeGreaterThan(before);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not cell-select a group full-width row when groupRowsSelectable is false", async () => {
@@ -141,7 +142,7 @@ describe("groupDisplayType='groupRows' renders true full-width group rows", () =
       host.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     });
     expect(core.getSelectionRange()).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("cell-selects a group full-width row when groupRowsSelectable is true", async () => {
@@ -167,6 +168,6 @@ describe("groupDisplayType='groupRows' renders true full-width group rows", () =
     expect(range!.rowEnd).toBe(viewIdx);
     // The host paints as selected.
     expect(host.classList.contains("selected")).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

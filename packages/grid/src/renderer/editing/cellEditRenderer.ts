@@ -61,6 +61,11 @@ export class CellEditRenderer {
     this.teardown();
   }
 
+  /** Release an editor that is still open when the renderer itself is torn down. */
+  destroy(): void {
+    this.teardown(false);
+  }
+
   private mount(cell: CellRef, charPress: string | null) {
     this.teardown();
 
@@ -124,7 +129,7 @@ export class CellEditRenderer {
     editor.focus?.();
   }
 
-  private teardown() {
+  private teardown(repaint = true) {
     if (!this.editingCell) return;
     this.tearingDown = true;
 
@@ -149,8 +154,10 @@ export class CellEditRenderer {
     this.editingCell = null;
     this.multiline = false;
 
-    // Restore the cell's rendered content (for cancel, and to strip the editor on commit).
-    this.params.repaintCell(cell.rowId, cell.colId);
+    // Restore the cell's rendered content during ordinary editing. Grid teardown destroys the
+    // row pool immediately afterwards, so repainting then would only create a replacement renderer
+    // that also needs to be destroyed.
+    if (repaint) this.params.repaintCell(cell.rowId, cell.colId);
     if (returnFocus) this.params.root.focus();
     this.tearingDown = false;
   }

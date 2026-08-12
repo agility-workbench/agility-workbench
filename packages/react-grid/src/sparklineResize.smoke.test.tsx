@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ICellRenderer, CellRendererParams } from "@agility-workbench/grid";
@@ -87,6 +88,6 @@ describe("column resize refreshes cell renderers with reason 'resize'", () => {
     expect(refreshReasons.length).toBeGreaterThan(0);
     expect(refreshReasons.every(r => r === "resize")).toBe(true);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 });

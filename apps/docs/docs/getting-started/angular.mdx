@@ -1,0 +1,36 @@
+---
+title: Angular
+sidebar_position: 3
+---
+
+# Angular quick start
+
+```ts
+import { Component } from "@angular/core";
+import { AwbGrid, type NgColDef } from "@agility-workbench/angular-grid";
+
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <div style="height: 420px">
+      <awb-grid
+        rowIdKey="id"
+        [rowData]="rows"
+        [columnDefs]="columns"
+        (gridReady)="api = $event"
+      />
+    </div>
+  `,
+})
+export class ProductsComponent {
+  rows = [{ id: "1", name: "Notebook" }];
+  columns: NgColDef[] = [{ key: "name", label: "Product" }];
+}
+```
+
+`AwbGrid` is standalone, SSR-safe, and compatible with zone-based and zoneless
+applications. It exposes signal inputs for core options and Angular outputs for
+common events. Angular renderers, editors, tooltips, and ActionFrames may receive
+params through an input named `params` or an `awbInit(params)` method.
+

@@ -23,6 +23,10 @@
   --pte-selected-hover-bg-color: #cfe3ff;
   --pte-selected-border-color: #3b82f6;
   --pte-active-cell-border-color: #3b82f6;
+  /* Keyboard focus indicator for the grid's own controls (toolbar, paginator, quick filter,
+     column panel). Deliberately a stronger blue than the selection colours: a focus ring has to
+     clear 3:1 against the surface behind it (WCAG 2.4.11), which #3b82f6 does not on white. */
+  --pte-focus-ring-color: #2563eb;
   --pte-row-alt-bg-color: #fafafa;
   --pte-group-row-bg-color: #f3f4f6;
   --pte-column-hover-bg-color: #f3f4f6;
@@ -128,6 +132,7 @@
   --pte-selected-hover-bg-color: #27459b;
   --pte-selected-border-color: #60a5fa;
   --pte-active-cell-border-color: #93c5fd;
+  --pte-focus-ring-color: #60a5fa;
   --pte-row-alt-bg-color: #131f36;
   --pte-group-row-bg-color: #1e293b;
   --pte-column-hover-bg-color: #13223a;
@@ -241,11 +246,44 @@
   background: var(--pte-scrollbar-thumb-hover-color);
 }
 
+/* The grid draws its own focus indicators, so the native ring is suppressed — but suppressing it
+   without a replacement left every control in the chrome with no visible focus at all (WCAG 2.4.7).
+   The replacement is the rule below. */
 *[class^="pte-"]:focus,
 *[class*=" pte-"]:focus,
 *[class^="pte-"]:focus-visible,
 *[class*=" pte-"]:focus-visible {
   outline: none;
+}
+
+/* Keyboard focus indicator for the grid's controls.
+ *
+ * An INSET ring, not an outline or an outer shadow, because `.pte-root` sets `overflow: hidden`:
+ * anything painted outside a control's box is sheared off for the controls flush with the grid's
+ * edge, which is exactly where the toolbar and paginator sit. An inset ring cannot be clipped and
+ * cannot overlap a neighbour.
+ *
+ * `:focus-visible`, so a mouse click does not ring the control it just pressed. The one deliberate
+ * exception is `.pte-menu-item`, which is focused programmatically when a menu opens and therefore
+ * uses plain `:focus` with a background fill (see the menu-item rule) — `:focus-visible` would
+ * suppress it entirely after a mouse-driven open.
+ *
+ * Excludes `.pte-root`: it is focusable, but a ring around the whole grid is not the right signal
+ * for "the grid has focus" — the active cell is. */
+.pte-root button:focus-visible,
+.pte-root select:focus-visible,
+.pte-root input:focus-visible,
+.pte-root textarea:focus-visible,
+.pte-root [tabindex]:not([tabindex="-1"]):not(.pte-root):focus-visible,
+.pte-menu button:focus-visible:not(.pte-menu-item),
+.pte-menu select:focus-visible,
+.pte-menu input:focus-visible,
+.pte-filter button:focus-visible,
+.pte-filter select:focus-visible,
+.pte-filter input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
+  border-radius: 3px;
 }
 
 .pte-root {
@@ -1254,7 +1292,10 @@
   display: none;
 }
 
-.pte-column-panel-announcer {
+/* Screen-reader-only live regions: present in the accessibility tree, never painted. The grid
+   announcer below is a *visible* toast and is deliberately not part of this rule. */
+.pte-column-panel-announcer,
+.pte-grid-sr-announcer {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1345,7 +1386,7 @@
   display: flex;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-right: 15px;
+  padding-right: 0;
   flex: 1 1 auto;
   position: relative;
 }
@@ -1418,16 +1459,23 @@
   pointer-events: auto;
 }
 
-/* Application-pinned top/bottom bands own a fifth, 15px-wide vertical-scroll column just like the
-   central body. Section scrollers hide their native bars and mirror this column's scrollTop. */
+/* Pinned-row bands expose a fifth vertical-scroll column only while the central body has a vertical
+   scrollbar, or while an application-pinned band needs its own. Section scrollers hide their
+   native bars and mirror this column's scrollTop. */
 .pte-pinned-rows-vertical {
-  flex: 0 0 15px;
-  width: 15px;
-  min-width: 15px;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
   background: transparent;
   scrollbar-width: auto;
+}
+
+.pte-pinned-rows-vertical.visible {
+  flex-basis: 15px;
+  width: 15px;
+  min-width: 15px;
 }
 
 .pte-pinned-rows-vertical.scrollable {
@@ -1628,7 +1676,7 @@
 
 .pte-scroller-horizontal-container-wrapper {
   display: flex;
-  padding-right: 15px;
+  padding-right: 0;
   overflow-x: auto;
   scrollbar-width: none;
   overflow-y: hidden;
@@ -1661,10 +1709,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.pte-pagination-nav {
-  /* margin-left: auto; */
 }
 
 .pte-pagination-label {
@@ -1709,40 +1753,53 @@
   cursor: not-allowed;
 }
 
-.pte-pagination-btn-first {
-  mask-image: var(--pte-icon-first-page);
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  background-color: var(--pte-icon-color);
-  width: 22px;
-  height: 22px;
-}
-
-.pte-pagination-btn-prev {
-  mask-image: var(--pte-icon-previous-page);
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  background-color: var(--pte-icon-color);
-  width: 22px;
-  height: 22px;
-}
-
-.pte-pagination-btn-next {
-  mask-image: var(--pte-icon-next-page);
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  background-color: var(--pte-icon-color);
-  width: 22px;
-  height: 22px;
-}
-
+/* The four page-navigation buttons are icon-only.
+ *
+ * The mask lives on the inner span, NOT on the button, and that placement is load-bearing: a mask
+ * clips every pixel its element paints — background, border, shadow and outline alike — so while
+ * the mask sat on the `<button>` these four could not show a focus ring of any kind, whatever CSS
+ * was thrown at them. With the mask one level down, the button is free to paint its own indicator.
+ *
+ * The button therefore drops the bordered-box look the base `.pte-pagination-btn` rule gives the
+ * text buttons, and is sized 26px to leave room for the inset ring around a 22px glyph. */
+.pte-pagination-btn-first,
+.pte-pagination-btn-prev,
+.pte-pagination-btn-next,
 .pte-pagination-btn-last {
-  mask-image: var(--pte-icon-last-page);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.pte-pagination-btn-icon {
   mask-size: contain;
   mask-repeat: no-repeat;
+  mask-position: center;
   background-color: var(--pte-icon-color);
   width: 22px;
   height: 22px;
+}
+
+.pte-pagination-btn-first .pte-pagination-btn-icon {
+  mask-image: var(--pte-icon-first-page);
+}
+
+.pte-pagination-btn-prev .pte-pagination-btn-icon {
+  mask-image: var(--pte-icon-previous-page);
+}
+
+.pte-pagination-btn-next .pte-pagination-btn-icon {
+  mask-image: var(--pte-icon-next-page);
+}
+
+.pte-pagination-btn-last .pte-pagination-btn-icon {
+  mask-image: var(--pte-icon-last-page);
 }
 
 .pte-loading-overlay {
@@ -2394,7 +2451,10 @@
 }
 
 .pte-hcell:hover .pte-hcell-sort.pte-sort-none,
-.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none {
+.pte-hcell:focus-within .pte-hcell-sort.pte-sort-none,
+/* The keyboard cursor is a painted class, not DOM focus (the grid keeps focus on its root), so
+   `:focus-within` never fires for it — see .pte-hcell-active below. */
+.pte-hcell-active .pte-hcell-sort.pte-sort-none {
   visibility: visible;
 }
 
@@ -2426,6 +2486,27 @@
   flex-direction: row-reverse;
 }
 
+/* The header keyboard cursor: a class, not `:focus-visible`, because DOM focus stays on the grid root
+   and the cursor is named for AT via `aria-activedescendant`.
+
+   An overlay pseudo-element, not an inset box-shadow: an inset shadow paints in its own element's
+   background layer, so the hover background on the descendant `.pte-hcell-container` covers it.
+   Inset rather than outside the box because `.pte-root` clips anything painted beyond it and the edge
+   header cells sit flush against it. */
+.pte-hcell-active .pte-hcell-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* `.pte-header-wrapper` is border-box at the header height and carries the header's 1px bottom
+     border, while each section is sized to that full height — so every header cell's last pixel row
+     is clipped. Drawn against the visible area, or the ring loses half its bottom edge. */
+  bottom: 1px;
+  border: 2px solid var(--pte-focus-ring-color);
+  border-radius: 2px;
+  z-index: 2; /* above the resize handle; pointer-events none so it never steals the drag */
+  pointer-events: none;
+}
+
 .pte-hcell-menu-item {
   position: relative;
   display: flex;
@@ -2454,6 +2535,7 @@
 
 .pte-column-buttons-on-hover .pte-hcell:hover .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
+.pte-column-buttons-on-hover .pte-hcell-active .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
   visibility: visible;
 }
@@ -2877,8 +2959,16 @@
   height: 34px;
 }
 
-.pte-menu-item:hover {
+/* The current item — focus and nothing else, so exactly one item is ever highlighted across all
+   open levels. Hovering still highlights, because hovering moves focus (see handleMenuMouseMove);
+   adding `:hover` here as well would double up the moment the pointer came to rest and the keyboard
+   moved on, leaving the hovered item AND the focused item both looking current.
+   Plain `:focus`, not `:focus-visible`: focus is moved programmatically here, and after a
+   mouse-driven open the focus-visible heuristic would suppress the highlight entirely.
+   `outline: none` because the background alone is the indicator. */
+.pte-menu-item:focus {
   background-color: var(--pte-hover-bg-color);
+  outline: none;
 }
 
 .pte-menu-separator {

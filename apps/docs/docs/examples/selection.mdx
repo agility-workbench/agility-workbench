@@ -1,0 +1,31 @@
+---
+title: Selection and navigation
+sidebar_position: 7
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Selection and navigation
+
+Cell, range, row, and column selection share one model and work with pointer,
+keyboard, clipboard, export, and API workflows.
+
+<LiveFeatureGrid feature="selection" />
+
+<FrameworkCode feature="selection" />
+
+## Selection modes
+
+- `cellSelection: true` enables grid focus and selection.
+- `cellSelection: "text"` restores native browser text selection.
+- `rangeSelection` enables drag and Shift-extension.
+- `rowSelection` uses the row-number cells for row selection.
+- `columnSelection` uses headers for column selection.
+
+Arrow keys navigate one cell. Home/End, Page Up/Down, Ctrl/Cmd+Arrow block
+jumps, and Ctrl/Cmd+Home/End corner jumps keep the active cell visible.
+Ctrl/Cmd+A selects the full unified row sequence.
+
+The API exposes focused-cell, range, row, column, navigation, and selection
+snapshot operations. Pagination invalidates a range from the previous page.

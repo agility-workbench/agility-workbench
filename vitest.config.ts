@@ -21,6 +21,7 @@ export default defineConfig({
     },
   },
   test: {
+    setupFiles: [path.resolve(__dirname, "packages/react-grid/src/test-setup.ts")],
     // Unit tests live next to the source they cover. The demo app under
     // apps/react-playground/ is a Vite app, not a test suite, so it is excluded from discovery.
     include: [

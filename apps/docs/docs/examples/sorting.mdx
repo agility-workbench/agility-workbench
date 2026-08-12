@@ -1,0 +1,29 @@
+---
+title: Sorting
+sidebar_position: 6
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Sorting
+
+Sorting is type-aware and supports ordered multi-column models through headers,
+menus, the toolbar, initial options, and actions.
+
+<LiveFeatureGrid feature="sorting" />
+
+<FrameworkCode feature="sorting" />
+
+## Sort behavior
+
+`initialSort` applies once during setup. A column's own `sort` and `sortIndex`
+take precedence. `multiSortKey` chooses Ctrl/Cmd or Shift for additive header
+sorting, while `showSortPriority` controls the numeric priority indicator.
+
+Set a custom order such as `["desc", "asc", null]` through a column or
+`defaultColDef.sortingOrder`. `sortIconVisibility` may be `"hover"`,
+`"always"`, or `"never"`; hiding the icon does not disable menu or API sorting.
+
+The grid derives comparison from `ColumnType`. Use `comparator(a, b, nodeA,
+nodeB)` for domain-specific orders such as severity or workflow stage.

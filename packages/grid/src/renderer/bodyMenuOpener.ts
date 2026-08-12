@@ -94,6 +94,7 @@ export class BodyMenuOpener {
       parentId: null,
       parentEl: null,
       position: "bottom-left",
+      ariaLabel: "Cell menu",
       onItemClick: session.onItemClick,
       onClose: session.onClose,
     });

@@ -2,6 +2,7 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { GridEventRowsChangedParams } from "../../events/events";
 import { IRowNode } from "../../interfaces/iRowNode";
+import { stampRowHierarchyAria } from "../aria";
 import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
@@ -174,6 +175,9 @@ export class BodyWindowRenderer {
       }
 
       const rowNumber = this.params.core.getRowNumberForViewIndex(viewIndex);
+      // Dataset-scoped ARIA row index: header row is 1, body rows follow their
+      // absolute display number. Only the center fragment carries it — one write per row.
+      slot.rowEl.setAttribute("aria-rowindex", String(rowNumber + 1));
       this.applyRowStyling(slot, row, viewIndex);
       this.markGroupRow(slot, row);
 
@@ -215,6 +219,9 @@ export class BodyWindowRenderer {
       } else {
         delete slot.fullWidthCellEl.dataset.colIdx;
       }
+      // The host is now the row's only visible cell: it spans the full ARIA column range.
+      slot.fullWidthCellEl.setAttribute("aria-colindex", "1");
+      slot.fullWidthCellEl.setAttribute("aria-colspan", String(this.params.core.getColumnModel().leafColumnLookup.size));
       // Hide the pinned/leading section rows so no pinned cells bleed through under the host.
       for (const el of [slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
         if (el) el.style.display = "none";
@@ -228,6 +235,8 @@ export class BodyWindowRenderer {
     slot.rowEl.classList.remove("pte-full-width-row");
     slot.fullWidthCellEl.style.display = "none";
     delete slot.fullWidthCellEl.dataset.colIdx;
+    slot.fullWidthCellEl.removeAttribute("aria-colindex");
+    slot.fullWidthCellEl.removeAttribute("aria-colspan");
     this.params.clearFullWidthCell(slot);
     for (const cell of slot.cellEls) cell.style.display = "";
     slot.rowEl.style.width = `${this.centerTotalWidth()}px`;
@@ -255,6 +264,8 @@ export class BodyWindowRenderer {
       if (isGroup) el.setAttribute("data-group-id", row.id);
       else el.removeAttribute("data-group-id");
     }
+    // Only the center fragment is the ARIA row, so hierarchy state goes there alone.
+    stampRowHierarchyAria(slot.rowEl, row);
   }
 
   /**
@@ -303,6 +314,11 @@ export class BodyWindowRenderer {
       element.removeAttribute("row-id");
       element.removeAttribute("data-view-idx");
       element.removeAttribute("data-group-id");
+      element.removeAttribute("aria-rowindex");
+      // markGroupRow is skipped for emptied slots, so hierarchy state has to be cleared here or a
+      // blank slot keeps claiming to be an expanded group.
+      element.removeAttribute("aria-expanded");
+      element.removeAttribute("aria-level");
       element.classList.remove("pte-group-row");
     }
   }
@@ -384,13 +400,17 @@ export class BodyWindowRenderer {
           width += leaves[c + k].computedWidth;
           if (covered) {
             covered.style.display = "none";
-            if (covered.dataset.colSpan) delete covered.dataset.colSpan;
+            if (covered.dataset.colSpan) {
+              delete covered.dataset.colSpan;
+              covered.removeAttribute("aria-colspan");
+            }
           }
         }
         cell.style.flex = "0 0 auto";
         cell.style.width = `${width}px`;
         cell.style.display = "";
         cell.dataset.colSpan = String(span);
+        cell.setAttribute("aria-colspan", String(span));
         c += span;
       } else {
         this.resetSpanGeometry(cell, col);
@@ -404,6 +424,7 @@ export class BodyWindowRenderer {
   private resetSpanGeometry(cell: HTMLDivElement, col: Column) {
     if (cell.dataset.colSpan) {
       delete cell.dataset.colSpan;
+      cell.removeAttribute("aria-colspan");
       cell.style.flex = "0 0 auto";
       cell.style.width = `${col.computedWidth}px`;
     }

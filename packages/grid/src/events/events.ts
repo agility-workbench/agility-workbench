@@ -15,6 +15,7 @@ export type GridEventName =
   | "aggregateChanged"
   | "selectionChanged"
   | "focusChanged"
+  | "headerFocusChanged"
   | "editingChanged"
   | "paginationChanged"
   | "cellClicked"
@@ -113,6 +114,19 @@ export type GridEventFocusChangedParams = {
   reason?: "mouse" | "keyboard" | "api";
 };
 
+/**
+ * The header keyboard cursor moved. Separate from `focusChanged`: the two are mutually exclusive
+ * positions, and a header cursor selects nothing, cannot be edited or copied, and is not clamped to the
+ * row view.
+ */
+export type GridEventHeaderFocusChangedParams = {
+  /** Index into the visible leaf columns, or undefined when the header no longer holds the cursor. */
+  colIdx?: number;
+  colId?: string;
+  /** `"mouse"` only ever clears the cursor — a click that places the body cursor takes it out of the header. */
+  reason?: "keyboard" | "api" | "mouse";
+};
+
 export type GridEventEditingChangedParams = {
   state: "started" | "stopped" | "cancelled" | "committed";
   cell?: { rowId: GridId; colId: ColId };
@@ -206,6 +220,7 @@ export interface GridEventMap {
   cellsChanged: GridEventCellsChangedParams;
   selectionChanged: GridEventSelectionChangedParams;
   focusChanged: GridEventFocusChangedParams;
+  headerFocusChanged: GridEventHeaderFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;

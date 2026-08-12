@@ -1,0 +1,56 @@
+---
+title: Column definitions
+sidebar_position: 3
+---
+
+# Column definitions
+
+`ColDef`, `ReactColDef`, and `NgColDef` describe the same column model. Framework
+types widen component slots to accept their native component classes.
+
+## Identity and values
+
+| Field | Purpose |
+| --- | --- |
+| `colId` / `key` / `label` | Identity, data field, and display name |
+| `type` | String, number, date, boolean, or currency behavior |
+| `valueGetter` | Compute the raw value |
+| `valueFormatter` / `formatterOptions` | Format display and export |
+| `valueParser` | Convert committed text |
+
+## Layout and capability
+
+`width`, `minWidth`, `maxWidth`, `pinned`, and `hidden` describe initial layout.
+`sortable`, `resizable`, `movable`, `hideable`, `groupable`, `aggregatable`,
+`exportable`, and `editable` govern user capabilities. `suppressColumnPanel`
+omits a column only from the management drawer.
+
+## Sort and filter
+
+Columns may define `sort`, `sortIndex`, `sortingOrder`, `sortIconVisibility`,
+and a custom `comparator`. `filter` selects a built-in panel or custom matcher;
+`filterParams` configures operators, inputs, values, debounce, and buttons.
+
+## Components
+
+| Field | Content |
+| --- | --- |
+| `cellRenderer` / `cellEditor` | Cell presentation and editing |
+| `headerComponent` | Header content while retaining controls |
+| `headerCellComponent` | Entire header cell except resize handle |
+| `tooltipComponent` / `headerTooltip` | Body and header floating content |
+| `actionFrameComponent` | Persistent cell-attached form content |
+
+Each component slot has a companion params field where applicable.
+
+## Conditional presentation
+
+`cellClass` and `cellStyle` accept static values or callbacks. `colSpan` returns
+the number of adjacent columns occupied for each row. `actionFrameIndicator`
+marks cells with attached content.
+
+## Groups
+
+A definition with `children` is a column group. `openByDefault` sets its initial
+state; child leaves use `columnGroupShow` to appear only while open or closed.
+

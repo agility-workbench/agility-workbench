@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -64,7 +65,7 @@ describe("colSpan", () => {
     expect(parseFloat(cells0[0].style.width)).toBeCloseTo(wA + wB, 1);
     expect(cells0[1].style.display).toBe("none");
     expect(cells0[2].style.display).not.toBe("none");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("clamps a span to the section end (never over-spans)", async () => {
@@ -83,6 +84,6 @@ describe("colSpan", () => {
     expect(row0[0].style.display).not.toBe("none");
     expect(row0[1].style.display).not.toBe("none");
     expect(row0[2].style.display).not.toBe("none");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

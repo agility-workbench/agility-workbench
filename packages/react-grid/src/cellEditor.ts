@@ -1,12 +1,11 @@
 import React from "react";
-import { createRoot, Root } from "react-dom/client";
-import { flushSync } from "react-dom";
 import type {
   CellEditor,
   CellEditorClass,
   ICellEditor,
   ICellEditorParams,
 } from "@agility-workbench/grid";
+import { ManagedReactRoot } from "./managedReactRoot";
 
 /**
  * The imperative handle a React cell editor exposes via useImperativeHandle. The grid reads
@@ -48,16 +47,16 @@ function isEditorClass(e: unknown): e is CellEditorClass {
 function createReactEditorClass(Component: ReactCellEditor): CellEditorClass {
   return class ReactCellEditorAdapter implements ICellEditor {
     private el = document.createElement("div");
-    private root: Root | null = null;
+    private root: ManagedReactRoot | null = null;
     private handle = React.createRef<ReactCellEditorHandle>();
 
     init(params: ICellEditorParams): void {
       this.el.style.width = "100%";
       this.el.style.height = "100%";
-      this.root = createRoot(this.el);
+      this.root = new ManagedReactRoot(this.el);
       const element = React.createElement(Component as any, { ...params, ref: this.handle });
       // Synchronous mount so this.handle.current is set before focus()/getValue() are called.
-      flushSync(() => this.root!.render(element));
+      this.root.renderSync(element);
     }
 
     getGui(): HTMLElement {
@@ -81,11 +80,9 @@ function createReactEditorClass(Component: ReactCellEditor): CellEditorClass {
     }
 
     destroy(): void {
-      // Defer unmount out of the current render/commit cycle to avoid React's
-      // "synchronously unmounting during render" warning.
       const root = this.root;
       this.root = null;
-      if (root) queueMicrotask(() => root.unmount());
+      root?.destroy();
     }
   };
 }

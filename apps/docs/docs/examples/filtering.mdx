@@ -1,0 +1,36 @@
+---
+title: Filtering
+sidebar_position: 5
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Filtering
+
+Column filters provide type-aware text, number, date, boolean, and set-filter
+interfaces. Quick filter searches across visible columns.
+
+<LiveFeatureGrid feature="filtering" />
+
+<FrameworkCode feature="filtering" />
+
+## Column filters
+
+Set `filter: true` to infer the UI from `ColumnType`, or choose `"text"`,
+`"number"`, `"date"`, `"boolean"`, `"set"`, or `"tree"`. `filterParams`
+controls operators, debounce, buttons, case handling, and the number of AND/OR
+conditions.
+
+Set-filter values can come from loaded rows, a static list, or an asynchronous
+loader. A function supplied as `filter` becomes a custom row matcher while the
+standard filter panel still owns its model and inputs.
+
+## Quick filter
+
+`multiTerm` requires every whitespace-separated term to match somewhere in the
+row. `substring` treats the input as one phrase. The toolbar can host quick
+filter, or `mode: "onDemand"` can open its floating UI with Ctrl/Cmd+F.
+
+Quick filtering is client-side. Server-side applications receive structured
+column filters in each data-source request.

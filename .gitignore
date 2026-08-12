@@ -11,3 +11,8 @@ packages/grid/src/theme/styles.generated.ts
 packages/grid/src/theme/cssVars.generated.ts
 
 artifacts/
+
+# Docusaurus output
+apps/docs/.docusaurus/
+apps/docs/build/
+apps/docs/node_modules/.cache/

@@ -86,6 +86,14 @@ export interface IRowModel<Row = any> {
   // accessors for what the viewport needs
   getRowCount(): number;                    // total displayed (may be estimate)
   getViewCount(): number;                   // total in current view (after filter/sort/pagination)
+  /**
+   * Rows in the current view after filter/sort but BEFORE pagination — "how many rows are in this grid",
+   * pages included. Both neighbours above answer something else: `getViewCount()` is one page and
+   * `getRowCount()` is the raw node total, ignoring filtering. Needed because `aria-rowcount` must be the
+   * full set while `aria-rowindex` counts absolutely across pages; a page size there puts row indices
+   * past the declared count.
+   */
+  getViewTotalCount(): number;
   getRowNodeAt(index: number): IRowNode<Row> | undefined;
   getRowNodeAtViewIndex(displayIndex: number): IRowNode<Row> | undefined;
 

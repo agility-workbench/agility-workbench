@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 
@@ -90,7 +91,7 @@ describe("cellSelection", () => {
     const api = apiRef.current!;
     await act(async () => { mousedown(bodyCells(container)[0]); });
     expect(api.getSelection().kind).toBe("cell");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not select or focus a cell when cellSelection is false", async () => {
@@ -99,7 +100,7 @@ describe("cellSelection", () => {
     await act(async () => { mousedown(bodyCells(container)[0]); });
     expect(api.getSelection().kind).toBe("none");
     expect(api.getSelection().active).toBeNull();
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("reverts to native text selection when cellSelection is 'text'", async () => {
@@ -111,7 +112,7 @@ describe("cellSelection", () => {
     // ...and the root opts cells into native text selection.
     const rootEl = container.querySelector<HTMLElement>("[data-pte-grid-id]")!;
     expect(rootEl.classList.contains("pte-text-selection")).toBe(true);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("opens the body context menu on right-click by default (selecting the cell)", async () => {
@@ -121,7 +122,7 @@ describe("cellSelection", () => {
     expect(ev.defaultPrevented).toBe(true); // native menu suppressed
     expect(bodyMenuOpen(container)).toBe(true);
     expect(api.getSelection().kind).toBe("cell");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not open the body menu or select on right-click when cellSelection is false", async () => {
@@ -131,7 +132,7 @@ describe("cellSelection", () => {
     expect(ev.defaultPrevented).toBe(false); // grid does not intercept
     expect(bodyMenuOpen(container)).toBe(false);
     expect(api.getSelection().kind).toBe("none");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("lets the native context menu through (no grid menu, no selection) in 'text' mode", async () => {
@@ -141,7 +142,7 @@ describe("cellSelection", () => {
     expect(ev.defaultPrevented).toBe(false); // browser's own menu (Copy) appears
     expect(bodyMenuOpen(container)).toBe(false);
     expect(api.getSelection().kind).toBe("none");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -156,7 +157,7 @@ describe("rangeSelection", () => {
       document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
     expect(api.getSelection().kind).toBe("range");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("stays a single cell when rangeSelection is false", async () => {
@@ -170,7 +171,7 @@ describe("rangeSelection", () => {
     });
     // Click still selects the single starting cell, but the drag did not extend it.
     expect(api.getSelection().kind).toBe("cell");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not extend with Shift+Arrow when rangeSelection is false", async () => {
@@ -182,7 +183,7 @@ describe("rangeSelection", () => {
       rootEl.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true }));
     });
     expect(api.getSelection().kind).toBe("cell");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -199,7 +200,7 @@ describe("columnSelection", () => {
     const api = apiRef.current!;
     await act(async () => { clickHeader(container, api, "name"); });
     expect(api.getSelection().kind).toBe("column");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does not select a column when columnSelection is false", async () => {
@@ -207,7 +208,7 @@ describe("columnSelection", () => {
     const api = apiRef.current!;
     await act(async () => { clickHeader(container, api, "name"); });
     expect(api.getSelection().kind).not.toBe("column");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -264,7 +265,7 @@ describe("interaction options update live", () => {
     await act(async () => liveHeader.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(originalApi.getSelection().kind).toBe("column");
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
     container.remove();
   });
 });

@@ -1,0 +1,47 @@
+---
+title: Installation
+sidebar_position: 1
+---
+
+# Installation
+
+Choose one package. Framework bindings install the core automatically and
+re-export its public API.
+
+```bash npm2yarn
+npm install @agility-workbench/react-grid react react-dom
+```
+
+```bash
+npm install @agility-workbench/angular-grid
+```
+
+```bash
+npm install @agility-workbench/grid
+```
+
+The packages require Node.js 18+ for development and packaging. The browser
+runtime is TypeScript/JavaScript and DOM based.
+
+## Size the host
+
+The grid fills its host element. Always give that host or an ancestor a height:
+
+```css
+.orders-grid {
+  width: 100%;
+  height: 520px;
+}
+```
+
+## Styles
+
+The grid injects its stylesheet once when it attaches. To process CSS yourself:
+
+```ts
+import "@agility-workbench/grid/styles.css";
+```
+
+Then set `suppressStyleInjection` on every grid. For a strict CSP, keep automatic
+injection and pass the page's nonce through `styleNonce`.
+

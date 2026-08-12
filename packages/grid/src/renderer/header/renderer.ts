@@ -31,6 +31,8 @@ export class HeaderRenderer {
   private elements: HeaderWrapperElements;
   /** Live custom header components, keyed by column instanceID. Rebuilt each buildDOM. */
   private components = new Map<string, MountedHeaderComponent>();
+  /** The header cell currently painted as holding the keyboard cursor. */
+  private activeHeaderEl: HTMLElement | null = null;
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
@@ -39,6 +41,11 @@ export class HeaderRenderer {
 
   getRefs() {
     return this.elements;
+  }
+
+  destroy(): void {
+    for (const { runtime } of this.components.values()) runtime.destroy();
+    this.components.clear();
   }
 
   buildDOM(reason: string) {
@@ -95,6 +102,7 @@ export class HeaderRenderer {
         rightHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
       }
     }
+    this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
     const containerEl = this.params.getContainerEl();
     const headerProbe = getComputedStyle(centerHeader.querySelector(".pte-hcell") || containerEl);
     const cellProbe = getComputedStyle(body.querySelector(".pte-cell") || containerEl);
@@ -104,6 +112,42 @@ export class HeaderRenderer {
       cellFont: `${cellProbe.fontWeight} ${cellProbe.fontSize} ${cellProbe.fontFamily}`,
       reason: reason,
     });
+  }
+
+  /**
+   * ARIA: the center header section is THE header row (role stamped by createHeaderWrapper); leaf
+   * header cells across all four sections become its columnheaders via aria-owns, in visual order.
+   * Group (parent) header cells are presentational — the group hierarchy is not exposed. Rebuilt with
+   * the header DOM on every column change.
+   */
+  private applyHeaderAria(
+    leadingHeader: HTMLDivElement,
+    leftHeader: HTMLDivElement,
+    centerHeader: HTMLDivElement,
+    rightHeader: HTMLDivElement,
+  ) {
+    const lookup = this.params.core.getColumnModel().leafColumnLookup;
+    const ownedIds: string[] = [];
+    for (const section of [leadingHeader, leftHeader, centerHeader, rightHeader]) {
+      for (const hcell of section.querySelectorAll<HTMLElement>(".pte-hcell")) {
+        const meta = lookup.get(hcell.id);
+        if (hcell.classList.contains("pte-hcell-leaf") && meta) {
+          hcell.setAttribute("role", "columnheader");
+          hcell.setAttribute("aria-colindex", String(meta.globalIndex + 1));
+          // The row-number gutter renders a deliberately blank label, which leaves its
+          // columnheader with no accessible name (axe: empty-table-header). Name it here rather
+          // than painting text into the cell.
+          if (hcell.classList.contains("pte-hcell-row-number")) {
+            hcell.setAttribute("aria-label", "Row number");
+          }
+          ownedIds.push(hcell.id);
+        } else {
+          hcell.setAttribute("role", "presentation");
+        }
+      }
+    }
+    if (ownedIds.length) centerHeader.setAttribute("aria-owns", ownedIds.join(" "));
+    else centerHeader.removeAttribute("aria-owns");
   }
 
   buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
@@ -212,6 +256,7 @@ export class HeaderRenderer {
         this.updateSortIcon(col, sortEl);
       }
     }
+    this.updateSortAria(col, header);
     return header;
   }
 
@@ -315,6 +360,49 @@ export class HeaderRenderer {
   }
 
   /**
+   * `aria-sort` on the OUTER `.pte-hcell`: a custom header component may own the cell interior, but the
+   * outer element is grid-owned in every case. Separate from updateSortIcon because the audiences
+   * differ — a column with `sortIconVisibility: "never"` has no icon element and updateSortIcon returns
+   * early, yet it is still sortable and must say so. Sortable-but-unsorted carries `aria-sort="none"`
+   * rather than nothing, which is what tells AT the column is sortable at all.
+   */
+  private updateSortAria(col: Column, hcell?: HTMLElement | null) {
+    const el = hcell ?? document.getElementById(col.instanceID);
+    if (!el) return;
+    if (!col.sortable || col.children.length > 0 || col.isRowNumberColumn()) {
+      el.removeAttribute("aria-sort");
+      return;
+    }
+    const sorted = this.params.core.getSortModel().items
+      .find(s => s.col.instanceID === col.instanceID);
+    el.setAttribute("aria-sort", !sorted ? "none" : sorted.dir === "asc" ? "ascending" : "descending");
+  }
+
+  /**
+   * Paint the header cursor, returning the cell it landed on so the caller can name it in
+   * `aria-activedescendant`. A class rather than DOM focus, since focus stays on the root — which also
+   * means the `:focus-within` rules revealing the sort icon and hover-only buttons never fire, so
+   * `.pte-hcell-active` is wired into those rules in the stylesheet.
+   */
+  setActiveHeader(colIdx: number | null): HTMLElement | null {
+    const target = colIdx == null
+      ? null
+      : this.params.core.getColumnModel().getLeaves()[colIdx] ?? null;
+    const targetEl = target ? document.getElementById(target.instanceID) : null;
+    if (this.activeHeaderEl === targetEl) return targetEl;
+    this.activeHeaderEl?.classList.remove("pte-hcell-active");
+    this.activeHeaderEl = targetEl;
+    targetEl?.classList.add("pte-hcell-active");
+    return targetEl;
+  }
+
+  /** Re-apply the cursor after a header rebuild, which replaces the element it was painted on. */
+  restoreActiveHeader(): HTMLElement | null {
+    this.activeHeaderEl = null;
+    return this.setActiveHeader(this.params.core.getHeaderFocusColIdx());
+  }
+
+  /**
    * Refresh sort icons across all sortable columns. Called on every sort change because adding or
    * removing a sorted column renumbers the priority badges of the others — a per-changed-column
    * update would leave stale numbers behind.
@@ -322,6 +410,9 @@ export class HeaderRenderer {
   refreshSortIndicators() {
     for (const col of this.params.core.getColumnModel().getLeaves()) {
       if (col.sortable) this.updateSortIcon(col);
+      // Every leaf, not just sortable ones: a column that stopped being sortable has to lose its
+      // aria-sort, and only this pass would clear it.
+      this.updateSortAria(col);
     }
     this.refreshHeaderComponents();
   }

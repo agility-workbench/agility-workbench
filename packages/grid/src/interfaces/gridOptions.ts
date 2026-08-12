@@ -600,6 +600,24 @@ export interface GridOptions {
    */
   onSortChanged?: (params: SortChangedParams) => void;
   /**
+   * Accessible name for the grid, applied as `aria-label` on the element carrying `role="grid"`.
+   *
+   * A grid is required to have an accessible name, and the host page cannot supply one from
+   * outside: the element with `role="grid"` is created by the renderer *inside* the container the
+   * application owns, so labelling the container does not name the grid. Something short and
+   * distinguishing is what a screen-reader user hears on entering it ("Open invoices").
+   *
+   * Prefer `ariaLabelledBy` when a visible heading already names the grid.
+   */
+  ariaLabel?: string;
+  /**
+   * Accessible name for the grid taken from other elements' text, applied as `aria-labelledby` on
+   * the element carrying `role="grid"`. Space-separated ids, which must exist in the same document
+   * (typically a visible heading above the grid). Takes precedence over `ariaLabel` when both are
+   * set, matching how the two attributes resolve in ARIA.
+   */
+  ariaLabelledBy?: string;
+  /**
    * When true, the active (focused) cell is drawn with a distinct outline
    * (`--pte-active-cell-border-color`) so it stands out inside a larger range selection.
    * Defaults to false.
@@ -950,6 +968,8 @@ export interface InternalGridOptions extends GridOptions {
   rowHover: boolean;
   columnHover: boolean;
   zebraRows: boolean;
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
   highlightActiveCell: boolean;
   rowSelection: boolean;
   cellSelection: CellSelectionMode;
@@ -1011,6 +1031,8 @@ export type RuntimeGridOptions = Pick<
   | "zebraRows"
   | "getRowClass"
   | "getRowStyle"
+  | "ariaLabel"
+  | "ariaLabelledBy"
   | "highlightActiveCell"
   | "cellSelection"
   | "rangeSelection"

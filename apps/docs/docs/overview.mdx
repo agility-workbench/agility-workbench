@@ -1,0 +1,40 @@
+---
+title: Agility Workbench Grid
+slug: /
+sidebar_position: 1
+description: A framework-neutral TypeScript data grid with first-party React and Angular bindings.
+---
+
+# Agility Workbench Grid
+
+Agility Workbench is a virtualized data grid for product teams building dense,
+interactive data experiences. The framework-neutral engine owns state, row
+models, selection, editing, and export; thin React and Angular bindings adapt
+framework components and lifecycle without hiding the core API.
+
+## Choose your package
+
+| Package | Best for |
+| --- | --- |
+| `@agility-workbench/react-grid` | React 18+ applications using `<Grid />` |
+| `@agility-workbench/angular-grid` | Angular 20.3+ applications using standalone `<awb-grid>` |
+| `@agility-workbench/grid` | Framework-neutral integrations and custom hosts |
+
+Both bindings depend on the core and re-export its public types, themes, enums,
+and API. Most applications only need imports from their binding package.
+
+## What is included
+
+- Client-side and block-based server-side row models
+- Virtual rows, pinned column sections, pinned rows, and sticky group ancestors
+- Column filters, global search, multi-sort, grouping, aggregation, and tree data
+- Cell, range, row, and column selection with keyboard navigation
+- Typed editors, clipboard workflows, undo/redo, and conditional styling
+- CSV and Excel export with grouped outlines, formulas, spans, and frozen panes
+- Toolbars, saved views, column management, menus, tooltips, and ActionFrames
+- Per-grid themes and custom React, Angular, or DOM components
+
+:::note Current status
+The project is currently pre-1.0. See [limitations](./limitations.mdx) for the
+important gaps and model-specific differences.
+:::

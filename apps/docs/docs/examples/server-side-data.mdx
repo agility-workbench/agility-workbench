@@ -1,0 +1,32 @@
+---
+title: Server-side data
+sidebar_position: 4
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Server-side row model
+
+The server-side model requests block-aligned row slices as the viewport or page
+needs them. Filtering, sorting, grouping, and full-data aggregation are sent to
+the data source instead of calculated over an incomplete browser cache.
+
+<LiveFeatureGrid feature="server-side-data" />
+
+<FrameworkCode feature="server-side-data" />
+
+## Request contract
+
+`getRows({ request })` receives `startRow`, `endRow`, active `filters`, ordered
+`sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates`.
+Return `{ rows, totalRows }`; root responses may also provide `columns` and a
+`schemaVersion` for server-driven schemas.
+
+Omitting `totalRows` creates an open-ended listing. The grid probes forward
+until a short block establishes the end and displays provisional pagination
+totals with a `+` suffix.
+
+Use a soft refresh to keep visible rows while refetching, or `{ purge: true }`
+to discard affected blocks immediately. A `groupKeys` path limits refresh to
+one subtree.

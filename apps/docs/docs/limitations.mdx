@@ -1,0 +1,43 @@
+---
+title: Current limitations
+sidebar_position: 99
+---
+
+# Current limitations
+
+Agility Workbench is pre-1.0. The current feature surface is broad, but the
+following constraints should be evaluated before production adoption.
+
+## Not currently implemented
+
+- Variable or automatic row heights and text wrapping
+- Master/detail row panels
+- Pivoting
+- A complete ARIA grid model and assistive-technology focus model
+- An in-grid contextual keyboard-shortcut reference
+
+Accessibility is partially covered in menus, filters, column-management
+feedback, and keyboard interaction. The main data surface should not yet be
+presented as fully accessible.
+
+## Client-side-only behavior
+
+Quick filter, tree data, full-width rows, custom filter matchers, and row
+transactions require the client-side model. Server-side grouping and sticky
+group rows are supported, but server-side group sorting is local to each
+listing.
+
+## Server-side differences
+
+The server is responsible for filtering and sorting complete data. As a result,
+iteration cannot expose a separate pre-filter/pre-sort universe. Open-ended
+listings have provisional row/page counts until a short block establishes the
+end.
+
+## Layout
+
+All rows currently have one fixed height. Cell spans stop at pinned-section
+boundaries. A span that exists only on some rows can produce a visually
+non-rectangular selected region even though the selection model remains a
+rectangle.
+

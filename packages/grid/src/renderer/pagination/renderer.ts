@@ -11,6 +11,19 @@ interface PaginationRendererParams {
   setAggregateScope: (scope: AggregateScope) => void;
 }
 
+/**
+ * The glyph for a page-navigation button, as a child rather than on the button itself: the icon is a CSS
+ * mask, and a mask clips everything its element paints — background, border, shadow, outline. With the
+ * mask on the `<button>` these buttons could not render a focus ring at all. The span is decorative; the
+ * button carries the accessible name.
+ */
+function paginationIcon(): HTMLSpanElement {
+  const icon = document.createElement("span");
+  icon.className = "pte-pagination-btn-icon";
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 export class PaginationRenderer {
   pageSizeSelect!: HTMLSelectElement;
   pageSelect!: HTMLSelectElement;
@@ -63,8 +76,13 @@ export class PaginationRenderer {
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "pte-pagination-label";
     sizeLabel.textContent = "Rows per page";
+    // The visible text beside each control is its name; point at it rather than duplicating the
+    // string in an aria-label, so the two can never drift. Ids are prefixed with the grid instance
+    // id because a page may hold several grids.
+    sizeLabel.id = `${core.id}-pagination-size-label`;
     this.pageSizeSelect = document.createElement("select");
     this.pageSizeSelect.className = "pte-select pte-pagination-select";
+    this.pageSizeSelect.setAttribute("aria-labelledby", sizeLabel.id);
     for (const size of pageSizes) {
       const option = document.createElement("option");
       option.value = String(size);
@@ -85,14 +103,20 @@ export class PaginationRenderer {
     const navSection = document.createElement("div");
     navSection.className = "pte-pagination-section pte-pagination-nav";
 
+    // These four are icon-only CSS-mask buttons with no text, so without a label AT announces four
+    // anonymous buttons.
     this.firstPageBtn = document.createElement("button");
     this.firstPageBtn.type = "button";
     this.firstPageBtn.className = "pte-pagination-btn pte-pagination-btn-first";
+    this.firstPageBtn.setAttribute("aria-label", "First page");
+    this.firstPageBtn.appendChild(paginationIcon());
     this.firstPageBtn.addEventListener("click", () => this.goToPage(0));
 
     this.prevPageBtn = document.createElement("button");
     this.prevPageBtn.type = "button";
     this.prevPageBtn.className = "pte-pagination-btn pte-pagination-btn-prev";
+    this.prevPageBtn.setAttribute("aria-label", "Previous page");
+    this.prevPageBtn.appendChild(paginationIcon());
     this.prevPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().pageIndex - 1);
     });
@@ -100,10 +124,12 @@ export class PaginationRenderer {
     const pageLabel = document.createElement("span");
     pageLabel.className = "pte-pagination-label";
     pageLabel.textContent = "Page";
+    pageLabel.id = `${core.id}-pagination-page-label`;
 
     this.pageSelect = document.createElement("select");
     this.pageSelect.className = "pte-select pte-pagination-select pte-pagination-page-select";
     this.pageSelect.name = "pte-page-select";
+    this.pageSelect.setAttribute("aria-labelledby", pageLabel.id);
     this.pageSelect.addEventListener("change", (e) => {
       const val = Number((e.target as HTMLSelectElement).value);
       if (!Number.isFinite(val)) return;
@@ -113,6 +139,8 @@ export class PaginationRenderer {
     this.nextPageBtn = document.createElement("button");
     this.nextPageBtn.type = "button";
     this.nextPageBtn.className = "pte-pagination-btn pte-pagination-btn-next";
+    this.nextPageBtn.setAttribute("aria-label", "Next page");
+    this.nextPageBtn.appendChild(paginationIcon());
     this.nextPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().pageIndex + 1);
     });
@@ -120,6 +148,8 @@ export class PaginationRenderer {
     this.lastPageBtn = document.createElement("button");
     this.lastPageBtn.type = "button";
     this.lastPageBtn.className = "pte-pagination-btn pte-pagination-btn-last";
+    this.lastPageBtn.setAttribute("aria-label", "Last page");
+    this.lastPageBtn.appendChild(paginationIcon());
     this.lastPageBtn.addEventListener("click", () => {
       this.goToPage(core.getPaginationInfo().totalPageCount - 1);
     });
@@ -145,9 +175,11 @@ export class PaginationRenderer {
     const aggLabel = document.createElement("span");
     aggLabel.className = "pte-pagination-label";
     aggLabel.textContent = "Aggregate";
+    aggLabel.id = `${this.params.core.id}-aggregate-label`;
 
     this.aggregateScopeSelect = document.createElement("select");
     this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
+    this.aggregateScopeSelect.setAttribute("aria-labelledby", aggLabel.id);
     const aggOptions: Array<{ value: AggregateScope; label: string }> = [
       { value: "none", label: "None" },
       { value: "page", label: "Current page" },

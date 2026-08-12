@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 
@@ -76,7 +77,7 @@ describe("row selection end-to-end via Grid", () => {
     expect(api.getSelectedRows()).toHaveLength(0);
     expect(api.areAllRowsSelected()).toBe(false);
 
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("does NOT select all on header click when selectAllRowsOnHeaderClick is disabled", async () => {
@@ -84,7 +85,7 @@ describe("row selection end-to-end via Grid", () => {
     const api = apiRef.current!;
     await act(async () => { clickRowNumberHeader(container); });
     expect(api.getSelectedRows()).toHaveLength(0);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("selectAllRows / deselectAllRows API select and clear all rows", async () => {
@@ -99,7 +100,7 @@ describe("row selection end-to-end via Grid", () => {
     expect(api.areAllRowsSelected()).toBe(false);
     expect(api.getSelectedRows()).toHaveLength(0);
 
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -123,6 +124,6 @@ describe("applyColumnState end-to-end via Grid", () => {
     expect(after.get("id")!.widthPx).toBe(250);
     expect(after.get("name")!.pinned).toBe("right");
 
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

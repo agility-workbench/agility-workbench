@@ -18,6 +18,11 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
   toggle.setAttribute("data-group-id", row.id);
   toggle.setAttribute("role", "button");
   toggle.setAttribute("aria-expanded", String(!!row.isExpanded));
+  // Hidden from AT on purpose: the chevron is mouse-only — expand/collapse is dispatched
+  // from mousedown — and it is unnamed, so exposing it adds an anonymous button an AT user cannot
+  // operate, right next to a row that already announces the same state via its own `aria-expanded`.
+  // The attribute stays on the element regardless, because tests and client CSS select on it.
+  toggle.setAttribute("aria-hidden", "true");
 
   const icon = document.createElement("span");
   icon.className = "pte-group-toggle-icon " + (row.isExpanded ? "icon-group-expanded" : "icon-group-collapsed");
@@ -45,6 +50,9 @@ export function renderTreeCell(cell: HTMLDivElement, row: IRowNode): void {
     toggle.setAttribute("data-group-id", row.id);
     toggle.setAttribute("role", "button");
     toggle.setAttribute("aria-expanded", String(!!row.isExpanded));
+    // Same reasoning as the group chevron above: mouse-only and unnamed, with the row carrying the
+    // expanded state for AT. The label span beside it stays exposed.
+    toggle.setAttribute("aria-hidden", "true");
     const icon = document.createElement("span");
     icon.className = "pte-group-toggle-icon "
       + (row.isExpanded ? "icon-group-expanded" : "icon-group-collapsed");

@@ -1,5 +1,7 @@
 import { RefObject } from "react";
 import { AggregateType } from "../interfaces/aggregate";
+import { GridAnnouncer } from "./announcer";
+import { ActiveDescendantTracker } from "./aria";
 import { RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
@@ -155,6 +157,11 @@ export class GridRenderer {
 
   // DOM elements
   root: HTMLDivElement;
+  // Shared by every renderer that paints the active cell (body pool, pinned bands) — one tracker
+  // per grid, because they arbitrate ownership of a single root attribute between themselves.
+  _activeDescendant: ActiveDescendantTracker;
+  /** sr-only live region for sort/selection/loading. Distinct from the visible toast below. */
+  _announcer: GridAnnouncer;
   private _keyboardNavigationAnnouncer: HTMLDivElement;
   private _keyboardNavigationAnnouncementTimer?: ReturnType<typeof setTimeout>;
   _aggregateLeadingCells: HTMLDivElement[];
@@ -203,11 +210,21 @@ export class GridRenderer {
     this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
+    // ARIA: the root is the single focusable element and therefore THE grid — so it
+    // is also where aria-activedescendant names the active cell. Counts are refreshed by
+    // _refreshAriaCounts whenever data or columns change.
+    this.root.setAttribute("role", "grid");
+    // A grid must have an accessible name, and only the application knows what this one is called.
+    this._applyGridLabel();
+    this._activeDescendant = new ActiveDescendantTracker(this.root);
     this._keyboardNavigationAnnouncer = div("pte-grid-announcer");
     this._keyboardNavigationAnnouncer.setAttribute("role", "status");
     this._keyboardNavigationAnnouncer.setAttribute("aria-live", "polite");
     this._keyboardNavigationAnnouncer.setAttribute("aria-atomic", "true");
     this.root.appendChild(this._keyboardNavigationAnnouncer);
+    // The toast above is visible and hidden while idle, so AT never sees it. This second region is
+    // sr-only and carries the grid's state announcements.
+    this._announcer = new GridAnnouncer(this.root);
     // In "text" cell-selection mode, revert body cells to native browser text selection (like a
     // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
     if (this.core.options.cellSelection === "text") {
@@ -234,6 +251,7 @@ export class GridRenderer {
       onColumnsChanged: (params) => {
         this._modelChangeHandler.onColumnsChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
+        if (params.reason === "sort") this._announceSort();
       },
       onColumnWidthsChanged: (params) => {
         this._modelChangeHandler.onColumnWidthsChanged(params);
@@ -242,6 +260,7 @@ export class GridRenderer {
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
+        this._refreshAriaCounts();
       },
       onAggregateChanged: (params) => this._onAggregateChanged(params),
       updatePaginationControls: (params) => this._updatePaginationControls(params),
@@ -249,6 +268,7 @@ export class GridRenderer {
       onSelectionChanged: () => {
         this._selectionRenderer.onSelectionChanged();
         this._pinnedRowsRenderer?.refreshSelectionStyles();
+        this._announceSelection();
       },
       onFocusChanged: (params) => {
         this._selectionRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.rowPinned);
@@ -257,6 +277,7 @@ export class GridRenderer {
           this._bodyTooltipRenderer.onFocusChanged(params.viewIdx, params.colIdx, params.reason);
         }
       },
+      onHeaderFocusChanged: (params) => this._onHeaderFocusChanged(params.colIdx ?? null),
       onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
       onCellsChanged: (params) => this._onCellsChanged(params),
       onKeyboardNavigationModeChanged: ({ mode }) => {
@@ -297,6 +318,7 @@ export class GridRenderer {
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
       root: this.root,
+      activeDescendant: this._activeDescendant,
       clipboard: () => this._clipboardRenderer,
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
@@ -420,16 +442,22 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       rowHeight: () => this.rowHeight,
+      onVerticalScrollbarVisibilityChanged: (visible) => {
+        this._columnLayoutRenderer?.setVerticalScrollbarVisible(visible);
+        this._pinnedRowsRenderer?.setBodyVerticalScrollbarVisible(visible);
+      },
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
     this._pinnedRowsRenderer = new PinnedRowsRenderer({
       core: this.core,
       api: this.api,
       root: this.root,
+      activeDescendant: this._activeDescendant,
       body: bodyWrapper.body,
       rowHeight: () => this.rowHeight,
       bodyCellRenderer: this._bodyCellRenderer,
       onHeightChanged: () => {
+        this._bodyViewportRenderer.recomputeView();
         requestAnimationFrame(() => this._maybeUpdatePoolSize());
       },
       onBodyPartitionChanged: () => {
@@ -510,6 +538,7 @@ export class GridRenderer {
       leftPinnedLeafColumns: () => this._leftPinnedLeafColumns,
       centerLeafColumns: () => this._centerLeafColumns,
       rightPinnedLeafColumns: () => this._rightPinnedLeafColumns,
+      ariaIdPrefix: () => this.core.id,
     });
 
     this._horizontalScrollRenderer = new HorizontalScrollRenderer(this.root);
@@ -566,6 +595,7 @@ export class GridRenderer {
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
       onKeyDown: (e) => this._onKeyDown(e),
+      onRootFocus: () => this._onRootFocus(),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -600,6 +630,7 @@ export class GridRenderer {
       aggregateCenterCells: () => this._aggregateCells,
       aggregateRight: aggregateRefs.right,
       aggregateRightCells: () => this._aggregateRightCells,
+      updateVerticalScrollLayout: () => this._bodyViewportRenderer.recomputeView(),
       updatePinnedRowsLayout: () => this._pinnedRowsRenderer.updateLayout(),
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
@@ -612,7 +643,10 @@ export class GridRenderer {
       rightScroller: bodyWrapper.rightScroller,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
-      onResize: () => this._pinnedRowsRenderer.updateLayout(),
+      onResize: () => {
+        this._bodyViewportRenderer.recomputeView();
+        this._pinnedRowsRenderer.updateLayout();
+      },
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
       leadingScroller: bodyWrapper.leadingScroller,
@@ -943,6 +977,16 @@ export class GridRenderer {
     this.root.classList.toggle("pte-text-selection", options.cellSelection === "text");
     this.root.classList.toggle("pte-column-buttons-on-hover", options.showColumnButtonsOnHover);
 
+    if (previous.ariaLabel !== options.ariaLabel || previous.ariaLabelledBy !== options.ariaLabelledBy) {
+      this._applyGridLabel();
+    }
+    // Column selection is one of the routes that makes the grid multi-selectable.
+    if (previous.columnSelection !== options.columnSelection
+      || previous.cellSelection !== options.cellSelection
+      || previous.rangeSelection !== options.rangeSelection) {
+      this._refreshAriaCounts();
+    }
+
     const rowPaintChanged =
       previous.zebraRows !== options.zebraRows
       || previous.getRowClass !== options.getRowClass
@@ -967,6 +1011,17 @@ export class GridRenderer {
       this._quickFilterWidget.show();
       return;
     }
+    // The header cursor gets the keys first, and only while it holds the cursor. Routing by position
+    // rather than by key keeps the body's meanings intact: the body handler treats Enter as "edit this
+    // cell" and any printable character as type-to-edit, neither of which should happen on a header.
+    //
+    // Gated on the event originating at the root itself, where this cursor lives: DOM focus never leaves
+    // the root in the activedescendant model, so a keydown from anywhere else came from a real control
+    // inside the grid (a pagination button, the quick filter, a cell editor) and belongs to it.
+    if (e.target === this.root && this._headerInteractionHandler.onKeyDown(e)) {
+      e.preventDefault();
+      return;
+    }
     this._selectionRenderer.onKeyDown(e);
   }
 
@@ -974,6 +1029,61 @@ export class GridRenderer {
     const next = isTrue(isLoading);
     if (this._loadingOverlayRenderer.getLoading() === next) return;
     this._loadingOverlayRenderer.setLoading(next);
+    // aria-busy tells AT the grid's content is in flux, so it can hold off describing rows that are
+    // about to be replaced. Set on the root — the element carrying role="grid".
+    if (next) this.root.setAttribute("aria-busy", "true");
+    else this.root.removeAttribute("aria-busy");
+    this._announcer.loadingChanged(next, this.core.getRowModel().getViewCount());
+  }
+
+  /**
+   * Paint the header cursor and name it for AT. The tracker takes any element with an id and header
+   * cells are keyed on the column's instanceID, so a columnheader can be the activedescendant exactly
+   * as a gridcell can (verified in Chrome). `this` owns the claim rather than a pool slot: the header
+   * has no recycling, so nothing else repaints over it.
+   */
+  private _onHeaderFocusChanged(colIdx: number | null) {
+    const el = this._headerRenderer.setActiveHeader(colIdx);
+    if (el) this._activeDescendant.claim(el, this);
+    else this._activeDescendant.release(this);
+    if (colIdx != null) this.ensureColumnVisible(colIdx);
+  }
+
+  /**
+   * Where the keyboard cursor lands when focus enters the grid: back where it was, or the first column
+   * header on a first visit. The surrounding chrome — toolbar, paginator, quick filter — is all
+   * tab-reachable, so leaving and returning is routine and losing your place each time would be tiring.
+   */
+  private _onRootFocus() {
+    if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;
+    if (this.core.getColumnModel().getLeaves().length === 0) return;
+    this.core.setHeaderFocus(0, "keyboard");
+  }
+
+  /** Announce the sort model in reading order (primary first). */
+  private _announceSort() {
+    this._announcer.sortChanged(
+      this.core.getSortModel().items.map(item => ({ label: item.col.label, dir: item.dir })),
+    );
+  }
+
+  /**
+   * Announce the size of the selection. Row and column selection are counted directly; a cell
+   * range is reported by its dimensions, and a single-cell range says nothing at all because
+   * aria-activedescendant already moves AT onto that cell.
+   */
+  private _announceSelection() {
+    const range = this.core.getSelectionRange();
+    this._announcer.selectionChanged({
+      rows: this.core.getSelectedRowIds().size,
+      columns: this.core.getSelectedColumnIds().size,
+      range: range
+        ? {
+          rows: Math.abs(range.rowEnd - range.rowStart) + 1,
+          columns: Math.abs(range.colEnd - range.colStart) + 1,
+        }
+        : null,
+    });
   }
 
   setEmpty(isEmpty: boolean) {
@@ -1036,7 +1146,10 @@ export class GridRenderer {
       clearTimeout(this._keyboardNavigationAnnouncementTimer);
       this._keyboardNavigationAnnouncementTimer = undefined;
     }
+    this._announcer.destroy();
     this._coreEventBinder.destroy();
+    this._cellEditRenderer.destroy();
+    this._menuRenderer.close(0);
     this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
     this._quickFilterFloatingHost.remove();
@@ -1047,6 +1160,8 @@ export class GridRenderer {
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
     this._actionFrameRenderer.destroy();
+    this._headerRenderer.destroy();
+    this._destroyRowPool();
     this._pinnedRowsRenderer.destroy();
     this._pinnedSectionLayoutRenderer.destroy();
     this._rootAttachmentRenderer.destroy();
@@ -1125,6 +1240,11 @@ export class GridRenderer {
     this.core.pruneColumnSelection();
     this._selectionRenderer.applyColumnSelectionStyles();
     this._pinnedRowsRenderer?.render(undefined, true);
+    // The rebuild replaced every header cell, so the keyboard cursor's painted class and the
+    // activedescendant id both point at detached elements.
+    const el = this._headerRenderer.restoreActiveHeader();
+    if (el) this._activeDescendant.claim(el, this);
+    else this._activeDescendant.release(this);
   }
 
   private buildPaginationControls() {
@@ -1291,12 +1411,21 @@ export class GridRenderer {
       }
     }
 
-    // Horizontal: only center-section columns scroll; leading/pinned are always visible.
+    this.ensureColumnVisible(colIdx);
+  }
+
+  /**
+   * Scroll a column into view horizontally. Split out of `_ensureCellVisible` for the header cursor,
+   * which moves along a row with no vertical dimension. Only center-section columns scroll; leading and
+   * pinned columns are always visible.
+   */
+  ensureColumnVisible(colIdx: number) {
     const col = this._leafColumns[colIdx];
     if (!col) return;
     const meta = this._leafColumnLookup.get(col.instanceID);
     if (!meta || meta.section !== "center" || col.centralPosition == null) return;
 
+    const refs = this._bodyViewportRenderer.getRefs();
     const centerLeaves = this.core.getColumnModel().getCenterLeaves();
     let colLeft = 0;
     for (let i = 0; i < col.centralPosition; i++) {
@@ -1314,14 +1443,68 @@ export class GridRenderer {
 
   _buildRowPool() {
     this._syncLeafColumns();
+    this._destroyRowPool();
     this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
 
     this._buildAggregateRow();
+    this._refreshAriaCounts();
+  }
+
+  // Dataset-scoped ARIA dimensions: rowcount = header + full view row count
+  // (virtualization/pagination-independent); colcount = visible leaf columns. Band rows and
+  // the aggregate row are unindexed (they show blank row numbers by design), so they are
+  // not counted.
+  private _refreshAriaCounts() {
+    const rowModel = this.core.getRowModel();
+    this.root.setAttribute("aria-colcount", String(this.core.getColumnModel().leafColumnLookup.size));
+    // aria-rowcount is the size of the WHOLE set, not of what is currently rendered or paged to,
+    // and `aria-rowindex` counts absolutely across pages (`getRowNumberForViewIndex` adds the page
+    // offset). Using the page size here made page 2 of 10 report 11 rows with indices 12-21 — every
+    // index past the declared count. Filtering does belong in the number, which is why this is
+    // `getViewTotalCount()` and not `getRowCount()`.
+    //
+    // -1 means "count unknown" and is the honest answer while the server-side model's total is
+    // still an estimate; publishing the estimate as exact tells AT the last row is reachable when
+    // it may not be.
+    const totalKnown = rowModel.isTotalRowCountKnown?.() ?? true;
+    this.root.setAttribute(
+      "aria-rowcount",
+      totalKnown ? String(rowModel.getViewTotalCount() + 1) : "-1",
+    );
+    // More than one thing can be selected at once when cells can be dragged into a range, rows can
+    // be picked individually, or columns can be (column selection accumulates, and selecting a
+    // column marks all of its cells selected). Cell selection set to "text"/false leaves the
+    // row/column routes.
+    const multi = (this.core.options.cellSelection === true && !!this.core.options.rangeSelection)
+      || !!this.core.options.rowSelection
+      || !!this.core.options.columnSelection;
+    this.root.setAttribute("aria-multiselectable", String(multi));
+  }
+
+  /**
+   * The grid's accessible name. `aria-labelledby` wins when both are set, which is how the two
+   * attributes resolve anyway; both are removed when unset so a cleared option does not leave a
+   * stale name behind.
+   */
+  private _applyGridLabel() {
+    const { ariaLabel, ariaLabelledBy } = this.core.options;
+    if (ariaLabelledBy) this.root.setAttribute("aria-labelledby", ariaLabelledBy);
+    else this.root.removeAttribute("aria-labelledby");
+    if (ariaLabel && !ariaLabelledBy) this.root.setAttribute("aria-label", ariaLabel);
+    else this.root.removeAttribute("aria-label");
   }
 
   _rebuildRowPool() {
     // If columns change frequently, you’d do smarter diffing.
     this._buildRowPool();
+  }
+
+  private _destroyRowPool(): void {
+    for (const slot of this._rowPool) {
+      for (const record of slot.cellRendererInstances.values()) record.runtime.destroy();
+      slot.cellRendererInstances.clear();
+    }
+    this._rowPool = [];
   }
 
   private _copySelectionToClipboard({ includeHeaders, ctx }: {

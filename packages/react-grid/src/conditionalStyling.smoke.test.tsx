@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { IGridAPI } from "@agility-workbench/grid";
 import type { ReactColDef } from "./cellRenderer";
@@ -56,7 +57,7 @@ describe("getRowClass / getRowStyle", () => {
     expect(rowEl(container, 0).classList.contains("row-error")).toBe(false);
     expect(rowEl(container, 1).classList.contains("row-error")).toBe(true);
     expect(rowEl(container, 2).classList.contains("row-error")).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("applies inline styles from getRowStyle", async () => {
@@ -66,7 +67,7 @@ describe("getRowClass / getRowStyle", () => {
     );
     expect(rowEl(container, 0).style.fontWeight).toBe("700");
     expect(rowEl(container, 1).style.fontWeight).toBe("");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("clears a stale row class when the underlying data stops matching (recycle safety)", async () => {
@@ -80,7 +81,7 @@ describe("getRowClass / getRowStyle", () => {
       apiRef.current!.applyTransaction({ update: [{ rowId: "2", row: { id: 2, name: "BBB", status: "ok", amount: 20 } }] });
     });
     expect(rowEl(container, 1).classList.contains("row-error")).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });
 
@@ -93,7 +94,7 @@ describe("cellClass / cellStyle", () => {
     const { container, root } = await mount({}, cols, DATA);
     expect(cellIn(rowEl(container, 0), 1).classList.contains("num-cell")).toBe(true);
     expect(cellIn(rowEl(container, 0), 0).classList.contains("num-cell")).toBe(false);
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("applies a function cellClass / cellStyle from the cell value", async () => {
@@ -112,6 +113,6 @@ describe("cellClass / cellStyle", () => {
     expect(amt2.classList.contains("big")).toBe(true);
     expect(amt2.style.color).toBe("rgb(255, 0, 0)");
     expect(amt0.style.color).toBe("");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

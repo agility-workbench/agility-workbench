@@ -1,0 +1,33 @@
+---
+title: Theming and icons
+sidebar_position: 12
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Theming and icons
+
+Themes are immutable per-grid values. Semantic parameters fan out to related
+CSS variables, while a typed `vars` escape hatch handles precise customization.
+
+<LiveFeatureGrid feature="theming" />
+
+<FrameworkCode feature="theming" />
+
+## Semantic parameters
+
+Start with `themeLight` or `themeDark`, then call `withParams()`. Common
+parameters cover accent, surfaces, text, borders, hover/selection colors,
+typography, row height, padding, scrollbars, aggregates, and sparklines.
+
+Themes apply inline to one grid and its portaled popups, so two grids on one
+page can look different. `vars` overrides semantic fan-out for any individual
+`--pte-*` variable.
+
+Icons accept a URL, data URI, CSS image value, or inline SVG. Theme icons form
+the base; the grid-level `icons` map wins for matching names.
+
+The base stylesheet is injected automatically. Import
+`@agility-workbench/grid/styles.css` and set `suppressStyleInjection` only when
+your build pipeline needs to own CSS delivery.

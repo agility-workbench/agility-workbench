@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { GridToolbarOptions, IGridAPI, ReactColDef } from "./index";
 
@@ -84,7 +85,7 @@ describe("toolbar options", () => {
     expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
     expect(api.getCore()).toBe(core);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("keeps toolbar visibility derived from sections and the Columns trigger", async () => {
@@ -108,7 +109,7 @@ describe("toolbar options", () => {
     expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
     expect(api.getCore()).toBe(core);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("hosts the existing quick filter once, preserves its state across live placement changes, and focuses it", async () => {
@@ -180,7 +181,7 @@ describe("toolbar options", () => {
     expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
     expect(document.activeElement).toBe(restoredToolbarFilter);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("lets the toolbar section enable the default quick filter by itself", async () => {
@@ -193,7 +194,7 @@ describe("toolbar options", () => {
     expect(container.querySelector(".pte-grid-toolbar")).toBeNull();
     expect(container.querySelector(".pte-quick-filter")).toBeNull();
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 
   it("updates application-owned saved views live without remounting", async () => {
@@ -238,6 +239,6 @@ describe("toolbar options", () => {
     expect(viewsButton.textContent).toContain("Renamed externally");
     expect(api.getCore()).toBe(core);
 
-    await act(async () => root.unmount());
+    await unmountTestRoot(root);
   });
 });

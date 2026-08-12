@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import type { ReactColDef } from "./cellRenderer";
 
@@ -32,19 +33,19 @@ describe("overlay message options", () => {
     const { container, root } = await mount({ loading: true, loadingMessage: "Fetching rows…" });
     const label = container.querySelector(".pte-loading-label");
     expect(label?.textContent).toBe("Fetching rows…");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("defaults the loading overlay text when loadingMessage is omitted", async () => {
     const { container, root } = await mount({ loading: true });
     expect(container.querySelector(".pte-loading-label")?.textContent).toBe("Loading data...");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 
   it("uses a custom noRowsMessage when the grid is empty", async () => {
     const { container, root } = await mount({ noRowsMessage: "Nothing to see" }, []);
     const label = container.querySelector(".pte-norows-label");
     expect(label?.textContent).toBe("Nothing to see");
-    root.unmount();
+    await unmountTestRoot(root);
   });
 });

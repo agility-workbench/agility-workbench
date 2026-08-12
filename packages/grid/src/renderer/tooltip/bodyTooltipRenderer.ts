@@ -81,6 +81,8 @@ export class BodyTooltipRenderer {
   /** True once the tooltip is actually on screen (vs. pending the show delay). */
   private shown = false;
   private runtime: TooltipComponentRuntime | null = null;
+  /** The element currently carrying aria-describedby, remembered so it can be cleaned up exactly. */
+  private describedEl: HTMLElement | null = null;
 
   private bound = false;
 
@@ -187,6 +189,7 @@ export class BodyTooltipRenderer {
     this.shown = false;
     this.runtime?.destroy();
     this.runtime = null;
+    this.clearDescription();
     this.params.floating.hide();
     if (wasShown && prev) {
       this.params.core.emit("tooltipHide", this.eventParams(prev));
@@ -304,6 +307,7 @@ export class BodyTooltipRenderer {
     this.shown = true;
     const overlay = this.params.floating.show(runtime.gui, this.floatingOptsFor(target, target.clientX, target.clientY));
     overlay.setAttribute("role", "tooltip");
+    this.describeTarget(target, overlay);
     this.params.core.emit("tooltipShow", this.eventParams(target));
     // Interactive tooltips: let the pointer enter the tooltip. Entering cancels the pending hide
     // (hideDelay is the grace window to cross the gap between cell and tooltip); leaving reschedules.
@@ -513,6 +517,35 @@ export class BodyTooltipRenderer {
     if (!target.rendererTarget.isConnected) return null;
     const anchor = getRendererTooltipAnchor(target.rendererTarget);
     return anchor.isConnected ? anchor.getBoundingClientRect() : null;
+  }
+
+  /**
+   * Point the element the tooltip describes at the tooltip, so AT reads the tooltip text as that
+   * element's description — `role="tooltip"` alone is inert without the reference.
+   *
+   * The reference is torn down in hideNow rather than tracked across renders: the described
+   * element is a pooled cell, and the tooltip already hides on scroll, so it cannot outlive the
+   * element it points from. The described element is remembered (not re-derived) so the cleanup
+   * cannot miss after recycling has moved things around.
+   */
+  private describeTarget(target: TooltipTarget, overlay: HTMLElement) {
+    const anchor = this.anchorElFor(target);
+    if (!anchor) return;
+    if (!overlay.id) overlay.id = `${this.params.core.id}-tooltip`;
+    anchor.setAttribute("aria-describedby", overlay.id);
+    this.describedEl = anchor;
+  }
+
+  private clearDescription() {
+    this.describedEl?.removeAttribute("aria-describedby");
+    this.describedEl = null;
+  }
+
+  /** The element a tooltip target hangs off, for aria-describedby. */
+  private anchorElFor(target: TooltipTarget): HTMLElement | null {
+    if (target.kind === "body") return this.getCellEl(target.viewIdx, target.colIdx);
+    if (target.kind === "header") return document.getElementById(target.colId);
+    return target.rendererTarget as HTMLElement;
   }
 
   /** Find the live (recycled) cell element for a location, or null if scrolled out. A row slot

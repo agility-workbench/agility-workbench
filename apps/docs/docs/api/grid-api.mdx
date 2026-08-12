@@ -1,0 +1,68 @@
+---
+title: Grid API
+sidebar_position: 2
+---
+
+# Grid API
+
+`IGridAPI` is available from React's `ref`/`onGridReady`, Angular's `gridReady`
+output or template reference, and `initDomRenderer()` in a core integration.
+
+## Data and columns
+
+| Method | Purpose |
+| --- | --- |
+| `setRowData(rows)` | Replace client-side rows |
+| `applyTransaction(tx)` | Add, update, or remove client-side rows |
+| `setColumnDefs(defs)` | Replace column definitions |
+| `getColumnState()` | Capture width, order, pinning, and visibility |
+| `applyColumnState(state, options?)` | Merge or exactly restore state |
+| `getColumnModel()` | Read runtime columns and sections |
+| `refreshServerSideData(options?)` | Soft-refresh or purge a server cache/subtree |
+
+## View and grouping
+
+| Method | Purpose |
+| --- | --- |
+| `setQuickFilter(text, options?)` | Apply client-side global search |
+| `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
+| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion |
+| `applyViewState(state, options?)` | Restore a captured view |
+| `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation |
+
+Grouping columns and explicit sort/filter models use typed `dispatch()` actions.
+
+## Selection and navigation
+
+`setFocusedCell`, `selectRange`, `extendRangeTo`, `selectRow`, `selectColumn`,
+`selectAll`, `selectAllRows`, `clearSelection`, and `navigate` mirror rendered
+keyboard and pointer behavior. `getSelection`, `getSelectedRows`, and
+`getSelectedNodes` return current state.
+
+## Editing and clipboard
+
+| Method | Purpose |
+| --- | --- |
+| `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
+| `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
+| `setCellValue(cell, value)` | Parse and write without opening an editor |
+| `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
+| `undo()` / `redo()` | Traverse edit history |
+| `canUndo()` / `canRedo()` / `clearHistory()` | Inspect or reset history |
+
+## Floating UI and pinned rows
+
+`showTooltip`, `hideTooltip`, `openActionFrame`, and `closeActionFrame` address
+cells by stable row and column IDs. `setPinnedTopRowData`,
+`setPinnedBottomRowData`, and `setRowPinned` update frozen row bands.
+
+## Export
+
+`exportDataAsCsv` and `exportDataAsExcel` download files. `getDataAsCsv` and
+`getDataAsExcel` return content for custom upload, encryption, or storage.
+
+## Events and cleanup
+
+Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
+function. `destroy()` releases the grid when a custom host owns its lifecycle.
+

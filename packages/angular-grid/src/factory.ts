@@ -42,6 +42,8 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "zebraRows", grid.zebraRows());
   setIfDefined(options, "getRowClass", grid.getRowClass());
   setIfDefined(options, "getRowStyle", grid.getRowStyle());
+  setIfDefined(options, "ariaLabel", grid.ariaLabel());
+  setIfDefined(options, "ariaLabelledBy", grid.ariaLabelledBy());
   setIfDefined(options, "highlightActiveCell", grid.highlightActiveCell());
   setIfDefined(options, "rowSelection", grid.rowSelection());
   setIfDefined(options, "cellSelection", grid.cellSelection());

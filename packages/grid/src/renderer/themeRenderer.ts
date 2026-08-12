@@ -29,19 +29,25 @@ export class ThemeRenderer {
     const nextVars = theme ? theme.toCssVars() : {};
     const nextNames = new Set(Object.keys(nextVars));
 
-    const targets = [this.root, ...this.externalTargets];
-    for (const el of targets) {
-      // Remove properties that are no longer part of the theme.
-      for (const name of this.appliedVarNames) {
-        if (!nextNames.has(name)) el.style.removeProperty(name);
-      }
-      for (const [name, value] of Object.entries(nextVars)) {
-        el.style.setProperty(name, value);
-      }
-    }
+    // Keep the Set iteration separate. Some downstream Babel configurations use
+    // loose array-spread transforms, turning `[root, ...targets]` into
+    // `[root].concat(targets)`. A Set is not concat-spreadable, so the Set itself
+    // would be treated as a target and fail when accessing `.style`.
+    this.reconcileElement(this.root, nextVars, nextNames);
+    this.externalTargets.forEach((el) => {
+      this.reconcileElement(el, nextVars, nextNames);
+    });
 
     this.appliedVarNames = nextNames;
     this.currentVars = nextVars;
+  }
+
+  private reconcileElement(el: HTMLElement, vars: Record<string, string>, names: Set<string>) {
+    // Remove properties that are no longer part of the theme.
+    for (const name of this.appliedVarNames) {
+      if (!names.has(name)) el.style.removeProperty(name);
+    }
+    for (const [name, value] of Object.entries(vars)) el.style.setProperty(name, value);
   }
 
   private applyToElement(el: HTMLElement, vars: Record<string, string>, names: Set<string>) {

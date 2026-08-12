@@ -6,6 +6,8 @@ export interface HeaderWrapperElements {
   right: HTMLDivElement;
 }
 
+import { markPresentational } from "../aria";
+
 export function createHeaderWrapper(): HeaderWrapperElements {
   const wrapper = document.createElement("div");
   wrapper.className = "pte-header-wrapper";
@@ -25,6 +27,13 @@ export function createHeaderWrapper(): HeaderWrapperElements {
   const right = document.createElement("div");
   right.className = "pte-header-right";
   wrapper.appendChild(right);
+
+  // ARIA: the center section is THE header row (aria-rowindex 1); the other
+  // sections are presentational — their leaf header cells are aria-owns-stitched into the
+  // center row by the header renderer on every buildDOM.
+  center.setAttribute("role", "row");
+  center.setAttribute("aria-rowindex", "1");
+  markPresentational(wrapper, leading, left, right);
 
   return {
     wrapper,
