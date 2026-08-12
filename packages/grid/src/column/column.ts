@@ -239,7 +239,8 @@ export class Column {
     return this.internalRole === "selectionCheckbox";
   }
 
-  /** Leading utility columns (row number, selection checkbox): layout-frozen, never selectable. */
+  /** Non-data utility columns. They never participate in cell/column selection. The row-number
+   * gutter is layout-frozen; the selection-checkbox column may be pinned left/right or unpinned. */
   isLeadingUtilityColumn(): boolean {
     return this.internalRole === "rowNumber" || this.internalRole === "selectionCheckbox";
   }

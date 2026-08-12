@@ -53,12 +53,66 @@ export class SelectionModel {
     return this.deps.getColumnModel().getLeaves();
   }
 
-  private firstSelectableColIdx(): number {
-    return this.deps.getColumnModel().getLeadingLeaves().length;
+  /** Production leaves are Column instances. The fallback keeps SelectionModel compatible with
+   * structural/lightweight column models by recognizing their legacy leading section. */
+  private isUtilityColumn(col: Column | undefined): boolean {
+    if (!col) return false;
+    if (typeof col.isLeadingUtilityColumn === "function") return col.isLeadingUtilityColumn();
+    return this.deps.getColumnModel().getLeadingLeaves().includes(col);
   }
 
-  private lastColIdx(): number {
-    return this.leafColumns().length - 1;
+  private isRowNumberColumn(col: Column | undefined): boolean {
+    if (!col) return false;
+    if (typeof col.isRowNumberColumn === "function") return col.isRowNumberColumn();
+    return this.deps.getColumnModel().getLeadingLeaves().includes(col);
+  }
+
+  private isCheckboxColumn(col: Column | undefined): boolean {
+    return !!col && typeof col.isSelectionCheckboxColumn === "function"
+      && col.isSelectionCheckboxColumn();
+  }
+
+  /** Row numbers stay outside the body cursor. Checkbox cells are real keyboard stops even though
+   * they remain excluded from data ranges, clipboard operations, and column selection. */
+  private isNavigableColumn(col: Column | undefined): boolean {
+    return !!col && !this.isRowNumberColumn(col);
+  }
+
+  private firstNavigableColIdx(): number {
+    const leaves = this.leafColumns();
+    const index = leaves.findIndex(col => this.isNavigableColumn(col));
+    return index >= 0 ? index : leaves.length;
+  }
+
+  private lastNavigableColIdx(): number {
+    const leaves = this.leafColumns();
+    for (let i = leaves.length - 1; i >= 0; i--) {
+      if (this.isNavigableColumn(leaves[i])) return i;
+    }
+    return -1;
+  }
+
+  private firstDataColIdx(): number {
+    const leaves = this.leafColumns();
+    const index = leaves.findIndex(col => !this.isUtilityColumn(col));
+    return index >= 0 ? index : leaves.length;
+  }
+
+  private lastDataColIdx(): number {
+    const leaves = this.leafColumns();
+    for (let i = leaves.length - 1; i >= 0; i--) {
+      if (!this.isUtilityColumn(leaves[i])) return i;
+    }
+    return -1;
+  }
+
+  /** Walk horizontally in visual leaf order while skipping only the row-number gutter. */
+  private stepNavigableColumn(colIdx: number, direction: 1 | -1): number | null {
+    const leaves = this.leafColumns();
+    for (let next = colIdx + direction; next >= 0 && next < leaves.length; next += direction) {
+      if (this.isNavigableColumn(leaves[next])) return next;
+    }
+    return null;
   }
 
   private maxRow(): number {
@@ -264,7 +318,9 @@ export class SelectionModel {
     const colIds: { colId: string; colInstanceId: string }[] = [];
     for (let c = range.colStart; c <= range.colEnd; c++) {
       const col = leaves[c];
-      if (col) colIds.push({ colId: col.colId, colInstanceId: col.instanceID });
+      if (col && !this.isUtilityColumn(col)) {
+        colIds.push({ colId: col.colId, colInstanceId: col.instanceID });
+      }
     }
     const cells: CellRef[] = [];
     const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
@@ -300,6 +356,16 @@ export class SelectionModel {
       : this.deps.getRowModel().getViewCount();
     if (location.viewIdx < 0 || location.viewIdx >= rowCount) return false;
     if (location.colIdx < 0 || location.colIdx >= this.leafColumns().length) return false;
+    const column = this.leafColumns()[location.colIdx];
+    if (!this.isNavigableColumn(column)) return false;
+    if (this.isCheckboxColumn(column)) {
+      this.focusCheckboxCell({
+        row: location.viewIdx,
+        colIdx: location.colIdx,
+        rowPinned: location.rowPinned,
+      });
+      return true;
+    }
     this.clearRows();
     this.clearColumns();
     this.anchor = { row: location.viewIdx, colIdx: location.colIdx, rowPinned: location.rowPinned };
@@ -331,6 +397,13 @@ export class SelectionModel {
     this.clearRows();
     this.clearColumns();
     return this.startFromCell({ viewIdx, colIdx, rowPinned });
+  }
+
+  /** Focus a checkbox cell without treating focus as checked state or clearing checkbox-owned rows. */
+  focusCheckboxCell(location: CellPos): void {
+    this.clearRange();
+    this.clearColumns();
+    this.active = { ...location };
   }
 
   clearRange() {
@@ -373,12 +446,12 @@ export class SelectionModel {
     dRow: number,
     dCol: number,
   ): CellPos {
-    const minCol = this.firstSelectableColIdx();
-    const maxCol = this.lastColIdx();
+    const minCol = this.firstNavigableColIdx();
+    const maxCol = this.lastNavigableColIdx();
     const advance = (position: CellPos): CellPos | null => {
       if (dCol !== 0) {
-        const colIdx = position.colIdx + dCol;
-        return colIdx >= minCol && colIdx <= maxCol ? { ...position, colIdx } : null;
+        const colIdx = this.stepNavigableColumn(position.colIdx, dCol < 0 ? -1 : 1);
+        return colIdx != null && colIdx >= minCol && colIdx <= maxCol ? { ...position, colIdx } : null;
       }
       const next = this.stepVertical(position, dRow < 0 ? -1 : 1);
       if (next.row === position.row && next.rowPinned === position.rowPinned) return null;
@@ -423,8 +496,8 @@ export class SelectionModel {
    *                a single-cell step. Column is unchanged.
    */
   navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump; pageRows?: number }): CellPos | null {
-    const firstCol = this.firstSelectableColIdx();
-    const lastCol = this.lastColIdx();
+    const firstCol = this.firstNavigableColIdx();
+    const lastCol = this.lastNavigableColIdx();
     const firstPosition = this.firstRowPosition();
     if (lastCol < firstCol || !firstPosition) return null;
 
@@ -467,13 +540,13 @@ export class SelectionModel {
       switch (dir) {
         case "up": nextPosition = this.moveVertical(from, -pageRows); break;
         case "down": nextPosition = this.moveVertical(from, pageRows); break;
-        case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
-        case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
+        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1) ?? from.colIdx; break;
+        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1) ?? from.colIdx; break;
       }
     } else {
       switch (dir) {
-        case "left": nextCol = Math.max(firstCol, from.colIdx - 1); break;
-        case "right": nextCol = Math.min(lastCol, from.colIdx + 1); break;
+        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1) ?? from.colIdx; break;
+        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1) ?? from.colIdx; break;
         case "up": nextPosition = this.stepVertical(from, -1); break;
         case "down": nextPosition = this.stepVertical(from, 1); break;
       }
@@ -487,8 +560,8 @@ export class SelectionModel {
 
   /** Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End). Returns the new active cell. */
   navigateToCorner(corner: "topLeft" | "bottomRight", extend: boolean): CellPos | null {
-    const firstCol = this.firstSelectableColIdx();
-    const lastCol = this.lastColIdx();
+    const firstCol = this.firstNavigableColIdx();
+    const lastCol = this.lastNavigableColIdx();
     const position = corner === "topLeft" ? this.firstRowPosition() : this.lastRowPosition();
     if (lastCol < firstCol || !position) return null;
     const nextCol = corner === "topLeft" ? firstCol : lastCol;
@@ -498,8 +571,8 @@ export class SelectionModel {
   /** Select the entire grid: every row of the unified `pinned top → body → pinned bottom`
    * sequence across all data columns. Anchor at the very first cell, active at the very last. */
   selectAll(): CellPos | null {
-    const firstCol = this.firstSelectableColIdx();
-    const lastCol = this.lastColIdx();
+    const firstCol = this.firstDataColIdx();
+    const lastCol = this.lastDataColIdx();
     const maxRow = this.maxRow();
     const topCount = this.deps.getPinnedRowCount?.("top") ?? 0;
     const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
@@ -555,7 +628,9 @@ export class SelectionModel {
       }
       this.updateRange(position.row, position.colIdx, position.rowPinned);
     } else {
-      this.selectSingleCell(position.row, position.colIdx, position.rowPinned);
+      const column = this.leafColumns()[position.colIdx];
+      if (this.isCheckboxColumn(column)) this.focusCheckboxCell(position);
+      else this.selectSingleCell(position.row, position.colIdx, position.rowPinned);
     }
     return this.active;
   }

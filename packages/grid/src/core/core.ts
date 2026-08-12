@@ -2289,8 +2289,11 @@ export class GridCore implements IGridCore {
         break;
       }
       case "rowSelectSet":
+        const checkboxFocus = action.preserveFocus ? this.selectionModel.getActiveCell() : null;
         this.selectionModel.toggleRow(action.viewIdx, action.mode);
-        this.emitSelectionChanged("mouse");
+        if (checkboxFocus) this.selectionModel.focusCheckboxCell(checkboxFocus);
+        this.emitSelectionChanged(action.reason ?? "mouse");
+        if (checkboxFocus) this.emitFocusChanged(checkboxFocus, action.reason ?? "mouse");
         break;
       case "rowSelectAll":
         if (action.selected) this.selectAllRows();

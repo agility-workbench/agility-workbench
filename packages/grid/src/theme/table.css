@@ -3498,6 +3498,17 @@
   cursor: pointer;
 }
 
+/* Keyboard focus on a checkbox cell is distinct from checked-row state. Paint the same selected
+   surface and boundary as a focused single cell without adding `.selected`, which owns the tick. */
+.pte-checkbox-cell.pte-checkbox-cell-focused {
+  background-color: var(--pte-selected-bg-color);
+  box-shadow: inset 0 0 0 1px var(--pte-selected-border-color);
+}
+
+.pte-row-hover .pte-checkbox-cell.pte-checkbox-cell-focused {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
 /* The checkbox visual is decorative and fully CSS-driven: the cell's / header's "selected" class
    (already managed by the selection renderer) is the single source of truth. */
 .pte-checkbox {
@@ -3521,13 +3532,14 @@
 .pte-checkbox.selected::after {
   content: "";
   position: absolute;
-  left: 4.5px;
-  top: 1.5px;
+  left: 50%;
+  top: 50%;
   width: 4px;
   height: 8px;
   border: solid var(--pte-root-bg-color);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -58%) rotate(45deg);
+  transform-origin: center;
 }
 
 /* Header tri-state: indeterminate renders a dash. */

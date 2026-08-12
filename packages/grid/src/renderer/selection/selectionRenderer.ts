@@ -81,7 +81,7 @@ export class SelectionRenderer {
         const colSelected = colId ? selectedColumnIDs.has(colId) : false;
 
         // Range covers this cell if the range's column interval intersects [colIdx, colEnd].
-        const rangeSelected = !!rangeRow && !!range && Number.isFinite(colIdx)
+        const rangeSelected = !leafCol?.isLeadingUtilityColumn() && !!rangeRow && !!range && Number.isFinite(colIdx)
           && colIdx <= range.colEnd && colEnd >= range.colStart;
         const selected = rangeSelected || colSelected || rowSelected;
 
@@ -117,6 +117,11 @@ export class SelectionRenderer {
           && !activeCell.rowPinned
           && viewIndex === activeCell.row && activeCell.colIdx >= colIdx && activeCell.colIdx <= colEnd;
         if (isActive) focusedCellEl = cell;
+        // Checkbox focus is a cell-cursor state, not checked-row state. It needs its own visual
+        // class because `.selected` deliberately drives the checkmark and aria-selected. Unlike the
+        // optional active-cell outline, this is always painted so keyboard navigation remains
+        // visible under the default highlightActiveCell=false setting.
+        const checkboxFocused = isActive && !!leafCol?.isSelectionCheckboxColumn();
 
         const cls = cell.classList;
         // ARIA mirrors the paint: `selected` is true for a cell inside the range, in a
@@ -130,6 +135,7 @@ export class SelectionRenderer {
         cls.toggle("selected-left", selected && isLeft);
         cls.toggle("selected-right", selected && isRight);
         cls.toggle("pte-active-cell", isActive && highlight);
+        cls.toggle("pte-checkbox-cell-focused", checkboxFocused);
       }
     };
 
@@ -201,8 +207,9 @@ export class SelectionRenderer {
 
   private neighborSelected(leaves: Column[], range: SelectionRange | null, selectedColumnIDs: Set<string>, colIdx: number): boolean {
     if (!Number.isFinite(colIdx) || colIdx < 0) return false;
-    if (range && colIdx >= range.colStart && colIdx <= range.colEnd) return true;
     const col = leaves[colIdx];
+    if (!col || col.isLeadingUtilityColumn()) return false;
+    if (range && colIdx >= range.colStart && colIdx <= range.colEnd) return true;
     return !!col && selectedColumnIDs.has(col.instanceID);
   }
 
@@ -404,6 +411,30 @@ export class SelectionRenderer {
     // Shift-based range extension only applies when range selection is enabled; otherwise Shift is
     // ignored and navigation collapses to a single moving cell.
     const extend = e.shiftKey && this.params.core.options.rangeSelection;
+
+    // A focused selection-checkbox cell is an interactive keyboard control. Enter and Space use
+    // the same additive row toggle as a pointer click, while keeping the cursor in the cell so the
+    // user can continue vertically and select more rows. Focus alone never checks the box.
+    const active = this.params.core.getActiveCell();
+    const activeColumn = active
+      ? this.params.core.getColumnModel().getLeaves()[active.colIdx]
+      : undefined;
+    if (
+      active
+      && !active.rowPinned
+      && activeColumn?.isSelectionCheckboxColumn()
+      && (e.key === "Enter" || e.key === " " || e.code === "Space")
+    ) {
+      e.preventDefault();
+      this.params.core.dispatch({
+        type: "rowSelectSet",
+        viewIdx: active.row,
+        mode: "toggle",
+        preserveFocus: true,
+        reason: "keyboard",
+      });
+      return;
+    }
 
     // Shift+F2 — open the ActionFrame on the focused cell (Excel/Sheets "edit comment" convention).
     // Core no-ops on a group row / when the column has no ActionFrame component. Checked before the
@@ -616,17 +647,13 @@ export class SelectionRenderer {
     // BEFORE preventDefault so the browser's own text selection can start in "text" mode. An
     // empty-space click can still clear an existing selection (e.g. one set via the API).
     if (this.params.core.options.cellSelection !== true) {
-      if (!this.getCellLocation(e.target) && this.params.core.options.clearSelectionOnBodyClick) {
-        this.params.core.dispatch({ type: "selectionClear", what: "all" });
-      }
+      if (!this.getCellLocation(e.target)) this.clearSelectionFromEmptyBody();
       return;
     }
 
     const location = this.getCellLocation(e.target);
     if (!location) {
-      if (this.params.core.options.clearSelectionOnBodyClick) {
-        this.params.core.dispatch({ type: "selectionClear", what: "all" });
-      }
+      this.clearSelectionFromEmptyBody();
       return;
     }
     e.preventDefault();
@@ -648,6 +675,18 @@ export class SelectionRenderer {
       const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
       if (cell) this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
     }
+  }
+
+  /** Empty-body clicks retain checkbox-owned row selection. Row-number selection keeps its legacy
+   * clear-on-empty behavior, as do cell/range/column selections and API-owned rows when the
+   * checkbox column is not enabled. */
+  private clearSelectionFromEmptyBody() {
+    if (!this.params.core.options.clearSelectionOnBodyClick) return;
+    if (
+      this.params.core.options.rowSelectionCheckboxes
+      && this.params.core.getSelectedRowIds().size > 0
+    ) return;
+    this.params.core.dispatch({ type: "selectionClear", what: "all" });
   }
 
   onCellDoubleClick(e: MouseEvent) {

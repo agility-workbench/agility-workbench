@@ -206,8 +206,9 @@ export interface IsRowPinnedParams {
  * checkboxes).
  */
 export interface RowSelectionOptions {
-  /** Show a dedicated leading checkbox column: click toggles the row, Shift+click selects a
-   * range. Independent of `rowNumbers`. Defaults to false. */
+  /** Show a dedicated checkbox column: click toggles the row, Shift+click selects a range. It is
+   * independent of `rowNumbers`, defaults to pinned left, and can be pinned right or unpinned from
+   * its header menu. Defaults to false. */
   checkboxes?: boolean;
   /** Tri-state select-all checkbox in the checkbox column's header, covering the select-all
    * scope (`selectAllScope`). Defaults to true when `checkboxes` is on. */
