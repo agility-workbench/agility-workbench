@@ -141,6 +141,14 @@ export class BodyRowPoolRenderer {
     const col = this.params.core.getColumnModel().getById(colId);
     if (col?.isRowNumberColumn()) {
       cell.classList.add("pte-row-number-cell");
+    } else if (col?.isSelectionCheckboxColumn()) {
+      // The checkbox visual is a decorative span driven purely by the cell's "selected" class
+      // (toggled by the selection renderer); the row's aria-selected carries the semantics.
+      cell.classList.add("pte-checkbox-cell");
+      const box = document.createElement("span");
+      box.className = "pte-checkbox";
+      box.setAttribute("aria-hidden", "true");
+      cell.appendChild(box);
     }
     const meta = this.params.core.getColumnModel().leafColumnLookup.get(colId);
     if (meta) {

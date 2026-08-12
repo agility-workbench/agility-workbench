@@ -43,7 +43,9 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `cellSelection` | `boolean \| "text"` | `true` |
 | `rangeSelection` | `boolean` | `true` |
 | `columnSelection` | `boolean` | `true` |
-| `rowSelection` | `boolean` | `false` |
+| `rowSelection` | `boolean \| { checkboxes?, headerCheckbox? }` | `false` (object form adds the checkbox column) |
+| `selectAllScope` | `"filtered" \| "page"` | `"filtered"` (select-all and `areAllRowsSelected` span the whole filtered set) |
+| `selectionPersistence` | `"clear" \| "keep"` | `"clear"` (row selection on filter/sort/quick-filter changes) |
 | `selectAllRowsOnHeaderClick` | `boolean` | `false` |
 | `clearSelectionOnBodyClick` | `boolean` | `true` |
 | `highlightActiveCell` | `boolean` | `false` |

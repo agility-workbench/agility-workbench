@@ -21,6 +21,11 @@ keyboard, clipboard, export, and API workflows.
 - `cellSelection: "text"` restores native browser text selection.
 - `rangeSelection` enables drag and Shift-extension.
 - `rowSelection` uses the row-number cells for row selection.
+- `rowSelection: { checkboxes: true }` adds a dedicated checkbox column
+  (independent of `rowNumbers`): click toggles the row — always additive, never
+  clearing the rest — and Shift+click unions a range in. A tri-state select-all
+  checkbox renders in its header (disable with `headerCheckbox: false`),
+  covering the select-all scope (`selectAllScope`).
 - `columnSelection` uses headers for column selection.
 
 Arrow keys navigate one cell. Home/End, Page Up/Down, Ctrl/Cmd+Arrow block
@@ -29,3 +34,32 @@ Ctrl/Cmd+A selects the full unified row sequence.
 
 The API exposes focused-cell, range, row, column, navigation, and selection
 snapshot operations. Pagination invalidates a range from the previous page.
+
+## Row selection for an external owner
+
+Row selection is keyed by stable row id, so an application store can drive it
+directly:
+
+```ts
+api.selectRowsById(["r1", "r7"]);           // replace the selection
+api.selectRowsById(["r9"], "add");          // extend it
+api.selectRowsById(["r1"], "remove");       // shrink it
+api.getSelection().selectedRowIds;          // read it back
+```
+
+Unknown or non-selectable ids are dropped (client-side row model). Rows that
+are currently filtered out can still be selected by id. Programmatic changes
+emit `selectionChanged` with `reason: "api"`; pointer/keyboard interactions
+report `"mouse"`/`"keyboard"`, and filter/sort-driven clears report `"model"`.
+
+**Select-all scope.** `api.selectAllRows()`, `api.areAllRowsSelected()`, and
+the row-number header click cover the whole **filtered set — all pages — by
+default**. Set `selectAllScope: "page"` for page-only select-all. On the
+server-side row model, "filtered" covers loaded rows.
+
+**Persistence.** By default a filter, sort, or quick-filter change clears the
+row selection. Set `selectionPersistence: "keep"` to retain selected row ids
+across model changes — selection is id-based, so it survives rows moving pages
+or temporarily leaving the filtered view (the cell range is still cleared, and
+a `selectionChanged` with `reason: "model"` still fires). Exports with
+`scope: "selection"` honor the full cross-page selection.

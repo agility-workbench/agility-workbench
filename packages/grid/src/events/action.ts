@@ -223,10 +223,19 @@ export type GridActionHeaderNavigate = {
 export type GridActionRowSelectSet = {
   type: "rowSelectSet";
   viewIdx: number;
-  mode: "replace" | "toggle" | "range";
+  // "range" replaces with anchor..row (row-number gesture); "rangeAdd" unions it in (checkbox).
+  mode: "replace" | "toggle" | "range" | "rangeAdd";
 };
 
 // Select or clear all selectable data rows in the current view (row-number header click).
+// Programmatic row selection by stable row id — lets an external selection owner drive the grid.
+export type GridActionRowSelectByIds = {
+  type: "rowSelectByIds";
+  rowIds: string[];
+  // "set" (default) replaces the row selection; "add"/"remove" adjust it.
+  mode?: "set" | "add" | "remove";
+};
+
 export type GridActionRowSelectAll = {
   type: "rowSelectAll";
   selected: boolean;
@@ -357,6 +366,7 @@ export type GridAction =
   | GridActionSelectionClear
   | GridActionRowSelectSet
   | GridActionRowSelectAll
+  | GridActionRowSelectByIds
   | GridActionColumnSelectSet
   | GridActionRangeSelectSet
   | GridActionEditStart

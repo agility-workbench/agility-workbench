@@ -497,6 +497,7 @@ export class BodyTooltipRenderer {
     const cell = el.closest?.(".pte-cell") as HTMLElement | null;
     if (!cell || !this.params.body.contains(cell)) return null;
     if (cell.classList.contains("pte-row-number-cell")) return null;
+    if (cell.classList.contains("pte-checkbox-cell")) return null;
     const rowEl = cell.closest(".pte-row") as HTMLElement | null;
     if (!rowEl || rowEl.classList.contains("pte-group-row")) return null;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));

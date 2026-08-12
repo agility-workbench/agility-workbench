@@ -39,6 +39,29 @@ const ROW_NUMBER_COLUMN_DEF = {
   __internalRole: "rowNumber",
 } satisfies ColDef & { __internalRole: "rowNumber" };
 
+const CHECKBOX_COL_ID = "__pte_checkbox__";
+// Selection checkbox column (rowSelection: { checkboxes: true }). Like the row-number column it is
+// a layout-frozen leading utility column; the checkbox visual is CSS-driven off the cell's
+// "selected" class, so body cells carry no per-cell listeners or state.
+const CHECKBOX_COLUMN_DEF = {
+  colId: CHECKBOX_COL_ID,
+  key: CHECKBOX_COL_ID,
+  label: "",
+  width: 44,
+  minWidth: 44,
+  maxWidth: 44,
+  pinned: "left",
+  sortable: false,
+  filter: false,
+  groupable: false,
+  aggregatable: false,
+  resizable: false,
+  movable: false,
+  hideable: false,
+  exportable: false,
+  __internalRole: "selectionCheckbox",
+} satisfies ColDef & { __internalRole: "selectionCheckbox" };
+
 const AUTO_GROUP_COL_ID = "__pte_group__";
 // Base def for the synthesized auto-group column (shown in "singleColumn" display mode). The
 // chevron + indented label are painted by the body cell renderer, which branches on
@@ -83,6 +106,7 @@ const TREE_COLUMN_DEF = {
 export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
   private rowNumberColumn?: Column;
+  private checkboxColumn?: Column;
   // Synthesized auto-group columns, in grouping-level order. Empty unless grouping is active in
   // "singleColumn" (one column) or "multipleColumns" (one per level) display mode.
   private autoGroupColumns: Column[] = [];
@@ -193,8 +217,8 @@ export class ColumnModel implements IColumnModel {
   private updateColumns(cols: Column[]) {
     this.columns = this.withInternalColumns(cols);
     this.columns.forEach(c => c.updatePropsByChildren());
-    this.leadingColumns = this.columns.filter((c) => c.isRowNumberColumn());
-    this.leftColumns = this.columns.filter((c) => c.pinned === "left" && !c.isRowNumberColumn());
+    this.leadingColumns = this.columns.filter((c) => c.isLeadingUtilityColumn());
+    this.leftColumns = this.columns.filter((c) => c.pinned === "left" && !c.isLeadingUtilityColumn());
     this.rightColumns = this.columns.filter((c) => c.pinned === "right");
     this.centerColumns = this.columns.filter((c) => c.pinned == null);
 
@@ -536,13 +560,19 @@ export class ColumnModel implements IColumnModel {
     const presentAuto = cols.filter((col) => col.isAutoGroupColumn());
     if (presentAuto.length > 0) this.autoGroupColumns = presentAuto;
     const missingAuto = this.autoGroupColumns.filter((col) => !presentAuto.includes(col));
-    const body = cols.filter((col) => !col.isRowNumberColumn());
+    const body = cols.filter((col) => !col.isLeadingUtilityColumn());
     const leading: Column[] = [];
     if (this.options.rowNumbers) {
       const rowNumberColumn = this.getRowNumberColumn();
       rowNumberColumn.pinned = "left";
       rowNumberColumn.hidden = false;
       leading.push(rowNumberColumn);
+    }
+    if (this.options.rowSelectionCheckboxes) {
+      const checkboxColumn = this.getCheckboxColumn();
+      checkboxColumn.pinned = "left";
+      checkboxColumn.hidden = false;
+      leading.push(checkboxColumn);
     }
     return [...leading, ...missingAuto, ...body];
   }
@@ -597,7 +627,7 @@ export class ColumnModel implements IColumnModel {
     // Rebuild from the current user columns (dropping auto columns from any previous grouping). A
     // surviving auto-group column keeps its runtime position, like the tree hierarchy column.
     const userColumns = this.columns.filter(
-      (c) => !c.isRowNumberColumn() && (!c.isAutoGroupColumn() || next.includes(c)),
+      (c) => !c.isLeadingUtilityColumn() && (!c.isAutoGroupColumn() || next.includes(c)),
     );
     if (treeData) {
       const existingTreeColumn = userColumns.find(c => c.isTreeColumn());
@@ -651,6 +681,15 @@ export class ColumnModel implements IColumnModel {
     }
     this.rowNumberColumn = new Column({ ...ROW_NUMBER_COLUMN_DEF }, "row-number");
     return this.rowNumberColumn;
+  }
+
+  private getCheckboxColumn(): Column {
+    if (this.checkboxColumn) {
+      this.checkboxColumn.updateFromColDef({ ...CHECKBOX_COLUMN_DEF }, "checkbox");
+      return this.checkboxColumn;
+    }
+    this.checkboxColumn = new Column({ ...CHECKBOX_COLUMN_DEF }, "checkbox");
+    return this.checkboxColumn;
   }
 
   private computeBaselineWidths(measureCtx: ITextMeasurer, params: TextMeasureParams): void {
@@ -1085,7 +1124,7 @@ export class ColumnModel implements IColumnModel {
     const col = this.resolve(colId);
     // Only the row-number column is layout-frozen; the auto-group column is a regular column whose
     // resizable/movable/pinnable behavior is driven by its (client-tunable) def like any other.
-    if (!col || col.isRowNumberColumn()) return [];
+    if (!col || col.isLeadingUtilityColumn()) return [];
     const resizedLeafIds = this.resizeActualColumn(col, width);
     // Record the user-set width on each affected leaf so it survives later auto-size recomputes
     // (grouping, move, aggregate change, data refresh). Stamped here in the public entry — not in
@@ -1099,7 +1138,7 @@ export class ColumnModel implements IColumnModel {
 
   moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {
     const col = this.resolve(colId);
-    if (!col || col.isRowNumberColumn()) return false;
+    if (!col || col.isLeadingUtilityColumn()) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
     if (moveResult.length === 0) return false;
     this.updateColumns(moveResult);
@@ -1109,7 +1148,7 @@ export class ColumnModel implements IColumnModel {
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.resolve(colId);
-    if (!col || col.isRowNumberColumn()) return false;
+    if (!col || col.isLeadingUtilityColumn()) return false;
 
     if (col.pinned === pin) return false;
 
@@ -1141,7 +1180,7 @@ export class ColumnModel implements IColumnModel {
     const affectedCols = new Set<Column>();
     for (const colId of colIds) {
       const col = this.resolve(colId);
-      if (!col || col.isRowNumberColumn()) continue;
+      if (!col || col.isLeadingUtilityColumn()) continue;
       col.hidden = hidden;
       affectedCols.add(col);
     }

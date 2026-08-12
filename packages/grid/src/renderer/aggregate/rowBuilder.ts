@@ -105,6 +105,9 @@ export class AggregateRowBuilder {
       cell.className = "pte-cell pte-aggregate-cell";
       if (col.isRowNumberColumn()) {
         cell.classList.add("pte-row-number-cell", "pte-aggregate-row-number-cell");
+      } else if (col.isSelectionCheckboxColumn()) {
+        // Empty gutter cell: the aggregate row is not selectable, so no checkbox visual.
+        cell.classList.add("pte-checkbox-cell");
       }
       const meta = this.params.leafColumnLookup().get(col.instanceID);
       if (meta) {

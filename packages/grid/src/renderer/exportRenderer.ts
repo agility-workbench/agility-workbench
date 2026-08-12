@@ -167,11 +167,12 @@ export class ExportRenderer {
       rows = this.getRowsForExport(false);
       selectionRange = { ...this.params.selectionRange()! };
     } else if (scope === "selection" && this.params.core.getSelectedRowIds().size > 0) {
+      // Row-id selection persists across pages, so honor the FULL filtered/sorted set — not just
+      // the current page's view.
       const selectedRowIds = this.params.core.getSelectedRowIds();
-      for (let index = 0; index < this.params.core.getRowModel().getViewCount(); index++) {
-        const node = this.params.core.getRowModel().getRowNodeAtViewIndex(index);
-        if (node && selectedRowIds.has(node.id)) rows.push(node.data);
-      }
+      this.params.core.getRowModel().forEachNodeAfterFilterAndSort((node) => {
+        if (node && !node.isGroup && selectedRowIds.has(node.id)) rows.push(node.data);
+      });
     } else if (scope === "selectedColumns") {
       rows = this.getRowsForExport(true);
       selectedColumnIDs = this.params.selectedColumnIDs();

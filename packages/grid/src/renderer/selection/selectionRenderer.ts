@@ -311,6 +311,7 @@ export class SelectionRenderer {
     const cell = (target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return null;
     if (cell.classList.contains("pte-row-number-cell")) return null;
+    if (cell.classList.contains("pte-checkbox-cell")) return null;
 
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return null;
@@ -579,6 +580,22 @@ export class SelectionRenderer {
       }
     }
 
+    // Checkbox cell: always additive — click toggles just this row, Shift+click selects a range
+    // from the row anchor. Never clears the rest of the selection (that's the checkbox contract).
+    const checkboxCell = (e.target as HTMLElement | null)?.closest(".pte-checkbox-cell") as HTMLDivElement | null;
+    if (checkboxCell && this.params.root.contains(checkboxCell) && this.params.core.options.rowSelection) {
+      const rowEl = checkboxCell.closest(".pte-row") as HTMLDivElement | null;
+      const viewIdx = rowEl ? Number(rowEl.getAttribute("data-view-idx")) : NaN;
+      if (!Number.isFinite(viewIdx)) return;
+      e.preventDefault();
+      this.params.core.dispatch({
+        type: "rowSelectSet",
+        viewIdx,
+        mode: e.shiftKey ? "rangeAdd" : "toggle",
+      });
+      return;
+    }
+
     const rowNumberCell = (e.target as HTMLElement | null)?.closest(".pte-row-number-cell") as HTMLDivElement | null;
     if (rowNumberCell && this.params.root.contains(rowNumberCell) && this.params.core.options.rowSelection) {
       const rowEl = rowNumberCell.closest(".pte-row") as HTMLDivElement | null;
@@ -709,9 +726,9 @@ export class SelectionRenderer {
 
     this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, event: e });
 
-    // cellClicked only for a real, non-row-number data cell.
+    // cellClicked only for a real data cell (not the row-number / checkbox utility cells).
     const cell = (e.target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
-    if (!cell || cell.classList.contains("pte-row-number-cell")) return;
+    if (!cell || cell.classList.contains("pte-row-number-cell") || cell.classList.contains("pte-checkbox-cell")) return;
     const colIdx = Number(cell.dataset.colIdx);
     if (!Number.isFinite(colIdx)) return;
     const col = this.params.leafColumns()[colIdx];

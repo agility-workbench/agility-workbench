@@ -166,6 +166,8 @@ export interface IGridCore {
   areAllRowsSelected(): boolean;
   selectAllRows(): void;
   deselectAllRows(): void;
+  /** Programmatic row selection by stable row id ("set" replaces, "add"/"remove" adjust). */
+  selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;
   getSelectionSnapshot(resolveIds?: boolean): SelectionSnapshot;
   pruneColumnSelection(): void;

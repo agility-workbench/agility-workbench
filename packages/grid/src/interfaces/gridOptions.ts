@@ -166,6 +166,20 @@ export interface IsRowPinnedParams {
   isGroup: boolean;
 }
 
+/**
+ * Object form of `rowSelection`: enables row selection AND configures the selection checkbox
+ * column. `rowSelection: true` stays valid (row selection via the row-number cells, no
+ * checkboxes).
+ */
+export interface RowSelectionOptions {
+  /** Show a dedicated leading checkbox column: click toggles the row, Shift+click selects a
+   * range. Independent of `rowNumbers`. Defaults to false. */
+  checkboxes?: boolean;
+  /** Tri-state select-all checkbox in the checkbox column's header, covering the select-all
+   * scope (`selectAllScope`). Defaults to true when `checkboxes` is on. */
+  headerCheckbox?: boolean;
+}
+
 /** How the quick-filter search string is matched against each row. */
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
@@ -640,7 +654,7 @@ export interface GridOptions {
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
    */
-  rowSelection?: boolean;
+  rowSelection?: boolean | RowSelectionOptions;
   /**
    * Controls how the mouse interacts with body cells:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
@@ -685,6 +699,20 @@ export interface GridOptions {
    * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
    */
   selectAllRowsOnHeaderClick?: boolean;
+  /**
+   * Scope of select-all operations (the row-number header click, `api.selectAllRows()`, and
+   * `api.areAllRowsSelected()`): "filtered" (default) covers every selectable data row that
+   * passes the current filters — all pages; "page" covers only the current page's view. On the
+   * server-side row model "filtered" covers loaded rows.
+   */
+  selectAllScope?: "page" | "filtered";
+  /**
+   * What happens to the row selection when the filter / sort / quick-filter model changes:
+   * "clear" (default) discards it; "keep" retains the selected row ids — selection is id-based,
+   * so it survives rows moving pages or leaving the filtered view. The cell range is always
+   * cleared (view indices shift).
+   */
+  selectionPersistence?: "clear" | "keep";
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
@@ -985,12 +1013,16 @@ export interface InternalGridOptions extends GridOptions {
   ariaLabelledBy?: string;
   highlightActiveCell: boolean;
   rowSelection: boolean;
+  rowSelectionCheckboxes: boolean;
+  rowSelectionHeaderCheckbox: boolean;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
   showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
+  selectAllScope: "page" | "filtered";
+  selectionPersistence: "clear" | "keep";
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;

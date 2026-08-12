@@ -501,6 +501,10 @@ export class GridAPI implements IGridAPI {
     return this.core.areAllRowsSelected();
   }
 
+  selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
+    this.core.dispatch({ type: "rowSelectByIds", rowIds, mode });
+  }
+
   // ---------------- Editing ----------------
   startEditingCell(cell: CellRef): void {
     this.core.dispatch({ type: "editStart", cell, source: "api" });

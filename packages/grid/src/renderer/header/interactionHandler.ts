@@ -76,7 +76,7 @@ export class HeaderInteractionHandler {
     // Ctrl+Space selects the column (Excel's binding), and is the only activation the row-number
     // column ignores — it has no column of its own to select.
     if (ctrl) {
-      if (!col.isRowNumberColumn() && core.options.columnSelection) {
+      if (!col.isLeadingUtilityColumn() && core.options.columnSelection) {
         this.params.toggleColumnSelection(col.instanceID, e.shiftKey ? "toggle" : "replace");
       }
       return true;
@@ -85,6 +85,13 @@ export class HeaderInteractionHandler {
     // The row-number header's only action is select-all, matching a click on it.
     if (col.isRowNumberColumn()) {
       if (core.options.selectAllRowsOnHeaderClick) {
+        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
+      }
+      return true;
+    }
+    // Same for the checkbox column's header checkbox (Space/Enter mirror a click on it).
+    if (col.isSelectionCheckboxColumn()) {
+      if (core.options.rowSelectionHeaderCheckbox) {
         core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
       }
       return true;
@@ -157,6 +164,13 @@ export class HeaderInteractionHandler {
     // so the normal column-select/sort path below would no-op for it anyway.
     if (header.classList.contains("pte-hcell-row-number")) {
       if (this.params.core.options.selectAllRowsOnHeaderClick) {
+        this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
+      }
+      return;
+    }
+    // The checkbox column's header checkbox always toggles select-all — enabling it IS the opt-in.
+    if (header.classList.contains("pte-hcell-checkbox")) {
+      if (this.params.core.options.rowSelectionHeaderCheckbox) {
         this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
       }
       return;

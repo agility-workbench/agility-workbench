@@ -925,9 +925,11 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.style.width = `${column.computedWidth}px`;
       if (column.isComputableType()) cell.classList.add("pte-cell-right-aligned");
       if (column.isRowNumberColumn()) cell.classList.add("pte-row-number-cell");
+      if (column.isSelectionCheckboxColumn()) cell.classList.add("pte-checkbox-cell");
       rowElement.appendChild(cell);
       this.params.bodyCellRenderer.renderCell(cell, row, column, rendererMap, row.viewIndex, rowNumber);
       if (pinned && column.isRowNumberColumn()) cell.textContent = "";
+      if (pinned && column.isSelectionCheckboxColumn()) cell.textContent = "";
       width += column.computedWidth;
     }
     rowElement.style.width = `${width}px`;

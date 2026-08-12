@@ -3489,3 +3489,75 @@
   border-color: transparent var(--pte-action-frame-border-color) transparent transparent;
   pointer-events: none;
 }
+
+/* ---- Selection checkbox column ---- */
+
+.pte-checkbox-cell {
+  justify-content: center;
+  background-color: var(--pte-header-background-color);
+  cursor: pointer;
+}
+
+/* The checkbox visual is decorative and fully CSS-driven: the cell's / header's "selected" class
+   (already managed by the selection renderer) is the single source of truth. */
+.pte-checkbox {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 1px solid var(--pte-muted-text-color);
+  border-radius: 3px;
+  background-color: var(--pte-root-bg-color);
+  position: relative;
+}
+
+.pte-cell.selected .pte-checkbox,
+.pte-checkbox.selected {
+  border-color: var(--pte-selected-border-color);
+  background-color: var(--pte-selected-border-color);
+}
+
+.pte-cell.selected .pte-checkbox::after,
+.pte-checkbox.selected::after {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--pte-root-bg-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Header tri-state: indeterminate renders a dash. */
+.pte-checkbox.pte-checkbox-indeterminate {
+  border-color: var(--pte-selected-border-color);
+  background-color: var(--pte-selected-border-color);
+}
+
+.pte-checkbox.pte-checkbox-indeterminate::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 8px;
+  height: 2px;
+  background-color: var(--pte-root-bg-color);
+}
+
+/* Keep the selected row fill from tinting the checkbox gutter differently than the header bg. */
+.pte-checkbox-cell.selected {
+  background-color: var(--pte-selected-bg-color);
+}
+
+.pte-hcell-checkbox .pte-hcell-container,
+.pte-hcell-checkbox .pte-hcell-container:hover {
+  justify-content: center;
+  background-color: var(--pte-header-background-color);
+  cursor: pointer;
+}
+
+.pte-hcell-checkbox .pte-hcell-content {
+  justify-content: center;
+}

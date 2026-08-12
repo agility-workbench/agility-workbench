@@ -45,8 +45,11 @@ and explicit sort models use typed `dispatch()` actions.
 
 `setFocusedCell`, `selectRange`, `extendRangeTo`, `selectRow`, `selectColumn`,
 `selectAll`, `selectAllRows`, `clearSelection`, and `navigate` mirror rendered
-keyboard and pointer behavior. `getSelection`, `getSelectedRows`, and
-`getSelectedNodes` return current state.
+keyboard and pointer behavior. `selectRowsById(ids, mode?)` drives row
+selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
+`getSelection`, `getSelectedRows`, and `getSelectedNodes` return current state
+(always copies — safe to mutate). `selectAllRows`/`areAllRowsSelected` span the
+whole filtered set by default (`selectAllScope` option).
 
 ## Editing and clipboard
 

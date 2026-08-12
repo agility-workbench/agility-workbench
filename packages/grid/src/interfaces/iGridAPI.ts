@@ -172,12 +172,19 @@ export interface IGridAPI {
   getSelectedRows(): unknown[];
   /** Currently-selected row nodes (unloaded / no-longer-present rows are omitted). */
   getSelectedNodes(): IRowNode[];
-  /** Select every selectable data row in the current view (skips group rows). */
+  /** Select every selectable data row in the select-all scope — the whole filtered set by
+   * default, or the current page under `selectAllScope: "page"`. Skips group rows. */
   selectAllRows(): void;
   /** Clear the row selection. */
   deselectAllRows(): void;
-  /** Whether every selectable data row in the current view is currently selected. */
+  /** Whether every selectable data row in the select-all scope is currently selected. */
   areAllRowsSelected(): boolean;
+  /**
+   * Programmatic row selection by stable row id — for an external selection owner driving the
+   * grid. "set" (default) replaces the selection; "add"/"remove" adjust it. Unknown or
+   * non-selectable ids are dropped (client-side row model). Emits selectionChanged reason "api".
+   */
+  selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
 
   /* ----- Editing ----- */
   /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */

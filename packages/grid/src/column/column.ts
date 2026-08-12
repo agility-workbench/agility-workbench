@@ -12,7 +12,7 @@ import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
 
-type InternalColumnRole = "rowNumber" | "autoGroup";
+type InternalColumnRole = "rowNumber" | "selectionCheckbox" | "autoGroup";
 type InternalColDef = ColDef & {
   __internalRole?: InternalColumnRole;
   __groupLevel?: number;
@@ -233,6 +233,15 @@ export class Column {
 
   isRowNumberColumn(): boolean {
     return this.internalRole === "rowNumber";
+  }
+
+  isSelectionCheckboxColumn(): boolean {
+    return this.internalRole === "selectionCheckbox";
+  }
+
+  /** Leading utility columns (row number, selection checkbox): layout-frozen, never selectable. */
+  isLeadingUtilityColumn(): boolean {
+    return this.internalRole === "rowNumber" || this.internalRole === "selectionCheckbox";
   }
 
   isAutoGroupColumn(): boolean {

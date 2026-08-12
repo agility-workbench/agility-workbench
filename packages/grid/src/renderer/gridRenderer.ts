@@ -259,6 +259,8 @@ export class GridRenderer {
       },
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
+        // Filter/sort/pagination changes move rows through the select-all scope.
+        this._headerRenderer.refreshSelectAllCheckbox();
         this._pinnedRowsRenderer?.render(undefined, true);
         this._refreshAriaCounts();
       },
@@ -268,6 +270,7 @@ export class GridRenderer {
       onSelectionChanged: () => {
         this._selectionRenderer.onSelectionChanged();
         this._pinnedRowsRenderer?.refreshSelectionStyles();
+        this._headerRenderer.refreshSelectAllCheckbox();
         this._announceSelection();
       },
       onFocusChanged: (params) => {

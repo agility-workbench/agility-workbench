@@ -701,15 +701,17 @@ export class SelectionModel {
   }
 
   // ---------------- Row selection ----------------
-  toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range") {
+  toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range" | "rangeAdd") {
     const rowId = this.deps.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
 
-    if (mode === "range" && this.rowAnchorViewIdx != null) {
+    // "range" replaces the selection with anchor..row (Excel-style, the row-number gesture);
+    // "rangeAdd" unions it in (checkbox-style — shift-click never clears the rest).
+    if ((mode === "range" || mode === "rangeAdd") && this.rowAnchorViewIdx != null) {
       const anchorIdx = this.rowAnchorViewIdx;
       const start = Math.min(anchorIdx, viewIdx);
       const end = Math.max(anchorIdx, viewIdx);
-      this.selectedRowIds.clear();
+      if (mode === "range") this.selectedRowIds.clear();
       for (let i = start; i <= end; i++) {
         const id = this.deps.getRowIdAtViewIndex(i);
         if (id) this.selectedRowIds.add(id);
@@ -732,6 +734,22 @@ export class SelectionModel {
     }
 
     this.replaceRow(rowId, viewIdx);
+  }
+
+  /**
+   * Programmatic row selection by stable row id (ids are validated by the caller). "set"
+   * replaces the selection, "add"/"remove" adjust it. Clears the other selection kinds
+   * (mutually exclusive) and drops the range anchor — by-id selection has no view position.
+   */
+  setSelectedRowIds(rowIds: Iterable<string>, mode: "set" | "add" | "remove"): void {
+    this.clearRange();
+    this.clearColumns();
+    if (mode === "set") this.selectedRowIds.clear();
+    for (const id of rowIds) {
+      if (mode === "remove") this.selectedRowIds.delete(id);
+      else this.selectedRowIds.add(id);
+    }
+    this.rowAnchorViewIdx = null;
   }
 
   // Select every selectable data row in the current view (group rows are skipped unless

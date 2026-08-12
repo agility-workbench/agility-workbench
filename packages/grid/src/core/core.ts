@@ -202,7 +202,12 @@ export class GridCore implements IGridCore {
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
-      rowSelection: isTrue(options.rowSelection),
+      rowSelection: typeof options.rowSelection === "object" ? true : isTrue(options.rowSelection),
+      rowSelectionCheckboxes: typeof options.rowSelection === "object"
+        && isTrue(options.rowSelection.checkboxes),
+      rowSelectionHeaderCheckbox: typeof options.rowSelection === "object"
+        && isTrue(options.rowSelection.checkboxes)
+        && (options.rowSelection.headerCheckbox ?? true),
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
@@ -210,6 +215,8 @@ export class GridCore implements IGridCore {
       bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
 
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
+      selectAllScope: options.selectAllScope ?? "filtered",
+      selectionPersistence: options.selectionPersistence ?? "clear",
       pageSize,
       pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
@@ -749,7 +756,7 @@ export class GridCore implements IGridCore {
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "filter", ...this.columnsChangedIds(changedColIds) })
   }
@@ -773,7 +780,7 @@ export class GridCore implements IGridCore {
     const range = this.resetPageBlocks();
     this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("modelUpdated", { reason: "filter", step: "all" });
   }
@@ -795,7 +802,7 @@ export class GridCore implements IGridCore {
     if (changedColIDs.length === 0) return;
     this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
-    this.selectionModel.clearRows();
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
     this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIDs) });
   }
@@ -1294,9 +1301,24 @@ export class GridCore implements IGridCore {
   // are skipped unless groupRowsSelectable is enabled; all leaf rows are selectable.
   private isViewRowSelectable(viewIdx: number): boolean {
     const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
-    if (node && this.isBodyRowPinned(node.id)) return false;
+    return !node || this.isNodeSelectable(node);
+  }
+
+  private isNodeSelectable(node: IRowNode): boolean {
+    if (this.isBodyRowPinned(node.id)) return false;
     if (this.options.groupRowsSelectable) return true;
-    return !node || !node.isGroup;
+    return !node.isGroup;
+  }
+
+  // Ids of every selectable data row in the whole filtered/sorted set (all pages). Group nodes
+  // are not part of the flat client-side iteration; on the server-side model this covers loaded
+  // rows only.
+  private getFilteredSelectableRowIds(): string[] {
+    const ids: string[] = [];
+    this.rowModel.forEachNodeAfterFilterAndSort((node) => {
+      if (node && !node.isGroup && this.isNodeSelectable(node)) ids.push(node.id);
+    });
+    return ids;
   }
 
   // Whether a row node renders as a full-width row: its content spans the whole body width instead
@@ -1618,12 +1640,14 @@ export class GridCore implements IGridCore {
     this.history.clear();
   }
 
+  /** Instance ids of the selected columns. Returns a COPY — mutating it never affects the grid. */
   getSelectedColumnIds(): Set<string> {
-    return this.selectionModel.getSelectedColumnIds();
+    return new Set(this.selectionModel.getSelectedColumnIds());
   }
 
+  /** Stable ids of the selected rows. Returns a COPY — mutating it never affects the grid. */
   getSelectedRowIds(): Set<string> {
-    return this.selectionModel.getSelectedRowIds();
+    return new Set(this.selectionModel.getSelectedRowIds());
   }
 
   /** Currently-selected row nodes (unloaded / no-longer-present ids are omitted). */
@@ -1641,14 +1665,37 @@ export class GridCore implements IGridCore {
     return this.getSelectedNodes().map(n => n.data);
   }
 
-  /** Whether every selectable data row in the current view is selected. */
+  /** Whether every selectable data row in the select-all scope (filtered set or page) is selected. */
   areAllRowsSelected(): boolean {
-    return this.selectionModel.areAllRowsSelected();
+    if (this.options.selectAllScope === "page") return this.selectionModel.areAllRowsSelected();
+    const ids = this.getFilteredSelectableRowIds();
+    if (ids.length === 0) return false;
+    const selected = this.selectionModel.getSelectedRowIds();
+    return ids.every(id => selected.has(id));
   }
 
-  /** Select every selectable data row in the current view. */
+  /** Select every selectable data row in the select-all scope (filtered set or page). */
   selectAllRows(): void {
-    this.selectionModel.selectAllRows();
+    if (this.options.selectAllScope === "page") {
+      this.selectionModel.selectAllRows();
+    } else {
+      this.selectionModel.setSelectedRowIds(this.getFilteredSelectableRowIds(), "set");
+    }
+    this.emitSelectionChanged("api");
+  }
+
+  /**
+   * Programmatic row selection by stable row id. Unknown / non-selectable ids are dropped on the
+   * client-side row model; the server-side model accepts ids verbatim (rows may not be loaded).
+   */
+  selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
+    const validated = this.rowModel.getType() === "serverSide"
+      ? rowIds
+      : rowIds.filter(id => {
+        const node = this.rowModel.getRowNode(id);
+        return node != null && this.isNodeSelectable(node);
+      });
+    this.selectionModel.setSelectedRowIds(validated, mode);
     this.emitSelectionChanged("api");
   }
 
@@ -1983,6 +2030,9 @@ export class GridCore implements IGridCore {
       case "rowSelectAll":
         if (action.selected) this.selectAllRows();
         else this.deselectAllRows();
+        break;
+      case "rowSelectByIds":
+        this.selectRowsById(action.rowIds, action.mode ?? "set");
         break;
       case "columnSelectSet":
         this.selectionModel.toggleColumn(action.colId, action.mode ?? "toggle");
