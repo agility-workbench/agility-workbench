@@ -1458,7 +1458,25 @@ export class GridCore implements IGridCore {
   }
 
   getViewIndexForRowId(rowId: GridId): number | null {
-    return this.rowModel.getRowNode(rowId)?.viewIndex ?? null;
+    const node = this.rowModel.getRowNode(rowId);
+    if (!node) return null;
+
+    // `IRowNode.viewIndex` is not one coordinate space across row models: flat CSRM and SSRM stamp
+    // page-local slots, while grouped/tree CSRM stamps an index into the full flattened view before
+    // pagination. Nodes that leave the current page/filter can also retain an old stamp. Callers of
+    // this method all address the rendered page, so try both possible interpretations and trust one
+    // only when the current page slot resolves back to the same row. This stays O(1) on repaint and
+    // editing paths while making off-page/filtered/collapsed rows reliably return null.
+    const viewCount = this.rowModel.getViewCount();
+    const pageStart = this.getPageStartIdx();
+    const candidates = pageStart === 0
+      ? [node.viewIndex]
+      : [node.viewIndex, node.viewIndex - pageStart];
+    for (const viewIndex of candidates) {
+      if (viewIndex < 0 || viewIndex >= viewCount) continue;
+      if (this.rowModel.getRowNodeAtViewIndex(viewIndex)?.id === rowId) return viewIndex;
+    }
+    return null;
   }
 
   /**

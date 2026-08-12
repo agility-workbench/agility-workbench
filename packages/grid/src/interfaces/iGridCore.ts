@@ -96,7 +96,8 @@ export interface IGridCore {
   /** Returns rowId for a displayed index (post filter/sort/group pipeline). */
   getRowIdAtViewIndex(displayedIndex: number): GridId | null;
 
-  /** Returns displayed index for a rowId if currently displayed; null if filtered out. */
+  /** Returns the current page-local slot for a rowId; null when it is not on the rendered page
+   * (unknown, filtered/collapsed, unloaded, or on another page). */
   getViewIndexForRowId(rowId: GridId): number | null;
 
   /**
