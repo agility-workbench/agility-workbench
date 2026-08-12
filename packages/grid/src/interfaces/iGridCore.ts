@@ -6,7 +6,7 @@ import {
 } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel, RowDataChangeReason, ServerSideRefreshOptions } from "./iRowModel";
+import { IRowModel, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
@@ -172,6 +172,14 @@ export interface IGridCore {
   clampSelectionToView(): void;
 
   refreshRows(reason?: RowDataChangeReason, range?: { start: number; end: number }): void;
+
+  /** Client-side row model only: apply an add/update/remove transaction. Returns what was
+   * actually applied; all-zero counts on the server-side row model or when nothing matched. */
+  applyTransaction(tx: {
+    add?: RowData[];
+    update?: { rowId: GridId; row: RowData }[];
+    remove?: GridId[];
+  }): RowTransactionResult;
 
   setServerSideDataSource(callback: IServerSideDataSource | null): void;
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;

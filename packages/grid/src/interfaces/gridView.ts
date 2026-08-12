@@ -18,6 +18,11 @@ export interface GridViewGroupExpansionState {
   expanded: boolean;
 }
 
+export interface GridViewPaginationState {
+  pageIndex: number;
+  pageSize: number;
+}
+
 /** Serializable grid presentation state captured by `api.captureViewState()`. */
 export interface GridViewState {
   version: 1;
@@ -27,6 +32,9 @@ export interface GridViewState {
   filterModel: GridViewFilterState[];
   quickFilterText: string;
   groupExpansion: GridViewGroupExpansionState[];
+  /** Present only when pagination is enabled at capture time. Absent in states saved before this
+   * field existed; applyViewState leaves the page untouched when it's missing. */
+  pagination?: GridViewPaginationState;
 }
 
 export interface SavedGridView {

@@ -8,18 +8,30 @@ import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { ColDef, DefaultColDef } from "./column";
 import type {
+  CellValueChangeSource,
   GridEventCellClickedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions } from "./gridView";
 
-/** Payload for the `onCellValueChanged` option: a cell edit was committed. */
+/**
+ * Payload for the `onCellValueChanged` option: a cell's stored value changed. Fires for every
+ * write path — editor commits, `setCellValue`, paste/cut/clear batches, and undo/redo.
+ */
 export interface CellValueChangedParams {
   rowId: string;
+  /**
+   * The column's internal instance id (NOT the user-supplied `ColDef.colId`). Translate with
+   * `api.getColumnModel().getById(colId)?.colId`.
+   */
   colId: string;
-  /** The newly committed value. */
+  /** The newly committed (parsed) value. */
   value: unknown;
+  /** The cell's stored value before the write. */
+  oldValue: unknown;
+  /** What wrote the cell: "edit" (editor commit / setCellValue), clipboard batch, or undo/redo. */
+  source: CellValueChangeSource;
 }
 
 /** Payload for the `onSortChanged` option. */

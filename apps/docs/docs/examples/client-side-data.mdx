@@ -25,9 +25,24 @@ selection, grouping, and pinned rows refer to the same record.
 ## Replace or transact
 
 `api.setRowData(rows)` replaces the data set and resets edit history.
-`api.applyTransaction({ add, update, remove })` changes only affected rows.
-Updates preserve node identity; structural changes are sorted and filtered into
-their correct location.
+`api.applyTransaction({ add, update, remove })` changes only affected rows and
+returns `{ added, updated, removed }` counts of what was actually applied
+(unknown row IDs are skipped). Updates preserve node identity; structural
+changes are sorted and filtered into their correct location.
 
 Transactions are client-side only. The server-side model is refreshed through
 `api.refreshServerSideData()`.
+
+:::warning A new `rowData` reference is a full data replacement
+
+The React and Angular bindings compare `rowData` by reference. Passing a new
+array — including the fresh arrays produced by immutable-update patterns
+(`[...rows]`, reducers, signals/state setters) — re-ingests the whole data set:
+**undo/redo history is discarded and the grid returns to page 1**. Sort, filter,
+quick-filter, and column state survive.
+
+If you own updates in an external store, prefer `api.applyTransaction()` for
+incremental changes and reserve new `rowData` references for genuine data-set
+replacement.
+
+:::

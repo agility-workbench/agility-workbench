@@ -1,5 +1,7 @@
 export type { IGridCore } from "./interfaces/iGridCore";
 export type { IGridAPI } from "./interfaces/iGridAPI";
+export type { Column } from "./column/column";
+export type { GridAction } from "./events/action";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
 export { SparklineRenderer } from "./cellRenderers/sparklineRenderer";
@@ -94,6 +96,7 @@ export type {
 export type {
   GridViewFilterState,
   GridViewGroupExpansionState,
+  GridViewPaginationState,
   GridViewSortState,
   GridViewState,
   SavedGridView,
@@ -120,13 +123,16 @@ export type {
   FilterDef,
   FilterInputType,
   FilterItem,
+  FilterModel,
   FilterOption,
   FilterParams,
 } from "./interfaces/filter";
 
 export type {
+  CellValueChangeSource,
   GridEventAggregateChangedParams,
   GridEventCellClickedParams,
+  GridEventCellValueChangedParams,
   GridEventRowClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
@@ -152,6 +158,7 @@ export type {
 export type {
   IRowModel,
   RowModelType,
+  RowTransactionResult,
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
 export type { IRowNode } from "./interfaces/iRowNode";

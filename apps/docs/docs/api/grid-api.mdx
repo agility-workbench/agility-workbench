@@ -13,7 +13,7 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `setRowData(rows)` | Replace client-side rows |
-| `applyTransaction(tx)` | Add, update, or remove client-side rows |
+| `applyTransaction(tx)` | Add, update, or remove client-side rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted) |
 | `setColumnDefs(defs)` | Replace column definitions |
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
@@ -25,12 +25,17 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `setQuickFilter(text, options?)` | Apply client-side global search |
+| `getFilterModel()` | Read the per-column filters as serializable `{ colId, filters, join }` items |
+| `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
+| `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |
+| `removeFilterModel(colId)` | Remove one column's filter (no-op when it has none) |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
-| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion |
+| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation |
 
-Grouping columns and explicit sort/filter models use typed `dispatch()` actions.
+Filter methods address columns by the public `ColDef.colId`. Grouping columns
+and explicit sort models use typed `dispatch()` actions.
 
 ## Selection and navigation
 
@@ -65,4 +70,19 @@ cells by stable row and column IDs. `setPinnedTopRowData`,
 
 Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
 function. `destroy()` releases the grid when a custom host owns its lifecycle.
+
+:::warning `colId` in event payloads is the internal instance ID
+
+The `colId` fields carried by event payloads (`cellsChanged`, `cellValueChanged`,
+`editingChanged`, `columnsChanged`, `onCellValueChanged`, …) hold the column's
+internal instance ID — a per-instance UUID — **not** the `colId` you set on the
+column definition. Translate before comparing against your own IDs:
+
+```ts
+const publicColId = api.getColumnModel().getById(ev.colId)?.colId;
+```
+
+The reverse lookup is `api.getColumnModel().getByColId(myColId)?.instanceID`.
+
+:::
 

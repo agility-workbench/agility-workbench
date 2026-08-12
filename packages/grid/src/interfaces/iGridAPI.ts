@@ -10,8 +10,8 @@ import {
   RowPinnedPosition,
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
-import { GridViewState } from "./gridView";
-import { ServerSideRefreshOptions } from "./iRowModel";
+import { GridViewFilterState, GridViewState } from "./gridView";
+import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -86,13 +86,25 @@ export interface IGridAPI {
    */
   setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void;
 
-  /** Apply a transaction to the row data. */
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): void;
+  /** Apply a transaction to the row data (client-side row model only). Returns what was actually
+   * applied; all-zero counts on the server-side row model or when nothing matched. */
+  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): RowTransactionResult;
 
   /** Set the quick-filter (global search) text. Client-side row model only. */
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
   /** Current quick-filter text ("" when inactive). */
   getQuickFilterText(): string;
+
+  /* ----- Filtering ----- */
+  /** Current per-column filters in serializable form (`colId` is the public ColDef colId). */
+  getFilterModel(): GridViewFilterState[];
+  /** Replace all column filters. Unknown colIds drop out; an empty array clears every filter.
+   * Applying filters resets to page 1 and clears the selection. */
+  setFilterModel(filters: GridViewFilterState[]): void;
+  /** Add or replace the filter for one column, keeping every other column's filter. */
+  addFilterModel(filter: GridViewFilterState): void;
+  /** Remove one column's filter. No-op (no page reset, no selection clear) when it has none. */
+  removeFilterModel(colId: string): void;
 
   /** Current tree-data keyboard navigation mode. Non-tree grids always report "grid". */
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
@@ -103,7 +115,7 @@ export interface IGridAPI {
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
   setAllGroupsExpanded(expanded: boolean): void;
 
-  /** Capture serializable column, grouping, sorting, filtering, and expansion state. */
+  /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;
   /** Apply a captured view through the grid's existing state actions. */
   applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void;

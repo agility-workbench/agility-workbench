@@ -11,8 +11,9 @@ import {
   TreeDataKeyboardNavigationMode,
 } from "../interfaces/gridOptions";
 import { FilterItem } from "../interfaces/filter";
-import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { GridViewState } from "../interfaces/gridView";
+import { RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { Column } from "../column/column";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 
@@ -137,8 +138,8 @@ export class GridAPI implements IGridAPI {
     add?: RowData[];
     update?: { rowId: GridId; row: RowData }[];
     remove?: GridId[];
-  }): void {
-    this.dispatch({ type: "rowTransactionApply", add: tx.add, update: tx.update, remove: tx.remove });
+  }): RowTransactionResult {
+    return this.core.applyTransaction(tx);
   }
 
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
@@ -147,6 +148,63 @@ export class GridAPI implements IGridAPI {
 
   getQuickFilterText(): string {
     return this.core.getQuickFilterText();
+  }
+
+  // ---------------- Filtering ----------------
+  getFilterModel(): GridViewFilterState[] {
+    return this.core.getFilterModel().items.map(item => ({
+      colId: item.col.colId,
+      filters: item.filters.map(filter => ({
+        type: filter.type,
+        values: cloneViewValue(filter.values),
+      })),
+      join: item.join,
+    }));
+  }
+
+  setFilterModel(filters: GridViewFilterState[]): void {
+    this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(filters ?? []) });
+  }
+
+  addFilterModel(filter: GridViewFilterState): void {
+    const [item] = this.toFilterItems([filter]);
+    if (!item) return;
+    const others = this.core.getFilterModel().items
+      .filter(existing => existing.col.instanceID !== item.col.instanceID);
+    this.dispatch({ type: "filterModelSet", filterModel: [...others, item] });
+  }
+
+  removeFilterModel(colId: string): void {
+    const col = this.resolveColumn(colId);
+    if (!col) return;
+    const items = this.core.getFilterModel().items;
+    const next = items.filter(existing => existing.col.instanceID !== col.instanceID);
+    // No filter on that column — skip the dispatch, which would reset the page and clear selection.
+    if (next.length === items.length) return;
+    this.dispatch({ type: "filterModelSet", filterModel: next });
+  }
+
+  /** Resolve a public colId (falling back to instance id, then key) to a live column. */
+  private resolveColumn(colId: string): Column | undefined {
+    const model = this.core.getColumnModel();
+    return model.getByColId(colId) ?? model.getById(colId) ?? model.getByKey(colId);
+  }
+
+  /** Convert serializable per-column filter state into core FilterItems; unknown colIds drop out. */
+  private toFilterItems(states: GridViewFilterState[]): FilterItem[] {
+    return states.flatMap(item => {
+      const col = this.resolveColumn(item.colId);
+      if (!col) return [];
+      return [{
+        col,
+        key: col.key,
+        filters: item.filters.map(filter => ({
+          type: filter.type,
+          values: cloneViewValue(filter.values),
+        })),
+        join: item.join,
+      }];
+    });
   }
 
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
@@ -158,6 +216,7 @@ export class GridAPI implements IGridAPI {
   }
 
   captureViewState(): GridViewState {
+    const pagination = this.core.getPaginationInfo();
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
@@ -166,19 +225,15 @@ export class GridAPI implements IGridAPI {
         colId: item.col.colId,
         dir: item.dir,
       })),
-      filterModel: this.core.getFilterModel().items.map(item => ({
-        colId: item.col.colId,
-        filters: item.filters.map(filter => ({
-          type: filter.type,
-          values: cloneViewValue(filter.values),
-        })),
-        join: item.join,
-      })),
+      filterModel: this.getFilterModel(),
       quickFilterText: this.core.getQuickFilterText(),
       groupExpansion: this.core.getRowModel().getGroupNodes().map(node => ({
         groupId: node.id,
         expanded: node.isExpanded,
       })),
+      ...(pagination.paginationEnabled
+        ? { pagination: { pageIndex: pagination.pageIndex, pageSize: pagination.pageSize } }
+        : {}),
     };
   }
 
@@ -203,23 +258,25 @@ export class GridAPI implements IGridAPI {
       ],
     });
 
-    const filters: FilterItem[] = (state.filterModel ?? []).flatMap(item => {
-      const col = this.core.getColumnModel().getByColId(item.colId)
-        ?? this.core.getColumnModel().getById(item.colId)
-        ?? this.core.getColumnModel().getByKey(item.colId);
-      if (!col) return [];
-      return [{
-        col,
-        key: col.key,
-        filters: item.filters.map(filter => ({
-          type: filter.type,
-          values: cloneViewValue(filter.values),
-        })),
-        join: item.join,
-      }];
-    });
-    this.dispatch({ type: "filterModelSet", filterModel: filters });
+    this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
+
+    // Restore the page AFTER the filter/quick-filter dispatches above — both reset to page 1.
+    // Old captures without a pagination field leave the page untouched.
+    const pagination = this.core.getPaginationInfo();
+    if (state.pagination && pagination.paginationEnabled && state.pagination.pageSize > 0) {
+      const { pageIndex, pageSize } = state.pagination;
+      // Clamp to the last page of the CURRENT (possibly smaller) dataset when the total is known.
+      const lastPage = pagination.totalRowCountKnown
+        ? Math.max(0, Math.ceil(pagination.totalRowCount / pageSize) - 1)
+        : Number.POSITIVE_INFINITY;
+      this.dispatch({
+        type: "paginationSet",
+        enabled: true,
+        pageIndex: Math.max(0, Math.min(pageIndex, lastPage)),
+        pageSize,
+      });
+    }
 
     const expansion = new Map(
       (state.groupExpansion ?? []).map(item => [item.groupId, item.expanded]),

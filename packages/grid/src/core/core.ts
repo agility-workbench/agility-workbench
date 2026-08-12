@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -25,7 +25,7 @@ import {
   GridEventPaginationChangedParams,
   Unsubscribe,
 } from "../events/events";
-import { isTrue } from "../misc";
+import { isTrue, validatePageSizes } from "../misc";
 import { ColDef } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
@@ -138,10 +138,14 @@ export class GridCore implements IGridCore {
     this.on("cellClicked", (ev) => o.onCellClicked?.(ev));
     this.on("rowClicked", (ev) => o.onRowClicked?.(ev));
     this.on("selectionChanged", (ev) => o.onSelectionChanged?.(ev));
-    this.on("editingChanged", (ev) => {
-      if (ev.state === "committed" && ev.cell) {
-        o.onCellValueChanged?.({ rowId: ev.cell.rowId, colId: ev.cell.colId, value: ev.value });
-      }
+    this.on("cellValueChanged", (ev) => {
+      o.onCellValueChanged?.({
+        rowId: ev.cell.rowId,
+        colId: ev.cell.colId,
+        value: ev.value,
+        oldValue: ev.oldValue,
+        source: ev.source,
+      });
     });
     this.on("columnsChanged", (ev) => {
       if (ev.reason === "sort") o.onSortChanged?.({ changedColIds: ev.changedColIds });
@@ -149,6 +153,20 @@ export class GridCore implements IGridCore {
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
+    const pageSize = options.pageSize ?? 100;
+    // Normalize pageSizes and make sure the configured pageSize is offered by the page-size
+    // selector — a <select> assigned a value with no matching option renders blank, and the
+    // configured size would become unreachable after the user's first change.
+    const pageSizes = validatePageSizes(options.pageSizes ?? [25, 50, 100], [25, 50, 100]);
+    if (!pageSizes.includes(pageSize)) {
+      if (options.pageSizes != null) {
+        console.warn(
+          `pageSize ${pageSize} is not one of pageSizes [${pageSizes.join(", ")}]; adding it to the page-size options.`,
+        );
+      }
+      pageSizes.push(pageSize);
+      pageSizes.sort((a, b) => a - b);
+    }
     return {
       headerHeight: options.headerHeight ?? 43,
       leafHeaderHeight: options.leafHeaderHeight ?? 43,
@@ -186,8 +204,8 @@ export class GridCore implements IGridCore {
       bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
 
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
-      pageSize: options.pageSize ?? 100,
-      pageSizes: options.pageSizes ?? [25, 50, 100],
+      pageSize,
+      pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       getGroupChildCount: options.getGroupChildCount,
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
@@ -651,16 +669,16 @@ export class GridCore implements IGridCore {
     this.columnModel.identifyComparators(nodes);
   }
 
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): void {
+  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): RowTransactionResult {
     if (this.rowModel.getType() !== "clientSide") {
       console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
-      return;
+      return { added: 0, updated: 0, removed: 0 };
     }
 
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
-    if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) return result;
 
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
@@ -684,6 +702,7 @@ export class GridCore implements IGridCore {
         colIds,
       });
     }
+    return result;
   }
 
   addFilterModel(filter: FilterItem) {
@@ -1961,7 +1980,8 @@ export class GridCore implements IGridCore {
         // Emit editingChanged first so the editor tears down (and returns focus to the grid root)
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
         // first would detach the focused input and drop keyboard focus to <body>.
-        this.emit("editingChanged", { state: "committed", cell: action.cell, value: newValue });
+        this.emit("editingChanged", { state: "committed", cell: action.cell, value: newValue, oldValue });
+        this.emit("cellValueChanged", { cell: action.cell, oldValue, value: newValue, source: "edit" });
         this.emit("cellsChanged", {
           reason: "editCommit",
           rowIds: [action.cell.rowId],
@@ -1998,6 +2018,13 @@ export class GridCore implements IGridCore {
           this.history.push({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {
+          const source = action.reason === "cut" ? "cut"
+            : action.reason === "clear" ? "clear"
+              : action.reason === "api" ? "edit"
+                : "paste";
+          for (const edit of recorded) {
+            this.emit("cellValueChanged", { cell: edit.cell, oldValue: edit.oldValue, value: edit.newValue, source });
+          }
           this.emit("cellsChanged", {
             reason: "editCommit",
             rowIds: [...changedRowIds],
@@ -2029,6 +2056,7 @@ export class GridCore implements IGridCore {
     this.applyingHistory = true;
     const changedRowIds = new Set<string>();
     const changedColIds = new Set<string>();
+    const applied: CellEdit[] = [];
     try {
       for (const edit of edits) {
         const col = this.columnModel.getById(edit.cell.colId);
@@ -2037,6 +2065,7 @@ export class GridCore implements IGridCore {
         if (this.writeCellValue(edit.cell, col.key, value)) {
           changedRowIds.add(edit.cell.rowId);
           changedColIds.add(col.instanceID);
+          applied.push(edit);
         }
       }
     } finally {
@@ -2044,6 +2073,16 @@ export class GridCore implements IGridCore {
     }
     if (changedRowIds.size === 0) return;
 
+    // Report each write in the direction it happened: an undo takes the cell from newValue back
+    // to oldValue, so oldValue/value are swapped relative to the recorded edit.
+    for (const edit of applied) {
+      this.emit("cellValueChanged", {
+        cell: edit.cell,
+        oldValue: dir === "undo" ? edit.newValue : edit.oldValue,
+        value: dir === "undo" ? edit.oldValue : edit.newValue,
+        source: dir,
+      });
+    }
     this.emit("cellsChanged", {
       reason: "editCommit",
       rowIds: [...changedRowIds],

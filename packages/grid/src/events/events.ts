@@ -17,6 +17,7 @@ export type GridEventName =
   | "focusChanged"
   | "headerFocusChanged"
   | "editingChanged"
+  | "cellValueChanged"
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
@@ -132,9 +133,28 @@ export type GridEventEditingChangedParams = {
   cell?: { rowId: GridId; colId: ColId };
   // committed value (only for committed)
   value?: unknown;
+  // the cell's value before the commit (only for committed)
+  oldValue?: unknown;
   // For state "started" via edit-on-typing: the printable character that opened the editor, so
   // the renderer can seed the editor with it.
   charPress?: string;
+};
+
+/** What wrote the cell: an editor commit / `setCellValue`, a clipboard batch, or history. */
+export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "undo" | "redo";
+
+/**
+ * A cell's stored value changed. Emitted once per cell for EVERY write path — editor commits,
+ * `setCellValue`, paste/cut/clear batches, and undo/redo — unlike `editingChanged`, which tracks
+ * the editor lifecycle and only fires for interactive commits. `oldValue`/`value` are the stored
+ * (parsed) forms; for undo they are oriented in the direction of the write (`value` is what the
+ * cell now holds).
+ */
+export type GridEventCellValueChangedParams = {
+  cell: { rowId: GridId; colId: ColId };
+  oldValue: unknown;
+  value: unknown;
+  source: CellValueChangeSource;
 };
 
 export type GridEventPaginationChangedParams = {
@@ -222,6 +242,7 @@ export interface GridEventMap {
   focusChanged: GridEventFocusChangedParams;
   headerFocusChanged: GridEventHeaderFocusChangedParams;
   editingChanged: GridEventEditingChangedParams;
+  cellValueChanged: GridEventCellValueChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;

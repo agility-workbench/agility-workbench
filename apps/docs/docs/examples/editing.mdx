@@ -25,6 +25,26 @@ Editing starts with double-click, F2, Enter, or a printable character. Configure
 single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
 with grid options.
 
+## Edits write into your row objects
+
+Committed edits are written **in place** into the exact row objects you passed
+as `rowData` — the grid does not copy on ingest or on write. If your
+application store assumes immutability (Redux, NgRx, signals with reference
+equality), hand the grid copies of your rows, or treat the grid's data as
+grid-owned and sync changes back through `onCellValueChanged`.
+
+## Reacting to value changes
+
+`onCellValueChanged` (and the `cellValueChanged` event) fires once per written
+cell for **every** write path — editor commits, `setCellValue`, paste, cut,
+clear, and undo/redo — with `{ rowId, colId, value, oldValue, source }`.
+`value`/`oldValue` are the stored (parsed) forms, and `source` says what wrote
+the cell (`"edit"`, `"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff
+consumers (dirty tracking, server sync, analytics) need no shadow copy of the
+data. The `editingChanged` event additionally carries `oldValue` on its
+`committed` state. Note that `colId` in these payloads is the column's internal
+instance ID — see the Grid API page for translating it to your `ColDef.colId`.
+
 ## Clipboard and history
 
 Copy serializes the selection as TSV. Cut clears editable destinations, paste

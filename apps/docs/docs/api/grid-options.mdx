@@ -74,6 +74,11 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `pageSize` | `number` | Initial page size |
 | `pageSizes` | `number[]` | User-selectable page sizes |
 
+`pageSizes` is normalized at init (sorted ascending, non-positive entries
+dropped). If `pageSize` is not in the list it is added automatically so the
+page-size selector can display it — with a console warning when `pageSizes` was
+set explicitly.
+
 ## Grouping and hierarchy
 
 | Option | Type | Purpose |

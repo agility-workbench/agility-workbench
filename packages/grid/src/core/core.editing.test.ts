@@ -81,7 +81,7 @@ describe("GridCore editing", () => {
     expect(cellsEvents).toEqual([
       { reason: "editCommit", rowIds: ["1"], colIds: [cId] },
     ]);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: "ALICE" });
+    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: "ALICE", oldValue: "alice" });
   });
 
   it("runs the column valueParser on commit", () => {
@@ -89,7 +89,7 @@ describe("GridCore editing", () => {
     const cell = { rowId: "2", colId: cId };
     core.dispatch({ type: "editCommit", cell, value: "99" });
     expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(99);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 99 });
+    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 99, oldValue: 7 });
   });
 
   it("stores the value directly and skips valueParser when parsed=true", () => {
@@ -98,7 +98,7 @@ describe("GridCore editing", () => {
     // A typed editor commits a real number with parsed:true — valueParser must not run.
     core.dispatch({ type: "editCommit", cell, value: 123, parsed: true });
     expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(123);
-    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 123 });
+    expect(editingEvents.at(-1)).toEqual({ state: "committed", cell, value: 123, oldValue: 7 });
   });
 
   it("cancels an edit without changing the value", () => {
