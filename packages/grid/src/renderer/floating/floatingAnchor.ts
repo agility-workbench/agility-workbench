@@ -100,6 +100,16 @@ export class FloatingAnchor {
     this.position();
   }
 
+  /**
+   * Move an already-open follow-mode floater to the latest pointer coordinates without remounting
+   * its content. No-op for anchored or closed floaters.
+   */
+  updateFollowPosition(x: number, y: number): void {
+    if (!this.overlay || !this.current || this.current.mode.kind !== "follow") return;
+    this.current.mode = { kind: "follow", x, y };
+    this.position();
+  }
+
   /** Remove the floating element from the DOM and drop all state. Idempotent. */
   hide(): void {
     if (this.overlay && this.overlay.parentElement) {

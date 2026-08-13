@@ -152,6 +152,38 @@ describe("AwbGrid tooltips", () => {
     expect(tooltip.dataset.placement).toBeTruthy();
   });
 
+  it("tracks pointer movement in follow mode", async () => {
+    const { gridEl } = await mountGridHost(TooltipHost, 600, (instance) => {
+      instance.tooltip = { showDelay: 0, hideDelay: 0, mode: "follow" };
+      instance.cols = [
+        { colId: "name", key: "name", label: "Name", tooltipField: "email" },
+      ];
+    });
+    const root = gridEl.querySelector<HTMLElement>(".pte-root")!;
+    root.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 400,
+      width: 500,
+      height: 400,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const cell = bodyCell(gridEl, 0);
+    await hover(cell);
+    const tooltip = gridEl.querySelector<HTMLElement>(".pte-tooltip")!;
+    cell.dispatchEvent(new MouseEvent("mousemove", {
+      bubbles: true,
+      clientX: 80,
+      clientY: 90,
+    }));
+
+    expect(tooltip.style.left).toBe("88px");
+    expect(tooltip.style.top).toBe("98px");
+  });
+
   it("switches tooltip mode and disables tooltips live without remounting", async () => {
     const { fixture, gridEl, host } = await mountGridHost(TooltipHost, 600, (instance) => {
       instance.tooltip = { showDelay: 0, hideDelay: 0, mode: "anchored" };

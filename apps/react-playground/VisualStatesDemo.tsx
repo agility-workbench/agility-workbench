@@ -9,6 +9,7 @@ import type { GridTheme, PaginationControl, PaginationControlsOptions } from "@g
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
+ *   Tooltip:     anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
@@ -106,6 +107,7 @@ export function VisualStatesDemo() {
   const [columnHover, setColumnHover] = useState(true);
   const [zebraRows, setZebraRows] = useState(true);
   const [highlightActiveCell, setHighlightActiveCell] = useState(true);
+  const [tooltipMode, setTooltipMode] = useState<"anchored" | "follow">("anchored");
   const [pageSelection, setPageSelection] = useState<"select" | "buttons">("select");
   const [showPageLabel, setShowPageLabel] = useState(true);
   const [paginationLayout, setPaginationLayout] = useState<PaginationLayout>("default");
@@ -184,7 +186,11 @@ export function VisualStatesDemo() {
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
-    { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
+    {
+      colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
+      headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
+      tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
+    },
     {
       colId: "department", key: "department", label: "Department", width: 140, filter: true,
       // Custom comparator: sort by a fixed department priority rather than alphabetically.
@@ -217,6 +223,13 @@ export function VisualStatesDemo() {
           <Toggle label="columnHover" checked={columnHover} onChange={setColumnHover} hint="Highlight the whole column under the pointer" />
           <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
           <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }} title="Anchor tooltips to their cell or keep them beside the pointer">
+            tooltip
+            <select value={tooltipMode} onChange={(e) => setTooltipMode(e.target.value as typeof tooltipMode)}>
+              <option value="anchored">anchored</option>
+              <option value="follow">follow pointer</option>
+            </select>
+          </label>
           <Toggle label="conditionalStyling" checked={conditionalStyling} onChange={setConditionalStyling} hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
           <Toggle label="sortConfig" checked={sortConfig} onChange={setSortConfig} hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
         </div>
@@ -304,7 +317,9 @@ export function VisualStatesDemo() {
       </div>
 
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-        Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
+        Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
+        Name cells or header to compare cell-anchored and pointer-following tooltips. Click a cell,
+        then Shift+Click (or Shift+Arrow) to
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
         inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
         column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
@@ -333,6 +348,7 @@ export function VisualStatesDemo() {
           columnHover={columnHover}
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
+          tooltip={{ mode: tooltipMode, showDelay: 150 }}
           getRowStyle={getRowStyle}
           onCellClicked={(p) => setLastEvent(`onCellClicked → row ${p.rowId}, col "${p.colId}" = ${JSON.stringify(p.value)}`)}
           onSortChanged={() => setLastEvent("onSortChanged")}

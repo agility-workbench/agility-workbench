@@ -14,11 +14,13 @@ import {
   type PaginationControl,
   type PaginationControlsOptions,
   type RowClassParams,
+  type TooltipOptions,
 } from "@agility-workbench/angular-grid";
 
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
+ *   Tooltip:     anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
@@ -128,6 +130,13 @@ export class VsToggleComponent {
         <vs-toggle label="columnHover" [checked]="columnHover()" (toggled)="columnHover.set($event)" hint="Highlight the whole column under the pointer" />
         <vs-toggle label="zebraRows" [checked]="zebraRows()" (toggled)="zebraRows.set($event)" hint="Alternating background on odd rows" />
         <vs-toggle label="highlightActiveCell" [checked]="highlightActiveCell()" (toggled)="highlightActiveCell.set($event)" hint="Outline the focused cell inside a range" />
+        <label class="vs-select" title="Anchor tooltips to their cell or keep them beside the pointer">
+          tooltip
+          <select [value]="tooltipMode()" (change)="setTooltipMode($event)">
+            <option value="anchored">anchored</option>
+            <option value="follow">follow pointer</option>
+          </select>
+        </label>
         <vs-toggle label="conditionalStyling" [checked]="conditionalStyling()" (toggled)="conditionalStyling.set($event)" hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
         <vs-toggle label="sortConfig" [checked]="sortConfig()" (toggled)="sortConfig.set($event)" hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
       </div>
@@ -217,7 +226,9 @@ export class VsToggleComponent {
     </div>
 
     <p class="vs-blurb">
-      Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
+      Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
+      Name cells or header to compare cell-anchored and pointer-following tooltips. Click a cell,
+      then Shift+Click (or Shift+Arrow) to
       make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
       inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
       column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
@@ -249,6 +260,7 @@ export class VsToggleComponent {
         [columnHover]="columnHover()"
         [zebraRows]="zebraRows()"
         [highlightActiveCell]="highlightActiveCell()"
+        [tooltip]="tooltipOptions()"
         [getRowStyle]="getRowStyle()"
         (cellClicked)="onCellClicked($event)"
         (sortChanged)="lastEvent.set('onSortChanged')"
@@ -294,6 +306,11 @@ export class VisualStatesDemoComponent {
   readonly columnHover = signal(true);
   readonly zebraRows = signal(true);
   readonly highlightActiveCell = signal(true);
+  readonly tooltipMode = signal<"anchored" | "follow">("anchored");
+  readonly tooltipOptions = computed<TooltipOptions>(() => ({
+    mode: this.tooltipMode(),
+    showDelay: 150,
+  }));
   readonly pageSelection = signal<"select" | "buttons">("select");
   readonly showPageLabel = signal(true);
   readonly paginationLayout = signal<PaginationLayout>("default");
@@ -378,7 +395,11 @@ export class VisualStatesDemoComponent {
   readonly columnDefs = computed<NgColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
-    { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
+    {
+      colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
+      headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
+      tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
+    },
     {
       colId: "department", key: "department", label: "Department", width: 140, filter: true,
       // Custom comparator: sort by a fixed department priority rather than alphabetically.
@@ -416,6 +437,10 @@ export class VisualStatesDemoComponent {
 
   setCellSelection(ev: Event): void {
     this.cellSelection.set((ev.target as HTMLSelectElement).value as "true" | "false" | "text");
+  }
+
+  setTooltipMode(ev: Event): void {
+    this.tooltipMode.set((ev.target as HTMLSelectElement).value as "anchored" | "follow");
   }
 
   setEditTrigger(ev: Event): void {

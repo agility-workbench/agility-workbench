@@ -77,7 +77,9 @@ function sameTarget(a: TooltipTarget | null, b: TooltipTarget | null): boolean {
 export class BodyTooltipRenderer {
   private showTimer: number | null = null;
   private hideTimer: number | null = null;
-  /** The target currently shown (or pending show). */
+  /** Target waiting for its show delay; its coordinates follow pointer movement before opening. */
+  private pendingTarget: TooltipTarget | null = null;
+  /** The target currently shown. */
   private active: TooltipTarget | null = null;
   /** True once the tooltip is actually on screen (vs. pending the show delay). */
   private shown = false;
@@ -96,7 +98,7 @@ export class BodyTooltipRenderer {
     this.bound = true;
     this.params.body.addEventListener("mouseover", this.handleMouseOver);
     this.params.body.addEventListener("mouseout", this.handleMouseOut);
-    this.params.body.addEventListener("mousemove", this.handleMouseMove);
+    this.params.root.addEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.addEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.addEventListener("mouseout", this.handleMouseOut);
     this.params.root.addEventListener("mouseover", this.handleUiMouseOver);
@@ -116,7 +118,7 @@ export class BodyTooltipRenderer {
     this.bound = false;
     this.params.body.removeEventListener("mouseover", this.handleMouseOver);
     this.params.body.removeEventListener("mouseout", this.handleMouseOut);
-    this.params.body.removeEventListener("mousemove", this.handleMouseMove);
+    this.params.root.removeEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.removeEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.removeEventListener("mouseout", this.handleMouseOut);
     this.params.root.removeEventListener("mouseover", this.handleUiMouseOver);
@@ -255,12 +257,16 @@ export class BodyTooltipRenderer {
   };
 
   private handleMouseMove = (e: MouseEvent) => {
-    if (!this.active || this.active.kind !== "body" || this.optionsForTarget(this.active).mode !== "follow") return;
-    if (!this.params.floating.isOpen()) return;
-    // Follow-mouse: re-position at the new pointer position (display-only path).
-    const content = this.params.floating.getOverlay()?.firstElementChild as HTMLElement | null;
-    if (!content) return;
-    this.params.floating.show(content, this.floatingOptsFor(this.active, e.clientX, e.clientY));
+    // Preserve the latest coordinates during the show delay so a follow tooltip opens beside the
+    // pointer's current position, not where it first entered the target.
+    if (this.pendingTarget) {
+      this.pendingTarget.clientX = e.clientX;
+      this.pendingTarget.clientY = e.clientY;
+    }
+    if (!this.active || this.optionsForTarget(this.active).mode !== "follow") return;
+    this.active.clientX = e.clientX;
+    this.active.clientY = e.clientY;
+    this.params.floating.updateFollowPosition(e.clientX, e.clientY);
   };
 
   private handleUiMouseOver = (e: MouseEvent) => {
@@ -286,10 +292,13 @@ export class BodyTooltipRenderer {
 
   private scheduleShow(target: TooltipTarget) {
     this.clearTimers();
+    this.pendingTarget = target;
     const delay = this.params.options().showDelay;
     this.showTimer = window.setTimeout(() => {
       this.showTimer = null;
-      this.showFor(target);
+      const pendingTarget = this.pendingTarget;
+      this.pendingTarget = null;
+      if (pendingTarget) this.showFor(pendingTarget);
     }, delay);
   }
 
@@ -297,6 +306,7 @@ export class BodyTooltipRenderer {
     if (this.showTimer != null) {
       window.clearTimeout(this.showTimer);
       this.showTimer = null;
+      this.pendingTarget = null;
     }
     if (!this.params.floating.isOpen() && this.active == null) return;
     const delay = this.params.options().hideDelay;
@@ -329,7 +339,11 @@ export class BodyTooltipRenderer {
     this.runtime.gui.textContent = String(content);
     this.active = target;
     this.cancelHide();
-    this.params.floating.reposition();
+    if (this.optionsForTarget(target).mode === "follow") {
+      this.params.floating.updateFollowPosition(target.clientX, target.clientY);
+    } else {
+      this.params.floating.reposition();
+    }
     return true;
   }
 
@@ -338,6 +352,7 @@ export class BodyTooltipRenderer {
     if (this.hideTimer != null) window.clearTimeout(this.hideTimer);
     this.showTimer = null;
     this.hideTimer = null;
+    this.pendingTarget = null;
   }
 
   // ---------------- show ----------------
@@ -393,8 +408,7 @@ export class BodyTooltipRenderer {
 
   private floatingOptsFor(target: TooltipTarget, x: number, y: number) {
     const opts = this.optionsForTarget(target);
-    // Headers never follow the mouse (they're not the interactive-form surface); always anchored.
-    const followMode = target.kind === "body" && opts.mode === "follow";
+    const followMode = opts.mode === "follow";
     const mode: FloatingMode = followMode
       ? { kind: "follow", x, y }
       : {

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -404,6 +404,87 @@ describe("tooltips", () => {
     // Column 1 (email) → inherits grid anchored: placement stamp present.
     await act(async () => { hoverBodyCell(container, 1); await tick(); });
     expect(tooltipEl(container)!.dataset.placement).toBeTruthy();
+    await unmountTestRoot(root);
+  });
+
+  it("opens at the latest pointer position and follows it without remounting content", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 10, mode: "follow" },
+      columns: [
+        { colId: "name", key: "name", label: "Name", tooltipField: "email" },
+      ],
+    });
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    gridRoot.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 400,
+      width: 500,
+      height: 400,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const cell = container.querySelector<HTMLElement>(
+      `.pte-row[data-view-idx="0"] .pte-cell[data-col-idx="0"]`,
+    )!;
+    await act(async () => {
+      cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 10, clientY: 15 }));
+      cell.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 60, clientY: 70 }));
+      await new Promise(resolve => setTimeout(resolve, 15));
+    });
+    const overlay = tooltipEl(container)!;
+    const content = overlay.querySelector<HTMLElement>(".pte-tooltip-text")!;
+    expect(overlay.style.left).toBe("68px");
+    expect(overlay.style.top).toBe("78px");
+    const replaceChildren = vi.spyOn(overlay, "replaceChildren");
+
+    await act(async () => {
+      cell.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 120, clientY: 130 }));
+      await Promise.resolve();
+    });
+
+    expect(tooltipEl(container)).toBe(overlay);
+    expect(overlay.querySelector(".pte-tooltip-text")).toBe(content);
+    expect(overlay.style.left).toBe("128px");
+    expect(overlay.style.top).toBe("138px");
+    expect(replaceChildren).not.toHaveBeenCalled();
+    await unmountTestRoot(root);
+  });
+
+  it("applies follow mode to header tooltips", async () => {
+    const { container, apiRef, root } = await mountGrid({
+      tooltip: { showDelay: 0, mode: "follow" },
+      columns: [
+        { colId: "name", key: "name", label: "Name", headerTooltip: "Employee name" },
+      ],
+    });
+    const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
+    gridRoot.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 400,
+      width: 500,
+      height: 400,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const instanceId = apiRef.current!.getColumnModel().getByColId("name")!.instanceID;
+    const header = container.querySelector<HTMLElement>(`.pte-hcell#${instanceId}`)!;
+    await act(async () => {
+      header.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 20, clientY: 25 }));
+      await tick();
+      header.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 100, clientY: 110 }));
+    });
+
+    const overlay = tooltipEl(container)!;
+    expect(overlay.textContent).toContain("Employee name");
+    expect(overlay.dataset.placement).toBeUndefined();
+    expect(overlay.style.left).toBe("108px");
+    expect(overlay.style.top).toBe("118px");
     await unmountTestRoot(root);
   });
 
