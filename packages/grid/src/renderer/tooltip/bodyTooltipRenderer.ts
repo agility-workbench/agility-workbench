@@ -15,6 +15,7 @@ import {
   getRendererTooltipContent,
   getRendererTooltipPlacement,
   RENDERER_TOOLTIP_TARGET_DISPOSED,
+  RENDERER_TOOLTIP_TARGET_UPDATED,
 } from "./rendererTooltipTarget";
 
 export interface BodyTooltipRendererParams {
@@ -101,6 +102,7 @@ export class BodyTooltipRenderer {
     this.params.root.addEventListener("mouseover", this.handleUiMouseOver);
     this.params.root.addEventListener("mouseout", this.handleUiMouseOut);
     this.params.root.addEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
+    this.params.root.addEventListener(RENDERER_TOOLTIP_TARGET_UPDATED, this.handleRendererTargetUpdated);
     // Rows recycle on scroll, so the safe v1 behavior is to dismiss. Scroll doesn't bubble; the
     // capture phase catches it from any inner scroller. Window resize invalidates positions too.
     document.addEventListener("scroll", this.handleScroll, true);
@@ -120,6 +122,7 @@ export class BodyTooltipRenderer {
     this.params.root.removeEventListener("mouseover", this.handleUiMouseOver);
     this.params.root.removeEventListener("mouseout", this.handleUiMouseOut);
     this.params.root.removeEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
+    this.params.root.removeEventListener(RENDERER_TOOLTIP_TARGET_UPDATED, this.handleRendererTargetUpdated);
     document.removeEventListener("scroll", this.handleScroll, true);
     window.removeEventListener("resize", this.handleScroll);
     document.removeEventListener("keydown", this.handleKeyDown, true);
@@ -141,6 +144,19 @@ export class BodyTooltipRenderer {
       this.active.rendererTarget === event.target
     ) {
       this.hideNow();
+    }
+  };
+
+  private handleRendererTargetUpdated = (event: Event) => {
+    if (!this.shown) return;
+    const updatedTargets = (event as CustomEvent<{ targets?: Element[] }>).detail?.targets
+      ?? [event.target as Element];
+    if (
+      (this.active?.kind === "body" || this.active?.kind === "ui") &&
+      this.active.rendererTarget != null &&
+      updatedTargets.includes(this.active.rendererTarget)
+    ) {
+      this.refreshShownRendererTarget(this.active);
     }
   };
 
@@ -208,6 +224,21 @@ export class BodyTooltipRenderer {
     }
     if (sameTarget(this.active, loc)) {
       if (this.hideTimer != null) this.cancelHide();
+      return;
+    }
+    // Moving between registered subtargets in one cell (sparkline point bands, for example) keeps
+    // one logical tooltip alive. Refresh its text and anchor immediately instead of reapplying the
+    // show delay and rebuilding the overlay.
+    if (
+      this.shown &&
+      this.active?.kind === "body" &&
+      loc.kind === "body" &&
+      this.active.viewIdx === loc.viewIdx &&
+      this.active.colIdx === loc.colIdx &&
+      this.active.rendererTarget &&
+      loc.rendererTarget &&
+      this.refreshShownRendererTarget(loc)
+    ) {
       return;
     }
     this.scheduleShow(loc);
@@ -282,6 +313,26 @@ export class BodyTooltipRenderer {
     }
   }
 
+  /** Update the scalar content and anchor of an already-shown renderer-owned tooltip in place. */
+  private refreshShownRendererTarget(
+    target: Extract<TooltipTarget, { kind: "body" | "ui" }>,
+  ): boolean {
+    if (!target.rendererTarget || !this.runtime || !this.shown) return false;
+    const content = getRendererTooltipContent(target.rendererTarget);
+    if (content == null || String(content).length === 0) {
+      this.hideNow();
+      return true;
+    }
+    // Registered renderer subtargets resolve to the built-in text runtime. Retain that runtime and
+    // its DOM node; only its text and the floating anchor geometry change.
+    if (!this.runtime.gui.classList.contains("pte-tooltip-text")) return false;
+    this.runtime.gui.textContent = String(content);
+    this.active = target;
+    this.cancelHide();
+    this.params.floating.reposition();
+    return true;
+  }
+
   private clearTimers() {
     if (this.showTimer != null) window.clearTimeout(this.showTimer);
     if (this.hideTimer != null) window.clearTimeout(this.hideTimer);
@@ -346,7 +397,13 @@ export class BodyTooltipRenderer {
     const followMode = target.kind === "body" && opts.mode === "follow";
     const mode: FloatingMode = followMode
       ? { kind: "follow", x, y }
-      : { kind: "anchored", getAnchorRect: () => this.getTargetRect(target), placement: opts.placement };
+      : {
+          kind: "anchored",
+          // Renderer subtargets can be retargeted while the pointer stays inside one cell. Read the
+          // live active target so repositioning follows the new point without rebuilding content.
+          getAnchorRect: () => this.getTargetRect(this.active ?? target),
+          placement: opts.placement,
+        };
     return {
       mode,
       className: opts.interactive ? "pte-tooltip pte-tooltip-interactive" : "pte-tooltip",

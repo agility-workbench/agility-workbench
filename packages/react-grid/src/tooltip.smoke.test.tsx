@@ -239,6 +239,56 @@ describe("tooltips", () => {
     await unmountTestRoot(root);
   });
 
+  it("updates and retargets an open sparkline tooltip without rebuilding it", async () => {
+    let series = [10, 20, 30];
+    const { container, apiRef, root } = await mountGrid({
+      tooltip: { showDelay: 0, hideDelay: 0 },
+      columns: [
+        {
+          colId: "trend",
+          label: "Trend",
+          valueGetter: () => series,
+          cellRenderer: SparklineRenderer,
+          cellRendererParams: {
+            tooltipValueFormatter: ({ value, index }: { value: number; index: number }) =>
+              `Point ${index}: $${value}`,
+          },
+        },
+      ],
+    });
+    const targets = () => container.querySelectorAll<SVGElement>(
+      `.pte-row[data-view-idx="0"] .pte-sparkline-tooltip-target`,
+    );
+    const hoveredTarget = targets()[1];
+    await act(async () => {
+      hoveredTarget.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 15, clientY: 10 }));
+      await tick();
+    });
+    const overlay = tooltipEl(container)!;
+    const content = overlay.querySelector<HTMLElement>(".pte-tooltip-text")!;
+    expect(content.textContent).toContain("Point 1: $20");
+
+    series = [10, 28, 30];
+    await act(async () => {
+      apiRef.current!.applyTransaction({ update: [{ rowId: "1", row: { ...DATA[0] } }] });
+      await Promise.resolve();
+    });
+
+    expect(targets()[1]).toBe(hoveredTarget);
+    expect(tooltipEl(container)).toBe(overlay);
+    expect(overlay.querySelector(".pte-tooltip-text")).toBe(content);
+    expect(content.textContent).toContain("Point 1: $28");
+
+    await act(async () => {
+      targets()[0].dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 5, clientY: 10 }));
+      await Promise.resolve();
+    });
+    expect(tooltipEl(container)).toBe(overlay);
+    expect(overlay.querySelector(".pte-tooltip-text")).toBe(content);
+    expect(content.textContent).toContain("Point 0: $10");
+    await unmountTestRoot(root);
+  });
+
   it("does not show sparkline point tooltips when tooltip=false", async () => {
     const { container, root } = await mountGrid({
       tooltip: false,

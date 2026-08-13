@@ -11,6 +11,7 @@ type RendererTooltipTargetRegistration = {
 
 const rendererTooltipTargets = new WeakMap<Element, RendererTooltipTargetRegistration>();
 export const RENDERER_TOOLTIP_TARGET_DISPOSED = "pte-renderer-tooltip-target-disposed";
+export const RENDERER_TOOLTIP_TARGET_UPDATED = "pte-renderer-tooltip-target-updated";
 
 /**
  * Attach point-specific tooltip content to a cell-renderer element or grid-owned UI control. The
@@ -53,4 +54,18 @@ export function getRendererTooltipAnchor(target: Element): Element {
 
 export function getRendererTooltipPlacement(target: Element): FloatingPlacement | undefined {
   return rendererTooltipTargets.get(target)?.placement;
+}
+
+/**
+ * Notify the delegated tooltip renderer that a registered target kept its identity but changed
+ * content and/or anchor geometry. An open tooltip can then update and reposition in place.
+ */
+export function notifyRendererTooltipTargetsUpdated(targets: readonly Element[]): void {
+  const registeredTargets = targets.filter(target => rendererTooltipTargets.has(target));
+  const eventTarget = registeredTargets[0];
+  if (!eventTarget) return;
+  eventTarget.dispatchEvent(new CustomEvent(RENDERER_TOOLTIP_TARGET_UPDATED, {
+    bubbles: true,
+    detail: { targets: registeredTargets },
+  }));
 }
