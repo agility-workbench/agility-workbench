@@ -3095,6 +3095,21 @@
   gap: 8px;
 }
 
+/* The checkbox keeps its intrinsic width; the adjacent label slot owns everything left in the
+   option row. Its direct child is the custom component root (core, React, or Angular), so stretch
+   that root too — consumers can use space-between without knowing the menu width. */
+.pte-set-filter-option-label {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pte-set-filter-option-label > * {
+  width: 100%;
+  min-width: 0;
+}
+
 .pte-set-filter-option input {
   accent-color: var(--pte-checkbox-accent-color);
   width: 14px;

@@ -2,6 +2,7 @@ import React from "react";
 import type {
   ColDef,
   DefaultColDef,
+  FilterParams,
   RowPresentation,
   RowPresentationParams,
   RowTooltipPresentation,
@@ -12,8 +13,19 @@ import type {
   CellRendererClass,
   CellRendererParams,
   ICellRenderer,
+  ISetFilterComponent,
+  SetFilterComponent,
+  SetFilterComponentClass,
+  SetFilterSpecialValueComponent,
+  SetFilterSpecialValueComponentParams,
+  SetFilterValueComponent,
+  SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
-import { isClassRenderer, NON_DEFAULTABLE_COLDEF_KEYS } from "@agility-workbench/grid";
+import {
+  isClassRenderer,
+  isClassSetFilterComponent,
+  NON_DEFAULTABLE_COLDEF_KEYS,
+} from "@agility-workbench/grid";
 import { isClassTooltipComponent } from "@agility-workbench/grid";
 import type {
   TooltipComponent,
@@ -55,15 +67,33 @@ export type ReactActionFrameComponent =
   | React.ComponentType<ActionFrameComponentParams>
   | React.ExoticComponent<ActionFrameComponentParams>;
 
+export type ReactSetFilterValueComponent =
+  | React.ComponentType<SetFilterValueComponentParams>
+  | React.ExoticComponent<SetFilterValueComponentParams>;
+
+export type ReactSetFilterSpecialValueComponent =
+  | React.ComponentType<SetFilterSpecialValueComponentParams>
+  | React.ExoticComponent<SetFilterSpecialValueComponentParams>;
+
+export type ReactFilterParams = Omit<
+  FilterParams,
+  "valueComponent" | "selectAllComponent" | "blanksComponent"
+> & {
+  valueComponent?: SetFilterValueComponent | ReactSetFilterValueComponent;
+  selectAllComponent?: SetFilterSpecialValueComponent | ReactSetFilterSpecialValueComponent;
+  blanksComponent?: SetFilterSpecialValueComponent | ReactSetFilterSpecialValueComponent;
+};
+
 export type ReactColDef = Omit<
   ColDef,
-  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent"
+  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent" | "filterParams"
 > & {
   cellRenderer?: CellRenderer | ReactCellRenderer;
   cellEditor?: CellEditor | ReactCellEditor;
   tooltipComponent?: TooltipComponent | ReactTooltipComponent;
   headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
   actionFrameComponent?: ActionFrameComponent | ReactActionFrameComponent;
+  filterParams?: ReactFilterParams;
   children?: ReactColDef[];
 };
 
@@ -77,6 +107,7 @@ export type ReactDefaultColDef = Omit<ReactColDef, (typeof NON_DEFAULTABLE_COLDE
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
 const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();
 const reactActionFrameCache = new WeakMap<object, ActionFrameComponentClass>();
+const reactSetFilterComponentCache = new WeakMap<object, SetFilterComponentClass<any>>();
 
 function isObjectRenderer(renderer: unknown): renderer is object {
   return (typeof renderer === "function" || typeof renderer === "object") && renderer !== null;
@@ -279,6 +310,70 @@ export function adaptActionFrame(
   return adapted;
 }
 
+function createReactSetFilterComponentClass<P extends object>(
+  Component: React.ComponentType<P> | React.ExoticComponent<P>,
+): SetFilterComponentClass<P> {
+  return class ReactSetFilterComponentAdapter implements ISetFilterComponent<P> {
+    private el = document.createElement("span");
+    private root: ManagedReactRoot | null = null;
+
+    init(params: P): void {
+      this.root = new ManagedReactRoot(this.el);
+      this.render(params);
+    }
+
+    getGui(): HTMLElement {
+      return this.el;
+    }
+
+    refresh(params: P): boolean {
+      this.render(params);
+      return true;
+    }
+
+    destroy(): void {
+      this.root?.destroy();
+      this.root = null;
+    }
+
+    private render(params: P): void {
+      this.root?.render(React.createElement(Component, params));
+    }
+  };
+}
+
+function adaptSetFilterComponent<P extends object>(
+  component: SetFilterComponent<P> | React.ComponentType<P> | React.ExoticComponent<P> | undefined,
+): SetFilterComponent<P> | undefined {
+  if (!component) return undefined;
+  if (
+    typeof component === "function" &&
+    isClassSetFilterComponent(component as SetFilterComponent<P>)
+  ) {
+    return component as SetFilterComponent<P>;
+  }
+  if (!isObjectRenderer(component)) return component as SetFilterComponent<P>;
+
+  const cached = reactSetFilterComponentCache.get(component);
+  if (cached) return cached as SetFilterComponentClass<P>;
+
+  const adapted = createReactSetFilterComponentClass(
+    component as React.ComponentType<P> | React.ExoticComponent<P>,
+  );
+  reactSetFilterComponentCache.set(component, adapted);
+  return adapted;
+}
+
+function adaptReactFilterParams(filterParams: ReactFilterParams | undefined): FilterParams | undefined {
+  if (!filterParams) return undefined;
+  return {
+    ...filterParams,
+    valueComponent: adaptSetFilterComponent(filterParams.valueComponent),
+    selectAllComponent: adaptSetFilterComponent(filterParams.selectAllComponent),
+    blanksComponent: adaptSetFilterComponent(filterParams.blanksComponent),
+  };
+}
+
 /**
  * Adapt the React-aware components carried by a single column def into their core equivalents. Used
  * for real column defs and, via {@link adaptReactDefaultColDef}, for the grid-level `defaultColDef`.
@@ -291,6 +386,7 @@ export function adaptReactColDef(colDef: ReactColDef): ColDef {
     tooltipComponent: adaptTooltip(colDef.tooltipComponent),
     headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
     actionFrameComponent: adaptActionFrame(colDef.actionFrameComponent),
+    filterParams: adaptReactFilterParams(colDef.filterParams),
     children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
   };
 }
@@ -315,5 +411,6 @@ export function adaptReactDefaultColDef(
   if ("tooltipComponent" in defaultColDef) next.tooltipComponent = adaptTooltip(defaultColDef.tooltipComponent);
   if ("headerTooltip" in defaultColDef) next.headerTooltip = adaptHeaderTooltip(defaultColDef.headerTooltip);
   if ("actionFrameComponent" in defaultColDef) next.actionFrameComponent = adaptActionFrame(defaultColDef.actionFrameComponent);
+  if ("filterParams" in defaultColDef) next.filterParams = adaptReactFilterParams(defaultColDef.filterParams);
   return next;
 }

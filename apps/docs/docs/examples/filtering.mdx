@@ -26,6 +26,27 @@ Set-filter values can come from loaded rows, a static list, or an asynchronous
 loader. A function supplied as `filter` becomes a custom row matcher while the
 standard filter panel still owns its model and inputs.
 
+Set-filter label content is independently customizable while the grid retains
+ownership of the checkbox and interaction behavior:
+
+```tsx
+const regionColumn: ReactColDef = {
+  key: "region",
+  label: "Region",
+  filter: "set",
+  filterParams: {
+    valueComponent: RegionValue,
+    valueComponentParams: { showFlag: true },
+    selectAllComponent: SelectAllRegions,
+    blanksComponent: UnassignedRegion,
+  },
+};
+```
+
+Omitting a component uses the built-in text. Once configured, a component that
+renders no content leaves that label slot intentionally empty. Mini-filtering
+and accessible checkbox names continue to use the underlying text labels.
+
 ## Programmatic filters
 
 `getFilterModel()` / `setFilterModel(filters)` / `addFilterModel(filter)` /

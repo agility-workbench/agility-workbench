@@ -15,6 +15,9 @@ export type {
   ReactRowTooltipPresentation,
   ReactRowPresentation,
   ReactGetRowPresentation,
+  ReactFilterParams,
+  ReactSetFilterSpecialValueComponent,
+  ReactSetFilterValueComponent,
 } from "./cellRenderer";
 export type { ReactCellEditor, ReactCellEditorHandle } from "./cellEditor";
 // Aliased: `export *` above already publishes core's plain `MenuItem`; this is the React-aware

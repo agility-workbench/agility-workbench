@@ -27,7 +27,7 @@ export function initDomRenderer(
     core as GridCore,
     api,
     new MenuCoordinator(menuSvc, adapter),
-    new FilterMenuCoordinator(core as GridCore, filterSvc),
+    new FilterMenuCoordinator(core as GridCore, filterSvc, api),
     (exporter, clipboard, pinning) => new BodyMenuCoordinator(
       new BodyMenuService({ core, exporter, clipboard, pinning }),
       bodyAdapter,

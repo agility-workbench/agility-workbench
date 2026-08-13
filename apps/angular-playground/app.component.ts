@@ -25,6 +25,7 @@ import { ToolbarDemoComponent } from "./toolbar-demo.component";
 import { TooltipDemoComponent } from "./tooltip-demo.component";
 import { TreeDataDemoComponent } from "./tree-data-demo.component";
 import { VisualStatesDemoComponent } from "./visual-states-demo.component";
+import { SetFilterComponentsDemoComponent } from "./set-filter-components-demo.component";
 
 // The first three are the Angular-wrapper-focused intro demos; the rest mirror the React
 // playground's PAGES list (apps/react-playground/main.tsx) in the same order.
@@ -49,6 +50,7 @@ const PAGES = [
   { id: "columnState", label: "Column state save/restore" },
   { id: "groupExpanders", label: "Group expanders" },
   { id: "quickFilter", label: "Quick filter" },
+  { id: "setFilterComponents", label: "Set-filter components" },
   { id: "headerComponents", label: "Custom headers" },
   { id: "tooltips", label: "Tooltips" },
   { id: "actionFrame", label: "ActionFrame" },
@@ -89,6 +91,7 @@ type PageId = (typeof PAGES)[number]["id"];
     TooltipDemoComponent,
     TreeDataDemoComponent,
     VisualStatesDemoComponent,
+    SetFilterComponentsDemoComponent,
   ],
   template: `
     <div class="demo-shell" [class.pte-theme-dark]="dark()" [class.pte-theme-light]="!dark()">
@@ -162,6 +165,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("quickFilter") {
           <quick-filter-demo />
+        }
+        @case ("setFilterComponents") {
+          <set-filter-components-demo />
         }
         @case ("headerComponents") {
           <header-component-demo />
