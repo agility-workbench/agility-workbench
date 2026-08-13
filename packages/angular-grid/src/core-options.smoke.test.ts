@@ -16,6 +16,8 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
       rowIdKey="id"
       [autosizeColumnsOnDataChange]="autosize"
       [clearSelectionOnBodyClick]="clearOnBodyClick"
+      [selectionPersistence]="selectionPersistence"
+      [selectAllScope]="selectAllScope"
       [resetPageOn]="resetPageOn"
       (gridReady)="api = $event"
     />
@@ -25,6 +27,8 @@ class CoreOptionsHost {
   api: IGridAPI | null = null;
   autosize = false;
   clearOnBodyClick = true;
+  selectionPersistence: GridOptions["selectionPersistence"];
+  selectAllScope: GridOptions["selectAllScope"];
   resetPageOn: GridOptions["resetPageOn"];
   rows = [{ id: "1", name: "A" }];
   cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
@@ -88,5 +92,16 @@ describe("AwbGrid core option forwarding", () => {
       instance.resetPageOn = ["filter", "sort"];
     });
     expect(host.api!.getCore().getOptions().resetPageOn).toEqual(["filter", "sort"]);
+  });
+
+  it("forwards selectionPersistence and selectAllScope inputs to core", async () => {
+    const { host } = await mountGridHost(CoreOptionsHost, 600, (instance) => {
+      instance.selectionPersistence = "keep";
+      instance.selectAllScope = "page";
+    });
+    expect(host.api!.getCore().getOptions()).toMatchObject({
+      selectionPersistence: "keep",
+      selectAllScope: "page",
+    });
   });
 });

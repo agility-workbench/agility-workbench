@@ -393,6 +393,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.nodes.forEach(callback);
   }
 
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void {
+    this.filteredIdx.forEach((i: number) => callback(this.nodes[i], i));
+  }
+
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void {
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
   }

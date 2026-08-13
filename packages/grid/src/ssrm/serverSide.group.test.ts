@@ -132,6 +132,20 @@ describe("server-side row grouping", () => {
     expect(core.getPaginationInfo().totalRowCountKnown).toBe(true);
   });
 
+  it("exposes post-filter traversal for the server-owned row order", async () => {
+    const { core } = makeGrid();
+    await flush();
+    const rowModel = core.getRowModel();
+    const afterFilter: string[] = [];
+    const afterFilterAndSort: string[] = [];
+
+    rowModel.forEachNodeAfterFilter(node => afterFilter.push(node.id));
+    rowModel.forEachNodeAfterFilterAndSort(node => afterFilterAndSort.push(node.id));
+
+    expect(afterFilter).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect(afterFilterAndSort).toEqual(afterFilter);
+  });
+
   it("grouping requests group rows at the root and shows collapsed group headers", async () => {
     const { core, ds } = makeGrid();
     await flush();

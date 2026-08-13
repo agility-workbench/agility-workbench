@@ -67,6 +67,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "columnSelection", props.columnSelection);
   setIfDefined(options, "showColumnButtonsOnHover", props.showColumnButtonsOnHover);
   setIfDefined(options, "selectAllRowsOnHeaderClick", props.selectAllRowsOnHeaderClick);
+  setIfDefined(options, "selectAllScope", props.selectAllScope);
+  setIfDefined(options, "selectionPersistence", props.selectionPersistence);
   setIfDefined(options, "clearSelectionOnBodyClick", props.clearSelectionOnBodyClick);
   setIfDefined(options, "resetPageOn", props.resetPageOn);
   setIfDefined(options, "pageSize", props.pageSize);

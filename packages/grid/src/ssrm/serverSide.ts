@@ -185,6 +185,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void {
+    // Filtering and sorting are both applied by the server before rows enter the local cache, so
+    // there is no distinct pre-sort order to traverse. Match the post-filter-and-sort view.
+    this.forEachNodeAfterFilterAndSort(callback);
+  }
+
   getGroupNodes(): IRowNode[] {
     const out: IRowNode[] = [];
     for (const listing of this.listings.values()) {

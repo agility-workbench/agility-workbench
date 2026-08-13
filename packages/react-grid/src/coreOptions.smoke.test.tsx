@@ -84,6 +84,15 @@ describe("getGridOptions option forwarding", () => {
     expect(options.clearSelectionOnBodyClick).toBe(false);
   });
 
+  it("forwards selectionPersistence and selectAllScope", () => {
+    const options = getGridOptions({
+      selectionPersistence: "keep",
+      selectAllScope: "page",
+    });
+    expect(options.selectionPersistence).toBe("keep");
+    expect(options.selectAllScope).toBe("page");
+  });
+
   it("forwards the async transaction batch window, including zero", () => {
     expect(getGridOptions({ asyncTransactionWaitMs: 0 }).asyncTransactionWaitMs).toBe(0);
     expect(getGridOptions({ asyncTransactionWaitMs: 25 }).asyncTransactionWaitMs).toBe(25);

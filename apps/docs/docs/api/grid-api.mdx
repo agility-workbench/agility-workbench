@@ -13,6 +13,8 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `setRowData(rows)` | Replace client-side rows |
+| `forEachNodeAfterFilter(callback)` | Visit rows that pass filtering, before client-side sorting |
+| `forEachNodeAfterFilterAndSort(callback)` | Visit rows that pass filtering in final sorted order |
 | `applyTransaction(tx)` | Add, update, or remove client-side rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted) |
 | `applyTransactionAsync(tx)` | Mutate client-side rows immediately and defer model derivation/rendering into a shared batch; resolves after the flush with this call's counts |
 | `flushAsyncTransactions()` | Immediately finalize pending asynchronous transactions |

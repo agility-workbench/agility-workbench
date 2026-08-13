@@ -123,6 +123,11 @@ export interface IGridAPI {
   /** Set the row data. */
   setRowData(rows: RowData[]): void;
 
+  /** Visit every row node that remains after filtering, before client-side sorting. */
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void;
+  /** Visit every row node that remains after filtering in its final sorted order. */
+  forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void;
+
   /**
    * Server-side row model only: re-invoke the data source because the server's data changed —
    * distinct from a plain redraw. `groupKeys` scopes the refresh to one group subtree (that

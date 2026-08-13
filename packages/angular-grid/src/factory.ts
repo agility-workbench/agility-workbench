@@ -59,6 +59,8 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "columnSelection", grid.columnSelection());
   setIfDefined(options, "showColumnButtonsOnHover", grid.showColumnButtonsOnHover());
   setIfDefined(options, "selectAllRowsOnHeaderClick", grid.selectAllRowsOnHeaderClick());
+  setIfDefined(options, "selectAllScope", grid.selectAllScope());
+  setIfDefined(options, "selectionPersistence", grid.selectionPersistence());
   setIfDefined(options, "clearSelectionOnBodyClick", grid.clearSelectionOnBodyClick());
   setIfDefined(options, "resetPageOn", grid.resetPageOn());
   setIfDefined(options, "pageSize", grid.pageSize());
