@@ -59,6 +59,13 @@ function checkboxCell(root: HTMLElement, viewIdx: number): HTMLElement {
   return row.querySelector<HTMLElement>(".pte-checkbox-cell")!;
 }
 
+function rowNumberCell(root: HTMLElement, viewIdx: number): HTMLElement {
+  const row = root.querySelector<HTMLElement>(`.pte-leading-viewport .pte-row[data-view-idx="${viewIdx}"]`)
+    ?? [...root.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`)]
+      .find(r => r.querySelector(".pte-row-number-cell"))!;
+  return row.querySelector<HTMLElement>(".pte-row-number-cell")!;
+}
+
 function click(el: HTMLElement, mods: Partial<MouseEventInit> = {}) {
   el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, ...mods }));
   el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...mods }));
@@ -206,6 +213,41 @@ describe("checkbox column structure", () => {
 });
 
 describe("body checkbox gestures", () => {
+  it("makes row numbers keyboard stops only when row selection is enabled", () => {
+    const enabled = mountGrid({ rowSelection: true, rowNumbers: true, highlightActiveCell: true });
+    enabled.root.focus();
+    press(enabled.root, "ArrowDown"); // first data column
+    press(enabled.root, "ArrowLeft");
+
+    expect(enabled.core.getActiveCell()).toEqual({ row: 0, colIdx: 0, rowPinned: undefined });
+    expect(rowNumberCell(enabled.root, 0).classList.contains("pte-row-number-cell-focused")).toBe(true);
+    expect(enabled.core.getSelectionRange()).toBeNull();
+
+    press(enabled.root, "Enter");
+    expect([...enabled.core.getSelectedRowIds()]).toEqual(["r0"]);
+    expect(enabled.core.getActiveCell()?.colIdx).toBe(0);
+
+    press(enabled.root, "ArrowDown");
+    press(enabled.root, "Enter", { ctrlKey: true });
+    expect([...enabled.core.getSelectedRowIds()].sort()).toEqual(["r0", "r1"]);
+
+    press(enabled.root, "ArrowDown");
+    press(enabled.root, "Enter", { shiftKey: true });
+    expect([...enabled.core.getSelectedRowIds()].sort()).toEqual(["r1", "r2"]);
+
+    const disabled = mountGrid({ rowSelection: false, rowNumbers: true });
+    disabled.root.focus();
+    press(disabled.root, "ArrowDown");
+    const before = disabled.core.getActiveCell();
+    press(disabled.root, "ArrowLeft");
+    expect(disabled.core.getActiveCell()).toEqual(before); // decorative gutter is skipped
+
+    click(rowNumberCell(disabled.root, 2));
+    expect(disabled.core.getActiveCell()).toEqual(before);
+    expect(disabled.core.getSelectionRange()).not.toBeNull();
+    expect(disabled.core.getSelectedRowIds().size).toBe(0);
+  });
+
   it("click toggles a single row additively; shift-click unions a range in", () => {
     const { core, root } = mountGrid();
     click(checkboxCell(root, 1));

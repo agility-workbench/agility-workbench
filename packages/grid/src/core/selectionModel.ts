@@ -22,6 +22,9 @@ interface SelectionModelDeps {
   // Whether a view-index row can hold a cell selection / be a navigation target (group rows are
   // skipped unless groupRowsSelectable is enabled).
   isRowSelectable: (viewIdx: number) => boolean;
+  // Row-number cells are keyboard stops only while row selection is enabled. Keep this dynamic so
+  // a framework wrapper can change rowSelection without rebuilding the core/selection model.
+  isRowNumberNavigable?: () => boolean;
   getPinnedRowCount?: (position: "top" | "bottom") => number;
   getPinnedRowNode?: (
     position: "top" | "bottom",
@@ -72,15 +75,19 @@ export class SelectionModel {
       && col.isSelectionCheckboxColumn();
   }
 
-  /** Row numbers stay outside the body cursor. Checkbox cells are real keyboard stops even though
-   * they remain excluded from data ranges, clipboard operations, and column selection. */
+  /** Row-number and checkbox cells can hold the keyboard cursor while remaining outside data
+   * ranges, clipboard operations, editing, and column selection. Row numbers are enabled only
+   * while row selection is enabled. */
   private isNavigableColumn(col: Column | undefined): boolean {
-    return !!col && !this.isRowNumberColumn(col);
+    if (!col) return false;
+    if (this.isRowNumberColumn(col)) return this.deps.isRowNumberNavigable?.() ?? false;
+    return true;
   }
 
-  private firstNavigableColIdx(): number {
+  private firstNavigableColIdx(rowPinned?: "top" | "bottom"): number {
     const leaves = this.leafColumns();
-    const index = leaves.findIndex(col => this.isNavigableColumn(col));
+    const index = leaves.findIndex(col => this.isNavigableColumn(col)
+      && !(rowPinned && this.isRowNumberColumn(col)));
     return index >= 0 ? index : leaves.length;
   }
 
@@ -106,11 +113,16 @@ export class SelectionModel {
     return -1;
   }
 
-  /** Walk horizontally in visual leaf order while skipping only the row-number gutter. */
-  private stepNavigableColumn(colIdx: number, direction: 1 | -1): number | null {
+  /** Walk horizontally through keyboard stops; blank row-number slots in pinned bands are skipped. */
+  private stepNavigableColumn(
+    colIdx: number,
+    direction: 1 | -1,
+    rowPinned?: "top" | "bottom",
+  ): number | null {
     const leaves = this.leafColumns();
     for (let next = colIdx + direction; next >= 0 && next < leaves.length; next += direction) {
-      if (this.isNavigableColumn(leaves[next])) return next;
+      if (this.isNavigableColumn(leaves[next])
+        && !(rowPinned && this.isRowNumberColumn(leaves[next]))) return next;
     }
     return null;
   }
@@ -358,8 +370,20 @@ export class SelectionModel {
     if (location.colIdx < 0 || location.colIdx >= this.leafColumns().length) return false;
     const column = this.leafColumns()[location.colIdx];
     if (!this.isNavigableColumn(column)) return false;
+    if (this.isRowNumberColumn(column)) {
+      // Application-pinned rows deliberately render a blank gutter and are not part of the row-id
+      // selection model, so their row-number slots are never actionable keyboard positions.
+      if (location.rowPinned) return false;
+      if (!location.rowPinned && !this.deps.isRowSelectable(location.viewIdx)) return false;
+      this.focusUtilityCell({
+        row: location.viewIdx,
+        colIdx: location.colIdx,
+        rowPinned: location.rowPinned,
+      });
+      return true;
+    }
     if (this.isCheckboxColumn(column)) {
-      this.focusCheckboxCell({
+      this.focusUtilityCell({
         row: location.viewIdx,
         colIdx: location.colIdx,
         rowPinned: location.rowPinned,
@@ -394,16 +418,31 @@ export class SelectionModel {
   }
 
   selectSingleCell(viewIdx: number, colIdx: number, rowPinned?: "top" | "bottom"): boolean {
-    this.clearRows();
-    this.clearColumns();
     return this.startFromCell({ viewIdx, colIdx, rowPinned });
   }
 
-  /** Focus a checkbox cell without treating focus as checked state or clearing checkbox-owned rows. */
-  focusCheckboxCell(location: CellPos): void {
+  /** Focus a row-selection utility cell without treating focus as selection or clearing selected rows. */
+  focusUtilityCell(location: CellPos): void {
     this.clearRange();
     this.clearColumns();
     this.active = { ...location };
+  }
+
+  /** Move a cursor off a utility column that became inert after a runtime option change. */
+  reconcileActiveColumn(): boolean {
+    if (!this.active) return false;
+    const leaves = this.leafColumns();
+    if (this.isNavigableColumn(leaves[this.active.colIdx])) return false;
+    const candidates = leaves
+      .map((col, idx) => this.isNavigableColumn(col) ? idx : -1)
+      .filter(idx => idx >= 0);
+    if (candidates.length === 0) {
+      this.clearRange();
+      return true;
+    }
+    const target = candidates.reduce((best, idx) =>
+      Math.abs(idx - this.active!.colIdx) < Math.abs(best - this.active!.colIdx) ? idx : best);
+    return this.selectSingleCell(this.active.row, target, this.active.rowPinned);
   }
 
   clearRange() {
@@ -446,11 +485,11 @@ export class SelectionModel {
     dRow: number,
     dCol: number,
   ): CellPos {
-    const minCol = this.firstNavigableColIdx();
+    const minCol = this.firstNavigableColIdx(from.rowPinned);
     const maxCol = this.lastNavigableColIdx();
     const advance = (position: CellPos): CellPos | null => {
       if (dCol !== 0) {
-        const colIdx = this.stepNavigableColumn(position.colIdx, dCol < 0 ? -1 : 1);
+        const colIdx = this.stepNavigableColumn(position.colIdx, dCol < 0 ? -1 : 1, position.rowPinned);
         return colIdx != null && colIdx >= minCol && colIdx <= maxCol ? { ...position, colIdx } : null;
       }
       const next = this.stepVertical(position, dRow < 0 ? -1 : 1);
@@ -496,9 +535,10 @@ export class SelectionModel {
    *                a single-cell step. Column is unchanged.
    */
   navigate(dir: NavDir, opts: { extend: boolean; jump?: NavJump; pageRows?: number }): CellPos | null {
-    const firstCol = this.firstNavigableColIdx();
-    const lastCol = this.lastNavigableColIdx();
     const firstPosition = this.firstRowPosition();
+    const referencePosition = this.active ?? firstPosition;
+    const firstCol = this.firstNavigableColIdx(referencePosition?.rowPinned);
+    const lastCol = this.lastNavigableColIdx();
     if (lastCol < firstCol || !firstPosition) return null;
 
     // Nothing selected yet: select the first selectable data cell.
@@ -540,13 +580,13 @@ export class SelectionModel {
       switch (dir) {
         case "up": nextPosition = this.moveVertical(from, -pageRows); break;
         case "down": nextPosition = this.moveVertical(from, pageRows); break;
-        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1) ?? from.colIdx; break;
-        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1) ?? from.colIdx; break;
+        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1, from.rowPinned) ?? from.colIdx; break;
+        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1, from.rowPinned) ?? from.colIdx; break;
       }
     } else {
       switch (dir) {
-        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1) ?? from.colIdx; break;
-        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1) ?? from.colIdx; break;
+        case "left": nextCol = this.stepNavigableColumn(from.colIdx, -1, from.rowPinned) ?? from.colIdx; break;
+        case "right": nextCol = this.stepNavigableColumn(from.colIdx, 1, from.rowPinned) ?? from.colIdx; break;
         case "up": nextPosition = this.stepVertical(from, -1); break;
         case "down": nextPosition = this.stepVertical(from, 1); break;
       }
@@ -560,9 +600,9 @@ export class SelectionModel {
 
   /** Jump the active cell to a grid corner (Ctrl+Home / Ctrl+End). Returns the new active cell. */
   navigateToCorner(corner: "topLeft" | "bottomRight", extend: boolean): CellPos | null {
-    const firstCol = this.firstNavigableColIdx();
-    const lastCol = this.lastNavigableColIdx();
     const position = corner === "topLeft" ? this.firstRowPosition() : this.lastRowPosition();
+    const firstCol = this.firstNavigableColIdx(position?.rowPinned);
+    const lastCol = this.lastNavigableColIdx();
     if (lastCol < firstCol || !position) return null;
     const nextCol = corner === "topLeft" ? firstCol : lastCol;
     return this.moveActiveToPosition({ ...position, colIdx: nextCol }, extend);
@@ -622,14 +662,18 @@ export class SelectionModel {
   }
 
   private moveActiveToPosition(position: CellPos, extend: boolean): CellPos | null {
+    const column = this.leafColumns()[position.colIdx];
+    const utilityTarget = this.isRowNumberColumn(column) || this.isCheckboxColumn(column);
     if (extend) {
+      // Utility cells can hold the cursor but never belong to a data-cell range. A range gesture
+      // stops at their boundary; plain navigation can still enter them.
+      if (utilityTarget) return this.active;
       if (!this.anchor) {
         this.anchor = this.active ? { ...this.active } : { ...position };
       }
       this.updateRange(position.row, position.colIdx, position.rowPinned);
     } else {
-      const column = this.leafColumns()[position.colIdx];
-      if (this.isCheckboxColumn(column)) this.focusCheckboxCell(position);
+      if (utilityTarget) this.focusUtilityCell(position);
       else this.selectSingleCell(position.row, position.colIdx, position.rowPinned);
     }
     return this.active;
@@ -777,6 +821,7 @@ export class SelectionModel {
 
   // ---------------- Row selection ----------------
   toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range" | "rangeAdd") {
+    if (!this.deps.isRowSelectable(viewIdx)) return;
     const rowId = this.deps.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
 
@@ -788,6 +833,7 @@ export class SelectionModel {
       const end = Math.max(anchorIdx, viewIdx);
       if (mode === "range") this.selectedRowIds.clear();
       for (let i = start; i <= end; i++) {
+        if (!this.deps.isRowSelectable(i)) continue;
         const id = this.deps.getRowIdAtViewIndex(i);
         if (id) this.selectedRowIds.add(id);
       }

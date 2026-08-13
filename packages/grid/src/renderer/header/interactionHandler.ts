@@ -84,7 +84,7 @@ export class HeaderInteractionHandler {
 
     // The row-number header's only action is select-all, matching a click on it.
     if (col.isRowNumberColumn()) {
-      if (core.options.selectAllRowsOnHeaderClick) {
+      if (core.options.rowSelection && core.options.selectAllRowsOnHeaderClick) {
         core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
       }
       return true;
@@ -169,7 +169,8 @@ export class HeaderInteractionHandler {
     // header cell), when enabled via selectAllRowsOnHeaderClick. The row-number column is internal,
     // so the normal column-select/sort path below would no-op for it anyway.
     if (header.classList.contains("pte-hcell-row-number")) {
-      if (this.params.core.options.selectAllRowsOnHeaderClick) {
+      if (this.params.core.options.rowSelection
+        && this.params.core.options.selectAllRowsOnHeaderClick) {
         this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
       }
       return;

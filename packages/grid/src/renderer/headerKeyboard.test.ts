@@ -68,11 +68,11 @@ const leafLabels = (core: GridCore) =>
   core.getColumnModel().getLeaves().map(c => c.label ?? c.colId ?? "");
 
 describe("entering and leaving the header", () => {
-  it("puts the cursor on the first header cell when focus enters the grid", () => {
+  it("puts the cursor on the first actionable header cell when focus enters the grid", () => {
     const { core, root } = mountGrid();
     root.focus();
 
-    expect(core.getHeaderFocusColIdx()).toBe(0);
+    expect(core.getHeaderFocusColIdx()).toBe(1); // inert row-number header is skipped
     const el = activeHeader(root);
     expect(el).not.toBeNull();
     // Named for AT as well as painted — a columnheader can be the activedescendant just as a
@@ -106,6 +106,40 @@ describe("entering and leaving the header", () => {
     expect(core.getHeaderFocusColIdx()).toBeNull();
     expect(activeHeader(root)).toBeNull();
     expect(core.getActiveCell()).toEqual({ row: 0, colIdx, rowPinned: undefined });
+  });
+
+  it("hands an enabled row-number header to a focus-only row-number body cell", () => {
+    const { core, root } = mountGrid(10, {
+      rowSelection: true,
+      selectAllRowsOnHeaderClick: true,
+    });
+    root.focus();
+    expect(core.getHeaderFocusColIdx()).toBe(0);
+
+    press(root, "ArrowDown");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 0, rowPinned: undefined });
+    expect(core.getSelectionRange()).toBeNull();
+    expect(root.querySelector(".pte-row-number-cell-focused")).not.toBeNull();
+
+    press(root, "Enter");
+    expect([...core.getSelectedRowIds()]).toEqual(["r0"]);
+    expect(core.getActiveCell()?.colIdx).toBe(0);
+  });
+
+  it("skips the blank row-number slot when a pinned-top band follows the header", async () => {
+    const { core, root } = mountGrid(10, {
+      rowSelection: true,
+      selectAllRowsOnHeaderClick: true,
+      pinnedTopRowData: [{ id: "pt1", region: "TOP", name: "Pinned", total: 0 }],
+    });
+    await raf();
+    root.focus();
+    expect(core.getHeaderFocusColIdx()).toBe(0);
+
+    press(root, "ArrowDown");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx: 1, rowPinned: "top" });
+    press(root, "ArrowLeft");
+    expect(core.getActiveCell()?.colIdx).toBe(1); // blank pinned row-number slot is skipped
   });
 
   it("returns to the header on ArrowUp from the top row, same column", () => {
@@ -162,7 +196,7 @@ describe("entering and leaving the header", () => {
     const { core, root } = mountGrid();
     root.focus();
     press(root, "ArrowRight");
-    expect(core.getHeaderFocusColIdx()).toBe(1);
+    expect(core.getHeaderFocusColIdx()).toBe(2);
 
     const cell = root.querySelectorAll<HTMLElement>(".pte-viewport .pte-cell")[2];
     cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
@@ -190,13 +224,62 @@ describe("entering and leaving the header", () => {
 });
 
 describe("moving along the header", () => {
+  it("skips an inert row-number header and does not let it select rows", () => {
+    const { core, root } = mountGrid(10, {
+      rowSelection: false,
+      // Even an explicitly requested header gesture cannot enable selection by itself.
+      selectAllRowsOnHeaderClick: true,
+    });
+    root.focus();
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+
+    const rowNumber = root.querySelector<HTMLElement>(".pte-hcell-row-number .pte-hcell-content")!;
+    rowNumber.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+    expect(core.getSelectedRowIds().size).toBe(0);
+
+    core.dispatch({ type: "headerFocusSet", colIdx: 0, reason: "api" });
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+  });
+
+  it("skips the row-number header when its select-all action is disabled", () => {
+    const { core, root } = mountGrid(10, {
+      rowSelection: true,
+      selectAllRowsOnHeaderClick: false,
+    });
+    root.focus();
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+    press(root, "Home");
+    expect(core.getHeaderFocusColIdx()).toBe(1);
+  });
+
+  it("moves header and body cursors off row numbers when row selection is disabled at runtime", () => {
+    const headerGrid = mountGrid(10, {
+      rowSelection: true,
+      selectAllRowsOnHeaderClick: true,
+    });
+    headerGrid.root.focus();
+    expect(headerGrid.core.getHeaderFocusColIdx()).toBe(0);
+    headerGrid.renderer.setRowSelectionOptions(false);
+    expect(headerGrid.core.getHeaderFocusColIdx()).toBe(1);
+
+    const bodyGrid = mountGrid(10, { rowSelection: true });
+    bodyGrid.root.focus();
+    press(bodyGrid.root, "ArrowDown");
+    press(bodyGrid.root, "ArrowLeft");
+    expect(bodyGrid.core.getActiveCell()?.colIdx).toBe(0);
+    bodyGrid.renderer.setRowSelectionOptions(false);
+    expect(bodyGrid.core.getActiveCell()?.colIdx).toBe(1);
+    expect(bodyGrid.core.getSelectionRange()).not.toBeNull();
+  });
+
   it("steps with arrows and clamps at both ends rather than wrapping", () => {
     const { core, root } = mountGrid();
     root.focus();
     const last = core.getColumnModel().getLeaves().length - 1;
 
     press(root, "ArrowLeft");
-    expect(core.getHeaderFocusColIdx()).toBe(0); // clamped, not wrapped to the end
+    expect(core.getHeaderFocusColIdx()).toBe(1); // clamped at the first actionable header
 
     for (let i = 0; i < last + 3; i++) press(root, "ArrowRight");
     expect(core.getHeaderFocusColIdx()).toBe(last);
@@ -208,7 +291,7 @@ describe("moving along the header", () => {
     press(root, "End");
     expect(core.getHeaderFocusColIdx()).toBe(core.getColumnModel().getLeaves().length - 1);
     press(root, "Home");
-    expect(core.getHeaderFocusColIdx()).toBe(0);
+    expect(core.getHeaderFocusColIdx()).toBe(1);
   });
 
   it("paints exactly one cursor as it moves", () => {
@@ -234,7 +317,7 @@ describe("a click on a header cell moves the cursor", () => {
   it("focuses the clicked cell instead of leaving the cursor where it was", () => {
     const { core, root } = mountGrid();
     root.focus();
-    expect(core.getHeaderFocusColIdx()).toBe(0);
+    expect(core.getHeaderFocusColIdx()).toBe(1);
 
     const expected = clickHeader(root, core, "total");
     expect(core.getHeaderFocusColIdx()).toBe(expected);
@@ -321,10 +404,9 @@ describe("a click on a header cell moves the cursor", () => {
     ]);
     root.focus();
     // Away from leaf 0, so a cursor that wrongly snaps to the first column is visible here.
-    press(root, "ArrowRight");
-    press(root, "ArrowRight");
+    press(root, "End");
     const before = core.getHeaderFocusColIdx();
-    expect(before).toBe(2);
+    expect(before).toBe(3);
 
     const parent = [...root.querySelectorAll<HTMLElement>(".pte-hcell")]
       .find(h => !h.classList.contains("pte-hcell-leaf"))!;

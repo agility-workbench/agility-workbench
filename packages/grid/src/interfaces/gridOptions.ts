@@ -910,8 +910,8 @@ export interface GridOptions {
   bodyContextMenu?: boolean | BodyContextMenuGetter;
   /**
    * When true, clicking the row-number column header toggles selection of all rows in the current
-   * view (consistent with clicking any other header cell). Requires the row-number column
-   * (`rowNumbers`). Independent of `rowSelection`. Defaults to false.
+   * view (consistent with clicking any other header cell). Requires both the row-number column
+   * (`rowNumbers`) and `rowSelection`. Defaults to false.
    */
   selectAllRowsOnHeaderClick?: boolean;
   /**

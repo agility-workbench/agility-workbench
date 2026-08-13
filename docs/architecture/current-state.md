@@ -555,7 +555,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 |---------|--------|----------|
 | Cell range selection (click + drag, Shift+click) | ✅ Complete | `core/selectionModel.ts` |
 | Row selection (click on row number / Ctrl+click / Shift+range) | ✅ Complete | `core/selectionModel.ts` → `toggleRow`; opt-in via `rowSelection` (default false) |
-| Select-all rows on row-number header click | ✅ Complete | `core/selectionModel.ts` → `selectAllRows` / `areAllRowsSelected`; opt-in via `selectAllRowsOnHeaderClick` (default false) |
+| Select-all rows on row-number header click | ✅ Complete | `core/selectionModel.ts` → `selectAllRows` / `areAllRowsSelected`; requires `rowSelection` and opt-in via `selectAllRowsOnHeaderClick` (default false) |
 | Row selection API (`getSelectedRows` / `getSelectedNodes` / `selectAllRows` / `deselectAllRows`) | ✅ Complete | `api/api.ts`, `core/core.ts` |
 | Column selection (click on header) | ✅ Complete | `core/selectionModel.ts` → `toggleColumn` |
 | Keyboard navigation (arrows, Home/End, PageUp/Down) | ✅ Complete | `core/selectionModel.ts` → `navigate` |

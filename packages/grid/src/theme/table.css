@@ -2938,6 +2938,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Row numbers become keyboard controls when row selection is enabled. Focus is always visible,
+   independently of the optional data-cell active outline. */
+.pte-row-number-cell.pte-row-number-cell-focused {
+  background-color: var(--pte-selected-bg-color);
+  box-shadow: inset 0 0 0 1px var(--pte-selected-border-color);
+}
+
+.pte-row-hover .pte-row-number-cell.pte-row-number-cell-focused {
+  background-color: var(--pte-selected-hover-bg-color);
+}
+
 .pte-aggregate-row-number-cell {
   color: transparent;
 }
