@@ -27,11 +27,13 @@ import KitchenSinkDemo from "./KitchenSinkDemo";
 import ColumnGroupExpanderDemo from "./ColumnGroupExpanderDemo";
 import FullyThemedDemo from "./FullyThemedDemo";
 import RowSelectionCheckboxDemo from "./RowSelectionCheckboxDemo";
+import HighFrequencyDemo from "./HighFrequencyDemo";
 import "./roboto-font.css";
 import "./style.css";
 
 const PAGES = [
   { id: "grid", label: "Grid demo", render: () => <App /> },
+  { id: "highFrequency", label: "High-frequency updates", render: () => <HighFrequencyDemo /> },
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
   { id: "rowSelectionCheckboxes", label: "Row selection checkboxes", render: () => <RowSelectionCheckboxDemo /> },
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },

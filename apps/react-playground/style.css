@@ -31,6 +31,113 @@ body {
   background-color: var(--pte-btn-hover-bg-color, #0056b3);
 }
 
+.high-frequency-demo {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.high-frequency-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--pte-frame-border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--pte-header-bg-color, #fff);
+}
+
+.high-frequency-header h2 {
+  margin: 2px 0 4px;
+  font-size: 20px;
+}
+
+.high-frequency-header p {
+  max-width: 760px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.high-frequency-eyebrow {
+  color: var(--pte-selected-border-color, #2563eb);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.high-frequency-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.high-frequency-stats span {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--pte-input-bg-color, #f3f4f6);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.high-frequency-stats strong {
+  display: block;
+  font-size: 17px;
+}
+
+.high-frequency-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.high-frequency-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.high-frequency-controls select {
+  padding: 5px 8px;
+  border: 1px solid var(--pte-frame-border-color, #d1d5db);
+  border-radius: 5px;
+  background: var(--pte-input-bg-color, #fff);
+  color: inherit;
+}
+
+.high-frequency-controls code {
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--pte-input-bg-color, #f3f4f6);
+}
+
+.high-frequency-grid {
+  flex: 1;
+  min-height: 280px;
+}
+
+.high-frequency-grid .market-up {
+  color: #16a34a;
+}
+
+.high-frequency-grid .market-down {
+  color: #dc2626;
+}
+
+@media (max-width: 900px) {
+  .high-frequency-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .c3-view-index-demo {
   display: flex;
   height: 100%;
