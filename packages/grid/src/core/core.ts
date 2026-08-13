@@ -53,6 +53,13 @@ interface AppliedRowTransaction {
   updatedRowIds: GridId[];
 }
 
+interface PendingRowTransactionCall {
+  result: RowTransactionResult;
+  resolve: (result: RowTransactionResult) => void;
+}
+
+const DEFAULT_ASYNC_TRANSACTION_WAIT_MS = 16;
+
 type SchemaSource = "auto" | "props" | "server";
 
 interface RangeColumnSnapshot {
@@ -69,6 +76,10 @@ export class GridCore implements IGridCore {
   private rowModel: IRowModel;
   private requestIdCounter: number = 0;
   private firstRefreshSeen: boolean = false;
+  private pendingRowTransactions: AppliedRowTransaction | null = null;
+  private pendingRowTransactionCalls: PendingRowTransactionCall[] = [];
+  private asyncTransactionTimer: ReturnType<typeof setTimeout> | undefined;
+  private destroyed = false;
 
   private paginationEnabled: boolean = false;
   private pageStartIdx: number = 0;
@@ -843,6 +854,68 @@ export class GridCore implements IGridCore {
     }
   }
 
+  private accumulateRowTransaction(applied: AppliedRowTransaction): void {
+    const pending = this.pendingRowTransactions;
+    if (!pending) {
+      this.pendingRowTransactions = {
+        result: { ...applied.result },
+        startedEmpty: applied.startedEmpty,
+        updatedRowIds: [...new Set(applied.updatedRowIds)],
+      };
+      return;
+    }
+    pending.result.added += applied.result.added;
+    pending.result.updated += applied.result.updated;
+    pending.result.removed += applied.result.removed;
+    const updated = new Set(pending.updatedRowIds);
+    for (const rowId of applied.updatedRowIds) updated.add(rowId);
+    pending.updatedRowIds = [...updated];
+  }
+
+  private scheduleAsyncTransactionFlush(): void {
+    if (this.asyncTransactionTimer !== undefined) return;
+    this.asyncTransactionTimer = setTimeout(
+      () => this.flushAsyncTransactions(),
+      DEFAULT_ASYNC_TRANSACTION_WAIT_MS,
+    );
+  }
+
+  /** Finalize every queued mutation in one model/render pass. */
+  flushAsyncTransactions(): void {
+    if (this.asyncTransactionTimer !== undefined) {
+      clearTimeout(this.asyncTransactionTimer);
+      this.asyncTransactionTimer = undefined;
+    }
+    const applied = this.pendingRowTransactions;
+    const calls = this.pendingRowTransactionCalls;
+    this.pendingRowTransactions = null;
+    this.pendingRowTransactionCalls = [];
+    if (!applied) return;
+
+    // Clear pending state before emitting: a handler may enqueue a new transaction, which must form
+    // a new batch rather than being folded into the batch currently being finalized.
+    if (!this.destroyed) this.finalizeRowTransactions(applied);
+    for (const call of calls) call.resolve(call.result);
+  }
+
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult> {
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("applyTransactionAsync is only supported on the 'clientSide' row model; the server owns its data.");
+      return Promise.resolve({ added: 0, updated: 0, removed: 0 });
+    }
+
+    const applied = this.mutateRowTransaction(tx);
+    const { result } = applied;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) {
+      return Promise.resolve(result);
+    }
+    this.accumulateRowTransaction(applied);
+    this.scheduleAsyncTransactionFlush();
+    return new Promise(resolve => {
+      this.pendingRowTransactionCalls.push({ result, resolve });
+    });
+  }
+
   applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
     if (this.rowModel.getType() !== "clientSide") {
       console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
@@ -850,7 +923,12 @@ export class GridCore implements IGridCore {
     }
 
     const applied = this.mutateRowTransaction(tx);
-    this.finalizeRowTransactions(applied);
+    if (this.pendingRowTransactions) {
+      this.accumulateRowTransaction(applied);
+      this.flushAsyncTransactions();
+    } else {
+      this.finalizeRowTransactions(applied);
+    }
     const { result } = applied;
     return result;
   }
@@ -2907,7 +2985,10 @@ export class GridCore implements IGridCore {
   }
 
   destroy(): void {
-    // Clean up resources if needed
+    this.destroyed = true;
+    // Row mutations happen when applyTransactionAsync is called, but a destroyed grid must not emit
+    // a delayed model/render notification. Settle callers with their already-known mutation result.
+    this.flushAsyncTransactions();
   }
 
 }

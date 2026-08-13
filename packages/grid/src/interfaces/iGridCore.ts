@@ -6,7 +6,7 @@ import {
 } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
+import { IRowModel, RowDataChangeReason, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
@@ -193,11 +193,11 @@ export interface IGridCore {
 
   /** Client-side row model only: apply an add/update/remove transaction. Returns what was
    * actually applied; all-zero counts on the server-side row model or when nothing matched. */
-  applyTransaction(tx: {
-    add?: RowData[];
-    update?: { rowId: GridId; row: RowData }[];
-    remove?: GridId[];
-  }): RowTransactionResult;
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult;
+  /** Apply row mutations immediately and defer model derivation/rendering into a shared batch. */
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult>;
+  /** Immediately finalize any pending asynchronous row transactions. */
+  flushAsyncTransactions(): void;
 
   setServerSideDataSource(callback: IServerSideDataSource | null): void;
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;
