@@ -35,7 +35,12 @@ import type {
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
 import { createCore, getGridOptions } from "./factory";
-import type { NgColDef, NgComponent, NgDefaultColDef } from "./interface";
+import type {
+  NgColDef,
+  NgComponent,
+  NgDefaultColDef,
+  NgGetRowPresentation,
+} from "./interface";
 import type { NgMenuItem } from "./menu";
 import { NgBodyMenuAdapter, NgMenuAdapter } from "./menuAdapters";
 
@@ -110,6 +115,7 @@ export class AwbGrid implements OnDestroy {
   readonly zebraRows = input<GridOptions["zebraRows"]>();
   readonly getRowClass = input<GridOptions["getRowClass"]>();
   readonly getRowStyle = input<GridOptions["getRowStyle"]>();
+  readonly getRowPresentation = input<NgGetRowPresentation>();
   readonly ariaLabel = input<GridOptions["ariaLabel"]>();
   readonly ariaLabelledBy = input<GridOptions["ariaLabelledBy"]>();
   readonly highlightActiveCell = input<GridOptions["highlightActiveCell"]>();
@@ -384,6 +390,7 @@ export class AwbGrid implements OnDestroy {
         zebraRows: this.zebraRows() ?? false,
         getRowClass: this.getRowClass(),
         getRowStyle: this.getRowStyle(),
+        getRowPresentation: this.adapters.adaptGetRowPresentation(this.getRowPresentation()),
         ariaLabel: this.ariaLabel(),
         ariaLabelledBy: this.ariaLabelledBy(),
         highlightActiveCell: this.highlightActiveCell() ?? false,

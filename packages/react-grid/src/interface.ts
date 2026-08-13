@@ -1,14 +1,22 @@
 import { ColDef, GridOptions } from "@agility-workbench/grid";
 import { IGridAPI } from "@agility-workbench/grid";
 import { BodyMenuContext, ColumnMenuContext } from "@agility-workbench/grid";
-import { ReactCellRenderer, ReactColDef, ReactDefaultColDef } from "./cellRenderer";
+import {
+  ReactCellRenderer,
+  ReactColDef,
+  ReactDefaultColDef,
+  ReactGetRowPresentation,
+} from "./cellRenderer";
 import { MenuItem } from "./menu";
 
 // `bodyContextMenu`'s callback arm is redeclared below to return React-aware MenuItems (slots may be
 // React nodes); `fullWidthCellRenderer` is redeclared to also accept a React component; `defaultColDef`
 // is redeclared as a React-aware `ReactDefaultColDef` (it may carry React components). All are omitted
 // from the inherited core GridOptions.
-export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWidthCellRenderer" | "defaultColDef"> {
+export interface GridProps extends Omit<
+  GridOptions,
+  "bodyContextMenu" | "fullWidthCellRenderer" | "defaultColDef" | "getRowPresentation"
+> {
   /** Optional className/style for the host div */
   className?: string;
   style?: React.CSSProperties;
@@ -51,4 +59,6 @@ export interface GridProps extends Omit<GridOptions, "bodyContextMenu" | "fullWi
    * be React components; they are adapted exactly as they would be on a real column def.
    */
   defaultColDef?: ReactDefaultColDef;
+  /** React-aware row presentation callback; row tooltip components may be React components. */
+  getRowPresentation?: ReactGetRowPresentation;
 }

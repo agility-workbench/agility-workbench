@@ -7,7 +7,7 @@ import {
   type TooltipComponentParams,
 } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
-import type { NgColDef } from "./interface";
+import type { NgColDef, NgGetRowPresentation } from "./interface";
 import { mountGridHost, syncGridInputs } from "./test-utils";
 
 @Component({
@@ -15,6 +15,14 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
   template: `<span class="angular-header-tooltip">Header: {{ params()?.colDef?.label }}</span>`,
 })
 class AngularHeaderTooltip {
+  readonly params = input<TooltipComponentParams>();
+}
+
+@Component({
+  standalone: true,
+  template: `<span class="angular-row-tooltip">{{ params()?.contentSource }}:{{ params()?.content }}</span>`,
+})
+class AngularRowTooltip {
   readonly params = input<TooltipComponentParams>();
 }
 
@@ -28,6 +36,7 @@ class AngularHeaderTooltip {
       [columnDefs]="cols"
       rowIdKey="id"
       [tooltip]="tooltip"
+      [getRowPresentation]="getRowPresentation"
       (gridReady)="api = $event"
     />
   `,
@@ -35,6 +44,7 @@ class AngularHeaderTooltip {
 class TooltipHost {
   api: IGridAPI | null = null;
   tooltip: GridOptions["tooltip"] = { showDelay: 0, hideDelay: 0 };
+  getRowPresentation: NgGetRowPresentation | undefined;
   rows = [
     { id: "1", name: "Ava", email: "ava@example.com", notes: "short" },
     { id: "2", name: "Liam", email: "liam@example.com", notes: "short" },
@@ -103,6 +113,37 @@ describe("AwbGrid tooltips", () => {
     const id = host.api!.getColumnModel().getByColId("name")!.instanceID;
     await hover(gridEl.querySelector<HTMLElement>(`.pte-hcell#${id}`)!);
     expect(gridEl.querySelector(".angular-header-tooltip")?.textContent).toContain("Header: Name");
+  });
+
+  it("adapts an Angular row tooltip component and retains it for column content overrides", async () => {
+    const { gridEl } = await mountGridHost(TooltipHost, 600, (instance) => {
+      instance.getRowPresentation = () => ({
+        tooltip: {
+          content: "row help",
+          component: AngularRowTooltip,
+          options: { mode: "follow" },
+        },
+      });
+      instance.cols = [
+        { colId: "name", key: "name", label: "Name" },
+        {
+          colId: "email",
+          key: "email",
+          label: "Email",
+          tooltipValueGetter: () => "column help",
+          tooltipOptions: { mode: "anchored", placement: "left" },
+        },
+      ];
+    });
+
+    await hover(bodyCell(gridEl, 0));
+    expect(gridEl.querySelector(".angular-row-tooltip")?.textContent).toContain("row:row help");
+    expect(gridEl.querySelector<HTMLElement>(".pte-tooltip")?.dataset.placement).toBeUndefined();
+
+    await hover(bodyCell(gridEl, 1));
+    expect(gridEl.querySelector(".angular-row-tooltip")?.textContent)
+      .toContain("column:column help");
+    expect(gridEl.querySelector<HTMLElement>(".pte-tooltip")?.dataset.placement).toBe("left");
   });
 
   it("does not show explicit tooltips when tooltip is false", async () => {

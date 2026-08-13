@@ -116,3 +116,76 @@ describe("cellClass / cellStyle", () => {
     await unmountTestRoot(root);
   });
 });
+
+describe("getRowPresentation", () => {
+  it("composes row cell defaults with column styling and refreshes external state safely", async () => {
+    let pending = true;
+    const cols: ReactColDef[] = [
+      { colId: "name", key: "name", label: "Name" },
+      {
+        colId: "amount",
+        key: "amount",
+        label: "Amount",
+        cellClass: "amount-cell",
+        cellStyle: { color: "rgb(255, 0, 0)" },
+      },
+    ];
+    const { container, apiRef, root } = await mount({
+      getRowPresentation: ({ rowId }: any) => pending && rowId === "2" ? {
+        rowClass: "pending-row",
+        rowStyle: { fontWeight: "700" },
+        cellClass: "pending-cell",
+        cellStyle: { color: "rgb(0, 0, 255)", backgroundColor: "rgb(255, 255, 0)" },
+        accessibility: { description: "Saving changes", busy: true },
+        metadata: { status: "pending" },
+      } : undefined,
+    }, cols, DATA);
+
+    const pendingRow = rowEl(container, 1);
+    const amount = cellIn(pendingRow, 1);
+    expect(pendingRow.classList.contains("pending-row")).toBe(true);
+    expect(pendingRow.style.fontWeight).toBe("700");
+    expect(amount.classList.contains("pending-cell")).toBe(true);
+    expect(amount.classList.contains("amount-cell")).toBe(true);
+    // Row style is the default; the column wins only the conflicting property.
+    expect(amount.style.color).toBe("rgb(255, 0, 0)");
+    expect(amount.style.backgroundColor).toBe("rgb(255, 255, 0)");
+    expect(pendingRow.getAttribute("aria-busy")).toBe("true");
+    const descriptionId = pendingRow.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId!)?.textContent).toBe("Saving changes");
+
+    pending = false;
+    await act(async () => apiRef.current!.refreshRowPresentation());
+    expect(pendingRow.classList.contains("pending-row")).toBe(false);
+    expect(amount.classList.contains("pending-cell")).toBe(false);
+    expect(amount.classList.contains("amount-cell")).toBe(true);
+    expect(amount.style.backgroundColor).toBe("");
+    expect(pendingRow.hasAttribute("aria-busy")).toBe(false);
+    expect(pendingRow.hasAttribute("aria-describedby")).toBe(false);
+    await unmountTestRoot(root);
+  });
+
+  it("lets a column opt out of selected row defaults", async () => {
+    const cols: ReactColDef[] = [
+      { colId: "name", key: "name", label: "Name" },
+      {
+        colId: "amount",
+        key: "amount",
+        label: "Amount",
+        inheritRowPresentation: { cellClass: false, cellStyle: false },
+      },
+    ];
+    const { container, root } = await mount({
+      getRowPresentation: () => ({
+        cellClass: "row-default-cell",
+        cellStyle: { opacity: "0.5" },
+      }),
+    }, cols, DATA);
+    expect(cellIn(rowEl(container, 0), 0).classList.contains("row-default-cell")).toBe(true);
+    expect(cellIn(rowEl(container, 0), 0).style.opacity).toBe("0.5");
+    expect(cellIn(rowEl(container, 0), 1).classList.contains("row-default-cell")).toBe(false);
+    expect(cellIn(rowEl(container, 0), 1).style.opacity).toBe("");
+    await unmountTestRoot(root);
+  });
+});

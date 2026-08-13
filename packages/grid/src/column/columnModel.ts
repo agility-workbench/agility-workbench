@@ -162,7 +162,7 @@ export class ColumnModel implements IColumnModel {
     const existing = this.columnsByColId.get(colDef.colId);
     if (existing) return existing.instanceID;
 
-    const col = new Column(colDef, colDef.colId);
+    const col = new Column(colDef, colDef.colId, rawColDef);
     if (colDef.children && colDef.children.length > 0) {
       this.buildColumns(colDef.children, col, `${colDef.colId}.`);
     }
@@ -305,9 +305,9 @@ export class ColumnModel implements IColumnModel {
       const col = this.claimReusableColumn(colDef, reuseContext);
       if (col) {
         col.children = [];
-        col.updateFromColDef(colDef, idx);
+        col.updateFromColDef(colDef, idx, true, rawColDef);
       }
-      const nextCol = col || new Column(colDef, idx);
+      const nextCol = col || new Column(colDef, idx, rawColDef);
       if (parentCol) {
         parentCol.children.push(nextCol);
       }

@@ -47,6 +47,10 @@ export interface GridApiTooltipController {
   hideTooltip: () => void;
 }
 
+export interface GridApiRowPresentationController {
+  refreshRowPresentation: () => void;
+}
+
 /** Scroll hooks provided by the renderer once it's attached (it owns the scrollers). */
 export interface GridApiScrollController {
   ensureRowVisible: (viewIdx: number, rowPinned?: RowPinnedPosition, position?: RowScrollPosition) => void;
@@ -63,6 +67,7 @@ export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
+  private _rowPresentation: GridApiRowPresentationController | null = null;
   private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
@@ -77,6 +82,10 @@ export class GridAPI implements IGridAPI {
   /** Wire the tooltip controller. Called by the renderer on attach; before that these are no-ops. */
   setTooltipController(controller: GridApiTooltipController): void {
     this._tooltip = controller;
+  }
+
+  setRowPresentationController(controller: GridApiRowPresentationController): void {
+    this._rowPresentation = controller;
   }
 
   /** Wire the scrollers. Called by the renderer on attach; before that these are no-ops. */
@@ -153,6 +162,10 @@ export class GridAPI implements IGridAPI {
 
   hideTooltip(): void {
     this._tooltip?.hideTooltip();
+  }
+
+  refreshRowPresentation(): void {
+    this._rowPresentation?.refreshRowPresentation();
   }
 
   openActionFrame(cell: CellRef): void {

@@ -1,7 +1,12 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { IGridAPI } from "../../interfaces/iGridAPI";
-import { ResolvedTooltipOptions, resolveColumnTooltipOptions } from "../../interfaces/gridOptions";
+import {
+  ResolvedTooltipOptions,
+  RowPresentation,
+  RowTooltipPresentation,
+  resolveColumnTooltipOptions,
+} from "../../interfaces/gridOptions";
 import { FloatingAnchor, FloatingMode } from "../floating/floatingAnchor";
 import {
   TooltipComponent,
@@ -17,6 +22,7 @@ import {
   RENDERER_TOOLTIP_TARGET_DISPOSED,
   RENDERER_TOOLTIP_TARGET_UPDATED,
 } from "./rendererTooltipTarget";
+import { inheritRowPresentation, resolveRowPresentation } from "../body/rowPresentation";
 
 export interface BodyTooltipRendererParams {
   core: GridCore;
@@ -46,6 +52,8 @@ type TooltipTarget =
       clientX: number;
       clientY: number;
       rendererTarget?: Element;
+      /** Snapshot taken when the cell becomes the target; avoids callback work on every mousemove. */
+      rowPresentation?: RowPresentation;
     }
   | { kind: "header"; colId: string; clientX: number; clientY: number }
   | { kind: "ui"; rendererTarget: Element; clientX: number; clientY: number };
@@ -190,7 +198,14 @@ export class BodyTooltipRenderer {
     const rect = this.getCellRect(viewIdx, colIdx);
     const cx = rect ? rect.left + rect.width / 2 : 0;
     const cy = rect ? rect.top + rect.height / 2 : 0;
-    this.showFor({ kind: "body", viewIdx, colIdx, clientX: cx, clientY: cy });
+    this.showFor({
+      kind: "body",
+      viewIdx,
+      colIdx,
+      clientX: cx,
+      clientY: cy,
+      rowPresentation: this.rowPresentationAt(viewIdx),
+    });
   }
 
   /** Hide any visible tooltip on demand. */
@@ -397,10 +412,18 @@ export class BodyTooltipRenderer {
 
   /** Grid-level resolved options with the target column's `tooltipOptions` layered on top. */
   private optionsForTarget(target: TooltipTarget): ResolvedTooltipOptions {
-    const options = resolveColumnTooltipOptions(
-      this.params.options(),
-      this.columnForTarget(target)?.tooltipOptions,
-    );
+    const col = this.columnForTarget(target);
+    let options = this.params.options();
+    if (target.kind === "body" && col) {
+      const explicitOptions = col.explicitColDef.tooltipOptions !== undefined;
+      // defaultColDef is the least-specific cell layer, then the row, then the real column.
+      if (!explicitOptions) options = resolveColumnTooltipOptions(options, col.tooltipOptions);
+      const rowTooltip = this.rowTooltipFor(target, col);
+      options = resolveColumnTooltipOptions(options, rowTooltip?.options);
+      if (explicitOptions) options = resolveColumnTooltipOptions(options, col.tooltipOptions);
+    } else {
+      options = resolveColumnTooltipOptions(options, col?.tooltipOptions);
+    }
     if (target.kind !== "ui") return options;
     const placement = getRendererTooltipPlacement(target.rendererTarget);
     return placement ? { ...options, placement } : options;
@@ -432,7 +455,10 @@ export class BodyTooltipRenderer {
     kind: "body";
     viewIdx: number;
     colIdx: number;
+    clientX: number;
+    clientY: number;
     rendererTarget?: Element;
+    rowPresentation?: RowPresentation;
   }): TooltipComponentRuntime | null {
     const { core } = this.params;
     const col = this.params.leafColumns()[target.colIdx];
@@ -441,7 +467,7 @@ export class BodyTooltipRenderer {
     const rowId = core.getRowIdAtViewIndex(target.viewIdx);
     if (!rowId) return null;
     const rowNode = core.getRowModel().getRowNode(rowId);
-    if (!rowNode || rowNode.isGroup) return null;
+    if (!rowNode) return null;
 
     // A custom renderer may expose subtargets (for example, individual sparkline points). Their
     // content takes precedence over the owning column's cell-level tooltip configuration.
@@ -454,9 +480,13 @@ export class BodyTooltipRenderer {
 
     const value = col.getValue(rowNode);
     const valueFormatted = col.formatValue(value, rowNode);
-    const opts = this.params.options();
+    const rowPresentation = target.rowPresentation ?? resolveRowPresentation(core, rowNode, target.viewIdx);
+    const rowTooltip = this.rowTooltipFor({ ...target, rowPresentation }, col);
+    // Preserve the old "group rows have no cell tooltip" behavior unless a row tooltip explicitly
+    // opts that group into the feature.
+    if (rowNode.isGroup && !rowTooltip) return null;
 
-    const params: TooltipComponentParams = {
+    const baseParams: TooltipComponentParams = {
       value,
       valueFormatted,
       data: rowNode.data,
@@ -466,33 +496,89 @@ export class BodyTooltipRenderer {
       location: "body",
       api: this.params.api,
       hide: () => this.hideNow(),
+      rowPresentation,
+      ...(rowTooltip?.componentParams ?? {}),
       ...(col.tooltipComponentParams ?? {}),
     };
 
-    // 1. Custom component (grid-wide defaults arrive pre-merged via `defaultColDef`).
-    const comp = col.tooltipComponent;
-    if (comp) return createTooltipComponentRuntime(comp, params);
+    const explicit = col.explicitColDef;
+    const explicitComponent = explicit.tooltipComponent !== undefined;
+    const explicitGetter = explicit.tooltipValueGetter !== undefined;
+    const explicitField = explicit.tooltipField !== undefined;
+    const inheritedComponent = !explicitComponent ? col.tooltipComponent : undefined;
+    const component = explicitComponent
+      ? col.tooltipComponent
+      : rowTooltip?.component ?? inheritedComponent;
 
-    // 2. Value getter.
-    const getter = col.tooltipValueGetter;
-    if (getter) {
-      const text = getter(params);
-      return text != null && String(text).length > 0 ? this.textRuntime(String(text)) : null;
+    let content: string | number | undefined;
+    let contentSource: TooltipComponentParams["contentSource"];
+    let contentWasResolved = false;
+    let suppress = false;
+
+    const resolveScalar = (
+      candidate: unknown,
+      source: NonNullable<TooltipComponentParams["contentSource"]>,
+    ) => {
+      contentWasResolved = true;
+      if (candidate == null || String(candidate).length === 0) {
+        suppress = true;
+        return;
+      }
+      content = typeof candidate === "number" ? candidate : String(candidate);
+      contentSource = source;
+    };
+
+    // Legacy compatibility: an explicit column component remains self-contained and continues to
+    // outrank that same column's getter/field. Other components receive independently-resolved text.
+    if (!explicitComponent) {
+      if (explicitGetter) {
+        resolveScalar(col.tooltipValueGetter?.(baseParams), "column");
+      } else if (explicitField) {
+        resolveScalar(rowNode.data?.[col.tooltipField!], "column");
+      } else if (rowTooltip && Object.prototype.hasOwnProperty.call(rowTooltip, "content")) {
+        resolveScalar(rowTooltip.content, "row");
+      } else if (col.tooltipValueGetter) {
+        resolveScalar(col.tooltipValueGetter(baseParams), "default");
+      } else if (col.tooltipField != null) {
+        resolveScalar(rowNode.data?.[col.tooltipField], "default");
+      }
     }
 
-    // 3. Field on the row.
-    if (col.tooltipField != null) {
-      const text = rowNode.data?.[col.tooltipField];
-      return text != null && String(text).length > 0 ? this.textRuntime(String(text)) : null;
+    if (!contentWasResolved && !component) {
+      const opts = this.optionsForTarget({ ...target, rowPresentation });
+      const suppressed = opts.suppressAutoTooltip || col.suppressAutoTooltip;
+      if (!suppressed && this.isCellTruncated(target.viewIdx, target.colIdx)) {
+        const text = valueFormatted != null && valueFormatted !== ""
+          ? valueFormatted
+          : value == null ? "" : String(value);
+        if (text.length > 0) {
+          content = text;
+          contentSource = "truncation";
+          contentWasResolved = true;
+        }
+      }
     }
 
-    // 4. Auto-truncation: show the full formatted value when the cell clips it.
-    const suppressed = opts.suppressAutoTooltip || col.suppressAutoTooltip;
-    if (!suppressed && this.isCellTruncated(target.viewIdx, target.colIdx)) {
-      const text = valueFormatted != null && valueFormatted !== "" ? valueFormatted : value == null ? "" : String(value);
-      if (text.length > 0) return this.textRuntime(text);
-    }
-    return null;
+    if (suppress && !explicitComponent) return null;
+    const params: TooltipComponentParams = { ...baseParams, content, contentSource };
+    if (component) return createTooltipComponentRuntime(component, params);
+    return content != null ? this.textRuntime(String(content)) : null;
+  }
+
+  private rowTooltipFor(
+    target: Extract<TooltipTarget, { kind: "body" }>,
+    col: Column,
+  ): RowTooltipPresentation | undefined {
+    if (!inheritRowPresentation(col, "tooltip")) return undefined;
+    const tooltip = target.rowPresentation?.tooltip;
+    return typeof tooltip === "object" && tooltip != null ? tooltip : undefined;
+  }
+
+  private rowPresentationAt(viewIdx: number): RowPresentation | undefined {
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    if (!rowId) return undefined;
+    const row = this.params.core.getRowModel().getRowNode(rowId);
+    return row ? resolveRowPresentation(this.params.core, row, viewIdx) : undefined;
   }
 
   private resolveHeader(target: { kind: "header"; colId: string }): TooltipComponentRuntime | null {
@@ -570,12 +656,20 @@ export class BodyTooltipRenderer {
     if (cell.classList.contains("pte-row-number-cell")) return null;
     if (cell.classList.contains("pte-checkbox-cell")) return null;
     const rowEl = cell.closest(".pte-row") as HTMLElement | null;
-    if (!rowEl || rowEl.classList.contains("pte-group-row")) return null;
+    if (!rowEl) return null;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
     if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
     const rendererTarget = findRendererTooltipTarget(el, cell) ?? undefined;
-    return { kind: "body", viewIdx, colIdx, clientX, clientY, rendererTarget };
+    return {
+      kind: "body",
+      viewIdx,
+      colIdx,
+      clientX,
+      clientY,
+      rendererTarget,
+      rowPresentation: this.rowPresentationAt(viewIdx),
+    };
   }
 
   private locateUi(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {

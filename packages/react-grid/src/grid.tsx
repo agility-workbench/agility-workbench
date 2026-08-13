@@ -8,6 +8,7 @@ import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
+import { adaptReactGetRowPresentation } from "./cellRenderer";
 
 type GridInstance = {
   core: IGridCore;
@@ -215,6 +216,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         zebraRows: props.zebraRows ?? false,
         getRowClass: props.getRowClass,
         getRowStyle: props.getRowStyle,
+        getRowPresentation: adaptReactGetRowPresentation(props.getRowPresentation),
         ariaLabel: props.ariaLabel,
         ariaLabelledBy: props.ariaLabelledBy,
         highlightActiveCell: props.highlightActiveCell ?? false,
@@ -241,6 +243,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.zebraRows,
       props.getRowClass,
       props.getRowStyle,
+      props.getRowPresentation,
       props.ariaLabel,
       props.ariaLabelledBy,
       props.highlightActiveCell,

@@ -481,6 +481,14 @@ export class GridRenderer {
       }) => void;
     };
     apiWithPinnedRows.setPinnedRowsController?.(this._pinnedRowsRenderer);
+    const apiWithRowPresentation = this.api as unknown as {
+      setRowPresentationController?: (controller: {
+        refreshRowPresentation: () => void;
+      }) => void;
+    };
+    apiWithRowPresentation.setRowPresentationController?.({
+      refreshRowPresentation: () => this.refreshRowPresentation(),
+    });
     // Expose scrolling on the public API (api.ensureRowVisible / ensureColumnVisible /
     // ensureCellVisible): the core resolves a row id to a view slot, the renderer owns the scrollers.
     // Probed structurally to avoid a renderer→api import cycle, matching the exporter hook above.
@@ -722,8 +730,14 @@ export class GridRenderer {
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
-      renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap, viewIndex, rowNumber),
-      renderFullWidthCell: (slot, row, viewIndex, rowNumber) => this._bodyCellRenderer.renderFullWidthCell(slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber),
+      renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber, rowPresentation) =>
+        this._bodyCellRenderer.renderCell(
+          cell, row, col, cellRendererMap, viewIndex, rowNumber, "data", rowPresentation,
+        ),
+      renderFullWidthCell: (slot, row, viewIndex, rowNumber, rowPresentation) =>
+        this._bodyCellRenderer.renderFullWidthCell(
+          slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation,
+        ),
       clearFullWidthCell: (slot) => this._bodyCellRenderer.clearFullWidthCell(slot.fullWidthCellEl, slot.cellRendererInstances),
       applySelectionToSlot: (slot, viewIndex) => this._selectionRenderer.applySelectionToSlot(slot, viewIndex),
     });
@@ -1022,8 +1036,9 @@ export class GridRenderer {
     const rowPaintChanged =
       previous.zebraRows !== options.zebraRows
       || previous.getRowClass !== options.getRowClass
-      || previous.getRowStyle !== options.getRowStyle;
-    if (rowPaintChanged) this._bodyWindowRenderer.update(true, undefined);
+      || previous.getRowStyle !== options.getRowStyle
+      || previous.getRowPresentation !== options.getRowPresentation;
+    if (rowPaintChanged) this.refreshRowPresentation();
 
     if (previous.highlightActiveCell !== options.highlightActiveCell) {
       this._selectionRenderer.refreshSelectionStyles();
@@ -1031,6 +1046,13 @@ export class GridRenderer {
     if (previous.bodyContextMenu !== options.bodyContextMenu && options.bodyContextMenu === false) {
       this._menuRenderer.close(0);
     }
+  }
+
+  /** Repaint visible body rows and rebuild pinned/sticky bands from fresh row defaults. */
+  refreshRowPresentation() {
+    this._bodyTooltipRenderer.hideNow();
+    this._bodyWindowRenderer.update(true, undefined);
+    this._pinnedRowsRenderer.render(undefined, true);
   }
 
   // Grid-level keydown. The listener is bound to the grid root (see GridInteractionEventBinder), so
@@ -1399,6 +1421,8 @@ export class GridRenderer {
       const row = rowModel.getRowNodeAtViewIndex(viewIdx);
       if (!row) continue;
       const rowNumber = this.core.getRowNumberForViewIndex(viewIdx);
+      // Resolve once per row so every refreshed cell observes the same presentation snapshot.
+      const rowPresentation = this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
 
       for (const section of sections) {
         const cells = section.cells(slot);
@@ -1410,12 +1434,12 @@ export class GridRenderer {
           const cell = cells[c++];
           if (!cell) continue;
           if (changed && !changed.has(col.instanceID)) continue;
-          this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason);
+          this._bodyCellRenderer.renderCell(
+            cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason, rowPresentation,
+          );
         }
       }
 
-      // The row's data may have changed (e.g. a transaction update), so re-run row-level styling.
-      this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
     }
   }
 

@@ -40,6 +40,8 @@ export interface CellRendererParams {
    * can read group metadata / level; omitted on the ordinary per-column cell path.
    */
   node?: any;
+  /** Resolved row defaults and metadata, when `getRowPresentation` is configured. */
+  rowPresentation?: import("../interfaces/gridOptions").RowPresentation;
 }
 
 export type CellRendererFn = (p: CellRendererParams) =>
@@ -151,6 +153,7 @@ export function createRendererRuntime(r: CellRenderer, p: CellRendererParams): R
 export function getCellRendererParams(
   value: any, formattedValue: any, row: any, rowIndex: number, col: Column, eCell: HTMLElement, api: IGridAPI,
   refreshReason: CellRefreshReason = "data",
+  rowPresentation?: import("../interfaces/gridOptions").RowPresentation,
 ): CellRendererParams {
   return {
     value: value,
@@ -163,5 +166,6 @@ export function getCellRendererParams(
     eCell: eCell,
     registerTooltipTarget: registerRendererTooltipTarget,
     refreshReason: refreshReason,
+    rowPresentation,
   };
 }

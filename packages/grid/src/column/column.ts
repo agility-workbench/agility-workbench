@@ -21,6 +21,8 @@ type InternalColDef = ColDef & {
 };
 
 export class Column {
+  /** The consumer-authored definition before `defaultColDef` inheritance (tooltip precedence). */
+  explicitColDef: ColDef;
   instanceID: string;
   originalInstanceID: string;
   colId: string;
@@ -108,7 +110,8 @@ export class Column {
   // Undefined for the "singleColumn" auto-group column and all non-group columns.
   groupLevel?: number;
 
-  constructor(public col: ColDef, idx: string = '') {
+  constructor(public col: ColDef, idx: string = '', explicitColDef: ColDef = col) {
+    this.explicitColDef = explicitColDef;
     const id = crypto.randomUUID();
     this.instanceID = id;
     this.originalInstanceID = id;
@@ -129,16 +132,22 @@ export class Column {
     this.openByDefault = false;
     this.groupExpandState = "closed";
     this.columnGroupVisible = true;
-    this.updateFromColDef(col, idx, false);
+    this.updateFromColDef(col, idx, false, explicitColDef);
   }
 
-  updateFromColDef(col: ColDef, idx: string = '', preserveRuntimeState: boolean = true) {
+  updateFromColDef(
+    col: ColDef,
+    idx: string = '',
+    preserveRuntimeState: boolean = true,
+    explicitColDef: ColDef = col,
+  ) {
     const previousComputedWidth = this.computedWidth;
     const previousResizedWidth = this.resizedWidth;
     const previousGroupExpandState = this.groupExpandState;
     const previousColumnGroupVisible = this.columnGroupVisible;
 
     this.col = col;
+    this.explicitColDef = explicitColDef;
     this.colId = col.colId!;
     this.key = col.key || '';
     this.label = col.label ?? col.key ?? `Column ${idx}`;
@@ -326,7 +335,7 @@ export class Column {
   }
 
   duplicate(): Column {
-    const dup = new Column({ ...this.col, label: this.label });
+    const dup = new Column({ ...this.col, label: this.label }, "", this.explicitColDef);
     dup.children = this.children.slice();
     dup.originalInstanceID = this.originalInstanceID;
     dup.valueFormatter = this.valueFormatter;

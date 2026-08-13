@@ -7,6 +7,12 @@ import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import { resolveColSpan } from "./colSpan";
+import type { RowPresentation } from "../../interfaces/gridOptions";
+import {
+  mergeClassValues,
+  mergeStyleValues,
+  resolveRowPresentation,
+} from "./rowPresentation";
 
 interface BodyWindowRendererParams {
   core: GridCore;
@@ -24,8 +30,8 @@ interface BodyWindowRendererParams {
   serverSidePendingRangeKeys: Set<string>;
   beginScrollSync: (targets: HTMLDivElement[]) => void;
   setStartIndex: (startIndex: number) => void;
-  renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number) => void;
-  renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number) => void;
+  renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
+  renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   clearFullWidthCell: (slot: RowPoolDef) => void;
   applySelectionToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
 }
@@ -178,17 +184,17 @@ export class BodyWindowRenderer {
       // Dataset-scoped ARIA row index: header row is 1, body rows follow their
       // absolute display number. Only the center fragment carries it — one write per row.
       slot.rowEl.setAttribute("aria-rowindex", String(rowNumber + 1));
-      this.applyRowStyling(slot, row, viewIndex);
+      const rowPresentation = this.applyRowStyling(slot, row, viewIndex);
       this.markGroupRow(slot, row);
 
       const fullWidth = this.params.core.isFullWidthNode(row);
       if (fullWidth) {
         // Full-width rows own their layout: no per-column cells, one host cell spanning the body.
         this.applyFullWidthLayout(slot, row);
-        this.params.renderFullWidthCell(slot, row, viewIndex, rowNumber);
+        this.params.renderFullWidthCell(slot, row, viewIndex, rowNumber, rowPresentation);
       } else {
         this.applyFullWidthLayout(slot, null);
-        this.patchCells(slot, row, viewIndex, rowNumber);
+        this.patchCells(slot, row, viewIndex, rowNumber, rowPresentation);
       }
       this.params.applySelectionToSlot(slot, viewIndex);
     }
@@ -274,7 +280,7 @@ export class BodyWindowRenderer {
    * a full window repaint. No-op when neither option is set.
    */
   refreshRowStyling(slot: RowPoolDef, row: IRowNode, viewIndex: number) {
-    this.applyRowStyling(slot, row, viewIndex);
+    return this.applyRowStyling(slot, row, viewIndex);
   }
 
   // Apply the user-supplied getRowClass / getRowStyle to every fragment of this row. No-op (fast
@@ -282,13 +288,40 @@ export class BodyWindowRenderer {
   private applyRowStyling(slot: RowPoolDef, row: IRowNode, viewIndex: number) {
     const { getRowClass, getRowStyle } = this.params.core.options;
     const params = { data: row.data, rowId: row.id, rowIndex: viewIndex, isGroup: !!row.isGroup, node: row };
-    const cls = getRowClass ? getRowClass(params) : null;
-    const style = getRowStyle ? getRowStyle(params) : null;
+    const presentation = resolveRowPresentation(this.params.core, row, viewIndex);
+    const cls = mergeClassValues(
+      getRowClass ? getRowClass(params) : null,
+      presentation?.rowClass,
+    );
+    const style = mergeStyleValues(
+      getRowStyle ? getRowStyle(params) : null,
+      presentation?.rowStyle,
+    );
     for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
       if (!el) continue;
       applyDynamicClasses(el, cls);
       applyDynamicStyles(el, style);
     }
+    this.applyRowAccessibility(slot, presentation);
+    return presentation;
+  }
+
+  private applyRowAccessibility(slot: RowPoolDef, presentation?: RowPresentation) {
+    const accessibility = presentation?.accessibility;
+    const description = accessibility?.description;
+    if (description != null && String(description).length > 0) {
+      slot.descriptionEl.textContent = String(description);
+      // Keep descriptive text outside the row's owned-cell sequence. It is attached lazily so
+      // grids that do not use row descriptions retain exactly the original viewport DOM.
+      if (!slot.descriptionEl.isConnected) this.params.centerViewport.appendChild(slot.descriptionEl);
+      slot.rowEl.setAttribute("aria-describedby", slot.descriptionEl.id);
+    } else {
+      slot.descriptionEl.textContent = "";
+      slot.descriptionEl.remove();
+      slot.rowEl.removeAttribute("aria-describedby");
+    }
+    if (accessibility?.busy) slot.rowEl.setAttribute("aria-busy", "true");
+    else slot.rowEl.removeAttribute("aria-busy");
   }
 
   // Clear any previously-applied dynamic row class/style from a slot being hidden/recycled, so a
@@ -299,6 +332,7 @@ export class BodyWindowRenderer {
       applyDynamicClasses(el, null);
       applyDynamicStyles(el, null);
     }
+    this.applyRowAccessibility(slot, undefined);
   }
 
   private hideSlot(slot: RowPoolDef) {
@@ -330,28 +364,28 @@ export class BodyWindowRenderer {
     if (slot.rightRowEl) slot.rightRowEl.style.display = "flex";
   }
 
-  private patchCells(slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number) {
+  private patchCells(slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) {
     const columnModel = this.params.core.getColumnModel();
 
     const leadingLeaves = columnModel.getLeadingLeaves();
     if (leadingLeaves.length > 0 && slot.leadingCellEls) {
       slot.leadingRowEl?.setAttribute("row-id", row.id);
-      this.patchSection(slot.leadingCellEls, leadingLeaves, slot, row, viewIndex, rowNumber);
+      this.patchSection(slot.leadingCellEls, leadingLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
     }
 
     const leftLeaves = columnModel.getLeftLeaves();
     if (leftLeaves.length > 0 && slot.leftCellEls) {
       slot.leftRowEl?.setAttribute("row-id", row.id);
-      this.patchSection(slot.leftCellEls, leftLeaves, slot, row, viewIndex, rowNumber);
+      this.patchSection(slot.leftCellEls, leftLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
     }
 
     const centerLeaves = columnModel.getCenterLeaves();
-    this.patchSection(slot.cellEls, centerLeaves, slot, row, viewIndex, rowNumber);
+    this.patchSection(slot.cellEls, centerLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
 
     const rightLeaves = columnModel.getRightLeaves();
     if (rightLeaves.length > 0 && slot.rightCellEls) {
       slot.rightRowEl?.setAttribute("row-id", row.id);
-      this.patchSection(slot.rightCellEls, rightLeaves, slot, row, viewIndex, rowNumber);
+      this.patchSection(slot.rightCellEls, rightLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
     }
   }
 
@@ -367,6 +401,7 @@ export class BodyWindowRenderer {
     row: IRowNode,
     viewIndex: number,
     rowNumber: number,
+    rowPresentation?: RowPresentation,
   ) {
     const spanning = !row.isGroup && leaves.some((l) => l.colSpan != null);
 
@@ -375,7 +410,7 @@ export class BodyWindowRenderer {
         const cell = cellEls[c];
         if (!cell) continue;
         this.resetSpanGeometry(cell, leaves[c]);
-        this.params.renderCell(cell, row, leaves[c], slot.cellRendererInstances, viewIndex, rowNumber);
+        this.params.renderCell(cell, row, leaves[c], slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation);
       }
       return;
     }
@@ -386,7 +421,7 @@ export class BodyWindowRenderer {
       const cell = cellEls[c];
       if (!cell) { c++; continue; }
 
-      this.params.renderCell(cell, row, col, slot.cellRendererInstances, viewIndex, rowNumber);
+      this.params.renderCell(cell, row, col, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation);
 
       const raw = col.colSpan
         ? col.colSpan({ value: col.getValue(row), data: row.data, rowId: row.id, rowIndex: viewIndex, colDef: col.col })

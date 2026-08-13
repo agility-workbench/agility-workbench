@@ -144,6 +144,7 @@ row count is known; the quick filter is client-side only.)
 | `theme` | `GridTheme` | Per-instance visual theme |
 | `icons` | `GridIconMap` | Named icon overrides |
 | `tooltip` | `boolean \| TooltipOptions` | Global tooltip behavior |
+| `getRowPresentation` | `(params) => RowPresentation` | Row/cell styling defaults, tooltip defaults, ARIA description/busy state, and metadata |
 | `toolbar` | `GridToolbarOptions` | Opt-in toolbar sections |
 | `savedViews` | `SavedViewsOptions` | Application-owned view persistence |
 | `suppressStyleInjection` | `boolean` | Use imported CSS instead |
@@ -153,3 +154,64 @@ row count is known; the quick filter is client-side only.)
 
 The package's TypeScript declarations remain the source of truth for less
 common callbacks and detailed nested option types.
+
+### Row presentation
+
+Use `getRowPresentation` when a status belongs to the whole row rather than a
+particular field:
+
+```tsx
+getRowPresentation: ({ rowId }) => {
+  const error = errors.get(rowId);
+  if (!error) return undefined;
+  return {
+    rowClass: "row-error",
+    cellClass: "cell-in-error-row",
+    cellStyle: { backgroundColor: "var(--error-row-bg)" },
+    tooltip: {
+      content: error.message,
+      component: ErrorTooltip,
+      componentParams: { showCode: true },
+      options: { mode: "follow", escapeRootClip: true },
+    },
+    accessibility: {
+      description: `Row contains an error: ${error.message}`,
+      busy: false,
+    },
+    metadata: { status: "error", error },
+  };
+}
+```
+
+`rowClass`/`rowStyle` style every row-container fragment and compose with the
+older `getRowClass`/`getRowStyle` hooks. `cellClass` is combined with each
+column's `cellClass`; `cellStyle` is the default object and the column wins only
+conflicting properties. The resolved presentation is also available to cell
+renderers, cell-style callbacks, and tooltip components as `rowPresentation`.
+
+Tooltip layers resolve by specificity:
+
+- Content: explicit column getter/field → row content → `defaultColDef` → clipped-cell text.
+- Component: explicit column component → row component → `defaultColDef` → built-in text.
+- Options, field by field: grid → `defaultColDef` → row → explicit column.
+
+This lets a column replace its message or placement while retaining the row's
+component and other behavior. `interactive: true` always forces anchored mode;
+placement is relevant only while anchored. A column can opt out selectively:
+
+```ts
+{
+  key: "actions",
+  label: "Actions",
+  inheritRowPresentation: {
+    tooltip: false,
+    cellClass: false,
+    cellStyle: false,
+  },
+}
+```
+
+When the callback reads external state (a pending-ID set, for example), call
+`api.refreshRowPresentation()` after changing it. Row transactions already
+repaint affected rendered rows. React and Angular row tooltip components use
+the framework-aware `ReactGetRowPresentation` and `NgGetRowPresentation` types.

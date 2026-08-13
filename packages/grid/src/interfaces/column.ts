@@ -30,6 +30,8 @@ export interface CellClassParams {
   rowIndex: number;
   /** The column definition for this cell. */
   colDef: ColDef;
+  /** Resolved defaults and metadata for this row, when `getRowPresentation` is configured. */
+  rowPresentation?: import("./gridOptions").RowPresentation;
 }
 
 /** Extra CSS class(es) for a cell: a static value or a function of the cell context. */
@@ -88,6 +90,15 @@ export interface ColDef {
    * omitted field falls back to the grid-level `tooltip` option. See {@link TooltipColumnOptions}.
    */
   tooltipOptions?: TooltipColumnOptions;
+  /**
+   * Controls which row-presentation cell defaults this column inherits. Omitted fields inherit.
+   * `false` opts out of every cell-level row default for this column.
+   */
+  inheritRowPresentation?: boolean | {
+    cellClass?: boolean;
+    cellStyle?: boolean;
+    tooltip?: boolean;
+  };
   /** Opt this column out of the built-in auto-truncation tooltip (on by default). */
   suppressAutoTooltip?: boolean;
   /**

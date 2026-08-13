@@ -1,7 +1,11 @@
 import { GridCore, GridOptions } from "@agility-workbench/grid";
 import { CanvasMeasurer } from "@agility-workbench/grid";
 import { GridProps } from "./interface";
-import { adaptCellRenderer, adaptReactDefaultColDef } from "./cellRenderer";
+import {
+  adaptCellRenderer,
+  adaptReactDefaultColDef,
+  adaptReactGetRowPresentation,
+} from "./cellRenderer";
 
 export function createCore(options: GridOptions): GridCore {
   return new GridCore(new CanvasMeasurer(), options);
@@ -46,6 +50,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "zebraRows", props.zebraRows);
   setIfDefined(options, "getRowClass", props.getRowClass);
   setIfDefined(options, "getRowStyle", props.getRowStyle);
+  setIfDefined(options, "getRowPresentation", adaptReactGetRowPresentation(props.getRowPresentation));
   setIfDefined(options, "onCellClicked", props.onCellClicked);
   setIfDefined(options, "onRowClicked", props.onRowClicked);
   setIfDefined(options, "onCellValueChanged", props.onCellValueChanged);

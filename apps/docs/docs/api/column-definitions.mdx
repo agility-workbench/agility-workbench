@@ -49,8 +49,14 @@ Each component slot has a companion params field where applicable.
 the number of adjacent columns occupied for each row. `actionFrameIndicator`
 marks cells with attached content.
 
+`inheritRowPresentation` controls whether the column receives `cellClass`,
+`cellStyle`, and `tooltip` defaults from `getRowPresentation`. Set it to `false`
+to opt out completely, or use an object such as `{ tooltip: false }`. Column
+classes compose with row defaults, column inline-style properties override
+conflicts, and explicit column tooltip fields override the corresponding row
+defaults.
+
 ## Groups
 
 A definition with `children` is a column group. `openByDefault` sets its initial
 state; child leaves use `columnGroupShow` to appear only while open or closed.
-

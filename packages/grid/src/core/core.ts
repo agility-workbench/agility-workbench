@@ -241,6 +241,7 @@ export class GridCore implements IGridCore {
       zebraRows: isTrue(options.zebraRows),
       getRowClass: options.getRowClass,
       getRowStyle: options.getRowStyle,
+      getRowPresentation: options.getRowPresentation,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,

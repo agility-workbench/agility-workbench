@@ -5,7 +5,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
-import type { ReactColDef } from "./cellRenderer";
+import type {
+  ReactColDef,
+  ReactDefaultColDef,
+  ReactGetRowPresentation,
+} from "./cellRenderer";
 import {
   SparklineRenderer,
   type IGridAPI,
@@ -38,6 +42,8 @@ const DATA: Row[] = [
 async function mountGrid(opts: {
   tooltip?: boolean | TooltipOptions;
   columns?: ReactColDef[];
+  defaultColDef?: ReactDefaultColDef;
+  getRowPresentation?: ReactGetRowPresentation;
 } = {}) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
@@ -58,6 +64,8 @@ async function mountGrid(opts: {
         columnDefs={columns}
         rowIdKey="id"
         tooltip={opts.tooltip ?? { showDelay: 0, hideDelay: 0 }}
+        defaultColDef={opts.defaultColDef}
+        getRowPresentation={opts.getRowPresentation}
       />,
     );
   });
@@ -153,6 +161,109 @@ describe("tooltips", () => {
     await act(async () => { await Promise.resolve(); });
     expect(container.querySelector(".custom-tt")).not.toBeNull();
     expect(container.querySelector(".custom-tt")!.textContent).toContain("TT:Ava");
+    await unmountTestRoot(root);
+  });
+
+  it("uses a full row tooltip default while columns override content and options independently", async () => {
+    const RowTooltip = (p: TooltipComponentParams) =>
+      React.createElement("span", { className: "row-tooltip" }, `${p.contentSource}:${p.content}`);
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0, mode: "anchored" },
+      getRowPresentation: ({ rowId }) => rowId === "1" ? {
+        tooltip: {
+          content: "Row status: pending",
+          component: RowTooltip,
+          options: { mode: "follow" },
+        },
+      } : undefined,
+      columns: [
+        { colId: "name", key: "name", label: "Name" },
+        {
+          colId: "email",
+          key: "email",
+          label: "Email",
+          tooltipValueGetter: () => "Column-specific email help",
+          tooltipOptions: { mode: "anchored", placement: "left" },
+        },
+      ],
+    });
+
+    await act(async () => { hoverBodyCell(container, 0); await tick(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(container.querySelector(".row-tooltip")?.textContent).toBe("row:Row status: pending");
+    expect(tooltipEl(container)?.dataset.placement).toBeUndefined();
+
+    await act(async () => { hoverBodyCell(container, 1); await tick(); });
+    await act(async () => { await Promise.resolve(); });
+    // The column replaces content and positioning, while retaining the row's default component.
+    expect(container.querySelector(".row-tooltip")?.textContent)
+      .toBe("column:Column-specific email help");
+    expect(tooltipEl(container)?.dataset.placement).toBe("left");
+    await unmountTestRoot(root);
+  });
+
+  it("places row defaults above defaultColDef but below an explicit column", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0, mode: "anchored" },
+      defaultColDef: {
+        tooltipField: "notes",
+        tooltipOptions: { placement: "right" },
+      },
+      getRowPresentation: () => ({
+        tooltip: {
+          content: "row fallback",
+          options: { placement: "top" },
+        },
+      }),
+      columns: [
+        { colId: "name", key: "name", label: "Name" },
+        {
+          colId: "email",
+          key: "email",
+          label: "Email",
+          tooltipField: "email",
+          tooltipOptions: { placement: "left" },
+        },
+      ],
+    });
+
+    await act(async () => { hoverBodyCell(container, 0); await tick(); });
+    expect(tooltipEl(container)?.textContent).toContain("row fallback");
+    expect(tooltipEl(container)?.dataset.placement).toBe("top");
+
+    await act(async () => { hoverBodyCell(container, 1); await tick(); });
+    expect(tooltipEl(container)?.textContent).toContain("ava@example.com");
+    expect(tooltipEl(container)?.dataset.placement).toBe("left");
+    await unmountTestRoot(root);
+  });
+
+  it("supports row-level interactivity and a column tooltip opt-out", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0, mode: "follow" },
+      getRowPresentation: () => ({
+        tooltip: {
+          content: "Interactive row help",
+          options: { mode: "follow", interactive: true },
+        },
+      }),
+      columns: [
+        { colId: "name", key: "name", label: "Name" },
+        {
+          colId: "email",
+          key: "email",
+          label: "Email",
+          inheritRowPresentation: { tooltip: false },
+        },
+      ],
+    });
+
+    await act(async () => { hoverBodyCell(container, 0); await tick(); });
+    expect(tooltipEl(container)?.classList.contains("pte-tooltip-interactive")).toBe(true);
+    // interactive forces anchored even when both grid and row request follow mode.
+    expect(tooltipEl(container)?.dataset.placement).toBeTruthy();
+
+    await act(async () => { hoverBodyCell(container, 1); await tick(); });
+    expect(tooltipEl(container)).toBeNull();
     await unmountTestRoot(root);
   });
 

@@ -6,6 +6,7 @@ import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
+import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
 import type { ColDef, DefaultColDef } from "./column";
 import type {
   CellValueChangeSource,
@@ -101,6 +102,53 @@ export type GetRowClass = (params: RowClassParams) => string | string[] | null |
  * that stops being returned is cleared on the next repaint.
  */
 export type GetRowStyle = (params: RowClassParams) => Partial<CSSStyleDeclaration> | null | undefined;
+
+/** Tooltip defaults supplied by {@link RowPresentation} for every cell in one row. */
+export interface RowTooltipPresentation {
+  /** Default scalar content. Explicit column tooltip content overrides it. */
+  content?: string | number | null;
+  /** Default renderer. An explicit column `tooltipComponent` overrides it. */
+  component?: TooltipComponent;
+  /** Extra params for the row tooltip component. Column component params override matching keys. */
+  componentParams?: Record<string, unknown>;
+  /** Row-specific positioning/interaction defaults. Explicit column options override each field. */
+  options?: TooltipColumnOptions;
+}
+
+/** Accessibility semantics attached to the row rather than inferred from visual styling. */
+export interface RowAccessibilityPresentation {
+  /** Additional row description, exposed through `aria-describedby`. */
+  description?: string | null;
+  /** Whether work associated with the row is in progress (`aria-busy`). */
+  busy?: boolean;
+}
+
+/**
+ * Presentation defaults for one logical row. Row container class/style complement the legacy
+ * `getRowClass` / `getRowStyle` callbacks. Cell class/style are applied to every cell, then composed
+ * with its column's `cellClass` / `cellStyle`. Tooltip fields form the default for every cell and
+ * can be overridden (or suppressed) by its column.
+ */
+export interface RowPresentation {
+  rowClass?: string | string[] | null;
+  rowStyle?: Partial<CSSStyleDeclaration> | null;
+  cellClass?: string | string[] | null;
+  cellStyle?: Partial<CSSStyleDeclaration> | null;
+  /** `false` explicitly disables the row tooltip default. */
+  tooltip?: RowTooltipPresentation | false | null;
+  accessibility?: RowAccessibilityPresentation | null;
+  /** Opaque application state forwarded to cell renderers, styling callbacks, and tooltips. */
+  metadata?: Record<string, unknown>;
+}
+
+export interface RowPresentationParams extends RowClassParams {
+  /** Set for application-pinned rows; sticky group mirrors remain ordinary body rows. */
+  rowPinned?: RowPinnedPosition;
+}
+
+export type GetRowPresentation = (
+  params: RowPresentationParams,
+) => RowPresentation | null | undefined;
 
 /**
  * Customizes the body (right-click) context menu. Receives the menu context and the default items
@@ -738,6 +786,12 @@ export interface GridOptions {
    */
   getRowStyle?: GetRowStyle;
   /**
+   * Row-scoped presentation defaults for row/cell styling, tooltips, accessibility, and opaque
+   * metadata. Evaluated as a row is rendered and again when its tooltip is opened. Call
+   * `api.refreshRowPresentation()` after changing external state used by this callback.
+   */
+  getRowPresentation?: GetRowPresentation;
+  /**
    * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
    * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell.
    */
@@ -1266,6 +1320,7 @@ export type RuntimeGridOptions = Pick<
   | "zebraRows"
   | "getRowClass"
   | "getRowStyle"
+  | "getRowPresentation"
   | "ariaLabel"
   | "ariaLabelledBy"
   | "highlightActiveCell"

@@ -6,6 +6,12 @@ import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
+import type { RowPresentation } from "../../interfaces/gridOptions";
+import {
+  mergeClassValues,
+  mergeStyleValues,
+  resolveRowPresentation,
+} from "../body/rowPresentation";
 import {
   ActiveDescendantTracker, markPresentational, setAriaSelected, stampGridCellAria, stampRowHierarchyAria, stitchAriaRow,
 } from "../aria";
@@ -721,6 +727,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     if (changed) {
       this.stickySignature = signature;
       this.destroyRendererMaps(this.stickyRendererMaps);
+      this.clearBandDescriptions(this.sticky);
       this.sticky.leadingHost.replaceChildren();
       this.sticky.leftHost.replaceChildren();
       this.sticky.centerHost.replaceChildren();
@@ -760,6 +767,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   private renderBand(band: BandElements, rows: RenderedPinnedRow[]): void {
     this.destroyRendererMaps(this.mapsFor(band));
+    this.clearBandDescriptions(band);
     band.leadingHost.replaceChildren();
     band.leftHost.replaceChildren();
     band.centerHost.replaceChildren();
@@ -807,10 +815,13 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const rendererMap = new Map<string, RendererRecord>();
     this.mapsFor(band).add(rendererMap);
     const model = this.params.core.getColumnModel();
-    const leading = this.createSectionRow(band.leadingHost, row, pinned, rowIndex);
-    const left = this.createSectionRow(band.leftHost, row, pinned, rowIndex);
-    const center = this.createSectionRow(band.centerHost, row, pinned, rowIndex);
-    const right = this.createSectionRow(band.rightHost, row, pinned, rowIndex);
+    const rowPresentation = resolveRowPresentation(
+      this.params.core, row, row.viewIndex, pinned ?? undefined,
+    );
+    const leading = this.createSectionRow(band.leadingHost, row, pinned, rowIndex, rowPresentation);
+    const left = this.createSectionRow(band.leftHost, row, pinned, rowIndex, rowPresentation);
+    const center = this.createSectionRow(band.centerHost, row, pinned, rowIndex, rowPresentation);
+    const right = this.createSectionRow(band.rightHost, row, pinned, rowIndex, rowPresentation);
 
     if (!this.params.core.options.treeData
       && row.isGroup
@@ -825,16 +836,18 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.setAttribute("aria-colspan", String(model.leafColumnLookup.size));
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
-      this.params.bodyCellRenderer.renderFullWidthCell(cell, row, rendererMap, row.viewIndex, 0);
-      this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
+      this.params.bodyCellRenderer.renderFullWidthCell(
+        cell, row, rendererMap, row.viewIndex, 0, rowPresentation,
+      );
+      this.stitchBandRowAria(band, leading, left, center, right, pinned, rowIndex, row, rowPresentation);
       return;
     }
 
-    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap, rowIndex, pinned);
-    this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned);
-    this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned);
-    this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned);
-    this.stitchBandRowAria(leading, left, center, right, pinned, rowIndex, row);
+    this.renderCells(leading, model.getLeadingLeaves(), row, rendererMap, rowIndex, pinned, rowPresentation);
+    this.renderCells(left, model.getLeftLeaves(), row, rendererMap, rowIndex, pinned, rowPresentation);
+    this.renderCells(center, model.getCenterLeaves(), row, rendererMap, rowIndex, pinned, rowPresentation);
+    this.renderCells(right, model.getRightLeaves(), row, rendererMap, rowIndex, pinned, rowPresentation);
+    this.stitchBandRowAria(band, leading, left, center, right, pinned, rowIndex, row, rowPresentation);
   }
 
   // ARIA: band rows are stitched like body pool rows — center fragment is THE row,
@@ -842,6 +855,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   // outside the view sequence and show a blank row number by design. Bands are rebuilt from
   // scratch on each render, so creation-time stamping stays correct.
   private stitchBandRowAria(
+    band: BandElements,
     leading: HTMLDivElement,
     left: HTMLDivElement,
     center: HTMLDivElement,
@@ -849,6 +863,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     pinned: RowPinnedPosition | null,
     rowIndex: number,
     row: IRowNode,
+    rowPresentation?: RowPresentation,
   ): void {
     markPresentational(leading, left, right);
     const cells = [
@@ -856,6 +871,23 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     ] as HTMLElement[];
     stitchAriaRow(center, cells, `${this.params.core.id}-${pinned ?? "sticky"}${rowIndex}`);
     stampRowHierarchyAria(center, row);
+    const description = rowPresentation?.accessibility?.description;
+    if (description != null && String(description).length > 0) {
+      const descriptionEl = document.createElement("span");
+      descriptionEl.className = "pte-row-description";
+      descriptionEl.id = `${this.params.core.id}-${pinned ?? "sticky"}${rowIndex}-description`;
+      descriptionEl.hidden = true;
+      descriptionEl.textContent = String(description);
+      // Keep the description outside section hosts: their child indexes are used to position
+      // sticky rows and must contain rows only.
+      band.root.appendChild(descriptionEl);
+      center.setAttribute("aria-describedby", descriptionEl.id);
+    }
+    if (rowPresentation?.accessibility?.busy) center.setAttribute("aria-busy", "true");
+  }
+
+  private clearBandDescriptions(band: BandElements): void {
+    for (const element of band.root.querySelectorAll(".pte-row-description")) element.remove();
   }
 
   private createSectionRow(
@@ -863,6 +895,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     row: IRowNode,
     pinned: RowPinnedPosition | null,
     rowIndex: number,
+    rowPresentation?: RowPresentation,
   ): HTMLDivElement {
     const element = document.createElement("div");
     element.className = "pte-row pte-pinned-row";
@@ -895,8 +928,14 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       node: row,
       rowPinned: pinned ?? undefined,
     };
-    if (getRowClass) applyDynamicClasses(element, getRowClass(callbackParams));
-    if (getRowStyle) applyDynamicStyles(element, getRowStyle(callbackParams));
+    applyDynamicClasses(element, mergeClassValues(
+      getRowClass ? getRowClass(callbackParams) : null,
+      rowPresentation?.rowClass,
+    ));
+    applyDynamicStyles(element, mergeStyleValues(
+      getRowStyle ? getRowStyle(callbackParams) : null,
+      rowPresentation?.rowStyle,
+    ));
     host.appendChild(element);
     return element;
   }
@@ -908,6 +947,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     rendererMap: Map<string, RendererRecord>,
     rowIndex: number,
     pinned: RowPinnedPosition | null,
+    rowPresentation?: RowPresentation,
   ): void {
     // Application-pinned rows live outside the view sequence and show a blank row number; a sticky
     // mirror shows its body row's real number so the header docks without its cells changing.
@@ -927,7 +967,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       if (column.isRowNumberColumn()) cell.classList.add("pte-row-number-cell");
       if (column.isSelectionCheckboxColumn()) cell.classList.add("pte-checkbox-cell");
       rowElement.appendChild(cell);
-      this.params.bodyCellRenderer.renderCell(cell, row, column, rendererMap, row.viewIndex, rowNumber);
+      this.params.bodyCellRenderer.renderCell(
+        cell, row, column, rendererMap, row.viewIndex, rowNumber, "data", rowPresentation,
+      );
       if (pinned && column.isRowNumberColumn()) cell.textContent = "";
       if (pinned && column.isSelectionCheckboxColumn()) cell.textContent = "";
       width += column.computedWidth;

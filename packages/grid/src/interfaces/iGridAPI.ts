@@ -305,6 +305,12 @@ export interface IGridAPI {
   /** Hide any visible tooltip. */
   hideTooltip(): void;
 
+  /**
+   * Re-evaluate `getRowPresentation` for rendered body and pinned rows. Use after external state
+   * captured by the callback changes; row-data transactions already repaint affected rows.
+   */
+  refreshRowPresentation(): void;
+
   /* ----- ActionFrame ----- */
   /** Open the persistent ActionFrame (frame + form popover) on a body cell. Closes any open editor
    * or previously-open frame (only one at a time). No-op on a group row / missing cell. */
