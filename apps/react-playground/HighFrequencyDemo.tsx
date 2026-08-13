@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ChangeFlashCellRenderer, type IGridAPI } from "@grid";
+import { ChangeFlashCellRenderer, type CellRendererParams, type IGridAPI } from "@grid";
 import { Grid, type ReactColDef } from "@react-grid";
 
 type MarketRow = {
@@ -70,6 +70,25 @@ const integerFormatter = ({ value }: { value: unknown }) =>
 const direction = (_previous: unknown, next: unknown) =>
   typeof next === "number" && next > 0 ? "up" : typeof next === "number" && next < 0 ? "down" : "neutral";
 
+const LOGO_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#16a34a", "#0891b2", "#4f46e5"];
+
+function logoColor(symbol: string): string {
+  const hash = [...symbol].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return LOGO_COLORS[hash % LOGO_COLORS.length];
+}
+
+function SymbolCellRenderer({ value }: CellRendererParams) {
+  const symbol = String(value ?? "");
+  return (
+    <span className="market-symbol">
+      <span className="market-logo" style={{ background: logoColor(symbol) }} aria-hidden="true">
+        {symbol.replace(/[^A-Z]/g, "").slice(0, 2)}
+      </span>
+      <strong>{symbol}</strong>
+    </span>
+  );
+}
+
 export default function HighFrequencyDemo() {
   const initialRows = useMemo(() => buildRows(), []);
   const rowsRef = useRef(new Map(initialRows.map((row) => [row.symbol, row])));
@@ -82,7 +101,10 @@ export default function HighFrequencyDemo() {
   const [stats, setStats] = useState({ submitted: 0, settled: 0, pending: 0 });
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
-    { colId: "symbol", key: "symbol", label: "Symbol", width: 92, pinned: "left" },
+    {
+      colId: "symbol", key: "symbol", label: "Symbol", width: 124, pinned: "left",
+      cellRenderer: SymbolCellRenderer,
+    },
     { colId: "venue", key: "venue", label: "Venue", width: 92 },
     { colId: "sector", key: "sector", label: "Sector", width: 125 },
     {
@@ -107,7 +129,7 @@ export default function HighFrequencyDemo() {
       cellRendererParams: { direction, cellFlashDuration: 140, cellFadeDuration: 300 },
     },
     {
-      colId: "changePct", key: "changePct", label: "Change %", width: 105,
+      colId: "changePct", key: "changePct", label: "Change %", width: 105, sort: "desc",
       valueFormatter: ({ value }: { value: unknown }) => typeof value === "number" ? `${value.toFixed(2)}%` : "",
       cellClass: ({ value }: { value: unknown }) => typeof value === "number" && value < 0 ? "market-down" : "market-up",
       cellRenderer: ChangeFlashCellRenderer,

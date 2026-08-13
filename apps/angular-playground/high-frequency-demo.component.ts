@@ -2,6 +2,7 @@ import { Component, OnDestroy, ViewEncapsulation, signal } from "@angular/core";
 import {
   AwbGrid,
   ChangeFlashCellRenderer,
+  type CellRendererParams,
   type IGridAPI,
   type NgColDef,
 } from "@agility-workbench/angular-grid";
@@ -72,6 +73,30 @@ const integerFormatter = ({ value }: { value: unknown }) =>
   typeof value === "number" ? value.toLocaleString("en-US") : "";
 const direction = (_previous: unknown, next: unknown) =>
   typeof next === "number" && next > 0 ? "up" : typeof next === "number" && next < 0 ? "down" : "neutral";
+
+const LOGO_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#16a34a", "#0891b2", "#4f46e5"];
+
+function logoColor(symbol: string): string {
+  const hash = [...symbol].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return LOGO_COLORS[hash % LOGO_COLORS.length];
+}
+
+function SymbolCellRenderer({ value }: CellRendererParams): HTMLElement {
+  const symbol = String(value ?? "");
+  const root = document.createElement("span");
+  root.className = "market-symbol";
+
+  const logo = document.createElement("span");
+  logo.className = "market-logo";
+  logo.style.background = logoColor(symbol);
+  logo.setAttribute("aria-hidden", "true");
+  logo.textContent = symbol.replace(/[^A-Z]/g, "").slice(0, 2);
+
+  const ticker = document.createElement("strong");
+  ticker.textContent = symbol;
+  root.append(logo, ticker);
+  return root;
+}
 
 @Component({
   selector: "high-frequency-demo",
@@ -159,6 +184,14 @@ const direction = (_previous: unknown, next: unknown) =>
     .high-frequency-grid { flex: 1; min-height: 280px; }
     .high-frequency-grid .market-up { color: #22c55e; }
     .high-frequency-grid .market-down { color: #ef4444; }
+    .high-frequency-grid .market-symbol {
+      display: inline-flex; align-items: center; gap: 8px; height: 100%;
+    }
+    .high-frequency-grid .market-logo {
+      display: inline-grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center;
+      border-radius: 7px; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: -0.02em;
+      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 22%);
+    }
     @media (max-width: 900px) {
       .high-frequency-header { align-items: stretch; flex-direction: column; }
     }
@@ -181,7 +214,10 @@ export class HighFrequencyDemoComponent implements OnDestroy {
   private readonly statsInterval = window.setInterval(() => this.updateStats(), 500);
 
   readonly columnDefs: NgColDef[] = [
-    { colId: "symbol", key: "symbol", label: "Symbol", width: 92, pinned: "left" },
+    {
+      colId: "symbol", key: "symbol", label: "Symbol", width: 124, pinned: "left",
+      cellRenderer: SymbolCellRenderer,
+    },
     { colId: "venue", key: "venue", label: "Venue", width: 92 },
     { colId: "sector", key: "sector", label: "Sector", width: 125 },
     {
@@ -206,7 +242,7 @@ export class HighFrequencyDemoComponent implements OnDestroy {
       cellRendererParams: { direction, cellFlashDuration: 140, cellFadeDuration: 300 },
     },
     {
-      colId: "changePct", key: "changePct", label: "Change %", width: 105,
+      colId: "changePct", key: "changePct", label: "Change %", width: 105, sort: "desc",
       valueFormatter: ({ value }: { value: unknown }) => typeof value === "number" ? `${value.toFixed(2)}%` : "",
       cellClass: ({ value }: { value: unknown }) => typeof value === "number" && value < 0 ? "market-down" : "market-up",
       cellRenderer: ChangeFlashCellRenderer,
