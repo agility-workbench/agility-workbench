@@ -20,6 +20,8 @@ import type {
   ICellRenderer,
   IGridAPI,
   TooltipComponentParams,
+  ISetFilterComponent,
+  SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
 
 beforeAll(() => {
@@ -156,6 +158,32 @@ describe("adaptCellRenderer", () => {
 
     const defaults = adaptReactDefaultColDef({ cellRenderer: NameCell });
     expect(defaults?.cellRenderer).toBe(group.children?.[0].cellRenderer);
+  });
+
+  it("adapts React components nested in set-filter params", async () => {
+    function FilterValue(props: SetFilterValueComponentParams) {
+      return <span className="filter-value">filter:{String(props.value)}</span>;
+    }
+
+    const [col] = adaptReactColumnDefs([{
+      colId: "region",
+      key: "region",
+      label: "Region",
+      filter: "set",
+      filterParams: { valueComponent: FilterValue },
+    }])!;
+    expect(col.filterParams?.valueComponent).not.toBe(FilterValue);
+
+    const Component = col.filterParams!.valueComponent as unknown as new () => ISetFilterComponent<SetFilterValueComponentParams>;
+    const instance = new Component();
+    await act(async () => {
+      instance.init({ value: "EMEA", valueFormatted: "EMEA", colDef: {} as any, api: {} as IGridAPI });
+    });
+    expect(instance.getGui().querySelector(".filter-value")?.textContent).toBe("filter:EMEA");
+    await act(async () => { instance.destroy(); });
+
+    const defaults = adaptReactDefaultColDef({ filterParams: { valueComponent: FilterValue } });
+    expect(defaults?.filterParams?.valueComponent).toBe(col.filterParams?.valueComponent);
   });
 });
 

@@ -6,9 +6,14 @@ import type {
   CellRenderer,
   CellRendererParams,
   ColDef,
+  FilterParams,
   ICellEditorParams,
   TooltipComponent,
   TooltipComponentParams,
+  SetFilterSpecialValueComponent,
+  SetFilterSpecialValueComponentParams,
+  SetFilterValueComponent,
+  SetFilterValueComponentParams,
   NON_DEFAULTABLE_COLDEF_KEYS,
   RowPresentation,
   RowPresentationParams,
@@ -39,6 +44,20 @@ export interface IActionFrameNgComp<P extends ActionFrameComponentParams = Actio
   awbRefresh?(params: P): boolean;
 }
 
+/** Angular component contract for a regular set-filter value label. */
+export interface ISetFilterValueNgComp<P extends SetFilterValueComponentParams = SetFilterValueComponentParams> {
+  awbInit(params: P): void;
+  awbRefresh?(params: P): boolean;
+}
+
+/** Angular component contract for the dedicated Select All and Blanks labels. */
+export interface ISetFilterSpecialValueNgComp<
+  P extends SetFilterSpecialValueComponentParams = SetFilterSpecialValueComponentParams,
+> {
+  awbInit(params: P): void;
+  awbRefresh?(params: P): boolean;
+}
+
 /**
  * Contract for an Angular cell-editor component. The grid reads `getValue()` on commit and calls
  * the optional lifecycle methods; mount, synchronous change detection, focus sequencing, and
@@ -60,6 +79,15 @@ export interface ICellEditorNgComp<P extends ICellEditorParams = ICellEditorPara
 /** An Angular component class usable as a cell renderer / tooltip / ActionFrame / editor. */
 export type NgComponent = Type<unknown>;
 
+export type NgFilterParams = Omit<
+  FilterParams,
+  "valueComponent" | "selectAllComponent" | "blanksComponent"
+> & {
+  valueComponent?: SetFilterValueComponent | NgComponent;
+  selectAllComponent?: SetFilterSpecialValueComponent | NgComponent;
+  blanksComponent?: SetFilterSpecialValueComponent | NgComponent;
+};
+
 export type NgRowTooltipPresentation = Omit<RowTooltipPresentation, "component"> & {
   component?: TooltipComponent | NgComponent;
 };
@@ -80,13 +108,14 @@ export type NgGetRowPresentation = (
  */
 export type NgColDef = Omit<
   ColDef,
-  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent"
+  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent" | "filterParams"
 > & {
   cellRenderer?: CellRenderer | NgComponent;
   cellEditor?: CellEditor | NgComponent;
   tooltipComponent?: TooltipComponent | NgComponent;
   headerTooltip?: string | TooltipComponent | NgComponent;
   actionFrameComponent?: ActionFrameComponent | NgComponent;
+  filterParams?: NgFilterParams;
   children?: NgColDef[];
 };
 

@@ -12,6 +12,8 @@ import type {
   ICellEditor,
   ICellEditorParams,
   ICellRenderer,
+  ISetFilterComponent,
+  SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
 import type { ICellEditorNgComp, ICellRendererNgComp } from "./interface";
@@ -50,6 +52,14 @@ class InitRenderer implements ICellRendererNgComp {
 
 @Component({ standalone: true, template: `<span>invalid</span>` })
 class InvalidRenderer {}
+
+@Component({
+  standalone: true,
+  template: `<span class="set-filter-value">{{ params()?.value }}:{{ params()?.suffix }}</span>`,
+})
+class SignalSetFilterValue {
+  readonly params = input<SetFilterValueComponentParams & { suffix?: string }>();
+}
 
 @Component({ standalone: true, template: `<input class="ng-editor" [value]="value" />` })
 class TestEditor implements ICellEditorNgComp {
@@ -195,5 +205,26 @@ describe("NgAdapters", () => {
 
     const defaults = service.adaptDefaultColDef({ cellRenderer: SignalRenderer });
     expect(defaults?.cellRenderer).toBe(group.children?.[0].cellRenderer);
+  });
+
+  it("adapts Angular components nested in set-filter params", () => {
+    const service = adapters();
+    const col = service.adaptColDef({
+      colId: "region",
+      key: "region",
+      label: "Region",
+      filter: "set",
+      filterParams: { valueComponent: SignalSetFilterValue },
+    });
+    expect(col.filterParams?.valueComponent).not.toBe(SignalSetFilterValue);
+
+    const Component = col.filterParams!.valueComponent as unknown as new () => ISetFilterComponent<SetFilterValueComponentParams>;
+    const instance = new Component();
+    instance.init({ value: "EMEA", valueFormatted: "EMEA", colDef: {} as any, api: {} as any, suffix: "custom" });
+    expect(instance.getGui().querySelector(".set-filter-value")?.textContent).toBe("EMEA:custom");
+    instance.destroy();
+
+    const defaults = service.adaptDefaultColDef({ filterParams: { valueComponent: SignalSetFilterValue } });
+    expect(defaults?.filterParams?.valueComponent).toBe(col.filterParams?.valueComponent);
   });
 });

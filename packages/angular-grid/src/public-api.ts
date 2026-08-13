@@ -9,11 +9,14 @@ export type {
   ITooltipNgComp,
   IActionFrameNgComp,
   ICellEditorNgComp,
+  ISetFilterSpecialValueNgComp,
+  ISetFilterValueNgComp,
   NgComponent,
   NgColDef,
   NgDefaultColDef,
   NgRowTooltipPresentation,
   NgRowPresentation,
   NgGetRowPresentation,
+  NgFilterParams,
 } from "./interface";
 export type { NgMenuItem, NgMenuSlot } from "./menu";

@@ -4,6 +4,7 @@ import { createElement, div } from "../element";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { BasicFilterRenderer } from "./basicFilterRenderer";
 import { SetFilterRenderer } from "./setFilterRenderer";
+import type { IGridAPI } from "../../interfaces/iGridAPI";
 
 export class FilterRenderer {
   private root!: HTMLElement;
@@ -12,8 +13,8 @@ export class FilterRenderer {
 
   private unsubscribeFn: (() => void);
 
-  constructor(private controller: FilterController, private spec: FilterPanelSpec) {
-    this.renderer = spec.kind === "set" ? new SetFilterRenderer(controller, spec) : new BasicFilterRenderer(controller, spec);
+  constructor(private controller: FilterController, private spec: FilterPanelSpec, api: IGridAPI) {
+    this.renderer = spec.kind === "set" ? new SetFilterRenderer(controller, spec, api) : new BasicFilterRenderer(controller, spec);
     this.createFilter();
     this.unsubscribeFn = this.controller.subscribe((state: FilterRuntimeState) => this.renderer.renderState(state));
   }

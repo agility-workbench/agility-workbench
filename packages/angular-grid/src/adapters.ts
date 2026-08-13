@@ -19,6 +19,7 @@ import type {
   CellRendererParams,
   ColDef,
   DefaultColDef,
+  FilterParams,
   IActionFrameComponent,
   ICellEditor,
   ICellEditorParams,
@@ -29,17 +30,22 @@ import type {
   TooltipComponentParams,
   RowPresentation,
   RowPresentationParams,
+  ISetFilterComponent,
+  SetFilterComponent,
+  SetFilterComponentClass,
 } from "@agility-workbench/grid";
 import {
   isClassActionFrameComponent,
   isClassRenderer,
   isClassTooltipComponent,
+  isClassSetFilterComponent,
 } from "@agility-workbench/grid";
 import type {
   NgColDef,
   NgComponent,
   NgDefaultColDef,
   NgGetRowPresentation,
+  NgFilterParams,
 } from "./interface";
 
 /** True when `value` is a compiled Angular component class (vs a core class or plain function). */
@@ -90,6 +96,7 @@ export class NgAdapters {
   private readonly tooltipCache = new WeakMap<object, TooltipComponentClass>();
   private readonly actionFrameCache = new WeakMap<object, ActionFrameComponentClass>();
   private readonly editorCache = new WeakMap<object, CellEditorClass>();
+  private readonly setFilterComponentCache = new WeakMap<object, SetFilterComponentClass<any>>();
 
   constructor(
     private readonly appRef: ApplicationRef,
@@ -366,6 +373,63 @@ export class NgAdapters {
     };
   }
 
+  // --- set-filter value components ------------------------------------------------------------
+
+  private adaptSetFilterComponent<P extends object>(
+    component: SetFilterComponent<P> | NgComponent | undefined,
+  ): SetFilterComponent<P> | undefined {
+    if (!component) return undefined;
+    if (
+      typeof component === "function" &&
+      isClassSetFilterComponent(component as SetFilterComponent<P>)
+    ) {
+      return component as SetFilterComponent<P>;
+    }
+    if (!isNgComponent(component)) return component as SetFilterComponent<P>;
+
+    const cached = this.setFilterComponentCache.get(component);
+    if (cached) return cached as SetFilterComponentClass<P>;
+
+    const adapted = this.createSetFilterComponentClass<P>(component);
+    this.setFilterComponentCache.set(component, adapted);
+    return adapted;
+  }
+
+  private createSetFilterComponentClass<P extends object>(component: Type<unknown>): SetFilterComponentClass<P> {
+    const adapters = this;
+    return class NgSetFilterComponentAdapter implements ISetFilterComponent<P> {
+      private el = document.createElement("span");
+      private mounted: MountedComponent | null = null;
+
+      init(params: P): void {
+        this.mounted = adapters.mount(component, params, this.el, "setFilterValueComponent");
+      }
+
+      getGui(): HTMLElement {
+        return this.el;
+      }
+
+      refresh(params: P): boolean {
+        return this.mounted?.refresh(params) ?? false;
+      }
+
+      destroy(): void {
+        this.mounted?.destroy();
+        this.mounted = null;
+      }
+    };
+  }
+
+  private adaptFilterParams(filterParams: NgFilterParams | undefined): FilterParams | undefined {
+    if (!filterParams) return undefined;
+    return {
+      ...filterParams,
+      valueComponent: this.adaptSetFilterComponent(filterParams.valueComponent),
+      selectAllComponent: this.adaptSetFilterComponent(filterParams.selectAllComponent),
+      blanksComponent: this.adaptSetFilterComponent(filterParams.blanksComponent),
+    };
+  }
+
   // --- column defs -----------------------------------------------------------------------------
 
   /**
@@ -380,6 +444,7 @@ export class NgAdapters {
       tooltipComponent: this.adaptTooltip(colDef.tooltipComponent),
       headerTooltip: this.adaptHeaderTooltip(colDef.headerTooltip),
       actionFrameComponent: this.adaptActionFrame(colDef.actionFrameComponent),
+      filterParams: this.adaptFilterParams(colDef.filterParams),
       children: colDef.children ? (this.adaptColumnDefs(colDef.children) ?? undefined) : undefined,
     };
   }
@@ -404,6 +469,7 @@ export class NgAdapters {
     if ("actionFrameComponent" in defaultColDef) {
       next.actionFrameComponent = this.adaptActionFrame(defaultColDef.actionFrameComponent);
     }
+    if ("filterParams" in defaultColDef) next.filterParams = this.adaptFilterParams(defaultColDef.filterParams);
     return next;
   }
 }

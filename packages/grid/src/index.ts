@@ -162,6 +162,20 @@ export type {
   SetFilterMode,
 } from "./interfaces/filter";
 export type { SetFilterSelection } from "./filter/setFilterCore";
+export type {
+  ISetFilterComponent,
+  SetFilterComponent,
+  SetFilterComponentClass,
+  SetFilterComponentFn,
+  SetFilterSpecialValueComponent,
+  SetFilterSpecialValueComponentParams,
+  SetFilterValueComponent,
+  SetFilterValueComponentParams,
+} from "./renderer/filter/setFilterValueComponent";
+export {
+  createSetFilterComponentRuntime,
+  isClassSetFilterComponent,
+} from "./renderer/filter/setFilterValueComponent";
 
 export type {
   CellValueChangeSource,

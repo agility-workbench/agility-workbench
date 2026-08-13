@@ -3,14 +3,34 @@ import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOptio
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
 import { Overlay } from "../overlay";
+import type { IGridAPI } from "../../interfaces/iGridAPI";
+import {
+  createSetFilterComponentRuntime,
+} from "./setFilterValueComponent";
+import type {
+  SetFilterComponent,
+  SetFilterComponentRuntime,
+  SetFilterSpecialValueComponentParams,
+  SetFilterValueComponentParams,
+} from "./setFilterValueComponent";
+
+interface ValueComponentRecord {
+  component: SetFilterComponent<any>;
+  runtime: SetFilterComponentRuntime<any>;
+}
 
 export class SetFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;
   private loader!: Overlay;
   private conditionContainer!: HTMLElement;
   private miniFilterInput!: HTMLInputElement;
+  private valueComponents = new Map<string, ValueComponentRecord>();
 
-  constructor(private controller: FilterController, private spec: FilterPanelSpec) {
+  constructor(
+    private controller: FilterController,
+    private spec: FilterPanelSpec,
+    private api: IGridAPI,
+  ) {
     this.root = div("pte-filter-form");
     this.createFilter();
   }
@@ -24,23 +44,26 @@ export class SetFilterRenderer implements IFilterRenderer {
   }
 
   destroy(): void {
-
+    this.destroyValueComponents();
   }
 
   renderState(state: FilterRuntimeState): void {
     if (state.conditionOrder.length === 0) {
-      this.conditionContainer.innerHTML = "";
+      this.clearOptions();
       return;
     }
 
     const conditionId = state.conditionOrder[0];
     const uiState = state.ui[conditionId];
     if (!uiState) {
-      this.conditionContainer.innerHTML = "";
+      this.clearOptions();
       return;
     }
     if (uiState.error) {
-      this.conditionContainer.innerHTML = `<div class="pte-set-filter-error">Error loading values</div>`;
+      this.clearOptions();
+      const error = div("pte-set-filter-error");
+      error.textContent = "Error loading values";
+      this.conditionContainer.appendChild(error);
       return;
     } else if (uiState.loading) {
       if (!this.loader) {
@@ -51,7 +74,7 @@ export class SetFilterRenderer implements IFilterRenderer {
     } else if (uiState.loading === false) {
       if (this.loader) this.loader.hide();
     }
-    if (uiState.options && uiState.options.length > 0) {
+    if (uiState.options) {
       this.createOptionRows(uiState.options, uiState.selectedIdx);
     }
   }
@@ -133,9 +156,13 @@ export class SetFilterRenderer implements IFilterRenderer {
   }
 
   private createOptionRows(options: SetFilterOption[], selectedIdx?: number) {
-    this.conditionContainer.innerHTML = "";
+    const liveComponentKeys = new Set<string>();
+    const rows = document.createDocumentFragment();
+    let rowToFocus: HTMLLabelElement | null = null;
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
+      const component = this.getOptionComponent(option);
+      if (component) liveComponentKeys.add(option.key);
       if (option.hidden) continue;
       const row = createElement("label", "pte-set-filter-option");
       row.tabIndex = -1; // make label focusable for keyboard navigation
@@ -147,6 +174,8 @@ export class SetFilterRenderer implements IFilterRenderer {
         checkbox.setAttribute("aria-label", "Select all values");
       } else if (option.type === "blanks") {
         checkbox.setAttribute("aria-label", "Include blank values");
+      } else {
+        checkbox.setAttribute("aria-label", option.label);
       }
       const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
       checkbox.checked = selected;
@@ -158,16 +187,81 @@ export class SetFilterRenderer implements IFilterRenderer {
 
       const label = createElement("span");
       label.className = "pte-set-filter-option-label";
-      label.textContent = option.label;
+      if (component) {
+        label.appendChild(this.renderOptionComponent(option, component));
+      } else {
+        label.textContent = option.label;
+      }
       row.appendChild(label);
 
-      this.conditionContainer.appendChild(row);
+      rows.appendChild(row);
 
       if (selectedIdx === i) {
         row.classList.add("focused");
-        row.focus();
+        rowToFocus = row;
       }
+    }
+    this.destroyStaleValueComponents(liveComponentKeys);
+    this.conditionContainer.replaceChildren(rows);
+    rowToFocus?.focus();
+  }
+
+  private getOptionComponent(option: SetFilterOption): SetFilterComponent<any> | undefined {
+    switch (option.type) {
+      case "value": return this.spec.params.valueComponent;
+      case "select_all": return this.spec.params.selectAllComponent;
+      case "blanks": return this.spec.params.blanksComponent;
     }
   }
 
+  private renderOptionComponent(option: SetFilterOption, component: SetFilterComponent<any>): HTMLElement {
+    const params = option.type === "value"
+      ? {
+          value: option.raw,
+          valueFormatted: option.label,
+          colDef: this.spec.column,
+          api: this.api,
+          ...(this.spec.params.valueComponentParams ?? {}),
+        } satisfies SetFilterValueComponentParams
+      : {
+          label: option.label,
+          colDef: this.spec.column,
+          api: this.api,
+          ...(option.type === "select_all"
+            ? this.spec.params.selectAllComponentParams ?? {}
+            : this.spec.params.blanksComponentParams ?? {}),
+        } satisfies SetFilterSpecialValueComponentParams;
+
+    const current = this.valueComponents.get(option.key);
+    if (!current || current.component !== component) {
+      current?.runtime.destroy();
+      const runtime = createSetFilterComponentRuntime(component, params);
+      this.valueComponents.set(option.key, { component, runtime });
+      return runtime.gui;
+    }
+
+    if (current.runtime.refresh(params) === false) {
+      current.runtime.destroy();
+      current.runtime = createSetFilterComponentRuntime(component, params);
+    }
+    return current.runtime.gui;
+  }
+
+  private clearOptions(): void {
+    this.destroyValueComponents();
+    this.conditionContainer.replaceChildren();
+  }
+
+  private destroyStaleValueComponents(liveKeys: Set<string>): void {
+    for (const [key, record] of this.valueComponents) {
+      if (liveKeys.has(key)) continue;
+      record.runtime.destroy();
+      this.valueComponents.delete(key);
+    }
+  }
+
+  private destroyValueComponents(): void {
+    for (const record of this.valueComponents.values()) record.runtime.destroy();
+    this.valueComponents.clear();
+  }
 }

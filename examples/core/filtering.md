@@ -45,6 +45,33 @@ const asyncSet = {
 
 Omit `filterValues` to derive unique set values from client-side rows.
 
+## Custom set-filter value labels
+
+The grid always renders and controls the checkbox. Components replace only the
+adjacent text span, with dedicated slots for Select All and Blanks:
+
+```ts
+const regionSet = {
+  key: "region",
+  label: "Region",
+  filter: "set",
+  filterParams: {
+    valueComponent: ({ valueFormatted }) => {
+      const label = document.createElement("strong");
+      label.textContent = valueFormatted;
+      return label;
+    },
+    selectAllComponent: ({ label }) => `All regions — ${label}`,
+    blanksComponent: () => "Unassigned region",
+  },
+} satisfies ColDef;
+```
+
+When a component option is absent, the built-in text is used. A configured
+component that returns `null` or `undefined` intentionally renders an empty
+label slot. Mini-filter matching and checkbox accessible names still use the
+underlying formatted label.
+
 ## Filter controls and multiple conditions
 
 ```ts

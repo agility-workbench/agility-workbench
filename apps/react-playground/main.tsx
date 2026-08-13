@@ -28,6 +28,7 @@ import ColumnGroupExpanderDemo from "./ColumnGroupExpanderDemo";
 import FullyThemedDemo from "./FullyThemedDemo";
 import RowSelectionCheckboxDemo from "./RowSelectionCheckboxDemo";
 import HighFrequencyDemo from "./HighFrequencyDemo";
+import SetFilterComponentsDemo from "./SetFilterComponentsDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -54,6 +55,7 @@ const PAGES = [
   { id: "columnState", label: "Column state save/restore", render: () => <ColumnStateDemo /> },
   { id: "groupExpanders", label: "Group expanders", render: () => <ColumnGroupExpanderDemo /> },
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
+  { id: "setFilterComponents", label: "Set-filter components", render: () => <SetFilterComponentsDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
   { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },

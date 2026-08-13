@@ -1,6 +1,10 @@
 import { FilterValueAsyncSource } from "../filter/types";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
+import type {
+  SetFilterSpecialValueComponent,
+  SetFilterValueComponent,
+} from "../renderer/filter/setFilterValueComponent";
 
 /**
  * Custom column filter matcher. Called once per row for each active menu filter on the column;
@@ -123,6 +127,18 @@ export interface FilterParams {
   maxNumConditions?: number;
   initialFilterItemsCount?: number;
   filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
+  /** Replaces the text span for regular set-filter values; the grid continues to own the checkbox. */
+  valueComponent?: SetFilterValueComponent;
+  /** Extra params merged into regular set-filter value component params. */
+  valueComponentParams?: any;
+  /** Replaces only the Select All text span; omitted means the built-in label is rendered. */
+  selectAllComponent?: SetFilterSpecialValueComponent;
+  /** Extra params merged into the Select All component params. */
+  selectAllComponentParams?: any;
+  /** Replaces only the Blanks text span; omitted means the built-in label is rendered. */
+  blanksComponent?: SetFilterSpecialValueComponent;
+  /** Extra params merged into the Blanks component params. */
+  blanksComponentParams?: any;
   textFormatter?: (value: any) => string;
   filterFunction?: (type: FilterType, filterValues: any[], cellValue: any, caseSensitive?: boolean, trimValues?: boolean) => boolean;
 }

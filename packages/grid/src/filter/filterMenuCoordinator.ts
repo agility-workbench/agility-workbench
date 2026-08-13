@@ -4,9 +4,14 @@ import { ColumnFilterMenuService } from "./filterMenuService";
 import { FilterController } from "./filterMenuController";
 import { FilterRenderer } from "../renderer/filter/filterRenderer";
 import { MenuRenderer } from "../renderer/menuRenderer";
+import type { IGridAPI } from "../interfaces/iGridAPI";
 
 export class FilterMenuCoordinator {
-  constructor(private core: GridCore, private filterMenuService: ColumnFilterMenuService) { }
+  constructor(
+    private core: GridCore,
+    private filterMenuService: ColumnFilterMenuService,
+    private api: IGridAPI,
+  ) { }
 
   openFilterMenu(ctx: ColumnFilterContext): {
     contentEl: HTMLElement,
@@ -38,7 +43,7 @@ export class FilterMenuCoordinator {
       },
     );
 
-    const renderer = new FilterRenderer(ctrl, panelSpec);
+    const renderer = new FilterRenderer(ctrl, panelSpec, this.api);
 
     return {
       contentEl: renderer.getUi(),
