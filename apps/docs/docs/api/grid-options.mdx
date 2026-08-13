@@ -83,6 +83,7 @@ changing them does not remount the grid or replace its API instance.
 | `quickFilter` | `boolean \| QuickFilterOptions` | Global client-side search |
 | `filterDebounceMs` | `number` | Default column-filter debounce |
 | `pagination` | `boolean` | Enable footer pagination |
+| `paginationControls` | `PaginationControlsOptions` | Page-picker style plus visible pagination controls and their order |
 | `pageSize` | `number` | Initial page size |
 | `pageSizes` | `number[]` | User-selectable page sizes |
 | `resetPageOn` | `("filter" \| "sort" \| "quickFilter")[]` | Model changes that jump back to page 1 (default `[]`) |
@@ -91,6 +92,25 @@ changing them does not remount the grid or replace its API instance.
 dropped). If `pageSize` is not in the list it is added automatically so the
 page-size selector can display it — with a console warning when `pageSizes` was
 set explicitly.
+
+The page picker remains a `<select>` by default. Use numbered buttons and configure
+the footer controls by supplying their visual (and keyboard) order:
+
+```tsx
+paginationControls: {
+  pageSelection: "buttons",
+  showPageLabel: false,
+  controls: ["previousPage", "pageSelector", "nextPage", "pageSize"],
+  maxPageButtons: 7,
+}
+```
+
+Available controls are `"pageSize"`, `"firstPage"`, `"previousPage"`,
+`"pageSelector"`, `"nextPage"`, and `"lastPage"`. Omitted controls are hidden.
+Set `showPageLabel: false` to remove the visible `Page` label while preserving
+accessible names on the select or numbered-button group.
+Numbered pagination keeps the first and last known pages visible, centers a bounded
+window around the current page, and inserts ellipses when pages are skipped.
 
 :::warning Behavior change
 

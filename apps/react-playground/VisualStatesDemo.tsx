@@ -4,7 +4,7 @@ import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { themeLight, themeDark } from "@grid";
-import type { GridTheme } from "@grid";
+import type { GridTheme, PaginationControl, PaginationControlsOptions } from "@grid";
 
 /**
  * Playground for the row/cell visual-state and interaction options:
@@ -12,6 +12,7 @@ import type { GridTheme } from "@grid";
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
+ *   Pagination:  select/buttons page selection, visible controls and their order
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
@@ -64,6 +65,13 @@ const themePresets = [
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
 ];
 
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
+
 // Custom accent colors layered on top of a preset via the semantic theme params added for these
 // features. Each fans out to its --pte-* variable.
 const CUSTOM_PARAMS = {
@@ -98,6 +106,10 @@ export function VisualStatesDemo() {
   const [columnHover, setColumnHover] = useState(true);
   const [zebraRows, setZebraRows] = useState(true);
   const [highlightActiveCell, setHighlightActiveCell] = useState(true);
+  const [pageSelection, setPageSelection] = useState<"select" | "buttons">("select");
+  const [showPageLabel, setShowPageLabel] = useState(true);
+  const [paginationLayout, setPaginationLayout] = useState<PaginationLayout>("default");
+  const [maxPageButtons, setMaxPageButtons] = useState(7);
 
   // Interaction gating (defaults preserve today's behavior).
   const [cellSelection, setCellSelection] = useState<"true" | "false" | "text">("true");
@@ -150,6 +162,13 @@ export function VisualStatesDemo() {
   const [customColors, setCustomColors] = useState(false);
 
   const activePreset = themePresets.find((t) => t.id === themeId) ?? themePresets[0];
+
+  const paginationControls = useMemo<PaginationControlsOptions>(() => ({
+    pageSelection,
+    showPageLabel,
+    controls: PAGINATION_LAYOUTS[paginationLayout],
+    maxPageButtons,
+  }), [pageSelection, showPageLabel, paginationLayout, maxPageButtons]);
 
   const theme = useMemo<GridTheme | undefined>(() => {
     if (!customColors) return undefined;
@@ -247,6 +266,34 @@ export function VisualStatesDemo() {
           <Toggle label="City: columnContextMenu=false" checked={nativeCityMenu} onChange={setNativeCityMenu} hint="Right-clicking the City header shows the browser's native menu instead of the grid column menu" />
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Pagination</strong>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            pageSelection
+            <select value={pageSelection} onChange={(e) => setPageSelection(e.target.value as typeof pageSelection)}>
+              <option value="select">select</option>
+              <option value="buttons">buttons</option>
+            </select>
+          </label>
+          <Toggle label="showPageLabel" checked={showPageLabel} onChange={setShowPageLabel} hint="Show or remove the visible Page label; accessible names remain" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }} title="Presets demonstrate hiding and reordering individual pagination controls">
+            controls
+            <select value={paginationLayout} onChange={(e) => setPaginationLayout(e.target.value as PaginationLayout)}>
+              <option value="default">default order</option>
+              <option value="compact">compact</option>
+              <option value="reversed">reversed</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            maxPageButtons
+            <select value={maxPageButtons} onChange={(e) => setMaxPageButtons(Number(e.target.value))} disabled={pageSelection !== "buttons"}>
+              <option value={5}>5</option>
+              <option value={7}>7</option>
+              <option value={9}>9</option>
+            </select>
+          </label>
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <label htmlFor="vs-theme" style={{ fontSize: 13 }}>Theme</label>
           <select id="vs-theme" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
@@ -266,7 +313,9 @@ export function VisualStatesDemo() {
         selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
         <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
         Rating column hides its ⋮ button and the City header opens the browser's native menu on
-        right-click. Toggle <code>Custom colors</code> to recolor these states via theme params.
+        right-click. The <strong>Pagination</strong> controls switch the page picker and demonstrate
+        reordered or omitted footer controls. Toggle <code>Custom colors</code> to recolor these states
+        via theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
@@ -276,6 +325,10 @@ export function VisualStatesDemo() {
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
+          pagination
+          pageSize={10}
+          pageSizes={[10, 25, 50]}
+          paginationControls={paginationControls}
           rowHover={rowHover}
           columnHover={columnHover}
           zebraRows={zebraRows}

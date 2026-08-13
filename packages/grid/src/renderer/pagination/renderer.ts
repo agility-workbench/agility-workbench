@@ -1,6 +1,12 @@
 import { GridCore } from "../../core/core";
 import { GridEventAggregateChangedParams, GridEventPaginationChangedParams } from "../../events/events";
 import { AggregateScope } from "../../interfaces/aggregate";
+import {
+  PaginationControl,
+  PaginationControlsOptions,
+  ResolvedPaginationControlsOptions,
+  resolvePaginationControlsOptions,
+} from "../../interfaces/gridOptions";
 import { isTrue } from "../../misc";
 import { createPaginationWrapper } from "./wrapper";
 
@@ -31,14 +37,17 @@ export class PaginationRenderer {
   prevPageBtn!: HTMLButtonElement;
   nextPageBtn!: HTMLButtonElement;
   lastPageBtn!: HTMLButtonElement;
+  pageButtonsContainer!: HTMLDivElement;
   aggregateScopeSelect!: HTMLSelectElement;
   aggregateClearBtn!: HTMLButtonElement;
   private navSection: HTMLDivElement | null = null;
   private paginator: HTMLDivElement;
   private controlsPaginationEnabled: boolean | null = null;
   private controlsAggregationAvailable: boolean | null = null;
+  private controlsOptions: ResolvedPaginationControlsOptions;
 
   constructor(private params: PaginationRendererParams) {
+    this.controlsOptions = resolvePaginationControlsOptions(params.core.options.paginationControls);
     this.paginator = createPaginationWrapper();
     this.params.root.appendChild(this.paginator);
   }
@@ -51,6 +60,16 @@ export class PaginationRenderer {
     const { core } = this.params;
     const paginator = this.paginator;
     paginator.innerHTML = "";
+    // A configured layout may omit controls that existed in the previous build. Clear references
+    // so updateControls never mutates detached DOM.
+    this.pageSizeSelect = undefined!;
+    this.pageSelect = undefined!;
+    this.pageButtonsContainer = undefined!;
+    this.firstPageBtn = undefined!;
+    this.prevPageBtn = undefined!;
+    this.nextPageBtn = undefined!;
+    this.lastPageBtn = undefined!;
+    this.navSection = null;
     const {
       paginationEnabled,
       pageIndex,
@@ -71,8 +90,37 @@ export class PaginationRenderer {
       return;
     }
 
+    const navSection = document.createElement("div");
+    navSection.className = "pte-pagination-section pte-pagination-nav";
+    this.navSection = navSection;
+    for (const control of this.controlsOptions.controls) {
+      navSection.appendChild(this.buildPaginationControl(control, pageSize, pageSizes));
+    }
+
+    paginator.appendChild(navSection);
+    this.populatePageSelector(pageIndex, totalPageCount, totalRowCountKnown);
+    this.updateControls();
+  }
+
+  private buildPaginationControl(
+    control: PaginationControl,
+    pageSize: number,
+    pageSizes: number[],
+  ): HTMLElement {
+    switch (control) {
+      case "pageSize": return this.buildPageSizeControl(pageSize, pageSizes);
+      case "firstPage": return this.buildNavigationButton("first");
+      case "previousPage": return this.buildNavigationButton("previous");
+      case "pageSelector": return this.buildPageSelectorControl();
+      case "nextPage": return this.buildNavigationButton("next");
+      case "lastPage": return this.buildNavigationButton("last");
+    }
+  }
+
+  private buildPageSizeControl(pageSize: number, pageSizes: number[]): HTMLDivElement {
+    const { core } = this.params;
     const sizeSection = document.createElement("div");
-    sizeSection.className = "pte-pagination-section";
+    sizeSection.className = "pte-pagination-control pte-pagination-size-control";
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "pte-pagination-label";
     sizeLabel.textContent = "Rows per page";
@@ -99,73 +147,75 @@ export class PaginationRenderer {
     });
     sizeSection.appendChild(sizeLabel);
     sizeSection.appendChild(this.pageSizeSelect);
+    return sizeSection;
+  }
 
-    const navSection = document.createElement("div");
-    navSection.className = "pte-pagination-section pte-pagination-nav";
-
-    // These four are icon-only CSS-mask buttons with no text, so without a label AT announces four
-    // anonymous buttons.
-    this.firstPageBtn = document.createElement("button");
-    this.firstPageBtn.type = "button";
-    this.firstPageBtn.className = "pte-pagination-btn pte-pagination-btn-first";
-    this.firstPageBtn.setAttribute("aria-label", "First page");
-    this.firstPageBtn.appendChild(paginationIcon());
-    this.firstPageBtn.addEventListener("click", () => this.goToPage(0));
-
-    this.prevPageBtn = document.createElement("button");
-    this.prevPageBtn.type = "button";
-    this.prevPageBtn.className = "pte-pagination-btn pte-pagination-btn-prev";
-    this.prevPageBtn.setAttribute("aria-label", "Previous page");
-    this.prevPageBtn.appendChild(paginationIcon());
-    this.prevPageBtn.addEventListener("click", () => {
-      this.goToPage(core.getPaginationInfo().pageIndex - 1);
-    });
-
+  private buildPageSelectorControl(): HTMLDivElement {
+    const { core } = this.params;
+    const wrapper = document.createElement("div");
+    wrapper.className = "pte-pagination-control pte-pagination-page-control";
     const pageLabel = document.createElement("span");
     pageLabel.className = "pte-pagination-label";
     pageLabel.textContent = "Page";
     pageLabel.id = `${core.id}-pagination-page-label`;
 
-    this.pageSelect = document.createElement("select");
-    this.pageSelect.className = "pte-select pte-pagination-select pte-pagination-page-select";
-    this.pageSelect.name = "pte-page-select";
-    this.pageSelect.setAttribute("aria-labelledby", pageLabel.id);
-    this.pageSelect.addEventListener("change", (e) => {
-      const val = Number((e.target as HTMLSelectElement).value);
-      if (!Number.isFinite(val)) return;
-      this.goToPage(val);
-    });
+    if (this.controlsOptions.showPageLabel) wrapper.appendChild(pageLabel);
+    if (this.controlsOptions.pageSelection === "buttons") {
+      this.pageButtonsContainer = document.createElement("div");
+      this.pageButtonsContainer.className = "pte-pagination-page-buttons";
+      this.pageButtonsContainer.setAttribute("role", "group");
+      if (this.controlsOptions.showPageLabel) {
+        this.pageButtonsContainer.setAttribute("aria-labelledby", pageLabel.id);
+      }
+      wrapper.appendChild(this.pageButtonsContainer);
+    } else {
+      this.pageSelect = document.createElement("select");
+      this.pageSelect.className = "pte-select pte-pagination-select pte-pagination-page-select";
+      this.pageSelect.name = "pte-page-select";
+      if (this.controlsOptions.showPageLabel) {
+        this.pageSelect.setAttribute("aria-labelledby", pageLabel.id);
+      }
+      this.pageSelect.addEventListener("change", (e) => {
+        const val = Number((e.target as HTMLSelectElement).value);
+        if (!Number.isFinite(val)) return;
+        this.goToPage(val);
+      });
+      wrapper.appendChild(this.pageSelect);
+    }
+    return wrapper;
+  }
 
-    this.nextPageBtn = document.createElement("button");
-    this.nextPageBtn.type = "button";
-    this.nextPageBtn.className = "pte-pagination-btn pte-pagination-btn-next";
-    this.nextPageBtn.setAttribute("aria-label", "Next page");
-    this.nextPageBtn.appendChild(paginationIcon());
-    this.nextPageBtn.addEventListener("click", () => {
-      this.goToPage(core.getPaginationInfo().pageIndex + 1);
-    });
-
-    this.lastPageBtn = document.createElement("button");
-    this.lastPageBtn.type = "button";
-    this.lastPageBtn.className = "pte-pagination-btn pte-pagination-btn-last";
-    this.lastPageBtn.setAttribute("aria-label", "Last page");
-    this.lastPageBtn.appendChild(paginationIcon());
-    this.lastPageBtn.addEventListener("click", () => {
-      this.goToPage(core.getPaginationInfo().totalPageCount - 1);
-    });
-
-    navSection.appendChild(this.firstPageBtn);
-    navSection.appendChild(this.prevPageBtn);
-    navSection.appendChild(pageLabel);
-    navSection.appendChild(this.pageSelect);
-    navSection.appendChild(this.nextPageBtn);
-    navSection.appendChild(this.lastPageBtn);
-    this.navSection = navSection;
-
-    paginator.appendChild(sizeSection);
-    paginator.appendChild(navSection);
-    this.populatePageSelect(pageIndex, totalPageCount, totalRowCountKnown);
-    this.updateControls();
+  private buildNavigationButton(kind: "first" | "previous" | "next" | "last"): HTMLButtonElement {
+    const definitions = {
+      first: { className: "first", label: "First page", page: () => 0 },
+      previous: {
+        className: "prev",
+        label: "Previous page",
+        page: () => this.params.core.getPaginationInfo().pageIndex - 1,
+      },
+      next: {
+        className: "next",
+        label: "Next page",
+        page: () => this.params.core.getPaginationInfo().pageIndex + 1,
+      },
+      last: {
+        className: "last",
+        label: "Last page",
+        page: () => this.params.core.getPaginationInfo().totalPageCount - 1,
+      },
+    } as const;
+    const definition = definitions[kind];
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `pte-pagination-btn pte-pagination-btn-${definition.className}`;
+    button.setAttribute("aria-label", definition.label);
+    button.appendChild(paginationIcon());
+    button.addEventListener("click", () => this.goToPage(definition.page()));
+    if (kind === "first") this.firstPageBtn = button;
+    else if (kind === "previous") this.prevPageBtn = button;
+    else if (kind === "next") this.nextPageBtn = button;
+    else this.lastPageBtn = button;
+    return button;
   }
 
   private buildAggregationControls() {
@@ -247,6 +297,79 @@ export class PaginationRenderer {
       ? `Page ${Math.min(pageIndex, totalPages - 1) + 1} of ${totalPages}`
       : `Page ${Math.min(pageIndex, totalPages - 1) + 1} of at least ${totalPages}. ${tooltip}`;
     this.pageSelect.setAttribute("aria-label", ariaLabel);
+  }
+
+  private populatePageButtons(pageIndex: number, totalPageCount: number, totalRowCountKnown: boolean) {
+    if (!this.pageButtonsContainer) return;
+    const totalPages = Math.max(totalPageCount, 1);
+    const currentPage = Math.min(Math.max(pageIndex, 0), totalPages - 1);
+    const tooltip = totalRowCountKnown
+      ? ""
+      : this.params.core.options.paginationUnknownTotalTooltip;
+    const restoreFocus = this.pageButtonsContainer.contains(document.activeElement);
+    this.pageButtonsContainer.innerHTML = "";
+    this.pageButtonsContainer.title = tooltip;
+    this.pageButtonsContainer.setAttribute(
+      "aria-label",
+      totalRowCountKnown
+        ? `Page ${currentPage + 1} of ${totalPages}`
+        : `Page ${currentPage + 1} of at least ${totalPages}. ${tooltip}`,
+    );
+
+    for (const page of this.visiblePageButtons(currentPage, totalPages)) {
+      if (page == null) {
+        const ellipsis = document.createElement("span");
+        ellipsis.className = "pte-pagination-page-ellipsis";
+        ellipsis.textContent = "…";
+        ellipsis.setAttribute("aria-hidden", "true");
+        this.pageButtonsContainer.appendChild(ellipsis);
+        continue;
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pte-pagination-btn pte-pagination-page-btn";
+      button.textContent = String(page + 1);
+      button.setAttribute(
+        "aria-label",
+        totalRowCountKnown
+          ? `Page ${page + 1} of ${totalPages}`
+          : `Page ${page + 1} of at least ${totalPages}`,
+      );
+      if (page === currentPage) {
+        button.classList.add("pte-pagination-page-btn-current");
+        button.setAttribute("aria-current", "page");
+      }
+      button.addEventListener("click", () => {
+        if (page !== this.params.core.getPaginationInfo().pageIndex) this.goToPage(page);
+      });
+      this.pageButtonsContainer.appendChild(button);
+    }
+    if (restoreFocus) {
+      this.pageButtonsContainer
+        .querySelector<HTMLButtonElement>(".pte-pagination-page-btn-current")
+        ?.focus();
+    }
+  }
+
+  private visiblePageButtons(currentPage: number, totalPages: number): Array<number | null> {
+    const max = this.controlsOptions.maxPageButtons;
+    if (totalPages <= max) return Array.from({ length: totalPages }, (_, page) => page);
+
+    const interiorCount = max - 2;
+    const idealStart = currentPage - Math.floor((interiorCount - 1) / 2);
+    const start = Math.min(Math.max(1, idealStart), totalPages - 1 - interiorCount);
+    const end = start + interiorCount - 1;
+    const pages: Array<number | null> = [0];
+    if (start > 1) pages.push(null);
+    for (let page = start; page <= end; page++) pages.push(page);
+    if (end < totalPages - 2) pages.push(null);
+    pages.push(totalPages - 1);
+    return pages;
+  }
+
+  private populatePageSelector(pageIndex: number, totalPageCount: number, totalRowCountKnown: boolean) {
+    this.populatePageSelect(pageIndex, totalPageCount, totalRowCountKnown);
+    this.populatePageButtons(pageIndex, totalPageCount, totalRowCountKnown);
     this.navSection?.classList.toggle("pte-pagination-approx", !totalRowCountKnown);
   }
 
@@ -278,7 +401,7 @@ export class PaginationRenderer {
       this.pageSizeSelect.value = String(pageSize);
     }
 
-    this.populatePageSelect(pageIndex, totalPageCount, totalRowCountKnown);
+    this.populatePageSelector(pageIndex, totalPageCount, totalRowCountKnown);
 
     const atFirstPage = pageIndex <= 0;
     // While the total is provisional there may be pages past the last known one: "next" stays
@@ -295,6 +418,16 @@ export class PaginationRenderer {
     if (this.nextPageBtn) this.nextPageBtn.disabled = atLastPage || !hasRows;
     if (this.lastPageBtn) this.lastPageBtn.disabled = atLastKnownPage || !hasRows;
     if (this.pageSelect) this.pageSelect.disabled = (totalPageCount <= 1 && totalRowCountKnown) || !hasRows;
+    if (this.pageButtonsContainer) {
+      for (const button of this.pageButtonsContainer.querySelectorAll<HTMLButtonElement>(".pte-pagination-page-btn")) {
+        button.disabled = !hasRows;
+      }
+    }
+  }
+
+  setPaginationControls(options?: PaginationControlsOptions) {
+    this.controlsOptions = resolvePaginationControlsOptions(options);
+    this.buildControls();
   }
 
   updateAggregateControls(_params?: GridEventAggregateChangedParams) {

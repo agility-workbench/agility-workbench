@@ -174,6 +174,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- pagination ---
   readonly pagination = input<GridOptions["pagination"]>();
+  readonly paginationControls = input<GridOptions["paginationControls"]>();
   readonly pageSize = input<GridOptions["pageSize"]>();
   readonly pageSizes = input<GridOptions["pageSizes"]>();
   readonly resetPageOn = input<GridOptions["resetPageOn"]>();
@@ -425,6 +426,11 @@ export class AwbGrid implements OnDestroy {
       const pagination = this.pagination() ?? false;
       return () => renderer.togglePagination(pagination);
     });
+
+    this.keyedEffect(
+      () => this.paginationControls(),
+      (options) => renderer.setPaginationControls(options),
+    );
 
     // Widget configs reconcile live without remounting the grid, but a rebuild on first run would
     // be disruptive (the create path already applied them), so these compare serialized contents

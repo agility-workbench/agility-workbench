@@ -292,6 +292,19 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       renderer.togglePagination(props.pagination ?? false);
     }, [props.pagination]);
 
+    const paginationControlsKey = JSON.stringify(props.paginationControls ?? null);
+    const paginationControlsMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!paginationControlsMountedRef.current) {
+        paginationControlsMountedRef.current = true;
+        return;
+      }
+      const renderer = instanceRef.current?.renderer;
+      if (!renderer) return;
+      renderer.setPaginationControls(props.paginationControls);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationControlsKey]);
+
     // Reconfigure the quick filter live (anchor, clearOnClose, mode, popover controls, enable/disable)
     // without remounting the grid. Serialized so an inline-object `quickFilter` prop doesn't rebuild
     // the widget on every render — only when the config's contents actually change.

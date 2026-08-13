@@ -17,6 +17,7 @@ import {
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  resolvePaginationControlsOptions,
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -207,6 +208,7 @@ export class GridCore implements IGridCore {
       allowExportAsCSV: options.allowExportAsCSV ?? true,
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
+      paginationControls: resolvePaginationControlsOptions(options.paginationControls),
       rowNumbers: isTrue(options.rowNumbers),
       rowHover: options.rowHover ?? true,
       columnHover: isTrue(options.columnHover),

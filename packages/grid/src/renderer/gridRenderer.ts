@@ -42,6 +42,7 @@ import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveGridToolbarOptions, resolveTooltipOptions } from "../interfaces/gridOptions";
 import type {
   ColumnPanelOptions,
+  GridOptions,
   GridToolbarOptions,
   RuntimeGridOptions,
   TooltipOptions,
@@ -864,6 +865,10 @@ export class GridRenderer {
   // ---------------- Public API ----------------
   togglePagination(pagination: boolean) {
     this._paginationRenderer.togglePagination(pagination);
+  }
+
+  setPaginationControls(options: GridOptions["paginationControls"]) {
+    this._paginationRenderer.setPaginationControls(options);
   }
 
   // Build (or skip building) the quick-filter widget from the currently-stored options. A prior

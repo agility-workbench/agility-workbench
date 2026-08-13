@@ -1,4 +1,4 @@
-import { Component, signal } from "@angular/core";
+import { Component, computed, signal } from "@angular/core";
 import {
   AggregateType,
   AwbGrid,
@@ -7,6 +7,8 @@ import {
   type IServerSideDataSource,
   type IServerSideRequest,
   type NgColDef,
+  type PaginationControl,
+  type PaginationControlsOptions,
 } from "@agility-workbench/angular-grid";
 
 /**
@@ -120,6 +122,13 @@ const GROUPABLE: Array<{ colId: string; label: string }> = [
   { colId: "category", label: "Category" },
 ];
 
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
+
 @Component({
   selector: "server-side-grouping-demo",
   standalone: true,
@@ -142,8 +151,43 @@ const GROUPABLE: Array<{ colId: string; label: string }> = [
       </label>
 
       <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
+        <input type="checkbox" [checked]="showPageLabel()" (change)="onShowPageLabelChange($event)" />
+        Show Page label
+      </label>
+
+      <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
         <input type="checkbox" [checked]="pagination()" (change)="onPaginationChange($event)" />
         Pagination
+      </label>
+
+      <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
+        Page selection
+        <select [value]="pageSelection()" (change)="onPageSelectionChange($event)">
+          <option value="select">select</option>
+          <option value="buttons">buttons</option>
+        </select>
+      </label>
+
+      <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
+        Controls
+        <select [value]="paginationLayout()" (change)="onPaginationLayoutChange($event)">
+          <option value="default">default order</option>
+          <option value="compact">compact</option>
+          <option value="reversed">reversed</option>
+        </select>
+      </label>
+
+      <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
+        Max page buttons
+        <select
+          [value]="maxPageButtons()"
+          (change)="onMaxPageButtonsChange($event)"
+          [disabled]="pageSelection() !== 'buttons'"
+        >
+          <option [value]="5">5</option>
+          <option [value]="7">7</option>
+          <option [value]="9">9</option>
+        </select>
       </label>
 
       <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
@@ -168,6 +212,7 @@ const GROUPABLE: Array<{ colId: string; label: string }> = [
           [serverSideDataSource]="dataSource"
           [serverSideBlockSize]="100"
           [pagination]="pagination()"
+          [paginationControls]="paginationControls()"
           [groupRowsSticky]="stickyGroups()"
           [pageSize]="50"
           [getGroupChildCount]="getGroupChildCount"
@@ -184,6 +229,16 @@ export class ServerSideGroupingDemoComponent {
   readonly groupBy = signal<string[]>(["region", "country"]);
   readonly reportTotals = signal(true);
   readonly pagination = signal(true);
+  readonly pageSelection = signal<"select" | "buttons">("select");
+  readonly showPageLabel = signal(true);
+  readonly paginationLayout = signal<PaginationLayout>("default");
+  readonly maxPageButtons = signal(7);
+  readonly paginationControls = computed<PaginationControlsOptions>(() => ({
+    pageSelection: this.pageSelection(),
+    showPageLabel: this.showPageLabel(),
+    controls: PAGINATION_LAYOUTS[this.paginationLayout()],
+    maxPageButtons: this.maxPageButtons(),
+  }));
   readonly stickyGroups = signal(true);
   readonly requestLog = signal<string[]>([]);
   /** Remount flag: the React demo remounts the grid via `key={String(pagination)}`. */
@@ -242,6 +297,22 @@ export class ServerSideGroupingDemoComponent {
     this.api = null;
     this.mounted.set(false);
     queueMicrotask(() => this.mounted.set(true));
+  }
+
+  onPageSelectionChange(ev: Event): void {
+    this.pageSelection.set((ev.target as HTMLSelectElement).value as "select" | "buttons");
+  }
+
+  onShowPageLabelChange(ev: Event): void {
+    this.showPageLabel.set((ev.target as HTMLInputElement).checked);
+  }
+
+  onPaginationLayoutChange(ev: Event): void {
+    this.paginationLayout.set((ev.target as HTMLSelectElement).value as PaginationLayout);
+  }
+
+  onMaxPageButtonsChange(ev: Event): void {
+    this.maxPageButtons.set(Number((ev.target as HTMLSelectElement).value));
   }
 
   onStickyGroupsChange(ev: Event): void {

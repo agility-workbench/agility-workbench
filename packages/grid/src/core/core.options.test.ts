@@ -114,3 +114,30 @@ describe("pageSize / pageSizes resolution", () => {
     expect(resolved({ pageSizes: [] }).pageSizes).toEqual([25, 50, 100]);
   });
 });
+
+describe("paginationControls resolution", () => {
+  it("preserves the historical select and control order by default", () => {
+    expect(resolved().paginationControls).toEqual({
+      pageSelection: "select",
+      showPageLabel: true,
+      controls: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+      maxPageButtons: 7,
+    });
+  });
+
+  it("honors custom order, removes duplicates, and clamps the button count", () => {
+    expect(resolved({
+      paginationControls: {
+        pageSelection: "buttons",
+        showPageLabel: false,
+        controls: ["nextPage", "pageSelector", "nextPage", "pageSize"],
+        maxPageButtons: 1,
+      },
+    }).paginationControls).toEqual({
+      pageSelection: "buttons",
+      showPageLabel: false,
+      controls: ["nextPage", "pageSelector", "pageSize"],
+      maxPageButtons: 3,
+    });
+  });
+});

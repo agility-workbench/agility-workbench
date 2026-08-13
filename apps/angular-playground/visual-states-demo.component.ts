@@ -11,6 +11,8 @@ import {
   type GridTheme,
   type NgColDef,
   type NgMenuItem,
+  type PaginationControl,
+  type PaginationControlsOptions,
   type RowClassParams,
 } from "@agility-workbench/angular-grid";
 
@@ -20,6 +22,7 @@ import {
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
+ *   Pagination:  select/buttons page selection, visible controls and their order
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
@@ -71,6 +74,13 @@ const themePresets = [
   { id: "light", label: "Light", className: "pte-theme-light" },
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
 ];
+
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
 
 // Custom accent colors layered on top of a preset via the semantic theme params added for these
 // features. Each fans out to its --pte-* variable.
@@ -167,6 +177,34 @@ export class VsToggleComponent {
         <vs-toggle label="City: columnContextMenu=false" [checked]="nativeCityMenu()" (toggled)="nativeCityMenu.set($event)" hint="Right-clicking the City header shows the browser's native menu instead of the grid column menu" />
       </div>
 
+      <div class="vs-group">
+        <strong class="vs-group-title">Pagination</strong>
+        <label class="vs-select">
+          pageSelection
+          <select [value]="pageSelection()" (change)="setPageSelection($event)">
+            <option value="select">select</option>
+            <option value="buttons">buttons</option>
+          </select>
+        </label>
+        <vs-toggle label="showPageLabel" [checked]="showPageLabel()" (toggled)="showPageLabel.set($event)" hint="Show or remove the visible Page label; accessible names remain" />
+        <label class="vs-select" title="Presets demonstrate hiding and reordering individual pagination controls">
+          controls
+          <select [value]="paginationLayout()" (change)="setPaginationLayout($event)">
+            <option value="default">default order</option>
+            <option value="compact">compact</option>
+            <option value="reversed">reversed</option>
+          </select>
+        </label>
+        <label class="vs-select">
+          maxPageButtons
+          <select [value]="maxPageButtons()" (change)="setMaxPageButtons($event)" [disabled]="pageSelection() !== 'buttons'">
+            <option [value]="5">5</option>
+            <option [value]="7">7</option>
+            <option [value]="9">9</option>
+          </select>
+        </label>
+      </div>
+
       <div class="vs-theme-picker">
         <label for="vs-theme" style="font-size: 13px">Theme</label>
         <select id="vs-theme" [value]="themeId()" (change)="setThemeId($event)">
@@ -188,7 +226,9 @@ export class VsToggleComponent {
       selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
       <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
       Rating column hides its ⋮ button and the City header opens the browser's native menu on
-      right-click. Toggle <code>Custom colors</code> to recolor these states via theme params.
+      right-click. The <strong>Pagination</strong> controls switch the page picker and demonstrate
+      reordered or omitted footer controls. Toggle <code>Custom colors</code> to recolor these states
+      via theme params.
     </p>
 
     <!-- Runtime options update the existing grid instance so selection and scroll state survive. -->
@@ -201,6 +241,10 @@ export class VsToggleComponent {
         [rowData]="rows"
         [columnDefs]="columnDefs()"
         rowIdKey="id"
+        [pagination]="true"
+        [pageSize]="10"
+        [pageSizes]="[10, 25, 50]"
+        [paginationControls]="paginationControls()"
         [rowHover]="rowHover()"
         [columnHover]="columnHover()"
         [zebraRows]="zebraRows()"
@@ -250,6 +294,16 @@ export class VisualStatesDemoComponent {
   readonly columnHover = signal(true);
   readonly zebraRows = signal(true);
   readonly highlightActiveCell = signal(true);
+  readonly pageSelection = signal<"select" | "buttons">("select");
+  readonly showPageLabel = signal(true);
+  readonly paginationLayout = signal<PaginationLayout>("default");
+  readonly maxPageButtons = signal(7);
+  readonly paginationControls = computed<PaginationControlsOptions>(() => ({
+    pageSelection: this.pageSelection(),
+    showPageLabel: this.showPageLabel(),
+    controls: PAGINATION_LAYOUTS[this.paginationLayout()],
+    maxPageButtons: this.maxPageButtons(),
+  }));
 
   // Interaction gating (defaults preserve today's behavior).
   readonly cellSelection = signal<"true" | "false" | "text">("true");
@@ -370,6 +424,18 @@ export class VisualStatesDemoComponent {
 
   setBodyMenu(ev: Event): void {
     this.bodyMenu.set((ev.target as HTMLSelectElement).value as "default" | "native" | "custom" | "empty");
+  }
+
+  setPageSelection(ev: Event): void {
+    this.pageSelection.set((ev.target as HTMLSelectElement).value as "select" | "buttons");
+  }
+
+  setPaginationLayout(ev: Event): void {
+    this.paginationLayout.set((ev.target as HTMLSelectElement).value as PaginationLayout);
+  }
+
+  setMaxPageButtons(ev: Event): void {
+    this.maxPageButtons.set(Number((ev.target as HTMLSelectElement).value));
   }
 
   setThemeId(ev: Event): void {

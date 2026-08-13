@@ -89,12 +89,49 @@ describe("getGridOptions option forwarding", () => {
     expect(getGridOptions({ resetPageOn: [] }).resetPageOn).toEqual([]);
   });
 
+  it("forwards paginationControls", () => {
+    const paginationControls = {
+      pageSelection: "buttons" as const,
+      controls: ["previousPage", "pageSelector", "nextPage"] as const,
+      maxPageButtons: 5,
+    };
+    expect(getGridOptions({
+      paginationControls: { ...paginationControls, controls: [...paginationControls.controls] },
+    }).paginationControls).toEqual(paginationControls);
+  });
+
   it("omits keys that were not provided so core defaults apply", () => {
     expect(Object.keys(getGridOptions({}))).toEqual([]);
   });
 });
 
 describe("core option forwarding (live grid)", () => {
+  it("rebuilds pagination controls when their configuration changes", async () => {
+    const rows = Array.from({ length: 40 }, (_, index) => ({ id: String(index), name: `Row ${index}` }));
+    const { container, root, render } = await mount({
+      rowData: rows,
+      pagination: true,
+      pageSize: 10,
+    });
+    expect(container.querySelector(".pte-pagination-page-select")).toBeTruthy();
+
+    await render({
+      rowData: rows,
+      pagination: true,
+      pageSize: 10,
+      paginationControls: {
+        pageSelection: "buttons",
+        controls: ["previousPage", "pageSelector", "nextPage"],
+        maxPageButtons: 3,
+      },
+    });
+
+    expect(container.querySelector(".pte-pagination-page-select")).toBeNull();
+    expect(container.querySelectorAll(".pte-pagination-page-btn")).toHaveLength(3);
+    expect(container.querySelector(".pte-pagination-size-control")).toBeNull();
+    await unmountTestRoot(root);
+  });
+
   it("re-autosizes columns after data changes when autosizeColumnsOnDataChange is enabled", async () => {
     const { apiRef, root, render } = await mount({
       rowData: [{ id: "1", name: "A" }],

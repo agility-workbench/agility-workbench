@@ -285,6 +285,71 @@ export type EditTrigger = "doubleClick" | "singleClick" | "none";
  */
 export type CellSelectionMode = boolean | "text";
 
+/** A configurable control in the pagination footer. The array order is the visual/tab order. */
+export type PaginationControl =
+  | "pageSize"
+  | "firstPage"
+  | "previousPage"
+  | "pageSelector"
+  | "nextPage"
+  | "lastPage";
+
+export type PaginationPageSelection = "select" | "buttons";
+
+/**
+ * Presentation and composition of the pagination controls.
+ * - `pageSelection`: render the page picker as the historical select (default) or numbered buttons.
+ * - `showPageLabel`: show the visible "Page" label beside the page picker. Defaults to true.
+ * - `controls`: controls to render, in visual and keyboard order. Omit for the historical order.
+ * - `maxPageButtons`: maximum numbered page buttons (ellipsis markers do not count). Defaults to 7.
+ */
+export interface PaginationControlsOptions {
+  pageSelection?: PaginationPageSelection;
+  showPageLabel?: boolean;
+  controls?: readonly PaginationControl[];
+  maxPageButtons?: number;
+}
+
+export interface ResolvedPaginationControlsOptions {
+  pageSelection: PaginationPageSelection;
+  showPageLabel: boolean;
+  controls: PaginationControl[];
+  maxPageButtons: number;
+}
+
+export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
+  "pageSize",
+  "firstPage",
+  "previousPage",
+  "pageSelector",
+  "nextPage",
+  "lastPage",
+];
+
+const PAGINATION_CONTROL_SET = new Set<PaginationControl>(DEFAULT_PAGINATION_CONTROLS);
+
+export function resolvePaginationControlsOptions(
+  options?: PaginationControlsOptions,
+): ResolvedPaginationControlsOptions {
+  const controls: PaginationControl[] = [];
+  const seen = new Set<PaginationControl>();
+  for (const control of options?.controls ?? DEFAULT_PAGINATION_CONTROLS) {
+    if (!PAGINATION_CONTROL_SET.has(control) || seen.has(control)) continue;
+    seen.add(control);
+    controls.push(control);
+  }
+  const requestedMax = options?.maxPageButtons;
+  const maxPageButtons = Number.isFinite(requestedMax)
+    ? Math.max(3, Math.floor(requestedMax as number))
+    : 7;
+  return {
+    pageSelection: options?.pageSelection === "buttons" ? "buttons" : "select",
+    showPageLabel: options?.showPageLabel ?? true,
+    controls,
+    maxPageButtons,
+  };
+}
+
 /**
  * Quick filter (global search) configuration.
  * - `mode`: "onDemand" (default) hides the widget until summoned with Ctrl/Cmd+F; "always" keeps it
@@ -638,6 +703,7 @@ export interface GridOptions {
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
   pagination?: boolean;
+  paginationControls?: PaginationControlsOptions;
   rowNumbers?: boolean;
   /**
    * When true, the row under the pointer is highlighted (background `--pte-hover-bg-color`).
@@ -1116,6 +1182,7 @@ export interface InternalGridOptions extends GridOptions {
   allowExportAsCSV: boolean;
   allowExportAsExcel: boolean;
   pagination: boolean;
+  paginationControls: ResolvedPaginationControlsOptions;
   rowNumbers: boolean;
   rowHover: boolean;
   columnHover: boolean;

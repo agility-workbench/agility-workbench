@@ -37,6 +37,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "allowExportAsCSV", grid.allowExportAsCSV());
   setIfDefined(options, "allowExportAsExcel", grid.allowExportAsExcel());
   setIfDefined(options, "pagination", grid.pagination());
+  setIfDefined(options, "paginationControls", grid.paginationControls());
   setIfDefined(options, "rowNumbers", grid.rowNumbers());
   setIfDefined(options, "rowHover", grid.rowHover());
   setIfDefined(options, "columnHover", grid.columnHover());

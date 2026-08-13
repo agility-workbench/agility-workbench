@@ -98,4 +98,19 @@ describe("pagination controls with a provisional total", () => {
     renderer.updateControls();
     expect(renderer.pageSelect.title).toBe("Totale sconosciuto");
   });
+
+  it("announces provisional totals in numbered-button mode", async () => {
+    const { renderer } = makeGrid({
+      paginationControls: { pageSelection: "buttons", maxPageButtons: 5 },
+    });
+    await flush();
+    renderer.updateControls();
+
+    expect(renderer.pageButtonsContainer.title)
+      .toBe("More rows may exist on the server; the total updates as they load");
+    expect(renderer.pageButtonsContainer.getAttribute("aria-label"))
+      .toContain("Page 1 of at least 2");
+    expect(renderer.pageButtonsContainer.closest(".pte-pagination-approx")).not.toBeNull();
+    expect(renderer.nextPageBtn.disabled).toBe(false);
+  });
 });

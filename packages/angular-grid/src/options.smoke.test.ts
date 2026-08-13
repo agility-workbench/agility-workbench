@@ -17,6 +17,7 @@ type Row = { id: number; name: string; status: string; amount: number };
       [columnDefs]="cols"
       rowIdKey="id"
       [pagination]="pagination"
+      [paginationControls]="paginationControls"
       [pageSize]="25"
       [quickFilter]="quickFilter"
       [rowHover]="enabled"
@@ -38,6 +39,7 @@ class OptionsHost {
   api: IGridAPI | null = null;
   enabled = true;
   pagination = false;
+  paginationControls: GridOptions["paginationControls"] = undefined;
   cellSelection: boolean | "text" = true;
   bodyContextMenu = true;
   quickFilter: GridOptions["quickFilter"] = true;
@@ -191,6 +193,16 @@ describe("AwbGrid visual and runtime options", () => {
       ".pte-pagination-select:not(.pte-aggregate-scope):not(.pte-pagination-page-select)",
     )?.value).toBe("25");
     expect(gridEl.querySelector(".pte-pagination-nav")).toBeTruthy();
+
+    host.paginationControls = {
+      pageSelection: "buttons",
+      controls: ["previousPage", "pageSelector", "nextPage"],
+      maxPageButtons: 3,
+    };
+    await syncGridInputs(fixture);
+    expect(gridEl.querySelector(".pte-pagination-page-select")).toBeNull();
+    expect(gridEl.querySelectorAll(".pte-pagination-page-btn")).toHaveLength(1);
+    expect(gridEl.querySelector(".pte-pagination-size-control")).toBeNull();
 
     host.pagination = false;
     await syncGridInputs(fixture);

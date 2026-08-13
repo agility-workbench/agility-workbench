@@ -38,6 +38,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "allowExportAsCSV", props.allowExportAsCSV);
   setIfDefined(options, "allowExportAsExcel", props.allowExportAsExcel);
   setIfDefined(options, "pagination", props.pagination);
+  setIfDefined(options, "paginationControls", props.paginationControls);
   setIfDefined(options, "rowNumbers", props.rowNumbers);
   setIfDefined(options, "rowHover", props.rowHover);
   setIfDefined(options, "columnHover", props.columnHover);
