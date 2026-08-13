@@ -17,6 +17,7 @@ inputs. Optional fields use documented defaults when omitted.
 | `rowIdKey` | `string` | Field containing a stable row ID |
 | `getRowId` | `(row) => string` | Derive a stable row ID |
 | `rowDataMode` | `auto \| reset \| diff` | Whether a replacement `rowData` array is diffed into the grid (keeping history and page) or re-ingested. Default `auto` |
+| `asyncTransactionWaitMs` | `number` | Batch window for `applyTransactionAsync`; defaults to 16 ms. `0` flushes on the next macrotask |
 | `rowModelType` | `clientSide \| serverSide` | Select the row model |
 | `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
 | `serverSideBlockSize` | `number` | Requested block size |
@@ -44,13 +45,22 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `cellSelection` | `boolean \| "text"` | `true` |
 | `rangeSelection` | `boolean` | `true` |
 | `columnSelection` | `boolean` | `true` |
-| `rowSelection` | `boolean \| { checkboxes?, headerCheckbox? }` | `false` (object form adds the checkbox column) |
+| `rowSelection` | `boolean \| RowSelectionOptions` | `false` (object form configures mode and the checkbox column) |
 | `selectAllScope` | `"filtered" \| "page"` | `"filtered"` (select-all and `areAllRowsSelected` span the whole filtered set) |
 | `selectionPersistence` | `"clear" \| "keep"` | `"clear"` (row selection on filter/sort/quick-filter changes) |
 | `selectAllRowsOnHeaderClick` | `boolean` | `false` |
 | `clearSelectionOnBodyClick` | `boolean` | `true` |
 | `highlightActiveCell` | `boolean` | `false` |
 | `bodyContextMenu` | `boolean \| getter` | `true` |
+
+`RowSelectionOptions` accepts `mode: "single" | "multiple"` (default
+`"multiple"`), `checkboxes`, and `headerCheckbox`. Single mode always hides the
+header checkbox. Checkbox-column placement uses two independent options:
+`checkboxColumnPinned: "left" | "right" | null` chooses its initial position
+(default `"left"`), while `checkboxColumnPinnable` controls whether users can
+change that position later (default `true`).
+These nested row-selection options reconcile live in both React and Angular;
+changing them does not remount the grid or replace its API instance.
 
 ## Editing
 
@@ -74,6 +84,7 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `quickFilter` | `boolean \| QuickFilterOptions` | Global client-side search |
 | `filterDebounceMs` | `number` | Default column-filter debounce |
 | `pagination` | `boolean` | Enable footer pagination |
+| `paginationControls` | `PaginationControlsOptions` | Page-picker style plus visible pagination controls and their order |
 | `pageSize` | `number` | Initial page size |
 | `pageSizes` | `number[]` | User-selectable page sizes |
 | `resetPageOn` | `("filter" \| "sort" \| "quickFilter")[]` | Model changes that jump back to page 1 (default `[]`) |
@@ -82,6 +93,25 @@ React and Angular expose `rowData` through their bindings; core integrations use
 dropped). If `pageSize` is not in the list it is added automatically so the
 page-size selector can display it — with a console warning when `pageSizes` was
 set explicitly.
+
+The page picker remains a `<select>` by default. Use numbered buttons and configure
+the footer controls by supplying their visual (and keyboard) order:
+
+```tsx
+paginationControls: {
+  pageSelection: "buttons",
+  showPageLabel: false,
+  controls: ["previousPage", "pageSelector", "nextPage", "pageSize"],
+  maxPageButtons: 7,
+}
+```
+
+Available controls are `"pageSize"`, `"firstPage"`, `"previousPage"`,
+`"pageSelector"`, `"nextPage"`, and `"lastPage"`. Omitted controls are hidden.
+Set `showPageLabel: false` to remove the visible `Page` label while preserving
+accessible names on the select or numbered-button group.
+Numbered pagination keeps the first and last known pages visible, centers a bounded
+window around the current page, and inserts ellipses when pages are skipped.
 
 :::warning Behavior change
 
@@ -114,6 +144,7 @@ row count is known; the quick filter is client-side only.)
 | `theme` | `GridTheme` | Per-instance visual theme |
 | `icons` | `GridIconMap` | Named icon overrides |
 | `tooltip` | `boolean \| TooltipOptions` | Global tooltip behavior |
+| `getRowPresentation` | `(params) => RowPresentation` | Row/cell styling defaults, tooltip defaults, ARIA description/busy state, and metadata |
 | `toolbar` | `GridToolbarOptions` | Opt-in toolbar sections |
 | `savedViews` | `SavedViewsOptions` | Application-owned view persistence |
 | `suppressStyleInjection` | `boolean` | Use imported CSS instead |
@@ -124,3 +155,63 @@ row count is known; the quick filter is client-side only.)
 The package's TypeScript declarations remain the source of truth for less
 common callbacks and detailed nested option types.
 
+### Row presentation
+
+Use `getRowPresentation` when a status belongs to the whole row rather than a
+particular field:
+
+```tsx
+getRowPresentation: ({ rowId }) => {
+  const error = errors.get(rowId);
+  if (!error) return undefined;
+  return {
+    rowClass: "row-error",
+    cellClass: "cell-in-error-row",
+    cellStyle: { backgroundColor: "var(--error-row-bg)" },
+    tooltip: {
+      content: error.message,
+      component: ErrorTooltip,
+      componentParams: { showCode: true },
+      options: { mode: "follow", escapeRootClip: true },
+    },
+    accessibility: {
+      description: `Row contains an error: ${error.message}`,
+      busy: false,
+    },
+    metadata: { status: "error", error },
+  };
+}
+```
+
+`rowClass`/`rowStyle` style every row-container fragment and compose with the
+older `getRowClass`/`getRowStyle` hooks. `cellClass` is combined with each
+column's `cellClass`; `cellStyle` is the default object and the column wins only
+conflicting properties. The resolved presentation is also available to cell
+renderers, cell-style callbacks, and tooltip components as `rowPresentation`.
+
+Tooltip layers resolve by specificity:
+
+- Content: explicit column getter/field → row content → `defaultColDef` → clipped-cell text.
+- Component: explicit column component → row component → `defaultColDef` → built-in text.
+- Options, field by field: grid → `defaultColDef` → row → explicit column.
+
+This lets a column replace its message or placement while retaining the row's
+component and other behavior. `interactive: true` always forces anchored mode;
+placement is relevant only while anchored. A column can opt out selectively:
+
+```ts
+{
+  key: "actions",
+  label: "Actions",
+  inheritRowPresentation: {
+    tooltip: false,
+    cellClass: false,
+    cellStyle: false,
+  },
+}
+```
+
+When the callback reads external state (a pending-ID set, for example), call
+`api.refreshRowPresentation()` after changing it. Row transactions already
+repaint affected rendered rows. React and Angular row tooltip components use
+the framework-aware `ReactGetRowPresentation` and `NgGetRowPresentation` types.

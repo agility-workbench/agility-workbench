@@ -4,7 +4,12 @@ import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { AggregateType } from "@grid/interfaces/aggregate";
-import type { IServerSideDataSource, IServerSideRequest } from "@grid";
+import type {
+  IServerSideDataSource,
+  IServerSideRequest,
+  PaginationControl,
+  PaginationControlsOptions,
+} from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 
 /**
@@ -118,15 +123,33 @@ const GROUPABLE: Array<{ colId: string; label: string }> = [
   { colId: "category", label: "Category" },
 ];
 
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
+
 export function ServerSideGroupingDemo() {
   const apiRef = useRef<IGridAPI | null>(null);
   const [groupBy, setGroupBy] = useState<string[]>(["region", "country"]);
   const [reportTotals, setReportTotals] = useState(true);
   const [pagination, setPagination] = useState(true);
+  const [pageSelection, setPageSelection] = useState<"select" | "buttons">("select");
+  const [showPageLabel, setShowPageLabel] = useState(true);
+  const [paginationLayout, setPaginationLayout] = useState<PaginationLayout>("default");
+  const [maxPageButtons, setMaxPageButtons] = useState(7);
   const [stickyGroups, setStickyGroups] = useState(true);
   const [requestLog, setRequestLog] = useState<string[]>([]);
   const reportTotalsRef = useRef(reportTotals);
   reportTotalsRef.current = reportTotals;
+
+  const paginationControls = useMemo<PaginationControlsOptions>(() => ({
+    pageSelection,
+    showPageLabel,
+    controls: PAGINATION_LAYOUTS[paginationLayout],
+    maxPageButtons,
+  }), [pageSelection, showPageLabel, paginationLayout, maxPageButtons]);
 
   const dataSource = useMemo<IServerSideDataSource>(() => ({
     getRows: ({ request, success }) => {
@@ -198,8 +221,47 @@ export function ServerSideGroupingDemo() {
         </label>
 
         <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={showPageLabel}
+            onChange={(e) => setShowPageLabel(e.target.checked)}
+          />
+          Show Page label
+        </label>
+
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
           <input type="checkbox" checked={pagination} onChange={(e) => setPagination(e.target.checked)} />
           Pagination
+        </label>
+
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Page selection
+          <select value={pageSelection} onChange={(e) => setPageSelection(e.target.value as typeof pageSelection)}>
+            <option value="select">select</option>
+            <option value="buttons">buttons</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Controls
+          <select value={paginationLayout} onChange={(e) => setPaginationLayout(e.target.value as PaginationLayout)}>
+            <option value="default">default order</option>
+            <option value="compact">compact</option>
+            <option value="reversed">reversed</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Max page buttons
+          <select
+            value={maxPageButtons}
+            onChange={(e) => setMaxPageButtons(Number(e.target.value))}
+            disabled={pageSelection !== "buttons"}
+          >
+            <option value={5}>5</option>
+            <option value={7}>7</option>
+            <option value={9}>9</option>
+          </select>
         </label>
 
         <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
@@ -243,6 +305,7 @@ export function ServerSideGroupingDemo() {
           serverSideDataSource={dataSource}
           serverSideBlockSize={100}
           pagination={pagination}
+          paginationControls={paginationControls}
           groupRowsSticky={stickyGroups}
           pageSize={50}
           getGroupChildCount={(row: any) => row.count}

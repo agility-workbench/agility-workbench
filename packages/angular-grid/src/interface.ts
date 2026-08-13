@@ -10,6 +10,9 @@ import type {
   TooltipComponent,
   TooltipComponentParams,
   NON_DEFAULTABLE_COLDEF_KEYS,
+  RowPresentation,
+  RowPresentationParams,
+  RowTooltipPresentation,
 } from "@agility-workbench/grid";
 
 /**
@@ -56,6 +59,18 @@ export interface ICellEditorNgComp<P extends ICellEditorParams = ICellEditorPara
 
 /** An Angular component class usable as a cell renderer / tooltip / ActionFrame / editor. */
 export type NgComponent = Type<unknown>;
+
+export type NgRowTooltipPresentation = Omit<RowTooltipPresentation, "component"> & {
+  component?: TooltipComponent | NgComponent;
+};
+
+export type NgRowPresentation = Omit<RowPresentation, "tooltip"> & {
+  tooltip?: NgRowTooltipPresentation | false | null;
+};
+
+export type NgGetRowPresentation = (
+  params: RowPresentationParams,
+) => NgRowPresentation | null | undefined;
 
 /**
  * Angular-aware column definition: identical to the core {@link ColDef}, but every component slot

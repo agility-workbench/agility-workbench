@@ -21,11 +21,16 @@ keyboard, clipboard, export, and API workflows.
 - `cellSelection: "text"` restores native browser text selection.
 - `rangeSelection` enables drag and Shift-extension.
 - `rowSelection` uses the row-number cells for row selection.
-- `rowSelection: { checkboxes: true }` adds a dedicated checkbox column
+- `rowSelection: { mode: "multiple", checkboxes: true }` adds a dedicated checkbox column
   (independent of `rowNumbers`): click toggles the row — always additive, never
   clearing the rest — and Shift+click unions a range in. A tri-state select-all
   checkbox renders in its header (disable with `headerCheckbox: false`),
-  covering the select-all scope (`selectAllScope`).
+  covering the select-all scope (`selectAllScope`). Use `mode: "single"` to keep
+  at most one row selected; single mode always hides the header checkbox.
+- The checkbox column starts pinned left. Set `checkboxColumnPinned` to
+  `"right"` or `null` to change its initial position, and set
+  `checkboxColumnPinnable: false` to lock it there. These are separate options,
+  so any initial position can be either fixed or user-changeable.
 - `columnSelection` uses headers for column selection.
 
 Arrow keys navigate one cell. Home/End, Page Up/Down, Ctrl/Cmd+Arrow block

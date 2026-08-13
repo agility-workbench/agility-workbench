@@ -42,6 +42,7 @@ import { ActionFrameRenderer } from "./actionFrame/actionFrameRenderer";
 import { resolveGridToolbarOptions, resolveTooltipOptions } from "../interfaces/gridOptions";
 import type {
   ColumnPanelOptions,
+  GridOptions,
   GridToolbarOptions,
   RuntimeGridOptions,
   TooltipOptions,
@@ -480,6 +481,14 @@ export class GridRenderer {
       }) => void;
     };
     apiWithPinnedRows.setPinnedRowsController?.(this._pinnedRowsRenderer);
+    const apiWithRowPresentation = this.api as unknown as {
+      setRowPresentationController?: (controller: {
+        refreshRowPresentation: () => void;
+      }) => void;
+    };
+    apiWithRowPresentation.setRowPresentationController?.({
+      refreshRowPresentation: () => this.refreshRowPresentation(),
+    });
     // Expose scrolling on the public API (api.ensureRowVisible / ensureColumnVisible /
     // ensureCellVisible): the core resolves a row id to a view slot, the renderer owns the scrollers.
     // Probed structurally to avoid a renderer→api import cycle, matching the exporter hook above.
@@ -721,8 +730,14 @@ export class GridRenderer {
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
-      renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber) => this._bodyCellRenderer.renderCell(cell, row, col, cellRendererMap, viewIndex, rowNumber),
-      renderFullWidthCell: (slot, row, viewIndex, rowNumber) => this._bodyCellRenderer.renderFullWidthCell(slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber),
+      renderCell: (cell, row, col, cellRendererMap, viewIndex, rowNumber, rowPresentation) =>
+        this._bodyCellRenderer.renderCell(
+          cell, row, col, cellRendererMap, viewIndex, rowNumber, "data", rowPresentation,
+        ),
+      renderFullWidthCell: (slot, row, viewIndex, rowNumber, rowPresentation) =>
+        this._bodyCellRenderer.renderFullWidthCell(
+          slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation,
+        ),
       clearFullWidthCell: (slot) => this._bodyCellRenderer.clearFullWidthCell(slot.fullWidthCellEl, slot.cellRendererInstances),
       applySelectionToSlot: (slot, viewIndex) => this._selectionRenderer.applySelectionToSlot(slot, viewIndex),
     });
@@ -866,6 +881,10 @@ export class GridRenderer {
     this._paginationRenderer.togglePagination(pagination);
   }
 
+  setPaginationControls(options: GridOptions["paginationControls"]) {
+    this._paginationRenderer.setPaginationControls(options);
+  }
+
   // Build (or skip building) the quick-filter widget from the currently-stored options. A prior
   // widget, if any, must be destroyed by the caller first. `restore` carries live search state
   // across a rebuild. The widget is only mounted when enabled and the row model is client-side.
@@ -981,6 +1000,12 @@ export class GridRenderer {
     this._pinnedRowsRenderer.setOptions(options);
   }
 
+  /** Reconfigure row selection and its utility column while retaining this renderer/core/API. */
+  setRowSelectionOptions(options: import("../interfaces/gridOptions").GridOptions["rowSelection"]) {
+    this.core.setRowSelectionOptions(options);
+    this._refreshAriaCounts();
+  }
+
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
   setRuntimeOptions(options: RuntimeGridOptions) {
     const previous = { ...this.core.options };
@@ -1011,8 +1036,9 @@ export class GridRenderer {
     const rowPaintChanged =
       previous.zebraRows !== options.zebraRows
       || previous.getRowClass !== options.getRowClass
-      || previous.getRowStyle !== options.getRowStyle;
-    if (rowPaintChanged) this._bodyWindowRenderer.update(true, undefined);
+      || previous.getRowStyle !== options.getRowStyle
+      || previous.getRowPresentation !== options.getRowPresentation;
+    if (rowPaintChanged) this.refreshRowPresentation();
 
     if (previous.highlightActiveCell !== options.highlightActiveCell) {
       this._selectionRenderer.refreshSelectionStyles();
@@ -1020,6 +1046,13 @@ export class GridRenderer {
     if (previous.bodyContextMenu !== options.bodyContextMenu && options.bodyContextMenu === false) {
       this._menuRenderer.close(0);
     }
+  }
+
+  /** Repaint visible body rows and rebuild pinned/sticky bands from fresh row defaults. */
+  refreshRowPresentation() {
+    this._bodyTooltipRenderer.hideNow();
+    this._bodyWindowRenderer.update(true, undefined);
+    this._pinnedRowsRenderer.render(undefined, true);
   }
 
   // Grid-level keydown. The listener is bound to the grid root (see GridInteractionEventBinder), so
@@ -1388,6 +1421,8 @@ export class GridRenderer {
       const row = rowModel.getRowNodeAtViewIndex(viewIdx);
       if (!row) continue;
       const rowNumber = this.core.getRowNumberForViewIndex(viewIdx);
+      // Resolve once per row so every refreshed cell observes the same presentation snapshot.
+      const rowPresentation = this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
 
       for (const section of sections) {
         const cells = section.cells(slot);
@@ -1399,12 +1434,12 @@ export class GridRenderer {
           const cell = cells[c++];
           if (!cell) continue;
           if (changed && !changed.has(col.instanceID)) continue;
-          this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason);
+          this._bodyCellRenderer.renderCell(
+            cell, row, col, slot.cellRendererInstances, viewIdx, rowNumber, reason, rowPresentation,
+          );
         }
       }
 
-      // The row's data may have changed (e.g. a transaction update), so re-run row-level styling.
-      this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
     }
   }
 
@@ -1519,12 +1554,12 @@ export class GridRenderer {
       "aria-rowcount",
       totalKnown ? String(rowModel.getViewTotalCount() + 1) : "-1",
     );
-    // More than one thing can be selected at once when cells can be dragged into a range, rows can
-    // be picked individually, or columns can be (column selection accumulates, and selecting a
-    // column marks all of its cells selected). Cell selection set to "text"/false leaves the
-    // row/column routes.
+    // More than one thing can be selected at once when cells can be dragged into a range, row
+    // selection is in multiple mode, or columns can be selected (column selection accumulates, and
+    // selecting a column marks all of its cells selected). Cell selection set to "text"/false
+    // leaves the row/column routes.
     const multi = (this.core.options.cellSelection === true && !!this.core.options.rangeSelection)
-      || !!this.core.options.rowSelection
+      || (!!this.core.options.rowSelection && this.core.options.rowSelectionMode === "multiple")
       || !!this.core.options.columnSelection;
     this.root.setAttribute("aria-multiselectable", String(multi));
   }

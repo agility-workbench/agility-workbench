@@ -225,6 +225,10 @@ export type GridActionRowSelectSet = {
   viewIdx: number;
   // "range" replaces with anchor..row (row-number gesture); "rangeAdd" unions it in (checkbox).
   mode: "replace" | "toggle" | "range" | "rangeAdd";
+  /** Keyboard checkbox activation keeps the cursor on the checkbox after row selection replaces
+   * the cell range. Pointer gestures do not need this because they never move the cell cursor. */
+  preserveFocus?: boolean;
+  reason?: "mouse" | "keyboard";
 };
 
 // Select or clear all selectable data rows in the current view (row-number header click).

@@ -6,6 +6,7 @@ import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
+import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
 import type { ColDef, DefaultColDef } from "./column";
 import type {
   CellValueChangeSource,
@@ -101,6 +102,53 @@ export type GetRowClass = (params: RowClassParams) => string | string[] | null |
  * that stops being returned is cleared on the next repaint.
  */
 export type GetRowStyle = (params: RowClassParams) => Partial<CSSStyleDeclaration> | null | undefined;
+
+/** Tooltip defaults supplied by {@link RowPresentation} for every cell in one row. */
+export interface RowTooltipPresentation {
+  /** Default scalar content. Explicit column tooltip content overrides it. */
+  content?: string | number | null;
+  /** Default renderer. An explicit column `tooltipComponent` overrides it. */
+  component?: TooltipComponent;
+  /** Extra params for the row tooltip component. Column component params override matching keys. */
+  componentParams?: Record<string, unknown>;
+  /** Row-specific positioning/interaction defaults. Explicit column options override each field. */
+  options?: TooltipColumnOptions;
+}
+
+/** Accessibility semantics attached to the row rather than inferred from visual styling. */
+export interface RowAccessibilityPresentation {
+  /** Additional row description, exposed through `aria-describedby`. */
+  description?: string | null;
+  /** Whether work associated with the row is in progress (`aria-busy`). */
+  busy?: boolean;
+}
+
+/**
+ * Presentation defaults for one logical row. Row container class/style complement the legacy
+ * `getRowClass` / `getRowStyle` callbacks. Cell class/style are applied to every cell, then composed
+ * with its column's `cellClass` / `cellStyle`. Tooltip fields form the default for every cell and
+ * can be overridden (or suppressed) by its column.
+ */
+export interface RowPresentation {
+  rowClass?: string | string[] | null;
+  rowStyle?: Partial<CSSStyleDeclaration> | null;
+  cellClass?: string | string[] | null;
+  cellStyle?: Partial<CSSStyleDeclaration> | null;
+  /** `false` explicitly disables the row tooltip default. */
+  tooltip?: RowTooltipPresentation | false | null;
+  accessibility?: RowAccessibilityPresentation | null;
+  /** Opaque application state forwarded to cell renderers, styling callbacks, and tooltips. */
+  metadata?: Record<string, unknown>;
+}
+
+export interface RowPresentationParams extends RowClassParams {
+  /** Set for application-pinned rows; sticky group mirrors remain ordinary body rows. */
+  rowPinned?: RowPinnedPosition;
+}
+
+export type GetRowPresentation = (
+  params: RowPresentationParams,
+) => RowPresentation | null | undefined;
 
 /**
  * Customizes the body (right-click) context menu. Receives the menu context and the default items
@@ -206,12 +254,23 @@ export interface IsRowPinnedParams {
  * checkboxes).
  */
 export interface RowSelectionOptions {
-  /** Show a dedicated leading checkbox column: click toggles the row, Shift+click selects a
-   * range. Independent of `rowNumbers`. Defaults to false. */
+  /** Whether row selection holds one row or many. Defaults to "multiple". In single mode the
+   * checkbox-column header checkbox is hidden and additive/range gestures replace the selection. */
+  mode?: "single" | "multiple";
+  /** Show a dedicated checkbox column: click toggles the row, Shift+click selects a range. It is
+   * independent of `rowNumbers`, defaults to pinned left, and can be pinned right or unpinned from
+   * its header menu. Defaults to false. */
   checkboxes?: boolean;
   /** Tri-state select-all checkbox in the checkbox column's header, covering the select-all
    * scope (`selectAllScope`). Defaults to true when `checkboxes` is on. */
   headerCheckbox?: boolean;
+  /** Whether the checkbox column can be moved between left-pinned, unpinned, and right-pinned
+   * sections after creation. Defaults to true. */
+  checkboxColumnPinnable?: boolean;
+  /** Initial pin position of the checkbox column. `null` leaves it unpinned. Defaults to "left".
+   * This is independent of `checkboxColumnPinnable`, so a column can start in a chosen section and
+   * be locked there. */
+  checkboxColumnPinned?: "left" | "right" | null;
 }
 
 /** How the quick-filter search string is matched against each row. */
@@ -273,6 +332,71 @@ export type EditTrigger = "doubleClick" | "singleClick" | "none";
  * - `"text"`: native browser text selection, like a plain HTML table.
  */
 export type CellSelectionMode = boolean | "text";
+
+/** A configurable control in the pagination footer. The array order is the visual/tab order. */
+export type PaginationControl =
+  | "pageSize"
+  | "firstPage"
+  | "previousPage"
+  | "pageSelector"
+  | "nextPage"
+  | "lastPage";
+
+export type PaginationPageSelection = "select" | "buttons";
+
+/**
+ * Presentation and composition of the pagination controls.
+ * - `pageSelection`: render the page picker as the historical select (default) or numbered buttons.
+ * - `showPageLabel`: show the visible "Page" label beside the page picker. Defaults to true.
+ * - `controls`: controls to render, in visual and keyboard order. Omit for the historical order.
+ * - `maxPageButtons`: maximum numbered page buttons (ellipsis markers do not count). Defaults to 7.
+ */
+export interface PaginationControlsOptions {
+  pageSelection?: PaginationPageSelection;
+  showPageLabel?: boolean;
+  controls?: readonly PaginationControl[];
+  maxPageButtons?: number;
+}
+
+export interface ResolvedPaginationControlsOptions {
+  pageSelection: PaginationPageSelection;
+  showPageLabel: boolean;
+  controls: PaginationControl[];
+  maxPageButtons: number;
+}
+
+export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
+  "pageSize",
+  "firstPage",
+  "previousPage",
+  "pageSelector",
+  "nextPage",
+  "lastPage",
+];
+
+const PAGINATION_CONTROL_SET = new Set<PaginationControl>(DEFAULT_PAGINATION_CONTROLS);
+
+export function resolvePaginationControlsOptions(
+  options?: PaginationControlsOptions,
+): ResolvedPaginationControlsOptions {
+  const controls: PaginationControl[] = [];
+  const seen = new Set<PaginationControl>();
+  for (const control of options?.controls ?? DEFAULT_PAGINATION_CONTROLS) {
+    if (!PAGINATION_CONTROL_SET.has(control) || seen.has(control)) continue;
+    seen.add(control);
+    controls.push(control);
+  }
+  const requestedMax = options?.maxPageButtons;
+  const maxPageButtons = Number.isFinite(requestedMax)
+    ? Math.max(3, Math.floor(requestedMax as number))
+    : 7;
+  return {
+    pageSelection: options?.pageSelection === "buttons" ? "buttons" : "select",
+    showPageLabel: options?.showPageLabel ?? true,
+    controls,
+    maxPageButtons,
+  };
+}
 
 /**
  * Quick filter (global search) configuration.
@@ -613,6 +737,12 @@ export interface GridOptions {
    * Applies to `api.setRowData` as well as to the bindings. Set at construction only.
    */
   rowDataMode?: RowDataMode;
+  /**
+   * Maximum time in milliseconds before `applyTransactionAsync()` finalizes queued row mutations
+   * into one model/render pass. The window starts with the first transaction and is not restarted by
+   * later calls. Defaults to 16. Set to 0 to flush on the next macrotask.
+   */
+  asyncTransactionWaitMs?: number;
   overscanRowCount?: number;
   /**
    * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
@@ -627,6 +757,7 @@ export interface GridOptions {
   allowExportAsCSV?: boolean;
   allowExportAsExcel?: boolean;
   pagination?: boolean;
+  paginationControls?: PaginationControlsOptions;
   rowNumbers?: boolean;
   /**
    * When true, the row under the pointer is highlighted (background `--pte-hover-bg-color`).
@@ -654,6 +785,12 @@ export interface GridOptions {
    * return a style object or nothing. Recomputed as rows scroll into view.
    */
   getRowStyle?: GetRowStyle;
+  /**
+   * Row-scoped presentation defaults for row/cell styling, tooltips, accessibility, and opaque
+   * metadata. Evaluated as a row is rendered and again when its tooltip is opened. Call
+   * `api.refreshRowPresentation()` after changing external state used by this callback.
+   */
+  getRowPresentation?: GetRowPresentation;
   /**
    * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
    * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell.
@@ -1099,12 +1236,14 @@ export interface InternalGridOptions extends GridOptions {
   /** Resolved from the public `"auto"` default — the row model is consulted at data-set time for
    * whether a diff is actually possible, so this only records what was asked for. */
   rowDataMode: RowDataMode;
+  asyncTransactionWaitMs: number;
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;
   allowExportAsCSV: boolean;
   allowExportAsExcel: boolean;
   pagination: boolean;
+  paginationControls: ResolvedPaginationControlsOptions;
   rowNumbers: boolean;
   rowHover: boolean;
   columnHover: boolean;
@@ -1113,8 +1252,11 @@ export interface InternalGridOptions extends GridOptions {
   ariaLabelledBy?: string;
   highlightActiveCell: boolean;
   rowSelection: boolean;
+  rowSelectionMode: "single" | "multiple";
   rowSelectionCheckboxes: boolean;
   rowSelectionHeaderCheckbox: boolean;
+  rowSelectionCheckboxColumnPinnable: boolean;
+  rowSelectionCheckboxColumnPinned: "left" | "right" | null;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
@@ -1178,6 +1320,7 @@ export type RuntimeGridOptions = Pick<
   | "zebraRows"
   | "getRowClass"
   | "getRowStyle"
+  | "getRowPresentation"
   | "ariaLabel"
   | "ariaLabelledBy"
   | "highlightActiveCell"
@@ -1194,4 +1337,5 @@ export type RuntimeGridOptions = Pick<
   | "suppressTypeToEdit"
   | "moveAfterEdit"
   | "commitOnBlur"
+  | "asyncTransactionWaitMs"
 >;

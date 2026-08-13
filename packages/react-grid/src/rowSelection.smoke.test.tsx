@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
-import type { IGridAPI } from "@agility-workbench/grid";
+import type { GridOptions, IGridAPI } from "@agility-workbench/grid";
 
 // happy-dom's <canvas> has no 2D context; CanvasMeasurer needs one to measure text.
 beforeAll(() => {
@@ -18,7 +18,13 @@ beforeAll(() => {
 
 type Row = { id: number; name: string };
 
-async function mountGrid(opts: { rowSelection?: boolean; rowNumbers?: boolean; selectAllRowsOnHeaderClick?: boolean } = {}) {
+type MountOptions = {
+  rowSelection?: GridOptions["rowSelection"];
+  rowNumbers?: boolean;
+  selectAllRowsOnHeaderClick?: boolean;
+};
+
+async function mountGrid(opts: MountOptions = {}) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
   document.body.appendChild(container);
@@ -31,7 +37,8 @@ async function mountGrid(opts: { rowSelection?: boolean; rowNumbers?: boolean; s
   ];
 
   const root = createRoot(container);
-  await act(async () => {
+  let currentOptions = opts;
+  const render = async () => act(async () => {
     root.render(
       <Grid
         apiRef={apiRef}
@@ -41,14 +48,23 @@ async function mountGrid(opts: { rowSelection?: boolean; rowNumbers?: boolean; s
           { colId: "name", key: "name", label: "Name" },
         ]}
         rowIdKey="id"
-        rowNumbers={opts.rowNumbers ?? true}
-        rowSelection={opts.rowSelection ?? true}
-        selectAllRowsOnHeaderClick={opts.selectAllRowsOnHeaderClick ?? true}
+        rowNumbers={currentOptions.rowNumbers ?? true}
+        rowSelection={currentOptions.rowSelection ?? true}
+        selectAllRowsOnHeaderClick={currentOptions.selectAllRowsOnHeaderClick ?? true}
       />,
     );
   });
+  await render();
 
-  return { container, apiRef, root };
+  return {
+    container,
+    apiRef,
+    root,
+    rerender: async (next: MountOptions) => {
+      currentOptions = { ...currentOptions, ...next };
+      await render();
+    },
+  };
 }
 
 function clickRowNumberHeader(container: HTMLElement) {
@@ -59,6 +75,32 @@ function clickRowNumberHeader(container: HTMLElement) {
 }
 
 describe("row selection end-to-end via Grid", () => {
+  it("updates checkbox selection options without replacing the API", async () => {
+    const { container, apiRef, root, rerender } = await mountGrid({
+      rowNumbers: false,
+      rowSelection: { mode: "multiple", checkboxes: true },
+    });
+    const api = apiRef.current!;
+    api.selectRowsById(["1", "2"]);
+
+    await rerender({
+      rowSelection: {
+        mode: "single",
+        checkboxes: true,
+        checkboxColumnPinned: "right",
+        checkboxColumnPinnable: false,
+      },
+    });
+
+    expect(apiRef.current).toBe(api);
+    expect(api.getSelection().selectedRowIds).toEqual(["1"]);
+    expect(container.querySelector(".pte-select-all-checkbox")).toBeNull();
+    expect(container.querySelector(".pte-hcell-checkbox .pte-hcell-menu-menuBtn")).toBeNull();
+    expect(api.getColumnModel().getRightLeaves()[0].isSelectionCheckboxColumn()).toBe(true);
+
+    await unmountTestRoot(root);
+  });
+
   it("toggles all rows when the row-number header is clicked (selectAllRowsOnHeaderClick)", async () => {
     const { container, apiRef, root } = await mountGrid();
     const api = apiRef.current!;

@@ -5,6 +5,8 @@ import { IRowNode } from "../../interfaces/iRowNode";
 import { INDENT_PER_LEVEL, renderGroupCell, renderTreeCell } from "./groupCellRenderer";
 import { CellRefreshReason, createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
+import type { RowPresentation } from "../../interfaces/gridOptions";
+import { inheritRowPresentation, mergeClassValues, mergeStyleValues } from "./rowPresentation";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
@@ -25,7 +27,10 @@ export class BodyCellRenderer {
     cellRendererMap: Map<string, RendererRecord>,
     viewIndex: number = row.viewIndex,
     rowNumber: number = viewIndex + 1,
+    rowPresentation?: RowPresentation,
   ) {
+    applyDynamicClasses(cell, rowPresentation?.cellClass ?? null);
+    applyDynamicStyles(cell, rowPresentation?.cellStyle ?? null);
     const renderer = this.api.getCore().getOptions().fullWidthCellRenderer;
 
     if (!renderer) {
@@ -46,7 +51,7 @@ export class BodyCellRenderer {
     // colDef stub so renderers that read colDef.cellRendererParams (e.g. the React adapter) stay safe.
     const colDefStub = { cellRendererParams: undefined } as unknown as Column;
     const rendererParams = {
-      ...getCellRendererParams(row.data, row.data, row, viewIndex, colDefStub, cell, this.api, "data"),
+      ...getCellRendererParams(row.data, row.data, row, viewIndex, colDefStub, cell, this.api, "data", rowPresentation),
       data: row.data,
       node: row,
     };
@@ -96,7 +101,11 @@ export class BodyCellRenderer {
     viewIndex: number = row.viewIndex,
     rowNumber: number = viewIndex + 1,
     refreshReason: CellRefreshReason = "data",
+    rowPresentation?: RowPresentation,
   ) {
+    // Row defaults include utility and group cells. Column callbacks retain their existing leaf-row
+    // behavior and are composed below when applicable.
+    this.applyCellStyling(cell, row, col, viewIndex, rowPresentation);
     if (col.isSelectionCheckboxColumn()) {
       // Content is the static decorative checkbox span created by the row pool; checked state is
       // CSS-driven from the "selected" class. Nothing to render per row.
@@ -118,8 +127,6 @@ export class BodyCellRenderer {
 
     // Conditional per-column class/style. Applied for data cells below; cleared here on the group /
     // row-number branches so a recycled cell never keeps a prior data cell's dynamic styling.
-    this.applyCellStyling(cell, row, col, viewIndex);
-
     // Group rows: the auto-group column renders the chevron + indented label + count; other data
     // columns render this group's aggregate total (if any) and everything else is blank. Any
     // per-column custom renderer instance is torn down so a group row never reuses a leaf renderer.
@@ -153,7 +160,9 @@ export class BodyCellRenderer {
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     const renderer = col.cellRenderer;
-    const rendererParams = getCellRendererParams(rawValue, displayValue, row, viewIndex, col, cell, this.api, refreshReason);
+    const rendererParams = getCellRendererParams(
+      rawValue, displayValue, row, viewIndex, col, cell, this.api, refreshReason, rowPresentation,
+    );
     if (!renderer) {
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
       const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
@@ -190,36 +199,45 @@ export class BodyCellRenderer {
   // Apply the column's cellClass / cellStyle / ActionFrame indicator to a data cell. For group rows
   // (or when none is configured) it clears any previously-applied dynamic class/style/indicator so
   // recycled cells stay clean.
-  private applyCellStyling(cell: HTMLDivElement, row: IRowNode, col: Column, viewIndex: number) {
+  private applyCellStyling(
+    cell: HTMLDivElement,
+    row: IRowNode,
+    col: Column,
+    viewIndex: number,
+    rowPresentation?: RowPresentation,
+  ) {
     const hasClass = col.cellClass != null;
     const hasStyle = col.cellStyle != null;
     const hasIndicator = col.actionFrameIndicator != null && col.actionFrameIndicator !== false;
-    if (!hasClass && !hasStyle && !hasIndicator) return;
 
-    if (row.isGroup) {
-      if (hasClass) applyDynamicClasses(cell, null);
-      if (hasStyle) applyDynamicStyles(cell, null);
-      if (hasIndicator) cell.classList.remove("pte-action-frame-indicator");
-      return;
-    }
-
-    const params: CellClassParams = {
+    // A value getter can be expensive and, for generated tree/group columns, may only accept leaf
+    // rows. Resolve it only when a column callback actually needs CellClassParams; row defaults do
+    // not depend on the cell value.
+    let params: CellClassParams | undefined;
+    const getParams = (): CellClassParams => params ??= {
       value: col.getValue(row),
       data: row.data,
       rowId: row.id,
       rowIndex: viewIndex,
       colDef: col.col,
+      rowPresentation,
     };
-    if (hasClass) {
-      const cls = typeof col.cellClass === "function" ? col.cellClass(params) : col.cellClass;
-      applyDynamicClasses(cell, cls);
-    }
-    if (hasStyle) {
-      const style = typeof col.cellStyle === "function" ? col.cellStyle(params) : col.cellStyle;
-      applyDynamicStyles(cell, style);
+    const columnClass = !row.isGroup && hasClass
+      ? (typeof col.cellClass === "function" ? col.cellClass(getParams()) : col.cellClass)
+      : null;
+    const columnStyle = !row.isGroup && hasStyle
+      ? (typeof col.cellStyle === "function" ? col.cellStyle(getParams()) : col.cellStyle)
+      : null;
+    const rowClass = inheritRowPresentation(col, "cellClass") ? rowPresentation?.cellClass : null;
+    const rowStyle = inheritRowPresentation(col, "cellStyle") ? rowPresentation?.cellStyle : null;
+    applyDynamicClasses(cell, mergeClassValues(rowClass, columnClass));
+    applyDynamicStyles(cell, mergeStyleValues(rowStyle, columnStyle));
+    if (row.isGroup) {
+      if (hasIndicator) cell.classList.remove("pte-action-frame-indicator");
+      return;
     }
     if (hasIndicator) {
-      cell.classList.toggle("pte-action-frame-indicator", this.hasActionFrameContent(col, row, params));
+      cell.classList.toggle("pte-action-frame-indicator", this.hasActionFrameContent(col, row, getParams()));
     }
   }
 

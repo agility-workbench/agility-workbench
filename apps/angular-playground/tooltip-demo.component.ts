@@ -20,8 +20,8 @@ import {
  *     (grace bridge keeps it open across the gap).
  *  6. `headerTooltip`: several column headers carry help text.
  *
- * A toggle switches the grid between anchored (default) and follow-mouse mode. Follow-mouse is
- * display-only, so the interactive Country tooltip only stays clickable in anchored mode.
+ * A toggle switches display-only tooltips between anchored (default) and follow-mouse mode. The
+ * interactive Country tooltip remains anchored so its button is always reachable.
  */
 
 type SaleRow = {
@@ -147,13 +147,9 @@ export class CountryTooltipComponent implements ITooltipNgComp {
       <br />
       Per-column <code>tooltipOptions</code> override the grid default:
       <span style="font-weight: 700">Rep</span> always follows the mouse, and
-      <span style="font-weight: 700">Country</span> is always interactive + anchored — both ignore the toggles below.
+      <span style="font-weight: 700">Country</span> is always interactive + anchored — both ignore the mode toggle below.
     </div>
     <div class="demo-topbar" style="font-size: 13px">
-      <label style="display: inline-flex; gap: 6px; align-items: center">
-        <input type="checkbox" [checked]="interactive()" (change)="onInteractiveChange($event)" />
-        interactive
-      </label>
       <label style="display: inline-flex; gap: 6px; align-items: center">
         mode:
         <select [value]="mode()" (change)="onModeChange($event)">
@@ -162,7 +158,7 @@ export class CountryTooltipComponent implements ITooltipNgComp {
         </select>
       </label>
       <span style="opacity: 0.6">
-        (follow-mouse is display-only; the Country button is only clickable in anchored mode)
+        (follow-mouse is display-only; the interactive Country tooltip remains anchored)
       </span>
     </div>
     <div class="demo-grid-host">
@@ -173,11 +169,9 @@ export class CountryTooltipComponent implements ITooltipNgComp {
 })
 export class TooltipDemoComponent {
   readonly rows = buildRows(500);
-  readonly interactive = signal(true);
   readonly mode = signal<"anchored" | "follow">("anchored");
 
   readonly tooltipOptions = computed<TooltipOptions>(() => ({
-    interactive: this.interactive(),
     mode: this.mode(),
     showDelay: 250,
   }));
@@ -220,10 +214,6 @@ export class TooltipDemoComponent {
       colId: "notes", key: "notes", label: "Notes", width: 200,
     },
   ];
-
-  onInteractiveChange(ev: Event): void {
-    this.interactive.set((ev.target as HTMLInputElement).checked);
-  }
 
   onModeChange(ev: Event): void {
     this.mode.set((ev.target as HTMLSelectElement).value as "anchored" | "follow");

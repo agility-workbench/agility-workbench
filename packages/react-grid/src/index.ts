@@ -12,6 +12,9 @@ export type {
   ReactDefaultColDef,
   ReactTooltipComponent,
   ReactActionFrameComponent,
+  ReactRowTooltipPresentation,
+  ReactRowPresentation,
+  ReactGetRowPresentation,
 } from "./cellRenderer";
 export type { ReactCellEditor, ReactCellEditorHandle } from "./cellEditor";
 // Aliased: `export *` above already publishes core's plain `MenuItem`; this is the React-aware

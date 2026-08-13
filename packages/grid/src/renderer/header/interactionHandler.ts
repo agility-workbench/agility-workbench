@@ -113,6 +113,12 @@ export class HeaderInteractionHandler {
   onHeaderContextMenu(e: MouseEvent) {
     const header = (e.target as HTMLElement)?.closest(".pte-hcell");
     const col = header ? this.params.core.getColumnModel().getById(header.id) : undefined;
+    // A locked selection-checkbox column has no header action at all. Suppress both the empty grid
+    // frame and the browser-native menu for this internal target.
+    if (col?.isSelectionCheckboxColumn() && !col.pinnable) {
+      e.preventDefault();
+      return;
+    }
     // Per-column opt-out: when columnContextMenu is false, do NOT preventDefault so the browser's
     // native context menu appears instead of the grid's column menu. (Checked before the default
     // preventDefault below, which otherwise suppresses the native menu across the whole header.)

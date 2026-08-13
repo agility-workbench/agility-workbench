@@ -54,13 +54,24 @@ export class FloatingAnchor {
   private arrowEl: HTMLDivElement | null = null;
   private current: FloatingShowOptions | null = null;
   private mountedInBody = false;
+  private readonly resizeObserver: ResizeObserver | null;
 
   /**
    * @param root  The grid root (`.pte-root`) — default mount target and clamp reference.
    * @param zIndex  Stacking level for the overlay. Tooltips sit *below* the menu band (menus use
    *   9999+), so the default is under that. ActionFrame can pass its own band.
    */
-  constructor(private root: HTMLElement, private zIndex: number = 9800) {}
+  constructor(private root: HTMLElement, private zIndex: number = 9800) {
+    // Framework components, images, and other async content can change size after show() performs
+    // its first measurement. Reposition from the settled size so anchored overlays stay centered on
+    // their trigger instead of growing down/right from a zero-sized initial host.
+    this.resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver((entries) => {
+          if (!this.overlay || !entries.some(entry => entry.target === this.overlay)) return;
+          this.position();
+        });
+  }
 
   /** True while a floating element is on screen. */
   isOpen(): boolean {
@@ -78,6 +89,10 @@ export class FloatingAnchor {
    */
   show(content: HTMLElement, opts: FloatingShowOptions): HTMLElement {
     const overlay = this.ensureOverlay(opts);
+    // Treat every replacement as a fresh observation. Consecutive framework tooltips can collapse
+    // to an empty host and grow back to exactly the previous size within one rendering frame; a
+    // continuously-attached ResizeObserver is allowed to coalesce that into "no size change".
+    this.resizeObserver?.unobserve(overlay);
     overlay.replaceChildren(content);
     if (opts.arrow && opts.mode.kind === "anchored") {
       this.arrowEl = div("pte-floating-arrow");
@@ -87,6 +102,10 @@ export class FloatingAnchor {
     }
     this.current = opts;
     this.position();
+    // position() tears down a transient floater when its anchor has disappeared. Do not retain that
+    // detached overlay in ResizeObserver until destroy(); a future show will create and observe a
+    // fresh one.
+    if (this.overlay === overlay) this.resizeObserver?.observe(overlay);
     return overlay;
   }
 
@@ -100,8 +119,19 @@ export class FloatingAnchor {
     this.position();
   }
 
+  /**
+   * Move an already-open follow-mode floater to the latest pointer coordinates without remounting
+   * its content. No-op for anchored or closed floaters.
+   */
+  updateFollowPosition(x: number, y: number): void {
+    if (!this.overlay || !this.current || this.current.mode.kind !== "follow") return;
+    this.current.mode = { kind: "follow", x, y };
+    this.position();
+  }
+
   /** Remove the floating element from the DOM and drop all state. Idempotent. */
   hide(): void {
+    if (this.overlay) this.resizeObserver?.unobserve(this.overlay);
     if (this.overlay && this.overlay.parentElement) {
       this.overlay.parentElement.removeChild(this.overlay);
     }
@@ -122,6 +152,7 @@ export class FloatingAnchor {
   /** Tear down entirely. */
   destroy(): void {
     this.hide();
+    this.resizeObserver?.disconnect();
   }
 
   // ---------------- internals ----------------

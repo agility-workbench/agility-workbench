@@ -105,11 +105,14 @@ describe("GridCore applyTransaction", () => {
     expect(viewOrder(core)).toEqual(["1", "4", "3", "2"]); // 3,4,5,7
   });
 
-  it("emits rowsChanged with reason 'transaction' on structural change", () => {
+  it("emits rowsChanged and paginationChanged exactly once on structural change", () => {
     const reasons: string[] = [];
+    let paginationEvents = 0;
     core.on("rowsChanged", (e) => reasons.push(e.reason));
+    core.on("paginationChanged", () => paginationEvents++);
     core.applyTransaction({ add: [{ id: "4", name: "dave", qty: 9 }] });
-    expect(reasons).toContain("transaction");
+    expect(reasons).toEqual(["transaction"]);
+    expect(paginationEvents).toBe(1);
   });
 
   it("emits cellsChanged (not rowsChanged) for an in-place update with re-eval off", () => {

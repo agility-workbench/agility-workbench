@@ -34,6 +34,12 @@ export class ColumnMenuOpener {
       clientY: top,
     });
 
+    // Empty menus have no interaction to offer and otherwise render as a thin blank frame.
+    if (session.items.length === 0) {
+      session.onClose();
+      return;
+    }
+
     this.params.menuRenderer.open({
       anchorEl,
       clientX: left || 100,

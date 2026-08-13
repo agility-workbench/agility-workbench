@@ -10,16 +10,24 @@ import {
   type GridEventSelectionChangedParams,
   type GridTheme,
   type NgColDef,
+  type NgGetRowPresentation,
   type NgMenuItem,
+  type PaginationControl,
+  type PaginationControlsOptions,
   type RowClassParams,
+  type TooltipComponentParams,
+  type TooltipOptions,
 } from "@agility-workbench/angular-grid";
 
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
+ *   Row defaults: getRowPresentation styling, tooltip, ARIA, metadata, and column overrides
+ *   Tooltip:      anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
+ *   Pagination:  select/buttons page selection, visible controls and their order
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
@@ -35,6 +43,7 @@ type PersonRow = {
   salary: number;
   rating: number;
   active: string;
+  compensationReview: boolean;
 };
 
 const FIRST = ["Ava", "Liam", "Mia", "Noah", "Emma", "Ethan", "Olivia", "Lucas", "Sophia", "Mason", "Isla", "Leo"];
@@ -56,21 +65,36 @@ function mulberry32(seed: number) {
 function buildRows(count: number): PersonRow[] {
   const rand = mulberry32(7);
   const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
-  return Array.from({ length: count }, (_, i) => ({
-    id: 1000 + i,
-    name: `${pick(FIRST)} ${pick(LAST)}`,
-    department: pick(DEPTS),
-    city: pick(CITIES),
-    salary: 60_000 + Math.floor(rand() * 140_000),
-    rating: +(1 + rand() * 4).toFixed(1),
-    active: rand() > 0.25 ? "Yes" : "No",
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const name = `${pick(FIRST)} ${pick(LAST)}`;
+    const department = pick(DEPTS);
+    const city = pick(CITIES);
+    const salary = 60_000 + Math.floor(rand() * 140_000);
+    return {
+      id: 1000 + i,
+      name,
+      department,
+      city,
+      salary,
+      rating: +(1 + rand() * 4).toFixed(1),
+      active: rand() > 0.25 ? "Yes" : "No",
+      // Salary is initially sorted descending, so the first page always contains examples.
+      compensationReview: salary >= 175_000,
+    };
+  });
 }
 
 const themePresets = [
   { id: "light", label: "Light", className: "pte-theme-light" },
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
 ];
+
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
 
 // Custom accent colors layered on top of a preset via the semantic theme params added for these
 // features. Each fans out to its --pte-* variable.
@@ -107,6 +131,23 @@ export class VsToggleComponent {
 }
 
 @Component({
+  selector: "vs-compensation-review-tooltip",
+  standalone: true,
+  template: `
+    <div style="display: grid; gap: 4px; max-width: 260px">
+      <strong style="color: #d97706">{{ reviewLabel() }}</strong>
+      <span>{{ params().content }}</span>
+    </div>
+  `,
+})
+export class CompensationReviewTooltipComponent {
+  readonly params = input.required<TooltipComponentParams>();
+  readonly reviewLabel = computed(() =>
+    String(this.params().rowPresentation?.metadata?.["reviewLabel"] ?? "Compensation review"),
+  );
+}
+
+@Component({
   selector: "visual-states-demo",
   standalone: true,
   imports: [AwbGrid, VsToggleComponent],
@@ -118,7 +159,15 @@ export class VsToggleComponent {
         <vs-toggle label="columnHover" [checked]="columnHover()" (toggled)="columnHover.set($event)" hint="Highlight the whole column under the pointer" />
         <vs-toggle label="zebraRows" [checked]="zebraRows()" (toggled)="zebraRows.set($event)" hint="Alternating background on odd rows" />
         <vs-toggle label="highlightActiveCell" [checked]="highlightActiveCell()" (toggled)="highlightActiveCell.set($event)" hint="Outline the focused cell inside a range" />
+        <label class="vs-select" title="Anchor tooltips to their cell or keep them beside the pointer">
+          tooltip
+          <select [value]="tooltipMode()" (change)="setTooltipMode($event)">
+            <option value="anchored">anchored</option>
+            <option value="follow">follow pointer</option>
+          </select>
+        </label>
         <vs-toggle label="conditionalStyling" [checked]="conditionalStyling()" (toggled)="conditionalStyling.set($event)" hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
+        <vs-toggle label="getRowPresentation" [checked]="rowPresentationEnabled()" (toggled)="rowPresentationEnabled.set($event)" hint="Apply row-default styling, tooltip, ARIA description, and metadata to compensation-review rows" />
         <vs-toggle label="sortConfig" [checked]="sortConfig()" (toggled)="sortConfig.set($event)" hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
       </div>
 
@@ -167,6 +216,34 @@ export class VsToggleComponent {
         <vs-toggle label="City: columnContextMenu=false" [checked]="nativeCityMenu()" (toggled)="nativeCityMenu.set($event)" hint="Right-clicking the City header shows the browser's native menu instead of the grid column menu" />
       </div>
 
+      <div class="vs-group">
+        <strong class="vs-group-title">Pagination</strong>
+        <label class="vs-select">
+          pageSelection
+          <select [value]="pageSelection()" (change)="setPageSelection($event)">
+            <option value="select">select</option>
+            <option value="buttons">buttons</option>
+          </select>
+        </label>
+        <vs-toggle label="showPageLabel" [checked]="showPageLabel()" (toggled)="showPageLabel.set($event)" hint="Show or remove the visible Page label; accessible names remain" />
+        <label class="vs-select" title="Presets demonstrate hiding and reordering individual pagination controls">
+          controls
+          <select [value]="paginationLayout()" (change)="setPaginationLayout($event)">
+            <option value="default">default order</option>
+            <option value="compact">compact</option>
+            <option value="reversed">reversed</option>
+          </select>
+        </label>
+        <label class="vs-select">
+          maxPageButtons
+          <select [value]="maxPageButtons()" (change)="setMaxPageButtons($event)" [disabled]="pageSelection() !== 'buttons'">
+            <option [value]="5">5</option>
+            <option [value]="7">7</option>
+            <option [value]="9">9</option>
+          </select>
+        </label>
+      </div>
+
       <div class="vs-theme-picker">
         <label for="vs-theme" style="font-size: 13px">Theme</label>
         <select id="vs-theme" [value]="themeId()" (change)="setThemeId($event)">
@@ -179,7 +256,12 @@ export class VsToggleComponent {
     </div>
 
     <p class="vs-blurb">
-      Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
+      Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
+      Name cells or header to compare cell-anchored and pointer-following tooltips. Amber rows use
+      <code>getRowPresentation</code>: hover most cells for a row-default component that follows the
+      pointer; Name overrides its content, Salary overrides it to an anchored-right tooltip, and
+      Active opts out. Click a cell,
+      then Shift+Click (or Shift+Arrow) to
       make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
       inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
       column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
@@ -188,7 +270,9 @@ export class VsToggleComponent {
       selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
       <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
       Rating column hides its ⋮ button and the City header opens the browser's native menu on
-      right-click. Toggle <code>Custom colors</code> to recolor these states via theme params.
+      right-click. The <strong>Pagination</strong> controls switch the page picker and demonstrate
+      reordered or omitted footer controls. Toggle <code>Custom colors</code> to recolor these states
+      via theme params.
     </p>
 
     <!-- Runtime options update the existing grid instance so selection and scroll state survive. -->
@@ -201,11 +285,17 @@ export class VsToggleComponent {
         [rowData]="rows"
         [columnDefs]="columnDefs()"
         rowIdKey="id"
+        [pagination]="true"
+        [pageSize]="10"
+        [pageSizes]="[10, 25, 50]"
+        [paginationControls]="paginationControls()"
         [rowHover]="rowHover()"
         [columnHover]="columnHover()"
         [zebraRows]="zebraRows()"
         [highlightActiveCell]="highlightActiveCell()"
+        [tooltip]="tooltipOptions()"
         [getRowStyle]="getRowStyle()"
+        [getRowPresentation]="getRowPresentation()"
         (cellClicked)="onCellClicked($event)"
         (sortChanged)="lastEvent.set('onSortChanged')"
         (selectionChanged)="onSelectionChanged($event)"
@@ -250,6 +340,21 @@ export class VisualStatesDemoComponent {
   readonly columnHover = signal(true);
   readonly zebraRows = signal(true);
   readonly highlightActiveCell = signal(true);
+  readonly tooltipMode = signal<"anchored" | "follow">("anchored");
+  readonly tooltipOptions = computed<TooltipOptions>(() => ({
+    mode: this.tooltipMode(),
+    showDelay: 150,
+  }));
+  readonly pageSelection = signal<"select" | "buttons">("select");
+  readonly showPageLabel = signal(true);
+  readonly paginationLayout = signal<PaginationLayout>("default");
+  readonly maxPageButtons = signal(7);
+  readonly paginationControls = computed<PaginationControlsOptions>(() => ({
+    pageSelection: this.pageSelection(),
+    showPageLabel: this.showPageLabel(),
+    controls: PAGINATION_LAYOUTS[this.paginationLayout()],
+    maxPageButtons: this.maxPageButtons(),
+  }));
 
   // Interaction gating (defaults preserve today's behavior).
   readonly cellSelection = signal<"true" | "false" | "text">("true");
@@ -264,6 +369,7 @@ export class VisualStatesDemoComponent {
 
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   readonly conditionalStyling = signal(true);
+  readonly rowPresentationEnabled = signal(true);
 
   // Sort config: an initial sort (Salary desc) + a custom Department comparator (by a fixed order).
   // NOTE: initial sort seeds ONCE at first column setup, so toggling it needs a grid remount (key).
@@ -321,10 +427,39 @@ export class VisualStatesDemoComponent {
       : undefined,
   );
 
+  readonly getRowPresentation = computed<NgGetRowPresentation | undefined>(() => {
+    if (!this.rowPresentationEnabled()) return undefined;
+    return ({ data }) => {
+      const row = data as PersonRow;
+      if (!row.compensationReview) return undefined;
+      return {
+        rowClass: "vs-compensation-review-row",
+        rowStyle: { boxShadow: "inset 3px 0 0 #f59e0b" },
+        cellClass: "vs-compensation-review-cell",
+        cellStyle: { backgroundColor: "rgba(245, 158, 11, 0.14)" },
+        tooltip: {
+          content: `${row.name} is awaiting compensation review.`,
+          component: CompensationReviewTooltipComponent,
+          options: { mode: "follow", placement: "top", interactive: false, escapeRootClip: true },
+        },
+        accessibility: {
+          description: `${row.name} is awaiting compensation review.`,
+          busy: false,
+        },
+        metadata: { status: "review", reviewLabel: "Compensation review" },
+      };
+    };
+  });
+
   readonly columnDefs = computed<NgColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
-    { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
+    {
+      colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
+      headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
+      // On review rows this replaces only row tooltip content; the row component/options remain.
+      tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
+    },
     {
       colId: "department", key: "department", label: "Department", width: 140, filter: true,
       // Custom comparator: sort by a fixed department priority rather than alphabetically.
@@ -342,10 +477,15 @@ export class VisualStatesDemoComponent {
       cellStyle: this.conditionalStyling()
         ? (p: { value: number }) => ({ color: p.value >= 150_000 ? "#16a34a" : "#9ca3af", fontWeight: p.value >= 150_000 ? "600" : "400" })
         : undefined,
+      // This column overrides row follow-mode while retaining row content and component.
+      tooltipOptions: { mode: "anchored", placement: "right" },
     },
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !this.hideRatingMenu() },
-    { colId: "active", key: "active", label: "Active", width: 90 },
+    {
+      colId: "active", key: "active", label: "Active", width: 90,
+      inheritRowPresentation: { tooltip: false },
+    },
   ]);
 
   onCellClicked(p: GridEventCellClickedParams): void {
@@ -364,12 +504,28 @@ export class VisualStatesDemoComponent {
     this.cellSelection.set((ev.target as HTMLSelectElement).value as "true" | "false" | "text");
   }
 
+  setTooltipMode(ev: Event): void {
+    this.tooltipMode.set((ev.target as HTMLSelectElement).value as "anchored" | "follow");
+  }
+
   setEditTrigger(ev: Event): void {
     this.editTrigger.set((ev.target as HTMLSelectElement).value as "doubleClick" | "singleClick" | "none");
   }
 
   setBodyMenu(ev: Event): void {
     this.bodyMenu.set((ev.target as HTMLSelectElement).value as "default" | "native" | "custom" | "empty");
+  }
+
+  setPageSelection(ev: Event): void {
+    this.pageSelection.set((ev.target as HTMLSelectElement).value as "select" | "buttons");
+  }
+
+  setPaginationLayout(ev: Event): void {
+    this.paginationLayout.set((ev.target as HTMLSelectElement).value as PaginationLayout);
+  }
+
+  setMaxPageButtons(ev: Event): void {
+    this.maxPageButtons.set(Number((ev.target as HTMLSelectElement).value));
   }
 
   setThemeId(ev: Event): void {

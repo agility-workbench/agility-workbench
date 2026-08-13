@@ -1,7 +1,12 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { IGridAPI } from "../../interfaces/iGridAPI";
-import { ResolvedTooltipOptions, resolveColumnTooltipOptions } from "../../interfaces/gridOptions";
+import {
+  ResolvedTooltipOptions,
+  RowPresentation,
+  RowTooltipPresentation,
+  resolveColumnTooltipOptions,
+} from "../../interfaces/gridOptions";
 import { FloatingAnchor, FloatingMode } from "../floating/floatingAnchor";
 import {
   TooltipComponent,
@@ -15,7 +20,9 @@ import {
   getRendererTooltipContent,
   getRendererTooltipPlacement,
   RENDERER_TOOLTIP_TARGET_DISPOSED,
+  RENDERER_TOOLTIP_TARGET_UPDATED,
 } from "./rendererTooltipTarget";
+import { inheritRowPresentation, resolveRowPresentation } from "../body/rowPresentation";
 
 export interface BodyTooltipRendererParams {
   core: GridCore;
@@ -45,6 +52,8 @@ type TooltipTarget =
       clientX: number;
       clientY: number;
       rendererTarget?: Element;
+      /** Snapshot taken when the cell becomes the target; avoids callback work on every mousemove. */
+      rowPresentation?: RowPresentation;
     }
   | { kind: "header"; colId: string; clientX: number; clientY: number }
   | { kind: "ui"; rendererTarget: Element; clientX: number; clientY: number };
@@ -76,7 +85,9 @@ function sameTarget(a: TooltipTarget | null, b: TooltipTarget | null): boolean {
 export class BodyTooltipRenderer {
   private showTimer: number | null = null;
   private hideTimer: number | null = null;
-  /** The target currently shown (or pending show). */
+  /** Target waiting for its show delay; its coordinates follow pointer movement before opening. */
+  private pendingTarget: TooltipTarget | null = null;
+  /** The target currently shown. */
   private active: TooltipTarget | null = null;
   /** True once the tooltip is actually on screen (vs. pending the show delay). */
   private shown = false;
@@ -95,12 +106,13 @@ export class BodyTooltipRenderer {
     this.bound = true;
     this.params.body.addEventListener("mouseover", this.handleMouseOver);
     this.params.body.addEventListener("mouseout", this.handleMouseOut);
-    this.params.body.addEventListener("mousemove", this.handleMouseMove);
+    this.params.root.addEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.addEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.addEventListener("mouseout", this.handleMouseOut);
     this.params.root.addEventListener("mouseover", this.handleUiMouseOver);
     this.params.root.addEventListener("mouseout", this.handleUiMouseOut);
     this.params.root.addEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
+    this.params.root.addEventListener(RENDERER_TOOLTIP_TARGET_UPDATED, this.handleRendererTargetUpdated);
     // Rows recycle on scroll, so the safe v1 behavior is to dismiss. Scroll doesn't bubble; the
     // capture phase catches it from any inner scroller. Window resize invalidates positions too.
     document.addEventListener("scroll", this.handleScroll, true);
@@ -114,12 +126,13 @@ export class BodyTooltipRenderer {
     this.bound = false;
     this.params.body.removeEventListener("mouseover", this.handleMouseOver);
     this.params.body.removeEventListener("mouseout", this.handleMouseOut);
-    this.params.body.removeEventListener("mousemove", this.handleMouseMove);
+    this.params.root.removeEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.removeEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.removeEventListener("mouseout", this.handleMouseOut);
     this.params.root.removeEventListener("mouseover", this.handleUiMouseOver);
     this.params.root.removeEventListener("mouseout", this.handleUiMouseOut);
     this.params.root.removeEventListener(RENDERER_TOOLTIP_TARGET_DISPOSED, this.handleRendererTargetDisposed);
+    this.params.root.removeEventListener(RENDERER_TOOLTIP_TARGET_UPDATED, this.handleRendererTargetUpdated);
     document.removeEventListener("scroll", this.handleScroll, true);
     window.removeEventListener("resize", this.handleScroll);
     document.removeEventListener("keydown", this.handleKeyDown, true);
@@ -141,6 +154,19 @@ export class BodyTooltipRenderer {
       this.active.rendererTarget === event.target
     ) {
       this.hideNow();
+    }
+  };
+
+  private handleRendererTargetUpdated = (event: Event) => {
+    if (!this.shown) return;
+    const updatedTargets = (event as CustomEvent<{ targets?: Element[] }>).detail?.targets
+      ?? [event.target as Element];
+    if (
+      (this.active?.kind === "body" || this.active?.kind === "ui") &&
+      this.active.rendererTarget != null &&
+      updatedTargets.includes(this.active.rendererTarget)
+    ) {
+      this.refreshShownRendererTarget(this.active);
     }
   };
 
@@ -172,7 +198,14 @@ export class BodyTooltipRenderer {
     const rect = this.getCellRect(viewIdx, colIdx);
     const cx = rect ? rect.left + rect.width / 2 : 0;
     const cy = rect ? rect.top + rect.height / 2 : 0;
-    this.showFor({ kind: "body", viewIdx, colIdx, clientX: cx, clientY: cy });
+    this.showFor({
+      kind: "body",
+      viewIdx,
+      colIdx,
+      clientX: cx,
+      clientY: cy,
+      rowPresentation: this.rowPresentationAt(viewIdx),
+    });
   }
 
   /** Hide any visible tooltip on demand. */
@@ -207,29 +240,68 @@ export class BodyTooltipRenderer {
       return;
     }
     if (sameTarget(this.active, loc)) {
-      if (this.hideTimer != null) this.cancelHide();
+      // The pointer can return to the visible target while another cell is still waiting for its
+      // show delay. That pending timer no longer represents the hover and must not be allowed to
+      // replace (or, when it has no content, hide) the tooltip under the pointer.
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
+    // Bubbling mouseover events from children of the target waiting for its show delay must not
+    // restart that delay. The matching mouseout path below applies the same logical-target test.
+    if (sameTarget(this.pendingTarget, loc)) {
+      this.cancelHide();
+      return;
+    }
+    // Moving between registered subtargets in one cell (sparkline point bands, for example) keeps
+    // one logical tooltip alive. Refresh its text and anchor immediately instead of reapplying the
+    // show delay and rebuilding the overlay.
+    if (
+      this.shown &&
+      this.active?.kind === "body" &&
+      loc.kind === "body" &&
+      this.active.viewIdx === loc.viewIdx &&
+      this.active.colIdx === loc.colIdx &&
+      this.active.rendererTarget &&
+      loc.rendererTarget &&
+      this.refreshShownRendererTarget(loc)
+    ) {
+      this.cancelShow();
       return;
     }
     this.scheduleShow(loc);
   };
 
   private handleMouseOut = (e: MouseEvent) => {
-    // Ignore moves between children of the same cell/header.
-    const to = e.relatedTarget as HTMLElement | null;
-    if (to) {
-      const dest = this.locate(to, e.clientX, e.clientY);
-      if (dest && sameTarget(dest, this.active)) return;
+    // Identity comparison does not need row-presentation content. Skipping it here avoids invoking
+    // the user callback twice for every child-to-child mouse boundary in a body cell.
+    const source = this.locate(e.target, e.clientX, e.clientY, false);
+    const destination = this.locate(e.relatedTarget, e.clientX, e.clientY, false);
+    // Ignore moves between children of the same logical target, including a target that is still
+    // inside its show delay (and therefore is not `active` yet).
+    if (source && destination && sameTarget(source, destination)) return;
+    // A boundary reversal back to the visible target invalidates any delayed show for the cell we
+    // just left. Previously both handlers compared only with `active`, leaving that stale timer
+    // armed until it arbitrarily replaced or dismissed the correct tooltip.
+    if (destination && sameTarget(destination, this.active)) {
+      this.cancelShow();
+      this.cancelHide();
+      return;
     }
     this.scheduleHide();
   };
 
   private handleMouseMove = (e: MouseEvent) => {
-    if (!this.active || this.active.kind !== "body" || this.optionsForTarget(this.active).mode !== "follow") return;
-    if (!this.params.floating.isOpen()) return;
-    // Follow-mouse: re-position at the new pointer position (display-only path).
-    const content = this.params.floating.getOverlay()?.firstElementChild as HTMLElement | null;
-    if (!content) return;
-    this.params.floating.show(content, this.floatingOptsFor(this.active, e.clientX, e.clientY));
+    // Preserve the latest coordinates during the show delay so a follow tooltip opens beside the
+    // pointer's current position, not where it first entered the target.
+    if (this.pendingTarget) {
+      this.pendingTarget.clientX = e.clientX;
+      this.pendingTarget.clientY = e.clientY;
+    }
+    if (!this.active || this.optionsForTarget(this.active).mode !== "follow") return;
+    this.active.clientX = e.clientX;
+    this.active.clientY = e.clientY;
+    this.params.floating.updateFollowPosition(e.clientX, e.clientY);
   };
 
   private handleUiMouseOver = (e: MouseEvent) => {
@@ -237,7 +309,12 @@ export class BodyTooltipRenderer {
     const target = this.locateUi(e.target, e.clientX, e.clientY);
     if (!target) return;
     if (sameTarget(this.active, target)) {
-      if (this.hideTimer != null) this.cancelHide();
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
+    if (sameTarget(this.pendingTarget, target)) {
+      this.cancelHide();
       return;
     }
     this.scheduleShow(target);
@@ -248,6 +325,11 @@ export class BodyTooltipRenderer {
     if (!source) return;
     const destination = this.locateUi(e.relatedTarget, e.clientX, e.clientY);
     if (destination && sameTarget(destination, source)) return;
+    if (destination && sameTarget(destination, this.active)) {
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
     this.scheduleHide();
   };
 
@@ -255,18 +337,23 @@ export class BodyTooltipRenderer {
 
   private scheduleShow(target: TooltipTarget) {
     this.clearTimers();
+    this.pendingTarget = target;
     const delay = this.params.options().showDelay;
     this.showTimer = window.setTimeout(() => {
       this.showTimer = null;
-      this.showFor(target);
+      const pendingTarget = this.pendingTarget;
+      this.pendingTarget = null;
+      if (pendingTarget) this.showFor(pendingTarget);
     }, delay);
   }
 
   private scheduleHide() {
-    if (this.showTimer != null) {
-      window.clearTimeout(this.showTimer);
-      this.showTimer = null;
-    }
+    this.cancelShow();
+    // Replace, never stack: overwriting an armed hide timer would orphan it, and an orphaned
+    // timer fires hideNow() un-cancellably — killing the pending show scheduled after it. This
+    // is exactly what vertical cell→cell moves do (the row border band belongs to no cell, so a
+    // crossing emits several locate()==null boundary events, each landing here).
+    this.cancelHide();
     if (!this.params.floating.isOpen() && this.active == null) return;
     const delay = this.params.options().hideDelay;
     this.hideTimer = window.setTimeout(() => {
@@ -282,11 +369,39 @@ export class BodyTooltipRenderer {
     }
   }
 
-  private clearTimers() {
+  private cancelShow() {
     if (this.showTimer != null) window.clearTimeout(this.showTimer);
-    if (this.hideTimer != null) window.clearTimeout(this.hideTimer);
     this.showTimer = null;
-    this.hideTimer = null;
+    this.pendingTarget = null;
+  }
+
+  /** Update the scalar content and anchor of an already-shown renderer-owned tooltip in place. */
+  private refreshShownRendererTarget(
+    target: Extract<TooltipTarget, { kind: "body" | "ui" }>,
+  ): boolean {
+    if (!target.rendererTarget || !this.runtime || !this.shown) return false;
+    const content = getRendererTooltipContent(target.rendererTarget);
+    if (content == null || String(content).length === 0) {
+      this.hideNow();
+      return true;
+    }
+    // Registered renderer subtargets resolve to the built-in text runtime. Retain that runtime and
+    // its DOM node; only its text and the floating anchor geometry change.
+    if (!this.runtime.gui.classList.contains("pte-tooltip-text")) return false;
+    this.runtime.gui.textContent = String(content);
+    this.active = target;
+    this.cancelHide();
+    if (this.optionsForTarget(target).mode === "follow") {
+      this.params.floating.updateFollowPosition(target.clientX, target.clientY);
+    } else {
+      this.params.floating.reposition();
+    }
+    return true;
+  }
+
+  private clearTimers() {
+    this.cancelShow();
+    this.cancelHide();
   }
 
   // ---------------- show ----------------
@@ -331,10 +446,18 @@ export class BodyTooltipRenderer {
 
   /** Grid-level resolved options with the target column's `tooltipOptions` layered on top. */
   private optionsForTarget(target: TooltipTarget): ResolvedTooltipOptions {
-    const options = resolveColumnTooltipOptions(
-      this.params.options(),
-      this.columnForTarget(target)?.tooltipOptions,
-    );
+    const col = this.columnForTarget(target);
+    let options = this.params.options();
+    if (target.kind === "body" && col) {
+      const explicitOptions = col.explicitColDef.tooltipOptions !== undefined;
+      // defaultColDef is the least-specific cell layer, then the row, then the real column.
+      if (!explicitOptions) options = resolveColumnTooltipOptions(options, col.tooltipOptions);
+      const rowTooltip = this.rowTooltipFor(target, col);
+      options = resolveColumnTooltipOptions(options, rowTooltip?.options);
+      if (explicitOptions) options = resolveColumnTooltipOptions(options, col.tooltipOptions);
+    } else {
+      options = resolveColumnTooltipOptions(options, col?.tooltipOptions);
+    }
     if (target.kind !== "ui") return options;
     const placement = getRendererTooltipPlacement(target.rendererTarget);
     return placement ? { ...options, placement } : options;
@@ -342,11 +465,16 @@ export class BodyTooltipRenderer {
 
   private floatingOptsFor(target: TooltipTarget, x: number, y: number) {
     const opts = this.optionsForTarget(target);
-    // Headers never follow the mouse (they're not the interactive-form surface); always anchored.
-    const followMode = target.kind === "body" && opts.mode === "follow";
+    const followMode = opts.mode === "follow";
     const mode: FloatingMode = followMode
       ? { kind: "follow", x, y }
-      : { kind: "anchored", getAnchorRect: () => this.getTargetRect(target), placement: opts.placement };
+      : {
+          kind: "anchored",
+          // Renderer subtargets can be retargeted while the pointer stays inside one cell. Read the
+          // live active target so repositioning follows the new point without rebuilding content.
+          getAnchorRect: () => this.getTargetRect(this.active ?? target),
+          placement: opts.placement,
+        };
     return {
       mode,
       className: opts.interactive ? "pte-tooltip pte-tooltip-interactive" : "pte-tooltip",
@@ -361,7 +489,10 @@ export class BodyTooltipRenderer {
     kind: "body";
     viewIdx: number;
     colIdx: number;
+    clientX: number;
+    clientY: number;
     rendererTarget?: Element;
+    rowPresentation?: RowPresentation;
   }): TooltipComponentRuntime | null {
     const { core } = this.params;
     const col = this.params.leafColumns()[target.colIdx];
@@ -370,7 +501,7 @@ export class BodyTooltipRenderer {
     const rowId = core.getRowIdAtViewIndex(target.viewIdx);
     if (!rowId) return null;
     const rowNode = core.getRowModel().getRowNode(rowId);
-    if (!rowNode || rowNode.isGroup) return null;
+    if (!rowNode) return null;
 
     // A custom renderer may expose subtargets (for example, individual sparkline points). Their
     // content takes precedence over the owning column's cell-level tooltip configuration.
@@ -383,9 +514,13 @@ export class BodyTooltipRenderer {
 
     const value = col.getValue(rowNode);
     const valueFormatted = col.formatValue(value, rowNode);
-    const opts = this.params.options();
+    const rowPresentation = target.rowPresentation ?? resolveRowPresentation(core, rowNode, target.viewIdx);
+    const rowTooltip = this.rowTooltipFor({ ...target, rowPresentation }, col);
+    // Preserve the old "group rows have no cell tooltip" behavior unless a row tooltip explicitly
+    // opts that group into the feature.
+    if (rowNode.isGroup && !rowTooltip) return null;
 
-    const params: TooltipComponentParams = {
+    const baseParams: TooltipComponentParams = {
       value,
       valueFormatted,
       data: rowNode.data,
@@ -395,33 +530,89 @@ export class BodyTooltipRenderer {
       location: "body",
       api: this.params.api,
       hide: () => this.hideNow(),
+      rowPresentation,
+      ...(rowTooltip?.componentParams ?? {}),
       ...(col.tooltipComponentParams ?? {}),
     };
 
-    // 1. Custom component (grid-wide defaults arrive pre-merged via `defaultColDef`).
-    const comp = col.tooltipComponent;
-    if (comp) return createTooltipComponentRuntime(comp, params);
+    const explicit = col.explicitColDef;
+    const explicitComponent = explicit.tooltipComponent !== undefined;
+    const explicitGetter = explicit.tooltipValueGetter !== undefined;
+    const explicitField = explicit.tooltipField !== undefined;
+    const inheritedComponent = !explicitComponent ? col.tooltipComponent : undefined;
+    const component = explicitComponent
+      ? col.tooltipComponent
+      : rowTooltip?.component ?? inheritedComponent;
 
-    // 2. Value getter.
-    const getter = col.tooltipValueGetter;
-    if (getter) {
-      const text = getter(params);
-      return text != null && String(text).length > 0 ? this.textRuntime(String(text)) : null;
+    let content: string | number | undefined;
+    let contentSource: TooltipComponentParams["contentSource"];
+    let contentWasResolved = false;
+    let suppress = false;
+
+    const resolveScalar = (
+      candidate: unknown,
+      source: NonNullable<TooltipComponentParams["contentSource"]>,
+    ) => {
+      contentWasResolved = true;
+      if (candidate == null || String(candidate).length === 0) {
+        suppress = true;
+        return;
+      }
+      content = typeof candidate === "number" ? candidate : String(candidate);
+      contentSource = source;
+    };
+
+    // Legacy compatibility: an explicit column component remains self-contained and continues to
+    // outrank that same column's getter/field. Other components receive independently-resolved text.
+    if (!explicitComponent) {
+      if (explicitGetter) {
+        resolveScalar(col.tooltipValueGetter?.(baseParams), "column");
+      } else if (explicitField) {
+        resolveScalar(rowNode.data?.[col.tooltipField!], "column");
+      } else if (rowTooltip && Object.prototype.hasOwnProperty.call(rowTooltip, "content")) {
+        resolveScalar(rowTooltip.content, "row");
+      } else if (col.tooltipValueGetter) {
+        resolveScalar(col.tooltipValueGetter(baseParams), "default");
+      } else if (col.tooltipField != null) {
+        resolveScalar(rowNode.data?.[col.tooltipField], "default");
+      }
     }
 
-    // 3. Field on the row.
-    if (col.tooltipField != null) {
-      const text = rowNode.data?.[col.tooltipField];
-      return text != null && String(text).length > 0 ? this.textRuntime(String(text)) : null;
+    if (!contentWasResolved && !component) {
+      const opts = this.optionsForTarget({ ...target, rowPresentation });
+      const suppressed = opts.suppressAutoTooltip || col.suppressAutoTooltip;
+      if (!suppressed && this.isCellTruncated(target.viewIdx, target.colIdx)) {
+        const text = valueFormatted != null && valueFormatted !== ""
+          ? valueFormatted
+          : value == null ? "" : String(value);
+        if (text.length > 0) {
+          content = text;
+          contentSource = "truncation";
+          contentWasResolved = true;
+        }
+      }
     }
 
-    // 4. Auto-truncation: show the full formatted value when the cell clips it.
-    const suppressed = opts.suppressAutoTooltip || col.suppressAutoTooltip;
-    if (!suppressed && this.isCellTruncated(target.viewIdx, target.colIdx)) {
-      const text = valueFormatted != null && valueFormatted !== "" ? valueFormatted : value == null ? "" : String(value);
-      if (text.length > 0) return this.textRuntime(text);
-    }
-    return null;
+    if (suppress && !explicitComponent) return null;
+    const params: TooltipComponentParams = { ...baseParams, content, contentSource };
+    if (component) return createTooltipComponentRuntime(component, params);
+    return content != null ? this.textRuntime(String(content)) : null;
+  }
+
+  private rowTooltipFor(
+    target: Extract<TooltipTarget, { kind: "body" }>,
+    col: Column,
+  ): RowTooltipPresentation | undefined {
+    if (!inheritRowPresentation(col, "tooltip")) return undefined;
+    const tooltip = target.rowPresentation?.tooltip;
+    return typeof tooltip === "object" && tooltip != null ? tooltip : undefined;
+  }
+
+  private rowPresentationAt(viewIdx: number): RowPresentation | undefined {
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    if (!rowId) return undefined;
+    const row = this.params.core.getRowModel().getRowNode(rowId);
+    return row ? resolveRowPresentation(this.params.core, row, viewIdx) : undefined;
   }
 
   private resolveHeader(target: { kind: "header"; colId: string }): TooltipComponentRuntime | null {
@@ -483,7 +674,12 @@ export class BodyTooltipRenderer {
 
   // ---------------- DOM helpers ----------------
 
-  private locate(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {
+  private locate(
+    target: EventTarget | null,
+    clientX: number,
+    clientY: number,
+    resolvePresentation = true,
+  ): TooltipTarget | null {
     const el = target as HTMLElement | null;
     if (!el) return null;
 
@@ -499,12 +695,20 @@ export class BodyTooltipRenderer {
     if (cell.classList.contains("pte-row-number-cell")) return null;
     if (cell.classList.contains("pte-checkbox-cell")) return null;
     const rowEl = cell.closest(".pte-row") as HTMLElement | null;
-    if (!rowEl || rowEl.classList.contains("pte-group-row")) return null;
+    if (!rowEl) return null;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
     if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx)) return null;
     const rendererTarget = findRendererTooltipTarget(el, cell) ?? undefined;
-    return { kind: "body", viewIdx, colIdx, clientX, clientY, rendererTarget };
+    return {
+      kind: "body",
+      viewIdx,
+      colIdx,
+      clientX,
+      clientY,
+      rendererTarget,
+      rowPresentation: resolvePresentation ? this.rowPresentationAt(viewIdx) : undefined,
+    };
   }
 
   private locateUi(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {

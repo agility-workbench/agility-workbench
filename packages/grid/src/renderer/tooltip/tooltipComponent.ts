@@ -31,6 +31,12 @@ export interface TooltipComponentParams {
   api: IGridAPI;
   /** Dismiss the tooltip (useful for interactive tooltips with a close control). */
   hide: () => void;
+  /** Scalar content resolved independently from the component (column → row → default → clipped). */
+  content?: string | number;
+  /** Which layer supplied {@link content}. */
+  contentSource?: "column" | "row" | "default" | "truncation";
+  /** Resolved row defaults and opaque metadata, when configured. */
+  rowPresentation?: import("../../interfaces/gridOptions").RowPresentation;
   /** Extra params from `colDef.tooltipComponentParams`, spread in by the React adapter. */
   [key: string]: any;
 }

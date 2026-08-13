@@ -8,6 +8,7 @@ import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { initDomRenderer } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
+import { adaptReactGetRowPresentation } from "./cellRenderer";
 
 type GridInstance = {
   core: IGridCore;
@@ -172,6 +173,18 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
     }, [props.groupRowsSelectable]);
 
+    const rowSelectionKey = JSON.stringify(props.rowSelection ?? null);
+    const rowSelectionMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      // Creation already applied the initial value; reconcile only subsequent content changes.
+      if (!rowSelectionMountedRef.current) {
+        rowSelectionMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.renderer.setRowSelectionOptions(props.rowSelection);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rowSelectionKey]);
+
     useLayoutEffect(() => {
       instanceRef.current?.core.setTreeDataKeyboardNavigationOptions(
         props.treeData?.keyboardNavigationMode ?? "grid",
@@ -203,6 +216,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         zebraRows: props.zebraRows ?? false,
         getRowClass: props.getRowClass,
         getRowStyle: props.getRowStyle,
+        getRowPresentation: adaptReactGetRowPresentation(props.getRowPresentation),
         ariaLabel: props.ariaLabel,
         ariaLabelledBy: props.ariaLabelledBy,
         highlightActiveCell: props.highlightActiveCell ?? false,
@@ -221,6 +235,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         suppressTypeToEdit: props.suppressTypeToEdit ?? false,
         moveAfterEdit: props.moveAfterEdit ?? true,
         commitOnBlur: props.commitOnBlur ?? true,
+        asyncTransactionWaitMs: props.asyncTransactionWaitMs ?? 16,
       });
     }, [
       props.rowHover,
@@ -228,6 +243,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.zebraRows,
       props.getRowClass,
       props.getRowStyle,
+      props.getRowPresentation,
       props.ariaLabel,
       props.ariaLabelledBy,
       props.highlightActiveCell,
@@ -244,6 +260,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.suppressTypeToEdit,
       props.moveAfterEdit,
       props.commitOnBlur,
+      props.asyncTransactionWaitMs,
     ]);
 
     useLayoutEffect(() => {
@@ -279,6 +296,19 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
 
       renderer.togglePagination(props.pagination ?? false);
     }, [props.pagination]);
+
+    const paginationControlsKey = JSON.stringify(props.paginationControls ?? null);
+    const paginationControlsMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!paginationControlsMountedRef.current) {
+        paginationControlsMountedRef.current = true;
+        return;
+      }
+      const renderer = instanceRef.current?.renderer;
+      if (!renderer) return;
+      renderer.setPaginationControls(props.paginationControls);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationControlsKey]);
 
     // Reconfigure the quick filter live (anchor, clearOnClose, mode, popover controls, enable/disable)
     // without remounting the grid. Serialized so an inline-object `quickFilter` prop doesn't rebuild

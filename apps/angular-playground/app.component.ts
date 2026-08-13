@@ -9,11 +9,13 @@ import { FullyThemedDemoComponent } from "./fully-themed-demo.component";
 import { GridDemoComponent } from "./grid-demo.component";
 import { GroupingDemoComponent } from "./grouping-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
+import { HighFrequencyDemoComponent } from "./high-frequency-demo.component";
 import { KitchenSinkDemoComponent } from "./kitchen-sink-demo.component";
 import { MenusDemoComponent } from "./menus-demo.component";
 import { PinnedRowsDemoComponent } from "./pinned-rows-demo.component";
 import { QuickFilterDemoComponent } from "./quick-filter-demo.component";
 import { ResponsiveToolbarDemoComponent } from "./responsive-toolbar-demo.component";
+import { RowSelectionCheckboxDemoComponent } from "./row-selection-checkbox-demo.component";
 import { SavedViewsDemoComponent } from "./saved-views-demo.component";
 import { SelectionDemoComponent } from "./selection-demo.component";
 import { ServerSideGroupingDemoComponent } from "./server-side-grouping-demo.component";
@@ -31,7 +33,9 @@ const PAGES = [
   { id: "components", label: "Angular components" },
   { id: "menus", label: "Menus & templates" },
   { id: "grid", label: "Grid demo" },
+  { id: "highFrequency", label: "High-frequency updates" },
   { id: "selection", label: "Selection & keyboard nav" },
+  { id: "rowSelectionCheckboxes", label: "Row selection checkboxes" },
   { id: "visualStates", label: "Hover & visual states" },
   { id: "fullyThemed", label: "Fully themed grid" },
   { id: "grouping", label: "Row grouping" },
@@ -69,11 +73,13 @@ type PageId = (typeof PAGES)[number]["id"];
     GridDemoComponent,
     GroupingDemoComponent,
     HeaderComponentDemoComponent,
+    HighFrequencyDemoComponent,
     KitchenSinkDemoComponent,
     MenusDemoComponent,
     PinnedRowsDemoComponent,
     QuickFilterDemoComponent,
     ResponsiveToolbarDemoComponent,
+    RowSelectionCheckboxDemoComponent,
     SavedViewsDemoComponent,
     SelectionDemoComponent,
     ServerSideGroupingDemoComponent,
@@ -109,8 +115,14 @@ type PageId = (typeof PAGES)[number]["id"];
         @case ("grid") {
           <grid-demo />
         }
+        @case ("highFrequency") {
+          <high-frequency-demo />
+        }
         @case ("selection") {
           <selection-demo />
+        }
+        @case ("rowSelectionCheckboxes") {
+          <row-selection-checkbox-demo />
         }
         @case ("visualStates") {
           <visual-states-demo />

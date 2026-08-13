@@ -9,6 +9,36 @@ const options = {
 } satisfies GridOptions;
 ```
 
+For a semantic state shared by every cell, supply one row presentation instead
+of repeating cell callbacks across columns:
+
+```ts
+const pendingIds = new Set(["order-42"]);
+
+const options = {
+  getRowPresentation: ({ rowId }) => pendingIds.has(rowId) ? {
+    rowClass: "row-pending",
+    cellClass: "cell-pending",
+    cellStyle: { opacity: "0.7" },
+    tooltip: {
+      content: "Saving changes",
+      options: { mode: "follow" },
+    },
+    accessibility: {
+      description: "Changes to this row are being saved",
+      busy: true,
+    },
+    metadata: { status: "pending" },
+  } : undefined,
+} satisfies GridOptions;
+
+// Required only when the captured Set changes without a row transaction.
+api.refreshRowPresentation();
+```
+
+Explicit column tooltip content/options override the row defaults. Cell classes
+compose; cell inline styles merge with the column winning conflicting fields.
+
 Virtualization is automatic: the renderer maintains a small reusable row pool
 and slides it over the current viewport. Left, center, and right column sections
 stay synchronized without additional configuration.

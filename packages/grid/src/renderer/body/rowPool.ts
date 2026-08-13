@@ -31,6 +31,7 @@ export class BodyRowPoolRenderer {
         cellEls: [],
         rightCellEls: [],
         fullWidthCellEl: this.createFullWidthCell(),
+        descriptionEl: this.createDescription(i),
         cellRendererInstances: new Map<string, RendererRecord>(),
       };
 
@@ -110,7 +111,6 @@ export class BodyRowPoolRenderer {
         ],
         `${core.id}-r${i}`,
       );
-
       rowPool.push(row);
     }
 
@@ -133,6 +133,13 @@ export class BodyRowPoolRenderer {
     // aria-colindex/-colspan are stamped by applyFullWidthLayout when the host activates.
     cell.setAttribute("role", "gridcell");
     return cell;
+  }
+
+  private createDescription(slot: number) {
+    const description = document.createElement("span");
+    description.id = `${this.params.core.id}-r${slot}-description`;
+    description.hidden = true;
+    return description;
   }
 
   private createCell(colId: string, isRightAligned: boolean) {

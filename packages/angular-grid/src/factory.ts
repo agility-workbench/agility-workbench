@@ -30,6 +30,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "getRowId", grid.getRowId());
   setIfDefined(options, "rowIdKey", grid.rowIdKey());
   setIfDefined(options, "rowDataMode", grid.rowDataMode());
+  setIfDefined(options, "asyncTransactionWaitMs", grid.asyncTransactionWaitMs());
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
@@ -37,12 +38,18 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "allowExportAsCSV", grid.allowExportAsCSV());
   setIfDefined(options, "allowExportAsExcel", grid.allowExportAsExcel());
   setIfDefined(options, "pagination", grid.pagination());
+  setIfDefined(options, "paginationControls", grid.paginationControls());
   setIfDefined(options, "rowNumbers", grid.rowNumbers());
   setIfDefined(options, "rowHover", grid.rowHover());
   setIfDefined(options, "columnHover", grid.columnHover());
   setIfDefined(options, "zebraRows", grid.zebraRows());
   setIfDefined(options, "getRowClass", grid.getRowClass());
   setIfDefined(options, "getRowStyle", grid.getRowStyle());
+  setIfDefined(
+    options,
+    "getRowPresentation",
+    adapters.adaptGetRowPresentation(grid.getRowPresentation()),
+  );
   setIfDefined(options, "ariaLabel", grid.ariaLabel());
   setIfDefined(options, "ariaLabelledBy", grid.ariaLabelledBy());
   setIfDefined(options, "highlightActiveCell", grid.highlightActiveCell());

@@ -1,5 +1,11 @@
 import React from "react";
-import type { ColDef, DefaultColDef } from "@agility-workbench/grid";
+import type {
+  ColDef,
+  DefaultColDef,
+  RowPresentation,
+  RowPresentationParams,
+  RowTooltipPresentation,
+} from "@agility-workbench/grid";
 import { ManagedReactRoot } from "./managedReactRoot";
 import type {
   CellRenderer,
@@ -32,6 +38,18 @@ export type ReactCellRenderer =
 export type ReactTooltipComponent =
   | React.ComponentType<TooltipComponentParams>
   | React.ExoticComponent<TooltipComponentParams>;
+
+export type ReactRowTooltipPresentation = Omit<RowTooltipPresentation, "component"> & {
+  component?: TooltipComponent | ReactTooltipComponent;
+};
+
+export type ReactRowPresentation = Omit<RowPresentation, "tooltip"> & {
+  tooltip?: ReactRowTooltipPresentation | false | null;
+};
+
+export type ReactGetRowPresentation = (
+  params: RowPresentationParams,
+) => ReactRowPresentation | null | undefined;
 
 export type ReactActionFrameComponent =
   | React.ComponentType<ActionFrameComponentParams>
@@ -134,6 +152,9 @@ function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentC
     init(params: TooltipComponentParams): void {
       // A single createRoot lives for the life of this tooltip instance; refresh re-renders into it
       // rather than remounting, so interactive content keeps its React state across repositions.
+      // Tooltip mounting is imperative: the floating layer measures getGui() in the same call stack.
+      // Commit now so it never measures an empty React host and so a superseded root's deferred
+      // unmount cannot race the initial render of the next tooltip.
       this.root = new ManagedReactRoot(this.el);
       this.render(params);
     }
@@ -153,7 +174,7 @@ function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentC
     }
 
     private render(params: TooltipComponentParams): void {
-      this.root?.render(React.createElement(Comp, getTooltipProps(params)));
+      this.root?.renderSync(React.createElement(Comp, getTooltipProps(params)));
     }
   };
 }
@@ -173,6 +194,26 @@ export function adaptTooltip(
   const adapted = createReactTooltipClass(comp as ReactTooltipComponent);
   reactTooltipCache.set(comp, adapted);
   return adapted;
+}
+
+/** Adapt a React tooltip component returned dynamically by `getRowPresentation`. */
+export function adaptReactGetRowPresentation(
+  getter: ReactGetRowPresentation | undefined,
+): ((params: RowPresentationParams) => RowPresentation | null | undefined) | undefined {
+  if (!getter) return undefined;
+  return (params) => {
+    const presentation = getter(params);
+    if (!presentation || typeof presentation.tooltip !== "object" || presentation.tooltip == null) {
+      return presentation as RowPresentation | null | undefined;
+    }
+    return {
+      ...presentation,
+      tooltip: {
+        ...presentation.tooltip,
+        component: adaptTooltip(presentation.tooltip.component),
+      },
+    } as RowPresentation;
+  };
 }
 
 /** headerTooltip may be a plain string (pass through) or a component (adapt like a tooltip). */

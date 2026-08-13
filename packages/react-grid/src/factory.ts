@@ -1,7 +1,11 @@
 import { GridCore, GridOptions } from "@agility-workbench/grid";
 import { CanvasMeasurer } from "@agility-workbench/grid";
 import { GridProps } from "./interface";
-import { adaptCellRenderer, adaptReactDefaultColDef } from "./cellRenderer";
+import {
+  adaptCellRenderer,
+  adaptReactDefaultColDef,
+  adaptReactGetRowPresentation,
+} from "./cellRenderer";
 
 export function createCore(options: GridOptions): GridCore {
   return new GridCore(new CanvasMeasurer(), options);
@@ -31,6 +35,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "getRowId", props.getRowId);
   setIfDefined(options, "rowIdKey", props.rowIdKey);
   setIfDefined(options, "rowDataMode", props.rowDataMode);
+  setIfDefined(options, "asyncTransactionWaitMs", props.asyncTransactionWaitMs);
   setIfDefined(options, "overscanRowCount", props.overscanRowCount);
   setIfDefined(options, "minResizeWidth", props.minResizeWidth);
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);
@@ -38,12 +43,14 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "allowExportAsCSV", props.allowExportAsCSV);
   setIfDefined(options, "allowExportAsExcel", props.allowExportAsExcel);
   setIfDefined(options, "pagination", props.pagination);
+  setIfDefined(options, "paginationControls", props.paginationControls);
   setIfDefined(options, "rowNumbers", props.rowNumbers);
   setIfDefined(options, "rowHover", props.rowHover);
   setIfDefined(options, "columnHover", props.columnHover);
   setIfDefined(options, "zebraRows", props.zebraRows);
   setIfDefined(options, "getRowClass", props.getRowClass);
   setIfDefined(options, "getRowStyle", props.getRowStyle);
+  setIfDefined(options, "getRowPresentation", adaptReactGetRowPresentation(props.getRowPresentation));
   setIfDefined(options, "onCellClicked", props.onCellClicked);
   setIfDefined(options, "onRowClicked", props.onRowClicked);
   setIfDefined(options, "onCellValueChanged", props.onCellValueChanged);

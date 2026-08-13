@@ -2,6 +2,7 @@ import { Column } from "../column/column";
 import { IGridAPI } from "../interfaces/iGridAPI";
 import { IRowNode } from "../interfaces/iRowNode";
 import { ICellRenderer, CellRendererParams } from "../renderer/renderer";
+import { notifyRendererTooltipTargetsUpdated } from "../renderer/tooltip/rendererTooltipTarget";
 
 export type SparklineXValue =
   | string
@@ -46,6 +47,14 @@ type SparklinePoint = {
   explicitX: boolean;
 };
 
+type SparklineTooltipEntry = {
+  kind: "bar" | "point";
+  point: SparklinePoint;
+  target: SVGRectElement;
+  anchor?: SVGCircleElement;
+  cleanup: () => void;
+};
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export class SparklineRenderer implements ICellRenderer {
@@ -54,7 +63,7 @@ export class SparklineRenderer implements ICellRenderer {
   private rafId: number | null = null;
   private width = 100;
   private height = 20;
-  private tooltipCleanups: Array<() => void> = [];
+  private tooltipEntries = new Map<number, SparklineTooltipEntry>();
   private warnedInvalidValue = false;
 
   init(params: CellRendererParams): void {
@@ -107,8 +116,6 @@ export class SparklineRenderer implements ICellRenderer {
       showPoints = false,
     } = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
     const series = this.params.value;
-    this.clearTooltipTargets();
-
     if (!Array.isArray(series)) {
       if (!this.warnedInvalidValue) {
         this.warnedInvalidValue = true;
@@ -116,6 +123,7 @@ export class SparklineRenderer implements ICellRenderer {
           `SparklineRenderer: expected the valueGetter for column "${this.params.colDef.colId}" to return number[] or [x, number][]; nothing to draw.`,
         );
       }
+      this.clearTooltipTargets();
       this.svgEl.replaceChildren();
       return;
     }
@@ -123,6 +131,7 @@ export class SparklineRenderer implements ICellRenderer {
     const { points, domainLength } = this.normalizeSeries(series);
 
     if (points.length === 0) {
+      this.clearTooltipTargets();
       this.svgEl.replaceChildren();
       return;
     }
@@ -231,24 +240,24 @@ export class SparklineRenderer implements ICellRenderer {
       padding + chartHeight - ((value - min) / range) * chartHeight;
 
     if (type === "bar") {
+      const usedTooltipIndexes = new Set<number>();
       const gap = chartWidth / Math.max(seriesLength, 1);
       const barWidth = Math.max(1, gap * 0.8);
       for (const point of points) {
         const x = padding + point.position * gap + (gap - barWidth) / 2;
         const barHeight = Math.max(1, ((point.yValue - min) / range) * chartHeight);
         const y = padding + chartHeight - barHeight;
-        const bar = document.createElementNS(SVG_NS, "rect");
+        const entry = this.getOrCreateTooltipEntry(point, "bar");
+        const bar = entry.target;
+        usedTooltipIndexes.add(point.index);
         bar.setAttribute("x", String(x));
         bar.setAttribute("y", String(y));
         bar.setAttribute("width", String(barWidth));
         bar.setAttribute("height", String(barHeight));
         bar.setAttribute("rx", "1");
-        bar.classList.add("pte-sparkline-bar", "pte-sparkline-tooltip-target");
-        bar.dataset.sparklinePointIndex = String(point.index);
-        this.registerPointTooltip(bar, point);
         fragment.appendChild(bar);
       }
-      this.svgEl.replaceChildren(fragment);
+      this.commitDraw(fragment, usedTooltipIndexes);
       return;
     }
 
@@ -274,6 +283,7 @@ export class SparklineRenderer implements ICellRenderer {
     // Each point owns the vertical band halfway to its neighbours. This makes the nearest X value
     // discoverable anywhere over the chart while a separate tiny anchor keeps the floating tooltip
     // visually attached to the plotted point rather than the centre of the hit band.
+    const usedTooltipIndexes = new Set<number>();
     points.forEach((point, pointIndex) => {
       const pointX = xScale(point.position);
       if (showPoints) {
@@ -286,7 +296,9 @@ export class SparklineRenderer implements ICellRenderer {
         fragment.appendChild(marker);
       }
 
-      const anchor = document.createElementNS(SVG_NS, "circle");
+      const entry = this.getOrCreateTooltipEntry(point, "point");
+      const anchor = entry.anchor!;
+      usedTooltipIndexes.add(point.index);
       anchor.setAttribute("cx", String(pointX));
       anchor.setAttribute("cy", String(yScale(point.yValue)));
       anchor.setAttribute("r", "1");
@@ -306,48 +318,77 @@ export class SparklineRenderer implements ICellRenderer {
           ? (pointX + nextX) / 2
           : width;
 
-      const hitTarget = document.createElementNS(SVG_NS, "rect");
+      const hitTarget = entry.target;
       hitTarget.setAttribute("x", String(left));
       hitTarget.setAttribute("y", "0");
       hitTarget.setAttribute("width", String(Math.max(1, right - left)));
       hitTarget.setAttribute("height", String(height));
       hitTarget.setAttribute("fill", "transparent");
-      hitTarget.classList.add("pte-sparkline-tooltip-target");
-      hitTarget.dataset.sparklinePointIndex = String(point.index);
-      this.registerPointTooltip(hitTarget, point, anchor);
       fragment.appendChild(hitTarget);
     });
-    this.svgEl.replaceChildren(fragment);
+    this.commitDraw(fragment, usedTooltipIndexes);
   }
 
-  private registerPointTooltip(
-    target: SVGElement,
+  private getOrCreateTooltipEntry(
     point: SparklinePoint,
-    anchor?: SVGElement,
-  ): void {
-    const cleanup = this.params.registerTooltipTarget(target, () => {
-      const rendererParams = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
-      const formatter = rendererParams.tooltipValueFormatter;
-      if (!formatter) {
-        return point.explicitX
-          ? `${this.formatXValue(point.xValue)}: ${point.yValue}`
-          : String(point.yValue);
-      }
-      const rowNode = this.params.data as IRowNode;
-      return formatter({
-        xValue: point.xValue,
-        yValue: point.yValue,
-        value: point.yValue,
-        index: point.index,
-        data: rowNode?.data ?? rowNode,
-        rowNode,
-        rowId: this.params.rowId,
-        rowIndex: this.params.rowIndex,
-        colDef: this.params.colDef,
-        api: this.params.api,
-      });
-    }, anchor);
-    this.tooltipCleanups.push(cleanup);
+    kind: SparklineTooltipEntry["kind"],
+  ): SparklineTooltipEntry {
+    const existing = this.tooltipEntries.get(point.index);
+    if (existing?.kind === kind) {
+      existing.point = point;
+      return existing;
+    }
+    existing?.cleanup();
+
+    const target = document.createElementNS(SVG_NS, "rect");
+    target.classList.add(
+      ...(kind === "bar"
+        ? ["pte-sparkline-bar", "pte-sparkline-tooltip-target"]
+        : ["pte-sparkline-tooltip-target"]),
+    );
+    target.dataset.sparklinePointIndex = String(point.index);
+    const anchor = kind === "point" ? document.createElementNS(SVG_NS, "circle") : undefined;
+    const entry = { kind, point, target, anchor, cleanup: () => {} } as SparklineTooltipEntry;
+    entry.cleanup = this.params.registerTooltipTarget(target, () => this.formatPointTooltip(entry.point), anchor);
+    this.tooltipEntries.set(point.index, entry);
+    return entry;
+  }
+
+  private formatPointTooltip(point: SparklinePoint): string {
+    const rendererParams = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
+    const formatter = rendererParams.tooltipValueFormatter;
+    if (!formatter) {
+      return point.explicitX
+        ? `${this.formatXValue(point.xValue)}: ${point.yValue}`
+        : String(point.yValue);
+    }
+    const rowNode = this.params.data as IRowNode;
+    return formatter({
+      xValue: point.xValue,
+      yValue: point.yValue,
+      value: point.yValue,
+      index: point.index,
+      data: rowNode?.data ?? rowNode,
+      rowNode,
+      rowId: this.params.rowId,
+      rowIndex: this.params.rowIndex,
+      colDef: this.params.colDef,
+      api: this.params.api,
+    });
+  }
+
+  private commitDraw(fragment: DocumentFragment, usedTooltipIndexes: Set<number>): void {
+    for (const [index, entry] of this.tooltipEntries) {
+      if (usedTooltipIndexes.has(index)) continue;
+      entry.cleanup();
+      this.tooltipEntries.delete(index);
+    }
+    this.svgEl.replaceChildren(fragment);
+    // Stable targets retain an open tooltip. Tell the delegated owner to update its text and
+    // reposition against the anchor's new coordinates now that the SVG is back in the document.
+    notifyRendererTooltipTargetsUpdated(
+      [...usedTooltipIndexes].map(index => this.tooltipEntries.get(index)!.target),
+    );
   }
 
   private formatXValue(value: SparklineXValue): string {
@@ -355,7 +396,7 @@ export class SparklineRenderer implements ICellRenderer {
   }
 
   private clearTooltipTargets(): void {
-    for (const cleanup of this.tooltipCleanups) cleanup();
-    this.tooltipCleanups = [];
+    for (const entry of this.tooltipEntries.values()) entry.cleanup();
+    this.tooltipEntries.clear();
   }
 }

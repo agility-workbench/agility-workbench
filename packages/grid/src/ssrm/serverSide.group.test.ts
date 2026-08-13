@@ -104,6 +104,23 @@ function viewNodes(core: GridCore): IRowNode[] {
 const colInstance = (core: GridCore, key: string) => core.getColumnModel().getByColId(key)!.instanceID;
 
 describe("server-side row grouping", () => {
+  it("returns only validated page-local row indices after a page change", async () => {
+    const { core } = makeGrid({ pagination: true, pageSize: 2 });
+    await flush();
+    const firstPageId = viewNodes(core)[0].id;
+    expect(core.getViewIndexForRowId(firstPageId)).toBe(0);
+
+    core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 2 });
+    await flush();
+    const page = viewNodes(core);
+    expect(page.map(node => node.id)).toEqual(["3", "4"]);
+    expect(core.getViewIndexForRowId(page[0].id)).toBe(0);
+    expect(core.getViewIndexForRowId(page[1].id)).toBe(1);
+    // SSRM retains loaded nodes across requests; the old node's page-local stamp must not be
+    // mistaken for the new page's row occupying that same slot.
+    expect(core.getViewIndexForRowId(firstPageId)).toBeNull();
+  });
+
   it("flat requests keep the legacy shape (empty groupBy/groupKeys)", async () => {
     const { core, ds } = makeGrid();
     await flush();

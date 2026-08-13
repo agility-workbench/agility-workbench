@@ -12,5 +12,7 @@ export interface RowPoolDef {
   // Single cell hosting a full-width row's content (chevron+label or fullWidthCellRenderer). Lives in
   // the center row element, sticky-pinned to the viewport left, and is hidden for normal rows.
   fullWidthCellEl: HTMLDivElement;
+  /** Hidden text referenced by the ARIA row when row presentation supplies a description. */
+  descriptionEl: HTMLSpanElement;
   cellRendererInstances: Map<string, RendererRecord>;
 }

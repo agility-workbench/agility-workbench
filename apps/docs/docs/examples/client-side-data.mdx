@@ -34,6 +34,31 @@ changes are sorted and filtered into their correct location.
 Transactions are client-side only. The server-side model is refreshed through
 `api.refreshServerSideData()`.
 
+## Batch high-frequency updates
+
+For isolated changes, `applyTransaction()` updates the model and rendered view
+synchronously. For a stream of small updates, use `applyTransactionAsync()` so
+nearby calls share one filter, sort, grouping, aggregation, pagination, and
+render pass:
+
+```ts
+const result = await api.applyTransactionAsync({
+  update: [{ rowId: quote.symbol, row: quote }],
+});
+```
+
+Row nodes are mutated immediately and transactions retain call order. The
+returned promise resolves after the batch is reflected in the derived view and
+renderer. Until then, direct row-node reads can see new data while sorted,
+filtered, or grouped positions still describe the previous render.
+
+The first call opens a fixed `asyncTransactionWaitMs` window (16 ms by default);
+later calls join it without postponing its deadline. Use
+`api.flushAsyncTransactions()` when a caller needs to finalize the view early.
+Each promise receives the counts for its own transaction. A later synchronous
+transaction or row-model operation flushes older queued work first; a new
+`rowData` replacement subsumes the pending render in its own full refresh.
+
 ## How a new `rowData` reference is applied
 
 The React and Angular bindings compare `rowData` by reference, so the immutable

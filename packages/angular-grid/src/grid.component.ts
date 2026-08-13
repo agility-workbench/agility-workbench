@@ -35,7 +35,12 @@ import type {
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
 import { createCore, getGridOptions } from "./factory";
-import type { NgColDef, NgComponent, NgDefaultColDef } from "./interface";
+import type {
+  NgColDef,
+  NgComponent,
+  NgDefaultColDef,
+  NgGetRowPresentation,
+} from "./interface";
 import type { NgMenuItem } from "./menu";
 import { NgBodyMenuAdapter, NgMenuAdapter } from "./menuAdapters";
 
@@ -102,6 +107,7 @@ export class AwbGrid implements OnDestroy {
   readonly getRowId = input<GridOptions["getRowId"]>();
   readonly rowIdKey = input<GridOptions["rowIdKey"]>();
   readonly rowDataMode = input<GridOptions["rowDataMode"]>();
+  readonly asyncTransactionWaitMs = input<GridOptions["asyncTransactionWaitMs"]>();
 
   // --- appearance / interaction ---
   readonly rowHover = input<GridOptions["rowHover"]>();
@@ -109,6 +115,7 @@ export class AwbGrid implements OnDestroy {
   readonly zebraRows = input<GridOptions["zebraRows"]>();
   readonly getRowClass = input<GridOptions["getRowClass"]>();
   readonly getRowStyle = input<GridOptions["getRowStyle"]>();
+  readonly getRowPresentation = input<NgGetRowPresentation>();
   readonly ariaLabel = input<GridOptions["ariaLabel"]>();
   readonly ariaLabelledBy = input<GridOptions["ariaLabelledBy"]>();
   readonly highlightActiveCell = input<GridOptions["highlightActiveCell"]>();
@@ -174,6 +181,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- pagination ---
   readonly pagination = input<GridOptions["pagination"]>();
+  readonly paginationControls = input<GridOptions["paginationControls"]>();
   readonly pageSize = input<GridOptions["pageSize"]>();
   readonly pageSizes = input<GridOptions["pageSizes"]>();
   readonly resetPageOn = input<GridOptions["resetPageOn"]>();
@@ -351,6 +359,11 @@ export class AwbGrid implements OnDestroy {
       return () => core.setGroupRowsSelectable(v);
     });
 
+    this.keyedEffect(
+      () => this.rowSelection(),
+      (value) => renderer.setRowSelectionOptions(value),
+    );
+
     this.syncEffect(() => {
       const treeData = this.treeData();
       return () =>
@@ -377,6 +390,7 @@ export class AwbGrid implements OnDestroy {
         zebraRows: this.zebraRows() ?? false,
         getRowClass: this.getRowClass(),
         getRowStyle: this.getRowStyle(),
+        getRowPresentation: this.adapters.adaptGetRowPresentation(this.getRowPresentation()),
         ariaLabel: this.ariaLabel(),
         ariaLabelledBy: this.ariaLabelledBy(),
         highlightActiveCell: this.highlightActiveCell() ?? false,
@@ -395,6 +409,7 @@ export class AwbGrid implements OnDestroy {
         suppressTypeToEdit: this.suppressTypeToEdit() ?? false,
         moveAfterEdit: this.moveAfterEdit() ?? true,
         commitOnBlur: this.commitOnBlur() ?? true,
+        asyncTransactionWaitMs: this.asyncTransactionWaitMs() ?? 16,
       };
       return () => renderer.setRuntimeOptions(opts);
     });
@@ -420,6 +435,11 @@ export class AwbGrid implements OnDestroy {
       const pagination = this.pagination() ?? false;
       return () => renderer.togglePagination(pagination);
     });
+
+    this.keyedEffect(
+      () => this.paginationControls(),
+      (options) => renderer.setPaginationControls(options),
+    );
 
     // Widget configs reconcile live without remounting the grid, but a rebuild on first run would
     // be disruptive (the create path already applied them), so these compare serialized contents

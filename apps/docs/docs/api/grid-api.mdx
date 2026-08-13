@@ -14,11 +14,14 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | --- | --- |
 | `setRowData(rows)` | Replace client-side rows |
 | `applyTransaction(tx)` | Add, update, or remove client-side rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted) |
+| `applyTransactionAsync(tx)` | Mutate client-side rows immediately and defer model derivation/rendering into a shared batch; resolves after the flush with this call's counts |
+| `flushAsyncTransactions()` | Immediately finalize pending asynchronous transactions |
 | `setColumnDefs(defs)` | Replace column definitions |
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
 | `getColumnModel()` | Read runtime columns and sections |
 | `refreshServerSideData(options?)` | Soft-refresh or purge a server cache/subtree |
+| `refreshRowPresentation()` | Re-evaluate row presentation for rendered body, pinned, and sticky rows after external state changes |
 
 ## View and grouping
 

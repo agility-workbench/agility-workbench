@@ -234,6 +234,10 @@ describe("GridCore tree data", () => {
     core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 2 });
     expect(core.getPaginationInfo().pageIndex).toBe(1);
     expect(view(core).map(node => node.id)).toEqual(["two", "three"]);
+    expect(view(core).map(node => node.viewIndex)).toEqual([2, 3]);
+    expect(core.getViewIndexForRowId("two")).toBe(0);
+    expect(core.getViewIndexForRowId("three")).toBe(1);
+    expect(core.getViewIndexForRowId("root")).toBeNull();
 
     core.dispatch({ type: "groupToggleExpand", groupId: "root", expanded: false });
 

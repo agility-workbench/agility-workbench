@@ -1,17 +1,25 @@
 import { useMemo, useState } from "react";
 
 import { Grid } from "@react-grid";
-import type { ReactColDef } from "@react-grid";
+import type { ReactColDef, ReactGetRowPresentation } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { themeLight, themeDark } from "@grid";
-import type { GridTheme } from "@grid";
+import type {
+  GridTheme,
+  PaginationControl,
+  PaginationControlsOptions,
+  TooltipComponentParams,
+} from "@grid";
 
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
+ *   Row defaults: getRowPresentation styling, tooltip, ARIA, metadata, and column overrides
+ *   Tooltip:      anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
+ *   Pagination:  select/buttons page selection, visible controls and their order
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
@@ -27,6 +35,7 @@ type PersonRow = {
   salary: number;
   rating: number;
   active: string;
+  compensationReview: boolean;
 };
 
 const FIRST = ["Ava", "Liam", "Mia", "Noah", "Emma", "Ethan", "Olivia", "Lucas", "Sophia", "Mason", "Isla", "Leo"];
@@ -48,21 +57,36 @@ function mulberry32(seed: number) {
 function buildRows(count: number): PersonRow[] {
   const rand = mulberry32(7);
   const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
-  return Array.from({ length: count }, (_, i) => ({
-    id: 1000 + i,
-    name: `${pick(FIRST)} ${pick(LAST)}`,
-    department: pick(DEPTS),
-    city: pick(CITIES),
-    salary: 60_000 + Math.floor(rand() * 140_000),
-    rating: +(1 + rand() * 4).toFixed(1),
-    active: rand() > 0.25 ? "Yes" : "No",
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const name = `${pick(FIRST)} ${pick(LAST)}`;
+    const department = pick(DEPTS);
+    const city = pick(CITIES);
+    const salary = 60_000 + Math.floor(rand() * 140_000);
+    return {
+      id: 1000 + i,
+      name,
+      department,
+      city,
+      salary,
+      rating: +(1 + rand() * 4).toFixed(1),
+      active: rand() > 0.25 ? "Yes" : "No",
+      // Salary is initially sorted descending, so the first page always contains examples.
+      compensationReview: salary >= 175_000,
+    };
+  });
 }
 
 const themePresets = [
   { id: "light", label: "Light", className: "pte-theme-light" },
   { id: "dark", label: "Dark", className: "pte-theme-dark" },
 ];
+
+type PaginationLayout = "default" | "compact" | "reversed";
+const PAGINATION_LAYOUTS: Record<PaginationLayout, PaginationControl[]> = {
+  default: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
+  compact: ["previousPage", "pageSelector", "nextPage"],
+  reversed: ["lastPage", "nextPage", "pageSelector", "previousPage", "firstPage", "pageSize"],
+};
 
 // Custom accent colors layered on top of a preset via the semantic theme params added for these
 // features. Each fans out to its --pte-* variable.
@@ -91,6 +115,16 @@ function Toggle({ label, checked, onChange, hint }: {
   );
 }
 
+function CompensationReviewTooltip(params: TooltipComponentParams) {
+  const label = String(params.rowPresentation?.metadata?.reviewLabel ?? "Compensation review");
+  return (
+    <div style={{ display: "grid", gap: 4, maxWidth: 260 }}>
+      <strong style={{ color: "#d97706" }}>{label}</strong>
+      <span>{params.content}</span>
+    </div>
+  );
+}
+
 export function VisualStatesDemo() {
   const rows = useMemo(() => buildRows(200), []);
 
@@ -98,6 +132,11 @@ export function VisualStatesDemo() {
   const [columnHover, setColumnHover] = useState(true);
   const [zebraRows, setZebraRows] = useState(true);
   const [highlightActiveCell, setHighlightActiveCell] = useState(true);
+  const [tooltipMode, setTooltipMode] = useState<"anchored" | "follow">("anchored");
+  const [pageSelection, setPageSelection] = useState<"select" | "buttons">("select");
+  const [showPageLabel, setShowPageLabel] = useState(true);
+  const [paginationLayout, setPaginationLayout] = useState<PaginationLayout>("default");
+  const [maxPageButtons, setMaxPageButtons] = useState(7);
 
   // Interaction gating (defaults preserve today's behavior).
   const [cellSelection, setCellSelection] = useState<"true" | "false" | "text">("true");
@@ -112,6 +151,7 @@ export function VisualStatesDemo() {
 
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
+  const [rowPresentationEnabled, setRowPresentationEnabled] = useState(true);
 
   // Sort config: an initial sort (Salary desc) + a custom Department comparator (by a fixed order).
   // NOTE: initial sort seeds ONCE at first column setup, so toggling it needs a grid remount (key).
@@ -151,6 +191,13 @@ export function VisualStatesDemo() {
 
   const activePreset = themePresets.find((t) => t.id === themeId) ?? themePresets[0];
 
+  const paginationControls = useMemo<PaginationControlsOptions>(() => ({
+    pageSelection,
+    showPageLabel,
+    controls: PAGINATION_LAYOUTS[paginationLayout],
+    maxPageButtons,
+  }), [pageSelection, showPageLabel, paginationLayout, maxPageButtons]);
+
   const theme = useMemo<GridTheme | undefined>(() => {
     if (!customColors) return undefined;
     const base = themeId === "dark" ? themeDark : themeLight;
@@ -162,10 +209,39 @@ export function VisualStatesDemo() {
     ? (p: { data: PersonRow }) => (p.data.active === "No" ? { opacity: "0.55" } : undefined)
     : undefined;
 
+  const getRowPresentation = useMemo<ReactGetRowPresentation | undefined>(() => {
+    if (!rowPresentationEnabled) return undefined;
+    return ({ data }) => {
+      const row = data as PersonRow;
+      if (!row.compensationReview) return undefined;
+      return {
+        rowClass: "vs-compensation-review-row",
+        rowStyle: { boxShadow: "inset 3px 0 0 #f59e0b" },
+        cellClass: "vs-compensation-review-cell",
+        cellStyle: { backgroundColor: "rgba(245, 158, 11, 0.14)" },
+        tooltip: {
+          content: `${row.name} is awaiting compensation review.`,
+          component: CompensationReviewTooltip,
+          options: { mode: "follow", placement: "top", interactive: false, escapeRootClip: true },
+        },
+        accessibility: {
+          description: `${row.name} is awaiting compensation review.`,
+          busy: false,
+        },
+        metadata: { status: "review", reviewLabel: "Compensation review" },
+      };
+    };
+  }, [rowPresentationEnabled]);
+
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
-    { colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true },
+    {
+      colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
+      headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
+      // On review rows this replaces only row tooltip content; the row component/options remain.
+      tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
+    },
     {
       colId: "department", key: "department", label: "Department", width: 140, filter: true,
       // Custom comparator: sort by a fixed department priority rather than alphabetically.
@@ -183,10 +259,15 @@ export function VisualStatesDemo() {
       cellStyle: conditionalStyling
         ? (p: { value: number }) => ({ color: p.value >= 150_000 ? "#16a34a" : "#9ca3af", fontWeight: p.value >= 150_000 ? "600" : "400" })
         : undefined,
+      // This column overrides row follow-mode while retaining row content and component.
+      tooltipOptions: { mode: "anchored", placement: "right" },
     },
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !hideRatingMenu },
-    { colId: "active", key: "active", label: "Active", width: 90 },
+    {
+      colId: "active", key: "active", label: "Active", width: 90,
+      inheritRowPresentation: { tooltip: false },
+    },
   ], [hideRatingMenu, nativeCityMenu, conditionalStyling, sortConfig]);
 
   return (
@@ -198,7 +279,15 @@ export function VisualStatesDemo() {
           <Toggle label="columnHover" checked={columnHover} onChange={setColumnHover} hint="Highlight the whole column under the pointer" />
           <Toggle label="zebraRows" checked={zebraRows} onChange={setZebraRows} hint="Alternating background on odd rows" />
           <Toggle label="highlightActiveCell" checked={highlightActiveCell} onChange={setHighlightActiveCell} hint="Outline the focused cell inside a range" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }} title="Anchor tooltips to their cell or keep them beside the pointer">
+            tooltip
+            <select value={tooltipMode} onChange={(e) => setTooltipMode(e.target.value as typeof tooltipMode)}>
+              <option value="anchored">anchored</option>
+              <option value="follow">follow pointer</option>
+            </select>
+          </label>
           <Toggle label="conditionalStyling" checked={conditionalStyling} onChange={setConditionalStyling} hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
+          <Toggle label="getRowPresentation" checked={rowPresentationEnabled} onChange={setRowPresentationEnabled} hint="Apply row-default styling, tooltip, ARIA description, and metadata to compensation-review rows" />
           <Toggle label="sortConfig" checked={sortConfig} onChange={setSortConfig} hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
         </div>
 
@@ -247,6 +336,34 @@ export function VisualStatesDemo() {
           <Toggle label="City: columnContextMenu=false" checked={nativeCityMenu} onChange={setNativeCityMenu} hint="Right-clicking the City header shows the browser's native menu instead of the grid column menu" />
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 12px", border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8 }}>
+          <strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" }}>Pagination</strong>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            pageSelection
+            <select value={pageSelection} onChange={(e) => setPageSelection(e.target.value as typeof pageSelection)}>
+              <option value="select">select</option>
+              <option value="buttons">buttons</option>
+            </select>
+          </label>
+          <Toggle label="showPageLabel" checked={showPageLabel} onChange={setShowPageLabel} hint="Show or remove the visible Page label; accessible names remain" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }} title="Presets demonstrate hiding and reordering individual pagination controls">
+            controls
+            <select value={paginationLayout} onChange={(e) => setPaginationLayout(e.target.value as PaginationLayout)}>
+              <option value="default">default order</option>
+              <option value="compact">compact</option>
+              <option value="reversed">reversed</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            maxPageButtons
+            <select value={maxPageButtons} onChange={(e) => setMaxPageButtons(Number(e.target.value))} disabled={pageSelection !== "buttons"}>
+              <option value={5}>5</option>
+              <option value={7}>7</option>
+              <option value={9}>9</option>
+            </select>
+          </label>
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <label htmlFor="vs-theme" style={{ fontSize: 13 }}>Theme</label>
           <select id="vs-theme" value={themeId} onChange={(e) => setThemeId(e.target.value)}>
@@ -257,7 +374,12 @@ export function VisualStatesDemo() {
       </div>
 
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-        Hover rows and columns to see the highlights. Click a cell, then Shift+Click (or Shift+Arrow) to
+        Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
+        Name cells or header to compare cell-anchored and pointer-following tooltips. Amber rows use
+        <code>getRowPresentation</code>: hover most cells for a row-default component that follows the
+        pointer; Name overrides its content, Salary overrides it to an anchored-right tooltip, and
+        Active opts out. Click a cell,
+        then Shift+Click (or Shift+Arrow) to
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
         inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
         column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
@@ -266,7 +388,9 @@ export function VisualStatesDemo() {
         selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
         <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
         Rating column hides its ⋮ button and the City header opens the browser's native menu on
-        right-click. Toggle <code>Custom colors</code> to recolor these states via theme params.
+        right-click. The <strong>Pagination</strong> controls switch the page picker and demonstrate
+        reordered or omitted footer controls. Toggle <code>Custom colors</code> to recolor these states
+        via theme params.
       </p>
 
       <div style={{ flex: 1, minHeight: 0 }} className={activePreset.className}>
@@ -276,11 +400,17 @@ export function VisualStatesDemo() {
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
+          pagination
+          pageSize={10}
+          pageSizes={[10, 25, 50]}
+          paginationControls={paginationControls}
           rowHover={rowHover}
           columnHover={columnHover}
           zebraRows={zebraRows}
           highlightActiveCell={highlightActiveCell}
+          tooltip={{ mode: tooltipMode, showDelay: 150 }}
           getRowStyle={getRowStyle}
+          getRowPresentation={getRowPresentation}
           onCellClicked={(p) => setLastEvent(`onCellClicked → row ${p.rowId}, col "${p.colId}" = ${JSON.stringify(p.value)}`)}
           onSortChanged={() => setLastEvent("onSortChanged")}
           onSelectionChanged={(p) => setLastEvent(`onSelectionChanged → ${p.snapshot.kind}`)}

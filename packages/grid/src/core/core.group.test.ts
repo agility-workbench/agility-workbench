@@ -79,6 +79,17 @@ describe("GridCore row grouping", () => {
     expect(nodes.length).toBe(2);
   });
 
+  it("returns null for a leaf whose collapsed ancestor removed its rendered slot", () => {
+    const c = makeGrid({ groupDefaultExpanded: -1 });
+    c.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const leaf = viewNodes(c).find(node => !node.isGroup)!;
+    expect(c.getViewIndexForRowId(leaf.id)).not.toBeNull();
+
+    const parent = c.getRowModel().getRowNode(leaf.parentId!)!;
+    c.dispatch({ type: "groupToggleExpand", groupId: parent.id, expanded: false });
+    expect(c.getViewIndexForRowId(leaf.id)).toBeNull();
+  });
+
   it("multi-level grouping nests groups with increasing level", () => {
     core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
     const emea = viewNodes(core).find(n => n.groupKey === "EMEA")!;
@@ -240,6 +251,17 @@ describe("GridCore row grouping", () => {
     expect(info.totalPageCount).toBe(4);
     // First page shows the first two flat rows.
     expect(c.getRowModel().getViewCount()).toBe(2);
+
+    const firstPageId = c.getRowIdAtViewIndex(0)!;
+    c.dispatch({ type: "paginationSet", enabled: true, pageIndex: 2, pageSize: 2 });
+    const page = viewNodes(c);
+    expect(page).toHaveLength(2);
+    // Grouped CSRM stamps absolute indices over the full flattened list. The core-facing lookup
+    // must translate those to the page-local slots every renderer/API consumer expects.
+    expect(page.map(node => node.viewIndex)).toEqual([4, 5]);
+    expect(c.getViewIndexForRowId(page[0].id)).toBe(0);
+    expect(c.getViewIndexForRowId(page[1].id)).toBe(1);
+    expect(c.getViewIndexForRowId(firstPageId)).toBeNull();
   });
 
   it("keeps leaves in active sort order within each group", () => {

@@ -18,8 +18,8 @@ import type { TooltipComponentParams } from "@grid/renderer/tooltip/tooltipCompo
  *     (grace bridge keeps it open across the gap).
  *  6. `headerTooltip`: several column headers carry help text.
  *
- * A toggle switches the grid between anchored (default) and follow-mouse mode. Follow-mouse is
- * display-only, so the interactive Country tooltip only stays clickable in anchored mode.
+ * A toggle switches display-only tooltips between anchored (default) and follow-mouse mode. The
+ * interactive Country tooltip remains anchored so its button is always reachable.
  */
 
 type SaleRow = {
@@ -117,7 +117,6 @@ function CountryTooltip(params: TooltipComponentParams) {
 export function TooltipDemo() {
   const rows = useMemo(() => buildRows(500), []);
   const apiRef = useRef<IGridAPI | null>(null);
-  const [interactive, setInteractive] = useState(true);
   const [mode, setMode] = useState<"anchored" | "follow">("anchored");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -172,13 +171,9 @@ export function TooltipDemo() {
         <br />
         Per-column <code>tooltipOptions</code> override the grid default:{" "}
         <span style={{ fontWeight: 700 }}>Rep</span> always follows the mouse, and{" "}
-        <span style={{ fontWeight: 700 }}>Country</span> is always interactive + anchored — both ignore the toggles below.
+        <span style={{ fontWeight: 700 }}>Country</span> is always interactive + anchored — both ignore the mode toggle below.
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 13 }}>
-        <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-          <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
-          interactive
-        </label>
         <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
           mode:
           <select value={mode} onChange={(e) => setMode(e.target.value as "anchored" | "follow")}>
@@ -187,7 +182,7 @@ export function TooltipDemo() {
           </select>
         </label>
         <span style={{ opacity: 0.6 }}>
-          (follow-mouse is display-only; the Country button is only clickable in anchored mode)
+          (follow-mouse is display-only; the interactive Country tooltip remains anchored)
         </span>
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -196,7 +191,7 @@ export function TooltipDemo() {
           data={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
-          tooltip={{ interactive, mode, showDelay: 250 }}
+          tooltip={{ mode, showDelay: 250 }}
           style={{ width: "100%", height: "100%" }}
         />
       </div>

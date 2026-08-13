@@ -7,6 +7,7 @@ import "@grid/theme/table.css";
 import App from "./App";
 import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
+import C3ViewIndexDemo from "./C3ViewIndexDemo";
 import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
 import TreeDataDemo from "./TreeDataDemo";
 import ColumnStateDemo from "./ColumnStateDemo";
@@ -25,15 +26,20 @@ import StickyGroupRowsDemo from "./StickyGroupRowsDemo";
 import KitchenSinkDemo from "./KitchenSinkDemo";
 import ColumnGroupExpanderDemo from "./ColumnGroupExpanderDemo";
 import FullyThemedDemo from "./FullyThemedDemo";
+import RowSelectionCheckboxDemo from "./RowSelectionCheckboxDemo";
+import HighFrequencyDemo from "./HighFrequencyDemo";
 import "./roboto-font.css";
 import "./style.css";
 
 const PAGES = [
   { id: "grid", label: "Grid demo", render: () => <App /> },
+  { id: "highFrequency", label: "High-frequency updates", render: () => <HighFrequencyDemo /> },
   { id: "selection", label: "Selection & keyboard nav", render: () => <SelectionDemo /> },
+  { id: "rowSelectionCheckboxes", label: "Row selection checkboxes", render: () => <RowSelectionCheckboxDemo /> },
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "fullyThemed", label: "Fully themed grid", render: () => <FullyThemedDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
+  { id: "c3ViewIndex", label: "C3 grouped pagination", render: () => <C3ViewIndexDemo /> },
   { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },
   { id: "treeData", label: "Tree data", render: () => <TreeDataDemo /> },
   { id: "pinnedRows", label: "Pinned rows", render: () => <PinnedRowsDemo /> },

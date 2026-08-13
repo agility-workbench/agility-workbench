@@ -40,8 +40,8 @@ const ROW_NUMBER_COLUMN_DEF = {
 } satisfies ColDef & { __internalRole: "rowNumber" };
 
 const CHECKBOX_COL_ID = "__pte_checkbox__";
-// Selection checkbox column (rowSelection: { checkboxes: true }). Like the row-number column it is
-// a layout-frozen leading utility column; the checkbox visual is CSS-driven off the cell's
+// Selection checkbox column (rowSelection: { checkboxes: true }). Its initial pin and whether that
+// pin can subsequently change are grid options. The checkbox visual is CSS-driven off the cell's
 // "selected" class, so body cells carry no per-cell listeners or state.
 const CHECKBOX_COLUMN_DEF = {
   colId: CHECKBOX_COL_ID,
@@ -50,7 +50,6 @@ const CHECKBOX_COLUMN_DEF = {
   width: 44,
   minWidth: 44,
   maxWidth: 44,
-  pinned: "left",
   sortable: false,
   filter: false,
   groupable: false,
@@ -163,7 +162,7 @@ export class ColumnModel implements IColumnModel {
     const existing = this.columnsByColId.get(colDef.colId);
     if (existing) return existing.instanceID;
 
-    const col = new Column(colDef, colDef.colId);
+    const col = new Column(colDef, colDef.colId, rawColDef);
     if (colDef.children && colDef.children.length > 0) {
       this.buildColumns(colDef.children, col, `${colDef.colId}.`);
     }
@@ -217,8 +216,10 @@ export class ColumnModel implements IColumnModel {
   private updateColumns(cols: Column[]) {
     this.columns = this.withInternalColumns(cols);
     this.columns.forEach(c => c.updatePropsByChildren());
-    this.leadingColumns = this.columns.filter((c) => c.isLeadingUtilityColumn());
-    this.leftColumns = this.columns.filter((c) => c.pinned === "left" && !c.isLeadingUtilityColumn());
+    // Only the row-number gutter owns the permanently-leading section. The checkbox utility column
+    // follows its live pinned state so its header menu can move it like users expect.
+    this.leadingColumns = this.columns.filter((c) => c.isRowNumberColumn());
+    this.leftColumns = this.columns.filter((c) => c.pinned === "left" && !c.isRowNumberColumn());
     this.rightColumns = this.columns.filter((c) => c.pinned === "right");
     this.centerColumns = this.columns.filter((c) => c.pinned == null);
 
@@ -304,9 +305,9 @@ export class ColumnModel implements IColumnModel {
       const col = this.claimReusableColumn(colDef, reuseContext);
       if (col) {
         col.children = [];
-        col.updateFromColDef(colDef, idx);
+        col.updateFromColDef(colDef, idx, true, rawColDef);
       }
-      const nextCol = col || new Column(colDef, idx);
+      const nextCol = col || new Column(colDef, idx, rawColDef);
       if (parentCol) {
         parentCol.children.push(nextCol);
       }
@@ -570,7 +571,6 @@ export class ColumnModel implements IColumnModel {
     }
     if (this.options.rowSelectionCheckboxes) {
       const checkboxColumn = this.getCheckboxColumn();
-      checkboxColumn.pinned = "left";
       checkboxColumn.hidden = false;
       leading.push(checkboxColumn);
     }
@@ -684,12 +684,30 @@ export class ColumnModel implements IColumnModel {
   }
 
   private getCheckboxColumn(): Column {
-    if (this.checkboxColumn) {
-      this.checkboxColumn.updateFromColDef({ ...CHECKBOX_COLUMN_DEF }, "checkbox");
-      return this.checkboxColumn;
-    }
-    this.checkboxColumn = new Column({ ...CHECKBOX_COLUMN_DEF }, "checkbox");
+    // Keep the live pinned state across every layout rebuild. The checkbox definition is static;
+    // reapplying it here would silently snap a user-unpinned/right-pinned checkbox back to left.
+    if (this.checkboxColumn) return this.checkboxColumn;
+    this.checkboxColumn = new Column({
+      ...CHECKBOX_COLUMN_DEF,
+      pinned: this.options.rowSelectionCheckboxColumnPinned ?? undefined,
+      __pinnable: this.options.rowSelectionCheckboxColumnPinnable,
+      showColumnMenu: this.options.rowSelectionCheckboxColumnPinnable,
+      columnContextMenu: this.options.rowSelectionCheckboxColumnPinnable,
+    } as ColDef, "checkbox");
     return this.checkboxColumn;
+  }
+
+  /** Reconcile the optional selection-checkbox column without recreating user columns. */
+  updateSelectionCheckboxColumn(): void {
+    if (this.checkboxColumn) {
+      this.checkboxColumn.pinned = this.options.rowSelectionCheckboxColumnPinned;
+      this.checkboxColumn.pinnable = this.options.rowSelectionCheckboxColumnPinnable;
+      this.checkboxColumn.showColumnMenu = this.options.rowSelectionCheckboxColumnPinnable;
+      this.checkboxColumn.columnContextMenu = this.options.rowSelectionCheckboxColumnPinnable;
+    }
+    // withInternalColumns removes the old utility-column occurrence and conditionally inserts the
+    // same instance again, preserving every user column and its runtime state.
+    this.updateColumns(this.columns);
   }
 
   private computeBaselineWidths(measureCtx: ITextMeasurer, params: TextMeasureParams): void {
@@ -1148,9 +1166,19 @@ export class ColumnModel implements IColumnModel {
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
     const col = this.resolve(colId);
-    if (!col || col.isLeadingUtilityColumn()) return false;
+    if (!col || col.isRowNumberColumn() || !col.pinnable) return false;
 
     if (col.pinned === pin) return false;
+
+    // The selection checkbox is fixed-width and non-movable within a section, but pinning chooses
+    // which section owns it. Preserve the same instance so header/menu anchors remain valid.
+    if (col.isSelectionCheckboxColumn()) {
+      col.pinned = pin;
+      this.updateColumns(this.columns);
+      return true;
+    }
+
+    if (col.isLeadingUtilityColumn()) return false;
 
     let targetIdx = Infinity;
     if (pin === null) {

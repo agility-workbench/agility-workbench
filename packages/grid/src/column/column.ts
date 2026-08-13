@@ -15,11 +15,14 @@ import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions
 type InternalColumnRole = "rowNumber" | "selectionCheckbox" | "autoGroup";
 type InternalColDef = ColDef & {
   __internalRole?: InternalColumnRole;
+  __pinnable?: boolean;
   __groupLevel?: number;
   __treeColumn?: boolean;
 };
 
 export class Column {
+  /** The consumer-authored definition before `defaultColDef` inheritance (tooltip precedence). */
+  explicitColDef: ColDef;
   instanceID: string;
   originalInstanceID: string;
   colId: string;
@@ -77,6 +80,7 @@ export class Column {
   aggregatable: boolean;
   resizable: boolean;
   movable: boolean;
+  pinnable: boolean;
   hideable?: boolean;
   suppressColumnPanel: boolean = false;
   showColumnMenu: boolean;
@@ -106,7 +110,8 @@ export class Column {
   // Undefined for the "singleColumn" auto-group column and all non-group columns.
   groupLevel?: number;
 
-  constructor(public col: ColDef, idx: string = '') {
+  constructor(public col: ColDef, idx: string = '', explicitColDef: ColDef = col) {
+    this.explicitColDef = explicitColDef;
     const id = crypto.randomUUID();
     this.instanceID = id;
     this.originalInstanceID = id;
@@ -120,22 +125,29 @@ export class Column {
     this.aggregatable = true;
     this.resizable = true;
     this.movable = true;
+    this.pinnable = true;
     this.showColumnMenu = true;
     this.columnContextMenu = true;
     this.columnGroupShow = "always";
     this.openByDefault = false;
     this.groupExpandState = "closed";
     this.columnGroupVisible = true;
-    this.updateFromColDef(col, idx, false);
+    this.updateFromColDef(col, idx, false, explicitColDef);
   }
 
-  updateFromColDef(col: ColDef, idx: string = '', preserveRuntimeState: boolean = true) {
+  updateFromColDef(
+    col: ColDef,
+    idx: string = '',
+    preserveRuntimeState: boolean = true,
+    explicitColDef: ColDef = col,
+  ) {
     const previousComputedWidth = this.computedWidth;
     const previousResizedWidth = this.resizedWidth;
     const previousGroupExpandState = this.groupExpandState;
     const previousColumnGroupVisible = this.columnGroupVisible;
 
     this.col = col;
+    this.explicitColDef = explicitColDef;
     this.colId = col.colId!;
     this.key = col.key || '';
     this.label = col.label ?? col.key ?? `Column ${idx}`;
@@ -185,6 +197,7 @@ export class Column {
     this.aggregatable = !isFalse(col.aggregatable);
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
+    this.pinnable = !isFalse((col as InternalColDef).__pinnable);
     this.hideable = !isFalse(col.hideable);
     this.suppressColumnPanel = isTrue(col.suppressColumnPanel);
     this.showColumnMenu = !isFalse(col.showColumnMenu);
@@ -239,7 +252,8 @@ export class Column {
     return this.internalRole === "selectionCheckbox";
   }
 
-  /** Leading utility columns (row number, selection checkbox): layout-frozen, never selectable. */
+  /** Non-data utility columns. They never participate in cell/column selection. The row-number
+   * gutter is layout-frozen; the selection-checkbox column may be pinned left/right or unpinned. */
   isLeadingUtilityColumn(): boolean {
     return this.internalRole === "rowNumber" || this.internalRole === "selectionCheckbox";
   }
@@ -321,7 +335,7 @@ export class Column {
   }
 
   duplicate(): Column {
-    const dup = new Column({ ...this.col, label: this.label });
+    const dup = new Column({ ...this.col, label: this.label }, "", this.explicitColDef);
     dup.children = this.children.slice();
     dup.originalInstanceID = this.originalInstanceID;
     dup.valueFormatter = this.valueFormatter;

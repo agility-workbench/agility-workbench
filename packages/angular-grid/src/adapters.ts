@@ -27,13 +27,20 @@ import type {
   TooltipComponent,
   TooltipComponentClass,
   TooltipComponentParams,
+  RowPresentation,
+  RowPresentationParams,
 } from "@agility-workbench/grid";
 import {
   isClassActionFrameComponent,
   isClassRenderer,
   isClassTooltipComponent,
 } from "@agility-workbench/grid";
-import type { NgColDef, NgComponent, NgDefaultColDef } from "./interface";
+import type {
+  NgColDef,
+  NgComponent,
+  NgDefaultColDef,
+  NgGetRowPresentation,
+} from "./interface";
 
 /** True when `value` is a compiled Angular component class (vs a core class or plain function). */
 export function isNgComponent(value: unknown): value is Type<unknown> {
@@ -190,6 +197,26 @@ export class NgAdapters {
     const adapted = this.createTooltipClass(comp);
     this.tooltipCache.set(comp, adapted);
     return adapted;
+  }
+
+  /** Adapt an Angular tooltip component returned dynamically by `getRowPresentation`. */
+  adaptGetRowPresentation(
+    getter: NgGetRowPresentation | undefined,
+  ): ((params: RowPresentationParams) => RowPresentation | null | undefined) | undefined {
+    if (!getter) return undefined;
+    return (params) => {
+      const presentation = getter(params);
+      if (!presentation || typeof presentation.tooltip !== "object" || presentation.tooltip == null) {
+        return presentation as RowPresentation | null | undefined;
+      }
+      return {
+        ...presentation,
+        tooltip: {
+          ...presentation.tooltip,
+          component: this.adaptTooltip(presentation.tooltip.component),
+        },
+      } as RowPresentation;
+    };
   }
 
   /** headerTooltip may be a plain string (pass through) or a component (adapt like a tooltip). */

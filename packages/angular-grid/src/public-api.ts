@@ -12,5 +12,8 @@ export type {
   NgComponent,
   NgColDef,
   NgDefaultColDef,
+  NgRowTooltipPresentation,
+  NgRowPresentation,
+  NgGetRowPresentation,
 } from "./interface";
 export type { NgMenuItem, NgMenuSlot } from "./menu";

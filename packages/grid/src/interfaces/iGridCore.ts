@@ -6,7 +6,7 @@ import {
 } from "../events/events";
 import { SortModel } from "./sort";
 import { FilterModel } from "./filter";
-import { IRowModel, RowDataChangeReason, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
+import { IRowModel, RowDataChangeReason, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
@@ -96,7 +96,8 @@ export interface IGridCore {
   /** Returns rowId for a displayed index (post filter/sort/group pipeline). */
   getRowIdAtViewIndex(displayedIndex: number): GridId | null;
 
-  /** Returns displayed index for a rowId if currently displayed; null if filtered out. */
+  /** Returns the current page-local slot for a rowId; null when it is not on the rendered page
+   * (unknown, filtered/collapsed, unloaded, or on another page). */
   getViewIndexForRowId(rowId: GridId): number | null;
 
   /**
@@ -126,6 +127,8 @@ export interface IGridCore {
   setGroupSortMode(groupSortMode: GroupSortMode): void;
   /** Change whether group rows can be selected without rebuilding the grid instance. */
   setGroupRowsSelectable(groupRowsSelectable: boolean): void;
+  /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */
+  setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void;
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
   setKeyboardNavigationMode(
     mode: TreeDataKeyboardNavigationMode,
@@ -190,11 +193,11 @@ export interface IGridCore {
 
   /** Client-side row model only: apply an add/update/remove transaction. Returns what was
    * actually applied; all-zero counts on the server-side row model or when nothing matched. */
-  applyTransaction(tx: {
-    add?: RowData[];
-    update?: { rowId: GridId; row: RowData }[];
-    remove?: GridId[];
-  }): RowTransactionResult;
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult;
+  /** Apply row mutations immediately and defer model derivation/rendering into a shared batch. */
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult>;
+  /** Immediately finalize any pending asynchronous row transactions. */
+  flushAsyncTransactions(): void;
 
   setServerSideDataSource(callback: IServerSideDataSource | null): void;
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null): void;

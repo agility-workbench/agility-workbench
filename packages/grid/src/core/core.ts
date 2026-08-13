@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -17,6 +17,7 @@ import {
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  resolvePaginationControlsOptions,
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
@@ -44,6 +45,27 @@ import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
 
+interface AppliedRowTransaction {
+  result: RowTransactionResult;
+  /** Whether the model had no rows immediately before this transaction. */
+  startedEmpty: boolean;
+  /** Input update ids, retained for the targeted repaint path when reevaluation is disabled. */
+  updatedRowIds: GridId[];
+}
+
+interface PendingRowTransactionCall {
+  result: RowTransactionResult;
+  resolve: (result: RowTransactionResult) => void;
+}
+
+const DEFAULT_ASYNC_TRANSACTION_WAIT_MS = 16;
+
+function resolveAsyncTransactionWaitMs(value: number | undefined): number {
+  return value != null && Number.isFinite(value) && value >= 0
+    ? value
+    : DEFAULT_ASYNC_TRANSACTION_WAIT_MS;
+}
+
 type SchemaSource = "auto" | "props" | "server";
 
 interface RangeColumnSnapshot {
@@ -60,6 +82,10 @@ export class GridCore implements IGridCore {
   private rowModel: IRowModel;
   private requestIdCounter: number = 0;
   private firstRefreshSeen: boolean = false;
+  private pendingRowTransactions: AppliedRowTransaction | null = null;
+  private pendingRowTransactionCalls: PendingRowTransactionCall[] = [];
+  private asyncTransactionTimer: ReturnType<typeof setTimeout> | undefined;
+  private destroyed = false;
 
   private paginationEnabled: boolean = false;
   private pageStartIdx: number = 0;
@@ -201,18 +227,21 @@ export class GridCore implements IGridCore {
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
       rowDataMode: options.rowDataMode ?? "auto",
+      asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
       overscanRowCount: options.overscanRowCount ?? 10,
       minResizeWidth: options.minResizeWidth != null && options.minResizeWidth > 0 ? options.minResizeWidth : 75,
       maxColumnWidth: options.maxColumnWidth != null && options.maxColumnWidth > 0 ? options.maxColumnWidth : 420,
       allowExportAsCSV: options.allowExportAsCSV ?? true,
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
+      paginationControls: resolvePaginationControlsOptions(options.paginationControls),
       rowNumbers: isTrue(options.rowNumbers),
       rowHover: options.rowHover ?? true,
       columnHover: isTrue(options.columnHover),
       zebraRows: isTrue(options.zebraRows),
       getRowClass: options.getRowClass,
       getRowStyle: options.getRowStyle,
+      getRowPresentation: options.getRowPresentation,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,
@@ -225,11 +254,22 @@ export class GridCore implements IGridCore {
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
       rowSelection: typeof options.rowSelection === "object" ? true : isTrue(options.rowSelection),
+      rowSelectionMode: typeof options.rowSelection === "object"
+        ? (options.rowSelection.mode ?? "multiple")
+        : "multiple",
       rowSelectionCheckboxes: typeof options.rowSelection === "object"
         && isTrue(options.rowSelection.checkboxes),
       rowSelectionHeaderCheckbox: typeof options.rowSelection === "object"
         && isTrue(options.rowSelection.checkboxes)
+        && options.rowSelection.mode !== "single"
         && (options.rowSelection.headerCheckbox ?? true),
+      rowSelectionCheckboxColumnPinnable: typeof options.rowSelection !== "object"
+        || (options.rowSelection.checkboxColumnPinnable ?? true),
+      rowSelectionCheckboxColumnPinned: typeof options.rowSelection === "object"
+        ? (options.rowSelection.checkboxColumnPinned === undefined
+          ? "left"
+          : options.rowSelection.checkboxColumnPinned)
+        : "left",
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
@@ -354,14 +394,14 @@ export class GridCore implements IGridCore {
     // rows constrained by a filter that no longer existed until the next full model refresh.
     if (filtersDropped) {
       const range = this.pageRangeFor("filter");
-      this.rowModel.applyRequest(this.createRowModelRequest(
+      this.applyRowModelRequest(() => this.createRowModelRequest(
         "filter",
         range,
         this.getInitialServerSideLoadRange(),
       ));
       if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (seededSort || activeComparatorChanged) {
-      this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+      this.applyRowModelRequest(() => this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
@@ -704,36 +744,52 @@ export class GridCore implements IGridCore {
     };
   }
 
+  /**
+   * Single funnel for row-model derivation. An earlier async mutation must finish before a later
+   * model operation allocates its request id or changes the derived view.
+   */
+  private applyRowModelRequest(createRequest: () => IRowModelRequestParams): void {
+    this.flushAsyncTransactions();
+    this.rowModel.applyRequest(createRequest());
+  }
+
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
     this.firstRefreshSeen = false;
     const range = this.resetPageBlocks();
-    this.rowModel.applyRequest(this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
     this.emit("modelUpdated", { reason: "init", step: "all" });
   }
 
   setRowData(rows: RowData[]): void {
-    // Unless asked to replace outright, try to apply the new array as a diff against what is
-    // already here: node identity, edit history and the page all survive that. The row model has
-    // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
-    if (this.options.rowDataMode !== "reset") {
-      const diff = this.rowModel.diffRows?.(rows);
-      if (diff) {
-        this.applyRowDataDiff(diff);
-        return;
+    // Async mutations already changed the node store. This authoritative replacement is therefore
+    // diffed against their latest data and its own full refresh subsumes their pending finalization.
+    const pendingCalls = this.takePendingRowTransactionBatch()?.calls ?? [];
+    try {
+      // Unless asked to replace outright, try to apply the new array as a diff against what is
+      // already here: node identity, edit history and the page all survive that. The row model has
+      // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
+      if (this.options.rowDataMode !== "reset") {
+        const diff = this.rowModel.diffRows?.(rows);
+        if (diff) {
+          this.applyRowDataDiff(diff);
+          return;
+        }
       }
+      // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
+      // exist, so discard the edit history.
+      if (this.history.clear()) this.emitHistoryChanged("clear");
+      this.rowModel.setRows(rows);
+      // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
+      // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
+      // the first sort runs with unresolved comparators and is silently skipped. Client-side only;
+      // comparators are derived from sample values.
+      this.identifyComparatorsFromCurrentRows();
+      const range = this.resetPageBlocks();
+      this.applyRowModelRequest(() => this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+    } finally {
+      for (const call of pendingCalls) call.resolve(call.result);
     }
-    // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
-    // exist, so discard the edit history.
-    if (this.history.clear()) this.emitHistoryChanged("clear");
-    this.rowModel.setRows(rows);
-    // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
-    // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
-    // the first sort runs with unresolved comparators and is silently skipped. Client-side only;
-    // comparators are derived from sample values.
-    this.identifyComparatorsFromCurrentRows();
-    const range = this.resetPageBlocks();
-    this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
   }
 
   /**
@@ -755,7 +811,7 @@ export class GridCore implements IGridCore {
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved; resolve them before the refresh applies any seeded initial sort.
     if (wasEmpty) this.identifyComparatorsFromCurrentRows();
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "refresh",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -773,22 +829,28 @@ export class GridCore implements IGridCore {
     this.columnModel.identifyComparators(nodes);
   }
 
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): RowTransactionResult {
-    if (this.rowModel.getType() !== "clientSide") {
-      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
-      return { added: 0, updated: 0, removed: 0 };
-    }
-
+  /** Mutate client-side row nodes without re-deriving or repainting the displayed view. */
+  private mutateRowTransaction(tx: RowTransaction<RowData>): AppliedRowTransaction {
     const wasEmpty = this.rowModel.getRowCount() === 0;
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
-    if (result.added === 0 && result.updated === 0 && result.removed === 0) return result;
+    return {
+      result,
+      startedEmpty: wasEmpty,
+      updatedRowIds: tx.update?.map(update => update.rowId) ?? [],
+    };
+  }
+
+  /** Re-derive and notify the view after one or more row-node mutations. */
+  private finalizeRowTransactions(applied: AppliedRowTransaction): void {
+    const { result } = applied;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
 
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved and any seeded initial sort would be silently skipped. Resolve them before the
     // refresh below, matching setRowData. Only on the first rows — this walks every node.
-    if (wasEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
+    if (applied.startedEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
 
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
@@ -796,7 +858,7 @@ export class GridCore implements IGridCore {
     const reevaluate = structural || this.options.reevaluateOnEdit;
 
     if (reevaluate) {
-      this.rowModel.applyRequest(this.createRowModelRequest(
+      this.applyRowModelRequest(() => this.createRowModelRequest(
         "transaction",
         { start: this.pageStartIdx, end: this.pageEndIdx },
         this.getInitialServerSideLoadRange(),
@@ -804,18 +866,102 @@ export class GridCore implements IGridCore {
       // Removing rows can shrink the view past the page the user is on, stranding them on a blank
       // page. The filter/quick-filter/group paths already clamp for the same reason.
       this.clampPageToLastPage();
-      this.emit("rowsChanged", { reason: "transaction" });
-      this.emit("paginationChanged", this.getPaginationInfo());
-    } else if (tx.update?.length) {
+    } else if (applied.updatedRowIds.length > 0) {
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
       const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
       this.emit("cellsChanged", {
         reason: "data",
-        rowIds: tx.update.map(u => u.rowId),
+        rowIds: applied.updatedRowIds,
         colIds: pair.colIds,
         colInstanceIds: pair.colInstanceIds,
       });
     }
+  }
+
+  private accumulateRowTransaction(applied: AppliedRowTransaction): void {
+    const pending = this.pendingRowTransactions;
+    if (!pending) {
+      this.pendingRowTransactions = {
+        result: { ...applied.result },
+        startedEmpty: applied.startedEmpty,
+        updatedRowIds: [...new Set(applied.updatedRowIds)],
+      };
+      return;
+    }
+    pending.result.added += applied.result.added;
+    pending.result.updated += applied.result.updated;
+    pending.result.removed += applied.result.removed;
+    const updated = new Set(pending.updatedRowIds);
+    for (const rowId of applied.updatedRowIds) updated.add(rowId);
+    pending.updatedRowIds = [...updated];
+  }
+
+  private scheduleAsyncTransactionFlush(): void {
+    if (this.asyncTransactionTimer !== undefined) return;
+    this.asyncTransactionTimer = setTimeout(
+      () => this.flushAsyncTransactions(),
+      this.options.asyncTransactionWaitMs,
+    );
+  }
+
+  private takePendingRowTransactionBatch(): {
+    applied: AppliedRowTransaction;
+    calls: PendingRowTransactionCall[];
+  } | null {
+    if (this.asyncTransactionTimer !== undefined) {
+      clearTimeout(this.asyncTransactionTimer);
+      this.asyncTransactionTimer = undefined;
+    }
+    const applied = this.pendingRowTransactions;
+    const calls = this.pendingRowTransactionCalls;
+    this.pendingRowTransactions = null;
+    this.pendingRowTransactionCalls = [];
+    return applied ? { applied, calls } : null;
+  }
+
+  /** Finalize every queued mutation in one model/render pass. */
+  flushAsyncTransactions(): void {
+    const batch = this.takePendingRowTransactionBatch();
+    if (!batch) return;
+
+    // Clear pending state before emitting: a handler may enqueue a new transaction, which must form
+    // a new batch rather than being folded into the batch currently being finalized.
+    if (!this.destroyed) this.finalizeRowTransactions(batch.applied);
+    for (const call of batch.calls) call.resolve(call.result);
+  }
+
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult> {
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("applyTransactionAsync is only supported on the 'clientSide' row model; the server owns its data.");
+      return Promise.resolve({ added: 0, updated: 0, removed: 0 });
+    }
+
+    const applied = this.mutateRowTransaction(tx);
+    const { result } = applied;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) {
+      return Promise.resolve(result);
+    }
+    this.accumulateRowTransaction(applied);
+    this.scheduleAsyncTransactionFlush();
+    return new Promise(resolve => {
+      this.pendingRowTransactionCalls.push({ result, resolve });
+    });
+  }
+
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
+      return { added: 0, updated: 0, removed: 0 };
+    }
+
+    const applied = this.mutateRowTransaction(tx);
+    if (this.pendingRowTransactions) {
+      this.accumulateRowTransaction(applied);
+      this.flushAsyncTransactions();
+    } else {
+      this.finalizeRowTransactions(applied);
+    }
+    const { result } = applied;
     return result;
   }
 
@@ -848,7 +994,7 @@ export class GridCore implements IGridCore {
 
   private applyFilters(changedColIds: string[]) {
     const range = this.pageRangeFor("filter");
-    this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
+    this.applyRowModelRequest(() => this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
     if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
@@ -876,7 +1022,7 @@ export class GridCore implements IGridCore {
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
     const range = this.pageRangeFor("quickFilter");
-    this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
     this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
@@ -909,7 +1055,7 @@ export class GridCore implements IGridCore {
   // never changes the row count, so the keep-page path needs no clamp.
   private applySortRequest(changedColIds: string[]): void {
     const range = this.pageRangeFor("sort");
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
@@ -940,7 +1086,7 @@ export class GridCore implements IGridCore {
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "group" });
-    this.rowModel.applyRequest(this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
     // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
     // live on the group nodes built during applyRequest).
     const changedColIds = this.autosizeColumns();
@@ -963,7 +1109,7 @@ export class GridCore implements IGridCore {
 
   private applyGroupExpansion(groupExpansion: NonNullable<IRowModelRequestParams["groupExpansion"]>): void {
     if (this.groupColumns.length === 0 && !this.options.treeData) return;
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "group",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1007,7 +1153,7 @@ export class GridCore implements IGridCore {
     if ((this.groupColumns.length === 0 && !this.options.treeData)
       || this.rowModel.getType() !== "clientSide") return;
 
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "sort",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1033,6 +1179,49 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+  }
+
+  setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void {
+    const rangeSnapshot = this.captureRangeColumnSnapshot();
+    const objectOptions = typeof rowSelection === "object" ? rowSelection : undefined;
+    const nextEnabled = objectOptions ? true : isTrue(rowSelection);
+    const nextMode = objectOptions?.mode ?? "multiple";
+    const nextCheckboxes = !!objectOptions && isTrue(objectOptions.checkboxes);
+    const nextHeaderCheckbox = nextCheckboxes
+      && nextMode !== "single"
+      && (objectOptions?.headerCheckbox ?? true);
+    const nextPinnable = objectOptions?.checkboxColumnPinnable ?? true;
+    const nextPinned = objectOptions?.checkboxColumnPinned === undefined
+      ? "left"
+      : objectOptions.checkboxColumnPinned;
+
+    const unchanged = this.options.rowSelection === nextEnabled
+      && this.options.rowSelectionMode === nextMode
+      && this.options.rowSelectionCheckboxes === nextCheckboxes
+      && this.options.rowSelectionHeaderCheckbox === nextHeaderCheckbox
+      && this.options.rowSelectionCheckboxColumnPinnable === nextPinnable
+      && this.options.rowSelectionCheckboxColumnPinned === nextPinned;
+    if (unchanged) return;
+
+    this.options.rowSelection = nextEnabled;
+    this.options.rowSelectionMode = nextMode;
+    this.options.rowSelectionCheckboxes = nextCheckboxes;
+    this.options.rowSelectionHeaderCheckbox = nextHeaderCheckbox;
+    this.options.rowSelectionCheckboxColumnPinnable = nextPinnable;
+    this.options.rowSelectionCheckboxColumnPinned = nextPinned;
+
+    const selectedIds = [...this.selectionModel.getSelectedRowIds()];
+    if (!nextEnabled && selectedIds.length > 0) {
+      this.selectionModel.clearRows();
+      this.emitSelectionChanged("model");
+    } else if (nextMode === "single" && selectedIds.length > 1) {
+      this.selectionModel.setSelectedRowIds(selectedIds.slice(0, 1), "set");
+      this.emitSelectionChanged("model");
+    }
+
+    this.columnModel.updateSelectionCheckboxColumn();
+    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, false, false);
+    this.emit("columnsChanged", { reason: "defs" });
   }
 
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
@@ -1147,7 +1336,9 @@ export class GridCore implements IGridCore {
       this.options.columnSelection && !options.columnSelection
       && this.selectionModel.getSelectedColumnIds().size > 0;
 
-    Object.assign(this.options, options);
+    Object.assign(this.options, options, {
+      asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
+    });
 
     if (cellSelectionBecameDisabled || columnSelectionBecameDisabled) {
       this.selectionModel.clearAll();
@@ -1285,7 +1476,7 @@ export class GridCore implements IGridCore {
     if (currentPageIndex <= lastPageIndex) return;
     this.pageStartIdx = lastPageIndex * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "pagination",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1298,7 +1489,7 @@ export class GridCore implements IGridCore {
     this.pageStartIdx = pageIdx * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     const loadRange = this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest(this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
+    this.applyRowModelRequest(() => this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
   }
 
   refreshRows(reason: RowDataChangeReason = "refresh", range: { start: number; end: number } = { start: this.pageStartIdx, end: this.pageEndIdx }) {
@@ -1308,7 +1499,7 @@ export class GridCore implements IGridCore {
     const loadRange = reason === "viewport"
       ? this.getServerSideBlockRange(requestRange)
       : this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest(this.createRowModelRequest(reason, requestRange, loadRange));
+    this.applyRowModelRequest(() => this.createRowModelRequest(reason, requestRange, loadRange));
   }
 
   private getInitialServerSideLoadRange(): { start: number; end: number } | undefined {
@@ -1402,7 +1593,7 @@ export class GridCore implements IGridCore {
       this.aggregateScope = normalizedScope;
       this.rowModel.setAggregateScope(normalizedScope);
     }
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       reason,
       { start: this.pageStartIdx, end: this.pageEndIdx },
       undefined,
@@ -1448,6 +1639,19 @@ export class GridCore implements IGridCore {
     return ids;
   }
 
+  // Ids of selectable rows in the current rendered page/view. Kept here (rather than relying on
+  // SelectionModel.selectAllRows) so single-selection select-all can safely choose just one row.
+  private getPageSelectableRowIds(): string[] {
+    const ids: string[] = [];
+    const viewCount = this.rowModel.getViewCount();
+    for (let i = 0; i < viewCount; i++) {
+      if (!this.isViewRowSelectable(i)) continue;
+      const id = this.getRowIdAtViewIndex(i);
+      if (id) ids.push(id);
+    }
+    return ids;
+  }
+
   // Whether a row node renders as a full-width row: its content spans the whole body width instead
   // of per-column cells. True for group rows in "groupRows" display mode, or any node the
   // isFullWidthRow option opts in. Single source of truth for the renderer.
@@ -1458,7 +1662,25 @@ export class GridCore implements IGridCore {
   }
 
   getViewIndexForRowId(rowId: GridId): number | null {
-    return this.rowModel.getRowNode(rowId)?.viewIndex ?? null;
+    const node = this.rowModel.getRowNode(rowId);
+    if (!node) return null;
+
+    // `IRowNode.viewIndex` is not one coordinate space across row models: flat CSRM and SSRM stamp
+    // page-local slots, while grouped/tree CSRM stamps an index into the full flattened view before
+    // pagination. Nodes that leave the current page/filter can also retain an old stamp. Callers of
+    // this method all address the rendered page, so try both possible interpretations and trust one
+    // only when the current page slot resolves back to the same row. This stays O(1) on repaint and
+    // editing paths while making off-page/filtered/collapsed rows reliably return null.
+    const viewCount = this.rowModel.getViewCount();
+    const pageStart = this.getPageStartIdx();
+    const candidates = pageStart === 0
+      ? [node.viewIndex]
+      : [node.viewIndex, node.viewIndex - pageStart];
+    for (const viewIndex of candidates) {
+      if (viewIndex < 0 || viewIndex >= viewCount) continue;
+      if (this.rowModel.getRowNodeAtViewIndex(viewIndex)?.id === rowId) return viewIndex;
+    }
+    return null;
   }
 
   /**
@@ -1923,11 +2145,13 @@ export class GridCore implements IGridCore {
 
   /** Select every selectable data row in the select-all scope (filtered set or page). */
   selectAllRows(): void {
-    if (this.options.selectAllScope === "page") {
-      this.selectionModel.selectAllRows();
-    } else {
-      this.selectionModel.setSelectedRowIds(this.getFilteredSelectableRowIds(), "set");
-    }
+    const ids = this.options.selectAllScope === "page"
+      ? this.getPageSelectableRowIds()
+      : this.getFilteredSelectableRowIds();
+    this.selectionModel.setSelectedRowIds(
+      this.options.rowSelectionMode === "single" ? ids.slice(0, 1) : ids,
+      "set",
+    );
     this.emitSelectionChanged("api");
   }
 
@@ -1942,7 +2166,14 @@ export class GridCore implements IGridCore {
         const node = this.rowModel.getRowNode(id);
         return node != null && this.isNodeSelectable(node);
       });
-    this.selectionModel.setSelectedRowIds(validated, mode);
+    if (this.options.rowSelectionMode === "single" && mode !== "remove") {
+      const first = validated[0];
+      // An empty additive request is a no-op; an empty set request still clears the selection.
+      if (first !== undefined) this.selectionModel.setSelectedRowIds([first], "set");
+      else if (mode === "set") this.selectionModel.setSelectedRowIds([], "set");
+    } else {
+      this.selectionModel.setSelectedRowIds(validated, mode);
+    }
     this.emitSelectionChanged("api");
   }
 
@@ -2271,8 +2502,14 @@ export class GridCore implements IGridCore {
         break;
       }
       case "rowSelectSet":
-        this.selectionModel.toggleRow(action.viewIdx, action.mode);
-        this.emitSelectionChanged("mouse");
+        const checkboxFocus = action.preserveFocus ? this.selectionModel.getActiveCell() : null;
+        this.selectionModel.toggleRow(
+          action.viewIdx,
+          this.options.rowSelectionMode === "single" ? "replace" : action.mode,
+        );
+        if (checkboxFocus) this.selectionModel.focusCheckboxCell(checkboxFocus);
+        this.emitSelectionChanged(action.reason ?? "mouse");
+        if (checkboxFocus) this.emitFocusChanged(checkboxFocus, action.reason ?? "mouse");
         break;
       case "rowSelectAll":
         if (action.selected) this.selectAllRows();
@@ -2549,7 +2786,7 @@ export class GridCore implements IGridCore {
 
     // "filter" re-runs both filter and sort; "sort" re-runs sort only.
     const reason = inFilter ? "filter" : "sort";
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       reason,
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -2782,7 +3019,10 @@ export class GridCore implements IGridCore {
   }
 
   destroy(): void {
-    // Clean up resources if needed
+    this.destroyed = true;
+    // Row mutations happen when applyTransactionAsync is called, but a destroyed grid must not emit
+    // a delayed model/render notification. Settle callers with their already-known mutation result.
+    this.flushAsyncTransactions();
   }
 
 }

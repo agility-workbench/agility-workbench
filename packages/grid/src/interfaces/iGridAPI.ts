@@ -13,7 +13,7 @@ import {
 import { GridViewFilterState, GridViewState } from "./gridView";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
-import { RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
+import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
 import type { Column } from "../column/column";
 
@@ -148,7 +148,14 @@ export interface IGridAPI {
 
   /** Apply a transaction to the row data (client-side row model only). Returns what was actually
    * applied; all-zero counts on the server-side row model or when nothing matched. */
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData }[]; remove?: GridId[] }): RowTransactionResult;
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult;
+  /**
+   * Mutate client-side rows immediately, then defer filter/sort/group/aggregate derivation and
+   * rendering so nearby calls share one pass. Resolves after that pass with this call's own counts.
+   */
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult>;
+  /** Immediately finalize any pending asynchronous transactions. No-op when none are pending. */
+  flushAsyncTransactions(): void;
 
   /** Set the quick-filter (global search) text. Client-side row model only. */
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
@@ -297,6 +304,12 @@ export interface IGridAPI {
   showTooltip(cell: CellRef): void;
   /** Hide any visible tooltip. */
   hideTooltip(): void;
+
+  /**
+   * Re-evaluate `getRowPresentation` for rendered body and pinned rows. Use after external state
+   * captured by the callback changes; row-data transactions already repaint affected rows.
+   */
+  refreshRowPresentation(): void;
 
   /* ----- ActionFrame ----- */
   /** Open the persistent ActionFrame (frame + form popover) on a body cell. Closes any open editor
