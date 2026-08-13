@@ -1,5 +1,5 @@
 import { FilterItem, FilterModel } from "../interfaces/filter";
-import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
@@ -44,6 +44,14 @@ import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfac
 import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
+
+interface AppliedRowTransaction {
+  result: RowTransactionResult;
+  /** Whether the model had no rows immediately before this transaction. */
+  startedEmpty: boolean;
+  /** Input update ids, retained for the targeted repaint path when reevaluation is disabled. */
+  updatedRowIds: GridId[];
+}
 
 type SchemaSource = "auto" | "props" | "server";
 
@@ -786,22 +794,28 @@ export class GridCore implements IGridCore {
     this.columnModel.identifyComparators(nodes);
   }
 
-  applyTransaction(tx: { add?: RowData[]; update?: { rowId: GridId; row: RowData; }[]; remove?: GridId[]; }): RowTransactionResult {
-    if (this.rowModel.getType() !== "clientSide") {
-      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
-      return { added: 0, updated: 0, removed: 0 };
-    }
-
+  /** Mutate client-side row nodes without re-deriving or repainting the displayed view. */
+  private mutateRowTransaction(tx: RowTransaction<RowData>): AppliedRowTransaction {
     const wasEmpty = this.rowModel.getRowCount() === 0;
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
-    if (result.added === 0 && result.updated === 0 && result.removed === 0) return result;
+    return {
+      result,
+      startedEmpty: wasEmpty,
+      updatedRowIds: tx.update?.map(update => update.rowId) ?? [],
+    };
+  }
+
+  /** Re-derive and notify the view after one or more row-node mutations. */
+  private finalizeRowTransactions(applied: AppliedRowTransaction): void {
+    const { result } = applied;
+    if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
 
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved and any seeded initial sort would be silently skipped. Resolve them before the
     // refresh below, matching setRowData. Only on the first rows — this walks every node.
-    if (wasEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
+    if (applied.startedEmpty && result.added > 0) this.identifyComparatorsFromCurrentRows();
 
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
@@ -817,16 +831,27 @@ export class GridCore implements IGridCore {
       // Removing rows can shrink the view past the page the user is on, stranding them on a blank
       // page. The filter/quick-filter/group paths already clamp for the same reason.
       this.clampPageToLastPage();
-    } else if (tx.update?.length) {
+    } else if (applied.updatedRowIds.length > 0) {
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
       const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
       this.emit("cellsChanged", {
         reason: "data",
-        rowIds: tx.update.map(u => u.rowId),
+        rowIds: applied.updatedRowIds,
         colIds: pair.colIds,
         colInstanceIds: pair.colInstanceIds,
       });
     }
+  }
+
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
+    if (this.rowModel.getType() !== "clientSide") {
+      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
+      return { added: 0, updated: 0, removed: 0 };
+    }
+
+    const applied = this.mutateRowTransaction(tx);
+    this.finalizeRowTransactions(applied);
+    const { result } = applied;
     return result;
   }
 
