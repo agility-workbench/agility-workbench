@@ -158,6 +158,7 @@ export class GridCore implements IGridCore {
       getRowIdAtViewIndex: (viewIdx) => this.getRowIdAtViewIndex(viewIdx),
       getPageStartIdx: () => this.getPageStartIdx(),
       isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
+      isRowNumberNavigable: () => this.options.rowSelection,
       getPinnedRowCount: (position) => this.displayedPinnedRows[position].length,
       getPinnedRowNode: (position, rowIndex) =>
         this.displayedPinnedRows[position][rowIndex] ?? null,
@@ -1219,6 +1220,11 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
     }
 
+    if (this.selectionModel.reconcileActiveColumn()) {
+      this.emitSelectionChanged("model");
+      this.emitFocusChanged(this.selectionModel.getActiveCell(), "api");
+    }
+
     this.columnModel.updateSelectionCheckboxColumn();
     this.reconcileSelectionAfterColumnDefs(rangeSnapshot, false, false);
     this.emit("columnsChanged", { reason: "defs" });
@@ -1792,6 +1798,32 @@ export class GridCore implements IGridCore {
     return this.columnModel.getLeaves()[this.headerFocusColIdx] ?? null;
   }
 
+  /** Utility headers are keyboard stops only when they expose an enabled action. Data column
+   * headers remain reachable regardless of whether they currently sort or show a menu. */
+  private isHeaderColumnNavigable(col: Column | undefined): boolean {
+    if (!col) return false;
+    if (col.isRowNumberColumn()) {
+      return this.options.rowSelection && this.options.selectAllRowsOnHeaderClick;
+    }
+    if (col.isSelectionCheckboxColumn()) return this.options.rowSelectionHeaderCheckbox;
+    return true;
+  }
+
+  /** First column the header keyboard cursor may occupy, or null when there is no such column. */
+  getFirstHeaderFocusColIdx(): number | null {
+    const idx = this.columnModel.getLeaves().findIndex(col => this.isHeaderColumnNavigable(col));
+    return idx < 0 ? null : idx;
+  }
+
+  private closestHeaderFocusColIdx(preferred: number): number | null {
+    const candidates = this.columnModel.getLeaves()
+      .map((col, idx) => this.isHeaderColumnNavigable(col) ? idx : -1)
+      .filter(idx => idx >= 0);
+    if (candidates.length === 0) return null;
+    return candidates.reduce((best, idx) =>
+      Math.abs(idx - preferred) < Math.abs(best - preferred) ? idx : best);
+  }
+
   /**
    * Put the keyboard cursor on a header cell, or clear it with `null`. Entering the header clears the
    * *cell* selection — however it was entered, `"mouse"` included — or Ctrl+C would copy a range the
@@ -1799,6 +1831,9 @@ export class GridCore implements IGridCore {
    */
   setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" | "mouse" = "keyboard"): void {
     const leaves = this.columnModel.getLeaves();
+    // An inert utility header is not a cursor target. Treat attempts to focus it as a no-op so a
+    // pointer click on decorative row numbers cannot dislodge an existing keyboard position.
+    if (colIdx != null && !this.isHeaderColumnNavigable(leaves[colIdx])) return;
     const next = colIdx == null ? null : (colIdx >= 0 && colIdx < leaves.length ? colIdx : null);
     if (next === this.headerFocusColIdx) return;
     this.headerFocusColIdx = next;
@@ -1831,15 +1866,20 @@ export class GridCore implements IGridCore {
       if (!first || first.rowPinned || active.row !== first.row) return false;
       if (this.getDisplayedPinnedRowCount("top") > 0) return false;
     }
-    this.setHeaderFocus(active.colIdx, "keyboard");
+    const target = this.closestHeaderFocusColIdx(active.colIdx);
+    if (target == null) return false;
+    this.setHeaderFocus(target, "keyboard");
     return true;
   }
 
   /** Step the header cursor. `down` hands the cursor back to the body in the same column. */
   navigateHeader(dir: "left" | "right" | "down" | "home" | "end"): void {
     const leaves = this.columnModel.getLeaves();
-    if (leaves.length === 0) return;
-    const from = this.headerFocusColIdx ?? 0;
+    const stops = leaves
+      .map((col, idx) => this.isHeaderColumnNavigable(col) ? idx : -1)
+      .filter(idx => idx >= 0);
+    if (stops.length === 0) return;
+    const from = this.headerFocusColIdx ?? stops[0];
     if (dir === "down") {
       // Down goes to the row directly below the header on screen — the pinned-top band when one is
       // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
@@ -1849,12 +1889,12 @@ export class GridCore implements IGridCore {
         : this.selectionModel.firstRowPosition();
       if (!first) return;
 
-      // The row-number header is keyboard-reachable (Enter may toggle select-all), but its body
-      // cells deliberately are not. Hand navigation to the first body column that can hold the
-      // cursor instead of clearing the header and then failing to create an active cell.
-      const targetColIdx = leaves[from]?.isRowNumberColumn()
-        ? leaves.findIndex(col => !col.isRowNumberColumn())
-        : from;
+      let targetColIdx = from;
+      // Pinned-band row-number slots are blank and cannot select a body row. Preserve the promise
+      // that ArrowDown reaches the next on-screen row by moving to its first real data column.
+      if (first.rowPinned && leaves[from]?.isRowNumberColumn()) {
+        targetColIdx = leaves.findIndex(col => !col.isLeadingUtilityColumn());
+      }
       if (targetColIdx < 0
         || !this.selectionModel.selectSingleCell(first.row, targetColIdx, first.rowPinned)) return;
 
@@ -1866,12 +1906,13 @@ export class GridCore implements IGridCore {
       this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
       return;
     }
-    const next = dir === "left" ? from - 1
-      : dir === "right" ? from + 1
-        : dir === "home" ? 0
-          : leaves.length - 1;
+    const stopIdx = Math.max(0, stops.indexOf(from));
+    const next = dir === "left" ? stops[Math.max(0, stopIdx - 1)]
+      : dir === "right" ? stops[Math.min(stops.length - 1, stopIdx + 1)]
+        : dir === "home" ? stops[0]
+          : stops[stops.length - 1];
     // Clamp rather than wrap: the header is a row, and arrowing off the end of a row does nothing.
-    this.setHeaderFocus(Math.max(0, Math.min(leaves.length - 1, next)));
+    this.setHeaderFocus(next);
   }
 
   setDisplayedPinnedRows(
@@ -2208,9 +2249,9 @@ export class GridCore implements IGridCore {
     // change, because this runs after the new leaves are in place; doing it earlier compares against
     // the old column list and silently does nothing.
     if (this.headerFocusColIdx == null) return;
-    const leafCount = this.columnModel.getLeaves().length;
-    if (leafCount === 0) this.setHeaderFocus(null, "api");
-    else if (this.headerFocusColIdx >= leafCount) this.setHeaderFocus(leafCount - 1, "api");
+    const next = this.closestHeaderFocusColIdx(this.headerFocusColIdx);
+    if (next == null) this.setHeaderFocus(null, "api");
+    else if (next !== this.headerFocusColIdx) this.setHeaderFocus(next, "api");
   }
 
   /** Clamp the active range/anchor to the current view bounds (called after view recompute). */
@@ -2511,14 +2552,14 @@ export class GridCore implements IGridCore {
         break;
       }
       case "rowSelectSet":
-        const checkboxFocus = action.preserveFocus ? this.selectionModel.getActiveCell() : null;
+        const utilityFocus = action.preserveFocus ? this.selectionModel.getActiveCell() : null;
         this.selectionModel.toggleRow(
           action.viewIdx,
           this.options.rowSelectionMode === "single" ? "replace" : action.mode,
         );
-        if (checkboxFocus) this.selectionModel.focusCheckboxCell(checkboxFocus);
+        if (utilityFocus) this.selectionModel.focusUtilityCell(utilityFocus);
         this.emitSelectionChanged(action.reason ?? "mouse");
-        if (checkboxFocus) this.emitFocusChanged(checkboxFocus, action.reason ?? "mouse");
+        if (utilityFocus) this.emitFocusChanged(utilityFocus, action.reason ?? "mouse");
         break;
       case "rowSelectAll":
         if (action.selected) this.selectAllRows();

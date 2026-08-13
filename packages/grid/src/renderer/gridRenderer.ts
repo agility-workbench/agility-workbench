@@ -1110,8 +1110,9 @@ export class GridRenderer {
    */
   private _onRootFocus() {
     if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;
-    if (this.core.getColumnModel().getLeaves().length === 0) return;
-    this.core.setHeaderFocus(0, "keyboard");
+    const first = this.core.getFirstHeaderFocusColIdx();
+    if (first == null) return;
+    this.core.setHeaderFocus(first, "keyboard");
   }
 
   /** Announce the sort model in reading order (primary first). */

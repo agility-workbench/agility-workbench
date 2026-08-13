@@ -122,6 +122,7 @@ export class SelectionRenderer {
         // optional active-cell outline, this is always painted so keyboard navigation remains
         // visible under the default highlightActiveCell=false setting.
         const checkboxFocused = isActive && !!leafCol?.isSelectionCheckboxColumn();
+        const rowNumberFocused = isActive && !!leafCol?.isRowNumberColumn();
 
         const cls = cell.classList;
         // ARIA mirrors the paint: `selected` is true for a cell inside the range, in a
@@ -136,6 +137,7 @@ export class SelectionRenderer {
         cls.toggle("selected-right", selected && isRight);
         cls.toggle("pte-active-cell", isActive && highlight);
         cls.toggle("pte-checkbox-cell-focused", checkboxFocused);
+        cls.toggle("pte-row-number-cell-focused", rowNumberFocused);
       }
     };
 
@@ -408,17 +410,20 @@ export class SelectionRenderer {
       }
     }
 
-    // Shift-based range extension only applies when range selection is enabled; otherwise Shift is
-    // ignored and navigation collapses to a single moving cell.
-    const extend = e.shiftKey && this.params.core.options.rangeSelection;
-
-    // A focused selection-checkbox cell is an interactive keyboard control. Enter and Space use
-    // the same additive row toggle as a pointer click, while keeping the cursor in the cell so the
-    // user can continue vertically and select more rows. Focus alone never checks the box.
     const active = this.params.core.getActiveCell();
     const activeColumn = active
       ? this.params.core.getColumnModel().getLeaves()[active.colIdx]
       : undefined;
+
+    // Shift extends a data-cell range, but utility cells are cursor/row-selection controls rather
+    // than range endpoints. From one of those cells Shift+Arrow remains ordinary navigation.
+    const extend = e.shiftKey
+      && this.params.core.options.rangeSelection
+      && !activeColumn?.isLeadingUtilityColumn();
+
+    // A focused selection-checkbox cell is an interactive keyboard control. Enter and Space use
+    // the same additive row toggle as a pointer click, while keeping the cursor in the cell so the
+    // user can continue vertically and select more rows. Focus alone never checks the box.
     if (
       active
       && !active.rowPinned
@@ -430,6 +435,27 @@ export class SelectionRenderer {
         type: "rowSelectSet",
         viewIdx: active.row,
         mode: "toggle",
+        preserveFocus: true,
+        reason: "keyboard",
+      });
+      return;
+    }
+
+    // Row-number cells mirror their pointer gesture: plain activation replaces, Ctrl/Cmd toggles,
+    // and Shift extends from the row anchor. The cursor is independent of the selected rows and
+    // remains in the utility cell so vertical keyboard navigation can continue.
+    if (
+      active
+      && !active.rowPinned
+      && this.params.core.options.rowSelection
+      && activeColumn?.isRowNumberColumn()
+      && (e.key === "Enter" || e.key === " " || e.code === "Space")
+    ) {
+      e.preventDefault();
+      this.params.core.dispatch({
+        type: "rowSelectSet",
+        viewIdx: active.row,
+        mode: e.shiftKey ? "range" : ctrl ? "toggle" : "replace",
         preserveFocus: true,
         reason: "keyboard",
       });
@@ -628,17 +654,27 @@ export class SelectionRenderer {
     }
 
     const rowNumberCell = (e.target as HTMLElement | null)?.closest(".pte-row-number-cell") as HTMLDivElement | null;
-    if (rowNumberCell && this.params.root.contains(rowNumberCell) && this.params.core.options.rowSelection) {
+    if (rowNumberCell && this.params.root.contains(rowNumberCell)) {
+      // With row selection disabled the gutter is display-only: do not reinterpret its click as an
+      // empty-body click and clear an unrelated cell/range selection.
+      if (!this.params.core.options.rowSelection) return;
       const rowEl = rowNumberCell.closest(".pte-row") as HTMLDivElement | null;
       const viewIdx = rowEl ? Number(rowEl.getAttribute("data-view-idx")) : NaN;
-      if (!Number.isFinite(viewIdx)) return;
+      const colIdx = Number(rowNumberCell.dataset.colIdx);
+      if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx) || rowEl?.dataset.rowPinned) return;
       e.preventDefault();
       const mode: "replace" | "toggle" | "range" = e.shiftKey
         ? "range"
         : (e.ctrlKey || e.metaKey)
           ? "toggle"
           : "replace";
-      this.params.core.dispatch({ type: "rowSelectSet", viewIdx, mode });
+      this.params.core.dispatch({ type: "focusSet", viewIdx, colIdx, reason: "mouse" });
+      const focused = this.params.core.getActiveCell()?.row === viewIdx
+        && this.params.core.getActiveCell()?.colIdx === colIdx;
+      if (focused) {
+        this.params.core.dispatch({ type: "rowSelectSet", viewIdx, mode, preserveFocus: true });
+        this.params.root.focus();
+      }
       return;
     }
 
