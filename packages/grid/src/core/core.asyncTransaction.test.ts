@@ -89,6 +89,27 @@ describe("GridCore async row transactions", () => {
     expect(rowsChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("coalesces 200 high-frequency updates into one derived-view notification", async () => {
+    const core = grid();
+    const rowsChanged = vi.fn();
+    core.on("rowsChanged", rowsChanged);
+
+    const pending = Array.from({ length: 200 }, (_, qty) => core.applyTransactionAsync({
+      update: [{ rowId: "1", row: { id: "1", name: "alice", qty } }],
+    }));
+
+    expect(core.getCellValue("1", "qty")).toBe(199);
+    expect(rowsChanged).not.toHaveBeenCalled();
+
+    core.flushAsyncTransactions();
+    const results = await Promise.all(pending);
+
+    expect(results).toHaveLength(200);
+    expect(results.every(result => result.updated === 1)).toBe(true);
+    expect(rowsChanged).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("honors a configured batch window and normalizes invalid values", async () => {
     const core = grid({ asyncTransactionWaitMs: 5 });
     const rowsChanged = vi.fn();
