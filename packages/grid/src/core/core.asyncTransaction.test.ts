@@ -3,6 +3,8 @@ import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
 import { GridOptions } from "../interfaces/gridOptions";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
+import { GridAPI } from "../api/api";
+import { FilterType } from "../interfaces/filter";
 
 const measurer: ITextMeasurer = { measure: (text: string) => text.length * 7 };
 
@@ -149,6 +151,56 @@ describe("GridCore async row transactions", () => {
     expect(rowsChanged).toHaveBeenCalledTimes(1);
     vi.runAllTimers();
     expect(rowsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["auto", "reset"] as const)(
+    "lets rowDataMode %s subsume a pending transaction refresh",
+    async (rowDataMode) => {
+      const core = grid({ rowDataMode });
+      const reasons: string[] = [];
+      core.on("rowsChanged", event => reasons.push(event.reason));
+      const pending = core.applyTransactionAsync({
+        update: [{ rowId: "1", row: { id: "1", name: "alice", qty: 10 } }],
+      });
+
+      core.setRowData([
+        { id: "1", name: "alice", qty: 30 },
+        { id: "2", name: "bob", qty: 7 },
+      ]);
+
+      await expect(pending).resolves.toEqual({ added: 0, updated: 1, removed: 0 });
+      expect(core.getCellValue("1", "qty")).toBe(30);
+      expect(reasons).toEqual(["refresh"]);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it("flushes pending work before a columnDefs change drops an active filter", async () => {
+    const core = grid();
+    const api = new GridAPI(core);
+    api.setFilterModel([
+      { colId: "qty", filters: [{ type: FilterType.GT, values: [5] }] },
+    ]);
+    const rowReasons: string[] = [];
+    const filterChanged = vi.fn();
+    core.on("rowsChanged", event => rowReasons.push(event.reason));
+    core.on("filterChanged", filterChanged);
+    const pending = core.applyTransactionAsync({
+      update: [{ rowId: "1", row: { id: "1", name: "alice", qty: 10 } }],
+    });
+
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name", type: ColumnType.STRING },
+    ]);
+
+    await expect(pending).resolves.toEqual({ added: 0, updated: 1, removed: 0 });
+    expect(rowReasons).toEqual(["transaction", "filter"]);
+    expect(filterChanged).toHaveBeenCalledTimes(1);
+    expect(filterChanged).toHaveBeenCalledWith(expect.objectContaining({
+      source: "columns",
+      changedColIds: ["qty"],
+    }));
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("does not schedule work for a no-op transaction", async () => {

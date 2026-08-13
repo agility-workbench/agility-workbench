@@ -386,14 +386,14 @@ export class GridCore implements IGridCore {
     // rows constrained by a filter that no longer existed until the next full model refresh.
     if (filtersDropped) {
       const range = this.pageRangeFor("filter");
-      this.rowModel.applyRequest(this.createRowModelRequest(
+      this.applyRowModelRequest(() => this.createRowModelRequest(
         "filter",
         range,
         this.getInitialServerSideLoadRange(),
       ));
       if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (seededSort || activeComparatorChanged) {
-      this.rowModel.applyRequest(this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+      this.applyRowModelRequest(() => this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
     }
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
@@ -736,36 +736,52 @@ export class GridCore implements IGridCore {
     };
   }
 
+  /**
+   * Single funnel for row-model derivation. An earlier async mutation must finish before a later
+   * model operation allocates its request id or changes the derived view.
+   */
+  private applyRowModelRequest(createRequest: () => IRowModelRequestParams): void {
+    this.flushAsyncTransactions();
+    this.rowModel.applyRequest(createRequest());
+  }
+
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
     this.firstRefreshSeen = false;
     const range = this.resetPageBlocks();
-    this.rowModel.applyRequest(this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
     this.emit("modelUpdated", { reason: "init", step: "all" });
   }
 
   setRowData(rows: RowData[]): void {
-    // Unless asked to replace outright, try to apply the new array as a diff against what is
-    // already here: node identity, edit history and the page all survive that. The row model has
-    // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
-    if (this.options.rowDataMode !== "reset") {
-      const diff = this.rowModel.diffRows?.(rows);
-      if (diff) {
-        this.applyRowDataDiff(diff);
-        return;
+    // Async mutations already changed the node store. This authoritative replacement is therefore
+    // diffed against their latest data and its own full refresh subsumes their pending finalization.
+    const pendingCalls = this.takePendingRowTransactionBatch()?.calls ?? [];
+    try {
+      // Unless asked to replace outright, try to apply the new array as a diff against what is
+      // already here: node identity, edit history and the page all survive that. The row model has
+      // the final say — it returns null when it cannot diff (no stable id, tree data, server-side).
+      if (this.options.rowDataMode !== "reset") {
+        const diff = this.rowModel.diffRows?.(rows);
+        if (diff) {
+          this.applyRowDataDiff(diff);
+          return;
+        }
       }
+      // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
+      // exist, so discard the edit history.
+      if (this.history.clear()) this.emitHistoryChanged("clear");
+      this.rowModel.setRows(rows);
+      // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
+      // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
+      // the first sort runs with unresolved comparators and is silently skipped. Client-side only;
+      // comparators are derived from sample values.
+      this.identifyComparatorsFromCurrentRows();
+      const range = this.resetPageBlocks();
+      this.applyRowModelRequest(() => this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+    } finally {
+      for (const call of pendingCalls) call.resolve(call.result);
     }
-    // The dataset is being replaced — undo/redo entries reference rows by id that may no longer
-    // exist, so discard the edit history.
-    if (this.history.clear()) this.emitHistoryChanged("clear");
-    this.rowModel.setRows(rows);
-    // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
-    // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
-    // the first sort runs with unresolved comparators and is silently skipped. Client-side only;
-    // comparators are derived from sample values.
-    this.identifyComparatorsFromCurrentRows();
-    const range = this.resetPageBlocks();
-    this.rowModel.applyRequest(this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
   }
 
   /**
@@ -787,7 +803,7 @@ export class GridCore implements IGridCore {
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved; resolve them before the refresh applies any seeded initial sort.
     if (wasEmpty) this.identifyComparatorsFromCurrentRows();
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "refresh",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -834,7 +850,7 @@ export class GridCore implements IGridCore {
     const reevaluate = structural || this.options.reevaluateOnEdit;
 
     if (reevaluate) {
-      this.rowModel.applyRequest(this.createRowModelRequest(
+      this.applyRowModelRequest(() => this.createRowModelRequest(
         "transaction",
         { start: this.pageStartIdx, end: this.pageEndIdx },
         this.getInitialServerSideLoadRange(),
@@ -880,8 +896,10 @@ export class GridCore implements IGridCore {
     );
   }
 
-  /** Finalize every queued mutation in one model/render pass. */
-  flushAsyncTransactions(): void {
+  private takePendingRowTransactionBatch(): {
+    applied: AppliedRowTransaction;
+    calls: PendingRowTransactionCall[];
+  } | null {
     if (this.asyncTransactionTimer !== undefined) {
       clearTimeout(this.asyncTransactionTimer);
       this.asyncTransactionTimer = undefined;
@@ -890,12 +908,18 @@ export class GridCore implements IGridCore {
     const calls = this.pendingRowTransactionCalls;
     this.pendingRowTransactions = null;
     this.pendingRowTransactionCalls = [];
-    if (!applied) return;
+    return applied ? { applied, calls } : null;
+  }
+
+  /** Finalize every queued mutation in one model/render pass. */
+  flushAsyncTransactions(): void {
+    const batch = this.takePendingRowTransactionBatch();
+    if (!batch) return;
 
     // Clear pending state before emitting: a handler may enqueue a new transaction, which must form
     // a new batch rather than being folded into the batch currently being finalized.
-    if (!this.destroyed) this.finalizeRowTransactions(applied);
-    for (const call of calls) call.resolve(call.result);
+    if (!this.destroyed) this.finalizeRowTransactions(batch.applied);
+    for (const call of batch.calls) call.resolve(call.result);
   }
 
   applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult> {
@@ -962,7 +986,7 @@ export class GridCore implements IGridCore {
 
   private applyFilters(changedColIds: string[]) {
     const range = this.pageRangeFor("filter");
-    this.rowModel.applyRequest(this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
+    this.applyRowModelRequest(() => this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
     if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
@@ -990,7 +1014,7 @@ export class GridCore implements IGridCore {
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
     const range = this.pageRangeFor("quickFilter");
-    this.rowModel.applyRequest(this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
     this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
@@ -1023,7 +1047,7 @@ export class GridCore implements IGridCore {
   // never changes the row count, so the keep-page path needs no clamp.
   private applySortRequest(changedColIds: string[]): void {
     const range = this.pageRangeFor("sort");
-    this.rowModel.applyRequest(this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("sort", range, this.getInitialServerSideLoadRange()));
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
@@ -1054,7 +1078,7 @@ export class GridCore implements IGridCore {
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "group" });
-    this.rowModel.applyRequest(this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
+    this.applyRowModelRequest(() => this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
     // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
     // live on the group nodes built during applyRequest).
     const changedColIds = this.autosizeColumns();
@@ -1077,7 +1101,7 @@ export class GridCore implements IGridCore {
 
   private applyGroupExpansion(groupExpansion: NonNullable<IRowModelRequestParams["groupExpansion"]>): void {
     if (this.groupColumns.length === 0 && !this.options.treeData) return;
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "group",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1121,7 +1145,7 @@ export class GridCore implements IGridCore {
     if ((this.groupColumns.length === 0 && !this.options.treeData)
       || this.rowModel.getType() !== "clientSide") return;
 
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "sort",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1442,7 +1466,7 @@ export class GridCore implements IGridCore {
     if (currentPageIndex <= lastPageIndex) return;
     this.pageStartIdx = lastPageIndex * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       "pagination",
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
@@ -1455,7 +1479,7 @@ export class GridCore implements IGridCore {
     this.pageStartIdx = pageIdx * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     const loadRange = this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest(this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
+    this.applyRowModelRequest(() => this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
   }
 
   refreshRows(reason: RowDataChangeReason = "refresh", range: { start: number; end: number } = { start: this.pageStartIdx, end: this.pageEndIdx }) {
@@ -1465,7 +1489,7 @@ export class GridCore implements IGridCore {
     const loadRange = reason === "viewport"
       ? this.getServerSideBlockRange(requestRange)
       : this.getInitialServerSideLoadRange();
-    this.rowModel.applyRequest(this.createRowModelRequest(reason, requestRange, loadRange));
+    this.applyRowModelRequest(() => this.createRowModelRequest(reason, requestRange, loadRange));
   }
 
   private getInitialServerSideLoadRange(): { start: number; end: number } | undefined {
@@ -1559,7 +1583,7 @@ export class GridCore implements IGridCore {
       this.aggregateScope = normalizedScope;
       this.rowModel.setAggregateScope(normalizedScope);
     }
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       reason,
       { start: this.pageStartIdx, end: this.pageEndIdx },
       undefined,
@@ -2752,7 +2776,7 @@ export class GridCore implements IGridCore {
 
     // "filter" re-runs both filter and sort; "sort" re-runs sort only.
     const reason = inFilter ? "filter" : "sort";
-    this.rowModel.applyRequest(this.createRowModelRequest(
+    this.applyRowModelRequest(() => this.createRowModelRequest(
       reason,
       { start: this.pageStartIdx, end: this.pageEndIdx },
       this.getInitialServerSideLoadRange(),
