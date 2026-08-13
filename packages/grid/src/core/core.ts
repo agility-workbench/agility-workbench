@@ -817,8 +817,6 @@ export class GridCore implements IGridCore {
       // Removing rows can shrink the view past the page the user is on, stranding them on a blank
       // page. The filter/quick-filter/group paths already clamp for the same reason.
       this.clampPageToLastPage();
-      this.emit("rowsChanged", { reason: "transaction" });
-      this.emit("paginationChanged", this.getPaginationInfo());
     } else if (tx.update?.length) {
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
       const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
