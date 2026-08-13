@@ -127,6 +127,8 @@ export interface IGridCore {
   setGroupSortMode(groupSortMode: GroupSortMode): void;
   /** Change whether group rows can be selected without rebuilding the grid instance. */
   setGroupRowsSelectable(groupRowsSelectable: boolean): void;
+  /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */
+  setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void;
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
   setKeyboardNavigationMode(
     mode: TreeDataKeyboardNavigationMode,

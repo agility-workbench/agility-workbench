@@ -981,6 +981,12 @@ export class GridRenderer {
     this._pinnedRowsRenderer.setOptions(options);
   }
 
+  /** Reconfigure row selection and its utility column while retaining this renderer/core/API. */
+  setRowSelectionOptions(options: import("../interfaces/gridOptions").GridOptions["rowSelection"]) {
+    this.core.setRowSelectionOptions(options);
+    this._refreshAriaCounts();
+  }
+
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
   setRuntimeOptions(options: RuntimeGridOptions) {
     const previous = { ...this.core.options };

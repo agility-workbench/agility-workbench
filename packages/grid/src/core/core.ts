@@ -1046,6 +1046,49 @@ export class GridCore implements IGridCore {
     }
   }
 
+  setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void {
+    const rangeSnapshot = this.captureRangeColumnSnapshot();
+    const objectOptions = typeof rowSelection === "object" ? rowSelection : undefined;
+    const nextEnabled = objectOptions ? true : isTrue(rowSelection);
+    const nextMode = objectOptions?.mode ?? "multiple";
+    const nextCheckboxes = !!objectOptions && isTrue(objectOptions.checkboxes);
+    const nextHeaderCheckbox = nextCheckboxes
+      && nextMode !== "single"
+      && (objectOptions?.headerCheckbox ?? true);
+    const nextPinnable = objectOptions?.checkboxColumnPinnable ?? true;
+    const nextPinned = objectOptions?.checkboxColumnPinned === undefined
+      ? "left"
+      : objectOptions.checkboxColumnPinned;
+
+    const unchanged = this.options.rowSelection === nextEnabled
+      && this.options.rowSelectionMode === nextMode
+      && this.options.rowSelectionCheckboxes === nextCheckboxes
+      && this.options.rowSelectionHeaderCheckbox === nextHeaderCheckbox
+      && this.options.rowSelectionCheckboxColumnPinnable === nextPinnable
+      && this.options.rowSelectionCheckboxColumnPinned === nextPinned;
+    if (unchanged) return;
+
+    this.options.rowSelection = nextEnabled;
+    this.options.rowSelectionMode = nextMode;
+    this.options.rowSelectionCheckboxes = nextCheckboxes;
+    this.options.rowSelectionHeaderCheckbox = nextHeaderCheckbox;
+    this.options.rowSelectionCheckboxColumnPinnable = nextPinnable;
+    this.options.rowSelectionCheckboxColumnPinned = nextPinned;
+
+    const selectedIds = [...this.selectionModel.getSelectedRowIds()];
+    if (!nextEnabled && selectedIds.length > 0) {
+      this.selectionModel.clearRows();
+      this.emitSelectionChanged("model");
+    } else if (nextMode === "single" && selectedIds.length > 1) {
+      this.selectionModel.setSelectedRowIds(selectedIds.slice(0, 1), "set");
+      this.emitSelectionChanged("model");
+    }
+
+    this.columnModel.updateSelectionCheckboxColumn();
+    this.reconcileSelectionAfterColumnDefs(rangeSnapshot, false, false);
+    this.emit("columnsChanged", { reason: "defs" });
+  }
+
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
     return this.options.treeData ? this.keyboardNavigationMode : "grid";
   }

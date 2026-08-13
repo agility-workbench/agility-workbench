@@ -172,6 +172,18 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
     }, [props.groupRowsSelectable]);
 
+    const rowSelectionKey = JSON.stringify(props.rowSelection ?? null);
+    const rowSelectionMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      // Creation already applied the initial value; reconcile only subsequent content changes.
+      if (!rowSelectionMountedRef.current) {
+        rowSelectionMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.renderer.setRowSelectionOptions(props.rowSelection);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rowSelectionKey]);
+
     useLayoutEffect(() => {
       instanceRef.current?.core.setTreeDataKeyboardNavigationOptions(
         props.treeData?.keyboardNavigationMode ?? "grid",

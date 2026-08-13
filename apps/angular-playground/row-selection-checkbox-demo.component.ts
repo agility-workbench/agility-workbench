@@ -83,20 +83,18 @@ function buildRows(): OrderRow[] {
 
     <div class="checkbox-demo-main">
       <div class="demo-grid-host" style="min-width: 0">
-        @for (selection of [rowSelection()]; track selection) {
-          <awb-grid
-            [rowData]="rows"
-            [columnDefs]="columnDefs"
-            rowIdKey="id"
-            [rowSelection]="selection"
-            [quickFilter]="true"
-            [pagination]="true"
-            [pageSize]="15"
-            [pageSizes]="pageSizes"
-            (gridReady)="onReady($event)"
-            (selectionChanged)="onSelectionChanged($event)"
-          />
-        }
+        <awb-grid
+          [rowData]="rows"
+          [columnDefs]="columnDefs"
+          rowIdKey="id"
+          [rowSelection]="rowSelection()"
+          [quickFilter]="true"
+          [pagination]="true"
+          [pageSize]="15"
+          [pageSizes]="pageSizes"
+          (gridReady)="onReady($event)"
+          (selectionChanged)="onSelectionChanged($event)"
+        />
       </div>
 
       <aside class="checkbox-demo-summary">

@@ -120,7 +120,7 @@ describe("checkbox column structure", () => {
   });
 
   it("configures initial pin separately from whether the checkbox column can be repinned", () => {
-    const { core } = mountGrid({
+    const { core, root } = mountGrid({
       rowSelection: {
         checkboxes: true,
         checkboxColumnPinned: "right",
@@ -137,10 +137,54 @@ describe("checkbox column structure", () => {
     };
     const service = new ColumnMenuService(core);
     expect(service.buildDefaultColumnMenu(ctx).find(item => item.id === "pinning")).toBeUndefined();
+    expect(root.querySelector(".pte-hcell-checkbox .pte-hcell-menu-menuBtn")).toBeNull();
+
+    const contextMenuAllowed = root.querySelector<HTMLElement>(".pte-hcell-checkbox")!.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+    );
+    expect(contextMenuAllowed).toBe(false);
+    expect(root.querySelector(".pte-menu")).toBeNull();
 
     core.dispatch({ type: "columnPin", colIds: [checkbox.instanceID], pinned: null });
     expect(checkbox.pinned).toBe("right");
     expect(core.getColumnModel().getRightLeaves()).toContain(checkbox);
+  });
+
+  it("updates mode and checkbox-column options without replacing the grid", () => {
+    const { core, api, renderer, root } = mountGrid();
+    const coreIdentity = api.getCore();
+    core.selectRowsById(["r1", "r3"]);
+
+    renderer.setRowSelectionOptions({
+      mode: "single",
+      checkboxes: true,
+      checkboxColumnPinned: "right",
+      checkboxColumnPinnable: false,
+    });
+
+    expect(api.getCore()).toBe(coreIdentity);
+    expect([...core.getSelectedRowIds()]).toEqual(["r1"]);
+    expect(core.getColumnModel().getRightLeaves()[0].isSelectionCheckboxColumn()).toBe(true);
+    expect(root.querySelector(".pte-select-all-checkbox")).toBeNull();
+    expect(root.querySelector(".pte-hcell-checkbox .pte-hcell-menu-menuBtn")).toBeNull();
+
+    renderer.setRowSelectionOptions({
+      mode: "multiple",
+      checkboxes: true,
+      checkboxColumnPinned: null,
+      checkboxColumnPinnable: true,
+    });
+
+    expect(api.getCore()).toBe(coreIdentity);
+    expect(core.getColumnModel().getCenterLeaves()[0].isSelectionCheckboxColumn()).toBe(true);
+    expect(core.getColumnModel().getCenterLeaves()[0].showColumnMenu).toBe(true);
+    expect(root.querySelector(".pte-select-all-checkbox")).not.toBeNull();
+    root.querySelector<HTMLElement>(".pte-hcell-checkbox")!.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+    );
+    expect(root.querySelector(".pte-menu")).not.toBeNull();
+    press(root, "Escape");
+    expect(root.querySelector(".pte-menu")).toBeNull();
   });
 
   it("allows the checkbox column to start unpinned", () => {

@@ -84,11 +84,56 @@ class OverlayHost {
   cols: NgColDef[] = [{ colId: "id", key: "id", label: "ID" }];
 }
 
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <awb-grid
+      style="height: 600px"
+      [rowData]="rows"
+      [columnDefs]="cols"
+      rowIdKey="id"
+      [rowSelection]="rowSelection"
+      (gridReady)="api = $event"
+    />
+  `,
+})
+class LiveRowSelectionHost {
+  api: IGridAPI | null = null;
+  rowSelection: GridOptions["rowSelection"] = { mode: "multiple", checkboxes: true };
+  rows = [
+    { id: 1, name: "Acme" },
+    { id: 2, name: "Globex" },
+    { id: 3, name: "Initech" },
+  ];
+  cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
+}
+
 function row(gridEl: HTMLElement, index: number): HTMLElement {
   return gridEl.querySelector<HTMLElement>(`.pte-row[data-view-idx='${index}']`)!;
 }
 
 describe("AwbGrid visual and runtime options", () => {
+  it("updates row-selection options without recreating the API", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(LiveRowSelectionHost);
+    const api = host.api!;
+    api.selectRowsById(["1", "2"]);
+
+    host.rowSelection = {
+      mode: "single",
+      checkboxes: true,
+      checkboxColumnPinned: "right",
+      checkboxColumnPinnable: false,
+    };
+    await syncGridInputs(fixture);
+
+    expect(host.api).toBe(api);
+    expect(api.getSelection().selectedRowIds).toEqual(["1"]);
+    expect(gridEl.querySelector(".pte-select-all-checkbox")).toBeNull();
+    expect(gridEl.querySelector(".pte-hcell-checkbox .pte-hcell-menu-menuBtn")).toBeNull();
+    expect(api.getColumnModel().getRightLeaves()[0].isSelectionCheckboxColumn()).toBe(true);
+  });
+
   it("applies row and cell conditional styling", async () => {
     const { gridEl } = await mountGridHost(OptionsHost);
 

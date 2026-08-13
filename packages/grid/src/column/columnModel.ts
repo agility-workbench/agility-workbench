@@ -691,8 +691,23 @@ export class ColumnModel implements IColumnModel {
       ...CHECKBOX_COLUMN_DEF,
       pinned: this.options.rowSelectionCheckboxColumnPinned ?? undefined,
       __pinnable: this.options.rowSelectionCheckboxColumnPinnable,
+      showColumnMenu: this.options.rowSelectionCheckboxColumnPinnable,
+      columnContextMenu: this.options.rowSelectionCheckboxColumnPinnable,
     } as ColDef, "checkbox");
     return this.checkboxColumn;
+  }
+
+  /** Reconcile the optional selection-checkbox column without recreating user columns. */
+  updateSelectionCheckboxColumn(): void {
+    if (this.checkboxColumn) {
+      this.checkboxColumn.pinned = this.options.rowSelectionCheckboxColumnPinned;
+      this.checkboxColumn.pinnable = this.options.rowSelectionCheckboxColumnPinnable;
+      this.checkboxColumn.showColumnMenu = this.options.rowSelectionCheckboxColumnPinnable;
+      this.checkboxColumn.columnContextMenu = this.options.rowSelectionCheckboxColumnPinnable;
+    }
+    // withInternalColumns removes the old utility-column occurrence and conditionally inserts the
+    // same instance again, preserving every user column and its runtime state.
+    this.updateColumns(this.columns);
   }
 
   private computeBaselineWidths(measureCtx: ITextMeasurer, params: TextMeasureParams): void {

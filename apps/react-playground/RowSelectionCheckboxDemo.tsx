@@ -131,7 +131,6 @@ export function RowSelectionCheckboxDemo() {
       <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <Grid
-            key={`${selectionMode}-${checkboxPin ?? "none"}-${checkboxPinnable}`}
             rowData={rows}
             columnDefs={columnDefs}
             rowIdKey="id"

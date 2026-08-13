@@ -351,6 +351,11 @@ export class AwbGrid implements OnDestroy {
       return () => core.setGroupRowsSelectable(v);
     });
 
+    this.keyedEffect(
+      () => this.rowSelection(),
+      (value) => renderer.setRowSelectionOptions(value),
+    );
+
     this.syncEffect(() => {
       const treeData = this.treeData();
       return () =>
