@@ -2,9 +2,12 @@ import { Component, OnDestroy, ViewEncapsulation, signal } from "@angular/core";
 import {
   AwbGrid,
   ChangeFlashCellRenderer,
+  SparklineRenderer,
   type CellRendererParams,
   type IGridAPI,
   type NgColDef,
+  type SparklineParams,
+  type SparklineTooltipValueFormatterParams,
 } from "@agility-workbench/angular-grid";
 
 type MarketRow = {
@@ -19,6 +22,7 @@ type MarketRow = {
   changePct: number;
   volume: number;
   trades: number;
+  ltpHistory: number[];
 };
 
 const SYMBOLS = [
@@ -34,18 +38,24 @@ const SECTORS = ["Technology", "Financials", "Consumer", "Health care", "Industr
 function buildRows(): MarketRow[] {
   return SYMBOLS.map((symbol, index) => {
     const open = +(38 + ((index * 47) % 520) + (index % 7) * 0.37).toFixed(2);
+    const ltpHistory = Array.from({ length: 20 }, (_, sample) => +(
+      open * (1 + Math.sin((index + sample) * 0.73) * 0.002 + (sample - 10) * 0.00005)
+    ).toFixed(2));
+    const price = ltpHistory[ltpHistory.length - 1];
+    const change = +(price - open).toFixed(2);
     return {
       symbol,
       venue: index % 3 === 0 ? "NYSE" : "NASDAQ",
       sector: SECTORS[index % SECTORS.length],
       open,
-      price: open,
-      bid: +(open - 0.02).toFixed(2),
-      ask: +(open + 0.02).toFixed(2),
-      change: 0,
-      changePct: 0,
+      price,
+      bid: +(price - 0.02).toFixed(2),
+      ask: +(price + 0.02).toFixed(2),
+      change,
+      changePct: +((change / open) * 100).toFixed(2),
       volume: 100_000 + index * 31_337,
       trades: 2_000 + index * 97,
+      ltpHistory,
     };
   });
 }
@@ -64,6 +74,7 @@ function nextQuote(row: MarketRow): MarketRow {
     changePct: +((change / row.open) * 100).toFixed(2),
     volume: row.volume + 10 + Math.floor(Math.random() * 900),
     trades: row.trades + 1 + Math.floor(Math.random() * 8),
+    ltpHistory: [...row.ltpHistory.slice(-19), price],
   };
 }
 
@@ -97,6 +108,13 @@ function SymbolCellRenderer({ value }: CellRendererParams): HTMLElement {
   root.append(logo, ticker);
   return root;
 }
+
+const sparklineParams: SparklineParams = {
+  type: "line",
+  showPoints: false,
+  tooltipValueFormatter: ({ xValue, yValue }: SparklineTooltipValueFormatterParams) =>
+    `${String(xValue)}: $${yValue.toFixed(2)}`,
+};
 
 @Component({
   selector: "high-frequency-demo",
@@ -145,6 +163,7 @@ function SymbolCellRenderer({ value }: CellRendererParams): HTMLElement {
           [asyncTransactionWaitMs]="32"
           [rowHover]="true"
           [zebraRows]="true"
+          [tooltip]="tooltipOptions"
           (gridReady)="onReady($event)"
         />
       </div>
@@ -203,6 +222,7 @@ export class HighFrequencyDemoComponent implements OnDestroy {
   readonly rate = signal(1_200);
   readonly stats = signal({ submitted: 0, settled: 0, pending: 0 });
   api: IGridAPI | null = null;
+  readonly tooltipOptions = { showDelay: 0, hideDelay: 50 } as const;
 
   private readonly rowsMap = new Map(this.initialRows.map((row) => [row.symbol, row]));
   private submitted = 0;
@@ -247,6 +267,17 @@ export class HighFrequencyDemoComponent implements OnDestroy {
       cellClass: ({ value }: { value: unknown }) => typeof value === "number" && value < 0 ? "market-down" : "market-up",
       cellRenderer: ChangeFlashCellRenderer,
       cellRendererParams: { direction, cellFlashDuration: 140, cellFadeDuration: 300 },
+    },
+    {
+      colId: "ltpHistory", label: "Last 20 LTPs", width: 185,
+      sortable: false, filter: false, groupable: false, aggregatable: false,
+      valueGetter: row => (row.data as MarketRow).ltpHistory.map((price, index) => [
+        index === 19 ? "Latest" : `T-${19 - index}`,
+        price,
+      ] as const),
+      cellRenderer: SparklineRenderer,
+      cellRendererParams: sparklineParams,
+      headerTooltip: "Rolling series of the latest 20 last-traded prices.",
     },
     { colId: "volume", key: "volume", label: "Volume", width: 122, valueFormatter: integerFormatter },
     { colId: "trades", key: "trades", label: "Trades", width: 105, valueFormatter: integerFormatter },
