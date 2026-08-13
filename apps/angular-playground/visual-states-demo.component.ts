@@ -10,17 +10,20 @@ import {
   type GridEventSelectionChangedParams,
   type GridTheme,
   type NgColDef,
+  type NgGetRowPresentation,
   type NgMenuItem,
   type PaginationControl,
   type PaginationControlsOptions,
   type RowClassParams,
+  type TooltipComponentParams,
   type TooltipOptions,
 } from "@agility-workbench/angular-grid";
 
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
- *   Tooltip:     anchored-to-cell or follow-pointer positioning
+ *   Row defaults: getRowPresentation styling, tooltip, ARIA, metadata, and column overrides
+ *   Tooltip:      anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
  *                columnContextMenu demonstrated on the Rating and City columns
@@ -40,6 +43,7 @@ type PersonRow = {
   salary: number;
   rating: number;
   active: string;
+  compensationReview: boolean;
 };
 
 const FIRST = ["Ava", "Liam", "Mia", "Noah", "Emma", "Ethan", "Olivia", "Lucas", "Sophia", "Mason", "Isla", "Leo"];
@@ -61,15 +65,23 @@ function mulberry32(seed: number) {
 function buildRows(count: number): PersonRow[] {
   const rand = mulberry32(7);
   const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
-  return Array.from({ length: count }, (_, i) => ({
-    id: 1000 + i,
-    name: `${pick(FIRST)} ${pick(LAST)}`,
-    department: pick(DEPTS),
-    city: pick(CITIES),
-    salary: 60_000 + Math.floor(rand() * 140_000),
-    rating: +(1 + rand() * 4).toFixed(1),
-    active: rand() > 0.25 ? "Yes" : "No",
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const name = `${pick(FIRST)} ${pick(LAST)}`;
+    const department = pick(DEPTS);
+    const city = pick(CITIES);
+    const salary = 60_000 + Math.floor(rand() * 140_000);
+    return {
+      id: 1000 + i,
+      name,
+      department,
+      city,
+      salary,
+      rating: +(1 + rand() * 4).toFixed(1),
+      active: rand() > 0.25 ? "Yes" : "No",
+      // Salary is initially sorted descending, so the first page always contains examples.
+      compensationReview: salary >= 175_000,
+    };
+  });
 }
 
 const themePresets = [
@@ -119,6 +131,23 @@ export class VsToggleComponent {
 }
 
 @Component({
+  selector: "vs-compensation-review-tooltip",
+  standalone: true,
+  template: `
+    <div style="display: grid; gap: 4px; max-width: 260px">
+      <strong style="color: #d97706">{{ reviewLabel() }}</strong>
+      <span>{{ params().content }}</span>
+    </div>
+  `,
+})
+export class CompensationReviewTooltipComponent {
+  readonly params = input.required<TooltipComponentParams>();
+  readonly reviewLabel = computed(() =>
+    String(this.params().rowPresentation?.metadata?.["reviewLabel"] ?? "Compensation review"),
+  );
+}
+
+@Component({
   selector: "visual-states-demo",
   standalone: true,
   imports: [AwbGrid, VsToggleComponent],
@@ -138,6 +167,7 @@ export class VsToggleComponent {
           </select>
         </label>
         <vs-toggle label="conditionalStyling" [checked]="conditionalStyling()" (toggled)="conditionalStyling.set($event)" hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
+        <vs-toggle label="getRowPresentation" [checked]="rowPresentationEnabled()" (toggled)="rowPresentationEnabled.set($event)" hint="Apply row-default styling, tooltip, ARIA description, and metadata to compensation-review rows" />
         <vs-toggle label="sortConfig" [checked]="sortConfig()" (toggled)="sortConfig.set($event)" hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
       </div>
 
@@ -227,7 +257,10 @@ export class VsToggleComponent {
 
     <p class="vs-blurb">
       Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
-      Name cells or header to compare cell-anchored and pointer-following tooltips. Click a cell,
+      Name cells or header to compare cell-anchored and pointer-following tooltips. Amber rows use
+      <code>getRowPresentation</code>: hover most cells for a row-default component that follows the
+      pointer; Name overrides its content, Salary overrides it to an anchored-right tooltip, and
+      Active opts out. Click a cell,
       then Shift+Click (or Shift+Arrow) to
       make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
       inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
@@ -262,6 +295,7 @@ export class VsToggleComponent {
         [highlightActiveCell]="highlightActiveCell()"
         [tooltip]="tooltipOptions()"
         [getRowStyle]="getRowStyle()"
+        [getRowPresentation]="getRowPresentation()"
         (cellClicked)="onCellClicked($event)"
         (sortChanged)="lastEvent.set('onSortChanged')"
         (selectionChanged)="onSelectionChanged($event)"
@@ -335,6 +369,7 @@ export class VisualStatesDemoComponent {
 
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   readonly conditionalStyling = signal(true);
+  readonly rowPresentationEnabled = signal(true);
 
   // Sort config: an initial sort (Salary desc) + a custom Department comparator (by a fixed order).
   // NOTE: initial sort seeds ONCE at first column setup, so toggling it needs a grid remount (key).
@@ -392,12 +427,37 @@ export class VisualStatesDemoComponent {
       : undefined,
   );
 
+  readonly getRowPresentation = computed<NgGetRowPresentation | undefined>(() => {
+    if (!this.rowPresentationEnabled()) return undefined;
+    return ({ data }) => {
+      const row = data as PersonRow;
+      if (!row.compensationReview) return undefined;
+      return {
+        rowClass: "vs-compensation-review-row",
+        rowStyle: { boxShadow: "inset 3px 0 0 #f59e0b" },
+        cellClass: "vs-compensation-review-cell",
+        cellStyle: { backgroundColor: "rgba(245, 158, 11, 0.14)" },
+        tooltip: {
+          content: `${row.name} is awaiting compensation review.`,
+          component: CompensationReviewTooltipComponent,
+          options: { mode: "follow", placement: "top", interactive: false, escapeRootClip: true },
+        },
+        accessibility: {
+          description: `${row.name} is awaiting compensation review.`,
+          busy: false,
+        },
+        metadata: { status: "review", reviewLabel: "Compensation review" },
+      };
+    };
+  });
+
   readonly columnDefs = computed<NgColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
     {
       colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
       headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
+      // On review rows this replaces only row tooltip content; the row component/options remain.
       tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
     },
     {
@@ -417,10 +477,15 @@ export class VisualStatesDemoComponent {
       cellStyle: this.conditionalStyling()
         ? (p: { value: number }) => ({ color: p.value >= 150_000 ? "#16a34a" : "#9ca3af", fontWeight: p.value >= 150_000 ? "600" : "400" })
         : undefined,
+      // This column overrides row follow-mode while retaining row content and component.
+      tooltipOptions: { mode: "anchored", placement: "right" },
     },
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !this.hideRatingMenu() },
-    { colId: "active", key: "active", label: "Active", width: 90 },
+    {
+      colId: "active", key: "active", label: "Active", width: 90,
+      inheritRowPresentation: { tooltip: false },
+    },
   ]);
 
   onCellClicked(p: GridEventCellClickedParams): void {
