@@ -30,6 +30,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "getRowId", grid.getRowId());
   setIfDefined(options, "rowIdKey", grid.rowIdKey());
   setIfDefined(options, "rowDataMode", grid.rowDataMode());
+  setIfDefined(options, "asyncTransactionWaitMs", grid.asyncTransactionWaitMs());
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());

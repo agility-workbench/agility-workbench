@@ -31,6 +31,7 @@ type Row = { id: number; name: string; status: string; amount: number };
       [columnSelection]="enabled"
       [showColumnButtonsOnHover]="enabled"
       [bodyContextMenu]="bodyContextMenu"
+      [asyncTransactionWaitMs]="asyncTransactionWaitMs"
       (gridReady)="api = $event"
     />
   `,
@@ -43,6 +44,7 @@ class OptionsHost {
   cellSelection: boolean | "text" = true;
   bodyContextMenu = true;
   quickFilter: GridOptions["quickFilter"] = true;
+  asyncTransactionWaitMs = 40;
   rows: Row[] = [
     { id: 1, name: "Acme", status: "ok", amount: 10 },
     { id: 2, name: "Globex", status: "error", amount: 30 },
@@ -116,6 +118,17 @@ function row(gridEl: HTMLElement, index: number): HTMLElement {
 }
 
 describe("AwbGrid visual and runtime options", () => {
+  it("updates the async transaction batch window without recreating the API", async () => {
+    const { fixture, host } = await mountGridHost(OptionsHost);
+    const api = host.api!;
+    expect(api.getCore().getOptions().asyncTransactionWaitMs).toBe(40);
+
+    host.asyncTransactionWaitMs = 5;
+    await syncGridInputs(fixture);
+    expect(host.api).toBe(api);
+    expect(api.getCore().getOptions().asyncTransactionWaitMs).toBe(5);
+  });
+
   it("updates row-selection options without recreating the API", async () => {
     const { fixture, gridEl, host } = await mountGridHost(LiveRowSelectionHost);
     const api = host.api!;

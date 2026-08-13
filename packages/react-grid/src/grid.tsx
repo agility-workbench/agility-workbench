@@ -233,6 +233,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         suppressTypeToEdit: props.suppressTypeToEdit ?? false,
         moveAfterEdit: props.moveAfterEdit ?? true,
         commitOnBlur: props.commitOnBlur ?? true,
+        asyncTransactionWaitMs: props.asyncTransactionWaitMs ?? 16,
       });
     }, [
       props.rowHover,
@@ -256,6 +257,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.suppressTypeToEdit,
       props.moveAfterEdit,
       props.commitOnBlur,
+      props.asyncTransactionWaitMs,
     ]);
 
     useLayoutEffect(() => {

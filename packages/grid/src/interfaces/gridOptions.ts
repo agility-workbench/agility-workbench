@@ -689,6 +689,12 @@ export interface GridOptions {
    * Applies to `api.setRowData` as well as to the bindings. Set at construction only.
    */
   rowDataMode?: RowDataMode;
+  /**
+   * Maximum time in milliseconds before `applyTransactionAsync()` finalizes queued row mutations
+   * into one model/render pass. The window starts with the first transaction and is not restarted by
+   * later calls. Defaults to 16. Set to 0 to flush on the next macrotask.
+   */
+  asyncTransactionWaitMs?: number;
   overscanRowCount?: number;
   /**
    * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
@@ -1176,6 +1182,7 @@ export interface InternalGridOptions extends GridOptions {
   /** Resolved from the public `"auto"` default — the row model is consulted at data-set time for
    * whether a diff is actually possible, so this only records what was asked for. */
   rowDataMode: RowDataMode;
+  asyncTransactionWaitMs: number;
   overscanRowCount: number;
   minResizeWidth: number;
   maxColumnWidth: number;
@@ -1275,4 +1282,5 @@ export type RuntimeGridOptions = Pick<
   | "suppressTypeToEdit"
   | "moveAfterEdit"
   | "commitOnBlur"
+  | "asyncTransactionWaitMs"
 >;

@@ -194,6 +194,7 @@ export type {
   IRowModel,
   RowDataDiff,
   RowModelType,
+  RowTransaction,
   RowTransactionResult,
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";

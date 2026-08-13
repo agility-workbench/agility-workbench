@@ -11,7 +11,7 @@ import {
   TreeDataKeyboardNavigationMode,
 } from "../interfaces/gridOptions";
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
-import { RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
+import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
@@ -218,12 +218,16 @@ export class GridAPI implements IGridAPI {
     return this.core.getColumnModel();
   }
 
-  applyTransaction(tx: {
-    add?: RowData[];
-    update?: { rowId: GridId; row: RowData }[];
-    remove?: GridId[];
-  }): RowTransactionResult {
+  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
     return this.core.applyTransaction(tx);
+  }
+
+  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult> {
+    return this.core.applyTransactionAsync(tx);
+  }
+
+  flushAsyncTransactions(): void {
+    this.core.flushAsyncTransactions();
   }
 
   setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {

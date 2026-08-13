@@ -102,6 +102,7 @@ export class AwbGrid implements OnDestroy {
   readonly getRowId = input<GridOptions["getRowId"]>();
   readonly rowIdKey = input<GridOptions["rowIdKey"]>();
   readonly rowDataMode = input<GridOptions["rowDataMode"]>();
+  readonly asyncTransactionWaitMs = input<GridOptions["asyncTransactionWaitMs"]>();
 
   // --- appearance / interaction ---
   readonly rowHover = input<GridOptions["rowHover"]>();
@@ -401,6 +402,7 @@ export class AwbGrid implements OnDestroy {
         suppressTypeToEdit: this.suppressTypeToEdit() ?? false,
         moveAfterEdit: this.moveAfterEdit() ?? true,
         commitOnBlur: this.commitOnBlur() ?? true,
+        asyncTransactionWaitMs: this.asyncTransactionWaitMs() ?? 16,
       };
       return () => renderer.setRuntimeOptions(opts);
     });

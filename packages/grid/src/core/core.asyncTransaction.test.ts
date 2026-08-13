@@ -89,6 +89,25 @@ describe("GridCore async row transactions", () => {
     expect(rowsChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("honors a configured batch window and normalizes invalid values", async () => {
+    const core = grid({ asyncTransactionWaitMs: 5 });
+    const rowsChanged = vi.fn();
+    core.on("rowsChanged", rowsChanged);
+    const pending = core.applyTransactionAsync({
+      update: [{ rowId: "1", row: { id: "1", name: "alice", qty: 10 } }],
+    });
+
+    vi.advanceTimersByTime(4);
+    expect(rowsChanged).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    await pending;
+    expect(rowsChanged).toHaveBeenCalledTimes(1);
+
+    expect(grid({ asyncTransactionWaitMs: -1 }).getOptions().asyncTransactionWaitMs).toBe(16);
+    expect(grid({ asyncTransactionWaitMs: Number.NaN }).getOptions().asyncTransactionWaitMs).toBe(16);
+    expect(grid({ asyncTransactionWaitMs: 0 }).getOptions().asyncTransactionWaitMs).toBe(0);
+  });
+
   it("resolves comparators before the first asynchronously-added rows are sorted", async () => {
     const core = grid({ initialSort: [{ colId: "qty", dir: "asc" }] }, []);
     const high = core.applyTransactionAsync({ add: [{ id: "2", name: "high", qty: 20 }] });

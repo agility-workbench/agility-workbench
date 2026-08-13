@@ -84,6 +84,11 @@ describe("getGridOptions option forwarding", () => {
     expect(options.clearSelectionOnBodyClick).toBe(false);
   });
 
+  it("forwards the async transaction batch window, including zero", () => {
+    expect(getGridOptions({ asyncTransactionWaitMs: 0 }).asyncTransactionWaitMs).toBe(0);
+    expect(getGridOptions({ asyncTransactionWaitMs: 25 }).asyncTransactionWaitMs).toBe(25);
+  });
+
   it("forwards resetPageOn (including the explicit empty list)", () => {
     expect(getGridOptions({ resetPageOn: ["filter", "sort"] }).resetPageOn).toEqual(["filter", "sort"]);
     expect(getGridOptions({ resetPageOn: [] }).resetPageOn).toEqual([]);
@@ -106,6 +111,18 @@ describe("getGridOptions option forwarding", () => {
 });
 
 describe("core option forwarding (live grid)", () => {
+  it("updates the async transaction batch window without recreating the API", async () => {
+    const rows = [{ id: "1", name: "A" }];
+    const { apiRef, root, render } = await mount({ rowData: rows, asyncTransactionWaitMs: 40 });
+    const api = apiRef.current!;
+    expect(api.getCore().getOptions().asyncTransactionWaitMs).toBe(40);
+
+    await render({ rowData: rows, asyncTransactionWaitMs: 5 });
+    expect(apiRef.current).toBe(api);
+    expect(api.getCore().getOptions().asyncTransactionWaitMs).toBe(5);
+    await unmountTestRoot(root);
+  });
+
   it("rebuilds pagination controls when their configuration changes", async () => {
     const rows = Array.from({ length: 40 }, (_, index) => ({ id: String(index), name: `Row ${index}` }));
     const { container, root, render } = await mount({

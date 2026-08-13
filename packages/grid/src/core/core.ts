@@ -60,6 +60,12 @@ interface PendingRowTransactionCall {
 
 const DEFAULT_ASYNC_TRANSACTION_WAIT_MS = 16;
 
+function resolveAsyncTransactionWaitMs(value: number | undefined): number {
+  return value != null && Number.isFinite(value) && value >= 0
+    ? value
+    : DEFAULT_ASYNC_TRANSACTION_WAIT_MS;
+}
+
 type SchemaSource = "auto" | "props" | "server";
 
 interface RangeColumnSnapshot {
@@ -221,6 +227,7 @@ export class GridCore implements IGridCore {
       getRowId: options.getRowId,
       rowIdKey: options.rowIdKey,
       rowDataMode: options.rowDataMode ?? "auto",
+      asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
       overscanRowCount: options.overscanRowCount ?? 10,
       minResizeWidth: options.minResizeWidth != null && options.minResizeWidth > 0 ? options.minResizeWidth : 75,
       maxColumnWidth: options.maxColumnWidth != null && options.maxColumnWidth > 0 ? options.maxColumnWidth : 420,
@@ -892,7 +899,7 @@ export class GridCore implements IGridCore {
     if (this.asyncTransactionTimer !== undefined) return;
     this.asyncTransactionTimer = setTimeout(
       () => this.flushAsyncTransactions(),
-      DEFAULT_ASYNC_TRANSACTION_WAIT_MS,
+      this.options.asyncTransactionWaitMs,
     );
   }
 
@@ -1328,7 +1335,9 @@ export class GridCore implements IGridCore {
       this.options.columnSelection && !options.columnSelection
       && this.selectionModel.getSelectedColumnIds().size > 0;
 
-    Object.assign(this.options, options);
+    Object.assign(this.options, options, {
+      asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
+    });
 
     if (cellSelectionBecameDisabled || columnSelectionBecameDisabled) {
       this.selectionModel.clearAll();

@@ -29,7 +29,7 @@ function textForSymbol(host: HTMLElement, symbol: string): string[] {
     .filter(Boolean);
 }
 
-async function mountGrid() {
+async function mountGrid(asyncTransactionWaitMs?: number) {
   const container = document.createElement("div");
   // Give the virtualized body a real height so rows render.
   Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
@@ -52,6 +52,7 @@ async function mountGrid() {
           { colId: "ltp", key: "ltp", label: "LTP" },
         ]}
         rowIdKey="symbol"
+        asyncTransactionWaitMs={asyncTransactionWaitMs}
       />,
     );
   });
@@ -60,6 +61,44 @@ async function mountGrid() {
 }
 
 describe("applyTransaction end-to-end via Grid", () => {
+  it("batches async transactions into one rendered update and returns per-call counts", async () => {
+    const { container, apiRef, root } = await mountGrid(1000);
+    const api = apiRef.current!;
+    const rowsChanged: string[] = [];
+    api.on("rowsChanged", event => rowsChanged.push(event.reason));
+
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    await act(async () => {
+      first = api.applyTransactionAsync({
+        update: [{ rowId: "AAA", row: { symbol: "AAA", ltp: 137 } }],
+      });
+      second = api.applyTransactionAsync({ add: [{ symbol: "CCC", ltp: 300 }] });
+      expect(api.getCore().getCellValue("AAA", "ltp")).toBe(137);
+      expect(rowsChanged).toEqual([]);
+      api.flushAsyncTransactions();
+      await Promise.all([first, second]);
+    });
+
+    await expect(first).resolves.toEqual({ added: 0, updated: 1, removed: 0 });
+    await expect(second).resolves.toEqual({ added: 1, updated: 0, removed: 0 });
+    expect(rowsChanged).toEqual(["transaction"]);
+    expect(container.textContent).toContain("137");
+    expect(container.textContent).toContain("CCC");
+    await unmountTestRoot(root);
+    container.remove();
+  });
+
+  it("settles a pending async transaction when the React grid unmounts", async () => {
+    const { apiRef, root, container } = await mountGrid(1000);
+    const pending = apiRef.current!.applyTransactionAsync({
+      update: [{ rowId: "AAA", row: { symbol: "AAA", ltp: 137 } }],
+    });
+    await unmountTestRoot(root);
+    await expect(pending).resolves.toEqual({ added: 0, updated: 1, removed: 0 });
+    container.remove();
+  });
+
   it("updates a cell in place, adds a row, and removes a row", async () => {
     const { container, apiRef, root } = await mountGrid();
     const api = apiRef.current!;

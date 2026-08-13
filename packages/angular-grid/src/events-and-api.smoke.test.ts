@@ -145,6 +145,28 @@ describe("AwbGrid outputs and imperative API", () => {
     expect(gridEl.textContent).toContain("137");
   });
 
+  it("batches async transactions and exposes manual flush through the shared API", async () => {
+    const { gridEl, host } = await mountGridHost(EventsHost);
+    const api = host.api!;
+    const reasons: string[] = [];
+    api.on("rowsChanged", event => reasons.push(event.reason));
+    const update = api.applyTransactionAsync({
+      update: [{ rowId: "AAA", row: { symbol: "AAA", price: 137 } }],
+    });
+    const add = api.applyTransactionAsync({ add: [{ symbol: "CCC", price: 300 }] });
+
+    expect(api.getCore().getCellValue("AAA", "price")).toBe(137);
+    expect(reasons).toEqual([]);
+    api.flushAsyncTransactions();
+    await expect(Promise.all([update, add])).resolves.toEqual([
+      { added: 0, updated: 1, removed: 0 },
+      { added: 1, updated: 0, removed: 0 },
+    ]);
+    expect(reasons).toEqual(["transaction"]);
+    expect(gridEl.textContent).toContain("137");
+    expect(gridEl.textContent).toContain("CCC");
+  });
+
   it("captures and restores column width and pinning state", async () => {
     const { host } = await mountGridHost(EventsHost);
     const api = host.api!;

@@ -17,6 +17,7 @@ inputs. Optional fields use documented defaults when omitted.
 | `rowIdKey` | `string` | Field containing a stable row ID |
 | `getRowId` | `(row) => string` | Derive a stable row ID |
 | `rowDataMode` | `auto \| reset \| diff` | Whether a replacement `rowData` array is diffed into the grid (keeping history and page) or re-ingested. Default `auto` |
+| `asyncTransactionWaitMs` | `number` | Batch window for `applyTransactionAsync`; defaults to 16 ms. `0` flushes on the next macrotask |
 | `rowModelType` | `clientSide \| serverSide` | Select the row model |
 | `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
 | `serverSideBlockSize` | `number` | Requested block size |
