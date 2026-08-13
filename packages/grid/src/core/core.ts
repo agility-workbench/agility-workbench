@@ -1841,10 +1841,6 @@ export class GridCore implements IGridCore {
     if (leaves.length === 0) return;
     const from = this.headerFocusColIdx ?? 0;
     if (dir === "down") {
-      // Leaving the header: clear the cursor first so the selection change below is not undone by
-      // setHeaderFocus's own "entering the header" branch.
-      this.headerFocusColIdx = null;
-      this.emit("headerFocusChanged", { reason: "keyboard" });
       // Down goes to the row directly below the header on screen — the pinned-top band when one is
       // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
       // from inside the body lands).
@@ -1852,7 +1848,20 @@ export class GridCore implements IGridCore {
         ? { row: 0, rowPinned: "top" as const }
         : this.selectionModel.firstRowPosition();
       if (!first) return;
-      this.selectionModel.selectSingleCell(first.row, from, first.rowPinned);
+
+      // The row-number header is keyboard-reachable (Enter may toggle select-all), but its body
+      // cells deliberately are not. Hand navigation to the first body column that can hold the
+      // cursor instead of clearing the header and then failing to create an active cell.
+      const targetColIdx = leaves[from]?.isRowNumberColumn()
+        ? leaves.findIndex(col => !col.isRowNumberColumn())
+        : from;
+      if (targetColIdx < 0
+        || !this.selectionModel.selectSingleCell(first.row, targetColIdx, first.rowPinned)) return;
+
+      // Clear the header only after a valid body target has been selected. This also leaves the
+      // cursor in the header when an empty grid has nowhere for ArrowDown to go.
+      this.headerFocusColIdx = null;
+      this.emit("headerFocusChanged", { reason: "keyboard" });
       this.emitSelectionChanged("keyboard");
       this.emitFocusChanged(this.selectionModel.getActiveCell(), "keyboard");
       return;
