@@ -77,12 +77,35 @@ function tooltipEl(container: HTMLElement): HTMLElement | null {
   return container.querySelector<HTMLElement>(".pte-tooltip");
 }
 
+function bodyCell(container: HTMLElement, viewIdx: number, colIdx: number): HTMLElement {
+  const cell = container.querySelector<HTMLElement>(
+    `.pte-row[data-view-idx="${viewIdx}"] .pte-cell[data-col-idx="${colIdx}"]`,
+  );
+  if (!cell) throw new Error(`no body cell at viewIdx ${viewIdx}, colIdx ${colIdx}`);
+  return cell;
+}
+
 /** Fire a mouseover on a body cell (col by data-col-idx), which the delegated handler picks up. */
 function hoverBodyCell(container: HTMLElement, colIdx: number) {
-  const cell = container.querySelector<HTMLElement>(`.pte-row[data-view-idx="0"] .pte-cell[data-col-idx="${colIdx}"]`);
-  if (!cell) throw new Error(`no body cell at colIdx ${colIdx}`);
+  const cell = bodyCell(container, 0, colIdx);
   cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 10, clientY: 10 }));
   return cell;
+}
+
+/** Reproduce the native boundary pair emitted when the pointer crosses between two cells. */
+function movePointer(from: HTMLElement, to: HTMLElement) {
+  from.dispatchEvent(new MouseEvent("mouseout", {
+    bubbles: true,
+    clientX: 10,
+    clientY: 10,
+    relatedTarget: to,
+  }));
+  to.dispatchEvent(new MouseEvent("mouseover", {
+    bubbles: true,
+    clientX: 10,
+    clientY: 10,
+    relatedTarget: from,
+  }));
 }
 
 /** Await one macrotask so a `setTimeout(0)` show/hide timer has fired before we assert. Real timers
@@ -126,6 +149,42 @@ describe("tooltips", () => {
     await unmountTestRoot(root);
   });
 
+  it("cancels a stale delayed tooltip when vertical traversal returns to the active cell", async () => {
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 15, hideDelay: 0, mode: "anchored" },
+      columns: [
+        {
+          colId: "name",
+          key: "name",
+          label: "Name",
+          tooltipValueGetter: ({ rowId }) => rowId === "1" ? "row one" : undefined,
+        },
+      ],
+    });
+    const first = bodyCell(container, 0, 0);
+    const second = bodyCell(container, 1, 0);
+
+    await act(async () => {
+      first.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 10, clientY: 10 }));
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+    const overlay = tooltipEl(container);
+    expect(overlay?.textContent).toContain("row one");
+
+    // Start row two's delayed show, then cross back before it expires. Row two deliberately has no
+    // content: the stale timer used to call hideNow() and make row one's tooltip disappear.
+    await act(async () => {
+      movePointer(first, second);
+      movePointer(second, first);
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+
+    expect(tooltipEl(container)).toBe(overlay);
+    expect(tooltipEl(container)?.textContent).toContain("row one");
+    expect(first.getAttribute("aria-describedby")).toBe(overlay?.id);
+    await unmountTestRoot(root);
+  });
+
   it("shows tooltips on center-section cells when a column is pinned left", async () => {
     // Regression: with a pinned column, each row slot renders multiple section row elements
     // sharing one data-view-idx; the anchor lookup must search past the first (pinned) row.
@@ -157,11 +216,73 @@ describe("tooltips", () => {
       ],
     });
     await act(async () => { hoverBodyCell(container, 0); await tick(); });
-    // React root renders asynchronously; flush a microtask.
-    await act(async () => { await Promise.resolve(); });
     expect(container.querySelector(".custom-tt")).not.toBeNull();
     expect(container.querySelector(".custom-tt")!.textContent).toContain("TT:Ava");
     await unmountTestRoot(root);
+  });
+
+  it("measures an anchored React row tooltip after moving from an adjacent follow cell", async () => {
+    class InertResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", InertResizeObserver);
+
+    const RowTooltip = (p: TooltipComponentParams) =>
+      React.createElement("span", { className: "measured-row-tooltip" }, p.content);
+    const { container, root } = await mountGrid({
+      tooltip: { showDelay: 0 },
+      getRowPresentation: () => ({
+        tooltip: {
+          content: "Compensation review",
+          component: RowTooltip,
+          options: { mode: "follow" },
+        },
+      }),
+      columns: [
+        { colId: "name", key: "name", label: "Name" },
+        {
+          colId: "email",
+          key: "email",
+          label: "Salary",
+          tooltipOptions: { mode: "anchored", placement: "right" },
+        },
+      ],
+    });
+
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      x: left,
+      y: top,
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const getRect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains("pte-root")) return rect(0, 0, 600, 400);
+        if (this.classList.contains("pte-floating")) {
+          const rendered = this.querySelector(".measured-row-tooltip") != null;
+          return rect(0, 0, 180, rendered ? 60 : 0);
+        }
+        if (this.matches('.pte-cell[data-col-idx="1"]')) return rect(100, 100, 120, 40);
+        return rect(0, 0, 0, 0);
+      });
+
+    await act(async () => { hoverBodyCell(container, 0); await tick(); });
+    expect(container.querySelector(".measured-row-tooltip")).not.toBeNull();
+
+    await act(async () => { hoverBodyCell(container, 1); await tick(); });
+    expect(tooltipEl(container)?.dataset.placement).toBe("right");
+    expect(tooltipEl(container)?.style.top).toBe("90px");
+
+    getRect.mockRestore();
+    await unmountTestRoot(root);
+    vi.unstubAllGlobals();
   });
 
   it("uses a full row tooltip default while columns override content and options independently", async () => {

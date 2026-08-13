@@ -318,7 +318,7 @@ export function KitchenSinkDemo() {
           rowData={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
-          tooltip={{ interactive: true, showDelay: 250 }}
+          tooltip={{ showDelay: 250 }}
           pinnedTopRowData={topRows}
           pinnedBottomRowData={bottomRows}
           pinnedRowsEditable

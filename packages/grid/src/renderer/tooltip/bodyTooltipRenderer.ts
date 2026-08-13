@@ -240,7 +240,17 @@ export class BodyTooltipRenderer {
       return;
     }
     if (sameTarget(this.active, loc)) {
-      if (this.hideTimer != null) this.cancelHide();
+      // The pointer can return to the visible target while another cell is still waiting for its
+      // show delay. That pending timer no longer represents the hover and must not be allowed to
+      // replace (or, when it has no content, hide) the tooltip under the pointer.
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
+    // Bubbling mouseover events from children of the target waiting for its show delay must not
+    // restart that delay. The matching mouseout path below applies the same logical-target test.
+    if (sameTarget(this.pendingTarget, loc)) {
+      this.cancelHide();
       return;
     }
     // Moving between registered subtargets in one cell (sparkline point bands, for example) keeps
@@ -256,17 +266,27 @@ export class BodyTooltipRenderer {
       loc.rendererTarget &&
       this.refreshShownRendererTarget(loc)
     ) {
+      this.cancelShow();
       return;
     }
     this.scheduleShow(loc);
   };
 
   private handleMouseOut = (e: MouseEvent) => {
-    // Ignore moves between children of the same cell/header.
-    const to = e.relatedTarget as HTMLElement | null;
-    if (to) {
-      const dest = this.locate(to, e.clientX, e.clientY);
-      if (dest && sameTarget(dest, this.active)) return;
+    // Identity comparison does not need row-presentation content. Skipping it here avoids invoking
+    // the user callback twice for every child-to-child mouse boundary in a body cell.
+    const source = this.locate(e.target, e.clientX, e.clientY, false);
+    const destination = this.locate(e.relatedTarget, e.clientX, e.clientY, false);
+    // Ignore moves between children of the same logical target, including a target that is still
+    // inside its show delay (and therefore is not `active` yet).
+    if (source && destination && sameTarget(source, destination)) return;
+    // A boundary reversal back to the visible target invalidates any delayed show for the cell we
+    // just left. Previously both handlers compared only with `active`, leaving that stale timer
+    // armed until it arbitrarily replaced or dismissed the correct tooltip.
+    if (destination && sameTarget(destination, this.active)) {
+      this.cancelShow();
+      this.cancelHide();
+      return;
     }
     this.scheduleHide();
   };
@@ -289,7 +309,12 @@ export class BodyTooltipRenderer {
     const target = this.locateUi(e.target, e.clientX, e.clientY);
     if (!target) return;
     if (sameTarget(this.active, target)) {
-      if (this.hideTimer != null) this.cancelHide();
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
+    if (sameTarget(this.pendingTarget, target)) {
+      this.cancelHide();
       return;
     }
     this.scheduleShow(target);
@@ -300,6 +325,11 @@ export class BodyTooltipRenderer {
     if (!source) return;
     const destination = this.locateUi(e.relatedTarget, e.clientX, e.clientY);
     if (destination && sameTarget(destination, source)) return;
+    if (destination && sameTarget(destination, this.active)) {
+      this.cancelShow();
+      this.cancelHide();
+      return;
+    }
     this.scheduleHide();
   };
 
@@ -318,11 +348,12 @@ export class BodyTooltipRenderer {
   }
 
   private scheduleHide() {
-    if (this.showTimer != null) {
-      window.clearTimeout(this.showTimer);
-      this.showTimer = null;
-      this.pendingTarget = null;
-    }
+    this.cancelShow();
+    // Replace, never stack: overwriting an armed hide timer would orphan it, and an orphaned
+    // timer fires hideNow() un-cancellably — killing the pending show scheduled after it. This
+    // is exactly what vertical cell→cell moves do (the row border band belongs to no cell, so a
+    // crossing emits several locate()==null boundary events, each landing here).
+    this.cancelHide();
     if (!this.params.floating.isOpen() && this.active == null) return;
     const delay = this.params.options().hideDelay;
     this.hideTimer = window.setTimeout(() => {
@@ -336,6 +367,12 @@ export class BodyTooltipRenderer {
       window.clearTimeout(this.hideTimer);
       this.hideTimer = null;
     }
+  }
+
+  private cancelShow() {
+    if (this.showTimer != null) window.clearTimeout(this.showTimer);
+    this.showTimer = null;
+    this.pendingTarget = null;
   }
 
   /** Update the scalar content and anchor of an already-shown renderer-owned tooltip in place. */
@@ -363,11 +400,8 @@ export class BodyTooltipRenderer {
   }
 
   private clearTimers() {
-    if (this.showTimer != null) window.clearTimeout(this.showTimer);
-    if (this.hideTimer != null) window.clearTimeout(this.hideTimer);
-    this.showTimer = null;
-    this.hideTimer = null;
-    this.pendingTarget = null;
+    this.cancelShow();
+    this.cancelHide();
   }
 
   // ---------------- show ----------------
@@ -640,7 +674,12 @@ export class BodyTooltipRenderer {
 
   // ---------------- DOM helpers ----------------
 
-  private locate(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {
+  private locate(
+    target: EventTarget | null,
+    clientX: number,
+    clientY: number,
+    resolvePresentation = true,
+  ): TooltipTarget | null {
     const el = target as HTMLElement | null;
     if (!el) return null;
 
@@ -668,7 +707,7 @@ export class BodyTooltipRenderer {
       clientX,
       clientY,
       rendererTarget,
-      rowPresentation: this.rowPresentationAt(viewIdx),
+      rowPresentation: resolvePresentation ? this.rowPresentationAt(viewIdx) : undefined,
     };
   }
 

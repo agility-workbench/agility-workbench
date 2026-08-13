@@ -152,6 +152,9 @@ function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentC
     init(params: TooltipComponentParams): void {
       // A single createRoot lives for the life of this tooltip instance; refresh re-renders into it
       // rather than remounting, so interactive content keeps its React state across repositions.
+      // Tooltip mounting is imperative: the floating layer measures getGui() in the same call stack.
+      // Commit now so it never measures an empty React host and so a superseded root's deferred
+      // unmount cannot race the initial render of the next tooltip.
       this.root = new ManagedReactRoot(this.el);
       this.render(params);
     }
@@ -171,7 +174,7 @@ function createReactTooltipClass(Comp: ReactTooltipComponent): TooltipComponentC
     }
 
     private render(params: TooltipComponentParams): void {
-      this.root?.render(React.createElement(Comp, getTooltipProps(params)));
+      this.root?.renderSync(React.createElement(Comp, getTooltipProps(params)));
     }
   };
 }
