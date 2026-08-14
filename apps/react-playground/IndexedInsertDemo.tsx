@@ -6,7 +6,7 @@ import { Grid, type ReactColDef } from "@react-grid";
 type InsertRow = {
   id: string;
   label: string;
-  api: "initial" | "sync" | "async";
+  api: "initial" | "sync" | "async" | "menu";
   requestedIndex: number | null;
   batch: number;
   batchOrder: number;
@@ -44,6 +44,7 @@ export default function IndexedInsertDemo() {
   const [rowsToInsert, setRowsToInsert] = useState("5");
   const [addIndex, setAddIndex] = useState("3");
   const [pendingAsync, setPendingAsync] = useState(0);
+  const [rowInsertionMenuEnabled, setRowInsertionMenuEnabled] = useState(false);
   const [status, setStatus] = useState("Choose a block size and source index, then run either API.");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -72,13 +73,13 @@ export default function IndexedInsertDemo() {
     index: normalizeInteger(addIndex, 0, Number.MAX_SAFE_INTEGER, 0),
   });
 
-  const makeRows = (api: "sync" | "async", count: number, index: number): InsertRow[] => {
+  const makeRows = (api: "sync" | "async" | "menu", count: number, index: number): InsertRow[] => {
     const batch = nextBatch.current++;
     return Array.from({ length: count }, (_, offset) => {
       const id = nextRowId.current++;
       return {
         id: `inserted-${id}`,
-        label: `${api === "sync" ? "Sync" : "Async"} inserted row ${id}`,
+        label: `${api === "sync" ? "Sync" : api === "async" ? "Async" : "Menu"} inserted row ${id}`,
         api,
         requestedIndex: index,
         batch,
@@ -112,6 +113,24 @@ export default function IndexedInsertDemo() {
     }
   };
 
+  const toggleRowInsertionMenu = () => {
+    const enabled = !rowInsertionMenuEnabled;
+    setRowInsertionMenuEnabled(enabled);
+    setStatus(enabled
+      ? "Row-number Insert menu enabled. Right-click a row number to insert above or below it."
+      : "Row-number Insert menu disabled.");
+  };
+
+  const rowInsertionMenu = rowInsertionMenuEnabled
+    ? {
+        createRow: ({ position, addIndex }: { position: "above" | "below"; addIndex: number }) => {
+          const [row] = makeRows("menu", 1, addIndex);
+          setStatus(`Context menu inserted 1 row ${position} at source index ${addIndex}.`);
+          return row;
+        },
+      }
+    : undefined;
+
   return (
     <section className="indexed-insert-demo">
       <header className="indexed-insert-header">
@@ -120,7 +139,8 @@ export default function IndexedInsertDemo() {
           <h2>Indexed row insertion</h2>
           <p>
             Insert a contiguous block into the underlying row order. With no active sort or filter,
-            the requested source index is also the displayed position.
+            the requested source index is also the displayed position. Enable the row-number menu
+            to insert one row above or below from a right-click.
           </p>
         </div>
         <div className="indexed-insert-status" aria-live="polite">
@@ -156,6 +176,14 @@ export default function IndexedInsertDemo() {
         <button className="btn" type="button" onClick={() => void insertAsync()}>
           Insert with async API
         </button>
+        <button
+          className="btn"
+          type="button"
+          aria-pressed={rowInsertionMenuEnabled}
+          onClick={toggleRowInsertionMenu}
+        >
+          {rowInsertionMenuEnabled ? "Disable" : "Enable"} row-number Insert menu
+        </button>
       </div>
 
       <div className="indexed-insert-grid">
@@ -165,6 +193,7 @@ export default function IndexedInsertDemo() {
           columnDefs={columnDefs}
           rowIdKey="id"
           rowNumbers
+          rowInsertionMenu={rowInsertionMenu}
           zebraRows
           highlightActiveCell
           asyncTransactionWaitMs={64}

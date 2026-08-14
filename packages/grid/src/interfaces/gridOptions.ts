@@ -165,6 +165,31 @@ export type GetRowPresentation = (
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
+/** Context used to decide or create a row inserted from a row-number context menu. */
+export interface RowInsertionMenuParams {
+  position: "above" | "below";
+  rowId: string;
+  data: any;
+  node: IRowNode;
+  /** Page-local/displayed index of the row whose number was right-clicked. */
+  viewIndex: number;
+  /** Index of that row in the client-side model's underlying source order. */
+  sourceIndex: number;
+  /** Source-order index at which the returned row will be inserted. */
+  addIndex: number;
+}
+
+/**
+ * Opt-in row-number context-menu insertion. The application creates the new row so required
+ * fields and stable row IDs remain under application control.
+ */
+export interface RowInsertionMenuOptions {
+  /** Return the row to insert, or null/undefined to cancel the command. */
+  createRow: (params: RowInsertionMenuParams) => any | null | undefined;
+  /** Omit an individual direction for rows where insertion is not allowed. Defaults to true. */
+  canInsert?: (params: RowInsertionMenuParams) => boolean;
+}
+
 /**
  * How grouped rows are displayed:
  * - "singleColumn": one auto-generated group column holds the expand/collapse chevron and the
@@ -1037,6 +1062,12 @@ export interface GridOptions {
    */
   rowPinningMenu?: boolean;
   /**
+   * Adds Insert → "1 row above" / "1 row below" to row-number context menus. The option is
+   * intentionally absent by default and only applies to client-side model rows. `createRow`
+   * supplies the new row; `canInsert` can conditionally hide either direction.
+   */
+  rowInsertionMenu?: RowInsertionMenuOptions;
+  /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
    * `editTrigger: "none"` for fully API-only editing. Defaults to false.
@@ -1287,6 +1318,7 @@ export interface InternalGridOptions extends GridOptions {
   readOnlyEdit: boolean;
   pinnedRowsEditable: boolean;
   rowPinningMenu: boolean;
+  rowInsertionMenu?: RowInsertionMenuOptions;
   suppressKeyboardEdit: boolean;
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
@@ -1342,6 +1374,7 @@ export type RuntimeGridOptions = Pick<
   | "readOnlyEdit"
   | "pinnedRowsEditable"
   | "rowPinningMenu"
+  | "rowInsertionMenu"
   | "suppressKeyboardEdit"
   | "suppressTypeToEdit"
   | "moveAfterEdit"

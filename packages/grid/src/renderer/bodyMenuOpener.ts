@@ -20,11 +20,13 @@ export class BodyMenuOpener {
     const cell = target.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return;
 
-    const isSelectableRowNumber = cell.classList.contains("pte-row-number-cell")
-      && this.params.core.options.rowSelection;
+    const isRowNumber = cell.classList.contains("pte-row-number-cell");
+    const isSelectableRowNumber = isRowNumber && this.params.core.options.rowSelection;
+    const isActionableRowNumber = isRowNumber
+      && (this.params.core.options.rowSelection || !!this.params.core.options.rowInsertionMenu);
     // Data-cell menus require grid cell selection. An enabled row-number cell is independently
     // actionable: right-click can establish a row selection even when ordinary cells are inert.
-    if (this.params.core.options.cellSelection !== true && !isSelectableRowNumber) return;
+    if (this.params.core.options.cellSelection !== true && !isActionableRowNumber) return;
 
     // bodyContextMenu === false disables the grid menu entirely: return BEFORE preventDefault so the
     // browser's native context menu appears. (A getter that returns [] is handled downstream — the

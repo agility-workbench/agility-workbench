@@ -5,6 +5,7 @@ import {
   ColumnType,
   type BodyMenuContext,
   type ColumnMenuContext,
+  type GridOptions,
   type IGridAPI,
 } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
@@ -22,6 +23,9 @@ import { mountGridHost } from "./test-utils";
       [rowData]="rows"
       [columnDefs]="cols"
       rowIdKey="id"
+      [rowNumbers]="rowNumbers"
+      [cellSelection]="cellSelection"
+      [rowInsertionMenu]="rowInsertionMenu"
       [bodyContextMenu]="bodyMenu"
       [getColumnMenuItems]="columnItems"
       [tooltip]="{ showDelay: 0, hideDelay: 0 }"
@@ -38,6 +42,9 @@ class MenusHost {
     { colId: "sales", key: "sales", label: "Sales", type: ColumnType.NUMBER },
   ];
   bodyMenu: boolean | ((p: { ctx: BodyMenuContext; items: NgMenuItem[] }) => NgMenuItem[]) = true;
+  rowNumbers = false;
+  cellSelection = true;
+  rowInsertionMenu: GridOptions["rowInsertionMenu"] = undefined;
   columnItems: ((p: { ctx: ColumnMenuContext; items: NgMenuItem[] }) => NgMenuItem[]) | undefined;
 }
 
@@ -93,6 +100,27 @@ describe("AwbGrid menu integration", () => {
 
     gridEl.querySelector<HTMLButtonElement>('[data-item-id="angular-action"]')!.click();
     expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the opt-in row-number insertion menu and inserts the factory row", async () => {
+    const { gridEl, host } = await mountGridHost(MenusHost, 600, (instance) => {
+      instance.rowNumbers = true;
+      instance.cellSelection = false;
+      instance.rowInsertionMenu = {
+        createRow: ({ position }) => ({ id: "new", name: position, sales: 0 }),
+      };
+    });
+    const rowNumber = Array.from(gridEl.querySelectorAll<HTMLElement>(
+      '.pte-row[data-view-idx="0"] .pte-row-number-cell',
+    ))[0];
+    rightClick(rowNumber);
+    expect(labels(gridEl)).toContain("Insert");
+    gridEl.querySelector<HTMLButtonElement>('[data-item-id="insertRow"]')!.click();
+    gridEl.querySelector<HTMLButtonElement>('[data-item-id="insertRowBelow"]')!.click();
+
+    const ids: string[] = [];
+    host.api!.forEachNodeAfterFilter(node => ids.push(node.id));
+    expect(ids).toEqual(["1", "new", "2"]);
   });
 
   it("suppresses the native menu without opening a grid menu when the callback returns no items", async () => {

@@ -64,3 +64,27 @@ const options = {
 
 The body menu adds Pin to top, Pin to bottom, and Unpin for the row or selection.
 Copy, cut, paste, and export commands appear automatically when applicable.
+
+## Row insertion menu
+
+```ts
+let nextId = 100;
+
+const options = {
+  rowNumbers: true,
+  rowInsertionMenu: {
+    createRow: ({ data, position }) => ({
+      ...data,
+      id: String(nextId++),
+      name: `Inserted ${position}`,
+    }),
+    // Optional: hide either direction for a particular row.
+    canInsert: ({ data, position }) => data.locked !== true || position === "below",
+  },
+} satisfies GridOptions;
+```
+
+This opt-in adds **Insert → 1 row above / 1 row below** only to row-number
+context menus on client-side rows. The factory owns required fields and stable
+IDs. Insertion uses underlying source order, so an active sort or filter may
+display the new row somewhere else.

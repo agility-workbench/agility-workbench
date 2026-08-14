@@ -24,6 +24,10 @@ interface Opts {
   columnSelection?: boolean;
   rowNumbers?: boolean;
   rowSelection?: boolean;
+  rowInsertionMenu?: {
+    createRow: (params: any) => any;
+    canInsert?: (params: any) => boolean;
+  };
   bodyContextMenu?: boolean | ((params: { items: any[] }) => any[]);
 }
 
@@ -58,6 +62,7 @@ async function mountGrid(opts: Opts = {}) {
           columnSelection={nextOpts.columnSelection}
           rowNumbers={nextOpts.rowNumbers}
           rowSelection={nextOpts.rowSelection}
+          rowInsertionMenu={nextOpts.rowInsertionMenu}
           bodyContextMenu={nextOpts.bodyContextMenu}
         />,
       );
@@ -197,6 +202,37 @@ describe("row-number context menu", () => {
     await act(async () => { contextmenu(rowNumber); });
     expect(apiRef.current!.getSelection().range).toEqual(before);
     expect(apiRef.current!.getSelection().selectedRowIds).toEqual([]);
+    await unmountTestRoot(root);
+  });
+
+  it("shows the opt-in Insert submenu and executes insertion without cell or row selection", async () => {
+    const { container, apiRef, root } = await mountGrid({
+      cellSelection: false,
+      rowNumbers: true,
+      rowSelection: false,
+      rowInsertionMenu: {
+        createRow: ({ position, rowId }: any) => ({
+          id: 10,
+          name: `${position}-${rowId}`,
+          city: "LDN",
+        }),
+      },
+    });
+
+    const ev = await act(async () => contextmenu(rowNumberCell(container, 1)));
+    expect(ev.defaultPrevented).toBe(true);
+    const insert = Array.from(document.querySelectorAll<HTMLElement>(".pte-menu-item"))
+      .find(item => item.textContent?.includes("Insert"))!;
+    await act(async () => { insert.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const above = Array.from(document.querySelectorAll<HTMLElement>(".pte-menu-item"))
+      .find(item => item.textContent?.includes("1 row above"))!;
+    expect(above).toBeTruthy();
+    await act(async () => { above.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    const ids: string[] = [];
+    apiRef.current!.forEachNodeAfterFilter(node => ids.push(node.id));
+    expect(ids).toEqual(["1", "10", "2", "3", "4"]);
+    expect(apiRef.current!.getSelection().kind).toBe("none");
     await unmountTestRoot(root);
   });
 });

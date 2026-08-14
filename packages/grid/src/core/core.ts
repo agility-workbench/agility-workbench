@@ -298,6 +298,7 @@ export class GridCore implements IGridCore {
       readOnlyEdit: isTrue(options.readOnlyEdit),
       pinnedRowsEditable: isTrue(options.pinnedRowsEditable),
       rowPinningMenu: isTrue(options.rowPinningMenu),
+      rowInsertionMenu: options.rowInsertionMenu,
       suppressKeyboardEdit: isTrue(options.suppressKeyboardEdit),
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,

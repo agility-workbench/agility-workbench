@@ -1,7 +1,8 @@
-import { Component, signal } from "@angular/core";
+import { Component, computed, signal } from "@angular/core";
 import {
   AwbGrid,
   ColumnType,
+  type GridOptions,
   type IGridAPI,
   type NgColDef,
   type RowTransactionResult,
@@ -10,7 +11,7 @@ import {
 type InsertRow = {
   id: string;
   label: string;
-  api: "initial" | "sync" | "async";
+  api: "initial" | "sync" | "async" | "menu";
   requestedIndex: number | null;
   batch: number;
   batchOrder: number;
@@ -52,7 +53,8 @@ function resultText(result: RowTransactionResult): string {
           <h2>Indexed row insertion</h2>
           <p>
             Insert a contiguous block into the underlying row order. With no active sort or filter,
-            the requested source index is also the displayed position.
+            the requested source index is also the displayed position. Enable the row-number menu
+            to insert one row above or below from a right-click.
           </p>
         </div>
         <div class="indexed-insert-status" aria-live="polite">
@@ -89,6 +91,14 @@ function resultText(result: RowTransactionResult): string {
         <button class="btn" type="button" (click)="insertAsync()">
           Insert with async API
         </button>
+        <button
+          class="btn"
+          type="button"
+          [attr.aria-pressed]="rowInsertionMenuEnabled()"
+          (click)="toggleRowInsertionMenu()"
+        >
+          {{ rowInsertionMenuEnabled() ? "Disable" : "Enable" }} row-number Insert menu
+        </button>
       </div>
 
       <div class="indexed-insert-grid">
@@ -97,6 +107,7 @@ function resultText(result: RowTransactionResult): string {
           [columnDefs]="columnDefs"
           rowIdKey="id"
           [rowNumbers]="true"
+          [rowInsertionMenu]="rowInsertionMenu()"
           [zebraRows]="true"
           [highlightActiveCell]="true"
           [asyncTransactionWaitMs]="64"
@@ -112,8 +123,19 @@ export class IndexedInsertDemoComponent {
   readonly rowsToInsert = signal("5");
   readonly addIndex = signal("3");
   readonly pendingAsync = signal(0);
+  readonly rowInsertionMenuEnabled = signal(false);
   readonly status = signal("Choose a block size and source index, then run either API.");
   readonly maxInsertCount = MAX_INSERT_COUNT;
+  readonly rowInsertionMenu = computed<GridOptions["rowInsertionMenu"]>(() => {
+    if (!this.rowInsertionMenuEnabled()) return undefined;
+    return {
+      createRow: ({ position, addIndex }) => {
+        const [row] = this.makeRows("menu", 1, addIndex);
+        this.status.set(`Context menu inserted 1 row ${position} at source index ${addIndex}.`);
+        return row;
+      },
+    };
+  });
 
   readonly columnDefs: NgColDef[] = [
     { colId: "id", key: "id", label: "Row ID", width: 140 },
@@ -168,6 +190,14 @@ export class IndexedInsertDemoComponent {
     });
   }
 
+  toggleRowInsertionMenu(): void {
+    const enabled = !this.rowInsertionMenuEnabled();
+    this.rowInsertionMenuEnabled.set(enabled);
+    this.status.set(enabled
+      ? "Row-number Insert menu enabled. Right-click a row number to insert above or below it."
+      : "Row-number Insert menu disabled.");
+  }
+
   private readRequest(): { count: number; index: number } {
     return {
       count: normalizeInteger(this.rowsToInsert(), 1, MAX_INSERT_COUNT, 1),
@@ -175,13 +205,13 @@ export class IndexedInsertDemoComponent {
     };
   }
 
-  private makeRows(api: "sync" | "async", count: number, index: number): InsertRow[] {
+  private makeRows(api: "sync" | "async" | "menu", count: number, index: number): InsertRow[] {
     const batch = this.nextBatch++;
     return Array.from({ length: count }, (_, offset) => {
       const id = this.nextRowId++;
       return {
         id: `inserted-${id}`,
-        label: `${api === "sync" ? "Sync" : "Async"} inserted row ${id}`,
+        label: `${api === "sync" ? "Sync" : api === "async" ? "Async" : "Menu"} inserted row ${id}`,
         api,
         requestedIndex: index,
         batch,
