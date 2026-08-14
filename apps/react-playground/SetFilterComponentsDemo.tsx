@@ -1,11 +1,15 @@
 import { useMemo } from "react";
 
-import type {
-  SetFilterSpecialValueComponentParams,
-  SetFilterValueComponentParams,
-} from "@grid";
-import { Grid } from "@react-grid";
-import type { ReactColDef } from "@react-grid";
+import {
+  FilterType,
+  Grid,
+  type FilterParams,
+  type FilterValueAsyncSource,
+  type FilterValueAsyncSourceParams,
+  type ReactColDef,
+  type SetFilterSpecialValueComponentParams,
+  type SetFilterValueComponentParams,
+} from "@react-grid";
 
 type AccountRow = {
   id: string;
@@ -20,9 +24,48 @@ const REGION_COLORS: Record<string, string> = {
   EMEA: "#059669",
 };
 
+const OWNERS = ["Ava", "Liam", "Mia", "Noah", "Emma", "Ethan", "Sofia", "Lucas"];
+
+const formatAccountFilterText = (value: any): string => String(value ?? "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "");
+
+const matchAccount: NonNullable<FilterParams["filterFunction"]> = (
+  type,
+  filterValues,
+  cellValue,
+  caseSensitive = false,
+  trimValues = false,
+) => {
+  let query = String(filterValues[0] ?? "");
+  let account = String(cellValue ?? "");
+  if (trimValues) query = query.trim();
+  if (!caseSensitive) {
+    query = query.toLowerCase();
+    account = account.toLowerCase();
+  }
+
+  switch (type) {
+    case FilterType.CONTAINS: return account.includes(query);
+    case FilterType.NOT_CONTAINS: return !account.includes(query);
+    case FilterType.EQ: return account === query;
+    case FilterType.NEQ: return account !== query;
+    case FilterType.STARTS_WITH: return account.startsWith(query);
+    case FilterType.ENDS_WITH: return account.endsWith(query);
+    default: return false;
+  }
+};
+
+const loadOwnerValues: FilterValueAsyncSource = async (
+  { signal, success }: FilterValueAsyncSourceParams,
+) => {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  if (!signal.aborted) success(OWNERS);
+};
+
 const rows: AccountRow[] = [
   { id: "A-101", account: "Northwind", region: "Americas", owner: "Ava" },
-  { id: "A-102", account: "Contoso", region: "EMEA", owner: "Liam" },
+  { id: "A-102", account: "Café Contoso", region: "EMEA", owner: "Liam" },
   { id: "A-103", account: "Globex", region: "APAC", owner: "Mia" },
   { id: "A-104", account: "Initech", region: null, owner: "Noah" },
   { id: "A-105", account: "Umbrella", region: "EMEA", owner: "Emma" },
@@ -65,7 +108,19 @@ function BlanksFilterValue({ count }: SetFilterSpecialValueComponentParams) {
 
 export function SetFilterComponentsDemo() {
   const columnDefs = useMemo<ReactColDef[]>(() => [
-    { colId: "account", key: "account", label: "Account", width: 220, filter: "text" },
+    {
+      colId: "account",
+      key: "account",
+      label: "Account",
+      width: 220,
+      filter: "text",
+      filterParams: {
+        caseSensitive: false,
+        trimValues: true,
+        textFormatter: formatAccountFilterText,
+        filterFunction: matchAccount,
+      },
+    },
     {
       colId: "region",
       key: "region",
@@ -86,7 +141,7 @@ export function SetFilterComponentsDemo() {
       label: "Owner",
       width: 150,
       filter: "set",
-      filterParams: { showValueCounts: true },
+      filterParams: { showValueCounts: true, filterValues: loadOwnerValues },
     },
   ], []);
 
@@ -102,8 +157,9 @@ export function SetFilterComponentsDemo() {
       >
         <h2 style={{ fontSize: 18, marginBottom: 4 }}>Set-filter value components</h2>
         <p style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.75 }}>
-          Open the Region filter to see loaded-row counts rendered by custom React value and Blanks
-          components. Open Owner to see the built-in count labels. The grid still owns every checkbox.
+          Enter <code> cafe </code> in the Account filter to see trimming, case folding, accent
+          normalization, and a custom filter function work together. Region uses custom React value
+          components; Owner loads its counted set values asynchronously.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

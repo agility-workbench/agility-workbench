@@ -422,6 +422,7 @@ export class FilterController implements IFilterController {
     } else if (source.kind === "fromRows") {
       res.success(this.computeUniqueValuesFromRows());
     } else if (source.kind === "async") {
+      console.log(res);
       source.load(res);
     }
   }

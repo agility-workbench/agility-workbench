@@ -24,6 +24,13 @@ function makeGrid(rows: Record<string, unknown>[]) {
       filterParams: { maxNumConditions: 2 },
     },
     { colId: "qty", key: "qty", label: "Qty", type: ColumnType.NUMBER, filter: "set" },
+    {
+      colId: "owner",
+      key: "owner",
+      label: "Owner",
+      filter: "set",
+      filterParams: { filterValues: ({ success }) => success(["Ava", "Liam"]) },
+    },
     { colId: "name", key: "name", label: "Name" }, // text filter — not a set column
   ]);
   core.dispatch({
@@ -56,6 +63,7 @@ describe("IGridAPI set-filter helpers", () => {
     const { api } = makeGrid(ROWS);
     expect(await api.getSetFilterValues("region")).toEqual([null, "APAC", "EMEA"]);
     expect(await api.getSetFilterValues("qty")).toEqual([1, 2, 3]);
+    expect(await api.getSetFilterValues("owner")).toEqual(["Ava", "Liam"]);
   });
 
   it("uncheck hides the value's rows; state reports intent, not storage", async () => {

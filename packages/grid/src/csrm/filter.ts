@@ -1,6 +1,6 @@
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
-import { FilterItem, FilterMatcherFn, FilterType, valuesNeededFor } from "../interfaces/filter";
+import { FilterItem, FilterMatcherFn, FilterParams, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 
 export interface QuickFilterSpec {
@@ -64,49 +64,85 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
   const out = new Array(n);
   let outLen = 0;
 
-  const active: Array<{ col: Column; type: FilterType; v: any; matcher?: FilterMatcherFn; rawValues?: any[] }> = [];
+  type ActiveFilter = {
+    col: Column;
+    type: FilterType;
+    v: any;
+    rawValues: any[];
+    params: ResolvedFilterParams;
+    matcher?: FilterMatcherFn;
+    filterFunction?: NonNullable<FilterParams["filterFunction"]>;
+  };
+
+  const active: ActiveFilter[] = [];
   for (const filter of filters) {
-    // A column whose `filter` is a function supplies a custom matcher: it receives the cell value,
-    // node, and the user's raw menu input (values + type), and decides row-by-row. The built-in
-    // value normalization / operator switch is bypassed for that column.
+    // `false` is an explicit opt-out. Usually this also prevents the menu from creating a model,
+    // but honour it here as well for models supplied through the API or restored from state.
+    if (filter.col.filter === false) continue;
+
+    const params = resolveFilterParams(filter.col.filterParams);
+    const filterFunction = filter.col.filterParams?.filterFunction;
     const matcher = typeof filter.col.filter === "function" ? (filter.col.filter as FilterMatcherFn) : undefined;
-    if (matcher) {
+
+    // The FilterParams callback is the most specific customisation and therefore wins over a
+    // matcher supplied through ColDef.filter. Both callbacks receive textFormatter-processed
+    // operands; filterFunction additionally receives the case/trim settings so it can decide how
+    // those settings apply to its custom comparison.
+    if (filterFunction || matcher) {
       for (const f of filter.filters) {
-        active.push({ col: filter.col, type: f.type, v: null, matcher, rawValues: Array.isArray(f.values) ? f.values : [f.values] });
+        const rawValues = toValuesArray(f.values);
+        active.push({
+          col: filter.col,
+          type: f.type,
+          v: formatFilterValues(rawValues, params.textFormatter),
+          rawValues,
+          params,
+          filterFunction,
+          matcher: filterFunction ? undefined : matcher,
+        });
       }
       continue;
     }
+
     // Pre-normalize filter values
     for (const f of filter.filters) {
+      const rawValues = toValuesArray(f.values);
       const valuesNeeded = valuesNeededFor(f.type);
       if (valuesNeeded === 0) {
         active.push({
           col: filter.col,
           type: f.type,
           v: null,
+          rawValues,
+          params,
         });
       } else if (f.type === "in" || f.type === "notIn") {
-        const values = Array.isArray(f.values[0]) ? f.values[0] : f.values; // allow both in([1,2,3]) and in(1,2,3) for set filters
-        if (!filter.col.isComputableType()) {
-          // values.forEach((v: any, i: number) => values[i] = String(v).toLowerCase());
-        }
+        const values = Array.isArray(rawValues[0]) ? rawValues[0] : rawValues; // allow both in([1,2,3]) and in(1,2,3) for set filters
         active.push({
           col: filter.col,
           type: f.type,
-          v: values,
+          v: values.map(value => normalizeFilterOperand(value, params)),
+          rawValues: values,
+          params,
         });
       } else if (f.type === "contains" || f.type === "notContains" || f.type === "startsWith" || f.type === "endsWith" || !filter.col.isComputableType()) {
         active.push({
           col: filter.col,
           type: f.type,
-          v: String(f.values[0] ?? "").toLowerCase(),
+          v: normalizeTextFilterOperand(rawValues[0], params),
+          rawValues,
+          params,
         });
       } else {
-        const v = valuesNeeded === 1 ? f.values[0] : f.values;
+        const v = valuesNeeded === 1
+          ? normalizeFilterOperand(rawValues[0], params)
+          : rawValues.map(value => normalizeFilterOperand(value, params));
         active.push({
           col: filter.col,
           type: f.type,
           v: v,
+          rawValues,
+          params,
         });
       }
     }
@@ -125,16 +161,29 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
       const f = active[j];
       const cell = f.col.getValue(rows[i]);
 
-      // Custom matcher: delegate the keep/drop decision to the column's filter function.
-      if (f.matcher) {
-        if (!f.matcher(cell, rows[i], f.rawValues ?? [], f.type)) {
+      if (f.filterFunction) {
+        const formattedCell = formatOperand(cell, f.params.textFormatter);
+        if (!f.filterFunction(f.type, f.v, formattedCell, f.params.caseSensitive, f.params.trimValues)) {
           ok = false;
           break;
         }
         continue;
       }
 
-      const strVal = cell == null ? "" : String(cell).toLowerCase();
+      // Custom matcher: delegate the keep/drop decision to the column's filter function. Without
+      // textFormatter this preserves the existing raw-value contract.
+      if (f.matcher) {
+        const formattedCell = formatOperand(cell, f.params.textFormatter);
+        if (!f.matcher(formattedCell, rows[i], f.v, f.type)) {
+          ok = false;
+          break;
+        }
+        continue;
+      }
+
+      const usesRawBlankSemantics = f.type === FilterType.IS_BLANK || f.type === FilterType.IS_NOT_BLANK;
+      const comparableCell = usesRawBlankSemantics ? cell : normalizeCellOperand(cell, f.params);
+      const strVal = comparableCell == null ? "" : String(comparableCell);
 
       switch (f.type) {
         case "contains": {
@@ -154,31 +203,30 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           break;
         }
         case "eq":
-          // Match the normalization used when f.v was built (filter.ts ~line 98/104): numeric columns
-          // compare coerced numbers (cell is a number, f.v the raw input string); string columns
-          // compare the lowercased cell (strVal) against the already-lowercased f.v.
-          if (f.col.isComputableType() ? Number(cell) !== Number(f.v) : strVal !== f.v) ok = false;
+          // Numeric columns compare coerced, formatter-processed operands; string columns compare
+          // the normalized text prepared above.
+          if (f.col.isComputableType() ? Number(comparableCell) !== Number(f.v) : strVal !== f.v) ok = false;
           break;
         case "neq":
-          if (f.col.isComputableType() ? Number(cell) === Number(f.v) : strVal === f.v) ok = false;
+          if (f.col.isComputableType() ? Number(comparableCell) === Number(f.v) : strVal === f.v) ok = false;
           break;
         case "gt":
-          if (!(Number(cell) > Number(f.v))) ok = false;
+          if (!(Number(comparableCell) > Number(f.v))) ok = false;
           break;
         case "gte":
-          if (!(Number(cell) >= Number(f.v))) ok = false;
+          if (!(Number(comparableCell) >= Number(f.v))) ok = false;
           break;
         case "lt":
-          if (!(Number(cell) < Number(f.v))) ok = false;
+          if (!(Number(comparableCell) < Number(f.v))) ok = false;
           break;
         case "lte":
-          if (!(Number(cell) <= Number(f.v))) ok = false;
+          if (!(Number(comparableCell) <= Number(f.v))) ok = false;
           break;
         case "in":
-          if (!Array.isArray(f.v) || !setValuesInclude(f.v, cell)) ok = false;
+          if (!Array.isArray(f.v) || !setValuesInclude(f.v, comparableCell, f.rawValues, cell)) ok = false;
           break;
         case "notIn":
-          if (Array.isArray(f.v) && setValuesInclude(f.v, cell)) ok = false;
+          if (Array.isArray(f.v) && setValuesInclude(f.v, comparableCell, f.rawValues, cell)) ok = false;
           break;
         case "isBlank":
           if (cell != null && cell !== "") ok = false;
@@ -187,12 +235,12 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           if (cell == null || cell === "") ok = false;
           break;
         case "inRange": {
-          const v = Number(cell);
+          const v = Number(comparableCell);
           if (v < Number(f.v[0]) || v > Number(f.v[1])) ok = false;
           break;
         }
         case "notInRange": {
-          const v = Number(cell);
+          const v = Number(comparableCell);
           if (v >= Number(f.v[0]) && v <= Number(f.v[1])) ok = false;
           break;
         }
@@ -213,8 +261,53 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
 // Membership test for set-filter (in/notIn) value lists. A null entry represents the "(Blanks)"
 // bucket and matches every blank cell (null, undefined, or empty string) — the set-filter menu and
 // API store the bucket as null, while rows may hold any of the three.
-function setValuesInclude(values: any[], cell: any): boolean {
+function setValuesInclude(values: any[], cell: any, rawValues: any[], rawCell: any): boolean {
   if (values.includes(cell)) return true;
-  const cellIsBlank = cell == null || cell === "";
-  return cellIsBlank && values.includes(null);
+  const cellIsBlank = rawCell == null || rawCell === "";
+  return cellIsBlank && rawValues.includes(null);
+}
+
+type ResolvedFilterParams = {
+  caseSensitive: boolean;
+  trimValues: boolean;
+  textFormatter?: NonNullable<FilterParams["textFormatter"]>;
+};
+
+function resolveFilterParams(params: FilterParams | undefined): ResolvedFilterParams {
+  return {
+    caseSensitive: params?.caseSensitive ?? false,
+    trimValues: params?.trimValues ?? false,
+    textFormatter: params?.textFormatter,
+  };
+}
+
+function toValuesArray(values: any): any[] {
+  return Array.isArray(values) ? values : [values];
+}
+
+function formatOperand(value: any, formatter: ResolvedFilterParams["textFormatter"]): any {
+  return formatter ? formatter(value) : value;
+}
+
+function formatFilterValues(values: any[], formatter: ResolvedFilterParams["textFormatter"]): any[] {
+  if (!formatter) return values;
+  return values.map(value => Array.isArray(value) ? formatFilterValues(value, formatter) : formatter(value));
+}
+
+function normalizeFilterOperand(value: any, params: ResolvedFilterParams): any {
+  const formatted = formatOperand(value, params.textFormatter);
+  if (typeof formatted !== "string") return formatted;
+  const trimmed = params.trimValues ? formatted.trim() : formatted;
+  return params.caseSensitive ? trimmed : trimmed.toLowerCase();
+}
+
+function normalizeTextFilterOperand(value: any, params: ResolvedFilterParams): string {
+  const normalized = normalizeFilterOperand(value, params);
+  return normalized == null ? "" : String(normalized);
+}
+
+function normalizeCellOperand(value: any, params: ResolvedFilterParams): any {
+  const formatted = formatOperand(value, params.textFormatter);
+  if (typeof formatted !== "string" || params.caseSensitive) return formatted;
+  return formatted.toLowerCase();
 }

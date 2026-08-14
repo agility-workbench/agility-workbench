@@ -9,10 +9,12 @@ import type {
 /**
  * Custom column filter matcher. Called once per row for each active menu filter on the column;
  * return true to keep the row. Receives the cell value, the row node, and the user's current filter
- * input from the menu: `filterValues` is the raw `FilterDef.values` array (e.g. `["abc"]` for
- * contains, `[10, 20]` for inRange, `[]` for isBlank), and `filterType` is the chosen operator. Use
- * it to implement column-specific matching that the built-in operators don't cover. Only runs for
- * filters the user has applied via the menu — a column with no active filter is not filtered.
+ * input from the menu: `filterValues` is the `FilterDef.values` array (e.g. `["abc"]` for contains,
+ * `[10, 20]` for inRange, `[]` for isBlank), and `filterType` is the chosen operator. Values are raw
+ * unless `filterParams.textFormatter` is configured, in which case the formatter is applied to the
+ * cell and filter values first. Use it to implement column-specific matching that the built-in
+ * operators don't cover. Only runs for filters the user has applied via the menu — a column with no
+ * active filter is not filtered.
  */
 export type FilterMatcherFn = (
   val: any,
@@ -121,7 +123,9 @@ export interface FilterParams {
   buttons?: FilterAction[];
   closeOnApply?: boolean;
   debounceMs?: number;
+  /** Preserve letter case for built-in comparisons. Defaults to false (case-insensitive). */
   caseSensitive?: boolean;
+  /** Trim leading and trailing whitespace from built-in filter operands. Defaults to false. */
   trimValues?: boolean;
   filterOptions?: FilterOption[];
   maxNumConditions?: number;
@@ -144,7 +148,16 @@ export interface FilterParams {
   blanksComponent?: SetFilterSpecialValueComponent;
   /** Extra params merged into the Blanks component params. */
   blanksComponentParams?: any;
+  /**
+   * Transforms cell and filter operands before comparison. Runs before built-in normalization and
+   * before either custom matcher. Built-in blank operators still inspect the raw cell value.
+   */
   textFormatter?: (value: any) => string;
+  /**
+   * Custom client-side comparison. Takes precedence over a function assigned to `ColDef.filter`,
+   * unless `ColDef.filter` is explicitly false. Receives textFormatter-processed operands and the
+   * resolved case/trim flags; the callback owns how those flags apply to its comparison.
+   */
   filterFunction?: (type: FilterType, filterValues: any[], cellValue: any, caseSensitive?: boolean, trimValues?: boolean) => boolean;
 }
 

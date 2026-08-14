@@ -162,15 +162,17 @@ export class FilterValueAsyncSourceParamsImpl implements FilterValueAsyncSourceP
     this.errorCallback = callback;
   }
 
-  success(values: any[]): void {
+  // Arrow properties keep the public callbacks usable when consumers follow the documented
+  // destructuring form: `filterValues: async ({ success }) => success(values)`.
+  success = (values: any[]): void => {
     if (this.successCallback) {
       this.successCallback(values);
     }
-  }
+  };
 
-  error(err: any): void {
+  error = (err: any): void => {
     if (this.errorCallback) {
       this.errorCallback(err);
     }
-  }
+  };
 }

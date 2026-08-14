@@ -94,6 +94,9 @@ const column = {
 When more than one condition is enabled, the filter UI lets the user join them
 with AND or OR. Inputs include their own clear button.
 
+`caseSensitive` defaults to `false`. `trimValues` defaults to `false` and trims
+only filter operands, not cell values.
+
 ## Restrict available operators
 
 ```ts
@@ -126,6 +129,35 @@ const column = {
   },
 } satisfies ColDef;
 ```
+
+For reusable normalization and matching, use `filterParams.textFormatter` and
+`filterParams.filterFunction`:
+
+```ts
+const column = {
+  key: "code",
+  label: "Code",
+  filter: "text",
+  filterParams: {
+    caseSensitive: false,
+    trimValues: true,
+    textFormatter: value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+    filterFunction: (type, values, cell, caseSensitive, trimValues) => {
+      const query = trimValues ? values[0].trim() : values[0];
+      const [haystack, needle] = caseSensitive
+        ? [cell, query]
+        : [cell.toLowerCase(), query.toLowerCase()];
+      return type === FilterType.STARTS_WITH && haystack.startsWith(needle);
+    },
+  },
+} satisfies ColDef;
+```
+
+The formatter processes both cell and filter values before comparison. A
+`filterFunction` takes precedence over a function assigned to `filter`, while
+`filter: false` disables filtering completely. These callbacks execute only in
+the client-side row model; server-side filtering must implement the equivalent
+normalization on the server.
 
 ## Quick filter
 

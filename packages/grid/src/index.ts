@@ -163,6 +163,7 @@ export type {
   FilterParams,
   SetFilterMode,
 } from "./interfaces/filter";
+export type { FilterValueAsyncSource, FilterValueAsyncSourceParams } from "./filter/types";
 export type { SetFilterSelection } from "./filter/setFilterCore";
 export type {
   ISetFilterComponent,

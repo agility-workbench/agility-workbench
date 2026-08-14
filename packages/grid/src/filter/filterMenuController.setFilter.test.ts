@@ -123,13 +123,26 @@ describe("set-filter universe building", () => {
     const { options, state } = makeController([], null, {
       source: {
         kind: "async",
-        load: (res) => { setTimeout(() => res.success(["x", "y"]), 0); },
+        load: ({ success }) => { setTimeout(() => success(["x", "y"]), 0); },
       },
     });
     expect(state().ui["c1"].loading).toBe(true);
     await new Promise(resolve => setTimeout(resolve, 1));
     expect(state().ui["c1"].loading).toBe(false);
     expect(options().map(o => o.label)).toEqual(["(Select All)", "x", "y"]);
+  });
+
+  it("async source: destructured error callback ends loading and exposes the message", async () => {
+    const { state } = makeController([], null, {
+      source: {
+        kind: "async",
+        load: ({ error }) => { setTimeout(() => error(new Error("Could not load fruit")), 0); },
+      },
+    });
+    expect(state().ui["c1"].loading).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 1));
+    expect(state().ui["c1"].loading).toBe(false);
+    expect(state().ui["c1"].error).toBe("Could not load fruit");
   });
 });
 
