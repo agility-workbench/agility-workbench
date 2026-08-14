@@ -77,6 +77,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "showSortPriority", grid.showSortPriority());
   setIfDefined(options, "pinnedRowsEditable", grid.pinnedRowsEditable());
   setIfDefined(options, "rowPinningMenu", grid.rowPinningMenu());
+  setIfDefined(options, "rowInsertionMenu", grid.rowInsertionMenu());
   setIfDefined(options, "suppressKeyboardEdit", grid.suppressKeyboardEdit());
   setIfDefined(options, "suppressTypeToEdit", grid.suppressTypeToEdit());
   setIfDefined(options, "moveAfterEdit", grid.moveAfterEdit());

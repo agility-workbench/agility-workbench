@@ -108,6 +108,8 @@ export type {
   PaginationPageSelection,
   ResolvedPaginationControlsOptions,
   BodyContextMenuGetter,
+  RowInsertionMenuOptions,
+  RowInsertionMenuParams,
   QuickFilterOptions,
   QuickFilterPositionOptions,
   QuickFilterMatchMode,

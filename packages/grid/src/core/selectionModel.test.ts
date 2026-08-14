@@ -18,6 +18,7 @@ function makeHarness(
     pageStart?: number;
     pinnedTopCount?: number;
     pinnedBottomCount?: number;
+    rowNumberNavigable?: boolean;
   } = {},
 ) {
   const leadingCols = opts.leadingCols ?? 1;
@@ -62,6 +63,7 @@ function makeHarness(
     getPageStartIdx: () => state.pageStart,
     // No group rows in these tests — every row is selectable.
     isRowSelectable: () => true,
+    isRowNumberNavigable: () => opts.rowNumberNavigable ?? false,
     getPinnedRowCount: position =>
       position === "top" ? opts.pinnedTopCount ?? 0 : opts.pinnedBottomCount ?? 0,
   });
@@ -639,6 +641,16 @@ describe("SelectionModel — page/view invalidation", () => {
     expect(model.isCellInActiveSelection(0, 1, "r0", "col1")).toBe(true);
     state.pageStart = 2;
     expect(model.isCellInActiveSelection(0, 1, "r0", "col1")).toBe(false);
+  });
+
+  it("treats the row number as selected only when an enabled range covers every data column", () => {
+    const m = makeHarness([["a", "b"], ["c", "d"]], { rowNumberNavigable: true }).model;
+    m.selectSingleCell(0, 1);
+    expect(m.isCellInActiveSelection(0, 0, "r0", "col0")).toBe(false);
+
+    m.updateRange(0, 2);
+    expect(m.isCellInActiveSelection(0, 0, "r0", "col0")).toBe(true);
+    expect(m.isCellInActiveSelection(1, 0, "r1", "col0")).toBe(false);
   });
 
   it("clampToView shrinks a range to the current bounds", () => {

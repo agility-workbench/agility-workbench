@@ -176,6 +176,7 @@ export class AwbGrid implements OnDestroy {
   readonly pinnedBottomRowData = input<GridOptions["pinnedBottomRowData"]>();
   readonly isRowPinned = input<GridOptions["isRowPinned"]>();
   readonly rowPinningMenu = input<GridOptions["rowPinningMenu"]>();
+  readonly rowInsertionMenu = input<GridOptions["rowInsertionMenu"]>();
 
   // --- full-width rows ---
   readonly isFullWidthRow = input<GridOptions["isFullWidthRow"]>();
@@ -407,6 +408,7 @@ export class AwbGrid implements OnDestroy {
         readOnlyEdit: this.readOnlyEdit() ?? false,
         pinnedRowsEditable: this.pinnedRowsEditable() ?? false,
         rowPinningMenu: this.rowPinningMenu() ?? false,
+        rowInsertionMenu: this.rowInsertionMenu(),
         suppressKeyboardEdit: this.suppressKeyboardEdit() ?? false,
         suppressTypeToEdit: this.suppressTypeToEdit() ?? false,
         moveAfterEdit: this.moveAfterEdit() ?? true,

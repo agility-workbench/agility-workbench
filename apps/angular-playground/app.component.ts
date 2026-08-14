@@ -10,6 +10,7 @@ import { GridDemoComponent } from "./grid-demo.component";
 import { GroupingDemoComponent } from "./grouping-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
 import { HighFrequencyDemoComponent } from "./high-frequency-demo.component";
+import { IndexedInsertDemoComponent } from "./indexed-insert-demo.component";
 import { KitchenSinkDemoComponent } from "./kitchen-sink-demo.component";
 import { MenusDemoComponent } from "./menus-demo.component";
 import { PinnedRowsDemoComponent } from "./pinned-rows-demo.component";
@@ -34,6 +35,7 @@ const PAGES = [
   { id: "components", label: "Angular components" },
   { id: "menus", label: "Menus & templates" },
   { id: "grid", label: "Grid demo" },
+  { id: "indexedInsert", label: "Indexed row insertion" },
   { id: "highFrequency", label: "High-frequency updates" },
   { id: "selection", label: "Selection & keyboard nav" },
   { id: "rowSelectionCheckboxes", label: "Row selection checkboxes" },
@@ -76,6 +78,7 @@ type PageId = (typeof PAGES)[number]["id"];
     GroupingDemoComponent,
     HeaderComponentDemoComponent,
     HighFrequencyDemoComponent,
+    IndexedInsertDemoComponent,
     KitchenSinkDemoComponent,
     MenusDemoComponent,
     PinnedRowsDemoComponent,
@@ -117,6 +120,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("grid") {
           <grid-demo />
+        }
+        @case ("indexedInsert") {
+          <indexed-insert-demo />
         }
         @case ("highFrequency") {
           <high-frequency-demo />

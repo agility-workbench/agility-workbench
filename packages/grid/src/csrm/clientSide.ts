@@ -114,7 +114,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   // Apply an incremental add / update / remove against the current node set. This only mutates the
   // node store; the caller re-derives filter/sort/view via applyRequest afterwards. Removes are
-  // applied first, then updates (data replaced in place, node identity kept), then adds appended.
+  // applied first, then updates (data replaced in place, node identity kept), then adds are inserted
+  // at addIndex (or appended when it is omitted).
   applyTransaction(tx: RowTransaction<Row>, order?: string[]): RowTransactionResult {
     let removed = 0;
     if (tx.remove?.length) {
@@ -165,6 +166,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       for (const [id, parentId] of prepared.nestedParents) {
         this.nestedTreeParents.set(id, parentId);
       }
+      const addedNodes: IRowNode<Row>[] = [];
       for (const row of prepared.rows) {
         const node = this.createNode(row);
         if (this.nodesMap.has(node.id)) {
@@ -174,15 +176,25 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
           updated++;
           continue;
         }
-        this.nodes.push(node);
+        addedNodes.push(node);
         this.nodesMap.set(node.id, node);
         added++;
       }
+
+      if (addedNodes.length > 0) {
+        // Be forgiving at the runtime boundary: invalid numbers retain the established append
+        // behavior, while finite values are truncated and clamped to a valid insertion point.
+        const requestedIndex = tx.addIndex;
+        const addIndex = requestedIndex == null || !Number.isFinite(requestedIndex)
+          ? this.nodes.length
+          : Math.min(Math.max(Math.trunc(requestedIndex), 0), this.nodes.length);
+        this.nodes.splice(addIndex, 0, ...addedNodes);
+      }
     }
 
-    // Adds land at the end above, which is only right for a caller adding rows to an existing set.
-    // A caller replacing the whole array supplies the order it wants; honour it. Ids the map does
-    // not know are skipped, and any node the order omits keeps its relative position at the end.
+    // A caller replacing the whole array supplies the complete order it wants; honour it over any
+    // insertion position. Ids the map does not know are skipped, and any node the order omits keeps
+    // its relative position at the end.
     if (order) this.reorderNodes(order);
 
     return { added, updated, removed };

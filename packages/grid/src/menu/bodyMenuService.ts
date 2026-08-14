@@ -2,6 +2,7 @@ import { IGridCore } from "../interfaces";
 import { Column } from "../column/column";
 import { MenuItem } from "../interfaces/menuItem";
 import type { RowPinnedPosition } from "../interfaces/gridOptions";
+import type { RowInsertionMenuParams } from "../interfaces/gridOptions";
 import { BodyMenuContext } from "./bodyContext";
 
 type ExportScopeOption = "selection" | "selectedColumns" | "all";
@@ -64,6 +65,12 @@ export class BodyMenuService {
       items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
     }
 
+    const insertItem = this.buildRowInsertionItem(ctx);
+    if (insertItem) {
+      items.push({ isSeparator: true });
+      items.push(insertItem);
+    }
+
     if (opts.rowPinningMenu) {
       const pinItem = this.buildRowPinningItem(ctx);
       if (pinItem) {
@@ -73,6 +80,66 @@ export class BodyMenuService {
     }
 
     return items;
+  }
+
+  private buildRowInsertionItem(ctx: BodyMenuContext): MenuItem | null {
+    const options = this.params.core.getOptions().rowInsertionMenu;
+    if (!options) return null;
+
+    const entries: MenuItem[] = [];
+    for (const position of ["above", "below"] as const) {
+      const params = this.resolveRowInsertionParams(ctx, position);
+      if (!params || options.canInsert?.(params) === false) continue;
+      entries.push({
+        id: position === "above" ? "insertRowAbove" : "insertRowBelow",
+        label: position === "above" ? "1 row above" : "1 row below",
+        command: position === "above" ? "body.row.insert.above" : "body.row.insert.below",
+      });
+    }
+
+    return entries.length > 0
+      ? { id: "insertRow", label: "Insert", subMenu: entries }
+      : null;
+  }
+
+  private resolveRowInsertionParams(
+    ctx: BodyMenuContext,
+    position: "above" | "below",
+  ): RowInsertionMenuParams | null {
+    if (ctx.rowPinned || this.params.core.getRowModel().getType() !== "clientSide") return null;
+
+    const column = this.params.core.getColumnModel().getById(ctx.colId)
+      ?? this.params.core.getColumnModel().getByColId(ctx.colId);
+    if (!column?.isRowNumberColumn()) return null;
+
+    const rowModel = this.params.core.getRowModel();
+    const node = rowModel.getRowNode(ctx.rowId);
+    if (!node || node.isGroup) return null;
+
+    let sourceIndex = -1;
+    rowModel.forEachNode((candidate, index) => {
+      if (candidate.id === ctx.rowId) sourceIndex = index;
+    });
+    if (sourceIndex < 0) return null;
+
+    return {
+      position,
+      rowId: ctx.rowId,
+      data: node.data,
+      node,
+      viewIndex: ctx.viewIdx,
+      sourceIndex,
+      addIndex: sourceIndex + (position === "below" ? 1 : 0),
+    };
+  }
+
+  private insertRow(ctx: BodyMenuContext, position: "above" | "below"): void {
+    const options = this.params.core.getOptions().rowInsertionMenu;
+    const params = this.resolveRowInsertionParams(ctx, position);
+    if (!options || !params || options.canInsert?.(params) === false) return;
+    const row = options.createRow(params);
+    if (row == null) return;
+    this.params.core.applyTransaction({ add: [row], addIndex: params.addIndex });
   }
 
   // The "Pin row(s)" submenu. Targets are the rows owning the selected cells (the opener collapses
@@ -265,6 +332,10 @@ export class BodyMenuService {
         return this.applyRowPinning(ctx, "bottom");
       case "body.pin.none":
         return this.applyRowPinning(ctx, null);
+      case "body.row.insert.above":
+        return this.insertRow(ctx, "above");
+      case "body.row.insert.below":
+        return this.insertRow(ctx, "below");
       default:
         console.error(`Unhandled body menu command: ${item.command}`);
         return;
@@ -273,6 +344,7 @@ export class BodyMenuService {
 
   private resolveExportScope(ctx: BodyMenuContext): "selection" | "selectedColumns" | "all" {
     if (ctx.selection.range) return "selection";
+    if (ctx.selection.rowIds.length > 0) return "selection";
     if (ctx.selection.colIds.length > 0) return "selectedColumns";
     return "all";
   }

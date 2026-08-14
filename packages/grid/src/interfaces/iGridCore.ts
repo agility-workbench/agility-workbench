@@ -193,7 +193,7 @@ export interface IGridCore {
   deselectAllRows(): void;
   /** Programmatic row selection by stable row id ("set" replaces, "add"/"remove" adjust). */
   selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
-  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string): boolean;
+  isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string, rowPinned?: "top" | "bottom"): boolean;
   getSelectionSnapshot(resolveIds?: boolean): SelectionSnapshot;
   pruneColumnSelection(): void;
   clampSelectionToView(): void;

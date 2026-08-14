@@ -22,6 +22,12 @@ export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" 
 
 export interface RowTransaction<Row = any> {
   add?: Row[];
+  /**
+   * Zero-based position in the underlying client-side row order at which new rows are inserted.
+   * Omitted values append. The index is evaluated after removals in the same transaction; derived
+   * sorting, filtering, grouping, and pagination may place the rows elsewhere in the displayed view.
+   */
+  addIndex?: number;
   update?: { rowId: string; row: Row }[];
   remove?: string[];
 }
@@ -91,8 +97,8 @@ export interface IRowModel<Row = any> {
   // Incremental add / update / remove of rows without a full data replacement. Node identity is
   // preserved for updated rows so renderers (e.g. change-flash) can detect deltas. Returns counts
   // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards.
-  // `order`, when given, is the full set of row ids in the order the nodes should end up in —
-  // adds otherwise land at the end, which is wrong when the caller supplied a whole ordered array.
+  // `order`, when given, is the full set of row ids in the order the nodes should end up in and
+  // takes precedence over `tx.addIndex`; it is used when the caller supplied a whole ordered array.
   applyTransaction(tx: RowTransaction, order?: string[]): RowTransactionResult;
 
   /**

@@ -89,7 +89,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
   pageSize={25}
   pageSizes={[10, 25, 50]}
   onGridReady={(api) => {
-    api.applyTransaction({ add: [newOrder] });
+    api.applyTransaction({ add: [newOrder], addIndex: 2 });
   }}
 />`,
     angular: String.raw`<awb-grid
@@ -103,7 +103,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
 />
 
 // Later
-this.api.applyTransaction({ add: [newOrder] });`,
+this.api.applyTransaction({ add: [newOrder], addIndex: 2 });`,
     core: String.raw`const core = new GridCore(measurer, {
   rowIdKey: "id",
   columnDefs,
@@ -114,6 +114,7 @@ this.api.applyTransaction({ add: [newOrder] });`,
 api.setRowData(rows);
 api.applyTransaction({
   add: [newOrder],
+  addIndex: 2,
   update: [{ rowId: "order-1", row: changedOrder }],
   remove: ["order-2"],
 });`,
