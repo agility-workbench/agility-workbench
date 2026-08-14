@@ -108,6 +108,25 @@ describe("FilterParams matching", () => {
     expect(formatter).toHaveBeenCalledWith("café");
   });
 
+  it("uses keyCreator for set-filter membership while retaining raw model values", () => {
+    const keyCreator = vi.fn((value: any) => value.code);
+    const core = createCore([
+      { id: "first", region: { code: "emea", name: "Europe" } },
+      { id: "second", region: { code: "emea", name: "European Union" } },
+      { id: "third", region: { code: "apac", name: "Asia Pacific" } },
+    ], {
+      key: "region", label: "Region", type: ColumnType.STRING, filter: "set",
+      filterParams: { keyCreator },
+    });
+    const selected = { code: "emea", name: "Configured label" };
+
+    applyFilter(core, FilterType.IN, [selected]);
+
+    expect(viewIds(core)).toEqual(["first", "second"]);
+    expect(core.getFilterModel().items[0].filters[0].values).toEqual([selected]);
+    expect(keyCreator).toHaveBeenCalledWith(selected);
+  });
+
   it("keeps blank operators based on the raw cell value", () => {
     const formatter = vi.fn((value: any) => {
       if (value == null) throw new Error("blank values must not be formatted");

@@ -11,9 +11,10 @@ export class ColumnFilterMenuService {
   buildFilterMenu(ctx: ColumnFilterContext): FilterPanelSpec {
     const filterParams = this.getFilterParams(ctx.targetCol);
     let filterType = this.getFilterInputType(ctx.targetCol);
+    const isSetFilter = filterType === "set" || filterType === "tree";
 
     let filterValueSource: FilterValueSource | undefined;
-    const valueSource = filterType === "set" || filterType === "tree" ? filterParams.filterValues || "fromRows" : undefined;
+    const valueSource = isSetFilter ? filterParams.filterValues || "fromRows" : undefined;
     if (valueSource === "fromRows") {
       filterValueSource = { kind: "fromRows" };
     } else if (Array.isArray(valueSource)) {
@@ -21,6 +22,8 @@ export class ColumnFilterMenuService {
     } else if (typeof valueSource === "function") {
       filterValueSource = { kind: "async", load: valueSource };
     }
+
+    const valueFormatter = filterParams.valueFormatter ?? ctx.targetCol.valueFormatter;
 
     return {
       column: ctx.targetCol,
@@ -37,6 +40,10 @@ export class ColumnFilterMenuService {
         exceededByModel: false,
       },
       defaultOp: filterParams.filterOptions && filterParams.filterOptions.length > 0 ? filterParams.filterOptions[0].value : FilterType.EQ,
+      valueKey: isSetFilter ? filterParams.keyCreator : undefined,
+      valueLabel: isSetFilter && valueFormatter
+        ? value => valueFormatter({ value, col: ctx.targetCol })
+        : undefined,
     };
   }
 

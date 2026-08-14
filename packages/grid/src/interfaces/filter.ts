@@ -1,5 +1,6 @@
 import { FilterValueAsyncSource } from "../filter/types";
 import { Column } from "../column/column";
+import type { ValueFormatterParams } from "../column/formatters";
 import { IRowNode } from "./iRowNode";
 import type {
   SetFilterSpecialValueComponent,
@@ -132,6 +133,16 @@ export interface FilterParams {
   maxNumConditions?: number;
   initialFilterItemsCount?: number;
   filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
+  /**
+   * Creates the stable identity used to deduplicate and compare regular set-filter values. The raw
+   * values are still stored in filter models and returned by the Set Filter API.
+   */
+  keyCreator?: (value: any) => string;
+  /**
+   * Formats regular set-filter values for display, sorting, mini-filter matching, accessible names,
+   * and `SetFilterValueComponentParams.valueFormatted`. Falls back to the column valueFormatter.
+   */
+  valueFormatter?: (params: ValueFormatterParams) => string;
   /**
    * Shows the number of loaded leaf rows represented by each set-filter value.
    * Counts cover every row in CSRM and only rows currently loaded in SSRM.

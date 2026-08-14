@@ -121,7 +121,9 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
         active.push({
           col: filter.col,
           type: f.type,
-          v: values.map(value => normalizeFilterOperand(value, params)),
+          v: values.map(value => params.keyCreator
+            ? params.keyCreator(value)
+            : normalizeFilterOperand(value, params)),
           rawValues: values,
           params,
         });
@@ -223,10 +225,20 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           if (!(Number(comparableCell) <= Number(f.v))) ok = false;
           break;
         case "in":
-          if (!Array.isArray(f.v) || !setValuesInclude(f.v, comparableCell, f.rawValues, cell)) ok = false;
+          if (!Array.isArray(f.v) || !setValuesInclude(
+            f.v,
+            f.params.keyCreator ? f.params.keyCreator(cell) : comparableCell,
+            f.rawValues,
+            cell,
+          )) ok = false;
           break;
         case "notIn":
-          if (Array.isArray(f.v) && setValuesInclude(f.v, comparableCell, f.rawValues, cell)) ok = false;
+          if (Array.isArray(f.v) && setValuesInclude(
+            f.v,
+            f.params.keyCreator ? f.params.keyCreator(cell) : comparableCell,
+            f.rawValues,
+            cell,
+          )) ok = false;
           break;
         case "isBlank":
           if (cell != null && cell !== "") ok = false;
@@ -271,6 +283,7 @@ type ResolvedFilterParams = {
   caseSensitive: boolean;
   trimValues: boolean;
   textFormatter?: NonNullable<FilterParams["textFormatter"]>;
+  keyCreator?: NonNullable<FilterParams["keyCreator"]>;
 };
 
 function resolveFilterParams(params: FilterParams | undefined): ResolvedFilterParams {
@@ -278,6 +291,7 @@ function resolveFilterParams(params: FilterParams | undefined): ResolvedFilterPa
     caseSensitive: params?.caseSensitive ?? false,
     trimValues: params?.trimValues ?? false,
     textFormatter: params?.textFormatter,
+    keyCreator: params?.keyCreator,
   };
 }
 

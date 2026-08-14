@@ -14,12 +14,14 @@ import {
 type AccountRow = {
   id: string;
   account: string;
-  region: string | null;
+  region: Region | null;
   owner: string;
 };
 
+type Region = { code: string; name: string };
+
 const REGION_COLORS: Record<string, string> = {
-  Americas: "#2563eb",
+  AMER: "#2563eb",
   APAC: "#7c3aed",
   EMEA: "#059669",
 };
@@ -64,27 +66,27 @@ const loadOwnerValues: FilterValueAsyncSource = async (
 };
 
 const rows: AccountRow[] = [
-  { id: "A-101", account: "Northwind", region: "Americas", owner: "Ava" },
-  { id: "A-102", account: "Café Contoso", region: "EMEA", owner: "Liam" },
-  { id: "A-103", account: "Globex", region: "APAC", owner: "Mia" },
+  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava" },
+  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam" },
+  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia" },
   { id: "A-104", account: "Initech", region: null, owner: "Noah" },
-  { id: "A-105", account: "Umbrella", region: "EMEA", owner: "Emma" },
-  { id: "A-106", account: "Stark Industries", region: "Americas", owner: "Ethan" },
-  { id: "A-107", account: "Wayne Enterprises", region: "APAC", owner: "Sofia" },
+  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma" },
+  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan" },
+  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia" },
   { id: "A-108", account: "Wonka", region: null, owner: "Lucas" },
 ];
 
 function RegionFilterValue({ value, valueFormatted, showCode, count }: SetFilterValueComponentParams) {
-  const region = String(value);
+  const region = value as Region;
   return (
     <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         <span
           aria-hidden="true"
-          style={{ width: 9, height: 9, borderRadius: "50%", background: REGION_COLORS[region] ?? "#64748b" }}
+          style={{ width: 9, height: 9, borderRadius: "50%", background: REGION_COLORS[region.code] ?? "#64748b" }}
         />
         <span>{valueFormatted}</span>
-        {showCode && <small style={{ opacity: 0.55 }}>({region.slice(0, 2).toUpperCase()})</small>}
+        {showCode && <small style={{ opacity: 0.55 }}>({region.code})</small>}
       </span>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         {count !== undefined && <small style={{ opacity: 0.7 }}>{count}</small>}
@@ -129,7 +131,10 @@ export function SetFilterComponentsDemo() {
       label: "Region",
       width: 160,
       filter: "set",
+      valueFormatter: ({ value }) => value?.code ?? "",
       filterParams: {
+        keyCreator: value => value.code,
+        valueFormatter: ({ value }) => value.name,
         showValueCounts: true,
         valueComponent: RegionFilterValue,
         valueComponentParams: { showCode: true },
@@ -161,8 +166,8 @@ export function SetFilterComponentsDemo() {
         <p style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.75 }}>
           Enter <code> cafe </code> in the Account filter and click Apply: the filter commits and its
           popover closes. This also demonstrates trimming, case folding, accent normalization, and a
-          custom filter function. Region uses custom React value components; Owner loads its counted
-          set values asynchronously.
+          custom filter function. Region uses object keys, formatted labels, and custom React value
+          components; Owner loads its counted set values asynchronously.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

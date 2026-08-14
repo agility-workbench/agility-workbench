@@ -32,6 +32,8 @@ function makeController(
     source?: FilterValueSource;
     rows?: Record<string, unknown>[];
     showValueCounts?: boolean;
+    valueKey?: (value: any) => string;
+    valueLabel?: (value: any) => string;
   } = {},
 ) {
   const column = opts.column ?? makeColumn();
@@ -46,6 +48,8 @@ function makeController(
     params: { showValueCounts: opts.showValueCounts },
     limits: { maxNumConditions: 1, defaultNumConditions: 1, exceededByModel: false },
     defaultOp: FilterType.NOT_IN,
+    valueKey: opts.valueKey,
+    valueLabel: opts.valueLabel,
   };
   const applied: (FilterItem | null)[] = [];
   let state!: FilterRuntimeState;
@@ -117,6 +121,27 @@ describe("set-filter universe building", () => {
       ["apple", 2],
       ["banana", 0],
     ]);
+  });
+
+  it("uses value keys for identity and formatted labels for sorting and mini-filtering", () => {
+    const emea = { code: "emea", name: "Europe" };
+    const emeaDuplicate = { code: "emea", name: "Duplicate" };
+    const apac = { code: "apac", name: "Asia Pacific" };
+    const { ctrl, options, lastApplied } = makeController([], null, {
+      source: { kind: "fromRows" },
+      rows: [{ fruit: emea }, { fruit: emeaDuplicate }, { fruit: apac }],
+      valueKey: value => value.code,
+      valueLabel: value => value.name,
+    });
+
+    expect(options().filter(o => o.type === "value").map(o => o.label)).toEqual([
+      "Asia Pacific",
+      "Europe",
+    ]);
+
+    ctrl.filterOptions(0, "europe");
+    ctrl.applyMiniFilter(0);
+    expect(lastApplied()!.filters[0].values).toEqual([apac]);
   });
 
   it("async source: loading flag until the callback resolves", async () => {

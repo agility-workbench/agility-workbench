@@ -45,6 +45,25 @@ const asyncSet = {
 
 Omit `filterValues` to derive unique set values from client-side rows.
 
+Set filters can keep complex raw values while defining their identity and display separately:
+
+```ts
+const regionSet = {
+  key: "region",
+  label: "Region",
+  filter: "set",
+  filterParams: {
+    keyCreator: value => value.code,
+    valueFormatter: ({ value }) => value.name,
+  },
+} satisfies ColDef;
+```
+
+`keyCreator` is used for option deduplication, selection, API lookup, and client-side set-filter
+comparison. `valueFormatter` controls labels, mini-filter matching, accessible names, and the sort
+order of values derived from rows. Filter models and Set Filter API methods continue to use the raw
+values. When omitted, the Set filter uses the column's `valueFormatter`, then `String(value)`.
+
 ## Custom set-filter value labels
 
 The grid always renders and controls the checkbox. Components replace only the

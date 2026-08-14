@@ -13,12 +13,14 @@ import {
 type AccountRow = {
   id: string;
   account: string;
-  region: string | null;
+  region: Region | null;
   owner: string;
 };
 
+type Region = { code: string; name: string };
+
 const REGION_COLORS: Record<string, string> = {
-  Americas: "#2563eb",
+  AMER: "#2563eb",
   APAC: "#7c3aed",
   EMEA: "#059669",
 };
@@ -88,8 +90,8 @@ const loadOwnerValues: FilterValueAsyncSource = async (
 })
 class RegionFilterValueComponent {
   readonly params = input.required<SetFilterValueComponentParams>();
-  color(): string { return REGION_COLORS[String(this.params().value)] ?? "#64748b"; }
-  code(): string { return String(this.params().value).slice(0, 2).toUpperCase(); }
+  color(): string { return REGION_COLORS[(this.params().value as Region).code] ?? "#64748b"; }
+  code(): string { return (this.params().value as Region).code; }
 }
 
 @Component({
@@ -129,8 +131,8 @@ class BlanksFilterValueComponent {
       <p>
         Enter <code> cafe </code> in the Account filter and click Apply: the filter commits and its
         popover closes. This also demonstrates trimming, case folding, accent normalization, and a
-        custom filter function. Region uses custom Angular value components; Owner loads its counted
-        set values asynchronously.
+        custom filter function. Region uses object keys, formatted labels, and custom Angular value
+        components; Owner loads its counted set values asynchronously.
       </p>
     </div>
     <div class="grid-host">
@@ -151,13 +153,13 @@ class BlanksFilterValueComponent {
 })
 export class SetFilterComponentsDemoComponent {
   readonly rows: AccountRow[] = [
-    { id: "A-101", account: "Northwind", region: "Americas", owner: "Ava" },
-    { id: "A-102", account: "Café Contoso", region: "EMEA", owner: "Liam" },
-    { id: "A-103", account: "Globex", region: "APAC", owner: "Mia" },
+    { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava" },
+    { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam" },
+    { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia" },
     { id: "A-104", account: "Initech", region: null, owner: "Noah" },
-    { id: "A-105", account: "Umbrella", region: "EMEA", owner: "Emma" },
-    { id: "A-106", account: "Stark Industries", region: "Americas", owner: "Ethan" },
-    { id: "A-107", account: "Wayne Enterprises", region: "APAC", owner: "Sofia" },
+    { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma" },
+    { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan" },
+    { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia" },
     { id: "A-108", account: "Wonka", region: null, owner: "Lucas" },
   ];
 
@@ -183,7 +185,10 @@ export class SetFilterComponentsDemoComponent {
       label: "Region",
       width: 160,
       filter: "set",
+      valueFormatter: ({ value }) => value?.code ?? "",
       filterParams: {
+        keyCreator: value => value.code,
+        valueFormatter: ({ value }) => value.name,
         showValueCounts: true,
         valueComponent: RegionFilterValueComponent,
         valueComponentParams: { showCode: true },
