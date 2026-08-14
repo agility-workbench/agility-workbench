@@ -873,7 +873,7 @@ export class ColumnModel implements IColumnModel {
       let numericCount = 0;
       for (const row of rows) {
         const v = column.getValue(row);
-        if (v == null) return;
+        if (v == null) continue;
         seen++;
         const num = typeof v === "number" ? v : Number(v);
         if (Number.isFinite(num)) numericCount++;
