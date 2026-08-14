@@ -7,6 +7,8 @@ export interface SetFilterValueComponentParams {
   value: any;
   /** The text used by the built-in label, mini-filter, and checkbox accessible name. */
   valueFormatted: string;
+  /** Number of loaded leaf rows represented by this value when `showValueCounts` is enabled. */
+  count?: number;
   /** The runtime column that owns the set filter. */
   colDef: Column;
   /** The grid API. */
@@ -19,6 +21,8 @@ export interface SetFilterValueComponentParams {
 export interface SetFilterSpecialValueComponentParams {
   /** The text used by the built-in label and checkbox accessible name. */
   label: string;
+  /** Number of loaded blank rows when this is the Blanks option and counts are enabled. */
+  count?: number;
   /** The runtime column that owns the set filter. */
   colDef: Column;
   /** The grid API. */

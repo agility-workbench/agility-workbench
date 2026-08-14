@@ -3110,6 +3110,22 @@
   min-width: 0;
 }
 
+.pte-set-filter-option-label-text {
+  width: auto;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pte-set-filter-option-count {
+  width: auto;
+  flex: 0 0 auto;
+  margin-left: 12px;
+  color: var(--pte-muted-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
 .pte-set-filter-option input {
   accent-color: var(--pte-checkbox-accent-color);
   width: 14px;

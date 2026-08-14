@@ -27,7 +27,12 @@ function makeColumn(): Column {
 function makeController(
   values: unknown[],
   model: FilterItem | null = null,
-  opts: { column?: Column; source?: FilterValueSource; rows?: Record<string, unknown>[] } = {},
+  opts: {
+    column?: Column;
+    source?: FilterValueSource;
+    rows?: Record<string, unknown>[];
+    showValueCounts?: boolean;
+  } = {},
 ) {
   const column = opts.column ?? makeColumn();
   const spec: FilterPanelSpec = {
@@ -38,7 +43,7 @@ function makeController(
       valueInputType: "set",
       valueSource: opts.source ?? { kind: "static", values },
     },
-    params: {},
+    params: { showValueCounts: opts.showValueCounts },
     limits: { maxNumConditions: 1, defaultNumConditions: 1, exceededByModel: false },
     defaultOp: FilterType.NOT_IN,
   };
@@ -86,6 +91,32 @@ describe("set-filter universe building", () => {
       rows: [{ fruit: "banana" }, { fruit: "apple" }, { fruit: "apple" }, { fruit: null }],
     });
     expect(options().map(o => o.label)).toEqual(["(Select All)", "(Blanks)", "apple", "banana"]);
+  });
+
+  it("counts loaded rows per value, including blanks", () => {
+    const { options } = makeController([], null, {
+      source: { kind: "fromRows" },
+      showValueCounts: true,
+      rows: [{ fruit: "banana" }, { fruit: "apple" }, { fruit: "apple" }, { fruit: null }, { fruit: "" }],
+    });
+    expect(options().map(o => [o.label, o.count])).toEqual([
+      ["(Select All)", undefined],
+      ["(Blanks)", 2],
+      ["apple", 2],
+      ["banana", 1],
+    ]);
+  });
+
+  it("reports zero for configured values absent from the loaded rows", () => {
+    const { options } = makeController(["apple", "banana"], null, {
+      showValueCounts: true,
+      rows: [{ fruit: "apple" }, { fruit: "apple" }, { fruit: "cherry" }],
+    });
+    expect(options().map(o => [o.label, o.count])).toEqual([
+      ["(Select All)", undefined],
+      ["apple", 2],
+      ["banana", 0],
+    ]);
   });
 
   it("async source: loading flag until the callback resolves", async () => {

@@ -31,7 +31,7 @@ const rows: AccountRow[] = [
   { id: "A-108", account: "Wonka", region: null, owner: "Lucas" },
 ];
 
-function RegionFilterValue({ value, valueFormatted, showCode }: SetFilterValueComponentParams) {
+function RegionFilterValue({ value, valueFormatted, showCode, count }: SetFilterValueComponentParams) {
   const region = String(value);
   return (
     <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
@@ -41,8 +41,11 @@ function RegionFilterValue({ value, valueFormatted, showCode }: SetFilterValueCo
           style={{ width: 9, height: 9, borderRadius: "50%", background: REGION_COLORS[region] ?? "#64748b" }}
         />
         <span>{valueFormatted}</span>
+        {showCode && <small style={{ opacity: 0.55 }}>({region.slice(0, 2).toUpperCase()})</small>}
       </span>
-      {showCode && <small style={{ opacity: 0.55 }}>{region.slice(0, 2).toUpperCase()}</small>}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        {count !== undefined && <small style={{ opacity: 0.7 }}>{count}</small>}
+      </span>
     </span>
   );
 }
@@ -51,8 +54,13 @@ function SelectAllFilterValue({ label }: SetFilterSpecialValueComponentParams) {
   return <strong>{label} regions</strong>;
 }
 
-function BlanksFilterValue() {
-  return <em style={{ opacity: 0.7 }}>Unassigned region</em>;
+function BlanksFilterValue({ count }: SetFilterSpecialValueComponentParams) {
+  return (
+    <span style={{ display: "flex", justifyContent: "space-between", width: "100%", opacity: 0.7 }}>
+      <em>Unassigned region</em>
+      {count !== undefined && <small>{count}</small>}
+    </span>
+  );
 }
 
 export function SetFilterComponentsDemo() {
@@ -65,13 +73,21 @@ export function SetFilterComponentsDemo() {
       width: 160,
       filter: "set",
       filterParams: {
+        showValueCounts: true,
         valueComponent: RegionFilterValue,
         valueComponentParams: { showCode: true },
         selectAllComponent: SelectAllFilterValue,
         blanksComponent: BlanksFilterValue,
       },
     },
-    { colId: "owner", key: "owner", label: "Owner", width: 150, filter: "set" },
+    {
+      colId: "owner",
+      key: "owner",
+      label: "Owner",
+      width: 150,
+      filter: "set",
+      filterParams: { showValueCounts: true },
+    },
   ], []);
 
   return (
@@ -86,8 +102,8 @@ export function SetFilterComponentsDemo() {
       >
         <h2 style={{ fontSize: 18, marginBottom: 4 }}>Set-filter value components</h2>
         <p style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.75 }}>
-          Open the Region filter to see React components in the value, Select All, and Blanks label
-          slots. The grid still renders and controls every checkbox.
+          Open the Region filter to see loaded-row counts rendered by custom React value and Blanks
+          components. Open Owner to see the built-in count labels. The grid still owns every checkbox.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
