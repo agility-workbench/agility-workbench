@@ -15,6 +15,8 @@ import {
   REJECT,
   ResetPageTrigger,
   RowPinnedPosition,
+  RowPresentation,
+  RowPresentationParams,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
   resolvePaginationControlsOptions,
@@ -1695,6 +1697,24 @@ export class GridCore implements IGridCore {
     return null;
   }
 
+  resolveRowPresentation(
+    row: IRowNode,
+    rowIndex: number,
+    rowPinned?: RowPinnedPosition,
+  ): RowPresentation | undefined {
+    const getter = this.options.getRowPresentation;
+    if (!getter) return undefined;
+    const params: RowPresentationParams = {
+      data: row.data,
+      rowId: row.id,
+      rowIndex,
+      isGroup: !!row.isGroup,
+      node: row,
+      rowPinned,
+    };
+    return getter(params) ?? undefined;
+  }
+
   /**
    * Give a row a slot in what is currently displayed: expand its collapsed ancestors and page to it
    * when it lives on another page. Returns where the row sits afterwards — the view index the
@@ -1992,6 +2012,33 @@ export class GridCore implements IGridCore {
     return this.rowModel.getRowNode(cell.rowId)
       ?? this.getDisplayedPinnedRowRef(cell.rowId)?.node
       ?? null;
+  }
+
+  /** Resolve row presentation in the coordinate space addressed by a cell reference. */
+  private resolveCellRowPresentation(cell: CellRef, row: IRowNode): RowPresentation | undefined {
+    if (cell.rowPinned) {
+      const pinned = this.getDisplayedPinnedRowRef(cell.rowId);
+      return this.resolveRowPresentation(row, pinned?.rowIndex ?? row.viewIndex, cell.rowPinned);
+    }
+    const viewIndex = this.getViewIndexForRowId(cell.rowId);
+    if (viewIndex != null) return this.resolveRowPresentation(row, viewIndex);
+
+    // Application-pinned rows do not enter the row model. Tolerate an API CellRef that identifies
+    // one by id but omits rowPinned, while preserving body semantics for mirrored model rows above.
+    const pinned = this.getDisplayedPinnedRowRef(cell.rowId);
+    return pinned
+      ? this.resolveRowPresentation(row, pinned.rowIndex, pinned.position)
+      : this.resolveRowPresentation(row, row.viewIndex, row.rowPinned);
+  }
+
+  /** One effective editability rule for editor entry and revalidation. */
+  private isResolvedCellEditable(cell: CellRef, col: Column, row: IRowNode): boolean {
+    if (row.isGroup || !col.isCellEditable(row)) return false;
+    const pinned = cell.rowPinned ?? (this.getViewIndexForRowId(cell.rowId) == null
+      ? this.getDisplayedPinnedRowRef(cell.rowId)?.position
+      : undefined);
+    if (pinned && !this.options.pinnedRowsEditable) return false;
+    return col.isCellEditable(row, this.resolveCellRowPresentation(cell, row));
   }
 
   // A5: run the application's pre-commit hook for one proposed write. The hook sees the stored
@@ -2600,10 +2647,7 @@ export class GridCore implements IGridCore {
       case "editStart": {
         const col = this.resolveCellColumn(action.cell);
         const row = this.resolveCellRow(action.cell);
-        if (!col || !row || row.isGroup || !col.isCellEditable(row)) break;
-        // Pinned cells are editable only when opted in. Synthetic group headers stay blocked by
-        // the isGroup guard above; pinned tree parents and application data rows pass through.
-        if (action.cell.rowPinned && !this.options.pinnedRowsEditable) break;
+        if (!col || !row || !this.isResolvedCellEditable(action.cell, col, row)) break;
         // Editing and ActionFrame are mutually exclusive: opening the editor closes any open frame.
         this.closeActionFrameIfOpen();
         const cell = this.normalizeCellRef(action.cell, col);
@@ -2635,12 +2679,22 @@ export class GridCore implements IGridCore {
       case "editCommit": {
         const col = this.resolveCellColumn(action.cell);
         const row = this.resolveCellRow(action.cell);
+        const activeEditor = this.editingCell;
         this.editingCell = null;
         if (!col || !row) {
           this.emit("editingChanged", { state: "stopped", cell: action.cell });
           break;
         }
         const cell = this.normalizeCellRef(action.cell, col);
+        const committingActiveEditor = activeEditor?.rowId === cell.rowId
+          && activeEditor.colInstanceId === cell.colInstanceId;
+        // Row presentation is dynamic. If the row became locked while its editor was open, close
+        // the editor without writing. Direct API writes have no active editor and intentionally
+        // continue to bypass user editability, matching the existing column-editability contract.
+        if (committingActiveEditor && !this.isResolvedCellEditable(cell, col, row)) {
+          this.emit("editingChanged", { state: "cancelled", cell });
+          break;
+        }
         const oldValue = col.getValue(row);
         const proposed = action.parsed
           ? action.value

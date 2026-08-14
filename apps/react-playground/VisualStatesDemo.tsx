@@ -14,7 +14,7 @@ import type {
 /**
  * Playground for the row/cell visual-state and interaction options:
  *   Visual:      rowHover, columnHover, zebraRows, highlightActiveCell
- *   Row defaults: getRowPresentation styling, tooltip, ARIA, metadata, and column overrides
+ *   Row defaults: getRowPresentation styling, tooltip, ARIA, metadata, editability, and overrides
  *   Tooltip:      anchored-to-cell or follow-pointer positioning
  *   Interaction: cellSelection (true/false/text), rangeSelection, columnSelection, bodyContextMenu
  *   Header:      showColumnButtonsOnHover (grid-level), plus per-column showColumnMenu /
@@ -23,8 +23,8 @@ import type {
  *
  * Toggle each independently, in light or dark, and optionally apply custom colors through the
  * semantic theme params (activeCellBorderColor / rowAltBackgroundColor / columnHoverColor) to
- * confirm they feed the same CSS variables. The Name column is editable, so the body context menu
- * gains Cut / Paste when a Name cell is in the selection.
+ * confirm they feed the same CSS variables. Name is normally editable but locked on compensation-
+ * review rows; Active explicitly ignores that row gate and remains editable.
  */
 
 type PersonRow = {
@@ -152,6 +152,8 @@ export function VisualStatesDemo() {
   // Conditional styling (getRowStyle + per-column cellStyle/cellClass).
   const [conditionalStyling, setConditionalStyling] = useState(true);
   const [rowPresentationEnabled, setRowPresentationEnabled] = useState(true);
+  // The exact value returned as RowPresentation.editable for amber compensation-review rows.
+  const [reviewRowsEditable, setReviewRowsEditable] = useState(false);
 
   // Sort config: an initial sort (Salary desc) + a custom Department comparator (by a fixed order).
   // NOTE: initial sort seeds ONCE at first column setup, so toggling it needs a grid remount (key).
@@ -214,33 +216,45 @@ export function VisualStatesDemo() {
     return ({ data }) => {
       const row = data as PersonRow;
       if (!row.compensationReview) return undefined;
+      const editabilityLabel = reviewRowsEditable
+        ? "editable in columns that opt into editing"
+        : "read-only except for column overrides";
       return {
         rowClass: "vs-compensation-review-row",
         rowStyle: { boxShadow: "inset 3px 0 0 #f59e0b" },
         cellClass: "vs-compensation-review-cell",
         cellStyle: { backgroundColor: "rgba(245, 158, 11, 0.14)" },
+        editable: reviewRowsEditable,
         tooltip: {
-          content: `${row.name} is awaiting compensation review.`,
+          content: `${row.name} is awaiting compensation review. This row is ${editabilityLabel}.`,
           component: CompensationReviewTooltip,
           options: { mode: "follow", placement: "top", interactive: false, escapeRootClip: true },
         },
         accessibility: {
-          description: `${row.name} is awaiting compensation review.`,
+          description: `${row.name} is awaiting compensation review and is ${editabilityLabel}.`,
           busy: false,
         },
-        metadata: { status: "review", reviewLabel: "Compensation review" },
+        metadata: {
+          status: "review",
+          reviewLabel: "Compensation review",
+          editable: reviewRowsEditable,
+        },
       };
     };
-  }, [rowPresentationEnabled]);
+  }, [rowPresentationEnabled, reviewRowsEditable]);
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
     // Editable → the body context menu gains Cut / Paste (right-click a Name cell).
     {
-      colId: "name", key: "name", label: "Name", width: 160, editable: true, filter: true,
+      colId: "name", key: "name", label: "Name — row gated", width: 190, editable: true, filter: true,
       headerTooltip: "Employee name — this header uses the selected tooltip positioning mode.",
       // On review rows this replaces only row tooltip content; the row component/options remain.
       tooltipValueGetter: (p) => `${p.value} — hover within the cell to compare tooltip positioning.`,
+      // Make the behavioral field visible: locked review cells get a red underline + blocked cursor.
+      cellStyle: (p) => p.rowPresentation?.editable === false
+        ? { cursor: "not-allowed", boxShadow: "inset 0 -3px 0 #dc2626" }
+        : { cursor: "text" },
     },
     {
       colId: "department", key: "department", label: "Department", width: 140, filter: true,
@@ -265,8 +279,11 @@ export function VisualStatesDemo() {
     // showColumnMenu: false → the ⋮ button is hidden on this header (menu still via right-click).
     { colId: "rating", key: "rating", label: "Rating", width: 100, type: ColumnType.NUMBER, showColumnMenu: !hideRatingMenu },
     {
-      colId: "active", key: "active", label: "Active", width: 90,
-      inheritRowPresentation: { tooltip: false },
+      colId: "active", key: "active", label: "Active — override", width: 145, editable: true,
+      cellEditor: "select", cellEditorParams: { values: ["Yes", "No"] },
+      headerTooltip: "Explicit exception: this column remains editable on locked review rows.",
+      // Deliberate exception: no row tooltip, and row editable:false does not veto this column.
+      inheritRowPresentation: { tooltip: false, editable: false },
     },
   ], [hideRatingMenu, nativeCityMenu, conditionalStyling, sortConfig]);
 
@@ -287,7 +304,8 @@ export function VisualStatesDemo() {
             </select>
           </label>
           <Toggle label="conditionalStyling" checked={conditionalStyling} onChange={setConditionalStyling} hint="getRowStyle dims inactive rows; the Salary column's cellStyle colors high/low values" />
-          <Toggle label="getRowPresentation" checked={rowPresentationEnabled} onChange={setRowPresentationEnabled} hint="Apply row-default styling, tooltip, ARIA description, and metadata to compensation-review rows" />
+          <Toggle label="getRowPresentation" checked={rowPresentationEnabled} onChange={setRowPresentationEnabled} hint="Style compensation-review rows, describe them to assistive tech, and lock editing except for the Active override" />
+          <Toggle label="review rows editable" checked={reviewRowsEditable} onChange={setReviewRowsEditable} hint="The exact boolean returned as getRowPresentation(...).editable for amber rows" />
           <Toggle label="sortConfig" checked={sortConfig} onChange={setSortConfig} hint="Initial sort (Salary desc) + custom Department comparator (fixed priority order). Applied on load." />
         </div>
 
@@ -373,19 +391,49 @@ export function VisualStatesDemo() {
         </div>
       </div>
 
+      <div
+        role="status"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "8px 12px",
+          border: `1px solid ${rowPresentationEnabled && !reviewRowsEditable ? "#dc2626" : "#16a34a"}`,
+          borderRadius: 8,
+          background: rowPresentationEnabled && !reviewRowsEditable
+            ? "rgba(220, 38, 38, 0.08)"
+            : "rgba(22, 163, 74, 0.08)",
+          fontSize: 13,
+        }}
+      >
+        <strong>Amber review rows:</strong>
+        <strong style={{ color: rowPresentationEnabled && !reviewRowsEditable ? "#dc2626" : "#16a34a" }}>
+          {!rowPresentationEnabled
+            ? "ROW PRESENTATION OFF — EDITABLE"
+            : reviewRowsEditable ? "EDITABLE" : "READ-ONLY"}
+        </strong>
+        <span>
+          Try <strong>Name — row gated</strong>. <strong>Active — override</strong> remains editable in
+          either state because that column opts out of the row gate.
+        </span>
+      </div>
+
       <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
         Hover rows and columns to see the highlights. Change <code>tooltip.mode</code>, then hover the
         Name cells or header to compare cell-anchored and pointer-following tooltips. Amber rows use
         <code>getRowPresentation</code>: hover most cells for a row-default component that follows the
         pointer; Name overrides its content, Salary overrides it to an anchored-right tooltip, and
-        Active opts out. Click a cell,
+        Active opts out. Toggle <code>review rows editable</code> to change the exact boolean returned
+        by <code>getRowPresentation</code>. When false, the gated Name cells show a red underline,
+        refuse editing, and omit Cut / Paste; when true they edit normally. Active remains editable
+        because it sets <code>inheritRowPresentation.editable: false</code>. Click a cell,
         then Shift+Click (or Shift+Arrow) to
         make a range — with <code>highlightActiveCell</code> on, the focused cell keeps a distinct outline
         inside the selection. Use the <strong>Interaction</strong> controls to disable range dragging or
         column-header selection, or set <code>cellSelection</code> to <code>text</code> to revert to a plain
         HTML table where you can drag to select and copy cell text. Right-click the body to try the
-        <code>bodyContextMenu</code> modes (default / native / custom items / none) — with a Name cell
-        selected the menu also shows Cut / Paste (Name is editable). Under <strong>Header</strong>, turn on
+        <code>bodyContextMenu</code> modes (default / native / custom items / none) — with an editable
+        Name or Active cell selected the menu also shows Cut / Paste. Under <strong>Header</strong>, turn on
         <code>showColumnButtonsOnHover</code> and hover a header to reveal its ⋮ / filter buttons; the
         Rating column hides its ⋮ button and the City header opens the browser's native menu on
         right-click. The <strong>Pagination</strong> controls switch the page picker and demonstrate

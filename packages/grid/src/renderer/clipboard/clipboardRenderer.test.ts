@@ -3,11 +3,16 @@ import { GridCore } from "../../core/core";
 import { ClipboardRenderer } from "./clipboardRenderer";
 import { ColumnType } from "../../interfaces/column";
 import { ITextMeasurer } from "../../interfaces/iTextMeasure";
+import type { GridOptions } from "../../interfaces/gridOptions";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
-function makeGrid() {
-  const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+function makeGrid(options: GridOptions = {}) {
+  const core = new GridCore(measurer, {
+    rowIdKey: "id",
+    rowModelType: "clientSide",
+    ...options,
+  });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
   core.setRowData([
     { id: "1", name: "alice", qty: 3, locked: "L1" },
@@ -110,6 +115,25 @@ describe("ClipboardRenderer", () => {
     // A range spanning locked + editable columns → true (at least one editable).
     core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
     core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 2, mode: "extend" });
+    expect(clip.hasEditableCells()).toBe(true);
+  });
+
+  it("treats a row presentation veto as non-editable for menu gating, cut, and paste", async () => {
+    core = makeGrid({
+      getRowPresentation: ({ rowId }) => ({ editable: rowId !== "1" }),
+    });
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+
+    expect(clip.hasEditableCells()).toBe(false);
+    clip.cut();
+    expect(data(core, "1").name).toBe("alice");
+
+    reads.value = "changed";
+    await clip.paste();
+    expect(data(core, "1").name).toBe("alice");
+
+    core.dispatch({ type: "focusSet", viewIdx: 1, colIdx: 0 });
     expect(clip.hasEditableCells()).toBe(true);
   });
 });

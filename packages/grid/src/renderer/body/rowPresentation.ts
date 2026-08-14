@@ -1,39 +1,25 @@
 import type { Column } from "../../column/column";
-import type { GridCore } from "../../core/core";
+import type { IGridCore } from "../../interfaces/iGridCore";
 import type {
   RowPinnedPosition,
   RowPresentation,
-  RowPresentationParams,
 } from "../../interfaces/gridOptions";
 import type { IRowNode } from "../../interfaces/iRowNode";
 
 export function resolveRowPresentation(
-  core: GridCore,
+  core: IGridCore,
   row: IRowNode,
   rowIndex: number,
   rowPinned?: RowPinnedPosition,
 ): RowPresentation | undefined {
-  const getter = core.options.getRowPresentation;
-  if (!getter) return undefined;
-  const params: RowPresentationParams = {
-    data: row.data,
-    rowId: row.id,
-    rowIndex,
-    isGroup: !!row.isGroup,
-    node: row,
-    rowPinned,
-  };
-  return getter(params) ?? undefined;
+  return core.resolveRowPresentation(row, rowIndex, rowPinned);
 }
 
 export function inheritRowPresentation(
   col: Column,
-  field: "cellClass" | "cellStyle" | "tooltip",
+  field: "cellClass" | "cellStyle" | "tooltip" | "editable",
 ): boolean {
-  const setting = col.col.inheritRowPresentation;
-  if (setting === false) return false;
-  if (setting == null || setting === true) return true;
-  return setting[field] !== false;
+  return col.inheritsRowPresentation(field);
 }
 
 export function mergeClassValues(
