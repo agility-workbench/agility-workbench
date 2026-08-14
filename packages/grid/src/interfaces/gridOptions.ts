@@ -585,8 +585,9 @@ export function resolveColumnTooltipOptions(
  * with room (bottom → top → right → left), flipping when the preferred side is clipped. */
 export type ActionFramePlacement = "top" | "bottom" | "left" | "right" | "auto";
 
-/** ActionFrame presentation config. Usable per column (`ColDef.actionFrameOptions`) and grid-wide
- * (`GridOptions.actionFrameOptions`); the column value overrides the grid default field-by-field. */
+/** ActionFrame presentation config. Usable per column (`ColDef.actionFrameOptions`) and as a
+ * column default (`GridOptions.defaultColDef.actionFrameOptions`); the column value overrides the
+ * default field-by-field. */
 export interface ActionFrameOptions {
   /** Preferred popover placement. Default "auto". */
   placement?: ActionFramePlacement;

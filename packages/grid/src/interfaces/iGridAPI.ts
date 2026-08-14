@@ -171,7 +171,8 @@ export interface IGridAPI {
   /** Current per-column filters in serializable form (`colId` is the public ColDef colId). */
   getFilterModel(): GridViewFilterState[];
   /** Replace all column filters. Unknown colIds drop out; an empty array clears every filter.
-   * Applying filters resets to page 1 and clears the selection. */
+   * Pagination follows `resetPageOn` (the current page is kept by default), row selection follows
+   * `selectionPersistence`, and cell-range selection is always cleared. */
   setFilterModel(filters: GridViewFilterState[]): void;
   /** Add or replace the filter for one column, keeping every other column's filter. */
   addFilterModel(filter: GridViewFilterState): void;
