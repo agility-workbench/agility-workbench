@@ -56,6 +56,10 @@ Unknown or non-selectable ids are dropped (client-side row model). Rows that
 are currently filtered out can still be selected by id. Programmatic changes
 emit `selectionChanged` with `reason: "api"`; pointer/keyboard interactions
 report `"mouse"`/`"keyboard"`, and filter/sort-driven clears report `"model"`.
+The event's `delta: { added, removed }` lists row-id membership changes since
+the previous selection event, so an external owner can update incrementally.
+Client-side transactions and row-data replacements automatically remove
+selected ids for rows that no longer exist and report that delta as a model change.
 
 **Select-all scope.** `api.selectAllRows()`, `api.areAllRowsSelected()`, and
 the row-number header click cover the whole **filtered set — all pages — by

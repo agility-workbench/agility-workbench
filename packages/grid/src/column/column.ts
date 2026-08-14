@@ -4,7 +4,7 @@ import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
 import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
 import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
-import type { TooltipColumnOptions, ActionFrameOptions } from "../interfaces/gridOptions";
+import type { TooltipColumnOptions, ActionFrameOptions, RowPresentation } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
@@ -328,10 +328,24 @@ export class Column {
     return text;
   }
 
+  /** Whether this column inherits one field from `getRowPresentation`. */
+  inheritsRowPresentation(
+    field: "cellClass" | "cellStyle" | "tooltip" | "editable",
+  ): boolean {
+    const setting = this.col.inheritRowPresentation;
+    if (setting === false) return false;
+    if (setting == null || setting === true) return true;
+    return setting[field] !== false;
+  }
+
   // Whether a cell in this column may be edited. Internal columns (e.g. row numbers) are never
-  // editable regardless of the editable flag.
-  isCellEditable(_row?: IRowNode): boolean {
-    return this.editable && !this.isInternal();
+  // editable. A row presentation may veto editing, unless this column explicitly opts out of that
+  // field; row `editable: true` never enables a column whose own editable flag is false.
+  isCellEditable(_row?: IRowNode, rowPresentation?: RowPresentation): boolean {
+    return this.editable
+      && !this.isInternal()
+      && !_row?.isGroup
+      && (!this.inheritsRowPresentation("editable") || rowPresentation?.editable !== false);
   }
 
   duplicate(): Column {

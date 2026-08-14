@@ -372,12 +372,15 @@ describe("body checkbox gestures", () => {
 describe("header select-all checkbox", () => {
   it("toggles the full filtered set and reflects tri-state", () => {
     const { core, root } = mountGrid();
+    const reasons: Array<string | undefined> = [];
+    core.on("selectionChanged", event => reasons.push(event.reason));
     const headerCell = root.querySelector<HTMLElement>(".pte-hcell-checkbox")!;
     const box = headerCell.querySelector<HTMLElement>(".pte-select-all-checkbox")!;
     expect(box.classList.contains("selected")).toBe(false);
 
     click(headerCell);
     expect(core.getSelectedRowIds().size).toBe(6);
+    expect(reasons).toEqual(["mouse"]);
     expect(box.classList.contains("selected")).toBe(true);
     expect(headerCell.getAttribute("aria-label")).toBe("Deselect all rows");
 

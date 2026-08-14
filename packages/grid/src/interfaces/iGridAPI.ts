@@ -123,6 +123,11 @@ export interface IGridAPI {
   /** Set the row data. */
   setRowData(rows: RowData[]): void;
 
+  /** Visit every row node that remains after filtering, before client-side sorting. */
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void;
+  /** Visit every row node that remains after filtering in its final sorted order. */
+  forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void;
+
   /**
    * Server-side row model only: re-invoke the data source because the server's data changed —
    * distinct from a plain redraw. `groupKeys` scopes the refresh to one group subtree (that
@@ -166,7 +171,8 @@ export interface IGridAPI {
   /** Current per-column filters in serializable form (`colId` is the public ColDef colId). */
   getFilterModel(): GridViewFilterState[];
   /** Replace all column filters. Unknown colIds drop out; an empty array clears every filter.
-   * Applying filters resets to page 1 and clears the selection. */
+   * Pagination follows `resetPageOn` (the current page is kept by default), row selection follows
+   * `selectionPersistence`, and cell-range selection is always cleared. */
   setFilterModel(filters: GridViewFilterState[]): void;
   /** Add or replace the filter for one column, keeping every other column's filter. */
   addFilterModel(filter: GridViewFilterState): void;

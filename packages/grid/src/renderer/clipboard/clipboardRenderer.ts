@@ -77,8 +77,10 @@ export class ClipboardRenderer {
       const rowId = core.getRowIdAtViewIndex(viewIdx);
       if (!rowId) continue;
       const row = core.getRowModel().getRowNode(rowId);
+      if (!row) continue;
+      const rowPresentation = core.resolveRowPresentation(row, viewIdx);
       for (const col of block.cols) {
-        if (col.isCellEditable(row)) return true;
+        if (col.isCellEditable(row, rowPresentation)) return true;
       }
     }
     return false;
@@ -93,8 +95,10 @@ export class ClipboardRenderer {
       const rowId = core.getRowIdAtViewIndex(viewIdx);
       if (!rowId) continue;
       const row = core.getRowModel().getRowNode(rowId);
+      if (!row) continue;
+      const rowPresentation = core.resolveRowPresentation(row, viewIdx);
       for (const col of block.cols) {
-        if (!col.isCellEditable(row)) continue;
+        if (!col.isCellEditable(row, rowPresentation)) continue;
         edits.push({ cell: { rowId, colId: col.instanceID }, value: "" });
       }
     }
@@ -142,6 +146,8 @@ export class ClipboardRenderer {
       const rowId = core.getRowIdAtViewIndex(viewIdx);
       if (!rowId) { clipped += targetCols; continue; }
       const row = rowModel.getRowNode(rowId);
+      if (!row) { clipped += targetCols; continue; }
+      const rowPresentation = core.resolveRowPresentation(row, viewIdx);
       // Source row wraps for tiling; ragged rows fall back to "" for missing fields.
       const srcRow = grid[r % blockRows] ?? [];
 
@@ -150,7 +156,7 @@ export class ClipboardRenderer {
         const col = leaves[colIdx];
         if (!col || col.isInternal() || col.hidden) { clipped++; continue; }
         // Skip non-editable targets but keep their positional slot (already advanced by c).
-        if (!col.isCellEditable(row)) continue;
+        if (!col.isCellEditable(row, rowPresentation)) continue;
         const value = srcRow[c % blockCols] ?? "";
         edits.push({ cell: { rowId, colId: col.instanceID }, value });
       }

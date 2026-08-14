@@ -127,13 +127,20 @@ export interface RowAccessibilityPresentation {
  * Presentation defaults for one logical row. Row container class/style complement the legacy
  * `getRowClass` / `getRowStyle` callbacks. Cell class/style are applied to every cell, then composed
  * with its column's `cellClass` / `cellStyle`. Tooltip fields form the default for every cell and
- * can be overridden (or suppressed) by its column.
+ * can be overridden (or suppressed) by its column. `editable: false` is a row-level veto over
+ * editable columns unless a column explicitly opts out of inheriting it.
  */
 export interface RowPresentation {
   rowClass?: string | string[] | null;
   rowStyle?: Partial<CSSStyleDeclaration> | null;
   cellClass?: string | string[] | null;
   cellStyle?: Partial<CSSStyleDeclaration> | null;
+  /**
+   * Row-level editability gate. `false` prevents user editing in every inheriting column. `true`
+   * only permits columns that are themselves editable; it never makes a non-editable column
+   * editable. A column can ignore this gate with `inheritRowPresentation.editable: false`.
+   */
+  editable?: boolean;
   /** `false` explicitly disables the row tooltip default. */
   tooltip?: RowTooltipPresentation | false | null;
   accessibility?: RowAccessibilityPresentation | null;
@@ -585,8 +592,9 @@ export function resolveColumnTooltipOptions(
  * with room (bottom → top → right → left), flipping when the preferred side is clipped. */
 export type ActionFramePlacement = "top" | "bottom" | "left" | "right" | "auto";
 
-/** ActionFrame presentation config. Usable per column (`ColDef.actionFrameOptions`) and grid-wide
- * (`GridOptions.actionFrameOptions`); the column value overrides the grid default field-by-field. */
+/** ActionFrame presentation config. Usable per column (`ColDef.actionFrameOptions`) and as a
+ * column default (`GridOptions.defaultColDef.actionFrameOptions`); the column value overrides the
+ * default field-by-field. */
 export interface ActionFrameOptions {
   /** Preferred popover placement. Default "auto". */
   placement?: ActionFramePlacement;
@@ -786,9 +794,10 @@ export interface GridOptions {
    */
   getRowStyle?: GetRowStyle;
   /**
-   * Row-scoped presentation defaults for row/cell styling, tooltips, accessibility, and opaque
-   * metadata. Evaluated as a row is rendered and again when its tooltip is opened. Call
-   * `api.refreshRowPresentation()` after changing external state used by this callback.
+   * Row-scoped presentation defaults for row/cell styling, tooltips, accessibility, editability,
+   * and opaque metadata. Evaluated while rendering and when row behavior is queried. Keep the
+   * callback pure and synchronous. Call `api.refreshRowPresentation()` after changing external
+   * state used by this callback.
    */
   getRowPresentation?: GetRowPresentation;
   /**

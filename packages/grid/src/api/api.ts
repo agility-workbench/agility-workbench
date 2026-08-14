@@ -203,6 +203,14 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "rowDataSet", rows });
   }
 
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void {
+    this.core.getRowModel().forEachNodeAfterFilter(callback);
+  }
+
+  forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void {
+    this.core.getRowModel().forEachNodeAfterFilterAndSort(callback);
+  }
+
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
     return this.core.refreshServerSideData(options);
   }

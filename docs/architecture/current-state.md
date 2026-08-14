@@ -993,7 +993,11 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 
 ### Other notes
 - **SSRM transactions** — `applyTransaction` is a no-op that returns zero counts.
-- **Server-side row model** `forEachNode` vs `forEachNodeAfterFilterAndSort`: filtering and sorting never distinguish them (the server pre-applies both, so the node cache only ever holds post-filter/sort rows — a "before" universe never exists client-side). With server-side **grouping** active they do differ: `forEachNode` iterates all loaded **leaf** rows in document order regardless of expansion, while `forEachNodeAfterFilterAndSort` iterates the visible flattened order (group rows included, collapsed subtrees skipped) — mirroring the CSRM split.
+- **Server-side row model** `forEachNodeAfterFilter` and `forEachNodeAfterFilterAndSort` are
+  identical: the server pre-applies both operations, so the node cache has no distinct pre-sort
+  universe. With server-side **grouping** active, both iterate the visible flattened order (group
+  rows included, collapsed subtrees skipped); `forEachNode` instead iterates all loaded **leaf**
+  rows regardless of expansion.
 - **Quick filter, full-width rows, custom filter functions, and tree data are client-side (CSRM) only.** Row grouping and sticky group rows work on both models; SSRM group sorting always behaves as `groupSortMode: "local"`.
 - **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.

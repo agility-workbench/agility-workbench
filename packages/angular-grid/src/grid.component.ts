@@ -134,6 +134,8 @@ export class AwbGrid implements OnDestroy {
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
+  readonly selectAllScope = input<GridOptions["selectAllScope"]>();
+  readonly selectionPersistence = input<GridOptions["selectionPersistence"]>();
   readonly clearSelectionOnBodyClick = input<GridOptions["clearSelectionOnBodyClick"]>();
 
   // --- editing ---

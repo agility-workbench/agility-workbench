@@ -169,6 +169,18 @@ describe("rowDataMode — when the grid falls back to a full reset", () => {
     expect(core.getPaginationInfo().pageIndex).toBe(0);
   });
 
+  it('rowDataMode: "reset" prunes selected ids absent from the replacement', () => {
+    const { core, rows } = makeGrid({ rowDataMode: "reset" });
+    core.selectRowsById(["1", "2"]);
+    const events: Array<{ reason?: string; added: string[]; removed: string[] }> = [];
+    core.on("selectionChanged", event => events.push({ reason: event.reason, ...event.delta }));
+
+    core.setRowData([rows[0], rows[2]]);
+
+    expect([...core.getSelectedRowIds()]).toEqual(["1"]);
+    expect(events).toEqual([{ reason: "model", added: [], removed: ["2"] }]);
+  });
+
   it("falls back silently when no stable row id is configured", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // No rowIdKey/getRowId: ids come from the per-object fallback, so every cloned row would look

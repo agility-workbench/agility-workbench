@@ -3,11 +3,16 @@ import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { GridEventEditingChangedParams, GridEventCellsChangedParams } from "../events/events";
+import type { GridOptions } from "../interfaces/gridOptions";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
-function makeGrid() {
-  const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+function makeGrid(options: GridOptions = {}) {
+  const core = new GridCore(measurer, {
+    rowIdKey: "id",
+    rowModelType: "clientSide",
+    ...options,
+  });
   // Column autosizing measures text with the theme fonts, which are otherwise only set by the
   // renderer; provide them so setColumnDefs can compute widths.
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
@@ -73,6 +78,59 @@ describe("GridCore editing", () => {
     core.dispatch({ type: "editStart", cell });
     expect(core.getEditingCell()).toBeNull();
     expect(editingEvents).toEqual([]);
+  });
+
+  it("refuses to start editing an editable column in a row vetoed by row presentation", () => {
+    core = makeGrid({
+      getRowPresentation: ({ rowId }) => ({ editable: rowId !== "1" }),
+    });
+    const name = colId(core, "name");
+
+    core.dispatch({ type: "editStart", cell: { rowId: "1", colId: name } });
+    expect(core.getEditingCell()).toBeNull();
+
+    core.dispatch({ type: "editStart", cell: { rowId: "2", colId: name } });
+    expect(core.getEditingCell()).toEqual(emittedCell(core, "2", "name"));
+  });
+
+  it("allows a column that explicitly opts out of the row editability gate", () => {
+    core = makeGrid({ getRowPresentation: () => ({ editable: false }) });
+    core.setColumnDefsFromProps([{
+      colId: "name",
+      key: "name",
+      label: "Name",
+      editable: true,
+      inheritRowPresentation: { editable: false },
+    }]);
+    const name = colId(core, "name");
+
+    core.dispatch({ type: "editStart", cell: { rowId: "1", colId: name } });
+    expect(core.getEditingCell()).toEqual(emittedCell(core, "1", "name"));
+  });
+
+  it("cancels an active editor if its row becomes non-editable before commit", () => {
+    let locked = false;
+    core = makeGrid({ getRowPresentation: () => ({ editable: !locked }) });
+    const name = colId(core, "name");
+    const cell = { rowId: "1", colId: name };
+    const events: GridEventEditingChangedParams[] = [];
+    core.on("editingChanged", event => events.push(event));
+
+    core.dispatch({ type: "editStart", cell });
+    locked = true;
+    core.dispatch({ type: "editCommit", cell, value: "ALICE" });
+
+    expect(core.getRowModel().getRowNode("1")!.data.name).toBe("alice");
+    expect(events.at(-1)).toEqual({ state: "cancelled", cell: emittedCell(core, "1", "name") });
+  });
+
+  it("continues to allow programmatic writes into a row that is not user-editable", () => {
+    core = makeGrid({ getRowPresentation: () => ({ editable: false }) });
+    const name = colId(core, "name");
+
+    core.dispatch({ type: "editCommit", cell: { rowId: "1", colId: name }, value: "API" });
+
+    expect(core.getRowModel().getRowNode("1")!.data.name).toBe("API");
   });
 
   it("commits a value, writing it to the row and emitting cellsChanged", () => {

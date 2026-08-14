@@ -18,6 +18,33 @@ describe("Column editing", () => {
     expect(col.isCellEditable()).toBe(true);
   });
 
+  it("treats row editable false as a veto", () => {
+    const col = new Column({ key: "name", label: "Name", editable: true });
+    expect(col.isCellEditable(rowNode({ name: "alice" }), { editable: false })).toBe(false);
+    expect(col.isCellEditable(rowNode({ name: "alice" }), { editable: true })).toBe(true);
+  });
+
+  it("lets a column explicitly ignore the row editability gate", () => {
+    const col = new Column({
+      key: "name",
+      label: "Name",
+      editable: true,
+      inheritRowPresentation: { editable: false },
+    });
+    expect(col.isCellEditable(rowNode({ name: "alice" }), { editable: false })).toBe(true);
+  });
+
+  it("does not let row editable true enable a non-editable column", () => {
+    const col = new Column({ key: "name", label: "Name" });
+    expect(col.isCellEditable(rowNode({ name: "alice" }), { editable: true })).toBe(false);
+  });
+
+  it("never edits a synthetic group row", () => {
+    const col = new Column({ key: "name", label: "Name", editable: true });
+    const group = { ...rowNode({ name: "Group" }), isGroup: true } as IRowNode;
+    expect(col.isCellEditable(group, { editable: true })).toBe(false);
+  });
+
   it("stores the raw text verbatim when no valueParser is given", () => {
     const col = new Column({ key: "name", label: "Name", editable: true });
     expect(col.parseValue("hello", rowNode({ name: "old" }), "old")).toBe("hello");

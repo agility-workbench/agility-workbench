@@ -16,12 +16,14 @@ import {
   GroupDisplayType,
   GroupSortMode,
   RowPinnedPosition,
+  RowPresentation,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
 } from "./gridOptions";
 import { IServerSideDataSource } from "./serverSide";
 import { ColDef } from "./column";
 import { Column } from "../column/column";
+import { IRowNode } from "./iRowNode";
 
 export type GridId = string;
 export type ColId = string;
@@ -92,6 +94,13 @@ export interface IGridCore {
   /* ----- Derived read APIs renderer will need (hot paths) ----- */
   getRowModel(): IRowModel;
   getColumnModel(): IColumnModel;
+
+  /** Resolve the application-owned presentation/state for one logical row. */
+  resolveRowPresentation(
+    row: IRowNode,
+    rowIndex: number,
+    rowPinned?: RowPinnedPosition,
+  ): RowPresentation | undefined;
 
   /** Returns rowId for a displayed index (post filter/sort/group pipeline). */
   getRowIdAtViewIndex(displayedIndex: number): GridId | null;

@@ -123,6 +123,7 @@ export interface IRowModel<Row = any> {
 
   // iteration
   forEachNode(callback: (node: IRowNode, idx: number) => void): void;
+  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void;
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void;
 
   // All synthetic group nodes in the current grouping (empty when not grouping). Used e.g. to size

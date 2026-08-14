@@ -20,6 +20,7 @@ const options = {
     rowClass: "row-pending",
     cellClass: "cell-pending",
     cellStyle: { opacity: "0.7" },
+    editable: false,
     tooltip: {
       content: "Saving changes",
       options: { mode: "follow" },
@@ -38,6 +39,9 @@ api.refreshRowPresentation();
 
 Explicit column tooltip content/options override the row defaults. Cell classes
 compose; cell inline styles merge with the column winning conflicting fields.
+`editable: false` prevents user editing in columns that inherit the row gate;
+it does not enable columns when true. A deliberate exception can set
+`inheritRowPresentation: { editable: false }`.
 
 Virtualization is automatic: the renderer maintains a small reusable row pool
 and slides it over the current viewport. Left, center, and right column sections

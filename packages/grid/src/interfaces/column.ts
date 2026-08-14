@@ -98,6 +98,8 @@ export interface ColDef {
     cellClass?: boolean;
     cellStyle?: boolean;
     tooltip?: boolean;
+    /** Ignore the row-level `editable` gate when false. The column's own `editable` still applies. */
+    editable?: boolean;
   };
   /** Opt this column out of the built-in auto-truncation tooltip (on by default). */
   suppressAutoTooltip?: boolean;
