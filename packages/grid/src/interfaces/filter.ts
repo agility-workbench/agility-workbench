@@ -121,6 +121,7 @@ export type FilterOption = {
 
 export interface FilterParams {
   buttons?: FilterAction[];
+  /** Close the filter popover after its explicit Apply button commits. Defaults to false. */
   closeOnApply?: boolean;
   debounceMs?: number;
   /** Preserve letter case for built-in comparisons. Defaults to false (case-insensitive). */

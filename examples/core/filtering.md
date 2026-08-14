@@ -95,7 +95,9 @@ When more than one condition is enabled, the filter UI lets the user join them
 with AND or OR. Inputs include their own clear button.
 
 `caseSensitive` defaults to `false`. `trimValues` defaults to `false` and trims
-only filter operands, not cell values.
+only filter operands, not cell values. `closeOnApply` closes the filter popover
+after the explicit Apply button commits; it has no effect when no Apply button
+is configured.
 
 ## Restrict available operators
 

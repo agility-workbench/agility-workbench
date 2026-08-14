@@ -115,6 +115,8 @@ export function SetFilterComponentsDemo() {
       width: 220,
       filter: "text",
       filterParams: {
+        buttons: ["apply", "clear"],
+        closeOnApply: true,
         caseSensitive: false,
         trimValues: true,
         textFormatter: formatAccountFilterText,
@@ -157,9 +159,10 @@ export function SetFilterComponentsDemo() {
       >
         <h2 style={{ fontSize: 18, marginBottom: 4 }}>Set-filter value components</h2>
         <p style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.75 }}>
-          Enter <code> cafe </code> in the Account filter to see trimming, case folding, accent
-          normalization, and a custom filter function work together. Region uses custom React value
-          components; Owner loads its counted set values asynchronously.
+          Enter <code> cafe </code> in the Account filter and click Apply: the filter commits and its
+          popover closes. This also demonstrates trimming, case folding, accent normalization, and a
+          custom filter function. Region uses custom React value components; Owner loads its counted
+          set values asynchronously.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

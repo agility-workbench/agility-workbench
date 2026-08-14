@@ -43,11 +43,15 @@ export class FilterMenuCoordinator {
       },
     );
 
-    const renderer = new FilterRenderer(ctrl, panelSpec, this.api);
+    let menuRenderer: MenuRenderer | undefined;
+    const renderer = new FilterRenderer(ctrl, panelSpec, this.api, () => menuRenderer?.close(0));
 
     return {
       contentEl: renderer.getUi(),
-      onOpen: (r) => renderer.onOpen(),
+      onOpen: (r) => {
+        menuRenderer = r;
+        renderer.onOpen();
+      },
       onClose: () => renderer.destroy(),
     };
   }

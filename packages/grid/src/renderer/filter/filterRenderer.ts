@@ -13,7 +13,12 @@ export class FilterRenderer {
 
   private unsubscribeFn: (() => void);
 
-  constructor(private controller: FilterController, private spec: FilterPanelSpec, api: IGridAPI) {
+  constructor(
+    private controller: FilterController,
+    private spec: FilterPanelSpec,
+    api: IGridAPI,
+    private requestClose?: () => void,
+  ) {
     this.renderer = spec.kind === "set" ? new SetFilterRenderer(controller, spec, api) : new BasicFilterRenderer(controller, spec);
     this.createFilter();
     this.unsubscribeFn = this.controller.subscribe((state: FilterRuntimeState) => this.renderer.renderState(state));
@@ -52,7 +57,11 @@ export class FilterRenderer {
       button.innerText = btn;
       button.addEventListener("click", () => {
         switch (btn) {
-          case "apply": return this.controller.apply();
+          case "apply": {
+            this.controller.apply();
+            if (this.spec.params.closeOnApply) this.requestClose?.();
+            return;
+          }
           case "cancel": return this.controller.cancel();
           case "clear": return this.controller.clearAll();
           case "reset": return this.controller.reset();

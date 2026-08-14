@@ -127,9 +127,10 @@ class BlanksFilterValueComponent {
     <div class="intro">
       <h2>Set-filter value components</h2>
       <p>
-        Enter <code> cafe </code> in the Account filter to see trimming, case folding, accent
-        normalization, and a custom filter function work together. Region uses custom Angular value
-        components; Owner loads its counted set values asynchronously.
+        Enter <code> cafe </code> in the Account filter and click Apply: the filter commits and its
+        popover closes. This also demonstrates trimming, case folding, accent normalization, and a
+        custom filter function. Region uses custom Angular value components; Owner loads its counted
+        set values asynchronously.
       </p>
     </div>
     <div class="grid-host">
@@ -168,6 +169,8 @@ export class SetFilterComponentsDemoComponent {
       width: 220,
       filter: "text",
       filterParams: {
+        buttons: ["apply", "clear"],
+        closeOnApply: true,
         caseSensitive: false,
         trimValues: true,
         textFormatter: formatAccountFilterText,
