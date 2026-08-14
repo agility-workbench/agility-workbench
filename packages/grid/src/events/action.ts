@@ -243,6 +243,8 @@ export type GridActionRowSelectByIds = {
 export type GridActionRowSelectAll = {
   type: "rowSelectAll";
   selected: boolean;
+  /** Omitted by API callers; header pointer/keyboard gestures identify their user-input source. */
+  reason?: "mouse" | "keyboard";
 };
 
 export type GridActionColumnSelectSet = {

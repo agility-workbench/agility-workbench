@@ -76,6 +76,22 @@ describe("selectRowsById", () => {
     api.selectRowsById(["1"]); // odd row — filtered out, but a real row
     expect(selectedIds(api)).toEqual(["1"]);
   });
+
+  it("reports the added and removed row ids as an event delta", () => {
+    const { core, api } = makeGrid();
+    const deltas: Array<{ added: string[]; removed: string[] }> = [];
+    core.on("selectionChanged", event => deltas.push(event.delta));
+
+    api.selectRowsById(["1", "3"]);
+    api.selectRowsById(["5"], "add");
+    api.selectRowsById(["1", "5"], "remove");
+
+    expect(deltas).toEqual([
+      { added: ["1", "3"], removed: [] },
+      { added: ["5"], removed: [] },
+      { added: [], removed: ["1", "5"] },
+    ]);
+  });
 });
 
 describe("selectAllScope", () => {

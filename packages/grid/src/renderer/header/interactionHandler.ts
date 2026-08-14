@@ -85,14 +85,14 @@ export class HeaderInteractionHandler {
     // The row-number header's only action is select-all, matching a click on it.
     if (col.isRowNumberColumn()) {
       if (core.options.rowSelection && core.options.selectAllRowsOnHeaderClick) {
-        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
+        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected(), reason: "keyboard" });
       }
       return true;
     }
     // Same for the checkbox column's header checkbox (Space/Enter mirror a click on it).
     if (col.isSelectionCheckboxColumn()) {
       if (core.options.rowSelectionHeaderCheckbox) {
-        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected() });
+        core.dispatch({ type: "rowSelectAll", selected: !core.areAllRowsSelected(), reason: "keyboard" });
       }
       return true;
     }
@@ -171,14 +171,22 @@ export class HeaderInteractionHandler {
     if (header.classList.contains("pte-hcell-row-number")) {
       if (this.params.core.options.rowSelection
         && this.params.core.options.selectAllRowsOnHeaderClick) {
-        this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
+        this.params.core.dispatch({
+          type: "rowSelectAll",
+          selected: !this.params.core.areAllRowsSelected(),
+          reason: "mouse",
+        });
       }
       return;
     }
     // The checkbox column's header checkbox always toggles select-all — enabling it IS the opt-in.
     if (header.classList.contains("pte-hcell-checkbox")) {
       if (this.params.core.options.rowSelectionHeaderCheckbox) {
-        this.params.core.dispatch({ type: "rowSelectAll", selected: !this.params.core.areAllRowsSelected() });
+        this.params.core.dispatch({
+          type: "rowSelectAll",
+          selected: !this.params.core.areAllRowsSelected(),
+          reason: "mouse",
+        });
       }
       return;
     }

@@ -112,6 +112,11 @@ export type GridEventCellsChangedParams = {
 export type GridEventSelectionChangedParams = {
   // full current selection snapshot (see snapshot.kind for the active selection kind)
   snapshot: SelectionSnapshot;
+  /** Row-id membership changes since the previous selectionChanged event. */
+  delta: {
+    added: GridId[];
+    removed: GridId[];
+  };
   reason?: "mouse" | "keyboard" | "api" | "model";
 };
 

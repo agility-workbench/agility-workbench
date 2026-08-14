@@ -60,6 +60,17 @@ describe("GridCore applyTransaction", () => {
     expect(core.getRowModel().getRowNode("2")).toBeUndefined();
   });
 
+  it("prunes selected ids for removed rows and reports a model delta", () => {
+    core.selectRowsById(["1", "2"]);
+    const events: Array<{ reason?: string; added: string[]; removed: string[] }> = [];
+    core.on("selectionChanged", event => events.push({ reason: event.reason, ...event.delta }));
+
+    core.applyTransaction({ remove: ["2"] });
+
+    expect([...core.getSelectedRowIds()]).toEqual(["1"]);
+    expect(events).toEqual([{ reason: "model", added: [], removed: ["2"] }]);
+  });
+
   it("applies add, update, and remove in a single transaction", () => {
     core.applyTransaction({
       add: [{ id: "4", name: "dave", qty: 1 }],
