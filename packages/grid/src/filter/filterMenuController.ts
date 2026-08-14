@@ -13,6 +13,7 @@ import {
 import { FilterDef, FilterItem, FilterType, valuesNeededFor } from "../interfaces/filter";
 import {
   buildSetOptions,
+  addSetOptionCounts,
   computeUniqueValues,
   defaultValueKey,
   defFromCheckedKeys,
@@ -442,7 +443,15 @@ export class FilterController implements IFilterController {
   }
 
   private mapToOptions(values: any[]): SetFilterOptions[] {
-    return buildSetOptions(values, this.spec.valueKey ?? defaultValueKey, this.spec.valueLabel);
+    const keyFn = this.spec.valueKey ?? defaultValueKey;
+    const options = buildSetOptions(values, keyFn, this.spec.valueLabel);
+    if (!this.spec.params.showValueCounts) return options;
+    return addSetOptionCounts(
+      options,
+      (callback) => this.hooks.getAllRows(callback),
+      (row: IRowNode) => this.spec.column.getValue(row),
+      keyFn,
+    );
   }
 
   // --------------------------

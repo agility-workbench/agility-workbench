@@ -190,7 +190,14 @@ export class SetFilterRenderer implements IFilterRenderer {
       if (component) {
         label.appendChild(this.renderOptionComponent(option, component));
       } else {
-        label.textContent = option.label;
+        const labelText = createElement("span", "pte-set-filter-option-label-text");
+        labelText.textContent = option.label;
+        label.appendChild(labelText);
+        if (option.count !== undefined) {
+          const count = createElement("span", "pte-set-filter-option-count");
+          count.textContent = String(option.count);
+          label.appendChild(count);
+        }
       }
       row.appendChild(label);
 
@@ -219,12 +226,14 @@ export class SetFilterRenderer implements IFilterRenderer {
       ? {
           value: option.raw,
           valueFormatted: option.label,
+          count: option.count,
           colDef: this.spec.column,
           api: this.api,
           ...(this.spec.params.valueComponentParams ?? {}),
         } satisfies SetFilterValueComponentParams
       : {
           label: option.label,
+          count: option.count,
           colDef: this.spec.column,
           api: this.api,
           ...(option.type === "select_all"

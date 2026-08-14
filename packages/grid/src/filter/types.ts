@@ -99,6 +99,8 @@ export interface SetFilterOptions {
   label: string;
   raw: any;
   hidden: boolean;
+  /** Number of loaded leaf rows in this bucket when value counts are enabled. */
+  count?: number;
 }
 
 export interface FilterRuntimeState {

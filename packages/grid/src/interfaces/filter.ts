@@ -127,6 +127,11 @@ export interface FilterParams {
   maxNumConditions?: number;
   initialFilterItemsCount?: number;
   filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
+  /**
+   * Shows the number of loaded leaf rows represented by each set-filter value.
+   * Counts cover every row in CSRM and only rows currently loaded in SSRM.
+   */
+  showValueCounts?: boolean;
   /** Replaces the text span for regular set-filter values; the grid continues to own the checkbox. */
   valueComponent?: SetFilterValueComponent;
   /** Extra params merged into regular set-filter value component params. */

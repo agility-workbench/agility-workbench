@@ -84,6 +84,27 @@ export function buildSetOptions(
   return options;
 }
 
+/**
+ * Attach loaded-row counts to an existing option universe. Values not present in the universe are
+ * ignored; configured static/async values with no loaded rows retain a useful zero count.
+ */
+export function addSetOptionCounts(
+  options: SetFilterOptions[],
+  forEachRow: (callback: (row: any, idx: number) => void) => void,
+  getValue: (row: any) => any,
+  keyFn: ValueKeyFn = defaultValueKey,
+): SetFilterOptions[] {
+  const counts = new Map<string, number>();
+  forEachRow((row, _idx) => {
+    const key = storedValueKey(getValue(row), keyFn);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+
+  return options.map(option => option.type === "select_all"
+    ? option
+    : { ...option, count: counts.get(option.key) ?? 0 });
+}
+
 /** Complete distinct column-value universe across rows, deduped by key and sorted by label. */
 export function computeUniqueValues(
   forEachRow: (callback: (row: any, idx: number) => void) => void,

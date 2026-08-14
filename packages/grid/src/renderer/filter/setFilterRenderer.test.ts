@@ -9,6 +9,7 @@ class RecordingValueComponent implements ISetFilterComponent<SetFilterValueCompo
   static created = 0;
   static refreshed = 0;
   static destroyed = 0;
+  static lastCount: number | undefined;
   private readonly el = document.createElement("span");
 
   constructor() { RecordingValueComponent.created++; }
@@ -21,6 +22,7 @@ class RecordingValueComponent implements ISetFilterComponent<SetFilterValueCompo
   }
   destroy(): void { RecordingValueComponent.destroyed++; }
   private render(params: SetFilterValueComponentParams): void {
+    RecordingValueComponent.lastCount = params.count;
     this.el.textContent = `${params.valueFormatted}:${params.suffix}`;
   }
 }
@@ -46,6 +48,7 @@ function setup() {
   RecordingValueComponent.created = 0;
   RecordingValueComponent.refreshed = 0;
   RecordingValueComponent.destroyed = 0;
+  RecordingValueComponent.lastCount = undefined;
   const toggleSetValue = vi.fn();
   const controller = {
     filterOptions: vi.fn(),
@@ -100,6 +103,20 @@ describe("SetFilterRenderer value components", () => {
 
     renderer.destroy();
     expect(RecordingValueComponent.destroyed).toBe(1);
+  });
+
+  it("renders built-in counts and supplies the count to custom value components", () => {
+    const { renderer } = setup();
+    const counted = options().map(option => option.type === "value" ? { ...option, count: 3 } : option);
+    renderer.renderState(runtimeState(counted));
+    expect(RecordingValueComponent.lastCount).toBe(3);
+
+    (renderer as any).spec.params.valueComponent = undefined;
+    renderer.renderState(runtimeState(counted));
+    const count = renderer.getUi().querySelector(".pte-set-filter-option-count");
+    expect(count?.textContent).toBe("3");
+    expect(count?.parentElement?.textContent).toBe("EMEA3");
+    renderer.destroy();
   });
 
   it("uses built-in text only when the corresponding component option is absent", () => {

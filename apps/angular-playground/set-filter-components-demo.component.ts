@@ -27,14 +27,18 @@ const REGION_COLORS: Record<string, string> = {
       <span class="value-name">
         <span class="dot" [style.background]="color()"></span>
         <span>{{ params().valueFormatted }}</span>
+        @if (params().showCode) { <small>({{ code() }})</small> }
       </span>
-      @if (params().showCode) { <small>{{ code() }}</small> }
+      <span class="value-meta">
+        @if (params().count !== undefined) { <small>{{ params().count }}</small> }
+      </span>
     </span>
   `,
   styles: [`
     :host { display: block; width: 100% }
     .value { display: flex; align-items: center; justify-content: space-between; width: 100% }
     .value-name { display: inline-flex; align-items: center; gap: 8px }
+    .value-meta { display: inline-flex; align-items: center; gap: 8px }
     .dot { width: 9px; height: 9px; border-radius: 50% }
     small { opacity: 0.55 }
   `],
@@ -57,8 +61,16 @@ class SelectAllFilterValueComponent {
 @Component({
   selector: "blanks-filter-value",
   standalone: true,
-  template: `<em>Unassigned region</em>`,
-  styles: [`em { opacity: 0.7 }`],
+  template: `
+    <span class="blank-value">
+      <em>Unassigned region</em>
+      @if (params().count !== undefined) { <small>{{ params().count }}</small> }
+    </span>
+  `,
+  styles: [`
+    :host { display: block; width: 100% }
+    .blank-value { display: flex; justify-content: space-between; width: 100%; opacity: 0.7 }
+  `],
 })
 class BlanksFilterValueComponent {
   readonly params = input.required<SetFilterSpecialValueComponentParams>();
@@ -72,8 +84,8 @@ class BlanksFilterValueComponent {
     <div class="intro">
       <h2>Set-filter value components</h2>
       <p>
-        Open the Region filter to see Angular components in the value, Select All, and Blanks label
-        slots. The grid still renders and controls every checkbox.
+        Open the Region filter to see loaded-row counts rendered by custom Angular value and Blanks
+        components. Open Owner to see the built-in count labels. The grid still owns every checkbox.
       </p>
     </div>
     <div class="grid-host">
@@ -113,12 +125,20 @@ export class SetFilterComponentsDemoComponent {
       width: 160,
       filter: "set",
       filterParams: {
+        showValueCounts: true,
         valueComponent: RegionFilterValueComponent,
         valueComponentParams: { showCode: true },
         selectAllComponent: SelectAllFilterValueComponent,
         blanksComponent: BlanksFilterValueComponent,
       },
     },
-    { colId: "owner", key: "owner", label: "Owner", width: 150, filter: "set" },
+    {
+      colId: "owner",
+      key: "owner",
+      label: "Owner",
+      width: 150,
+      filter: "set",
+      filterParams: { showValueCounts: true },
+    },
   ];
 }
