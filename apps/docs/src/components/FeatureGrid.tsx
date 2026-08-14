@@ -1,14 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import {
   AggregateType,
   ColumnType,
   Grid,
   themeDark,
   type GridProps,
+  type IGridAPI,
   type IServerSideDataSource,
   type ReactColDef,
 } from "@agility-workbench/react-grid";
 import { DemoFrame } from "./DemoFrame";
+import demoStyles from "./DemoFrame.module.css";
 import type { DemoFeature } from "./snippets";
 
 type Order = {
@@ -84,7 +86,7 @@ const baseColumns: ReactColDef[] = [
 const labels: Record<DemoFeature, [string, string]> = {
   columns: ["Columns", "Drag headers, resize, pin, hide, and open Columns"],
   "column-groups": ["Column groups", "Expand Revenue and inspect nested headers"],
-  "client-side-data": ["Client-side data", "Sort, page, filter, and select local rows"],
+  "client-side-data": ["Client-side data", "Insert at source index 2, then sort or page local rows"],
   "server-side-data": ["Server-side data", "Scroll to request block-aligned slices"],
   filtering: ["Filtering", "Use the toolbar search or a column filter"],
   sorting: ["Sorting", "Shift-click sort icons for an ordered multi-sort"],
@@ -109,6 +111,8 @@ function serverSource(): IServerSideDataSource {
 
 export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature; compact?: boolean }) {
   const source = useMemo(serverSource, []);
+  const apiRef = useRef<IGridAPI | null>(null);
+  const insertedRowCount = useRef(0);
   const [label, hint] = labels[feature];
   let columnDefs: ReactColDef[] = baseColumns;
   let rowData: unknown[] | undefined = rows;
@@ -172,10 +176,34 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       break;
   }
 
+  const insertAtIndexTwo = () => {
+    const sequence = ++insertedRowCount.current;
+    const template = rows[(sequence - 1) % rows.length];
+    apiRef.current?.applyTransaction({
+      add: [{
+        ...template,
+        id: `inserted-${sequence}`,
+        orderNo: `NEW-${String(sequence).padStart(4, "0")}`,
+        customer: `Inserted row ${sequence}`,
+      }],
+      addIndex: 2,
+    });
+  };
+
   return (
-    <DemoFrame label={label} hint={hint} compact={compact}>
+    <DemoFrame
+      label={label}
+      hint={hint}
+      compact={compact}
+      actions={feature === "client-side-data" ? (
+        <button className={demoStyles.action} type="button" onClick={insertAtIndexTwo}>
+          Insert at index 2
+        </button>
+      ) : undefined}
+    >
       <Grid
         key={feature}
+        apiRef={apiRef}
         rowData={rowData}
         columnDefs={columnDefs}
         rowIdKey="id"

@@ -140,6 +140,30 @@ describe("GridCore async row transactions", () => {
     expect(core.getRowIdAtViewIndex(1)).toBe("2");
   });
 
+  it("evaluates indexed additions sequentially while batching the derived view", async () => {
+    const core = grid();
+    const rowsChanged = vi.fn();
+    core.on("rowsChanged", rowsChanged);
+
+    const first = core.applyTransactionAsync({
+      add: [{ id: "3", name: "carol", qty: 5 }],
+      addIndex: 1,
+    });
+    const second = core.applyTransactionAsync({
+      add: [{ id: "4", name: "dave", qty: 9 }],
+      addIndex: 1,
+    });
+    core.flushAsyncTransactions();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { added: 1, updated: 0, removed: 0 },
+      { added: 1, updated: 0, removed: 0 },
+    ]);
+    expect(Array.from({ length: 4 }, (_, index) => core.getRowIdAtViewIndex(index)))
+      .toEqual(["1", "4", "3", "2"]);
+    expect(rowsChanged).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves sequential add/remove semantics and per-call results", async () => {
     const core = grid();
     const rowsChanged = vi.fn();

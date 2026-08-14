@@ -45,6 +45,39 @@ describe("GridCore applyTransaction", () => {
     expect(core.getCellValue("4", "name")).toBe("dave");
   });
 
+  it("inserts a block of rows at a specific source index", () => {
+    core.applyTransaction({
+      add: [
+        { id: "4", name: "dave", qty: 9 },
+        { id: "5", name: "erin", qty: 11 },
+      ],
+      addIndex: 1,
+    });
+
+    expect(viewOrder(core)).toEqual(["1", "4", "5", "2", "3"]);
+  });
+
+  it.each([
+    { addIndex: -3, expected: ["4", "1", "2", "3"] },
+    { addIndex: 1.9, expected: ["1", "4", "2", "3"] },
+    { addIndex: 99, expected: ["1", "2", "3", "4"] },
+    { addIndex: Number.NaN, expected: ["1", "2", "3", "4"] },
+    { addIndex: Number.POSITIVE_INFINITY, expected: ["1", "2", "3", "4"] },
+  ])("normalizes addIndex $addIndex", ({ addIndex, expected }) => {
+    core.applyTransaction({ add: [{ id: "4", name: "dave", qty: 9 }], addIndex });
+    expect(viewOrder(core)).toEqual(expected);
+  });
+
+  it("evaluates addIndex after removals in the same transaction", () => {
+    core.applyTransaction({
+      remove: ["1"],
+      add: [{ id: "4", name: "dave", qty: 9 }],
+      addIndex: 1,
+    });
+
+    expect(viewOrder(core)).toEqual(["2", "4", "3"]);
+  });
+
   it("updates a row's data in place, preserving node identity", () => {
     const before = core.getRowModel().getRowNode("2");
     core.applyTransaction({ update: [{ rowId: "2", row: { id: "2", name: "bob", qty: 42 } }] });
@@ -82,9 +115,16 @@ describe("GridCore applyTransaction", () => {
   });
 
   it("treats an add with an existing id as an update", () => {
-    core.applyTransaction({ add: [{ id: "2", name: "bob", qty: 99 }] });
-    expect(core.getRowModel().getRowCount()).toBe(3); // no duplicate
+    core.applyTransaction({
+      add: [
+        { id: "2", name: "bob", qty: 99 },
+        { id: "4", name: "dave", qty: 9 },
+      ],
+      addIndex: 1,
+    });
+    expect(core.getRowModel().getRowCount()).toBe(4); // existing id was not duplicated
     expect(core.getCellValue("2", "qty")).toBe(99);
+    expect(viewOrder(core)).toEqual(["1", "4", "2", "3"]);
   });
 
   it("does NOT reorder an update-only transaction when reevaluateOnEdit is off", () => {
@@ -112,7 +152,7 @@ describe("GridCore applyTransaction", () => {
     expect(viewOrder(core)).toEqual(["1", "3", "2"]); // 3,5,7
 
     // Add qty=4 → sorts between 3 and 5. Structural changes always reflow, even with re-eval off.
-    core.applyTransaction({ add: [{ id: "4", name: "dave", qty: 4 }] });
+    core.applyTransaction({ add: [{ id: "4", name: "dave", qty: 4 }], addIndex: 0 });
     expect(viewOrder(core)).toEqual(["1", "4", "3", "2"]); // 3,4,5,7
   });
 
@@ -155,8 +195,8 @@ describe("GridCore applyTransaction", () => {
   });
 
   it("routes through the rowTransactionApply dispatch action", () => {
-    core.dispatch({ type: "rowTransactionApply", add: [{ id: "4", name: "dave", qty: 9 }] });
-    expect(viewOrder(core)).toEqual(["1", "2", "3", "4"]);
+    core.dispatch({ type: "rowTransactionApply", add: [{ id: "4", name: "dave", qty: 9 }], addIndex: 1 });
+    expect(viewOrder(core)).toEqual(["1", "4", "2", "3"]);
   });
 
   it("returns what was actually applied; unknown ids are not counted", () => {

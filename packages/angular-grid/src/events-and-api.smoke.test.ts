@@ -135,9 +135,9 @@ describe("AwbGrid outputs and imperative API", () => {
     api.applyTransaction({ update: [{ rowId: "AAA", row: { symbol: "AAA", price: 137 } }] });
     expect(core.getCellValue("AAA", "price")).toBe(137);
 
-    api.applyTransaction({ add: [{ symbol: "CCC", price: 300 }] });
+    api.applyTransaction({ add: [{ symbol: "CCC", price: 300 }], addIndex: 1 });
     expect(core.getCellValue("CCC", "price")).toBe(300);
-    expect(core.getViewIndexForRowId("CCC")).not.toBeNull();
+    expect(core.getViewIndexForRowId("CCC")).toBe(1);
 
     api.applyTransaction({ remove: ["BBB"] });
     expect(core.getCellValue("BBB", "price")).toBeNull();

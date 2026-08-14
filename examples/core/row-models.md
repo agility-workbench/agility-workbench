@@ -22,13 +22,16 @@ are derived or nested.
 ```ts
 api.applyTransaction({
   add: [{ id: "c", name: "Gamma" }],
+  addIndex: 1,
   update: [{ rowId: "a", row: { id: "a", name: "Alpha updated" } }],
   remove: ["b"],
 });
 ```
 
 Transactions preserve unaffected row nodes and edit history. They are a
-client-side feature.
+client-side feature. `addIndex` is a zero-based position in the underlying row
+order and defaults to appending. Sorting, filtering, grouping, and pagination
+can make the inserted row's displayed position differ from that source index.
 
 ## Server-side blocks
 

@@ -420,12 +420,12 @@ Core.setRowData(rows)  or  Core.dispatch({ type: "rowDataSet", rows })
 ### 4.3 Incremental Transaction Pipeline (streaming)
 
 ```
-api.applyTransaction({ add?, update?, remove? })
+api.applyTransaction({ add?, addIndex?, update?, remove? })
   → dispatch({ type: "rowTransactionApply", add, update, remove })
   → GridCore.applyTransaction(tx)     (clientSide only; SSRM warns + no-ops)
     → RowModel.applyTransaction(tx) → { added, updated, removed }
         remove: delete nodes by id · update: replace node.data IN PLACE (identity preserved)
-        add: append new nodes (id collision → treated as update)
+        add: insert new nodes at addIndex, or append by default (id collision → treated as update)
     → structural change (add/remove)?  OR  reevaluateOnEdit set?
         YES → applyRequest({ reason: "transaction" }) re-derives filter→sort→view
               → emit("rowsChanged", { reason: "transaction" }) + paginationChanged

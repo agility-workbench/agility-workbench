@@ -2382,6 +2382,7 @@ export class GridCore implements IGridCore {
       case "rowTransactionApply":
         this.applyTransaction({
           add: action.add as RowData[] | undefined,
+          addIndex: action.addIndex,
           update: action.update as { rowId: GridId; row: RowData }[] | undefined,
           remove: action.remove as GridId[] | undefined,
         });

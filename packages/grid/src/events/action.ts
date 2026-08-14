@@ -110,6 +110,7 @@ export type GridActionRowDataSet = {
 export type GridActionTransactionApply = {
   type: "rowTransactionApply";
   add?: unknown[];
+  addIndex?: number;
   update?: { rowId: string; row: unknown }[];
   remove?: string[];
 };

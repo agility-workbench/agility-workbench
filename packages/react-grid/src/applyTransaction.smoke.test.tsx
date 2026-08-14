@@ -115,12 +115,12 @@ describe("applyTransaction end-to-end via Grid", () => {
     });
     expect(core.getCellValue("AAA", "ltp")).toBe(137);
 
-    // ADD — a brand-new row streams in.
+    // ADD — a brand-new row streams into a specific source position.
     await act(async () => {
-      api.applyTransaction({ add: [{ symbol: "CCC", ltp: 300 }] });
+      api.applyTransaction({ add: [{ symbol: "CCC", ltp: 300 }], addIndex: 0 });
     });
     expect(core.getCellValue("CCC", "ltp")).toBe(300);
-    expect(core.getViewIndexForRowId("CCC")).not.toBeNull();
+    expect(core.getViewIndexForRowId("CCC")).toBe(0);
 
     // REMOVE — a row drops out.
     await act(async () => {

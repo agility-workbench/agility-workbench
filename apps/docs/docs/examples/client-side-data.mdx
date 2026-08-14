@@ -26,10 +26,25 @@ selection, grouping, and pinned rows refer to the same record.
 
 `api.setRowData(rows)` supplies a whole data set; whether that resets the grid
 or is diffed into it depends on `rowDataMode` (see below).
-`api.applyTransaction({ add, update, remove })` changes only affected rows and
+`api.applyTransaction({ add, addIndex, update, remove })` changes only affected rows and
 returns `{ added, updated, removed }` counts of what was actually applied
 (unknown row IDs are skipped). Updates preserve node identity; structural
 changes are sorted and filtered into their correct location.
+
+Use `addIndex` to insert new rows at a zero-based position in the underlying
+client-side row order:
+
+```ts
+api.applyTransaction({
+  add: [newOrder],
+  addIndex: 2,
+});
+```
+
+The index is evaluated after removals in the same transaction. It defaults to
+the end, and out-of-range values are clamped. It is a source-order position:
+active sorting, filtering, grouping, tree relationships, or pagination may put
+the inserted row at a different displayed position.
 
 Transactions are client-side only. The server-side model is refreshed through
 `api.refreshServerSideData()`.
@@ -93,5 +108,5 @@ goes stale — use `rowDataMode="reset"` in that case.
 :::
 
 `api.setRowData(rows)` follows the same rules; `api.applyTransaction({ add,
-update, remove })` remains the most direct way to express an incremental change
+addIndex, update, remove })` remains the most direct way to express an incremental change
 when you already know what changed.
