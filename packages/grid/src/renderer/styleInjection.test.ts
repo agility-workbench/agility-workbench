@@ -37,7 +37,7 @@ function mountInto(container: HTMLElement, options: Record<string, unknown> = {}
     { colId: "name", key: "name", label: "Name", type: ColumnType.STRING },
   ]);
   const { renderer } = initDomRenderer(core, menuAdapter);
-  renderer.attach({ current: container });
+  renderer.attach(container);
   return { core, renderer };
 }
 

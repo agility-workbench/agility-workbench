@@ -42,7 +42,7 @@ function mountGrid(rowCount = 10, options: Record<string, unknown> = {}, colDefs
   const core = new GridCore(measurer, { rowIdKey: "id", rowNumbers: true, ...options });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" } as any);
   const { renderer, api } = initDomRenderer(core, menuAdapter);
-  renderer.attach({ current: container });
+  renderer.attach(container);
   core.dispatch({ type: "init" });
   core.setColumnDefsFromProps(colDefs ?? [
     { colId: "region", key: "region", label: "Region" },

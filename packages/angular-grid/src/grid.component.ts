@@ -303,7 +303,7 @@ export class AwbGrid implements OnDestroy {
       );
       const created: GridInstance = { core, renderer, api, destroyed: false };
 
-      renderer.attach({ current: this.host.nativeElement });
+      renderer.attach(this.host.nativeElement);
       core.dispatch({ type: "init" });
       // Columns and rows are not GridOptions: apply them right after init, in the same synchronous
       // sequence the React wrapper's mount effects use (init → columnDefs → rowData).

@@ -1,4 +1,3 @@
-import { RefObject } from "react";
 import { AggregateType } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
@@ -841,7 +840,7 @@ export class GridRenderer {
     this._coreEventBinder.bind();
   }
 
-  attach(container: RefObject<HTMLElement | null>) {
+  attach(container: HTMLElement) {
     this._rootAttachmentRenderer.attach(container);
     this._injectStyles();
   }

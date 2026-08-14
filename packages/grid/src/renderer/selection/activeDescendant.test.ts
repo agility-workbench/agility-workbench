@@ -42,7 +42,7 @@ function mountGrid(rowCount: number, options: Record<string, unknown> = {}) {
   const core = new GridCore(measurer, { rowIdKey: "id", ...options });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" } as any);
   const { renderer, api } = initDomRenderer(core, menuAdapter);
-  renderer.attach({ current: container });
+  renderer.attach(container);
   core.dispatch({ type: "init" });
   core.setColumnDefsFromProps([
     { colId: "name", key: "name", label: "Name", pinned: "left", editable: true },
@@ -238,7 +238,7 @@ describe("aria-activedescendant with sticky group rows", () => {
     } as any);
     core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" } as any);
     const { renderer, api } = initDomRenderer(core, menuAdapter);
-    renderer.attach({ current: container });
+    renderer.attach(container);
     core.dispatch({ type: "init" });
     core.setColumnDefsFromProps([
       { colId: "region", key: "region", label: "Region" },

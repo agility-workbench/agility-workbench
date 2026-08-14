@@ -110,7 +110,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const instance: GridInstance = { core, renderer, api, destroyed: false };
       instanceRef.current = instance;
 
-      renderer.attach({ current: host });
+      renderer.attach(host);
       core.dispatch({ type: "init" });
       assignRef(forwardedRef, api);
       assignRef(props.apiRef, api);
