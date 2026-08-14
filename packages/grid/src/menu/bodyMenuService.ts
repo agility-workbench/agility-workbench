@@ -273,6 +273,7 @@ export class BodyMenuService {
 
   private resolveExportScope(ctx: BodyMenuContext): "selection" | "selectedColumns" | "all" {
     if (ctx.selection.range) return "selection";
+    if (ctx.selection.rowIds.length > 0) return "selection";
     if (ctx.selection.colIds.length > 0) return "selectedColumns";
     return "all";
   }

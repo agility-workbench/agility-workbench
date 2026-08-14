@@ -50,6 +50,18 @@ export class SelectionRenderer {
     const lastRow = viewIndex != null ? viewIndex === this.params.core.getRowModel().getViewCount() - 1 : false;
     const hasBottomBand = this.params.core.getDisplayedPinnedRowCount("bottom") > 0;
     const leaves = this.params.leafColumns();
+    const firstDataColIdx = leaves.findIndex(col => !col.isLeadingUtilityColumn());
+    let lastDataColIdx = -1;
+    for (let i = leaves.length - 1; i >= 0; i--) {
+      if (!leaves[i].isLeadingUtilityColumn()) {
+        lastDataColIdx = i;
+        break;
+      }
+    }
+    const rangeCoversAllDataColumns = !!range
+      && firstDataColIdx >= 0
+      && range.colStart <= firstDataColIdx
+      && range.colEnd >= lastDataColIdx;
 
     const rowId = viewIndex != null
       ? this.params.core.getRowIdAtViewIndex(viewIndex)
@@ -81,8 +93,13 @@ export class SelectionRenderer {
         const colSelected = colId ? selectedColumnIDs.has(colId) : false;
 
         // Range covers this cell if the range's column interval intersects [colIdx, colEnd].
-        const rangeSelected = !leafCol?.isLeadingUtilityColumn() && !!rangeRow && !!range && Number.isFinite(colIdx)
-          && colIdx <= range.colEnd && colEnd >= range.colStart;
+        const rowNumberRangeSelected = !!leafCol?.isRowNumberColumn()
+          && this.params.core.options.rowSelection
+          && rangeCoversAllDataColumns
+          && rangeRow;
+        const rangeSelected = rowNumberRangeSelected
+          || (!leafCol?.isLeadingUtilityColumn() && !!rangeRow && !!range && Number.isFinite(colIdx)
+            && colIdx <= range.colEnd && colEnd >= range.colStart);
         const selected = rangeSelected || colSelected || rowSelected;
 
         const prevColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colIdx - 1);
@@ -103,12 +120,14 @@ export class SelectionRenderer {
             ? !nextRowSelected
             : (colSelected && lastRow && !hasBottomBand);
         const isLeft = rangeSelected
-          ? (colIdx <= (range?.colStart ?? 0) && (range?.colStart ?? 0) <= colEnd)
+          ? (rowNumberRangeSelected
+            || (colIdx <= (range?.colStart ?? 0) && (range?.colStart ?? 0) <= colEnd))
           : rowSelected
             ? colIdx === 0
             : (colSelected && !prevColSelected);
         const isRight = rangeSelected
-          ? (colIdx <= (range?.colEnd ?? 0) && (range?.colEnd ?? 0) <= colEnd)
+          ? (!rowNumberRangeSelected
+            && colIdx <= (range?.colEnd ?? 0) && (range?.colEnd ?? 0) <= colEnd)
           : rowSelected
             ? colEnd === leaves.length - 1
             : (colSelected && !nextColSelected);

@@ -272,7 +272,17 @@ export class SelectionModel {
     rowPinned?: "top" | "bottom",
   ): boolean {
     const r = this.range;
-    if (r && r.pageStartIdx === this.deps.getPageStartIdx() && colIdx >= r.colStart && colIdx <= r.colEnd) {
+    const col = this.leafColumns()[colIdx];
+    // A range spanning every data column is also a row-number selection when row selection is
+    // enabled. The utility column remains outside the range itself (and therefore clipboard/export
+    // column resolution), but behaves as part of the rectangle for paint and context-menu hit tests.
+    const rangeCoversColumn = !!r && (
+      (colIdx >= r.colStart && colIdx <= r.colEnd)
+      || (this.isRowNumberColumn(col)
+        && (this.deps.isRowNumberNavigable?.() ?? false)
+        && this.rangeCoversAllDataColumns(r))
+    );
+    if (r && r.pageStartIdx === this.deps.getPageStartIdx() && rangeCoversColumn) {
       if (rowPinned) {
         // Band cells match against the range's pinned segment (band-local indices), never the
         // body rowStart/rowEnd — band-local index 0 is unrelated to body view index 0.
@@ -285,6 +295,12 @@ export class SelectionModel {
     if (this.selectedRowIds.has(rowId)) return true;
     if (this.selectedColumnIds.has(colId)) return true;
     return false;
+  }
+
+  private rangeCoversAllDataColumns(range: SelectionRange): boolean {
+    const first = this.firstDataColIdx();
+    const last = this.lastDataColIdx();
+    return last >= first && range.colStart <= first && range.colEnd >= last;
   }
 
   getSnapshot(resolveIds = false): SelectionSnapshot {

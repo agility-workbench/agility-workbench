@@ -22,6 +22,8 @@ interface Opts {
   cellSelection?: boolean | "text";
   rangeSelection?: boolean;
   columnSelection?: boolean;
+  rowNumbers?: boolean;
+  rowSelection?: boolean;
   bodyContextMenu?: boolean | ((params: { items: any[] }) => any[]);
 }
 
@@ -54,6 +56,8 @@ async function mountGrid(opts: Opts = {}) {
           cellSelection={nextOpts.cellSelection}
           rangeSelection={nextOpts.rangeSelection}
           columnSelection={nextOpts.columnSelection}
+          rowNumbers={nextOpts.rowNumbers}
+          rowSelection={nextOpts.rowSelection}
           bodyContextMenu={nextOpts.bodyContextMenu}
         />,
       );
@@ -66,8 +70,18 @@ async function mountGrid(opts: Opts = {}) {
 
 /** Cells in the first row, in DOM order, excluding the row-number cell. */
 function bodyCells(container: HTMLElement): HTMLElement[] {
-  const row = container.querySelector<HTMLElement>(".pte-row[data-view-idx='0']")!;
-  return Array.from(row.querySelectorAll<HTMLElement>(".pte-cell:not(.pte-row-number-cell)"));
+  const rows = Array.from(container.querySelectorAll<HTMLElement>(".pte-row[data-view-idx='0']"));
+  return rows
+    .map(row => Array.from(row.querySelectorAll<HTMLElement>(
+      ".pte-cell[data-col-idx]:not(.pte-row-number-cell):not(.pte-checkbox-cell)",
+    )))
+    .find(cells => cells.length > 0) ?? [];
+}
+
+function rowNumberCell(container: HTMLElement, viewIdx: number): HTMLElement {
+  return Array.from(container.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx='${viewIdx}']`))
+    .map(row => row.querySelector<HTMLElement>(".pte-row-number-cell"))
+    .find((cell): cell is HTMLElement => cell != null)!;
 }
 
 function mousedown(el: HTMLElement) {
@@ -142,6 +156,47 @@ describe("cellSelection", () => {
     expect(ev.defaultPrevented).toBe(false); // browser's own menu (Copy) appears
     expect(bodyMenuOpen(container)).toBe(false);
     expect(api.getSelection().kind).toBe("none");
+    await unmountTestRoot(root);
+  });
+});
+
+describe("row-number context menu", () => {
+  it("selects the whole row on right-click even when ordinary cell selection is disabled", async () => {
+    const { container, apiRef, root } = await mountGrid({
+      cellSelection: false,
+      rowNumbers: true,
+      rowSelection: true,
+    });
+    const ev = await act(async () => contextmenu(rowNumberCell(container, 1)));
+    expect(ev.defaultPrevented).toBe(true);
+    expect(bodyMenuOpen(container)).toBe(true);
+    expect(apiRef.current!.getSelection().selectedRowIds).toEqual(["2"]);
+    await unmountTestRoot(root);
+  });
+
+  it("includes the row number in a full-row range and preserves that range on right-click", async () => {
+    const { container, apiRef, root } = await mountGrid({ rowNumbers: true, rowSelection: true });
+    const cells = bodyCells(container);
+    const rowNumber = rowNumberCell(container, 0);
+    await act(async () => { mousedown(cells[0]); });
+    expect(rowNumber.classList.contains("selected")).toBe(false);
+
+    await act(async () => {
+      cells[cells.length - 1].dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    expect(apiRef.current!.getSelection().range).toMatchObject({
+      rowStart: 0,
+      rowEnd: 0,
+      colStart: 1,
+      colEnd: 3,
+    });
+    expect(rowNumber.classList.contains("selected")).toBe(true);
+
+    const before = apiRef.current!.getSelection().range;
+    await act(async () => { contextmenu(rowNumber); });
+    expect(apiRef.current!.getSelection().range).toEqual(before);
+    expect(apiRef.current!.getSelection().selectedRowIds).toEqual([]);
     await unmountTestRoot(root);
   });
 });

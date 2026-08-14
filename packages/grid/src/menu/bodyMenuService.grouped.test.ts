@@ -149,8 +149,8 @@ describe("body menu Excel export item (grouping-aware)", () => {
     svc.execute(findById(items, "exportExcelTree")!, ctx);
     svc.execute(findById(items, "exportExcelLeaves")!, ctx);
     expect(calls).toEqual([
-      { fn: "excel", scope: "all", groupMode: "tree" },
-      { fn: "excel", scope: "all", groupMode: "leaves" },
+      { fn: "excel", scope: "selection", groupMode: "tree" },
+      { fn: "excel", scope: "selection", groupMode: "leaves" },
     ]);
   });
 });

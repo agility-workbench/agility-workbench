@@ -17,19 +17,19 @@ export class BodyMenuOpener {
     const target = e.target as HTMLElement | null;
     if (!target) return;
 
-    // The body context menu operates on the cell selection (focus/copy/cut/paste/export), so it is
-    // only available in grid cell-selection mode. When cellSelection is false ("inert") or "text",
-    // return BEFORE preventDefault: nothing is selected, no grid menu opens, and in "text" mode the
-    // browser's own context menu (e.g. Copy) appears over the natively-selected text.
-    if (this.params.core.options.cellSelection !== true) return;
+    const cell = target.closest(".pte-cell") as HTMLDivElement | null;
+    if (!cell || !this.params.root.contains(cell)) return;
+
+    const isSelectableRowNumber = cell.classList.contains("pte-row-number-cell")
+      && this.params.core.options.rowSelection;
+    // Data-cell menus require grid cell selection. An enabled row-number cell is independently
+    // actionable: right-click can establish a row selection even when ordinary cells are inert.
+    if (this.params.core.options.cellSelection !== true && !isSelectableRowNumber) return;
 
     // bodyContextMenu === false disables the grid menu entirely: return BEFORE preventDefault so the
     // browser's native context menu appears. (A getter that returns [] is handled downstream — the
     // grid still owns the gesture in that case and shows nothing.)
     if (this.params.core.options.bodyContextMenu === false) return;
-
-    const cell = target.closest(".pte-cell") as HTMLDivElement | null;
-    if (!cell || !this.params.root.contains(cell)) return;
 
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return;
@@ -54,6 +54,17 @@ export class BodyMenuOpener {
 
     if (!this.params.core.isCellInActiveSelection(viewIdx, colIdx, rowId, colId, rowPinned)) {
       this.params.core.dispatch({ type: "focusSet", viewIdx, colIdx, rowPinned, reason: "mouse" });
+      if (isSelectableRowNumber && !rowPinned) {
+        // A row-number context menu must operate on row data, never on the internal utility cell.
+        // Preserve the utility focus so keyboard navigation still starts where the pointer landed.
+        this.params.core.dispatch({
+          type: "rowSelectSet",
+          viewIdx,
+          mode: "replace",
+          preserveFocus: true,
+          reason: "mouse",
+        });
+      }
     }
 
     this.open({
