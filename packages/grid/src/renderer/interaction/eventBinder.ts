@@ -1,3 +1,5 @@
+import { isScrollbarGutterEvent } from "./scrollbarHit";
+
 interface GridInteractionEventBinderParams {
   root: HTMLDivElement;
   headerWrapper: HTMLDivElement;
@@ -36,19 +38,26 @@ export class GridInteractionEventBinder {
     this.params.onHeaderDoubleClick(e);
   };
 
+  // Driving a scrollbar is not a body interaction. The body is itself the vertical scroll container
+  // these listeners are bound to, so its bar reports `target === body` and would otherwise read as
+  // a click on empty body space — which clears the cell selection.
   private handleCellMouseDown = (e: MouseEvent) => {
+    if (isScrollbarGutterEvent(e)) return;
     this.params.onCellMouseDown(e);
   };
 
   private handleCellClick = (e: MouseEvent) => {
+    if (isScrollbarGutterEvent(e)) return;
     this.params.onCellClick(e);
   };
 
   private handleCellDoubleClick = (e: MouseEvent) => {
+    if (isScrollbarGutterEvent(e)) return;
     this.params.onCellDoubleClick(e);
   };
 
   private handleBodyContextMenu = (e: MouseEvent) => {
+    if (isScrollbarGutterEvent(e)) return;
     this.params.onBodyContextMenu(e);
   };
 
