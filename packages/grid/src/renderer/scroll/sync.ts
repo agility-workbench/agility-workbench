@@ -23,17 +23,24 @@ interface GridScrollSyncRendererParams {
 
 export class GridScrollSyncRenderer {
   private rafPending = false;
-  private syncingScrollTargets = new Set<HTMLDivElement>();
-  private syncingScrollRaf: number | null = null;
+  private readonly verticalScrollers: HTMLDivElement[];
+  /** The scrollTop most recently fanned out by {@link syncVerticalScroll}; see bindWindowScroll. */
+  private lastBroadcastTop: number | null = null;
 
-  constructor(private params: GridScrollSyncRendererParams) { }
+  constructor(private params: GridScrollSyncRendererParams) {
+    this.verticalScrollers = [
+      params.leadingScroller,
+      params.leftScroller,
+      params.centerScroller,
+      params.rightScroller,
+      params.vScroll,
+    ];
+  }
 
   bind() {
-    this.bindWindowScroll(this.params.leadingScroller);
-    this.bindWindowScroll(this.params.leftScroller);
-    this.bindWindowScroll(this.params.centerScroller);
-    this.bindWindowScroll(this.params.rightScroller);
-    this.bindWindowScroll(this.params.vScroll);
+    for (const scroller of this.verticalScrollers) {
+      this.bindWindowScroll(scroller);
+    }
 
     this.params.leftSpacer.addEventListener("scroll", () => {
       this.syncLeftScroll(this.params.leftSpacer.scrollLeft);
@@ -82,21 +89,32 @@ export class GridScrollSyncRenderer {
     });
   }
 
-  beginScrollSync(targets: HTMLDivElement[]) {
-    if (targets.length === 0) return;
-    for (const target of targets) {
-      this.syncingScrollTargets.add(target);
+  /**
+   * Align every vertical scroller except `source` to `scrollTop`. Sections are independent scroll
+   * boxes, so only the one under the pointer moves natively; the rest are moved from here. Called
+   * straight out of the scroll listener rather than from the rAF that patches rows, so realignment
+   * cannot be delayed behind — or starved by — the window update's frame coalescing.
+   */
+  syncVerticalScroll(scrollTop: number, source?: HTMLDivElement) {
+    this.lastBroadcastTop = scrollTop;
+    for (const target of this.verticalScrollers) {
+      if (target === source) continue;
+      if (target.scrollTop === scrollTop) continue;
+      target.scrollTop = scrollTop;
     }
-    if (this.syncingScrollRaf !== null) return;
-    this.syncingScrollRaf = requestAnimationFrame(() => {
-      this.syncingScrollTargets.clear();
-      this.syncingScrollRaf = null;
-    });
   }
 
   private bindWindowScroll(source: HTMLDivElement) {
     source.addEventListener("scroll", () => {
-      if (this.syncingScrollTargets.has(source)) return;
+      const scrollTop = source.scrollTop;
+      // A scroller resting on the value we last broadcast is echoing our own write, not reporting a
+      // gesture; re-broadcasting it would drag the section the user is actually scrolling back to a
+      // stale position. Keying the guard on the value rather than on which frame the echo arrives in
+      // keeps it correct however the browser schedules delivery. A scroller that cannot reach the
+      // broadcast value (clamped to its own range) reports a different one, so it counts as a real
+      // scroll and the sections converge on the reachable position instead of oscillating.
+      if (scrollTop === this.lastBroadcastTop) return;
+      this.syncVerticalScroll(scrollTop, source);
       this.scheduleWindowUpdate(source);
     });
   }

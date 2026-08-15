@@ -304,7 +304,7 @@ export class GridRenderer {
         this._bodyViewportRenderer.recomputeView();
         this.core.clampSelectionToView();
       },
-      updateWindow: (forcePatch, scrollSrc, params) => this._bodyWindowRenderer.update(forcePatch, scrollSrc, params),
+      updateWindow: (forcePatch, scrollSrc) => this._bodyWindowRenderer.update(forcePatch, scrollSrc),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       updatePaginationControls: (params?: GridEventPaginationChangedParams) => this._updatePaginationControls(params),
       refreshSortIndicators: () => this._headerRenderer.refreshSortIndicators(),
@@ -715,17 +715,14 @@ export class GridRenderer {
       core: this.core,
       rowHeight: () => this.rowHeight,
       rowPool: () => this._rowPool,
-      leadingScroller: bodyWrapper.leadingScroller,
-      leftScroller: bodyWrapper.leftScroller,
       centerScroller: bodyWrapper.centerScroller,
-      rightScroller: bodyWrapper.rightScroller,
       vScroll: bodyWrapper.vScroll,
       leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
-      beginScrollSync: (targets) => this._scrollSyncRenderer.beginScrollSync(targets),
+      syncVerticalScroll: (scrollTop, source) => this._scrollSyncRenderer.syncVerticalScroll(scrollTop, source),
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },

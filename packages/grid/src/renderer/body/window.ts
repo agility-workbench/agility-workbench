@@ -1,6 +1,5 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
-import { GridEventRowsChangedParams } from "../../events/events";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { stampRowHierarchyAria } from "../aria";
 import { RendererRecord } from "../renderer";
@@ -18,17 +17,14 @@ interface BodyWindowRendererParams {
   core: GridCore;
   rowHeight: () => number;
   rowPool: () => RowPoolDef[];
-  leadingScroller: HTMLDivElement;
-  leftScroller: HTMLDivElement;
   centerScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
   vScroll: HTMLDivElement;
   leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
   serverSidePendingRangeKeys: Set<string>;
-  beginScrollSync: (targets: HTMLDivElement[]) => void;
+  syncVerticalScroll: (scrollTop: number, source?: HTMLDivElement) => void;
   setStartIndex: (startIndex: number) => void;
   renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
@@ -37,14 +33,19 @@ interface BodyWindowRendererParams {
 }
 
 export class BodyWindowRenderer {
+  /** Start index of the currently painted window; null until the first patch. */
+  private lastStartIndex: number | null = null;
+
   constructor(private params: BodyWindowRendererParams) { }
 
-  update(forcePatch: boolean, scrollSrc?: HTMLDivElement, eventParams?: GridEventRowsChangedParams) {
+  update(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const rowModel = this.params.core.getRowModel();
     const total = rowModel.getViewCount();
     const scrollTop = scrollSrc?.scrollTop ?? this.params.centerScroller.scrollTop ?? this.params.vScroll.scrollTop ?? 0;
 
-    this.syncScrollTop(scrollSrc, scrollTop);
+    // Scroll-driven updates have already realigned the sections synchronously; this keeps the
+    // non-scroll callers (data/column changes, which pass no scrollSrc) aligned too.
+    this.params.syncVerticalScroll(scrollTop, scrollSrc);
 
     const rowPool = this.params.rowPool();
     const startIndex = Math.max(
@@ -55,38 +56,17 @@ export class BodyWindowRenderer {
 
     this.requestMissingServerSideRows(startIndex, endIndex, total);
 
-    const startIdx = eventParams?.firstRowIndex ?? -1;
-    if (!forcePatch && startIndex === startIdx) {
+    // Scrolling within a row only moves the sections; the pooled rows still hold the right nodes, so
+    // there is nothing to repaint until the window advances by a whole row. Every caller that
+    // changes what a slot should show (data, columns, pool rebuild) passes forcePatch.
+    if (!forcePatch && startIndex === this.lastStartIndex) {
       return;
     }
 
+    this.lastStartIndex = startIndex;
     this.params.setStartIndex(startIndex);
     this.translateViewports(startIndex);
     this.patchRows(startIndex, total, rowPool);
-  }
-
-  private syncScrollTop(scrollSrc: HTMLDivElement | undefined, scrollTop: number) {
-    const syncTargets: HTMLDivElement[] = [];
-    if (scrollSrc !== this.params.leadingScroller && this.params.leadingScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.params.leadingScroller);
-    }
-    if (scrollSrc !== this.params.leftScroller && this.params.leftScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.params.leftScroller);
-    }
-    if (scrollSrc !== this.params.centerScroller && this.params.centerScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.params.centerScroller);
-    }
-    if (scrollSrc !== this.params.rightScroller && this.params.rightScroller.scrollTop !== scrollTop) {
-      syncTargets.push(this.params.rightScroller);
-    }
-    if (scrollSrc !== this.params.vScroll && this.params.vScroll.scrollTop !== scrollTop) {
-      syncTargets.push(this.params.vScroll);
-    }
-
-    this.params.beginScrollSync(syncTargets);
-    for (const target of syncTargets) {
-      target.scrollTop = scrollTop;
-    }
   }
 
   private requestMissingServerSideRows(startIndex: number, endIndex: number, total: number) {
