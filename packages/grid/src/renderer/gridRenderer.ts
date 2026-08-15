@@ -59,7 +59,7 @@ import { IconRenderer } from "./iconRenderer";
 import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
-import { ColumnLayoutRenderer } from "./layout/columnLayout";
+import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
 import { FilterOverlayRenderer } from "./overlay/filter";
 import { LoadingOverlayRenderer } from "./overlay/loading";
@@ -434,7 +434,7 @@ export class GridRenderer {
       root: this.root,
       api: this.api,
       rowHeight: () => this.rowHeight,
-      getBody: () => this._bodyViewportRenderer.getRefs().body,
+      getBodyFrame: () => this._bodyViewportRenderer.getRefs().bodyFrame,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       openColumnMenu: (colID, anchorEl) => this._columnMenuOpener.openColumnMenu("columnMenuButton", colID, { anchorEl }),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
@@ -456,7 +456,7 @@ export class GridRenderer {
       api: this.api,
       root: this.root,
       activeDescendant: this._activeDescendant,
-      body: bodyWrapper.body,
+      bodyFrame: bodyWrapper.bodyFrame,
       rowHeight: () => this.rowHeight,
       bodyCellRenderer: this._bodyCellRenderer,
       onHeightChanged: () => {
@@ -468,7 +468,7 @@ export class GridRenderer {
         this._selectionRenderer?.refreshSelectionStyles();
       },
       forwardWheel: (deltaX, deltaY) => {
-        bodyWrapper.centerScroller.scrollTop += deltaY;
+        bodyWrapper.body.scrollTop += deltaY;
         if (deltaX) bodyWrapper.centerSpacer.scrollLeft += deltaX;
       },
     });
@@ -590,9 +590,10 @@ export class GridRenderer {
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
       rightHeader: headerRefs.right,
-      leftScroller: bodyWrapper.leftScroller,
-      centerScroller: bodyWrapper.centerScroller,
-      rightScroller: bodyWrapper.rightScroller,
+      body: bodyWrapper.body,
+      leftSpacer: bodyWrapper.leftSpacer,
+      centerSpacer: bodyWrapper.centerSpacer,
+      rightSpacer: bodyWrapper.rightSpacer,
       leafColumnLookup: () => this._leafColumnLookup,
     });
     this._headerInteractionHandler = new HeaderInteractionHandler({
@@ -629,15 +630,16 @@ export class GridRenderer {
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
       root: this.root,
-      body: bodyWrapper.body,
+      bodyFrame: bodyWrapper.bodyFrame,
+      verticalScrollbarGutter: measureVerticalScrollbarGutter,
       rowPool: () => this._rowPool,
       leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
-      leadingScroller: bodyWrapper.leadingScroller,
-      leftScroller: bodyWrapper.leftScroller,
-      rightScroller: bodyWrapper.rightScroller,
+      leadingSpacer: bodyWrapper.leadingSpacer,
+      leftSpacer: bodyWrapper.leftSpacer,
+      rightSpacer: bodyWrapper.rightSpacer,
       leadingHeader: headerRefs.leading,
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
@@ -668,8 +670,8 @@ export class GridRenderer {
       rightHeader: headerRefs.right,
       hScrollLeftParent: horizontalScroll.leftParent,
       hScrollRightParent: horizontalScroll.rightParent,
-      leftScroller: bodyWrapper.leftScroller,
-      rightScroller: bodyWrapper.rightScroller,
+      leftSpacer: bodyWrapper.leftSpacer,
+      rightSpacer: bodyWrapper.rightSpacer,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
       onResize: () => {
@@ -678,11 +680,7 @@ export class GridRenderer {
       },
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
-      leadingScroller: bodyWrapper.leadingScroller,
-      leftScroller: bodyWrapper.leftScroller,
-      centerScroller: bodyWrapper.centerScroller,
-      rightScroller: bodyWrapper.rightScroller,
-      vScroll: bodyWrapper.vScroll,
+      body: bodyWrapper.body,
       leadingSpacer: bodyWrapper.leadingSpacer,
       leftSpacer: bodyWrapper.leftSpacer,
       centerSpacer: bodyWrapper.centerSpacer,
@@ -715,14 +713,13 @@ export class GridRenderer {
       core: this.core,
       rowHeight: () => this.rowHeight,
       rowPool: () => this._rowPool,
-      centerScroller: bodyWrapper.centerScroller,
-      vScroll: bodyWrapper.vScroll,
+      body: bodyWrapper.body,
+      centerSpacer: bodyWrapper.centerSpacer,
       leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,
       centerViewport: bodyWrapper.centerViewport,
       rightViewport: bodyWrapper.rightViewport,
       serverSidePendingRangeKeys: this._serverSidePendingRangeKeys,
-      syncVerticalScroll: (scrollTop, source) => this._scrollSyncRenderer.syncVerticalScroll(scrollTop, source),
       setStartIndex: (startIndex) => {
         this._startIndex = startIndex;
       },
@@ -1472,13 +1469,13 @@ export class GridRenderer {
     const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
     const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
     const viewH = refs.body.clientHeight;
-    const st = refs.centerScroller.scrollTop;
+    const st = refs.body.scrollTop;
 
     if (position === "auto") {
       if (rowTop - clearance < st) {
-        refs.centerScroller.scrollTop = Math.max(0, rowTop - clearance);
+        refs.body.scrollTop = Math.max(0, rowTop - clearance);
       } else if (rowTop + this.rowHeight > st + viewH) {
-        refs.centerScroller.scrollTop = rowTop + this.rowHeight - viewH;
+        refs.body.scrollTop = rowTop + this.rowHeight - viewH;
       }
       return;
     }
@@ -1491,7 +1488,7 @@ export class GridRenderer {
     // `rowTop - clearance` is the largest scrollTop that still keeps the row clear of the sticky
     // overlay, so it caps every placement — in a viewport too short to honor the request, docking
     // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
-    refs.centerScroller.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
+    refs.body.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
   }
 
   /**

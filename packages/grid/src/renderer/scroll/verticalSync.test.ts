@@ -5,10 +5,10 @@ import type { IMenuAdapter } from "../../interfaces/iMenuAdapter";
 import type { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { initDomRenderer } from "../dom";
 
-// Vertical scroll sync between the pinned/leading/center sections. Each section is its own scroll
-// box, so only the one under the pointer moves natively and the rest are moved from the scroll
-// listener. These cover the two halves of that: the sections realign, and scrolling inside a single
-// row does not repaint the pool.
+// Vertical scrolling is owned by a single container. The sections ride inside it as flex columns, so
+// they move together without any scrollTop fan-out — which is what removes the frame where pinned
+// columns trailed the center. These cover the structural invariant and the patch gating that keeps
+// the main thread cheap enough for the virtual window to keep up.
 
 beforeAll(() => {
   (HTMLCanvasElement.prototype as any).getContext = () => ({
@@ -68,94 +68,97 @@ function mountGrid(rowCount: number) {
   Object.defineProperty(body, "clientHeight", { value: VIEW_HEIGHT, configurable: true });
 
   const sections = {
-    leading: container.querySelector<HTMLElement>(".pte-scroller-leading")!,
-    left: container.querySelector<HTMLElement>(".pte-scroller-left")!,
-    center: container.querySelector<HTMLElement>(".pte-scroller")!,
-    right: container.querySelector<HTMLElement>(".pte-scroller-right")!,
-    vScroll: container.querySelector<HTMLElement>(".pte-scroller-vertical-spacer")!,
+    leading: container.querySelector<HTMLElement>(".pte-spacer-leading")!,
+    left: container.querySelector<HTMLElement>(".pte-spacer-left")!,
+    center: container.querySelector<HTMLElement>(".pte-spacer")!,
+    right: container.querySelector<HTMLElement>(".pte-spacer-right")!,
   };
-  return { container, core, api, sections };
+  return { container, core, api, body, sections };
 }
 
-/** Move one section the way a native/compositor scroll would, and let the grid observe it. */
-function scrollSection(section: HTMLElement, scrollTop: number) {
-  section.scrollTop = scrollTop;
-  section.dispatchEvent(new Event("scroll"));
+/** Move the body the way a native/compositor scroll would, and let the grid observe it. */
+function scrollBody(body: HTMLElement, scrollTop: number) {
+  body.scrollTop = scrollTop;
+  body.dispatchEvent(new Event("scroll"));
 }
 
-describe("vertical section sync", () => {
-  it("aligns every other section in the same turn as the scroll event, without waiting for a frame", () => {
-    const { sections } = mountGrid(200);
+describe("vertical scroll ownership", () => {
+  it("gives the grid exactly one vertical scroll container", () => {
+    const { container } = mountGrid(200);
 
-    scrollSection(sections.center, 600);
-
-    // No await: the realignment must not be deferred to the rAF that patches rows.
-    expect(sections.left.scrollTop).toBe(600);
-    expect(sections.leading.scrollTop).toBe(600);
-    expect(sections.right.scrollTop).toBe(600);
-    expect(sections.vScroll.scrollTop).toBe(600);
+    // If any section could scroll vertically on its own, the browser would move it independently and
+    // the sections would drift apart again under load. Only .pte-body may.
+    expect(container.querySelectorAll(".pte-scroller").length).toBe(0);
+    expect(container.querySelectorAll(".pte-scroller-left").length).toBe(0);
+    expect(container.querySelectorAll(".pte-scroller-right").length).toBe(0);
+    expect(container.querySelectorAll(".pte-scroller-vertical-spacer").length).toBe(0);
+    expect(container.querySelectorAll(".pte-body").length).toBe(1);
   });
 
-  it("syncs the same way when a pinned section leads", () => {
-    const { sections } = mountGrid(200);
+  it("keeps every section inside that container", () => {
+    const { body, sections } = mountGrid(200);
 
-    scrollSection(sections.left, 600);
-
-    expect(sections.center.scrollTop).toBe(600);
-    expect(sections.leading.scrollTop).toBe(600);
-    expect(sections.vScroll.scrollTop).toBe(600);
+    // Being descendants is what makes them move together: one composited scroll, no JS.
+    expect(body.contains(sections.leading)).toBe(true);
+    expect(body.contains(sections.left)).toBe(true);
+    expect(body.contains(sections.center)).toBe(true);
+    expect(body.contains(sections.right)).toBe(true);
   });
 
-  it("ignores a follower's echo rather than dragging the leading section back to it", () => {
+  it("stands every section at the full content height so they scroll as one", () => {
     const { sections } = mountGrid(200);
 
-    scrollSection(sections.center, 1000);
-    expect(sections.left.scrollTop).toBe(1000);
+    const expected = `${200 * ROW_HEIGHT}px`;
+    expect(sections.leading.style.height).toBe(expected);
+    expect(sections.left.style.height).toBe(expected);
+    expect(sections.center.style.height).toBe(expected);
+    expect(sections.right.style.height).toBe(expected);
+  });
 
-    // The user keeps scrolling the center natively while the write we just made to the left section
-    // is still working its way out as a scroll event. Replaying that stale event must not undo it.
-    sections.center.scrollTop = 1040;
-    sections.left.dispatchEvent(new Event("scroll"));
+  it("leaves the sticky group overlay outside the scroller so it does not scroll away", () => {
+    const { container, body } = mountGrid(200);
 
-    expect(sections.center.scrollTop).toBe(1040);
+    const overlay = container.querySelector<HTMLElement>(".pte-sticky-rows")!;
+    expect(overlay).not.toBeNull();
+    expect(body.contains(overlay)).toBe(false);
   });
 });
 
 describe("row patching during scroll", () => {
   it("does not repaint cells while the scroll stays inside one row", async () => {
-    const { sections } = mountGrid(200);
+    const { body, sections } = mountGrid(200);
 
     // Land somewhere the start index is off the clamp: floor(1000/40) - 10 = 15.
-    scrollSection(sections.center, 1000);
+    scrollBody(body, 1000);
     await raf();
     refreshCount = 0;
 
     // floor(1030/40) - 10 is still 15, so the pool already holds exactly the right nodes.
-    scrollSection(sections.center, 1030);
+    scrollBody(body, 1030);
     await raf();
     expect(refreshCount).toBe(0);
 
-    // Sections still track each other even though nothing was repainted.
-    expect(sections.left.scrollTop).toBe(1030);
+    // The sections moved anyway — they are inside the scroller, not synced to it.
+    expect(sections.left.style.height).toBe(`${200 * ROW_HEIGHT}px`);
   });
 
   it("repaints as soon as the window advances by a whole row", async () => {
-    const { sections } = mountGrid(200);
+    const { body } = mountGrid(200);
 
-    scrollSection(sections.center, 1000);
+    scrollBody(body, 1000);
     await raf();
     refreshCount = 0;
 
     // floor(1240/40) - 10 = 21 — six rows on from 15, so the pool has to be re-patched.
-    scrollSection(sections.center, 1240);
+    scrollBody(body, 1240);
     await raf();
     expect(refreshCount).toBeGreaterThan(0);
   });
 
   it("still repaints when the row data changes without the scroll position moving", async () => {
-    const { api, sections } = mountGrid(200);
+    const { api, body } = mountGrid(200);
 
-    scrollSection(sections.center, 1000);
+    scrollBody(body, 1000);
     await raf();
     refreshCount = 0;
 

@@ -124,7 +124,7 @@ describe("aria-activedescendant focus model", () => {
     const focusedCell = activeDescendantEl(root)!;
     const focusedRow = focusedCell.closest<HTMLElement>(".pte-row")!;
 
-    const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLElement>(".pte-body")!;
     scroller.scrollTop = 300 * core.options.rowHeight;
     scroller.dispatchEvent(new Event("scroll"));
     await raf();
@@ -138,7 +138,7 @@ describe("aria-activedescendant focus model", () => {
   it("re-names the focused cell when its row scrolls back into the pool", async () => {
     const { core, root, container } = mountGrid(500);
     core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 1, reason: "keyboard" });
-    const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLElement>(".pte-body")!;
 
     scroller.scrollTop = 300 * core.options.rowHeight;
     scroller.dispatchEvent(new Event("scroll"));
@@ -256,7 +256,7 @@ describe("aria-activedescendant with sticky group rows", () => {
     api.setAllGroupsExpanded(true);
     await raf();
     const root = container.querySelector<HTMLElement>(".pte-root")!;
-    const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLElement>(".pte-body")!;
     return { container, core, api, root, scroller };
   }
 

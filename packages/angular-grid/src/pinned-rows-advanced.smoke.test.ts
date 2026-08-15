@@ -127,7 +127,8 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     const bottom = gridEl.querySelector<HTMLElement>(".pte-pinned-rows-bottom")!;
     const topVertical = top.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
     const bottomVertical = bottom.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
-    const bodyVertical = gridEl.querySelector<HTMLDivElement>(".pte-scroller-vertical-spacer")!;
+    // The body is its own vertical scroller now — the bands must still not share it.
+    const bodyVertical = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
     expect(top.style.height).toBe("90px");
     expect(bottom.style.height).toBe("90px");
     expect(topVertical.classList.contains("scrollable")).toBe(true);
@@ -139,7 +140,7 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     topVertical.dispatchEvent(new Event("scroll"));
     expect(top.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(43);
     expect(bottom.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(0);
-    expect(gridEl.querySelector<HTMLElement>(".pte-scroller")!.scrollTop).toBe(0);
+    expect(gridEl.querySelector<HTMLElement>(".pte-body")!.scrollTop).toBe(0);
 
     bottomVertical.scrollTop = 86;
     bottomVertical.dispatchEvent(new Event("scroll"));
@@ -189,11 +190,11 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     const core = host.api!.getCore();
     core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
 
-    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
 
     // The chain docks at rest: the band already exists at scrollTop 0, mirroring the top header
     // rows pixel-for-pixel.
-    const overlay = gridEl.querySelector<HTMLElement>(".pte-body .pte-sticky-rows")!;
+    const overlay = gridEl.querySelector<HTMLElement>(".pte-body-frame .pte-sticky-rows")!;
     expect(overlay).toBeTruthy();
     expect(overlay.style.display).toBe("flex");
     expect(overlay.querySelectorAll(
@@ -278,7 +279,7 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     const core = host.api!.getCore();
     core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
 
-    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
 
     // On-screen offset of a body row, derived from the same quantities the browser paints from:
     // viewport translateY + the row's offset within the compacted slot stack - scrollTop.
@@ -329,7 +330,7 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
       instance.groupDefaultExpanded = -1;
     });
     host.api!.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
-    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
     await scrollBody(scroller, 1);
 
     const gridRoot = gridEl.querySelector<HTMLElement>(".pte-root")!;
@@ -344,8 +345,8 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     expect(topBand.querySelectorAll(
       ".pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     ).length).toBe(0);
-    expect(body.querySelectorAll(
-      ".pte-sticky-rows .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
+    expect(gridEl.querySelectorAll(
+      ".pte-body-frame .pte-sticky-rows .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     ).length).toBe(2);
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
   });
@@ -358,7 +359,7 @@ describe("AwbGrid pinned and sticky rows (advanced)", () => {
     });
     const core = host.api!.getCore();
     core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
-    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
 
     // Focusing a row above the viewport scrolls it BELOW the docked ancestor chain (2 x 43px),
     // not merely to the scroller top where the overlay would hide it.

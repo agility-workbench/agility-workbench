@@ -45,7 +45,7 @@ function mountGrid(rowCount: number, options: Record<string, unknown> = {}) {
   // happy-dom does no layout, so the viewport height the scroll math reads has to be declared.
   const body = container.querySelector<HTMLElement>(".pte-body")!;
   Object.defineProperty(body, "clientHeight", { value: VIEW_HEIGHT, configurable: true });
-  const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+  const scroller = container.querySelector<HTMLElement>(".pte-body")!;
   return { container, core, api, scroller };
 }
 

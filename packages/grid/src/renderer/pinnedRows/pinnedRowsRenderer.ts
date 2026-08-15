@@ -53,7 +53,9 @@ interface PinnedRowsRendererParams {
   api: IGridAPI;
   root: HTMLDivElement;
   activeDescendant: ActiveDescendantTracker;
-  body: HTMLDivElement;
+  /** The body's non-scrolling frame. Bands sit either side of it and the sticky overlay hangs off
+   * it — inside the scroller itself the overlay would scroll away with the rows it mirrors. */
+  bodyFrame: HTMLDivElement;
   rowHeight: () => number;
   bodyCellRenderer: BodyCellRenderer;
   onHeightChanged: () => void;
@@ -108,9 +110,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     this.top = this.createBand("top");
     this.bottom = this.createBand("bottom");
     this.sticky = this.createBand("sticky");
-    this.params.root.insertBefore(this.top.root, this.params.body);
-    this.params.body.insertAdjacentElement("afterend", this.bottom.root);
-    this.params.body.appendChild(this.sticky.root);
+    this.params.root.insertBefore(this.top.root, this.params.bodyFrame);
+    this.params.bodyFrame.insertAdjacentElement("afterend", this.bottom.root);
+    this.params.bodyFrame.appendChild(this.sticky.root);
     // The overlay is not inside any grid scroller, so native wheel chaining would scroll the page.
     this.sticky.root.addEventListener("wheel", event => {
       if (!this.params.forwardWheel) return;
@@ -120,7 +122,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   getInteractionRoots(): HTMLDivElement[] {
-    // The sticky overlay lives inside the body, so body-level listeners already cover it.
+    // The sticky overlay lives inside the body frame, so body-level listeners already cover it.
     return [this.top.root, this.bottom.root];
   }
 

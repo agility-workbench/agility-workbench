@@ -13,7 +13,7 @@ export class BodyViewportRenderer {
 
   constructor(private params: BodyViewportRendererParams) {
     this.elements = createBodyWrapper();
-    this.params.root.appendChild(this.elements.body);
+    this.params.root.appendChild(this.elements.bodyFrame);
   }
 
   getRefs() {
@@ -26,17 +26,13 @@ export class BodyViewportRenderer {
     this.elements.leftSpacer.style.height = `${verticalSize}px`;
     this.elements.centerSpacer.style.height = `${verticalSize}px`;
     this.elements.rightSpacer.style.height = `${verticalSize}px`;
-    this.elements.vScroller.style.height = `${verticalSize}px`;
+    // The body owns the scrollbar now, so its presence follows directly from whether the sections
+    // outgrow it. The gutter it consumes is measured rather than assumed — see columnLayout.
     const hasVerticalScrollbar = verticalSize > this.elements.body.clientHeight;
-    this.elements.vScrollParent.style.display = hasVerticalScrollbar ? "block" : "none";
     this.params.onVerticalScrollbarVisibilityChanged?.(hasVerticalScrollbar);
   }
 
   resetScrollPosition() {
-    this.elements.leadingScroller.scrollTop = 0;
-    this.elements.leftScroller.scrollTop = 0;
-    this.elements.centerScroller.scrollTop = 0;
-    this.elements.rightScroller.scrollTop = 0;
-    this.elements.vScroll.scrollTop = 0;
+    this.elements.body.scrollTop = 0;
   }
 }

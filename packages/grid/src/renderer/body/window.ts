@@ -17,14 +17,13 @@ interface BodyWindowRendererParams {
   core: GridCore;
   rowHeight: () => number;
   rowPool: () => RowPoolDef[];
-  centerScroller: HTMLDivElement;
-  vScroll: HTMLDivElement;
+  body: HTMLDivElement;
+  centerSpacer: HTMLDivElement;
   leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
   serverSidePendingRangeKeys: Set<string>;
-  syncVerticalScroll: (scrollTop: number, source?: HTMLDivElement) => void;
   setStartIndex: (startIndex: number) => void;
   renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
@@ -41,11 +40,7 @@ export class BodyWindowRenderer {
   update(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const rowModel = this.params.core.getRowModel();
     const total = rowModel.getViewCount();
-    const scrollTop = scrollSrc?.scrollTop ?? this.params.centerScroller.scrollTop ?? this.params.vScroll.scrollTop ?? 0;
-
-    // Scroll-driven updates have already realigned the sections synchronously; this keeps the
-    // non-scroll callers (data/column changes, which pass no scrollSrc) aligned too.
-    this.params.syncVerticalScroll(scrollTop, scrollSrc);
+    const scrollTop = scrollSrc?.scrollTop ?? this.params.body.scrollTop;
 
     const rowPool = this.params.rowPool();
     const startIndex = Math.max(
@@ -191,7 +186,7 @@ export class BodyWindowRenderer {
       // A groupRows heading describes the rendered columns, so do not stretch its background into
       // empty body space when the columns are narrower than the viewport. Other full-width rows
       // retain their documented viewport-spanning behaviour.
-      const width = row.isGroup ? this.centerTotalWidth() : this.params.centerScroller.clientWidth;
+      const width = row.isGroup ? this.centerTotalWidth() : this.params.centerSpacer.clientWidth;
       slot.rowEl.style.width = `${width}px`;
       for (const cell of slot.cellEls) cell.style.display = "none";
       slot.fullWidthCellEl.style.display = "flex";

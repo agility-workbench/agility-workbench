@@ -93,7 +93,7 @@ describe("sticky group rows on the server-side row model", () => {
     expect(model.getRowCount()).toBe(63);
 
     // The chain docks at rest, mirroring the two group headers.
-    const overlay = container.querySelector<HTMLElement>(".pte-body .pte-sticky-rows")!;
+    const overlay = container.querySelector<HTMLElement>(".pte-body-frame .pte-sticky-rows")!;
     expect(overlay).toBeTruthy();
     expect(overlay.style.display).toBe("flex");
     const headerIds = () => Array.from(
@@ -103,7 +103,7 @@ describe("sticky group rows on the server-side row model", () => {
     const firstId = model.getRowNodeAtViewIndex(1)!.id;
     expect(headerIds()).toEqual([emeaId, firstId]);
 
-    const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
     const secondId = model.getGroupNodes().find(n => n.groupKey === "Second")!.id;
 
     // Jump deep into Second's block, well past the loaded frontier (at rest only Second's first

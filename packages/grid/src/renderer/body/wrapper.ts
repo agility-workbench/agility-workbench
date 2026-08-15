@@ -1,12 +1,10 @@
 export interface BodyWrapperElements {
+  /** Non-scrolling positioning context for the body. The sticky group-row overlay hangs off this so
+   * it stays put while the body scrolls underneath it. */
+  bodyFrame: HTMLDivElement;
+  /** The grid's only vertical scroll container. Every section rides inside it, so the four sections
+   * scroll together on the compositor with no JavaScript in the loop. */
   body: HTMLDivElement;
-  leadingScroller: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  centerScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
-  vScrollParent: HTMLDivElement;
-  vScroll: HTMLDivElement;
-  vScroller: HTMLDivElement;
   leadingSpacer: HTMLDivElement;
   leftSpacer: HTMLDivElement;
   centerSpacer: HTMLDivElement;
@@ -20,52 +18,30 @@ export interface BodyWrapperElements {
 import { markPresentational } from "../aria";
 
 export function createBodyWrapper(): BodyWrapperElements {
+  const bodyFrame = document.createElement("div");
+  bodyFrame.className = "pte-body-frame";
+
   const body = document.createElement("div");
   body.className = "pte-body";
+  bodyFrame.appendChild(body);
 
-  const leadingScroller = document.createElement("div");
-  leadingScroller.className = "pte-scroller-leading";
-  body.appendChild(leadingScroller);
-
-  const leftScroller = document.createElement("div");
-  leftScroller.className = "pte-scroller-left";
-  body.appendChild(leftScroller);
-
-  const centerScroller = document.createElement("div");
-  centerScroller.className = "pte-scroller";
-  body.appendChild(centerScroller);
-
-  const rightScroller = document.createElement("div");
-  rightScroller.className = "pte-scroller-right";
-  body.appendChild(rightScroller);
-
-  const vScrollParent = document.createElement("div");
-  vScrollParent.className = "pte-scroller-vertical-container";
-  body.appendChild(vScrollParent);
-
-  const vScroll = document.createElement("div");
-  vScroll.className = "pte-scroller-vertical-spacer";
-  vScrollParent.appendChild(vScroll);
-
-  const vScroller = document.createElement("div");
-  vScroller.className = "pte-scroller-vertical";
-  vScroll.appendChild(vScroller);
-
+  // Each spacer is one horizontal section: it stands at the full row-content height (so all four
+  // rise and fall together inside the one vertical scroller) and owns its own horizontal scroll.
   const leadingSpacer = document.createElement("div");
   leadingSpacer.className = "pte-spacer-leading";
-  leadingScroller.appendChild(leadingSpacer);
+  body.appendChild(leadingSpacer);
 
   const leftSpacer = document.createElement("div");
   leftSpacer.className = "pte-spacer-left";
-  leftScroller.appendChild(leftSpacer);
+  body.appendChild(leftSpacer);
 
   const centerSpacer = document.createElement("div");
   centerSpacer.className = "pte-spacer";
-  centerScroller.appendChild(centerSpacer);
+  body.appendChild(centerSpacer);
 
   const rightSpacer = document.createElement("div");
   rightSpacer.className = "pte-spacer-right";
-  rightScroller.appendChild(rightSpacer);
+  body.appendChild(rightSpacer);
 
   const leadingViewport = document.createElement("div");
   leadingViewport.className = "pte-viewport-leading";
@@ -88,22 +64,14 @@ export function createBodyWrapper(): BodyWrapperElements {
   // center rows. Scroll machinery carries no semantics.
   centerViewport.setAttribute("role", "rowgroup");
   markPresentational(
-    body,
-    leadingScroller, leftScroller, centerScroller, rightScroller,
+    bodyFrame, body,
     leadingSpacer, leftSpacer, centerSpacer, rightSpacer,
     leadingViewport, leftViewport, rightViewport,
   );
-  vScrollParent.setAttribute("aria-hidden", "true");
 
   return {
+    bodyFrame,
     body,
-    leadingScroller,
-    leftScroller,
-    centerScroller,
-    rightScroller,
-    vScrollParent,
-    vScroll,
-    vScroller,
     leadingSpacer,
     leftSpacer,
     centerSpacer,

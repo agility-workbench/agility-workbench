@@ -74,16 +74,20 @@ describe("tree data end-to-end via Grid", () => {
     expect(container.textContent).toContain("2");
 
     await act(async () => {
-      const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+      const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
       scroller.scrollTop = 1;
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise(resolve => requestAnimationFrame(resolve));
     });
     const gridRoot = container.querySelector<HTMLElement>(".pte-root")!;
-    const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
-    const overlay = body.querySelector<HTMLElement>(".pte-sticky-rows")!;
+    const bodyFrame = gridRoot.querySelector<HTMLElement>(".pte-body-frame")!;
+    const body = bodyFrame.querySelector<HTMLElement>(".pte-body")!;
+    const overlay = bodyFrame.querySelector<HTMLElement>(".pte-sticky-rows")!;
     const stickyCell = overlay.querySelector<HTMLElement>(".pte-cell")!;
-    expect(overlay.parentElement).toBe(body);
+    // The overlay hangs off the frame, not the scroller: inside it, it would scroll away with the
+    // very rows it mirrors.
+    expect(overlay.parentElement).toBe(bodyFrame);
+    expect(body.contains(overlay)).toBe(false);
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
     expect(overlay.textContent).toContain("Root");
     // Sticky mirrors are the live body row: no pinned tagging, real view index, and the original

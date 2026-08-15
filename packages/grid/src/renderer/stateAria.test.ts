@@ -166,7 +166,7 @@ describe("aria-selected", () => {
     const slot = rowAt(container, 0)!;
     expect(slot.getAttribute("aria-selected")).toBe("true");
 
-    const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLElement>(".pte-body")!;
     scroller.scrollTop = 300 * core.options.rowHeight;
     scroller.dispatchEvent(new Event("scroll"));
     await raf();

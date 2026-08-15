@@ -1403,12 +1403,28 @@
   border-left: 1px solid var(--pte-frame-border-color);
 }
 
-.pte-body {
+/* Non-scrolling positioning context. The sticky group-row overlay is absolutely positioned against
+   this, so it must not be the element that scrolls. */
+.pte-body-frame {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
   position: relative;
+}
+
+/* The grid's only vertical scroll container. All four sections live inside it and are laid out as
+   flex columns, so a wheel gesture anywhere moves every section together on the compositor — no
+   scrollTop fan-out, and therefore no frame where the pinned columns trail the center. */
+.pte-body {
+  display: flex;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
 }
 
 /* Frozen application rows and mirrored group rows. Each band repeats the body's four horizontal
@@ -2155,71 +2171,6 @@
   border-color: var(--pte-select-border-color);
 }
 
-.pte-scroller-left {
-  overflow: auto;
-  overflow-anchor: none;
-  position: relative;
-  scrollbar-width: none;
-  box-shadow: 2px 0 5px var(--pte-shadow-color);
-}
-
-.pte-scroller-leading {
-  overflow: hidden auto;
-  overflow-anchor: none;
-  position: relative;
-  scrollbar-width: none;
-  flex: 0 0 auto;
-  background-color: var(--pte-header-background-color);
-}
-
-.pte-scroller-leading.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
-}
-
-.pte-scroller-left.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
-}
-
-.pte-scroller-right {
-  overflow: auto;
-  overflow-anchor: none;
-  position: relative;
-  scrollbar-width: none;
-  box-shadow: -2px 0 5px var(--pte-shadow-color);
-}
-
-.pte-scroller-right.visible {
-  border-left: 1px solid var(--pte-frame-border-color);
-}
-
-.pte-scroller {
-  overflow: auto;
-  overflow-anchor: none;
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: row-reverse;
-  scrollbar-width: none;
-}
-
-.pte-scroller-vertical-container {
-  width: 15px;
-  z-index: 1;
-  display: none;
-}
-
-.pte-scroller-vertical-spacer {
-  width: 15px;
-  height: 100%;
-  overflow-x: hidden;
-  overflow-y: scroll;
-  overflow-anchor: none;
-}
-
-.pte-scroller-vertical {
-  width: 15px;
-}
-
 .pte-scroller-horizontal-left-container {
   flex: 0 0 auto;
   height: 15px;
@@ -2258,31 +2209,55 @@
   height: 15px;
 }
 
-.pte-spacer-left {
-  position: relative;
-  width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
+/* The four sections. Each stands at the full row-content height so the single body scroller moves
+   all of them as one; each keeps its own horizontal scroll, which is why a pinned section can still
+   scroll sideways under its own clamp. Vertically they have nothing to scroll, so a wheel gesture
+   chains straight out to the body. */
 .pte-spacer-leading {
   position: relative;
-  width: 100%;
+  flex: 0 0 auto;
   overflow: hidden;
+  overflow-anchor: none;
+  background-color: var(--pte-header-background-color);
+}
+
+.pte-spacer-left {
+  position: relative;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-anchor: none;
+  scrollbar-width: none;
+  box-shadow: 2px 0 5px var(--pte-shadow-color);
 }
 
 .pte-spacer {
   position: relative;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
+  overflow-anchor: none;
   scrollbar-width: none;
 }
 
 .pte-spacer-right {
   position: relative;
-  width: 100%;
+  flex: 0 0 auto;
   overflow-x: auto;
+  overflow-anchor: none;
   scrollbar-width: none;
+  box-shadow: -2px 0 5px var(--pte-shadow-color);
+}
+
+.pte-spacer-leading.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-spacer-left.visible {
+  border-right: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-spacer-right.visible {
+  border-left: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-viewport-leading,

@@ -65,14 +65,15 @@ describe("pinned and sticky rows", () => {
     const header = gridRoot.querySelector<HTMLElement>(".pte-header-wrapper")!;
     const floatingHost = gridRoot.querySelector<HTMLElement>(".pte-quick-filter-floating-host")!;
     const topBand = gridRoot.querySelector<HTMLElement>(".pte-pinned-rows-top")!;
-    const body = gridRoot.querySelector<HTMLElement>(".pte-body")!;
+    // The body's own scroller sits one level down, inside the frame that anchors the sticky overlay.
+    const bodyFrame = gridRoot.querySelector<HTMLElement>(".pte-body-frame")!;
     const filter = floatingHost.querySelector<HTMLElement>(".pte-quick-filter")!;
     const children = Array.from(gridRoot.children);
 
     expect(children.indexOf(toolbar)).toBeLessThan(children.indexOf(header));
     expect(children.indexOf(header)).toBeLessThan(children.indexOf(floatingHost));
     expect(children.indexOf(floatingHost)).toBeLessThan(children.indexOf(topBand));
-    expect(children.indexOf(topBand)).toBeLessThan(children.indexOf(body));
+    expect(children.indexOf(topBand)).toBeLessThan(children.indexOf(bodyFrame));
     expect(filter.closest(".pte-grid-toolbar")).toBeNull();
     expect(filter.style.top).toBe("6px");
 
@@ -197,7 +198,8 @@ describe("pinned and sticky rows", () => {
     const bottom = container.querySelector<HTMLElement>(".pte-pinned-rows-bottom")!;
     const topVertical = top.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
     const bottomVertical = bottom.querySelector<HTMLDivElement>(".pte-pinned-rows-vertical")!;
-    const bodyVertical = container.querySelector<HTMLDivElement>(".pte-scroller-vertical-spacer")!;
+    // The body is its own vertical scroller now — the bands must still not share it.
+    const bodyVertical = container.querySelector<HTMLDivElement>(".pte-body")!;
     expect(top.style.height).toBe("90px");
     expect(bottom.style.height).toBe("90px");
     expect(topVertical.classList.contains("scrollable")).toBe(true);
@@ -209,7 +211,7 @@ describe("pinned and sticky rows", () => {
     topVertical.dispatchEvent(new Event("scroll"));
     expect(top.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(43);
     expect(bottom.querySelector<HTMLElement>(".pte-pinned-rows-center")!.scrollTop).toBe(0);
-    expect(container.querySelector<HTMLElement>(".pte-scroller")!.scrollTop).toBe(0);
+    expect(container.querySelector<HTMLElement>(".pte-body")!.scrollTop).toBe(0);
 
     bottomVertical.scrollTop = 86;
     bottomVertical.dispatchEvent(new Event("scroll"));
@@ -282,7 +284,7 @@ describe("pinned and sticky rows", () => {
       core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
     });
 
-    const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
     const scrollTo = async (top: number) => {
       await act(async () => {
         scroller.scrollTop = top;
@@ -294,7 +296,7 @@ describe("pinned and sticky rows", () => {
     // The chain docks at rest: the band already exists at scrollTop 0, mirroring the top header
     // rows pixel-for-pixel, so composited scrolling never presents a frame where the band has yet
     // to appear (that first appearance was itself a visible flicker).
-    const overlay = container.querySelector<HTMLElement>(".pte-body .pte-sticky-rows")!;
+    const overlay = container.querySelector<HTMLElement>(".pte-body-frame .pte-sticky-rows")!;
     expect(overlay).toBeTruthy();
     expect(overlay.style.display).toBe("flex");
     expect(overlay.querySelectorAll(
@@ -399,7 +401,7 @@ describe("pinned and sticky rows", () => {
       core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
     });
 
-    const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
     const scrollTo = async (top: number) => {
       await act(async () => {
         scroller.scrollTop = top;
@@ -461,7 +463,7 @@ describe("pinned and sticky rows", () => {
     });
     await act(async () => {
       apiRef.current!.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
-      const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+      const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
       scroller.scrollTop = 1;
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -479,8 +481,8 @@ describe("pinned and sticky rows", () => {
     expect(topBand.querySelectorAll(
       ".pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     ).length).toBe(0);
-    expect(body.querySelectorAll(
-      ".pte-sticky-rows .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
+    expect(gridRoot.querySelectorAll(
+      ".pte-body-frame .pte-sticky-rows .pte-pinned-rows-center .pte-pinned-row.pte-group-row",
     ).length).toBe(2);
     expect(body.querySelector(".pte-pinned-rows")).toBeNull();
 
@@ -621,7 +623,7 @@ describe("pinned and sticky rows", () => {
     await act(async () => {
       core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
     });
-    const scroller = container.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLDivElement>(".pte-body")!;
     const scrollTo = async (top: number) => {
       await act(async () => {
         scroller.scrollTop = top;

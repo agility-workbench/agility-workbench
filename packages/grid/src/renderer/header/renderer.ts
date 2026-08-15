@@ -18,7 +18,9 @@ interface HeaderRendererParams {
   root: HTMLElement;
   api: IGridAPI;
   rowHeight: () => number;
-  getBody: () => HTMLDivElement;
+  /** The body's outer frame — the element that owns the body's height budget. Sizing the scroller
+   * inside it instead would subtract the header twice, since the frame is already header-less. */
+  getBodyFrame: () => HTMLDivElement;
   getContainerEl: () => HTMLElement;
   openColumnMenu: (colID: string, anchorEl: HTMLElement) => void;
   openColumnFilter: (colID: string, anchorEl: HTMLElement) => void;
@@ -61,7 +63,7 @@ export class HeaderRenderer {
       center: centerHeader,
       right: rightHeader,
     } = this.elements;
-    const body = this.params.getBody();
+    const bodyFrame = this.params.getBodyFrame();
     const headerHeight = core.options.headerHeight * core.getColumnModel().maxHeaderDepth;
     this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
     headerWrapper.style.height = `${headerHeight}px`;
@@ -74,8 +76,8 @@ export class HeaderRenderer {
     centerHeader.style.minHeight = `${headerHeight}px`;
     rightHeader.style.height = `${headerHeight}px`;
     rightHeader.style.minHeight = `${headerHeight}px`;
-    body.style.height = `calc(100% - ${headerHeight}px`;
-    body.style.maxHeight = `calc(100% - ${headerHeight}px`;
+    bodyFrame.style.height = `calc(100% - ${headerHeight}px)`;
+    bodyFrame.style.maxHeight = `calc(100% - ${headerHeight}px)`;
     // Tear down any custom header components from the previous build before wiping their DOM, so
     // class components can release listeners/state. buildHeaderCell repopulates this map.
     for (const { runtime } of this.components.values()) runtime.destroy();
@@ -108,7 +110,7 @@ export class HeaderRenderer {
     this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
     const containerEl = this.params.getContainerEl();
     const headerProbe = getComputedStyle(centerHeader.querySelector(".pte-hcell") || containerEl);
-    const cellProbe = getComputedStyle(body.querySelector(".pte-cell") || containerEl);
+    const cellProbe = getComputedStyle(bodyFrame.querySelector(".pte-cell") || containerEl);
     core.dispatch({
       type: "themeFontSet",
       headerFont: `${headerProbe.fontWeight} ${headerProbe.fontSize} ${headerProbe.fontFamily}`,
