@@ -80,7 +80,13 @@ function stripComments(css) {
 /** Collect every distinct `--pte-*` custom property name defined or referenced. */
 function collectVarNames(css) {
   const names = new Set();
-  for (const m of css.matchAll(/--pte-[a-zA-Z0-9-]+/g)) names.add(m[0]);
+  for (const m of css.matchAll(/--pte-[a-zA-Z0-9-]+/g)) {
+    // Comments are scanned too (deliberately — some variables are documented in a commented-out
+    // declaration), so a prose mention of a family like `--pte-scrollbar-*` would otherwise land a
+    // truncated `--pte-scrollbar-` in the public PteVarName union. No real property ends in a dash.
+    if (m[0].endsWith("-")) continue;
+    names.add(m[0]);
+  }
   return [...names].sort();
 }
 

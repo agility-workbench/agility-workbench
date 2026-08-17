@@ -257,16 +257,8 @@
  * expressible. Colours are. That is the whole vocabulary, and the lane widths measured at runtime
  * (see --pte-scrollbar-gutter) are sized against it.
  *
- * Scoped to the grid containers rather than gated behind a .pte-theme-dark ancestor, so
- * per-instance theming (inline vars on .pte-root) restyles scrollbars with no shared ancestor. */
-.pte-root,
-.pte-root *,
-.pte-menu,
-.pte-menu *,
-.pte-filter,
-.pte-filter * {
-  scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color);
-}
+ * The colours themselves are declared in the pte-armor layer further down, not here — see the note
+ * on that rule for why appearance had to join the structural invariants. */
 
 /* LEGACY ONLY — Chromium <121 and Safari <18.2. Unreachable on anything newer; see above.
  * --pte-scrollbar-size and --pte-scrollbar-radius exist solely to feed this block and have no
@@ -340,6 +332,32 @@
   *[class^="pte-"],
   *[class*=" pte-"] {
     box-sizing: border-box !important;
+  }
+
+  /* Scrollbar colours. The one appearance property in this layer, because on a modern engine
+   * scrollbar-color and scrollbar-width ARE the entire styling vocabulary for a scrollbar (see the
+   * note above the @supports block): losing scrollbar-color does not tint the grid's scrollbars, it
+   * hands them over wholesale to whatever the host happens to paint its own chrome with.
+   *
+   * Blanket `* { scrollbar-color: ... !important }` resets are common and are not a considered
+   * decision about this grid — one seen in the wild reads
+   * `scrollbar-color: var(--undefined-var) !important`, which cannot paint anything at all and
+   * exists only to outrank every other rule on the page.
+   *
+   * Arming the declaration does not freeze the colours: the values are custom properties, resolved
+   * after the cascade, so `theme.withParams({ scrollbarThumbColor })` and inline scrollbar variable
+   * overrides on .pte-root keep working exactly as before. That indirection is the supported way to
+   * recolour grid scrollbars; a host stylesheet reaching in past it is not.
+   *
+   * Scoped to the grid containers rather than gated behind a .pte-theme-dark ancestor, so
+   * per-instance theming restyles scrollbars with no shared ancestor class. */
+  .pte-root,
+  .pte-root *,
+  .pte-menu,
+  .pte-menu *,
+  .pte-filter,
+  .pte-filter * {
+    scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color) !important;
   }
 
   /* The mirrors. Each tracks the body's scrollLeft and must never show a bar of its own; exactly

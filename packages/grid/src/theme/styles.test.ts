@@ -75,6 +75,18 @@ describe("pte-armor layer", () => {
     expect(armor).toContain("scrollbar-width: none !important");
   });
 
+  it("arms the scrollbar colours, still sourced from the theme variables", () => {
+    // scrollbar-color is the whole styling vocabulary on a modern engine, so a host's blanket
+    // `* { scrollbar-color: ... !important }` does not tint the grid's scrollbars, it repaints them
+    // in the host's own chrome colours. Armed — but reading the variables, so the theme API is
+    // still the way through.
+    expect(armor).toContain(
+      "scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color) !important",
+    );
+    // And declared exactly once in the sheet, so the armed copy cannot drift from an unarmed one.
+    expect(GRID_STYLES.match(/scrollbar-color:(?!\s*auto)/g)).toHaveLength(1);
+  });
+
   it("keeps the real scrollers scrollable", () => {
     // The mirror rule above would otherwise be a plausible way to hide these too.
     expect(armor).toMatch(/\.pte-body\s*[,{]/);
