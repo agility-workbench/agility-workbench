@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agility-workbench/grid": "^0.1.0",
-    "@agility-workbench/react-grid": "^0.1.0",
+    "@agility-workbench/grid": "^0.2.0",
+    "@agility-workbench/react-grid": "^0.2.0",
     "@docusaurus/core": "3.10.2",
     "@docusaurus/preset-classic": "3.10.2",
     "@mdx-js/react": "^3.1.1",
