@@ -18,7 +18,14 @@ export type {
   SelectionRange,
   SelectionSnapshot,
 } from "./interfaces/selection";
-export type { Column } from "./column/column";
+// `Column` and `FilterModel` (below) are classes, but only their *shapes* are public
+// API: consumers receive instances from the grid and never construct them. Plain
+// `export type { Column }` is not enough here — tsup's declaration bundler inlines the
+// class into the bundled .d.ts/.d.cts and re-emits it in the final export list without
+// the `type` modifier, advertising a runtime value that neither the ESM nor the CJS
+// build exports. Re-exporting through a type alias keeps the declarations honest.
+import type { Column as ColumnClass } from "./column/column";
+export type Column = ColumnClass;
 export type { GridAction } from "./events/action";
 export { GridCore } from "./core/core";
 export { GridRenderer } from "./renderer/gridRenderer";
@@ -158,11 +165,13 @@ export type {
   FilterDef,
   FilterInputType,
   FilterItem,
-  FilterModel,
   FilterOption,
   FilterParams,
   SetFilterMode,
 } from "./interfaces/filter";
+// Type-aliased for the same declaration-bundler reason as `Column` above.
+import type { FilterModel as FilterModelClass } from "./interfaces/filter";
+export type FilterModel = FilterModelClass;
 export type { FilterValueAsyncSource, FilterValueAsyncSourceParams } from "./filter/types";
 export type { SetFilterSelection } from "./filter/setFilterCore";
 export type {
