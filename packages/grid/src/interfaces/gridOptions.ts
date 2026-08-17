@@ -19,8 +19,13 @@ import type {
 import type { SavedViewsOptions } from "./gridView";
 
 /**
- * Payload for the `onCellValueChanged` option: a cell's stored value changed. Fires for every
- * write path — editor commits, `setCellValue`, paste/cut/clear batches, and undo/redo.
+ * Payload for the `onCellValueChanged` option: a cell's stored value changed. Covers every write
+ * path — editor commits, `setCellValue`, paste/cut/clear batches, and undo/redo — but fires only
+ * when the stored value actually changes (SameValueZero, `Date`s by instant — see
+ * {@link valuesAreSame}); committing the value a cell already holds emits nothing. Two exceptions:
+ * under `readOnlyEdit` the grid writes nothing and cannot compare, so every accepted value is
+ * reported; and undo/redo report the recorded transition, which can be a no-op if the row data
+ * was mutated externally (e.g. `applyTransaction`) after the step was recorded.
  */
 export interface CellValueChangedParams {
   rowId: string;

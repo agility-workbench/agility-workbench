@@ -268,7 +268,9 @@ export interface IGridAPI {
   getEditingCell(): CellRef | null;
   /**
    * Set a cell's value directly, bypassing the inline editor but running the rest of the write
-   * pipeline (`onBeforeCellCommit`, `cellValueChanged`, one undo step).
+   * pipeline (`onBeforeCellCommit`, then — only if the stored value actually changes —
+   * `cellValueChanged` and one undo step; writing the value already present emits nothing and
+   * records nothing).
    *
    * A **string** `value` is treated as user-style input and passed through the column's
    * `valueParser`; any other type is taken as the final stored value. So `setCellValue(cell, 99)`
@@ -354,9 +356,11 @@ export interface IGridAPI {
   /**
    * Write many cells in one step. Each value runs the full write pipeline for its own destination
    * (the column's `valueParser`, then `onBeforeCellCommit`, which can transform or veto that cell),
-   * emits one `cellValueChanged {source:"edit"}`, and the batch lands as a **single** undo step —
-   * the programmatic counterpart to a multi-cell paste. Vetoed cells drop out of the write, the
-   * undo step, and the events. Under `readOnlyEdit` nothing is written and nothing enters history.
+   * emits one `cellValueChanged {source:"edit"}` per cell whose stored value actually changed, and
+   * the changed cells land as a **single** undo step — the programmatic counterpart to a
+   * multi-cell paste. Vetoed and unchanged cells drop out of the undo step and the events; an
+   * all-unchanged batch records nothing. Under `readOnlyEdit` nothing is written and nothing
+   * enters history.
    *
    * Values follow the same string-vs-typed rule as {@link setCellValue}, per cell.
    */

@@ -2,7 +2,8 @@
  * The declarative on* GridOptions callbacks bridge to the underlying core events:
  *  - onCellClicked / onRowClicked  → cellClicked / rowClicked
  *  - onSelectionChanged            → selectionChanged
- *  - onCellValueChanged            → cellValueChanged (every write path; colId = public colId)
+ *  - onCellValueChanged            → cellValueChanged (every write path that changes the stored
+ *                                    value; colId = public colId)
  *  - onSortChanged                 → columnsChanged (reason "sort")
  *  - onFilterChanged               → filterChanged (canonical: column filters + quick filter)
  * Consumers can use either the option callback or api.on(...) interchangeably.

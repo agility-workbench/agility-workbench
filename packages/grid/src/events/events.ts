@@ -167,11 +167,16 @@ export type GridEventEditingChangedParams = {
 export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "undo" | "redo";
 
 /**
- * A cell's stored value changed. Emitted once per cell for EVERY write path — editor commits,
- * `setCellValue`, paste/cut/clear batches, and undo/redo — unlike `editingChanged`, which tracks
- * the editor lifecycle and only fires for interactive commits. `oldValue`/`value` are the stored
- * (parsed) forms; for undo they are oriented in the direction of the write (`value` is what the
- * cell now holds).
+ * A cell's stored value changed. Covers every write path — editor commits, `setCellValue`,
+ * paste/cut/clear batches, and undo/redo — unlike `editingChanged`, which tracks the editor
+ * lifecycle and only fires for interactive commits. Emitted only when the stored value actually
+ * changes (SameValueZero, `Date`s by instant — the exported `valuesAreSame`): committing the value
+ * a cell already holds emits nothing. Exceptions: under `readOnlyEdit` nothing is written, so
+ * every accepted value is reported; undo/redo report the recorded transition, which can be a no-op
+ * against externally-mutated row data. `oldValue`/`value` are the stored (parsed) forms; for undo
+ * they are oriented in the direction of the write (`value` is what the cell now holds). On a
+ * `valueGetter` column `oldValue` (getter output) can equal `value` (stored form) even though the
+ * slot moved — the event firing is the change signal; do not filter by comparing the two fields.
  */
 export type GridEventCellValueChangedParams = {
   /** Normalized on emit: public colId + colInstanceId. */

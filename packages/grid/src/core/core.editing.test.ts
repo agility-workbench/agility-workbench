@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
-import { GridEventEditingChangedParams, GridEventCellsChangedParams } from "../events/events";
+import { GridEventEditingChangedParams, GridEventCellsChangedParams, GridEventCellValueChangedParams } from "../events/events";
 import type { GridOptions } from "../interfaces/gridOptions";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
@@ -180,5 +180,115 @@ describe("GridCore editing", () => {
     expect(core.getRowModel().getRowNode("1")!.data.name).toBe("alice");
     expect(cellsEvents).toEqual([]);
     expect(editingEvents.at(-1)).toEqual({ state: "cancelled", cell: emittedCell(core, "1", "name") });
+  });
+});
+
+// Writes that don't change the stored value commit the editor but are not value changes: no
+// cellValueChanged, no undo step. editingChanged and cellsChanged stay unconditional — the first
+// drives editor teardown/focus return, the second restores static cell content after the editor
+// detaches. See docs/cell-value-change-detection.md.
+describe("GridCore no-op write suppression", () => {
+  let core: GridCore;
+  let editingEvents: GridEventEditingChangedParams[];
+  let cellsEvents: GridEventCellsChangedParams[];
+  let valueEvents: GridEventCellValueChangedParams[];
+
+  beforeEach(() => {
+    core = makeGrid();
+    editingEvents = [];
+    cellsEvents = [];
+    valueEvents = [];
+    core.on("editingChanged", (e) => editingEvents.push(e));
+    core.on("cellsChanged", (e) => cellsEvents.push(e));
+    core.on("cellValueChanged", (e) => valueEvents.push(e));
+  });
+
+  it("commits the editor but emits no cellValueChanged and records no undo step", () => {
+    const cell = { rowId: "1", colId: colId(core, "name") };
+    core.dispatch({ type: "editStart", cell });
+    core.dispatch({ type: "editCommit", cell, value: "alice" }); // value already present
+
+    expect(editingEvents.at(-1)).toMatchObject({ state: "committed", value: "alice" });
+    expect(cellsEvents.length).toBe(1); // repaint still happens (restores static cell content)
+    expect(valueEvents).toEqual([]);
+    expect(core.getHistoryState().undoDepth).toBe(0);
+  });
+
+  it("treats NaN → NaN as unchanged (SameValueZero, not ===)", () => {
+    const cell = { rowId: "2", colId: colId(core, "qty") };
+    core.dispatch({ type: "editCommit", cell, value: NaN, parsed: true }); // 7 → NaN: a change
+    expect(valueEvents.length).toBe(1);
+    expect(core.getHistoryState().undoDepth).toBe(1);
+
+    core.dispatch({ type: "editCommit", cell, value: NaN, parsed: true }); // NaN → NaN: no-op
+    expect(valueEvents.length).toBe(1);
+    expect(core.getHistoryState().undoDepth).toBe(1);
+  });
+
+  it("treats two Dates for the same instant as unchanged", () => {
+    const cell = { rowId: "1", colId: colId(core, "name") };
+    core.dispatch({ type: "editCommit", cell, value: new Date(86400000), parsed: true });
+    expect(valueEvents.length).toBe(1);
+
+    // A fresh instance for the same instant is never reference-equal — must still be a no-op.
+    core.dispatch({ type: "editCommit", cell, value: new Date(86400000), parsed: true });
+    expect(valueEvents.length).toBe(1);
+    expect(core.getHistoryState().undoDepth).toBe(1);
+  });
+
+  it("judges a valueGetter column on its stored field, not the getter output", () => {
+    core.setColumnDefsFromProps([{
+      colId: "shout",
+      key: "name",
+      label: "Shout",
+      editable: true,
+      valueGetter: (row: any) => row.data.name + "!",
+    }]);
+    const cell = { rowId: "1", colId: colId(core, "shout") };
+
+    // Getter space says "alice!" → "alice" is a change; storage space says the slot already
+    // holds "alice". Storage space wins: the write would not mutate the data.
+    core.dispatch({ type: "editCommit", cell, value: "alice", parsed: true });
+    expect(valueEvents).toEqual([]);
+    expect(core.getHistoryState().undoDepth).toBe(0);
+  });
+
+  it("drops unchanged cells from a batch: events, undo entry, and repaint scope", () => {
+    const name = colId(core, "name");
+    core.dispatch({
+      type: "cellsCommit",
+      reason: "paste",
+      edits: [
+        { cell: { rowId: "1", colId: name }, value: "CHANGED" },
+        { cell: { rowId: "2", colId: name }, value: "bob" }, // identical to stored
+      ],
+    });
+
+    expect(valueEvents.length).toBe(1);
+    expect(valueEvents[0]).toMatchObject({ cell: emittedCell(core, "1", "name"), value: "CHANGED" });
+    expect(cellsEvents.length).toBe(1);
+    expect(cellsEvents[0].rowIds).toEqual(["1"]); // row 2 not repainted
+    expect(core.getHistoryState().undoDepth).toBe(1);
+
+    // The undo entry holds only the changed cell.
+    core.dispatch({ type: "undo" });
+    expect(core.getRowModel().getRowNode("1")!.data.name).toBe("alice");
+    expect(core.getRowModel().getRowNode("2")!.data.name).toBe("bob");
+  });
+
+  it("an all-unchanged batch emits nothing and records nothing", () => {
+    const name = colId(core, "name");
+    core.dispatch({
+      type: "cellsCommit",
+      reason: "paste",
+      edits: [
+        { cell: { rowId: "1", colId: name }, value: "alice" },
+        { cell: { rowId: "2", colId: name }, value: "bob" },
+      ],
+    });
+
+    expect(valueEvents).toEqual([]);
+    expect(cellsEvents).toEqual([]);
+    expect(core.getHistoryState().undoDepth).toBe(0);
   });
 });

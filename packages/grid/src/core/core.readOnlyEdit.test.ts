@@ -106,6 +106,22 @@ describe("readOnlyEdit (B7)", () => {
     expect(core.getRowModel().getRowNode("2")!.data.qty).toBe(7); // still not written
   });
 
+  it("still reports a commit of the unchanged value (no slot to compare — always report)", () => {
+    const core = makeGrid();
+    const valueEvents: GridEventCellValueChangedParams[] = [];
+    core.on("cellValueChanged", (e) => valueEvents.push(e));
+
+    // The grid writes nothing under readOnlyEdit, so it cannot know whether the application's
+    // store already holds this value; no-op suppression must not apply.
+    core.dispatch({ type: "editCommit", cell: { rowId: "2", colId: instanceId(core, "qty") }, value: "7" });
+
+    expect(valueEvents).toEqual([{
+      cell: { rowId: "2", colId: "qty", colInstanceId: instanceId(core, "qty") },
+      oldValue: 7, value: 7, source: "edit",
+    }]);
+    expect(core.canUndo()).toBe(false);
+  });
+
   it("stays off by default: a normal grid writes through", () => {
     const core = makeGrid({ readOnlyEdit: undefined });
     core.dispatch({ type: "editCommit", cell: { rowId: "1", colId: instanceId(core, "name") }, value: "ALICE" });

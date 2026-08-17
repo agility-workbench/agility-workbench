@@ -1,4 +1,5 @@
 import { CellRendererParams, ICellRenderer } from "../renderer/renderer";
+import { valuesAreSame } from "../misc";
 
 export type FlashDirection = "up" | "down" | "neutral";
 
@@ -54,7 +55,9 @@ export class ChangeFlashCellRenderer implements ICellRenderer {
 
     this.eGui.textContent = p.valueFormatted ?? (next == null ? "" : String(next));
 
-    if (allowFlash && hadPrev && !Object.is(prev, next)) {
+    // Same primitive as the write path's no-op suppression, so the flash and the cellValueChanged
+    // event agree on what "changed" means (equal Dates and +0/-0 no longer flash).
+    if (allowFlash && hadPrev && !valuesAreSame(prev, next)) {
       this.flash(this.pickDirection(prev, next, p), p);
     }
 

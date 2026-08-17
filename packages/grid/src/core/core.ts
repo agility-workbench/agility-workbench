@@ -32,7 +32,7 @@ import {
   HistoryChangeReason,
   Unsubscribe,
 } from "../events/events";
-import { isTrue, validatePageSizes } from "../misc";
+import { isTrue, validatePageSizes, valuesAreSame } from "../misc";
 import { ColDef } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
@@ -2713,10 +2713,15 @@ export class GridCore implements IGridCore {
         // accepted value (editingChanged + cellValueChanged), but leave the row object untouched
         // and keep the step out of undo history (there is nothing of ours to undo).
         const readOnly = this.options.readOnlyEdit;
+        // Storage space, not getter space: compare the slot writeCellValue targets, before the
+        // write destroys it. A no-op write still commits the editor but is not a value change —
+        // no cellValueChanged, no undo step. readOnlyEdit writes nothing, so there is no slot to
+        // compare — always report.
+        const changed = readOnly || !valuesAreSame((row.data as any)?.[col.key], newValue);
         let recordedStep = false;
         if (!readOnly) {
           this.writeCellValue(cell, col.key, newValue);
-          if (!this.applyingHistory) {
+          if (changed && !this.applyingHistory) {
             recordedStep = this.recordHistory({ label: "edit", edits: [{ cell, oldValue, newValue }] });
           }
         }
@@ -2724,7 +2729,9 @@ export class GridCore implements IGridCore {
         // while its input still holds focus. cellsChanged repaints the cell afterwards; doing it
         // first would detach the focused input and drop keyboard focus to <body>.
         this.emit("editingChanged", { state: "committed", cell, value: newValue, oldValue });
-        this.emit("cellValueChanged", { cell, oldValue, value: newValue, source: "edit" });
+        if (changed) {
+          this.emit("cellValueChanged", { cell, oldValue, value: newValue, source: "edit" });
+        }
         if (!readOnly) {
           this.emit("cellsChanged", {
             reason: "editCommit",
@@ -2762,11 +2769,18 @@ export class GridCore implements IGridCore {
           // Vetoed cells drop out of the batch: not written, not recorded, no event.
           const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
           if (!hooked) continue;
+          // Storage space, before the write (see editCommit). Unchanged cells drop out of
+          // recorded[] — and with it the batch's undo entry, events, repaint, and re-evaluation —
+          // but only after the write-succeeded check, so a failed write still falls through.
+          const nextValue = hooked.value;
+          const changed = this.options.readOnlyEdit
+            || !valuesAreSame((row.data as any)?.[col.key], nextValue);
           // B7 readOnlyEdit: report every accepted cell but write none (see editCommit).
-          if (this.options.readOnlyEdit || this.writeCellValue(edit.cell, col.key, hooked.value)) {
+          if (this.options.readOnlyEdit || this.writeCellValue(edit.cell, col.key, nextValue)) {
+            if (!changed) continue;
             changedRowIds.add(edit.cell.rowId);
             changedColIds.add(col.instanceID);
-            recorded.push({ cell, oldValue, newValue: hooked.value });
+            recorded.push({ cell, oldValue, newValue: nextValue });
           }
         }
         let recordedBatch = false;
