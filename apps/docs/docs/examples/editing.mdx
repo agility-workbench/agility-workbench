@@ -93,18 +93,26 @@ commit-then-rollback flows.
 
 ## Reacting to value changes
 
-`onCellValueChanged` (and the `cellValueChanged` event) fires once per written
-cell for **every** write path — editor commits, `setCellValue`, paste, cut,
-clear, and undo/redo — with `{ rowId, colId, value, oldValue, source }`.
-`value`/`oldValue` are the stored (parsed) forms, and `source` says what wrote
-the cell (`"edit"`, `"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff
-consumers (dirty tracking, server sync, analytics) need no shadow copy of the
-data. (Under `readOnlyEdit` it fires for every *accepted* write — the value it
-reports is what the grid would have written.) The `editingChanged` event
-additionally carries `oldValue` on its `committed` state, and reports
-`onBeforeCellCommit` vetoes of editor commits as `state: "rejected"`. `colId`
-in these payloads is the public `ColDef.colId`; the internal instance id rides
-on `colInstanceId`.
+`onCellValueChanged` (and the `cellValueChanged` event) covers **every** write
+path — editor commits, `setCellValue`, paste, cut, clear, and undo/redo — with
+`{ rowId, colId, value, oldValue, source }`. It fires once per cell whose
+stored value **actually changes**: committing the value a cell already holds
+emits nothing (equality is SameValueZero plus `Date`s compared by instant —
+the same rule is exported as `valuesAreSame`). `value`/`oldValue` are the
+stored (parsed) forms, and `source` says what wrote the cell (`"edit"`,
+`"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff consumers (dirty
+tracking, server sync, analytics) need no shadow copy of the data. Two
+exceptions: under `readOnlyEdit` the grid writes nothing and cannot compare,
+so it fires for every *accepted* write (the value it reports is what the grid
+would have written); and undo/redo report the recorded transition, which can
+be a no-op if the row data was mutated externally after the step was recorded.
+Don't filter events by comparing `value` to `oldValue` yourself — on a
+`valueGetter` column the two can be equal even though the stored field moved;
+the event firing *is* the change signal. The `editingChanged` event still
+fires for every commit (changed or not), additionally carries `oldValue` on
+its `committed` state, and reports `onBeforeCellCommit` vetoes of editor
+commits as `state: "rejected"`. `colId` in these payloads is the public
+`ColDef.colId`; the internal instance id rides on `colInstanceId`.
 
 ## Clipboard and history
 
@@ -112,8 +120,10 @@ Copy serializes the selection as TSV. Cut clears editable destinations, paste
 applies each destination parser, and Delete/Backspace clears contents. A pasted
 block tiles across a larger selected range when its dimensions divide evenly.
 
-Every edit, paste, cut, or batch clear is one undo step. Set `undoLimit: 0` to
-disable history.
+Every edit, paste, cut, or batch clear that changes at least one stored value
+is one undo step — a batch's entry holds only the cells that actually changed,
+and a commit of an unchanged value records nothing (so Ctrl+Z always produces
+a visible change). Set `undoLimit: 0` to disable history.
 
 `api.undo()` / `api.redo()` traverse it, and `historyChanged` (or the
 `onHistoryChanged` option) fires whenever the stacks move, carrying

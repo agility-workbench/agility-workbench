@@ -107,7 +107,7 @@ if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { positio
 | `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
 | `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
 | `setCellValue(cell, value)` | Write one cell without opening an editor |
-| `setCellValues(edits)` | Write many cells as **one** undo step |
+| `setCellValues(edits)` | Write many cells as **one** undo step (changed cells only) |
 | `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
 | `undo()` / `redo()` | Traverse edit history |
 | `canUndo()` / `canRedo()` / `clearHistory()` | Inspect or reset history |
@@ -156,10 +156,11 @@ counts and `getPaginationInfo()` read post-filter state. The declarative
 `{ reason, canUndo, canRedo, undoDepth, redoDepth }` — enough to drive toolbar
 button state without polling. It follows the write's own `cellValueChanged` /
 `cellsChanged` events, so a handler reading `getHistoryState()` sees the value
-and the history agree. Writes that never enter history — a vetoed commit,
-anything under `readOnlyEdit`, `applyTransaction`, or a write inside
-`withoutUndoHistory` — do not fire it, and a whole `withUndoGroup` scope fires
-once on exit. The declarative option callback is `onHistoryChanged`.
+and the history agree. Writes that never enter history — a vetoed commit, a
+commit that doesn't change the stored value, anything under `readOnlyEdit`,
+`applyTransaction`, or a write inside `withoutUndoHistory` — do not fire it,
+and a whole `withUndoGroup` scope fires once on exit. The declarative option
+callback is `onHistoryChanged`.
 
 ### Column identity in payloads and inputs
 
