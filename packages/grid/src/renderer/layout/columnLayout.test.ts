@@ -26,15 +26,16 @@ function createColumnLayout(rightWidth = 0) {
   const renderer = new ColumnLayoutRenderer({
     core,
     root,
-    body: element(),
+    bodyFrame: element(),
+    verticalScrollbarGutter: () => 15,
     rowPool: () => [{ rightCellEls: rightWidth > 0 ? [rightCell] : [], rightRowEl: rightRow } as any],
     leadingViewport: element(),
     leftViewport: element(),
     centerViewport: element(),
     rightViewport: element(),
-    leadingScroller: element(),
-    leftScroller: element(),
-    rightScroller: element(),
+    leadingSpacer: element(),
+    leftSpacer: element(),
+    rightSpacer: element(),
     leadingHeader: element(),
     leftHeader: element(),
     centerHeader,
@@ -107,6 +108,5 @@ describe("vertical scrollbar compensation", () => {
     viewport.recomputeView();
 
     expect(visibility).toEqual([false, true]);
-    expect(viewport.getRefs().vScrollParent.style.display).toBe("block");
   });
 });

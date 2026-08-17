@@ -83,7 +83,7 @@ describe("AwbGrid server-side sticky groups", () => {
 
     const model = core.getRowModel();
     expect(model.getRowCount()).toBe(63);
-    const overlay = gridEl.querySelector<HTMLElement>(".pte-body .pte-sticky-rows")!;
+    const overlay = gridEl.querySelector<HTMLElement>(".pte-body-frame .pte-sticky-rows")!;
     const headerIds = () => Array.from(
       overlay.querySelectorAll<HTMLElement>(
         ".pte-pinned-rows-center .pte-pinned-row.pte-group-row",
@@ -96,7 +96,7 @@ describe("AwbGrid server-side sticky groups", () => {
 
     const secondId = model.getGroupNodes().find((node) => node.groupKey === "Second")!.id;
     expect(model.getRowNodeAtViewIndex(55)).toBeUndefined();
-    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-scroller")!;
+    const scroller = gridEl.querySelector<HTMLDivElement>(".pte-body")!;
     scroller.scrollTop = 55 * 43;
     scroller.dispatchEvent(new Event("scroll"));
     await new Promise((resolve) => requestAnimationFrame(resolve));

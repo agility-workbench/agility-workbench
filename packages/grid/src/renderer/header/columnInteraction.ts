@@ -22,9 +22,10 @@ interface ColumnInteractionRendererParams {
   leftHeader: HTMLDivElement;
   centerHeader: HTMLDivElement;
   rightHeader: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  centerScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
+  body: HTMLDivElement;
+  leftSpacer: HTMLDivElement;
+  centerSpacer: HTMLDivElement;
+  rightSpacer: HTMLDivElement;
   leafColumnLookup: () => Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
 }
 
@@ -343,19 +344,31 @@ export class ColumnInteractionRenderer {
   }
 
   private getSectionForPoint(x: number, y: number): ColumnSection | null {
-    const candidates: Array<{ section: ColumnSection; el: HTMLElement }> = [
+    const headers: Array<{ section: ColumnSection; el: HTMLElement }> = [
       { section: "left", el: this.params.leftHeader },
       { section: "center", el: this.params.centerHeader },
       { section: "right", el: this.params.rightHeader },
-      { section: "left", el: this.params.leftScroller },
-      { section: "center", el: this.params.centerScroller },
-      { section: "right", el: this.params.rightScroller },
     ];
-    for (const { section, el } of candidates) {
+    for (const { section, el } of headers) {
       const rect = el.getBoundingClientRect();
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
         return section;
       }
+    }
+
+    // Over the body, only the section spacers' horizontal extent is meaningful: each one stands at
+    // the full row-content height and scrolls with the body, so its box reaches far above and below
+    // what is on screen. The body supplies the vertical bounds.
+    const bodyRect = this.params.body.getBoundingClientRect();
+    if (y < bodyRect.top || y > bodyRect.bottom) return null;
+    const sections: Array<{ section: ColumnSection; el: HTMLElement }> = [
+      { section: "left", el: this.params.leftSpacer },
+      { section: "center", el: this.params.centerSpacer },
+      { section: "right", el: this.params.rightSpacer },
+    ];
+    for (const { section, el } of sections) {
+      const rect = el.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right) return section;
     }
     return null;
   }

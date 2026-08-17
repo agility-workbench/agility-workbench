@@ -10,7 +10,7 @@ interface GridModelChangeHandlerParams {
   core: GridCore;
   serverSidePendingRangeKeys: Set<string>;
   recomputeView: () => void;
-  updateWindow: (forcePatch: boolean, scrollSrc?: HTMLDivElement, params?: GridEventRowsChangedParams) => void;
+  updateWindow: (forcePatch: boolean, scrollSrc?: HTMLDivElement) => void;
   resetScrollPosition: () => void;
   updatePaginationControls: (params?: GridEventPaginationChangedParams) => void;
   refreshSortIndicators: () => void;
@@ -40,7 +40,7 @@ export class GridModelChangeHandler {
     if (params.reason !== "sort") {
       this.params.recomputeView();
     }
-    this.params.updateWindow(true, undefined, params);
+    this.params.updateWindow(true, undefined);
     if (isPageChange) {
       this.params.refreshSelectionStyles();
     }

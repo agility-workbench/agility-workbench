@@ -9,14 +9,14 @@ import { PinnedRowsRenderer } from "./pinnedRowsRenderer";
 
 function createRenderer() {
   const root = document.createElement("div");
-  const body = document.createElement("div");
-  root.appendChild(body);
+  const bodyFrame = document.createElement("div");
+  root.appendChild(bodyFrame);
   const renderer = new PinnedRowsRenderer({
     core: {} as GridCore,
     api: {} as IGridAPI,
     root,
     activeDescendant: new ActiveDescendantTracker(root),
-    body,
+    bodyFrame,
     rowHeight: () => 40,
     bodyCellRenderer: {} as BodyCellRenderer,
     onHeightChanged: () => undefined,

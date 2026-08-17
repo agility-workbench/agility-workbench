@@ -5,15 +5,15 @@ import { RowPoolDef } from "../types";
 interface ColumnLayoutRendererParams {
   core: GridCore;
   root: HTMLDivElement;
-  body: HTMLDivElement;
+  bodyFrame: HTMLDivElement;
   rowPool: () => RowPoolDef[];
   leadingViewport: HTMLDivElement;
   leftViewport: HTMLDivElement;
   centerViewport: HTMLDivElement;
   rightViewport: HTMLDivElement;
-  leadingScroller: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
+  leadingSpacer: HTMLDivElement;
+  leftSpacer: HTMLDivElement;
+  rightSpacer: HTMLDivElement;
   leadingHeader: HTMLDivElement;
   leftHeader: HTMLDivElement;
   centerHeader: HTMLDivElement;
@@ -37,9 +37,40 @@ interface ColumnLayoutRendererParams {
   aggregateRightCells: () => HTMLDivElement[];
   updateVerticalScrollLayout?: () => void;
   updatePinnedRowsLayout?: () => void;
+  /** Width the body's vertical scrollbar takes out of the layout. Measured from the platform rather
+   * than assumed: classic scrollbars consume real width, overlay scrollbars (macOS) consume none,
+   * and the headers sit outside the body so they only need padding for the width actually lost. */
+  verticalScrollbarGutter?: () => number;
 }
 
 const VERTICAL_SCROLLBAR_GUTTER_WIDTH = 15;
+
+let measuredGutter: number | null = null;
+let gutterInvalidationBound = false;
+
+/** Browser zoom changes a scrollbar's width in CSS pixels, so a value probed once at startup is
+ * wrong for the rest of the session after a single Ctrl+/-. Zoom also resizes the viewport, so
+ * dropping the cache on `resize` re-probes on the next layout pass — which the root ResizeObserver
+ * already triggers. Bound lazily so importing this module stays side-effect-free under SSR. */
+function bindGutterInvalidation(): void {
+  if (gutterInvalidationBound || typeof window === "undefined") return;
+  gutterInvalidationBound = true;
+  window.addEventListener("resize", () => { measuredGutter = null; }, { passive: true });
+}
+
+/** Platform scrollbar gutter. Returns 0 where scrollbars overlay content instead of consuming
+ * width — macOS by default, and Linux desktops with overlay scrollbars enabled. */
+export function measureVerticalScrollbarGutter(): number {
+  bindGutterInvalidation();
+  if (measuredGutter !== null) return measuredGutter;
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:absolute;top:-9999px;width:50px;height:50px;overflow-y:scroll;visibility:hidden";
+  document.body.appendChild(probe);
+  measuredGutter = probe.offsetWidth - probe.clientWidth;
+  probe.remove();
+  return measuredGutter;
+}
 
 export class ColumnLayoutRenderer {
   private hasVerticalScrollbar = false;
@@ -72,8 +103,8 @@ export class ColumnLayoutRenderer {
 
     this.params.leadingViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateLeadingCells(), this.params.core.getColumnModel().getLeadingLeaves(), colIDs);
-    this.params.leadingScroller.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.params.leadingScroller.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.leadingSpacer.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.leadingSpacer.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.leadingHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.leadingHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.aggregateLeading.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
@@ -83,11 +114,11 @@ export class ColumnLayoutRenderer {
     this.params.hScrollLeadingParent.style.display = maxWidth > 0 ? "block" : "none";
 
     if (maxWidth > 0) {
-      this.params.leadingScroller.classList.add("visible");
+      this.params.leadingSpacer.classList.add("visible");
       this.params.leadingHeader.classList.add("visible");
       this.params.aggregateLeading.style.display = "block";
     } else {
-      this.params.leadingScroller.classList.remove("visible");
+      this.params.leadingSpacer.classList.remove("visible");
       this.params.leadingHeader.classList.remove("visible");
       this.params.aggregateLeading.style.display = "none";
     }
@@ -122,7 +153,7 @@ export class ColumnLayoutRenderer {
     this.params.aggregateLeft.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
-      this.params.leftScroller.classList.add("visible");
+      this.params.leftSpacer.classList.add("visible");
       this.params.leftHeader.classList.add("visible");
       if (maxWidth > this.params.root.clientWidth * 0.35) {
         maxWidth = this.params.root.clientWidth * 0.35;
@@ -133,7 +164,7 @@ export class ColumnLayoutRenderer {
       }
       this.params.aggregateLeft.style.display = "block";
     } else {
-      this.params.leftScroller.classList.remove("visible");
+      this.params.leftSpacer.classList.remove("visible");
       this.params.leftHeader.classList.remove("visible");
       this.params.aggregateLeft.style.display = "none";
     }
@@ -205,7 +236,7 @@ export class ColumnLayoutRenderer {
     this.params.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
     const totalWidth = maxWidth;
     if (maxWidth > 0) {
-      this.params.rightScroller.classList.add("visible");
+      this.params.rightSpacer.classList.add("visible");
       this.params.rightHeader.classList.add("visible");
       if (maxWidth > this.params.root.clientWidth * 0.35) {
         maxWidth = this.params.root.clientWidth * 0.35;
@@ -219,7 +250,7 @@ export class ColumnLayoutRenderer {
       maxWidth += this.params.hScrollLeadingParent.clientWidth + this.params.hScrollLeftParent.clientWidth;
       this.params.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
-      this.params.rightScroller.classList.remove("visible");
+      this.params.rightSpacer.classList.remove("visible");
       this.rightSectionWidth = 0;
       this.params.rightHeader.style.width = "0px";
       this.params.rightHeader.style.minWidth = "0px";
@@ -263,14 +294,22 @@ export class ColumnLayoutRenderer {
     const hScrollHeight = this.params.hScrollContainer.getBoundingClientRect().height;
     const chromeHeight = headerHeight
       + (this.params.hScrollContainer.style.display === "flex" ? hScrollHeight : 0);
-    this.params.body.style.height = `calc(100% - ${chromeHeight}px)`;
+    this.params.bodyFrame.style.height = `calc(100% - ${chromeHeight}px)`;
     this.params.updateVerticalScrollLayout?.();
     this.params.updatePinnedRowsLayout?.();
   }
 
   private applyVerticalScrollbarCompensation(): void {
-    const gutterWidth = this.hasVerticalScrollbar ? VERTICAL_SCROLLBAR_GUTTER_WIDTH : 0;
+    const gutter = this.params.verticalScrollbarGutter?.() ?? VERTICAL_SCROLLBAR_GUTTER_WIDTH;
+    const gutterWidth = this.hasVerticalScrollbar ? gutter : 0;
     const hasRightSection = this.rightSectionWidth > 0;
+
+    // Publish both numbers to the stylesheet so the lanes sized in CSS and the paddings sized here
+    // cannot disagree. A lane width hardcoded in CSS is only ever right on the platform it was
+    // written against: it reserves real estate that overlay scrollbars never claim, leaving the
+    // header aligned to one edge and the rows to another.
+    this.params.root.style.setProperty("--pte-scrollbar-gutter", `${gutter}px`);
+    this.params.root.style.setProperty("--pte-scrollbar-gutter-active", `${gutterWidth}px`);
 
     this.params.centerHeader.style.paddingRight = `${hasRightSection ? 0 : gutterWidth}px`;
     this.params.rightHeader.style.paddingRight = `${hasRightSection ? gutterWidth : 0}px`;

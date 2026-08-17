@@ -1,9 +1,5 @@
 interface GridScrollSyncRendererParams {
-  leadingScroller: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  centerScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
-  vScroll: HTMLDivElement;
+  body: HTMLDivElement;
   leadingSpacer: HTMLDivElement;
   leftSpacer: HTMLDivElement;
   centerSpacer: HTMLDivElement;
@@ -23,17 +19,15 @@ interface GridScrollSyncRendererParams {
 
 export class GridScrollSyncRenderer {
   private rafPending = false;
-  private syncingScrollTargets = new Set<HTMLDivElement>();
-  private syncingScrollRaf: number | null = null;
 
   constructor(private params: GridScrollSyncRendererParams) { }
 
   bind() {
-    this.bindWindowScroll(this.params.leadingScroller);
-    this.bindWindowScroll(this.params.leftScroller);
-    this.bindWindowScroll(this.params.centerScroller);
-    this.bindWindowScroll(this.params.rightScroller);
-    this.bindWindowScroll(this.params.vScroll);
+    // One vertical scroll container means nothing to synchronise: the browser has already moved
+    // every section by the time this fires. All that is left to do is repaint the virtual window.
+    this.params.body.addEventListener("scroll", () => {
+      this.scheduleWindowUpdate(this.params.body);
+    });
 
     this.params.leftSpacer.addEventListener("scroll", () => {
       this.syncLeftScroll(this.params.leftSpacer.scrollLeft);
@@ -79,25 +73,6 @@ export class GridScrollSyncRenderer {
     requestAnimationFrame(() => {
       this.rafPending = false;
       this.params.onWindowUpdate(scrollSrc);
-    });
-  }
-
-  beginScrollSync(targets: HTMLDivElement[]) {
-    if (targets.length === 0) return;
-    for (const target of targets) {
-      this.syncingScrollTargets.add(target);
-    }
-    if (this.syncingScrollRaf !== null) return;
-    this.syncingScrollRaf = requestAnimationFrame(() => {
-      this.syncingScrollTargets.clear();
-      this.syncingScrollRaf = null;
-    });
-  }
-
-  private bindWindowScroll(source: HTMLDivElement) {
-    source.addEventListener("scroll", () => {
-      if (this.syncingScrollTargets.has(source)) return;
-      this.scheduleWindowUpdate(source);
     });
   }
 

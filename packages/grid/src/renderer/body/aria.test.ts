@@ -123,7 +123,7 @@ describe("body ARIA topology (owns-ordered)", () => {
     }
 
     // Scroll far enough that every pool slot recycles.
-    const scroller = container.querySelector<HTMLElement>(".pte-scroller")!;
+    const scroller = container.querySelector<HTMLElement>(".pte-body")!;
     scroller.scrollTop = 200 * core.options.rowHeight;
     scroller.dispatchEvent(new Event("scroll"));
     await raf();

@@ -4,8 +4,8 @@ interface PinnedSectionLayoutRendererParams {
   rightHeader: HTMLDivElement;
   hScrollLeftParent: HTMLDivElement;
   hScrollRightParent: HTMLDivElement;
-  leftScroller: HTMLDivElement;
-  rightScroller: HTMLDivElement;
+  leftSpacer: HTMLDivElement;
+  rightSpacer: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
   aggregateRight: HTMLDivElement;
   /** The pinned-row bands and sticky overlay clamp their sections themselves (their widths depend
@@ -37,11 +37,11 @@ export class PinnedSectionLayoutRenderer {
     const maxWidth = `${this.params.root.clientWidth * 0.35}px`;
     this.params.leftHeader.style.maxWidth = maxWidth;
     this.params.hScrollLeftParent.style.maxWidth = maxWidth;
-    this.params.leftScroller.style.maxWidth = maxWidth;
+    this.params.leftSpacer.style.maxWidth = maxWidth;
     this.params.aggregateLeft.style.maxWidth = maxWidth;
     this.params.rightHeader.style.maxWidth = maxWidth;
     this.params.hScrollRightParent.style.maxWidth = maxWidth;
-    this.params.rightScroller.style.maxWidth = maxWidth;
+    this.params.rightSpacer.style.maxWidth = maxWidth;
     this.params.aggregateRight.style.maxWidth = maxWidth;
   }
 }
