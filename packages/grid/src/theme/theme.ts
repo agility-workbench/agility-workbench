@@ -78,6 +78,93 @@ export interface GridThemeParams {
   sparklineStrokeColor?: string;
   /** Sparkline bar/fill color. */
   sparklineBarColor?: string;
+  /** ActionFrame border color (frame around a cell with an open popover). */
+  actionFrameBorderColor?: string;
+  /** ActionFrame border glow color. */
+  actionFrameGlowColor?: string;
+  /**
+   * ActionFrame popover background.
+   *
+   * Like every `actionFramePopover*` param, this has **no effect** when the column runs with
+   * `actionFrameOptions.escapeRootClip: true` — see {@link GridThemeParams.actionFramePopoverWidth}.
+   */
+  actionFramePopoverBackgroundColor?: string;
+  /** ActionFrame popover text color. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  actionFramePopoverTextColor?: string;
+  /** ActionFrame popover border color. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  actionFramePopoverBorderColor?: string;
+  /** ActionFrame popover shadow. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  actionFramePopoverShadow?: string;
+  /** ActionFrame popover border radius. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  actionFramePopoverRadius?: string | number;
+  /**
+   * ActionFrame popover width.
+   *
+   * **Not applied when the popover escapes the root clip.** Theme params are delivered as inline
+   * `--pte-*` custom properties on the grid root, so they only reach elements inside that subtree.
+   * With `actionFrameOptions.escapeRootClip: true` the popover is mounted in `document.body`, where
+   * it inherits `--pte-action-frame-popover-width` from the stylesheet's `:root` block instead and
+   * renders at the built-in default (300px). The same applies to every other
+   * `actionFramePopover*` param.
+   *
+   * To size an escaped popover, either drop `escapeRootClip`, or set the variable at document scope
+   * (which affects all grids on the page):
+   * ```css
+   * :root { --pte-action-frame-popover-width: 420px; }
+   * ```
+   */
+  actionFramePopoverWidth?: string | number;
+  /**
+   * Tooltip background color.
+   *
+   * Tooltips portal to `document.body` when `tooltipOptions.escapeRootClip` is on, so the whole
+   * `tooltip*` family is subject to the same limitation described on
+   * {@link GridThemeParams.actionFramePopoverWidth}: those tooltips fall back to the stylesheet
+   * defaults rather than the theme's values.
+   */
+  tooltipBackgroundColor?: string;
+  /** Tooltip text color. */
+  tooltipTextColor?: string;
+  /** Tooltip border color. */
+  tooltipBorderColor?: string;
+  /** Tooltip border radius. */
+  tooltipRadius?: string | number;
+  /** Tooltip shadow. */
+  tooltipShadow?: string;
+  /** Tooltip max width. */
+  tooltipMaxWidth?: string | number;
+  /** Scrollbar thumb border radius. */
+  scrollbarRadius?: string | number;
+  /** Scrollbar thumb size / thickness. */
+  scrollbarSize?: string | number;
+  /** Scrollbar lane width (gutter) when visible. */
+  scrollbarGutter?: string | number;
+  /** Scrollbar lane width (gutter) in active state. */
+  scrollbarGutterActive?: string | number;
+  /** Minimum scrollbar lane width. */
+  scrollbarLaneMin?: string | number;
+  /** Thickness of borders between data rows. */
+  rowBorderSize?: string | number;
+  /** Height of the pagination/footer area. */
+  paginationFooterHeight?: string | number;
+  /** Width of the column panel when open. */
+  columnPanelWidth?: string | number;
+  /** Width of the collapsed column panel trigger area. */
+  columnPanelGutterWidth?: string | number;
+  /** Height of the column header row. */
+  headerHeight?: string | number;
+  /** Duration of cell flash highlight fade animation. */
+  cellFlashFadeDuration?: string;
+  /** Grid root element border radius. A number is treated as pixels. */
+  rootBorderRadius?: string | number;
+  /** Grid root element border width. A number is treated as pixels. */
+  rootBorderWidth?: string | number;
+  /** Hide the grid's outer border by making it transparent. */
+  borderLessGrid?: boolean;
 
   /** Escape hatch: set any grid CSS variable directly. Wins over the semantic
    * fan-out above. Numbers are emitted verbatim (add your own unit). */
@@ -148,6 +235,33 @@ const FANOUT: Record<string, Fanout> = {
   },
   sparklineStrokeColor: { vars: ["--pte-sparkline-stroke-color"] },
   sparklineBarColor: { vars: ["--pte-sparkline-bar-color"] },
+  actionFrameBorderColor: { vars: ["--pte-action-frame-border-color"] },
+  actionFrameGlowColor: { vars: ["--pte-action-frame-glow"] },
+  actionFramePopoverBackgroundColor: { vars: ["--pte-action-frame-popover-bg"] },
+  actionFramePopoverTextColor: { vars: ["--pte-action-frame-popover-text-color"] },
+  actionFramePopoverBorderColor: { vars: ["--pte-action-frame-popover-border-color"] },
+  actionFramePopoverShadow: { vars: ["--pte-action-frame-popover-shadow"] },
+  actionFramePopoverRadius: { vars: ["--pte-action-frame-popover-radius"] },
+  actionFramePopoverWidth: { vars: ["--pte-action-frame-popover-width"] },
+  tooltipBackgroundColor: { vars: ["--pte-tooltip-bg"] },
+  tooltipTextColor: { vars: ["--pte-tooltip-text-color"] },
+  tooltipBorderColor: { vars: ["--pte-tooltip-border-color"] },
+  tooltipRadius: { vars: ["--pte-tooltip-radius"] },
+  tooltipShadow: { vars: ["--pte-tooltip-shadow"] },
+  tooltipMaxWidth: { vars: ["--pte-tooltip-max-width"] },
+  scrollbarRadius: { vars: ["--pte-scrollbar-radius"] },
+  scrollbarSize: { vars: ["--pte-scrollbar-size"] },
+  scrollbarGutter: { vars: ["--pte-scrollbar-gutter"] },
+  scrollbarGutterActive: { vars: ["--pte-scrollbar-gutter-active"] },
+  scrollbarLaneMin: { vars: ["--pte-scrollbar-lane-min"] },
+  rowBorderSize: { vars: ["--pte-row-border-size"] },
+  paginationFooterHeight: { vars: ["--pte-pagination-footer-height"] },
+  columnPanelWidth: { vars: ["--pte-column-panel-width"] },
+  columnPanelGutterWidth: { vars: ["--pte-column-panel-gutter-width"] },
+  headerHeight: { vars: ["--pte-rendered-header-height"] },
+  cellFlashFadeDuration: { vars: ["--pte-cell-flash-fade-duration"] },
+  rootBorderRadius: { vars: ["--pte-root-border-radius"], px: true },
+  rootBorderWidth: { vars: ["--pte-root-border-width"], px: true },
 };
 
 function toCssValue(value: string | number, px: boolean): string {
@@ -171,6 +285,11 @@ function resolveVars(params: GridThemeParams): Record<string, string> {
     if (value == null) continue;
     const css = toCssValue(value as string | number, fan.px ?? false);
     for (const name of fan.vars) out[name] = css;
+  }
+
+  // `borderLess` hides the border by making it transparent.
+  if (params.borderLessGrid) {
+    out["--pte-frame-border-color"] = "transparent";
   }
 
   // Atomic escape hatch wins over everything.
@@ -268,5 +387,32 @@ export const themeDark: GridTheme = createTheme({
     "--pte-cell-flash-up-bg-color": "rgba(34, 197, 94, 0.55)",
     "--pte-cell-flash-down-bg-color": "rgba(239, 68, 68, 0.55)",
     "--pte-cell-flash-neutral-bg-color": "rgba(148, 163, 184, 0.45)",
+    "--pte-action-frame-border-color": "#a78bfa",
+    "--pte-action-frame-glow": "rgba(167, 139, 250, 0.3)",
+    "--pte-action-frame-popover-bg": "#1e293b",
+    "--pte-action-frame-popover-text-color": "#e2e8f0",
+    "--pte-action-frame-popover-border-color": "#334155",
+    "--pte-action-frame-popover-shadow": "0 8px 26px rgba(0, 0, 0, 0.6)",
+    "--pte-action-frame-popover-radius": "8px",
+    "--pte-action-frame-popover-width": "300px",
+    "--pte-tooltip-bg": "#0f172a",
+    "--pte-tooltip-text-color": "#e2e8f0",
+    "--pte-tooltip-border-color": "#334155",
+    "--pte-tooltip-shadow": "0 4px 14px rgba(0, 0, 0, 0.5)",
+    "--pte-tooltip-max-width": "320px",
+    "--pte-tooltip-radius": "6px",
+    "--pte-scrollbar-gutter": "15px",
+    "--pte-scrollbar-gutter-active": "15px",
+    "--pte-scrollbar-lane-min": "12px",
+    "--pte-scrollbar-radius": "10px",
+    "--pte-scrollbar-size": "10px",
+    "--pte-row-border-size": "1px",
+    "--pte-pagination-footer-height": "49px",
+    "--pte-column-panel-width": "304px",
+    "--pte-column-panel-gutter-width": "36px",
+    "--pte-rendered-header-height": "43px",
+    "--pte-cell-flash-fade-duration": "1000ms",
+    "--pte-root-border-radius": "8px",
+    "--pte-root-border-width": "1px",
   },
 });

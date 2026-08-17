@@ -37,9 +37,11 @@ interface ColumnLayoutRendererParams {
   aggregateRightCells: () => HTMLDivElement[];
   updateVerticalScrollLayout?: () => void;
   updatePinnedRowsLayout?: () => void;
-  /** Width the body's vertical scrollbar takes out of the layout. Measured from the platform rather
-   * than assumed: classic scrollbars consume real width, overlay scrollbars (macOS) consume none,
-   * and the headers sit outside the body so they only need padding for the width actually lost. */
+  /** The body scroller — the element that actually owns the vertical scrollbar being compensated
+   * for. Read directly rather than modelled, so the compensation cannot disagree with the scrollbar
+   * it is compensating for. */
+  bodyScroller?: () => HTMLElement;
+  /** Fallback for when the body has no scrollbar to measure. Optional so tests can pin it. */
   verticalScrollbarGutter?: () => number;
 }
 
@@ -58,18 +60,38 @@ function bindGutterInvalidation(): void {
   window.addEventListener("resize", () => { measuredGutter = null; }, { passive: true });
 }
 
-/** Platform scrollbar gutter. Returns 0 where scrollbars overlay content instead of consuming
- * width — macOS by default, and Linux desktops with overlay scrollbars enabled. */
-export function measureVerticalScrollbarGutter(): number {
+/**
+ * Platform scrollbar gutter, for the bootstrap case where no live grid scrollbar exists to read.
+ * Returns 0 where scrollbars overlay content instead of consuming width — macOS by default, and
+ * Linux desktops with overlay scrollbars enabled.
+ *
+ * `host` must be an element INSIDE the grid, and getting that wrong is not a detail. A scrollbar's
+ * width depends on the rules matching its scroller, and the grid deliberately puts its own
+ * scrollers in a different regime from the page around them: the armored `scrollbar-color` makes
+ * Chromium discard `::-webkit-scrollbar` styling, so a host stylesheet's
+ * `*::-webkit-scrollbar { width: 4px }` governs the page but NOT the grid. Probed on `document.body`
+ * this returned the host's 4px while the grid's own scrollbar was the platform's 15px, and every
+ * compensation came out 11px short. Probing inside the grid puts the probe under the same rules as
+ * the scroller it stands in for.
+ */
+export function measureVerticalScrollbarGutter(host?: HTMLElement): number {
   bindGutterInvalidation();
   if (measuredGutter !== null) return measuredGutter;
+  const parent = host?.isConnected ? host : document.body;
+  if (!parent) return VERTICAL_SCROLLBAR_GUTTER_WIDTH;
   const probe = document.createElement("div");
   probe.style.cssText =
     "position:absolute;top:-9999px;width:50px;height:50px;overflow-y:scroll;visibility:hidden";
-  document.body.appendChild(probe);
-  measuredGutter = probe.offsetWidth - probe.clientWidth;
+  parent.appendChild(probe);
+  const outer = probe.offsetWidth;
+  const gutter = outer - probe.clientWidth;
   probe.remove();
-  return measuredGutter;
+  // `outer` is 0 only when the probe was never laid out — a detached or display:none ancestor —
+  // which is NOT the same as a scrollbar that consumes no width. Distinguishing them matters:
+  // caching an unmeasurable 0 would strand the grid with no compensation until the next resize.
+  if (outer === 0) return VERTICAL_SCROLLBAR_GUTTER_WIDTH;
+  measuredGutter = gutter;
+  return gutter;
 }
 
 export class ColumnLayoutRenderer {
@@ -299,8 +321,29 @@ export class ColumnLayoutRenderer {
     this.params.updatePinnedRowsLayout?.();
   }
 
+  /**
+   * How much width the body's vertical scrollbar is taking, right now.
+   *
+   * Read off the live scroller whenever it has one, because that is the only number that cannot be
+   * wrong: it is the scrollbar being compensated for, not a model of it. Any stand-in — a synthetic
+   * probe, a constant, a `scrollbar-width` keyword translated to pixels — is a second source of
+   * truth, and the two diverge the moment a host stylesheet, a theme or a zoom level touches one and
+   * not the other. That divergence is exactly how the header came to sit 11px right of the body.
+   *
+   * The probe is only the bootstrap, for before the body has ever shown a scrollbar — the pinned-row
+   * lane still needs a width to reserve then.
+   */
+  private measureGutter(): number {
+    const body = this.params.bodyScroller?.();
+    if (body) {
+      const live = body.offsetWidth - body.clientWidth;
+      if (live > 0) return live;
+    }
+    return this.params.verticalScrollbarGutter?.() ?? VERTICAL_SCROLLBAR_GUTTER_WIDTH;
+  }
+
   private applyVerticalScrollbarCompensation(): void {
-    const gutter = this.params.verticalScrollbarGutter?.() ?? VERTICAL_SCROLLBAR_GUTTER_WIDTH;
+    const gutter = this.measureGutter();
     const gutterWidth = this.hasVerticalScrollbar ? gutter : 0;
     const hasRightSection = this.rightSectionWidth > 0;
 

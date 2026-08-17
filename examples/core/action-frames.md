@@ -42,6 +42,33 @@ const column = {
 `actionFrameIndicator` may also be `true` or a predicate. Use
 `defaultColDef.actionFrameComponent` to share a component across columns.
 
+## Theming and `escapeRootClip`
+
+`escapeRootClip: true` mounts the popover in `document.body` so it is not clipped
+by the grid's own overflow near the grid edge. The cost is theming: a theme's
+values are applied as inline `--pte-*` custom properties on the grid root, and a
+body-mounted popover is outside that subtree, so **the `actionFramePopover*`
+theme params do not apply to it** — `actionFramePopoverWidth`,
+`actionFramePopoverBackgroundColor`, `actionFramePopoverRadius`,
+`actionFramePopoverShadow`, and friends are all ignored, and the popover renders
+with the stylesheet defaults (300px wide, light surface).
+
+Either keep the popover inside the root:
+
+```ts
+actionFrameOptions: { placement: "right", offset: 10 }, // escapeRootClip off
+```
+
+or set the variables at document scope, which applies to every grid on the page:
+
+```css
+:root {
+  --pte-action-frame-popover-width: 420px;
+}
+```
+
+Tooltips behave the same way under `tooltipOptions.escapeRootClip`.
+
 ## Programmatic control
 
 ```ts

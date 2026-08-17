@@ -631,7 +631,10 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       bodyFrame: bodyWrapper.bodyFrame,
-      verticalScrollbarGutter: measureVerticalScrollbarGutter,
+      bodyScroller: () => bodyWrapper.body,
+      // Probed inside the grid, not on document.body: the grid's scrollers sit under different
+      // rules than the page around them, so a probe outside it measures the wrong scrollbar.
+      verticalScrollbarGutter: () => measureVerticalScrollbarGutter(this.root),
       rowPool: () => this._rowPool,
       leadingViewport: bodyWrapper.leadingViewport,
       leftViewport: bodyWrapper.leftViewport,

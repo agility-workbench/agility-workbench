@@ -541,7 +541,7 @@ export interface TooltipOptions {
 }
 
 /**
- * Per-column tooltip presentation overrides (see {@link ColDef.tooltipOptions}). A column may
+ * Per-column tooltip presentation overrides (see {@link ColDef["tooltipOptions"]}). A column may
  * override how its tooltip is positioned and behaves; anything omitted falls back to the grid-level
  * {@link TooltipOptions}. Timing (`showDelay`/`hideDelay`) and the master enable switch stay
  * grid-level and are intentionally not overridable here.
@@ -625,8 +625,16 @@ export interface ActionFrameOptions {
   placement?: ActionFramePlacement;
   /** Gap in px between the cell and the popover. Default 8. */
   offset?: number;
-  /** Mount the popover in `document.body` to escape `.pte-root` overflow clipping near the grid
-   * edge. Default false. */
+  /**
+   * Mount the popover in `document.body` to escape `.pte-root` overflow clipping near the grid
+   * edge. Default false.
+   *
+   * Trade-off: a body-mounted popover sits outside the grid root, and theme params are delivered as
+   * inline `--pte-*` properties **on that root**. So none of the `actionFramePopover*` theme params
+   * (`actionFramePopoverWidth`, `…BackgroundColor`, `…Radius`, `…Shadow`, …) reach it — it picks up
+   * the stylesheet's `:root` defaults instead (e.g. a 300px width). Style an escaped popover by
+   * setting the `--pte-action-frame-popover-*` variables at document scope, or leave this off.
+   */
   escapeRootClip?: boolean;
 }
 

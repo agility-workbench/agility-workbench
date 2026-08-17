@@ -804,8 +804,15 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private updateVerticalScrollbarLane(band: BandElements): void {
     // Application-pinned bands retain the lane when they need their own scrollbar. Otherwise all
     // pinned/sticky sections mirror the central body's live scrollbar visibility.
-    const visible = this.bodyHasVerticalScrollbar || band.vertical.classList.contains("scrollable");
+    const scrollable = band.vertical.classList.contains("scrollable");
+    const visible = this.bodyHasVerticalScrollbar || scrollable;
     band.vertical.classList.toggle("visible", visible);
+    // The lane serves two different masters and they want different widths. While the body has a
+    // scrollbar the lane's job is alignment — it must be exactly as wide as that scrollbar so the
+    // band's columns end on the same pixel as the body's. With no body scrollbar the lane is the
+    // band's own control and nothing aligns to it, so it may claim a usable minimum instead of
+    // collapsing to the 0 that overlay-scrollbar platforms measure.
+    band.vertical.classList.toggle("own-lane", scrollable && !this.bodyHasVerticalScrollbar);
   }
 
   private renderRow(

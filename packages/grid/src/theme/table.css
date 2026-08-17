@@ -133,6 +133,8 @@
   --pte-action-frame-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   --pte-action-frame-popover-radius: 8px;
   --pte-action-frame-popover-width: 300px;
+  --pte-root-border-radius: 8px;
+  --pte-root-border-width: 1px;
 }
 
 .pte-theme-dark {
@@ -201,6 +203,8 @@
   --pte-action-frame-popover-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
   --pte-action-frame-popover-radius: 8px;
   --pte-action-frame-popover-width: 300px;
+  --pte-root-border-radius: 8px;
+  --pte-root-border-width: 1px;
 }
 
 *[class^="pte-"],
@@ -478,8 +482,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--pte-frame-border-color);
-  border-radius: 8px;
+  border: var(--pte-root-border-width) solid var(--pte-frame-border-color);
+  border-radius: var(--pte-root-border-radius);
   overflow: hidden;
   position: relative;
   background-color: var(--pte-root-bg-color);
@@ -1680,6 +1684,16 @@
   flex-basis: var(--pte-scrollbar-gutter);
   width: var(--pte-scrollbar-gutter);
   min-width: var(--pte-scrollbar-gutter);
+}
+
+/* `own-lane` marks the case where the band scrolls independently and the body has NO vertical
+   scrollbar, so nothing lines up against this lane and it is purely the band's own control. Floored
+   like the horizontal strip: on an overlay-scrollbar platform the measurement is 0, and a 0-wide
+   lane leaves that band's scrollbar impossible to grab. */
+.pte-pinned-rows-vertical.visible.own-lane {
+  flex-basis: max(var(--pte-scrollbar-gutter), var(--pte-scrollbar-lane-min));
+  width: max(var(--pte-scrollbar-gutter), var(--pte-scrollbar-lane-min));
+  min-width: max(var(--pte-scrollbar-gutter), var(--pte-scrollbar-lane-min));
 }
 
 .pte-pinned-rows-vertical.scrollable {
