@@ -406,11 +406,17 @@
 
   .pte-header,
   .pte-header-left,
-  .pte-header-right,
+  .pte-header-right {
+    overflow-x: auto !important;
+  }
+
+  /* The sections arm overflow-y too. Reset to `visible` by a host, it would be promoted to `auto`
+   * by the horizontal axis, giving an empty grid a scrollable pixel of viewport floor. */
   .pte-spacer,
   .pte-spacer-left,
   .pte-spacer-right {
     overflow-x: auto !important;
+    overflow-y: hidden !important;
   }
 
   .pte-body {
@@ -2411,10 +2417,15 @@
   background-color: var(--pte-header-background-color);
 }
 
+/* `overflow-y: hidden` is spelled out rather than left to compute from `visible`: a single
+ * non-visible axis would promote the other to `auto`, which would turn the viewport's 1px floor
+ * below into a scrollable pixel on an empty grid. Clipping is unchanged either way, and a section
+ * that cannot scroll vertically still chains its wheel gestures out to the body. */
 .pte-spacer-left {
   position: relative;
   flex: 0 0 auto;
   overflow-x: auto;
+  overflow-y: hidden;
   overflow-anchor: none;
   scrollbar-width: none;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
@@ -2425,6 +2436,7 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   overflow-anchor: none;
   scrollbar-width: none;
 }
@@ -2433,6 +2445,7 @@
   position: relative;
   flex: 0 0 auto;
   overflow-x: auto;
+  overflow-y: hidden;
   overflow-anchor: none;
   scrollbar-width: none;
   box-shadow: -2px 0 5px var(--pte-shadow-color);
@@ -2450,11 +2463,20 @@
   border-left: 1px solid var(--pte-frame-border-color);
 }
 
+/* The 1px floor is what keeps a section's horizontal scroll position alive when the row window is
+ * empty — a filter that matches nothing, a page past the end. Every pooled row is `display: none`
+ * then, so the viewport collapses to zero height, and a zero-height box contributes nothing to its
+ * scroller's scrollable overflow no matter how wide it is. The section's scrollWidth would fall back
+ * to its clientWidth, the browser would clamp scrollLeft to 0, and the resulting scroll event would
+ * fan that 0 out to the header, the aggregate row and the horizontal scrollbar — snapping the whole
+ * grid back to the first column while the user's filter still sits over a column now off to the
+ * right. One pixel of height is enough for the inline width to count. */
 .pte-viewport-leading,
 .pte-viewport-left,
 .pte-viewport-right,
 .pte-viewport {
   will-change: transform;
+  min-height: 1px;
 }
 
 .pte-viewport {

@@ -104,3 +104,31 @@ describe("pte-armor layer", () => {
     }
   });
 });
+
+// A section keeps its horizontal scroll position only for as long as its viewport contributes
+// scrollable overflow, and a zero-height box contributes none however wide it is. When a filter
+// matches nothing every pooled row goes `display: none`, the viewport collapses, the section's
+// scrollWidth falls back to its clientWidth and the browser clamps scrollLeft to 0 — fanning that 0
+// out to the header, the aggregate row and the horizontal scrollbar through the sync listener. The
+// two declarations below are what hold the column under the user's filter where they left it; both
+// read as removable slack, so they are pinned here.
+describe("empty-grid horizontal scroll", () => {
+  const rule = (selector: string) => {
+    const start = GRID_STYLES.indexOf(`\n${selector} {`);
+    return start < 0 ? "" : GRID_STYLES.slice(start, GRID_STYLES.indexOf("}", start));
+  };
+
+  it("floors every section viewport above zero height", () => {
+    const viewports = rule(".pte-viewport-leading,\n.pte-viewport-left,\n.pte-viewport-right,\n.pte-viewport");
+    expect(viewports).not.toBe("");
+    expect(viewports).toContain("min-height: 1px");
+  });
+
+  it("keeps that floor off the vertical axis by pinning overflow-y on the sections", () => {
+    // Left to compute from `visible`, the horizontal `auto` would promote it, turning the floor
+    // into a scrollable pixel on an empty grid.
+    for (const selector of [".pte-spacer", ".pte-spacer-left", ".pte-spacer-right"]) {
+      expect(rule(selector), `${selector} must pin overflow-y`).toContain("overflow-y: hidden");
+    }
+  });
+});
