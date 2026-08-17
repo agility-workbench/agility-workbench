@@ -133,6 +133,8 @@
   --pte-action-frame-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   --pte-action-frame-popover-radius: 8px;
   --pte-action-frame-popover-width: 300px;
+  --pte-root-border-radius: 8px;
+  --pte-root-border-width: 1px;
 }
 
 .pte-theme-dark {
@@ -201,6 +203,8 @@
   --pte-action-frame-popover-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
   --pte-action-frame-popover-radius: 8px;
   --pte-action-frame-popover-width: 300px;
+  --pte-root-border-radius: 8px;
+  --pte-root-border-width: 1px;
 }
 
 *[class^="pte-"],
@@ -478,8 +482,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--pte-frame-border-color);
-  border-radius: 8px;
+  border: var(--pte-root-border-width) solid var(--pte-frame-border-color);
+  border-radius: var(--pte-root-border-radius);
   overflow: hidden;
   position: relative;
   background-color: var(--pte-root-bg-color);
