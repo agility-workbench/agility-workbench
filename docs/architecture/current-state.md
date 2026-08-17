@@ -740,6 +740,12 @@ lifecycle; the content is a custom component.
 | Single-frame invariant (closes editor / prior frame) | ✅ Complete | `actionFrameRenderer.ts` |
 | API (`openActionFrame` / `closeActionFrame` / `getActionFrameCell`) + event (`actionFrameChanged`) | ✅ Complete | `api/api.ts`, `events/events.ts` |
 
+Known limitation: theme params are applied as inline `--pte-*` properties on the grid root (plus
+targets registered with `ThemeRenderer.registerTarget` — currently only the filter overlay), so a
+popover mounted with `escapeRootClip: true` lands in `document.body` and ignores every
+`actionFramePopover*` theme param, falling back to the stylesheet's `:root` defaults. The same holds
+for the `tooltip*` params under `tooltipOptions.escapeRootClip`.
+
 ### 5.16 Column Panel Features
 
 | Feature | Status | Location |

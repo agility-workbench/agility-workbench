@@ -82,19 +82,50 @@ export interface GridThemeParams {
   actionFrameBorderColor?: string;
   /** ActionFrame border glow color. */
   actionFrameGlowColor?: string;
-  /** ActionFrame popover background. */
+  /**
+   * ActionFrame popover background.
+   *
+   * Like every `actionFramePopover*` param, this has **no effect** when the column runs with
+   * `actionFrameOptions.escapeRootClip: true` — see {@link GridThemeParams.actionFramePopoverWidth}.
+   */
   actionFramePopoverBackgroundColor?: string;
-  /** ActionFrame popover text color. */
+  /** ActionFrame popover text color. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
   actionFramePopoverTextColor?: string;
-  /** ActionFrame popover border color. */
+  /** ActionFrame popover border color. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
   actionFramePopoverBorderColor?: string;
-  /** ActionFrame popover shadow. */
+  /** ActionFrame popover shadow. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
   actionFramePopoverShadow?: string;
-  /** ActionFrame popover border radius. */
+  /** ActionFrame popover border radius. No effect under `escapeRootClip` — see
+   * {@link GridThemeParams.actionFramePopoverWidth}. */
   actionFramePopoverRadius?: string | number;
-  /** ActionFrame popover width. */
+  /**
+   * ActionFrame popover width.
+   *
+   * **Not applied when the popover escapes the root clip.** Theme params are delivered as inline
+   * `--pte-*` custom properties on the grid root, so they only reach elements inside that subtree.
+   * With `actionFrameOptions.escapeRootClip: true` the popover is mounted in `document.body`, where
+   * it inherits `--pte-action-frame-popover-width` from the stylesheet's `:root` block instead and
+   * renders at the built-in default (300px). The same applies to every other
+   * `actionFramePopover*` param.
+   *
+   * To size an escaped popover, either drop `escapeRootClip`, or set the variable at document scope
+   * (which affects all grids on the page):
+   * ```css
+   * :root { --pte-action-frame-popover-width: 420px; }
+   * ```
+   */
   actionFramePopoverWidth?: string | number;
-  /** Tooltip background color. */
+  /**
+   * Tooltip background color.
+   *
+   * Tooltips portal to `document.body` when `tooltipOptions.escapeRootClip` is on, so the whole
+   * `tooltip*` family is subject to the same limitation described on
+   * {@link GridThemeParams.actionFramePopoverWidth}: those tooltips fall back to the stylesheet
+   * defaults rather than the theme's values.
+   */
   tooltipBackgroundColor?: string;
   /** Tooltip text color. */
   tooltipTextColor?: string;
