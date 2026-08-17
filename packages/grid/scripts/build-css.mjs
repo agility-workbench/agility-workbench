@@ -62,6 +62,21 @@ function inlineIcons(css) {
   return inlined;
 }
 
+/** Drop comments from the shipped artifact. table.css is heavily annotated — the reasoning behind
+ * the layout is the reason it survives contact with the next change — but none of that belongs in
+ * the bytes every consumer downloads and every browser parses. GRID_STYLES is re-parsed on each
+ * grid mount, so the notes were also real per-instance cost in an app with many grids.
+ *
+ * Runs BEFORE inlineIcons() on purpose: afterwards the sheet is full of `data:image/svg+xml,...`
+ * URIs whose contents this regex has no business walking through. */
+function stripComments(css) {
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // Comments occupy whole lines here, so removing them leaves runs of blank lines behind.
+    .replace(/\n[ \t]*(?=\n)/g, "")
+    .replace(/[ \t]+$/gm, "");
+}
+
 /** Collect every distinct `--pte-*` custom property name defined or referenced. */
 function collectVarNames(css) {
   const names = new Set();
@@ -76,7 +91,10 @@ function tsStringLiteral(value) {
 
 function main() {
   const rawCss = readFileSync(cssPath, "utf8");
-  const inlinedCss = inlineIcons(rawCss);
+  const inlinedCss = inlineIcons(stripComments(rawCss));
+  // Deliberately the UN-stripped source: some variables are documented in a commented-out
+  // declaration rather than a live one (--pte-row-height), and dropping them from PteVarName would
+  // break the theme fan-out that names them.
   const varNames = collectVarNames(rawCss);
 
   mkdirSync(distDir, { recursive: true });

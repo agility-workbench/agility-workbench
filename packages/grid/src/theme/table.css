@@ -78,6 +78,23 @@
   --pte-scrollbar-thumb-hover-color: #94a3b8;
   --pte-scrollbar-size: 10px;
   --pte-scrollbar-radius: 10px;
+  /* Width the platform's vertical scrollbar takes out of the layout, overwritten on .pte-root by
+   * the runtime probe in columnLayout.ts. 15px is only the pre-measurement fallback — the classic
+   * Chromium width, so the common case does not reflow once the real value lands. Overlay
+   * scrollbars measure 0: they paint over content and claim no space at all. */
+  --pte-scrollbar-gutter: 15px;
+  /* Same measurement, forced to 0 while the body has nothing to scroll vertically. This is the one
+   * to use for compensation padding; --pte-scrollbar-gutter is the one to use for a lane that is
+   * shown or hidden by a class. */
+  --pte-scrollbar-gutter-active: 15px;
+  /* Floor for the grid's own horizontal scrollbar strip, which is a real control rather than
+   * compensation: where the measurement is 0 the strip still needs height to be grabbable.
+   * Sized against an overlay scrollbar's HOVERED thickness, not its resting one — the bar these
+   * platforms draw is thin until the pointer approaches and then swells, and the lane is what it
+   * swells into. Floored at the resting width instead (10px) the expanded bar is clipped and the
+   * drag target stays as thin as it looks. Above ~12px the surplus is dead space, since the bar
+   * never grows to fill it. */
+  --pte-scrollbar-lane-min: 12px;
   --pte-column-panel-gutter-width: 36px;
   --pte-pagination-footer-height: 49px;
   --pte-checkbox-accent-color: #3b82f6;
@@ -193,11 +210,55 @@
   box-sizing: border-box;
 }
 
-/* Custom scrollbars are driven entirely by the --pte-scrollbar-* variables (both
- * light and dark defaults are defined above), so these rules are scoped to the
- * grid containers directly rather than gated behind a .pte-theme-dark ancestor.
- * This lets per-instance theming (inline vars on .pte-root) restyle scrollbars
- * without requiring a theme class on a shared ancestor. */
+/* Every inherited property the grid's layout depends on, pinned to its CSS initial value.
+ *
+ * Inheritance is the one way a host stylesheet reaches inside the grid without matching any of its
+ * elements: `body { letter-spacing: 2px !important }` lands on <body> and the computed value flows
+ * down through every descendant. Importance does NOT flow with it — inheritance transmits the
+ * computed value only — so an ordinary declaration here stops it, no !important needed and no
+ * armor layer involved.
+ *
+ * Each value below IS the property's initial value, so on a host that sets nothing this rule
+ * changes nothing. `direction` is deliberately absent: the grid supports RTL and must keep
+ * inheriting it. */
+.pte-root,
+.pte-menu,
+.pte-filter {
+  scrollbar-width: auto;
+  line-height: normal;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  white-space: normal;
+  font-style: normal;
+  visibility: visible;
+  cursor: auto;
+}
+
+/* Scrollbar appearance. There are two mutually exclusive ways to style a scrollbar and the grid
+ * needs both, because no single one covers every engine:
+ *
+ *   - The standard properties (`scrollbar-color`, `scrollbar-width`) — Firefox always, Chromium
+ *     121+, Safari 18.2+. Portable, but they express only colours and a coarse width keyword.
+ *   - The legacy `::-webkit-scrollbar` pseudo-elements — Chromium and Safari only, never
+ *     standardised. Expressive: exact pixel widths, radii, borders.
+ *
+ * They cannot be combined. An engine that supports the standard properties discards the legacy
+ * pseudo-elements entirely for any element whose scrollbar-color/scrollbar-width is not `auto`,
+ * so shipping both to the same browser silently kills the legacy block — which is what happened
+ * here: --pte-scrollbar-size, --pte-scrollbar-radius and the 2px thumb inset had been inert on
+ * every current browser, and the grid was rendering platform-default scrollbars wearing the theme
+ * colours. The @supports guard below makes that exclusivity explicit so the legacy block is only
+ * offered to engines that have nothing better, and so nobody re-adds a rule expecting it to apply.
+ *
+ * The consequence, on every modern engine: a rounded thumb and the inset track gap are simply not
+ * expressible. Colours are. That is the whole vocabulary, and the lane widths measured at runtime
+ * (see --pte-scrollbar-gutter) are sized against it.
+ *
+ * Scoped to the grid containers rather than gated behind a .pte-theme-dark ancestor, so
+ * per-instance theming (inline vars on .pte-root) restyles scrollbars with no shared ancestor. */
 .pte-root,
 .pte-root *,
 .pte-menu,
@@ -207,43 +268,137 @@
   scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color);
 }
 
-.pte-root::-webkit-scrollbar,
-.pte-root *::-webkit-scrollbar,
-.pte-menu::-webkit-scrollbar,
-.pte-menu *::-webkit-scrollbar,
-.pte-filter::-webkit-scrollbar,
-.pte-filter *::-webkit-scrollbar {
-  width: var(--pte-scrollbar-size);
-  height: var(--pte-scrollbar-size);
+/* LEGACY ONLY — Chromium <121 and Safari <18.2. Unreachable on anything newer; see above.
+ * --pte-scrollbar-size and --pte-scrollbar-radius exist solely to feed this block and have no
+ * effect on a current browser. */
+@supports not (scrollbar-color: auto) {
+  .pte-root::-webkit-scrollbar,
+  .pte-root *::-webkit-scrollbar,
+  .pte-menu::-webkit-scrollbar,
+  .pte-menu *::-webkit-scrollbar,
+  .pte-filter::-webkit-scrollbar,
+  .pte-filter *::-webkit-scrollbar {
+    width: var(--pte-scrollbar-size);
+    height: var(--pte-scrollbar-size);
+  }
+
+  .pte-root::-webkit-scrollbar-track,
+  .pte-root *::-webkit-scrollbar-track,
+  .pte-menu::-webkit-scrollbar-track,
+  .pte-menu *::-webkit-scrollbar-track,
+  .pte-filter::-webkit-scrollbar-track,
+  .pte-filter *::-webkit-scrollbar-track {
+    background: var(--pte-scrollbar-track-color);
+  }
+
+  .pte-root::-webkit-scrollbar-thumb,
+  .pte-root *::-webkit-scrollbar-thumb,
+  .pte-menu::-webkit-scrollbar-thumb,
+  .pte-menu *::-webkit-scrollbar-thumb,
+  .pte-filter::-webkit-scrollbar-thumb,
+  .pte-filter *::-webkit-scrollbar-thumb {
+    background: var(--pte-scrollbar-thumb-color);
+    border-radius: var(--pte-scrollbar-radius);
+    border: 2px solid var(--pte-scrollbar-track-color);
+  }
+
+  .pte-root::-webkit-scrollbar-thumb:hover,
+  .pte-root *::-webkit-scrollbar-thumb:hover,
+  .pte-menu::-webkit-scrollbar-thumb:hover,
+  .pte-menu *::-webkit-scrollbar-thumb:hover,
+  .pte-filter::-webkit-scrollbar-thumb:hover,
+  .pte-filter *::-webkit-scrollbar-thumb:hover {
+    background: var(--pte-scrollbar-thumb-hover-color);
+  }
 }
 
-.pte-root::-webkit-scrollbar-track,
-.pte-root *::-webkit-scrollbar-track,
-.pte-menu::-webkit-scrollbar-track,
-.pte-menu *::-webkit-scrollbar-track,
-.pte-filter::-webkit-scrollbar-track,
-.pte-filter *::-webkit-scrollbar-track {
-  background: var(--pte-scrollbar-track-color);
-}
+/* Structural invariants. Overriding any of these does not restyle the grid, it breaks it: the
+ * mirrored header/aggregate scrollers grow visible scrollbars that duplicate the body's, or a
+ * scroll container stops clipping and the virtualised rows spill out of their viewport.
+ *
+ * They sit in a cascade layer, which exists to settle exactly this fight: a host application's
+ * blanket `* { ... !important }` reset reaching into grid internals. For `!important` declarations
+ * layer precedence is INVERTED and unlayered styles rank last, so an `!important` rule inside any
+ * layer beats an `!important` rule outside every layer — regardless of selector specificity or
+ * source order. Nothing else in this file is layered, so ordinary host theming keeps winning the
+ * way authors expect. Against a host that layers its own styles the earlier-declared layer wins,
+ * and injectGridStyles() puts this sheet first in <head>, so this layer is declared first.
+ *
+ * No bare `@layer pte-armor;` ordering statement precedes this: happy-dom (the test environment)
+ * drops an unknown at-rule statement AND the rule that follows it, which silently swallowed the
+ * :root variable block. The block form below parses safely — its contents are invisible to
+ * happy-dom, so these rules are asserted at the source-text level in styles.test.ts instead.
+ *
+ * Deliberately narrow:
+ *   - only grid-owned chrome, never a cell, so application content and ordinary theming are
+ *     untouched;
+ *   - only properties nothing else in this file varies by state, since within a layer !important
+ *     also outranks the grid's own normal declarations;
+ *   - box-sizing only out of the base reset — margin and padding stay unarmed, because arming them
+ *     would flatten every cell's own padding. */
+@layer pte-armor {
+  *[class^="pte-"],
+  *[class*=" pte-"] {
+    box-sizing: border-box !important;
+  }
 
-.pte-root::-webkit-scrollbar-thumb,
-.pte-root *::-webkit-scrollbar-thumb,
-.pte-menu::-webkit-scrollbar-thumb,
-.pte-menu *::-webkit-scrollbar-thumb,
-.pte-filter::-webkit-scrollbar-thumb,
-.pte-filter *::-webkit-scrollbar-thumb {
-  background: var(--pte-scrollbar-thumb-color);
-  border-radius: var(--pte-scrollbar-radius);
-  border: 2px solid var(--pte-scrollbar-track-color);
-}
+  /* The mirrors. Each tracks the body's scrollLeft and must never show a bar of its own; exactly
+   * one scroller per axis is the real, visible one. This is the rule a host's
+   * `scrollbar-width: auto !important` was defeating, putting a second horizontal scrollbar under
+   * the column headers. */
+  .pte-header,
+  .pte-header-left,
+  .pte-header-right,
+  .pte-spacer,
+  .pte-spacer-left,
+  .pte-spacer-right,
+  .pte-aggregate-leading,
+  .pte-aggregate-left,
+  .pte-aggregate-center,
+  .pte-aggregate-right,
+  .pte-scroller-horizontal-container-wrapper,
+  .pte-pinned-rows-leading,
+  .pte-pinned-rows-left,
+  .pte-pinned-rows-center,
+  .pte-pinned-rows-right {
+    scrollbar-width: none !important;
+  }
 
-.pte-root::-webkit-scrollbar-thumb:hover,
-.pte-root *::-webkit-scrollbar-thumb:hover,
-.pte-menu::-webkit-scrollbar-thumb:hover,
-.pte-menu *::-webkit-scrollbar-thumb:hover,
-.pte-filter::-webkit-scrollbar-thumb:hover,
-.pte-filter *::-webkit-scrollbar-thumb:hover {
-  background: var(--pte-scrollbar-thumb-hover-color);
+  /* The real ones. A host forcing these to `none` would leave the grid with no way to scroll at
+   * all for a pointer user. */
+  .pte-body,
+  .pte-scroller-horizontal-spacer,
+  .pte-pinned-rows-vertical.scrollable {
+    scrollbar-width: auto !important;
+  }
+
+  /* Clipping. .pte-root hides overflow so the rounded frame crops its content; the section
+   * scrollers clip the virtualised row window. A host reset to `overflow: visible` spills every
+   * recycled row across the page. */
+  .pte-root {
+    overflow: hidden !important;
+  }
+
+  .pte-header-wrapper,
+  .pte-header-leading,
+  .pte-spacer-leading,
+  .pte-sticky-rows {
+    overflow: hidden !important;
+  }
+
+  .pte-header,
+  .pte-header-left,
+  .pte-header-right,
+  .pte-spacer,
+  .pte-spacer-left,
+  .pte-spacer-right {
+    overflow-x: auto !important;
+  }
+
+  .pte-body {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
 }
 
 /* The grid draws its own focus indicators, so the native ring is suppressed — but suppressing it
@@ -287,6 +442,11 @@
 }
 
 .pte-root {
+  /* Derived here rather than in the :root variable block on purpose. A custom property is resolved
+   * against the element it is declared on, so a --pte-scrollbar-lane defined on :root would bake in
+   * :root's fallback --pte-scrollbar-gutter and never see the measured value the runtime writes
+   * onto .pte-root. Declaring it here reads the inline override. */
+  --pte-scrollbar-lane: max(var(--pte-scrollbar-gutter), var(--pte-scrollbar-lane-min));
   font-family: var(--pte-font-family);
   font-size: var(--pte-font-size);
   color: var(--pte-text-color);
@@ -1488,10 +1648,14 @@
   scrollbar-width: auto;
 }
 
+/* Sized from the measurement, not a constant: this lane stands in the same column as the body's
+   vertical scrollbar and has to end on the same pixel the header's compensation padding ends on.
+   Where scrollbars overlay content the measurement is 0 and the lane collapses — correct, because
+   there is no scrollbar column there for the pinned bands to line up with. */
 .pte-pinned-rows-vertical.visible {
-  flex-basis: 15px;
-  width: 15px;
-  min-width: 15px;
+  flex-basis: var(--pte-scrollbar-gutter);
+  width: var(--pte-scrollbar-gutter);
+  min-width: var(--pte-scrollbar-gutter);
 }
 
 .pte-pinned-rows-vertical.scrollable {
@@ -1587,7 +1751,7 @@
 /* The column sections must be opaque: mirror rows don't paint every pixel of the overlay (a
    full-width groupRows mirror renders only the center section, and rows can be narrower than the
    viewport), and any unpainted pixel would otherwise show the body scrolling beneath. The root and
-   its 15px scrollbar lane stay transparent so the body's vertical scrollbar remains visible. */
+   its scrollbar lane stay transparent so the body's vertical scrollbar remains visible. */
 .pte-sticky-rows .pte-pinned-rows-left,
 .pte-sticky-rows .pte-pinned-rows-center,
 .pte-sticky-rows .pte-pinned-rows-right {
@@ -1609,7 +1773,11 @@
   position: relative;
   background: var(--pte-aggregate-row-bg-color);
   border-top: 1px solid var(--pte-frame-border-color);
-  padding-right: 15px;
+  /* Clears the body's vertical scrollbar, exactly as the header's padding does. Uses the -active
+     variant so the row also reclaims the space when the body has nothing to scroll — the constant
+     this replaces was unconditional, and left the aggregate row short of the header whenever the
+     scrollbar was absent or overlaid. */
+  padding-right: var(--pte-scrollbar-gutter-active);
 }
 
 .pte-aggregate-row.visible {
@@ -1696,8 +1864,8 @@
   overflow-x: auto;
   scrollbar-width: none;
   overflow-y: hidden;
-  min-height: 15px;
-  height: 15px;
+  min-height: var(--pte-scrollbar-lane);
+  height: var(--pte-scrollbar-lane);
 }
 
 .pte-pagination-wrapper {
@@ -2171,42 +2339,46 @@
   border-color: var(--pte-select-border-color);
 }
 
+/* The grid's own horizontal scrollbar strip. Unlike the vertical lane above this is a control, not
+   compensation — nothing lines up against it, it only costs vertical space — so it takes the
+   measurement floored at --pte-scrollbar-lane-min. Collapsing it to 0 where scrollbars overlay
+   content would leave a pointer user with no horizontal scrollbar to grab at all. */
 .pte-scroller-horizontal-left-container {
   flex: 0 0 auto;
-  height: 15px;
-  min-height: 15px;
+  height: var(--pte-scrollbar-lane);
+  min-height: var(--pte-scrollbar-lane);
   z-index: 1;
 }
 
 .pte-scroller-horizontal-leading-container {
   flex: 0 0 auto;
-  height: 15px;
-  min-height: 15px;
+  height: var(--pte-scrollbar-lane);
+  min-height: var(--pte-scrollbar-lane);
   z-index: 1;
 }
 
 .pte-scroller-horizontal-container {
   flex: 1 1 auto;
-  height: 15px;
+  height: var(--pte-scrollbar-lane);
   z-index: 1;
   width: 100%;
 }
 
 .pte-scroller-horizontal-right-container {
   flex: 0 0 auto;
-  height: 15px;
+  height: var(--pte-scrollbar-lane);
   z-index: 1;
 }
 
 .pte-scroller-horizontal-spacer {
-  height: 15px;
+  height: var(--pte-scrollbar-lane);
   width: 100%;
   overflow-y: hidden;
   overflow-x: scroll;
 }
 
 .pte-scroller-horizontal {
-  height: 15px;
+  height: var(--pte-scrollbar-lane);
 }
 
 /* The four sections. Each stands at the full row-content height so the single body scroller moves

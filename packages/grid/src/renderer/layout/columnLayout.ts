@@ -46,9 +46,22 @@ interface ColumnLayoutRendererParams {
 const VERTICAL_SCROLLBAR_GUTTER_WIDTH = 15;
 
 let measuredGutter: number | null = null;
+let gutterInvalidationBound = false;
 
-/** Platform scrollbar gutter, probed once. Returns 0 where scrollbars overlay content. */
+/** Browser zoom changes a scrollbar's width in CSS pixels, so a value probed once at startup is
+ * wrong for the rest of the session after a single Ctrl+/-. Zoom also resizes the viewport, so
+ * dropping the cache on `resize` re-probes on the next layout pass — which the root ResizeObserver
+ * already triggers. Bound lazily so importing this module stays side-effect-free under SSR. */
+function bindGutterInvalidation(): void {
+  if (gutterInvalidationBound || typeof window === "undefined") return;
+  gutterInvalidationBound = true;
+  window.addEventListener("resize", () => { measuredGutter = null; }, { passive: true });
+}
+
+/** Platform scrollbar gutter. Returns 0 where scrollbars overlay content instead of consuming
+ * width — macOS by default, and Linux desktops with overlay scrollbars enabled. */
 export function measureVerticalScrollbarGutter(): number {
+  bindGutterInvalidation();
   if (measuredGutter !== null) return measuredGutter;
   const probe = document.createElement("div");
   probe.style.cssText =
@@ -290,6 +303,13 @@ export class ColumnLayoutRenderer {
     const gutter = this.params.verticalScrollbarGutter?.() ?? VERTICAL_SCROLLBAR_GUTTER_WIDTH;
     const gutterWidth = this.hasVerticalScrollbar ? gutter : 0;
     const hasRightSection = this.rightSectionWidth > 0;
+
+    // Publish both numbers to the stylesheet so the lanes sized in CSS and the paddings sized here
+    // cannot disagree. A lane width hardcoded in CSS is only ever right on the platform it was
+    // written against: it reserves real estate that overlay scrollbars never claim, leaving the
+    // header aligned to one edge and the rows to another.
+    this.params.root.style.setProperty("--pte-scrollbar-gutter", `${gutter}px`);
+    this.params.root.style.setProperty("--pte-scrollbar-gutter-active", `${gutterWidth}px`);
 
     this.params.centerHeader.style.paddingRight = `${hasRightSection ? 0 : gutterWidth}px`;
     this.params.rightHeader.style.paddingRight = `${hasRightSection ? gutterWidth : 0}px`;
