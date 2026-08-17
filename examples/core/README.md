@@ -6,40 +6,57 @@ example that shows the framework-neutral lifecycle around them.
 ## Create, attach, and destroy
 
 ```ts
-import {
-  CanvasMeasurer,
-  ColumnType,
-  GridCore,
-  initDomRenderer,
-  type IMenuAdapter,
-} from "@agility-workbench/grid";
+import { ColumnType, createGrid } from "@agility-workbench/grid";
 
-const core = new GridCore(new CanvasMeasurer(), {
+const api = createGrid(document.querySelector("#grid")!, {
   rowIdKey: "id",
   columnDefs: [
     { key: "name", label: "Name" },
     { key: "amount", label: "Amount", type: ColumnType.NUMBER },
   ],
+  rowData: [{ id: "1", name: "Alpha", amount: 12 }],
 });
 
-const menus: IMenuAdapter = {
-  resolveMenuItems: (_context, defaults) => ({
-    items: defaults,
-    cleanup: () => undefined,
-  }),
-};
-
-const { renderer, api } = initDomRenderer(core, menus);
-renderer.attach({ current: document.querySelector("#grid")! });
-core.dispatch({ type: "init" });
-api.setRowData([{ id: "1", name: "Alpha", amount: 12 }]);
-
-// When the host view is removed:
+// When the host view is removed — this tears down renderer and core too:
 api.destroy();
 ```
 
 The host element must have an explicit height. The renderer supplies its base
 stylesheet automatically unless `suppressStyleInjection` is enabled.
+
+`createGrid` uses the grid's built-in column and body menus. To add or replace menu
+items — the seam the React and Angular bindings use to render framework-owned items —
+assemble the parts yourself and pass an `IMenuAdapter` (and optionally an
+`IBodyMenuAdapter`) to `initDomRenderer`:
+
+```ts
+import {
+  CanvasMeasurer,
+  GridCore,
+  initDomRenderer,
+  type IMenuAdapter,
+} from "@agility-workbench/grid";
+
+const menus: IMenuAdapter = {
+  resolveMenuItems: (context, defaults) => ({
+    items: [
+      ...defaults,
+      { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) },
+    ],
+    cleanup: () => undefined,
+  }),
+};
+
+const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
+const { renderer, api } = initDomRenderer(core, menus);
+
+renderer.attach(document.querySelector("#grid")!);
+core.dispatch({ type: "init" });
+```
+
+Both adapters are optional. Note that this path owns its own teardown —
+`renderer.detach()`, `renderer.destroy()`, `core.destroy()` — because `api.destroy()`
+performs full teardown only for a grid created by `createGrid`.
 
 ## Callback options
 

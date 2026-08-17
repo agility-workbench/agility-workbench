@@ -148,27 +148,15 @@ npm install @agility-workbench/grid
 ```
 
 ```ts
-import {
-  CanvasMeasurer,
-  ColumnType,
-  GridCore,
-  initDomRenderer,
-} from "@agility-workbench/grid";
+import { ColumnType, createGrid } from "@agility-workbench/grid";
 
-const core = new GridCore(new CanvasMeasurer(), {
+const api = createGrid(document.querySelector("#grid")!, {
   rowIdKey: "id",
   columnDefs: [
     { key: "name", label: "Product", type: ColumnType.STRING },
     { key: "price", label: "Price", type: ColumnType.CURRENCY },
   ],
-});
-
-const { renderer } = initDomRenderer(core);
-renderer.attach({ current: document.querySelector("#grid")! });
-core.dispatch({ type: "init" });
-core.dispatch({
-  type: "rowDataSet",
-  rows: [{ id: "p-1", name: "Notebook", price: 12.5 }],
+  rowData: [{ id: "p-1", name: "Notebook", price: 12.5 }],
 });
 ```
 

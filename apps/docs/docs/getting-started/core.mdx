@@ -5,6 +5,34 @@ sidebar_position: 4
 
 # Framework-neutral quick start
 
+`createGrid` mounts a grid into an element and returns its API. It assembles the
+text measurer, core, DOM renderer, menus, and startup dispatch for you:
+
+```ts
+import { createGrid } from "@agility-workbench/grid";
+
+const api = createGrid(document.querySelector("#grid")!, {
+  rowIdKey: "id",
+  columnDefs,
+  rowData: rows,
+});
+
+// When the host view is removed:
+api.destroy();
+```
+
+The container needs an explicit height. The second argument takes every `GridOptions`
+field alongside `columnDefs` and `rowData`, and the returned `api` is the same
+`IGridAPI` both framework bindings expose.
+
+## Assembling the pieces manually
+
+`createGrid` uses the grid's built-in menus. To contribute your own menu items, build
+the parts directly. An `IMenuAdapter` receives the items the core built for a column
+and returns the items to show, plus a `cleanup` callback invoked when the menu closes
+— the seam the React and Angular bindings use to render framework-owned items. An
+optional third argument, `IBodyMenuAdapter`, does the same for the body context menu.
+
 ```ts
 import {
   CanvasMeasurer,
@@ -13,20 +41,26 @@ import {
   type IMenuAdapter,
 } from "@agility-workbench/grid";
 
-const core = new GridCore(new CanvasMeasurer(), { columnDefs });
 const menus: IMenuAdapter = {
-  resolveMenuItems: (_context, defaults) => ({
-    items: defaults,
+  resolveMenuItems: (context, defaults) => ({
+    items: [
+      ...defaults,
+      { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) },
+    ],
     cleanup: () => undefined,
   }),
 };
 
+const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
 const { renderer, api } = initDomRenderer(core, menus);
-renderer.attach({ current: document.querySelector("#grid")! });
+
+renderer.attach(document.querySelector("#grid")!);
 core.dispatch({ type: "init" });
+api.setColumnDefs(columnDefs);
 api.setRowData(rows);
 ```
 
-The core exposes the same `IGridAPI` used by both bindings. A custom host owns
-attachment, framework component adaptation, menu normalization, and teardown.
+Both adapters are optional — omit them and you get the built-in menus. This path also
+means owning teardown: `renderer.detach()`, `renderer.destroy()`, and `core.destroy()`.
+`api.destroy()` alone is enough only for a grid created by `createGrid`.
 

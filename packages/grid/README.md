@@ -35,21 +35,62 @@ npm install @agility-workbench/angular-grid
 
 ## Quick start (core, no framework)
 
-```ts
-import { CanvasMeasurer, ColumnType, GridCore, initDomRenderer } from "@agility-workbench/grid";
+`createGrid` mounts a grid into an element and hands back its API. It owns the whole
+assembly — text measurer, core, renderer, menus, and startup — so there is nothing else to
+wire:
 
-const core = new GridCore(new CanvasMeasurer(), {
+```ts
+import { ColumnType, createGrid } from "@agility-workbench/grid";
+
+const api = createGrid(document.getElementById("app")!, {
   rowIdKey: "id",
   columnDefs: [
     { key: "name", label: "Name", type: ColumnType.STRING },
     { key: "price", label: "Price", type: ColumnType.NUMBER },
   ],
+  rowData: [{ id: 1, name: "Widget", price: 9.99 }],
 });
-const { renderer } = initDomRenderer(core);
-renderer.attach({ current: document.getElementById("app")! });
-core.dispatch({ type: "init" });
-core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 }] });
+
+// Later, when the host view goes away:
+api.destroy();
 ```
+
+The container must have an explicit height. Beyond `columnDefs` and `rowData`, the second
+argument accepts every [`GridOptions`](#entry-points) field, and everything after creation
+happens through the returned `api`.
+
+<details>
+<summary>Assembling the pieces manually (custom menu items, or owning the lifecycle)</summary>
+
+`createGrid` uses the grid's built-in menus. To contribute your own menu items — the seam the
+React and Angular bindings use — build the parts yourself with `initDomRenderer`:
+
+```ts
+import {
+  CanvasMeasurer, GridCore, initDomRenderer, type IMenuAdapter,
+} from "@agility-workbench/grid";
+
+const menus: IMenuAdapter = {
+  resolveMenuItems: (context, defaults) => ({
+    items: [...defaults, { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) }],
+    cleanup: () => undefined,
+  }),
+};
+
+const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
+const { renderer, api } = initDomRenderer(core, menus);
+
+renderer.attach(document.getElementById("app")!);
+core.dispatch({ type: "init" });
+api.setColumnDefs([{ key: "name", label: "Name", type: ColumnType.STRING }]);
+api.setRowData([{ id: 1, name: "Widget" }]);
+```
+
+Both adapter arguments are optional; omitting them yields the built-in menus. Taking this
+path means owning teardown too — `renderer.detach()`, `renderer.destroy()`, and
+`core.destroy()`, which is precisely what `createGrid`'s `api.destroy()` does for you.
+
+</details>
 
 ## Toolbar
 
@@ -58,7 +99,6 @@ when at least one section is enabled, and disappears when none are enabled.
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   toolbar: {
     grouping: true,
     sorting: true,
@@ -112,7 +152,6 @@ drawer-managed visibility, pinning, or order differs from that baseline.
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   columnPanel: {
     trigger: "toolbar",
     defaultOpen: false,
@@ -185,7 +224,6 @@ filtering, grouping, pagination, selection, and the displayed row count:
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   pinnedTopRowData: [{ label: "Target", amount: 1_000_000 }],
   pinnedBottomRowData: [{ label: "Total", amount: 842_000 }],
 });
@@ -409,7 +447,6 @@ theme's `icons`:
 
 ```ts
 new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   icons: { filter: "<svg viewBox='0 0 24 24'>…</svg>" },
 });
 ```

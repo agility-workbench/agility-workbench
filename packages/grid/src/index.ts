@@ -38,6 +38,8 @@ export type {
   SparklineXValue,
 } from "./cellRenderers/sparklineRenderer";
 export { CanvasMeasurer, initDomRenderer } from "./renderer";
+export { createGrid } from "./createGrid";
+export type { CreateGridOptions } from "./createGrid";
 
 // Extension-point surface consumed by framework bindings (e.g. the React wrapper).
 export { isClassRenderer } from "./renderer/renderer";
