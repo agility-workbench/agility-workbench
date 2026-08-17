@@ -123,7 +123,7 @@ export class HeaderInteractionHandler {
     // native context menu appears instead of the grid's column menu. (Checked before the default
     // preventDefault below, which otherwise suppresses the native menu across the whole header.)
     // The auto-group column takes part like any regular column; only row numbers stay inert.
-    if (col && !col.isRowNumberColumn() && !col.columnContextMenu) return;
+    if (col && !col.isRowNumberColumn() && !col.headerContextMenuEnabled) return;
 
     e.preventDefault();
     if (!header) return;

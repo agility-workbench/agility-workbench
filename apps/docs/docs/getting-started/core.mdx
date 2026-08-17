@@ -25,13 +25,49 @@ The container needs an explicit height. The second argument takes every `GridOpt
 field alongside `columnDefs` and `rowData`, and the returned `api` is the same
 `IGridAPI` both framework bindings expose.
 
+## Customizing menus
+
+Menu items are configuration, not plumbing. Set `columnMenu` on a column — or on
+`defaultColDef` to cover every column — and it receives the items the grid built,
+returning the items to show:
+
+```ts
+createGrid(host, {
+  columnDefs: [
+    {
+      key: "price",
+      label: "Price",
+      columnMenu: ({ column, items }) => [
+        ...items,
+        { isSeparator: true },
+        { label: "Audit", left: "my-icon-class", onClick: () => audit(column.colId) },
+      ],
+    },
+    // No ⋮ button and no header right-click for this column:
+    { key: "actions", label: "", columnMenu: false },
+  ],
+});
+```
+
+Items are plain objects — `label`, `left` (icon CSS class or element), `right`,
+`onClick`, `subMenu`, `isSeparator`, `disabled`, `title`. An `onClick` you supply wins
+over the built-in command an item would otherwise run, and returning `[]` opens no menu.
+
+Use `column.colId` to identify the column: `ctx.targetColId` carries the grid's
+internal instance id, not the public one.
+
+The getter runs only when the menu targets that column alone — with several columns
+selected, the built-in items act on the whole set, so no single column's configuration
+governs them.
+
+`bodyContextMenu` does the same for right-clicks in the grid body, and accepts `false`
+to let the browser's native menu through.
+
 ## Assembling the pieces manually
 
-`createGrid` uses the grid's built-in menus. To contribute your own menu items, build
-the parts directly. An `IMenuAdapter` receives the items the core built for a column
-and returns the items to show, plus a `cleanup` callback invoked when the menu closes
-— the seam the React and Angular bindings use to render framework-owned items. An
-optional third argument, `IBodyMenuAdapter`, does the same for the body context menu.
+The adapters exist for the one thing the getters above cannot do: mounting framework
+components inside menu items and unmounting them when the menu closes. That is how the
+React and Angular bindings work; a plain host rarely needs it.
 
 ```ts
 import {
@@ -42,13 +78,13 @@ import {
 } from "@agility-workbench/grid";
 
 const menus: IMenuAdapter = {
-  resolveMenuItems: (context, defaults) => ({
-    items: [
-      ...defaults,
-      { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) },
-    ],
-    cleanup: () => undefined,
-  }),
+  resolveMenuItems: (ctx, defaults) => {
+    const badge = mountBadge(ctx.targetColId);
+    return {
+      items: [...defaults, { label: "Sync status", left: badge.el }],
+      cleanup: () => badge.unmount(),
+    };
+  },
 };
 
 const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });

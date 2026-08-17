@@ -59,11 +59,58 @@ The container must have an explicit height. Beyond `columnDefs` and `rowData`, t
 argument accepts every [`GridOptions`](#entry-points) field, and everything after creation
 happens through the returned `api`.
 
-<details>
-<summary>Assembling the pieces manually (custom menu items, or owning the lifecycle)</summary>
+## Customizing menus
 
-`createGrid` uses the grid's built-in menus. To contribute your own menu items — the seam the
-React and Angular bindings use — build the parts yourself with `initDomRenderer`:
+Menu items are configuration, not plumbing — you do not need adapters or a manual lifecycle for
+them.
+
+**Column menu** — set `columnMenu` on a column, or on `defaultColDef` to cover every column. It
+receives the items the grid built and returns the items to show, so you can extend, reorder,
+filter, or replace them. Setting it to `false` removes the column's menu entirely: no ⋮ button and
+no header right-click.
+
+```ts
+createGrid(host, {
+  columnDefs: [
+    {
+      key: "price",
+      label: "Price",
+      columnMenu: ({ column, items }) => [
+        ...items,
+        { isSeparator: true },
+        { label: "Audit", left: "my-icon-class", onClick: () => audit(column.colId) },
+      ],
+    },
+    { key: "actions", label: "", columnMenu: false },
+  ],
+  // Every other column gets this one:
+  defaultColDef: { columnMenu: ({ items }) => items.filter(i => i.command !== "column.hideMany") },
+});
+```
+
+Items are plain objects: `label`, `left` (an icon CSS class or an element), `right`, `onClick`,
+`subMenu`, `isSeparator`, `disabled`, `title`. An `onClick` you supply takes precedence over the
+built-in command an item would otherwise run, and returning an empty array opens no menu.
+
+The getter runs only when the menu targets that column alone. When several columns are selected
+the built-in items act on the whole set, so no single column's configuration governs them.
+
+**Body context menu** — `bodyContextMenu` does the same for right-clicks in the grid body, and
+takes `false` to let the browser's native menu through:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  bodyContextMenu: ({ ctx, items }) => [...items, { label: "Copy report link", onClick: () => share(ctx) }],
+});
+```
+
+<details>
+<summary>Assembling the pieces manually (framework-rendered menu items, or owning the lifecycle)</summary>
+
+The adapters below exist for one thing the getters above cannot do: mounting framework components
+inside menu items and unmounting them when the menu closes (`cleanup`). That is how the React and
+Angular bindings work; a plain host rarely needs it.
 
 ```ts
 import {
@@ -71,10 +118,14 @@ import {
 } from "@agility-workbench/grid";
 
 const menus: IMenuAdapter = {
-  resolveMenuItems: (context, defaults) => ({
-    items: [...defaults, { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) }],
-    cleanup: () => undefined,
-  }),
+  resolveMenuItems: (ctx, defaults) => {
+    // An item whose icon is a live component: mount it now, unmount it in cleanup.
+    const badge = mountBadge(ctx.targetColId);
+    return {
+      items: [...defaults, { label: "Sync status", left: badge.el }],
+      cleanup: () => badge.unmount(),
+    };
+  },
 };
 
 const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });

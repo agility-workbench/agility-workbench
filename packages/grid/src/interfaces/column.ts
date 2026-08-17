@@ -7,6 +7,22 @@ import { CellEditor } from "../renderer/editing/cellEditor";
 import { ComparatorFn, Filter, FilterParams } from "./filter";
 import type { SortDir } from "./sort";
 import type { SortingOrder, SortIconVisibility, TooltipColumnOptions, ActionFrameOptions } from "./gridOptions";
+import type { MenuItem } from "./menuItem";
+import type { ColumnMenuContext } from "../menu/context";
+import type { Column } from "../column/column";
+
+/**
+ * Resolves the items shown in a single column's menu. Mirrors `BodyContextMenuGetter`, which does
+ * the same for the body context menu.
+ *
+ * - `items` — what the grid built for this column; return the items to show.
+ * - `column` — the resolved column. Prefer `column.colId` for identifying it: `ctx.targetColId`
+ *   carries the grid's internal instance id, not the public `ColDef.colId`.
+ * - `ctx` — how and where the menu was opened.
+ */
+export type ColumnMenuItemsGetter = (
+  params: { ctx: ColumnMenuContext; column: Column; items: MenuItem[] },
+) => MenuItem[];
 
 export enum ColumnType {
   STRING = "string",
@@ -241,15 +257,36 @@ export interface ColDef {
    */
   suppressColumnPanel?: boolean;
   /**
+   * Column-menu content, or `false` to remove the menu entirely.
+   *
+   * As a function, it is called each time this column's menu opens and returns the items to
+   * show — receiving the grid's built-in items so they can be extended, reordered, filtered, or
+   * discarded. Items are plain {@link MenuItem} objects: `label`, `left` (an icon CSS class or an
+   * element), and `onClick` cover most cases, and `onClick` takes precedence over the built-in
+   * command an item would otherwise run. Returning an empty array opens no menu.
+   *
+   * It runs only when the menu targets this column alone. When several columns are selected the
+   * built-in items act on the whole set, so no single column's configuration governs them and the
+   * defaults are used unchanged.
+   *
+   * Set it on `defaultColDef` to customize every column's menu from one place.
+   *
+   * `false` is a hard veto: it hides the ⋮ button *and* disables the header context menu,
+   * overriding `showColumnMenu` and `columnContextMenu`. Use those two instead when you want only
+   * one of the entry points (button without right-click, or the reverse).
+   */
+  columnMenu?: false | ColumnMenuItemsGetter;
+  /**
    * When true (default), the column header shows its menu (⋮) button, which opens the column menu.
    * When false, the button is hidden; the column menu can still be reached via right-click unless
-   * `columnContextMenu` is also false.
+   * `columnContextMenu` is also false. Ignored when `columnMenu` is `false`.
    */
   showColumnMenu?: boolean;
   /**
    * When true (default), right-clicking this column's header opens the column context menu. When
    * false, the header context menu is disabled for this column and the browser's native menu
-   * appears instead. The menu (⋮) button is unaffected (see `showColumnMenu`).
+   * appears instead. The menu (⋮) button is unaffected (see `showColumnMenu`). Ignored when
+   * `columnMenu` is `false`.
    */
   columnContextMenu?: boolean;
   columnGroupShow?: "open" | "closed";

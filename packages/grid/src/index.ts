@@ -156,7 +156,7 @@ export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
 export type { InjectGridStylesOptions } from "./theme/inject";
 
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
-export type { ColDef, DefaultColDef } from "./interfaces/column";
+export type { ColDef, ColumnMenuItemsGetter, DefaultColDef } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type { AggregateModel, AggregateScope } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";

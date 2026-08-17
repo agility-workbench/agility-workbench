@@ -24,37 +24,38 @@ api.destroy();
 The host element must have an explicit height. The renderer supplies its base
 stylesheet automatically unless `suppressStyleInjection` is enabled.
 
-`createGrid` uses the grid's built-in column and body menus. To add or replace menu
-items — the seam the React and Angular bindings use to render framework-owned items —
-assemble the parts yourself and pass an `IMenuAdapter` (and optionally an
-`IBodyMenuAdapter`) to `initDomRenderer`:
+## Menu items
+
+Column menu items are per-column configuration — no adapter needed. `columnMenu`
+receives the grid's own items and returns what to show; `false` removes the menu
+entirely (no ⋮ button, no header right-click). Put it on `defaultColDef` to cover every
+column.
 
 ```ts
-import {
-  CanvasMeasurer,
-  GridCore,
-  initDomRenderer,
-  type IMenuAdapter,
-} from "@agility-workbench/grid";
-
-const menus: IMenuAdapter = {
-  resolveMenuItems: (context, defaults) => ({
-    items: [
-      ...defaults,
-      { id: "audit", label: "Audit column", onClick: () => audit(context.targetColId) },
-    ],
-    cleanup: () => undefined,
-  }),
-};
-
-const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
-const { renderer, api } = initDomRenderer(core, menus);
-
-renderer.attach(document.querySelector("#grid")!);
-core.dispatch({ type: "init" });
+const api = createGrid(document.querySelector("#grid")!, {
+  columnDefs: [
+    {
+      key: "amount",
+      label: "Amount",
+      columnMenu: ({ column, items }) => [
+        ...items,
+        { isSeparator: true },
+        { label: "Audit", left: "my-icon-class", onClick: () => audit(column.colId) },
+      ],
+    },
+    { key: "actions", label: "", columnMenu: false },
+  ],
+  bodyContextMenu: ({ items }) => [...items, { label: "Copy link", onClick: share }],
+});
 ```
 
-Both adapters are optional. Note that this path owns its own teardown —
+Identify the column with `column.colId` — `ctx.targetColId` is the grid's internal
+instance id. The getter runs only for single-column menus; with several columns
+selected the built-in items act on the whole set.
+
+The `IMenuAdapter` / `IBodyMenuAdapter` seam remains for the one case these getters
+cannot cover: mounting framework components into items and unmounting them on close.
+That path uses `initDomRenderer` directly and owns its own teardown —
 `renderer.detach()`, `renderer.destroy()`, `core.destroy()` — because `api.destroy()`
 performs full teardown only for a grid created by `createGrid`.
 

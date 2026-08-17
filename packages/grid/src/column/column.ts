@@ -7,7 +7,7 @@ import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameCompone
 import type { TooltipColumnOptions, ActionFrameOptions, RowPresentation } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
-import { CellClass, CellClassParams, CellStyle, ColDef, ColumnType } from "../interfaces/column";
+import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
@@ -85,6 +85,8 @@ export class Column {
   suppressColumnPanel: boolean = false;
   showColumnMenu: boolean;
   columnContextMenu: boolean;
+  /** `false` vetoes the whole column menu; a function customizes its items. See {@link ColDef.columnMenu}. */
+  columnMenu?: false | ColumnMenuItemsGetter;
   centralPosition?: number;
   columnGroupShow: "always" | "open" | "closed";
   openByDefault: boolean;
@@ -202,6 +204,11 @@ export class Column {
     this.suppressColumnPanel = isTrue(col.suppressColumnPanel);
     this.showColumnMenu = !isFalse(col.showColumnMenu);
     this.columnContextMenu = !isFalse(col.columnContextMenu);
+    // Only `false` and a function are meaningful; anything else leaves the column at its default
+    // (menu shown, built-in items) rather than silently vetoing it.
+    this.columnMenu = isFalse(col.columnMenu) ? false
+      : typeof col.columnMenu === "function" ? col.columnMenu
+        : undefined;
     this.columnGroupShow = col.columnGroupShow === "open" ? "open" : col.columnGroupShow === "closed" ? "closed" : "always";
     this.openByDefault = isTrue(col.openByDefault);
     this.centralPosition = undefined;
@@ -285,6 +292,20 @@ export class Column {
     this.hideable = this.children.every(c => c.hideable);
     this.showColumnMenu = this.children.every(c => c.showColumnMenu);
     this.columnContextMenu = this.children.every(c => c.columnContextMenu);
+    // A group header's menu disappears only when every column under it vetoed one. Item getters
+    // are deliberately not aggregated: they are written against one column's menu, and a group
+    // header's menu is not that column's.
+    if (this.children.every(c => c.columnMenu === false)) this.columnMenu = false;
+  }
+
+  /** Whether the header should render the ⋮ button. `columnMenu: false` vetoes `showColumnMenu`. */
+  get menuButtonEnabled(): boolean {
+    return this.columnMenu !== false && this.showColumnMenu;
+  }
+
+  /** Whether right-clicking the header opens the grid's menu. `columnMenu: false` vetoes `columnContextMenu`. */
+  get headerContextMenuEnabled(): boolean {
+    return this.columnMenu !== false && this.columnContextMenu;
   }
 
   getComparator(): ComparatorFn | null {
@@ -375,6 +396,7 @@ export class Column {
     dup.editable = this.editable;
     dup.showColumnMenu = this.showColumnMenu;
     dup.columnContextMenu = this.columnContextMenu;
+    dup.columnMenu = this.columnMenu;
     dup.collator = this.collator;
     dup.comparator = this.comparator;
     dup.userComparator = this.userComparator;
