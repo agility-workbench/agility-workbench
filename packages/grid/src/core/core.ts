@@ -280,6 +280,7 @@ export class GridCore implements IGridCore {
       columnSelection: options.columnSelection ?? true,
       showColumnButtonsOnHover: isTrue(options.showColumnButtonsOnHover),
       bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
+      multiColumnMenu: options.multiColumnMenu, // undefined (built-ins) | false | getter
 
       selectAllRowsOnHeaderClick: isTrue(options.selectAllRowsOnHeaderClick),
       selectAllScope: options.selectAllScope ?? "filtered",

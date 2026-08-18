@@ -403,6 +403,25 @@ export class MenuRenderer {
         container.appendChild(hr);
         continue;
       }
+      if (isTrue(item.isLabel)) {
+        // Static caption, not a command. Deliberately not a <button> and not role="menuitem": it
+        // must stay out of the arrow-key ring, and announcing it as a (disabled) action would be a
+        // lie. role="presentation" strips the div's implicit semantics while leaving its text in
+        // the accessibility tree.
+        const caption = document.createElement("div");
+        caption.className = "pte-menu-item pte-menu-item-label";
+        caption.setAttribute("role", "presentation");
+        caption.dataset.itemLabelId = item.id;
+        const captionText = document.createElement("span");
+        captionText.className = "pte-menu-item-text";
+        captionText.textContent = item.label || "";
+        caption.appendChild(captionText);
+        if (item.title) caption.title = item.title;
+        this.appendSlot(caption, item.left, "left");
+        this.appendSlot(caption, item.right, "right");
+        container.appendChild(caption);
+        continue;
+      }
       const el = document.createElement("button");
       el.type = "button";
       el.className = "pte-menu-item";
@@ -431,23 +450,25 @@ export class MenuRenderer {
         el.setAttribute("aria-expanded", "false");
         item.right = "icon-arrow-right";
       }
-      if (item.left) {
-        const left = document.createElement("span");
-        left.className = "pte-menu-item-icon pte-menu-item-icon-left";
-        if (typeof item.left === "string") left.classList.add(item.left);
-        else left.appendChild(item.left);
-        el.prepend(left);
-      }
-      if (item.right) {
-        const right = document.createElement("span");
-        right.className = "pte-menu-item-icon pte-menu-item-icon-right";
-        if (typeof item.right === "string") right.classList.add(item.right);
-        else right.appendChild(item.right);
-        el.appendChild(right);
-      }
+      this.appendSlot(el, item.left, "left");
+      this.appendSlot(el, item.right, "right");
       el.setAttribute("data-item-id", item.id);
       container.appendChild(el);
     }
+  }
+
+  /**
+   * Render a menu item's icon slot. A string is applied as a CSS class on the icon span; an element
+   * is adopted as-is. The left slot leads the label, the right slot trails it.
+   */
+  private appendSlot(el: HTMLElement, slot: string | HTMLElement | undefined, side: "left" | "right") {
+    if (!slot) return;
+    const icon = document.createElement("span");
+    icon.className = `pte-menu-item-icon pte-menu-item-icon-${side}`;
+    if (typeof slot === "string") icon.classList.add(slot);
+    else icon.appendChild(slot);
+    if (side === "left") el.prepend(icon);
+    else el.appendChild(icon);
   }
 
   /** The focusable (enabled) items of a level, in visual order. */

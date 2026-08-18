@@ -4,6 +4,8 @@ import { GridIconMap } from "../theme/icons";
 import type { GridTheme } from "../theme/theme";
 import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
+import type { ColumnMenuContext } from "../menu/context";
+import type { Column } from "../column/column";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
@@ -169,6 +171,20 @@ export type GetRowPresentation = (
  * the native browser menu through instead, set `bodyContextMenu` to `false`.
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
+
+/**
+ * Customizes the column menu opened for *several* selected columns at once, where the built-in
+ * items act on the whole set and no single column's `ColDef.columnMenu` governs it.
+ *
+ * - `items` — the built-in items for the set; return the items to show. Return `[]` for no menu.
+ * - `columns` — the columns the menu acts on, target first. Identify them by `column.colId`;
+ *   `ctx.colIds` carries internal instance ids. Selecting a column group expands it to its leaves,
+ *   so a group header's menu passes the group followed by its leaf columns — the same set the
+ *   built-in items operate on. Discriminate with `column.children.length`.
+ */
+export type MultiColumnMenuItemsGetter = (
+  params: { ctx: ColumnMenuContext; columns: Column[]; items: MenuItem[] },
+) => MenuItem[];
 
 /** Context used to decide or create a row inserted from a row-number context menu. */
 export interface RowInsertionMenuParams {
@@ -955,6 +971,24 @@ export interface GridOptions {
    *   (return `[]` to show nothing while still suppressing the native menu).
    */
   bodyContextMenu?: boolean | BodyContextMenuGetter;
+  /**
+   * Controls the column menu when it targets several selected columns at once, where the built-in
+   * items act on the whole set and no single column's `ColDef.columnMenu` applies:
+   * - omitted (default): the grid's built-in multi-column items.
+   * - a function: called with the built-in items and the columns they act on; return the items to
+   *   show, or `[]` for no menu. Framework menu adapters still run afterwards and may add items.
+   * - `false`: no multi-column menu, and no adapter runs either.
+   *
+   * Note what `false` cannot do, unlike `ColDef.columnMenu: false`. Whether a menu is
+   * multi-column is only known once it is being opened, after the grid has already claimed the
+   * gesture — so a right-click with several columns selected shows no menu at all rather than
+   * falling back to the browser's, and the ⋮ button stays visible but does nothing while a
+   * multi-selection is active. Suppress the entry points per column if that matters.
+   *
+   * Selecting a column group expands it to its leaves, so right-clicking a group header with more
+   * than one visible leaf opens a multi-column menu and reaches this option.
+   */
+  multiColumnMenu?: false | MultiColumnMenuItemsGetter;
   /**
    * When true, clicking the row-number column header toggles selection of all rows in the current
    * view (consistent with clicking any other header cell). Requires both the row-number column

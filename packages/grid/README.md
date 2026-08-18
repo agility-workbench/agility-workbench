@@ -89,11 +89,59 @@ createGrid(host, {
 ```
 
 Items are plain objects: `label`, `left` (an icon CSS class or an element), `right`, `onClick`,
-`subMenu`, `isSeparator`, `disabled`, `title`. An `onClick` you supply takes precedence over the
-built-in command an item would otherwise run, and returning an empty array opens no menu.
+`subMenu`, `isSeparator`, `isLabel`, `disabled`, `title`. An `onClick` you supply takes precedence
+over the built-in command an item would otherwise run, and returning an empty array opens no menu.
+
+`isLabel` marks an item as static text rather than a command — a caption for the items around it.
+It can appear anywhere in a menu (or a `subMenu`), as often as you like. It is not focusable and
+not clickable, so keyboard navigation skips it and `onClick`/`command` are ignored; only `label`,
+`left`, `right`, and `id` mean anything:
+
+```ts
+columnMenu: ({ items }) => [
+  ...items,
+  { isSeparator: true },
+  { isLabel: true, label: "Danger zone" },
+  { label: "Reset column", onClick: resetColumn },
+]
+```
 
 The getter runs only when the menu targets that column alone. When several columns are selected
-the built-in items act on the whole set, so no single column's configuration governs them.
+the built-in items act on the whole set, so no single column's configuration governs them — the
+grid-level `multiColumnMenu` handles that case instead:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  multiColumnMenu: ({ columns, items }) => [
+    ...items,
+    { label: `Export ${columns.length} columns`, onClick: () => exportCols(columns.map(c => c.colId)) },
+  ],
+});
+```
+
+Return `[]` for no menu.
+
+A multi-column menu opens with a caption naming its scope — the column names while the list is
+short, a count beyond that — so it can never be mistaken for a menu about the header it is anchored
+to. The caption is an `isLabel` item with the id `selectionScope`, so a getter can relabel or drop
+it like any other item:
+
+```ts
+multiColumnMenu: ({ columns, items }) =>
+  items.map(i => (i.id === "selectionScope" ? { ...i, label: `Editing ${columns.length} fields` } : i)),
+```
+
+**Which menu you get.** Both entry points — the ⋮ button and a header right-click — settle on the
+same scope: the menu acts on the current column selection when the column you clicked is part of
+it, and on that column alone otherwise. Opening a menu from outside your selection therefore
+replaces the selection rather than silently acting on columns you did not click. A group header's
+menu always covers its leaves, by either gesture.
+
+`multiColumnMenu: false` disables multi-column menus outright. Note what `false` cannot do here,
+unlike `columnMenu: false`: whether a menu is multi-column is only known once it is opening, after
+the grid has claimed the gesture — so opening one from inside a multi-selection shows no menu at
+all rather than the browser's.
 
 **Body context menu** — `bodyContextMenu` does the same for right-clicks in the grid body, and
 takes `false` to let the browser's native menu through:

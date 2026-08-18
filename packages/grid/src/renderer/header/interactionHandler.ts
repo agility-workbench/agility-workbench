@@ -1,4 +1,5 @@
 import { GridCore } from "../../core/core";
+import type { Column } from "../../column/column";
 
 type HeaderInteractionHandlerParams = {
   core: GridCore;
@@ -128,13 +129,41 @@ export class HeaderInteractionHandler {
     e.preventDefault();
     if (!header) return;
     if (!col || col.isRowNumberColumn()) return;
+    this.reconcileColumnSelectionForMenu(col);
+    this.params.openColumnMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
+  }
+
+  /**
+   * Settle what a column menu is about to act on, before it opens: the menu acts on the current
+   * column selection when the target is already part of it, and on the target alone otherwise —
+   * replacing the selection so the highlight always matches the menu's scope.
+   *
+   * Both entry points run this so the ⋮ button and a header right-click open the *same menu* for
+   * the same state; without it the button opens a menu about columns the user never clicked, with
+   * nothing on screen tying the two together.
+   *
+   * `onlyIfScopeUnsettled` is what keeps the button from also inheriting right-click's side
+   * effects. A header button is a control, not a choice of cell (see `moveCursorToClickedHeader`),
+   * and `SelectionModel.toggleColumn` clears the cell range and row selection on its way through —
+   * so an unconditional reconcile would make opening a menu discard the user's cell selection.
+   *
+   * Two situations genuinely need settling, and only those touch state:
+   *   - an existing multi-column selection, which the menu would otherwise silently adopt;
+   *   - a group header, whose menu is inherently about its leaves — reconciling is what expands
+   *     the group into them, and without it the button would offer "Hide Column" where a
+   *     right-click on the same header offers "Hide Columns".
+   * Anything else already collapses to `[target]` in ColumnMenuOpener, so both gestures open the
+   * same menu without either one disturbing the user's selection.
+   */
+  private reconcileColumnSelectionForMenu(col: Column, opts: { onlyIfScopeUnsettled?: boolean } = {}) {
     const selectedColumnIDs = this.params.selectedColumnIDs();
+    if (opts.onlyIfScopeUnsettled && selectedColumnIDs.size <= 1 && col.children.length === 0) return;
+
     const leaves = col.getLeaves();
     if (leaves.filter(l => selectedColumnIDs.has(l.instanceID)).length != leaves.length) {
       selectedColumnIDs.clear();
       this.params.toggleColumnSelection(col.instanceID, "replace");
     }
-    this.params.openColumnMenu("headerContextMenu", header.id, { left: e.clientX, top: e.clientY });
   }
 
   /**
@@ -227,6 +256,12 @@ export class HeaderInteractionHandler {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
       this.params.core.dispatch({ type: "headerAction", action: (isFilter ? "filter" : "menu") + "Click", colId: header.id });
       if (!isFilter) {
+        // Same reconciliation as a header right-click: the button must not open a menu about
+        // columns the user did not click while their selection sits elsewhere.
+        const col = this.params.core.getColumnModel().getById(header.id);
+        if (col && !col.isRowNumberColumn()) {
+          this.reconcileColumnSelectionForMenu(col, { onlyIfScopeUnsettled: true });
+        }
         this.params.openColumnMenu("columnMenuButton", header.id, { anchorEl: btn });
       } else {
         this.params.openColumnFilter(header.id, btn);

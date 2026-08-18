@@ -59,6 +59,17 @@ export class ColumnMenuService {
     const multi = colIDs.length > 1;
     const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
 
+    // A multi-column menu acts on the selection rather than on the header that opened it, and
+    // pluralized labels alone are a weak signal for that. Name the scope up front so the menu can
+    // never be read as being about one column. Single-column menus need no caption — the header
+    // the menu is anchored to already says which column it is about.
+    if (multi) {
+      items.push(
+        { id: "selectionScope", isLabel: true, label: this.describeScope(colIDs) },
+        { isSeparator: true },
+      );
+    }
+
     if (cap.sortable) {
       if (cap.sortDir === "asc") {
         items.push({ id: "sortDesc", label: "Sort Descending", left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
@@ -217,6 +228,24 @@ export class ColumnMenuService {
         console.error(`Command ${item.command} is unhandled...`);
         return;
     }
+  }
+
+  /**
+   * Caption for a multi-column menu: name the columns while the list is short enough to read, and
+   * fall back to a count once it is not. Group headers contribute their own label, so a menu opened
+   * from one reads as the group plus its leaves — which is what its items act on.
+   */
+  private describeScope(colIDs: string[]): string {
+    const NAMED_LIMIT = 3;
+    const columnModel = this.core.getColumnModel();
+    const labels = colIDs
+      .map(id => columnModel.getById(id)?.label?.trim())
+      .filter((label): label is string => !!label);
+
+    if (labels.length !== colIDs.length || labels.length > NAMED_LIMIT) {
+      return `${colIDs.length} columns`;
+    }
+    return labels.join(", ");
   }
 
   private summarize(ctx: ColumnMenuContext): CapSummary {

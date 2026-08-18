@@ -155,6 +155,7 @@ export type { PteVarName } from "./theme/cssVars.generated";
 export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
 export type { InjectGridStylesOptions } from "./theme/inject";
 
+export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
 export type { ColDef, ColumnMenuItemsGetter, DefaultColDef } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";

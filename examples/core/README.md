@@ -50,8 +50,19 @@ const api = createGrid(document.querySelector("#grid")!, {
 ```
 
 Identify the column with `column.colId` — `ctx.targetColId` is the grid's internal
-instance id. The getter runs only for single-column menus; with several columns
-selected the built-in items act on the whole set.
+instance id. The getter runs only for single-column menus; with several columns selected
+the grid-level `multiColumnMenu` governs the menu instead:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  // `columns` is what the menu acts on, target first. `false` disables multi-column menus.
+  multiColumnMenu: ({ columns, items }) => [
+    ...items,
+    { label: `Export ${columns.length} columns`, onClick: () => exportCols(columns) },
+  ],
+});
+```
 
 The `IMenuAdapter` / `IBodyMenuAdapter` seam remains for the one case these getters
 cannot cover: mounting framework components into items and unmounting them on close.
