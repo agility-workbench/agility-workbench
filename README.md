@@ -189,13 +189,18 @@ Install dependencies from the repository root:
 npm install
 ```
 
-Start either playground to explore features and develop against package source:
+Start any playground to explore features and develop against package source:
 
 ```bash
 npm run dev          # React playground at http://localhost:5176
 npm run dev:angular  # Angular playground at http://localhost:5180
+npm run dev:vanilla  # Framework-free playground at http://localhost:5182
 npm run docs:dev     # Documentation site at http://localhost:3000
 ```
+
+The vanilla playground mirrors the React playground's pages using only
+`@agility-workbench/grid` — `createGrid` plus plain DOM — so every feature can be
+exercised without a framework binding in the loop.
 
 Useful root commands:
 
@@ -228,7 +233,8 @@ plugin; the root `npm test` command runs both configurations for you.
 ├── apps/
 │   ├── docs/                   Deployable documentation and examples site
 │   ├── react-playground/       React feature gallery
-│   └── angular-playground/     Angular feature gallery
+│   ├── angular-playground/     Angular feature gallery
+│   └── vanilla-playground/     Framework-free feature gallery (core only)
 ├── packages/
 │   ├── grid/                   Framework-neutral engine and DOM renderer
 │   ├── react-grid/             React component and adapters
