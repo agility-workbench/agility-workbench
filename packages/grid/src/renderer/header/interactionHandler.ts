@@ -1,5 +1,6 @@
 import { GridCore } from "../../core/core";
 import type { Column } from "../../column/column";
+import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
 
 type HeaderInteractionHandlerParams = {
   core: GridCore;
@@ -36,7 +37,8 @@ export class HeaderInteractionHandler {
     };
 
     // Alt+Down opens the column menu, Shift+Alt+Down the filter — checked before the bare arrows.
-    if (e.altKey && e.key === "ArrowDown") {
+    // Mod is not read here, so Ctrl+Alt+Down is not this chord (and is AltGr on Windows layouts).
+    if (matchesChord(e, "alt+arrowdown") || matchesChord(e, "shift+alt+arrowdown")) {
       if (!col || col.isRowNumberColumn()) return true;
       const headerEl = document.getElementById(col.instanceID) ?? undefined;
       if (e.shiftKey) {
@@ -54,19 +56,26 @@ export class HeaderInteractionHandler {
       return true;
     }
 
-    switch (e.key) {
-      case "ArrowLeft": return nav("left");
-      case "ArrowRight": return nav("right");
-      case "ArrowDown": return nav("down");
-      // Already on row 0. Consumed anyway: letting it through would move the body cursor behind a
-      // header the user is still looking at — the same leak that bit the menus in 6.5.
-      case "ArrowUp": return true;
-      case "Home": return nav("home");
-      case "End": return nav("end");
-      default: break;
-    }
+    // Cursor movement ignores mod and shift today: every combination moves one header cell. Spelled
+    // out as "any" rather than left implicit — whether Ctrl+Arrow should jump to the first/last
+    // column is a real question, but changing it is not this refactor's business.
+    const anyModifiers = { mod: "any", shift: "any" } as const;
+    if (matchesChord(e, { key: "arrowleft", ...anyModifiers })) return nav("left");
+    if (matchesChord(e, { key: "arrowright", ...anyModifiers })) return nav("right");
+    if (matchesChord(e, { key: "arrowdown", ...anyModifiers })) return nav("down");
+    if (matchesChord(e, { key: "home", ...anyModifiers })) return nav("home");
+    if (matchesChord(e, { key: "end", ...anyModifiers })) return nav("end");
+    // Already on row 0. Consumed anyway: letting it through would move the body cursor behind a
+    // header the user is still looking at — the same leak that bit the menus in 6.5.
+    if (matchesChord(e, { key: "arrowup", ...anyModifiers })) return true;
 
-    const isActivate = e.key === "Enter" || e.key === " " || e.code === "Space";
+    // Activation. Four distinct chords, each with its own meaning below; mod+shift+space is also
+    // the tree-data navigation switch, which loses to this handler while the cursor is in the
+    // header — see docs/planned-work.md, "Keyboard shortcut resolution by specificity".
+    const isActivate = matchesAnyChord(e, [
+      "enter", "shift+enter", "mod+enter", "mod+shift+enter",
+      "space", "shift+space", "mod+space", "mod+shift+space",
+    ]);
     if (!isActivate) {
       // Anything else with no header meaning is left alone, so page-level and app shortcuts still
       // work while the cursor sits in the header.

@@ -58,6 +58,7 @@ import { HeaderRenderer } from "./header/renderer";
 import { IconRenderer } from "./iconRenderer";
 import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
+import { matchesChord } from "./interaction/keyChord";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
@@ -1078,7 +1079,7 @@ export class GridRenderer {
   // Ctrl/Cmd+F is claimed here (preventing the browser's native find) to summon the quick filter,
   // then everything else falls through to selection/keyboard navigation.
   _onKeyDown(e: KeyboardEvent) {
-    if (this._quickFilterWidget && (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
+    if (this._quickFilterWidget && matchesChord(e, "mod+f")) {
       e.preventDefault();
       this._quickFilterWidget.show();
       return;
