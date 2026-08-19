@@ -110,6 +110,7 @@ export type {
   GroupDisplayType,
   GroupSortMode,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
   TreeDataOptions,
   TreeDataPathOptions,
   TreeDataParentOptions,

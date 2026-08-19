@@ -92,7 +92,8 @@ which run before the adapter.
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |
-| `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation |
+| `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
+| `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |
 
 Filter methods address columns by the public `ColDef.colId`. Grouping columns
 and explicit sort models use typed `dispatch()` actions.

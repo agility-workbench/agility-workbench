@@ -262,6 +262,17 @@ export interface TreeDataCommonOptions<Row = any> {
   enableKeyboardNavigationModeSwitch?: boolean;
 }
 
+/**
+ * The part of `treeData` that can change on a mounted grid, for
+ * {@link IGridAPI.setTreeDataKeyboardNavigationOptions}. Derived from the option itself so the two
+ * cannot drift; the rest of `treeData` (the relationship mode and its accessors) determines the row
+ * shape and is therefore fixed at creation.
+ */
+export type TreeDataKeyboardNavigationOptions = Pick<
+  TreeDataCommonOptions,
+  "keyboardNavigationMode" | "enableKeyboardNavigationModeSwitch"
+>;
+
 /** A flat row set where each row supplies its complete root-to-node path. */
 export interface TreeDataPathOptions<Row = any> extends TreeDataCommonOptions<Row> {
   mode: "path";

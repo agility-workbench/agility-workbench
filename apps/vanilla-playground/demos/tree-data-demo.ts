@@ -1,4 +1,11 @@
-import { createGrid, type IGridAPI, ColumnType, type ColDef, type TreeDataOptions } from "@grid";
+import {
+  createGrid,
+  type IGridAPI,
+  ColumnType,
+  type ColDef,
+  type TreeDataKeyboardNavigationOptions,
+  type TreeDataOptions,
+} from "@grid";
 
 import { btn, checkbox, field, h } from "../dom";
 
@@ -159,13 +166,15 @@ const COLUMNS: ColDef[] = [
   },
 ];
 
-function treeDataFor(mode: RelationshipMode): { rows: OrgRow[]; treeData: TreeDataOptions<OrgRow> } {
+function treeDataFor(
+  mode: RelationshipMode,
+  keyboard: TreeDataKeyboardNavigationOptions,
+): { rows: OrgRow[]; treeData: TreeDataOptions<OrgRow> } {
   const columnDef = { label: "Organization", width: 280 };
   const shared = {
     getLabel: (row: OrgRow) => row.name,
     columnDef,
-    keyboardNavigationMode: "grid" as const,
-    enableKeyboardNavigationModeSwitch: true,
+    ...keyboard,
   };
   if (mode === "parent") {
     return {
@@ -188,11 +197,35 @@ function treeDataFor(mode: RelationshipMode): { rows: OrgRow[]; treeData: TreeDa
 export function mountTreeDataDemo(container: HTMLElement): () => void {
   let mode: RelationshipMode = "path";
   let sticky = true;
+  // Seeded into `treeData` at creation, then changed live through the API. Kept here so a
+  // relationship-mode rebuild carries the current keyboard configuration into the new grid.
+  const keyboard: TreeDataKeyboardNavigationOptions = {
+    keyboardNavigationMode: "grid",
+    enableKeyboardNavigationModeSwitch: true,
+  };
   let api: IGridAPI;
+  let unsubscribeNavMode: (() => void) | null = null;
 
   const host = h("div", { class: "tree-data-demo-grid" });
   const example = h("code");
   const summary = h("span", { class: "tree-data-demo-summary" });
+  const navStatus = h("span", {
+    class: "tree-data-demo-summary",
+    style: { fontFamily: "monospace", fontSize: "12px" },
+  });
+
+  const hierarchyToggle = checkbox(keyboard.keyboardNavigationMode === "hierarchy", value => {
+    // Only the mode is passed: the shortcut flag below is left exactly as it is.
+    api.setTreeDataKeyboardNavigationOptions({
+      keyboardNavigationMode: value ? "hierarchy" : "grid",
+    });
+  });
+
+  const switchToggle = checkbox(keyboard.enableKeyboardNavigationModeSwitch === true, value => {
+    api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: value });
+    keyboard.enableKeyboardNavigationModeSwitch = value;
+    renderNavStatus();
+  });
 
   const modeButtons = (Object.keys(MODE_COPY) as RelationshipMode[]).map(value => btn(
     MODE_COPY[value].label,
@@ -225,6 +258,19 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
         })),
       ),
     ),
+    // Keyboard navigation is the one part of `treeData` that can be reconfigured on a mounted grid,
+    // via api.setTreeDataKeyboardNavigationOptions — everything else about the relationship decides
+    // the row shape, which is why switching mode above rebuilds instead.
+    h("div", { class: "tree-data-demo-controls" },
+      field("Hierarchy navigation (Ctrl/Cmd+Arrow)", hierarchyToggle),
+      field("Ctrl/Cmd+Shift+Space switches modes", switchToggle),
+      navStatus,
+      h("span", {
+        class: "tree-data-demo-summary",
+        text: "The shortcut needs the cursor in the body — in the header Ctrl/Cmd+Shift+Space"
+          + " already means \"add this column to the selection\".",
+      }),
+    ),
     host,
   ));
 
@@ -235,7 +281,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
    * grid — the same thing the React demo's `key={mode}` does.
    */
   function build(): void {
-    const { rows, treeData } = treeDataFor(mode);
+    const { rows, treeData } = treeDataFor(mode, keyboard);
     api = createGrid(host, {
       rowData: rows,
       columnDefs: COLUMNS,
@@ -251,15 +297,33 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
       toolbar: { sorting: true, export: true },
       columnPanel: { trigger: "toolbar" },
     });
+    // The mode also changes from the grid itself (the Ctrl/Cmd+Shift+Space shortcut), so the
+    // checkbox follows the event rather than assuming it is the only thing that can move it.
+    // `source` says who did it: "options" for the API call, "shortcut" for the keystroke.
+    unsubscribeNavMode = api.on("keyboardNavigationModeChanged", ({ mode: next, source }) => {
+      keyboard.keyboardNavigationMode = next;
+      hierarchyToggle.checked = next === "hierarchy";
+      renderNavStatus(source);
+    });
     renderCopy();
+    renderNavStatus();
   }
 
   function setMode(next: RelationshipMode): void {
     if (next === mode) return;
     mode = next;
+    unsubscribeNavMode?.();
+    unsubscribeNavMode = null;
     api.destroy();
     host.replaceChildren();
     build();
+  }
+
+  function renderNavStatus(source?: string): void {
+    const shortcut = keyboard.enableKeyboardNavigationModeSwitch ? "enabled" : "disabled";
+    navStatus.textContent = `mode: ${keyboard.keyboardNavigationMode}`
+      + `  •  shortcut: ${shortcut}`
+      + (source ? `  •  last change from: ${source}` : "");
   }
 
   function renderCopy(): void {
@@ -273,5 +337,8 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
     });
   }
 
-  return () => api.destroy();
+  return () => {
+    unsubscribeNavMode?.();
+    api.destroy();
+  };
 }

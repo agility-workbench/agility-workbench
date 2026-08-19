@@ -13,6 +13,7 @@ import {
   RowPinnedPosition,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
   UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
@@ -279,6 +280,23 @@ export interface IGridAPI {
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;
   /** Switch tree-data keyboard navigation immediately. No-op for "hierarchy" on non-tree grids. */
   setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void;
+
+  /**
+   * Reconfigure the two `treeData` fields that are not structural: the navigation mode and whether
+   * the fixed Ctrl/Cmd+Shift+Space switch is enabled. Presence decides what changes, as with
+   * `updateGridOptions`, so either can be set alone:
+   *
+   * ```ts
+   * api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: true });
+   * ```
+   *
+   * This is the configuration-driven counterpart of `setKeyboardNavigationMode`: a mode change made
+   * here reports `source: "options"` on `keyboardNavigationModeChanged`, whereas
+   * `setKeyboardNavigationMode` reports `source: "api"` for an imperative switch. The switch takes
+   * effect on the next keystroke — no rebuild. The rest of `treeData` decides the row shape and
+   * cannot change on a mounted grid; the whole call is a no-op on a grid without `treeData`.
+   */
+  setTreeDataKeyboardNavigationOptions(options: TreeDataKeyboardNavigationOptions): void;
 
   /** Expand or collapse every group/tree node in one pass — a single view rebuild and repaint,
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */

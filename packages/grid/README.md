@@ -456,6 +456,17 @@ the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block na
 When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime; applications can
 also call `api.getKeyboardNavigationMode()` and `api.setKeyboardNavigationMode(mode)`.
 
+Both fields are reconfigurable on a mounted grid — they are the only part of `treeData` that is,
+since the relationship mode and its accessors decide the row shape:
+
+```ts
+api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: true });
+```
+
+Only the fields you pass change. A mode set this way reports `source: "options"` on
+`keyboardNavigationModeChanged`, distinguishing configuration from the imperative
+`setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
+
 ### Planned keyboard-shortcut discovery
 
 A future grid-owned shortcut reference must show the shortcuts that are valid for the current

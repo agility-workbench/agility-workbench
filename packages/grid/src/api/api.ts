@@ -19,6 +19,7 @@ import {
   RUNTIME_OPTION_KEYS,
   RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
   UPDATABLE_OPTION_KEYS,
   UpdatableGridOptions,
 } from "../interfaces/gridOptions";
@@ -586,6 +587,21 @@ export class GridAPI implements IGridAPI {
 
   setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void {
     this.dispatch({ type: "keyboardNavigationModeSet", mode, source: "api" });
+  }
+
+  setTreeDataKeyboardNavigationOptions(options: TreeDataKeyboardNavigationOptions): void {
+    const has = (key: keyof TreeDataKeyboardNavigationOptions): boolean =>
+      Object.prototype.hasOwnProperty.call(options, key);
+    // The core setter takes the pair, so an unsupplied field has to be re-stated at its current
+    // value rather than left out — otherwise setting one would silently reset the other.
+    const current = this.core.getOptions().treeData;
+    const mode = has("keyboardNavigationMode")
+      ? options.keyboardNavigationMode ?? "grid"
+      : this.core.getKeyboardNavigationMode();
+    const enableModeSwitch = has("enableKeyboardNavigationModeSwitch")
+      ? options.enableKeyboardNavigationModeSwitch ?? false
+      : current?.enableKeyboardNavigationModeSwitch ?? false;
+    this.core.setTreeDataKeyboardNavigationOptions(mode, enableModeSwitch);
   }
 
   captureViewState(): GridViewState {
