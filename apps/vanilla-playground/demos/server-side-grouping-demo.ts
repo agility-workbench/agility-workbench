@@ -1,4 +1,5 @@
 import {
+  createGrid,
   AggregateType,
   ColumnType,
   type ColDef,
@@ -9,7 +10,6 @@ import {
 } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
-import { mountGrid, type MountedGrid } from "../demoGrid";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -138,7 +138,6 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
   let maxPageButtons = 7;
   let stickyGroups = true;
   let requestLog: string[] = [];
-  let grid: MountedGrid;
 
   const host = gridHost();
   const logLine = h("div", {
@@ -179,7 +178,7 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
       }), { style: { fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" } }),
       field("Pagination", checkbox(pagination, value => {
         pagination = value;
-        rebuild();
+        api.updateGridOptions({ pagination });
       }), { style: { fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" } }),
       field("Page selection", select(["select", "buttons"], pageSelection, value => {
         pageSelection = value as typeof pageSelection;
@@ -201,15 +200,15 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
       field("Max page buttons", maxButtonsSelect, { style: { fontSize: "12px" } }),
       field("Sticky group rows", checkbox(stickyGroups, value => {
         stickyGroups = value;
-        grid.renderer.setPinnedRowOptions({ groupRowsSticky: stickyGroups });
+        api.updateGridOptions({ groupRowsSticky: stickyGroups });
       }), { style: { fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" } }),
       btn("Mutate server + soft refresh", () => {
         mutateServer();
-        void grid.api.refreshServerSideData();
+        void api.refreshServerSideData();
       }),
       btn("Purge-refresh EMEA subtree", () => {
         mutateServer();
-        void grid.api.refreshServerSideData({
+        void api.refreshServerSideData({
           groupKeys: [{ key: "region", value: "EMEA" }],
           purge: true,
         });
@@ -219,39 +218,28 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
     host,
   ));
 
-  build();
+  const api = createGrid(host, {
+    columnDefs: COLUMNS,
+    rowIdKey: "id",
+    rowModelType: "serverSide",
+    serverSideDataSource: dataSource,
+    serverSideBlockSize: 100,
+    pagination,
+    paginationControls: paginationControls(),
+    groupRowsSticky: stickyGroups,
+    pageSize: 50,
+    getGroupChildCount: (row: any) => row.count,
+  });
+
+  api.dispatch({
+    type: "aggregateModelSet",
+    aggregateModels: [
+      { key: colInstance("units"), type: AggregateType.SUM },
+      { key: colInstance("revenue"), type: AggregateType.SUM },
+    ].filter(model => model.key),
+  });
+  applyGrouping();
   renderLog();
-
-  function build(): void {
-    grid = mountGrid(host, {
-      columnDefs: COLUMNS,
-      rowIdKey: "id",
-      rowModelType: "serverSide",
-      serverSideDataSource: dataSource,
-      serverSideBlockSize: 100,
-      pagination,
-      paginationControls: paginationControls(),
-      groupRowsSticky: stickyGroups,
-      pageSize: 50,
-      getGroupChildCount: (row: any) => row.count,
-    });
-
-    grid.api.dispatch({
-      type: "aggregateModelSet",
-      aggregateModels: [
-        { key: colInstance("units"), type: AggregateType.SUM },
-        { key: colInstance("revenue"), type: AggregateType.SUM },
-      ].filter(model => model.key),
-    });
-    applyGrouping();
-  }
-
-  /** Toggling pagination on a server-side model rebuilds the instance (as the React demo's key does). */
-  function rebuild(): void {
-    grid.destroy();
-    host.replaceChildren();
-    build();
-  }
 
   function paginationControls(): PaginationControlsOptions {
     return {
@@ -263,15 +251,15 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
   }
 
   function applyPaginationControls(): void {
-    grid.renderer.setPaginationControls(paginationControls());
+    api.updateGridOptions({ paginationControls: paginationControls() });
   }
 
   function applyGrouping(): void {
-    grid.api.dispatch({ type: "rowGroupSet", colIds: groupBy });
+    api.dispatch({ type: "rowGroupSet", colIds: groupBy });
   }
 
   function colInstance(colId: string): string {
-    return grid.api.getColumnModel().getByColId(colId)?.instanceID ?? "";
+    return api.getColumnModel().getByColId(colId)?.instanceID ?? "";
   }
 
   function mutateServer(): void {
@@ -285,5 +273,5 @@ export function mountServerSideGroupingDemo(container: HTMLElement): () => void 
     logLine.textContent = `requests: ${requestLog.join("  •  ") || "—"}`;
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

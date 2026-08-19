@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ColumnType,
   type ColDef,
   type TooltipComponentParams,
@@ -6,7 +7,6 @@ import {
 } from "@grid";
 
 import { bold, code, demoRoot, field, gridHost, h, note, select, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -165,7 +165,7 @@ export function mountTooltipDemo(container: HTMLElement): () => void {
           { value: "follow", label: "follow-mouse" },
         ],
         "anchored",
-        value => grid.renderer.setTooltipOptions({ mode: value as TooltipMode, showDelay: 250 }),
+        value => api.updateGridOptions({ tooltip: { mode: value as TooltipMode, showDelay: 250 } }),
       )),
       h("span", {
         style: { opacity: "0.6", fontSize: "13px" },
@@ -175,12 +175,12 @@ export function mountTooltipDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(500),
     columnDefs: COLUMNS,
     rowIdKey: "id",
     tooltip: { mode: "anchored", showDelay: 250 },
   });
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

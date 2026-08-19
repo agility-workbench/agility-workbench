@@ -1,4 +1,5 @@
 import {
+  createGrid,
   AggregateType,
   ColumnType,
   type ColDef,
@@ -9,7 +10,6 @@ import {
 } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -109,7 +109,7 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
         field("Display type", select(DISPLAY_TYPES, "singleColumn", value =>
           // groupDisplayType changes the synthesized grouping columns and whether group nodes render
           // as full-width rows; core reconciles it in place, no remount needed.
-          grid.core.setGroupDisplayType(value as GroupDisplayType))),
+          api.updateGridOptions({ groupDisplayType: value as GroupDisplayType }))),
         h("span", { text: "(updates live)", style: { fontSize: "11px", color: "#9ca3af" } }),
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
@@ -120,7 +120,7 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
         aggregate = value;
         applyAggregates();
       })),
-      field("Group rows selectable", checkbox(true, value => grid.core.setGroupRowsSelectable(value))),
+      field("Group rows selectable", checkbox(true, value => api.updateGridOptions({ groupRowsSelectable: value }))),
       field("Group sort mode", select(
         [
           { value: "local", label: "Local" },
@@ -128,7 +128,7 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
           { value: "global", label: "Global" },
         ],
         "local",
-        value => grid.core.setGroupSortMode(value as GroupSortMode),
+        value => api.updateGridOptions({ groupSortMode: value as GroupSortMode }),
       )),
       btn("Clear grouping", () => {
         groupBy = [];
@@ -148,13 +148,13 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
         { value: "toolbar", label: "Toolbar" },
       ],
       "rail",
-      value => grid.renderer.setColumnPanelOptions({ trigger: value as ColumnPanelTrigger }),
+      value => api.updateGridOptions({ columnPanel: { trigger: value as ColumnPanelTrigger } }),
     ))),
     // minWidth:0 keeps the grid from widening the page when the pinned auto-group column appears.
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(2000),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -169,18 +169,18 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
   applyGrouping();
 
   function applyGrouping(): void {
-    grid.api.dispatch({ type: "rowGroupSet", colIds: groupBy });
+    api.dispatch({ type: "rowGroupSet", colIds: groupBy });
   }
 
   function applyAggregates(): void {
     const aggregateModels = aggregate
       ? [
-        { key: colInstance(grid.api, "units"), type: AggregateType.SUM },
-        { key: colInstance(grid.api, "revenue"), type: AggregateType.SUM },
+        { key: colInstance(api, "units"), type: AggregateType.SUM },
+        { key: colInstance(api, "revenue"), type: AggregateType.SUM },
       ].filter(model => model.key)
       : [];
-    grid.api.dispatch({ type: "aggregateModelSet", aggregateModels });
+    api.dispatch({ type: "aggregateModelSet", aggregateModels });
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

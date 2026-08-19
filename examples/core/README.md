@@ -24,6 +24,25 @@ api.destroy();
 The host element must have an explicit height. The renderer supplies its base
 stylesheet automatically unless `suppressStyleInjection` is enabled.
 
+## Reconfigure a mounted grid
+
+Presentation and behavior options change in place — no teardown, and scroll
+position, selection, focus, and edit history are kept:
+
+```ts
+api.updateGridOptions({ toolbar: { sorting: true }, columnPanel: { trigger: "toolbar" } });
+api.updateGridOptions({ tooltip: { mode: "follow" }, zebraRows: true });
+
+// Only what you name changes. Present-with-undefined resets to the default:
+api.updateGridOptions({ getRowStyle: undefined });
+```
+
+`UpdatableGridOptions` is the accepted set. Structural options (`rowHeight`, the
+header heights, `rowNumbers`, `rowModelType`, `getRowId` / `rowIdKey`) are fixed
+at creation: supplying one logs a warning and changes nothing, because those seed
+geometry, columns, or row identity the grid builds once. Create a new grid for
+those.
+
 ## Menu items
 
 Column menu items are per-column configuration — no adapter needed. `columnMenu`

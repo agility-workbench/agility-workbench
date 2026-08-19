@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ColumnType,
   type ColDef,
   type GridToolbarOptions,
@@ -6,7 +7,6 @@ import {
 } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, note } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type SalesRow = {
   id: number;
@@ -156,7 +156,7 @@ export function mountToolbarDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -168,16 +168,16 @@ export function mountToolbarDemo(container: HTMLElement): () => void {
     groupDefaultExpanded: 1,
   });
 
-  seedGroupingAndSort(grid.api);
+  seedGroupingAndSort(api);
   renderReadout();
 
   function applyToolbar(): void {
-    grid.renderer.setToolbarOptions(toolbar);
+    api.updateGridOptions({ toolbar });
     renderReadout();
   }
 
   function applyColumnPanel(): void {
-    grid.renderer.setColumnPanelOptions(columns ? { trigger: "toolbar" } : false);
+    api.updateGridOptions({ columnPanel: columns ? { trigger: "toolbar" } : false });
   }
 
   function syncBoxes(): void {
@@ -192,7 +192,7 @@ export function mountToolbarDemo(container: HTMLElement): () => void {
       + `columnPanel=${columns ? '{ trigger: "toolbar" }' : "false"}`;
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }
 
 function seedGroupingAndSort(api: IGridAPI): void {

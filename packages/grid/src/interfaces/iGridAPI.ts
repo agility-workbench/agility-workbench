@@ -6,9 +6,12 @@ import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
 import {
+  GridOptions,
   QuickFilterMatchMode,
   RowPinnedPosition,
+  RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
 import { SetFilterMode } from "./filter";
@@ -92,9 +95,54 @@ export interface ExportParams {
   processCellForExcel?: ExcelExportCellProcessor;
 }
 
+/**
+ * Live-reconfiguration hooks provided by the renderer once it is attached (it owns the toolbar,
+ * quick filter, tooltip layer, column panel, footer, pinned bands, and theme variables). Internal
+ * wiring for {@link IGridAPI.updateGridOptions}: hosts call `updateGridOptions`, not this.
+ */
+export interface GridApiConfigController {
+  setToolbarOptions: (options: GridOptions["toolbar"]) => void;
+  setQuickFilterOptions: (options: GridOptions["quickFilter"]) => void;
+  setTooltipOptions: (options: GridOptions["tooltip"]) => void;
+  setColumnPanelOptions: (options: GridOptions["columnPanel"]) => void;
+  setSavedViewsOptions: (options: GridOptions["savedViews"]) => void;
+  setRowSelectionOptions: (options: GridOptions["rowSelection"]) => void;
+  setPinnedRowOptions: (options: {
+    pinnedTopRowData?: RowData[];
+    pinnedBottomRowData?: RowData[];
+    isRowPinned?: GridOptions["isRowPinned"];
+    groupRowsSticky?: boolean;
+  }) => void;
+  togglePagination: (enabled: boolean) => void;
+  setPaginationControls: (options: GridOptions["paginationControls"]) => void;
+  setTheme: (theme: GridOptions["theme"]) => void;
+  setIcons: (icons: GridOptions["icons"]) => void;
+  setRuntimeOptions: (options: RuntimeGridOptions) => void;
+  setServerSideDataSource: (dataSource: GridOptions["serverSideDataSource"]) => void;
+  setServerSideAggregation: (source: GridOptions["serverSideAggregationSource"]) => void;
+}
+
 export interface IGridAPI {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
+
+  /**
+   * Reconfigure a mounted grid in place. Only the properties present in `options` change; a property
+   * present with the value `undefined` is reset to the grid's default (that is how a callback such as
+   * `getRowStyle` is removed). Object values replace wholesale — they are not deep-merged.
+   *
+   * This is the framework-neutral equivalent of changing a prop on the React or Angular wrapper, and
+   * it preserves scroll position, selection, focus, and edit history:
+   *
+   * ```ts
+   * api.updateGridOptions({ toolbar: { sorting: true }, zebraRows: false });
+   * api.updateGridOptions({ getRowStyle: undefined });   // back to the default
+   * ```
+   *
+   * Options that seed structure (`rowHeight`, `rowNumbers`, `rowModelType`, row identity) are not
+   * updatable — see {@link UpdatableGridOptions}. Unknown keys are ignored with a warning.
+   */
+  updateGridOptions(options: UpdatableGridOptions): void;
 
   /** Dispatch an action to the core. */
   dispatch(action: GridAction): void;
@@ -212,6 +260,13 @@ export interface IGridAPI {
   /** Expand or collapse every group/tree node in one pass — a single view rebuild and repaint,
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
   setAllGroupsExpanded(expanded: boolean): void;
+
+  /**
+   * Every group / tree node currently in the model, at every level, in creation order. Empty when
+   * the grid is not grouped. Group nodes are not visited by `forEachNodeAfterFilter*`, which walk
+   * data rows; use this to address a group — for example to pin one with `setRowPinned`.
+   */
+  getGroupNodes(): IRowNode[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;

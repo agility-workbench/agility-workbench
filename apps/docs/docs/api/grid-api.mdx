@@ -6,7 +6,38 @@ sidebar_position: 2
 # Grid API
 
 `IGridAPI` is available from React's `ref`/`onGridReady`, Angular's `gridReady`
-output or template reference, and `initDomRenderer()` in a core integration.
+output or template reference, and `createGrid()` in a core integration.
+
+## Reconfiguring a mounted grid
+
+| Method | Purpose |
+| --- | --- |
+| `updateGridOptions(options)` | Change presentation and behavior options in place, preserving scroll, selection, focus, and edit history |
+
+Only the properties present in `options` change; a property present with the
+value `undefined` resets to the grid's default, which is how a callback such as
+`getRowStyle` is removed. Object values replace wholesale — they are not
+deep-merged.
+
+```ts
+api.updateGridOptions({ toolbar: { sorting: true, export: true } });
+api.updateGridOptions({ zebraRows: true, rowHover: false });
+api.updateGridOptions({ tooltip: { mode: "follow" } });
+api.updateGridOptions({ getRowStyle: undefined });   // back to the default
+```
+
+This is what the React and Angular bindings do when a prop changes, so a
+framework-neutral host reaches the same behavior without recreating the grid.
+`UpdatableGridOptions` lists what can change: visual and interaction options,
+toolbar / quick filter / tooltip / column panel / saved views, pagination and its
+controls, row selection, theme and icons, pinned-row bands, row-group
+presentation, the server-side data source, and `columnDefs`.
+
+Options that seed structure are fixed at creation and are rejected with a
+warning: `rowHeight` and the header heights (virtualization geometry),
+`rowNumbers` and `rowModelType` (which columns and row model exist), and
+`getRowId` / `rowIdKey` (row identity). Changing one of those means creating a
+new grid.
 
 ## Data and columns
 
@@ -39,6 +70,7 @@ output or template reference, and `initDomRenderer()` in a core integration.
 | `checkSetFilterValue(colId, value)` / `uncheckSetFilterValue(colId, value)` | Toggle one value by intent |
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
+| `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation |

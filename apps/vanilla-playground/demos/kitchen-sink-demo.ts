@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ColumnType,
   type ActionFrameComponentParams,
   type ColDef,
@@ -6,7 +7,6 @@ import {
 } from "@grid";
 
 import { bold, btn, demoRoot, gridHost, h, note, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -158,7 +158,7 @@ export function mountKitchenSinkDemo(container: HTMLElement): () => void {
     if (!row) return;
     const next = { ...row, [field]: text };
     rowsById.set(rowId, next);
-    grid.api.applyTransaction({ update: [{ rowId, row: next }] });
+    api.applyTransaction({ update: [{ rowId, row: next }] });
     applyPinnedRows();
   };
 
@@ -266,14 +266,14 @@ export function mountKitchenSinkDemo(container: HTMLElement): () => void {
       topButton,
       bottomButton,
       btn("Open comment on row 1 (API)", () =>
-        grid.api.openActionFrame({ rowId: "deal-1", colId: "comment" })),
+        api.openActionFrame({ rowId: "deal-1", colId: "comment" })),
       btn("Open sign-off on row 1 (API)", () =>
-        grid.api.openActionFrame({ rowId: "deal-1", colId: "signoff" })),
+        api.openActionFrame({ rowId: "deal-1", colId: "signoff" })),
     ),
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: rows,
     columnDefs,
     rowIdKey: "id",
@@ -288,7 +288,7 @@ export function mountKitchenSinkDemo(container: HTMLElement): () => void {
   });
 
   function applyPinnedRows(): void {
-    grid.renderer.setPinnedRowOptions({
+    api.updateGridOptions({
       pinnedTopRowData: topRows(),
       pinnedBottomRowData: bottomRows(),
     });
@@ -316,5 +316,5 @@ export function mountKitchenSinkDemo(container: HTMLElement): () => void {
     }] : [];
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

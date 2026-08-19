@@ -1,7 +1,6 @@
-import { AggregateType, ColumnType, type ColDef, type ColumnPanelTrigger } from "@grid";
+import { createGrid, AggregateType, ColumnType, type ColDef, type ColumnPanelTrigger } from "@grid";
 
 import { checkbox, code, demoRoot, field, gridHost, h, note, select, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type OrderRow = {
   id: number;
@@ -57,7 +56,7 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
 
   const paginationBox = checkbox(pagination, value => {
     pagination = value;
-    grid.renderer.togglePagination(pagination);
+    api.updateGridOptions({ pagination });
     updateReadout();
   });
   const aggregateBox = checkbox(aggregateRevenue, value => setRevenueAggregate(value));
@@ -66,7 +65,7 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
     allowAggregation = value;
     // Column-level capability lives on the column defs, so re-supply them to core exactly as a
     // framework binding would on a columnDefs prop change.
-    grid.core.setColumnDefsFromProps(buildColumnDefs(allowAggregation));
+    api.updateGridOptions({ columnDefs: buildColumnDefs(allowAggregation) });
     updateReadout();
   });
 
@@ -89,7 +88,7 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
           { value: "toolbar", label: "Toolbar" },
         ],
         "rail",
-        value => grid.renderer.setColumnPanelOptions({ trigger: value as ColumnPanelTrigger }),
+        value => api.updateGridOptions({ columnPanel: { trigger: value as ColumnPanelTrigger } }),
       )),
     ),
     note(
@@ -102,7 +101,7 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(),
     columnDefs: buildColumnDefs(allowAggregation),
     rowIdKey: "id",
@@ -115,8 +114,8 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
   function setRevenueAggregate(enabled: boolean): void {
     aggregateRevenue = enabled;
     aggregateBox.checked = enabled;
-    const revenueColumn = grid.api.getColumnModel().getByColId("revenue");
-    grid.api.dispatch({
+    const revenueColumn = api.getColumnModel().getByColId("revenue");
+    api.dispatch({
       type: "aggregateModelSet",
       aggregateModels: enabled && revenueColumn
         ? [{ key: revenueColumn.instanceID, type: AggregateType.SUM }]
@@ -138,5 +137,5 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
 
   updateReadout();
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

@@ -1,7 +1,4 @@
-import { ColumnType, createGrid, type ColDef } from "@grid";
-// `ColumnState` is the shape `api.getColumnState()` returns but is not re-exported from the package
-// entry today, so this names it through its declaring module (as the React playground does).
-import type { ColumnState } from "@grid/interfaces/iGridCore";
+import { ColumnType, createGrid, type ColDef, type ColumnState } from "@grid";
 
 import { btn, demoRoot, gridHost, h } from "../dom";
 import { mulberry32, picker } from "../helpers";

@@ -1,7 +1,6 @@
-import { ColumnType, type ColDef, type SavedGridView } from "@grid";
+import { createGrid, ColumnType, type ColDef, type SavedGridView } from "@grid";
 
 import { btn, demoRoot, gridHost, h } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type Row = {
   id: number;
@@ -83,7 +82,7 @@ export function mountSavedViewsDemo(container: HTMLElement): () => void {
     ),
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -120,9 +119,9 @@ export function mountSavedViewsDemo(container: HTMLElement): () => void {
     renderList();
   }
 
-  /** Saved views are application-owned: hand the renderer the new list so the Views menu refreshes. */
+  /** Saved views are application-owned: hand the grid the new list so the Views menu refreshes. */
   function applySavedViews(): void {
-    grid.renderer.setSavedViewsOptions(savedViewsOptions());
+    api.updateGridOptions({ savedViews: savedViewsOptions() });
   }
 
   function renderList(): void {
@@ -141,5 +140,5 @@ export function mountSavedViewsDemo(container: HTMLElement): () => void {
     ))));
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ColumnType,
   themeDark,
   themeLight,
@@ -13,7 +14,6 @@ import {
 } from "@grid";
 
 import { checkbox, code, controlGroup, demoRoot, field, gridHost, h, note, select } from "../dom";
-import { mountGrid, setRuntimeOptions } from "../demoGrid";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -26,9 +26,9 @@ import { mulberry32, picker } from "../helpers";
  *                columnContextMenu demonstrated on the Rating and City columns
  *   Pagination:  select/buttons page selection, visible controls and their order
  *
- * Every control updates the existing instance: runtime options through `setRuntimeOptions`, the
- * tooltip/pagination/theme slices through their renderer setters, and per-column flags by
- * re-supplying the column defs. Selection and scroll state survive each change.
+ * Every control updates the existing instance through `api.updateGridOptions` — visual and
+ * interaction options, the tooltip/pagination/theme configuration, and per-column flags (by
+ * re-supplying `columnDefs`). Selection, focus, and scroll state survive each change.
  */
 
 type PersonRow = {
@@ -169,7 +169,7 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
           state.tooltipMode,
           value => {
             state.tooltipMode = value as TooltipMode;
-            grid.renderer.setTooltipOptions({ mode: state.tooltipMode, showDelay: 150 });
+            api.updateGridOptions({ tooltip: { mode: state.tooltipMode, showDelay: 150 } });
           },
         ), { title: "Anchor tooltips to their cell or keep them beside the pointer" }),
         toggle("conditionalStyling", "conditionalStyling", () => {
@@ -297,7 +297,7 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
     eventLine,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(200),
     columnDefs: buildColumnDefs(),
     rowIdKey: "id",
@@ -439,7 +439,7 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
   }
 
   function applyRuntime(): void {
-    setRuntimeOptions(grid, {
+    api.updateGridOptions({
       rowHover: state.rowHover,
       columnHover: state.columnHover,
       zebraRows: state.zebraRows,
@@ -457,12 +457,12 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
       getRowStyle: rowStyle(),
       getRowPresentation: rowPresentation(),
     });
-    grid.api.refreshRowPresentation();
+    api.refreshRowPresentation();
     renderBanner();
   }
 
   function applyColumnDefs(): void {
-    grid.core.setColumnDefsFromProps(buildColumnDefs());
+    api.updateGridOptions({ columnDefs: buildColumnDefs() });
   }
 
   function paginationControls(): PaginationControlsOptions {
@@ -475,7 +475,7 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
   }
 
   function applyPaginationControls(): void {
-    grid.renderer.setPaginationControls(paginationControls());
+    api.updateGridOptions({ paginationControls: paginationControls() });
   }
 
   function applyTheme(): void {
@@ -486,7 +486,7 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
       const base = state.themeId === "dark" ? themeDark : themeLight;
       theme = base.withParams(state.themeId === "dark" ? CUSTOM_PARAMS_DARK : CUSTOM_PARAMS);
     }
-    grid.renderer.setTheme(theme);
+    api.updateGridOptions({ theme });
   }
 
   function setLastEvent(text: string): void {
@@ -527,5 +527,5 @@ export function mountVisualStatesDemo(container: HTMLElement): () => void {
     );
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

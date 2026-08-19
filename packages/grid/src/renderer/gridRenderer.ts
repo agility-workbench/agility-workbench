@@ -10,7 +10,7 @@ import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
+import { GridApiConfigController, IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -505,6 +505,28 @@ export class GridRenderer {
       ensureRowVisible: (viewIdx, rowPinned, position) =>
         this.ensureRowVisible(viewIdx, rowPinned, position),
       ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
+    });
+    // Expose live reconfiguration on the public API (api.updateGridOptions). The api routes each
+    // option to its owner; this hands it the renderer-owned half. Probed structurally to avoid a
+    // renderer→api import cycle, matching the exporter hook above.
+    const apiWithConfig = this.api as unknown as {
+      setConfigController?: (controller: GridApiConfigController) => void;
+    };
+    apiWithConfig.setConfigController?.({
+      setToolbarOptions: (options) => this.setToolbarOptions(options),
+      setQuickFilterOptions: (options) => this.setQuickFilterOptions(options),
+      setTooltipOptions: (options) => this.setTooltipOptions(options),
+      setColumnPanelOptions: (options) => this.setColumnPanelOptions(options),
+      setSavedViewsOptions: (options) => this.setSavedViewsOptions(options),
+      setRowSelectionOptions: (options) => this.setRowSelectionOptions(options),
+      setPinnedRowOptions: (options) => this.setPinnedRowOptions(options),
+      togglePagination: (enabled) => this.togglePagination(enabled),
+      setPaginationControls: (options) => this.setPaginationControls(options),
+      setTheme: (theme) => this.setTheme(theme),
+      setIcons: (icons) => this.setIcons(icons),
+      setRuntimeOptions: (options) => this.setRuntimeOptions(options),
+      setServerSideDataSource: (dataSource) => this.setServerSideDataSource(dataSource),
+      setServerSideAggregation: (source) => this.setServerSideAggregation(source),
     });
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.root);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);

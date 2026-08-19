@@ -1,7 +1,6 @@
-import { ColumnType, type ColDef, type TreeDataOptions } from "@grid";
+import { createGrid, type IGridAPI, ColumnType, type ColDef, type TreeDataOptions } from "@grid";
 
 import { btn, checkbox, field, h } from "../dom";
-import { mountGrid, type MountedGrid } from "../demoGrid";
 
 type RelationshipMode = "path" | "parent" | "children";
 
@@ -189,7 +188,7 @@ function treeDataFor(mode: RelationshipMode): { rows: OrgRow[]; treeData: TreeDa
 export function mountTreeDataDemo(container: HTMLElement): () => void {
   let mode: RelationshipMode = "path";
   let sticky = true;
-  let grid: MountedGrid;
+  let api: IGridAPI;
 
   const host = h("div", { class: "tree-data-demo-grid" });
   const example = h("code");
@@ -218,11 +217,11 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
       h("div", { class: "tree-data-demo-modes", "aria-label": "Tree relationship mode" }, ...modeButtons),
       summary,
       h("div", { class: "tree-data-demo-actions" },
-        btn("Expand all", () => grid.api.setAllGroupsExpanded(true)),
-        btn("Collapse all", () => grid.api.setAllGroupsExpanded(false)),
+        btn("Expand all", () => api.setAllGroupsExpanded(true)),
+        btn("Collapse all", () => api.setAllGroupsExpanded(false)),
         field("Sticky ancestors", checkbox(sticky, value => {
           sticky = value;
-          grid.renderer.setPinnedRowOptions({ groupRowsSticky: sticky });
+          api.updateGridOptions({ groupRowsSticky: sticky });
         })),
       ),
     ),
@@ -237,7 +236,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
    */
   function build(): void {
     const { rows, treeData } = treeDataFor(mode);
-    grid = mountGrid(host, {
+    api = createGrid(host, {
       rowData: rows,
       columnDefs: COLUMNS,
       rowIdKey: "id",
@@ -258,7 +257,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
   function setMode(next: RelationshipMode): void {
     if (next === mode) return;
     mode = next;
-    grid.destroy();
+    api.destroy();
     host.replaceChildren();
     build();
   }
@@ -274,5 +273,5 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
     });
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

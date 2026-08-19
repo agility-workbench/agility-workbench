@@ -1,7 +1,6 @@
-import { ColumnType, type ColDef } from "@grid";
+import { createGrid, ColumnType, type ColDef } from "@grid";
 
 import { btn, demoRoot, gridHost, h, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type Row = {
   id: string;
@@ -69,7 +68,7 @@ export function mountPinnedRowsDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: ROWS,
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -82,10 +81,9 @@ export function mountPinnedRowsDemo(container: HTMLElement): () => void {
     getRowClass: ({ node }) => node.rowPinned ? `demo-pinned-${node.rowPinned}` : undefined,
   });
 
-  // The pinned bands are renderer-owned, so a live change goes through setPinnedRowOptions — the
-  // same call the React wrapper makes when its pinnedTopRowData / pinnedBottomRowData props change.
+  // The same call the React wrapper's pinnedTopRowData / pinnedBottomRowData props end up making.
   function applyPinnedRows(): void {
-    grid.renderer.setPinnedRowOptions({
+    api.updateGridOptions({
       pinnedTopRowData: topRows(),
       pinnedBottomRowData: bottomRows(),
     });
@@ -111,5 +109,5 @@ export function mountPinnedRowsDemo(container: HTMLElement): () => void {
     }] : [];
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

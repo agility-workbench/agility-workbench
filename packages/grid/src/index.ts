@@ -11,6 +11,8 @@ export type {
   NavDir,
   RowScrollPosition,
 } from "./interfaces/iGridAPI";
+// The shape `api.getColumnState()` returns and `applyColumnState` accepts.
+export type { ColumnState } from "./interfaces/iGridCore";
 export type {
   CellPos,
   CellRef,
@@ -87,6 +89,9 @@ export { isFalse, isTrue, valuesAreSame } from "./misc";
 export { REJECT } from "./interfaces/gridOptions";
 export type {
   GridOptions,
+  // Accepted by `api.updateGridOptions`; `RuntimeGridOptions` is the slice it applies as a unit.
+  UpdatableGridOptions,
+  RuntimeGridOptions,
   CellValueChangedParams,
   BeforeCellCommitParams,
   CellCommitSource,

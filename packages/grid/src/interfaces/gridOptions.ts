@@ -1398,33 +1398,97 @@ export interface InternalGridOptions extends GridOptions {
 }
 
 /**
+ * The keys of {@link RuntimeGridOptions}, as a value. The type is derived from this list so the two
+ * cannot drift: anything added here becomes part of the runtime slice, and nothing else can be.
+ */
+export const RUNTIME_OPTION_KEYS = [
+  "rowHover",
+  "columnHover",
+  "zebraRows",
+  "getRowClass",
+  "getRowStyle",
+  "getRowPresentation",
+  "ariaLabel",
+  "ariaLabelledBy",
+  "highlightActiveCell",
+  "cellSelection",
+  "rangeSelection",
+  "columnSelection",
+  "showColumnButtonsOnHover",
+  "bodyContextMenu",
+  "editTrigger",
+  "readOnlyEdit",
+  "pinnedRowsEditable",
+  "rowPinningMenu",
+  "rowInsertionMenu",
+  "suppressKeyboardEdit",
+  "suppressTypeToEdit",
+  "moveAfterEdit",
+  "commitOnBlur",
+  "asyncTransactionWaitMs",
+] as const;
+
+/**
  * Grid options whose behavior can be changed in place after construction. Structural/initial
  * options (row model, row identity, initial sort, etc.) are intentionally excluded.
+ *
+ * This slice is applied as a unit: a consumer changing one member supplies the current values of the
+ * rest (`IGridAPI.updateGridOptions` does that bookkeeping).
  */
 export type RuntimeGridOptions = Pick<
   InternalGridOptions,
-  | "rowHover"
-  | "columnHover"
-  | "zebraRows"
-  | "getRowClass"
-  | "getRowStyle"
-  | "getRowPresentation"
-  | "ariaLabel"
-  | "ariaLabelledBy"
-  | "highlightActiveCell"
-  | "cellSelection"
-  | "rangeSelection"
-  | "columnSelection"
-  | "showColumnButtonsOnHover"
-  | "bodyContextMenu"
-  | "editTrigger"
-  | "readOnlyEdit"
-  | "pinnedRowsEditable"
-  | "rowPinningMenu"
-  | "rowInsertionMenu"
-  | "suppressKeyboardEdit"
-  | "suppressTypeToEdit"
-  | "moveAfterEdit"
-  | "commitOnBlur"
-  | "asyncTransactionWaitMs"
+  (typeof RUNTIME_OPTION_KEYS)[number]
 >;
+
+/**
+ * Updatable options owned by the renderer's widgets, the pinned-row bands, row-group presentation,
+ * and the server-side plumbing. Unlike the runtime slice, each of these is applied independently.
+ */
+export const WIDGET_OPTION_KEYS = [
+  "toolbar",
+  "quickFilter",
+  "tooltip",
+  "columnPanel",
+  "savedViews",
+  "pagination",
+  "paginationControls",
+  "rowSelection",
+  "theme",
+  "icons",
+  "pinnedTopRowData",
+  "pinnedBottomRowData",
+  "isRowPinned",
+  "groupRowsSticky",
+  "groupDisplayType",
+  "groupSortMode",
+  "groupRowsSelectable",
+  "serverSideDataSource",
+  "serverSideAggregationSource",
+] as const satisfies readonly (keyof GridOptions)[];
+
+/** Every option `IGridAPI.updateGridOptions` accepts, as a value (used to reject the rest). */
+export const UPDATABLE_OPTION_KEYS = [
+  ...RUNTIME_OPTION_KEYS,
+  ...WIDGET_OPTION_KEYS,
+  "columnDefs",
+] as const;
+
+/**
+ * The grid options a mounted grid can be reconfigured with, via `IGridAPI.updateGridOptions`.
+ *
+ * Everything here is a presentation or behavior option the grid can swap in place. Options absent
+ * from this type are fixed at construction because they seed structure the grid builds once
+ * (`rowHeight` and the header heights feed virtualization geometry, `rowNumbers` and `rowModelType`
+ * decide which columns and row model exist, `getRowId` / `rowIdKey` define row identity). Changing
+ * one of those means creating a new grid.
+ */
+export type UpdatableGridOptions =
+  Partial<RuntimeGridOptions>
+  & Pick<GridOptions, (typeof WIDGET_OPTION_KEYS)[number]>
+  & {
+    /**
+     * Replace the column definitions. Marks the schema as caller-owned, exactly as passing
+     * `columnDefs` to `createGrid` does, so a later `setRowData` cannot substitute an inferred schema.
+     */
+    columnDefs?: ColDef[] | null;
+  };

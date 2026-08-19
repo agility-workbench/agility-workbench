@@ -1,7 +1,6 @@
-import { ColumnType, type ColDef } from "@grid";
+import { createGrid, ColumnType, type ColDef } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, select } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type OrderRow = {
   id: string;
@@ -72,9 +71,9 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
         }),
       ),
       h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
-        btn("Select all rows", () => grid.api.selectAllRows()),
-        btn("Select sample IDs", () => grid.api.selectRowsById(["ORD-002", "ORD-017", "ORD-036"])),
-        btn("Clear", () => grid.api.deselectAllRows()),
+        btn("Select all rows", () => api.selectAllRows()),
+        btn("Select sample IDs", () => api.selectRowsById(["ORD-002", "ORD-017", "ORD-036"])),
+        btn("Clear", () => api.deselectAllRows()),
       ),
     ),
     h("div", {
@@ -129,7 +128,7 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
     ),
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -145,7 +144,7 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
     },
   });
 
-  selectedIds = grid.api.getSelection().selectedRowIds.map(String);
+  selectedIds = api.getSelection().selectedRowIds.map(String);
   renderReadout();
 
   function rowSelectionOptions() {
@@ -159,7 +158,7 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
 
   /** Row selection (and its utility column) reconfigure in place — no remount. */
   function applyRowSelection(): void {
-    grid.renderer.setRowSelectionOptions(rowSelectionOptions());
+    api.updateGridOptions({ rowSelection: rowSelectionOptions() });
   }
 
   function renderReadout(): void {
@@ -177,5 +176,5 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
       : selectedIds.length === 0 ? "Use a row or header checkbox to begin." : "";
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

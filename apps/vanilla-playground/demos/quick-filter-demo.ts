@@ -1,7 +1,6 @@
-import type { ColDef, QuickFilterOptions } from "@grid";
+import { createGrid, type ColDef, type QuickFilterOptions } from "@grid";
 
 import { checkbox, code, demoRoot, field, gridHost, h, note, numberInput, select, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 /**
  * Showcases the quick-filter (global search) configuration:
@@ -10,7 +9,7 @@ import { mountGrid } from "../demoGrid";
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
  *  - `showOptions` / `showLayoutOptions`: which controls the widget exposes in its options popover.
  *
- * Changing any control below reconfigures the live grid in place: `renderer.setQuickFilterOptions`
+ * Changing any control below reconfigures the live grid in place: `api.updateGridOptions({ quickFilter })`
  * rebuilds the widget without remounting the grid (an active search is preserved across the
  * change). Open the search with Ctrl/Cmd+F (or it's pinned in "always" mode).
  */
@@ -112,7 +111,7 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildRows(),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -131,7 +130,7 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
   }
 
   function applyQuickFilter(): void {
-    grid.renderer.setQuickFilterOptions(quickFilterOptions());
+    api.updateGridOptions({ quickFilter: quickFilterOptions() });
     renderNote();
   }
 
@@ -180,6 +179,6 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
 
   return () => {
     if (reconfigureTimer !== null) window.clearTimeout(reconfigureTimer);
-    grid.destroy();
+    api.destroy();
   };
 }

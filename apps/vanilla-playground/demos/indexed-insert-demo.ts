@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ColumnType,
   type ColDef,
   type RowInsertionMenuOptions,
@@ -6,7 +7,6 @@ import {
 } from "@grid";
 
 import { btn, h, numberInput } from "../dom";
-import { mountGrid, setRuntimeOptions } from "../demoGrid";
 
 type InsertRow = {
   id: string;
@@ -72,8 +72,8 @@ export function mountIndexedInsertDemo(container: HTMLElement): () => void {
     rowInsertionMenuEnabled = !rowInsertionMenuEnabled;
     menuButton.textContent = `${rowInsertionMenuEnabled ? "Disable" : "Enable"} row-number Insert menu`;
     menuButton.setAttribute("aria-pressed", String(rowInsertionMenuEnabled));
-    // `rowInsertionMenu` is a runtime option, so it flips in place through the renderer.
-    setRuntimeOptions(grid, {
+    // `rowInsertionMenu` is an updatable option, so it flips in place on the live grid.
+    api.updateGridOptions({
       rowInsertionMenu: rowInsertionMenuEnabled ? rowInsertionMenu : undefined,
     });
     setStatus(rowInsertionMenuEnabled
@@ -103,7 +103,7 @@ export function mountIndexedInsertDemo(container: HTMLElement): () => void {
       })),
       btn("Insert with sync API", () => {
         const { count, index } = readRequest();
-        const result = grid.api.applyTransaction({
+        const result = api.applyTransaction({
           add: makeRows("sync", count, index),
           addIndex: index,
         });
@@ -123,7 +123,7 @@ export function mountIndexedInsertDemo(container: HTMLElement): () => void {
     },
   };
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: buildInitialRows(),
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -162,7 +162,7 @@ export function mountIndexedInsertDemo(container: HTMLElement): () => void {
     pendingAsync += 1;
     setStatus(`Queued async transaction with ${count} rows at index ${index}…`);
     try {
-      const result = await grid.api.applyTransactionAsync({
+      const result = await api.applyTransactionAsync({
         add: makeRows("async", count, index),
         addIndex: index,
       });
@@ -182,5 +182,5 @@ export function mountIndexedInsertDemo(container: HTMLElement): () => void {
     statusBox.textContent = `${status}${pendingAsync > 0 ? ` (${pendingAsync} async pending)` : ""}`;
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

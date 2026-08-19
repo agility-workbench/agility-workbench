@@ -1,4 +1,5 @@
 import {
+  createGrid,
   AggregateType,
   ColumnType,
   type ColDef,
@@ -6,7 +7,6 @@ import {
 } from "@grid";
 
 import { btn, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
-import { mountGrid } from "../demoGrid";
 
 type Row = {
   id: number;
@@ -53,7 +53,7 @@ export function mountStickyGroupRowsDemo(container: HTMLElement): () => void {
   const stickyButton = btn("Sticky ancestors: on", () => {
     sticky = !sticky;
     stickyButton.textContent = `Sticky ancestors: ${sticky ? "on" : "off"}`;
-    grid.renderer.setPinnedRowOptions({ groupRowsSticky: sticky });
+    api.updateGridOptions({ groupRowsSticky: sticky });
   });
 
   container.appendChild(demoRoot(
@@ -66,20 +66,20 @@ export function mountStickyGroupRowsDemo(container: HTMLElement): () => void {
           { value: "groupRows", label: "Full-width group rows" },
         ],
         "singleColumn",
-        value => grid.core.setGroupDisplayType(value as GroupDisplayType),
+        value => api.updateGridOptions({ groupDisplayType: value as GroupDisplayType }),
       ), { style: { fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px" } }),
       btn("Pin EMEA bottom", () => {
-        if (manuallyPinnedId) grid.api.setRowPinned(manuallyPinnedId, null);
-        const emea = grid.core.getRowModel().getGroupNodes()
+        if (manuallyPinnedId) api.setRowPinned(manuallyPinnedId, null);
+        const emea = api.getGroupNodes()
           .find(node => node.level === 0 && node.groupKey === "EMEA");
         if (!emea) return;
-        grid.api.setRowPinned(emea.id, "bottom");
+        api.setRowPinned(emea.id, "bottom");
         manuallyPinnedId = emea.id;
         manualLabel.textContent = "EMEA explicitly pinned at bottom";
       }),
       btn("Clear explicit pin", () => {
         if (manuallyPinnedId) {
-          grid.api.setRowPinned(manuallyPinnedId, null);
+          api.setRowPinned(manuallyPinnedId, null);
           manuallyPinnedId = null;
         }
         manualLabel.textContent = "No explicit group pin";
@@ -94,7 +94,7 @@ export function mountStickyGroupRowsDemo(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: ROWS,
     columnDefs: COLUMNS,
     rowIdKey: "id",
@@ -107,14 +107,14 @@ export function mountStickyGroupRowsDemo(container: HTMLElement): () => void {
     toolbar: { grouping: true, sorting: true },
   });
 
-  grid.api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
-  const revenue = grid.api.getColumnModel().getByColId("revenue");
+  api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+  const revenue = api.getColumnModel().getByColId("revenue");
   if (revenue) {
-    grid.api.dispatch({
+    api.dispatch({
       type: "aggregateModelSet",
       aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
     });
   }
 
-  return () => grid.destroy();
+  return () => api.destroy();
 }

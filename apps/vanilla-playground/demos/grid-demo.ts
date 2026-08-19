@@ -1,4 +1,5 @@
 import {
+  createGrid,
   ChangeFlashCellRenderer,
   type CellRendererParams,
   type ColDef,
@@ -9,10 +10,10 @@ import {
   type IServerSideFilter,
   type IServerSideRequest,
   type RowModelType,
+  type IGridAPI,
 } from "@grid";
 
 import { btn, field, h, numberInput, select, toolbarRow } from "../dom";
-import { mountGrid, type MountedGrid } from "../demoGrid";
 
 /**
  * The original playground page: a schema-driven grid fed by the local dev data server, plus a live
@@ -233,7 +234,7 @@ function mountTradingGrid(container: HTMLElement): () => void {
     host,
   ));
 
-  const grid = mountGrid(host, {
+  const api = createGrid(host, {
     rowData: [...rows.values()],
     columnDefs: TRADING_COLUMNS,
     rowIdKey: "symbol",
@@ -276,7 +277,7 @@ function mountTradingGrid(container: HTMLElement): () => void {
         update.push({ rowId: symbol, row: nextRow });
       }
 
-      if (update.length > 0) grid.api.applyTransaction({ update });
+      if (update.length > 0) api.applyTransaction({ update });
     }, 300);
   }
 
@@ -289,7 +290,7 @@ function mountTradingGrid(container: HTMLElement): () => void {
       const row = makeRow(symbol, name, base);
       rows.set(symbol, row);
       nextExtraIdx = idx + 1;
-      grid.api.applyTransaction({ add: [row] });
+      api.applyTransaction({ add: [row] });
       renderCount();
       return;
     }
@@ -300,7 +301,7 @@ function mountTradingGrid(container: HTMLElement): () => void {
     if (symbols.length === 0) return;
     const symbol = symbols[symbols.length - 1];
     rows.delete(symbol);
-    grid.api.applyTransaction({ remove: [symbol] });
+    api.applyTransaction({ remove: [symbol] });
     renderCount();
   }
 
@@ -311,7 +312,7 @@ function mountTradingGrid(container: HTMLElement): () => void {
 
   return () => {
     if (tickTimer !== null) window.clearInterval(tickTimer);
-    grid.destroy();
+    api.destroy();
   };
 }
 
@@ -419,21 +420,21 @@ export function mountGridDemo(container: HTMLElement): () => void {
   let columnPanelTrigger: ColumnPanelTrigger = "rail";
   let colDefs: ColDef[] = [];
   let rowData: unknown[] = [];
-  let grid: MountedGrid;
+  let api: IGridAPI;
   let fetchToken = 0;
   let disposed = false;
 
   const host = h("div", { style: { width: "100%", height: "100%" } });
   const errorBox = h("div", { style: { color: "red" } });
   const groupBySelect = select([{ value: "", label: "(none)" }], "", value => {
-    grid.api.dispatch({ type: "rowGroupSet", colIds: value ? [value] : [] });
+    api.dispatch({ type: "rowGroupSet", colIds: value ? [value] : [] });
   });
 
   const countInput = numberInput(count, value => { count = Number(value); }, { min: 1, max: 100000 });
   const paginateButton = btn("Don't Paginate", () => {
     paginate = !paginate;
     paginateButton.textContent = `${paginate ? "Don't " : ""}Paginate`;
-    grid.renderer.togglePagination(paginate);
+    api.updateGridOptions({ pagination: paginate });
   });
   const rowNumbersButton = btn("Show Row Numbers", () => {
     rowNumbers = !rowNumbers;
@@ -460,7 +461,7 @@ export function mountGridDemo(container: HTMLElement): () => void {
       groupDisplayType,
       value => {
         groupDisplayType = value as GroupDisplayType;
-        grid.core.setGroupDisplayType(groupDisplayType);
+        api.updateGridOptions({ groupDisplayType });
       },
     )),
     field("Group by", groupBySelect),
@@ -502,7 +503,7 @@ export function mountGridDemo(container: HTMLElement): () => void {
         columnPanelTrigger,
         value => {
           columnPanelTrigger = value as ColumnPanelTrigger;
-          grid.renderer.setColumnPanelOptions({ trigger: columnPanelTrigger });
+          api.updateGridOptions({ columnPanel: { trigger: columnPanelTrigger } });
         },
       )),
       groupControls,
@@ -530,7 +531,7 @@ export function mountGridDemo(container: HTMLElement): () => void {
   void fetchData();
 
   function build(): void {
-    grid = mountGrid(host, {
+    api = createGrid(host, {
       rowData,
       columnDefs: colDefs,
       pagination: paginate,
@@ -549,13 +550,13 @@ export function mountGridDemo(container: HTMLElement): () => void {
   }
 
   function rebuild(): void {
-    grid.destroy();
+    api.destroy();
     host.replaceChildren();
     build();
   }
 
   function setLoading(loading: boolean): void {
-    grid.core.dispatch({ type: "overlayShow", overlayType: loading ? "loading" : "none" });
+    api.dispatch({ type: "overlayShow", overlayType: loading ? "loading" : "none" });
   }
 
   async function fetchData(): Promise<void> {
@@ -595,8 +596,8 @@ export function mountGridDemo(container: HTMLElement): () => void {
 
       colDefs = columns;
       rowData = payload.data ?? [];
-      grid.core.setColumnDefsFromProps(colDefs);
-      grid.api.setRowData(rowData as any[]);
+      api.updateGridOptions({ columnDefs: colDefs });
+      api.setRowData(rowData as any[]);
       renderGroupByOptions();
     } catch (err) {
       if (token !== fetchToken || disposed) return;
@@ -630,6 +631,6 @@ export function mountGridDemo(container: HTMLElement): () => void {
     disposed = true;
     document.body.classList.remove(...themePresets.map(theme => theme.className));
     disposeTrading();
-    grid.destroy();
+    api.destroy();
   };
 }
