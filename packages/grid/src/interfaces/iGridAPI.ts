@@ -5,6 +5,8 @@ import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
+import type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
+import type { IMenuAdapter } from "./iMenuAdapter";
 import {
   GridOptions,
   QuickFilterMatchMode,
@@ -143,6 +145,27 @@ export interface IGridAPI {
    * updatable — see {@link UpdatableGridOptions}. Unknown keys are ignored with a warning.
    */
   updateGridOptions(options: UpdatableGridOptions): void;
+
+  /**
+   * Install (or, with `null`, remove) the column-menu adapter on a mounted grid — the deferred form
+   * of `createGrid`'s `menuAdapter` option, for a host that does not know its adapter at creation
+   * time. The adapter is consulted when a menu opens, so a swap needs no rebuild and takes effect on
+   * the next open; a menu that is already open keeps the items and cleanup it was given.
+   *
+   * Most hosts should not need this. Application-owned items belong in `ColDef.columnMenu` (one
+   * column) or `GridOptions.multiColumnMenu` (a selection), both of which run *before* the adapter.
+   * An adapter earns its keep when items are rendered by a framework and must be torn down again —
+   * that is what its `cleanup` return exists for, and why the React and Angular bindings use one.
+   */
+  registerMenuAdapter(adapter: IMenuAdapter | null): void;
+
+  /**
+   * Install (or, with `null`, remove) the body context-menu adapter on a mounted grid. Same timing
+   * and same trade-off as {@link IGridAPI.registerMenuAdapter}: application-owned items belong in
+   * `GridOptions.bodyContextMenu`, which is itself updatable via `updateGridOptions` and runs before
+   * the adapter.
+   */
+  registerBodyMenuAdapter(adapter: IBodyMenuAdapter | null): void;
 
   /** Dispatch an action to the core. */
   dispatch(action: GridAction): void;

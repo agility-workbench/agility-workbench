@@ -116,19 +116,15 @@ from inside a multi-selection shows no menu at all rather than the browser's.
 `bodyContextMenu` does the same for right-clicks in the grid body, and accepts `false`
 to let the browser's native menu through.
 
-## Assembling the pieces manually
+## Menu adapters
 
 The adapters exist for the one thing the getters above cannot do: mounting framework
-components inside menu items and unmounting them when the menu closes. That is how the
-React and Angular bindings work; a plain host rarely needs it.
+components inside menu items and unmounting them when the menu closes. That `cleanup`
+return is the whole reason they exist — it is how the React and Angular bindings work,
+and a plain host that only adds ordinary items rarely needs one.
 
 ```ts
-import {
-  CanvasMeasurer,
-  GridCore,
-  initDomRenderer,
-  type IMenuAdapter,
-} from "@agility-workbench/grid";
+import { createGrid, type IMenuAdapter } from "@agility-workbench/grid";
 
 const menus: IMenuAdapter = {
   resolveMenuItems: (ctx, defaults) => {
@@ -140,16 +136,25 @@ const menus: IMenuAdapter = {
   },
 };
 
-const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
-const { renderer, api } = initDomRenderer(core, menus);
-
-renderer.attach(document.querySelector("#grid")!);
-core.dispatch({ type: "init" });
-api.setColumnDefs(columnDefs);
-api.setRowData(rows);
+const api = createGrid(document.querySelector("#grid")!, {
+  rowIdKey: "id",
+  columnDefs,
+  rowData: rows,
+  menuAdapter: menus,
+  // bodyMenuAdapter: … does the same for the body context menu
+});
 ```
 
-Both adapters are optional — omit them and you get the built-in menus. This path also
-means owning teardown: `renderer.detach()`, `renderer.destroy()`, and `core.destroy()`.
-`api.destroy()` alone is enough only for a grid created by `createGrid`.
+Both are optional — omit them and you get the built-in menus. An adapter runs *after*
+the getters above, so it receives whatever they produced as its `defaults`.
+
+If the adapter is not known when the grid is created, install it later:
+
+```ts
+api.registerMenuAdapter(menus);      // effective on the next menu open
+api.registerBodyMenuAdapter(null);   // back to the built-in body menu
+```
+
+Registration needs no rebuild: adapters are consulted as a menu opens, and a menu that
+is already open keeps the items and `cleanup` it was given.
 

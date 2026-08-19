@@ -1,7 +1,9 @@
 import { GridCore } from "./core/core";
 import type { ColDef } from "./interfaces/column";
 import type { GridOptions } from "./interfaces/gridOptions";
+import type { IBodyMenuAdapter } from "./interfaces/iBodyMenuAdapter";
 import type { IGridAPI } from "./interfaces/iGridAPI";
+import type { IMenuAdapter } from "./interfaces/iMenuAdapter";
 import { CanvasMeasurer, initDomRenderer } from "./renderer";
 
 /**
@@ -13,6 +15,17 @@ export interface CreateGridOptions extends GridOptions {
   columnDefs?: ColDef[];
   /** Initial rows. Equivalent to calling `api.setRowData(rows)` after creation. */
   rowData?: unknown[];
+  /**
+   * Column-menu adapter, for menu items a framework renders and must later unmount. Omit to get the
+   * grid's built-in items. Equivalent to `api.registerMenuAdapter(adapter)` right after creation —
+   * see that method for when an adapter is the right tool rather than `ColDef.columnMenu`.
+   *
+   * This is not a `GridOption`: it is an assembly ingredient (like `columnDefs`), not state the
+   * core owns, so it is neither carried by the core nor reachable through `updateGridOptions`.
+   */
+  menuAdapter?: IMenuAdapter;
+  /** Body context-menu adapter. The `bodyContextMenu` counterpart of `menuAdapter`. */
+  bodyMenuAdapter?: IBodyMenuAdapter;
 }
 
 /**
@@ -35,21 +48,24 @@ export interface CreateGridOptions extends GridOptions {
  * The returned `api.destroy()` tears down the entire instance, unlike the bare `GridAPI`
  * returned by `initDomRenderer`, whose `destroy` does not detach the renderer.
  *
- * Menus use the grid's built-in items. To contribute application- or framework-owned menu
- * items, drop to `initDomRenderer(core, menuAdapter, bodyMenuAdapter)` and drive the
- * lifecycle directly — that is the seam the React and Angular bindings use.
+ * Menus use the grid's built-in items, extended by `ColDef.columnMenu`, `multiColumnMenu`, and
+ * `bodyContextMenu`. Hosts that render menu items with a framework can pass `menuAdapter` /
+ * `bodyMenuAdapter` here, or install them later with `api.registerMenuAdapter` /
+ * `api.registerBodyMenuAdapter`.
  */
 export function createGrid(container: HTMLElement, options: CreateGridOptions = {}): IGridAPI {
   if (container == null) {
     throw new Error("createGrid: a container element is required.");
   }
 
-  const { columnDefs, rowData, ...gridOptions } = options;
+  // The four non-GridOptions ingredients are separated here so the core is handed grid options
+  // only — an adapter or a column-def array on the options object it carries would be meaningless.
+  const { columnDefs, rowData, menuAdapter, bodyMenuAdapter, ...gridOptions } = options;
 
   const core = new GridCore(new CanvasMeasurer(), gridOptions);
-  // Both adapters are omitted deliberately: initDomRenderer defaults them to pass-throughs
-  // that yield the grid's own menu items, which is what a host without a framework wants.
-  const { renderer, api } = initDomRenderer(core);
+  // Omitted adapters leave their slot empty, which yields the grid's own menu items — what a host
+  // without a framework wants, and what `api.registerMenuAdapter(null)` restores.
+  const { renderer, api } = initDomRenderer(core, menuAdapter, bodyMenuAdapter);
 
   renderer.attach(container);
   core.dispatch({ type: "init" });

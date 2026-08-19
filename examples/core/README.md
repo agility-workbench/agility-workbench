@@ -85,9 +85,10 @@ createGrid(host, {
 
 The `IMenuAdapter` / `IBodyMenuAdapter` seam remains for the one case these getters
 cannot cover: mounting framework components into items and unmounting them on close.
-That path uses `initDomRenderer` directly and owns its own teardown —
-`renderer.detach()`, `renderer.destroy()`, `core.destroy()` — because `api.destroy()`
-performs full teardown only for a grid created by `createGrid`.
+Pass them to `createGrid` as `menuAdapter` / `bodyMenuAdapter`, or install them later
+with `api.registerMenuAdapter(adapter)` / `api.registerBodyMenuAdapter(adapter)` —
+`null` removes one and restores the built-in menu. An adapter runs after the getters
+above and receives their result as its `defaults`.
 
 ## Callback options
 

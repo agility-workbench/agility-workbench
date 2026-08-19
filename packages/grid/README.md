@@ -154,16 +154,14 @@ createGrid(host, {
 ```
 
 <details>
-<summary>Assembling the pieces manually (framework-rendered menu items, or owning the lifecycle)</summary>
+<summary>Menu adapters (framework-rendered menu items)</summary>
 
 The adapters below exist for one thing the getters above cannot do: mounting framework components
 inside menu items and unmounting them when the menu closes (`cleanup`). That is how the React and
 Angular bindings work; a plain host rarely needs it.
 
 ```ts
-import {
-  CanvasMeasurer, GridCore, initDomRenderer, type IMenuAdapter,
-} from "@agility-workbench/grid";
+import { createGrid, type IMenuAdapter } from "@agility-workbench/grid";
 
 const menus: IMenuAdapter = {
   resolveMenuItems: (ctx, defaults) => {
@@ -176,18 +174,19 @@ const menus: IMenuAdapter = {
   },
 };
 
-const core = new GridCore(new CanvasMeasurer(), { rowIdKey: "id" });
-const { renderer, api } = initDomRenderer(core, menus);
-
-renderer.attach(document.getElementById("app")!);
-core.dispatch({ type: "init" });
-api.setColumnDefs([{ key: "name", label: "Name", type: ColumnType.STRING }]);
-api.setRowData([{ id: 1, name: "Widget" }]);
+const api = createGrid(document.getElementById("app")!, {
+  rowIdKey: "id",
+  columnDefs: [{ key: "name", label: "Name", type: ColumnType.STRING }],
+  rowData: [{ id: 1, name: "Widget" }],
+  menuAdapter: menus,
+  // bodyMenuAdapter: … the same for the body context menu
+});
 ```
 
-Both adapter arguments are optional; omitting them yields the built-in menus. Taking this
-path means owning teardown too — `renderer.detach()`, `renderer.destroy()`, and
-`core.destroy()`, which is precisely what `createGrid`'s `api.destroy()` does for you.
+Both options are optional; omitting them yields the built-in menus. An adapter runs after the
+getters above and receives their result as its `defaults`. When the adapter is not known at
+creation time, `api.registerMenuAdapter(menus)` / `api.registerBodyMenuAdapter(menus)` install one
+on a mounted grid (pass `null` to remove it); the change applies to the next menu open.
 
 </details>
 

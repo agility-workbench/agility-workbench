@@ -13,6 +13,8 @@ output or template reference, and `createGrid()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `updateGridOptions(options)` | Change presentation and behavior options in place, preserving scroll, selection, focus, and edit history |
+| `registerMenuAdapter(adapter)` | Install (or remove, with `null`) the column-menu adapter on a mounted grid |
+| `registerBodyMenuAdapter(adapter)` | The same for the body context menu |
 
 Only the properties present in `options` change; a property present with the
 value `undefined` resets to the grid's default, which is how a callback such as
@@ -38,6 +40,23 @@ warning: `rowHeight` and the header heights (virtualization geometry),
 `rowNumbers` and `rowModelType` (which columns and row model exist), and
 `getRowId` / `rowIdKey` (row identity). Changing one of those means creating a
 new grid.
+
+The menu adapters are not options — they are assembly ingredients, like
+`columnDefs`, so they have their own registration methods rather than a key in
+`updateGridOptions`:
+
+```ts
+api.registerMenuAdapter(adapter);      // effective on the next menu open
+api.registerBodyMenuAdapter(null);     // remove; back to the built-in body menu
+```
+
+Both are the deferred form of `createGrid`'s `menuAdapter` / `bodyMenuAdapter`
+options, for a host that does not know its adapter when the grid is created.
+Registration needs no rebuild, and a menu that is already open keeps the items
+and `cleanup` it was given. Reach for an adapter only when menu items are
+rendered by a framework and must be unmounted again — application-owned items
+belong in `ColDef.columnMenu`, `multiColumnMenu`, or `bodyContextMenu`, all of
+which run before the adapter.
 
 ## Data and columns
 

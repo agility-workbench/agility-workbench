@@ -9,6 +9,8 @@ import {
 } from "../interfaces/iGridAPI";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
+import { IBodyMenuAdapter } from "../interfaces/iBodyMenuAdapter";
+import { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
@@ -73,6 +75,15 @@ export interface GridApiPinnedRowsController {
   setRowPinned: (rowId: GridId, position: RowPinnedPosition | null) => void;
 }
 
+/**
+ * Menu-adapter slots owned by `initDomRenderer`. Internal wiring for
+ * {@link IGridAPI.registerMenuAdapter} / {@link IGridAPI.registerBodyMenuAdapter}.
+ */
+export interface GridApiMenuAdapterController {
+  setMenuAdapter: (adapter: IMenuAdapter | null) => void;
+  setBodyMenuAdapter: (adapter: IBodyMenuAdapter | null) => void;
+}
+
 export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
@@ -81,6 +92,7 @@ export class GridAPI implements IGridAPI {
   private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
   private _config: GridApiConfigController | null = null;
+  private _menuAdapters: GridApiMenuAdapterController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
 
   constructor(private core: IGridCore) {}
@@ -114,6 +126,31 @@ export class GridAPI implements IGridAPI {
    */
   setConfigController(controller: GridApiConfigController): void {
     this._config = controller;
+  }
+
+  /**
+   * Wire the menu-adapter slots. Called by `initDomRenderer` as it assembles the grid, so this is
+   * in place before any host holds the api; before that, `registerMenuAdapter` warns and does
+   * nothing.
+   */
+  setMenuAdapterController(controller: GridApiMenuAdapterController): void {
+    this._menuAdapters = controller;
+  }
+
+  registerMenuAdapter(adapter: IMenuAdapter | null): void {
+    if (!this._menuAdapters) {
+      console.warn("registerMenuAdapter called on an api with no menu wiring; ignoring.");
+      return;
+    }
+    this._menuAdapters.setMenuAdapter(adapter);
+  }
+
+  registerBodyMenuAdapter(adapter: IBodyMenuAdapter | null): void {
+    if (!this._menuAdapters) {
+      console.warn("registerBodyMenuAdapter called on an api with no menu wiring; ignoring.");
+      return;
+    }
+    this._menuAdapters.setBodyMenuAdapter(adapter);
   }
 
   // ---------------- Live reconfiguration ----------------
