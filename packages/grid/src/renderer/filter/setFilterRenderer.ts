@@ -2,6 +2,7 @@ import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "../../filter/types";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
+import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
 import { Overlay } from "../overlay";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import {
@@ -96,7 +97,7 @@ export class SetFilterRenderer implements IFilterRenderer {
       this.controller.filterOptions(0, this.miniFilterInput.value);
     });
     this.miniFilterInput.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
+      if (!matchesChord(e, "enter")) return;
       this.controller.applyMiniFilter(0);
     });
     filterContainer.appendChild(this.miniFilterInput);
@@ -117,7 +118,9 @@ export class SetFilterRenderer implements IFilterRenderer {
       const activeElement = document.activeElement as HTMLElement;
       let currentIndex = Array.from(focusableOptions).findIndex(opt => opt === activeElement);
       if (currentIndex === -1) {
-        if (e.key === "Tab") {
+        // Forward Tab only: Shift+Tab is the user leaving backwards, and capturing it here used to
+        // drag focus onto the first option instead.
+        if (matchesChord(e, "tab")) {
           // if focus is not on an option, start from the first one
           focusableOptions[0].classList.add("focused");
           focusableOptions[0].focus();
@@ -126,29 +129,31 @@ export class SetFilterRenderer implements IFilterRenderer {
         return;
       }
 
-      if (e.key === "ArrowDown") {
+      // Bare chords: none of these list gestures reads a modifier, so a modified arrow keeps its
+      // platform meaning instead of walking the option list.
+      if (matchesChord(e, "arrowdown")) {
         e.preventDefault();
         focusableOptions[currentIndex].classList.remove("focused");
         const nextIndex = (currentIndex + 1) % focusableOptions.length;
         focusableOptions[nextIndex].classList.add("focused");
         focusableOptions[nextIndex].focus();
-      } else if (e.key === "ArrowUp") {
+      } else if (matchesChord(e, "arrowup")) {
         e.preventDefault();
         focusableOptions[currentIndex].classList.remove("focused");
         const prevIndex = (currentIndex - 1 + focusableOptions.length) % focusableOptions.length;
         focusableOptions[prevIndex].classList.add("focused");
         focusableOptions[prevIndex].focus();
-      } else if (e.key === "ArrowLeft") {
+      } else if (matchesChord(e, "arrowleft")) {
         e.preventDefault();
         focusableOptions[currentIndex].classList.remove("focused");
         focusableOptions[0].classList.add("focused");
         focusableOptions[0].focus();
-      } else if (e.key === "ArrowRight") {
+      } else if (matchesChord(e, "arrowright")) {
         e.preventDefault();
         focusableOptions[currentIndex].classList.remove("focused");
         focusableOptions[focusableOptions.length - 1].classList.add("focused");
         focusableOptions[focusableOptions.length - 1].focus();
-      } else if (e.key === " " || e.key === "Enter") {
+      } else if (matchesAnyChord(e, ["space", "enter"])) {
         e.preventDefault();
         focusableOptions[currentIndex].click();
       }

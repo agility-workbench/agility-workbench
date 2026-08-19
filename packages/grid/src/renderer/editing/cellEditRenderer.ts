@@ -3,6 +3,7 @@ import { GridCore } from "../../core/core";
 import { CellRef } from "../../interfaces/selection";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { GridEventEditingChangedParams } from "../../events/events";
+import { anyModifiers, hasMod, matchesChord } from "../interaction/keyChord";
 import { RowPoolDef } from "../types";
 import { ICellEditor } from "./cellEditor";
 import { createEditorForColumn } from "./resolveEditor";
@@ -167,25 +168,33 @@ export class CellEditRenderer {
   private onEditorKeyDown = (e: KeyboardEvent) => {
     // Keep the editor's keys away from the grid's navigation handler.
     e.stopPropagation();
-    switch (e.key) {
-      case "Enter":
-        // In a textarea, plain Enter inserts a newline; Ctrl/Cmd+Enter commits.
-        if (this.multiline && !(e.ctrlKey || e.metaKey)) return;
-        e.preventDefault();
-        this.commit();
-        // moveAfterEdit: advance to the next row after committing (Shift+Enter goes up).
-        this.moveAfterCommit(e.shiftKey ? "up" : "down");
-        break;
-      case "Tab":
-        e.preventDefault();
-        this.commit();
-        // Tab advances horizontally after committing (Shift+Tab goes left).
-        this.moveAfterCommit(e.shiftKey ? "left" : "right");
-        break;
-      case "Escape":
-        e.preventDefault();
-        this.cancel();
-        break;
+
+    // Enter reads both modifiers: Mod commits from a textarea, Shift picks the direction to move.
+    // Alt is not part of the chord, so Alt+Enter is left to the browser rather than committing.
+    if (matchesChord(e, { key: "enter", mod: "any", shift: "any" })) {
+      // In a textarea, plain Enter inserts a newline; Ctrl/Cmd+Enter commits.
+      if (this.multiline && !hasMod(e)) return;
+      e.preventDefault();
+      this.commit();
+      // moveAfterEdit: advance to the next row after committing (Shift+Enter goes up).
+      this.moveAfterCommit(e.shiftKey ? "up" : "down");
+      return;
+    }
+
+    // Shift chooses the direction; Mod does not belong to this chord, so Ctrl+Tab stays the
+    // browser's tab switch instead of committing the edit and moving the cursor.
+    if (matchesChord(e, { key: "tab", shift: "any" })) {
+      e.preventDefault();
+      this.commit();
+      // Tab advances horizontally after committing (Shift+Tab goes left).
+      this.moveAfterCommit(e.shiftKey ? "left" : "right");
+      return;
+    }
+
+    // Dismissal: cancels whatever modifiers are held.
+    if (matchesChord(e, anyModifiers("escape"))) {
+      e.preventDefault();
+      this.cancel();
     }
   };
 

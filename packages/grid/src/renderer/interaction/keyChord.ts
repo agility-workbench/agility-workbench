@@ -92,3 +92,17 @@ export function matchesChord(e: KeyboardEvent, chord: ChordSpec | string): boole
 export function matchesAnyChord(e: KeyboardEvent, chords: readonly (ChordSpec | string)[]): boolean {
   return chords.some(chord => matchesChord(e, chord));
 }
+
+/**
+ * A key matched whatever modifiers are held.
+ *
+ * Reserved for **dismissal**: Escape closing a menu, popover, or editor should not depend on whether
+ * the user happens to be holding Shift, and nothing competes for Escape while one of those is open.
+ * The dismissal handlers that predate chord matching (the menu's document-capture handler, the
+ * action frame, the filter overlay, the tooltip, the column panel) test `e.key` directly for the
+ * same reason and are deliberately left that way; use this where a handler that does match chords
+ * needs one permissive key alongside them.
+ */
+export function anyModifiers(key: string): ChordSpec {
+  return { key, mod: "any", alt: "any", shift: "any" };
+}

@@ -161,6 +161,55 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
     expect(api.getKeyboardNavigationMode()).toBe("hierarchy");
   });
 
+  it("commits an edit on Tab and Shift+Tab, leaving Ctrl+Tab to the browser", () => {
+    press("Enter");
+    const editor = () => host.querySelector<HTMLInputElement>(".pte-cell-editor-input");
+    expect(editor()).not.toBeNull();
+
+    const editorPress = (key: string, mods: Partial<KeyboardEventInit> = {}): boolean => {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...mods });
+      editor()!.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    // Ctrl+Tab used to commit and move the cursor, hijacking the browser's tab switch.
+    expect(editorPress("Tab", MOD)).toBe(false);
+    expect(api.getEditingCell()).not.toBeNull();
+    // Alt+Enter likewise: no editing meaning, so it is no longer a commit.
+    expect(editorPress("Enter", { altKey: true })).toBe(false);
+    expect(api.getEditingCell()).not.toBeNull();
+
+    expect(editorPress("Tab")).toBe(true);
+    expect(api.getEditingCell()).toBeNull();
+  });
+
+  it("cancels an edit on Escape whatever modifiers are held", () => {
+    press("Enter");
+    const editor = host.querySelector<HTMLInputElement>(".pte-cell-editor-input")!;
+    // Dismissal is deliberately permissive — the one place a superset still matches on purpose.
+    editor.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    expect(api.getEditingCell()).toBeNull();
+  });
+
+  it("steps a number editor on bare arrows only", () => {
+    api.dispatch({ type: "focusSet", viewIdx: 2, colIdx: 1, reason: "mouse" });
+    press("Enter");
+    const editor = host.querySelector<HTMLInputElement>(".pte-cell-editor-input")!;
+    const step = (mods: Partial<KeyboardEventInit> = {}) => editor.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true, ...mods }),
+    );
+
+    const before = editor.value;
+    step(MOD);
+    step({ altKey: true });
+    expect(editor.value).toBe(before);
+
+    step();
+    expect(Number(editor.value)).toBe(Number(before) + 1);
+  });
+
   it("opens the quick filter on Ctrl+F but not Ctrl+Shift+F", () => {
     api.destroy();
     api = createGrid(host, {
@@ -173,5 +222,29 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
 
     expect(press("f", { ...MOD, shiftKey: true })).toBe(false);
     expect(press("f", MOD)).toBe(true);
+  });
+
+  it("claims the same Ctrl+F inside the quick-filter input as at the root", () => {
+    api.destroy();
+    api = createGrid(host, {
+      rowIdKey: "id",
+      columnDefs,
+      rowData: rows.map(row => ({ ...row })),
+      quickFilter: { mode: "always" },
+    });
+
+    // The input stops propagation for every key, so it has to claim Ctrl+F itself to keep the
+    // browser's Find dialog shut. It must claim exactly that chord — no more than the root does,
+    // or the same keystroke would be answered differently depending on where focus is.
+    const input = host.querySelector<HTMLInputElement>(".pte-quick-filter-input")!;
+    const inputPress = (mods: Partial<KeyboardEventInit>): boolean => {
+      const event = new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true, ...mods });
+      input.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    expect(inputPress(MOD)).toBe(true);
+    expect(inputPress({ ...MOD, shiftKey: true })).toBe(false);
+    expect(inputPress({ ...MOD, altKey: true })).toBe(false);
   });
 });
