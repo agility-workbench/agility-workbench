@@ -453,8 +453,10 @@ treeData: {
 mode, Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses an expanded parent (or focuses the direct
 parent from a leaf/already-collapsed parent), and Ctrl/Cmd+Up always focuses the direct parent when
 the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block navigation.
-When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime; applications can
-also call `api.getKeyboardNavigationMode()` and `api.setKeyboardNavigationMode(mode)`.
+When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime **while the cursor
+is on a body cell** — the header cursor claims that chord for "add this column to the selection", and
+the innermost cursor wins. Applications can also call `api.getKeyboardNavigationMode()` and
+`api.setKeyboardNavigationMode(mode)`, which work wherever the cursor is.
 
 Both fields are reconfigurable on a mounted grid — they are the only part of `treeData` that is,
 since the relationship mode and its accessors decide the row shape:
@@ -467,6 +469,32 @@ Only the fields you pass change. A mode set this way reports `source: "options"`
 `keyboardNavigationModeChanged`, distinguishing configuration from the imperative
 `setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
 
+## Keyboard bindings
+
+Bindings live in a table rather than in nested `if`s, resolved by *scope*: an open cell editor and a
+focused embedded control own their keyboard completely; otherwise the header cursor is consulted
+before the body cursor, and whole-grid chords last. A chord may therefore mean different things
+depending on where the cursor is, and modifiers are matched exactly — `Ctrl+C` is copy, while
+`Ctrl+Shift+C` is left to the browser.
+
+The header cursor (the header is row 0 of the grid — `ArrowUp` off the first row reaches it):
+
+| Key | Action |
+| --- | --- |
+| `Arrow←` / `Arrow→` | previous / next column |
+| `Ctrl/Cmd+Arrow←` / `Ctrl/Cmd+Arrow→`, `Home` / `End` | first / last column |
+| `Arrow↓` | hand the cursor to the first row |
+| `Ctrl/Cmd+Arrow↓` | hand the cursor to the last row |
+| `Enter` / `Space` | sort, or toggle a group expander / select-all header |
+| `Ctrl/Cmd+Space` | select the column (`+Shift` adds it to the selection) |
+| `Alt+Arrow↓` / `Shift+Alt+Arrow↓` | open the column menu / the column filter |
+
+The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
+`Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/
+`PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
+characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
+`Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
+
 ### Planned keyboard-shortcut discovery
 
 A future grid-owned shortcut reference must show the shortcuts that are valid for the current
@@ -474,7 +502,8 @@ context rather than a static global list. It should account for the active keybo
 mode, focused area/cell, hierarchy availability, selection and editing state, enabled features, and
 platform-specific Ctrl/Cmd labels. It must be reachable from within the grid by keyboard and
 pointer, expose the active navigation mode, and update immediately when runtime options or focus
-change.
+change. The binding table above is what makes that buildable: it already carries a `label` per
+binding, so the panel can be a filtered view of it rather than a hand-maintained list.
 
 ## Styling
 

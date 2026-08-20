@@ -58,7 +58,7 @@ import { HeaderRenderer } from "./header/renderer";
 import { IconRenderer } from "./iconRenderer";
 import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
-import { matchesChord } from "./interaction/keyChord";
+import { KeyboardBinding, KeyboardRouter } from "./interaction/keyboardRouter";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
@@ -115,6 +115,7 @@ export class GridRenderer {
   _pinnedRowsRenderer: PinnedRowsRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _headerInteractionHandler: HeaderInteractionHandler;
+  private _keyboardRouter: KeyboardRouter;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
@@ -627,6 +628,10 @@ export class GridRenderer {
       openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
     });
+    // After both cursor handlers exist: the router registers their bindings, and a duplicate chord
+    // within one scope throws here rather than surfacing as a keystroke that quietly does the wrong
+    // thing.
+    this._keyboardRouter = this.buildKeyboardRouter();
     this._interactionEventBinder = new GridInteractionEventBinder({
       root: this.root,
       headerWrapper: headerRefs.wrapper,
@@ -1079,23 +1084,64 @@ export class GridRenderer {
   // Ctrl/Cmd+F is claimed here (preventing the browser's native find) to summon the quick filter,
   // then everything else falls through to selection/keyboard navigation.
   _onKeyDown(e: KeyboardEvent) {
-    if (this._quickFilterWidget && matchesChord(e, "mod+f")) {
-      e.preventDefault();
-      this._quickFilterWidget.show();
-      return;
-    }
-    // The header cursor gets the keys first, and only while it holds the cursor. Routing by position
-    // rather than by key keeps the body's meanings intact: the body handler treats Enter as "edit this
-    // cell" and any printable character as type-to-edit, neither of which should happen on a header.
-    //
-    // Gated on the event originating at the root itself, where this cursor lives: DOM focus never leaves
-    // the root in the activedescendant model, so a keydown from anywhere else came from a real control
-    // inside the grid (a pagination button, the quick filter, a cell editor) and belongs to it.
-    if (e.target === this.root && this._headerInteractionHandler.onKeyDown(e)) {
-      e.preventDefault();
-      return;
-    }
-    this._selectionRenderer.onKeyDown(e);
+    this._keyboardRouter.handleKeyDown(e);
+  }
+
+  /**
+   * Build the keyboard router: the scope chain, then every subsystem's bindings.
+   *
+   * The chain replaces what used to be the order of `if`s in `_onKeyDown`. Two scopes are blocking
+   * because their owner takes the whole keyboard: an open cell editor (Enter/Tab/Escape/arrows are
+   * the editor's), and any embedded form control — column filter inputs, the filter type/op
+   * `<select>`, join radios, the quick-filter box — whose keydowns bubble to the root and would
+   * otherwise have Arrows, Home/End and Backspace/Delete stolen by grid navigation, leaving fields
+   * that can be typed into but never edited or cleared.
+   *
+   * `headerCursor` is not blocking: a key with no header meaning still reaches the grid's own
+   * chords. It is gated on the event originating at the root itself, where that cursor lives — DOM
+   * focus never leaves the root in the activedescendant model, so a keydown from anywhere else came
+   * from a real control inside the grid and belongs to it.
+   */
+  private buildKeyboardRouter(): KeyboardRouter {
+    const isFormControl = (e: KeyboardEvent): boolean => {
+      const target = e.target as HTMLElement | null;
+      return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"
+        || target.tagName === "SELECT" || target.isContentEditable);
+    };
+
+    const router = new KeyboardRouter([
+      { scope: "editor", isActive: () => this.core.getEditingCell() != null, blocking: true },
+      { scope: "embeddedControl", isActive: isFormControl, blocking: true },
+      {
+        scope: "headerCursor",
+        isActive: (e) => e.target === this.root && this.core.getHeaderFocusColIdx() != null,
+      },
+      { scope: "bodyCursor", isActive: () => true },
+      { scope: "grid", isActive: () => true },
+      { scope: "app", isActive: () => true },
+    ]);
+
+    router.register([
+      // Claimed at grid scope so it works from the header cursor too, and to keep the browser's
+      // native find dialog shut. The quick-filter input claims the same chord locally, because it
+      // stops propagation before this router ever sees the key.
+      {
+        id: "quickFilter",
+        chord: "mod+f",
+        scope: "grid",
+        label: "Quick filter",
+        when: () => this._quickFilterWidget != null,
+        run: () => this._quickFilterWidget!.show(),
+      },
+    ]);
+    router.register(this._headerInteractionHandler.keyboardBindings());
+    router.register(this._selectionRenderer.keyboardBindings());
+    return router;
+  }
+
+  /** Every registered keyboard binding, innermost scope first. For diagnostics and tests. */
+  getKeyboardBindings(): readonly KeyboardBinding[] {
+    return this._keyboardRouter.getBindings();
   }
 
   setLoading(isLoading: boolean) {

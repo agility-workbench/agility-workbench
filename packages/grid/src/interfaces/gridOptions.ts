@@ -258,6 +258,10 @@ export interface TreeDataCommonOptions<Row = any> {
   /**
    * Enables the fixed Ctrl/Cmd+Shift+Space shortcut for switching between grid and hierarchy
    * navigation at runtime. The shortcut itself is deliberately not configurable. Defaults to false.
+   *
+   * It applies while the cursor is on a **body** cell. The header cursor claims the same chord for
+   * "add this column to the selection" (Excel's Ctrl+Space, made additive by Shift), and the
+   * innermost cursor wins — so the switch is inert while the cursor sits in the header.
    */
   enableKeyboardNavigationModeSwitch?: boolean;
 }

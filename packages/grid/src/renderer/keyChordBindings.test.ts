@@ -224,6 +224,53 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
     expect(press("f", MOD)).toBe(true);
   });
 
+  it("leaves Alt+Arrow to the browser instead of moving the cursor", () => {
+    const before = api.getSelection().active;
+
+    // The grid used to consume Alt+Arrow as a plain arrow, silently overriding the browser's
+    // back/forward gesture and giving nothing back for it.
+    expect(press("ArrowDown", { altKey: true })).toBe(false);
+    expect(press("ArrowLeft", { altKey: true })).toBe(false);
+    expect(api.getSelection().active).toEqual(before);
+
+    expect(press("ArrowDown")).toBe(true);
+    expect(api.getSelection().active).not.toEqual(before);
+  });
+
+  it("gives mod+shift+space two meanings, one per cursor", () => {
+    api.destroy();
+    api = createGrid(host, {
+      rowIdKey: "id",
+      columnDefs,
+      rowData: [
+        { id: "a", name: "A", total: 1, path: ["A"] },
+        { id: "b", name: "B", total: 2, path: ["A", "B"] },
+      ],
+      treeData: {
+        mode: "path",
+        getPath: (row: any) => row.path,
+        enableKeyboardNavigationModeSwitch: true,
+      },
+      groupDefaultExpanded: -1,
+      columnSelection: true,
+    });
+    root = host.querySelector<HTMLElement>(".pte-root")!;
+    const chord = { ...MOD, shiftKey: true, code: "Space" } as KeyboardEventInit;
+
+    // Header cursor: the Excel-lineage column-selection chord (Shift making it additive).
+    root.focus();
+    expect(api.getCore().getHeaderFocusColIdx()).not.toBeNull();
+    expect(press(" ", chord)).toBe(true);
+    expect(api.getSelection().selectedColumnIds.length).toBe(1);
+    expect(api.getKeyboardNavigationMode()).toBe("grid");
+
+    // Body cursor: the tree-navigation switch. Same keystroke, different scope, different meaning —
+    // which is legal, and is why neither binding had to be rebound.
+    api.dispatch({ type: "focusSet", viewIdx: 1, colIdx: 0, reason: "mouse" });
+    expect(press(" ", chord)).toBe(true);
+    expect(api.getKeyboardNavigationMode()).toBe("hierarchy");
+  });
+
   it("claims the same Ctrl+F inside the quick-filter input as at the root", () => {
     api.destroy();
     api = createGrid(host, {
