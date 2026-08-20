@@ -95,6 +95,48 @@ describe("entering and leaving the header", () => {
     expect(core.getActiveCell()?.row).toBe(0);
   });
 
+  it("jumps to the first and last column with Ctrl/Cmd+Arrow, like Home/End", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    const first = core.getHeaderFocusColIdx()!;
+
+    press(root, "ArrowRight");
+    expect(core.getHeaderFocusColIdx()).toBeGreaterThan(first);
+
+    press(root, "ArrowLeft", { ctrlKey: true });
+    expect(core.getHeaderFocusColIdx()).toBe(first);
+
+    press(root, "ArrowRight", { ctrlKey: true });
+    const last = core.getHeaderFocusColIdx();
+    press(root, "End");
+    expect(core.getHeaderFocusColIdx()).toBe(last);
+    expect(last).toBeGreaterThan(first);
+  });
+
+  it("hands the cursor to the body's LAST row on Ctrl/Cmd+ArrowDown", () => {
+    const { core, root } = mountGrid(12);
+    root.focus();
+    press(root, "ArrowRight");
+    const colIdx = core.getHeaderFocusColIdx()!;
+
+    press(root, "ArrowDown", { ctrlKey: true });
+    expect(core.getHeaderFocusColIdx()).toBeNull();
+    // The body's block-jump counterpart: plain ArrowDown lands on row 0, Ctrl+ArrowDown on the last.
+    expect(core.getActiveCell()).toEqual({ row: 11, colIdx, rowPinned: undefined });
+  });
+
+  it("keeps Shift+Arrow as plain header movement rather than dropping it to the body", () => {
+    const { core, root } = mountGrid();
+    root.focus();
+    const first = core.getHeaderFocusColIdx()!;
+
+    // Shift has no header meaning yet (extending the column selection is planned), so the chord is
+    // still consumed here — declining it would move the body cursor behind the header.
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(core.getHeaderFocusColIdx()).toBeGreaterThan(first);
+    expect(core.getActiveCell()).toBeNull();
+  });
+
   it("hands the cursor to the body on ArrowDown, in the same column", () => {
     const { core, root } = mountGrid();
     root.focus();
