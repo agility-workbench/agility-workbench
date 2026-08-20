@@ -154,7 +154,6 @@ export class AwbGrid implements OnDestroy {
 
   // --- sorting ---
   readonly initialSort = input<GridOptions["initialSort"]>();
-  readonly multiSortKey = input<GridOptions["multiSortKey"]>();
   readonly showSortPriority = input<GridOptions["showSortPriority"]>();
 
   // --- filtering ---

@@ -396,13 +396,14 @@ export class SelectionRenderer {
     };
 
     return [
-      // The optional fixed tree-navigation mode switch. A `bodyCursor` binding, not a global one:
-      // the header claims this same chord for "add column to selection", and a chord is allowed to
-      // mean different things in different scopes. See docs/planned-work.md §2.
+      // The optional fixed tree-navigation mode switch. A `grid` binding: it configures the grid
+      // rather than acting on a cell, so it works wherever the cursor is. It briefly lived at
+      // `bodyCursor` scope because the header's Space family also claimed mod+shift+space; the
+      // header keymap gave that chord up to Space/Ctrl+Space, so this is global again.
       {
         id: "treeNavigationMode",
         chord: "mod+shift+space",
-        scope: "bodyCursor",
+        scope: "grid",
         label: "Switch tree navigation mode",
         when: () => core.options.treeData?.enableKeyboardNavigationModeSwitch === true,
         run: () => {

@@ -1,5 +1,6 @@
 import { GridCore } from "../../core/core";
 import type { Column } from "../../column/column";
+import { DEFAULT_SORTING_ORDER, nextSortDir, type SortDir } from "../../interfaces/sort";
 import { hasMod } from "../interaction/keyChord";
 import type { KeyboardBinding } from "../interaction/keyboardRouter";
 
@@ -32,9 +33,9 @@ export class HeaderInteractionHandler {
     const nav = (dir: "left" | "right" | "down" | "home" | "end", jump?: "block") => () => {
       core.dispatch({ type: "headerNavigate", dir, jump });
     };
-    // Shift is accepted on every movement chord because it has no header meaning *yet*: extending
-    // the column selection with Shift+Arrow is planned (docs/planned-work.md §2), and until then
-    // declining the chord would drop it through to the body and move the body cursor instead.
+    // Shift is accepted on the vertical chords because it has no meaning of its own there: the body
+    // clears the column selection as the cursor arrives, and declining would move the body cursor
+    // behind a header the user is still looking at.
     const move = { shift: "any" } as const;
 
     return [
@@ -55,32 +56,78 @@ export class HeaderInteractionHandler {
         run: () => this.openMenuOrFilter(true),
       },
 
+      // Shift extends the column selection instead of moving the cursor alone — and only when the
+      // cursor already sits on a selected column, which is what keeps the rule to one sentence. The
+      // chord is claimed either way: declining it would drop a header keystroke into the body.
+      {
+        id: "extendLeft",
+        chord: { key: "arrowleft", shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection left",
+        run: () => this.extendColumnSelection("left"),
+      },
+      {
+        id: "extendRight",
+        chord: { key: "arrowright", shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection right",
+        run: () => this.extendColumnSelection("right"),
+      },
+      {
+        id: "extendToFirst",
+        chord: { key: "arrowleft", mod: true, shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection to the first column",
+        run: () => this.extendColumnSelection("home"),
+      },
+      {
+        id: "extendToLast",
+        chord: { key: "arrowright", mod: true, shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection to the last column",
+        run: () => this.extendColumnSelection("end"),
+      },
+      {
+        id: "extendHome",
+        chord: { key: "home", mod: "any", shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection to the first column",
+        run: () => this.extendColumnSelection("home"),
+      },
+      {
+        id: "extendEnd",
+        chord: { key: "end", mod: "any", shift: true },
+        scope: "headerCursor",
+        label: "Extend the column selection to the last column",
+        run: () => this.extendColumnSelection("end"),
+      },
+
       // Mod jumps to the row of columns' edge, matching the body's Ctrl+Arrow block jump. These are
       // the same stops Home/End use.
       {
         id: "firstColumn",
-        chord: { key: "arrowleft", mod: true, ...move },
+        chord: { key: "arrowleft", mod: true },
         scope: "headerCursor",
         label: "First column",
         run: nav("home"),
       },
       {
         id: "lastColumn",
-        chord: { key: "arrowright", mod: true, ...move },
+        chord: { key: "arrowright", mod: true },
         scope: "headerCursor",
         label: "Last column",
         run: nav("end"),
       },
       {
         id: "moveLeft",
-        chord: { key: "arrowleft", ...move },
+        chord: "arrowleft",
         scope: "headerCursor",
         label: "Previous column",
         run: nav("left"),
       },
       {
         id: "moveRight",
-        chord: { key: "arrowright", ...move },
+        chord: "arrowright",
         scope: "headerCursor",
         label: "Next column",
         run: nav("right"),
@@ -101,14 +148,14 @@ export class HeaderInteractionHandler {
       },
       {
         id: "homeColumn",
-        chord: { key: "home", mod: "any", ...move },
+        chord: { key: "home", mod: "any" },
         scope: "headerCursor",
         label: "First column",
         run: nav("home"),
       },
       {
         id: "endColumn",
-        chord: { key: "end", mod: "any", ...move },
+        chord: { key: "end", mod: "any" },
         scope: "headerCursor",
         label: "Last column",
         run: nav("end"),
@@ -122,76 +169,140 @@ export class HeaderInteractionHandler {
         run: () => undefined,
       },
 
-      // Ctrl+Space selects the column (Excel's binding), Shift making it additive — a deliberate
-      // grid extension, since Excel's Ctrl+Shift+Space selects the whole sheet. This is also the
-      // tree-data navigation switch's chord, which is a body-cursor binding: same keystroke, two
-      // scopes, two meanings. See docs/planned-work.md §2.
-      ...this.activationBindings("selectColumn", { mod: true, shift: "any" }, (e) => {
-        const col = core.getHeaderFocusColumn();
-        if (!col) return;
-        if (!col.isLeadingUtilityColumn() && core.options.columnSelection) {
-          this.params.toggleColumnSelection(col.instanceID, e.shiftKey ? "toggle" : "replace");
-        }
-      }, "Select column"),
+      // Space selects, Enter sorts — one job per key, matching the body, where Space on a checkbox
+      // cell already means "select this thing". Each is a single binding that branches on the column
+      // type rather than several bindings claiming one chord, so the router's conflict check has
+      // nothing to complain about. Shift+Space is deliberately unclaimed, and Ctrl/Cmd+Shift+Space
+      // with it — the tree-navigation switch takes that chord at `grid` scope.
+      {
+        id: "selectColumn",
+        chord: { key: "space", mod: "any" },
+        scope: "headerCursor",
+        label: "Select column",
+        run: (e) => {
+          const col = core.getHeaderFocusColumn();
+          if (!col || this.utilityHeaderActivation(col)) return;
+          if (!core.options.columnSelection) return;
+          this.params.toggleColumnSelection(col.instanceID, hasMod(e) ? "toggle" : "replace");
+        },
+      },
+      {
+        id: "sortColumn",
+        chord: { key: "enter", mod: "any", shift: "any" },
+        scope: "headerCursor",
+        label: "Sort column",
+        run: (e) => {
+          const col = core.getHeaderFocusColumn();
+          if (!col || this.utilityHeaderActivation(col)) return;
 
-      ...this.activationBindings("activate", { shift: "any" }, (e) => {
-        const col = core.getHeaderFocusColumn();
-        if (!col) return;
-
-        // The row-number header's only action is select-all, matching a click on it; same for the
-        // checkbox column's header checkbox.
-        if (col.isRowNumberColumn()) {
-          if (core.options.rowSelection && core.options.selectAllRowsOnHeaderClick) {
-            core.dispatch({
-              type: "rowSelectAll", selected: !core.areAllRowsSelected(), reason: "keyboard",
-            });
+          // A leaf carrying the group expander toggles it and never sorts. Parent (group) header
+          // cells are not reachable by this cursor at all.
+          if (col.showExpander) {
+            core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
+            return;
           }
-          return;
-        }
-        if (col.isSelectionCheckboxColumn()) {
-          if (core.options.rowSelectionHeaderCheckbox) {
-            core.dispatch({
-              type: "rowSelectAll", selected: !core.areAllRowsSelected(), reason: "keyboard",
-            });
+          if (!col.sortable) return;
+          if (e.shiftKey) {
+            this.sortColumnSelection(col);
+            return;
           }
-          return;
-        }
-
-        // A leaf carrying the group expander toggles it; otherwise activation sorts. Parent (group)
-        // header cells are not reachable by this cursor at all.
-        if (col.showExpander) {
-          core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
-          return;
-        }
-        if (col.sortable) {
           core.dispatch({
             type: "headerAction",
             action: "toggleSort",
             colId: col.instanceID,
-            additive: core.options.multiSortKey === "shift" ? e.shiftKey : hasMod(e),
+            additive: hasMod(e),
           });
-        }
-      }, "Activate column header"),
+        },
+      },
     ];
   }
 
   /**
-   * Enter and Space activate identically, so each activation is registered as the same `run` under
-   * both keys rather than duplicated.
+   * A row-number or checkbox header has exactly one action — select all rows — on either key, and
+   * never sorts or selects a column. Returns true when the column is one of those, whether or not
+   * its action is enabled: the key belongs to the header either way.
    */
-  private activationBindings(
-    id: string,
-    modifiers: { mod?: boolean | "any"; shift?: boolean | "any" },
-    run: (e: KeyboardEvent) => void,
-    label: string,
-  ): KeyboardBinding[] {
-    return ["enter", "space"].map(key => ({
-      id: `${id}.${key}`,
-      chord: { key, ...modifiers },
-      scope: "headerCursor" as const,
-      label,
-      run,
-    }));
+  private utilityHeaderActivation(col: Column): boolean {
+    const core = this.params.core;
+    const selectAll = () => core.dispatch({
+      type: "rowSelectAll", selected: !core.areAllRowsSelected(), reason: "keyboard",
+    });
+    if (col.isRowNumberColumn()) {
+      if (core.options.rowSelection && core.options.selectAllRowsOnHeaderClick) selectAll();
+      return true;
+    }
+    if (col.isSelectionCheckboxColumn()) {
+      if (core.options.rowSelectionHeaderCheckbox) selectAll();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Shift+Enter sorts every selected column at once — the keyboard's counterpart of the
+   * multi-column menu's Sort Ascending/Descending, and like the menu it leaves columns outside the
+   * selection alone. The menu can offer a direction per state; a keystroke has to pick one, so the
+   * group's shared direction (mixed counts as unsorted) is advanced through the cursor column's
+   * configured `sortingOrder`. A selection of one degrades to plain Enter.
+   */
+  private sortColumnSelection(target: Column): void {
+    const core = this.params.core;
+    const selected = core.getSelectedColumnIds();
+    const cols = core.getColumnModel().getLeaves()
+      .filter(col => col.sortable && !col.isInternal()
+        && (col.instanceID === target.instanceID || selected.has(col.instanceID)));
+    if (cols.length <= 1) {
+      core.dispatch({
+        type: "headerAction", action: "toggleSort", colId: target.instanceID, additive: false,
+      });
+      return;
+    }
+
+    const sorted = core.getSortModel().items;
+    let groupDir: SortDir | null | "mixed" = null;
+    for (const [idx, col] of cols.entries()) {
+      const dir = sorted.find(item => item.col.instanceID === col.instanceID)?.dir ?? null;
+      if (idx === 0) groupDir = dir;
+      else if (groupDir !== dir) groupDir = "mixed";
+    }
+    const dir = nextSortDir(
+      groupDir === "mixed" ? null : groupDir,
+      target.sortingOrder ?? DEFAULT_SORTING_ORDER,
+    );
+    core.dispatch({
+      type: "sortModelSet",
+      sortItems: cols.map(col => ({ key: col.instanceID, dir })),
+    });
+  }
+
+  /**
+   * Grow (or shrink) the column selection from the cursor. Strict by design: unless the cursor is
+   * already on a selected column this does nothing at all — not even move the cursor — so
+   * `Shift+Arrow` can never look like plain movement that quietly starts selecting. Utility headers
+   * are never column-selected, which is why they need no special case here: `Ctrl+A` selects the
+   * body, so pressing Space on a row-number header must not seed a *header* selection.
+   */
+  private extendColumnSelection(dir: "left" | "right" | "home" | "end"): void {
+    const core = this.params.core;
+    if (!core.options.columnSelection) return;
+    const at = core.getHeaderFocusColIdx();
+    const from = core.getHeaderFocusColumn();
+    if (at == null || !from || !this.params.selectedColumnIDs().has(from.instanceID)) return;
+
+    // Selectable stops, not cursor stops: an extension steps over the columns a range cannot cover
+    // (row numbers, the checkbox column — which is the *last* leaf when pinned right — and the
+    // generated group column) rather than parking the cursor on one and growing nothing.
+    const leaves = core.getColumnModel().getLeaves();
+    const stops = leaves.map((col, idx) => col.isInternal() ? -1 : idx).filter(idx => idx >= 0);
+    const stopIdx = stops.indexOf(at);
+    if (stopIdx < 0) return;
+    const next = dir === "left" ? stops[Math.max(0, stopIdx - 1)]
+      : dir === "right" ? stops[Math.min(stops.length - 1, stopIdx + 1)]
+        : dir === "home" ? stops[0]
+          : stops[stops.length - 1];
+
+    core.dispatch({ type: "headerFocusSet", colIdx: next, reason: "keyboard" });
+    core.dispatch({ type: "columnSelectSet", colId: leaves[next].instanceID, mode: "range" });
   }
 
   private openMenuOrFilter(filter: boolean): void {
@@ -326,15 +437,15 @@ export class HeaderInteractionHandler {
       return this.params.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });
     }
     // The sort icon lives inside .pte-hcell-content, so it must be checked before the content branch
-    // below. A plain click replaces the sort with this column; the configured multiSortKey modifier
-    // makes it additive (multi-column sort).
+    // below. A plain click replaces the sort with this column; Ctrl/Cmd *or* Shift makes it additive.
+    // Both modifiers, not one configured modifier: Shift+click on the header body was already
+    // unconditionally additive, so a `multiSortKey` of "ctrl" made the same modifier mean two things
+    // depending on where in the cell the user clicked.
     const sortIcon = (e.target as HTMLElement)?.closest(".pte-hcell-sort");
     if (sortIcon) {
       const col = this.params.core.getColumnModel().getById(header.id);
       if (!col || !col.sortable) return;
-      const additive = this.params.core.options.multiSortKey === "shift"
-        ? e.shiftKey
-        : e.ctrlKey || e.metaKey;
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
       return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive });
     }
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");

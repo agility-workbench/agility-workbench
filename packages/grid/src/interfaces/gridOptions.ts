@@ -181,6 +181,11 @@ export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: Menu
  *   `ctx.colIds` carries internal instance ids. Selecting a column group expands it to its leaves,
  *   so a group header's menu passes the group followed by its leaf columns — the same set the
  *   built-in items operate on. Discriminate with `column.children.length`.
+ *
+ * Order is the *selection sequence*, not display order: target first, then the order the columns
+ * were added — so an application can rely on it (a keyboard `Shift+Arrow` range arrives in display
+ * order because that is the order it was built in). Anything that needs display order should read it
+ * from the column model; export already does, so exported column order is unaffected either way.
  */
 export type MultiColumnMenuItemsGetter = (
   params: { ctx: ColumnMenuContext; columns: Column[]; items: MenuItem[] },
@@ -257,11 +262,8 @@ export interface TreeDataCommonOptions<Row = any> {
   keyboardNavigationMode?: TreeDataKeyboardNavigationMode;
   /**
    * Enables the fixed Ctrl/Cmd+Shift+Space shortcut for switching between grid and hierarchy
-   * navigation at runtime. The shortcut itself is deliberately not configurable. Defaults to false.
-   *
-   * It applies while the cursor is on a **body** cell. The header cursor claims the same chord for
-   * "add this column to the selection" (Excel's Ctrl+Space, made additive by Shift), and the
-   * innermost cursor wins — so the switch is inert while the cursor sits in the header.
+   * navigation at runtime. The shortcut itself is deliberately not configurable, and works wherever
+   * the keyboard cursor is. Defaults to false.
    */
   enableKeyboardNavigationModeSwitch?: boolean;
 }
@@ -357,13 +359,6 @@ export interface InitialSortItem {
  * descending-first columns.
  */
 export type SortingOrder = ("asc" | "desc" | null)[];
-
-/**
- * Modifier key that makes a sort-icon click additive (adds the column to a multi-column sort instead
- * of replacing it): "ctrl" (also matches ⌘ / metaKey) or "shift". Defaults to "ctrl", consistent
- * with additive column selection.
- */
-export type MultiSortKey = "ctrl" | "shift";
 
 /**
  * When the multi-column sort priority number is shown on the sort icon:
@@ -1096,12 +1091,6 @@ export interface GridOptions {
    */
   initialSort?: InitialSortItem[];
   /**
-   * Modifier key that makes a sort-icon click additive — adding the column to a multi-column sort
-   * rather than replacing the current sort. "ctrl" (default, also matches ⌘) or "shift". A plain
-   * (unmodified) icon click always replaces the sort with just that column.
-   */
-  multiSortKey?: MultiSortKey;
-  /**
    * When the multi-column sort priority number is shown on the sort icon: "multi" (default — only
    * when 2+ columns are sorted), "always" (whenever a column is sorted), or "never".
    */
@@ -1385,7 +1374,6 @@ export interface InternalGridOptions extends GridOptions {
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
   commitOnBlur: boolean;
-  multiSortKey: MultiSortKey;
   showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;

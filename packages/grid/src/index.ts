@@ -133,7 +133,6 @@ export type {
   GridToolbarOptions,
   InitialSortItem,
   SortingOrder,
-  MultiSortKey,
   ShowSortPriority,
   SortIconVisibility,
   TooltipOptions,

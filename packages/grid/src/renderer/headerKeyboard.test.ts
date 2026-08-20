@@ -125,15 +125,17 @@ describe("entering and leaving the header", () => {
     expect(core.getActiveCell()).toEqual({ row: 11, colIdx, rowPinned: undefined });
   });
 
-  it("keeps Shift+Arrow as plain header movement rather than dropping it to the body", () => {
-    const { core, root } = mountGrid();
+  it("does nothing at all on Shift+Arrow while the cursor is on an unselected column", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
     root.focus();
     const first = core.getHeaderFocusColIdx()!;
 
-    // Shift has no header meaning yet (extending the column selection is planned), so the chord is
-    // still consumed here — declining it would move the body cursor behind the header.
+    // Shift+Arrow extends the column selection, so with nothing selected it is inert — deliberately
+    // not "move the cursor like a plain arrow", which would look like movement that quietly starts
+    // selecting. Still consumed: declining would move the body cursor behind the header.
     press(root, "ArrowRight", { shiftKey: true });
-    expect(core.getHeaderFocusColIdx()).toBeGreaterThan(first);
+    expect(core.getHeaderFocusColIdx()).toBe(first);
+    expect(core.getSelectedColumnIds().size).toBe(0);
     expect(core.getActiveCell()).toBeNull();
   });
 
@@ -379,7 +381,7 @@ describe("a click on a header cell moves the cursor", () => {
 
   // A header click replaces the *column* selection with the clicked column — long-standing mouse
   // behaviour, nothing to do with the cursor. What matters is that arrows carry on from there, so a
-  // click plus arrows plus Ctrl+Shift+Space still builds a multi-column selection.
+  // click plus arrows plus Ctrl+Space still builds a multi-column selection.
   it("lets arrows keep building a multi-column selection after a click", () => {
     const { core, root } = mountGrid(10, { columnSelection: true });
     root.focus();
@@ -391,7 +393,7 @@ describe("a click on a header cell moves the cursor", () => {
 
     press(root, "ArrowRight"); // cursor onto "name" — navigating selects nothing by itself
     expect(colIds()).toEqual(["region"]);
-    press(root, " ", { ctrlKey: true, shiftKey: true }); // additive
+    press(root, " ", { ctrlKey: true }); // additive
     expect(colIds()).toEqual(["name", "region"]);
   });
 
@@ -467,36 +469,85 @@ describe("acting on the focused column", () => {
     return target;
   };
 
-  it("sorts on Enter and on Space, cycling direction", () => {
-    const { core, root } = mountGrid();
+  it("sorts on Enter, cycling direction, and never on Space", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
     focusColumn(root, core, "name");
 
     press(root, "Enter");
     expect(core.getSortModel().items.map(i => [i.col.colId, i.dir])).toEqual([["name", "asc"]]);
+    press(root, "Enter");
+    expect(core.getSortModel().items.map(i => i.dir)).toEqual(["desc"]);
+
+    // Space is column selection now. Each key has one job, so Space cannot also advance the sort.
     press(root, " ");
     expect(core.getSortModel().items.map(i => i.dir)).toEqual(["desc"]);
   });
 
-  it("adds to a multi-column sort with the configured modifier", () => {
-    const { core, root } = mountGrid(10, { multiSortKey: "shift" });
+  it("adds to a multi-column sort with Ctrl/Cmd+Enter", () => {
+    const { core, root } = mountGrid();
     focusColumn(root, core, "region");
     press(root, "Enter");
     focusColumn(root, core, "name");
-    press(root, "Enter", { shiftKey: true });
+    press(root, "Enter", { ctrlKey: true });
 
     expect(core.getSortModel().items.map(i => i.col.colId)).toEqual(["region", "name"]);
+
+    // Plain Enter still replaces the whole sort.
+    press(root, "Enter");
+    expect(core.getSortModel().items.map(i => i.col.colId)).toEqual(["name"]);
   });
 
-  it("selects the column with Ctrl+Space", () => {
-    const { core, root } = mountGrid();
-    focusColumn(root, core, "name");
+  it("sorts every selected column on Shift+Enter", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "region");
+    press(root, " ");
+    focusColumn(root, core, "total");
     press(root, " ", { ctrlKey: true });
+    const sorted = () => core.getSortModel().items.map(i => [i.col.colId, i.dir]);
 
-    const selected = [...core.getSelectedColumnIds()];
-    expect(selected).toHaveLength(1);
-    expect(core.getColumnModel().getById(selected[0])?.colId).toBe("name");
+    // One keystroke, the whole selection, one shared direction — the keyboard counterpart of the
+    // multi-column menu's Sort Ascending.
+    press(root, "Enter", { shiftKey: true });
+    expect(sorted()).toEqual([["region", "asc"], ["total", "asc"]]);
+
+    // The group direction advances together: all-ascending → descending for both.
+    press(root, "Enter", { shiftKey: true });
+    expect(sorted()).toEqual([["region", "desc"], ["total", "desc"]]);
+  });
+
+  it("degrades Shift+Enter to a plain sort when one column is selected", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "region");
+    press(root, "Enter"); // sort region ascending
+    focusColumn(root, core, "name");
+    press(root, " "); // select only "name"
+    press(root, "Enter", { shiftKey: true });
+
+    // A selection of one is just this column — and like plain Enter it replaces the sort.
+    expect(core.getSortModel().items.map(i => [i.col.colId, i.dir])).toEqual([["name", "asc"]]);
+  });
+
+  it("selects the column with Space, and adds to the selection with Ctrl/Cmd+Space", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    const colIds = () => [...core.getSelectedColumnIds()]
+      .map(id => core.getColumnModel().getById(id)?.colId);
+    focusColumn(root, core, "name");
+    press(root, " ");
+    expect(colIds()).toEqual(["name"]);
     // Selecting a column is not sorting it.
     expect(core.getSortModel().items).toHaveLength(0);
+
+    focusColumn(root, core, "total");
+    press(root, " ", { ctrlKey: true });
+    expect(colIds()).toEqual(["name", "total"]);
+    // ...and Ctrl/Cmd+Space toggles, so pressing it again drops the column.
+    press(root, " ", { ctrlKey: true });
+    expect(colIds()).toEqual(["name"]);
+
+    // Plain Space replaces.
+    focusColumn(root, core, "region");
+    press(root, " ");
+    expect(colIds()).toEqual(["region"]);
   });
 
   it("toggles select-all from the row-number header, and never sorts it", () => {
@@ -509,6 +560,19 @@ describe("acting on the focused column", () => {
     press(root, "Enter");
     expect(api.getSelectedRows()).toHaveLength(0);
     expect(core.getSortModel().items).toHaveLength(0);
+  });
+
+  it("selects all rows from the row-number header on Space too, without selecting the column", () => {
+    const { core, api, root } = mountGrid(10, {
+      rowSelection: true, selectAllRowsOnHeaderClick: true, columnSelection: true,
+    });
+    root.focus();
+
+    press(root, " ");
+    expect(api.getSelectedRows()).toHaveLength(10);
+    // Ctrl+A selects the body, not the headers — so a utility header must never seed a *column*
+    // selection, which is also what keeps Shift+Arrow inert there.
+    expect(core.getSelectedColumnIds().size).toBe(0);
   });
 
   it("opens the column menu with Alt+ArrowDown", () => {
@@ -532,6 +596,103 @@ describe("acting on the focused column", () => {
     press(root, "Enter");
     press(root, "x");
     expect(core.getEditingCell()).toBeNull();
+  });
+});
+
+/**
+ * Shift+Arrow extends the column selection from the cursor's column — and does nothing at all,
+ * cursor included, unless the cursor is already on a selected column. The anchor is what makes an
+ * extension that reverses direction shrink instead of accumulating.
+ */
+describe("extending the column selection from the header", () => {
+  const focusColumn = (root: HTMLElement, core: GridCore, colId: string) => {
+    root.focus();
+    const target = core.getColumnModel().getLeaves().findIndex(c => c.colId === colId);
+    core.dispatch({ type: "headerFocusSet", colIdx: target, reason: "api" });
+    return target;
+  };
+  const colIds = (core: GridCore) => [...core.getSelectedColumnIds()]
+    .map(id => core.getColumnModel().getById(id)?.colId);
+
+  it("grows with Shift+Arrow and shrinks again when the direction reverses", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "total");
+    press(root, " ");
+
+    press(root, "ArrowLeft", { shiftKey: true });
+    // Leaf order, not the order the range was built in.
+    expect(colIds(core)).toEqual(["name", "total"]);
+    press(root, "ArrowLeft", { shiftKey: true });
+    expect(colIds(core)).toEqual(["region", "name", "total"]);
+
+    // Back towards the anchor: the range is rebuilt from anchor..cursor every press, so reversing
+    // shrinks it rather than starting a second range.
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(colIds(core)).toEqual(["name", "total"]);
+    expect(core.getColumnModel().getLeaves()[core.getHeaderFocusColIdx()!].colId).toBe("name");
+  });
+
+  it("extends past the anchor and back, keeping the anchor put", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "name");
+    press(root, " ");
+
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(colIds(core)).toEqual(["name", "total"]);
+    // Two steps left crosses the anchor: the range flips to the other side rather than spanning both.
+    press(root, "ArrowLeft", { shiftKey: true });
+    press(root, "ArrowLeft", { shiftKey: true });
+    expect(colIds(core)).toEqual(["region", "name"]);
+  });
+
+  it("extends to the first and last selectable column with Shift+Home / Shift+End", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "name");
+    press(root, " ");
+
+    press(root, "End", { shiftKey: true });
+    expect(colIds(core)).toEqual(["name", "total"]);
+    press(root, "Home", { shiftKey: true });
+    // Home stops at the first *selectable* column: the row-number header is not one, so the range
+    // steps over it instead of clamping short.
+    expect(colIds(core)).toEqual(["region", "name"]);
+    expect(core.getColumnModel().getLeaves()[core.getHeaderFocusColIdx()!].colId).toBe("region");
+  });
+
+  it("stays inert on a utility header, where no column is selected", () => {
+    const { core, root } = mountGrid(10, {
+      columnSelection: true, rowSelection: true, selectAllRowsOnHeaderClick: true,
+    });
+    root.focus(); // the row-number header, leaf 0
+    const at = core.getHeaderFocusColIdx();
+
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(core.getHeaderFocusColIdx()).toBe(at);
+    expect(core.getSelectedColumnIds().size).toBe(0);
+  });
+
+  it("gives up the range when the cursor enters the body", () => {
+    const { core, root } = mountGrid(10, { columnSelection: true });
+    focusColumn(root, core, "region");
+    press(root, " ");
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(colIds(core)).toEqual(["region", "name"]);
+
+    press(root, "ArrowDown");
+    expect(core.getSelectedColumnIds().size).toBe(0);
+    // ...and the anchor goes with it: a fresh Space in the header starts over.
+    expect(core.getActiveCell()).not.toBeNull();
+  });
+
+  it("does nothing when column selection is disabled", () => {
+    const { core, root } = mountGrid(10, { columnSelection: false });
+    focusColumn(root, core, "name");
+    press(root, " ");
+    const at = core.getHeaderFocusColIdx();
+
+    press(root, "ArrowRight", { shiftKey: true });
+    expect(core.getHeaderFocusColIdx()).toBe(at);
+    expect(core.getSelectedColumnIds().size).toBe(0);
   });
 });
 

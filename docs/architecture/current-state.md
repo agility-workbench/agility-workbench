@@ -41,7 +41,7 @@ Grouped by area; each maps to a §5 sub-table.
   section; the exporter reproduces the merge as a real Excel merge range.
 - **Full-width rows** (§5.2 / §5.10) — `isFullWidthRow` + `fullWidthCellRenderer`; group rows in
   `groupRows` mode are full-width automatically.
-- **Sort ergonomics** (§5.4) — configurable `sortingOrder` cycle, `multiSortKey`, `showSortPriority`,
+- **Sort ergonomics** (§5.4) — configurable `sortingOrder` cycle, `showSortPriority`,
   `sortIconVisibility`, grid-level `initialSort`, per-column `sort`/`sortIndex`, and a custom
   `comparator`.
 - **Conditional styling** (§5.10) — `getRowClass`/`getRowStyle` and per-column `cellClass`/`cellStyle`,
@@ -539,7 +539,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Toolbar sort management | ✅ Complete | ordered chips with trailing-area picker/header drop, direction toggle, removal, right-edge clear-all, keyboard/drag priority reordering; `renderer/toolbar/` |
 | Configurable sort cycle (`sortingOrder`) | ✅ Complete | `interfaces/sort.ts` → `nextSortDir` / `DEFAULT_SORTING_ORDER`; grid-level + per-column + `defaultColDef` |
 | Toggle sort (advances the configured cycle) | ✅ Complete | `GridCore.toggleSort()` / `progressSort` |
-| Multi-sort modifier key (`multiSortKey`: ctrl/shift) | ✅ Complete | additive sort on modified icon click; default "ctrl" |
+| Additive multi-column sort | ✅ Complete | Ctrl/Cmd **or** Shift on a header click (icon or body), `Ctrl/Cmd+Enter` on the header cursor; `Shift+Enter` sorts the whole column selection |
 | Sort priority indicator (`showSortPriority`: multi/always/never) | ✅ Complete | number badge on the sort icon; `renderer/header/renderer.ts` |
 | Sort icon visibility (`sortIconVisibility`: hover/always/never) | ✅ Complete | grid-level + per-column; "never" keeps the column sortable via menu/Shift+click/API |
 | Grid-level initial sort (`initialSort`) | ✅ Complete | ordered `{colId,dir}`; per-column `sort`/`sortIndex` take precedence; CSRM |
@@ -570,6 +570,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Cell-selection mode (`cellSelection`: true / false / "text") | ✅ Complete | `"text"` reverts to native browser text selection; `false` makes cells inert |
 | Range selection toggle (`rangeSelection`) | ✅ Complete | when false, selection stays a single cell (drag / Shift-extend ignored) |
 | Column-selection toggle (`columnSelection`) | ✅ Complete | when false, header clicks no longer select (sort/menu/filter unaffected) |
+| Keyboard column selection | ✅ Complete | `Space` selects, `Ctrl/Cmd+Space` toggles, `Shift+Arrow` / `Shift+Home` / `Shift+End` extend a range from `selectionModel.columnAnchorId` — only while the cursor is on a selected column |
 | Clear selection on body click (`clearSelectionOnBodyClick`) | ✅ Complete | default true |
 | Active-cell highlight (`highlightActiveCell`) | ✅ Complete | distinct outline on the focused cell within a range |
 

@@ -237,7 +237,32 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
     expect(api.getSelection().active).not.toEqual(before);
   });
 
-  it("gives mod+shift+space two meanings, one per cursor", () => {
+  it("claims Space and Ctrl+Space in the header but leaves Shift+Space alone", () => {
+    api.destroy();
+    api = createGrid(host, {
+      rowIdKey: "id",
+      columnDefs,
+      rowData: rows.map(row => ({ ...row })),
+      columnSelection: true,
+    });
+    root = host.querySelector<HTMLElement>(".pte-root")!;
+    root.focus();
+    expect(api.getCore().getHeaderFocusColIdx()).not.toBeNull();
+    const space = (mods: Partial<KeyboardEventInit> = {}) =>
+      press(" ", { code: "Space", ...mods } as KeyboardEventInit);
+
+    expect(space()).toBe(true);
+    expect(api.getSelection().selectedColumnIds.length).toBe(1);
+    expect(space(MOD)).toBe(true);
+    expect(api.getSelection().selectedColumnIds.length).toBe(0); // Ctrl+Space toggles
+
+    // Shift+Space carried "additive sort" while multiSortKey existed. Nothing in the header claims
+    // it now. (In the body, Space of any kind is type-to-edit — a printable character.)
+    expect(space({ shiftKey: true })).toBe(false);
+    expect(space({ ...MOD, shiftKey: true, altKey: true })).toBe(false);
+  });
+
+  it("switches tree navigation from either cursor, the header included", () => {
     api.destroy();
     api = createGrid(host, {
       rowIdKey: "id",
@@ -257,18 +282,18 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
     root = host.querySelector<HTMLElement>(".pte-root")!;
     const chord = { ...MOD, shiftKey: true, code: "Space" } as KeyboardEventInit;
 
-    // Header cursor: the Excel-lineage column-selection chord (Shift making it additive).
+    // The header used to claim this chord for "add this column to the selection", which made the
+    // switch inert here. Space and Ctrl/Cmd+Space now carry column selection on their own, so the
+    // switch is a `grid` binding again: one meaning, wherever the cursor is.
     root.focus();
     expect(api.getCore().getHeaderFocusColIdx()).not.toBeNull();
     expect(press(" ", chord)).toBe(true);
-    expect(api.getSelection().selectedColumnIds.length).toBe(1);
-    expect(api.getKeyboardNavigationMode()).toBe("grid");
+    expect(api.getSelection().selectedColumnIds.length).toBe(0);
+    expect(api.getKeyboardNavigationMode()).toBe("hierarchy");
 
-    // Body cursor: the tree-navigation switch. Same keystroke, different scope, different meaning —
-    // which is legal, and is why neither binding had to be rebound.
     api.dispatch({ type: "focusSet", viewIdx: 1, colIdx: 0, reason: "mouse" });
     expect(press(" ", chord)).toBe(true);
-    expect(api.getKeyboardNavigationMode()).toBe("hierarchy");
+    expect(api.getKeyboardNavigationMode()).toBe("grid");
   });
 
   it("claims the same Ctrl+F inside the quick-filter input as at the root", () => {

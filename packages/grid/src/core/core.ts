@@ -304,7 +304,6 @@ export class GridCore implements IGridCore {
       suppressTypeToEdit: isTrue(options.suppressTypeToEdit),
       moveAfterEdit: options.moveAfterEdit ?? true,
       commitOnBlur: options.commitOnBlur ?? true,
-      multiSortKey: options.multiSortKey ?? "ctrl",
       showSortPriority: options.showSortPriority ?? "multi",
       initialSort: options.initialSort,
       reevaluateOnEdit: options.reevaluateOnEdit ?? true,

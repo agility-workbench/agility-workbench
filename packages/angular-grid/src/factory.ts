@@ -73,7 +73,6 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "editTrigger", grid.editTrigger());
   setIfDefined(options, "readOnlyEdit", grid.readOnlyEdit());
   setIfDefined(options, "initialSort", grid.initialSort());
-  setIfDefined(options, "multiSortKey", grid.multiSortKey());
   setIfDefined(options, "showSortPriority", grid.showSortPriority());
   setIfDefined(options, "pinnedRowsEditable", grid.pinnedRowsEditable());
   setIfDefined(options, "rowPinningMenu", grid.rowPinningMenu());

@@ -18,8 +18,12 @@ menus, the toolbar, initial options, and actions.
 ## Sort behavior
 
 `initialSort` applies once during setup. A column's own `sort` and `sortIndex`
-take precedence. `multiSortKey` chooses Ctrl/Cmd or Shift for additive header
-sorting, while `showSortPriority` controls the numeric priority indicator.
+take precedence. `showSortPriority` controls the numeric priority indicator.
+
+Ctrl/Cmd or Shift makes a header sort additive, adding the column to a
+multi-column sort instead of replacing it — on the sort icon, on the header
+body, and on `Ctrl/Cmd+Enter` from the keyboard. `Shift+Enter` sorts every
+column in the current column selection at once.
 
 Set a custom order such as `["desc", "asc", null]` through a column or
 `defaultColDef.sortingOrder`. `sortIconVisibility` may be `"hover"`,

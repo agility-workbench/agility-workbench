@@ -48,6 +48,13 @@ export class SelectionModel {
   private selectedColumnIds: Set<string> = new Set();
   private selectedRowIds: Set<string> = new Set();
   private rowAnchorViewIdx: number | null = null;
+  /**
+   * The column a `"range"` extension grows from — the counterpart of `rowAnchorViewIdx` for columns.
+   * Set by every `"replace"` / `"toggle"` toggle, so an extension always grows from the column the
+   * user last picked, and left alone by extensions themselves: that is what makes reversing
+   * direction *shrink* the range instead of accumulating a second one.
+   */
+  private columnAnchorId: string | null = null;
 
   constructor(private deps: SelectionModelDeps) { }
 
@@ -760,7 +767,7 @@ export class SelectionModel {
   }
 
   // ---------------- Column selection ----------------
-  toggleColumn(colId: string, mode: "replace" | "toggle" = "toggle") {
+  toggleColumn(colId: string, mode: "replace" | "toggle" | "range" = "toggle") {
     this.clearRange();
     this.clearRows();
     const columnModel = this.deps.getColumnModel();
@@ -772,6 +779,14 @@ export class SelectionModel {
     const targetIds = hasChildren
       ? leaves.map(l => l.instanceID)
       : [col.instanceID];
+
+    if (mode === "range") {
+      this.selectColumnRange(col);
+      this.reconcileParentSelection();
+      return;
+    }
+    // Every explicit pick re-plants the anchor; extensions below grow from wherever it was left.
+    this.columnAnchorId = col.instanceID;
 
     if (mode === "replace") {
       const allSelected = targetIds.every(id => this.selectedColumnIds.has(id))
@@ -792,8 +807,43 @@ export class SelectionModel {
     this.reconcileParentSelection();
   }
 
+  /**
+   * Replace the column selection with every selectable leaf between the anchor and `target`, in leaf
+   * order — so a range reads left-to-right however it was built, while individually toggled columns
+   * keep click order. Rebuilt from anchor..target on every call rather than accumulated, which is
+   * what makes an extension that reverses direction shrink the range.
+   */
+  private selectColumnRange(target: Column) {
+    const leaves = this.leafColumns();
+    // A group column spans several leaves; take its whole span so extending from (or to) a group
+    // header behaves like extending from its edge.
+    const leafIndices = (col: Column): number[] =>
+      (col.children.length > 0 ? col.getVisibleLeaves() : [col])
+        .map(l => leaves.findIndex(c => c.instanceID === l.instanceID))
+        .filter(idx => idx >= 0);
+
+    const targetIndices = leafIndices(target);
+    if (targetIndices.length === 0) return;
+    const anchorCol = this.columnAnchorId
+      ? this.deps.getColumnModel().resolve(this.columnAnchorId)
+      : null;
+    const spanned = [...(anchorCol ? leafIndices(anchorCol) : []), ...targetIndices];
+
+    this.selectedColumnIds.clear();
+    const start = Math.min(...spanned);
+    const end = Math.max(...spanned);
+    for (let idx = start; idx <= end; idx++) {
+      const col = leaves[idx];
+      // Utility and generated columns are not selectable stops, so a range simply steps over them
+      // rather than swallowing them on the way past.
+      if (!col || col.isInternal()) continue;
+      this.selectedColumnIds.add(col.instanceID);
+    }
+  }
+
   clearColumns() {
     this.selectedColumnIds.clear();
+    this.columnAnchorId = null;
   }
 
   pruneColumns() {
@@ -806,6 +856,9 @@ export class SelectionModel {
     };
     visit(this.deps.getColumnModel().getColumns());
     this.selectedColumnIds = keep;
+    // The anchor outlives a deselection (Excel keeps it too) but not its column disappearing.
+    if (this.columnAnchorId
+      && !this.deps.getColumnModel().getById(this.columnAnchorId)) this.columnAnchorId = null;
   }
 
   private reconcileParentSelection() {

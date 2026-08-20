@@ -453,9 +453,8 @@ treeData: {
 mode, Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses an expanded parent (or focuses the direct
 parent from a leaf/already-collapsed parent), and Ctrl/Cmd+Up always focuses the direct parent when
 the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block navigation.
-When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime **while the cursor
-is on a body cell** — the header cursor claims that chord for "add this column to the selection", and
-the innermost cursor wins. Applications can also call `api.getKeyboardNavigationMode()` and
+When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime wherever the
+keyboard cursor is, header included. Applications can also call `api.getKeyboardNavigationMode()` and
 `api.setKeyboardNavigationMode(mode)`, which work wherever the cursor is.
 
 Both fields are reconfigurable on a mounted grid — they are the only part of `treeData` that is,
@@ -485,9 +484,19 @@ The header cursor (the header is row 0 of the grid — `ArrowUp` off the first r
 | `Ctrl/Cmd+Arrow←` / `Ctrl/Cmd+Arrow→`, `Home` / `End` | first / last column |
 | `Arrow↓` | hand the cursor to the first row |
 | `Ctrl/Cmd+Arrow↓` | hand the cursor to the last row |
-| `Enter` / `Space` | sort, or toggle a group expander / select-all header |
-| `Ctrl/Cmd+Space` | select the column (`+Shift` adds it to the selection) |
+| `Space` | select the column, or select all rows from a utility header |
+| `Ctrl/Cmd+Space` | add the column to the selection (toggle) |
+| `Shift+Arrow←` / `Shift+Arrow→`, `Shift+Home` / `Shift+End` | extend the column selection |
+| `Enter` | sort the column, or toggle a group expander / select-all header |
+| `Ctrl/Cmd+Enter` | add the column to a multi-column sort |
+| `Shift+Enter` | sort every column in the selection at once |
 | `Alt+Arrow↓` / `Shift+Alt+Arrow↓` | open the column menu / the column filter |
+
+Space selects and Enter sorts: one job per key, matching the body, where `Space` on a checkbox cell
+already means "select this thing". `Shift+Arrow` extends the column selection from the cursor's
+column and does nothing at all — not even move the cursor — unless the cursor is on a selected
+column, so it can never read as plain movement that quietly starts selecting. Column ranges
+materialize in display order; individually toggled columns keep the order they were added in.
 
 The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
 `Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/

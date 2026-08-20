@@ -81,7 +81,6 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "editTrigger", props.editTrigger);
   setIfDefined(options, "readOnlyEdit", props.readOnlyEdit);
   setIfDefined(options, "initialSort", props.initialSort);
-  setIfDefined(options, "multiSortKey", props.multiSortKey);
   setIfDefined(options, "showSortPriority", props.showSortPriority);
   setIfDefined(options, "pinnedRowsEditable", props.pinnedRowsEditable);
   setIfDefined(options, "rowPinningMenu", props.rowPinningMenu);
