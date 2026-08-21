@@ -11,6 +11,16 @@ export function isNullOrUndefined(val: any): boolean {
 }
 
 /**
+ * The grid's definition of a blank cell value: null, undefined, or the empty string. Deliberately
+ * NOT `0` or `false`, which are values a user chose. Grouping ("(Blanks)" buckets), the set filter's
+ * blanks row, and the isBlank/isNotBlank operators all answer the question this way, so it lives in
+ * one place rather than being re-inlined per call site.
+ */
+export function isBlankValue(val: any): boolean {
+  return val === null || val === undefined || val === "";
+}
+
+/**
  * The grid's "did this cell value change?" rule: SameValueZero (the semantics `Map`, `Set`, and
  * `Array.includes` use — `NaN` equals `NaN`, `+0` equals `-0`), plus `Date`s compared by instant
  * (two invalid dates are the same). Everything else compares by reference — structural equality

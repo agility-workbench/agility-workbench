@@ -108,6 +108,40 @@ describe("IGridAPI set-filter helpers", () => {
     expect((await api.getSetFilterState("region"))!.unchecked).toEqual([null]);
   });
 
+  it("builds the universe with an unguarded keyCreator, blanks included", async () => {
+    // The headless helpers reuse the menu's universe builder, so the blank policy has to hold here
+    // too: this keyCreator would throw the moment it saw the null region.
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.setColumnDefsFromProps([{
+      colId: "region", key: "region", label: "Region", filter: "set",
+      filterParams: {
+        keyCreator: (value: any) => value.code,
+        valueFormatter: ({ value }: any) => value.name,
+      },
+    }]);
+    core.dispatch({
+      type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test",
+    });
+    core.setRowData([
+      { id: "1", region: { code: "APAC", name: "Asia Pacific" } },
+      { id: "2", region: null },
+      { id: "3", region: { code: "EMEA", name: "Europe" } },
+    ]);
+    const api = new GridAPI(core);
+
+    // null for the blanks bucket, then the real values in label order.
+    expect(await api.getSetFilterValues("region")).toEqual([
+      null,
+      { code: "APAC", name: "Asia Pacific" },
+      { code: "EMEA", name: "Europe" },
+    ]);
+
+    await api.uncheckSetFilterValue("region", null);
+    expect(viewIds(core)).toEqual(["1", "3"]);
+    await api.uncheckSetFilterValue("region", { code: "APAC" });
+    expect(viewIds(core)).toEqual(["3"]);
+  });
+
   it("include mode pins intent: values arriving later stay hidden and toggles keep the mode", async () => {
     const { core, api } = makeGrid(ROWS);
     await api.setSetFilterValues("region", ["EMEA"], { mode: "include" });

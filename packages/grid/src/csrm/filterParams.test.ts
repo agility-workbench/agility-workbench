@@ -127,6 +127,64 @@ describe("FilterParams matching", () => {
     expect(keyCreator).toHaveBeenCalledWith(selected);
   });
 
+  it("never hands a blank cell or the blanks bucket to keyCreator", () => {
+    // Unguarded on purpose — the same shape an application writes for a real value. Blank rows used
+    // to reach it and throw, both when building the option universe and when filtering rows.
+    const keyCreator = vi.fn((value: any) => value.code);
+    const core = createCore([
+      { id: "emea", region: { code: "emea", name: "Europe" } },
+      { id: "blank", region: null },
+      { id: "empty", region: "" },
+      { id: "apac", region: { code: "apac", name: "Asia Pacific" } },
+    ], {
+      key: "region", label: "Region", type: ColumnType.STRING, filter: "set",
+      filterParams: { keyCreator },
+    });
+
+    // null is the stored form of the (Blanks) bucket, and matches every blank cell.
+    applyFilter(core, FilterType.IN, [null, { code: "apac" }]);
+
+    expect(viewIds(core)).toEqual(["blank", "empty", "apac"]);
+    expect(keyCreator).not.toHaveBeenCalledWith(null);
+    expect(keyCreator).not.toHaveBeenCalledWith(undefined);
+    expect(keyCreator).not.toHaveBeenCalledWith("");
+  });
+
+  it("filters a keyCreator-declared blank as part of the blanks bucket", () => {
+    // The menu shows "N/A" inside (Blanks) because the keyCreator returns an empty key for it, so
+    // row filtering has to agree — otherwise a value sits in one bucket in the menu and another here.
+    const core = createCore([
+      { id: "emea", region: { code: "emea" } },
+      { id: "na", region: { code: "" } },
+      { id: "null", region: null },
+    ], {
+      key: "region", label: "Region", type: ColumnType.STRING, filter: "set",
+      filterParams: { keyCreator: (value: any) => value.code },
+    });
+
+    applyFilter(core, FilterType.NOT_IN, [null]);
+
+    // Both the natural blank and the declared one go with the bucket.
+    expect(viewIds(core)).toEqual(["emea"]);
+  });
+
+  it("excludes the blanks bucket with notIn, still without consulting keyCreator", () => {
+    const keyCreator = vi.fn((value: any) => value.code);
+    const core = createCore([
+      { id: "emea", region: { code: "emea", name: "Europe" } },
+      { id: "blank", region: null },
+      { id: "empty", region: "" },
+    ], {
+      key: "region", label: "Region", type: ColumnType.STRING, filter: "set",
+      filterParams: { keyCreator },
+    });
+
+    applyFilter(core, FilterType.NOT_IN, [null]);
+
+    expect(viewIds(core)).toEqual(["emea"]);
+    expect(keyCreator).not.toHaveBeenCalledWith(null);
+  });
+
   it("keeps blank operators based on the raw cell value", () => {
     const formatter = vi.fn((value: any) => {
       if (value == null) throw new Error("blank values must not be formatted");

@@ -64,6 +64,14 @@ comparison. `valueFormatter` controls labels, mini-filter matching, accessible n
 order of values derived from rows. Filter models and Set Filter API methods continue to use the raw
 values. When omitted, the Set filter uses the column's `valueFormatter`, then `String(value)`.
 
+Neither callback is ever handed a blank value: `null`, `undefined`, and `""` (never `0` or `false`)
+are folded into the grid-owned `(Blanks)` row before either runs, so both can be written for real
+values — no `value?.code ?? ""` guards. Going the other way, returning `""` from `keyCreator` folds
+that value *into* `(Blanks)`, which is how an application extends blankness to its own empty shapes;
+such a value is stored as `null` in the filter model and never reaches the label callback. The
+column's own `valueFormatter` still formats blanks for cell rendering. Under SSRM the bucket is sent
+as `null` and the server applies its own blank rule.
+
 ## Custom set-filter value labels
 
 The grid always renders and controls the checkbox. Components replace only the

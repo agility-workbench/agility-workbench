@@ -139,10 +139,11 @@ const COLUMNS: ColDef[] = [
     filter: "set",
     valueFormatter: ({ value }) => value?.code ?? "",
     filterParams: {
-      // `keyCreator` / the filter's `valueFormatter` also receive the blank values (rows whose
-      // region is null) before the grid folds them into the (Blanks) bucket, so both tolerate null.
-      keyCreator: value => value?.code ?? "",
-      valueFormatter: ({ value }) => value?.name ?? "",
+      // Unguarded on purpose, and safe: the grid folds blank regions into its own (Blanks) row and
+      // never asks these callbacks about a value they were not written for. The *column* formatter
+      // above still needs its guard — cells legitimately render blanks.
+      keyCreator: value => value.code,
+      valueFormatter: ({ value }) => value.name,
       showValueCounts: true,
       valueComponent: regionFilterValue,
       valueComponentParams: { showCode: true },

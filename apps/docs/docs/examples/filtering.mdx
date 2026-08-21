@@ -53,6 +53,21 @@ and accessible checkbox names continue to use the underlying text labels. A
 regular value component receives the loaded-row count as `count`; the Blanks
 component receives it too when that option exists.
 
+**Blanks are the grid's row, and you can widen it.** `null`, `undefined`, and
+`""` are blanks — never `0` or `false` — decided from the raw value and folded
+into `(Blanks)`, so `keyCreator` and the filter's `valueFormatter` are never
+called with one. Write them for real values: `value => value.code` needs no
+guard.
+
+To count something else as blank, return `""` from `keyCreator`. That value joins
+`(Blanks)`, skips the label callback too, and is stored as `null` in the filter
+model — which is what makes a `valueGetter`-derived value expressible, since only
+the application knows which of its shapes are empty.
+
+The *column's* `valueFormatter` still sees blanks when rendering cells, which is
+how a blank cell shows an em dash. On the server-side row model the bucket travels
+as `null`, so the server applies its own blank rule and cannot see `keyCreator`.
+
 ## Programmatic filters
 
 `getFilterModel()` / `setFilterModel(filters)` / `addFilterModel(filter)` /

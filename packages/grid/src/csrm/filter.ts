@@ -2,6 +2,7 @@ import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { FilterItem, FilterMatcherFn, FilterParams, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
+import { isBlankValue } from "../misc";
 
 export interface QuickFilterSpec {
   // The raw search text as typed by the user (may contain leading/trailing/inner whitespace).
@@ -121,9 +122,7 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
         active.push({
           col: filter.col,
           type: f.type,
-          v: values.map(value => params.keyCreator
-            ? params.keyCreator(value)
-            : normalizeFilterOperand(value, params)),
+          v: values.map(value => setFilterKey(value, params)),
           rawValues: values,
           params,
         });
@@ -227,7 +226,7 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
         case "in":
           if (!Array.isArray(f.v) || !setValuesInclude(
             f.v,
-            f.params.keyCreator ? f.params.keyCreator(cell) : comparableCell,
+            f.params.keyCreator ? setFilterKey(cell, f.params) : comparableCell,
             f.rawValues,
             cell,
           )) ok = false;
@@ -235,7 +234,7 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
         case "notIn":
           if (Array.isArray(f.v) && setValuesInclude(
             f.v,
-            f.params.keyCreator ? f.params.keyCreator(cell) : comparableCell,
+            f.params.keyCreator ? setFilterKey(cell, f.params) : comparableCell,
             f.rawValues,
             cell,
           )) ok = false;
@@ -268,6 +267,25 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
 
   out.length = outLen;
   return out;
+}
+
+/**
+ * The comparison key for one side of a set-filter (in/notIn) test, mirroring `resolveValueKey` in
+ * `filter/setFilterCore.ts` — the two must agree, or a value would sit in the (Blanks) row of the
+ * menu while its rows filtered as something else.
+ *
+ * A blank raw never reaches the application's `keyCreator`: the grid owns that bucket, and a
+ * keyCreator written for real values has no reason to survive `null`. An empty key is blank too,
+ * which is how an application widens the bucket. Both cases collapse to `null` — the form the menu
+ * and the API store the bucket as — so the blanks row matches through the ordinary
+ * `values.includes(cell)` path. `setValuesInclude`'s raw fallback still covers the no-keyCreator
+ * case, where a blank's normalized operand is not necessarily null.
+ */
+function setFilterKey(value: any, params: ResolvedFilterParams): any {
+  if (isBlankValue(value)) return null;
+  if (!params.keyCreator) return normalizeFilterOperand(value, params);
+  const key = params.keyCreator(value);
+  return isBlankValue(key) ? null : key;
 }
 
 // Membership test for set-filter (in/notIn) value lists. A null entry represents the "(Blanks)"

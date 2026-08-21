@@ -524,6 +524,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Text/number/date filter UI | ✅ Complete | `renderer/filter/basicFilterRenderer.ts` |
 | Set filter (checkbox list) | ✅ Complete | `renderer/filter/setFilterRenderer.ts` |
 | Set filter value sources: static, fromRows, async | ✅ Complete | `filter/types.ts` → `FilterValueSource` |
+| Set filter blank policy | ✅ Complete | `null`/`undefined`/`""` (never `0`/`false`) are blanks, decided from the raw value, so `keyCreator` / filter `valueFormatter` never see one; an empty key folds a value *into* `(Blanks)`, letting an app widen the bucket. Value keys are namespaced so an app key cannot collide with the synthetic rows — `misc.ts` → `isBlankValue`, `filter/setFilterCore.ts` → `storedValueKey`, `csrm/filter.ts` → `setFilterKey` |
 | AND/OR join between conditions | ✅ Complete | `FilterItem.join` |
 | Filter panel (column menu integration) | ✅ Complete | `filter/filterMenuController.ts`, `filter/filterMenuCoordinator.ts` |
 | Filter indicators on headers | ✅ Complete | `renderer/header/renderer.ts` → `setFilterIndicators` |
