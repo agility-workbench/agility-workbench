@@ -483,7 +483,6 @@ The header cursor (the header is row 0 of the grid — `ArrowUp` off the first r
 | `Arrow←` / `Arrow→` | previous / next column |
 | `Ctrl/Cmd+Arrow←` / `Ctrl/Cmd+Arrow→`, `Home` / `End` | first / last column |
 | `Arrow↓` | hand the cursor to the first row |
-| `Ctrl/Cmd+Arrow↓` | hand the cursor to the last row |
 | `Space` | select the column, or select all rows from a utility header |
 | `Ctrl/Cmd+Space` | add the column to the selection (toggle) |
 | `Shift+Arrow←` / `Shift+Arrow→`, `Shift+Home` / `Shift+End` | extend the column selection |
@@ -497,6 +496,13 @@ already means "select this thing". `Shift+Arrow` extends the column selection fr
 column and does nothing at all — not even move the cursor — unless the cursor is on a selected
 column, so it can never read as plain movement that quietly starts selecting. Column ranges
 materialize in display order; individually toggled columns keep the order they were added in.
+
+Only a plain arrow crosses the header/body boundary, in both directions: `ArrowUp` off the first row
+reaches the header and `Arrow↓` returns to the rows, while `Ctrl/Cmd+Arrow↑` from the first row
+block-jumps *within* the body and `Ctrl/Cmd+Arrow↓` on the header does nothing at all. `Ctrl/Cmd` in
+the header is therefore only ever a move along the row of columns, and there it is a plain edge jump
+to the first/last column — a header cell has no value to scan, so the body's content-aware block jump
+has nothing to mean.
 
 The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
 `Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/

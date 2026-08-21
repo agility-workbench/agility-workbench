@@ -219,12 +219,6 @@ export type GridActionHeaderFocusSet = {
 export type GridActionHeaderNavigate = {
   type: "headerNavigate";
   dir: "left" | "right" | "down" | "home" | "end";
-  /**
-   * With `"block"`, `dir: "down"` hands the cursor to the *last* body row instead of the first —
-   * the header's counterpart of the body's Ctrl+Arrow block jump. Ignored by the other directions,
-   * where first/last already have their own dirs (`home` / `end`).
-   */
-  jump?: "block";
 };
 
 export type GridActionRowSelectSet = {

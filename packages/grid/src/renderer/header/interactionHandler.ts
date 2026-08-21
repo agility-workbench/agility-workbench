@@ -30,8 +30,8 @@ export class HeaderInteractionHandler {
    */
   keyboardBindings(): KeyboardBinding[] {
     const core = this.params.core;
-    const nav = (dir: "left" | "right" | "down" | "home" | "end", jump?: "block") => () => {
-      core.dispatch({ type: "headerNavigate", dir, jump });
+    const nav = (dir: "left" | "right" | "down" | "home" | "end") => () => {
+      core.dispatch({ type: "headerNavigate", dir });
     };
     // Shift is accepted on the vertical chords because it has no meaning of its own there: the body
     // clears the column selection as the cursor arrives, and declining would move the body cursor
@@ -102,8 +102,9 @@ export class HeaderInteractionHandler {
         run: () => this.extendColumnSelection("end"),
       },
 
-      // Mod jumps to the row of columns' edge, matching the body's Ctrl+Arrow block jump. These are
-      // the same stops Home/End use.
+      // Mod jumps to the row of columns' edge — the same stops Home/End use. Deliberately an edge
+      // jump and not the body's content-aware Ctrl+Arrow block jump: a header cell has no value to
+      // scan from, so "the block ends here" has no meaning along a row of columns.
       {
         id: "firstColumn",
         chord: { key: "arrowleft", mod: true },
@@ -132,12 +133,17 @@ export class HeaderInteractionHandler {
         label: "Next column",
         run: nav("right"),
       },
+      // Only a *plain* arrow crosses the header/body boundary, in either direction: the body's
+      // ArrowUp enters the header while its Ctrl+ArrowUp block-jumps within the body, so the header
+      // owes Ctrl+ArrowDown no way out. It used to hand the cursor to the last row, which was an edge
+      // jump wearing a block-jump chord — and unreachable in reverse. Enter the body with ArrowDown
+      // and the body's own Ctrl+ArrowDown does the rest. Consumed rather than declined, like
+      // consumeArrowUp below: letting it through would spawn a body cursor behind the header.
       {
-        id: "enterBodyLastRow",
+        id: "consumeModArrowDown",
         chord: { key: "arrowdown", mod: true, ...move },
         scope: "headerCursor",
-        label: "Last row",
-        run: nav("down", "block"),
+        run: () => undefined,
       },
       {
         id: "enterBody",

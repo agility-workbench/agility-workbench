@@ -149,8 +149,7 @@ export class SelectionModel {
     return null;
   }
 
-  /** Public so the header cursor can hand navigation to the body's last row (Ctrl+ArrowDown). */
-  lastRowPosition(): CellPos | null {
+  private lastRowPosition(): CellPos | null {
     if (this.maxRow() >= 0) return { row: this.nearestSelectableRow(this.maxRow(), -1), colIdx: 0 };
     const bottomCount = this.deps.getPinnedRowCount?.("bottom") ?? 0;
     if (bottomCount > 0) return { row: bottomCount - 1, colIdx: 0, rowPinned: "bottom" };

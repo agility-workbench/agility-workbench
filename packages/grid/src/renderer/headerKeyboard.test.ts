@@ -113,15 +113,24 @@ describe("entering and leaving the header", () => {
     expect(last).toBeGreaterThan(first);
   });
 
-  it("hands the cursor to the body's LAST row on Ctrl/Cmd+ArrowDown", () => {
+  // Only a plain arrow crosses the header/body boundary. The body's Ctrl+ArrowUp block-jumps within
+  // the body rather than reaching the header, so the header offers no modified way down either.
+  it("does nothing on Ctrl/Cmd+ArrowDown, and does not leak the key to the body", () => {
     const { core, root } = mountGrid(12);
     root.focus();
     press(root, "ArrowRight");
     const colIdx = core.getHeaderFocusColIdx()!;
 
     press(root, "ArrowDown", { ctrlKey: true });
-    expect(core.getHeaderFocusColIdx()).toBeNull();
-    // The body's block-jump counterpart: plain ArrowDown lands on row 0, Ctrl+ArrowDown on the last.
+    expect(core.getHeaderFocusColIdx()).toBe(colIdx);
+    // Consumed, not declined: falling through to the body's navigate binding would select a cell
+    // while the header still holds the cursor, leaving two cursors on screen.
+    expect(core.getActiveCell()).toBeNull();
+
+    // ArrowDown then enters the body, where the body's own Ctrl+ArrowDown does the block jump.
+    press(root, "ArrowDown");
+    expect(core.getActiveCell()).toEqual({ row: 0, colIdx, rowPinned: undefined });
+    press(root, "ArrowDown", { ctrlKey: true });
     expect(core.getActiveCell()).toEqual({ row: 11, colIdx, rowPinned: undefined });
   });
 

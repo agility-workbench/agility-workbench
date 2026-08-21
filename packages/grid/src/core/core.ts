@@ -1900,10 +1900,7 @@ export class GridCore implements IGridCore {
   }
 
   /** Step the header cursor. `down` hands the cursor back to the body in the same column. */
-  navigateHeader(
-    dir: "left" | "right" | "down" | "home" | "end",
-    jump?: "block",
-  ): void {
+  navigateHeader(dir: "left" | "right" | "down" | "home" | "end"): void {
     const leaves = this.columnModel.getLeaves();
     const stops = leaves
       .map((col, idx) => this.isHeaderColumnNavigable(col) ? idx : -1)
@@ -1913,13 +1910,11 @@ export class GridCore implements IGridCore {
     if (dir === "down") {
       // Down goes to the row directly below the header on screen — the pinned-top band when one is
       // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
-      // from inside the body lands). With `jump: "block"` (Ctrl+ArrowDown) the cursor instead lands on
-      // the last row, mirroring the body's Ctrl+ArrowDown block jump.
-      const first = jump === "block"
-        ? this.selectionModel.lastRowPosition()
-        : this.getDisplayedPinnedRowCount("top") > 0
-          ? { row: 0, rowPinned: "top" as const }
-          : this.selectionModel.firstRowPosition();
+      // from inside the body lands). There is no modified form: only a plain arrow crosses the
+      // header/body boundary, in either direction (see consumeModArrowDown in the header keymap).
+      const first = this.getDisplayedPinnedRowCount("top") > 0
+        ? { row: 0, rowPinned: "top" as const }
+        : this.selectionModel.firstRowPosition();
       if (!first) return;
 
       let targetColIdx = from;
@@ -2573,7 +2568,7 @@ export class GridCore implements IGridCore {
         this.setHeaderFocus(action.colIdx, action.reason ?? "api");
         break;
       case "headerNavigate":
-        this.navigateHeader(action.dir, action.jump);
+        this.navigateHeader(action.dir);
         break;
       case "navigate": {
         const active = this.selectionModel.navigate(action.dir, {
