@@ -1,6 +1,7 @@
 import {
   ColumnType,
   createGrid,
+  formatChord,
   type ColDef,
   type ICellEditor,
   type ICellEditorParams,
@@ -8,7 +9,7 @@ import {
   type ValueFormatterParams,
 } from "@grid";
 
-import { btn, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
+import { btn, checkbox, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
 import { formatDate, mulberry32, picker } from "../helpers";
 
 /**
@@ -20,6 +21,17 @@ import { formatDate, mulberry32, picker } from "../helpers";
  * It also carries a custom cell editor: the class form of `ICellEditor` (a 1–5 star picker) on the
  * Rating column. `getValue()` is read synchronously on commit and `isParsed()` returns true, so the
  * number goes straight to the row without a valueParser.
+ *
+ * Also demonstrates the grid's keyboard *surface* switches: `cellSelection` (false/"text" removes
+ * the body keyboard cursor, and clipboard/editing/navigation keys with it) and
+ * `headerKeyboardNavigation` (false makes the header mouse-only). Both reconcile live through
+ * `api.updateGridOptions`. The shortcut table is rendered with `formatChord`, so macOS shows
+ * ⌘⇧-style chords and other platforms Ctrl+Shift+.
+ *
+ * The "App shortcuts" panel exercises `api.registerShortcut`: a fresh chord (Ctrl+Shift+Y) that no
+ * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
+ * filter while registered and hands the chord back on dispose. The panel lists the live app
+ * bindings straight from `api.getKeyboardShortcuts()`.
  */
 
 type EmployeeRow = {
@@ -203,16 +215,20 @@ const COLUMNS: ColDef[] = [
   },
 ];
 
+// Chords printed with formatChord, so the platform decides the spelling ("Ctrl+→" vs "⌘→").
+const fmt = (chord: string) => formatChord(chord);
 const SHORTCUTS: Array<[string, string]> = [
   ["Click / drag", "Select a cell / range"],
-  ["Arrow", "Move one cell"],
-  ["Shift + Arrow", "Extend range by one cell"],
-  ["Ctrl + Arrow", "Jump across data block (Excel-style)"],
-  ["Ctrl + Shift + Arrow", "Extend range across block"],
-  ["PageUp / PageDown", "Move up / down one viewport"],
-  ["Home / End", "Jump to first / last column"],
-  ["Ctrl + Home / End", "Jump to top-left / bottom-right"],
-  ["Ctrl + A", "Select all"],
+  [`${fmt("arrowleft")} ${fmt("arrowup")} ${fmt("arrowdown")} ${fmt("arrowright")}`, "Move one cell"],
+  [fmt("shift+arrowright"), "Extend range by one cell"],
+  [fmt("mod+arrowright"), "Jump across data block (Excel-style)"],
+  [fmt("mod+shift+arrowright"), "Extend range across block"],
+  [`${fmt("pageup")} / ${fmt("pagedown")}`, "Move up / down one viewport"],
+  [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
+  [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
+  [fmt("mod+a"), "Select all"],
+  [`${fmt("arrowup")} from the top row`, "Move into the column header"],
+  [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
 
 function describeSelection(sel: SelectionSnapshot | null): string {
@@ -241,11 +257,76 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   let rowCount = 120;
   let active: { viewIdx?: number; colIdx?: number } | null = null;
   let selection: SelectionSnapshot | null = null;
+  let headerAt: number | null = null;
 
   const host = gridHost();
   const summary = h("div", { style: { fontSize: "13px", fontWeight: "600" } });
   const detail = h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" } });
   const firstCell = h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" } });
+  const lastFired = h("code", { text: "—" });
+  const appShortcutList = h("div", {
+    style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" },
+    dataset: { appShortcutList: "" },
+  });
+
+  // App shortcuts (api.registerShortcut): held disposers, and the list read back from
+  // api.getKeyboardShortcuts() so the panel shows the router's truth, not local state.
+  let approveOff: (() => void) | null = null;
+  let searchOff: (() => void) | null = null;
+
+  function refreshAppShortcuts(): void {
+    const rows = api.getKeyboardShortcuts()
+      .filter(row => row.scope === "app" || row.scope === "appOverride");
+    appShortcutList.replaceChildren(
+      ...(rows.length === 0
+        ? ["no app shortcuts registered"]
+        : rows.map(row => h("div", null,
+          h("code", { text: row.chord ? formatChord(row.chord) : "" }),
+          ` — ${row.label} `,
+          h("em", { text: `(${row.scope})` }),
+        ))),
+    );
+  }
+
+  function toggleApprove(on: boolean): void {
+    if (on) {
+      // A fresh chord: nothing built-in claims Ctrl+Shift+Y, so plain `app` scope receives it.
+      approveOff = api.registerShortcut({
+        id: "approve",
+        chord: "mod+shift+y",
+        label: "Approve selection (app)",
+        run: () => {
+          const cells = api.getSelection()?.rangeCells?.length ?? 0;
+          lastFired.textContent = `Approve — ${cells} cell(s)`;
+        },
+      });
+    } else {
+      approveOff?.();
+      approveOff = null;
+    }
+    refreshAppShortcuts();
+  }
+
+  function toggleSearch(on: boolean): void {
+    if (on) {
+      // Overrides the built-in quick filter: `override: true` registers ahead of the non-blocking
+      // built-in scopes, so Ctrl+F is the app's while this is on and the quick filter's again the
+      // moment it is disposed.
+      searchOff = api.registerShortcut({
+        id: "appSearch",
+        chord: "mod+f",
+        override: true,
+        label: "App search (overrides quick filter)",
+        run: () => {
+          lastFired.textContent = "App search — quick filter suppressed";
+        },
+      });
+    } else {
+      searchOff?.();
+      searchOff = null;
+    }
+    refreshAppShortcuts();
+  }
 
   container.appendChild(demoRoot(
     toolbarRow(
@@ -253,6 +334,19 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
         rowCount = Number(value);
         api.setRowData(buildRows(rowCount));
       })),
+      // The keyboard-surface switches: both are runtime options, reconciled live through
+      // updateGridOptions — no grid rebuild.
+      field("Cell selection", select(
+        [
+          { value: "true", label: "true — full keyboard" },
+          { value: "text", label: '"text" — native text selection' },
+          { value: "false", label: "false — inert cells" },
+        ],
+        "true",
+        value => api.updateGridOptions({ cellSelection: value === "text" ? "text" : value === "true" }),
+      )),
+      field("Header keyboard nav", checkbox(true, checked =>
+        api.updateGridOptions({ headerKeyboardNavigation: checked }))),
       h("div", { style: { display: "flex", gap: "8px" } },
         btn("Select all (API)", () => api.selectAll()),
         btn("Clear", () => api.clearSelection("all")),
@@ -296,6 +390,34 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
             text: "Click a cell first to focus the grid, then use the keyboard.",
             style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
           }),
+          h("p", {
+            text: "Cell selection false / \"text\" removes the body keyboard cursor — navigation, "
+              + "clipboard, and editing keys go with it, and Tab lands the cursor in the header "
+              + "instead. Turning header keyboard nav off too leaves the grid claiming no "
+              + "navigation keys at all.",
+            style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
+          }),
+        ),
+        h("section", {
+          style: { border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: "8px", padding: "12px" },
+        },
+          h("h3", { text: "App shortcuts", style: { fontSize: "14px", marginBottom: "8px" } }),
+          field(`Approve selection — ${fmt("mod+shift+y")} (fresh chord)`, checkbox(false, toggleApprove)),
+          h("div", { style: { marginTop: "6px" } },
+            field(`App search — ${fmt("mod+f")} (overrides quick filter)`, checkbox(false, toggleSearch)),
+          ),
+          h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "8px" } },
+            "last fired: ", lastFired,
+          ),
+          appShortcutList,
+          h("p", {
+            text: "The list reads back from api.getKeyboardShortcuts(). While \"App search\" is "
+              + "on, the chord is the app's (appOverride scope beats built-ins); uncheck it and "
+              + "the quick filter takes it back. Reserved chords (Tab, Escape, arrows while "
+              + "navigation is on) are refused by registerShortcut with an error naming the "
+              + "owning feature.",
+            style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
+          }),
         ),
       ),
     ),
@@ -319,16 +441,28 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     active = { viewIdx: ev.viewIdx, colIdx: ev.colIdx };
     renderReadout();
   });
+  // The header cursor is a separate position from the body's (they are mutually exclusive).
+  const offHeaderFocus = api.on("headerFocusChanged", ev => {
+    headerAt = ev.colIdx ?? null;
+    renderReadout();
+  });
 
   selection = api.getSelection();
   renderReadout();
+  refreshAppShortcuts();
 
   function renderReadout(): void {
     summary.textContent = describeSelection(selection);
+    const cursor = headerAt != null
+      ? `header c${headerAt}`
+      : active?.viewIdx != null
+        ? `r${active.viewIdx}/c${active.colIdx}`
+        : "—";
     detail.replaceChildren(
       "kind: ",
       h("code", { text: selection?.kind ?? "none" }),
-      active?.viewIdx != null ? ` · active: r${active.viewIdx}/c${active.colIdx}` : "",
+      " · cursor: ",
+      h("code", { text: cursor }),
     );
     const cells = selection?.kind === "range" ? selection.rangeCells : undefined;
     firstCell.replaceChildren(
@@ -341,6 +475,9 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   return () => {
     offSelection();
     offFocus();
+    offHeaderFocus();
+    approveOff?.();
+    searchOff?.();
     api.destroy();
   };
 }

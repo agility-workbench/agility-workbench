@@ -250,8 +250,13 @@ export type GridActionRowSelectAll = {
 
 export type GridActionColumnSelectSet = {
   type: "columnSelectSet";
+  /**
+   * "replace" / "toggle" pick a column and re-plant the range anchor; "range" replaces the selection
+   * with anchor..colId in leaf order (the header's Shift+Arrow gesture) and leaves the anchor where
+   * it is, so reversing direction shrinks the range.
+   */
   colId: string;
-  mode?: "replace" | "toggle";
+  mode?: "replace" | "toggle" | "range";
 };
 
 export type GridActionRangeSelectSet = {

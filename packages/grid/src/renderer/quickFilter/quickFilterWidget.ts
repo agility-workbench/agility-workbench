@@ -7,6 +7,7 @@ import {
   resolveQuickFilterOptions,
 } from "../../interfaces/gridOptions";
 import { button, div, span } from "../element";
+import { matchesChord } from "../interaction/keyChord";
 
 // Transient state carried across a config-driven rebuild so the live search isn't lost when the
 // widget is torn down and reconstructed with new options (see GridRenderer.setQuickFilterOptions).
@@ -313,8 +314,10 @@ export class QuickFilterWidget {
     this.input.addEventListener("keydown", (e: KeyboardEvent) => {
       e.stopPropagation();
       // The input intentionally owns its keyboard events, so the root-level shortcut cannot
-      // prevent the browser's native Find dialog while focus is here. Claim Ctrl/Cmd+F locally.
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
+      // prevent the browser's native Find dialog while focus is here. Claim Ctrl/Cmd+F locally —
+      // the same chord the root claims, matched the same way, so which one runs depends only on
+      // where focus is and never on what the two matchers happen to accept.
+      if (matchesChord(e, "mod+f")) {
         e.preventDefault();
         return;
       }

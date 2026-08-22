@@ -411,9 +411,20 @@ describe("GridToolbarRenderer", () => {
     expect(chipLabels()).toEqual(["Region", "Year"]);
 
     core.dispatch({ type: "rowGroupSet", colIds: [region, country, year] });
-    root.querySelector<HTMLElement>(
+    const regionChip = () => root.querySelector<HTMLElement>(
       `.pte-grid-toolbar-group-chip[data-group-col-id="${region}"]`,
-    )!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    )!;
+    // A modified arrow is not this chord: it keeps its platform meaning (Alt+Left/Right is history
+    // navigation) rather than reordering the chip.
+    regionChip().dispatchEvent(new KeyboardEvent("keydown", {
+      key: "ArrowRight", ctrlKey: true, bubbles: true,
+    }));
+    regionChip().dispatchEvent(new KeyboardEvent("keydown", {
+      key: "ArrowRight", altKey: true, bubbles: true,
+    }));
+    expect(chipLabels()).toEqual(["Region", "Country", "Year"]);
+
+    regionChip().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     expect(core.getRowGroupColumns().map(col => col.instanceID)).toEqual([country, region, year]);
     expect(chipLabels()).toEqual(["Country", "Region", "Year"]);
 

@@ -181,6 +181,11 @@ export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: Menu
  *   `ctx.colIds` carries internal instance ids. Selecting a column group expands it to its leaves,
  *   so a group header's menu passes the group followed by its leaf columns — the same set the
  *   built-in items operate on. Discriminate with `column.children.length`.
+ *
+ * Order is the *selection sequence*, not display order: target first, then the order the columns
+ * were added — so an application can rely on it (a keyboard `Shift+Arrow` range arrives in display
+ * order because that is the order it was built in). Anything that needs display order should read it
+ * from the column model; export already does, so exported column order is unaffected either way.
  */
 export type MultiColumnMenuItemsGetter = (
   params: { ctx: ColumnMenuContext; columns: Column[]; items: MenuItem[] },
@@ -257,7 +262,8 @@ export interface TreeDataCommonOptions<Row = any> {
   keyboardNavigationMode?: TreeDataKeyboardNavigationMode;
   /**
    * Enables the fixed Ctrl/Cmd+Shift+Space shortcut for switching between grid and hierarchy
-   * navigation at runtime. The shortcut itself is deliberately not configurable. Defaults to false.
+   * navigation at runtime. The shortcut itself is deliberately not configurable, and works wherever
+   * the keyboard cursor is. Defaults to false.
    */
   enableKeyboardNavigationModeSwitch?: boolean;
 }
@@ -353,13 +359,6 @@ export interface InitialSortItem {
  * descending-first columns.
  */
 export type SortingOrder = ("asc" | "desc" | null)[];
-
-/**
- * Modifier key that makes a sort-icon click additive (adds the column to a multi-column sort instead
- * of replacing it): "ctrl" (also matches ⌘ / metaKey) or "shift". Defaults to "ctrl", consistent
- * with additive column selection.
- */
-export type MultiSortKey = "ctrl" | "shift";
 
 /**
  * When the multi-column sort priority number is shown on the sort icon:
@@ -942,16 +941,26 @@ export interface GridOptions {
   /**
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
+   *
+   * Keyboard row selection (Enter/Space on a row-number or checkbox cell) rides on the body
+   * keyboard cursor, so it additionally requires `cellSelection: true`; with cell selection off,
+   * row selection is mouse-only.
    */
   rowSelection?: boolean | RowSelectionOptions;
   /**
-   * Controls how the mouse interacts with body cells:
+   * Controls how body cells can be interacted with — by mouse and keyboard alike:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
    *   selection, keyboard navigation, and double-click editing.
-   * - `false`: cells are inert — clicks neither select nor focus a cell, and double-click editing
-   *   is disabled. Native text selection stays suppressed (nothing is selectable).
-   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off, but the browser's
-   *   native text selection is enabled so users can select and copy cell text with the mouse.
+   * - `false`: cells are inert — clicks neither select nor focus a cell, the keyboard cursor cannot
+   *   enter the body (which also disables keyboard editing, clipboard shortcuts, and keyboard row
+   *   selection), and double-click editing is off. Native text selection stays suppressed (nothing
+   *   is selectable).
+   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off exactly as with
+   *   `false`, but the browser's native text selection is enabled so users can select and copy cell
+   *   text with the mouse.
+   *
+   * Header interactions are unaffected: sorting, column menus, and the header keyboard cursor stay
+   * on (see `headerKeyboardNavigation`).
    */
   cellSelection?: CellSelectionMode;
   /**
@@ -966,6 +975,16 @@ export interface GridOptions {
    * menu, and filtering are unaffected. Defaults to true.
    */
   columnSelection?: boolean;
+  /**
+   * When true (default), the column header row takes part in keyboard navigation: focus entering
+   * the grid seeds the header cursor, ArrowUp from the top row moves into the header, and clicking
+   * a header cell places the cursor there. When false, the header keyboard cursor is disabled
+   * entirely, making header actions (sort, column selection, menu, filter) mouse-only — which also
+   * makes them unreachable for keyboard and assistive-technology users, so leave this on unless the
+   * grid is deliberately inert. With this false and `cellSelection` not `true`, the grid claims no
+   * navigation keys at all, freeing them for application shortcuts.
+   */
+  headerKeyboardNavigation?: boolean;
   /**
    * When true, the column header buttons (menu ⋮ and filter) stay hidden until the pointer hovers
    * (or keyboard-focuses) the header cell, then fade in — keeping headers clean until needed. When
@@ -1091,12 +1110,6 @@ export interface GridOptions {
    * way. Not kept in sync with later user sorting. Client-side row model.
    */
   initialSort?: InitialSortItem[];
-  /**
-   * Modifier key that makes a sort-icon click additive — adding the column to a multi-column sort
-   * rather than replacing the current sort. "ctrl" (default, also matches ⌘) or "shift". A plain
-   * (unmodified) icon click always replaces the sort with just that column.
-   */
-  multiSortKey?: MultiSortKey;
   /**
    * When the multi-column sort priority number is shown on the sort icon: "multi" (default — only
    * when 2+ columns are sorted), "always" (whenever a column is sorted), or "never".
@@ -1358,6 +1371,7 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
+  headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
@@ -1381,7 +1395,6 @@ export interface InternalGridOptions extends GridOptions {
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
   commitOnBlur: boolean;
-  multiSortKey: MultiSortKey;
   showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
@@ -1425,6 +1438,7 @@ export const RUNTIME_OPTION_KEYS = [
   "cellSelection",
   "rangeSelection",
   "columnSelection",
+  "headerKeyboardNavigation",
   "showColumnButtonsOnHover",
   "bodyContextMenu",
   "editTrigger",

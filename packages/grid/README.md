@@ -453,8 +453,9 @@ treeData: {
 mode, Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses an expanded parent (or focuses the direct
 parent from a leaf/already-collapsed parent), and Ctrl/Cmd+Up always focuses the direct parent when
 the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block navigation.
-When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime; applications can
-also call `api.getKeyboardNavigationMode()` and `api.setKeyboardNavigationMode(mode)`.
+When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime wherever the
+keyboard cursor is, header included. Applications can also call `api.getKeyboardNavigationMode()` and
+`api.setKeyboardNavigationMode(mode)`, which work wherever the cursor is.
 
 Both fields are reconfigurable on a mounted grid — they are the only part of `treeData` that is,
 since the relationship mode and its accessors decide the row shape:
@@ -467,14 +468,108 @@ Only the fields you pass change. A mode set this way reports `source: "options"`
 `keyboardNavigationModeChanged`, distinguishing configuration from the imperative
 `setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
 
-### Planned keyboard-shortcut discovery
+## Keyboard bindings
 
-A future grid-owned shortcut reference must show the shortcuts that are valid for the current
-context rather than a static global list. It should account for the active keyboard-navigation
-mode, focused area/cell, hierarchy availability, selection and editing state, enabled features, and
-platform-specific Ctrl/Cmd labels. It must be reachable from within the grid by keyboard and
-pointer, expose the active navigation mode, and update immediately when runtime options or focus
-change.
+Bindings live in a table rather than in nested `if`s, resolved by *scope*: an open cell editor and a
+focused embedded control own their keyboard completely; otherwise the header cursor is consulted
+before the body cursor, and whole-grid chords last. A chord may therefore mean different things
+depending on where the cursor is, and modifiers are matched exactly — `Ctrl+C` is copy, while
+`Ctrl+Shift+C` is left to the browser.
+
+The header cursor (the header is row 0 of the grid — `ArrowUp` off the first row reaches it):
+
+| Key | Action |
+| --- | --- |
+| `Arrow←` / `Arrow→` | previous / next column |
+| `Ctrl/Cmd+Arrow←` / `Ctrl/Cmd+Arrow→`, `Home` / `End` | first / last column |
+| `Arrow↓` | hand the cursor to the first row |
+| `Space` | select the column, or select all rows from a utility header |
+| `Ctrl/Cmd+Space` | add the column to the selection (toggle) |
+| `Shift+Arrow←` / `Shift+Arrow→`, `Shift+Home` / `Shift+End` | extend the column selection |
+| `Enter` | sort the column, or toggle a group expander / select-all header |
+| `Ctrl/Cmd+Enter` | add the column to a multi-column sort |
+| `Shift+Enter` | sort every column in the selection at once |
+| `Alt+Arrow↓` / `Shift+Alt+Arrow↓` | open the column menu / the column filter |
+
+Space selects and Enter sorts: one job per key, matching the body, where `Space` on a checkbox cell
+already means "select this thing". `Shift+Arrow` extends the column selection from the cursor's
+column and does nothing at all — not even move the cursor — unless the cursor is on a selected
+column, so it can never read as plain movement that quietly starts selecting. Column ranges
+materialize in display order; individually toggled columns keep the order they were added in.
+
+Only a plain arrow crosses the header/body boundary, in both directions: `ArrowUp` off the first row
+reaches the header and `Arrow↓` returns to the rows, while `Ctrl/Cmd+Arrow↑` from the first row
+block-jumps *within* the body and `Ctrl/Cmd+Arrow↓` on the header does nothing at all. `Ctrl/Cmd` in
+the header is therefore only ever a move along the row of columns, and there it is a plain edge jump
+to the first/last column — a header cell has no value to scan, so the body's content-aware block jump
+has nothing to mean.
+
+The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
+`Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/
+`PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
+characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
+`Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
+
+Two options decide how much of this keyboard surface exists. `cellSelection` governs the body
+cursor: with `false` (inert cells) or `"text"` (native text selection), the body scope goes dark as
+a unit — navigation, paging, select-all, clipboard, editing keys, and keyboard row selection all
+operate on or through the cursor, so none of them means anything without it. `headerKeyboardNavigation`
+(default `true`) governs the header cursor the same way; turning it off makes sorting, column
+selection, and the column menu mouse-only — which also makes them unreachable for keyboard and AT
+users, so leave it on unless the grid is deliberately inert. Both reconcile live through
+`updateGridOptions`.
+
+### Application shortcuts
+
+`api.registerShortcut` adds an application binding to the same table, per grid instance — it fires
+only while focus is inside that grid:
+
+```ts
+const off = api.registerShortcut({
+  id: "approve",
+  chord: "mod+shift+y",           // mod = Ctrl on Windows/Linux, Cmd on macOS
+  label: "Approve the selected rows",
+  when: () => hasApprovableSelection(),
+  run: () => approveRows(api.getSelection()),
+});
+// later (framework cleanup — disposing twice is safe):
+off();
+```
+
+Application bindings resolve *after* every built-in, so they can never shadow one by accident;
+`override: true` registers ahead of the non-blocking built-in scopes instead, for chords the
+application consciously takes over (`mod+f`, the clipboard triple). An open cell editor or a
+focused filter input still owns the keyboard completely, override or not.
+
+Some chords are **reserved** and refused with a thrown error — but reservation is a predicate over
+the live configuration, not a static list. Tab (focus traversal) and Escape (overlay dismissal) are
+reserved always. The navigation cluster — arrows, `Home`/`End`, `Enter`, `Space`, and for the body
+`PageUp`/`PageDown` — is reserved, under any modifiers, *while a surface that uses it is on*:
+disable `cellSelection` and `headerKeyboardNavigation` and a display-only grid frees all of them
+for the application. A shortcut registered while a feature was off goes dormant if the feature is
+later re-enabled (the built-in wins again) and wakes when it is turned back off.
+`mod+alt+<printable>` chords are refused outright: Windows AltGr reports as Ctrl+Alt, so such a
+shortcut would fire while a user merely types an accented character.
+
+Menus can show accelerators in two ways. A built-in item whose `command` has a keyboard binding
+shows that binding's chord automatically (Copy shows `Ctrl+C` / `⌘C`), so the menu and the keymap
+cannot drift. Application items take `shortcut: "mod+shift+y"` as a **display hint** — menus are
+built per open, so nothing is harvested from item lists; register the real binding separately and
+write the same chord in both places. An explicit `right` slot (and the submenu arrow) wins over the
+accelerator.
+
+### Keyboard-shortcut discovery
+
+`api.getKeyboardShortcuts()` returns the whole binding table — built-ins and application shortcuts,
+innermost scope first — as `{ id, scope, chord?, label?, command? }` rows. Format a row's chord for
+the user with the exported `formatChord(chord)`: `⇧⌘K` on macOS, `Ctrl+Shift+K` elsewhere, arrow
+glyphs on both. Pattern bindings (type-to-edit) appear without a chord.
+
+A grid-owned shortcut reference *panel* is still planned: it should show the shortcuts valid for
+the current context — active navigation mode, focused area, selection and editing state, enabled
+features — rather than a static global list, be reachable from within the grid by keyboard and
+pointer, and update when runtime options or focus change. `getKeyboardShortcuts()` is what makes it
+buildable as a filtered view rather than a hand-maintained list.
 
 ## Styling
 

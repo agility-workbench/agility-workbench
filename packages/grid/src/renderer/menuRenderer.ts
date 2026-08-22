@@ -1,5 +1,6 @@
 import { MenuItem } from "../interfaces/menuItem";
 import { isTrue } from "../misc";
+import { formatChord, type ChordSpec } from "./interaction/keyChord";
 
 export interface MenuParams {
   anchorEl?: HTMLElement;
@@ -40,7 +41,15 @@ export class MenuRenderer {
   private docKeyDownCapture?: (e: KeyboardEvent) => void;
   private winBlur?: () => void;
 
-  constructor(private root: HTMLElement) { }
+  constructor(
+    private root: HTMLElement,
+    /**
+     * The chord of the built-in binding registered under a menu command, if any — how "Copy" shows
+     * Ctrl+C without the item author writing it. Consulted per render, so a menu opened after an
+     * options change shows the current truth.
+     */
+    private shortcutForCommand?: (command: string) => ChordSpec | null,
+  ) { }
 
   open(params: MenuParams) {
     const {
@@ -452,9 +461,31 @@ export class MenuRenderer {
       }
       this.appendSlot(el, item.left, "left");
       this.appendSlot(el, item.right, "right");
+      this.appendShortcut(el, item);
       el.setAttribute("data-item-id", item.id);
       container.appendChild(el);
     }
+  }
+
+  /**
+   * Render a menu item's keyboard accelerator in the right slot's position, platform-formatted.
+   * An explicit `right` (or the submenu arrow, which overwrites `right` above) wins over the
+   * `shortcut` display hint, and the hint wins over the command lookup — the automatic path that
+   * shows a built-in binding's chord on the item carrying the same `command`. A text span, not an
+   * icon slot: `appendSlot` reads strings as CSS classes.
+   */
+  private appendShortcut(el: HTMLElement, item: MenuItem) {
+    if (item.right) return;
+    const chord = item.shortcut
+      ?? (item.command ? this.shortcutForCommand?.(item.command) ?? undefined : undefined);
+    if (!chord) return;
+    const shortcut = document.createElement("span");
+    shortcut.className = "pte-menu-item-shortcut";
+    shortcut.textContent = formatChord(chord);
+    // Hidden from AT: the accessible way to learn the binding is the shortcut reference, and
+    // "Copy, Ctrl plus C" read as one run-on name helps nobody.
+    shortcut.setAttribute("aria-hidden", "true");
+    el.appendChild(shortcut);
   }
 
   /**

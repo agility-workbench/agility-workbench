@@ -136,11 +136,30 @@ export interface FilterParams {
   /**
    * Creates the stable identity used to deduplicate and compare regular set-filter values. The raw
    * values are still stored in filter models and returned by the Set Filter API.
+   *
+   * **Never called with a blank value.** `null`, `undefined`, and `""` are blanks (never `0` or
+   * `false`); the grid decides that from the raw value and folds them into its own `(Blanks)` row,
+   * so this only ever sees values it was written for — `value => value.code` needs no guard.
+   *
+   * **Return `""` to call a value blank.** That is how an application widens the bucket — useful for
+   * values assembled by a `valueGetter`, where only the application knows which shapes are empty.
+   * The value then folds into `(Blanks)`, is not passed to the filter's `valueFormatter` either, and
+   * is stored as `null` in the filter model. A nullish return means the same thing, so a keyCreator
+   * that misses (`value?.code` on an unexpected shape) declares a blank rather than failing.
+   *
+   * On the server-side row model the `(Blanks)` bucket travels as `null` in the filter model and the
+   * server applies its own blank rule — it cannot see this function, so a value this callback calls
+   * blank is a client-side notion the server has to reproduce itself.
    */
   keyCreator?: (value: any) => string;
   /**
    * Formats regular set-filter values for display, sorting, mini-filter matching, accessible names,
    * and `SetFilterValueComponentParams.valueFormatted`. Falls back to the column valueFormatter.
+   *
+   * Never called with a blank value, nor with one `keyCreator` called blank: `(Blanks)` is the
+   * grid's row, labeled by the grid (or by `blanksComponent`). Note that the *column's*
+   * `valueFormatter` is still called with blanks when rendering cells — that is how an application
+   * shows an em dash for an empty cell.
    */
   valueFormatter?: (params: ValueFormatterParams) => string;
   /**

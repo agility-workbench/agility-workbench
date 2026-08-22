@@ -6,6 +6,16 @@ export interface MenuItem {
   label?: string;
   left?: string | HTMLElement;
   right?: string | HTMLElement;
+  /**
+   * Keyboard accelerator shown after the label (platform-formatted: `"mod+k"` renders as ⌘K on
+   * macOS, Ctrl+K elsewhere). **Display only** — menus are built per open, so nothing can be
+   * harvested from an item list; register the actual binding separately with
+   * `api.registerShortcut`, and keep the two from drifting by writing the same chord here.
+   * An explicit `right` slot (and the submenu arrow) wins over this hint. Built-in items need no
+   * hint: an item whose `command` matches a built-in binding shows that binding's chord
+   * automatically.
+   */
+  shortcut?: string;
 
   // behavior
   disabled?: boolean;

@@ -13,7 +13,7 @@
  * numeric re-check no-op, blanks lookup misses, select_all pollution); the setFilterCore
  * extraction fixed them and they now run as plain regression tests.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FilterController } from "./filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState, FilterValueSource } from "./types";
 import { FilterItem, FilterType } from "../interfaces/filter";
@@ -277,6 +277,153 @@ describe("set-filter model loading", () => {
     expect(stateOf("apple").selected).toBe(true);
     expect(stateOf("banana").selected).toBe(false);
     expect(stateOf("(Select All)").indeterminate).toBe(true);
+  });
+});
+
+/**
+ * Blanks belong to the grid, not to the application. `null` / `undefined` / `""` are blanks — never
+ * `0` or `false` — decided from the raw value, so a `keyCreator` or filter `valueFormatter` written
+ * for real values is never handed one. The unguarded callbacks here are the exact shape the React and
+ * Angular playgrounds use, and they used to throw on menu open.
+ */
+describe("blanks never reach the application's callbacks", () => {
+  type Region = { code: string; name: string };
+  const amer: Region = { code: "AMER", name: "Americas" };
+  const emea: Region = { code: "EMEA", name: "Europe" };
+  // Deliberately unguarded: a null value reaching either of these is the bug under test.
+  const valueKey = (value: Region) => value.code;
+  const valueLabel = (value: Region) => value.name;
+
+  it("builds the universe from rows that include blanks", () => {
+    const { options } = makeController([], null, {
+      source: { kind: "fromRows" },
+      rows: [{ fruit: amer }, { fruit: null }, { fruit: emea }, { fruit: undefined }, { fruit: "" }],
+      valueKey, valueLabel,
+    });
+    expect(options().map(o => [o.type, o.label])).toEqual([
+      ["select_all", "(Select All)"],
+      ["blanks", "(Blanks)"],
+      ["value", "Americas"],
+      ["value", "Europe"],
+    ]);
+  });
+
+  it("counts the blanks bucket without asking the application about it", () => {
+    const { options } = makeController([], null, {
+      source: { kind: "fromRows" },
+      showValueCounts: true,
+      rows: [{ fruit: amer }, { fruit: null }, { fruit: "" }, { fruit: emea }, { fruit: amer }],
+      valueKey, valueLabel,
+    });
+    expect(options().map(o => [o.label, o.count])).toEqual([
+      ["(Select All)", undefined],
+      ["(Blanks)", 2],
+      ["Americas", 2],
+      ["Europe", 1],
+    ]);
+  });
+
+  it("toggles the blanks bucket, storing it as null", () => {
+    const { toggle, lastApplied } = makeController([], null, {
+      source: { kind: "fromRows" },
+      rows: [{ fruit: amer }, { fruit: null }, { fruit: emea }],
+      valueKey, valueLabel,
+    });
+    toggle("(Blanks)", false);
+    expect(lastApplied()!.filters[0].values).toEqual([null]);
+
+    toggle("Europe", false);
+    expect(lastApplied()!.filters[0].values).toEqual([null, emea]);
+  });
+
+  it("also spares a static value list containing blanks", () => {
+    const { options } = makeController([amer, null, emea, ""], null, { valueKey, valueLabel });
+    expect(options().map(o => o.type)).toEqual(["select_all", "blanks", "value", "value"]);
+  });
+
+  it("treats 0 and false as values, not blanks", () => {
+    const { options } = makeController([0, false, null, "", " "]);
+    expect(options().map(o => [o.type, o.label])).toEqual([
+      ["select_all", "(Select All)"],
+      ["blanks", "(Blanks)"],
+      ["value", "0"],
+      ["value", "false"],
+      ["value", " "],
+    ]);
+  });
+
+  it("lets the application widen the bucket by returning an empty key", () => {
+    // The application's say in what counts as blank, and why it needs no sentinel to declare one:
+    // "N/A" is a real value in the data that only the app knows is empty.
+    const { options, toggle, lastApplied } = makeController(["N/A", "apple", "banana"], null, {
+      valueKey: value => value === "N/A" ? "" : String(value),
+    });
+    expect(options().map(o => [o.type, o.label])).toEqual([
+      ["select_all", "(Select All)"],
+      ["blanks", "(Blanks)"],
+      ["value", "apple"],
+      ["value", "banana"],
+    ]);
+
+    // ...and it lands in the same bucket as a natural blank, stored as null.
+    toggle("(Blanks)", false);
+    expect(lastApplied()!.filters[0].values).toEqual([null]);
+  });
+
+  it("folds a declared blank in with the natural ones, counted together", () => {
+    const { options } = makeController([], null, {
+      source: { kind: "fromRows" },
+      showValueCounts: true,
+      rows: [{ fruit: "N/A" }, { fruit: null }, { fruit: "apple" }, { fruit: "" }],
+      valueKey: value => value === "N/A" ? "" : String(value),
+    });
+    expect(options().map(o => [o.label, o.count])).toEqual([
+      ["(Select All)", undefined],
+      ["(Blanks)", 3],
+      ["apple", 1],
+    ]);
+  });
+
+  it("does not label a declared blank either", () => {
+    // Same protection the natural blanks get: the row is the grid's, so the grid labels it.
+    const valueLabel = vi.fn((value: any) => value.name);
+    const { options } = makeController([{ code: "", name: "should not be asked" }, { code: "A", name: "Alpha" }], null, {
+      valueKey: (value: any) => value.code,
+      valueLabel,
+    });
+    expect(options().map(o => o.label)).toEqual(["(Select All)", "(Blanks)", "Alpha"]);
+    expect(valueLabel).not.toHaveBeenCalledWith({ code: "", name: "should not be asked" });
+  });
+
+  it("keeps a value whose key collides with a synthetic row", () => {
+    // A keyCreator has no idea what the grid calls its own rows, so "__blanks__" and
+    // "__select_all__" have to be ordinary keys. Value keys live in their own namespace.
+    const { options, toggle, lastApplied } = makeController(["a", "b", "c"], null, {
+      valueKey: value => value === "a" ? "__blanks__" : value === "b" ? "__select_all__" : "c",
+    });
+    expect(options().map(o => [o.type, o.label])).toEqual([
+      ["select_all", "(Select All)"],
+      ["value", "a"],
+      ["value", "b"],
+      ["value", "c"],
+    ]);
+
+    // Unchecking the colliding value must not take the whole column (select_all) or a blanks bucket
+    // with it — the failure the old shared key space produced.
+    toggle("a", false);
+    expect(lastApplied()!.filters[0].values).toEqual(["a"]);
+  });
+
+  it("treats a nullish key as an empty one, since empty means blank", () => {
+    // One rule at both ends: a nullish return declares a blank rather than raising anything. The
+    // cost of "empty means blank" is that an accidental `value?.code` miss lands here too.
+    const { options } = makeController(["apple", "banana"], null, {
+      valueKey: () => undefined as unknown as string,
+    });
+    expect(options().map(o => [o.type, o.label])).toEqual([
+      ["select_all", "(Select All)"],
+      ["blanks", "(Blanks)"],
+    ]);
   });
 });
 

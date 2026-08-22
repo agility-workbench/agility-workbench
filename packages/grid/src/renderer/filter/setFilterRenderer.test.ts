@@ -129,3 +129,35 @@ describe("SetFilterRenderer value components", () => {
     renderer.destroy();
   });
 });
+
+describe("SetFilterRenderer option-list keyboard", () => {
+  it("claims Tab to enter the option list but leaves Shift+Tab to move focus out", () => {
+    const { renderer } = setup();
+    renderer.renderState(runtimeState(options()));
+    const ui = renderer.getUi();
+    document.body.appendChild(ui);
+    const firstOption = ui.querySelector<HTMLElement>("label.pte-set-filter-option")!;
+
+    const key = (init: Partial<KeyboardEventInit>) => ui.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+    );
+
+    // Shift+Tab is the user leaving backwards; capturing it here used to drag focus onto the
+    // first option instead, trapping them in the list.
+    key({ key: "Tab", shiftKey: true });
+    expect(document.activeElement).not.toBe(firstOption);
+
+    key({ key: "Tab" });
+    expect(document.activeElement).toBe(firstOption);
+
+    // A modified arrow is not a list gesture either.
+    key({ key: "ArrowDown", ctrlKey: true });
+    expect(document.activeElement).toBe(firstOption);
+
+    key({ key: "ArrowDown" });
+    expect(document.activeElement).not.toBe(firstOption);
+
+    renderer.destroy();
+    ui.remove();
+  });
+});

@@ -108,6 +108,33 @@ selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
 (always copies — safe to mutate). `selectAllRows`/`areAllRowsSelected` span the
 whole filtered set by default (`selectAllScope` option).
 
+## Keyboard shortcuts
+
+| Method | Purpose |
+| --- | --- |
+| `registerShortcut(shortcut)` | Register an application keyboard shortcut on this grid instance; returns the disposer |
+| `getKeyboardShortcuts()` | The whole binding table — built-ins and application shortcuts — as data for a shortcut reference |
+
+```ts
+const off = api.registerShortcut({
+  id: "approve",
+  chord: "mod+shift+y",              // mod = Ctrl on Windows/Linux, Cmd on macOS
+  label: "Approve the selected rows",
+  run: () => approveRows(api.getSelection()),
+});
+```
+
+Application shortcuts resolve after every built-in (`override: true` registers
+ahead of the non-blocking built-in scopes instead), and reserved chords are
+refused with an error naming the feature that owns them: Tab and Escape always;
+arrows, Home/End, Enter, Space, and PageUp/PageDown only while the surface that
+claims them is on (`cellSelection`, `headerKeyboardNavigation`) — a display-only
+grid frees them all. `mod+alt+<printable>` is refused outright (Windows AltGr
+reports as Ctrl+Alt). Format a chord for the user with the exported
+`formatChord(chord)`; menu items show accelerators via `MenuItem.shortcut` (a
+display hint) or automatically when a built-in binding shares the item's
+`command`.
+
 ## Scrolling to a row, column, or cell
 
 | Method | Purpose |

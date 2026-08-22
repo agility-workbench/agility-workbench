@@ -65,6 +65,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "cellSelection", props.cellSelection);
   setIfDefined(options, "rangeSelection", props.rangeSelection);
   setIfDefined(options, "columnSelection", props.columnSelection);
+  setIfDefined(options, "headerKeyboardNavigation", props.headerKeyboardNavigation);
   setIfDefined(options, "showColumnButtonsOnHover", props.showColumnButtonsOnHover);
   setIfDefined(options, "selectAllRowsOnHeaderClick", props.selectAllRowsOnHeaderClick);
   setIfDefined(options, "selectAllScope", props.selectAllScope);
@@ -81,7 +82,6 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "editTrigger", props.editTrigger);
   setIfDefined(options, "readOnlyEdit", props.readOnlyEdit);
   setIfDefined(options, "initialSort", props.initialSort);
-  setIfDefined(options, "multiSortKey", props.multiSortKey);
   setIfDefined(options, "showSortPriority", props.showSortPriority);
   setIfDefined(options, "pinnedRowsEditable", props.pinnedRowsEditable);
   setIfDefined(options, "rowPinningMenu", props.rowPinningMenu);

@@ -20,6 +20,7 @@ import {
   isValueChecked,
   pruneToUniverse,
   setAllChecked,
+  resolveValueKey,
   toggleOption,
   valueOptions,
 } from "./setFilterCore";
@@ -202,9 +203,11 @@ export class FilterController implements IFilterController {
       return { selected, indeterminate };
     }
 
+    // `resolveValueKey`, not the bare keyFn: option keys are namespaced and blanks-aware, and that
+    // resolution is the only thing entitled to turn a value into a key.
     const option = type === "blanks"
       ? ui.options.find(o => o.type === "blanks")
-      : ui.options.find(o => o.type === "value" && o.key === keyFn(value));
+      : ui.options.find(o => o.type === "value" && o.key === resolveValueKey(value, keyFn).key);
     if (!option) return { selected, indeterminate };
     selected = isValueChecked(def, option, keyFn);
     return { selected, indeterminate };

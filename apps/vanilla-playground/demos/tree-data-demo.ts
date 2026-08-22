@@ -267,8 +267,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
       navStatus,
       h("span", {
         class: "tree-data-demo-summary",
-        text: "The shortcut needs the cursor in the body — in the header Ctrl/Cmd+Shift+Space"
-          + " already means \"add this column to the selection\".",
+        text: "The shortcut works wherever the keyboard cursor is, header included.",
       }),
     ),
     host,

@@ -4,7 +4,6 @@
 
 ```ts
 const options = {
-  multiSortKey: "shift",
   showSortPriority: "always",
   defaultColDef: {
     sortable: true,
@@ -15,8 +14,9 @@ const options = {
 ```
 
 A column can override the `defaultColDef` sorting cycle and icon visibility.
-Users add another sort with the configured modifier key; the toolbar can expose
-ordered sort chips with `toolbar: { sorting: true }`.
+Users add another sort by holding Ctrl/Cmd or Shift while clicking a header (or
+`Ctrl/Cmd+Enter` on the header cursor); the toolbar can expose ordered sort
+chips with `toolbar: { sorting: true }`.
 
 ## Initial multi-column sort
 
