@@ -660,8 +660,10 @@ export class SelectionRenderer {
         // The chevron consumes mousedown so it does not start a drag/range gesture. For tree data,
         // still make its hierarchy cell the active keyboard target after the synchronous reflow;
         // otherwise the subsequent mode-toggle / hierarchy keys are sent outside the grid or act
-        // on a previously-focused cell.
-        if ((this.params.core.options.treeData || rowEl?.dataset.rowPinned) && rowEl && cellEl) {
+        // on a previously-focused cell. Only while cell selection is on: with it off there is no
+        // body cursor for the seed to serve, and the toggle must not conjure one.
+        if (this.params.core.options.cellSelection === true
+          && (this.params.core.options.treeData || rowEl?.dataset.rowPinned) && rowEl && cellEl) {
           const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
           const colIdx = Number(cellEl.dataset.colIdx);
           if (Number.isFinite(viewIdx) && Number.isFinite(colIdx)) {

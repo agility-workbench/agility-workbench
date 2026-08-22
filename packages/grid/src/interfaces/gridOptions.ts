@@ -941,16 +941,26 @@ export interface GridOptions {
   /**
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
+   *
+   * Keyboard row selection (Enter/Space on a row-number or checkbox cell) rides on the body
+   * keyboard cursor, so it additionally requires `cellSelection: true`; with cell selection off,
+   * row selection is mouse-only.
    */
   rowSelection?: boolean | RowSelectionOptions;
   /**
-   * Controls how the mouse interacts with body cells:
+   * Controls how body cells can be interacted with — by mouse and keyboard alike:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
    *   selection, keyboard navigation, and double-click editing.
-   * - `false`: cells are inert — clicks neither select nor focus a cell, and double-click editing
-   *   is disabled. Native text selection stays suppressed (nothing is selectable).
-   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off, but the browser's
-   *   native text selection is enabled so users can select and copy cell text with the mouse.
+   * - `false`: cells are inert — clicks neither select nor focus a cell, the keyboard cursor cannot
+   *   enter the body (which also disables keyboard editing, clipboard shortcuts, and keyboard row
+   *   selection), and double-click editing is off. Native text selection stays suppressed (nothing
+   *   is selectable).
+   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off exactly as with
+   *   `false`, but the browser's native text selection is enabled so users can select and copy cell
+   *   text with the mouse.
+   *
+   * Header interactions are unaffected: sorting, column menus, and the header keyboard cursor stay
+   * on (see `headerKeyboardNavigation`).
    */
   cellSelection?: CellSelectionMode;
   /**
@@ -965,6 +975,16 @@ export interface GridOptions {
    * menu, and filtering are unaffected. Defaults to true.
    */
   columnSelection?: boolean;
+  /**
+   * When true (default), the column header row takes part in keyboard navigation: focus entering
+   * the grid seeds the header cursor, ArrowUp from the top row moves into the header, and clicking
+   * a header cell places the cursor there. When false, the header keyboard cursor is disabled
+   * entirely, making header actions (sort, column selection, menu, filter) mouse-only — which also
+   * makes them unreachable for keyboard and assistive-technology users, so leave this on unless the
+   * grid is deliberately inert. With this false and `cellSelection` not `true`, the grid claims no
+   * navigation keys at all, freeing them for application shortcuts.
+   */
+  headerKeyboardNavigation?: boolean;
   /**
    * When true, the column header buttons (menu ⋮ and filter) stay hidden until the pointer hovers
    * (or keyboard-focuses) the header cell, then fade in — keeping headers clean until needed. When
@@ -1351,6 +1371,7 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
+  headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
@@ -1417,6 +1438,7 @@ export const RUNTIME_OPTION_KEYS = [
   "cellSelection",
   "rangeSelection",
   "columnSelection",
+  "headerKeyboardNavigation",
   "showColumnButtonsOnHover",
   "bodyContextMenu",
   "editTrigger",

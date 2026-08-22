@@ -1116,7 +1116,12 @@ export class GridRenderer {
         scope: "headerCursor",
         isActive: (e) => e.target === this.root && this.core.getHeaderFocusColIdx() != null,
       },
-      { scope: "bodyCursor", isActive: () => true },
+      // The body keyboard cursor is part of cell selection. When cellSelection is `false` (inert
+      // cells) or `"text"` (native text selection), the scope goes dark as a unit: navigation,
+      // Home/End, paging, select-all, clipboard, editing keys, and keyboard row selection all
+      // operate on or through the cursor, so none of them has a coherent meaning without it. This is
+      // what makes those chords available to application shortcuts on a display-only grid.
+      { scope: "bodyCursor", isActive: () => this.core.options.cellSelection === true },
       { scope: "grid", isActive: () => true },
       { scope: "app", isActive: () => true },
     ]);
@@ -1172,6 +1177,9 @@ export class GridRenderer {
    * Where the keyboard cursor lands when focus enters the grid: back where it was, or the first column
    * header on a first visit. The surrounding chrome — toolbar, paginator, quick filter — is all
    * tab-reachable, so leaving and returning is routine and losing your place each time would be tiring.
+   * With headerKeyboardNavigation off, setHeaderFocus (the option's choke point) refuses the seed and
+   * the grid takes focus with no cursor anywhere; the first arrow key seeds the body cursor instead
+   * (when cell selection allows one).
    */
   private _onRootFocus() {
     if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;

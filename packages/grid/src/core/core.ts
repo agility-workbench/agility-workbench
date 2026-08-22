@@ -278,6 +278,7 @@ export class GridCore implements IGridCore {
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       columnSelection: options.columnSelection ?? true,
+      headerKeyboardNavigation: options.headerKeyboardNavigation ?? true,
       showColumnButtonsOnHover: isTrue(options.showColumnButtonsOnHover),
       bodyContextMenu: options.bodyContextMenu ?? true, // true | false | getter
       multiColumnMenu: options.multiColumnMenu, // undefined (built-ins) | false | getter
@@ -1350,6 +1351,9 @@ export class GridCore implements IGridCore {
     const columnSelectionBecameDisabled =
       this.options.columnSelection && !options.columnSelection
       && this.selectionModel.getSelectedColumnIds().size > 0;
+    const headerNavigationBecameDisabled =
+      this.options.headerKeyboardNavigation && !options.headerKeyboardNavigation
+      && this.headerFocusColIdx != null;
 
     Object.assign(this.options, options, {
       asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
@@ -1360,6 +1364,9 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+    // Evict a cursor already sitting in the header, mirroring the selection clear above — the
+    // seeding gate lives in setHeaderFocus, but a cursor placed before the flip must not survive it.
+    if (headerNavigationBecameDisabled) this.setHeaderFocus(null, "api");
   }
 
   private setSortModelForCol(col: Column, dir: "asc" | "desc" | null = "asc"): boolean {
@@ -1857,6 +1864,10 @@ export class GridCore implements IGridCore {
    * cursor is no longer in. The column selection survives, so arrow keys can keep building one.
    */
   setHeaderFocus(colIdx: number | null, reason: "keyboard" | "api" | "mouse" = "keyboard"): void {
+    // The choke point for the headerKeyboardNavigation option: every way the cursor can land on a
+    // header — focus entering the grid, ArrowUp from the top row, a header click, the API — funnels
+    // through here. Clearing (`null`) stays allowed so disabling the option can evict the cursor.
+    if (colIdx != null && !this.options.headerKeyboardNavigation) return;
     const leaves = this.columnModel.getLeaves();
     // An inert utility header is not a cursor target. Treat attempts to focus it as a no-op so a
     // pointer click on decorative row numbers cannot dislodge an existing keyboard position.
@@ -1883,6 +1894,10 @@ export class GridCore implements IGridCore {
    * row 0 steps into the band first, and it takes one more press to reach the header.
    */
   tryEnterHeaderFromTop(): boolean {
+    // Declined, not consumed: the navigate binding below the enterHeader binding takes the key as
+    // an ordinary ArrowUp. (setHeaderFocus would refuse anyway, but this path must report failure —
+    // returning true on a refused focus would consume the keystroke while moving nothing.)
+    if (!this.options.headerKeyboardNavigation) return false;
     const active = this.selectionModel.getActiveCell();
     if (!active) return false;
     if (active.rowPinned === "bottom") return false;
@@ -1908,6 +1923,10 @@ export class GridCore implements IGridCore {
     if (stops.length === 0) return;
     const from = this.headerFocusColIdx ?? stops[0];
     if (dir === "down") {
+      // The body keyboard cursor is part of cell selection: when that is off ("inert" or "text"
+      // mode), ArrowDown has nowhere legal to go and the cursor stays in the header — the header is
+      // the grid's whole keyboard surface then.
+      if (this.options.cellSelection !== true) return;
       // Down goes to the row directly below the header on screen — the pinned-top band when one is
       // displayed. `firstRowPosition()` prefers the body, answering a different question (where a jump
       // from inside the body lands). There is no modified form: only a plain arrow crosses the
