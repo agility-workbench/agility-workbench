@@ -2379,6 +2379,16 @@ export class GridCore implements IGridCore {
         });
         break;
       case "columnDefsSet":
+        // The imperative door (api.setColumnDefs). Every call is a conscious, complete statement of
+        // the columns — the empty array included ("the columns are now none") — so it claims the
+        // same caller ownership `setColumnDefsFromProps` stamps on non-empty prop defs: from here
+        // on, a server-sent schema (applyServerSideColumnDefs) is ignored until the application
+        // releases ownership with `updateGridOptions({ columnDefs: undefined })`. Without the stamp
+        // an SSRM response's ride-along schema would silently replace definitions supplied this way
+        // but not those supplied through props — the same defs, different survival.
+        this.schemaSource = "props";
+        this.serverSchemaVersion = undefined;
+        this.serverSchemaSignature = undefined;
         this.setColumnDefs(action.defs);
         break;
       case "columnStateSet":

@@ -231,7 +231,18 @@ export interface IGridAPI {
   /** Read-only access to the column model (columns, leaves, lookups). */
   getColumnModel(): IColumnModel;
 
-  /** Set the column definitions. */
+  /**
+   * Set the column definitions — the imperative form of `updateGridOptions({ columnDefs })`, and
+   * equivalent to it for a non-empty array: both apply the defs and claim caller ownership of the
+   * schema, so a server-sent schema (an SSRM response's `columns`) no longer replaces them.
+   *
+   * The two doors differ only at the edges, on purpose. `setColumnDefs([])` is a complete
+   * statement — it clears the columns *and* keeps ownership — while `updateGridOptions({
+   * columnDefs: [] })` clears only when the caller already owned the schema (a transient empty
+   * array during a framework render must not discard a server schema). And only the options door
+   * can *release* ownership: `updateGridOptions({ columnDefs: undefined })` hands the schema back,
+   * letting the next server response supply the columns again.
+   */
   setColumnDefs(defs: ColDef[]): void;
 
   /** Set the row data. */
