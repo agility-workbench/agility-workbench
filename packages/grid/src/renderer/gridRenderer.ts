@@ -10,7 +10,7 @@ import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
+import { GridApiConfigController, GridApiShortcutController, IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -58,6 +58,8 @@ import { HeaderRenderer } from "./header/renderer";
 import { IconRenderer } from "./iconRenderer";
 import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
+import { KeyboardBinding, KeyboardRouter } from "./interaction/keyboardRouter";
+import { AppShortcutRegistry } from "./interaction/shortcutPolicy";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
@@ -114,6 +116,9 @@ export class GridRenderer {
   _pinnedRowsRenderer: PinnedRowsRenderer;
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _headerInteractionHandler: HeaderInteractionHandler;
+  private _keyboardRouter: KeyboardRouter;
+  // Assigned inside buildKeyboardRouter (called from the constructor).
+  private _appShortcuts!: AppShortcutRegistry;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
@@ -241,7 +246,10 @@ export class GridRenderer {
     this.setTheme(this.core.getOptions().theme);
     this.setIcons(this.core.getOptions().icons);
 
-    this._menuRenderer = new MenuRenderer(this.root);
+    // The command lookup closes over the router, which is built later in this constructor; menus
+    // only open long after both exist.
+    this._menuRenderer = new MenuRenderer(this.root, (command) =>
+      this._keyboardRouter.getShortcutInfo().find(row => row.command === command)?.chord ?? null);
     this._coreEventBinder = new GridRendererCoreEventBinder({
       core: this.core,
       setLoading: (isLoading) => this.setLoading(isLoading),
@@ -506,6 +514,28 @@ export class GridRenderer {
         this.ensureRowVisible(viewIdx, rowPinned, position),
       ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
     });
+    // Expose live reconfiguration on the public API (api.updateGridOptions). The api routes each
+    // option to its owner; this hands it the renderer-owned half. Probed structurally to avoid a
+    // renderer→api import cycle, matching the exporter hook above.
+    const apiWithConfig = this.api as unknown as {
+      setConfigController?: (controller: GridApiConfigController) => void;
+    };
+    apiWithConfig.setConfigController?.({
+      setToolbarOptions: (options) => this.setToolbarOptions(options),
+      setQuickFilterOptions: (options) => this.setQuickFilterOptions(options),
+      setTooltipOptions: (options) => this.setTooltipOptions(options),
+      setColumnPanelOptions: (options) => this.setColumnPanelOptions(options),
+      setSavedViewsOptions: (options) => this.setSavedViewsOptions(options),
+      setRowSelectionOptions: (options) => this.setRowSelectionOptions(options),
+      setPinnedRowOptions: (options) => this.setPinnedRowOptions(options),
+      togglePagination: (enabled) => this.togglePagination(enabled),
+      setPaginationControls: (options) => this.setPaginationControls(options),
+      setTheme: (theme) => this.setTheme(theme),
+      setIcons: (icons) => this.setIcons(icons),
+      setRuntimeOptions: (options) => this.setRuntimeOptions(options),
+      setServerSideDataSource: (dataSource) => this.setServerSideDataSource(dataSource),
+      setServerSideAggregation: (source) => this.setServerSideAggregation(source),
+    });
     this._bodyRowHoverRenderer = new BodyRowHoverRenderer(this.root);
     this._bodyColumnHoverRenderer = new BodyColumnHoverRenderer(bodyWrapper.body);
     // Tooltips sit below the menu band (menus use 9999+) so a column/context menu covers a tooltip.
@@ -603,6 +633,20 @@ export class GridRenderer {
       toggleColumnSelection: (colID, mode) => this.core.dispatch({ type: "columnSelectSet", colId: colID, mode }),
       openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
+    });
+    // After both cursor handlers exist: the router registers their bindings, and a duplicate chord
+    // within one scope throws here rather than surfacing as a keystroke that quietly does the wrong
+    // thing.
+    this._keyboardRouter = this.buildKeyboardRouter();
+    // Expose application shortcuts on the public API (api.registerShortcut /
+    // api.getKeyboardShortcuts). Probed structurally to avoid a renderer→api import cycle,
+    // matching the exporter hook above.
+    const apiWithShortcuts = this.api as unknown as {
+      setShortcutController?: (controller: GridApiShortcutController) => void;
+    };
+    apiWithShortcuts.setShortcutController?.({
+      register: (shortcut) => this._appShortcuts.register(shortcut),
+      getShortcuts: () => this._keyboardRouter.getShortcutInfo(),
     });
     this._interactionEventBinder = new GridInteractionEventBinder({
       root: this.root,
@@ -1056,23 +1100,77 @@ export class GridRenderer {
   // Ctrl/Cmd+F is claimed here (preventing the browser's native find) to summon the quick filter,
   // then everything else falls through to selection/keyboard navigation.
   _onKeyDown(e: KeyboardEvent) {
-    if (this._quickFilterWidget && (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
-      e.preventDefault();
-      this._quickFilterWidget.show();
-      return;
-    }
-    // The header cursor gets the keys first, and only while it holds the cursor. Routing by position
-    // rather than by key keeps the body's meanings intact: the body handler treats Enter as "edit this
-    // cell" and any printable character as type-to-edit, neither of which should happen on a header.
-    //
-    // Gated on the event originating at the root itself, where this cursor lives: DOM focus never leaves
-    // the root in the activedescendant model, so a keydown from anywhere else came from a real control
-    // inside the grid (a pagination button, the quick filter, a cell editor) and belongs to it.
-    if (e.target === this.root && this._headerInteractionHandler.onKeyDown(e)) {
-      e.preventDefault();
-      return;
-    }
-    this._selectionRenderer.onKeyDown(e);
+    this._keyboardRouter.handleKeyDown(e);
+  }
+
+  /**
+   * Build the keyboard router: the scope chain, then every subsystem's bindings.
+   *
+   * The chain replaces what used to be the order of `if`s in `_onKeyDown`. Two scopes are blocking
+   * because their owner takes the whole keyboard: an open cell editor (Enter/Tab/Escape/arrows are
+   * the editor's), and any embedded form control — column filter inputs, the filter type/op
+   * `<select>`, join radios, the quick-filter box — whose keydowns bubble to the root and would
+   * otherwise have Arrows, Home/End and Backspace/Delete stolen by grid navigation, leaving fields
+   * that can be typed into but never edited or cleared.
+   *
+   * `headerCursor` is not blocking: a key with no header meaning still reaches the grid's own
+   * chords. It is gated on the event originating at the root itself, where that cursor lives — DOM
+   * focus never leaves the root in the activedescendant model, so a keydown from anywhere else came
+   * from a real control inside the grid and belongs to it.
+   */
+  private buildKeyboardRouter(): KeyboardRouter {
+    const isFormControl = (e: KeyboardEvent): boolean => {
+      const target = e.target as HTMLElement | null;
+      return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"
+        || target.tagName === "SELECT" || target.isContentEditable);
+    };
+
+    const router = new KeyboardRouter([
+      { scope: "editor", isActive: () => this.core.getEditingCell() != null, blocking: true },
+      { scope: "embeddedControl", isActive: isFormControl, blocking: true },
+      // Application shortcuts registered with `override: true`: ahead of every built-in the user
+      // could mean to shadow, behind the two blocking scopes no shortcut may take the keyboard
+      // from. Reserved chords are refused at registration, so nothing here can break navigation.
+      { scope: "appOverride", isActive: () => true },
+      {
+        scope: "headerCursor",
+        isActive: (e) => e.target === this.root && this.core.getHeaderFocusColIdx() != null,
+      },
+      // The body keyboard cursor is part of cell selection. When cellSelection is `false` (inert
+      // cells) or `"text"` (native text selection), the scope goes dark as a unit: navigation,
+      // Home/End, paging, select-all, clipboard, editing keys, and keyboard row selection all
+      // operate on or through the cursor, so none of them has a coherent meaning without it. This is
+      // what makes those chords available to application shortcuts on a display-only grid.
+      { scope: "bodyCursor", isActive: () => this.core.options.cellSelection === true },
+      { scope: "grid", isActive: () => true },
+      { scope: "app", isActive: () => true },
+    ]);
+
+    router.register([
+      // Claimed at grid scope so it works from the header cursor too, and to keep the browser's
+      // native find dialog shut. The quick-filter input claims the same chord locally, because it
+      // stops propagation before this router ever sees the key.
+      {
+        id: "quickFilter",
+        chord: "mod+f",
+        scope: "grid",
+        label: "Quick filter",
+        when: () => this._quickFilterWidget != null,
+        run: () => this._quickFilterWidget!.show(),
+      },
+    ]);
+    router.register(this._headerInteractionHandler.keyboardBindings());
+    router.register(this._selectionRenderer.keyboardBindings());
+
+    // Application shortcuts (api.registerShortcut) validate against the live options — reservation
+    // is a predicate over the current configuration, not a static list.
+    this._appShortcuts = new AppShortcutRegistry(router, () => this.core.options);
+    return router;
+  }
+
+  /** Every registered keyboard binding, innermost scope first. For diagnostics and tests. */
+  getKeyboardBindings(): readonly KeyboardBinding[] {
+    return this._keyboardRouter.getBindings();
   }
 
   setLoading(isLoading: boolean) {
@@ -1103,6 +1201,9 @@ export class GridRenderer {
    * Where the keyboard cursor lands when focus enters the grid: back where it was, or the first column
    * header on a first visit. The surrounding chrome — toolbar, paginator, quick filter — is all
    * tab-reachable, so leaving and returning is routine and losing your place each time would be tiring.
+   * With headerKeyboardNavigation off, setHeaderFocus (the option's choke point) refuses the seed and
+   * the grid takes focus with no cursor anywhere; the first arrow key seeds the body cursor instead
+   * (when cell selection allows one).
    */
   private _onRootFocus() {
     if (this.core.getActiveCell() || this.core.getHeaderFocusColIdx() != null) return;

@@ -4,6 +4,8 @@ import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
 import { ActiveDescendantTracker, setAriaSelected } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
+import { hasMod } from "../interaction/keyChord";
+import type { KeyboardBinding } from "../interaction/keyboardRouter";
 import { RowPoolDef } from "../types";
 
 interface SelectionRendererParams {
@@ -364,258 +366,286 @@ export class SelectionRenderer {
     };
   }
 
-  // ---------------- Input handlers (translate → dispatch) ----------------
-  onKeyDown(e: KeyboardEvent) {
-    // While a cell editor is open it owns the keyboard (Enter/Tab/Escape/arrows); the editor
-    // input stops propagation for the keys it handles, but guard here too so navigation never
-    // runs underneath an open editor.
-    if (this.params.core.getEditingCell()) return;
+  // ---------------- Keyboard bindings (translate → dispatch) ----------------
 
-    // Embedded form controls (column filter inputs, filter type/op <select>, join radios, the quick
-    // filter box, etc.) live inside the grid root, so their keydowns bubble here. Let them own their
-    // own keyboard — otherwise navigation/clipboard/edit shortcuts would steal Arrows, Home/End and
-    // Backspace/Delete and these fields could only be typed into, never edited or cleared.
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) {
-      return;
-    }
-
-    const ctrl = e.ctrlKey || e.metaKey;
-
-    // Optional fixed runtime mode switch. It is deliberately handled before all other grid
-    // shortcuts, but only after the editor/form-control guards above.
-    if (
-      ctrl
-      && e.shiftKey
-      && !e.altKey
-      && (e.key === " " || e.code === "Space")
-      && this.params.core.options.treeData?.enableKeyboardNavigationModeSwitch
-    ) {
-      e.preventDefault();
-      const next = this.params.core.getKeyboardNavigationMode() === "grid" ? "hierarchy" : "grid";
-      this.params.core.dispatch({
-        type: "keyboardNavigationModeSet",
-        mode: next,
-        source: "shortcut",
-      });
-      return;
-    }
-
-    // Hierarchy mode replaces Ctrl/Cmd block navigation only inside the generated hierarchy
-    // column. Shift keeps its existing range/block semantics, and every other column is untouched.
-    if (
-      ctrl
-      && !e.shiftKey
-      && !e.altKey
-      && this.params.core.getKeyboardNavigationMode() === "hierarchy"
-      && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp")
-    ) {
-      const active = this.params.core.getActiveCell();
-      const hierarchy = this.params.core.getColumnModel().getHierarchyColumn();
-      const activeColumn = active
-        ? this.params.core.getColumnModel().getLeaves()[active.colIdx]
-        : undefined;
-      if (hierarchy && activeColumn?.instanceID === hierarchy.instanceID) {
-        e.preventDefault();
-        this.params.core.dispatch({
-          type: "treeNavigate",
-          command: e.key === "ArrowRight"
-            ? "expand"
-            : e.key === "ArrowLeft"
-              ? "collapse"
-              : "parent",
-        });
-        return;
-      }
-    }
-
-    const active = this.params.core.getActiveCell();
-    const activeColumn = active
-      ? this.params.core.getColumnModel().getLeaves()[active.colIdx]
-      : undefined;
-
+  /**
+   * The body cursor's keymap, registered into the router's `bodyCursor` scope. The editor and
+   * embedded-control guards that used to open this handler are now blocking scopes ahead of it, so
+   * nothing here runs underneath an open editor or a focused filter input.
+   *
+   * Modifier policy per chord: a modifier this handler *reads* is declared `"any"`, one it does not
+   * must be absent. Alt is absent everywhere — the grid used to consume Alt+Arrow as a plain arrow,
+   * which silently overrode the browser's back/forward gesture and gave nothing back.
+   */
+  keyboardBindings(): KeyboardBinding[] {
+    const core = this.params.core;
+    const activeCell = () => core.getActiveCell();
+    const activeColumn = () => {
+      const active = activeCell();
+      return active ? core.getColumnModel().getLeaves()[active.colIdx] : undefined;
+    };
     // Shift extends a data-cell range, but utility cells are cursor/row-selection controls rather
     // than range endpoints. From one of those cells Shift+Arrow remains ordinary navigation.
-    const extend = e.shiftKey
-      && this.params.core.options.rangeSelection
-      && !activeColumn?.isLeadingUtilityColumn();
+    const extend = (e: KeyboardEvent) => e.shiftKey
+      && !!core.options.rangeSelection
+      && !activeColumn()?.isLeadingUtilityColumn();
+    const utilityActivation = (test: (col: Column) => boolean) => (): boolean => {
+      const active = activeCell();
+      const col = activeColumn();
+      return !!active && !active.rowPinned && !!col && test(col);
+    };
 
-    // A focused selection-checkbox cell is an interactive keyboard control. Enter and Space use
-    // the same additive row toggle as a pointer click, while keeping the cursor in the cell so the
-    // user can continue vertically and select more rows. Focus alone never checks the box.
-    if (
-      active
-      && !active.rowPinned
-      && activeColumn?.isSelectionCheckboxColumn()
-      && (e.key === "Enter" || e.key === " " || e.code === "Space")
-    ) {
-      e.preventDefault();
-      this.params.core.dispatch({
-        type: "rowSelectSet",
-        viewIdx: active.row,
-        mode: "toggle",
-        preserveFocus: true,
-        reason: "keyboard",
-      });
-      return;
-    }
+    return [
+      // The optional fixed tree-navigation mode switch. A `grid` binding: it configures the grid
+      // rather than acting on a cell, so it works wherever the cursor is. It briefly lived at
+      // `bodyCursor` scope because the header's Space family also claimed mod+shift+space; the
+      // header keymap gave that chord up to Space/Ctrl+Space, so this is global again.
+      {
+        id: "treeNavigationMode",
+        chord: "mod+shift+space",
+        scope: "grid",
+        label: "Switch tree navigation mode",
+        when: () => core.options.treeData?.enableKeyboardNavigationModeSwitch === true,
+        run: () => {
+          const next = core.getKeyboardNavigationMode() === "grid" ? "hierarchy" : "grid";
+          core.dispatch({ type: "keyboardNavigationModeSet", mode: next, source: "shortcut" });
+        },
+      },
 
-    // Row-number cells mirror their pointer gesture: plain activation replaces, Ctrl/Cmd toggles,
-    // and Shift extends from the row anchor. The cursor is independent of the selected rows and
-    // remains in the utility cell so vertical keyboard navigation can continue.
-    if (
-      active
-      && !active.rowPinned
-      && this.params.core.options.rowSelection
-      && activeColumn?.isRowNumberColumn()
-      && (e.key === "Enter" || e.key === " " || e.code === "Space")
-    ) {
-      e.preventDefault();
-      this.params.core.dispatch({
-        type: "rowSelectSet",
-        viewIdx: active.row,
-        mode: e.shiftKey ? "range" : ctrl ? "toggle" : "replace",
-        preserveFocus: true,
-        reason: "keyboard",
-      });
-      return;
-    }
+      // Hierarchy mode replaces Ctrl/Cmd block navigation only inside the generated hierarchy
+      // column; every other column is untouched, so this declines and the block jump below runs.
+      ...(["arrowleft", "arrowright", "arrowup"] as const).map(key => ({
+        id: `treeNavigate.${key}`,
+        chord: `mod+${key}`,
+        scope: "bodyCursor" as const,
+        label: "Tree navigation",
+        when: () => core.getKeyboardNavigationMode() === "hierarchy",
+        run: (): boolean | void => {
+          const hierarchy = core.getColumnModel().getHierarchyColumn();
+          if (!hierarchy || activeColumn()?.instanceID !== hierarchy.instanceID) return false;
+          core.dispatch({
+            type: "treeNavigate",
+            command: key === "arrowright" ? "expand" : key === "arrowleft" ? "collapse" : "parent",
+          });
+        },
+      })),
 
-    // Shift+F2 — open the ActionFrame on the focused cell (Excel/Sheets "edit comment" convention).
-    // Core no-ops on a group row / when the column has no ActionFrame component. Checked before the
-    // plain-F2 edit handler below so the shift chord isn't swallowed by it.
-    if (e.key === "F2" && e.shiftKey) {
-      const cell = this.activeCellRef();
-      if (cell) {
-        e.preventDefault();
-        this.params.core.dispatch({ type: "actionFrameOpen", cell, source: "keyboard" });
-      }
-      return;
-    }
+      // A focused selection-checkbox cell is an interactive keyboard control. Enter and Space use
+      // the same additive row toggle as a pointer click, while keeping the cursor in the cell so the
+      // user can continue vertically and select more rows. Focus alone never checks the box.
+      // Bare chords only: the toggle is always additive, so no modifier has a meaning to add here.
+      ...["enter", "space"].map(key => ({
+        id: `checkboxToggle.${key}`,
+        chord: key,
+        scope: "bodyCursor" as const,
+        label: "Toggle row selection",
+        when: utilityActivation(col => col.isSelectionCheckboxColumn()),
+        run: () => {
+          core.dispatch({
+            type: "rowSelectSet",
+            viewIdx: activeCell()!.row,
+            mode: "toggle",
+            preserveFocus: true,
+            reason: "keyboard",
+          });
+        },
+      })),
 
-    // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
-    // Disabled by suppressKeyboardEdit; Enter still consumes the event to avoid stray behavior.
-    if (e.key === "F2" || e.key === "Enter") {
-      if (this.params.core.options.suppressKeyboardEdit) return;
-      const cell = this.activeCellRef();
-      if (cell) {
-        e.preventDefault();
-        this.params.core.dispatch({ type: "editStart", cell, source: "keyboard" });
-      }
-      return;
-    }
+      // Row-number cells mirror their pointer gesture: plain activation replaces, Ctrl/Cmd toggles,
+      // and Shift extends from the row anchor. The cursor is independent of the selected rows and
+      // remains in the utility cell so vertical keyboard navigation can continue.
+      ...["enter", "space"].map(key => ({
+        id: `rowNumberSelect.${key}`,
+        chord: { key, mod: "any" as const, shift: "any" as const },
+        scope: "bodyCursor" as const,
+        label: "Select row",
+        when: () => !!core.options.rowSelection
+          && utilityActivation(col => col.isRowNumberColumn())(),
+        run: (e: KeyboardEvent) => {
+          core.dispatch({
+            type: "rowSelectSet",
+            viewIdx: activeCell()!.row,
+            mode: e.shiftKey ? "range" : hasMod(e) ? "toggle" : "replace",
+            preserveFocus: true,
+            reason: "keyboard",
+          });
+        },
+      })),
 
-    // Ctrl/Cmd+A — select all.
-    if (ctrl && (e.key === "a" || e.key === "A")) {
-      e.preventDefault();
-      this.params.core.dispatch({ type: "selectAll" });
-      return;
-    }
-
-    // Ctrl/Cmd+C / X / V — clipboard copy / cut / paste over the current selection.
-    if (ctrl && (e.key === "c" || e.key === "C")) {
-      e.preventDefault();
-      this.params.clipboard().copy();
-      return;
-    }
-    if (ctrl && (e.key === "x" || e.key === "X")) {
-      e.preventDefault();
-      this.params.clipboard().cut();
-      return;
-    }
-    if (ctrl && (e.key === "v" || e.key === "V")) {
-      e.preventDefault();
-      void this.params.clipboard().paste();
-      return;
-    }
-
-    // Undo / redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y to redo.
-    if (ctrl && (e.key === "z" || e.key === "Z")) {
-      e.preventDefault();
-      this.params.core.dispatch({ type: e.shiftKey ? "redo" : "undo" });
-      return;
-    }
-    if (ctrl && (e.key === "y" || e.key === "Y")) {
-      e.preventDefault();
-      this.params.core.dispatch({ type: "redo" });
-      return;
-    }
-
-    // Delete / Backspace — clear the editable cells in the current selection.
-    if (e.key === "Delete" || e.key === "Backspace") {
-      e.preventDefault();
-      this.params.clipboard().clearContents();
-      return;
-    }
-
-    // Home / End — horizontal edge; with Ctrl/Cmd — jump to a grid corner.
-    if (e.key === "Home" || e.key === "End") {
-      e.preventDefault();
-      if (ctrl) {
-        this.params.core.dispatch({
-          type: "navigateCorner",
-          corner: e.key === "Home" ? "topLeft" : "bottomRight",
-          extend,
-        });
-      } else {
-        this.params.core.dispatch({
-          type: "navigate",
-          dir: e.key === "Home" ? "left" : "right",
-          extend,
-          jump: "edge",
-        });
-      }
-      return;
-    }
-
-    // PageUp / PageDown — move by one viewport of rows.
-    if (e.key === "PageUp" || e.key === "PageDown") {
-      e.preventDefault();
-      this.params.core.dispatch({
-        type: "navigate",
-        dir: e.key === "PageUp" ? "up" : "down",
-        extend,
-        jump: "page",
-        pageRows: this.params.viewportRows(),
-      });
-      return;
-    }
-
-    let dir: NavDir | null = null;
-    switch (e.key) {
-      case "ArrowUp": dir = "up"; break;
-      case "ArrowDown": dir = "down"; break;
-      case "ArrowLeft": dir = "left"; break;
-      case "ArrowRight": dir = "right"; break;
-      default:
-        // Edit-on-typing: a printable character on the focused cell opens the editor seeded with
-        // that character. (Modifier combos and non-printing keys fall through untouched.) Disabled
-        // by suppressKeyboardEdit (all keyboard edit) or suppressTypeToEdit (just this trigger).
-        const typeToEditOff = this.params.core.options.suppressKeyboardEdit
-          || this.params.core.options.suppressTypeToEdit;
-        if (!typeToEditOff && !ctrl && !e.altKey && isPrintableKey(e.key)) {
+      // Shift+F2 — open the ActionFrame on the focused cell (Excel/Sheets "edit comment"
+      // convention). Core no-ops on a group row / when the column has no ActionFrame component.
+      {
+        id: "openActionFrame",
+        chord: "shift+f2",
+        scope: "bodyCursor",
+        label: "Open the cell's action frame",
+        run: () => {
           const cell = this.activeCellRef();
-          if (cell) {
-            e.preventDefault();
-            this.params.core.dispatch({ type: "editStart", cell, source: "keyboard", charPress: e.key });
-          }
-        }
-        return;
-    }
-    // ArrowUp off the top row moves to the column header, row 0 of the grid. Not while extending a
-    // range: Shift+ArrowUp is a selection gesture and the header holds nothing selectable.
-    if (dir === "up" && !extend && !ctrl && this.params.core.tryEnterHeaderFromTop()) {
-      e.preventDefault();
-      return;
-    }
+          if (cell) core.dispatch({ type: "actionFrameOpen", cell, source: "keyboard" });
+        },
+      },
 
-    e.preventDefault();
-    this.params.core.dispatch({
-      type: "navigate",
-      dir,
-      extend,
-      jump: ctrl ? "block" : undefined,
-    });
+      // F2 / Enter — begin editing the focused cell. (Core no-ops if the column isn't editable.)
+      // A modified Enter (Ctrl+Enter, Shift+Enter) has no editing meaning and is left for the page.
+      ...["f2", "enter"].map(key => ({
+        id: `editStart.${key}`,
+        chord: key,
+        scope: "bodyCursor" as const,
+        label: "Edit cell",
+        // Disabled by suppressKeyboardEdit, which declines the chord rather than consuming it.
+        when: () => !core.options.suppressKeyboardEdit,
+        run: (): boolean | void => {
+          const cell = this.activeCellRef();
+          if (!cell) return false;
+          core.dispatch({ type: "editStart", cell, source: "keyboard" });
+        },
+      })),
+
+      {
+        id: "selectAll",
+        chord: "mod+a",
+        scope: "bodyCursor",
+        label: "Select all cells",
+        run: () => core.dispatch({ type: "selectAll" }),
+      },
+      // `command` ties each binding to the body-menu item that performs the same action, so the
+      // menu renders the chord beside the item and the two cannot drift.
+      {
+        id: "copy",
+        chord: "mod+c",
+        scope: "bodyCursor",
+        label: "Copy",
+        command: "body.copy",
+        run: () => this.params.clipboard().copy(),
+      },
+      {
+        id: "cut",
+        chord: "mod+x",
+        scope: "bodyCursor",
+        label: "Cut",
+        command: "body.cut",
+        run: () => this.params.clipboard().cut(),
+      },
+      {
+        id: "paste",
+        chord: "mod+v",
+        scope: "bodyCursor",
+        label: "Paste",
+        command: "body.paste",
+        run: () => void this.params.clipboard().paste(),
+      },
+      {
+        id: "undo",
+        chord: "mod+z",
+        scope: "bodyCursor",
+        label: "Undo",
+        run: () => core.dispatch({ type: "undo" }),
+      },
+      // Shift is the redo modifier, so the two Z chords are separate bindings rather than one that
+      // reads Shift; Ctrl+Y is the Windows alias.
+      ...["mod+shift+z", "mod+y"].map((chord, index) => ({
+        id: `redo.${index}`,
+        chord,
+        scope: "bodyCursor" as const,
+        label: "Redo",
+        run: () => core.dispatch({ type: "redo" }),
+      })),
+
+      // Clear the editable cells in the current selection. Bare only: Shift and Ctrl carry
+      // OS-level delete meanings that the grid has no business claiming.
+      ...["delete", "backspace"].map(key => ({
+        id: `clearContents.${key}`,
+        chord: key,
+        scope: "bodyCursor" as const,
+        label: "Clear cell contents",
+        run: () => this.params.clipboard().clearContents(),
+      })),
+
+      // Home / End — horizontal edge; with Ctrl/Cmd — jump to a grid corner. Both modifiers are
+      // read below; Alt is not, so Alt+Home stays the browser's.
+      ...(["home", "end"] as const).map(key => ({
+        id: `edge.${key}`,
+        chord: { key, mod: "any" as const, shift: "any" as const },
+        scope: "bodyCursor" as const,
+        label: key === "home" ? "Row start / grid start" : "Row end / grid end",
+        run: (e: KeyboardEvent) => {
+          if (hasMod(e)) {
+            core.dispatch({
+              type: "navigateCorner",
+              corner: key === "home" ? "topLeft" : "bottomRight",
+              extend: extend(e),
+            });
+            return;
+          }
+          core.dispatch({
+            type: "navigate",
+            dir: key === "home" ? "left" : "right",
+            extend: extend(e),
+            jump: "edge",
+          });
+        },
+      })),
+
+      // PageUp / PageDown — move by one viewport of rows. Shift extends; Mod has no meaning here and
+      // is left to the browser, where Ctrl+PageUp/PageDown switches tabs.
+      ...(["pageup", "pagedown"] as const).map(key => ({
+        id: `page.${key}`,
+        chord: { key, shift: "any" as const },
+        scope: "bodyCursor" as const,
+        label: key === "pageup" ? "Page up" : "Page down",
+        run: (e: KeyboardEvent) => core.dispatch({
+          type: "navigate",
+          dir: key === "pageup" ? "up" : "down",
+          extend: extend(e),
+          jump: "page",
+          pageRows: this.params.viewportRows(),
+        }),
+      })),
+
+      // ArrowUp off the top row moves to the column header, row 0 of the grid. Not while extending a
+      // range: Shift+ArrowUp is a selection gesture and the header holds nothing selectable. Declines
+      // when there is no header to enter, handing the key to the navigation binding below.
+      {
+        id: "enterHeader",
+        chord: "arrowup",
+        scope: "bodyCursor",
+        label: "Move to the column header",
+        run: (): boolean | void => {
+          if (!core.tryEnterHeaderFromTop()) return false;
+        },
+      },
+
+      // Arrow navigation. Mod jumps a block, Shift extends a range; Alt belongs to the browser.
+      ...(Object.entries({
+        arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
+      } as const)).map(([key, dir]) => ({
+        id: `navigate.${key}`,
+        chord: { key, mod: "any" as const, shift: "any" as const },
+        scope: "bodyCursor" as const,
+        label: `Move ${dir}`,
+        run: (e: KeyboardEvent) => core.dispatch({
+          type: "navigate",
+          dir,
+          extend: extend(e),
+          jump: hasMod(e) ? "block" : undefined,
+        }),
+      })),
+
+      // Edit-on-typing: a printable character on the focused cell opens the editor seeded with that
+      // character. A pattern rather than a chord, so every literal chord above wins over it.
+      {
+        id: "typeToEdit",
+        pattern: (e: KeyboardEvent) => !hasMod(e) && !e.altKey && isPrintableKey(e.key),
+        scope: "bodyCursor",
+        label: "Start editing by typing",
+        when: () => !core.options.suppressKeyboardEdit && !core.options.suppressTypeToEdit,
+        run: (e: KeyboardEvent): boolean | void => {
+          const cell = this.activeCellRef();
+          if (!cell) return false;
+          core.dispatch({ type: "editStart", cell, source: "keyboard", charPress: e.key });
+        },
+      },
+    ];
   }
 
   onCellMouseDown(e: MouseEvent) {
@@ -635,8 +665,10 @@ export class SelectionRenderer {
         // The chevron consumes mousedown so it does not start a drag/range gesture. For tree data,
         // still make its hierarchy cell the active keyboard target after the synchronous reflow;
         // otherwise the subsequent mode-toggle / hierarchy keys are sent outside the grid or act
-        // on a previously-focused cell.
-        if ((this.params.core.options.treeData || rowEl?.dataset.rowPinned) && rowEl && cellEl) {
+        // on a previously-focused cell. Only while cell selection is on: with it off there is no
+        // body cursor for the seed to serve, and the toggle must not conjure one.
+        if (this.params.core.options.cellSelection === true
+          && (this.params.core.options.treeData || rowEl?.dataset.rowPinned) && rowEl && cellEl) {
           const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
           const colIdx = Number(cellEl.dataset.colIdx);
           if (Number.isFinite(viewIdx) && Number.isFinite(colIdx)) {

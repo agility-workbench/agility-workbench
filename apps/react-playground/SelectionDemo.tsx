@@ -6,7 +6,7 @@ import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
 import type { ICellEditorParams } from "@grid";
-import { ValueFormatterParams, ValueParserParams } from "@grid";
+import { formatChord, ValueFormatterParams, ValueParserParams } from "@grid";
 import { formatDate } from "./helpers";
 
 /**
@@ -57,6 +57,16 @@ const StarRatingEditor = forwardRef<ReactCellEditorHandle, ICellEditorParams>(
  * mouse select / drag, arrow / Ctrl+arrow (Excel-style block jump) / Shift+arrow,
  * Home / End, Ctrl+Home / Ctrl+End, Ctrl+A — with a live readout driven by the
  * `selectionChanged` event and `api.getSelection()`.
+ *
+ * Also demonstrates the grid's keyboard *surface* switches: `cellSelection` (false/"text" removes
+ * the body keyboard cursor, and clipboard/editing/navigation keys with it) and
+ * `headerKeyboardNavigation` (false makes the header mouse-only). The shortcut table is rendered
+ * with `formatChord`, so macOS shows ⌘⇧-style chords and other platforms Ctrl+Shift+.
+ *
+ * The "App shortcuts" panel exercises `api.registerShortcut`: a fresh chord (Ctrl+Shift+Y) that no
+ * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
+ * filter while registered and hands the chord back on dispose. The panel lists the live app
+ * bindings straight from `api.getKeyboardShortcuts()`.
  */
 
 type EmployeeRow = {
@@ -146,16 +156,20 @@ function buildRows(count: number): EmployeeRow[] {
   return rows;
 }
 
+// Chords printed with formatChord, so the platform decides the spelling ("Ctrl+→" vs "⌘→").
+const fmt = (chord: string) => formatChord(chord);
 const SHORTCUTS: Array<[string, string]> = [
   ["Click / drag", "Select a cell / range"],
-  ["Arrow", "Move one cell"],
-  ["Shift + Arrow", "Extend range by one cell"],
-  ["Ctrl + Arrow", "Jump across data block (Excel-style)"],
-  ["Ctrl + Shift + Arrow", "Extend range across block"],
-  ["PageUp / PageDown", "Move up / down one viewport"],
-  ["Home / End", "Jump to first / last column"],
-  ["Ctrl + Home / End", "Jump to top-left / bottom-right"],
-  ["Ctrl + A", "Select all"],
+  [`${fmt("arrowleft")} ${fmt("arrowup")} ${fmt("arrowdown")} ${fmt("arrowright")}`, "Move one cell"],
+  [fmt("shift+arrowright"), "Extend range by one cell"],
+  [fmt("mod+arrowright"), "Jump across data block (Excel-style)"],
+  [fmt("mod+shift+arrowright"), "Extend range across block"],
+  [`${fmt("pageup")} / ${fmt("pagedown")}`, "Move up / down one viewport"],
+  [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
+  [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
+  [fmt("mod+a"), "Select all"],
+  [`${fmt("arrowup")} from the top row`, "Move into the column header"],
+  [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
 
 function describeSelection(sel: SelectionSnapshot | null): string {
@@ -186,6 +200,72 @@ export function SelectionDemo() {
   const apiRef = useRef<IGridAPI | null>(null);
   const [selection, setSelection] = useState<SelectionSnapshot | null>(null);
   const [active, setActive] = useState<{ viewIdx?: number; colIdx?: number } | null>(null);
+  // The keyboard-surface switches. cellSelection !== true removes the body keyboard cursor;
+  // headerKeyboardNavigation false makes the header mouse-only. Both are runtime options, so the
+  // wrapper reconciles them live — no grid rebuild.
+  const [cellSelection, setCellSelection] = useState<boolean | "text">(true);
+  const [headerKeyboardNav, setHeaderKeyboardNav] = useState(true);
+  const [headerAt, setHeaderAt] = useState<number | null>(null);
+  // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
+  // read back from api.getKeyboardShortcuts(), and what fired last.
+  const approveOff = useRef<(() => void) | null>(null);
+  const searchOff = useRef<(() => void) | null>(null);
+  const [approveOn, setApproveOn] = useState(false);
+  const [searchOn, setSearchOn] = useState(false);
+  const [appRows, setAppRows] = useState<Array<{ id: string; scope: string; display: string; label?: string }>>([]);
+  const [lastFired, setLastFired] = useState("—");
+
+  const refreshAppShortcuts = () => {
+    const rows = (apiRef.current?.getKeyboardShortcuts() ?? [])
+      .filter((row) => row.scope === "app" || row.scope === "appOverride")
+      .map((row) => ({
+        id: row.id,
+        scope: row.scope,
+        display: row.chord ? formatChord(row.chord) : "",
+        label: row.label,
+      }));
+    setAppRows(rows);
+  };
+
+  const toggleApprove = (on: boolean) => {
+    setApproveOn(on);
+    if (on) {
+      // A fresh chord: nothing built-in claims Ctrl+Shift+Y, so plain `app` scope receives it.
+      approveOff.current = apiRef.current!.registerShortcut({
+        id: "approve",
+        chord: "mod+shift+y",
+        label: "Approve selection (app)",
+        run: () => {
+          const cells = apiRef.current!.getSelection()?.rangeCells?.length ?? 0;
+          setLastFired(`Approve — ${cells} cell(s)`);
+        },
+      });
+    } else {
+      approveOff.current?.();
+      approveOff.current = null;
+    }
+    refreshAppShortcuts();
+  };
+
+  const toggleSearch = (on: boolean) => {
+    setSearchOn(on);
+    if (on) {
+      // Overrides the built-in quick filter: `override: true` registers ahead of the non-blocking
+      // built-in scopes, so Ctrl+F is the app's while this is on and the quick filter's again the
+      // moment it is disposed.
+      searchOff.current = apiRef.current!.registerShortcut({
+        id: "appSearch",
+        chord: "mod+f",
+        override: true,
+        label: "App search (overrides quick filter)",
+        run: () => setLastFired("App search — quick filter suppressed"),
+      });
+    } else {
+      searchOff.current?.();
+      searchOff.current = null;
+    }
+    refreshAppShortcuts();
+  };
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "ID", width: 80 },
@@ -225,6 +305,8 @@ export function SelectionDemo() {
     setSelection(api.getSelection());
     api.on("selectionChanged", (ev) => setSelection(ev.snapshot));
     api.on("focusChanged", (ev) => setActive({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
+    // The header cursor is a separate position from the body's (they are mutually exclusive).
+    api.on("headerFocusChanged", (ev) => setHeaderAt(ev.colIdx ?? null));
   };
 
   return (
@@ -236,6 +318,26 @@ export function SelectionDemo() {
             {[100, 120, 500, 1000].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="cell-selection" style={{ fontSize: 13 }}>Cell selection</label>
+          <select
+            id="cell-selection"
+            value={String(cellSelection)}
+            onChange={(e) => setCellSelection(e.target.value === "text" ? "text" : e.target.value === "true")}
+          >
+            <option value="true">true — full keyboard</option>
+            <option value="text">"text" — native text selection</option>
+            <option value="false">false — inert cells</option>
+          </select>
+        </div>
+        <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={headerKeyboardNav}
+            onChange={(e) => setHeaderKeyboardNav(e.target.checked)}
+          />
+          Header keyboard nav
+        </label>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
@@ -257,6 +359,8 @@ export function SelectionDemo() {
             quickFilter
             rowSelection
             selectAllRowsOnHeaderClick
+            cellSelection={cellSelection}
+            headerKeyboardNavigation={headerKeyboardNav}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />
@@ -268,9 +372,14 @@ export function SelectionDemo() {
             <div style={{ fontSize: 13, fontWeight: 600 }}>{describeSelection(selection)}</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
               kind: <code>{selection?.kind ?? "none"}</code>
-              {active?.viewIdx != null && (
-                <> · active: r{active.viewIdx}/c{active.colIdx}</>
-              )}
+              {" · cursor: "}
+              <code>
+                {headerAt != null
+                  ? `header c${headerAt}`
+                  : active?.viewIdx != null
+                    ? `r${active.viewIdx}/c${active.colIdx}`
+                    : "—"}
+              </code>
             </div>
             {selection?.kind === "range" && selection.rangeCells && (
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
@@ -293,6 +402,43 @@ export function SelectionDemo() {
             </table>
             <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
               Click a cell first to focus the grid, then use the keyboard.
+            </p>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
+              Cell selection <code>false</code> / <code>"text"</code> removes the body keyboard
+              cursor — navigation, clipboard, and editing keys go with it, and Tab lands the cursor
+              in the header instead. Turning header keyboard nav off too leaves the grid claiming
+              no navigation keys at all.
+            </p>
+          </section>
+
+          <section style={{ border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8, padding: 12 }}>
+            <h3 style={{ fontSize: 14, marginBottom: 8 }}>App shortcuts</h3>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={approveOn} onChange={(e) => toggleApprove(e.target.checked)} />
+              Approve selection — {fmt("mod+shift+y")} (fresh chord)
+            </label>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <input type="checkbox" checked={searchOn} onChange={(e) => toggleSearch(e.target.checked)} />
+              App search — {fmt("mod+f")} (overrides quick filter)
+            </label>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+              last fired: <code>{lastFired}</code>
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }} data-app-shortcut-list>
+              {appRows.length === 0
+                ? "no app shortcuts registered"
+                : appRows.map((row) => (
+                  <div key={row.id}>
+                    <code>{row.display}</code> — {row.label} <em>({row.scope})</em>
+                  </div>
+                ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
+              The list reads back from <code>api.getKeyboardShortcuts()</code>. While "App search"
+              is on, {fmt("mod+f")} is the app's (<em>appOverride</em> scope beats built-ins);
+              uncheck it and the quick filter takes the chord back. Reserved chords
+              (Tab, Escape, arrows while navigation is on) are refused by
+              <code> registerShortcut</code> with an error naming the owning feature.
             </p>
           </section>
         </aside>

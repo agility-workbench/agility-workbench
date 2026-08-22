@@ -3,11 +3,14 @@ import {
   AggregateType,
   ColumnType,
   FilterType,
+  formatChord,
   type GridEventEditingChangedParams,
   type GridEventFilterChangedParams,
   type GridEventHistoryChangedParams,
   type GridHistoryState,
+  type GridShortcut,
   type HistoryChangeReason,
+  type KeyboardShortcutInfo,
   type ResetPageTrigger,
 } from "./index";
 
@@ -43,5 +46,18 @@ describe("react-grid public exports", () => {
 
     expect(event.undoDepth).toBe(2);
     expect(reasons).toHaveLength(4);
+  });
+
+  it("re-exports the keyboard-shortcut surface: formatChord and the shortcut types", () => {
+    const shortcut: GridShortcut = {
+      id: "approve",
+      chord: "mod+shift+y",
+      run: () => undefined,
+    };
+    const row: KeyboardShortcutInfo = { id: "copy", scope: "bodyCursor", command: "body.copy" };
+
+    expect(formatChord(shortcut.chord, { mac: false })).toBe("Ctrl+Shift+Y");
+    expect(formatChord("mod+arrowright", { mac: true })).toBe("⌘→");
+    expect(row.scope).toBe("bodyCursor");
   });
 });

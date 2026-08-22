@@ -11,6 +11,8 @@ export type {
   NavDir,
   RowScrollPosition,
 } from "./interfaces/iGridAPI";
+// The shape `api.getColumnState()` returns and `applyColumnState` accepts.
+export type { ColumnState } from "./interfaces/iGridCore";
 export type {
   CellPos,
   CellRef,
@@ -38,6 +40,8 @@ export type {
   SparklineXValue,
 } from "./cellRenderers/sparklineRenderer";
 export { CanvasMeasurer, initDomRenderer } from "./renderer";
+export { createGrid } from "./createGrid";
+export type { CreateGridOptions } from "./createGrid";
 
 // Extension-point surface consumed by framework bindings (e.g. the React wrapper).
 export { isClassRenderer } from "./renderer/renderer";
@@ -85,6 +89,9 @@ export { isFalse, isTrue, valuesAreSame } from "./misc";
 export { REJECT } from "./interfaces/gridOptions";
 export type {
   GridOptions,
+  // Accepted by `api.updateGridOptions`; `RuntimeGridOptions` is the slice it applies as a unit.
+  UpdatableGridOptions,
+  RuntimeGridOptions,
   CellValueChangedParams,
   BeforeCellCommitParams,
   CellCommitSource,
@@ -103,6 +110,7 @@ export type {
   GroupDisplayType,
   GroupSortMode,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
   TreeDataOptions,
   TreeDataPathOptions,
   TreeDataParentOptions,
@@ -125,7 +133,6 @@ export type {
   GridToolbarOptions,
   InitialSortItem,
   SortingOrder,
-  MultiSortKey,
   ShowSortPriority,
   SortIconVisibility,
   TooltipOptions,
@@ -153,8 +160,9 @@ export type { PteVarName } from "./theme/cssVars.generated";
 export { injectGridStyles, areGridStylesInjected } from "./theme/inject";
 export type { InjectGridStylesOptions } from "./theme/inject";
 
+export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
-export type { ColDef, DefaultColDef } from "./interfaces/column";
+export type { ColDef, ColumnMenuItemsGetter, DefaultColDef } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type { AggregateModel, AggregateScope } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";
@@ -267,3 +275,11 @@ export type {
 
 export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
 export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
+
+// Keyboard chords: the display formatter for menu accelerators and shortcut references, and the
+// spec type application shortcuts are written against.
+export { formatChord, isMacPlatform } from "./renderer/interaction/keyChord";
+export type { ChordSpec, ModifierState } from "./renderer/interaction/keyChord";
+// Application shortcuts (api.registerShortcut) and the shortcut table (api.getKeyboardShortcuts).
+export type { GridShortcut } from "./renderer/interaction/shortcutPolicy";
+export type { KeyboardScope, KeyboardShortcutInfo } from "./renderer/interaction/keyboardRouter";

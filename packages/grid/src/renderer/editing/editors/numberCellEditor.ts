@@ -1,3 +1,4 @@
+import { canonicalKey, matchesAnyChord } from "../../interaction/keyChord";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
 
 const INPUT_CLASS = "pte-cell-editor-input";
@@ -73,10 +74,13 @@ export class NumberCellEditor implements ICellEditor {
     return this.hasParser() ? col.formatValue(value, row) : String(value);
   }
 
+  // Bare arrows only. A modified arrow has no stepping meaning here, so it keeps whatever the
+  // browser gives it (Alt+Left/Right is history navigation) and stays free for a future
+  // "step by a larger increment" chord.
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if (!matchesAnyChord(e, ["arrowup", "arrowdown"])) return;
     e.preventDefault();
-    this.stepBy(e.key === "ArrowUp" ? 1 : -1);
+    this.stepBy(canonicalKey(e) === "arrowup" ? 1 : -1);
   };
 
   private stepBy(dir: 1 | -1): void {

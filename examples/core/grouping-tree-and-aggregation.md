@@ -145,6 +145,8 @@ const options = {
 } satisfies GridOptions;
 
 api.setKeyboardNavigationMode("grid");
+// Both fields are also reconfigurable after mount (the rest of `treeData` is not):
+api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: false });
 ```
 
 Tree data is client-side and cannot be combined with column-value grouping.

@@ -37,7 +37,6 @@ import { makeTrades, type Trade } from "./data";
         [highlightActiveCell]="true"
         [selectAllRowsOnHeaderClick]="true"
         [initialSort]="[{ colId: 'price', dir: 'desc' }]"
-        multiSortKey="shift"
         (gridReady)="onReady($event)"
         (cellClicked)="onCellClicked($event)"
         (cellValueChanged)="onCellValueChanged($event)"

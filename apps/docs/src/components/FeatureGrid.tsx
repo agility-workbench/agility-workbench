@@ -142,7 +142,7 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       featureProps = { toolbar: { quickFilter: true }, quickFilter: { debounceMs: 0, showOptions: true } };
       break;
     case "sorting":
-      featureProps = { toolbar: { sorting: true }, initialSort: [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }], multiSortKey: "shift", showSortPriority: "always" };
+      featureProps = { toolbar: { sorting: true }, initialSort: [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }], showSortPriority: "always" };
       break;
     case "selection":
       featureProps = { rowNumbers: true, rowSelection: true, selectAllRowsOnHeaderClick: true, rangeSelection: true, highlightActiveCell: true };

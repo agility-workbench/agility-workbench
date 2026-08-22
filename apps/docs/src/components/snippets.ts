@@ -204,7 +204,6 @@ api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));`
     { colId: "region", dir: "asc" },
     { colId: "revenue", dir: "desc" },
   ]}
-  multiSortKey="shift"
   showSortPriority="always"
   toolbar={{ sorting: true }}
 />`,
@@ -217,7 +216,6 @@ api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));`
   [rowData]="rows"
   [columnDefs]="columns"
   [initialSort]="initialSort"
-  multiSortKey="shift"
   showSortPriority="always"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
@@ -226,7 +224,6 @@ api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));`
     { colId: "region", dir: "asc" },
     { colId: "revenue", dir: "desc" },
   ],
-  multiSortKey: "shift",
   showSortPriority: "always",
 });`,
   },

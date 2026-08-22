@@ -5,10 +5,16 @@ import { GridAction } from "../events/action";
 import { CellRef, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
+import type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
+import type { IMenuAdapter } from "./iMenuAdapter";
 import {
+  GridOptions,
   QuickFilterMatchMode,
   RowPinnedPosition,
+  RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
+  UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
 import { SetFilterMode } from "./filter";
@@ -16,6 +22,8 @@ import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
 import type { Column } from "../column/column";
+import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
+import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -92,9 +100,115 @@ export interface ExportParams {
   processCellForExcel?: ExcelExportCellProcessor;
 }
 
+/**
+ * Live-reconfiguration hooks provided by the renderer once it is attached (it owns the toolbar,
+ * quick filter, tooltip layer, column panel, footer, pinned bands, and theme variables). Internal
+ * wiring for {@link IGridAPI.updateGridOptions}: hosts call `updateGridOptions`, not this.
+ */
+export interface GridApiConfigController {
+  setToolbarOptions: (options: GridOptions["toolbar"]) => void;
+  setQuickFilterOptions: (options: GridOptions["quickFilter"]) => void;
+  setTooltipOptions: (options: GridOptions["tooltip"]) => void;
+  setColumnPanelOptions: (options: GridOptions["columnPanel"]) => void;
+  setSavedViewsOptions: (options: GridOptions["savedViews"]) => void;
+  setRowSelectionOptions: (options: GridOptions["rowSelection"]) => void;
+  setPinnedRowOptions: (options: {
+    pinnedTopRowData?: RowData[];
+    pinnedBottomRowData?: RowData[];
+    isRowPinned?: GridOptions["isRowPinned"];
+    groupRowsSticky?: boolean;
+  }) => void;
+  togglePagination: (enabled: boolean) => void;
+  setPaginationControls: (options: GridOptions["paginationControls"]) => void;
+  setTheme: (theme: GridOptions["theme"]) => void;
+  setIcons: (icons: GridOptions["icons"]) => void;
+  setRuntimeOptions: (options: RuntimeGridOptions) => void;
+  setServerSideDataSource: (dataSource: GridOptions["serverSideDataSource"]) => void;
+  setServerSideAggregation: (source: GridOptions["serverSideAggregationSource"]) => void;
+}
+
+/**
+ * Keyboard-shortcut hooks provided by the renderer once it is attached (it owns the keyboard
+ * router). Internal wiring for {@link IGridAPI.registerShortcut} and
+ * {@link IGridAPI.getKeyboardShortcuts}: hosts call those, not this.
+ */
+export interface GridApiShortcutController {
+  register: (shortcut: GridShortcut) => () => void;
+  getShortcuts: () => readonly KeyboardShortcutInfo[];
+}
+
 export interface IGridAPI {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
+
+  /**
+   * Reconfigure a mounted grid in place. Only the properties present in `options` change; a property
+   * present with the value `undefined` is reset to the grid's default (that is how a callback such as
+   * `getRowStyle` is removed). Object values replace wholesale — they are not deep-merged.
+   *
+   * This is the framework-neutral equivalent of changing a prop on the React or Angular wrapper, and
+   * it preserves scroll position, selection, focus, and edit history:
+   *
+   * ```ts
+   * api.updateGridOptions({ toolbar: { sorting: true }, zebraRows: false });
+   * api.updateGridOptions({ getRowStyle: undefined });   // back to the default
+   * ```
+   *
+   * Options that seed structure (`rowHeight`, `rowNumbers`, `rowModelType`, row identity) are not
+   * updatable — see {@link UpdatableGridOptions}. Unknown keys are ignored with a warning.
+   */
+  updateGridOptions(options: UpdatableGridOptions): void;
+
+  /**
+   * Install (or, with `null`, remove) the column-menu adapter on a mounted grid — the deferred form
+   * of `createGrid`'s `menuAdapter` option, for a host that does not know its adapter at creation
+   * time. The adapter is consulted when a menu opens, so a swap needs no rebuild and takes effect on
+   * the next open; a menu that is already open keeps the items and cleanup it was given.
+   *
+   * Most hosts should not need this. Application-owned items belong in `ColDef.columnMenu` (one
+   * column) or `GridOptions.multiColumnMenu` (a selection), both of which run *before* the adapter.
+   * An adapter earns its keep when items are rendered by a framework and must be torn down again —
+   * that is what its `cleanup` return exists for, and why the React and Angular bindings use one.
+   */
+  registerMenuAdapter(adapter: IMenuAdapter | null): void;
+
+  /**
+   * Install (or, with `null`, remove) the body context-menu adapter on a mounted grid. Same timing
+   * and same trade-off as {@link IGridAPI.registerMenuAdapter}: application-owned items belong in
+   * `GridOptions.bodyContextMenu`, which is itself updatable via `updateGridOptions` and runs before
+   * the adapter.
+   */
+  registerBodyMenuAdapter(adapter: IBodyMenuAdapter | null): void;
+
+  /**
+   * Register an application keyboard shortcut on this grid instance. It fires only while focus is
+   * inside this grid (the listener lives on the grid root), below every built-in binding — or above
+   * the non-blocking ones with `override: true`. Returns the disposer; registering is idempotent to
+   * dispose twice, so framework cleanup (React StrictMode) is safe.
+   *
+   * Refused with a thrown error: reserved chords (Tab and Escape always; navigation keys while the
+   * feature that claims them is on — see the error message for which switch frees the key),
+   * `mod+alt+<printable>` chords (Windows AltGr), and a duplicate live `id` or duplicate
+   * unconditional chord. A shortcut registered while a feature was off goes dormant if the feature
+   * is later re-enabled, and wakes when it is disabled again.
+   *
+   * ```ts
+   * const off = api.registerShortcut({
+   *   id: "approve",
+   *   chord: "mod+shift+y",
+   *   label: "Approve the selected rows",
+   *   run: () => approveRows(api.getSelection()),
+   * });
+   * ```
+   */
+  registerShortcut(shortcut: GridShortcut): () => void;
+
+  /**
+   * Every keyboard binding currently registered — built-ins and application shortcuts — innermost
+   * scope first, as data for a shortcut-reference UI. Format each row's `chord` for the user with
+   * `formatChord`. Pattern bindings (type-to-edit) appear without a `chord`.
+   */
+  getKeyboardShortcuts(): readonly KeyboardShortcutInfo[];
 
   /** Dispatch an action to the core. */
   dispatch(action: GridAction): void;
@@ -117,7 +231,18 @@ export interface IGridAPI {
   /** Read-only access to the column model (columns, leaves, lookups). */
   getColumnModel(): IColumnModel;
 
-  /** Set the column definitions. */
+  /**
+   * Set the column definitions — the imperative form of `updateGridOptions({ columnDefs })`, and
+   * equivalent to it for a non-empty array: both apply the defs and claim caller ownership of the
+   * schema, so a server-sent schema (an SSRM response's `columns`) no longer replaces them.
+   *
+   * The two doors differ only at the edges, on purpose. `setColumnDefs([])` is a complete
+   * statement — it clears the columns *and* keeps ownership — while `updateGridOptions({
+   * columnDefs: [] })` clears only when the caller already owned the schema (a transient empty
+   * array during a framework render must not discard a server schema). And only the options door
+   * can *release* ownership: `updateGridOptions({ columnDefs: undefined })` hands the schema back,
+   * letting the next server response supply the columns again.
+   */
   setColumnDefs(defs: ColDef[]): void;
 
   /** Set the row data. */
@@ -209,9 +334,33 @@ export interface IGridAPI {
   /** Switch tree-data keyboard navigation immediately. No-op for "hierarchy" on non-tree grids. */
   setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void;
 
+  /**
+   * Reconfigure the two `treeData` fields that are not structural: the navigation mode and whether
+   * the fixed Ctrl/Cmd+Shift+Space switch is enabled. Presence decides what changes, as with
+   * `updateGridOptions`, so either can be set alone:
+   *
+   * ```ts
+   * api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: true });
+   * ```
+   *
+   * This is the configuration-driven counterpart of `setKeyboardNavigationMode`: a mode change made
+   * here reports `source: "options"` on `keyboardNavigationModeChanged`, whereas
+   * `setKeyboardNavigationMode` reports `source: "api"` for an imperative switch. The switch takes
+   * effect on the next keystroke — no rebuild. The rest of `treeData` decides the row shape and
+   * cannot change on a mounted grid; the whole call is a no-op on a grid without `treeData`.
+   */
+  setTreeDataKeyboardNavigationOptions(options: TreeDataKeyboardNavigationOptions): void;
+
   /** Expand or collapse every group/tree node in one pass — a single view rebuild and repaint,
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
   setAllGroupsExpanded(expanded: boolean): void;
+
+  /**
+   * Every group / tree node currently in the model, at every level, in creation order. Empty when
+   * the grid is not grouped. Group nodes are not visited by `forEachNodeAfterFilter*`, which walk
+   * data rows; use this to address a group — for example to pin one with `setRowPinned`.
+   */
+  getGroupNodes(): IRowNode[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;

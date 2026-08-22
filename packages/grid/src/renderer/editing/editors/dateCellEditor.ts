@@ -1,3 +1,4 @@
+import { canonicalKey, matchesAnyChord } from "../../interaction/keyChord";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
 
 const INPUT_CLASS = "pte-cell-editor-input";
@@ -116,10 +117,11 @@ export class DateCellEditor implements ICellEditor {
     return col.formatValue(value, row);
   }
 
+  // Bare arrows only — see the same handler in numberCellEditor.
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if (!matchesAnyChord(e, ["arrowup", "arrowdown"])) return;
     e.preventDefault();
-    this.stepBy(e.key === "ArrowUp" ? 1 : -1);
+    this.stepBy(canonicalKey(e) === "arrowup" ? 1 : -1);
   };
 
   private stepBy(dir: 1 | -1): void {

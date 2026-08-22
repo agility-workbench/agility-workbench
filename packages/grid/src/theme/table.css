@@ -3230,6 +3230,18 @@
   margin: 8px 0;
 }
 
+/* A caption, not a command: it shares the item box so it lines up with the items it describes, but
+   reads as secondary text and never looks clickable or hoverable. */
+.pte-menu-item-label {
+  cursor: default;
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+  font-weight: 600;
+  height: auto;
+  min-height: 26px;
+  opacity: 0.85;
+}
+
 .pte-menu-item-icon-left {
   mask-size: contain;
   mask-repeat: no-repeat;
@@ -3251,6 +3263,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--pte-text-color);
+}
+
+/* A menu item's keyboard accelerator (MenuItem.shortcut, or the chord of a built-in binding
+   registered under the item's command). Display only: pressing the chord is the keyboard router's
+   business, and the span is aria-hidden — AT users get the shortcut reference instead. */
+.pte-menu-item-shortcut {
+  flex: 0 0 auto;
+  margin-left: 16px;
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .pte-menu-item.disabled {

@@ -18,7 +18,10 @@ keyboard, clipboard, export, and API workflows.
 ## Selection modes
 
 - `cellSelection: true` enables grid focus and selection.
-- `cellSelection: "text"` restores native browser text selection.
+- `cellSelection: "text"` restores native browser text selection. Both `"text"` and `false`
+  also disable the body keyboard cursor: navigation, clipboard, and editing keys operate on the
+  cursor, so they go with it (keyboard row selection included). The header keyboard cursor stays —
+  disable it separately with `headerKeyboardNavigation: false` if the grid is deliberately inert.
 - `rangeSelection` enables drag and Shift-extension.
 - `rowSelection` uses the row-number cells for row selection.
 - `rowSelection: { mode: "multiple", checkboxes: true }` adds a dedicated checkbox column
@@ -36,6 +39,11 @@ keyboard, clipboard, export, and API workflows.
 Arrow keys navigate one cell. Home/End, Page Up/Down, Ctrl/Cmd+Arrow block
 jumps, and Ctrl/Cmd+Home/End corner jumps keep the active cell visible.
 Ctrl/Cmd+A selects the full unified row sequence.
+
+On the header cursor, `Space` selects the column, `Ctrl/Cmd+Space` adds one to
+the selection, and `Shift+Arrow` (or `Shift+Home`/`Shift+End`) extends the
+selection from the cursor's column — but only while the cursor is on a selected
+column, so a Shift chord never reads as plain movement that starts selecting.
 
 The API exposes focused-cell, range, row, column, navigation, and selection
 snapshot operations. Pagination invalidates a range from the previous page.

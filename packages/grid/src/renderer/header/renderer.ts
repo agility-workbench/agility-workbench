@@ -518,7 +518,7 @@ export class HeaderRenderer {
         menu.appendChild(buildMenuItem("pte-hcell-menu-filterBtn", "pte-filter-icon", this.getFilterMenuElement()));
       }
     }
-    if (col.showColumnMenu) {
+    if (col.menuButtonEnabled) {
       menu.appendChild(buildMenuItem("pte-hcell-menu-menuBtn", "pte-menu-icon", null));
     }
     return menu;

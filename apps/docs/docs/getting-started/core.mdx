@@ -5,28 +5,156 @@ sidebar_position: 4
 
 # Framework-neutral quick start
 
+`createGrid` mounts a grid into an element and returns its API. It assembles the
+text measurer, core, DOM renderer, menus, and startup dispatch for you:
+
 ```ts
-import {
-  CanvasMeasurer,
-  GridCore,
-  initDomRenderer,
-  type IMenuAdapter,
-} from "@agility-workbench/grid";
+import { createGrid } from "@agility-workbench/grid";
 
-const core = new GridCore(new CanvasMeasurer(), { columnDefs });
-const menus: IMenuAdapter = {
-  resolveMenuItems: (_context, defaults) => ({
-    items: defaults,
-    cleanup: () => undefined,
-  }),
-};
+const api = createGrid(document.querySelector("#grid")!, {
+  rowIdKey: "id",
+  columnDefs,
+  rowData: rows,
+});
 
-const { renderer, api } = initDomRenderer(core, menus);
-renderer.attach({ current: document.querySelector("#grid")! });
-core.dispatch({ type: "init" });
-api.setRowData(rows);
+// When the host view is removed:
+api.destroy();
 ```
 
-The core exposes the same `IGridAPI` used by both bindings. A custom host owns
-attachment, framework component adaptation, menu normalization, and teardown.
+The container needs an explicit height. The second argument takes every `GridOptions`
+field alongside `columnDefs` and `rowData`, and the returned `api` is the same
+`IGridAPI` both framework bindings expose.
+
+## Customizing menus
+
+Menu items are configuration, not plumbing. Set `columnMenu` on a column — or on
+`defaultColDef` to cover every column — and it receives the items the grid built,
+returning the items to show:
+
+```ts
+createGrid(host, {
+  columnDefs: [
+    {
+      key: "price",
+      label: "Price",
+      columnMenu: ({ column, items }) => [
+        ...items,
+        { isSeparator: true },
+        { label: "Audit", left: "my-icon-class", onClick: () => audit(column.colId) },
+      ],
+    },
+    // No ⋮ button and no header right-click for this column:
+    { key: "actions", label: "", columnMenu: false },
+  ],
+});
+```
+
+Items are plain objects — `label`, `left` (icon CSS class or element), `right`,
+`onClick`, `subMenu`, `isSeparator`, `isLabel`, `disabled`, `title`. An `onClick` you
+supply wins over the built-in command an item would otherwise run, and returning `[]`
+opens no menu.
+
+`isLabel` marks an item as static text rather than a command — a caption for the items
+around it, usable anywhere in a menu or `subMenu`, as often as you like. It is neither
+focusable nor clickable, so keyboard navigation skips it and `onClick`/`command` are
+ignored; only `label`, `left`, `right`, and `id` apply:
+
+```ts
+columnMenu: ({ items }) => [
+  ...items,
+  { isSeparator: true },
+  { isLabel: true, label: "Danger zone" },
+  { label: "Reset column", onClick: resetColumn },
+]
+```
+
+Use `column.colId` to identify the column: `ctx.targetColId` carries the grid's
+internal instance id, not the public one.
+
+The getter runs only when the menu targets that column alone. With several columns
+selected the built-in items act on the whole set, so the grid-level `multiColumnMenu`
+governs that case instead — it receives the columns being acted on, target first:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  multiColumnMenu: ({ columns, items }) => [
+    ...items,
+    { label: `Export ${columns.length} columns`, onClick: () => exportCols(columns) },
+  ],
+});
+```
+
+A multi-column menu opens with a caption naming its scope — the column names while the
+list is short, a count beyond that — so it is never mistaken for a menu about the header
+it is anchored to. The caption is an `isLabel` item with the id `selectionScope`, so a
+getter can relabel or drop it like any other item:
+
+```ts
+multiColumnMenu: ({ columns, items }) =>
+  items.map(i =>
+    i.id === "selectionScope" ? { ...i, label: `Editing ${columns.length} fields` } : i,
+  ),
+```
+
+### Which menu you get
+
+Both entry points — the ⋮ button and a header right-click — settle on the same scope:
+
+> The menu acts on the current column selection when the column you clicked is part of
+> it, and on that column alone otherwise.
+
+So opening a menu from outside your selection replaces the selection rather than
+silently acting on columns you never clicked. A group header's menu always covers its
+leaves, by either gesture, with `columns` holding the group followed by them.
+
+Return `[]` for no menu, or `multiColumnMenu: false` to disable multi-column menus. Note
+`false` behaves differently from `columnMenu: false`: whether a menu is multi-column is
+only known once it is opening, after the grid has claimed the gesture, so opening one
+from inside a multi-selection shows no menu at all rather than the browser's.
+
+`bodyContextMenu` does the same for right-clicks in the grid body, and accepts `false`
+to let the browser's native menu through.
+
+## Menu adapters
+
+The adapters exist for the one thing the getters above cannot do: mounting framework
+components inside menu items and unmounting them when the menu closes. That `cleanup`
+return is the whole reason they exist — it is how the React and Angular bindings work,
+and a plain host that only adds ordinary items rarely needs one.
+
+```ts
+import { createGrid, type IMenuAdapter } from "@agility-workbench/grid";
+
+const menus: IMenuAdapter = {
+  resolveMenuItems: (ctx, defaults) => {
+    const badge = mountBadge(ctx.targetColId);
+    return {
+      items: [...defaults, { label: "Sync status", left: badge.el }],
+      cleanup: () => badge.unmount(),
+    };
+  },
+};
+
+const api = createGrid(document.querySelector("#grid")!, {
+  rowIdKey: "id",
+  columnDefs,
+  rowData: rows,
+  menuAdapter: menus,
+  // bodyMenuAdapter: … does the same for the body context menu
+});
+```
+
+Both are optional — omit them and you get the built-in menus. An adapter runs *after*
+the getters above, so it receives whatever they produced as its `defaults`.
+
+If the adapter is not known when the grid is created, install it later:
+
+```ts
+api.registerMenuAdapter(menus);      // effective on the next menu open
+api.registerBodyMenuAdapter(null);   // back to the built-in body menu
+```
+
+Registration needs no rebuild: adapters are consulted as a menu opens, and a menu that
+is already open keeps the items and `cleanup` it was given.
 

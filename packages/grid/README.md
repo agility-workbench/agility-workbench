@@ -35,21 +35,160 @@ npm install @agility-workbench/angular-grid
 
 ## Quick start (core, no framework)
 
-```ts
-import { CanvasMeasurer, ColumnType, GridCore, initDomRenderer } from "@agility-workbench/grid";
+`createGrid` mounts a grid into an element and hands back its API. It owns the whole
+assembly — text measurer, core, renderer, menus, and startup — so there is nothing else to
+wire:
 
-const core = new GridCore(new CanvasMeasurer(), {
+```ts
+import { ColumnType, createGrid } from "@agility-workbench/grid";
+
+const api = createGrid(document.getElementById("app")!, {
   rowIdKey: "id",
   columnDefs: [
     { key: "name", label: "Name", type: ColumnType.STRING },
     { key: "price", label: "Price", type: ColumnType.NUMBER },
   ],
+  rowData: [{ id: 1, name: "Widget", price: 9.99 }],
 });
-const { renderer } = initDomRenderer(core);
-renderer.attach({ current: document.getElementById("app")! });
-core.dispatch({ type: "init" });
-core.dispatch({ type: "rowDataSet", rows: [{ id: 1, name: "Widget", price: 9.99 }] });
+
+// Later, when the host view goes away:
+api.destroy();
 ```
+
+The container must have an explicit height. Beyond `columnDefs` and `rowData`, the second
+argument accepts every [`GridOptions`](#entry-points) field, and everything after creation
+happens through the returned `api`.
+
+## Customizing menus
+
+Menu items are configuration, not plumbing — you do not need adapters or a manual lifecycle for
+them.
+
+**Column menu** — set `columnMenu` on a column, or on `defaultColDef` to cover every column. It
+receives the items the grid built and returns the items to show, so you can extend, reorder,
+filter, or replace them. Setting it to `false` removes the column's menu entirely: no ⋮ button and
+no header right-click.
+
+```ts
+createGrid(host, {
+  columnDefs: [
+    {
+      key: "price",
+      label: "Price",
+      columnMenu: ({ column, items }) => [
+        ...items,
+        { isSeparator: true },
+        { label: "Audit", left: "my-icon-class", onClick: () => audit(column.colId) },
+      ],
+    },
+    { key: "actions", label: "", columnMenu: false },
+  ],
+  // Every other column gets this one:
+  defaultColDef: { columnMenu: ({ items }) => items.filter(i => i.command !== "column.hideMany") },
+});
+```
+
+Items are plain objects: `label`, `left` (an icon CSS class or an element), `right`, `onClick`,
+`subMenu`, `isSeparator`, `isLabel`, `disabled`, `title`. An `onClick` you supply takes precedence
+over the built-in command an item would otherwise run, and returning an empty array opens no menu.
+
+`isLabel` marks an item as static text rather than a command — a caption for the items around it.
+It can appear anywhere in a menu (or a `subMenu`), as often as you like. It is not focusable and
+not clickable, so keyboard navigation skips it and `onClick`/`command` are ignored; only `label`,
+`left`, `right`, and `id` mean anything:
+
+```ts
+columnMenu: ({ items }) => [
+  ...items,
+  { isSeparator: true },
+  { isLabel: true, label: "Danger zone" },
+  { label: "Reset column", onClick: resetColumn },
+]
+```
+
+The getter runs only when the menu targets that column alone. When several columns are selected
+the built-in items act on the whole set, so no single column's configuration governs them — the
+grid-level `multiColumnMenu` handles that case instead:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  multiColumnMenu: ({ columns, items }) => [
+    ...items,
+    { label: `Export ${columns.length} columns`, onClick: () => exportCols(columns.map(c => c.colId)) },
+  ],
+});
+```
+
+Return `[]` for no menu.
+
+A multi-column menu opens with a caption naming its scope — the column names while the list is
+short, a count beyond that — so it can never be mistaken for a menu about the header it is anchored
+to. The caption is an `isLabel` item with the id `selectionScope`, so a getter can relabel or drop
+it like any other item:
+
+```ts
+multiColumnMenu: ({ columns, items }) =>
+  items.map(i => (i.id === "selectionScope" ? { ...i, label: `Editing ${columns.length} fields` } : i)),
+```
+
+**Which menu you get.** Both entry points — the ⋮ button and a header right-click — settle on the
+same scope: the menu acts on the current column selection when the column you clicked is part of
+it, and on that column alone otherwise. Opening a menu from outside your selection therefore
+replaces the selection rather than silently acting on columns you did not click. A group header's
+menu always covers its leaves, by either gesture.
+
+`multiColumnMenu: false` disables multi-column menus outright. Note what `false` cannot do here,
+unlike `columnMenu: false`: whether a menu is multi-column is only known once it is opening, after
+the grid has claimed the gesture — so opening one from inside a multi-selection shows no menu at
+all rather than the browser's.
+
+**Body context menu** — `bodyContextMenu` does the same for right-clicks in the grid body, and
+takes `false` to let the browser's native menu through:
+
+```ts
+createGrid(host, {
+  columnDefs,
+  bodyContextMenu: ({ ctx, items }) => [...items, { label: "Copy report link", onClick: () => share(ctx) }],
+});
+```
+
+<details>
+<summary>Menu adapters (framework-rendered menu items)</summary>
+
+The adapters below exist for one thing the getters above cannot do: mounting framework components
+inside menu items and unmounting them when the menu closes (`cleanup`). That is how the React and
+Angular bindings work; a plain host rarely needs it.
+
+```ts
+import { createGrid, type IMenuAdapter } from "@agility-workbench/grid";
+
+const menus: IMenuAdapter = {
+  resolveMenuItems: (ctx, defaults) => {
+    // An item whose icon is a live component: mount it now, unmount it in cleanup.
+    const badge = mountBadge(ctx.targetColId);
+    return {
+      items: [...defaults, { label: "Sync status", left: badge.el }],
+      cleanup: () => badge.unmount(),
+    };
+  },
+};
+
+const api = createGrid(document.getElementById("app")!, {
+  rowIdKey: "id",
+  columnDefs: [{ key: "name", label: "Name", type: ColumnType.STRING }],
+  rowData: [{ id: 1, name: "Widget" }],
+  menuAdapter: menus,
+  // bodyMenuAdapter: … the same for the body context menu
+});
+```
+
+Both options are optional; omitting them yields the built-in menus. An adapter runs after the
+getters above and receives their result as its `defaults`. When the adapter is not known at
+creation time, `api.registerMenuAdapter(menus)` / `api.registerBodyMenuAdapter(menus)` install one
+on a mounted grid (pass `null` to remove it); the change applies to the next menu open.
+
+</details>
 
 ## Toolbar
 
@@ -58,7 +197,6 @@ when at least one section is enabled, and disappears when none are enabled.
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   toolbar: {
     grouping: true,
     sorting: true,
@@ -112,7 +250,6 @@ drawer-managed visibility, pinning, or order differs from that baseline.
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   columnPanel: {
     trigger: "toolbar",
     defaultOpen: false,
@@ -185,7 +322,6 @@ filtering, grouping, pagination, selection, and the displayed row count:
 
 ```ts
 const core = new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   pinnedTopRowData: [{ label: "Target", amount: 1_000_000 }],
   pinnedBottomRowData: [{ label: "Total", amount: 842_000 }],
 });
@@ -317,17 +453,123 @@ treeData: {
 mode, Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses an expanded parent (or focuses the direct
 parent from a leaf/already-collapsed parent), and Ctrl/Cmd+Up always focuses the direct parent when
 the hierarchy column is active. Ctrl/Cmd+Shift+Arrow retains grid range/block navigation.
-When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime; applications can
-also call `api.getKeyboardNavigationMode()` and `api.setKeyboardNavigationMode(mode)`.
+When enabled, the fixed Ctrl/Cmd+Shift+Space shortcut switches modes at runtime wherever the
+keyboard cursor is, header included. Applications can also call `api.getKeyboardNavigationMode()` and
+`api.setKeyboardNavigationMode(mode)`, which work wherever the cursor is.
 
-### Planned keyboard-shortcut discovery
+Both fields are reconfigurable on a mounted grid — they are the only part of `treeData` that is,
+since the relationship mode and its accessors decide the row shape:
 
-A future grid-owned shortcut reference must show the shortcuts that are valid for the current
-context rather than a static global list. It should account for the active keyboard-navigation
-mode, focused area/cell, hierarchy availability, selection and editing state, enabled features, and
-platform-specific Ctrl/Cmd labels. It must be reachable from within the grid by keyboard and
-pointer, expose the active navigation mode, and update immediately when runtime options or focus
-change.
+```ts
+api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: true });
+```
+
+Only the fields you pass change. A mode set this way reports `source: "options"` on
+`keyboardNavigationModeChanged`, distinguishing configuration from the imperative
+`setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
+
+## Keyboard bindings
+
+Bindings live in a table rather than in nested `if`s, resolved by *scope*: an open cell editor and a
+focused embedded control own their keyboard completely; otherwise the header cursor is consulted
+before the body cursor, and whole-grid chords last. A chord may therefore mean different things
+depending on where the cursor is, and modifiers are matched exactly — `Ctrl+C` is copy, while
+`Ctrl+Shift+C` is left to the browser.
+
+The header cursor (the header is row 0 of the grid — `ArrowUp` off the first row reaches it):
+
+| Key | Action |
+| --- | --- |
+| `Arrow←` / `Arrow→` | previous / next column |
+| `Ctrl/Cmd+Arrow←` / `Ctrl/Cmd+Arrow→`, `Home` / `End` | first / last column |
+| `Arrow↓` | hand the cursor to the first row |
+| `Space` | select the column, or select all rows from a utility header |
+| `Ctrl/Cmd+Space` | add the column to the selection (toggle) |
+| `Shift+Arrow←` / `Shift+Arrow→`, `Shift+Home` / `Shift+End` | extend the column selection |
+| `Enter` | sort the column, or toggle a group expander / select-all header |
+| `Ctrl/Cmd+Enter` | add the column to a multi-column sort |
+| `Shift+Enter` | sort every column in the selection at once |
+| `Alt+Arrow↓` / `Shift+Alt+Arrow↓` | open the column menu / the column filter |
+
+Space selects and Enter sorts: one job per key, matching the body, where `Space` on a checkbox cell
+already means "select this thing". `Shift+Arrow` extends the column selection from the cursor's
+column and does nothing at all — not even move the cursor — unless the cursor is on a selected
+column, so it can never read as plain movement that quietly starts selecting. Column ranges
+materialize in display order; individually toggled columns keep the order they were added in.
+
+Only a plain arrow crosses the header/body boundary, in both directions: `ArrowUp` off the first row
+reaches the header and `Arrow↓` returns to the rows, while `Ctrl/Cmd+Arrow↑` from the first row
+block-jumps *within* the body and `Ctrl/Cmd+Arrow↓` on the header does nothing at all. `Ctrl/Cmd` in
+the header is therefore only ever a move along the row of columns, and there it is a plain edge jump
+to the first/last column — a header cell has no value to scan, so the body's content-aware block jump
+has nothing to mean.
+
+The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
+`Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/
+`PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
+characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
+`Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
+
+Two options decide how much of this keyboard surface exists. `cellSelection` governs the body
+cursor: with `false` (inert cells) or `"text"` (native text selection), the body scope goes dark as
+a unit — navigation, paging, select-all, clipboard, editing keys, and keyboard row selection all
+operate on or through the cursor, so none of them means anything without it. `headerKeyboardNavigation`
+(default `true`) governs the header cursor the same way; turning it off makes sorting, column
+selection, and the column menu mouse-only — which also makes them unreachable for keyboard and AT
+users, so leave it on unless the grid is deliberately inert. Both reconcile live through
+`updateGridOptions`.
+
+### Application shortcuts
+
+`api.registerShortcut` adds an application binding to the same table, per grid instance — it fires
+only while focus is inside that grid:
+
+```ts
+const off = api.registerShortcut({
+  id: "approve",
+  chord: "mod+shift+y",           // mod = Ctrl on Windows/Linux, Cmd on macOS
+  label: "Approve the selected rows",
+  when: () => hasApprovableSelection(),
+  run: () => approveRows(api.getSelection()),
+});
+// later (framework cleanup — disposing twice is safe):
+off();
+```
+
+Application bindings resolve *after* every built-in, so they can never shadow one by accident;
+`override: true` registers ahead of the non-blocking built-in scopes instead, for chords the
+application consciously takes over (`mod+f`, the clipboard triple). An open cell editor or a
+focused filter input still owns the keyboard completely, override or not.
+
+Some chords are **reserved** and refused with a thrown error — but reservation is a predicate over
+the live configuration, not a static list. Tab (focus traversal) and Escape (overlay dismissal) are
+reserved always. The navigation cluster — arrows, `Home`/`End`, `Enter`, `Space`, and for the body
+`PageUp`/`PageDown` — is reserved, under any modifiers, *while a surface that uses it is on*:
+disable `cellSelection` and `headerKeyboardNavigation` and a display-only grid frees all of them
+for the application. A shortcut registered while a feature was off goes dormant if the feature is
+later re-enabled (the built-in wins again) and wakes when it is turned back off.
+`mod+alt+<printable>` chords are refused outright: Windows AltGr reports as Ctrl+Alt, so such a
+shortcut would fire while a user merely types an accented character.
+
+Menus can show accelerators in two ways. A built-in item whose `command` has a keyboard binding
+shows that binding's chord automatically (Copy shows `Ctrl+C` / `⌘C`), so the menu and the keymap
+cannot drift. Application items take `shortcut: "mod+shift+y"` as a **display hint** — menus are
+built per open, so nothing is harvested from item lists; register the real binding separately and
+write the same chord in both places. An explicit `right` slot (and the submenu arrow) wins over the
+accelerator.
+
+### Keyboard-shortcut discovery
+
+`api.getKeyboardShortcuts()` returns the whole binding table — built-ins and application shortcuts,
+innermost scope first — as `{ id, scope, chord?, label?, command? }` rows. Format a row's chord for
+the user with the exported `formatChord(chord)`: `⇧⌘K` on macOS, `Ctrl+Shift+K` elsewhere, arrow
+glyphs on both. Pattern bindings (type-to-edit) appear without a chord.
+
+A grid-owned shortcut reference *panel* is still planned: it should show the shortcuts valid for
+the current context — active navigation mode, focused area, selection and editing state, enabled
+features — rather than a static global list, be reachable from within the grid by keyboard and
+pointer, and update when runtime options or focus change. `getKeyboardShortcuts()` is what makes it
+buildable as a filtered view rather than a hand-maintained list.
 
 ## Styling
 
@@ -409,7 +651,6 @@ theme's `icons`:
 
 ```ts
 new GridCore(new CanvasMeasurer(), {
-  columnDefs,
   icons: { filter: "<svg viewBox='0 0 24 24'>…</svg>" },
 });
 ```

@@ -4,6 +4,8 @@ import { GridIconMap } from "../theme/icons";
 import type { GridTheme } from "../theme/theme";
 import type { MenuItem } from "./menuItem";
 import type { BodyMenuContext } from "../menu/bodyContext";
+import type { ColumnMenuContext } from "../menu/context";
+import type { Column } from "../column/column";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
@@ -170,6 +172,25 @@ export type GetRowPresentation = (
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
+/**
+ * Customizes the column menu opened for *several* selected columns at once, where the built-in
+ * items act on the whole set and no single column's `ColDef.columnMenu` governs it.
+ *
+ * - `items` — the built-in items for the set; return the items to show. Return `[]` for no menu.
+ * - `columns` — the columns the menu acts on, target first. Identify them by `column.colId`;
+ *   `ctx.colIds` carries internal instance ids. Selecting a column group expands it to its leaves,
+ *   so a group header's menu passes the group followed by its leaf columns — the same set the
+ *   built-in items operate on. Discriminate with `column.children.length`.
+ *
+ * Order is the *selection sequence*, not display order: target first, then the order the columns
+ * were added — so an application can rely on it (a keyboard `Shift+Arrow` range arrives in display
+ * order because that is the order it was built in). Anything that needs display order should read it
+ * from the column model; export already does, so exported column order is unaffected either way.
+ */
+export type MultiColumnMenuItemsGetter = (
+  params: { ctx: ColumnMenuContext; columns: Column[]; items: MenuItem[] },
+) => MenuItem[];
+
 /** Context used to decide or create a row inserted from a row-number context menu. */
 export interface RowInsertionMenuParams {
   position: "above" | "below";
@@ -241,10 +262,22 @@ export interface TreeDataCommonOptions<Row = any> {
   keyboardNavigationMode?: TreeDataKeyboardNavigationMode;
   /**
    * Enables the fixed Ctrl/Cmd+Shift+Space shortcut for switching between grid and hierarchy
-   * navigation at runtime. The shortcut itself is deliberately not configurable. Defaults to false.
+   * navigation at runtime. The shortcut itself is deliberately not configurable, and works wherever
+   * the keyboard cursor is. Defaults to false.
    */
   enableKeyboardNavigationModeSwitch?: boolean;
 }
+
+/**
+ * The part of `treeData` that can change on a mounted grid, for
+ * {@link IGridAPI.setTreeDataKeyboardNavigationOptions}. Derived from the option itself so the two
+ * cannot drift; the rest of `treeData` (the relationship mode and its accessors) determines the row
+ * shape and is therefore fixed at creation.
+ */
+export type TreeDataKeyboardNavigationOptions = Pick<
+  TreeDataCommonOptions,
+  "keyboardNavigationMode" | "enableKeyboardNavigationModeSwitch"
+>;
 
 /** A flat row set where each row supplies its complete root-to-node path. */
 export interface TreeDataPathOptions<Row = any> extends TreeDataCommonOptions<Row> {
@@ -326,13 +359,6 @@ export interface InitialSortItem {
  * descending-first columns.
  */
 export type SortingOrder = ("asc" | "desc" | null)[];
-
-/**
- * Modifier key that makes a sort-icon click additive (adds the column to a multi-column sort instead
- * of replacing it): "ctrl" (also matches ⌘ / metaKey) or "shift". Defaults to "ctrl", consistent
- * with additive column selection.
- */
-export type MultiSortKey = "ctrl" | "shift";
 
 /**
  * When the multi-column sort priority number is shown on the sort icon:
@@ -915,16 +941,26 @@ export interface GridOptions {
   /**
    * When true, clicking a row's row-number cell selects that row (Ctrl/Cmd+click toggles,
    * Shift+click extends a range). Requires the row-number column (`rowNumbers`). Defaults to false.
+   *
+   * Keyboard row selection (Enter/Space on a row-number or checkbox cell) rides on the body
+   * keyboard cursor, so it additionally requires `cellSelection: true`; with cell selection off,
+   * row selection is mouse-only.
    */
   rowSelection?: boolean | RowSelectionOptions;
   /**
-   * Controls how the mouse interacts with body cells:
+   * Controls how body cells can be interacted with — by mouse and keyboard alike:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
    *   selection, keyboard navigation, and double-click editing.
-   * - `false`: cells are inert — clicks neither select nor focus a cell, and double-click editing
-   *   is disabled. Native text selection stays suppressed (nothing is selectable).
-   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off, but the browser's
-   *   native text selection is enabled so users can select and copy cell text with the mouse.
+   * - `false`: cells are inert — clicks neither select nor focus a cell, the keyboard cursor cannot
+   *   enter the body (which also disables keyboard editing, clipboard shortcuts, and keyboard row
+   *   selection), and double-click editing is off. Native text selection stays suppressed (nothing
+   *   is selectable).
+   * - `"text"`: reverts to plain-HTML-table behavior — grid cell selection is off exactly as with
+   *   `false`, but the browser's native text selection is enabled so users can select and copy cell
+   *   text with the mouse.
+   *
+   * Header interactions are unaffected: sorting, column menus, and the header keyboard cursor stay
+   * on (see `headerKeyboardNavigation`).
    */
   cellSelection?: CellSelectionMode;
   /**
@@ -939,6 +975,16 @@ export interface GridOptions {
    * menu, and filtering are unaffected. Defaults to true.
    */
   columnSelection?: boolean;
+  /**
+   * When true (default), the column header row takes part in keyboard navigation: focus entering
+   * the grid seeds the header cursor, ArrowUp from the top row moves into the header, and clicking
+   * a header cell places the cursor there. When false, the header keyboard cursor is disabled
+   * entirely, making header actions (sort, column selection, menu, filter) mouse-only — which also
+   * makes them unreachable for keyboard and assistive-technology users, so leave this on unless the
+   * grid is deliberately inert. With this false and `cellSelection` not `true`, the grid claims no
+   * navigation keys at all, freeing them for application shortcuts.
+   */
+  headerKeyboardNavigation?: boolean;
   /**
    * When true, the column header buttons (menu ⋮ and filter) stay hidden until the pointer hovers
    * (or keyboard-focuses) the header cell, then fade in — keeping headers clean until needed. When
@@ -955,6 +1001,24 @@ export interface GridOptions {
    *   (return `[]` to show nothing while still suppressing the native menu).
    */
   bodyContextMenu?: boolean | BodyContextMenuGetter;
+  /**
+   * Controls the column menu when it targets several selected columns at once, where the built-in
+   * items act on the whole set and no single column's `ColDef.columnMenu` applies:
+   * - omitted (default): the grid's built-in multi-column items.
+   * - a function: called with the built-in items and the columns they act on; return the items to
+   *   show, or `[]` for no menu. Framework menu adapters still run afterwards and may add items.
+   * - `false`: no multi-column menu, and no adapter runs either.
+   *
+   * Note what `false` cannot do, unlike `ColDef.columnMenu: false`. Whether a menu is
+   * multi-column is only known once it is being opened, after the grid has already claimed the
+   * gesture — so a right-click with several columns selected shows no menu at all rather than
+   * falling back to the browser's, and the ⋮ button stays visible but does nothing while a
+   * multi-selection is active. Suppress the entry points per column if that matters.
+   *
+   * Selecting a column group expands it to its leaves, so right-clicking a group header with more
+   * than one visible leaf opens a multi-column menu and reaches this option.
+   */
+  multiColumnMenu?: false | MultiColumnMenuItemsGetter;
   /**
    * When true, clicking the row-number column header toggles selection of all rows in the current
    * view (consistent with clicking any other header cell). Requires both the row-number column
@@ -1046,12 +1110,6 @@ export interface GridOptions {
    * way. Not kept in sync with later user sorting. Client-side row model.
    */
   initialSort?: InitialSortItem[];
-  /**
-   * Modifier key that makes a sort-icon click additive — adding the column to a multi-column sort
-   * rather than replacing the current sort. "ctrl" (default, also matches ⌘) or "shift". A plain
-   * (unmodified) icon click always replaces the sort with just that column.
-   */
-  multiSortKey?: MultiSortKey;
   /**
    * When the multi-column sort priority number is shown on the sort icon: "multi" (default — only
    * when 2+ columns are sorted), "always" (whenever a column is sorted), or "never".
@@ -1313,6 +1371,7 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   columnSelection: boolean;
+  headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
   bodyContextMenu: boolean | BodyContextMenuGetter;
   selectAllRowsOnHeaderClick: boolean;
@@ -1336,7 +1395,6 @@ export interface InternalGridOptions extends GridOptions {
   suppressTypeToEdit: boolean;
   moveAfterEdit: boolean;
   commitOnBlur: boolean;
-  multiSortKey: MultiSortKey;
   showSortPriority: ShowSortPriority;
   reevaluateOnEdit: boolean;
   groupDisplayType: GroupDisplayType;
@@ -1364,33 +1422,98 @@ export interface InternalGridOptions extends GridOptions {
 }
 
 /**
+ * The keys of {@link RuntimeGridOptions}, as a value. The type is derived from this list so the two
+ * cannot drift: anything added here becomes part of the runtime slice, and nothing else can be.
+ */
+export const RUNTIME_OPTION_KEYS = [
+  "rowHover",
+  "columnHover",
+  "zebraRows",
+  "getRowClass",
+  "getRowStyle",
+  "getRowPresentation",
+  "ariaLabel",
+  "ariaLabelledBy",
+  "highlightActiveCell",
+  "cellSelection",
+  "rangeSelection",
+  "columnSelection",
+  "headerKeyboardNavigation",
+  "showColumnButtonsOnHover",
+  "bodyContextMenu",
+  "editTrigger",
+  "readOnlyEdit",
+  "pinnedRowsEditable",
+  "rowPinningMenu",
+  "rowInsertionMenu",
+  "suppressKeyboardEdit",
+  "suppressTypeToEdit",
+  "moveAfterEdit",
+  "commitOnBlur",
+  "asyncTransactionWaitMs",
+] as const;
+
+/**
  * Grid options whose behavior can be changed in place after construction. Structural/initial
  * options (row model, row identity, initial sort, etc.) are intentionally excluded.
+ *
+ * This slice is applied as a unit: a consumer changing one member supplies the current values of the
+ * rest (`IGridAPI.updateGridOptions` does that bookkeeping).
  */
 export type RuntimeGridOptions = Pick<
   InternalGridOptions,
-  | "rowHover"
-  | "columnHover"
-  | "zebraRows"
-  | "getRowClass"
-  | "getRowStyle"
-  | "getRowPresentation"
-  | "ariaLabel"
-  | "ariaLabelledBy"
-  | "highlightActiveCell"
-  | "cellSelection"
-  | "rangeSelection"
-  | "columnSelection"
-  | "showColumnButtonsOnHover"
-  | "bodyContextMenu"
-  | "editTrigger"
-  | "readOnlyEdit"
-  | "pinnedRowsEditable"
-  | "rowPinningMenu"
-  | "rowInsertionMenu"
-  | "suppressKeyboardEdit"
-  | "suppressTypeToEdit"
-  | "moveAfterEdit"
-  | "commitOnBlur"
-  | "asyncTransactionWaitMs"
+  (typeof RUNTIME_OPTION_KEYS)[number]
 >;
+
+/**
+ * Updatable options owned by the renderer's widgets, the pinned-row bands, row-group presentation,
+ * and the server-side plumbing. Unlike the runtime slice, each of these is applied independently.
+ */
+export const WIDGET_OPTION_KEYS = [
+  "toolbar",
+  "quickFilter",
+  "tooltip",
+  "columnPanel",
+  "savedViews",
+  "pagination",
+  "paginationControls",
+  "rowSelection",
+  "theme",
+  "icons",
+  "pinnedTopRowData",
+  "pinnedBottomRowData",
+  "isRowPinned",
+  "groupRowsSticky",
+  "groupDisplayType",
+  "groupSortMode",
+  "groupRowsSelectable",
+  "serverSideDataSource",
+  "serverSideAggregationSource",
+] as const satisfies readonly (keyof GridOptions)[];
+
+/** Every option `IGridAPI.updateGridOptions` accepts, as a value (used to reject the rest). */
+export const UPDATABLE_OPTION_KEYS = [
+  ...RUNTIME_OPTION_KEYS,
+  ...WIDGET_OPTION_KEYS,
+  "columnDefs",
+] as const;
+
+/**
+ * The grid options a mounted grid can be reconfigured with, via `IGridAPI.updateGridOptions`.
+ *
+ * Everything here is a presentation or behavior option the grid can swap in place. Options absent
+ * from this type are fixed at construction because they seed structure the grid builds once
+ * (`rowHeight` and the header heights feed virtualization geometry, `rowNumbers` and `rowModelType`
+ * decide which columns and row model exist, `getRowId` / `rowIdKey` define row identity). Changing
+ * one of those means creating a new grid.
+ */
+export type UpdatableGridOptions =
+  Partial<RuntimeGridOptions>
+  & Pick<GridOptions, (typeof WIDGET_OPTION_KEYS)[number]>
+  & {
+    /**
+     * Replace the column definitions. Marks the schema as caller-owned, exactly as passing
+     * `columnDefs` to `createGrid` does, so a later `setRowData` cannot substitute an inferred schema.
+     */
+    columnDefs?: ColDef[] | null;
+  };

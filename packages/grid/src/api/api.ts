@@ -1,14 +1,30 @@
 import { GridEventMap } from "../events/events";
 import { ColDef } from "../interfaces/column";
-import { ExportParams, IGridAPI, NavDir, RowScrollPosition } from "../interfaces/iGridAPI";
+import {
+  ExportParams,
+  GridApiConfigController,
+  GridApiShortcutController,
+  IGridAPI,
+  NavDir,
+  RowScrollPosition,
+} from "../interfaces/iGridAPI";
+import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
+import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
+import { IBodyMenuAdapter } from "../interfaces/iBodyMenuAdapter";
+import { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
   QuickFilterMatchMode,
   RowPinnedPosition,
+  RUNTIME_OPTION_KEYS,
+  RuntimeGridOptions,
   TreeDataKeyboardNavigationMode,
+  TreeDataKeyboardNavigationOptions,
+  UPDATABLE_OPTION_KEYS,
+  UpdatableGridOptions,
 } from "../interfaces/gridOptions";
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
@@ -63,6 +79,15 @@ export interface GridApiPinnedRowsController {
   setRowPinned: (rowId: GridId, position: RowPinnedPosition | null) => void;
 }
 
+/**
+ * Menu-adapter slots owned by `initDomRenderer`. Internal wiring for
+ * {@link IGridAPI.registerMenuAdapter} / {@link IGridAPI.registerBodyMenuAdapter}.
+ */
+export interface GridApiMenuAdapterController {
+  setMenuAdapter: (adapter: IMenuAdapter | null) => void;
+  setBodyMenuAdapter: (adapter: IBodyMenuAdapter | null) => void;
+}
+
 export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
@@ -70,6 +95,9 @@ export class GridAPI implements IGridAPI {
   private _rowPresentation: GridApiRowPresentationController | null = null;
   private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
+  private _config: GridApiConfigController | null = null;
+  private _menuAdapters: GridApiMenuAdapterController | null = null;
+  private _shortcuts: GridApiShortcutController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
 
   constructor(private core: IGridCore) {}
@@ -95,6 +123,147 @@ export class GridAPI implements IGridAPI {
 
   setPinnedRowsController(controller: GridApiPinnedRowsController): void {
     this._pinnedRows = controller;
+  }
+
+  /**
+   * Wire live reconfiguration. Called by the renderer on attach; before that, `updateGridOptions`
+   * warns and does nothing.
+   */
+  setConfigController(controller: GridApiConfigController): void {
+    this._config = controller;
+  }
+
+  /**
+   * Wire the menu-adapter slots. Called by `initDomRenderer` as it assembles the grid, so this is
+   * in place before any host holds the api; before that, `registerMenuAdapter` warns and does
+   * nothing.
+   */
+  setMenuAdapterController(controller: GridApiMenuAdapterController): void {
+    this._menuAdapters = controller;
+  }
+
+  registerMenuAdapter(adapter: IMenuAdapter | null): void {
+    if (!this._menuAdapters) {
+      console.warn("registerMenuAdapter called on an api with no menu wiring; ignoring.");
+      return;
+    }
+    this._menuAdapters.setMenuAdapter(adapter);
+  }
+
+  registerBodyMenuAdapter(adapter: IBodyMenuAdapter | null): void {
+    if (!this._menuAdapters) {
+      console.warn("registerBodyMenuAdapter called on an api with no menu wiring; ignoring.");
+      return;
+    }
+    this._menuAdapters.setBodyMenuAdapter(adapter);
+  }
+
+  /**
+   * Wire the keyboard-shortcut hooks. Called by the renderer on attach; before that,
+   * `registerShortcut` warns and does nothing.
+   */
+  setShortcutController(controller: GridApiShortcutController): void {
+    this._shortcuts = controller;
+  }
+
+  registerShortcut(shortcut: GridShortcut): () => void {
+    if (!this._shortcuts) {
+      console.warn("registerShortcut called on an api with no keyboard wiring; ignoring.");
+      return () => undefined;
+    }
+    return this._shortcuts.register(shortcut);
+  }
+
+  getKeyboardShortcuts(): readonly KeyboardShortcutInfo[] {
+    if (!this._shortcuts) {
+      console.warn("getKeyboardShortcuts called on an api with no keyboard wiring; returning [].");
+      return [];
+    }
+    return this._shortcuts.getShortcuts();
+  }
+
+  // ---------------- Live reconfiguration ----------------
+
+  /**
+   * Route each supplied option to its owner: renderer widgets, the pinned-row bands, the core's
+   * grouping setters, the caller-owned column-def path, or the runtime slice.
+   *
+   * Presence — not truthiness — decides what changes, so `{ getRowStyle: undefined }` clears the
+   * callback while an omitted `getRowStyle` leaves it alone. The runtime slice must be handed to the
+   * renderer whole (a missing key there reads as "set this to undefined"), so the current resolved
+   * values are read back off the core and the caller's overrides layered on top.
+   */
+  updateGridOptions(options: UpdatableGridOptions): void {
+    if (!this._config) {
+      console.warn("updateGridOptions called before the grid was rendered; ignoring.");
+      return;
+    }
+    const config = this._config;
+    const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(options, key);
+    const supplied = options as Record<string, unknown>;
+
+    // Widgets and chrome: each option is independent, so only forward the ones supplied.
+    if (has("toolbar")) config.setToolbarOptions(options.toolbar);
+    if (has("quickFilter")) config.setQuickFilterOptions(options.quickFilter);
+    if (has("tooltip")) config.setTooltipOptions(options.tooltip);
+    if (has("columnPanel")) config.setColumnPanelOptions(options.columnPanel);
+    if (has("savedViews")) config.setSavedViewsOptions(options.savedViews);
+    if (has("rowSelection")) config.setRowSelectionOptions(options.rowSelection);
+    if (has("pagination")) config.togglePagination(options.pagination ?? false);
+    if (has("paginationControls")) config.setPaginationControls(options.paginationControls);
+    if (has("serverSideDataSource")) config.setServerSideDataSource(options.serverSideDataSource);
+    if (has("serverSideAggregationSource")) {
+      config.setServerSideAggregation(options.serverSideAggregationSource);
+    }
+
+    // Theme variables and icons are one visual layer: icons supplied here (or already on the core's
+    // options) win over icons carried by the theme, which is what setTheme resolves.
+    if (has("theme")) config.setTheme(options.theme);
+    if (has("icons")) config.setIcons(options.icons);
+
+    // The pinned bands share one renderer call, and its own contract is already presence-based.
+    if (
+      has("pinnedTopRowData") || has("pinnedBottomRowData")
+      || has("isRowPinned") || has("groupRowsSticky")
+    ) {
+      const pinned: Parameters<GridApiConfigController["setPinnedRowOptions"]>[0] = {};
+      if (has("pinnedTopRowData")) pinned.pinnedTopRowData = options.pinnedTopRowData ?? [];
+      if (has("pinnedBottomRowData")) pinned.pinnedBottomRowData = options.pinnedBottomRowData ?? [];
+      if (has("isRowPinned")) pinned.isRowPinned = options.isRowPinned;
+      if (has("groupRowsSticky")) pinned.groupRowsSticky = options.groupRowsSticky ?? false;
+      config.setPinnedRowOptions(pinned);
+    }
+
+    // Row-grouping presentation is core-owned and each setter rebuilds the view it affects.
+    if (has("groupDisplayType")) {
+      this.core.setGroupDisplayType(options.groupDisplayType ?? "singleColumn");
+    }
+    if (has("groupSortMode")) this.core.setGroupSortMode(options.groupSortMode ?? "local");
+    if (has("groupRowsSelectable")) {
+      this.core.setGroupRowsSelectable(options.groupRowsSelectable ?? false);
+    }
+
+    // Caller-owned schema, same as `createGrid({ columnDefs })`.
+    if (has("columnDefs")) this.core.setColumnDefsFromProps(options.columnDefs);
+
+    const runtimeKeys = RUNTIME_OPTION_KEYS.filter(key => has(key));
+    if (runtimeKeys.length > 0) {
+      const current = this.core.getOptions() as Record<string, unknown>;
+      const next = {} as Record<string, unknown>;
+      for (const key of RUNTIME_OPTION_KEYS) {
+        next[key] = has(key) ? supplied[key] : current[key];
+      }
+      config.setRuntimeOptions(next as unknown as RuntimeGridOptions);
+    }
+
+    const unknown = Object.keys(supplied)
+      .filter(key => !(UPDATABLE_OPTION_KEYS as readonly string[]).includes(key));
+    if (unknown.length > 0) {
+      console.warn(
+        `updateGridOptions ignored option(s) that cannot change after the grid is created: `
+        + `${unknown.join(", ")}. Create a new grid to change these.`,
+      );
+    }
   }
 
   // ---------------- Scrolling ----------------
@@ -209,6 +378,10 @@ export class GridAPI implements IGridAPI {
 
   forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void {
     this.core.getRowModel().forEachNodeAfterFilterAndSort(callback);
+  }
+
+  getGroupNodes(): IRowNode[] {
+    return this.core.getRowModel().getGroupNodes();
   }
 
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
@@ -442,6 +615,21 @@ export class GridAPI implements IGridAPI {
 
   setKeyboardNavigationMode(mode: TreeDataKeyboardNavigationMode): void {
     this.dispatch({ type: "keyboardNavigationModeSet", mode, source: "api" });
+  }
+
+  setTreeDataKeyboardNavigationOptions(options: TreeDataKeyboardNavigationOptions): void {
+    const has = (key: keyof TreeDataKeyboardNavigationOptions): boolean =>
+      Object.prototype.hasOwnProperty.call(options, key);
+    // The core setter takes the pair, so an unsupplied field has to be re-stated at its current
+    // value rather than left out — otherwise setting one would silently reset the other.
+    const current = this.core.getOptions().treeData;
+    const mode = has("keyboardNavigationMode")
+      ? options.keyboardNavigationMode ?? "grid"
+      : this.core.getKeyboardNavigationMode();
+    const enableModeSwitch = has("enableKeyboardNavigationModeSwitch")
+      ? options.enableKeyboardNavigationModeSwitch ?? false
+      : current?.enableKeyboardNavigationModeSwitch ?? false;
+    this.core.setTreeDataKeyboardNavigationOptions(mode, enableModeSwitch);
   }
 
   captureViewState(): GridViewState {

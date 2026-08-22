@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@agility-workbench/grid": ["../../packages/grid/src/index"],
+      "@agility-workbench/grid/*": ["../../packages/grid/src/*"],
+      "@grid": ["../../packages/grid/src/index"],
+      "@grid/*": ["../../packages/grid/src/*"]
+    }
+  },
+  "include": ["./**/*.ts", "../../vite.vanilla.config.ts"],
+  "exclude": ["dist-demo"]
+}

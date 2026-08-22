@@ -41,7 +41,7 @@ Grouped by area; each maps to a §5 sub-table.
   section; the exporter reproduces the merge as a real Excel merge range.
 - **Full-width rows** (§5.2 / §5.10) — `isFullWidthRow` + `fullWidthCellRenderer`; group rows in
   `groupRows` mode are full-width automatically.
-- **Sort ergonomics** (§5.4) — configurable `sortingOrder` cycle, `multiSortKey`, `showSortPriority`,
+- **Sort ergonomics** (§5.4) — configurable `sortingOrder` cycle, `showSortPriority`,
   `sortIconVisibility`, grid-level `initialSort`, per-column `sort`/`sortIndex`, and a custom
   `comparator`.
 - **Conditional styling** (§5.10) — `getRowClass`/`getRowStyle` and per-column `cellClass`/`cellStyle`,
@@ -339,8 +339,8 @@ packages/grid/src/
 
 packages/react-grid/src/                    React wrapper (@agility-workbench/react-grid)
 ├── index.ts                   `export * from grid` + Grid, GridProps, ReactCellRenderer/ColDef/TooltipComponent/ActionFrameComponent, ReactCellEditor
-├── grid.tsx                   Grid component — lifecycle, prop→core bridging, StrictMode-safe
-├── factory.ts                 createCore, createApi, getGridOptions helpers
+├── grid.tsx                   Grid component — createGrid lifecycle, prop→API reconciliation (updateGridOptions), StrictMode-safe
+├── factory.ts                 getGridOptions (props → GridOptions snapshot)
 ├── interface.ts               GridProps (extends GridOptions; React-aware defaultColDef / fullWidthCellRenderer / bodyContextMenu)
 ├── cellRenderer.ts            React adapters: adaptCellRenderer/adaptTooltip/adaptActionFrame/adaptReactColDef; ReactColDef, ReactDefaultColDef
 ├── cellEditor.ts              ReactCellEditor, ReactCellEditorHandle types
@@ -350,8 +350,8 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 
 packages/angular-grid/src/                  Angular wrapper (@agility-workbench/angular-grid, Angular ≥ 20.3)
 ├── public-api.ts              `export * from grid` + AwbGrid, NgColDef/NgDefaultColDef, ICellRendererNgComp/ITooltipNgComp/IActionFrameNgComp/ICellEditorNgComp, NgMenuItem/NgMenuSlot
-├── grid.component.ts          <awb-grid> — signal inputs, sync effects, outputs; core created outside the NgZone
-├── factory.ts                 createCore, getGridOptions (reads signal inputs)
+├── grid.component.ts          <awb-grid> — signal inputs, sync effects (updateGridOptions), outputs; createGrid outside the NgZone
+├── factory.ts                 getGridOptions (reads signal inputs)
 ├── interface.ts               NgColDef + the optional awbInit/awbRefresh component contracts
 ├── adapters.ts                NgAdapters — mounts Angular components (createComponent) into core class-component slots: cellRenderer/tooltip/actionFrame/cellEditor + colDef/defaultColDef adaptation
 ├── menu.ts                    NgMenuItem (slots: string | HTMLElement | TemplateRef)
@@ -524,6 +524,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Text/number/date filter UI | ✅ Complete | `renderer/filter/basicFilterRenderer.ts` |
 | Set filter (checkbox list) | ✅ Complete | `renderer/filter/setFilterRenderer.ts` |
 | Set filter value sources: static, fromRows, async | ✅ Complete | `filter/types.ts` → `FilterValueSource` |
+| Set filter blank policy | ✅ Complete | `null`/`undefined`/`""` (never `0`/`false`) are blanks, decided from the raw value, so `keyCreator` / filter `valueFormatter` never see one; an empty key folds a value *into* `(Blanks)`, letting an app widen the bucket. Value keys are namespaced so an app key cannot collide with the synthetic rows — `misc.ts` → `isBlankValue`, `filter/setFilterCore.ts` → `storedValueKey`, `csrm/filter.ts` → `setFilterKey` |
 | AND/OR join between conditions | ✅ Complete | `FilterItem.join` |
 | Filter panel (column menu integration) | ✅ Complete | `filter/filterMenuController.ts`, `filter/filterMenuCoordinator.ts` |
 | Filter indicators on headers | ✅ Complete | `renderer/header/renderer.ts` → `setFilterIndicators` |
@@ -539,7 +540,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Toolbar sort management | ✅ Complete | ordered chips with trailing-area picker/header drop, direction toggle, removal, right-edge clear-all, keyboard/drag priority reordering; `renderer/toolbar/` |
 | Configurable sort cycle (`sortingOrder`) | ✅ Complete | `interfaces/sort.ts` → `nextSortDir` / `DEFAULT_SORTING_ORDER`; grid-level + per-column + `defaultColDef` |
 | Toggle sort (advances the configured cycle) | ✅ Complete | `GridCore.toggleSort()` / `progressSort` |
-| Multi-sort modifier key (`multiSortKey`: ctrl/shift) | ✅ Complete | additive sort on modified icon click; default "ctrl" |
+| Additive multi-column sort | ✅ Complete | Ctrl/Cmd **or** Shift on a header click (icon or body), `Ctrl/Cmd+Enter` on the header cursor; `Shift+Enter` sorts the whole column selection |
 | Sort priority indicator (`showSortPriority`: multi/always/never) | ✅ Complete | number badge on the sort icon; `renderer/header/renderer.ts` |
 | Sort icon visibility (`sortIconVisibility`: hover/always/never) | ✅ Complete | grid-level + per-column; "never" keeps the column sortable via menu/Shift+click/API |
 | Grid-level initial sort (`initialSort`) | ✅ Complete | ordered `{colId,dir}`; per-column `sort`/`sortIndex` take precedence; CSRM |
@@ -570,6 +571,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Cell-selection mode (`cellSelection`: true / false / "text") | ✅ Complete | `"text"` reverts to native browser text selection; `false` makes cells inert |
 | Range selection toggle (`rangeSelection`) | ✅ Complete | when false, selection stays a single cell (drag / Shift-extend ignored) |
 | Column-selection toggle (`columnSelection`) | ✅ Complete | when false, header clicks no longer select (sort/menu/filter unaffected) |
+| Keyboard column selection | ✅ Complete | `Space` selects, `Ctrl/Cmd+Space` toggles, `Shift+Arrow` / `Shift+Home` / `Shift+End` extend a range from `selectionModel.columnAnchorId` — only while the cursor is on a selected column |
 | Clear selection on body click (`clearSelectionOnBodyClick`) | ✅ Complete | default true |
 | Active-cell highlight (`highlightActiveCell`) | ✅ Complete | distinct outline on the focused cell within a range |
 

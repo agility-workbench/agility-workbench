@@ -9,37 +9,52 @@
 ## 1. Overview
 
 This is an **npm-workspaces monorepo** hosted at
-`github.com/agility-workbench/agility-workbench`. It produces two independently
+`github.com/agility-workbench/agility-workbench`. It produces three independently
 versioned, independently publishable packages:
 
 | Package | npm name | Role |
 | --- | --- | --- |
-| `packages/grid` | `@agility-workbench/grid` | Framework-agnostic data-grid core (engine, renderer, theming, export). No React dependency. |
+| `packages/grid` | `@agility-workbench/grid` | Framework-agnostic data-grid core (engine, renderer, theming, export). No framework dependency. |
 | `packages/react-grid` | `@agility-workbench/react-grid` | Thin React binding (`<Grid />`) built on the core. Depends on `@agility-workbench/grid`. |
+| `packages/angular-grid` | `@agility-workbench/angular-grid` | Standalone Angular binding (`<awb-grid>`) built on the core. Depends on `@agility-workbench/grid`; **publishes from its generated `dist/`** (see §5, §6). |
+
+The workspace globs are `packages/*` **and** `apps/docs`. `apps/docs` is the
+Docusaurus site (`@agility-workbench/docs`, private, never published); the two
+playgrounds under `apps/` are plain Vite apps, not workspaces.
 
 The repository **root is private** (`"private": true`, name `agility-workbench`) and
-is never published — it only orchestrates the workspaces, the shared dev tooling, and
-the demo app.
+is never published — it only orchestrates the workspaces, the shared dev tooling, the
+docs site, and the demo apps.
 
-**Toolchain:** Node ≥ 18 (developed on Node 22), npm workspaces (npm 11),
-[tsup](https://tsup.egoist.dev/) for bundling, [Vite](https://vite.dev/) for the demo,
-[Vitest](https://vitest.dev/) for tests, TypeScript 5.
+**Toolchain:** Node ≥ 18 for the core/React packages, but the Angular toolchain
+requires `^20.19.0 || ^22.12.0 || >=24` — develop on Node 22. npm workspaces
+(developed on npm 10.9.2), [tsup](https://tsup.egoist.dev/) for core/React bundling,
+[ng-packagr](https://github.com/ng-packagr/ng-packagr) 20.3 for the Angular package,
+[Vite](https://vite.dev/) for the demos, [Vitest](https://vitest.dev/) for tests,
+[Docusaurus](https://docusaurus.io/) for the docs site, TypeScript 5.
+
+There is **no lint setup and no CI** in this repository today (see §7).
 
 ## 2. Directory layout
 
 ```
 agility-workbench/                 ← private workspace root
-├── package.json                   workspaces:["packages/*"], shared devDeps, orchestration scripts
+├── package.json                   workspaces:["packages/*","apps/docs"], shared devDeps, orchestration scripts
+├── LICENSE                        MIT (same text each package ships)
 ├── tsconfig.base.json             shared compiler options (extended by every package)
 ├── tsconfig.json                  root config for the react-playground app + editor (path aliases)
 ├── vite.config.ts                 react-playground dev server; aliases → packages/*/src
 ├── vite.angular.config.ts         angular-playground dev server (analog Angular plugin; port 5180)
 ├── vitest.config.ts               test discovery + aliases (grid + react-grid)
+├── scripts/
+│   └── check-export-parity.mjs    release gate: built .d.ts/.d.cts vs ESM/CJS runtime exports (§6)
+├── examples/                      documentation fragments (not built, not published)
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
 │   └── architecture/current-state.md   feature/architecture reference
 │
 ├── apps/
+│   ├── docs/                      Docusaurus site — a workspace, private, never published
 │   ├── react-playground/          demo app (NOT published; consumes packages via aliases)
 │   │   ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
 │   └── angular-playground/        Angular demo app (zoneless bootstrap; own tsconfig for the analog plugin)
@@ -112,12 +127,24 @@ into the React output (its dist is ~12 KB ESM / ~13 KB CJS). This means:
 - `packages/react-grid/src/index.ts` does `export * from "@agility-workbench/grid"`, so consumers
   can import the whole API (grid + React) from `@agility-workbench/react-grid` alone.
 
+**The Angular package obeys the identical boundary.** `packages/angular-grid` externalizes the
+core, imports it only through the bare `@agility-workbench/grid` specifier, and re-exports it with
+`export * from "@agility-workbench/grid"` in `src/public-api.ts`. So the rule above is general: when
+either binding needs a new core symbol, **add it to the core's `index.ts` first**.
+
+Because both bindings re-export the core wholesale, a defect in the core's public surface
+propagates to both — which is why `npm run check:exports` (§6) validates the core and React
+declaration/runtime parity as a release gate.
+
 ### Dependency direction
 
 ```
-@agility-workbench/react-grid ──depends on──▶ @agility-workbench/grid
-        │                                             │
-   peer: react, react-dom                   devDep: exceljs (test-only verifier)
+@agility-workbench/react-grid  ──depends on──▶ ┐
+                                               ├──▶ @agility-workbench/grid
+@agility-workbench/angular-grid ──depends on──▶ ┘            │
+        │                     │                              │
+   peer: react,          peer: @angular/core        devDep: exceljs (test-only verifier)
+   react-dom             dep:  tslib
 ```
 
 The core has **zero runtime dependencies**. `exceljs` is a dev-only dependency used to
@@ -213,6 +240,9 @@ consumable by Angular 20.3 **and newer** (`peerDependencies: { "@angular/core": 
 | `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:angular` → `typecheck:react-playground` → `typecheck:angular-playground`. Explicit, not workspace-traversal order. |
 | `npm test` | Runs the root Vitest suite (grid + react-grid, including the package-resolution regression guard), then `test:angular`. |
 | `npm run test:angular` | Runs the Angular binding's suite via its own vitest config (`packages/angular-grid/vitest.config.mts`) — Angular components in tests are compiled by `@analogjs/vite-plugin-angular`, so they can't join the root suite's include list. |
+| `npm run check:exports` | Release gate: asserts every value export in the built `.d.ts`/`.d.cts` exists in the ESM/CJS runtime (and vice versa) for core and React. Requires a prior `npm run build`. |
+| `npm run pack:packages` | `build` → `check:exports` → `npm pack` all three into `artifacts/npm`, with Angular correctly targeting `packages/angular-grid/dist`. |
+| `npm run docs:build` | Builds grid + react, then the Docusaurus site in `apps/docs`. |
 | `npm run dev` | Starts the React demo at `http://localhost:5176`. |
 | `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
@@ -224,7 +254,7 @@ unspecified `--workspaces` traversal order, because both bindings' typechecks co
 
 ## 6. Publishing to npm
 
-Both packages are publish-ready. Current state of the manifests:
+All three packages are publish-ready. Current state of the manifests:
 
 - `@agility-workbench/grid` — `"private"` is absent (publishable), `publishConfig.access: "public"`,
   `provenance: true`, `exports` map (`.`, `./styles.css`, `./package.json`), `files: ["dist","README.md","LICENSE"]`,
@@ -257,28 +287,39 @@ Both packages are publish-ready. Current state of the manifests:
 
 ### Release order & version coupling
 
-Because react-grid depends on grid by semver range, **publish `@agility-workbench/grid` first**,
-then `@agility-workbench/react-grid`. If a react-grid release requires a new core symbol, bump
-and publish the core, then bump the react-grid dependency range to match.
+Because **both** bindings depend on grid by semver range, **publish
+`@agility-workbench/grid` first**, then `@agility-workbench/react-grid` and
+`@agility-workbench/angular-grid` in either order. If a binding release requires a new core
+symbol, bump and publish the core, then bump that binding's dependency range to match.
 
 ### Manual publish (first release)
 
 ```bash
 # from repo root
-npm run build                                   # build both, in order
-npm test                                        # 458 tests must pass
-cd packages/grid       && npm publish           # prepublishOnly re-builds
-cd ../react-grid       && npm publish
+npm run build                                   # all three, in order
+npm test                                        # root suite (grid + react) then test:angular — all must pass
+npm run check:exports                           # declaration/runtime parity gate
+
+cd packages/grid          && npm publish        # prepublishOnly re-builds
+cd ../react-grid          && npm publish
+cd ../angular-grid/dist   && npm publish        # NOTE: publish from dist/, not the package root
 ```
 
-npm workspaces also allow `npm publish --workspace @agility-workbench/grid` from the root.
+npm workspaces also allow `npm publish --workspace @agility-workbench/grid` from the root —
+**but not for the Angular package.** `publishConfig.directory` does *not* redirect npm's packing:
+`npm publish --workspace @agility-workbench/angular-grid` (or packing its root) ships ~52 internal
+files — source, tests, tsconfigs, a nested `dist/` — under a root manifest with no runtime entry
+fields. The Angular package must always be published/packed from `packages/angular-grid/dist`.
 
 ### Pre-publish checklist
 
 - [ ] `npm run build && npm test` clean.
-- [ ] `npm pack --dry-run --workspace <pkg>` shows only `dist/` + LICENSE + README + package.json.
-- [ ] Versions bumped (core before dependent, if coupled).
-- [ ] `@agility-workbench/react-grid`'s dependency range on the core matches the version being released.
+- [ ] `npm run check:exports` passes.
+- [ ] `npm pack --dry-run ./packages/grid ./packages/react-grid ./packages/angular-grid/dist` shows
+      only `dist/` + LICENSE + README + package.json per package (8, 7, and 5 files respectively).
+      Note the explicit `angular-grid/dist` path — do **not** use `--workspace` for Angular.
+- [ ] Versions bumped (core before dependents, if coupled).
+- [ ] Both bindings' dependency ranges on the core match the version being released.
 - [ ] Logged in to npm with access to the `@agility-workbench` scope.
 
 ## 7. Not yet set up (recommended follow-ups)
@@ -287,9 +328,14 @@ These are **not** in place today and are needed for a smooth, repeatable release
 
 - **Automated versioning/changelogs** — e.g. [changesets](https://github.com/changesets/changesets),
   which understands workspaces and the inter-package dependency bump.
-- **CI release workflow** — GitHub Actions that runs `build` + `test`, then
-  `npm publish --provenance` for each package on a tag/release (requires `id-token: write`).
-- **Documentation website** — the examples site referenced by `homepage`
-  (`https://agilityworkbench.dev`) is not part of this repo yet.
+- **Any CI at all** — there is no `.github/workflows` content and no other CI configuration, so
+  nothing automatically protects build, typecheck, tests, or package contents on pushes/PRs. Add
+  non-publishing PR CI first, then a release workflow that runs `build` + `test` +
+  `check:exports` and `npm publish --provenance` per package on a tag/release (requires
+  `id-token: write`).
+- **Lint** — no lint script, dependency, or configuration exists.
+- **Documentation *deployment*** — the Docusaurus source **is** in this repo (`apps/docs`, built
+  with `npm run docs:build`), but its deployment to the `homepage`
+  (`https://agilityworkbench.dev`) is not automated here.
 - **Alias cleanup** — optionally remove the dev-only `@grid`/`@react-grid` aliases (§4) by
   converting core/test imports to relative or package-name specifiers.

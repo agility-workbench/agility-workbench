@@ -1,10 +1,6 @@
-import { CanvasMeasurer, GridCore, GridOptions } from "@agility-workbench/grid";
+import { GridOptions } from "@agility-workbench/grid";
 import type { NgAdapters } from "./adapters";
 import type { AwbGrid } from "./grid.component";
-
-export function createCore(options: GridOptions): GridCore {
-  return new GridCore(new CanvasMeasurer(), options);
-}
 
 function setIfDefined<K extends keyof GridOptions>(
   options: GridOptions,
@@ -57,6 +53,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "cellSelection", grid.cellSelection());
   setIfDefined(options, "rangeSelection", grid.rangeSelection());
   setIfDefined(options, "columnSelection", grid.columnSelection());
+  setIfDefined(options, "headerKeyboardNavigation", grid.headerKeyboardNavigation());
   setIfDefined(options, "showColumnButtonsOnHover", grid.showColumnButtonsOnHover());
   setIfDefined(options, "selectAllRowsOnHeaderClick", grid.selectAllRowsOnHeaderClick());
   setIfDefined(options, "selectAllScope", grid.selectAllScope());
@@ -73,7 +70,6 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "editTrigger", grid.editTrigger());
   setIfDefined(options, "readOnlyEdit", grid.readOnlyEdit());
   setIfDefined(options, "initialSort", grid.initialSort());
-  setIfDefined(options, "multiSortKey", grid.multiSortKey());
   setIfDefined(options, "showSortPriority", grid.showSortPriority());
   setIfDefined(options, "pinnedRowsEditable", grid.pinnedRowsEditable());
   setIfDefined(options, "rowPinningMenu", grid.rowPinningMenu());

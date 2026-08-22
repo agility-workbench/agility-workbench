@@ -20,6 +20,7 @@
   "scripts": {
     "dev": "CHOKIDAR_USEPOLLING=1 vite",
     "dev:angular": "CHOKIDAR_USEPOLLING=1 vite -c vite.angular.config.ts",
+    "dev:vanilla": "CHOKIDAR_USEPOLLING=1 vite -c vite.vanilla.config.ts",
     "docs:dev": "npm run build:grid && npm run build:react && npm run start --workspace @agility-workbench/docs",
     "docs:build": "npm run build:grid && npm run build:react && npm run build --workspace @agility-workbench/docs",
     "preview": "vite preview",
@@ -34,7 +35,8 @@
     "typecheck:angular": "npm run typecheck --workspace @agility-workbench/angular-grid",
     "typecheck:react-playground": "tsc --noEmit",
     "typecheck:angular-playground": "tsc -p apps/angular-playground/tsconfig.json --noEmit",
-    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:angular && npm run typecheck:react-playground && npm run typecheck:angular-playground",
+    "typecheck:vanilla-playground": "tsc -p apps/vanilla-playground/tsconfig.json --noEmit",
+    "typecheck": "npm run build:grid && npm run typecheck --workspace @agility-workbench/grid && npm run typecheck:react && npm run typecheck:angular && npm run typecheck:react-playground && npm run typecheck:angular-playground && npm run typecheck:vanilla-playground",
     "test": "vitest run && npm run test:angular",
     "test:angular": "vitest run -c packages/angular-grid/vitest.config.mts",
     "test:watch": "vitest",

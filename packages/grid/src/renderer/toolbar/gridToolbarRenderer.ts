@@ -12,6 +12,7 @@ import type { SavedGridView, SavedViewsOptions } from "../../interfaces/gridView
 import { MenuItem } from "../../interfaces/menuItem";
 import { SortDir } from "../../interfaces/sort";
 import { button, div, span } from "../element";
+import { canonicalKey, matchesAnyChord, matchesChord } from "../interaction/keyChord";
 import { MenuRenderer } from "../menuRenderer";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 import {
@@ -366,7 +367,7 @@ export class GridToolbarRenderer {
     save.addEventListener("click", submit);
     content.addEventListener("keydown", event => {
       event.stopPropagation();
-      if (event.key === "Enter") {
+      if (matchesChord(event, "enter")) {
         event.preventDefault();
         submit();
       }
@@ -477,9 +478,10 @@ export class GridToolbarRenderer {
 
         chip.addEventListener("keydown", event => {
           if (event.target !== chip) return;
-          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          // Bare arrows only: a modified arrow keeps its platform meaning (Alt+Left is history).
+          if (matchesAnyChord(event, ["arrowleft", "arrowright"])) {
             event.preventDefault();
-            this.moveGroup(col.instanceID, event.key === "ArrowLeft" ? -1 : 1);
+            this.moveGroup(col.instanceID, canonicalKey(event) === "arrowleft" ? -1 : 1);
           }
         });
         chip.addEventListener("dragstart", event => {
@@ -620,10 +622,10 @@ export class GridToolbarRenderer {
 
         chip.addEventListener("keydown", event => {
           if (event.target !== chip) return;
-          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          if (matchesAnyChord(event, ["arrowleft", "arrowright"])) {
             event.preventDefault();
-            this.moveSort(col.instanceID, event.key === "ArrowLeft" ? -1 : 1);
-          } else if (event.key === "Delete" || event.key === "Backspace") {
+            this.moveSort(col.instanceID, canonicalKey(event) === "arrowleft" ? -1 : 1);
+          } else if (matchesAnyChord(event, ["delete", "backspace"])) {
             event.preventDefault();
             this.removeSort(col.instanceID);
           }

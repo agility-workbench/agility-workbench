@@ -23,6 +23,14 @@ the data source instead of calculated over an incomplete browser cache.
 Return `{ rows, totalRows }`; root responses may also provide `columns` and a
 `schemaVersion` for server-driven schemas.
 
+A server-driven schema applies only while the application has not supplied
+column definitions itself — through `columnDefs` at creation, a wrapper prop,
+`updateGridOptions({ columnDefs })`, or `api.setColumnDefs`. Application
+definitions always win; release them with
+`updateGridOptions({ columnDefs: undefined })` to let the server's schema apply
+again. An unchanged schema is deduped by `schemaVersion` (or by structural
+signature when no version is sent), so resending it with every block is cheap.
+
 Omitting `totalRows` creates an open-ended listing. The grid probes forward
 until a short block establishes the end and displays provisional pagination
 totals with a `+` suffix.

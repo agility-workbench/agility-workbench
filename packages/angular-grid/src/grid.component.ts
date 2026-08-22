@@ -15,11 +15,9 @@ import {
   untracked,
 } from "@angular/core";
 import {
+  createGrid,
   GridOptions,
-  GridRenderer,
   IGridAPI,
-  IGridCore,
-  initDomRenderer,
 } from "@agility-workbench/grid";
 import type {
   BodyMenuContext,
@@ -34,7 +32,7 @@ import type {
   SortChangedParams,
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
-import { createCore, getGridOptions } from "./factory";
+import { getGridOptions } from "./factory";
 import type {
   NgColDef,
   NgComponent,
@@ -45,8 +43,6 @@ import type { NgMenuItem } from "./menu";
 import { NgBodyMenuAdapter, NgMenuAdapter } from "./menuAdapters";
 
 type GridInstance = {
-  core: IGridCore;
-  renderer: GridRenderer;
   api: IGridAPI;
   destroyed: boolean;
 };
@@ -55,17 +51,11 @@ function destroyInstance(instance: GridInstance): void {
   if (instance.destroyed) return;
   instance.destroyed = true;
 
+  // createGrid's api.destroy() performs the whole guarded teardown (detach → renderer.destroy →
+  // core.destroy → api cleanup) in that order, exactly once. The flag above keeps this wrapper
+  // idempotent too, since teardown can be reached twice.
   try {
-    instance.renderer.detach();
-  } catch { }
-  try {
-    instance.renderer.destroy();
-  } catch { }
-  try {
-    instance.core.destroy();
-  } catch { }
-  try {
-    instance.api.destroy?.();
+    instance.api.destroy();
   } catch { }
 }
 
@@ -133,6 +123,7 @@ export class AwbGrid implements OnDestroy {
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
+  readonly headerKeyboardNavigation = input<GridOptions["headerKeyboardNavigation"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
   readonly selectAllScope = input<GridOptions["selectAllScope"]>();
   readonly selectionPersistence = input<GridOptions["selectionPersistence"]>();
@@ -154,7 +145,6 @@ export class AwbGrid implements OnDestroy {
 
   // --- sorting ---
   readonly initialSort = input<GridOptions["initialSort"]>();
-  readonly multiSortKey = input<GridOptions["multiSortKey"]>();
   readonly showSortPriority = input<GridOptions["showSortPriority"]>();
 
   // --- filtering ---
@@ -285,13 +275,19 @@ export class AwbGrid implements OnDestroy {
         return hook ? this.zone.run(() => hook(params)) : undefined;
       };
 
-      const core = createCore(options);
-      const { renderer, api } = initDomRenderer(
-        core,
-        new NgMenuAdapter(this.appRef, this.zone, {
+      // createGrid applies columnDefs and rowData right after init, in the same synchronous
+      // sequence this component used to perform by hand (init → columnDefs → rowData). The sync
+      // effects' creation-time snapshots (lastDefs / lastRows) keep them from re-applying these.
+      const api = createGrid(this.host.nativeElement, {
+        ...options,
+        columnDefs: this.adapters.adaptColumnDefs(this.columnDefs()) ?? undefined,
+        // Client-side grids always get an initial rowDataSet (empty included); server-side grids
+        // must not, so their slot stays undefined and createGrid skips it.
+        rowData: this.rowModelType() !== "serverSide" ? this.rowData() ?? [] : undefined,
+        menuAdapter: new NgMenuAdapter(this.appRef, this.zone, {
           getColumnMenuItems: () => this.getColumnMenuItems(),
         }),
-        new NgBodyMenuAdapter(this.appRef, this.zone, {
+        bodyMenuAdapter: new NgBodyMenuAdapter(this.appRef, this.zone, {
           // Only the function arm customizes items here; boolean modes (default / native menu) are
           // forwarded to core by getGridOptions. Read through the signal so the callback stays
           // reactive to input changes without recreating the grid instance.
@@ -300,17 +296,8 @@ export class AwbGrid implements OnDestroy {
             return typeof opt === "function" ? opt : undefined;
           },
         }),
-      );
-      const created: GridInstance = { core, renderer, api, destroyed: false };
-
-      renderer.attach(this.host.nativeElement);
-      core.dispatch({ type: "init" });
-      // Columns and rows are not GridOptions: apply them right after init, in the same synchronous
-      // sequence the React wrapper's mount effects use (init → columnDefs → rowData).
-      core.setColumnDefsFromProps(this.adapters.adaptColumnDefs(this.columnDefs()));
-      if (this.rowModelType() !== "serverSide") {
-        core.dispatch({ type: "rowDataSet", rows: this.rowData() ?? [] });
-      }
+      });
+      const created: GridInstance = { api, destroyed: false };
       return created;
     });
 
@@ -327,7 +314,7 @@ export class AwbGrid implements OnDestroy {
    * rebuild UI on re-application skip their first run via `keyedEffect`.
    */
   private startSyncEffects(instance: GridInstance): void {
-    const { core, renderer } = instance;
+    const { api } = instance;
 
     // columnDefs/rowData were already applied synchronously by create(); these effects compare
     // against that creation-time snapshot so startup applies them exactly once.
@@ -336,7 +323,9 @@ export class AwbGrid implements OnDestroy {
       const defs = this.columnDefs();
       if (defs === lastDefs) return null;
       lastDefs = defs;
-      return () => core.setColumnDefsFromProps(this.adapters.adaptColumnDefs(defs));
+      // Presence-based: an undefined input still carries the key, releasing caller ownership of
+      // the schema exactly as setColumnDefsFromProps(undefined) did.
+      return () => api.updateGridOptions({ columnDefs: this.adapters.adaptColumnDefs(defs) });
     });
 
     let lastRows = untracked(() => this.rowData());
@@ -344,46 +333,48 @@ export class AwbGrid implements OnDestroy {
       const rows = this.rowData();
       if (rows === lastRows || this.rowModelType() === "serverSide") return null;
       lastRows = rows;
-      return () => core.dispatch({ type: "rowDataSet", rows: rows ?? [] });
+      return () => api.setRowData(rows ?? []);
     });
 
     this.syncEffect(() => {
-      const v = this.groupDisplayType() ?? "singleColumn";
-      return () => core.setGroupDisplayType(v);
+      const v = this.groupDisplayType();
+      return () => api.updateGridOptions({ groupDisplayType: v });
     });
 
     this.syncEffect(() => {
-      const v = this.groupSortMode() ?? "local";
-      return () => core.setGroupSortMode(v);
+      const v = this.groupSortMode();
+      return () => api.updateGridOptions({ groupSortMode: v });
     });
 
     this.syncEffect(() => {
-      const v = this.groupRowsSelectable() ?? false;
-      return () => core.setGroupRowsSelectable(v);
+      const v = this.groupRowsSelectable();
+      return () => api.updateGridOptions({ groupRowsSelectable: v });
     });
 
     this.keyedEffect(
       () => this.rowSelection(),
-      (value) => renderer.setRowSelectionOptions(value),
+      (value) => api.updateGridOptions({ rowSelection: value }),
     );
 
     this.syncEffect(() => {
       const treeData = this.treeData();
+      // Both keys are always supplied so each restates its current value rather than being read
+      // back off the core (the API's presence-based contract).
       return () =>
-        core.setTreeDataKeyboardNavigationOptions(
-          treeData?.keyboardNavigationMode ?? "grid",
-          treeData?.enableKeyboardNavigationModeSwitch ?? false,
-        );
+        api.setTreeDataKeyboardNavigationOptions({
+          keyboardNavigationMode: treeData?.keyboardNavigationMode,
+          enableKeyboardNavigationModeSwitch: treeData?.enableKeyboardNavigationModeSwitch ?? false,
+        });
     });
 
     this.syncEffect(() => {
       const opts = {
-        pinnedTopRowData: this.pinnedTopRowData() ?? [],
-        pinnedBottomRowData: this.pinnedBottomRowData() ?? [],
+        pinnedTopRowData: this.pinnedTopRowData(),
+        pinnedBottomRowData: this.pinnedBottomRowData(),
         isRowPinned: this.isRowPinned(),
-        groupRowsSticky: this.groupRowsSticky() ?? false,
+        groupRowsSticky: this.groupRowsSticky(),
       };
-      return () => renderer.setPinnedRowOptions(opts);
+      return () => api.updateGridOptions(opts);
     });
 
     this.syncEffect(() => {
@@ -400,6 +391,7 @@ export class AwbGrid implements OnDestroy {
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,
         columnSelection: this.columnSelection() ?? true,
+        headerKeyboardNavigation: this.headerKeyboardNavigation() ?? true,
         showColumnButtonsOnHover: this.showColumnButtonsOnHover() ?? false,
         // Function-valued customization is resolved through the body-menu adapter. Core only owns
         // whether the browser-native mode disables the grid menu entirely.
@@ -415,61 +407,60 @@ export class AwbGrid implements OnDestroy {
         commitOnBlur: this.commitOnBlur() ?? true,
         asyncTransactionWaitMs: this.asyncTransactionWaitMs() ?? 16,
       };
-      return () => renderer.setRuntimeOptions(opts);
+      return () => api.updateGridOptions(opts);
     });
 
     this.syncEffect(() => {
       const source = this.serverSideDataSource();
       if (this.rowModelType() !== "serverSide" || !source) return null;
-      return () => renderer.setServerSideDataSource(source);
+      return () => api.updateGridOptions({ serverSideDataSource: source });
     });
 
     this.syncEffect(() => {
       const source = this.serverSideAggregationSource();
       if (this.rowModelType() !== "serverSide" || !source) return null;
-      return () => renderer.setServerSideAggregation(source);
+      return () => api.updateGridOptions({ serverSideAggregationSource: source });
     });
 
     this.syncEffect(() => {
       const loading = this.loading();
-      return () => core.dispatch({ type: "overlayShow", overlayType: loading ? "loading" : "none" });
+      return () => api.dispatch({ type: "overlayShow", overlayType: loading ? "loading" : "none" });
     });
 
     this.syncEffect(() => {
-      const pagination = this.pagination() ?? false;
-      return () => renderer.togglePagination(pagination);
+      const pagination = this.pagination();
+      return () => api.updateGridOptions({ pagination });
     });
 
     this.keyedEffect(
       () => this.paginationControls(),
-      (options) => renderer.setPaginationControls(options),
+      (options) => api.updateGridOptions({ paginationControls: options }),
     );
 
     // Widget configs reconcile live without remounting the grid, but a rebuild on first run would
     // be disruptive (the create path already applied them), so these compare serialized contents
     // and skip the initial application — the Angular translation of the React wrapper's
     // JSON.stringify keys + mounted refs.
-    this.keyedEffect(() => this.quickFilter(), (v) => renderer.setQuickFilterOptions(v));
-    this.keyedEffect(() => this.tooltip(), (v) => renderer.setTooltipOptions(v));
-    this.keyedEffect(() => this.columnPanel(), (v) => renderer.setColumnPanelOptions(v));
-    this.keyedEffect(() => this.toolbar(), (v) => renderer.setToolbarOptions(v));
+    this.keyedEffect(() => this.quickFilter(), (v) => api.updateGridOptions({ quickFilter: v }));
+    this.keyedEffect(() => this.tooltip(), (v) => api.updateGridOptions({ tooltip: v }));
+    this.keyedEffect(() => this.columnPanel(), (v) => api.updateGridOptions({ columnPanel: v }));
+    this.keyedEffect(() => this.toolbar(), (v) => api.updateGridOptions({ toolbar: v }));
 
     // Saved views are application-owned. Reconcile a new list/callback object in place so a
     // persistence update immediately refreshes the Views menu without remounting the grid.
     this.syncEffect(() => {
       const savedViews = this.savedViews();
-      return () => renderer.setSavedViewsOptions(savedViews);
+      return () => api.updateGridOptions({ savedViews });
     });
 
     // Theme vars and icons are reconciled together: `icons` overrides any icons carried by
-    // `theme`, so recompute the merged set whenever either changes.
+    // `theme`, so recompute the merged set whenever either changes. The merge is done here (not
+    // left to the API's theme/icon resolution) because that resolution reads creation-time icons
+    // off the core's options, not the current input.
     this.syncEffect(() => {
       const theme = this.theme();
       const icons = this.icons();
-      return () => {
-        renderer.setThemeVars(theme);
-        renderer.setIcons({ ...theme?.getIcons(), ...icons });
-      };
+      return () => api.updateGridOptions({ theme, icons: { ...theme?.getIcons(), ...icons } });
     });
   }
 

@@ -1,5 +1,6 @@
 import { MenuItem } from "../interfaces/menuItem";
 import { isTrue } from "../misc";
+import { formatChord, type ChordSpec } from "./interaction/keyChord";
 
 export interface MenuParams {
   anchorEl?: HTMLElement;
@@ -40,7 +41,15 @@ export class MenuRenderer {
   private docKeyDownCapture?: (e: KeyboardEvent) => void;
   private winBlur?: () => void;
 
-  constructor(private root: HTMLElement) { }
+  constructor(
+    private root: HTMLElement,
+    /**
+     * The chord of the built-in binding registered under a menu command, if any — how "Copy" shows
+     * Ctrl+C without the item author writing it. Consulted per render, so a menu opened after an
+     * options change shows the current truth.
+     */
+    private shortcutForCommand?: (command: string) => ChordSpec | null,
+  ) { }
 
   open(params: MenuParams) {
     const {
@@ -403,6 +412,25 @@ export class MenuRenderer {
         container.appendChild(hr);
         continue;
       }
+      if (isTrue(item.isLabel)) {
+        // Static caption, not a command. Deliberately not a <button> and not role="menuitem": it
+        // must stay out of the arrow-key ring, and announcing it as a (disabled) action would be a
+        // lie. role="presentation" strips the div's implicit semantics while leaving its text in
+        // the accessibility tree.
+        const caption = document.createElement("div");
+        caption.className = "pte-menu-item pte-menu-item-label";
+        caption.setAttribute("role", "presentation");
+        caption.dataset.itemLabelId = item.id;
+        const captionText = document.createElement("span");
+        captionText.className = "pte-menu-item-text";
+        captionText.textContent = item.label || "";
+        caption.appendChild(captionText);
+        if (item.title) caption.title = item.title;
+        this.appendSlot(caption, item.left, "left");
+        this.appendSlot(caption, item.right, "right");
+        container.appendChild(caption);
+        continue;
+      }
       const el = document.createElement("button");
       el.type = "button";
       el.className = "pte-menu-item";
@@ -431,23 +459,47 @@ export class MenuRenderer {
         el.setAttribute("aria-expanded", "false");
         item.right = "icon-arrow-right";
       }
-      if (item.left) {
-        const left = document.createElement("span");
-        left.className = "pte-menu-item-icon pte-menu-item-icon-left";
-        if (typeof item.left === "string") left.classList.add(item.left);
-        else left.appendChild(item.left);
-        el.prepend(left);
-      }
-      if (item.right) {
-        const right = document.createElement("span");
-        right.className = "pte-menu-item-icon pte-menu-item-icon-right";
-        if (typeof item.right === "string") right.classList.add(item.right);
-        else right.appendChild(item.right);
-        el.appendChild(right);
-      }
+      this.appendSlot(el, item.left, "left");
+      this.appendSlot(el, item.right, "right");
+      this.appendShortcut(el, item);
       el.setAttribute("data-item-id", item.id);
       container.appendChild(el);
     }
+  }
+
+  /**
+   * Render a menu item's keyboard accelerator in the right slot's position, platform-formatted.
+   * An explicit `right` (or the submenu arrow, which overwrites `right` above) wins over the
+   * `shortcut` display hint, and the hint wins over the command lookup — the automatic path that
+   * shows a built-in binding's chord on the item carrying the same `command`. A text span, not an
+   * icon slot: `appendSlot` reads strings as CSS classes.
+   */
+  private appendShortcut(el: HTMLElement, item: MenuItem) {
+    if (item.right) return;
+    const chord = item.shortcut
+      ?? (item.command ? this.shortcutForCommand?.(item.command) ?? undefined : undefined);
+    if (!chord) return;
+    const shortcut = document.createElement("span");
+    shortcut.className = "pte-menu-item-shortcut";
+    shortcut.textContent = formatChord(chord);
+    // Hidden from AT: the accessible way to learn the binding is the shortcut reference, and
+    // "Copy, Ctrl plus C" read as one run-on name helps nobody.
+    shortcut.setAttribute("aria-hidden", "true");
+    el.appendChild(shortcut);
+  }
+
+  /**
+   * Render a menu item's icon slot. A string is applied as a CSS class on the icon span; an element
+   * is adopted as-is. The left slot leads the label, the right slot trails it.
+   */
+  private appendSlot(el: HTMLElement, slot: string | HTMLElement | undefined, side: "left" | "right") {
+    if (!slot) return;
+    const icon = document.createElement("span");
+    icon.className = `pte-menu-item-icon pte-menu-item-icon-${side}`;
+    if (typeof slot === "string") icon.classList.add(slot);
+    else icon.appendChild(slot);
+    if (side === "left") el.prepend(icon);
+    else el.appendChild(icon);
   }
 
   /** The focusable (enabled) items of a level, in visual order. */
