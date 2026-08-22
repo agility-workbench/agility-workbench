@@ -1112,6 +1112,10 @@ export class GridRenderer {
     const router = new KeyboardRouter([
       { scope: "editor", isActive: () => this.core.getEditingCell() != null, blocking: true },
       { scope: "embeddedControl", isActive: isFormControl, blocking: true },
+      // Application shortcuts registered with `override: true`: ahead of every built-in the user
+      // could mean to shadow, behind the two blocking scopes no shortcut may take the keyboard
+      // from. Reserved chords are refused at registration, so nothing here can break navigation.
+      { scope: "appOverride", isActive: () => true },
       {
         scope: "headerCursor",
         isActive: (e) => e.target === this.root && this.core.getHeaderFocusColIdx() != null,

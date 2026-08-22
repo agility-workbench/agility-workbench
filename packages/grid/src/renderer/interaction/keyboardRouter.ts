@@ -8,10 +8,15 @@ import { ChordSpec, matchesChord, parseChord } from "./keyChord";
  * - `editor`           — a cell editor is open and owns the keyboard.
  * - `embeddedControl`  — the event came from a form control inside the grid (filter inputs, the
  *                        quick-filter box, pagination controls).
+ * - `appOverride`      — application bindings registered with `override: true`. Ahead of every
+ *                        non-blocking built-in scope so an application can consciously shadow a
+ *                        built-in chord, but never ahead of an open editor or a focused form
+ *                        control, and reserved chords are refused before they can land here.
  * - `headerCursor`     — the header holds the keyboard cursor.
  * - `bodyCursor`       — the ordinary grid surface. Bindings here gate on an active cell themselves.
  * - `grid`             — whole-grid chords that do not depend on where the cursor is (Ctrl+F).
- * - `app`              — application-registered bindings; last, so they cannot shadow a built-in.
+ * - `app`              — ordinary application-registered bindings; last, so they cannot shadow a
+ *                        built-in.
  *
  * Overlays (menus, the filter popover, the action frame, tooltips) are deliberately absent: they
  * intercept on `document` in the capture phase, upstream of this router, and stop propagation for
@@ -21,6 +26,7 @@ import { ChordSpec, matchesChord, parseChord } from "./keyChord";
 export type KeyboardScope =
   | "editor"
   | "embeddedControl"
+  | "appOverride"
   | "headerCursor"
   | "bodyCursor"
   | "grid"
@@ -41,6 +47,13 @@ export interface KeyboardBinding {
   scope: KeyboardScope;
   /** Human-readable action, for the planned shortcut reference. */
   label?: string;
+  /**
+   * The menu command this binding is the accelerator for (`"body.copy"`). Menus render the
+   * binding's chord beside the item carrying the same command, so the two cannot drift. Only
+   * meaningful for commands whose menu item carries no distinguishing payload — a command that
+   * appears with several payloads (`sort.setMany` asc/desc) would show the chord on every variant.
+   */
+  command?: string;
   /**
    * Extra condition. Two bindings may share a chord within one scope only when at least one of
    * them is conditional — otherwise the second could never run and the router rejects it.
@@ -141,6 +154,19 @@ export class KeyboardRouter {
     list.sort((a, b) => Number(a.spec == null) - Number(b.spec == null));
     this.byScope.set(binding.scope, list);
     this.ids.add(key);
+  }
+
+  /**
+   * Remove a binding. Idempotent — application shortcuts are disposed from framework cleanup
+   * callbacks (React effects run teardown twice under StrictMode), so a second dispose of the same
+   * binding must be a no-op, not an error.
+   */
+  unregister(scope: KeyboardScope, id: string): void {
+    const key = `${scope}:${id}`;
+    if (!this.ids.delete(key)) return;
+    const list = this.byScope.get(scope);
+    if (!list) return;
+    this.byScope.set(scope, list.filter(binding => binding.id !== id));
   }
 
   /** Every registered binding, outermost scope last. For diagnostics and the discovery UI. */

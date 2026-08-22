@@ -508,11 +508,14 @@ export class SelectionRenderer {
         label: "Select all cells",
         run: () => core.dispatch({ type: "selectAll" }),
       },
+      // `command` ties each binding to the body-menu item that performs the same action, so the
+      // menu renders the chord beside the item and the two cannot drift.
       {
         id: "copy",
         chord: "mod+c",
         scope: "bodyCursor",
         label: "Copy",
+        command: "body.copy",
         run: () => this.params.clipboard().copy(),
       },
       {
@@ -520,6 +523,7 @@ export class SelectionRenderer {
         chord: "mod+x",
         scope: "bodyCursor",
         label: "Cut",
+        command: "body.cut",
         run: () => this.params.clipboard().cut(),
       },
       {
@@ -527,6 +531,7 @@ export class SelectionRenderer {
         chord: "mod+v",
         scope: "bodyCursor",
         label: "Paste",
+        command: "body.paste",
         run: () => void this.params.clipboard().paste(),
       },
       {

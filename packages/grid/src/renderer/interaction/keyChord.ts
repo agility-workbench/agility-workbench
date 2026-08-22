@@ -93,6 +93,66 @@ export function matchesAnyChord(e: KeyboardEvent, chords: readonly (ChordSpec | 
   return chords.some(chord => matchesChord(e, chord));
 }
 
+/** True on macOS (and iOS), where `mod` means Cmd and modifiers are shown as symbols. */
+export function isMacPlatform(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const platform =
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
+    ?? navigator.platform
+    ?? "";
+  return /mac|iphone|ipad|ipod/i.test(platform);
+}
+
+/** Display names for keys whose canonical name is not itself presentable. Arrows are glyphs on
+ * every platform (they have no word form on a keycap); everything else is a word. */
+const KEY_DISPLAY: Record<string, string> = {
+  arrowup: "↑",
+  arrowdown: "↓",
+  arrowleft: "←",
+  arrowright: "→",
+  space: "Space",
+  escape: "Esc",
+  enter: "Enter",
+  tab: "Tab",
+  home: "Home",
+  end: "End",
+  pageup: "PgUp",
+  pagedown: "PgDn",
+  delete: "Del",
+  backspace: "Backspace",
+};
+
+function displayKey(key: string): string {
+  // Single characters uppercase ("k" → "K"); anything else capitalizes ("f2" → "F2", "insert" →
+  // "Insert").
+  return KEY_DISPLAY[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+}
+
+/**
+ * A chord as the user should read it: `"mod+shift+k"` renders as `⇧⌘K` on macOS (HIG modifier
+ * order — Option, Shift, Command — with no separators) and `Ctrl+Shift+K` elsewhere. Used by menu
+ * accelerators and the planned shortcut reference. A modifier marked `"any"` is not part of the
+ * chord's identity and is omitted. `mac` is overridable for tests and previews; it defaults to the
+ * running platform.
+ */
+export function formatChord(chord: ChordSpec | string, opts: { mac?: boolean } = {}): string {
+  const spec = typeof chord === "string" ? parseChord(chord) : chord;
+  const mac = opts.mac ?? isMacPlatform();
+  const held = (state: ModifierState | undefined) => state === true;
+  if (mac) {
+    return (held(spec.alt) ? "⌥" : "")
+      + (held(spec.shift) ? "⇧" : "")
+      + (held(spec.mod) ? "⌘" : "")
+      + displayKey(spec.key);
+  }
+  const parts: string[] = [];
+  if (held(spec.mod)) parts.push("Ctrl");
+  if (held(spec.alt)) parts.push("Alt");
+  if (held(spec.shift)) parts.push("Shift");
+  parts.push(displayKey(spec.key));
+  return parts.join("+");
+}
+
 /**
  * A key matched whatever modifiers are held.
  *
