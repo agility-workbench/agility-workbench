@@ -42,9 +42,10 @@ React and Angular expose `rowData` through their bindings; core integrations use
 
 | Option | Type | Default |
 | --- | --- | --- |
-| `cellSelection` | `boolean \| "text"` | `true` |
+| `cellSelection` | `boolean \| "text"` | `true` (`false`/`"text"` also disable the body keyboard cursor — navigation, clipboard, and editing keys) |
 | `rangeSelection` | `boolean` | `true` |
 | `columnSelection` | `boolean` | `true` |
+| `headerKeyboardNavigation` | `boolean` | `true` (`false` makes header sort/menu/selection mouse-only) |
 | `rowSelection` | `boolean \| RowSelectionOptions` | `false` (object form configures mode and the checkbox column) |
 | `selectAllScope` | `"filtered" \| "page"` | `"filtered"` (select-all and `areAllRowsSelected` span the whole filtered set) |
 | `selectionPersistence` | `"clear" \| "keep"` | `"clear"` (row selection on filter/sort/quick-filter changes) |

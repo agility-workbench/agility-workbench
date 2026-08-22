@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { canonicalKey, chordOf, matchesChord, parseChord } from "./keyChord";
+import { canonicalKey, chordOf, formatChord, matchesChord, parseChord } from "./keyChord";
 
 function key(init: Partial<KeyboardEventInit> & { key: string; code?: string }): KeyboardEvent {
   return new KeyboardEvent("keydown", init);
@@ -88,5 +88,28 @@ describe("parseChord", () => {
 
   it("rejects a chord with no key", () => {
     expect(() => parseChord("mod+shift")).toThrow(/no key/);
+  });
+});
+
+describe("formatChord", () => {
+  it("spells modifiers per platform: HIG symbols on mac, Ctrl+Alt+Shift words elsewhere", () => {
+    expect(formatChord("mod+shift+k", { mac: false })).toBe("Ctrl+Shift+K");
+    expect(formatChord("mod+alt+shift+k", { mac: false })).toBe("Ctrl+Alt+Shift+K");
+    // Apple's modifier order is Option, Shift, Command, with no separators.
+    expect(formatChord("mod+shift+k", { mac: true })).toBe("⇧⌘K");
+    expect(formatChord("mod+alt+shift+k", { mac: true })).toBe("⌥⇧⌘K");
+  });
+
+  it("renders arrows as glyphs on both platforms and names the other keys", () => {
+    expect(formatChord("mod+arrowright", { mac: false })).toBe("Ctrl+→");
+    expect(formatChord("mod+arrowright", { mac: true })).toBe("⌘→");
+    expect(formatChord("pageup", { mac: false })).toBe("PgUp");
+    expect(formatChord("space", { mac: true })).toBe("Space");
+    expect(formatChord("shift+f2", { mac: false })).toBe("Shift+F2");
+  });
+
+  it("omits \"any\" modifiers — they are not part of the chord's identity", () => {
+    expect(formatChord({ key: "enter", mod: "any", shift: "any" }, { mac: false })).toBe("Enter");
+    expect(formatChord({ key: "home", mod: true, shift: "any" }, { mac: false })).toBe("Ctrl+Home");
   });
 });

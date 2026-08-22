@@ -18,7 +18,10 @@ keyboard, clipboard, export, and API workflows.
 ## Selection modes
 
 - `cellSelection: true` enables grid focus and selection.
-- `cellSelection: "text"` restores native browser text selection.
+- `cellSelection: "text"` restores native browser text selection. Both `"text"` and `false`
+  also disable the body keyboard cursor: navigation, clipboard, and editing keys operate on the
+  cursor, so they go with it (keyboard row selection included). The header keyboard cursor stays —
+  disable it separately with `headerKeyboardNavigation: false` if the grid is deliberately inert.
 - `rangeSelection` enables drag and Shift-extension.
 - `rowSelection` uses the row-number cells for row selection.
 - `rowSelection: { mode: "multiple", checkboxes: true }` adds a dedicated checkbox column

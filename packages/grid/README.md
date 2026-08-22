@@ -510,15 +510,66 @@ The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow`
 characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
 `Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
 
-### Planned keyboard-shortcut discovery
+Two options decide how much of this keyboard surface exists. `cellSelection` governs the body
+cursor: with `false` (inert cells) or `"text"` (native text selection), the body scope goes dark as
+a unit — navigation, paging, select-all, clipboard, editing keys, and keyboard row selection all
+operate on or through the cursor, so none of them means anything without it. `headerKeyboardNavigation`
+(default `true`) governs the header cursor the same way; turning it off makes sorting, column
+selection, and the column menu mouse-only — which also makes them unreachable for keyboard and AT
+users, so leave it on unless the grid is deliberately inert. Both reconcile live through
+`updateGridOptions`.
 
-A future grid-owned shortcut reference must show the shortcuts that are valid for the current
-context rather than a static global list. It should account for the active keyboard-navigation
-mode, focused area/cell, hierarchy availability, selection and editing state, enabled features, and
-platform-specific Ctrl/Cmd labels. It must be reachable from within the grid by keyboard and
-pointer, expose the active navigation mode, and update immediately when runtime options or focus
-change. The binding table above is what makes that buildable: it already carries a `label` per
-binding, so the panel can be a filtered view of it rather than a hand-maintained list.
+### Application shortcuts
+
+`api.registerShortcut` adds an application binding to the same table, per grid instance — it fires
+only while focus is inside that grid:
+
+```ts
+const off = api.registerShortcut({
+  id: "approve",
+  chord: "mod+shift+y",           // mod = Ctrl on Windows/Linux, Cmd on macOS
+  label: "Approve the selected rows",
+  when: () => hasApprovableSelection(),
+  run: () => approveRows(api.getSelection()),
+});
+// later (framework cleanup — disposing twice is safe):
+off();
+```
+
+Application bindings resolve *after* every built-in, so they can never shadow one by accident;
+`override: true` registers ahead of the non-blocking built-in scopes instead, for chords the
+application consciously takes over (`mod+f`, the clipboard triple). An open cell editor or a
+focused filter input still owns the keyboard completely, override or not.
+
+Some chords are **reserved** and refused with a thrown error — but reservation is a predicate over
+the live configuration, not a static list. Tab (focus traversal) and Escape (overlay dismissal) are
+reserved always. The navigation cluster — arrows, `Home`/`End`, `Enter`, `Space`, and for the body
+`PageUp`/`PageDown` — is reserved, under any modifiers, *while a surface that uses it is on*:
+disable `cellSelection` and `headerKeyboardNavigation` and a display-only grid frees all of them
+for the application. A shortcut registered while a feature was off goes dormant if the feature is
+later re-enabled (the built-in wins again) and wakes when it is turned back off.
+`mod+alt+<printable>` chords are refused outright: Windows AltGr reports as Ctrl+Alt, so such a
+shortcut would fire while a user merely types an accented character.
+
+Menus can show accelerators in two ways. A built-in item whose `command` has a keyboard binding
+shows that binding's chord automatically (Copy shows `Ctrl+C` / `⌘C`), so the menu and the keymap
+cannot drift. Application items take `shortcut: "mod+shift+y"` as a **display hint** — menus are
+built per open, so nothing is harvested from item lists; register the real binding separately and
+write the same chord in both places. An explicit `right` slot (and the submenu arrow) wins over the
+accelerator.
+
+### Keyboard-shortcut discovery
+
+`api.getKeyboardShortcuts()` returns the whole binding table — built-ins and application shortcuts,
+innermost scope first — as `{ id, scope, chord?, label?, command? }` rows. Format a row's chord for
+the user with the exported `formatChord(chord)`: `⇧⌘K` on macOS, `Ctrl+Shift+K` elsewhere, arrow
+glyphs on both. Pattern bindings (type-to-edit) appear without a chord.
+
+A grid-owned shortcut reference *panel* is still planned: it should show the shortcuts valid for
+the current context — active navigation mode, focused area, selection and editing state, enabled
+features — rather than a static global list, be reachable from within the grid by keyboard and
+pointer, and update when runtime options or focus change. `getKeyboardShortcuts()` is what makes it
+buildable as a filtered view rather than a hand-maintained list.
 
 ## Styling
 

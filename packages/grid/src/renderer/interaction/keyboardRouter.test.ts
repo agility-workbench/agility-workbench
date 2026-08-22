@@ -208,4 +208,37 @@ describe("KeyboardRouter registration", () => {
     expect(router.getBindings().map(b => b.id)).toEqual(["body.copy", "grid.quickFilter"]);
     expect(router.getBindings()[1].label).toBe("Quick filter");
   });
+
+  it("unregisters a binding, idempotently, freeing its id and chord for re-registration", () => {
+    const router = new KeyboardRouter(chain({}));
+    const first = vi.fn();
+    router.register([binding({ id: "app.x", chord: "mod+shift+k", scope: "app", run: first })]);
+
+    router.unregister("app", "app.x");
+    router.unregister("app", "app.x"); // second dispose is a no-op, not an error
+    expect(router.handleKeyDown(key({ key: "k", ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(first).not.toHaveBeenCalled();
+
+    // Both the id and the unconditional chord claim are gone.
+    const second = vi.fn();
+    expect(() => router.register([
+      binding({ id: "app.x", chord: "mod+shift+k", scope: "app", run: second }),
+    ])).not.toThrow();
+    expect(router.handleKeyDown(key({ key: "k", ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("reduces bindings to shortcut-table rows, chord-less for patterns", () => {
+    const router = new KeyboardRouter(chain({}));
+    router.register([
+      binding({ id: "copy", chord: "mod+c", scope: "bodyCursor", label: "Copy", command: "body.copy" }),
+      { id: "typeToEdit", pattern: () => false, scope: "bodyCursor", run: () => undefined },
+    ]);
+
+    const [copy, typeToEdit] = router.getShortcutInfo();
+    expect(copy).toMatchObject({ id: "copy", scope: "bodyCursor", label: "Copy", command: "body.copy" });
+    expect(copy.chord).toEqual({ key: "c", mod: true, alt: false, shift: false });
+    expect(typeToEdit).toMatchObject({ id: "typeToEdit", scope: "bodyCursor" });
+    expect(typeToEdit.chord).toBeUndefined();
+  });
 });
