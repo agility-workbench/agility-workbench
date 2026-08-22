@@ -32,16 +32,15 @@ beforeEach(() => {
   document.body.appendChild(host);
 });
 
-/** Mounted with no columnDefs, so the schema starts unowned (`schemaSource: "auto"`). */
+/** Mounted with no columnDefs, so the schema starts unowned (`schemaSource: "auto"`). No font
+ * seeding: a columnless mount never builds a header, so the font probe (themeFontSet) has not run
+ * when the first defs arrive — these tests double as regression coverage for the autosize crash
+ * that gap used to cause (textMeasureParams is now seeded with defaults at declaration). */
 function mountUnowned(): IGridAPI {
-  const api = createGrid(host, {
+  return createGrid(host, {
     rowIdKey: "id",
     rowData: [{ id: 1, name: "Widget", price: 9.99 }],
   });
-  // A columnless mount never builds a header, so the font probe (themeFontSet) has not run and the
-  // first autosize over real row values would crash. Seed the fonts the way core tests do.
-  api.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
-  return api;
 }
 
 const APP_DEFS = [
@@ -138,6 +137,22 @@ describe("column schema ownership", () => {
     // Props contract: [] clears only when the caller already owns the schema.
     api.updateGridOptions({ columnDefs: [] });
     expect(labels(api)).toEqual(["SKU"]);
+  });
+
+  it("first defs over already-present rows autosize from cell values without a font probe", () => {
+    // The regression: a columnless mount never builds a header, so the font probe has not run when
+    // the first defs arrive. Autosize then measured cell values against undefined fonts and threw
+    // (`params.cellFont` on undefined). The value here is long enough that the cell measurement —
+    // not the header fallback — must decide the width, proving that path actually executed.
+    const longName = "An unreasonably long widget description that outmeasures the header";
+    const api = createGrid(host, {
+      rowIdKey: "id",
+      rowData: [{ id: 1, name: longName }],
+    });
+    api.setColumnDefs([{ colId: "name", key: "name", label: "Name", type: ColumnType.STRING }]);
+
+    const [nameCol] = api.getColumnModel().getLeaves();
+    expect(nameCol.computedWidth).toBeGreaterThan(longName.length * 7); // cell text won, at 7px/char
   });
 
   it("dedupes an unchanged server schema by version, and by signature without one", () => {

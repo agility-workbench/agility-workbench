@@ -795,7 +795,7 @@ export class ColumnModel implements IColumnModel {
     }
 
     longestText = col.formatValue(this.cellValueForWidth(col, longestRow), longestRow);
-    const longestWidth = this.measureText(longestText, measureCtx, params.cellFont ?? "14px Arial");
+    const longestWidth = this.measureText(longestText, measureCtx, params?.cellFont ?? "14px Arial");
     if (longestWidth > maxWidth) {
       maxWidth = longestWidth;
     }

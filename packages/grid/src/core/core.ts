@@ -116,7 +116,9 @@ export class GridCore implements IGridCore {
   private serverSchemaSignature: string | undefined;
 
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
-  private textMeasureParams!: TextMeasureParams;
+  // Seeded with the measure-path fallback fonts so autosize is safe before the first header build
+  // probes the real theme fonts (themeFontSet re-runs autosize, so these widths never survive).
+  private textMeasureParams: TextMeasureParams = { headerFont: "500 14px Arial", cellFont: "14px Arial" };
 
   private selectionModel: SelectionModel;
   /** Baseline for the row-id delta attached to selectionChanged events. */
@@ -2399,7 +2401,6 @@ export class GridCore implements IGridCore {
         this.emit("overlayShow", { overlayType: action.overlayType });
         break;
       case "themeFontSet":
-        console.log("Setting theme fonts", "Reason:", action.reason);
         this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
         let themeFontChangedColIds: string[] = [];
         if (action.reason !== "visibility" && action.reason !== "pin") {
