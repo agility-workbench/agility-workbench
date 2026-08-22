@@ -246,7 +246,10 @@ export class GridRenderer {
     this.setTheme(this.core.getOptions().theme);
     this.setIcons(this.core.getOptions().icons);
 
-    this._menuRenderer = new MenuRenderer(this.root);
+    // The command lookup closes over the router, which is built later in this constructor; menus
+    // only open long after both exist.
+    this._menuRenderer = new MenuRenderer(this.root, (command) =>
+      this._keyboardRouter.getShortcutInfo().find(row => row.command === command)?.chord ?? null);
     this._coreEventBinder = new GridRendererCoreEventBinder({
       core: this.core,
       setLoading: (isLoading) => this.setLoading(isLoading),
