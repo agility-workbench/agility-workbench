@@ -3,10 +3,13 @@ import { ColDef } from "../interfaces/column";
 import {
   ExportParams,
   GridApiConfigController,
+  GridApiShortcutController,
   IGridAPI,
   NavDir,
   RowScrollPosition,
 } from "../interfaces/iGridAPI";
+import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
+import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
 import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore";
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { IBodyMenuAdapter } from "../interfaces/iBodyMenuAdapter";
@@ -94,6 +97,7 @@ export class GridAPI implements IGridAPI {
   private _pinnedRows: GridApiPinnedRowsController | null = null;
   private _config: GridApiConfigController | null = null;
   private _menuAdapters: GridApiMenuAdapterController | null = null;
+  private _shortcuts: GridApiShortcutController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
 
   constructor(private core: IGridCore) {}
@@ -152,6 +156,30 @@ export class GridAPI implements IGridAPI {
       return;
     }
     this._menuAdapters.setBodyMenuAdapter(adapter);
+  }
+
+  /**
+   * Wire the keyboard-shortcut hooks. Called by the renderer on attach; before that,
+   * `registerShortcut` warns and does nothing.
+   */
+  setShortcutController(controller: GridApiShortcutController): void {
+    this._shortcuts = controller;
+  }
+
+  registerShortcut(shortcut: GridShortcut): () => void {
+    if (!this._shortcuts) {
+      console.warn("registerShortcut called on an api with no keyboard wiring; ignoring.");
+      return () => undefined;
+    }
+    return this._shortcuts.register(shortcut);
+  }
+
+  getKeyboardShortcuts(): readonly KeyboardShortcutInfo[] {
+    if (!this._shortcuts) {
+      console.warn("getKeyboardShortcuts called on an api with no keyboard wiring; returning [].");
+      return [];
+    }
+    return this._shortcuts.getShortcuts();
   }
 
   // ---------------- Live reconfiguration ----------------

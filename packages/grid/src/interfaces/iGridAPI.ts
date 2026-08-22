@@ -22,6 +22,8 @@ import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
 import type { Column } from "../column/column";
+import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
+import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -125,6 +127,16 @@ export interface GridApiConfigController {
   setServerSideAggregation: (source: GridOptions["serverSideAggregationSource"]) => void;
 }
 
+/**
+ * Keyboard-shortcut hooks provided by the renderer once it is attached (it owns the keyboard
+ * router). Internal wiring for {@link IGridAPI.registerShortcut} and
+ * {@link IGridAPI.getKeyboardShortcuts}: hosts call those, not this.
+ */
+export interface GridApiShortcutController {
+  register: (shortcut: GridShortcut) => () => void;
+  getShortcuts: () => readonly KeyboardShortcutInfo[];
+}
+
 export interface IGridAPI {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
@@ -167,6 +179,36 @@ export interface IGridAPI {
    * the adapter.
    */
   registerBodyMenuAdapter(adapter: IBodyMenuAdapter | null): void;
+
+  /**
+   * Register an application keyboard shortcut on this grid instance. It fires only while focus is
+   * inside this grid (the listener lives on the grid root), below every built-in binding — or above
+   * the non-blocking ones with `override: true`. Returns the disposer; registering is idempotent to
+   * dispose twice, so framework cleanup (React StrictMode) is safe.
+   *
+   * Refused with a thrown error: reserved chords (Tab and Escape always; navigation keys while the
+   * feature that claims them is on — see the error message for which switch frees the key),
+   * `mod+alt+<printable>` chords (Windows AltGr), and a duplicate live `id` or duplicate
+   * unconditional chord. A shortcut registered while a feature was off goes dormant if the feature
+   * is later re-enabled, and wakes when it is disabled again.
+   *
+   * ```ts
+   * const off = api.registerShortcut({
+   *   id: "approve",
+   *   chord: "mod+shift+y",
+   *   label: "Approve the selected rows",
+   *   run: () => approveRows(api.getSelection()),
+   * });
+   * ```
+   */
+  registerShortcut(shortcut: GridShortcut): () => void;
+
+  /**
+   * Every keyboard binding currently registered — built-ins and application shortcuts — innermost
+   * scope first, as data for a shortcut-reference UI. Format each row's `chord` for the user with
+   * `formatChord`. Pattern bindings (type-to-edit) appear without a `chord`.
+   */
+  getKeyboardShortcuts(): readonly KeyboardShortcutInfo[];
 
   /** Dispatch an action to the core. */
   dispatch(action: GridAction): void;

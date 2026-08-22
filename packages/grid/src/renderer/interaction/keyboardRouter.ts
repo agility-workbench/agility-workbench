@@ -1,6 +1,20 @@
 import { ChordSpec, matchesChord, parseChord } from "./keyChord";
 
 /**
+ * One row of the shortcut table (`api.getKeyboardShortcuts()`): a binding reduced to what a
+ * discovery UI or a menu accelerator needs. `chord` is the exact-match spec — format it for the
+ * user with `formatChord` — and is absent for pattern bindings (type-to-edit has no chord to name).
+ */
+export interface KeyboardShortcutInfo {
+  id: string;
+  scope: KeyboardScope;
+  chord?: ChordSpec;
+  label?: string;
+  /** The menu command this binding accelerates (see {@link KeyboardBinding.command}). */
+  command?: string;
+}
+
+/**
  * Where a binding lives. Resolution walks these innermost-first, so a chord can mean different
  * things in different scopes — `enter` activates a menu item, edits a body cell, and commits an
  * editor, and none of those is a conflict.
@@ -172,6 +186,17 @@ export class KeyboardRouter {
   /** Every registered binding, outermost scope last. For diagnostics and the discovery UI. */
   getBindings(): readonly KeyboardBinding[] {
     return this.scopes.flatMap(({ scope }) => this.byScope.get(scope) ?? []);
+  }
+
+  /** {@link getBindings}, reduced to the public shortcut-table rows. */
+  getShortcutInfo(): readonly KeyboardShortcutInfo[] {
+    return this.scopes.flatMap(({ scope }) => (this.byScope.get(scope) ?? []).map(binding => ({
+      id: binding.id,
+      scope,
+      chord: binding.spec ?? undefined,
+      label: binding.label,
+      command: binding.command,
+    })));
   }
 
   /**

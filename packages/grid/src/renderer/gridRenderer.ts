@@ -10,7 +10,7 @@ import { ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
 import { div } from "./element";
 import { GridCore } from "../core/core";
-import { GridApiConfigController, IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
+import { GridApiConfigController, GridApiShortcutController, IGridAPI, RowScrollPosition } from "../interfaces/iGridAPI";
 import { GridRendererCoreEventBinder } from "./coreEventBinder";
 import { ExportRenderer } from "./exportRenderer";
 import { GridIconMap } from "../theme/icons";
@@ -59,6 +59,7 @@ import { IconRenderer } from "./iconRenderer";
 import { ThemeRenderer } from "./themeRenderer";
 import { GridInteractionEventBinder } from "./interaction/eventBinder";
 import { KeyboardBinding, KeyboardRouter } from "./interaction/keyboardRouter";
+import { AppShortcutRegistry } from "./interaction/shortcutPolicy";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
@@ -116,6 +117,8 @@ export class GridRenderer {
   _columnInteractionRenderer: ColumnInteractionRenderer;
   _headerInteractionHandler: HeaderInteractionHandler;
   private _keyboardRouter: KeyboardRouter;
+  // Assigned inside buildKeyboardRouter (called from the constructor).
+  private _appShortcuts!: AppShortcutRegistry;
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
@@ -632,6 +635,16 @@ export class GridRenderer {
     // within one scope throws here rather than surfacing as a keystroke that quietly does the wrong
     // thing.
     this._keyboardRouter = this.buildKeyboardRouter();
+    // Expose application shortcuts on the public API (api.registerShortcut /
+    // api.getKeyboardShortcuts). Probed structurally to avoid a renderer→api import cycle,
+    // matching the exporter hook above.
+    const apiWithShortcuts = this.api as unknown as {
+      setShortcutController?: (controller: GridApiShortcutController) => void;
+    };
+    apiWithShortcuts.setShortcutController?.({
+      register: (shortcut) => this._appShortcuts.register(shortcut),
+      getShortcuts: () => this._keyboardRouter.getShortcutInfo(),
+    });
     this._interactionEventBinder = new GridInteractionEventBinder({
       root: this.root,
       headerWrapper: headerRefs.wrapper,
@@ -1145,6 +1158,10 @@ export class GridRenderer {
     ]);
     router.register(this._headerInteractionHandler.keyboardBindings());
     router.register(this._selectionRenderer.keyboardBindings());
+
+    // Application shortcuts (api.registerShortcut) validate against the live options — reservation
+    // is a predicate over the current configuration, not a static list.
+    this._appShortcuts = new AppShortcutRegistry(router, () => this.core.options);
     return router;
   }
 
