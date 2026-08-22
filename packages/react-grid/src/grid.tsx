@@ -1,18 +1,14 @@
 import React, { useLayoutEffect, useRef } from "react";
 import { GridProps } from "./interface";
-import { GridRenderer } from "@agility-workbench/grid";
-import type { IGridCore } from "@agility-workbench/grid";
-import { createCore, getGridOptions } from "./factory";
+import { createGrid } from "@agility-workbench/grid";
+import { getGridOptions } from "./factory";
 import type { IGridAPI } from "@agility-workbench/grid";
 import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
-import { initDomRenderer } from "@agility-workbench/grid";
 import { adaptReactColumnDefs } from "./cellRenderer";
 import { adaptReactGetRowPresentation } from "./cellRenderer";
 
 type GridInstance = {
-  core: IGridCore;
-  renderer: GridRenderer;
   api: IGridAPI;
   destroyed: boolean;
 };
@@ -30,17 +26,11 @@ function destroyInstance(instance: GridInstance): void {
   if (instance.destroyed) return;
   instance.destroyed = true;
 
+  // createGrid's api.destroy() performs the whole guarded teardown (detach → renderer.destroy →
+  // core.destroy → api cleanup) in that order, exactly once. The flag above keeps this wrapper
+  // idempotent too, since React can run the cleanup twice.
   try {
-    instance.renderer.detach();
-  } catch { }
-  try {
-    instance.renderer.destroy();
-  } catch { }
-  try {
-    instance.core.destroy();
-  } catch { }
-  try {
-    instance.api.destroy?.();
+    instance.api.destroy();
   } catch { }
 }
 
@@ -91,13 +81,15 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // Value-returning hook: an absent callback returns undefined, which core reads as "accept".
       options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);
 
-      const core = createCore(options);
-      const { renderer, api } = initDomRenderer(
-        core,
-        new ReactMenuAdapter({
+      // columnDefs / rowData are deliberately NOT passed to createGrid: the two mount effects below
+      // apply them in this same commit (init → columnDefs → rowData, the order createGrid itself
+      // uses), so mount and update share one code path.
+      const api = createGrid(host, {
+        ...options,
+        menuAdapter: new ReactMenuAdapter({
           getColumnMenuItems: (params) => getColumnMenuItemsRef.current?.(params) ?? params.items,
         }),
-        new ReactBodyMenuAdapter({
+        bodyMenuAdapter: new ReactBodyMenuAdapter({
           // Only the function arm customizes items here; boolean modes (default / native-menu) are
           // handled via core options forwarded by getGridOptions. Read the ref so the callback stays
           // reactive to prop changes without recreating the grid instance.
@@ -106,12 +98,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
             return typeof opt === "function" ? opt(params) : params.items;
           },
         }),
-      );
-      const instance: GridInstance = { core, renderer, api, destroyed: false };
+      });
+      const instance: GridInstance = { api, destroyed: false };
       instanceRef.current = instance;
 
-      renderer.attach(host);
-      core.dispatch({ type: "init" });
       assignRef(forwardedRef, api);
       assignRef(props.apiRef, api);
       onGridReadyRef.current?.(api);
@@ -143,18 +133,20 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
 
     // Forward data / columnDefs to core on change (NOT on scroll).
     useLayoutEffect(() => {
-      const core = instanceRef.current?.core;
-      if (!core) return;
-      core.setColumnDefsFromProps(adaptReactColumnDefs(props.columnDefs));
+      const api = instanceRef.current?.api;
+      if (!api) return;
+      // Presence-based: an undefined prop still carries the key, releasing caller ownership of the
+      // schema exactly as setColumnDefsFromProps(undefined) did.
+      api.updateGridOptions({ columnDefs: adaptReactColumnDefs(props.columnDefs) });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.columnDefs]);
 
     useLayoutEffect(() => {
-      const core = instanceRef.current?.core;
-      if (!core) return;
+      const api = instanceRef.current?.api;
+      if (!api) return;
       if (props.rowModelType === "serverSide") return;
-      core.dispatch?.({ type: "rowDataSet", rows: props.rowData ?? props.data ?? [] });
+      api.setRowData(props.rowData ?? props.data ?? []);
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.data, props.rowData, props.rowModelType]);
@@ -162,15 +154,15 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     // groupDisplayType changes the synthesized grouping columns and whether group nodes render as
     // full-width rows. Reconcile it explicitly so declarative prop changes do not require a key/remount.
     useLayoutEffect(() => {
-      instanceRef.current?.core.setGroupDisplayType(props.groupDisplayType ?? "singleColumn");
+      instanceRef.current?.api.updateGridOptions({ groupDisplayType: props.groupDisplayType });
     }, [props.groupDisplayType]);
 
     useLayoutEffect(() => {
-      instanceRef.current?.core.setGroupSortMode(props.groupSortMode ?? "local");
+      instanceRef.current?.api.updateGridOptions({ groupSortMode: props.groupSortMode });
     }, [props.groupSortMode]);
 
     useLayoutEffect(() => {
-      instanceRef.current?.core.setGroupRowsSelectable(props.groupRowsSelectable ?? false);
+      instanceRef.current?.api.updateGridOptions({ groupRowsSelectable: props.groupRowsSelectable });
     }, [props.groupRowsSelectable]);
 
     const rowSelectionKey = JSON.stringify(props.rowSelection ?? null);
@@ -181,26 +173,28 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         rowSelectionMountedRef.current = true;
         return;
       }
-      instanceRef.current?.renderer.setRowSelectionOptions(props.rowSelection);
+      instanceRef.current?.api.updateGridOptions({ rowSelection: props.rowSelection });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rowSelectionKey]);
 
     useLayoutEffect(() => {
-      instanceRef.current?.core.setTreeDataKeyboardNavigationOptions(
-        props.treeData?.keyboardNavigationMode ?? "grid",
-        props.treeData?.enableKeyboardNavigationModeSwitch ?? false,
-      );
+      // Both keys are always supplied so each restates its current value rather than being read
+      // back off the core (the API's presence-based contract).
+      instanceRef.current?.api.setTreeDataKeyboardNavigationOptions({
+        keyboardNavigationMode: props.treeData?.keyboardNavigationMode,
+        enableKeyboardNavigationModeSwitch: props.treeData?.enableKeyboardNavigationModeSwitch ?? false,
+      });
     }, [
       props.treeData?.keyboardNavigationMode,
       props.treeData?.enableKeyboardNavigationModeSwitch,
     ]);
 
     useLayoutEffect(() => {
-      instanceRef.current?.renderer.setPinnedRowOptions({
-        pinnedTopRowData: props.pinnedTopRowData ?? [],
-        pinnedBottomRowData: props.pinnedBottomRowData ?? [],
+      instanceRef.current?.api.updateGridOptions({
+        pinnedTopRowData: props.pinnedTopRowData,
+        pinnedBottomRowData: props.pinnedBottomRowData,
         isRowPinned: props.isRowPinned,
-        groupRowsSticky: props.groupRowsSticky ?? false,
+        groupRowsSticky: props.groupRowsSticky,
       });
     }, [
       props.pinnedTopRowData,
@@ -210,7 +204,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     ]);
 
     useLayoutEffect(() => {
-      instanceRef.current?.renderer.setRuntimeOptions({
+      instanceRef.current?.api.updateGridOptions({
         rowHover: props.rowHover ?? true,
         columnHover: props.columnHover ?? false,
         zebraRows: props.zebraRows ?? false,
@@ -271,7 +265,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const instance = instanceRef.current;
       if (!instance || props.rowModelType !== "serverSide") return;
       if (!props.serverSideDataSource) return;
-      instance.renderer.setServerSideDataSource(props.serverSideDataSource);
+      instance.api.updateGridOptions({ serverSideDataSource: props.serverSideDataSource });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.rowModelType, props.serverSideDataSource]);
@@ -280,25 +274,22 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const instance = instanceRef.current;
       if (!instance || props.rowModelType !== "serverSide") return;
       if (!props.serverSideAggregationSource) return;
-      instance.renderer.setServerSideAggregation(props.serverSideAggregationSource);
+      instance.api.updateGridOptions({ serverSideAggregationSource: props.serverSideAggregationSource });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.rowModelType, props.serverSideAggregationSource]);
 
     useLayoutEffect(() => {
-      const core = instanceRef.current?.core;
-      if (!core) return;
+      const api = instanceRef.current?.api;
+      if (!api) return;
 
-      core.dispatch({ type: "overlayShow", overlayType: props.loading ? "loading" : "none" });
+      api.dispatch({ type: "overlayShow", overlayType: props.loading ? "loading" : "none" });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.loading]);
 
     useLayoutEffect(() => {
-      const renderer = instanceRef.current?.renderer;
-      if (!renderer) return;
-
-      renderer.togglePagination(props.pagination ?? false);
+      instanceRef.current?.api.updateGridOptions({ pagination: props.pagination });
     }, [props.pagination]);
 
     const paginationControlsKey = JSON.stringify(props.paginationControls ?? null);
@@ -308,9 +299,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         paginationControlsMountedRef.current = true;
         return;
       }
-      const renderer = instanceRef.current?.renderer;
-      if (!renderer) return;
-      renderer.setPaginationControls(props.paginationControls);
+      instanceRef.current?.api.updateGridOptions({ paginationControls: props.paginationControls });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [paginationControlsKey]);
 
@@ -326,9 +315,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         quickFilterMountedRef.current = true;
         return;
       }
-      const renderer = instanceRef.current?.renderer;
-      if (!renderer) return;
-      renderer.setQuickFilterOptions(props.quickFilter);
+      instanceRef.current?.api.updateGridOptions({ quickFilter: props.quickFilter });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [quickFilterKey]);
 
@@ -342,9 +329,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         tooltipMountedRef.current = true;
         return;
       }
-      const renderer = instanceRef.current?.renderer;
-      if (!renderer) return;
-      renderer.setTooltipOptions(props.tooltip);
+      instanceRef.current?.api.updateGridOptions({ tooltip: props.tooltip });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tooltipKey]);
 
@@ -356,7 +341,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         columnPanelMountedRef.current = true;
         return;
       }
-      instanceRef.current?.renderer.setColumnPanelOptions(props.columnPanel);
+      instanceRef.current?.api.updateGridOptions({ columnPanel: props.columnPanel });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [columnPanelKey]);
 
@@ -369,23 +354,25 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         toolbarMountedRef.current = true;
         return;
       }
-      instanceRef.current?.renderer.setToolbarOptions(props.toolbar);
+      instanceRef.current?.api.updateGridOptions({ toolbar: props.toolbar });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolbarKey]);
 
     // Saved views are application-owned. Reconcile a new list/callback object in place so a
     // persistence update immediately refreshes the Views menu without remounting the grid.
     useLayoutEffect(() => {
-      instanceRef.current?.renderer.setSavedViewsOptions(props.savedViews);
+      instanceRef.current?.api.updateGridOptions({ savedViews: props.savedViews });
     }, [props.savedViews]);
 
     // Theme vars and icons are reconciled together: props.icons override any icons
-    // carried by props.theme, so recompute the merged set whenever either changes.
+    // carried by props.theme, so recompute the merged set whenever either changes. The merge is
+    // done here (not left to the API's theme/icon resolution) because that resolution reads
+    // creation-time icons off the core's options, not the current prop.
     useLayoutEffect(() => {
-      const renderer = instanceRef.current?.renderer;
-      if (!renderer) return;
-      renderer.setThemeVars(props.theme);
-      renderer.setIcons({ ...props.theme?.getIcons(), ...props.icons });
+      instanceRef.current?.api.updateGridOptions({
+        theme: props.theme,
+        icons: { ...props.theme?.getIcons(), ...props.icons },
+      });
     }, [props.theme, props.icons]);
 
     return (

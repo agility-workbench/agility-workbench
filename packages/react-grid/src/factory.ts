@@ -1,15 +1,10 @@
-import { GridCore, GridOptions } from "@agility-workbench/grid";
-import { CanvasMeasurer } from "@agility-workbench/grid";
+import { GridOptions } from "@agility-workbench/grid";
 import { GridProps } from "./interface";
 import {
   adaptCellRenderer,
   adaptReactDefaultColDef,
   adaptReactGetRowPresentation,
 } from "./cellRenderer";
-
-export function createCore(options: GridOptions): GridCore {
-  return new GridCore(new CanvasMeasurer(), options);
-}
 
 function setIfDefined<K extends keyof GridOptions>(
   options: GridOptions,

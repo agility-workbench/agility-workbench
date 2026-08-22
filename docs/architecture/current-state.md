@@ -339,8 +339,8 @@ packages/grid/src/
 
 packages/react-grid/src/                    React wrapper (@agility-workbench/react-grid)
 ├── index.ts                   `export * from grid` + Grid, GridProps, ReactCellRenderer/ColDef/TooltipComponent/ActionFrameComponent, ReactCellEditor
-├── grid.tsx                   Grid component — lifecycle, prop→core bridging, StrictMode-safe
-├── factory.ts                 createCore, createApi, getGridOptions helpers
+├── grid.tsx                   Grid component — createGrid lifecycle, prop→API reconciliation (updateGridOptions), StrictMode-safe
+├── factory.ts                 getGridOptions (props → GridOptions snapshot)
 ├── interface.ts               GridProps (extends GridOptions; React-aware defaultColDef / fullWidthCellRenderer / bodyContextMenu)
 ├── cellRenderer.ts            React adapters: adaptCellRenderer/adaptTooltip/adaptActionFrame/adaptReactColDef; ReactColDef, ReactDefaultColDef
 ├── cellEditor.ts              ReactCellEditor, ReactCellEditorHandle types
@@ -350,8 +350,8 @@ packages/react-grid/src/                    React wrapper (@agility-workbench/re
 
 packages/angular-grid/src/                  Angular wrapper (@agility-workbench/angular-grid, Angular ≥ 20.3)
 ├── public-api.ts              `export * from grid` + AwbGrid, NgColDef/NgDefaultColDef, ICellRendererNgComp/ITooltipNgComp/IActionFrameNgComp/ICellEditorNgComp, NgMenuItem/NgMenuSlot
-├── grid.component.ts          <awb-grid> — signal inputs, sync effects, outputs; core created outside the NgZone
-├── factory.ts                 createCore, getGridOptions (reads signal inputs)
+├── grid.component.ts          <awb-grid> — signal inputs, sync effects (updateGridOptions), outputs; createGrid outside the NgZone
+├── factory.ts                 getGridOptions (reads signal inputs)
 ├── interface.ts               NgColDef + the optional awbInit/awbRefresh component contracts
 ├── adapters.ts                NgAdapters — mounts Angular components (createComponent) into core class-component slots: cellRenderer/tooltip/actionFrame/cellEditor + colDef/defaultColDef adaptation
 ├── menu.ts                    NgMenuItem (slots: string | HTMLElement | TemplateRef)

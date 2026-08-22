@@ -1,10 +1,6 @@
-import { CanvasMeasurer, GridCore, GridOptions } from "@agility-workbench/grid";
+import { GridOptions } from "@agility-workbench/grid";
 import type { NgAdapters } from "./adapters";
 import type { AwbGrid } from "./grid.component";
-
-export function createCore(options: GridOptions): GridCore {
-  return new GridCore(new CanvasMeasurer(), options);
-}
 
 function setIfDefined<K extends keyof GridOptions>(
   options: GridOptions,
