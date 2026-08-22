@@ -27,6 +27,11 @@ import { formatDate, mulberry32, picker } from "../helpers";
  * `headerKeyboardNavigation` (false makes the header mouse-only). Both reconcile live through
  * `api.updateGridOptions`. The shortcut table is rendered with `formatChord`, so macOS shows
  * ⌘⇧-style chords and other platforms Ctrl+Shift+.
+ *
+ * The "App shortcuts" panel exercises `api.registerShortcut`: a fresh chord (Ctrl+Shift+Y) that no
+ * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
+ * filter while registered and hands the chord back on dispose. The panel lists the live app
+ * bindings straight from `api.getKeyboardShortcuts()`.
  */
 
 type EmployeeRow = {
@@ -258,6 +263,70 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   const summary = h("div", { style: { fontSize: "13px", fontWeight: "600" } });
   const detail = h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" } });
   const firstCell = h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" } });
+  const lastFired = h("code", { text: "—" });
+  const appShortcutList = h("div", {
+    style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" },
+    dataset: { appShortcutList: "" },
+  });
+
+  // App shortcuts (api.registerShortcut): held disposers, and the list read back from
+  // api.getKeyboardShortcuts() so the panel shows the router's truth, not local state.
+  let approveOff: (() => void) | null = null;
+  let searchOff: (() => void) | null = null;
+
+  function refreshAppShortcuts(): void {
+    const rows = api.getKeyboardShortcuts()
+      .filter(row => row.scope === "app" || row.scope === "appOverride");
+    appShortcutList.replaceChildren(
+      ...(rows.length === 0
+        ? ["no app shortcuts registered"]
+        : rows.map(row => h("div", null,
+          h("code", { text: row.chord ? formatChord(row.chord) : "" }),
+          ` — ${row.label} `,
+          h("em", { text: `(${row.scope})` }),
+        ))),
+    );
+  }
+
+  function toggleApprove(on: boolean): void {
+    if (on) {
+      // A fresh chord: nothing built-in claims Ctrl+Shift+Y, so plain `app` scope receives it.
+      approveOff = api.registerShortcut({
+        id: "approve",
+        chord: "mod+shift+y",
+        label: "Approve selection (app)",
+        run: () => {
+          const cells = api.getSelection()?.rangeCells?.length ?? 0;
+          lastFired.textContent = `Approve — ${cells} cell(s)`;
+        },
+      });
+    } else {
+      approveOff?.();
+      approveOff = null;
+    }
+    refreshAppShortcuts();
+  }
+
+  function toggleSearch(on: boolean): void {
+    if (on) {
+      // Overrides the built-in quick filter: `override: true` registers ahead of the non-blocking
+      // built-in scopes, so Ctrl+F is the app's while this is on and the quick filter's again the
+      // moment it is disposed.
+      searchOff = api.registerShortcut({
+        id: "appSearch",
+        chord: "mod+f",
+        override: true,
+        label: "App search (overrides quick filter)",
+        run: () => {
+          lastFired.textContent = "App search — quick filter suppressed";
+        },
+      });
+    } else {
+      searchOff?.();
+      searchOff = null;
+    }
+    refreshAppShortcuts();
+  }
 
   container.appendChild(demoRoot(
     toolbarRow(
@@ -329,6 +398,27 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
             style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
           }),
         ),
+        h("section", {
+          style: { border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: "8px", padding: "12px" },
+        },
+          h("h3", { text: "App shortcuts", style: { fontSize: "14px", marginBottom: "8px" } }),
+          field(`Approve selection — ${fmt("mod+shift+y")} (fresh chord)`, checkbox(false, toggleApprove)),
+          h("div", { style: { marginTop: "6px" } },
+            field(`App search — ${fmt("mod+f")} (overrides quick filter)`, checkbox(false, toggleSearch)),
+          ),
+          h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "8px" } },
+            "last fired: ", lastFired,
+          ),
+          appShortcutList,
+          h("p", {
+            text: "The list reads back from api.getKeyboardShortcuts(). While \"App search\" is "
+              + "on, the chord is the app's (appOverride scope beats built-ins); uncheck it and "
+              + "the quick filter takes it back. Reserved chords (Tab, Escape, arrows while "
+              + "navigation is on) are refused by registerShortcut with an error naming the "
+              + "owning feature.",
+            style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
+          }),
+        ),
       ),
     ),
   ));
@@ -359,6 +449,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
 
   selection = api.getSelection();
   renderReadout();
+  refreshAppShortcuts();
 
   function renderReadout(): void {
     summary.textContent = describeSelection(selection);
@@ -385,6 +476,8 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     offSelection();
     offFocus();
     offHeaderFocus();
+    approveOff?.();
+    searchOff?.();
     api.destroy();
   };
 }

@@ -104,6 +104,11 @@ export class StarRatingEditorComponent implements ICellEditorNgComp {
  * the body keyboard cursor, and clipboard/editing/navigation keys with it) and
  * `headerKeyboardNavigation` (false makes the header mouse-only). The shortcut table is rendered
  * with `formatChord`, so macOS shows ⌘⇧-style chords and other platforms Ctrl+Shift+.
+ *
+ * The "App shortcuts" panel exercises `api.registerShortcut`: a fresh chord (Ctrl+Shift+Y) that no
+ * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
+ * filter while registered and hands the chord back on dispose. The panel lists the live app
+ * bindings straight from `api.getKeyboardShortcuts()`.
  */
 
 type EmployeeRow = {
@@ -323,6 +328,37 @@ function describeSelection(sel: SelectionSnapshot | null): string {
             navigation keys at all.
           </p>
         </section>
+
+        <section class="sel-panel">
+          <h3 class="sel-panel-title">App shortcuts</h3>
+          <label style="font-size: 13px; display: flex; align-items: center; gap: 6px">
+            <input type="checkbox" [checked]="approveOn()" (change)="toggleApprove($any($event.target).checked)" />
+            Approve selection — {{ approveChord }} (fresh chord)
+          </label>
+          <label style="font-size: 13px; display: flex; align-items: center; gap: 6px; margin-top: 6px">
+            <input type="checkbox" [checked]="searchOn()" (change)="toggleSearch($any($event.target).checked)" />
+            App search — {{ searchChord }} (overrides quick filter)
+          </label>
+          <div class="sel-muted" style="margin-top: 8px">
+            last fired: <code>{{ lastFired() }}</code>
+          </div>
+          <div class="sel-muted" data-app-shortcut-list>
+            @if (appRows().length === 0) {
+              no app shortcuts registered
+            } @else {
+              @for (row of appRows(); track row.id) {
+                <div><code>{{ row.display }}</code> — {{ row.label }} <em>({{ row.scope }})</em></div>
+              }
+            }
+          </div>
+          <p class="sel-hint">
+            The list reads back from <code>api.getKeyboardShortcuts()</code>. While "App search" is
+            on, the chord is the app's (<em>appOverride</em> scope beats built-ins); uncheck it and
+            the quick filter takes it back. Reserved chords (Tab, Escape, arrows while navigation is
+            on) are refused by <code>registerShortcut</code> with an error naming the owning
+            feature.
+          </p>
+        </section>
       </aside>
     </div>
   `,
@@ -355,6 +391,16 @@ export class SelectionDemoComponent {
   readonly cellSelection = signal<boolean | "text">(true);
   readonly headerKeyboardNav = signal(true);
   readonly headerAt = signal<number | null>(null);
+  // App shortcuts (api.registerShortcut): held disposers, the rows read back from
+  // api.getKeyboardShortcuts() so the panel shows the router's truth, and what fired last.
+  readonly approveOn = signal(false);
+  readonly searchOn = signal(false);
+  readonly lastFired = signal("—");
+  readonly appRows = signal<Array<{ id: string; scope: string; display: string; label?: string }>>([]);
+  readonly approveChord = fmt("mod+shift+y");
+  readonly searchChord = fmt("mod+f");
+  private approveOff: (() => void) | null = null;
+  private searchOff: (() => void) | null = null;
   readonly shortcuts = SHORTCUTS;
   readonly describeSelection = describeSelection;
   readonly String = String;
@@ -411,6 +457,58 @@ export class SelectionDemoComponent {
   setCellSelection(ev: Event): void {
     const value = (ev.target as HTMLSelectElement).value;
     this.cellSelection.set(value === "text" ? "text" : value === "true");
+  }
+
+  private refreshAppShortcuts(): void {
+    const rows = (this.api?.getKeyboardShortcuts() ?? [])
+      .filter((row) => row.scope === "app" || row.scope === "appOverride")
+      .map((row) => ({
+        id: row.id,
+        scope: row.scope as string,
+        display: row.chord ? formatChord(row.chord) : "",
+        label: row.label,
+      }));
+    this.appRows.set(rows);
+  }
+
+  toggleApprove(on: boolean): void {
+    this.approveOn.set(on);
+    if (on) {
+      // A fresh chord: nothing built-in claims Ctrl+Shift+Y, so plain `app` scope receives it.
+      this.approveOff = this.api!.registerShortcut({
+        id: "approve",
+        chord: "mod+shift+y",
+        label: "Approve selection (app)",
+        run: () => {
+          const cells = this.api!.getSelection()?.rangeCells?.length ?? 0;
+          this.lastFired.set(`Approve — ${cells} cell(s)`);
+        },
+      });
+    } else {
+      this.approveOff?.();
+      this.approveOff = null;
+    }
+    this.refreshAppShortcuts();
+  }
+
+  toggleSearch(on: boolean): void {
+    this.searchOn.set(on);
+    if (on) {
+      // Overrides the built-in quick filter: `override: true` registers ahead of the non-blocking
+      // built-in scopes, so Ctrl+F is the app's while this is on and the quick filter's again the
+      // moment it is disposed.
+      this.searchOff = this.api!.registerShortcut({
+        id: "appSearch",
+        chord: "mod+f",
+        override: true,
+        label: "App search (overrides quick filter)",
+        run: () => this.lastFired.set("App search — quick filter suppressed"),
+      });
+    } else {
+      this.searchOff?.();
+      this.searchOff = null;
+    }
+    this.refreshAppShortcuts();
   }
 
   cursorLabel(): string {
