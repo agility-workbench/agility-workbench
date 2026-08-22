@@ -275,3 +275,8 @@ export type {
 
 export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
 export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
+
+// Keyboard chords: the display formatter for menu accelerators and shortcut references, and the
+// spec type application shortcuts are written against.
+export { formatChord, isMacPlatform } from "./renderer/interaction/keyChord";
+export type { ChordSpec, ModifierState } from "./renderer/interaction/keyChord";

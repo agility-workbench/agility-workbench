@@ -133,6 +133,7 @@ export class AwbGrid implements OnDestroy {
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
+  readonly headerKeyboardNavigation = input<GridOptions["headerKeyboardNavigation"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
   readonly selectAllScope = input<GridOptions["selectAllScope"]>();
   readonly selectionPersistence = input<GridOptions["selectionPersistence"]>();
@@ -399,6 +400,7 @@ export class AwbGrid implements OnDestroy {
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,
         columnSelection: this.columnSelection() ?? true,
+        headerKeyboardNavigation: this.headerKeyboardNavigation() ?? true,
         showColumnButtonsOnHover: this.showColumnButtonsOnHover() ?? false,
         // Function-valued customization is resolved through the body-menu adapter. Core only owns
         // whether the browser-native mode disables the grid menu entirely.

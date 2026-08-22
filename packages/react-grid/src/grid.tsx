@@ -223,6 +223,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         cellSelection: props.cellSelection ?? true,
         rangeSelection: props.rangeSelection ?? true,
         columnSelection: props.columnSelection ?? true,
+        headerKeyboardNavigation: props.headerKeyboardNavigation ?? true,
         showColumnButtonsOnHover: props.showColumnButtonsOnHover ?? false,
         // Function-valued customization is resolved through bodyContextMenuRef by the adapter.
         // Core only owns whether the browser-native mode disables the grid menu entirely.
@@ -251,6 +252,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.cellSelection,
       props.rangeSelection,
       props.columnSelection,
+      props.headerKeyboardNavigation,
       props.showColumnButtonsOnHover,
       props.bodyContextMenu,
       props.editTrigger,

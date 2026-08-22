@@ -2,6 +2,7 @@ import { Component, ElementRef, computed, signal, viewChild } from "@angular/cor
 import {
   AwbGrid,
   ColumnType,
+  formatChord,
   type GridEventSelectionChangedParams,
   type ICellEditorNgComp,
   type ICellEditorParams,
@@ -98,6 +99,11 @@ export class StarRatingEditorComponent implements ICellEditorNgComp {
  * mouse select / drag, arrow / Ctrl+arrow (Excel-style block jump) / Shift+arrow,
  * Home / End, Ctrl+Home / Ctrl+End, Ctrl+A — with a live readout driven by the
  * `selectionChanged` event and `api.getSelection()`.
+ *
+ * Also demonstrates the grid's keyboard *surface* switches: `cellSelection` (false/"text" removes
+ * the body keyboard cursor, and clipboard/editing/navigation keys with it) and
+ * `headerKeyboardNavigation` (false makes the header mouse-only). The shortcut table is rendered
+ * with `formatChord`, so macOS shows ⌘⇧-style chords and other platforms Ctrl+Shift+.
  */
 
 type EmployeeRow = {
@@ -187,16 +193,20 @@ function buildRows(count: number): EmployeeRow[] {
   return rows;
 }
 
+// Chords printed with formatChord, so the platform decides the spelling ("Ctrl+→" vs "⌘→").
+const fmt = (chord: string) => formatChord(chord);
 const SHORTCUTS: Array<[string, string]> = [
   ["Click / drag", "Select a cell / range"],
-  ["Arrow", "Move one cell"],
-  ["Shift + Arrow", "Extend range by one cell"],
-  ["Ctrl + Arrow", "Jump across data block (Excel-style)"],
-  ["Ctrl + Shift + Arrow", "Extend range across block"],
-  ["PageUp / PageDown", "Move up / down one viewport"],
-  ["Home / End", "Jump to first / last column"],
-  ["Ctrl + Home / End", "Jump to top-left / bottom-right"],
-  ["Ctrl + A", "Select all"],
+  [`${fmt("arrowleft")} ${fmt("arrowup")} ${fmt("arrowdown")} ${fmt("arrowright")}`, "Move one cell"],
+  [fmt("shift+arrowright"), "Extend range by one cell"],
+  [fmt("mod+arrowright"), "Jump across data block (Excel-style)"],
+  [fmt("mod+shift+arrowright"), "Extend range across block"],
+  [`${fmt("pageup")} / ${fmt("pagedown")}`, "Move up / down one viewport"],
+  [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
+  [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
+  [fmt("mod+a"), "Select all"],
+  [`${fmt("arrowup")} from the top row`, "Move into the column header"],
+  [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
 
 function describeSelection(sel: SelectionSnapshot | null): string {
@@ -235,6 +245,22 @@ function describeSelection(sel: SelectionSnapshot | null): string {
           }
         </select>
       </div>
+      <div class="sel-row-count">
+        <label for="cell-selection" style="font-size: 13px">Cell selection</label>
+        <select id="cell-selection" (change)="setCellSelection($event)">
+          <option value="true" selected>true — full keyboard</option>
+          <option value="text">"text" — native text selection</option>
+          <option value="false">false — inert cells</option>
+        </select>
+      </div>
+      <label style="font-size: 13px; display: flex; align-items: center; gap: 6px">
+        <input
+          type="checkbox"
+          [checked]="headerKeyboardNav()"
+          (change)="headerKeyboardNav.set($any($event.target).checked)"
+        />
+        Header keyboard nav
+      </label>
       <div style="display: flex; gap: 8px">
         <button class="btn" type="button" (click)="api?.selectAll()">Select all (API)</button>
         <button class="btn" type="button" (click)="api?.clearSelection('all')">Clear</button>
@@ -256,6 +282,8 @@ function describeSelection(sel: SelectionSnapshot | null): string {
           [quickFilter]="true"
           [rowSelection]="true"
           [selectAllRowsOnHeaderClick]="true"
+          [cellSelection]="cellSelection()"
+          [headerKeyboardNavigation]="headerKeyboardNav()"
           (gridReady)="onReady($event)"
         />
       </div>
@@ -266,9 +294,7 @@ function describeSelection(sel: SelectionSnapshot | null): string {
           <div style="font-size: 13px; font-weight: 600">{{ describeSelection(selection()) }}</div>
           <div class="sel-muted">
             kind: <code>{{ selection()?.kind ?? "none" }}</code>
-            @if (active()?.viewIdx != null) {
-              · active: r{{ active()?.viewIdx }}/c{{ active()?.colIdx }}
-            }
+            · cursor: <code>{{ cursorLabel() }}</code>
           </div>
           @if (selection()?.kind === "range" && selection()?.rangeCells) {
             <div class="sel-muted">
@@ -290,6 +316,12 @@ function describeSelection(sel: SelectionSnapshot | null): string {
             </tbody>
           </table>
           <p class="sel-hint">Click a cell first to focus the grid, then use the keyboard.</p>
+          <p class="sel-hint">
+            Cell selection <code>false</code> / <code>"text"</code> removes the body keyboard
+            cursor — navigation, clipboard, and editing keys go with it, and Tab lands the cursor
+            in the header instead. Turning header keyboard nav off too leaves the grid claiming no
+            navigation keys at all.
+          </p>
         </section>
       </aside>
     </div>
@@ -317,6 +349,12 @@ export class SelectionDemoComponent {
   readonly rows = computed(() => buildRows(this.rowCount()));
   readonly selection = signal<SelectionSnapshot | null>(null);
   readonly active = signal<{ viewIdx?: number; colIdx?: number } | null>(null);
+  // The keyboard-surface switches. cellSelection !== true removes the body keyboard cursor;
+  // headerKeyboardNavigation false makes the header mouse-only. Both are runtime options, so the
+  // wrapper reconciles them live — no grid rebuild.
+  readonly cellSelection = signal<boolean | "text">(true);
+  readonly headerKeyboardNav = signal(true);
+  readonly headerAt = signal<number | null>(null);
   readonly shortcuts = SHORTCUTS;
   readonly describeSelection = describeSelection;
   readonly String = String;
@@ -362,9 +400,23 @@ export class SelectionDemoComponent {
     this.selection.set(api.getSelection());
     api.on("selectionChanged", (ev) => this.selection.set(ev.snapshot));
     api.on("focusChanged", (ev) => this.active.set({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
+    // The header cursor is a separate position from the body's (they are mutually exclusive).
+    api.on("headerFocusChanged", (ev) => this.headerAt.set(ev.colIdx ?? null));
   }
 
   setRowCount(ev: Event): void {
     this.rowCount.set(Number((ev.target as HTMLSelectElement).value));
+  }
+
+  setCellSelection(ev: Event): void {
+    const value = (ev.target as HTMLSelectElement).value;
+    this.cellSelection.set(value === "text" ? "text" : value === "true");
+  }
+
+  cursorLabel(): string {
+    const headerAt = this.headerAt();
+    if (headerAt != null) return `header c${headerAt}`;
+    const active = this.active();
+    return active?.viewIdx != null ? `r${active.viewIdx}/c${active.colIdx}` : "—";
   }
 }
