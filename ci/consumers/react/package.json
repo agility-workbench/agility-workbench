@@ -1,0 +1,24 @@
+{
+  "name": "consumer-react",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Standalone consumer fixture: packed @agility-workbench/react-grid + grid tarballs, no monorepo assistance. CI installs the tarballs at run time (and downgrades React for the 18 matrix leg).",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.3",
+    "happy-dom": "^20.10.6",
+    "typescript": "^5.4.0",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
+  }
+}

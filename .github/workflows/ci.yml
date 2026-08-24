@@ -88,3 +88,128 @@ jobs:
           name: npm-tarballs
           path: artifacts/npm/*.tgz
           if-no-files-found: error
+
+  # Standalone consumer gates: install the packed
+  # tarballs into the ci/consumers fixtures exactly like an external npm user and
+  # prove typecheck/build/runtime behavior. Root npm ci deliberately does NOT run
+  # in these jobs, so nothing can resolve out of the monorepo by accident.
+  # Install order matters — tarballs LAST (see ci/consumers/README.md).
+  consumer-core:
+    name: Core consumer (packed tarball)
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ci/consumers/core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: artifacts/npm
+
+      - name: Install fixture deps, then the packed core
+        run: |
+          npm install
+          npm install ../../../artifacts/npm/agility-workbench-grid-*.tgz
+
+      - name: Strict typecheck
+        run: npm run typecheck
+
+      - name: Production build (root + styles.css subpath)
+        run: npm run build
+
+      - name: Runtime smoke
+        run: npm test
+
+  consumer-react:
+    name: React ${{ matrix.react }} consumer (packed tarballs)
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        react: [18, 19]
+    defaults:
+      run:
+        working-directory: ci/consumers/react
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: artifacts/npm
+
+      - name: Install fixture deps and React ${{ matrix.react }}, then the packed tarballs
+        run: |
+          npm install
+          if [ "${{ matrix.react }}" = "18" ]; then
+            npm install react@18 react-dom@18 @types/react@18 @types/react-dom@18
+          fi
+          npm install ../../../artifacts/npm/agility-workbench-grid-*.tgz \
+                      ../../../artifacts/npm/agility-workbench-react-grid-*.tgz
+
+      - name: No duplicate React
+        run: |
+          react_copies=$(find node_modules -type d -name react | grep -c 'node_modules/react$')
+          dom_copies=$(find node_modules -type d -name react-dom | grep -c 'node_modules/react-dom$')
+          echo "react: $react_copies, react-dom: $dom_copies"
+          test "$react_copies" -eq 1 && test "$dom_copies" -eq 1
+
+      - name: Strict typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Runtime smoke (StrictMode mount, filter, select)
+        run: npm test
+
+  consumer-angular:
+    name: Angular ${{ matrix.angular }} consumer (packed tarballs)
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        angular: [20, 21, 22]
+    defaults:
+      run:
+        working-directory: ci/consumers/angular-${{ matrix.angular }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Angular 22's CLI requires Node >= 22.22.3; latest 22.x satisfies all legs.
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: artifacts/npm
+
+      - name: Install fixture deps, then the packed tarballs
+        run: |
+          npm install
+          npm install ../../../artifacts/npm/agility-workbench-grid-*.tgz \
+                      ../../../artifacts/npm/agility-workbench-angular-grid-*.tgz
+
+      - name: Production AOT build (Ivy linker over the partial-Ivy FESM)
+        run: npm run build
+
+      - name: Runtime smoke (mount, filter, sort, select)
+        run: npm test

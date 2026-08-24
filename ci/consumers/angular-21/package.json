@@ -1,0 +1,27 @@
+{
+  "name": "consumer-angular-21",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Standalone consumer fixture: packed @agility-workbench/angular-grid + grid tarballs on Angular 21 (zoneless). CI installs the tarballs at run time.",
+  "scripts": {
+    "ng": "ng",
+    "build": "ng build",
+    "test": "ng test"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.0",
+    "@angular/compiler": "^21.2.0",
+    "@angular/core": "^21.2.0",
+    "@angular/platform-browser": "^21.2.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.21",
+    "@angular/cli": "^21.2.21",
+    "@angular/compiler-cli": "^21.2.0",
+    "jsdom": "^28.0.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}

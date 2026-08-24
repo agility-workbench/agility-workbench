@@ -16,3 +16,8 @@ artifacts/
 apps/docs/.docusaurus/
 apps/docs/build/
 apps/docs/node_modules/.cache/
+
+# Consumer fixture local state (installed/generated at run time)
+ci/consumers/*/package-lock.json
+ci/consumers/*/out-tsc/
+ci/consumers/*/.angular/

@@ -1,0 +1,28 @@
+{
+  "name": "consumer-angular-20",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Standalone consumer fixture: packed @agility-workbench/angular-grid + grid tarballs on Angular 20.3, the peer floor (zone-based). CI installs the tarballs at run time.",
+  "scripts": {
+    "ng": "ng",
+    "build": "ng build",
+    "test": "ng test"
+  },
+  "dependencies": {
+    "@angular/common": "^20.3.0",
+    "@angular/compiler": "^20.3.0",
+    "@angular/core": "^20.3.0",
+    "@angular/platform-browser": "^20.3.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^20.3.0",
+    "@angular/cli": "^20.3.0",
+    "@angular/compiler-cli": "^20.3.0",
+    "jsdom": "^26.0.0",
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.7"
+  }
+}

@@ -232,8 +232,9 @@ generated `dist/package.json` with the `exports` map. Because the manifest is ge
 root. Building against Angular `~20.3` with partial compilation is what makes the package
 consumable by Angular 20.3 **and newer**. The peer range lists each major we have verified against
 the packed artifact (`peerDependencies: { "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0" }`);
-when a new Angular major ships, run the standalone consumer smoke (install the packed `.tgz` into a
-fresh app of that major, production AOT build, mount/interact) before widening the range.
+when a new Angular major ships, add a `ci/consumers/angular-<major>` fixture (copy the nearest
+one, bump its toolchain, verify locally), add the major to the `consumer-angular` matrix in
+`.github/workflows/ci.yml`, and only then widen the peer range — see `ci/consumers/README.md`.
 
 ### From the repo root
 
@@ -334,10 +335,11 @@ These are **not** in place today and are needed for a smooth, repeatable release
   which understands workspaces and the inter-package dependency bump.
 - **Publishing automation** — non-publishing CI exists (`.github/workflows/ci.yml`: locked
   install, builds, typecheck, all tests, docs and playground production builds, `check:exports`,
-  `check:pack`, and checksummed tarball artifacts on every push/PR), but there is no release
-  workflow yet. When one is added it must consume the CI-produced `npm-tarballs` artifact —
-  never rebuild — and run `npm publish --provenance` per package on a tag/release (requires
-  `id-token: write`).
+  `check:pack`, checksummed tarball artifacts, and standalone consumer jobs — core, React 18/19,
+  Angular 20/21/22 — that install those tarballs like external npm users, see
+  `ci/consumers/README.md`), but there is no release workflow yet. When one is added it must
+  consume the CI-produced `npm-tarballs` artifact — never rebuild — and run
+  `npm publish --provenance` per package on a tag/release (requires `id-token: write`).
 - **Lint** — no lint script, dependency, or configuration exists.
 - **Documentation *deployment*** — the Docusaurus source **is** in this repo (`apps/docs`, built
   with `npm run docs:build`), but its deployment to the `homepage`
