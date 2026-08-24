@@ -42,6 +42,14 @@
     "test:watch": "vitest",
     "clean": "npm run clean --workspaces --if-present && rm -rf dist dist-demo"
   },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    },
+    "sockjs": {
+      "uuid": "^11.1.1"
+    }
+  },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "^1.22.5",
     "@angular/build": "~20.3.0",
