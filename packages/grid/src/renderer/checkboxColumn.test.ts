@@ -9,7 +9,8 @@ import { initDomRenderer } from "./dom";
 /**
  * The selection checkbox column (`rowSelection: { checkboxes: true }`): a dedicated leading
  * utility column, independent of `rowNumbers`. Body checkbox click toggles just that row
- * (additive, never clears the rest); Shift+click selects a range. The header hosts a tri-state
+ * (additive, never clears the rest); Shift+click selects a range; right-click checks the row before
+ * opening the body menu, so the menu's row-scoped items have a target. The header hosts a tri-state
  * select-all checkbox covering the select-all scope. The checkbox visual is CSS-driven from the
  * cell's "selected" class; the row's aria-selected carries the semantics.
  */
@@ -69,6 +70,10 @@ function rowNumberCell(root: HTMLElement, viewIdx: number): HTMLElement {
 function click(el: HTMLElement, mods: Partial<MouseEventInit> = {}) {
   el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, ...mods }));
   el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...mods }));
+}
+
+function contextMenu(el: HTMLElement) {
+  el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
 }
 
 function press(el: HTMLElement, key: string, mods: Partial<KeyboardEventInit> = {}) {
@@ -260,6 +265,31 @@ describe("body checkbox gestures", () => {
     click(checkboxCell(root, 3)); // re-select; anchor is now row 3
     click(checkboxCell(root, 5), { shiftKey: true }); // union 3..5 in — r1 is NOT cleared
     expect([...core.getSelectedRowIds()].sort()).toEqual(["r1", "r3", "r4", "r5"]);
+  });
+
+  it("right-click checks the clicked row so the body menu has a row to act on", () => {
+    const { core, root } = mountGrid();
+    click(checkboxCell(root, 1));
+
+    contextMenu(checkboxCell(root, 3));
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r1", "r3"]); // additive, like a click
+    expect(checkboxCell(root, 3).classList.contains("selected")).toBe(true);
+    expect(core.getSelectionRange()).toBeNull(); // the utility cell never becomes a cell range
+    expect(root.querySelector(".pte-menu")).not.toBeNull();
+    press(root, "Escape");
+
+    // Right-clicking an already-checked row leaves the checked set exactly as it is.
+    contextMenu(checkboxCell(root, 3));
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r1", "r3"]);
+    press(root, "Escape");
+  });
+
+  it("makes the checkbox row menu reachable even when cell selection is inert", () => {
+    const { core, root } = mountGrid({ cellSelection: false });
+    contextMenu(checkboxCell(root, 2));
+    expect([...core.getSelectedRowIds()]).toEqual(["r2"]);
+    expect(root.querySelector(".pte-menu")).not.toBeNull();
+    press(root, "Escape");
   });
 
   it("paints the selected fill class on the checkbox cell (CSS drives the checkmark)", () => {

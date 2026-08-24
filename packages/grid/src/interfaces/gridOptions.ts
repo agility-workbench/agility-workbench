@@ -327,7 +327,8 @@ export interface RowSelectionOptions {
   /** Whether row selection holds one row or many. Defaults to "multiple". In single mode the
    * checkbox-column header checkbox is hidden and additive/range gestures replace the selection. */
   mode?: "single" | "multiple";
-  /** Show a dedicated checkbox column: click toggles the row, Shift+click selects a range. It is
+  /** Show a dedicated checkbox column: click toggles the row, Shift+click selects a range, and
+   * right-click checks the row before opening the body menu (so its items act on that row). It is
    * independent of `rowNumbers`, defaults to pinned left, and can be pinned right or unpinned from
    * its header menu. Defaults to false. */
   checkboxes?: boolean;

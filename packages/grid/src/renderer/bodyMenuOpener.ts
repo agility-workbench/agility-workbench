@@ -20,26 +20,8 @@ export class BodyMenuOpener {
     const cell = target.closest(".pte-cell") as HTMLDivElement | null;
     if (!cell || !this.params.root.contains(cell)) return;
 
-    const isRowNumber = cell.classList.contains("pte-row-number-cell");
-    const isSelectableRowNumber = isRowNumber && this.params.core.options.rowSelection;
-    const isActionableRowNumber = isRowNumber
-      && (this.params.core.options.rowSelection || !!this.params.core.options.rowInsertionMenu);
-    // Data-cell menus require grid cell selection. An enabled row-number cell is independently
-    // actionable: right-click can establish a row selection even when ordinary cells are inert.
-    if (this.params.core.options.cellSelection !== true && !isActionableRowNumber) return;
-
-    // bodyContextMenu === false disables the grid menu entirely: return BEFORE preventDefault so the
-    // browser's native context menu appears. (A getter that returns [] is handled downstream — the
-    // grid still owns the gesture in that case and shows nothing.)
-    if (this.params.core.options.bodyContextMenu === false) return;
-
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return;
-
-    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
-    const colIdx = Number(cell.dataset.colIdx);
-    const colId = cell.dataset.colId ?? null;
-    if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx) || !colId) return;
 
     // App-pinned band rows carry a band-local data-view-idx plus a rowPinned marker; resolve their
     // rowId from the band, not the body view. (Sticky mirrors carry the real body view index and no
@@ -47,6 +29,34 @@ export class BodyMenuOpener {
     const rowPinned = rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
       ? rowEl.dataset.rowPinned
       : undefined;
+
+    const isRowNumber = cell.classList.contains("pte-row-number-cell");
+    const isSelectableRowNumber = isRowNumber && this.params.core.options.rowSelection;
+    const isActionableRowNumber = isRowNumber
+      && (this.params.core.options.rowSelection || !!this.params.core.options.rowInsertionMenu);
+    // A checkbox cell carries no value of its own, so a menu scoped to it would act on nothing. It
+    // is independently actionable like the row-number gutter: right-click checks its row (below) so
+    // the copy / export / pin items have a row to operate on. Band rows render a blank slot and are
+    // not part of the row-id selection model, so theirs stays inert.
+    const isSelectableCheckbox = cell.classList.contains("pte-checkbox-cell")
+      && !!this.params.core.options.rowSelection
+      && !rowPinned;
+    // Data-cell menus require grid cell selection. An enabled row-number or checkbox cell is
+    // independently actionable: right-click can establish a row selection even when ordinary cells
+    // are inert.
+    if (this.params.core.options.cellSelection !== true
+      && !isActionableRowNumber && !isSelectableCheckbox) return;
+
+    // bodyContextMenu === false disables the grid menu entirely: return BEFORE preventDefault so the
+    // browser's native context menu appears. (A getter that returns [] is handled downstream — the
+    // grid still owns the gesture in that case and shows nothing.)
+    if (this.params.core.options.bodyContextMenu === false) return;
+
+    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
+    const colIdx = Number(cell.dataset.colIdx);
+    const colId = cell.dataset.colId ?? null;
+    if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx) || !colId) return;
+
     const rowId = rowPinned
       ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)?.id ?? null
       : this.params.core.getRowIdAtViewIndex(viewIdx);
@@ -63,6 +73,17 @@ export class BodyMenuOpener {
           type: "rowSelectSet",
           viewIdx,
           mode: "replace",
+          preserveFocus: true,
+          reason: "mouse",
+        });
+      } else if (isSelectableCheckbox) {
+        // The checkbox gesture is additive at both ends: right-click checks the clicked row (it is
+        // never already checked here — an already-selected row counts as in-selection above) and
+        // never unchecks the rows checked so far. Focus stays on the utility cell, as for a click.
+        this.params.core.dispatch({
+          type: "rowSelectSet",
+          viewIdx,
+          mode: "toggle",
           preserveFocus: true,
           reason: "mouse",
         });
