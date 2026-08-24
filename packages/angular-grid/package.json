@@ -1,6 +1,6 @@
 {
   "name": "@agility-workbench/angular-grid",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Angular bindings for @agility-workbench/grid — a high-performance data grid. Supports Angular 20.3 through 22.",
   "license": "MIT",
   "author": "Himanshu M",
@@ -20,7 +20,9 @@
     "angular",
     "angular-table",
     "virtualized",
-    "typescript"
+    "typescript",
+    "data-table",
+    "spreadsheet"
   ],
   "publishConfig": {
     "access": "public",
@@ -37,7 +39,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@agility-workbench/grid": "^0.3.0",
+    "@agility-workbench/grid": "^1.0.0",
     "tslib": "^2.3.0"
   },
   "peerDependencies": {

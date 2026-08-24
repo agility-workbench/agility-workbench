@@ -1,6 +1,6 @@
 {
   "name": "@agility-workbench/react-grid",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "React bindings for @agility-workbench/grid — a high-performance data grid.",
   "type": "module",
   "license": "MIT",
@@ -21,7 +21,9 @@
     "react",
     "react-table",
     "virtualized",
-    "typescript"
+    "typescript",
+    "data-table",
+    "spreadsheet"
   ],
   "publishConfig": {
     "access": "public",
@@ -59,7 +61,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@agility-workbench/grid": "^0.3.0"
+    "@agility-workbench/grid": "^1.0.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

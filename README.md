@@ -9,8 +9,8 @@ server-side row models. It includes the features expected of a serious data
 workspace—sorting, filtering, grouping, editing, selection, saved views, and
 export—without adding runtime dependencies to the core package.
 
-> This project is currently at `0.1.x`. Its public API may still change between
-> minor releases.
+> Stable release: the public API follows [semantic versioning](https://semver.org/).
+> Breaking changes only land in major releases.
 
 ## Highlights
 
