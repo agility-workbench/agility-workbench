@@ -1,7 +1,7 @@
 {
   "name": "@agility-workbench/angular-grid",
   "version": "0.3.0",
-  "description": "Angular bindings for @agility-workbench/grid — a high-performance data grid. Supports Angular 20.3+.",
+  "description": "Angular bindings for @agility-workbench/grid — a high-performance data grid. Supports Angular 20.3 through 22.",
   "license": "MIT",
   "author": "Himanshu M",
   "homepage": "https://agilityworkbench.dev",
@@ -28,7 +28,7 @@
     "directory": "dist"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
   },
   "scripts": {
     "build": "npm run clean && ng-packagr -p ng-package.json -c tsconfig.lib.json && node scripts/strip-sourcemaps.mjs",
@@ -41,7 +41,7 @@
     "tslib": "^2.3.0"
   },
   "peerDependencies": {
-    "@angular/core": ">=20.3.0"
+    "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0"
   },
   "devDependencies": {
     "@angular/compiler": "~20.3.27",

@@ -2,8 +2,8 @@
 
 Angular bindings for [`@agility-workbench/grid`](https://www.npmjs.com/package/@agility-workbench/grid) —
 a high-performance data grid. Provides the standalone `<awb-grid>` component and re-exports the
-full core API, so you can import everything you need from one place. Supports Angular 20.3+
-(zone-based and zoneless applications).
+full core API, so you can import everything you need from one place. Supports Angular 20.3
+through 22 (zone-based and zoneless applications) on Node 20.19+.
 
 ## Installation
 
@@ -11,8 +11,8 @@ full core API, so you can import everything you need from one place. Supports An
 npm install @agility-workbench/angular-grid
 ```
 
-`@agility-workbench/grid` is installed automatically as a dependency; `@angular/core >= 20.3` is a
-peer dependency your app provides.
+`@agility-workbench/grid` is installed automatically as a dependency; `@angular/core` (20.3–22,
+each major verified against the packed artifact) is a peer dependency your app provides.
 
 ## Quick start
 

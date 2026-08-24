@@ -23,14 +23,14 @@ export—without adding runtime dependencies to the core package.
 - Column groups, resizing, reordering, visibility, pinning, and a column panel
 - Custom renderers, editors, headers, tooltips, menus, and full-width rows
 - Responsive toolbar, saved views, sparklines, and light/dark theming
-- React 18+ and Angular 20.3+ bindings with TypeScript types throughout
+- React 18+ and Angular 20.3–22 bindings with TypeScript types throughout
 
 ## Choose a package
 
 | Package | Use it when… | Documentation |
 | --- | --- | --- |
 | `@agility-workbench/react-grid` | You are building a React 18+ application | [React guide](packages/react-grid/README.md) |
-| `@agility-workbench/angular-grid` | You are building an Angular 20.3+ application | [Angular guide](packages/angular-grid/README.md) |
+| `@agility-workbench/angular-grid` | You are building an Angular 20.3–22 application | [Angular guide](packages/angular-grid/README.md) |
 | `@agility-workbench/grid` | You need the framework-neutral TypeScript API and DOM renderer | [Core guide](packages/grid/README.md) |
 
 The framework bindings depend on the core package and re-export its public API,

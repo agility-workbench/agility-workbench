@@ -91,7 +91,7 @@ agility-workbench/                 ← private workspace root
     │       ├── MenuAdapter.ts BodyMenuAdapter.ts menu.ts interface.ts
     │       └── *.smoke.test.tsx *.test.tsx   co-located smoke/integration tests
     └── angular-grid/              @agility-workbench/angular-grid (Angular ≥ 20.3, built with ng-packagr)
-        ├── package.json           depends on grid (semver); @angular/core as peer (>=20.3.0); publish from dist/
+        ├── package.json           depends on grid (semver); @angular/core as peer (^20.3.0 || ^21 || ^22); publish from dist/
         ├── ng-package.json         ng-packagr config (APF output: FESM2022 + partial-Ivy d.ts)
         ├── tsconfig.lib.json       compilationMode: "partial" (consumers' linkers finish compilation)
         ├── tsconfig.spec.json      test program: package src + ../grid/src (vitest aliases core to source)
@@ -229,7 +229,10 @@ mode (`compilationMode: "partial"` in `tsconfig.lib.json`), flattened `index.d.t
 generated `dist/package.json` with the `exports` map. Because the manifest is generated into
 `dist/`, **publishing happens from `dist/`** (`publishConfig.directory: "dist"`), not the package
 root. Building against Angular `~20.3` with partial compilation is what makes the package
-consumable by Angular 20.3 **and newer** (`peerDependencies: { "@angular/core": ">=20.3.0" }`).
+consumable by Angular 20.3 **and newer**. The peer range lists each major we have verified against
+the packed artifact (`peerDependencies: { "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0" }`);
+when a new Angular major ships, run the standalone consumer smoke (install the packed `.tgz` into a
+fresh app of that major, production AOT build, mount/interact) before widening the range.
 
 ### From the repo root
 
@@ -265,7 +268,7 @@ All three packages are publish-ready. Current state of the manifests:
 - `@agility-workbench/angular-grid` — same publish config plus `publishConfig.directory: "dist"`
   (ng-packagr generates the real manifest there — publish the `dist/` folder, see §5);
   `dependencies: { "@agility-workbench/grid": "^0.2.0", tslib }`,
-  `peerDependencies: { "@angular/core": ">=20.3.0" }`.
+  `peerDependencies: { "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0" }`.
 
 ### What is achievable today
 
