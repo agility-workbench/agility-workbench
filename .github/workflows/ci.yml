@@ -1,0 +1,90 @@
+# Non-publishing CI: every mandatory release gate that can run without
+# registry credentials. Publishing (Trusted Publishing / OIDC) is deliberately
+# NOT configured here — see docs/maintainers/repository.md before adding it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Build, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Angular 20.3 toolchain floor: ^20.19.0 || ^22.12.0 || >=24.0.0
+          node-version: 22
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Typecheck (packages + playgrounds)
+        run: npm run typecheck
+
+      - name: Test (core + React, then Angular)
+        run: npm test
+
+      - name: Docs production build
+        run: npm run docs:build
+
+      - name: React playground production build
+        run: ./node_modules/.bin/vite build
+
+      - name: Angular playground production build
+        run: ./node_modules/.bin/vite build -c vite.angular.config.ts
+
+      - name: Vanilla playground production build
+        run: ./node_modules/.bin/vite build -c vite.vanilla.config.ts
+
+  package:
+    name: Package artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Declaration/runtime export parity (ESM + CJS)
+        run: npm run check:exports
+
+      - name: Packed artifact contents vs allowlists (Angular must be dist/)
+        run: npm run check:pack
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p artifacts/npm
+          npm pack ./packages/grid ./packages/react-grid ./packages/angular-grid/dist \
+            --ignore-scripts --pack-destination artifacts/npm
+          sha256sum artifacts/npm/*.tgz
+
+      # The tarballs a release would publish. A future publishing workflow must
+      # consume these exact artifacts, not rebuild its own.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: artifacts/npm/*.tgz
+          if-no-files-found: error

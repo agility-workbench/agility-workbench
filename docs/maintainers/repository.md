@@ -33,7 +33,8 @@ requires `^20.19.0 || ^22.12.0 || >=24` — develop on Node 22. npm workspaces
 [Vite](https://vite.dev/) for the demos, [Vitest](https://vitest.dev/) for tests,
 [Docusaurus](https://docusaurus.io/) for the docs site, TypeScript 5.
 
-There is **no lint setup and no CI** in this repository today (see §7).
+There is **no lint setup** in this repository today. Non-publishing CI runs on every push/PR
+(`.github/workflows/ci.yml`); there is **no publishing automation** yet (see §7).
 
 ## 2. Directory layout
 
@@ -331,10 +332,11 @@ These are **not** in place today and are needed for a smooth, repeatable release
 
 - **Automated versioning/changelogs** — e.g. [changesets](https://github.com/changesets/changesets),
   which understands workspaces and the inter-package dependency bump.
-- **Any CI at all** — there is no `.github/workflows` content and no other CI configuration, so
-  nothing automatically protects build, typecheck, tests, or package contents on pushes/PRs. Add
-  non-publishing PR CI first, then a release workflow that runs `build` + `test` +
-  `check:exports` and `npm publish --provenance` per package on a tag/release (requires
+- **Publishing automation** — non-publishing CI exists (`.github/workflows/ci.yml`: locked
+  install, builds, typecheck, all tests, docs and playground production builds, `check:exports`,
+  `check:pack`, and checksummed tarball artifacts on every push/PR), but there is no release
+  workflow yet. When one is added it must consume the CI-produced `npm-tarballs` artifact —
+  never rebuild — and run `npm publish --provenance` per package on a tag/release (requires
   `id-token: write`).
 - **Lint** — no lint script, dependency, or configuration exists.
 - **Documentation *deployment*** — the Docusaurus source **is** in this repo (`apps/docs`, built
