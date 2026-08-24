@@ -1,0 +1,120 @@
+---
+title: Accessibility
+sidebar_position: 98
+---
+
+# Accessibility
+
+The grid exposes a real ARIA grid model on the data surface, keeps every
+interaction keyboard-reachable, and announces state changes to assistive
+technology. This page describes what is exposed, how the focus model works,
+and where the current boundaries are.
+
+## Naming the grid
+
+A grid needs an accessible name — the container is application-owned, so
+labelling the container does not name the grid:
+
+```ts
+const options = {
+  ariaLabel: "Open invoices",
+} satisfies GridOptions;
+
+// Or reference a visible heading (wins over ariaLabel when both are set,
+// matching ARIA's own precedence):
+const labelled = {
+  ariaLabelledBy: "invoices-heading",
+} satisfies GridOptions;
+```
+
+Something short and distinguishing is what a screen-reader user hears on
+entering the grid.
+
+## The ARIA grid model
+
+The root element carries `role="grid"` with:
+
+- `aria-colcount` and `aria-rowcount` describing the **whole data set** — not
+  the rendered window or the current page. Row indices (`aria-rowindex`) count
+  absolutely across pages, so "row 412 of 6,000" stays true under pagination
+  and virtualization.
+- `aria-multiselectable` reflecting the selection configuration.
+- `aria-busy` while the loading overlay is up, so assistive technology can
+  hold off describing rows that are about to be replaced.
+
+A logical row can render as several physical fragments (row numbers, pinned
+left, center, pinned right). Only one fragment is the ARIA row; the others are
+presentational and their cells are stitched into it with `aria-owns` in
+**visual order** — a screen reader reads the row left-to-right as the user
+sees it, pinned sections included. Cells carry `role="gridcell"` and
+`aria-colindex`; layout machinery is marked presentational and stays out of
+the accessibility tree.
+
+Leaf column headers are `columnheader`s and carry `aria-sort`
+(`none` / `ascending` / `descending`) — kept on the header cell itself even
+when a custom header component owns the cell interior, so a sortable column
+always says so.
+
+## Focus model
+
+DOM focus stays on the grid root; the active cell is conveyed through
+`aria-activedescendant`. This roving model covers body cells, cells in pinned
+row bands, and header cells alike, so arrow navigation moves assistive
+technology's reading position without ever moving real focus. The focused
+cell can additionally be outlined visually with `highlightActiveCell`, and
+the grid's own focus ring is drawn inset so it survives `overflow: hidden`
+ancestors.
+
+## State semantics
+
+- `aria-selected` on selected rows and cells (present when selected, absent
+  otherwise).
+- `aria-expanded` and `aria-level` on group and tree rows that genuinely have
+  a depth; the expander control mirrors `aria-expanded` for styling and
+  testing.
+- Per-row additions through
+  [row presentation](./examples/rendering.mdx#row-presentation):
+  `accessibility: { description, busy }` attaches an accessible description
+  or busy state to any row.
+
+## Announcements
+
+A permanently screen-reader-only polite live region announces grid-level state
+changes — selection summaries ("3 rows selected", "4 × 2 cells selected"),
+sort changes, and similar. Announcements **coalesce** rather than queue: a
+selection drag emits on every pointer move, and collapsing to the latest
+message tells the user where the selection *ended up* instead of replaying
+stale intermediate sizes. A single focused cell is deliberately not announced —
+`aria-activedescendant` already reads it, and doubling up on every arrow press
+is noise.
+
+Keyboard-navigation mode switches (grid ↔ hierarchy, in tree data) show a
+visible toast that is also announced.
+
+## Keyboard interaction
+
+Every pointer interaction has a keyboard route: navigation (arrows, Home/End,
+Page Up/Down, Ctrl/Cmd jumps), range extension, row/column selection, editing,
+clipboard, menus (Shift+F10 / the menu key), filters, ActionFrames
+(Shift+F2), and the column panel with accessible Move up/down reordering
+controls. The header row is part of the navigable surface: ArrowUp from the
+first body row moves the cursor into the headers, where `Space` selects a
+column and `Enter` sorts.
+
+The active shortcut set is a queryable registry — `api.getKeyboardShortcuts()`
+returns it, and applications can register their own shortcuts without
+colliding with the grid's reserved keys.
+
+## Current boundaries
+
+Two known limitations apply; both are tracked work:
+
+- **Column-group (parent) header cells are presentational.** Leaf headers are
+  full `columnheader`s, but the group hierarchy above them is not yet exposed
+  to assistive technology.
+- **No end-to-end screen-reader validation yet.** The model is built to the
+  ARIA grid pattern and covered by automated tests, but a full manual pass
+  with VoiceOver and NVDA has not been completed.
+
+Applications with strict accessibility requirements should verify their
+specific workflows against their target assistive technology.

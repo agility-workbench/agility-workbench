@@ -21,6 +21,35 @@ Choose `text`, `number`, `date`, `boolean`, `select`, or `textarea`. If
 `cellEditor` is omitted, the grid chooses from `ColumnType`. `valueParser`
 converts raw text before writing; typed editors can report already-parsed values.
 
+```ts
+const columnDefs: ColDef[] = [
+  { key: "name", label: "Name", editable: true, cellEditor: "text" },
+  { key: "quantity", label: "Quantity", editable: true, cellEditor: "number" },
+  { key: "due", label: "Due", editable: true, cellEditor: "date" },
+  { key: "active", label: "Active", editable: true, cellEditor: "boolean" },
+  {
+    key: "status",
+    label: "Status",
+    editable: true,
+    cellEditor: "select",
+    cellEditorParams: { values: ["Open", "Pending", "Closed"] },
+  },
+  { key: "notes", label: "Notes", editable: true, cellEditor: "textarea" },
+];
+```
+
+A formatter/parser pair round-trips a display format through editing:
+
+```ts
+const column = {
+  key: "percent",
+  label: "Percent",
+  editable: true,
+  valueParser: ({ value }) => Number(value.replace("%", "")) / 100,
+  valueFormatter: ({ value }) => `${Math.round(value * 100)}%`,
+} satisfies ColDef;
+```
+
 ### Number editor
 
 The `number` editor is a free-text input with numeric augmentation — not a
@@ -51,7 +80,55 @@ cell's original value. Validation belongs to the parser.
 
 Editing starts with double-click, F2, Enter, or a printable character. Configure
 single-click editing, API-only editing, commit-on-blur, and Enter/Tab navigation
-with grid options.
+with grid options:
+
+```ts
+const options = {
+  editTrigger: "singleClick",
+  suppressTypeToEdit: true,
+  moveAfterEdit: true,
+  commitOnBlur: true,
+  reevaluateOnEdit: true,
+  undoLimit: 50,
+} satisfies GridOptions;
+```
+
+Use `editTrigger: "none"` with `suppressKeyboardEdit: true` for API-only
+editing:
+
+```ts
+const cell = { rowId: "order-1", colId: "quantity" };
+
+api.startEditingCell(cell);
+api.stopEditing("42");
+api.cancelEditing();
+api.setCellValue(cell, "43");
+```
+
+## Custom editors
+
+```ts
+const uppercaseEditor = (params: ICellEditorParams) => {
+  const input = document.createElement("input");
+  input.value = String(params.value ?? "").toUpperCase();
+  return {
+    init: () => {},
+    getGui: () => input,
+    getValue: () => input.value.toUpperCase(),
+    focus: () => input.focus(),
+  };
+};
+
+const column = {
+  key: "code",
+  label: "Code",
+  editable: true,
+  cellEditor: uppercaseEditor,
+} satisfies ColDef;
+```
+
+The React and Angular bindings accept framework components in the same
+`cellEditor` slot, with editor handles for value, focus, and parse state.
 
 ## Validating commits: `onBeforeCellCommit`
 

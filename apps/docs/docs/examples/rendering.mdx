@@ -1,4 +1,20 @@
+---
+title: Rendering
+sidebar_position: 12
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
 # Rendering
+
+Rows are virtualized automatically; on top of that, cells accept custom
+renderers — plain functions, classes, or framework components — and rows accept
+semantic presentation, conditional classes, and full-width takeovers.
+
+<LiveFeatureGrid feature="rendering" />
+
+<FrameworkCode feature="rendering" />
 
 ## Virtual scrolling and overscan
 
@@ -9,8 +25,61 @@ const options = {
 } satisfies GridOptions;
 ```
 
-For a semantic state shared by every cell, supply one row presentation instead
-of repeating cell callbacks across columns:
+Virtualization is automatic: the renderer maintains a small reusable row pool
+and slides it over the current viewport. Left, center, and right column
+sections stay synchronized without additional configuration.
+
+## Function cell renderer
+
+```ts
+const column = {
+  key: "status",
+  label: "Status",
+  cellRenderer: ({ value }) => {
+    const badge = document.createElement("span");
+    badge.className = `status status-${String(value).toLowerCase()}`;
+    badge.textContent = String(value);
+    return badge;
+  },
+} satisfies ColDef;
+```
+
+Class renderers implement `init`, `getGui`, and optional `refresh`/`destroy`.
+The React and Angular bindings additionally accept framework components in the
+same `cellRenderer` slot, as the tabs above show.
+
+## Built-in renderers: change flash and Sparkline
+
+```ts
+const priceColumn = {
+  key: "price",
+  label: "Price",
+  type: ColumnType.CURRENCY,
+  cellRenderer: ChangeFlashCellRenderer,
+  cellRendererParams: { cellFlashDuration: 400, cellFadeDuration: 900 },
+} satisfies ColDef;
+
+const trendColumn = {
+  colId: "trend",
+  label: "Trend",
+  valueGetter: (row) => row.monthlyRevenue,
+  cellRenderer: SparklineRenderer,
+  cellRendererParams: {
+    type: "area",
+    showPoints: true,
+    tooltipValueFormatter: ({ xValue, yValue }) => `${xValue}: $${yValue}`,
+  },
+} satisfies ColDef;
+```
+
+Grid-wide flash defaults are available as `cellFlashDuration` and
+`cellFadeDuration`. Sparkline data may be `number[]` or `[xValue, number][]`;
+supported visuals are line, area, and bar.
+
+## Row presentation
+
+For a semantic state shared by every cell in a row, supply one row presentation
+instead of repeating cell callbacks across columns:
 
 ```ts
 const pendingIds = new Set(["order-42"]);
@@ -39,64 +108,9 @@ api.refreshRowPresentation();
 
 Explicit column tooltip content/options override the row defaults. Cell classes
 compose; cell inline styles merge with the column winning conflicting fields.
-`editable: false` prevents user editing in columns that inherit the row gate;
-it does not enable columns when true. A deliberate exception can set
+`editable: false` prevents user editing in columns that inherit the row gate; it
+does not enable columns when true. A deliberate exception can set
 `inheritRowPresentation: { editable: false }`.
-
-Virtualization is automatic: the renderer maintains a small reusable row pool
-and slides it over the current viewport. Left, center, and right column sections
-stay synchronized without additional configuration.
-
-## Function cell renderer
-
-```ts
-const column = {
-  key: "status",
-  label: "Status",
-  cellRenderer: ({ value }) => {
-    const badge = document.createElement("span");
-    badge.className = `status status-${String(value).toLowerCase()}`;
-    badge.textContent = String(value);
-    return badge;
-  },
-} satisfies ColDef;
-```
-
-Class renderers implement `init`, `getGui`, and optional `refresh`/`destroy`.
-
-## Change flash
-
-```ts
-const column = {
-  key: "price",
-  label: "Price",
-  type: ColumnType.CURRENCY,
-  cellRenderer: ChangeFlashCellRenderer,
-  cellRendererParams: { cellFlashDuration: 400, cellFadeDuration: 900 },
-} satisfies ColDef;
-```
-
-Grid-wide defaults are available as `cellFlashDuration` and
-`cellFadeDuration`.
-
-## Sparkline
-
-```ts
-const column = {
-  colId: "trend",
-  label: "Trend",
-  valueGetter: (row) => row.monthlyRevenue,
-  cellRenderer: SparklineRenderer,
-  cellRendererParams: {
-    type: "area",
-    showPoints: true,
-    tooltipValueFormatter: ({ xValue, yValue }) => `${xValue}: $${yValue}`,
-  },
-} satisfies ColDef;
-```
-
-Sparkline data may be `number[]` or `[xValue, number][]`; supported visuals are
-line, area, and bar.
 
 ## Full-width rows
 

@@ -33,3 +33,101 @@ components. `<Grid />` also accepts every core `GridOptions` field as a prop.
 Use `ref`, `apiRef`, or `onGridReady` for imperative API access. Setup and
 cleanup support React Strict Mode effect replay.
 
+## React components in grid slots
+
+```tsx
+function StatusBadge({ value }: CellRendererParams) {
+  return <span className={`badge badge-${value}`}>{String(value)}</span>;
+}
+
+function OwnerTooltip({ data }: TooltipComponentParams) {
+  return <strong>{data.owner} · {data.ownerEmail}</strong>;
+}
+
+function CommentFrame({ value, close }: ActionFrameComponentParams) {
+  return <button onClick={() => { saveComment(String(value ?? "")); close(); }}>Save comment</button>;
+}
+
+const columns: ReactColDef[] = [
+  { key: "status", label: "Status", cellRenderer: StatusBadge },
+  { key: "owner", label: "Owner", tooltipComponent: OwnerTooltip },
+  {
+    key: "comment",
+    label: "Comment",
+    actionFrameTrigger: "click",
+    actionFrameComponent: CommentFrame,
+  },
+];
+```
+
+React components also work in `defaultColDef` for cell renderers, editors,
+tooltips, header tooltips, and ActionFrames. Custom header content uses the
+core DOM component contract.
+
+## React cell editor
+
+An editor exposes its value through a `ReactCellEditorHandle` ref:
+
+```tsx
+const UppercaseEditor = forwardRef<ReactCellEditorHandle, ICellEditorParams>(
+  function UppercaseEditor({ value }, ref) {
+    const [draft, setDraft] = useState(String(value ?? ""));
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useImperativeHandle(ref, () => ({
+      getValue: () => draft.toUpperCase(),
+      focus: () => inputRef.current?.focus(),
+    }), [draft]);
+
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+    );
+  },
+);
+
+const column: ReactColDef = {
+  key: "code",
+  label: "Code",
+  editable: true,
+  cellEditor: UppercaseEditor,
+};
+```
+
+## Event callback props
+
+```tsx
+<Grid
+  onCellClicked={(event) => console.log(event.rowId, event.colId)}
+  onRowClicked={(event) => console.log(event.rowId)}
+  onCellValueChanged={(event) => saveChange(event)}
+  onSelectionChanged={(event) => console.log(event.snapshot)}
+  onSortChanged={(event) => console.log(event.changedColIds)}
+  onFilterChanged={(event) => console.log(event.source, event.changedColIds)}
+/>
+```
+
+For other events, subscribe with `api.on(eventName, handler)`.
+
+## React-aware menu items and icons
+
+```tsx
+<Grid
+  icons={{ export: "/icons/download.svg" }}
+  getColumnMenuItems={({ items }) => [
+    ...items,
+    { isSeparator: true },
+    { id: "help", label: "Help", left: <HelpIcon />, onClick: openHelp },
+  ]}
+  bodyContextMenu={({ items }) => [
+    ...items,
+    { id: "inspect", label: "Inspect", right: <kbd>I</kbd>, onClick: inspect },
+  ]}
+/>
+```
+
+React nodes are accepted in menu `left` and `right` slots.
+

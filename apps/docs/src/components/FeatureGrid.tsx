@@ -1,13 +1,17 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   AggregateType,
   ColumnType,
   Grid,
+  SparklineRenderer,
   themeDark,
+  type ActionFrameComponentParams,
+  type CellRendererParams,
   type GridProps,
   type IGridAPI,
   type IServerSideDataSource,
   type ReactColDef,
+  type SavedGridView,
 } from "@agility-workbench/react-grid";
 import { DemoFrame } from "./DemoFrame";
 import demoStyles from "./DemoFrame.module.css";
@@ -24,6 +28,7 @@ type Order = {
   revenue: number;
   margin: number;
   owner: string;
+  comment?: string;
   parentId?: string | null;
 };
 
@@ -46,8 +51,65 @@ const rows: Order[] = Array.from({ length: 42 }, (_, index) => {
     revenue,
     margin: Math.round(revenue * (.17 + (index % 5) * .025)),
     owner: owners[index % owners.length],
+    comment: index % 7 === 0 ? "Escalated by the account team." : "",
   };
 });
+
+const ownerEmail = (owner: string) => `${owner.toLowerCase().replace(/\s+/g, ".")}@example.com`;
+
+/** Deterministic per-row series for the Sparkline demo. */
+const trendSeries = (row: Order) =>
+  Array.from({ length: 10 }, (_, i) => 20 + ((row.units * (i + 3) * 17 + row.margin) % 80));
+
+const statusColors: Record<string, string> = {
+  "On track": "#1f9d63",
+  "At risk": "#c98a1b",
+  Blocked: "#d1495b",
+};
+
+function StatusBadge({ value }: CellRendererParams) {
+  const color = statusColors[String(value)] ?? "#64748b";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 9px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 600,
+        color: "#fff",
+        background: color,
+      }}
+    >
+      {String(value)}
+    </span>
+  );
+}
+
+function CommentFrame({ value, rowId, colDef, api, close }: ActionFrameComponentParams) {
+  const [draft, setDraft] = useState(String(value ?? ""));
+  return (
+    <form
+      style={{ display: "flex", flexDirection: "column", gap: 8, padding: 4 }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        api.setCellValue({ rowId, colId: colDef.colId }, draft);
+        close();
+      }}
+    >
+      <textarea
+        value={draft}
+        rows={3}
+        style={{ resize: "vertical", font: "inherit" }}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={close}>Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  );
+}
 
 const treeRows: Order[] = [
   { ...rows[0], id: "company", customer: "Agility Workbench", parentId: null },
@@ -94,9 +156,32 @@ const labels: Record<DemoFeature, [string, string]> = {
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
+  "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
+  rendering: ["Rendering", "Status badges and Sparklines are custom cell renderers"],
+  tooltips: ["Tooltips", "Hover Owner or Revenue cells, or the Margin header"],
+  "action-frames": ["ActionFrames", "Click a Comment cell to open its persistent form"],
+  menus: ["Menus", "Right-click headers, cells, and row numbers for custom items"],
+  "toolbar-and-views": ["Toolbar & views", "Shape the grid, then save the layout as a view"],
   export: ["Export", "Select cells, then use the toolbar export menu"],
   theming: ["Theming", "A per-instance theme built from semantic parameters"],
 };
+
+const VIEWS_KEY = "awb-docs-demo-views";
+
+const grandTotals = rows.reduce(
+  (acc, row) => ({ units: acc.units + row.units, revenue: acc.revenue + row.revenue, margin: acc.margin + row.margin }),
+  { units: 0, revenue: 0, margin: 0 },
+);
+
+const pinnedTop: Order[] = [{
+  id: "pinned-target", orderNo: "TARGET", customer: "Quarterly target", region: "All", country: "All",
+  status: "On track", units: 1_800, revenue: 2_600_000, margin: 585_000, owner: "—",
+}];
+
+const pinnedBottom: Order[] = [{
+  id: "pinned-total", orderNo: "TOTAL", customer: "All orders", region: "All", country: "All",
+  status: "", units: grandTotals.units, revenue: grandTotals.revenue, margin: grandTotals.margin, owner: "—",
+}];
 
 function serverSource(): IServerSideDataSource {
   return {
@@ -113,6 +198,13 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
   const source = useMemo(serverSource, []);
   const apiRef = useRef<IGridAPI | null>(null);
   const insertedRowCount = useRef(0);
+  const [views, setViews] = useState<SavedGridView[]>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(VIEWS_KEY) ?? "[]") as SavedGridView[];
+    } catch {
+      return [];
+    }
+  });
   const [label, hint] = labels[feature];
   let columnDefs: ReactColDef[] = baseColumns;
   let rowData: unknown[] | undefined = rows;
@@ -167,6 +259,115 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       rowData = treeRows;
       columnDefs = [{ key: "status", label: "Status", width: 130 }, { key: "owner", label: "Owner", width: 160 }, { key: "revenue", label: "Budget", type: ColumnType.CURRENCY, width: 150 }];
       featureProps = { groupDefaultExpanded: 2, treeData: { mode: "parent", getParentId: (row: Order) => row.parentId, getLabel: (row: Order) => row.customer, columnDef: { label: "Workspace", width: 260 } } };
+      break;
+    case "pinned-rows":
+      featureProps = { rowNumbers: true, rowPinningMenu: true, pinnedTopRowData: pinnedTop, pinnedBottomRowData: pinnedBottom };
+      break;
+    case "rendering":
+      columnDefs = [
+        { colId: "orderNo", key: "orderNo", label: "Order", width: 115, pinned: "left" },
+        { colId: "customer", key: "customer", label: "Customer", width: 180 },
+        { colId: "status", key: "status", label: "Status", width: 130, cellRenderer: StatusBadge },
+        {
+          colId: "trend",
+          label: "Trend",
+          width: 170,
+          valueGetter: (row: Order) => trendSeries(row),
+          cellRenderer: SparklineRenderer,
+          cellRendererParams: { type: "area", showPoints: true },
+        },
+        { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
+        { colId: "owner", key: "owner", label: "Owner", width: 145 },
+      ];
+      featureProps = { zebraRows: true, rowHover: true, columnHover: true };
+      break;
+    case "tooltips":
+      columnDefs = baseColumns.map((column) => {
+        if (column.colId === "owner") {
+          return { ...column, tooltipValueGetter: ({ data }) => ownerEmail((data as Order).owner) };
+        }
+        if (column.colId === "revenue") {
+          return { ...column, tooltipValueGetter: ({ value, data }) => `${(data as Order).customer}: $${value}` };
+        }
+        if (column.colId === "margin") {
+          return { ...column, headerTooltip: "Revenue minus direct cost" };
+        }
+        return column;
+      });
+      featureProps = { tooltip: { showDelay: 150, hideDelay: 75, mode: "anchored", placement: "auto" } };
+      break;
+    case "action-frames":
+      columnDefs = [
+        { colId: "orderNo", key: "orderNo", label: "Order", width: 115, pinned: "left" },
+        { colId: "customer", key: "customer", label: "Customer", width: 180 },
+        { colId: "status", key: "status", label: "Status", width: 120 },
+        {
+          colId: "comment",
+          key: "comment",
+          label: "Comment",
+          width: 230,
+          actionFrameTrigger: "click",
+          actionFrameComponent: CommentFrame,
+          actionFrameIndicator: "comment",
+          actionFrameOptions: { placement: "right", offset: 10 },
+        },
+        { colId: "owner", key: "owner", label: "Owner", width: 145 },
+      ];
+      featureProps = { highlightActiveCell: true };
+      break;
+    case "menus":
+      featureProps = {
+        rowNumbers: true,
+        rowPinningMenu: true,
+        getColumnMenuItems: ({ ctx, items }) => [
+          ...items,
+          { isSeparator: true },
+          {
+            id: "inspect-column",
+            label: `Inspect ${ctx.targetColId}`,
+            onClick: () => window.alert(`Inspecting column "${ctx.targetColId}"`),
+          },
+        ],
+        bodyContextMenu: ({ ctx, items }) => [
+          ...items,
+          { isSeparator: true },
+          {
+            id: "open-record",
+            label: "Open record",
+            onClick: () => window.alert(`Opening record "${ctx.rowId}"`),
+          },
+        ],
+        rowInsertionMenu: {
+          createRow: ({ data, position }) => {
+            const sequence = ++insertedRowCount.current;
+            return {
+              ...(data as Order),
+              id: `menu-inserted-${sequence}`,
+              orderNo: `NEW-${String(sequence).padStart(4, "0")}`,
+              customer: `Inserted ${position}`,
+            };
+          },
+        },
+      };
+      break;
+    case "toolbar-and-views":
+      featureProps = {
+        columnPanel: { trigger: "toolbar" },
+        toolbar: { grouping: true, sorting: true, quickFilter: true, views: true, export: true },
+        allowExportAsCSV: true,
+        allowExportAsExcel: true,
+        savedViews: {
+          views,
+          onChange: (next) => {
+            setViews([...next]);
+            try {
+              window.localStorage.setItem(VIEWS_KEY, JSON.stringify(next));
+            } catch {
+              // Storage may be unavailable; the in-memory list still works.
+            }
+          },
+        },
+      };
       break;
     case "export":
       featureProps = { rowNumbers: true, allowExportAsCSV: true, allowExportAsExcel: true, toolbar: { export: true } };

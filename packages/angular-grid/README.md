@@ -100,4 +100,4 @@ Cell editors implement `ICellEditorNgComp` (`getValue()` plus optional `focus`, 
 
 ## License
 
-MIT
+[MIT](./LICENSE)

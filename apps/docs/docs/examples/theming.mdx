@@ -1,6 +1,6 @@
 ---
 title: Theming and icons
-sidebar_position: 12
+sidebar_position: 18
 ---
 
 import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
@@ -21,13 +21,69 @@ Start with `themeLight` or `themeDark`, then call `withParams()`. Common
 parameters cover accent, surfaces, text, borders, hover/selection colors,
 typography, row height, padding, scrollbars, aggregates, and sparklines.
 
+```ts
+import { themeLight } from "@agility-workbench/grid";
+
+const theme = themeLight.withParams({
+  accentColor: "#7c3aed",
+  backgroundColor: "#ffffff",
+  headerBackgroundColor: "#f5f3ff",
+  rowHeight: 42,
+  spacing: 10,
+  fontFamily: "Inter, sans-serif",
+});
+
+const options = { theme } satisfies GridOptions;
+```
+
 Themes apply inline to one grid and its portaled popups, so two grids on one
 page can look different. `vars` overrides semantic fan-out for any individual
-`--pte-*` variable.
+`--pte-*` variable:
+
+```ts
+const theme = themeDark.withParams({
+  accentColor: "#22d3ee",
+  vars: {
+    "--pte-scrollbar-thumb-color": "#475569",
+    "--pte-selected-bg-color": "#164e63",
+  },
+});
+```
+
+## Icons
 
 Icons accept a URL, data URI, CSS image value, or inline SVG. Theme icons form
 the base; the grid-level `icons` map wins for matching names.
 
-The base stylesheet is injected automatically. Import
-`@agility-workbench/grid/styles.css` and set `suppressStyleInjection` only when
-your build pipeline needs to own CSS delivery.
+```ts
+const options = {
+  icons: {
+    filter: "<svg viewBox='0 0 24 24' aria-hidden='true'>…</svg>",
+    export: "/icons/download.svg",
+  },
+} satisfies GridOptions;
+```
+
+## Stylesheet delivery and CSP
+
+The base stylesheet is injected automatically — the first attached grid injects
+it once per document or shadow root. Under a strict Content Security Policy,
+supply the page's nonce:
+
+```ts
+const options = { styleNonce: cspNonce } satisfies GridOptions;
+
+// Or inject explicitly, e.g. into a shadow root:
+import { areGridStylesInjected, injectGridStyles } from "@agility-workbench/grid";
+injectGridStyles(document, { nonce: cspNonce });
+```
+
+Import `@agility-workbench/grid/styles.css` and set `suppressStyleInjection`
+only when your build pipeline needs to own CSS delivery — opting out avoids two
+copies of the stylesheet competing in the cascade:
+
+```ts
+import "@agility-workbench/grid/styles.css";
+
+const options = { suppressStyleInjection: true } satisfies GridOptions;
+```

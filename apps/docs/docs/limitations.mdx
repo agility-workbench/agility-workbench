@@ -13,12 +13,13 @@ evaluated before adoption.
 - Variable or automatic row heights and text wrapping
 - Master/detail row panels
 - Pivoting
-- A complete ARIA grid model and assistive-technology focus model
+- ARIA exposure of the column-group header hierarchy (parent header cells are
+  presentational; leaf headers are full `columnheader`s)
 - An in-grid contextual keyboard-shortcut reference
 
-Accessibility is partially covered in menus, filters, column-management
-feedback, and keyboard interaction. The main data surface should not yet be
-presented as fully accessible.
+The grid's assistive-technology support — the ARIA grid model, focus and
+announcement behavior, and its current boundaries — is described on the
+dedicated [accessibility](./accessibility.mdx) page.
 
 ## Client-side-only behavior
 

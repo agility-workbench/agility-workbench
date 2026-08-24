@@ -15,20 +15,89 @@ calculate aggregates over each group's leaf descendants.
 
 <FrameworkCode feature="grouping" />
 
+## Multi-level row grouping
+
+```ts
+const options = {
+  groupDisplayType: "singleColumn",
+  groupDefaultExpanded: 1,
+  groupSortMode: "local",
+  columnDefs: [
+    { colId: "region", key: "region", label: "Region", groupable: true },
+    { colId: "country", key: "country", label: "Country", groupable: true },
+    { key: "revenue", label: "Revenue", type: ColumnType.CURRENCY },
+  ],
+} satisfies GridOptions;
+
+api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+api.setAllGroupsExpanded(true);
+```
+
+Use `groupRowsSelectable: true` when generated group rows should participate in
+selection, navigation, and copying.
+
 ## Display and expansion
 
 `groupDisplayType` accepts `singleColumn`, `multipleColumns`, or `groupRows`.
 `groupDefaultExpanded` sets the initial depth; later user expansion remains
-stable across refreshes. `groupRowsSticky` docks the active ancestor chain while
-the body scrolls.
+stable across refreshes (when group values are unchanged). `groupRowsSticky`
+docks the active ancestor chain while the body scrolls — see
+[pinned & sticky rows](./pinned-rows.mdx).
 
 The toolbar provides a grouping picker, ordered chips, drag insertion, keyboard
 reordering, and clear-all behavior. The API can replace grouped columns and
-expand or collapse all groups in one update.
+expand or collapse all groups in one update, or toggle a single group:
+
+```ts
+api.dispatch({
+  type: "groupToggleExpand",
+  groupId: "the-stable-group-node-id",
+  expanded: true,
+});
+```
 
 ## Aggregates
 
 Available functions are count, distinct count, sum, average, min, max, and
-median. The footer scope can be none, current page, or all rows. Server-side
-grouping requests one parent listing at a time and sends aggregate definitions
-with the request.
+median. The footer scope can be none, current page, or all rows. Grouped
+client-side rows also receive per-group aggregate values.
+
+```ts
+const revenue = api.getColumnModel().getByColId("revenue")!;
+const orders = api.getColumnModel().getByColId("orders")!;
+
+api.dispatch({
+  type: "aggregateModelSet",
+  aggregateModels: [
+    { key: revenue.instanceID, type: AggregateType.SUM },
+    { key: orders.instanceID, type: AggregateType.COUNT },
+  ],
+});
+```
+
+## Server-side grouping and aggregation
+
+Server-side grouping requests one parent listing at a time and sends aggregate
+definitions with the request:
+
+```ts
+const dataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    // request.groupBy: ["region", "country"]
+    // request.groupKeys: [{ key: "region", value: "EMEA" }, ...]
+    return queryOneGroupingLevel(request);
+  },
+  getAggregates: async ({ request }) => ({
+    values: await loadAggregateValues(request),
+  }),
+};
+
+const options = {
+  rowModelType: "serverSide",
+  serverSideDataSource: dataSource,
+  getGroupChildCount: (row) => row.childCount,
+} satisfies GridOptions;
+```
+
+Each expanded group loads its own child listing lazily — see
+[server-side data](./server-side-data.mdx).

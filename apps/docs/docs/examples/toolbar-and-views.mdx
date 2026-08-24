@@ -1,4 +1,20 @@
+---
+title: Toolbar & saved views
+sidebar_position: 16
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
 # Column panel, toolbar, and saved views
+
+The column panel manages visibility, pinning, and order; the toolbar surfaces
+grouping, sorting, quick filter, views, and export as opt-in sections; saved
+views capture the whole layout under application-owned persistence.
+
+<LiveFeatureGrid feature="toolbar-and-views" />
+
+<FrameworkCode feature="toolbar-and-views" />
 
 ## Column panel
 
@@ -12,8 +28,8 @@ const options = {
 } satisfies GridOptions;
 ```
 
-Change `trigger` to `"header"`, `"menu"`, `"footer"`, or `"toolbar"`.
-The drawer provides search, show/hide, pinning, pointer/keyboard ordering, bulk
+Change `trigger` to `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. The
+drawer provides search, show/hide, pinning, pointer/keyboard ordering, bulk
 visibility, nested groups, and reset. Opt a column out with
 `suppressColumnPanel: true`.
 
@@ -34,7 +50,7 @@ const options = {
 
 Every section is independently opt-in. The toolbar observes the grid container
 and automatically collapses labels and moves secondary commands into an
-overflow menu as space shrinks.
+overflow menu as space shrinks — resize the demo's window to see it adapt.
 
 ## Application-owned saved views
 
@@ -58,9 +74,10 @@ const options = {
 } satisfies GridOptions;
 ```
 
-The application owns persistence; the grid supplies picker and CRUD behavior.
-A view contains column layout, grouping, sorting, filters, quick-filter text,
-and group expansion.
+The application owns persistence; the grid supplies picker and CRUD behavior. A
+view contains column layout, grouping, sorting, filters, quick-filter text, and
+group expansion. (The live demo above persists its views to `localStorage` —
+shape the grid, save a view, and reload the page.)
 
 ## Capture and apply view state directly
 

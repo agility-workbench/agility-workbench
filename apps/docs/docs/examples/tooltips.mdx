@@ -1,4 +1,20 @@
+---
+title: Tooltips
+sidebar_position: 13
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
 # Tooltips
+
+Tooltips come from a field, a computed value, or a custom component — on body
+cells and headers — with grid-wide positioning and interaction options.
+Clipped cell text gets an automatic tooltip with no configuration at all.
+
+<LiveFeatureGrid feature="tooltips" />
+
+<FrameworkCode feature="tooltips" />
 
 ## Field and computed body tooltips
 
@@ -42,6 +58,9 @@ const column = {
 } satisfies ColDef;
 ```
 
+The React and Angular bindings accept framework components in the same
+`tooltipComponent` slot.
+
 ## Position and interaction
 
 ```ts
@@ -57,9 +76,18 @@ const options = {
 } satisfies GridOptions;
 ```
 
-A column may override `mode`, `placement`, `interactive`, and
-`escapeRootClip` through `tooltipOptions`. Interactive content is always
-anchored; non-interactive content may use `mode: "follow"`.
+A column may override `mode`, `placement`, `interactive`, and `escapeRootClip`
+through `tooltipOptions`. Interactive content is always anchored;
+non-interactive content may use `mode: "follow"`.
+
+:::info escapeRootClip and theming
+`escapeRootClip: true` mounts the floating element in `document.body` so it is
+not clipped near the grid edge — but a body-mounted element is outside the grid
+root, where the theme's `--pte-*` custom properties are applied, so
+tooltip-related theme params do not reach it. Keep the tooltip inside the root,
+or set the variables at `:root` scope. [ActionFrames](./action-frames.mdx)
+behave the same way.
+:::
 
 ## Tooltip API and events
 

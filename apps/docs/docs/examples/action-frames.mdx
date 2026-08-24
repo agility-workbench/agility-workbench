@@ -1,7 +1,20 @@
-# Action frames
+---
+title: ActionFrames
+sidebar_position: 14
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# ActionFrames
 
 An ActionFrame keeps a visible frame on one cell and mounts application-owned
-form content in a persistent popover.
+form content in a persistent popover — for inline workflows like comments,
+approvals, or quick edits that outlive a hover.
+
+<LiveFeatureGrid feature="action-frames" />
+
+<FrameworkCode feature="action-frames" />
 
 ## Click-triggered comment form
 
@@ -40,18 +53,21 @@ const column = {
 ```
 
 `actionFrameIndicator` may also be `true` or a predicate. Use
-`defaultColDef.actionFrameComponent` to share a component across columns.
+`defaultColDef.actionFrameComponent` to share a component across columns. The
+React and Angular bindings accept framework components in the same
+`actionFrameComponent` slot — the live demo above mounts a React form.
 
 ## Theming and `escapeRootClip`
 
-`escapeRootClip: true` mounts the popover in `document.body` so it is not clipped
-by the grid's own overflow near the grid edge. The cost is theming: a theme's
-values are applied as inline `--pte-*` custom properties on the grid root, and a
-body-mounted popover is outside that subtree, so **the `actionFramePopover*`
-theme params do not apply to it** — `actionFramePopoverWidth`,
-`actionFramePopoverBackgroundColor`, `actionFramePopoverRadius`,
-`actionFramePopoverShadow`, and friends are all ignored, and the popover renders
-with the stylesheet defaults (300px wide, light surface).
+`escapeRootClip: true` mounts the popover in `document.body` so it is not
+clipped by the grid's own overflow near the grid edge. The cost is theming: a
+theme's values are applied as inline `--pte-*` custom properties on the grid
+root, and a body-mounted popover is outside that subtree, so **the
+`actionFramePopover*` theme params do not apply to it** —
+`actionFramePopoverWidth`, `actionFramePopoverBackgroundColor`,
+`actionFramePopoverRadius`, `actionFramePopoverShadow`, and friends are all
+ignored, and the popover renders with the stylesheet defaults (300px wide,
+light surface).
 
 Either keep the popover inside the root:
 
@@ -59,7 +75,8 @@ Either keep the popover inside the root:
 actionFrameOptions: { placement: "right", offset: 10 }, // escapeRootClip off
 ```
 
-or set the variables at document scope, which applies to every grid on the page:
+or set the variables at document scope, which applies to every grid on the
+page:
 
 ```css
 :root {
@@ -67,7 +84,8 @@ or set the variables at document scope, which applies to every grid on the page:
 }
 ```
 
-Tooltips behave the same way under `tooltipOptions.escapeRootClip`.
+[Tooltips](./tooltips.mdx) behave the same way under
+`tooltipOptions.escapeRootClip`.
 
 ## Programmatic control
 

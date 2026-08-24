@@ -1,0 +1,89 @@
+---
+title: Pinned & sticky rows
+sidebar_position: 11
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Pinned and sticky rows
+
+Application-owned rows can be pinned into top and bottom bands that sit outside
+the scrolling body, any row — including generated group rows — can be pinned at
+runtime, and expanded group ancestors can stick below the header while
+scrolling.
+
+<LiveFeatureGrid feature="pinned-rows" />
+
+<FrameworkCode feature="pinned-rows" />
+
+## Application-owned top and bottom rows
+
+```ts
+const options = {
+  pinnedTopRowData: [{ id: "target", label: "Target", amount: 1_000_000 }],
+  pinnedBottomRowData: [{ id: "total", label: "Total", amount: 842_000 }],
+} satisfies GridOptions;
+```
+
+These rows sit outside sorting, filtering, grouping, pagination, and the row
+count. They retain normal formatting and cell renderers.
+
+Replace a band at runtime through the API:
+
+```ts
+api.setPinnedTopRowData(nextTargets);
+api.setPinnedBottomRowData(nextTotals);
+```
+
+Each application band caps at 30% of grid height and gets an independent
+vertical scrollbar when needed.
+
+## Editable application rows
+
+```ts
+const options = {
+  pinnedTopRowData: [{ id: "forecast", amount: 100 }],
+  pinnedRowsEditable: true,
+  columnDefs: [{ key: "amount", label: "Amount", editable: true }],
+} satisfies GridOptions;
+```
+
+Edits update the supplied object and participate in undo/redo. Without
+`pinnedRowsEditable`, pinned rows stay read-only regardless of column
+`editable` flags, and synthetic group headers are never editable.
+
+## Pin generated rows
+
+```ts
+const options = {
+  isRowPinned: ({ node }) => node.isGroup && node.groupKey === "EMEA" ? "top" : null,
+} satisfies GridOptions;
+
+api.setRowPinned(groupNodeId, "bottom");
+api.setRowPinned(groupNodeId, null);
+```
+
+Runtime-pinned hierarchy rows keep live expansion and aggregates. Their
+ancestor chain is pinned with them, and unpinning the chain releases
+descendants. Set [`rowPinningMenu: true`](../api/grid-options.mdx) to expose
+Pin to top / Pin to bottom / Unpin in the body context menu — try it in the
+demo above.
+
+## Sticky group ancestors
+
+```ts
+const options = {
+  groupRowsSticky: true,
+  groupDefaultExpanded: -1,
+} satisfies GridOptions;
+```
+
+Expanded ancestors stack below the header while scrolling, in client-side and
+server-side grouping alike, and with all group display modes.
+
+## Selection, navigation, and export across bands
+
+No extra option is required. Arrow navigation crosses top → body → bottom;
+range selection and Ctrl/Cmd+A span the unified sequence; copy and full export
+preserve that order. Cut and paste remain body-only.

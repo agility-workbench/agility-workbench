@@ -166,10 +166,12 @@ published entry points.
 
 ## Focused examples
 
-The [examples catalog](examples/README.md) provides small, feature-specific
-snippets for the core, React, and Angular libraries. Each example isolates one
-option, API workflow, or framework adapter instead of recreating a full
-playground screen.
+The documentation site's [feature examples](https://agilityworkbench.dev/docs/examples)
+provide small, feature-specific snippets for the core, React, and Angular
+libraries — each topic pairs a live interactive grid with per-framework code
+tabs, and each example isolates one option, API workflow, or framework adapter
+instead of recreating a full playground screen. The pages live in
+[`apps/docs/docs/examples`](apps/docs/docs/examples).
 
 The deployable documentation site lives in [`apps/docs`](apps/docs). Its first
 curated release pairs 12 interactive React examples with switchable React,
@@ -265,10 +267,13 @@ find package boundaries, build ordering, and release notes in the
 ## Project status and limitations
 
 The feature set is broad, but the project is still evolving. Notable current
-gaps include variable/automatic row heights, master-detail rows, pivoting, and a
-complete ARIA grid model. Accessibility is partially covered: menus and filters
-include accessibility support, while the main data surface does not yet provide
-a complete accessible grid experience.
+gaps include variable/automatic row heights, master-detail rows, and pivoting.
+The data surface exposes an ARIA grid model with a roving-focus
+(`aria-activedescendant`) model, state semantics, and live announcements, and
+all interactions are keyboard-reachable; column-group (parent) header cells are
+not yet exposed to assistive technology, and an end-to-end screen-reader
+validation pass is still pending — see the documentation site's Accessibility
+page for the full picture.
 
 Server-side and client-side row models also differ intentionally in a few areas.
 For example, client-side transactions, quick filtering, full-width rows, custom

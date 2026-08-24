@@ -22,6 +22,18 @@ Use `rowIdKey` when the ID is a field, or `getRowId(row)` for a derived value.
 Stable IDs preserve row-node identity across transactions and let editing,
 selection, grouping, and pinned rows refer to the same record.
 
+```ts
+const options = {
+  rowIdKey: "id",
+  rowModelType: "clientSide", // the default
+} satisfies GridOptions;
+
+// Derived or nested IDs:
+const derived = {
+  getRowId: (row) => String(row.account.id),
+} satisfies GridOptions;
+```
+
 ## Replace or transact
 
 `api.setRowData(rows)` supplies a whole data set; whether that resets the grid
@@ -36,8 +48,10 @@ client-side row order:
 
 ```ts
 api.applyTransaction({
-  add: [newOrder],
+  add: [{ id: "c", name: "Gamma" }],
   addIndex: 2,
+  update: [{ rowId: "a", row: { id: "a", name: "Alpha updated" } }],
+  remove: ["b"],
 });
 ```
 

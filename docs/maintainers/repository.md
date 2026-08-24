@@ -49,7 +49,7 @@ agility-workbench/                 ← private workspace root
 ├── vitest.config.ts               test discovery + aliases (grid + react-grid)
 ├── scripts/
 │   └── check-export-parity.mjs    release gate: built .d.ts/.d.cts vs ESM/CJS runtime exports (§6)
-├── examples/                      documentation fragments (not built, not published)
+├── examples/                      pointer to the docs site's example pages (content migrated to apps/docs)
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
 │   └── architecture/current-state.md   feature/architecture reference

@@ -48,6 +48,32 @@ column, so a Shift chord never reads as plain movement that starts selecting.
 The API exposes focused-cell, range, row, column, navigation, and selection
 snapshot operations. Pagination invalidates a range from the previous page.
 
+```ts
+// Rows
+api.selectRow(3, "replace");
+api.selectAllRows();
+console.log(api.getSelectedRows());
+api.deselectAllRows();
+
+// Columns (columnSelection: true)
+api.selectColumn("revenue", "replace");
+api.selectColumn("cost", "toggle");
+
+// Ranges
+api.selectRange(2, 1);   // row index 2, column index 1
+api.extendRangeTo(8, 3);
+console.log(api.getSelection());
+api.clearSelection("range");
+
+// Keyboard-style navigation
+api.setFocusedCell(0, 0);
+api.navigate("down");
+api.navigate("right", { extend: true });
+api.navigate("down", { jump: "block" });
+api.navigate("down", { jump: "page", pageRows: 20 });
+api.navigateToCorner("bottomRight");
+```
+
 ## Row selection for an external owner
 
 Row selection is keyed by stable row id, so an application store can drive it

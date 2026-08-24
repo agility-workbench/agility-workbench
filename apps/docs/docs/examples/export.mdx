@@ -1,6 +1,6 @@
 ---
 title: CSV and Excel export
-sidebar_position: 11
+sidebar_position: 17
 ---
 
 import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
@@ -28,3 +28,55 @@ to relevant rows.
 
 Use `getDataAsCsv()` or `getDataAsExcel()` when the application needs bytes
 without triggering a browser download—for example, to upload or encrypt a file.
+
+## Enable export commands
+
+```ts
+const options = {
+  allowExportAsCSV: true,
+  allowExportAsExcel: true,
+  toolbar: { export: true },
+} satisfies GridOptions;
+```
+
+Export is also available from column and body context menus.
+
+## Download CSV or Excel
+
+```ts
+api.exportDataAsCsv({ fileName: "orders.csv" });
+api.exportDataAsExcel({ fileName: "orders.xlsx" });
+```
+
+## Export a range or selected columns
+
+```ts
+api.exportDataAsCsv({ scope: "selection" });
+
+api.exportDataAsExcel({
+  scope: "selectedColumns",
+  columnIds: ["orderNo", "customer", "total"],
+  includeHeaders: true,
+});
+```
+
+## Grouped export
+
+```ts
+api.exportDataAsExcel({ groupMode: "tree" });   // group headers + subtotals
+api.exportDataAsExcel({ groupMode: "leaves" }); // flat leaves with group paths
+```
+
+CSV and Excel include application-pinned top and bottom rows around the body.
+
+## Get bytes without downloading
+
+```ts
+const csv = api.getDataAsCsv({ scope: "all" });
+await fetch("/exports/orders.csv", { method: "PUT", body: csv });
+
+const bytes = await api.getDataAsExcel();
+const workbook = new Blob([bytes], {
+  type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+});
+```

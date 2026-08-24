@@ -15,12 +15,39 @@ and leaf columns keep their ordinary pinning, filtering, sizing, and state.
 
 <FrameworkCode feature="column-groups" />
 
+## Nested column groups
+
+```ts
+const columnDefs: ColDef[] = [
+  {
+    label: "Customer",
+    openByDefault: true,
+    children: [
+      { key: "firstName", label: "First name", columnGroupShow: "open" },
+      { key: "lastName", label: "Last name" },
+    ],
+  },
+  {
+    label: "Order",
+    children: [
+      { key: "total", label: "Total", type: ColumnType.CURRENCY },
+      { key: "status", label: "Status" },
+    ],
+  },
+];
+```
+
+The group chevron expands/collapses children. Nested groups may be used at more
+than one level.
+
 ## Expansion
 
 `openByDefault` controls a group's initial state. A leaf with
 `columnGroupShow: "open"` is visible only while its parent is expanded;
 `"closed"` provides the inverse behavior. Manually hidden active leaves remain
-hidden when the group state changes.
+hidden when the group state changes. A group renders its expander only when its
+children mix `columnGroupShow` values — a group whose children all toggle
+together has nothing to expand.
 
 Groups also appear as collapsible branches in the column panel. Searching a
 group name reveals its descendants, while reordering remains constrained to a

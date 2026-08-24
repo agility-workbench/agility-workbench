@@ -23,6 +23,45 @@ the data source instead of calculated over an incomplete browser cache.
 Return `{ rows, totalRows }`; root responses may also provide `columns` and a
 `schemaVersion` for server-driven schemas.
 
+```ts
+import type { IServerSideDataSource } from "@agility-workbench/grid";
+
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    const response = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    return response.json(); // { rows, totalRows }
+  },
+};
+
+const options = {
+  rowModelType: "serverSide",
+  serverSideBlockSize: 100,
+  serverSideDataSource,
+} satisfies GridOptions;
+```
+
+## Server-provided schema
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    return {
+      rows: await loadRows(request),
+      totalRows: 500,
+      schemaVersion: "orders-v2",
+      columns: [
+        { key: "orderNo", label: "Order" },
+        { key: "total", label: "Total", type: ColumnType.CURRENCY },
+      ],
+    };
+  },
+};
+```
+
 A server-driven schema applies only while the application has not supplied
 column definitions itself — through `columnDefs` at creation, a wrapper prop,
 `updateGridOptions({ columnDefs })`, or `api.setColumnDefs`. Application
@@ -35,6 +74,27 @@ Omitting `totalRows` creates an open-ended listing. The grid probes forward
 until a short block establishes the end and displays provisional pagination
 totals with a `+` suffix.
 
+## Refresh server data
+
+```ts
+await api.refreshServerSideData();
+await api.refreshServerSideData({ purge: true });
+await api.refreshServerSideData({ groupKeys: ["EMEA"], purge: false });
+```
+
 Use a soft refresh to keep visible rows while refetching, or `{ purge: true }`
 to discard affected blocks immediately. A `groupKeys` path limits refresh to
 one subtree.
+
+For server-side pagination with expensive counts, pair an open-ended listing
+with a hint:
+
+```ts
+const options = {
+  rowModelType: "serverSide",
+  pagination: true,
+  pageSize: 50,
+  paginationUnknownTotalTooltip: "The server is still discovering the total",
+  serverSideDataSource,
+} satisfies GridOptions;
+```

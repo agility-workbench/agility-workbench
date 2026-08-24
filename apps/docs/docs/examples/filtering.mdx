@@ -22,12 +22,108 @@ Set `filter: true` to infer the UI from `ColumnType`, or choose `"text"`,
 controls operators, debounce, buttons, case handling, and the number of AND/OR
 conditions.
 
+```ts
+const columnDefs: ColDef[] = [
+  { key: "name", label: "Name", filter: "text" },
+  { key: "amount", label: "Amount", type: ColumnType.NUMBER, filter: "number" },
+  { key: "due", label: "Due", type: ColumnType.DATE, filter: "date" },
+  { key: "active", label: "Active", type: ColumnType.BOOLEAN, filter: "boolean" },
+  { key: "region", label: "Region", filter: "set" },
+];
+```
+
+Active filters show an indicator in the header and are managed from the
+column's filter panel.
+
+```ts
+const column = {
+  key: "name",
+  label: "Name",
+  filter: "text",
+  filterParams: {
+    buttons: ["apply", "clear", "cancel"],
+    closeOnApply: true,
+    debounceMs: 200,
+    maxNumConditions: 2,
+    caseSensitive: false,
+    trimValues: true,
+  },
+} satisfies ColDef;
+```
+
+When more than one condition is enabled, the filter UI lets the user join them
+with AND or OR. `trimValues` trims only filter operands, not cell values;
+`closeOnApply` needs an Apply button to have any effect.
+
+Restrict which operators a column offers:
+
+```ts
+const column = {
+  key: "amount",
+  label: "Amount",
+  filter: "number",
+  filterParams: {
+    filterOptions: [
+      { value: FilterType.GTE, label: "At least" },
+      { value: FilterType.LTE, label: "At most" },
+      { value: FilterType.IN_RANGE, label: "Between" },
+    ],
+  },
+} satisfies ColDef;
+```
+
+The built-in operators also include contains, starts/ends with, equality,
+inequality, blank checks, inclusion, and negated forms.
+
+## Set-filter values
+
 Set-filter values can come from loaded rows, a static list, or an asynchronous
-loader. Set `filterParams.showValueCounts: true` to show the number of loaded
+loader:
+
+```ts
+const staticSet = {
+  key: "status",
+  label: "Status",
+  filter: "set",
+  filterParams: {
+    filterValues: [{ value: "Open" }, { value: "Pending" }, { value: "Closed" }],
+  },
+} satisfies ColDef;
+
+const asyncSet = {
+  key: "owner",
+  label: "Owner",
+  filter: "set",
+  filterParams: {
+    filterValues: async ({ success }) => {
+      success(await (await fetch("/api/owners")).json());
+    },
+  },
+} satisfies ColDef;
+```
+
+Set filters can keep complex raw values while defining their identity and
+display separately:
+
+```ts
+const regionSet = {
+  key: "region",
+  label: "Region",
+  filter: "set",
+  filterParams: {
+    keyCreator: value => value.code,
+    valueFormatter: ({ value }) => value.name,
+  },
+} satisfies ColDef;
+```
+
+`keyCreator` is used for option deduplication, selection, API lookup, and
+client-side comparison; `valueFormatter` controls labels, mini-filter matching,
+accessible names, and value ordering. Filter models and Set Filter API methods
+continue to use the raw values. Set `filterParams.showValueCounts: true` to show the number of loaded
 leaf rows for each value. Counts cover the complete client-side row model; with
 the server-side row model they are necessarily limited to rows currently loaded
-in the grid. A function supplied as `filter` becomes a custom row matcher while
-the standard filter panel still owns its model and inputs.
+in the grid.
 
 Set-filter label content is independently customizable while the grid retains
 ownership of the checkbox and interaction behavior:
@@ -68,11 +164,70 @@ The *column's* `valueFormatter` still sees blanks when rendering cells, which is
 how a blank cell shows an em dash. On the server-side row model the bucket travels
 as `null`, so the server applies its own blank rule and cannot see `keyCreator`.
 
+## Custom matcher
+
+A function supplied as `filter` becomes the row matcher while the standard
+filter panel still owns its model and inputs:
+
+```ts
+const column = {
+  key: "tags",
+  label: "Tags",
+  filter: (value, _node, filterValues) => {
+    const query = String(filterValues[0] ?? "").toLowerCase();
+    return value.some((tag: string) => tag.toLowerCase().includes(query));
+  },
+} satisfies ColDef;
+```
+
+For reusable normalization and matching, use `filterParams.textFormatter` and
+`filterParams.filterFunction`:
+
+```ts
+const column = {
+  key: "code",
+  label: "Code",
+  filter: "text",
+  filterParams: {
+    caseSensitive: false,
+    trimValues: true,
+    textFormatter: value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+    filterFunction: (type, values, cell, caseSensitive, trimValues) => {
+      const query = trimValues ? values[0].trim() : values[0];
+      const [haystack, needle] = caseSensitive
+        ? [cell, query]
+        : [cell.toLowerCase(), query.toLowerCase()];
+      return type === FilterType.STARTS_WITH && haystack.startsWith(needle);
+    },
+  },
+} satisfies ColDef;
+```
+
+The formatter processes both cell and filter values before comparison. A
+`filterFunction` takes precedence over a function assigned to `filter`, while
+`filter: false` disables filtering completely. These callbacks execute only in
+the client-side row model; server-side filtering must implement the equivalent
+normalization on the server.
+
 ## Programmatic filters
 
 `getFilterModel()` / `setFilterModel(filters)` / `addFilterModel(filter)` /
 `removeFilterModel(colId)` read and write all column filters as serializable
-`{ colId, filters, join }` items addressed by the public `ColDef.colId`.
+`{ colId, filters, join }` items addressed by the public `ColDef.colId`. The
+dispatch form addresses runtime columns directly:
+
+```ts
+const amount = api.getColumnModel().getByColId("amount")!;
+
+api.dispatch({
+  type: "filterModelSet",
+  filterModel: [{
+    col: amount,
+    key: "amount",
+    filters: [{ type: FilterType.GTE, values: [100] }],
+  }],
+});
+```
 
 ## Set filter by intent
 
@@ -105,6 +260,21 @@ subsequent menu or helper toggles keep that representation instead of
 optimizing storage to the shorter list.
 
 ## Quick filter
+
+```ts
+const options = {
+  quickFilter: {
+    mode: "always",
+    matchMode: "multiTerm",
+    caseSensitive: false,
+    debounceMs: 100,
+    showOptions: true,
+  },
+} satisfies GridOptions;
+
+api.setQuickFilter("open europe");
+api.setQuickFilter("exact phrase", { matchMode: "substring" });
+```
 
 `multiTerm` requires every whitespace-separated term to match somewhere in the
 row. `substring` treats the input as one phrase. The toolbar can host quick

@@ -29,8 +29,126 @@ export class ProductsComponent {
 }
 ```
 
-`AwbGrid` is standalone, SSR-safe, and compatible with zone-based and zoneless
-applications. It exposes signal inputs for core options and Angular outputs for
-common events. Angular renderers, editors, tooltips, and ActionFrames may receive
+`AwbGrid` is standalone, SSR-safe (browser creation is deferred with
+`afterNextRender`), and compatible with zone-based and zoneless applications.
+It exposes signal inputs for core options and Angular outputs for common
+events. Angular renderers, editors, tooltips, and ActionFrames may receive
 params through an input named `params` or an `awbInit(params)` method.
+
+## Angular components in grid slots
+
+A cell renderer with a params input:
+
+```ts
+@Component({
+  standalone: true,
+  template: `<strong>{{ params()?.value }}</strong>`,
+})
+export class BoldCell {
+  readonly params = input<CellRendererParams>();
+}
+
+const column: NgColDef = {
+  key: "name",
+  label: "Name",
+  cellRenderer: BoldCell,
+};
+```
+
+A tooltip with `awbInit`:
+
+```ts
+@Component({
+  standalone: true,
+  template: `<span>{{ text }}</span>`,
+})
+export class OwnerTooltip implements ITooltipNgComp {
+  text = "";
+
+  awbInit(params: TooltipComponentParams): void {
+    this.text = `${params.data.owner} · ${params.data.ownerEmail}`;
+  }
+}
+```
+
+ActionFrame components follow the same pattern with `IActionFrameNgComp`.
+Angular header components are not adapted; headers use the core DOM component
+contract.
+
+## Angular cell editor
+
+```ts
+@Component({
+  standalone: true,
+  template: `<input #box [value]="initial" />`,
+})
+export class TextEditor implements ICellEditorNgComp {
+  private readonly box = viewChild.required<ElementRef<HTMLInputElement>>("box");
+  initial = "";
+
+  awbInit(params: ICellEditorParams): void {
+    this.initial = String(params.value ?? "");
+  }
+
+  getValue(): unknown {
+    return this.box().nativeElement.value;
+  }
+
+  focus(): void {
+    this.box().nativeElement.focus();
+  }
+}
+```
+
+## Outputs and API access
+
+```html
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  (gridReady)="onGridReady($event)"
+  (cellClicked)="onCellClicked($event)"
+  (cellValueChanged)="saveChange($event)"
+  (selectionChanged)="selectionChanged($event)"
+  (sortChanged)="sortChanged($event)"
+  (filterChanged)="filterChanged($event)"
+/>
+```
+
+Outputs re-enter Angular's zone even though the grid core and its
+high-frequency listeners run outside it. For other events, subscribe with
+`api.on(eventName, handler)`.
+
+The template-reference form gives markup-level API access:
+
+```html
+<button (click)="grid.api?.exportDataAsCsv()">Export</button>
+<awb-grid #grid="awbGrid" [rowData]="rows" [columnDefs]="columns" />
+```
+
+`grid.api` is `null` until the browser-side grid is ready.
+
+## TemplateRef menu slots
+
+```ts
+readonly shortcut = viewChild.required<TemplateRef<unknown>>("shortcut");
+
+readonly columnMenuItems = ({ items }: { items: NgMenuItem[] }) => [
+  ...items,
+  {
+    id: "open",
+    label: "Open",
+    right: this.shortcut(),
+    onClick: () => this.openSelected(),
+  },
+];
+```
+
+```html
+<ng-template #shortcut><kbd>Enter</kbd></ng-template>
+<awb-grid [getColumnMenuItems]="columnMenuItems" />
+```
+
+Angular menu items accept `TemplateRef` values in their `left` and `right`
+slots for both column and body menus.
 

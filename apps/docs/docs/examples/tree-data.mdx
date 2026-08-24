@@ -27,9 +27,56 @@ All modes support ancestor-preserving filtering, sibling sorting, saved
 expansion, sticky ancestors, selection, editing, and export. A generated
 hierarchy column can be configured through `treeData.columnDef`.
 
+```ts
+// Paths
+const pathOptions = {
+  rowIdKey: "id",
+  treeData: { mode: "path", getPath: (row) => row.path },
+} satisfies GridOptions;
+// rows: [{ id: "paris", path: ["World", "Europe", "France", "Paris"] }]
+
+// Parent IDs
+const parentOptions = {
+  rowIdKey: "id",
+  treeData: {
+    mode: "parent",
+    getParentId: (row) => row.parentId,
+    getLabel: (row) => row.name,
+    columnDef: { label: "Organization", width: 280 },
+  },
+} satisfies GridOptions;
+
+// Nested children
+const childrenOptions = {
+  rowIdKey: "id",
+  treeData: {
+    mode: "children",
+    getChildren: (row) => row.children,
+    getLabel: (row) => row.name,
+  },
+} satisfies GridOptions;
+```
+
+## Keyboard navigation
+
 Tree navigation defaults to ordinary grid behavior. Hierarchy mode maps
 Ctrl/Cmd+Right to expand and Ctrl/Cmd+Left to collapse or move to the parent.
-Applications may allow users to switch modes at runtime.
+Applications may allow users to switch modes at runtime:
+
+```ts
+const options = {
+  treeData: {
+    mode: "parent",
+    getParentId: (row) => row.parentId,
+    keyboardNavigationMode: "hierarchy",
+    enableKeyboardNavigationModeSwitch: true,
+  },
+} satisfies GridOptions;
+
+api.setKeyboardNavigationMode("grid");
+// Both fields are also reconfigurable after mount (the rest of `treeData` is not):
+api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: false });
+```
 
 :::note
 Tree data is client-side and cannot be combined with value-based row grouping.

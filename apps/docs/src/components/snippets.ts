@@ -9,6 +9,12 @@ export type DemoFeature =
   | "editing"
   | "grouping"
   | "tree-data"
+  | "pinned-rows"
+  | "rendering"
+  | "tooltips"
+  | "action-frames"
+  | "menus"
+  | "toolbar-and-views"
   | "export"
   | "theming";
 
@@ -404,6 +410,298 @@ api.setAllGroupsExpanded(true);`,
 
 api.exportDataAsCsv({ scope: "all" });
 api.exportDataAsExcel({ scope: "selection", groupMode: "tree" });`,
+  },
+  "pinned-rows": {
+    react: String.raw`<Grid
+  rowIdKey="id"
+  rowData={rows}
+  columnDefs={columns}
+  pinnedTopRowData={[{ id: "target", label: "Target", amount: 1_000_000 }]}
+  pinnedBottomRowData={[{ id: "total", label: "Total", amount: 842_000 }]}
+  rowPinningMenu
+  groupRowsSticky
+/>`,
+    angular: String.raw`pinnedTop = [{ id: "target", label: "Target", amount: 1_000_000 }];
+pinnedBottom = [{ id: "total", label: "Total", amount: 842_000 }];
+
+<awb-grid
+  rowIdKey="id"
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [pinnedTopRowData]="pinnedTop"
+  [pinnedBottomRowData]="pinnedBottom"
+  [rowPinningMenu]="true"
+/>`,
+    core: String.raw`const core = new GridCore(measurer, {
+  rowIdKey: "id",
+  columnDefs,
+  pinnedTopRowData: [{ id: "target", label: "Target", amount: 1_000_000 }],
+  pinnedBottomRowData: [{ id: "total", label: "Total", amount: 842_000 }],
+  rowPinningMenu: true,
+});
+
+api.setPinnedTopRowData(nextTargets);   // replace a band at runtime
+api.setRowPinned(groupNodeId, "bottom"); // pin a generated row
+api.setRowPinned(groupNodeId, null);`,
+  },
+  rendering: {
+    react: String.raw`function StatusBadge({ value }: CellRendererParams) {
+  return <span className={"status status-" + String(value).toLowerCase()}>{String(value)}</span>;
+}
+
+const columns: ReactColDef[] = [
+  { key: "status", label: "Status", cellRenderer: StatusBadge },
+  {
+    colId: "trend",
+    label: "Trend",
+    valueGetter: (row) => row.monthlyRevenue,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: { type: "area", showPoints: true },
+  },
+];
+
+<Grid rowData={rows} columnDefs={columns} zebraRows columnHover />`,
+    angular: String.raw`// Any Angular component works in a cell slot; params arrive as an input.
+columns: NgColDef[] = [
+  { key: "status", label: "Status", cellRenderer: StatusBadgeComponent },
+  {
+    colId: "trend",
+    label: "Trend",
+    valueGetter: (row: Order) => row.monthlyRevenue,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: { type: "area", showPoints: true },
+  },
+];
+
+<awb-grid [rowData]="rows" [columnDefs]="columns" [zebraRows]="true" />`,
+    core: String.raw`const core = new GridCore(measurer, {
+  columnDefs: [
+    {
+      key: "status",
+      label: "Status",
+      cellRenderer: ({ value }) => {
+        const badge = document.createElement("span");
+        badge.className = "status status-" + String(value).toLowerCase();
+        badge.textContent = String(value);
+        return badge;
+      },
+    },
+    {
+      colId: "trend",
+      label: "Trend",
+      valueGetter: (row) => row.monthlyRevenue,
+      cellRenderer: SparklineRenderer,
+      cellRendererParams: { type: "area", showPoints: true },
+    },
+  ],
+  zebraRows: true,
+});`,
+  },
+  tooltips: {
+    react: String.raw`const columns: ReactColDef[] = [
+  { key: "owner", label: "Owner", tooltipField: "ownerEmail" },
+  {
+    key: "revenue",
+    label: "Revenue",
+    tooltipValueGetter: ({ value, data }) => data.customer + ": $" + value,
+  },
+  { key: "margin", label: "Margin", headerTooltip: "Revenue minus direct cost" },
+];
+
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  tooltip={{ showDelay: 150, mode: "anchored", placement: "auto" }}
+/>`,
+    angular: String.raw`columns: NgColDef[] = [
+  { key: "owner", label: "Owner", tooltipField: "ownerEmail" },
+  {
+    key: "revenue",
+    label: "Revenue",
+    tooltipValueGetter: ({ value, data }) => data.customer + ": $" + value,
+  },
+  { key: "margin", label: "Margin", headerTooltip: "Revenue minus direct cost" },
+];
+
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [tooltip]="{ showDelay: 150, mode: 'anchored', placement: 'auto' }"
+/>`,
+    core: String.raw`const core = new GridCore(measurer, {
+  columnDefs: [
+    { key: "owner", label: "Owner", tooltipField: "ownerEmail" },
+    {
+      key: "revenue",
+      label: "Revenue",
+      tooltipValueGetter: ({ value, data }) => data.customer + ": $" + value,
+    },
+    { key: "margin", label: "Margin", headerTooltip: "Revenue minus direct cost" },
+  ],
+  tooltip: { showDelay: 150, hideDelay: 75, mode: "anchored", placement: "auto" },
+});
+
+api.showTooltip({ rowId: "order-1", colId: "owner" });
+api.on("tooltipShow", (event) => console.log(event));`,
+  },
+  "action-frames": {
+    react: String.raw`function CommentFrame({ value, rowId, colDef, api, close }: ActionFrameComponentParams) {
+  const [draft, setDraft] = useState(String(value ?? ""));
+  return (
+    <form onSubmit={(event) => {
+      event.preventDefault();
+      api.setCellValue({ rowId, colId: colDef.colId }, draft);
+      close();
+    }}>
+      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+
+const columns: ReactColDef[] = [{
+  key: "comment",
+  label: "Comment",
+  actionFrameTrigger: "click",
+  actionFrameComponent: CommentFrame,
+  actionFrameIndicator: "comment",
+  actionFrameOptions: { placement: "right", offset: 10 },
+}];`,
+    angular: String.raw`// CommentFrameComponent receives ActionFrameComponentParams as an input
+columns: NgColDef[] = [{
+  key: "comment",
+  label: "Comment",
+  actionFrameTrigger: "click",
+  actionFrameComponent: CommentFrameComponent,
+  actionFrameIndicator: "comment",
+  actionFrameOptions: { placement: "right", offset: 10 },
+}];
+
+<awb-grid [rowData]="rows" [columnDefs]="columns" />`,
+    core: String.raw`const commentForm = (params: ActionFrameComponentParams) => {
+  const form = document.createElement("form");
+  const input = document.createElement("textarea");
+  input.value = String(params.value ?? "");
+  form.append(input);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    params.api.setCellValue(
+      { rowId: params.rowId, colId: params.colDef.colId },
+      input.value,
+    );
+    params.close();
+  });
+  return form;
+};
+
+const options: GridOptions = {
+  columnDefs: [{
+    key: "comment",
+    label: "Comment",
+    actionFrameTrigger: "click",
+    actionFrameComponent: commentForm,
+    actionFrameIndicator: "comment",
+  }],
+};
+
+api.openActionFrame({ rowId: "task-4", colId: "comment" });`,
+  },
+  menus: {
+    react: String.raw`<Grid
+  rowData={rows}
+  columnDefs={columns}
+  rowNumbers
+  rowPinningMenu
+  getColumnMenuItems={({ ctx, items }) => [
+    ...items,
+    { isSeparator: true },
+    {
+      id: "inspect-column",
+      label: "Inspect " + ctx.targetColId,
+      onClick: () => inspectColumn(ctx.targetColId),
+    },
+  ]}
+  bodyContextMenu={({ ctx, items }) => [
+    ...items,
+    { isSeparator: true },
+    { id: "open-record", label: "Open record", onClick: () => openRecord(ctx.rowId) },
+  ]}
+  rowInsertionMenu={{
+    createRow: ({ data, position }) => ({ ...data, id: nextId(), name: "Inserted " + position }),
+  }}
+/>`,
+    angular: String.raw`<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [rowNumbers]="true"
+  [rowPinningMenu]="true"
+  [getColumnMenuItems]="columnMenu"
+  [bodyContextMenu]="bodyMenu"
+  [rowInsertionMenu]="insertionMenu"
+/>
+
+columnMenu = ({ ctx, items }: ColumnMenuContext) => [
+  ...items,
+  { isSeparator: true },
+  { id: "inspect-column", label: "Inspect " + ctx.targetColId, onClick: () => this.inspect(ctx) },
+];`,
+    core: String.raw`const options: GridOptions = {
+  rowNumbers: true,
+  rowPinningMenu: true,
+  bodyContextMenu: ({ ctx, items }) => [
+    ...items,
+    { isSeparator: true },
+    { id: "open-record", label: "Open record", onClick: () => openRecord(ctx.rowId) },
+  ],
+  rowInsertionMenu: {
+    createRow: ({ data, position }) => ({ ...data, id: nextId(), name: "Inserted " + position }),
+    canInsert: ({ data }) => data.locked !== true,
+  },
+};`,
+  },
+  "toolbar-and-views": {
+    react: String.raw`const [views, setViews] = useState<SavedGridView[]>(loadViews);
+
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  columnPanel={{ trigger: "toolbar" }}
+  toolbar={{ grouping: true, sorting: true, quickFilter: true, views: true, export: true }}
+  savedViews={{
+    views,
+    onChange: (next) => {
+      setViews(next);
+      localStorage.setItem("grid-views", JSON.stringify(next));
+    },
+  }}
+/>`,
+    angular: String.raw`views: SavedGridView[] = loadViews();
+
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [columnPanel]="{ trigger: 'toolbar' }"
+  [toolbar]="{ grouping: true, sorting: true, quickFilter: true, views: true, export: true }"
+  [savedViews]="{ views, onChange: persistViews }"
+/>
+
+persistViews = (next: SavedGridView[]) => {
+  this.views = next;
+  localStorage.setItem("grid-views", JSON.stringify(next));
+};`,
+    core: String.raw`const core = new GridCore(measurer, {
+  columnDefs,
+  columnPanel: { trigger: "toolbar", width: 320 },
+  toolbar: { grouping: true, sorting: true, quickFilter: true, views: true, export: true },
+  savedViews: {
+    views: loadViews(),
+    onChange: (next) => localStorage.setItem("grid-views", JSON.stringify(next)),
+  },
+});
+
+// Or capture/apply view state directly:
+const state = api.captureViewState();
+api.applyViewState(state, { columns: "merge" });`,
   },
   theming: {
     react: String.raw`const theme = themeDark.withParams({
