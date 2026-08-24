@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "docusaurus-2",
+  "installCommand": "npm ci",
   "buildCommand": "npm run docs:build",
   "outputDirectory": "apps/docs/build",
-  "framework": null
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/docs packages/grid/src packages/grid/package.json packages/react-grid/src packages/react-grid/package.json package-lock.json vercel.json"
 }
