@@ -949,6 +949,22 @@ export interface GridOptions {
    */
   rowSelection?: boolean | RowSelectionOptions;
   /**
+   * Per-row gate on row selection. Called with the row node; return `false` to make that row
+   * unselectable through every route — checkbox click, Enter/Space, Shift ranges (the row is
+   * skipped inside the range), row-number gestures, select-all, and `api.selectRowsById`. The grid
+   * paints the row's selection checkbox disabled (`pte-checkbox-cell-disabled`, `aria-disabled`),
+   * and right-clicking the disabled checkbox cell no longer opens the grid's body menu (the
+   * gesture exists to check the row and act on it) — the browser's native menu appears instead;
+   * the row's other cells keep their menus. Styling the rest of the row is the application's job.
+   *
+   * Selection only: the row remains a fully live data row — the keyboard cursor still lands on it
+   * and its cells stay selectable, editable, and copyable. Rows already selected when the predicate
+   * starts returning `false` (a data update, or swapping the predicate via `updateGridOptions`)
+   * are deselected. On the server-side row model, rows not yet loaded cannot be evaluated and are
+   * treated as selectable until they load.
+   */
+  isRowSelectable?: (node: IRowNode) => boolean;
+  /**
    * Controls how body cells can be interacted with — by mouse and keyboard alike:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
    *   selection, keyboard navigation, and double-click editing.
@@ -1404,6 +1420,7 @@ export interface InternalGridOptions extends GridOptions {
   groupSortMode: GroupSortMode;
   treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
+  isRowSelectable?: (node: IRowNode) => boolean;
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   groupRowsSticky: boolean;
   isFullWidthRow?: (node: IRowNode) => boolean;
@@ -1488,6 +1505,7 @@ export const WIDGET_OPTION_KEYS = [
   "groupDisplayType",
   "groupSortMode",
   "groupRowsSelectable",
+  "isRowSelectable",
   "serverSideDataSource",
   "serverSideAggregationSource",
 ] as const satisfies readonly (keyof GridOptions)[];

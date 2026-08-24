@@ -92,6 +92,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "groupSortMode", props.groupSortMode);
   setIfDefined(options, "treeData", props.treeData);
   setIfDefined(options, "groupRowsSelectable", props.groupRowsSelectable);
+  setIfDefined(options, "isRowSelectable", props.isRowSelectable);
   setIfDefined(options, "isRowPinned", props.isRowPinned);
   setIfDefined(options, "groupRowsSticky", props.groupRowsSticky);
   setIfDefined(options, "isFullWidthRow", props.isFullWidthRow);

@@ -164,6 +164,7 @@ export class GridCore implements IGridCore {
       getRowIdAtViewIndex: (viewIdx) => this.getRowIdAtViewIndex(viewIdx),
       getPageStartIdx: () => this.getPageStartIdx(),
       isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
+      isRowCheckable: (viewIdx) => this.isViewRowCheckable(viewIdx),
       isRowNumberNavigable: () => this.options.rowSelection,
       getPinnedRowCount: (position) => this.displayedPinnedRows[position].length,
       getPinnedRowNode: (position, rowIndex) =>
@@ -321,6 +322,7 @@ export class GridCore implements IGridCore {
           ? { ...options.treeData } as typeof options.treeData
           : undefined,
       groupRowsSelectable: options.groupRowsSelectable ?? false,
+      isRowSelectable: options.isRowSelectable,
       isRowPinned: options.isRowPinned,
       groupRowsSticky: options.groupRowsSticky ?? false,
       isFullWidthRow: options.isFullWidthRow,
@@ -858,7 +860,10 @@ export class GridCore implements IGridCore {
     const { result } = applied;
     if (result.added === 0 && result.updated === 0 && result.removed === 0) return;
 
-    if (result.removed > 0) this.pruneRemovedRowSelection();
+    // Updates can also invalidate selected rows when an isRowSelectable predicate reads row data.
+    if (result.removed > 0 || (result.updated > 0 && this.options.isRowSelectable)) {
+      this.pruneRemovedRowSelection();
+    }
 
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved and any seeded initial sort would be silently skipped. Resolve them before the
@@ -1192,6 +1197,21 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+  }
+
+  setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void {
+    if (this.options.isRowSelectable === isRowSelectable) return;
+    this.options.isRowSelectable = isRowSelectable;
+    // Rows already selected may fail the new predicate; emits selectionChanged when it prunes.
+    this.pruneRemovedRowSelection();
+    // Rebind visible rows so checkbox cells repaint their disabled state, and refresh the header
+    // select-all tri-state (its "all" now spans a different checkable set).
+    this.emit("rowsChanged", {
+      reason: "refresh",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
   }
 
   setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void {
@@ -1652,24 +1672,38 @@ export class GridCore implements IGridCore {
     return !node.isGroup;
   }
 
-  // Ids of every selectable data row in the whole filtered/sorted set (all pages). Group nodes
+  // Whether a row can be ROW-selected (checked). Narrower than isNodeSelectable, which also decides
+  // navigation stops: an app-disabled row (isRowSelectable → false) stays a live cursor target but
+  // cannot join the row selection through any route.
+  private isNodeCheckable(node: IRowNode): boolean {
+    return this.isNodeSelectable(node) && this.options.isRowSelectable?.(node) !== false;
+  }
+
+  // View-index form of isNodeCheckable. Rows not present (e.g. unloaded server-side slots) cannot
+  // be evaluated and count as checkable, matching isViewRowSelectable.
+  private isViewRowCheckable(viewIdx: number): boolean {
+    const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    return !node || this.isNodeCheckable(node);
+  }
+
+  // Ids of every checkable data row in the whole filtered/sorted set (all pages). Group nodes
   // are not part of the flat client-side iteration; on the server-side model this covers loaded
   // rows only.
   private getFilteredSelectableRowIds(): string[] {
     const ids: string[] = [];
     this.rowModel.forEachNodeAfterFilterAndSort((node) => {
-      if (node && !node.isGroup && this.isNodeSelectable(node)) ids.push(node.id);
+      if (node && !node.isGroup && this.isNodeCheckable(node)) ids.push(node.id);
     });
     return ids;
   }
 
-  // Ids of selectable rows in the current rendered page/view. Kept here (rather than relying on
+  // Ids of checkable rows in the current rendered page/view. Kept here (rather than relying on
   // SelectionModel.selectAllRows) so single-selection select-all can safely choose just one row.
   private getPageSelectableRowIds(): string[] {
     const ids: string[] = [];
     const viewCount = this.rowModel.getViewCount();
     for (let i = 0; i < viewCount; i++) {
-      if (!this.isViewRowSelectable(i)) continue;
+      if (!this.isViewRowCheckable(i)) continue;
       const id = this.getRowIdAtViewIndex(i);
       if (id) ids.push(id);
     }
@@ -2302,7 +2336,7 @@ export class GridCore implements IGridCore {
       ? rowIds
       : rowIds.filter(id => {
         const node = this.rowModel.getRowNode(id);
-        return node != null && this.isNodeSelectable(node);
+        return node != null && this.isNodeCheckable(node);
       });
     if (this.options.rowSelectionMode === "single" && mode !== "remove") {
       const first = validated[0];
@@ -2991,12 +3025,18 @@ export class GridCore implements IGridCore {
   }
 
   /** Remove client-side row ids that no longer exist after an authoritative data mutation. */
+  // Drop selected ids that no longer belong in the selection: rows removed from the model, and
+  // rows the app's isRowSelectable predicate now disables (their data may have changed under the
+  // selection). Skipped on the server-side model, where an absent node just means "not loaded".
   private pruneRemovedRowSelection(): void {
     if (this.rowModel.getType() === "serverSide") return;
-    const removed = [...this.selectionModel.getSelectedRowIds()]
-      .filter(id => this.rowModel.getRowNode(id) == null);
-    if (removed.length === 0) return;
-    this.selectionModel.setSelectedRowIds(removed, "remove");
+    const stale = [...this.selectionModel.getSelectedRowIds()]
+      .filter(id => {
+        const node = this.rowModel.getRowNode(id);
+        return node == null || this.options.isRowSelectable?.(node) === false;
+      });
+    if (stale.length === 0) return;
+    this.selectionModel.setSelectedRowIds(stale, "remove");
     this.emitSelectionChanged("model");
   }
 

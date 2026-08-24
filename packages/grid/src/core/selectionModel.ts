@@ -22,6 +22,10 @@ interface SelectionModelDeps {
   // Whether a view-index row can hold a cell selection / be a navigation target (group rows are
   // skipped unless groupRowsSelectable is enabled).
   isRowSelectable: (viewIdx: number) => boolean;
+  // Whether a view-index row can be ROW-selected (checked). Narrower than isRowSelectable, which
+  // also drives navigation: an app-disabled row (GridOptions.isRowSelectable → false) stays a
+  // cursor stop but is refused by every row-selection mutation. Falls back to isRowSelectable.
+  isRowCheckable?: (viewIdx: number) => boolean;
   // Row-number cells are keyboard stops only while row selection is enabled. Keep this dynamic so
   // a framework wrapper can change rowSelection without rebuilding the core/selection model.
   isRowNumberNavigable?: () => boolean;
@@ -889,8 +893,12 @@ export class SelectionModel {
   }
 
   // ---------------- Row selection ----------------
+  private isRowCheckable(viewIdx: number): boolean {
+    return (this.deps.isRowCheckable ?? this.deps.isRowSelectable)(viewIdx);
+  }
+
   toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range" | "rangeAdd") {
-    if (!this.deps.isRowSelectable(viewIdx)) return;
+    if (!this.isRowCheckable(viewIdx)) return;
     const rowId = this.deps.getRowIdAtViewIndex(viewIdx);
     if (!rowId) return;
 
@@ -902,7 +910,7 @@ export class SelectionModel {
       const end = Math.max(anchorIdx, viewIdx);
       if (mode === "range") this.selectedRowIds.clear();
       for (let i = start; i <= end; i++) {
-        if (!this.deps.isRowSelectable(i)) continue;
+        if (!this.isRowCheckable(i)) continue;
         const id = this.deps.getRowIdAtViewIndex(i);
         if (id) this.selectedRowIds.add(id);
       }
@@ -942,28 +950,29 @@ export class SelectionModel {
     this.rowAnchorViewIdx = null;
   }
 
-  // Select every selectable data row in the current view (group rows are skipped unless
-  // groupRowsSelectable is enabled). Clears any cell-range / column selection first.
+  // Select every checkable data row in the current view (group rows are skipped unless
+  // groupRowsSelectable is enabled, app-disabled rows always). Clears any cell-range / column
+  // selection first.
   selectAllRows() {
     this.clearRange();
     this.clearColumns();
     this.selectedRowIds.clear();
     const viewCount = this.deps.getRowModel().getViewCount();
     for (let i = 0; i < viewCount; i++) {
-      if (!this.deps.isRowSelectable(i)) continue;
+      if (!this.isRowCheckable(i)) continue;
       const id = this.deps.getRowIdAtViewIndex(i);
       if (id) this.selectedRowIds.add(id);
     }
     this.rowAnchorViewIdx = null;
   }
 
-  // Whether every selectable data row in the current view is selected. False when there are no
-  // selectable rows. Used to decide the toggle direction for row-number header-click select-all.
+  // Whether every checkable data row in the current view is selected. False when there are no
+  // checkable rows. Used to decide the toggle direction for row-number header-click select-all.
   areAllRowsSelected(): boolean {
     const viewCount = this.deps.getRowModel().getViewCount();
     let selectable = 0;
     for (let i = 0; i < viewCount; i++) {
-      if (!this.deps.isRowSelectable(i)) continue;
+      if (!this.isRowCheckable(i)) continue;
       selectable++;
       const id = this.deps.getRowIdAtViewIndex(i);
       if (!id || !this.selectedRowIds.has(id)) return false;

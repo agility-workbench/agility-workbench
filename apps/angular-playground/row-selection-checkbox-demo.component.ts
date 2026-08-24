@@ -3,6 +3,7 @@ import {
   AwbGrid,
   ColumnType,
   type GridEventSelectionChangedParams,
+  type GridOptions,
   type IGridAPI,
   type NgColDef,
 } from "@agility-workbench/angular-grid";
@@ -79,6 +80,14 @@ function buildRows(): OrderRow[] {
         />
         Can be repinned
       </label>
+      <label>
+        <input
+          type="checkbox"
+          [checked]="lockBlocked()"
+          (change)="lockBlocked.set($any($event.target).checked)"
+        />
+        Lock "Blocked" rows (isRowSelectable)
+      </label>
     </div>
 
     <div class="checkbox-demo-main">
@@ -88,6 +97,8 @@ function buildRows(): OrderRow[] {
           [columnDefs]="columnDefs"
           rowIdKey="id"
           [rowSelection]="rowSelection()"
+          [isRowSelectable]="isRowSelectable()"
+          [getRowStyle]="getRowStyle()"
           [quickFilter]="true"
           [pagination]="true"
           [pageSize]="15"
@@ -160,6 +171,19 @@ export class RowSelectionCheckboxDemoComponent {
     checkboxColumnPinnable: this.checkboxPinnable(),
   }));
   readonly pageSizes = [15, 30, 60];
+  readonly lockBlocked = signal(false);
+  // isRowSelectable disables the checkbox and every other selection route for the row; the row's
+  // own visual identity (here: dimming via getRowStyle) stays the app's job.
+  readonly isRowSelectable = computed<GridOptions["isRowSelectable"]>(() =>
+    this.lockBlocked()
+      ? node => (node.data as OrderRow).status !== "Blocked"
+      : undefined);
+  readonly getRowStyle = computed<GridOptions["getRowStyle"]>(() =>
+    this.lockBlocked()
+      ? params => ((params.data as OrderRow | undefined)?.status === "Blocked"
+        ? { opacity: "0.5" }
+        : undefined)
+      : undefined);
   readonly selectedIds = signal<string[]>([]);
   readonly lastReason = signal("ready");
 

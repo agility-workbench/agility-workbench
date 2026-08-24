@@ -98,6 +98,7 @@ class OverlayHost {
       [columnDefs]="cols"
       rowIdKey="id"
       [rowSelection]="rowSelection"
+      [isRowSelectable]="isRowSelectable"
       (gridReady)="api = $event"
     />
   `,
@@ -105,6 +106,7 @@ class OverlayHost {
 class LiveRowSelectionHost {
   api: IGridAPI | null = null;
   rowSelection: GridOptions["rowSelection"] = { mode: "multiple", checkboxes: true };
+  isRowSelectable: GridOptions["isRowSelectable"] = undefined;
   rows = [
     { id: 1, name: "Acme" },
     { id: 2, name: "Globex" },
@@ -147,6 +149,27 @@ describe("AwbGrid visual and runtime options", () => {
     expect(gridEl.querySelector(".pte-select-all-checkbox")).toBeNull();
     expect(gridEl.querySelector(".pte-hcell-checkbox .pte-hcell-menu-menuBtn")).toBeNull();
     expect(api.getColumnModel().getRightLeaves()[0].isSelectionCheckboxColumn()).toBe(true);
+  });
+
+  it("applies and live-updates isRowSelectable without recreating the API", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(LiveRowSelectionHost);
+    const api = host.api!;
+
+    host.isRowSelectable = (node) => (node.data as { name: string }).name !== "Globex";
+    await syncGridInputs(fixture);
+    expect(host.api).toBe(api);
+    expect(gridEl.querySelectorAll(".pte-checkbox-cell-disabled")).toHaveLength(1);
+
+    api.selectAllRows();
+    expect([...api.getSelection().selectedRowIds].sort()).toEqual(["1", "3"]);
+
+    // Swapping the predicate prunes rows it now disables and repaints the checkbox cells.
+    host.isRowSelectable = (node) => (node.data as { name: string }).name !== "Acme";
+    await syncGridInputs(fixture);
+    expect(api.getSelection().selectedRowIds).toEqual(["3"]);
+    const disabled = gridEl.querySelectorAll<HTMLElement>(".pte-checkbox-cell-disabled");
+    expect(disabled).toHaveLength(1);
+    expect(disabled[0].getAttribute("aria-disabled")).toBe("true");
   });
 
   it("applies row and cell conditional styling", async () => {

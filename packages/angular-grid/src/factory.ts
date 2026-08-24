@@ -85,6 +85,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "groupSortMode", grid.groupSortMode());
   setIfDefined(options, "treeData", grid.treeData());
   setIfDefined(options, "groupRowsSelectable", grid.groupRowsSelectable());
+  setIfDefined(options, "isRowSelectable", grid.isRowSelectable());
   setIfDefined(options, "isRowPinned", grid.isRowPinned());
   setIfDefined(options, "groupRowsSticky", grid.groupRowsSticky());
   setIfDefined(options, "isFullWidthRow", grid.isFullWidthRow());

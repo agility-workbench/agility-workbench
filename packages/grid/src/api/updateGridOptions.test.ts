@@ -142,6 +142,23 @@ describe("api.updateGridOptions", () => {
     api.destroy();
   });
 
+  it("routes isRowSelectable to the core and prunes rows the new predicate disables", () => {
+    const api = mount({ rowSelection: { checkboxes: true } });
+    const selectedIds = () => [...api.getCore().getSelectedRowIds()].sort();
+    api.selectRowsById(["1", "2", "3"]);
+    expect(selectedIds()).toEqual(["1", "2", "3"]);
+
+    api.updateGridOptions({ isRowSelectable: node => (node.data as { region: string }).region !== "EMEA" });
+    expect(selectedIds()).toEqual(["2"]); // rows 1 and 3 (EMEA) pruned
+
+    // Presence with undefined clears the gate, matching the API's presence-based contract.
+    api.updateGridOptions({ isRowSelectable: undefined });
+    api.selectRowsById(["1", "2", "3"]);
+    expect(selectedIds()).toEqual(["1", "2", "3"]);
+
+    api.destroy();
+  });
+
   it("replaces columnDefs as caller-owned, so later row data cannot re-infer the schema", () => {
     const api = mount();
     api.updateGridOptions({

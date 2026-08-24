@@ -1,4 +1,4 @@
-import { createGrid, ColumnType, type ColDef } from "@grid";
+import { createGrid, ColumnType, type ColDef, type IRowNode } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, select } from "../dom";
 
@@ -43,6 +43,7 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
   let selectionMode: SelectionMode = "multiple";
   let checkboxPin: CheckboxPin = "left";
   let checkboxPinnable = true;
+  let lockBlocked = false;
   let selectedIds: string[] = [];
   let lastReason = "ready";
 
@@ -109,6 +110,10 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
         checkboxPinnable = value;
         applyRowSelection();
       })),
+      field('Lock "Blocked" rows (isRowSelectable)', checkbox(lockBlocked, value => {
+        lockBlocked = value;
+        applyRowLock();
+      })),
     ),
     h("div", { style: { display: "flex", flex: "1", minHeight: "0", gap: "12px" } },
       host,
@@ -159,6 +164,24 @@ export function mountRowSelectionCheckboxDemo(container: HTMLElement): () => voi
   /** Row selection (and its utility column) reconfigure in place — no remount. */
   function applyRowSelection(): void {
     api.updateGridOptions({ rowSelection: rowSelectionOptions() });
+  }
+
+  /**
+   * isRowSelectable disables the checkbox and every other selection route for the row (rows it
+   * disables are pruned from the current selection); the row's own visual identity (here: dimming
+   * via getRowStyle) stays the app's job.
+   */
+  function applyRowLock(): void {
+    api.updateGridOptions({
+      isRowSelectable: lockBlocked
+        ? (node: IRowNode) => (node.data as OrderRow).status !== "Blocked"
+        : undefined,
+      getRowStyle: lockBlocked
+        ? params => ((params.data as OrderRow | undefined)?.status === "Blocked"
+          ? { opacity: "0.5" }
+          : undefined)
+        : undefined,
+    });
   }
 
   function renderReadout(): void {

@@ -165,6 +165,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ groupRowsSelectable: props.groupRowsSelectable });
     }, [props.groupRowsSelectable]);
 
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ isRowSelectable: props.isRowSelectable });
+    }, [props.isRowSelectable]);
+
     const rowSelectionKey = JSON.stringify(props.rowSelection ?? null);
     const rowSelectionMountedRef = useRef(false);
     useLayoutEffect(() => {

@@ -448,3 +448,133 @@ describe("header select-all checkbox", () => {
     expect(root.querySelector(".pte-checkbox-cell")).toBeNull();
   });
 });
+
+describe("app-disabled rows (isRowSelectable)", () => {
+  // r1 and r3 are disabled. The predicate reads row data, so data updates can flip it.
+  const isRowSelectable = (node: { data: { name: string } }) => !node.data.name.includes("LOCKED");
+  function mountWithDisabled(options: Record<string, unknown> = {}) {
+    const mounted = mountGrid({ isRowSelectable, ...options });
+    mounted.api.setRowData(Array.from({ length: 6 }, (_, i) => ({
+      id: `r${i}`,
+      region: i % 2 === 0 ? "AMER" : "EMEA",
+      name: i === 1 || i === 3 ? `LOCKED ${i}` : `Account ${i}`,
+    })));
+    return mounted;
+  }
+
+  it("paints the checkbox cell disabled with aria-disabled, enabled cells untouched", () => {
+    const { root } = mountWithDisabled();
+    const disabled = checkboxCell(root, 1);
+    expect(disabled.classList.contains("pte-checkbox-cell-disabled")).toBe(true);
+    expect(disabled.getAttribute("aria-disabled")).toBe("true");
+    expect(disabled.querySelector(".pte-checkbox")).not.toBeNull(); // visible, just inert
+
+    const enabled = checkboxCell(root, 0);
+    expect(enabled.classList.contains("pte-checkbox-cell-disabled")).toBe(false);
+    expect(enabled.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("refuses the pointer gestures: click, shift-range (skipped inside), and right-click", () => {
+    const { core, root } = mountWithDisabled();
+    click(checkboxCell(root, 1));
+    expect(core.getSelectedRowIds().size).toBe(0);
+
+    // Shift range 0..4 skips the disabled rows rather than aborting the range.
+    click(checkboxCell(root, 0));
+    click(checkboxCell(root, 4), { shiftKey: true });
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4"]);
+
+    // Right-click cannot check the disabled row, and the gesture is not claimed at all: no grid
+    // menu opens and preventDefault is not called, so the browser's native menu would appear.
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    checkboxCell(root, 3).dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(root.querySelector(".pte-menu")).toBeNull();
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4"]);
+
+    // An enabled checkbox cell keeps the full gesture: check the row, open the menu.
+    contextMenu(checkboxCell(root, 5));
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4", "r5"]);
+    expect(root.querySelector(".pte-menu")).not.toBeNull();
+    press(root, "Escape");
+  });
+
+  it("refuses Enter/Space but keeps the disabled row a cursor stop", () => {
+    const { core, root } = mountWithDisabled();
+    const checkboxColIdx = core.getColumnModel().getLeaves()
+      .findIndex(col => col.isSelectionCheckboxColumn());
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: checkboxColIdx, reason: "keyboard" });
+    root.focus();
+    press(root, "ArrowDown"); // the cursor lands ON the disabled row — it is not skipped
+    expect(core.getActiveCell()?.row).toBe(1);
+    press(root, "Enter");
+    press(root, " ");
+    expect(core.getSelectedRowIds().size).toBe(0);
+    press(root, "ArrowDown");
+    press(root, "Enter");
+    expect([...core.getSelectedRowIds()]).toEqual(["r2"]);
+  });
+
+  it("select-all covers only enabled rows and reads as fully selected", () => {
+    const { core, root } = mountWithDisabled();
+    const headerCell = root.querySelector<HTMLElement>(".pte-hcell-checkbox")!;
+    const box = headerCell.querySelector<HTMLElement>(".pte-select-all-checkbox")!;
+    click(headerCell);
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4", "r5"]);
+    expect(core.areAllRowsSelected()).toBe(true); // "all" spans the enabled set only
+    expect(box.classList.contains("selected")).toBe(true);
+    click(headerCell); // full → clear
+    expect(core.getSelectedRowIds().size).toBe(0);
+  });
+
+  it("drops disabled ids from programmatic selection", () => {
+    const { core } = mountWithDisabled();
+    core.selectRowsById(["r0", "r1", "r3", "r5"]);
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r5"]);
+    core.selectAllRows();
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4", "r5"]);
+  });
+
+  it("deselects and repaints a selected row whose data update disables it", () => {
+    const { core, api, root } = mountWithDisabled();
+    click(checkboxCell(root, 2));
+    expect([...core.getSelectedRowIds()]).toEqual(["r2"]);
+
+    api.setRowData(Array.from({ length: 6 }, (_, i) => ({
+      id: `r${i}`,
+      region: i % 2 === 0 ? "AMER" : "EMEA",
+      name: i === 1 || i === 2 || i === 3 ? `LOCKED ${i}` : `Account ${i}`,
+    })));
+    expect(core.getSelectedRowIds().size).toBe(0); // pruned, never checked-but-disabled
+    expect(checkboxCell(root, 2).classList.contains("pte-checkbox-cell-disabled")).toBe(true);
+    expect(checkboxCell(root, 2).classList.contains("selected")).toBe(false);
+  });
+
+  it("swapping the predicate prunes the selection and repaints both ways", () => {
+    const { core, root } = mountWithDisabled();
+    click(checkboxCell(root, 0));
+    click(checkboxCell(root, 2));
+
+    core.setIsRowSelectable(node => (node as { id: string }).id !== "r0");
+    expect([...core.getSelectedRowIds()]).toEqual(["r2"]); // r0 pruned
+    expect(checkboxCell(root, 0).classList.contains("pte-checkbox-cell-disabled")).toBe(true);
+    expect(checkboxCell(root, 1).classList.contains("pte-checkbox-cell-disabled")).toBe(false);
+
+    core.setIsRowSelectable(undefined); // clearing re-enables everything
+    expect(checkboxCell(root, 0).classList.contains("pte-checkbox-cell-disabled")).toBe(false);
+    click(checkboxCell(root, 1));
+    expect([...core.getSelectedRowIds()].sort()).toEqual(["r1", "r2"]);
+  });
+
+  it("row-number selection gestures honor the same gate", () => {
+    const { core, root } = mountGrid({
+      rowSelection: true,
+      rowNumbers: true,
+      isRowSelectable: (node: { id: string }) => node.id !== "r2",
+    });
+    click(rowNumberCell(root, 2));
+    expect(core.getSelectedRowIds().size).toBe(0);
+    click(rowNumberCell(root, 1));
+    expect([...core.getSelectedRowIds()]).toEqual(["r1"]);
+  });
+});

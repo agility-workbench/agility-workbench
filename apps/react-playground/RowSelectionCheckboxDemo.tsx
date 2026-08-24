@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
 import { ColumnType } from "@grid";
+import type { IRowNode } from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
@@ -41,6 +42,21 @@ export function RowSelectionCheckboxDemo() {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("multiple");
   const [checkboxPin, setCheckboxPin] = useState<CheckboxPin>("left");
   const [checkboxPinnable, setCheckboxPinnable] = useState(true);
+  const [lockBlocked, setLockBlocked] = useState(false);
+
+  // isRowSelectable disables the checkbox and every other selection route for the row; the row's
+  // own visual identity (here: dimming) stays the app's job.
+  const isRowSelectable = useMemo(
+    () => (lockBlocked ? (node: IRowNode) => (node.data as OrderRow).status !== "Blocked" : undefined),
+    [lockBlocked],
+  );
+  const getRowStyle = useMemo(
+    () => (lockBlocked
+      ? (params: { data: unknown }) =>
+        ((params.data as OrderRow)?.status === "Blocked" ? { opacity: "0.5" } : undefined)
+      : undefined),
+    [lockBlocked],
+  );
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "id", key: "id", label: "Order", width: 110 },
@@ -126,6 +142,14 @@ export function RowSelectionCheckboxDemo() {
           />
           Can be repinned
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={lockBlocked}
+            onChange={(event) => setLockBlocked(event.target.checked)}
+          />
+          Lock &quot;Blocked&quot; rows (isRowSelectable)
+        </label>
       </div>
 
       <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 12 }}>
@@ -140,6 +164,8 @@ export function RowSelectionCheckboxDemo() {
               checkboxColumnPinned: checkboxPin,
               checkboxColumnPinnable: checkboxPinnable,
             }}
+            isRowSelectable={isRowSelectable}
+            getRowStyle={getRowStyle}
             quickFilter
             pagination
             pageSize={15}

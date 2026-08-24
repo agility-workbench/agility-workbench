@@ -120,6 +120,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- selection ---
   readonly rowSelection = input<GridOptions["rowSelection"]>();
+  readonly isRowSelectable = input<GridOptions["isRowSelectable"]>();
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
@@ -349,6 +350,11 @@ export class AwbGrid implements OnDestroy {
     this.syncEffect(() => {
       const v = this.groupRowsSelectable();
       return () => api.updateGridOptions({ groupRowsSelectable: v });
+    });
+
+    this.syncEffect(() => {
+      const v = this.isRowSelectable();
+      return () => api.updateGridOptions({ isRowSelectable: v });
     });
 
     this.keyedEffect(

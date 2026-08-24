@@ -3870,6 +3870,17 @@
   background-color: var(--pte-selected-bg-color);
 }
 
+/* App-disabled row (GridOptions.isRowSelectable → false): the checkbox stays visible but inert.
+   The row itself is untouched — its visual identity is the application's responsibility. */
+.pte-checkbox-cell.pte-checkbox-cell-disabled {
+  cursor: default;
+}
+
+.pte-checkbox-cell.pte-checkbox-cell-disabled .pte-checkbox {
+  opacity: 0.45;
+  background-color: var(--pte-header-background-color);
+}
+
 .pte-hcell-checkbox .pte-hcell-container,
 .pte-hcell-checkbox .pte-hcell-container:hover {
   justify-content: center;

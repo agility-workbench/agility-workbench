@@ -108,8 +108,14 @@ export class BodyCellRenderer {
     this.applyCellStyling(cell, row, col, viewIndex, rowPresentation);
     if (col.isSelectionCheckboxColumn()) {
       // Content is the static decorative checkbox span created by the row pool; checked state is
-      // CSS-driven from the "selected" class. Nothing to render per row.
+      // CSS-driven from the "selected" class. The only per-row state is the app's isRowSelectable
+      // gate: a disabled row keeps its checkbox visible but inert (toggled both ways — cells are
+      // pool-recycled across rows).
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+      const disabled = this.api.getCore().getOptions().isRowSelectable?.(row) === false;
+      cell.classList.toggle("pte-checkbox-cell-disabled", disabled);
+      if (disabled) cell.setAttribute("aria-disabled", "true");
+      else cell.removeAttribute("aria-disabled");
       return;
     }
     if (col.isRowNumberColumn()) {

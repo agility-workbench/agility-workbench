@@ -22,6 +22,7 @@ type MountOptions = {
   rowSelection?: GridOptions["rowSelection"];
   rowNumbers?: boolean;
   selectAllRowsOnHeaderClick?: boolean;
+  isRowSelectable?: GridOptions["isRowSelectable"];
 };
 
 async function mountGrid(opts: MountOptions = {}) {
@@ -51,6 +52,7 @@ async function mountGrid(opts: MountOptions = {}) {
         rowNumbers={currentOptions.rowNumbers ?? true}
         rowSelection={currentOptions.rowSelection ?? true}
         selectAllRowsOnHeaderClick={currentOptions.selectAllRowsOnHeaderClick ?? true}
+        isRowSelectable={currentOptions.isRowSelectable}
       />,
     );
   });
@@ -127,6 +129,33 @@ describe("row selection end-to-end via Grid", () => {
     const api = apiRef.current!;
     await act(async () => { clickRowNumberHeader(container); });
     expect(api.getSelectedRows()).toHaveLength(0);
+    await unmountTestRoot(root);
+  });
+
+  it("applies and live-updates isRowSelectable without replacing the API", async () => {
+    const { container, apiRef, root, rerender } = await mountGrid({
+      rowNumbers: false,
+      rowSelection: { checkboxes: true },
+      isRowSelectable: (node) => (node.data as Row).name !== "BBB",
+    });
+    const api = apiRef.current!;
+
+    // The disabled row is painted inert and excluded from select-all.
+    expect(container.querySelectorAll(".pte-checkbox-cell-disabled")).toHaveLength(1);
+    await act(async () => { api.selectAllRows(); });
+    expect(api.getSelection().selectedRowIds.sort()).toEqual(["1", "3"]);
+    expect(api.areAllRowsSelected()).toBe(true);
+
+    // Swapping the predicate reconciles through updateGridOptions: repaint + prune.
+    await act(async () => {
+      await rerender({ isRowSelectable: (node) => (node.data as Row).name !== "AAA" });
+    });
+    expect(apiRef.current).toBe(api);
+    expect(api.getSelection().selectedRowIds).toEqual(["3"]); // "1" pruned, "2" re-enabled
+    const disabled = container.querySelectorAll<HTMLElement>(".pte-checkbox-cell-disabled");
+    expect(disabled).toHaveLength(1);
+    expect(disabled[0].getAttribute("aria-disabled")).toBe("true");
+
     await unmountTestRoot(root);
   });
 

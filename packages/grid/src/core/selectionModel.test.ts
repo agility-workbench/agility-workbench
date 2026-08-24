@@ -19,6 +19,7 @@ function makeHarness(
     pinnedTopCount?: number;
     pinnedBottomCount?: number;
     rowNumberNavigable?: boolean;
+    isRowCheckable?: (viewIdx: number) => boolean;
   } = {},
 ) {
   const leadingCols = opts.leadingCols ?? 1;
@@ -63,6 +64,7 @@ function makeHarness(
     getPageStartIdx: () => state.pageStart,
     // No group rows in these tests — every row is selectable.
     isRowSelectable: () => true,
+    isRowCheckable: opts.isRowCheckable,
     isRowNumberNavigable: () => opts.rowNumberNavigable ?? false,
     getPinnedRowCount: position =>
       position === "top" ? opts.pinnedTopCount ?? 0 : opts.pinnedBottomCount ?? 0,
@@ -660,5 +662,50 @@ describe("SelectionModel — page/view invalidation", () => {
     model.clampToView();
     expect(model.getSelectionRange()).toMatchObject({ rowStart: 0, rowEnd: 1 });
     expect(model.getActiveCell()).toEqual({ row: 1, colIdx: 1 });
+  });
+});
+
+describe("SelectionModel — row checkability (isRowCheckable)", () => {
+  // 5 data rows; rows 1 and 3 are app-disabled (GridOptions.isRowSelectable → false). The dep is
+  // deliberately separate from isRowSelectable: disabled rows refuse row selection but remain
+  // cell-navigation targets.
+  const GRID = [["a"], ["b"], ["c"], ["d"], ["e"]];
+  const checkable = (i: number) => i !== 1 && i !== 3;
+
+  it("refuses toggle/replace on a non-checkable row", () => {
+    const m = makeHarness(GRID, { isRowCheckable: checkable }).model;
+    m.toggleRow(1, "toggle");
+    m.toggleRow(3, "replace");
+    expect(m.getSelectedRowIds().size).toBe(0);
+    m.toggleRow(2, "toggle");
+    expect([...m.getSelectedRowIds()]).toEqual(["r2"]);
+  });
+
+  it("skips non-checkable rows inside a range fill", () => {
+    const m = makeHarness(GRID, { isRowCheckable: checkable }).model;
+    m.toggleRow(0, "toggle"); // anchor
+    m.toggleRow(4, "rangeAdd");
+    expect([...m.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4"]);
+  });
+
+  it("selectAllRows and areAllRowsSelected cover only checkable rows", () => {
+    const m = makeHarness(GRID, { isRowCheckable: checkable }).model;
+    m.selectAllRows();
+    expect([...m.getSelectedRowIds()].sort()).toEqual(["r0", "r2", "r4"]);
+    expect(m.areAllRowsSelected()).toBe(true);
+  });
+
+  it("falls back to isRowSelectable when the dep is absent", () => {
+    const m = makeHarness(GRID).model; // isRowSelectable: () => true, no isRowCheckable
+    m.selectAllRows();
+    expect(m.getSelectedRowIds().size).toBe(5);
+  });
+
+  it("keeps non-checkable rows as keyboard navigation stops", () => {
+    const m = makeHarness(GRID, { isRowCheckable: checkable }).model;
+    m.selectSingleCell(0, 1);
+    m.navigate("down", { extend: false });
+    // Row 1 is not checkable but IS navigable — the cursor must land on it, not skip to row 2.
+    expect(m.getActiveCell()).toEqual({ row: 1, colIdx: 1 });
   });
 });
