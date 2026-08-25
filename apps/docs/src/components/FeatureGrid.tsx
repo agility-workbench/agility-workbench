@@ -155,7 +155,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   selection: ["Selection", "Drag a range or select rows from row numbers"],
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
-  pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar"],
+  pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar, customize roles via Columns"],
   sheets: ["Sheets", "Data + pivot sheets as footer tabs — press + for a new pivot sheet"],
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
   "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
@@ -260,6 +260,7 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
     case "pivot":
       featureProps = {
         toolbar: { pivot: true },
+        columnPanel: { trigger: "toolbar" },
         groupDefaultExpanded: 1,
         onGridReady: (api) => {
           const revenue = api.getColumnModel().getByColId("revenue");

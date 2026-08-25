@@ -1460,6 +1460,164 @@
   cursor: default;
 }
 
+/* Pivot-role chips: a second grid row under the column row's controls. While pivot mode is on,
+   rows collapse to label + chips (the layout controls would act on the invisible stashed layout)
+   and the field wells above the list carry the ordered role editing. */
+.pte-column-panel-roles {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 0 2px 3px 19px;
+}
+
+.pte-column-panel-row-pivot {
+  min-height: 0;
+  grid-template-columns: 1fr;
+  row-gap: 2px;
+}
+
+.pte-column-panel-row-pivot .pte-column-panel-label {
+  padding-top: 4px;
+}
+
+.pte-column-panel-row-pivot .pte-column-panel-roles {
+  padding-left: 2px;
+}
+
+.pte-column-panel-role-chip,
+.pte-column-panel-role-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 10px;
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pte-column-panel-role-add {
+  padding: 0;
+  width: 20px;
+  justify-content: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+}
+
+.pte-column-panel-role-chip:hover,
+.pte-column-panel-role-add:hover {
+  border-color: var(--pte-selected-border-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-role-chip:focus-visible,
+.pte-column-panel-role-add:focus-visible,
+.pte-column-panel-well-add:focus-visible,
+.pte-column-panel-well-remove:focus-visible {
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-role-chip-x {
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+}
+
+.pte-column-panel-role-chip:hover .pte-column-panel-role-chip-x {
+  color: var(--pte-text-color);
+}
+
+/* The pivot customizer's field wells (visible only while pivot mode is on). */
+.pte-column-panel-wells {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 8px 8px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--pte-border-color);
+}
+
+.pte-column-panel-wells[hidden] {
+  display: none;
+}
+
+.pte-column-panel-well + .pte-column-panel-well {
+  margin-top: 8px;
+}
+
+.pte-column-panel-well-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.pte-column-panel-well-title {
+  color: var(--pte-muted-text-color);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pte-column-panel-well-add,
+.pte-column-panel-well-remove {
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pte-column-panel-well-add:hover,
+.pte-column-panel-well-remove:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-well-item {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(50px, 1fr) 48px 24px;
+  gap: 4px;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  border-radius: 5px;
+}
+
+.pte-column-panel-well-item:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel-well-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pte-column-panel-well-empty {
+  padding: 2px 8px 4px;
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+  font-style: italic;
+}
+
 .pte-column-panel-root-dropzone {
   display: none;
   margin: 4px 5px 2px;

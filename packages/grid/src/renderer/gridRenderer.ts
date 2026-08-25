@@ -885,6 +885,8 @@ export class GridRenderer {
         });
       },
       toolbar: this._toolbarRenderer,
+      menuCoordinator,
+      menuRenderer: this._menuRenderer,
     });
     menuCoordinator.setColumnPanelTarget({
       openColumnPanel: () => this._columnPanelRenderer.openPanel(),

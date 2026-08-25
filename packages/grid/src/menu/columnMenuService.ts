@@ -26,6 +26,17 @@ type GroupMenuItem = MenuItem & {
   payload: { colIDs: string[] };
 };
 
+/** Display names for aggregate types, shared by the menus and the column panel's role chips. */
+export const AGGREGATE_TYPE_LABELS: Record<AggregateType, string> = {
+  [AggregateType.COUNT]: "Count",
+  [AggregateType.DISTINCT_COUNT]: "Distinct Count",
+  [AggregateType.SUM]: "Sum",
+  [AggregateType.AVG]: "Average",
+  [AggregateType.MIN]: "Min",
+  [AggregateType.MAX]: "Max",
+  [AggregateType.MEDIAN]: "Median",
+};
+
 /** Column-scoped export hooks, injected once the renderer's ExportRenderer exists. */
 export interface ColumnMenuExportTarget {
   exportColumnCSV: (columnIDs: string[]) => void;
@@ -91,41 +102,7 @@ export class ColumnMenuService {
     }
     items.push(...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s));
     items.push(...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s));
-    if (cap.aggregatable && cap.aggType) {
-      const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
-      // Each type is an independent toggle (a checkmark marks the applied ones): a column may
-      // carry several aggregates at once — each is a distinct pivot measure.
-      const agg = (id: string, label: string, type: AggregateType, left?: string): MenuItem => ({
-        id,
-        label,
-        ...(left ? { left } : {}),
-        ...(this.aggregateTypeApplied(colIDs, type) ? { right: "icon-check" } : {}),
-        command: "aggregate.setMany",
-        payload: { colIDs, agg: type },
-      });
-      if (cap.aggType === "numeric") {
-        item.subMenu = [
-          agg("aggSum", "Sum", AggregateType.SUM, "icon-sum"),
-          agg("aggAvg", "Average", AggregateType.AVG, "icon-avg"),
-          agg("aggMin", "Min", AggregateType.MIN, "icon-min-number"),
-          agg("aggMax", "Max", AggregateType.MAX, "icon-max-number"),
-          agg("aggMedian", "Median", AggregateType.MEDIAN, "icon-median"),
-        ];
-      } else if (cap.aggType === "string") {
-        item.subMenu = [
-          agg("aggCount", "Count", AggregateType.COUNT, "icon-count"),
-          agg("aggMin", "Min", AggregateType.MIN, "icon-min-string"),
-          agg("aggMax", "Max", AggregateType.MAX, "icon-max-string"),
-        ];
-        if (cap.colType === ColumnType.STRING) {
-          item.subMenu.splice(1, 0, agg("aggDistinctCount", "Distinct Count", AggregateType.DISTINCT_COUNT));
-        }
-      }
-      if (cap.aggregated) {
-        item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
-      }
-      items.push(item);
-    }
+    items.push(...this.getAggregateMenuItems(colIDs, cap, s));
     if (cap.pinnable && cap.pinning !== "mixed") {
       if (items.length > 0) {
         items.push({ isSeparator: true });
@@ -186,6 +163,77 @@ export class ColumnMenuService {
     }
 
     return items;
+  }
+
+  /**
+   * Just the role-editing items — grouping, pivot, and the aggregate submenu — for UI that edits a
+   * column's pivot roles in place (the column panel's role chips). Same items, commands, and
+   * toggle semantics as the full column menu; execute selections through {@link execute}.
+   */
+  buildRoleMenuItems(ctx: ColumnMenuContext): MenuItem[] {
+    const cap = this.summarize(ctx);
+    const colIDs = [...ctx.colIds];
+    if (!colIDs.includes(ctx.targetColId)) colIDs.push(ctx.targetColId);
+    const multi = colIDs.length > 1;
+    const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
+    return [
+      ...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s),
+      ...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s),
+      ...this.getAggregateMenuItems(colIDs, cap, s),
+    ];
+  }
+
+  /**
+   * The per-type aggregate toggle items for one column (no "Clear" entry) — the column panel's
+   * "add value" pickers list these under each aggregatable column.
+   */
+  buildAggregateTypeItems(colID: string): MenuItem[] {
+    const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: colID, colIds: [colID] };
+    const cap = this.summarize(ctx);
+    if (!cap.aggregatable || !cap.aggType) return [];
+    const [item] = this.getAggregateMenuItems([colID], cap, (singular) => singular);
+    return (item?.subMenu ?? []).filter(sub => sub.id !== "aggClear");
+  }
+
+  private getAggregateMenuItems(
+    colIDs: string[],
+    cap: CapSummary,
+    s: (singular: string, plural?: string) => string,
+  ): MenuItem[] {
+    if (!cap.aggregatable || !cap.aggType) return [];
+    const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
+    // Each type is an independent toggle (a checkmark marks the applied ones): a column may
+    // carry several aggregates at once — each is a distinct pivot measure.
+    const agg = (id: string, type: AggregateType, left?: string): MenuItem => ({
+      id,
+      label: AGGREGATE_TYPE_LABELS[type],
+      ...(left ? { left } : {}),
+      ...(this.aggregateTypeApplied(colIDs, type) ? { right: "icon-check" } : {}),
+      command: "aggregate.setMany",
+      payload: { colIDs, agg: type },
+    });
+    if (cap.aggType === "numeric") {
+      item.subMenu = [
+        agg("aggSum", AggregateType.SUM, "icon-sum"),
+        agg("aggAvg", AggregateType.AVG, "icon-avg"),
+        agg("aggMin", AggregateType.MIN, "icon-min-number"),
+        agg("aggMax", AggregateType.MAX, "icon-max-number"),
+        agg("aggMedian", AggregateType.MEDIAN, "icon-median"),
+      ];
+    } else if (cap.aggType === "string") {
+      item.subMenu = [
+        agg("aggCount", AggregateType.COUNT, "icon-count"),
+        agg("aggMin", AggregateType.MIN, "icon-min-string"),
+        agg("aggMax", AggregateType.MAX, "icon-max-string"),
+      ];
+      if (cap.colType === ColumnType.STRING) {
+        item.subMenu.splice(1, 0, agg("aggDistinctCount", AggregateType.DISTINCT_COUNT));
+      }
+    }
+    if (cap.aggregated) {
+      item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
+    }
+    return [item];
   }
 
   execute(item: MenuItem, ctx: ColumnMenuContext) {

@@ -7,7 +7,13 @@ import {
   ColumnPanelTrigger,
   resolveColumnPanelOptions,
 } from "../../interfaces/gridOptions";
+import { AggregateType } from "../../interfaces/aggregate";
+import { MenuItem } from "../../interfaces/menuItem";
 import { Unsubscribe } from "../../events/events";
+import { MenuCoordinator } from "../../menu/coordinator";
+import { AGGREGATE_TYPE_LABELS } from "../../menu/columnMenuService";
+import { ColumnMenuContext } from "../../menu/context";
+import { MenuRenderer } from "../menuRenderer";
 import { button, createElement, div, span } from "../element";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 
@@ -20,6 +26,8 @@ interface ColumnPanelRendererParams {
     mountColumnTrigger: (trigger: HTMLButtonElement) => void;
     unmountColumnTrigger: () => void;
   };
+  menuCoordinator: MenuCoordinator;
+  menuRenderer: MenuRenderer;
 }
 
 interface PanelColumn {
@@ -50,6 +58,8 @@ export class ColumnPanelRenderer {
   private bulkVisibility = createElement("label", "pte-column-panel-bulk");
   private bulkVisibilityCheckbox = createElement("input", "pte-column-panel-bulk-checkbox");
   private bulkVisibilityLabel = span("pte-column-panel-bulk-label", "All columns");
+  private wells = div("pte-column-panel-wells");
+  private footerEl = div("pte-column-panel-footer");
   private list = div("pte-column-panel-list");
   private announcer = div("pte-column-panel-announcer");
   private modifiedIndicator = span("pte-column-panel-modified", "Modified");
@@ -67,12 +77,19 @@ export class ColumnPanelRenderer {
   private triggerTooltipDisposer: (() => void) | null = null;
   private listTooltipDisposers: Array<() => void> = [];
 
+  private roleUnsubscribes: Unsubscribe[] = [];
+
   constructor(private params: ColumnPanelRendererParams) {
     this.buildDOM();
     this.unsubscribe = this.params.core.on("columnsChanged", (event) => {
       this.captureInitialState(event.reason === "defs");
       this.renderList();
     });
+    // Role state (grouping rides columnsChanged already) — the chips and pivot wells track these.
+    this.roleUnsubscribes = [
+      this.params.core.on("pivotChanged", () => this.renderList()),
+      this.params.core.on("aggregateChanged", () => this.renderList()),
+    ];
     this.setOptions(this.params.options);
   }
 
@@ -116,6 +133,7 @@ export class ColumnPanelRenderer {
   destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    for (const unsubscribe of this.roleUnsubscribes.splice(0)) unsubscribe();
     this.panel.remove();
     this.unmountExternalTrigger();
     this.params.root.classList.remove(
@@ -182,16 +200,24 @@ export class ColumnPanelRenderer {
     this.bulkVisibilityCheckbox.addEventListener("change", () => this.setBulkVisibility());
     this.bulkVisibility.append(this.bulkVisibilityCheckbox, this.bulkVisibilityLabel);
 
-    const footer = div("pte-column-panel-footer");
     this.modifiedIndicator.hidden = true;
     this.resetButton.type = "button";
     this.resetButton.disabled = true;
     this.resetButton.addEventListener("click", () => this.resetLayout());
-    footer.append(this.modifiedIndicator, this.resetButton);
+    this.footerEl.append(this.modifiedIndicator, this.resetButton);
 
+    this.wells.hidden = true;
     this.announcer.setAttribute("aria-live", "polite");
     this.announcer.setAttribute("aria-atomic", "true");
-    this.content.append(header, this.searchInput, this.bulkVisibility, this.list, footer, this.announcer);
+    this.content.append(
+      header,
+      this.searchInput,
+      this.bulkVisibility,
+      this.wells,
+      this.list,
+      this.footerEl,
+      this.announcer,
+    );
     this.panel.append(this.railButton, this.content);
   }
 
@@ -298,6 +324,13 @@ export class ColumnPanelRenderer {
     if (!this.enabled) return;
     this.disposeListTooltips();
     this.list.replaceChildren();
+    // While pivoted the panel is the pivot customizer: the grid displays generated columns, so the
+    // layout chrome (bulk visibility, reset) would act on the invisible stashed sources — it hides,
+    // and the role wells take its place.
+    const pivoting = this.params.core.getPivotMode();
+    this.bulkVisibility.hidden = pivoting;
+    this.footerEl.hidden = pivoting;
+    this.renderWells(pivoting);
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const columns = this.getPanelColumns();
     this.updateModifiedState(columns);
@@ -480,6 +513,18 @@ export class ColumnPanelRenderer {
     const { col, state } = entry;
     const row = div("pte-column-panel-row");
     row.dataset.colId = col.colId;
+
+    if (this.params.core.getPivotMode()) {
+      // Customizer row: label + role chips only. Visibility/pin/reorder target the displayed
+      // layout, which is the generated pivot columns — not these stashed sources.
+      row.classList.add("pte-column-panel-row-pivot");
+      const pivotLabel = span("pte-column-panel-label");
+      pivotLabel.textContent = col.label;
+      this.listTooltipDisposers.push(registerRendererTooltipTarget(pivotLabel, () => col.label));
+      row.append(pivotLabel, this.buildRolesStrip(col, true)!);
+      return row;
+    }
+
     row.draggable = col.movable;
 
     const drag = span("pte-column-panel-drag", "⋮⋮");
@@ -543,8 +588,120 @@ export class ColumnPanelRenderer {
     actions.append(up, down);
 
     row.append(drag, checkbox, label, pin, actions);
+    const roles = this.buildRolesStrip(col, false);
+    if (roles) row.appendChild(roles);
     this.bindDrag(row, entry, section);
     return row;
+  }
+
+  /**
+   * The role chips under a column row: one removable chip per active role (row group, pivot
+   * column, each aggregate type), plus — while pivoted, where source columns have no header menu —
+   * a trailing editor chip opening the grouping/pivot/aggregate role menu. Outside pivot mode a
+   * role-less column renders no strip (`null`).
+   */
+  private buildRolesStrip(col: Column, includeEditor: boolean): HTMLDivElement | null {
+    const core = this.params.core;
+    const strip = div("pte-column-panel-roles");
+
+    const groups = core.getRowGroupColumns();
+    const groupIndex = groups.findIndex(group => group.instanceID === col.instanceID);
+    if (groupIndex >= 0) {
+      strip.appendChild(this.roleChip(
+        groups.length > 1 ? `Group ${groupIndex + 1}` : "Group",
+        `Remove ${col.label} from row groups`,
+        () => this.removeGroupRole(col),
+      ));
+    }
+
+    const pivots = core.getPivotColumns();
+    const pivotIndex = pivots.findIndex(pivot => pivot.instanceID === col.instanceID);
+    if (pivotIndex >= 0) {
+      strip.appendChild(this.roleChip(
+        pivots.length > 1 ? `Pivot ${pivotIndex + 1}` : "Pivot",
+        `Remove ${col.label} from pivot columns`,
+        () => this.removePivotRole(col),
+      ));
+    }
+
+    for (const entry of core.getAggregateModel()) {
+      if (entry.key !== col.instanceID) continue;
+      const typeLabel = AGGREGATE_TYPE_LABELS[entry.type] ?? entry.type;
+      strip.appendChild(this.roleChip(
+        typeLabel,
+        `Remove ${typeLabel} aggregate from ${col.label}`,
+        () => this.removeValueRole(col, entry.type),
+      ));
+    }
+
+    if (!includeEditor && strip.childElementCount === 0) return null;
+    if (includeEditor) {
+      const edit = button("pte-column-panel-role-add", "+");
+      edit.type = "button";
+      edit.setAttribute("aria-label", `Edit roles for ${col.label}`);
+      edit.setAttribute("aria-haspopup", "menu");
+      edit.addEventListener("click", () => this.openRoleMenu(col, edit));
+      strip.appendChild(edit);
+    }
+    return strip;
+  }
+
+  private roleChip(text: string, ariaLabel: string, onRemove: () => void): HTMLButtonElement {
+    const chip = button("pte-column-panel-role-chip");
+    chip.type = "button";
+    chip.setAttribute("aria-label", ariaLabel);
+    const remove = span("pte-column-panel-role-chip-x", "×");
+    remove.setAttribute("aria-hidden", "true");
+    chip.append(span("pte-column-panel-role-chip-text", text), remove);
+    chip.addEventListener("click", onRemove);
+    return chip;
+  }
+
+  private openRoleMenu(col: Column, anchorEl: HTMLElement): void {
+    const ctx: ColumnMenuContext = {
+      trigger: "columnMenuButton",
+      targetColId: col.instanceID,
+      colIds: [col.instanceID],
+      anchorEl,
+    };
+    const session = this.params.menuCoordinator.openRoleMenu(ctx);
+    if (session.items.length === 0) return;
+    const rect = anchorEl.getBoundingClientRect();
+    this.params.menuRenderer.open({
+      anchorEl,
+      clientX: rect.left,
+      clientY: rect.bottom + 4,
+      items: session.items,
+      position: "bottom-left",
+      ariaLabel: `Roles for ${col.label}`,
+      onItemClick: session.onItemClick,
+      onClose: session.onClose,
+    });
+  }
+
+  private removeGroupRole(col: Column): void {
+    const next = this.params.core.getRowGroupColumns()
+      .map(group => group.instanceID)
+      .filter(id => id !== col.instanceID);
+    this.params.core.dispatch({ type: "rowGroupSet", colIds: next });
+    this.announce(`${col.label} removed from row groups`);
+  }
+
+  private removePivotRole(col: Column): void {
+    // The mode stays on: an empty pivot is the designed grouped-aggregate view, and the mode
+    // switch belongs to the toolbar indicator and column menu.
+    const next = this.params.core.getPivotColumns()
+      .map(pivot => pivot.instanceID)
+      .filter(id => id !== col.instanceID);
+    this.params.core.dispatch({ type: "pivotColumnsSet", colIds: next });
+    this.announce(`${col.label} removed from pivot columns`);
+  }
+
+  private removeValueRole(col: Column, type: AggregateType): void {
+    const next = this.params.core.getAggregateModel()
+      .filter(entry => !(entry.key === col.instanceID && entry.type === type));
+    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    this.announce(`${AGGREGATE_TYPE_LABELS[type] ?? type} aggregate removed from ${col.label}`);
   }
 
   private orderButton(
@@ -589,6 +746,201 @@ export class ColumnPanelRenderer {
 
   private announce(message: string): void {
     this.announcer.textContent = message;
+  }
+
+  /**
+   * The pivot customizer's field wells: the three role lists (row groups, pivot column labels,
+   * values) in level order, each with add / reorder / remove. Rendered only while pivot mode is
+   * on; every mutation dispatches the same core actions as the menus, so the grid re-derives and
+   * `columnsChanged`/`pivotChanged`/`aggregateChanged` repaint this panel.
+   */
+  private renderWells(pivoting: boolean): void {
+    this.wells.replaceChildren();
+    this.wells.hidden = !pivoting;
+    if (!pivoting) return;
+    const core = this.params.core;
+
+    this.wells.append(
+      this.buildWell({
+        role: "group",
+        title: "Row groups",
+        addLabel: "Add row group",
+        entries: core.getRowGroupColumns().map(col => ({
+          label: col.label,
+          remove: () => this.removeGroupRole(col),
+        })),
+        reorder: (from, to) => this.reorderGroupRoles(from, to),
+        addItems: () => this.buildAddGroupItems(),
+      }),
+      this.buildWell({
+        role: "pivot",
+        title: "Column labels",
+        addLabel: "Add pivot column",
+        entries: core.getPivotColumns().map(col => ({
+          label: col.label,
+          remove: () => this.removePivotRole(col),
+        })),
+        reorder: (from, to) => this.reorderPivotRoles(from, to),
+        addItems: () => this.buildAddPivotItems(),
+      }),
+      this.buildWell({
+        role: "value",
+        title: "Values",
+        addLabel: "Add value",
+        entries: core.getAggregateModel().map(entry => {
+          const col = core.getColumnModel().getById(entry.key);
+          const typeLabel = AGGREGATE_TYPE_LABELS[entry.type] ?? entry.type;
+          return {
+            label: `${col?.label ?? entry.key} — ${typeLabel}`,
+            remove: () => { if (col) this.removeValueRole(col, entry.type); },
+          };
+        }),
+        reorder: (from, to) => this.reorderValueRoles(from, to),
+        addItems: () => this.buildAddValueItems(),
+      }),
+    );
+  }
+
+  private buildWell(params: {
+    role: string;
+    title: string;
+    addLabel: string;
+    entries: Array<{ label: string; remove: () => void }>;
+    reorder: (from: number, to: number) => void;
+    addItems: () => MenuItem[];
+  }): HTMLDivElement {
+    const well = div("pte-column-panel-well");
+    well.dataset.role = params.role;
+
+    const header = div("pte-column-panel-well-header");
+    const title = span("pte-column-panel-well-title", params.title);
+    const add = button("pte-column-panel-well-add", "+");
+    add.type = "button";
+    add.setAttribute("aria-label", params.addLabel);
+    add.setAttribute("aria-haspopup", "menu");
+    add.addEventListener("click", () => this.openWellAddMenu(add, params.addLabel, params.addItems()));
+    header.append(title, add);
+    well.appendChild(header);
+
+    if (params.entries.length === 0) {
+      well.appendChild(div("pte-column-panel-well-empty", "None"));
+      return well;
+    }
+
+    const items = div("pte-column-panel-well-items");
+    params.entries.forEach((entry, index) => {
+      const item = div("pte-column-panel-well-item");
+      const label = span("pte-column-panel-well-item-label", entry.label);
+      this.listTooltipDisposers.push(registerRendererTooltipTarget(label, () => entry.label));
+      const actions = div("pte-column-panel-order-actions");
+      const up = this.orderButton("↑", `Move ${entry.label} up`, index === 0, () => {
+        params.reorder(index, index - 1);
+      });
+      const down = this.orderButton(
+        "↓",
+        `Move ${entry.label} down`,
+        index === params.entries.length - 1,
+        () => params.reorder(index, index + 1),
+      );
+      actions.append(up, down);
+      const remove = button("pte-column-panel-well-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Remove ${entry.label} from ${params.title}`);
+      remove.addEventListener("click", entry.remove);
+      item.append(label, actions, remove);
+      items.appendChild(item);
+    });
+    well.appendChild(items);
+    return well;
+  }
+
+  private openWellAddMenu(anchorEl: HTMLElement, ariaLabel: string, items: MenuItem[]): void {
+    if (items.length === 0) {
+      this.announce("No columns available to add");
+      return;
+    }
+    const rect = anchorEl.getBoundingClientRect();
+    // The items carry complete payloads, so the execution context is nominal (no command the
+    // wells build reads it).
+    const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: "", colIds: [] };
+    this.params.menuRenderer.open({
+      anchorEl,
+      clientX: rect.left,
+      clientY: rect.bottom + 4,
+      items,
+      position: "bottom-left",
+      ariaLabel,
+      onItemClick: (item) => this.params.menuCoordinator.executeMenuItem(item, ctx),
+      onClose: () => undefined,
+    });
+  }
+
+  private buildAddGroupItems(): MenuItem[] {
+    const grouped = this.params.core.getRowGroupColumns().map(col => col.instanceID);
+    const groupedSet = new Set(grouped);
+    return this.getRoleEligibleColumns()
+      .filter(col => col.groupable && !groupedSet.has(col.instanceID))
+      .map(col => ({
+        id: `panelAddGroup:${col.colId}`,
+        label: col.label,
+        command: "group.setMany",
+        payload: { colIDs: [...grouped, col.instanceID] },
+      }));
+  }
+
+  private buildAddPivotItems(): MenuItem[] {
+    const pivoted = this.params.core.getPivotColumns().map(col => col.instanceID);
+    const pivotedSet = new Set(pivoted);
+    return this.getRoleEligibleColumns()
+      .filter(col => col.pivotable && !pivotedSet.has(col.instanceID))
+      .map(col => ({
+        id: `panelAddPivot:${col.colId}`,
+        label: col.label,
+        command: "pivot.setMany",
+        payload: { colIDs: [...pivoted, col.instanceID], enable: true },
+      }));
+  }
+
+  private buildAddValueItems(): MenuItem[] {
+    return this.getRoleEligibleColumns()
+      .filter(col => col.aggregatable)
+      .flatMap(col => {
+        const subMenu = this.params.menuCoordinator.buildAggregateTypeItems(col.instanceID);
+        return subMenu.length === 0
+          ? []
+          : [{ id: `panelAddValue:${col.colId}`, label: col.label, subMenu }];
+      });
+  }
+
+  /** The columns the wells can draw from — exactly what the panel lists (stashed sources while pivoted). */
+  private getRoleEligibleColumns(): Column[] {
+    return this.getPanelColumns().map(entry => entry.col);
+  }
+
+  private reorderGroupRoles(from: number, to: number): void {
+    const next = this.reorderIds(this.params.core.getRowGroupColumns().map(col => col.instanceID), from, to);
+    if (next) this.params.core.dispatch({ type: "rowGroupSet", colIds: next });
+  }
+
+  private reorderPivotRoles(from: number, to: number): void {
+    const next = this.reorderIds(this.params.core.getPivotColumns().map(col => col.instanceID), from, to);
+    if (next) this.params.core.dispatch({ type: "pivotColumnsSet", colIds: next });
+  }
+
+  private reorderValueRoles(from: number, to: number): void {
+    const model = this.params.core.getAggregateModel();
+    if (from < 0 || from >= model.length || to < 0 || to >= model.length || from === to) return;
+    const [moved] = model.splice(from, 1);
+    model.splice(to, 0, moved);
+    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: model });
+  }
+
+  private reorderIds(ids: string[], from: number, to: number): string[] | null {
+    if (from < 0 || from >= ids.length || to < 0 || to >= ids.length || from === to) return null;
+    const next = ids.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
   }
 
   private buildRootDropZone(section: ColumnSection): HTMLDivElement {

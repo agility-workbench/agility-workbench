@@ -13,6 +13,8 @@ import { mulberry32, picker } from "../helpers";
  * Pivot playground: pick the pivot columns and measures, flip pivot mode (checkbox, toolbar
  * indicator, or the column menu's "Pivot on Column"), and watch pivot cells update live as cell
  * edits land. Sorting a generated value column orders the group rows by that cell's aggregate.
+ * The toolbar's Columns button opens the column panel, which acts as the pivot customizer while
+ * pivoted: role chips per source column plus ordered Row groups / Column labels / Values wells.
  */
 
 type SaleRow = {
@@ -145,6 +147,7 @@ export function mountPivotDemo(container: HTMLElement): () => void {
     rowIdKey: "id",
     groupDefaultExpanded: 1,
     toolbar: { pivot: true },
+    columnPanel: { trigger: "toolbar" },
   });
 
   applyAggregates();

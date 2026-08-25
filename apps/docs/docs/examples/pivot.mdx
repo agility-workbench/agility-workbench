@@ -78,6 +78,35 @@ const options = {
 } satisfies GridOptions;
 ```
 
+## The column panel is the pivot customizer
+
+Enable the [column panel](./columns.mdx) alongside pivot mode and it becomes the
+place to edit the three roles. Every column row shows removable role chips —
+`Group 1`, `Pivot 1`, and one chip per aggregate type (`Sum`, `Average`, …) —
+so the current pivot recipe is readable at a glance in any mode.
+
+While pivot mode is **on**, the panel swaps into customizer form:
+
+- Three field wells at the top — **Row groups**, **Column labels**, and
+  **Values** — list the roles in level order. Each entry moves up/down (level
+  order matters for groups and pivot columns; value order sets the generated
+  column order) or removes, and each well's **+** menu adds any eligible source
+  column (values pick an aggregate type from a nested menu).
+- Column rows collapse to label + chips, and each gains a **+** editor chip
+  opening a grouping / pivot / aggregate menu — the same items as the column
+  header menu, which matters because pivoted source columns have no header to
+  right-click.
+- The visibility, pin, and reorder controls (and the bulk toggle and layout
+  reset) hide while pivoted: the displayed columns are generated, so those
+  controls would act on the invisible source layout. They return exactly when
+  pivot mode turns off.
+
+Removing the last pivot column from its well keeps pivot mode on — that is the
+grouped-aggregate view; the mode switch stays with the toolbar indicator and
+the column menu. Everything the panel edits is per-sheet state, so with
+[sheets](./sheets.mdx) enabled the customizer always edits the active sheet in
+place.
+
 ## Live behavior
 
 Filters and the quick filter keep operating on **source rows**, pre-pivot.

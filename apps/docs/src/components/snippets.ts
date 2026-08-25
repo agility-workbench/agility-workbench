@@ -347,6 +347,7 @@ api.setAllGroupsExpanded(true);`,
   rowData={rows}
   columnDefs={columns}
   toolbar={{ pivot: true }}
+  columnPanel={{ trigger: "toolbar" }}
   onGridReady={(api) => {
     const revenue = api.getColumnModel().getByColId("revenue")!;
     api.dispatch({
@@ -362,6 +363,7 @@ api.setAllGroupsExpanded(true);`,
   [rowData]="rows"
   [columnDefs]="columns"
   [toolbar]="{ pivot: true }"
+  [columnPanel]="{ trigger: 'toolbar' }"
   (gridReady)="pivot($event)"
 />
 
@@ -379,6 +381,7 @@ pivot(api: IGridAPI) {
   columnDefs,
   // Or seed at construction: pivotMode: true, pivotColumns: ["status"]
   toolbar: { pivot: true },
+  columnPanel: { trigger: "toolbar" }, // the panel doubles as the pivot customizer
 });
 
 const revenue = api.getColumnModel().getByColId("revenue")!;

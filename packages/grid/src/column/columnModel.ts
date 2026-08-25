@@ -825,11 +825,11 @@ export class ColumnModel implements IColumnModel {
   private pivotDefsSignature(defs: ColDef[]): string {
     const parts: string[] = [];
     const walk = (def: ColDef) => {
-      parts.push(`${def.colId} ${def.label ?? ""}`);
+      parts.push(`${def.colId}\u0000${def.label ?? ""}`);
       def.children?.forEach(walk);
     };
     defs.forEach(walk);
-    return parts.join("");
+    return parts.join("\u0001");
   }
 
   // The singleColumn auto-group column def: the client's gridOptions.groupColumnDef layered over

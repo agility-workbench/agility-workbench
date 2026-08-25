@@ -45,6 +45,33 @@ export class MenuCoordinator {
     };
   }
 
+  /**
+   * The role-editing menu (grouping / pivot / aggregates only) the column panel opens from a
+   * column row. Grid-owned chrome like the aggregate flyout: application getters and adapters
+   * never see it, so they can neither empty nor extend it.
+   */
+  openRoleMenu(ctx: ColumnMenuContext): {
+    items: MenuItem[];
+    onItemClick: (item: MenuItem) => void;
+    onClose: () => void;
+  } {
+    return {
+      items: this.menuSvc.buildRoleMenuItems(ctx),
+      onItemClick: (item) => this.menuSvc.execute(item, ctx),
+      onClose: () => undefined,
+    };
+  }
+
+  /** Execute a menu item through the column-menu service (the column panel's well menus). */
+  executeMenuItem(item: MenuItem, ctx: ColumnMenuContext): void {
+    this.menuSvc.execute(item, ctx);
+  }
+
+  /** Per-type aggregate toggle items for one column (the column panel's "add value" picker). */
+  buildAggregateTypeItems(colID: string): MenuItem[] {
+    return this.menuSvc.buildAggregateTypeItems(colID);
+  }
+
   private isVetoedMultiColumnMenu(ctx: ColumnMenuContext): boolean {
     if ((ctx as InternalColumnMenuContext).__suppressAppMenuItems) return false;
     return ctx.colIds.length > 1 && this.core.getOptions().multiColumnMenu === false;
