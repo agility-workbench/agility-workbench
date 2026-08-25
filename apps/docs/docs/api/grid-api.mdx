@@ -100,6 +100,8 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
+| `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
+| `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
 | `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; exit restores the source columns exactly) |
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
@@ -108,8 +110,8 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
 | `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |
 
-Filter methods address columns by the public `ColDef.colId`. Grouping columns
-and explicit sort models use typed `dispatch()` actions.
+Filter, grouping, aggregate, and pivot methods address columns by the public
+`ColDef.colId`. Explicit sort models use typed `dispatch()` actions.
 
 ## Selection and navigation
 

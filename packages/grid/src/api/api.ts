@@ -30,7 +30,7 @@ import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
-import { AggregateType } from "../interfaces/aggregate";
+import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
@@ -655,6 +655,30 @@ export class GridAPI implements IGridAPI {
 
   getPivotResultColumns(): PivotResultColumnDescriptor[] {
     return this.core.getPivotResultColumns();
+  }
+
+  setRowGroupColumns(colIds: string[]): void {
+    this.dispatch({ type: "rowGroupSet", colIds });
+  }
+
+  getRowGroupColumns(): string[] {
+    return this.core.getRowGroupColumns().map(col => col.colId);
+  }
+
+  setAggregates(aggregates: ColumnAggregate[]): void {
+    this.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: aggregates.map(a => ({ key: a.colId, type: a.type })),
+    });
+  }
+
+  getAggregates(): ColumnAggregate[] {
+    // The model keys entries by instanceID; report by public colId (entries whose column no
+    // longer resolves are dropped), mirroring the view-state serialization.
+    return this.core.getAggregateModel().flatMap(agg => {
+      const col = this.core.getColumnModel().getById(agg.key);
+      return col ? [{ colId: col.colId, type: agg.type }] : [];
+    });
   }
 
   captureViewState(): GridViewState {

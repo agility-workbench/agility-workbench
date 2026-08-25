@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { GridCore } from "../../core/core";
 import { ClipboardRenderer } from "./clipboardRenderer";
 import { ColumnType } from "../../interfaces/column";
+import { AggregateType } from "../../interfaces/aggregate";
 import { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import type { GridOptions } from "../../interfaces/gridOptions";
 
@@ -354,5 +355,54 @@ describe("ClipboardRenderer with row grouping", () => {
     clip.copy();
     // Group header row is included → 3 lines (the header cell is blank in the region column).
     expect(writes[0]?.split("\n").length).toBe(3);
+  });
+});
+
+describe("ClipboardRenderer in pivot mode", () => {
+  // Region-grouped, quarter-pivoted, revenue summed. Displayed leaves:
+  // autoGroup=0, Q1·revenue=1, Q2·revenue=2. All body rows are group rows.
+  function makePivotedGrid() {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "quarter", key: "quarter", label: "Quarter" },
+      { colId: "revenue", key: "revenue", label: "Revenue", type: ColumnType.NUMBER },
+    ]);
+    core.setRowData([
+      { id: "1", region: "West", quarter: "Q1", revenue: 10 },
+      { id: "2", region: "West", quarter: "Q2", revenue: 20 },
+      { id: "3", region: "East", quarter: "Q1", revenue: 30 },
+    ]);
+    const revenue = core.getColumnModel().getByColId("revenue")!;
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }] });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["quarter"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    return core;
+  }
+
+  it("copies a pivot range: aggregate values plus the group label, without any option", () => {
+    const core = makePivotedGrid();
+    expect(core.getOptions().groupRowsSelectable).toBe(false);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 2, mode: "extend" });
+    const { clip, writes } = makeClip(core);
+    clip.copy();
+    const lines = writes[0]!.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines).toContain("West (2)\t10\t20");
+    expect(lines).toContain("East (1)\t30\t");
+  });
+
+  it("copies only the generated value columns when the range excludes the group column", () => {
+    const core = makePivotedGrid();
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 2, mode: "extend" });
+    const { clip, writes } = makeClip(core);
+    clip.copy();
+    const lines = writes[0]!.split("\n");
+    expect(lines).toContain("10\t20");
+    expect(lines).toContain("30\t");
   });
 });

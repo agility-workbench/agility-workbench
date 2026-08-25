@@ -251,9 +251,8 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         groupDefaultExpanded: 1,
         groupRowsSticky: true,
         onGridReady: (api) => {
-          api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
-          const revenue = api.getColumnModel().getByColId("revenue");
-          if (revenue) api.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }] });
+          api.setRowGroupColumns(["region"]);
+          api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
         },
       };
       break;
@@ -263,14 +262,8 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         columnPanel: { trigger: "toolbar" },
         groupDefaultExpanded: 1,
         onGridReady: (api) => {
-          const revenue = api.getColumnModel().getByColId("revenue");
-          if (revenue) {
-            api.dispatch({
-              type: "aggregateModelSet",
-              aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
-            });
-          }
-          api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+          api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+          api.setRowGroupColumns(["region"]);
           api.setPivotColumns(["status"]);
           api.setPivotMode(true);
         },

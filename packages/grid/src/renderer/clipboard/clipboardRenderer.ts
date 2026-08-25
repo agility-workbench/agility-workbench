@@ -182,7 +182,13 @@ export class ClipboardRenderer {
   private resolveSelectionBlock(): SelectionBlock | null {
     const core = this.params.core;
     const leaves = core.getColumnModel().getLeaves();
-    const visibleLeaves = leaves.filter(c => !c.isInternal() && !c.hidden);
+    // While pivoted the displayed data columns are the generated pivot columns (internal by
+    // design) plus the auto-group column — admit them so pivot ranges copy; other internal
+    // columns (row numbers, checkboxes) stay excluded.
+    const pivoted = core.getPivotMode();
+    const copyable = (c: Column) =>
+      pivoted ? c.isPivotResultColumn() || c.isAutoGroupColumn() || !c.isInternal() : !c.isInternal();
+    const visibleLeaves = leaves.filter(c => copyable(c) && !c.hidden);
     const rowModel = core.getRowModel();
 
     const range = core.getSelectionRange();
@@ -193,7 +199,7 @@ export class ClipboardRenderer {
       });
       const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(range.rowStart, range.rowEnd));
       // Copy in unified row order: pinned top segment, body rows, pinned bottom segment.
-      const groupRowsSelectable = core.getOptions().groupRowsSelectable;
+      const groupRowsSelectable = core.getOptions().groupRowsSelectable || pivoted;
       const pinnedNodes = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
         if (!segment) return [] as IRowNode[];
         const nodes: IRowNode[] = [];
@@ -250,7 +256,8 @@ export class ClipboardRenderer {
   // cells hold labels/aggregate totals rather than real values, so including them in TSV output is
   // usually noise; the option lets callers opt into copying them.
   private filterCopyableRows(viewIdxs: number[]): number[] {
-    if (this.params.core.getOptions().groupRowsSelectable) return viewIdxs;
+    // Pivot rows are the data: always copyable while pivoted.
+    if (this.params.core.getOptions().groupRowsSelectable || this.params.core.getPivotMode()) return viewIdxs;
     const rowModel = this.params.core.getRowModel();
     return viewIdxs.filter(i => !rowModel.getRowNodeAtViewIndex(i)?.isGroup);
   }

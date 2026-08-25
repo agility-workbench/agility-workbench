@@ -3,7 +3,6 @@ import {
   AggregateType,
   ColumnType,
   type ColDef,
-  type IGridAPI,
 } from "@grid";
 
 import { btn, checkbox, demoRoot, field, gridHost, h, toolbarRow } from "../dom";
@@ -74,11 +73,6 @@ const COLUMNS: ColDef[] = [
   { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
 ];
 
-/** Resolve a column's instanceID (the key the aggregate model expects) from its colId. */
-function colInstance(api: IGridAPI, colId: string): string {
-  return api.getColumnModel().getByColId(colId)?.instanceID ?? "";
-}
-
 export function mountPivotDemo(container: HTMLElement): () => void {
   const rows = buildRows(2000);
   let pivotCols = ["quarter"];
@@ -111,7 +105,7 @@ export function mountPivotDemo(container: HTMLElement): () => void {
     colId === "region" ? "Region" : "Country",
     checkbox(groupBy.includes(colId), () => {
       groupBy = groupBy.includes(colId) ? groupBy.filter(c => c !== colId) : [...groupBy, colId];
-      api.dispatch({ type: "rowGroupSet", colIds: groupBy });
+      api.setRowGroupColumns(groupBy);
     }),
     { style: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" } },
   ));
@@ -151,16 +145,12 @@ export function mountPivotDemo(container: HTMLElement): () => void {
   });
 
   applyAggregates();
-  api.dispatch({ type: "rowGroupSet", colIds: groupBy });
+  api.setRowGroupColumns(groupBy);
   api.setPivotColumns(pivotCols);
   api.setPivotMode(true);
 
   function applyAggregates(): void {
-    const aggregateModels = MEASURES
-      .filter((_, index) => measures.has(index))
-      .map(measure => ({ key: colInstance(api, measure.colId), type: measure.type }))
-      .filter(model => model.key);
-    api.dispatch({ type: "aggregateModelSet", aggregateModels });
+    api.setAggregates(MEASURES.filter((_, index) => measures.has(index)));
   }
 
   return () => api.destroy();

@@ -25,10 +25,25 @@ export function serializeNodesToTSV(
     lines.push(cols.map(c => escapeTSV(c.label ?? c.key ?? "")).join("\t"));
   }
   for (const node of nodes) {
-    const cells = cols.map(col => escapeTSV(col.formatValue(col.getValue(node), node)));
+    const cells = cols.map(col => escapeTSV(cellText(col, node)));
     lines.push(cells.join("\t"));
   }
   return lines.join("\n");
+}
+
+// One cell's copy text. Group rows (pivot rows, groupRowsSelectable copies) have no underlying
+// data row: value cells read the node's stamped aggregate and the group-label column reads the
+// node's key — the same conventions the cell renderer paints and the exporter writes.
+function cellText(col: Column, node: import("../../interfaces/iRowNode").IRowNode): string {
+  if (node.isGroup) {
+    const agg = node.aggregateValues?.[col.instanceID];
+    if (agg != null && agg !== "") return col.formatValue(agg, node);
+    if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level) {
+      return `${node.groupKey ?? ""} (${node.childCount ?? 0})`;
+    }
+    return "";
+  }
+  return col.formatValue(col.getValue(node), node);
 }
 
 /**

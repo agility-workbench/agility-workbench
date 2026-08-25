@@ -1,4 +1,4 @@
-export type { AggregateModel, AggregateType } from "./aggregate";
+export type { AggregateModel, AggregateType, ColumnAggregate } from "./aggregate";
 export type { CellRef, SelectionRange } from "./selection";
 export type { ColDef } from "./column";
 export type { FilterModel } from "./filter";

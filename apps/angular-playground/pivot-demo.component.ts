@@ -73,11 +73,6 @@ const MEASURES: Array<{ colId: string; type: AggregateType; label: string }> = [
   { colId: "units", type: AggregateType.SUM, label: "Units (sum)" },
 ];
 
-// Resolve a column's instanceID (the key the aggregate model expects) from its colId.
-function colInstance(api: IGridAPI, colId: string): string {
-  return api.getColumnModel().getByColId(colId)?.instanceID ?? "";
-}
-
 @Component({
   selector: "pivot-demo",
   standalone: true,
@@ -203,7 +198,7 @@ export class PivotDemoComponent {
   onReady(api: IGridAPI): void {
     this.api = api;
     this.applyAggregates();
-    api.dispatch({ type: "rowGroupSet", colIds: this.groupBy() });
+    api.setRowGroupColumns(this.groupBy());
     api.setPivotColumns(this.pivotCols());
     api.setPivotMode(this.pivotOn());
   }
@@ -233,7 +228,7 @@ export class PivotDemoComponent {
     const prev = this.groupBy();
     const next = prev.includes(colId) ? prev.filter((c) => c !== colId) : [...prev, colId];
     this.groupBy.set(next);
-    this.api?.dispatch({ type: "rowGroupSet", colIds: next });
+    this.api?.setRowGroupColumns(next);
   }
 
   // Live-update demo: bump one revenue cell by a visible amount. In pivot mode the affected pivot
@@ -247,13 +242,7 @@ export class PivotDemoComponent {
   }
 
   private applyAggregates(): void {
-    const api = this.api;
-    if (!api) return;
     const selected = this.selectedMeasures();
-    const aggregateModels = MEASURES
-      .filter((_, i) => selected.has(i))
-      .map((m) => ({ key: colInstance(api, m.colId), type: m.type }))
-      .filter((m) => m.key);
-    api.dispatch({ type: "aggregateModelSet", aggregateModels: aggregateModels as any });
+    this.api?.setAggregates(MEASURES.filter((_, i) => selected.has(i)));
   }
 }

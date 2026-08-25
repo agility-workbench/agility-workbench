@@ -345,13 +345,15 @@ export class SelectionRenderer {
 
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return null;
-    // Group-row cells are only selectable when groupRowsSelectable is enabled. When disabled,
+    // Group-row cells are only selectable when groupRowsSelectable is enabled — except while
+    // pivoted, where the group rows ARE the data and cell selection always works. When disabled,
     // clicking a group cell resolves to no location (the click clears/keeps selection like empty
     // space). The chevron toggle is handled earlier in onCellMouseDown either way. Editing is
     // always blocked on group rows in the core's editStart.
     if (
       !rowEl.dataset.rowPinned
       && !this.params.core.options.groupRowsSelectable
+      && !this.params.core.getPivotMode()
       && rowEl.classList.contains("pte-group-row")
     ) return null;
 

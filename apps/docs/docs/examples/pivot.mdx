@@ -36,14 +36,18 @@ A pivot is configured from state the grid already has:
   measure).
 
 ```ts
-api.dispatch({
-  type: "aggregateModelSet",
-  aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
-});
-api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+api.setRowGroupColumns(["region"]);
 api.setPivotColumns(["quarter"]);
 api.setPivotMode(true);
 ```
+
+Everything is addressed by public `colId` — `setRowGroupColumns` and `setPivotColumns`
+take level-ordered colId arrays, and `setAggregates` takes `{ colId, type }`
+entries (`ColumnAggregate[]`; a column may carry several types, and entry order
+sets the generated column order). `getRowGroupColumns`, `getPivotColumns`, and
+`getAggregates` read the same state back. The column panel, column menus, and
+toolbar are optional chrome over exactly this API.
 
 Interactively, the column menu offers **Pivot on Column** / **Add to Existing
 Pivot** / **Remove from Pivot** (gated by the `pivotable` column flag, default
@@ -55,10 +59,16 @@ options.
 
 Generated value columns are ordinary columns for reading purposes — resizable
 and sortable (sorting one orders the group rows by that cell's aggregate at
-every level) — but read-only, unmovable, unpinnable, and unfilterable. Their
-ids are stable (derived from the pivot-value path, source column, and
-aggregate), so widths and sorts survive data refreshes that re-derive the same
-columns.
+every level) — but read-only, unpinnable, and unfilterable. Their ids are
+stable (derived from the pivot-value path, source column, and aggregate), so
+widths and sorts survive data refreshes that re-derive the same columns.
+
+Dragging a generated value column in the header reorders the **measures**: leaf
+order inside every generated group is the value-entry order, so one drag
+reorders all groups consistently, and the new order persists across re-derives
+(it is the aggregate model's order — the same order `setAggregates` and the
+column panel's Values well control). A value column can never leave its group
+or split it; group headers themselves stay in `pivotComparator` order.
 
 - `pivotResultColumnDef` styles every generated value column (width, cell
   class, formatter) without being able to unlock the grid-owned behavior.
@@ -119,6 +129,14 @@ source rows (an average of averages can never appear).
 model, so a saved view restores the complete pivot; `pivotChanged` reports
 mode/column changes and `getPivotResultColumns()` describes the generated
 columns.
+
+The cell cursor, keyboard navigation, and range selection work on pivot rows
+without any configuration — while pivoted the group rows *are* the data, so
+they are always cell-selectable (`groupRowsSelectable` keeps governing group
+rows in ordinary grouped views, and row-checkability everywhere). Copying a
+pivot range puts the formatted aggregate values on the clipboard, with group
+labels as `key (count)` under the group column. Editing stays blocked — pivot
+cells are derived.
 
 Exporting while pivoted (toolbar or API, CSV and Excel) writes the pivot table
 itself: the nested generated header over one row per group node (every level,

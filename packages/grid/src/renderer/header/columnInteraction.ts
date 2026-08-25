@@ -1,3 +1,4 @@
+import { AggregateModel } from "../../interfaces/aggregate";
 import { ColumnSection } from "../../interfaces/column";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
@@ -12,6 +13,56 @@ import {
 } from "../toolbar/sortModelOperations";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
+
+function isPivotMeasureLeaf(col: Column): boolean {
+  return col.isPivotResultColumn() && col.children.length === 0;
+}
+
+// The aggregate-model index of the measure a generated value leaf represents (leaf colId shape:
+// "pv:<encoded path>|<encoded source colId>|<aggregate type>"); -1 for any other column.
+function measureIndexOf(core: GridCore, col: Column, model: { key: string; type: string }[]): number {
+  if (!isPivotMeasureLeaf(col)) return -1;
+  const [, encodedColId, aggType] = col.colId.split("|");
+  if (encodedColId == null || aggType == null) return -1;
+  const valueColId = decodeURIComponent(encodedColId);
+  return model.findIndex(entry => {
+    const source = core.getColumnModel().getById(entry.key);
+    return source?.colId === valueColId && entry.type === aggType;
+  });
+}
+
+/**
+ * The aggregate-model reorder implied by dropping a generated pivot value leaf at `targetIndex`
+ * within `anchors` (the drop-anchor leaves the indicator was positioned against), or null for a
+ * no-op drop. Leaf order inside every generated group is the value-entry order, so one move
+ * reorders all groups consistently and survives re-discovery — the pivot itself is untouched.
+ * Exported for tests.
+ */
+export function computePivotMeasureReorder(
+  core: GridCore,
+  col: Column,
+  targetIndex: number,
+  anchors: Column[],
+): AggregateModel[] | null {
+  if (targetIndex < 0) return null;
+  const model = core.getAggregateModel();
+  const from = measureIndexOf(core, col, model);
+  if (from < 0) return null;
+
+  // The measure sequence restarts inside every generated group, so the drop's LEFT neighbor names
+  // the position: after that measure. With no measure on the left (start of the pivot area), the
+  // right neighbor names insert-before instead. Neither a measure → dropped outside the pivot area.
+  const leftIdx = targetIndex > 0 ? measureIndexOf(core, anchors[targetIndex - 1], model) : -1;
+  const rightIdx = targetIndex < anchors.length ? measureIndexOf(core, anchors[targetIndex], model) : -1;
+  const to = leftIdx >= 0 ? leftIdx + 1 : rightIdx >= 0 ? rightIdx : -1;
+  if (to < 0) return null;
+  if (to === from || to === from + 1) return null;
+
+  const next = model.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to > from ? to - 1 : to, 0, moved);
+  return next;
+}
 
 interface ColumnInteractionRendererParams {
   core: GridCore;
@@ -86,7 +137,9 @@ export class ColumnInteractionRenderer {
     const col = this.params.core.getColumnModel().getById(header.id);
     if (!col || col.hidden || col.isRowNumberColumn()) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
-    const allowDrop = col.movable;
+    // Generated pivot value leaves are immovable columns, but dragging one reorders the MEASURES
+    // (see applyPivotMeasureReorder) — so they are drag sources with a droppable indicator.
+    const allowDrop = col.movable || this.isPivotMeasureLeaf(col);
     this.maybeStartColumnDrag(col, header, e, allowDrop);
   }
 
@@ -253,9 +306,27 @@ export class ColumnInteractionRenderer {
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
       return;
     }
+    if (this.isPivotMeasureLeaf(col)) {
+      this.applyPivotMeasureReorder(col, targetIndex, section);
+      this.suppressHeaderClick = true;
+      setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+      return;
+    }
     this.params.core.dispatch({ type: "columnMove", colId: col.instanceID, toIndex: targetIndex, toSection: section });
     this.suppressHeaderClick = true;
     setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+  }
+
+  private isPivotMeasureLeaf(col: Column): boolean {
+    return isPivotMeasureLeaf(col);
+  }
+
+  // Dropping a generated pivot value leaf: dispatch the aggregate-model reorder the drop implies
+  // (see computePivotMeasureReorder). `targetIndex` indexes the section's drop-anchor leaves — the
+  // list the drop indicator was positioned against.
+  private applyPivotMeasureReorder(col: Column, targetIndex: number, section: ColumnSection): void {
+    const next = computePivotMeasureReorder(this.params.core, col, targetIndex, this.getDropAnchorLeaves(section));
+    if (next) this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
   }
 
   onHeaderDoubleClick(e: MouseEvent) {
@@ -537,7 +608,7 @@ export class ColumnInteractionRenderer {
 
   private isDragSource(col: Column): boolean {
     if (!col) return false;
-    return !col.isRowNumberColumn() && col.movable && col.isVisible();
+    return !col.isRowNumberColumn() && (col.movable || this.isPivotMeasureLeaf(col)) && col.isVisible();
   }
 
   private isDropAnchor(col: Column): boolean {

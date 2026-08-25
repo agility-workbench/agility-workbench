@@ -1837,15 +1837,21 @@ export class GridCore implements IGridCore {
 
   private isNodeSelectable(node: IRowNode): boolean {
     if (this.isBodyRowPinned(node.id)) return false;
-    if (this.options.groupRowsSelectable) return true;
-    return !node.isGroup;
+    if (!node.isGroup) return true;
+    // While pivoted the group rows ARE the data — the cell cursor and ranges work on them without
+    // opting into groupRowsSelectable, which governs group rows in ordinary grouped views (and
+    // row-checkability everywhere, see isNodeCheckable).
+    return this.options.groupRowsSelectable || this.pivotMode;
   }
 
   // Whether a row can be ROW-selected (checked). Narrower than isNodeSelectable, which also decides
   // navigation stops: an app-disabled row (isRowSelectable → false) stays a live cursor target but
-  // cannot join the row selection through any route.
+  // cannot join the row selection through any route, and pivot rows are cursor targets without
+  // becoming checkable.
   private isNodeCheckable(node: IRowNode): boolean {
-    return this.isNodeSelectable(node) && this.options.isRowSelectable?.(node) !== false;
+    if (this.isBodyRowPinned(node.id)) return false;
+    if (node.isGroup && !this.options.groupRowsSelectable) return false;
+    return this.options.isRowSelectable?.(node) !== false;
   }
 
   // View-index form of isNodeCheckable. Rows not present (e.g. unloaded server-side slots) cannot

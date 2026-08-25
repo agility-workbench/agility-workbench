@@ -349,12 +349,8 @@ api.setAllGroupsExpanded(true);`,
   toolbar={{ pivot: true }}
   columnPanel={{ trigger: "toolbar" }}
   onGridReady={(api) => {
-    const revenue = api.getColumnModel().getByColId("revenue")!;
-    api.dispatch({
-      type: "aggregateModelSet",
-      aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
-    });
-    api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+    api.setRowGroupColumns(["region"]);
     api.setPivotColumns(["status"]);
     api.setPivotMode(true);
   }}
@@ -368,12 +364,8 @@ api.setAllGroupsExpanded(true);`,
 />
 
 pivot(api: IGridAPI) {
-  const revenue = api.getColumnModel().getByColId("revenue")!;
-  api.dispatch({
-    type: "aggregateModelSet",
-    aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
-  });
-  api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+  api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+  api.setRowGroupColumns(["region"]);
   api.setPivotColumns(["status"]);
   api.setPivotMode(true);
 }`,
@@ -384,12 +376,8 @@ pivot(api: IGridAPI) {
   columnPanel: { trigger: "toolbar" }, // the panel doubles as the pivot customizer
 });
 
-const revenue = api.getColumnModel().getByColId("revenue")!;
-api.dispatch({
-  type: "aggregateModelSet",
-  aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
-});
-api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+api.setRowGroupColumns(["region"]);
 api.setPivotColumns(["status"]);
 api.setPivotMode(true);`,
   },

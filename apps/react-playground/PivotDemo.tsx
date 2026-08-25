@@ -92,19 +92,13 @@ export function PivotDemo() {
   ], []);
 
   const applyAggregates = (selected: Set<number>) => {
-    const api = apiRef.current;
-    if (!api) return;
-    const aggregateModels = MEASURES
-      .filter((_, i) => selected.has(i))
-      .map(m => ({ key: colInstance(api, m.colId), type: m.type }))
-      .filter(m => m.key);
-    api.dispatch({ type: "aggregateModelSet", aggregateModels: aggregateModels as any });
+    apiRef.current?.setAggregates(MEASURES.filter((_, i) => selected.has(i)));
   };
 
   const handleReady = (api: IGridAPI) => {
     apiRef.current = api;
     applyAggregates(measures);
-    api.dispatch({ type: "rowGroupSet", colIds: groupBy });
+    api.setRowGroupColumns(groupBy);
     api.setPivotColumns(pivotCols);
     api.setPivotMode(pivotOn);
   };
@@ -130,7 +124,7 @@ export function PivotDemo() {
   const toggleGroupCol = (colId: string) => {
     setGroupBy(prev => {
       const next = prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId];
-      apiRef.current?.dispatch({ type: "rowGroupSet", colIds: next });
+      apiRef.current?.setRowGroupColumns(next);
       return next;
     });
   };
@@ -208,11 +202,6 @@ export function PivotDemo() {
       </div>
     </div>
   );
-}
-
-// Resolve a column's instanceID (the key the aggregate model expects) from its colId.
-function colInstance(api: IGridAPI, colId: string): string {
-  return api.getColumnModel().getByColId(colId)?.instanceID ?? "";
 }
 
 export default PivotDemo;

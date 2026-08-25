@@ -17,6 +17,7 @@ import {
   UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
+import { ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
@@ -384,6 +385,23 @@ export interface IGridAPI {
   getPivotColumns(): string[];
   /** Descriptors of the current generated pivot value columns, in header order. */
   getPivotResultColumns(): PivotResultColumnDescriptor[];
+
+  /**
+   * Replace the row-grouping columns (order = grouping level), by colId. An empty array clears
+   * all grouping. Non-groupable and unknown colIds are skipped.
+   */
+  setRowGroupColumns(colIds: string[]): void;
+  /** The row-grouping columns' colIds, in level order. */
+  getRowGroupColumns(): string[];
+  /**
+   * Replace the aggregate assignments (grid footer totals, group-row totals, and pivot measures),
+   * by colId. A column may appear several times with different types — each is a distinct
+   * measure; entry order sets the generated pivot column order. An empty array clears all
+   * aggregates. Unknown colIds are skipped.
+   */
+  setAggregates(aggregates: ColumnAggregate[]): void;
+  /** The current aggregate assignments by colId, in model order. */
+  getAggregates(): ColumnAggregate[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;
