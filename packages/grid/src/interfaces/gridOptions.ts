@@ -753,6 +753,8 @@ export interface GridToolbarOptions {
   views?: boolean;
   /** CSV/Excel export menu. */
   export?: boolean;
+  /** Pivot-mode indicator + toggle. Client-side row model only. */
+  pivot?: boolean;
 }
 
 export interface ResolvedGridToolbarOptions {
@@ -761,6 +763,7 @@ export interface ResolvedGridToolbarOptions {
   quickFilter: boolean;
   views: boolean;
   export: boolean;
+  pivot: boolean;
 }
 
 export function resolveGridToolbarOptions(
@@ -772,6 +775,7 @@ export function resolveGridToolbarOptions(
     quickFilter: options?.quickFilter === true,
     views: options?.views === true,
     export: options?.export === true,
+    pivot: options?.pivot === true,
   };
 }
 
@@ -1217,6 +1221,32 @@ export interface GridOptions {
    */
   groupSortMode?: GroupSortMode;
   /**
+   * Start the grid in pivot mode. Rows display as the row-group tree (leaf rows never show) and
+   * the header is generated from data: one nested column group per distinct value of each pivot
+   * column, one value leaf per aggregated column. Non-participating source columns are hidden
+   * while pivoted (they return exactly on exit). Toggle at runtime with `api.setPivotMode` or the
+   * `pivotModeSet` action. Client-side row model only; mutually exclusive with tree data.
+   */
+  pivotMode?: boolean;
+  /**
+   * Columns to pivot on, in level order (outermost first), by colId. Stored even while pivot mode
+   * is off; change at runtime with `api.setPivotColumns`. With pivot mode on and no pivot columns
+   * the grid shows the degenerate grouped-aggregate view (one generated leaf per value entry).
+   */
+  pivotColumns?: string[];
+  /**
+   * Definition overlay for every generated pivot VALUE column (width, cellClass, formatter…).
+   * Identity and behavior locks (`colId`, `editable: false`, `movable: false`, `filter: false`,
+   * …) are grid-owned and cannot be overridden. Generated group headers take no overlay.
+   */
+  pivotResultColumnDef?: Partial<ColDef>;
+  /**
+   * Cap on generated pivot leaf columns (default 200). A discovery past the cap truncates
+   * deterministically — the first columns in header order survive — and fires
+   * `pivotColumnLimitReached`; never a hard failure.
+   */
+  maxPivotColumns?: number;
+  /**
    * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
    * Tree data is mutually exclusive with column-value row grouping.
    */
@@ -1418,6 +1448,10 @@ export interface InternalGridOptions extends GridOptions {
   groupColumnDef?: Partial<ColDef>;
   groupDefaultExpanded: number;
   groupSortMode: GroupSortMode;
+  pivotMode: boolean;
+  pivotColumns: string[];
+  pivotResultColumnDef?: Partial<ColDef>;
+  maxPivotColumns: number;
   treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
   isRowSelectable?: (node: IRowNode) => boolean;

@@ -137,6 +137,10 @@ row count is known; the quick filter is client-side only.)
 | `groupRowsSelectable` | `boolean` | Include generated groups in selection |
 | `groupRowsSticky` | `boolean` | Dock the active ancestor chain |
 | `treeData` | `TreeDataOptions` | Enable path, parent, or children hierarchy |
+| `pivotMode` | `boolean` | Start in pivot mode (client-side; exclusive with tree data) |
+| `pivotColumns` | `string[]` | Columns to pivot on, by colId, in level order |
+| `pivotResultColumnDef` | `Partial<ColDef>` | Overlay for every generated pivot value column |
+| `maxPivotColumns` | `number` | Cap on generated pivot columns (default 200; truncates + fires `pivotColumnLimitReached`) |
 
 ## Presentation and integration
 

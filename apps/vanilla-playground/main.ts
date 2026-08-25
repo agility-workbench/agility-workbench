@@ -13,6 +13,7 @@ import { mountFooterVisibilityDemo } from "./demos/footer-visibility-demo";
 import { mountFullyThemedDemo } from "./demos/fully-themed-demo";
 import { mountGridDemo } from "./demos/grid-demo";
 import { mountGroupingDemo } from "./demos/grouping-demo";
+import { mountPivotDemo } from "./demos/pivot-demo";
 import { mountHeaderComponentDemo } from "./demos/header-component-demo";
 import { mountHighFrequencyDemo } from "./demos/high-frequency-demo";
 import { mountIndexedInsertDemo } from "./demos/indexed-insert-demo";
@@ -48,6 +49,7 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "visualStates", label: "Hover & visual states", mount: mountVisualStatesDemo },
   { id: "fullyThemed", label: "Fully themed grid", mount: mountFullyThemedDemo },
   { id: "grouping", label: "Row grouping", mount: mountGroupingDemo },
+  { id: "pivot", label: "Pivot", mount: mountPivotDemo },
   { id: "c3ViewIndex", label: "C3 grouped pagination", mount: mountC3ViewIndexDemo },
   { id: "serverSideGrouping", label: "Server-side grouping", mount: mountServerSideGroupingDemo },
   { id: "treeData", label: "Tree data", mount: mountTreeDataDemo },

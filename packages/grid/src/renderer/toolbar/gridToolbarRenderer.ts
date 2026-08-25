@@ -52,12 +52,15 @@ export class GridToolbarRenderer {
   private viewsLabel = span("pte-grid-toolbar-views-label", "Views");
   private quickFilterHost = div("pte-grid-toolbar-quick-filter");
   private exportButton = button("pte-grid-toolbar-export-button");
+  private pivotButton = button("pte-grid-toolbar-pivot-button");
   private moreButton = button("pte-grid-toolbar-more-button");
   private draggedGroupColId: string | null = null;
   private draggedSortColId: string | null = null;
   private groupChipTooltipDisposers: Array<() => void> = [];
   private sortChipTooltipDisposers: Array<() => void> = [];
   private exportTooltipDisposer: (() => void) | null = null;
+  private pivotTooltipDisposer: (() => void) | null = null;
+  private pivotUnsubscribe: Unsubscribe | null = null;
   private moreTooltipDisposer: (() => void) | null = null;
   private viewsTooltipDisposer: (() => void) | null = null;
   private options: ResolvedGridToolbarOptions = resolveGridToolbarOptions(undefined);
@@ -100,6 +103,23 @@ export class GridToolbarRenderer {
       "left",
     );
 
+    // Pivot indicator + toggle. Pressed state mirrors core pivot mode; kept in sync through the
+    // pivotChanged event so API/menu toggles reflect here too.
+    this.pivotButton.type = "button";
+    this.pivotButton.setAttribute("aria-label", "Toggle pivot mode");
+    const pivotIcon = span("pte-grid-toolbar-pivot-icon icon-pivot");
+    pivotIcon.setAttribute("aria-hidden", "true");
+    this.pivotButton.append(pivotIcon, span("pte-grid-toolbar-pivot-label", "Pivot"));
+    this.pivotButton.addEventListener("click", () => {
+      this.params.core.dispatch({ type: "pivotModeSet", on: !this.params.core.getPivotMode() });
+    });
+    this.pivotTooltipDisposer = registerRendererTooltipTarget(
+      this.pivotButton,
+      () => this.params.core.getPivotMode() ? "Pivot mode on" : "Pivot mode off",
+      undefined,
+      "left",
+    );
+
     this.moreButton.type = "button";
     this.moreButton.setAttribute("aria-label", "More toolbar actions");
     this.moreButton.setAttribute("aria-haspopup", "menu");
@@ -124,8 +144,16 @@ export class GridToolbarRenderer {
     });
     this.renderGroupChips();
     this.renderSortChips();
+    this.pivotUnsubscribe = this.params.core.on("pivotChanged", () => this.updatePivotButton());
+    this.updatePivotButton();
     this.setSavedViewsOptions(this.params.savedViews);
     this.setOptions(this.params.options);
+  }
+
+  private updatePivotButton(): void {
+    const on = this.params.core.getPivotMode();
+    this.pivotButton.classList.toggle("pte-grid-toolbar-pivot-active", on);
+    this.pivotButton.setAttribute("aria-pressed", String(on));
   }
 
   setOptions(options: GridToolbarOptions | undefined): void {
@@ -166,10 +194,14 @@ export class GridToolbarRenderer {
 
   destroy(): void {
     this.unsubscribe();
+    this.pivotUnsubscribe?.();
+    this.pivotUnsubscribe = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.exportTooltipDisposer?.();
     this.exportTooltipDisposer = null;
+    this.pivotTooltipDisposer?.();
+    this.pivotTooltipDisposer = null;
     this.moreTooltipDisposer?.();
     this.moreTooltipDisposer = null;
     this.viewsTooltipDisposer?.();
@@ -192,6 +224,7 @@ export class GridToolbarRenderer {
 
     const rightSections: HTMLElement[] = [];
     if (this.options.quickFilter) rightSections.push(this.quickFilterHost);
+    if (this.options.pivot) rightSections.push(this.pivotButton);
     if (this.options.export) rightSections.push(this.exportButton);
     if (this.options.export || this.columnTrigger) rightSections.push(this.moreButton);
     if (this.columnTrigger) rightSections.push(this.columnTrigger);

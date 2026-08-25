@@ -23,6 +23,12 @@ export interface GridViewPaginationState {
   pageSize: number;
 }
 
+/** One aggregate-model entry in serializable form (keyed by public colId, not instanceID). */
+export interface GridViewAggregateState {
+  colId: string;
+  type: string;
+}
+
 /** Serializable grid presentation state captured by `api.captureViewState()`. */
 export interface GridViewState {
   version: 1;
@@ -35,6 +41,13 @@ export interface GridViewState {
   /** Present only when pagination is enabled at capture time. Absent in states saved before this
    * field existed; applyViewState leaves the page untouched when it's missing. */
   pagination?: GridViewPaginationState;
+  /** Aggregate model by colId. Absent in states saved before pivot existed; applyViewState leaves
+   * the aggregate model untouched when it's missing (same rule as `pagination`). */
+  aggregateModel?: GridViewAggregateState[];
+  /** Pivot columns' colIds in level order. Absent = leave untouched. */
+  pivotColumns?: string[];
+  /** Whether pivot mode is on. Absent = leave untouched. */
+  pivotMode?: boolean;
 }
 
 export interface SavedGridView {

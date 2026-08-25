@@ -100,6 +100,9 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
+| `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; exit restores the source columns exactly) |
+| `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
+| `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |

@@ -12,7 +12,7 @@ import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
 
-type InternalColumnRole = "rowNumber" | "selectionCheckbox" | "autoGroup";
+type InternalColumnRole = "rowNumber" | "selectionCheckbox" | "autoGroup" | "pivotResult";
 type InternalColDef = ColDef & {
   __internalRole?: InternalColumnRole;
   __pinnable?: boolean;
@@ -78,6 +78,10 @@ export class Column {
   filterParams?: FilterParams;
   groupable: boolean;
   aggregatable: boolean;
+  pivotable: boolean;
+  // Orders this column's distinct values across the generated pivot header when pivoted on.
+  // Undefined = the column's sort comparator (or type default); blanks always last.
+  pivotComparator?: (a: any, b: any) => number;
   resizable: boolean;
   movable: boolean;
   pinnable: boolean;
@@ -125,6 +129,7 @@ export class Column {
     this.sortable = true;
     this.groupable = true;
     this.aggregatable = true;
+    this.pivotable = true;
     this.resizable = true;
     this.movable = true;
     this.pinnable = true;
@@ -197,6 +202,8 @@ export class Column {
     this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);
     this.aggregatable = !isFalse(col.aggregatable);
+    this.pivotable = !isFalse(col.pivotable);
+    this.pivotComparator = col.pivotComparator;
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
     this.pinnable = !isFalse((col as InternalColDef).__pinnable);
@@ -269,6 +276,11 @@ export class Column {
     return this.internalRole === "autoGroup";
   }
 
+  /** Generated pivot columns — value leaves and the pivot-value group headers above them. */
+  isPivotResultColumn(): boolean {
+    return this.internalRole === "pivotResult";
+  }
+
   isTreeColumn(): boolean {
     return this.treeColumn;
   }
@@ -287,6 +299,7 @@ export class Column {
     this.sortable = this.children.every(c => c.sortable);
     this.groupable = this.children.every(c => c.groupable);
     this.aggregatable = this.children.every(c => c.aggregatable);
+    this.pivotable = this.children.every(c => c.pivotable);
     this.resizable = this.children.every(c => c.resizable);
     this.movable = this.children.every(c => c.movable);
     this.hideable = this.children.every(c => c.hideable);

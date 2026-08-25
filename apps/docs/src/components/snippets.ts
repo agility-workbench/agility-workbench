@@ -8,6 +8,7 @@ export type DemoFeature =
   | "selection"
   | "editing"
   | "grouping"
+  | "pivot"
   | "tree-data"
   | "pinned-rows"
   | "rendering"
@@ -339,6 +340,54 @@ group(api: IGridAPI) {
 
 api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
 api.setAllGroupsExpanded(true);`,
+  },
+  pivot: {
+    react: String.raw`<Grid
+  rowData={rows}
+  columnDefs={columns}
+  toolbar={{ pivot: true }}
+  onGridReady={(api) => {
+    const revenue = api.getColumnModel().getByColId("revenue")!;
+    api.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+    });
+    api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    api.setPivotColumns(["status"]);
+    api.setPivotMode(true);
+  }}
+/>`,
+    angular: String.raw`<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [toolbar]="{ pivot: true }"
+  (gridReady)="pivot($event)"
+/>
+
+pivot(api: IGridAPI) {
+  const revenue = api.getColumnModel().getByColId("revenue")!;
+  api.dispatch({
+    type: "aggregateModelSet",
+    aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+  });
+  api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+  api.setPivotColumns(["status"]);
+  api.setPivotMode(true);
+}`,
+    core: String.raw`const core = new GridCore(measurer, {
+  columnDefs,
+  // Or seed at construction: pivotMode: true, pivotColumns: ["status"]
+  toolbar: { pivot: true },
+});
+
+const revenue = api.getColumnModel().getByColId("revenue")!;
+api.dispatch({
+  type: "aggregateModelSet",
+  aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+});
+api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+api.setPivotColumns(["status"]);
+api.setPivotMode(true);`,
   },
   "tree-data": {
     react: String.raw`<Grid

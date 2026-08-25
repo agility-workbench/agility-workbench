@@ -1,0 +1,92 @@
+---
+title: Pivot
+sidebar_position: 10
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Pivot
+
+Pivot mode turns the grid into a cross-tab: rows become the row-group tree, and
+the header is generated from data — one nested column group per distinct value
+of each pivot column, with one value column per aggregate underneath.
+Non-participating source columns are hidden while pivoted and return exactly
+when pivot mode turns off. Client-side row model only.
+
+<LiveFeatureGrid feature="pivot" />
+
+<FrameworkCode feature="pivot" />
+
+## The three roles
+
+A pivot is configured from state the grid already has:
+
+- **Row groups** — the existing row-grouping model (`rowGroupSet`). With no row
+  groups, the pivot shows a single grand-total row.
+- **Values** — the existing aggregate model. Every aggregated column becomes a
+  measure; a column may carry several aggregates (each is its own generated
+  column, labelled `Revenue (sum)`, `Revenue (avg)`, …).
+- **Pivot columns** — `setPivotColumns(colIds)`, in level order. Two pivot
+  columns nest their values in the generated header (`2024 → Q1`). With none,
+  pivot mode shows a plain grouped-aggregate view (one generated column per
+  measure).
+
+```ts
+api.dispatch({
+  type: "aggregateModelSet",
+  aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+});
+api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+api.setPivotColumns(["quarter"]);
+api.setPivotMode(true);
+```
+
+Interactively, the column menu offers **Pivot on Column** / **Add to Existing
+Pivot** / **Remove from Pivot** (gated by the `pivotable` column flag, default
+true), and the toolbar's `pivot` section shows a mode indicator + toggle.
+Initial state can also be seeded with the `pivotMode` and `pivotColumns` grid
+options.
+
+## Generated columns
+
+Generated value columns are ordinary columns for reading purposes — resizable
+and sortable (sorting one orders the group rows by that cell's aggregate at
+every level) — but read-only, unmovable, unpinnable, and unfilterable. Their
+ids are stable (derived from the pivot-value path, source column, and
+aggregate), so widths and sorts survive data refreshes that re-derive the same
+columns.
+
+- `pivotResultColumnDef` styles every generated value column (width, cell
+  class, formatter) without being able to unlock the grid-owned behavior.
+- `pivotComparator` on a pivot column orders its distinct values across the
+  header (default: the column's sort comparator, ascending; blanks last).
+- `maxPivotColumns` (default 200) caps the generated columns; past it the
+  discovery truncates deterministically and fires `pivotColumnLimitReached`.
+
+```ts
+const options = {
+  pivotResultColumnDef: { width: 110 },
+  maxPivotColumns: 120,
+  columnDefs: [
+    { key: "quarter", label: "Quarter", pivotComparator: (a, b) => quarterRank(a) - quarterRank(b) },
+    // ...
+  ],
+} satisfies GridOptions;
+```
+
+## Live behavior
+
+Filters and the quick filter keep operating on **source rows**, pre-pivot.
+Cell edits (`setCellValue`, transactions) re-derive the affected pivot cells
+immediately — the pivot is always live against the shared row model. The
+footer aggregate row shows grand totals per generated column, computed from
+source rows (an average of averages can never appear).
+
+`captureViewState()` includes `pivotMode`, `pivotColumns`, and the aggregate
+model, so a saved view restores the complete pivot; `pivotChanged` reports
+mode/column changes and `getPivotResultColumns()` describes the generated
+columns.
+
+Pivot mode is mutually exclusive with [tree data](./tree-data.mdx), and pairs
+naturally with [row grouping](./grouping.mdx), whose group tree it reuses.

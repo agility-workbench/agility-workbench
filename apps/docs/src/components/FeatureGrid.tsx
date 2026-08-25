@@ -155,6 +155,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   selection: ["Selection", "Drag a range or select rows from row numbers"],
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
+  pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar"],
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
   "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
   rendering: ["Rendering", "Status badges and Sparklines are custom cell renderers"],
@@ -252,6 +253,24 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
           api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
           const revenue = api.getColumnModel().getByColId("revenue");
           if (revenue) api.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }] });
+        },
+      };
+      break;
+    case "pivot":
+      featureProps = {
+        toolbar: { pivot: true },
+        groupDefaultExpanded: 1,
+        onGridReady: (api) => {
+          const revenue = api.getColumnModel().getByColId("revenue");
+          if (revenue) {
+            api.dispatch({
+              type: "aggregateModelSet",
+              aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+            });
+          }
+          api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+          api.setPivotColumns(["status"]);
+          api.setPivotMode(true);
         },
       };
       break;

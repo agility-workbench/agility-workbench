@@ -50,6 +50,7 @@
   --pte-icon-group-expanded: url(icons/down-chevron.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
+  --pte-icon-pivot: url(icons/pivot.svg);
   --pte-icon-column-hide: url(icons/column-hide.svg);
   --pte-icon-count: url(icons/count.svg);
   --pte-icon-sum: url(icons/sum.svg);
@@ -1012,10 +1013,47 @@
   font: inherit;
 }
 
+.pte-grid-toolbar-pivot-button {
+  min-width: 84px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-pivot-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
 .pte-grid-toolbar-export-button:hover,
+.pte-grid-toolbar-pivot-button:hover,
 .pte-grid-toolbar-more-button:hover {
   background: var(--pte-hover-bg-color);
   color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-pivot-button.pte-grid-toolbar-pivot-active {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-pivot-button.pte-grid-toolbar-pivot-active .pte-grid-toolbar-pivot-icon {
+  background-color: var(--pte-text-color);
 }
 
 .pte-grid-toolbar-export-button:disabled {
@@ -3555,6 +3593,11 @@
 
 .icon-group {
   mask-image: var(--pte-icon-group);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-pivot {
+  mask-image: var(--pte-icon-pivot);
   background-color: var(--pte-icon-color);
 }
 

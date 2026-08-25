@@ -10,6 +10,7 @@ type CapSummary = {
   sortable: boolean;
   groupable: boolean;
   aggregatable: boolean;
+  pivotable: boolean;
   hideable: boolean;
   pinnable: boolean;
   pinning: "left" | "right" | "mixed" | null;
@@ -89,6 +90,7 @@ export class ColumnMenuService {
       items.push({ isSeparator: true });
     }
     items.push(...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s));
+    items.push(...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s));
     if (cap.aggregatable && cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
       if (cap.aggType === "numeric") {
@@ -219,6 +221,15 @@ export class ColumnMenuService {
           type: "rowGroupSet",
           colIds: item.payload.colIDs,
         });
+      case "pivot.setMany":
+        // Columns first (a state-only write while the mode is off), then the mode — entering
+        // pivot derives once, with the new columns already in place.
+        this.core.dispatch({ type: "pivotColumnsSet", colIds: item.payload.colIDs });
+        if (item.payload.enable) this.core.dispatch({ type: "pivotModeSet", on: true });
+        return;
+      case "pivot.exit":
+        this.core.dispatch({ type: "pivotColumnsSet", colIds: [] });
+        return this.core.dispatch({ type: "pivotModeSet", on: false });
       case "export.csv":
         return this.exporter?.exportColumnCSV(item.payload.colIDs);
       case "export.excel":
@@ -254,6 +265,7 @@ export class ColumnMenuService {
     let sortable = true;
     let groupable = true;
     let aggregatable = true;
+    let pivotable = true;
     let hideable = true;
     let pinnable = true;
     let colTypes: ColumnType | "mixed" | null = null;
@@ -275,6 +287,7 @@ export class ColumnMenuService {
       }
       if (!col.groupable) groupable = false;
       if (!col.aggregatable) aggregatable = false;
+      if (!col.pivotable) pivotable = false;
       if (!col.hideable) hideable = false;
       if (!col.pinnable) pinnable = false;
       if (col.children.length == 0) {
@@ -312,6 +325,7 @@ export class ColumnMenuService {
       sortable,
       groupable,
       aggregatable,
+      pivotable,
       sortDir,
       hideable,
       pinnable,
@@ -419,6 +433,86 @@ export class ColumnMenuService {
       id: "groupColumnsMenu",
       label: `Group by ${pluralize("Column")}`,
       left: "icon-group",
+      subMenu: [replaceItem, addItem],
+    }];
+  }
+
+  // Pivot items mirror the grouping items' shapes: fresh pivot / replace-or-add submenu /
+  // remove-or-clear, collapsing to "Clear Pivot" (which also exits pivot mode) when the selection
+  // covers every pivot column. Client-side row model only. Generated pivot columns and the
+  // synthesized auto/tree/utility columns are pivotable: false, so they never grow these items —
+  // except the auto-group column while pivoted, which offers the exit.
+  private getPivotMenuItems(
+    colIDs: string[],
+    targetColId: string,
+    pivotable: boolean,
+    pluralize: (singular: string, plural?: string) => string,
+  ): MenuItem[] {
+    if (this.core.getRowModel().getType() !== "clientSide" || this.core.getOptions().treeData) return [];
+    const pivotMode = this.core.getPivotMode();
+    const pivotColumns = this.core.getPivotColumns();
+    const pivotIds = pivotColumns.map(col => col.instanceID);
+    const pivoted = new Set(pivotIds);
+    const targetCol = this.core.getColumnModel().getById(targetColId);
+
+    const exitItem: MenuItem = {
+      id: "pivotExit",
+      label: "Exit Pivot Mode",
+      left: "icon-pivot",
+      command: "pivot.exit",
+      payload: {},
+    };
+    if (pivotMode && targetCol?.isAutoGroupColumn()) return [exitItem];
+
+    if (!pivotable) return [];
+    const userColIDs = this.expandUserColumnIds(colIDs).filter(id => {
+      const col = this.core.getColumnModel().getById(id);
+      return col?.pivotable ?? false;
+    });
+    if (userColIDs.length === 0) return [];
+
+    const allSelectedArePivoted = pivotMode && userColIDs.every(id => pivoted.has(id));
+    if (allSelectedArePivoted) {
+      const selected = new Set(userColIDs);
+      const remainingIds = pivotIds.filter(id => !selected.has(id));
+      if (remainingIds.length === 0) return [exitItem];
+      return [{
+        id: "unpivotColumnsMenu",
+        label: "Pivot",
+        left: "icon-pivot",
+        subMenu: [
+          {
+            id: "unpivotColumns",
+            label: `Remove ${pluralize("Column")} from Pivot`,
+            command: "pivot.setMany",
+            payload: { colIDs: remainingIds },
+          },
+          exitItem,
+        ],
+      }];
+    }
+
+    const replaceItem: MenuItem = {
+      id: "pivotColumns",
+      label: pivotMode && pivotIds.length > 0 ? "Replace Existing Pivot" : `Pivot on ${pluralize("Column")}`,
+      command: "pivot.setMany",
+      payload: { colIDs: userColIDs, enable: true },
+    };
+    if (!pivotMode || pivotIds.length === 0) {
+      replaceItem.left = "icon-pivot";
+      return [replaceItem];
+    }
+
+    const addItem: MenuItem = {
+      id: "addPivotColumns",
+      label: "Add to Existing Pivot",
+      command: "pivot.setMany",
+      payload: { colIDs: [...pivotIds, ...userColIDs.filter(id => !pivoted.has(id))], enable: true },
+    };
+    return [{
+      id: "pivotColumnsMenu",
+      label: `Pivot on ${pluralize("Column")}`,
+      left: "icon-pivot",
       subMenu: [replaceItem, addItem],
     }];
   }

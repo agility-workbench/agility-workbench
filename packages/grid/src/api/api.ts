@@ -29,6 +29,8 @@ import {
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { PivotResultColumnDescriptor } from "../interfaces/pivot";
+import { AggregateType } from "../interfaces/aggregate";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
@@ -633,12 +635,41 @@ export class GridAPI implements IGridAPI {
     this.core.setTreeDataKeyboardNavigationOptions(mode, enableModeSwitch);
   }
 
+  // ---------------- Pivot ----------------
+  setPivotMode(on: boolean): void {
+    this.dispatch({ type: "pivotModeSet", on });
+  }
+
+  getPivotMode(): boolean {
+    return this.core.getPivotMode();
+  }
+
+  setPivotColumns(colIds: string[]): void {
+    this.dispatch({ type: "pivotColumnsSet", colIds });
+  }
+
+  getPivotColumns(): string[] {
+    return this.core.getPivotColumns().map(col => col.colId);
+  }
+
+  getPivotResultColumns(): PivotResultColumnDescriptor[] {
+    return this.core.getPivotResultColumns();
+  }
+
   captureViewState(): GridViewState {
     const pagination = this.core.getPaginationInfo();
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
       rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
+      // Aggregates serialize by public colId (the model keys them by instanceID, which does not
+      // survive a reload); entries on columns that no longer resolve are dropped.
+      aggregateModel: this.core.getAggregateModel().flatMap(agg => {
+        const col = this.core.getColumnModel().getById(agg.key);
+        return col ? [{ colId: col.colId, type: agg.type }] : [];
+      }),
+      pivotColumns: this.core.getPivotColumns().map(col => col.colId),
+      pivotMode: this.core.getPivotMode(),
       sortModel: this.core.getSortModel().items.map(item => ({
         colId: item.col.colId,
         dir: item.dir,
@@ -657,6 +688,13 @@ export class GridAPI implements IGridAPI {
 
   applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void {
     if (!state || state.version !== 1) return;
+
+    // Pivot-aware states restore over the SOURCE layout: drop out of pivot first (column state,
+    // sorts, and filters address source columns), re-enter at the end if the state says so.
+    // States without a pivotMode field leave pivot untouched, like every absent field.
+    if (state.pivotMode != null && this.core.getPivotMode()) {
+      this.dispatch({ type: "pivotModeSet", on: false });
+    }
 
     this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
     this.applyColumnState(
@@ -678,6 +716,17 @@ export class GridAPI implements IGridAPI {
 
     this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
+
+    // Aggregates and pivot columns before the mode toggle, so entering pivot derives with its
+    // measures in place (one derive, not two).
+    if (state.aggregateModel) {
+      this.dispatch({
+        type: "aggregateModelSet",
+        aggregateModels: state.aggregateModel.map(a => ({ key: a.colId, type: a.type as AggregateType })),
+      });
+    }
+    if (state.pivotColumns) this.dispatch({ type: "pivotColumnsSet", colIds: state.pivotColumns });
+    if (state.pivotMode === true) this.dispatch({ type: "pivotModeSet", on: true });
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on
     // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.

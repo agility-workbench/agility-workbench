@@ -11,6 +11,7 @@ import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
 import { AggregateModel, AggregateScope } from "./aggregate";
+import { PivotResultColumnDescriptor } from "./pivot";
 import {
   GridOptions,
   GroupDisplayType,
@@ -130,6 +131,10 @@ export interface IGridCore {
   getAggregateModel(): AggregateModel[];
   getAggregateScope(): AggregateScope;
   getRowGroupColumns(): Column[];
+  getPivotMode(): boolean;
+  getPivotColumns(): Column[];
+  /** Descriptors of the current generated pivot value columns, in header order. */
+  getPivotResultColumns(): PivotResultColumnDescriptor[];
   /** Change how grouped rows are displayed without rebuilding the grid instance. */
   setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
   /** Change whether non-grouped sorts can reorder group buckets. */

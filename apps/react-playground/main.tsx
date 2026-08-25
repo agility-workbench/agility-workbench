@@ -7,6 +7,7 @@ import "@grid/theme/table.css";
 import App from "./App";
 import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
+import PivotDemo from "./PivotDemo";
 import C3ViewIndexDemo from "./C3ViewIndexDemo";
 import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
 import TreeDataDemo from "./TreeDataDemo";
@@ -42,6 +43,7 @@ const PAGES = [
   { id: "visualStates", label: "Hover & visual states", render: () => <VisualStatesDemo /> },
   { id: "fullyThemed", label: "Fully themed grid", render: () => <FullyThemedDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
+  { id: "pivot", label: "Pivot", render: () => <PivotDemo /> },
   { id: "c3ViewIndex", label: "C3 grouped pagination", render: () => <C3ViewIndexDemo /> },
   { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },
   { id: "treeData", label: "Tree data", render: () => <TreeDataDemo /> },

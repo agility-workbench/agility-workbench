@@ -32,6 +32,7 @@ const ROW_NUMBER_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: false,
   movable: false,
   hideable: false,
@@ -54,6 +55,7 @@ const CHECKBOX_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: false,
   movable: false,
   hideable: false,
@@ -78,6 +80,7 @@ const AUTO_GROUP_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: true,
   movable: true,
   hideable: false,
@@ -95,6 +98,7 @@ const TREE_COLUMN_DEF = {
   filter: true,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: true,
   movable: true,
   hideable: true,
@@ -106,6 +110,9 @@ export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
   private rowNumberColumn?: Column;
   private checkboxColumn?: Column;
+  // Last synthesized auto-group column, kept so layouts that momentarily drop it (pivot exit)
+  // reuse the same instance — see getAutoGroupColumn.
+  private keptAutoGroupColumn?: Column;
   // Synthesized auto-group columns, in grouping-level order. Empty unless grouping is active in
   // "singleColumn" (one column) or "multipleColumns" (one per level) display mode.
   private autoGroupColumns: Column[] = [];
@@ -113,6 +120,18 @@ export class ColumnModel implements IColumnModel {
   private columnsById: Map<string, Column> = new Map();
   private columnsByColId: Map<string, Column> = new Map();
   private columnsByKey: Map<string, Column> = new Map();
+
+  // Pivot display state. While active, `columns` holds the pivot layout (auto-group column +
+  // generated pivot columns) and the SOURCE user columns live in `pivotSourceStash` — never
+  // destroyed, `hidden` never mutated, so exiting pivot restores them exactly. The registry maps
+  // generated colId → live Column and persists for the session: a pivot value that vanishes under
+  // a filter and returns keeps its width and any live SortModel reference.
+  private pivotDisplayActive = false;
+  private pivotSourceStash: Column[] = [];
+  private pivotResultRegistry: Map<string, Column> = new Map();
+  private pivotResultRoots: Column[] = [];
+  private pivotLayoutSignature: string | null = null;
+  private pivotResolutionCache: Map<string, string> = new Map();
 
   private columns: Column[] = [];
   private leadingColumns: Column[] = [];
@@ -136,7 +155,16 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    this.updateColumns(this.withInternalColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext())));
+    const built = this.buildColumns(colDefs, undefined, "", this.createReuseContext());
+    if (this.pivotDisplayActive) {
+      // While pivoted the user columns live in the stash; the visible pivot layout stays until
+      // the follow-up re-derive reconciles the generated columns against the new sources. Lookup
+      // maps refresh immediately so group/aggregate/filter reconciliation resolves new instances.
+      this.pivotSourceStash = built;
+      this.registerPivotStashLookups();
+      return;
+    }
+    this.updateColumns(this.withInternalColumns(built));
   }
 
   /**
@@ -236,6 +264,23 @@ export class ColumnModel implements IColumnModel {
     this.computeHeaderDepth();
     this.updateLeafColumnLookup();
     this.setExpanders();
+    // The stashed source columns stay resolvable (by instanceID / colId / key) while the pivot
+    // layout is displayed — the group model, aggregate model, and filters all address them.
+    if (this.pivotDisplayActive) this.registerPivotStashLookups();
+  }
+
+  private registerPivotStashLookups(): void {
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        this.columnsById.set(col.instanceID, col);
+        if (!col.isInternal()) {
+          this.columnsByColId.set(col.colId, col);
+          this.columnsByKey.set(col.key, col);
+        }
+        if (col.children.length > 0) walk(col.children);
+      }
+    };
+    walk(this.pivotSourceStash);
   }
 
   private getSectionArray(section: ColumnSection): Column[] {
@@ -325,11 +370,23 @@ export class ColumnModel implements IColumnModel {
       used: new Set(),
     };
 
-    this.walkColumns((col) => {
+    const add = (col: Column) => {
       if (col.isInternal()) return;
       this.addReusableColumn(context.byColId, col.colId, col);
       this.addReusableColumn(context.byKey, col.key, col);
-    });
+    };
+    if (this.pivotDisplayActive) {
+      // The reusable user columns are the stashed sources, not the displayed pivot layout.
+      const walk = (cols: Column[]) => {
+        for (const col of cols) {
+          add(col);
+          if (col.children.length > 0) walk(col.children);
+        }
+      };
+      walk(this.pivotSourceStash);
+    } else {
+      this.walkColumns(add);
+    }
 
     return context;
   }
@@ -597,6 +654,7 @@ export class ColumnModel implements IColumnModel {
       // These capabilities have no meaningful operation in tree mode.
       groupable: false,
       aggregatable: false,
+      pivotable: false,
       __treeColumn: true,
     } as ColDef & { __treeColumn: true }, "tree");
   }
@@ -613,6 +671,20 @@ export class ColumnModel implements IColumnModel {
     mode: "singleColumn" | "multipleColumns" | "groupRows",
     treeData: boolean = false,
   ): void {
+    if (this.pivotDisplayActive) {
+      // Pivot display forces the singleColumn auto column (the other display modes surface group
+      // values on columns that are hidden while pivoted). Level tags on the stashed sources are
+      // cleared; the requested mode reapplies when pivot display exits and this runs again.
+      const clearTags = (cols: Column[]) => {
+        for (const col of cols) {
+          if (!col.isAutoGroupColumn()) col.groupLevel = undefined;
+          if (col.children.length > 0) clearTags(col.children);
+        }
+      };
+      clearTags(this.pivotSourceStash);
+      this.rebuildPivotLayout();
+      return;
+    }
     // Clear any prior per-column group-level tags before re-tagging for the new grouping.
     this.walkColumns((c) => { if (!c.isAutoGroupColumn()) c.groupLevel = undefined; });
 
@@ -641,6 +713,125 @@ export class ColumnModel implements IColumnModel {
     return this.autoGroupColumns;
   }
 
+  isPivotDisplayActive(): boolean {
+    return this.pivotDisplayActive;
+  }
+
+  /** The stashed source user columns while pivot display is active (empty otherwise). */
+  getPivotSourceColumns(): Column[] {
+    return this.pivotSourceStash.slice();
+  }
+
+  /** Visible leaf descendants of the stashed source columns — what quick filter searches. */
+  getPivotSourceLeaves(): Column[] {
+    const out: Column[] = [];
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        if (col.children.length > 0) walk(col.children);
+        else if (!col.hidden) out.push(col);
+      }
+    };
+    walk(this.pivotSourceStash);
+    return out;
+  }
+
+  /** Current generated pivot column roots (empty when pivot display is off). */
+  getPivotResultRoots(): Column[] {
+    return this.pivotResultRoots.slice();
+  }
+
+  /**
+   * Reconcile the generated pivot columns against freshly-discovered defs and swap the layout to
+   * pivot display (stashing the source columns on first activation). Instances are reused from
+   * the session registry by colId, so widths and live SortModel references survive
+   * re-discoveries. Returns generated leaf colId → instanceID plus whether the layout actually
+   * changed — an identical discovery (same ids and labels) is a no-op, so per-request reconciles
+   * don't thrash the header.
+   */
+  setPivotResultColumns(defs: ColDef[]): { resolution: Map<string, string>; changed: boolean } {
+    if (!this.pivotDisplayActive) this.enterPivotDisplay();
+    const signature = this.pivotDefsSignature(defs);
+    if (signature === this.pivotLayoutSignature) {
+      return { resolution: new Map(this.pivotResolutionCache), changed: false };
+    }
+
+    const context: ColumnReuseContext = { byColId: new Map(), byKey: new Map(), used: new Set() };
+    for (const col of this.pivotResultRegistry.values()) {
+      this.addReusableColumn(context.byColId, col.colId, col);
+    }
+    // claimReusableColumn skips internal columns only through createReuseContext; the registry
+    // context feeds buildColumns directly, so generated (internal) instances are reclaimed here.
+    const roots = this.buildColumns(defs, undefined, "pv", context);
+
+    const resolution = new Map<string, string>();
+    const register = (col: Column) => {
+      this.pivotResultRegistry.set(col.colId, col);
+      if (col.children.length === 0) resolution.set(col.colId, col.instanceID);
+      else col.children.forEach(register);
+    };
+    roots.forEach(register);
+
+    this.pivotResultRoots = roots;
+    this.pivotLayoutSignature = signature;
+    this.pivotResolutionCache = new Map(resolution);
+    this.rebuildPivotLayout();
+    return { resolution, changed: true };
+  }
+
+  /**
+   * Enter (bare, before any discovery) or exit pivot display. Exiting restores the stashed source
+   * columns exactly; the caller re-runs setRowGroupColumns afterwards so the group display mode
+   * (and its auto columns) resynthesize for the non-pivot world.
+   */
+  setPivotDisplay(active: boolean): void {
+    if (active === this.pivotDisplayActive) return;
+    if (active) {
+      this.enterPivotDisplay();
+      this.rebuildPivotLayout();
+      return;
+    }
+    this.pivotDisplayActive = false;
+    this.pivotResultRoots = [];
+    this.pivotLayoutSignature = null;
+    this.pivotResolutionCache = new Map();
+    // Drop the pivot-forced auto column from the layout; the caller re-runs setRowGroupColumns
+    // right after, which resynthesizes it (same instance — see getAutoGroupColumn) if grouping is
+    // still active in a display mode that wants one.
+    this.autoGroupColumns = [];
+    const restore = this.pivotSourceStash;
+    this.pivotSourceStash = [];
+    this.updateColumns(restore);
+  }
+
+  private enterPivotDisplay(): void {
+    this.pivotDisplayActive = true;
+    this.pivotSourceStash = this.columns.filter(
+      (c) => !c.isLeadingUtilityColumn() && !c.isAutoGroupColumn() && !c.isPivotResultColumn(),
+    );
+    this.pivotResultRoots = [];
+    this.pivotLayoutSignature = null;
+    this.pivotResolutionCache = new Map();
+  }
+
+  // Pivot display always shows the singleColumn auto-group column: it labels the row-group tree,
+  // including the synthesized "Total" row of an ungrouped pivot.
+  private rebuildPivotLayout(): void {
+    const auto = this.getAutoGroupColumn();
+    this.autoGroupColumns = [auto];
+    this.updateColumns([auto, ...this.pivotResultRoots]);
+  }
+
+  // Pre-order (colId, label) walk — labels participate so a formatter change repaints headers.
+  private pivotDefsSignature(defs: ColDef[]): string {
+    const parts: string[] = [];
+    const walk = (def: ColDef) => {
+      parts.push(`${def.colId} ${def.label ?? ""}`);
+      def.children?.forEach(walk);
+    };
+    defs.forEach(walk);
+    return parts.join("");
+  }
+
   // The singleColumn auto-group column def: the client's gridOptions.groupColumnDef layered over
   // the defaults. Identity and the grouping machinery stay grid-owned regardless of the client def
   // (filtering/grouping/aggregating the synthesized column has no meaningful operation).
@@ -653,6 +844,7 @@ export class ColumnModel implements IColumnModel {
       children: undefined,
       groupable: false,
       aggregatable: false,
+      pivotable: false,
       filter: false,
       __internalRole: "autoGroup",
     } as ColDef;
@@ -662,12 +854,17 @@ export class ColumnModel implements IColumnModel {
   // instanceID stable, so an active sort on the group column (and its user-resized width) survives
   // grouping changes and colDef swaps; def-driven props (label, width, pinned, flags) re-apply.
   private getAutoGroupColumn(): Column {
-    const existing = this.autoGroupColumns[0];
+    // `keptAutoGroupColumn` carries the instance across layouts that momentarily drop it (the
+    // pivot-display exit), so its instanceID — and any sort or resize state addressed by it —
+    // survives a pivot roundtrip exactly like it survives regroups.
+    const existing = this.autoGroupColumns[0] ?? this.keptAutoGroupColumn;
     if (existing) {
       existing.updateFromColDef(this.buildAutoGroupColDef(), "auto-group");
+      this.keptAutoGroupColumn = existing;
       return existing;
     }
-    return new Column(this.buildAutoGroupColDef(), "auto-group");
+    this.keptAutoGroupColumn = new Column(this.buildAutoGroupColDef(), "auto-group");
+    return this.keptAutoGroupColumn;
   }
 
   getHierarchyColumn(): Column | undefined {
@@ -926,6 +1123,25 @@ export class ColumnModel implements IColumnModel {
   }
 
   getColumnState(): ColumnState[] {
+    // While pivoted, column state describes the STASHED source columns — the generated pivot
+    // columns are derived data (internal, excluded like every internal column) and the displayed
+    // layout is not what a saved view should restore.
+    if (this.pivotDisplayActive) {
+      const state: ColumnState[] = [];
+      let order = 0;
+      const leaves = this.pivotSourceStash.flatMap((col) => col.getLeaves());
+      for (const col of leaves) {
+        if (col.isInternal()) continue;
+        state.push({
+          colId: col.colId,
+          widthPx: col.computedWidth,
+          pinned: col.pinned,
+          hidden: col.hidden,
+          order: order++,
+        });
+      }
+      return state;
+    }
     const state: ColumnState[] = [];
     // Walk section columns (not getLeaves(), which drops hidden leaves) so hidden columns are
     // captured too — otherwise a persisted layout couldn't restore a column's hidden state. Section

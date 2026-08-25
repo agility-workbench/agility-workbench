@@ -267,7 +267,8 @@ find package boundaries, build ordering, and release notes in the
 ## Project status and limitations
 
 The feature set is broad, but the project is still evolving. Notable current
-gaps include variable/automatic row heights, master-detail rows, and pivoting.
+gaps include variable/automatic row heights, master-detail rows, and
+server-side pivoting (client-side pivot mode is supported).
 The data surface exposes an ARIA grid model with a roving-focus
 (`aria-activedescendant`) model, state semantics, and live announcements, and
 all interactions are keyboard-reachable; column-group (parent) header cells are

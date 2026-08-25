@@ -143,6 +143,7 @@ export type {
   ActionFramePlacement,
 } from "./interfaces/gridOptions";
 export type {
+  GridViewAggregateState,
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewPaginationState,
@@ -151,6 +152,13 @@ export type {
   SavedGridView,
   SavedViewsOptions,
 } from "./interfaces/gridView";
+export type {
+  PivotDiscovery,
+  PivotPathNode,
+  PivotResolution,
+  PivotResultColumnDescriptor,
+  PivotValueEntry,
+} from "./interfaces/pivot";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 
@@ -218,6 +226,8 @@ export type {
   GridEventName,
   GridEventOverlayShowParams,
   GridEventPaginationChangedParams,
+  GridEventPivotChangedParams,
+  GridEventPivotColumnLimitReachedParams,
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
   GridEventTooltipParams,

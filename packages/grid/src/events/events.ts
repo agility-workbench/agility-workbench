@@ -28,6 +28,8 @@ export type GridEventName =
   | "tooltipHide"
   | "actionFrameChanged"
   | "keyboardNavigationModeChanged"
+  | "pivotChanged"
+  | "pivotColumnLimitReached"
   | "error";
 
 export type Unsubscribe = () => void;
@@ -67,7 +69,7 @@ export type GridEventViewportChangedParams = {
 };
 
 export type GridEventColumnsChangedParams = {
-  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "group" | "add";
+  reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "group" | "pivot" | "add";
   /** Public ColDef colIds of the affected columns. */
   changedColIds?: ColId[];
   /** Internal instance ids of the affected columns (unique; renderer-facing). */
@@ -298,6 +300,22 @@ export type GridEventKeyboardNavigationModeChangedParams = {
   source: "api" | "shortcut" | "options";
 };
 
+/** Pivot mode toggled or the pivot column set changed. Structure changes to the GENERATED columns
+ * (new pivot values discovered, values gone) ride `columnsChanged { reason: "pivot" }` instead. */
+export type GridEventPivotChangedParams = {
+  pivotMode: boolean;
+  /** Public colIds of the pivot columns, in level order. */
+  pivotColumns: ColId[];
+};
+
+/** A pivot discovery produced more generated leaf columns than `maxPivotColumns`; the excess was
+ * truncated deterministically (first columns in header order survive). */
+export type GridEventPivotColumnLimitReachedParams = {
+  /** How many generated leaf columns were dropped. */
+  truncatedColumnCount: number;
+  maxPivotColumns: number;
+};
+
 export type GridEventErrorParams = {
   code: string;
   message: string;
@@ -327,6 +345,8 @@ export interface GridEventMap {
   tooltipHide: GridEventTooltipParams;
   actionFrameChanged: GridEventActionFrameParams;
   keyboardNavigationModeChanged: GridEventKeyboardNavigationModeChangedParams;
+  pivotChanged: GridEventPivotChangedParams;
+  pivotColumnLimitReached: GridEventPivotColumnLimitReachedParams;
   error: GridEventErrorParams;
 }
 

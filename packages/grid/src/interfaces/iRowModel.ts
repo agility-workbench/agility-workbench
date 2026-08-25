@@ -5,6 +5,7 @@ import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
 import { GroupSortMode, QuickFilterMatchMode } from "./gridOptions";
+import { PivotRequestState } from "./pivot";
 
 export type RowModelType = "clientSide" | "serverSide";
 
@@ -18,7 +19,7 @@ export interface ServerSideRefreshOptions {
    * off-screen blocks are dropped and lazily reload on scroll. */
   purge?: boolean;
 }
-export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group";
+export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group" | "pivot";
 
 export interface RowTransaction<Row = any> {
   add?: Row[];
@@ -77,6 +78,13 @@ export interface IRowModelRequestParams {
   // Quick-filter (global search) state. Applied by the client-side model as a second predicate
   // ANDed with the column filters. Empty text disables it. Ignored by the server-side model.
   readonly quickFilter?: QuickFilterState;
+  // Pivot state. Present = pivot mode on (its `columns` may still be empty — the degenerate
+  // grouped-aggregate view). While pivoted, `leafColumns` are the GENERATED leaves, whose
+  // getValue on data rows is undefined — hence `quickFilterColumns` below.
+  readonly pivot?: PivotRequestState;
+  // Columns the quick filter searches. Needed while pivoted (source leaves, not generated ones);
+  // omitted = fall back to `leafColumns`.
+  readonly quickFilterColumns?: Column[];
 }
 
 export interface QuickFilterState {

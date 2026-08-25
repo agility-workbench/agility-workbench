@@ -18,6 +18,11 @@ export interface IRowNode<Row = any> {
   level: number;
   isGroup: boolean;
   isExpanded: boolean;
+  /**
+   * False for group nodes that can never open (pivot mode's deepest level, the synthesized pivot
+   * grand-total row): no chevron, expand actions no-op. Absent/true = normal expandable group.
+   */
+  expandable?: boolean;
   children?: IRowNode<Row>[];
   childCount?: number;
   groupKey?: string;

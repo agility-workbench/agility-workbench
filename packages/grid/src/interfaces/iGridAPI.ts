@@ -17,6 +17,7 @@ import {
   UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
+import { PivotResultColumnDescriptor } from "./pivot";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
@@ -361,6 +362,27 @@ export interface IGridAPI {
    * data rows; use this to address a group — for example to pin one with `setRowPinned`.
    */
   getGroupNodes(): IRowNode[];
+
+  /* ----- Pivot ----- */
+  /**
+   * Turn pivot mode on or off. On: rows display as the row-group tree (leaf rows never show) and
+   * the header is generated from data — one nested column group per distinct value of each pivot
+   * column, one value leaf per aggregated column; non-participating source columns are hidden.
+   * Off restores the source columns exactly. Client-side row model only; mutually exclusive with
+   * tree data.
+   */
+  setPivotMode(on: boolean): void;
+  getPivotMode(): boolean;
+  /**
+   * Replace the set of columns pivoted on (order = pivot level), by colId. Stored even while
+   * pivot mode is off; an empty array clears the pivot columns but leaves the mode alone (the
+   * degenerate grouped-aggregate view). Non-pivotable and unknown colIds are skipped.
+   */
+  setPivotColumns(colIds: string[]): void;
+  /** The pivot columns' colIds, in level order. */
+  getPivotColumns(): string[];
+  /** Descriptors of the current generated pivot value columns, in header order. */
+  getPivotResultColumns(): PivotResultColumnDescriptor[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;

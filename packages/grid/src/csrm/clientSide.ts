@@ -10,6 +10,14 @@ import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
 import { buildGroupTree, flattenGroupTree } from "./rowGroup";
 import { buildTreeData, prepareTreeRows } from "./treeData";
+import { PivotRequestState } from "../interfaces/pivot";
+import {
+  buildPivotTotalRoot,
+  createPivotValueStamper,
+  discoverPivot,
+  identityPivotResolution,
+  PivotValueStamper,
+} from "./pivot";
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -37,6 +45,16 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // viewNodes; the flat viewIdx path is bypassed. Synthetic group nodes never enter nodes[].
   private groupColumns: Column[] = [];
   private groupExpansion: Map<string, boolean> = new Map();
+  // Pivot state. Non-null = pivot mode: the group tree is built with hidden leaf rows and each
+  // group node's aggregateValues carry the generated pivot cells (keyed by resolved instanceID —
+  // see onPivotResult). The stamper survives between full rebuilds so reAggregate can reuse it.
+  private pivot: PivotRequestState | null = null;
+  private pivotStamper: PivotValueStamper | null = null;
+  // Columns the quick filter searches; while pivoted these are the source leaves, not the
+  // generated ones (whose getValue on data rows is undefined). Null = use leafColumns.
+  private quickFilterColumns: Column[] | null = null;
+  // Request id of the applyRequest currently executing, for mid-request listener callbacks.
+  private currentRequestId = 0;
   private groupRoots: IRowNode<Row>[] = [];
   private groupNodesMap: Map<string, IRowNode<Row>> = new Map();
   private groupedFlatAll: IRowNode<Row>[] = [];
@@ -63,7 +81,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private get grouped(): boolean {
-    return this.groupColumns.length > 0 || this.treeData != null;
+    // Pivot mode always displays a group tree — with no group columns, the synthesized "Total"
+    // root is the whole tree.
+    return this.groupColumns.length > 0 || this.treeData != null || this.pivot != null;
   }
 
   getType(): RowModelType {
@@ -281,6 +301,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // groupExpansion, falling back to the default depth.
   private rebuildGroupTree() {
     const leaves = this.sortedIdx.map(i => this.nodes[i]);
+    if (this.pivot) {
+      this.rebuildPivotTree(leaves);
+      return;
+    }
+    this.pivotStamper = null;
     // Only compute per-group totals for columns with an aggregate explicitly configured. Unlike the
     // footer aggregate row (which fills every column via a default op), group rows show a value only
     // where one was asked for — otherwise every column reads as aggregated and the grid looks cluttered.
@@ -335,6 +360,62 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     if (this.groupExpansion.size > 0) {
       for (const id of Array.from(this.groupExpansion.keys())) {
         if (!groupNodesById.has(id)) this.groupExpansion.delete(id);
+      }
+    }
+  }
+
+  // Pivot-mode tree rebuild: discover the generated header structure from the filtered leaves,
+  // let the core reconcile the generated columns (onPivotResult returns generated colId →
+  // instanceID), then build the group tree with a stamper that fills each group node's
+  // aggregateValues per (pivot path × value entry). Leaf rows never display.
+  private rebuildPivotTree(leaves: IRowNode<Row>[]) {
+    const pivot = this.pivot!;
+    const { discovery, leafPathKeys, includedPaths } = discoverPivot({
+      leaves,
+      pivotColumns: pivot.columns,
+      valueEntries: pivot.valueEntries,
+      maxPivotColumns: pivot.maxPivotColumns,
+    });
+    const resolution = this.listener.onPivotResult
+      ? this.listener.onPivotResult(this.currentRequestId, discovery)
+      : identityPivotResolution(discovery);
+
+    const valueColumns = new Map<string, Column>();
+    for (const entry of pivot.valueEntries) valueColumns.set(entry.instanceID, entry.column);
+    this.pivotStamper = createPivotValueStamper({
+      leafPathKeys,
+      includedPaths,
+      valueEntries: pivot.valueEntries,
+      valueColumns,
+      resolution,
+      calculator: this.aggregateCalculator,
+    });
+    const computeAggregates = (groupLeaves: IRowNode<Row>[]) => this.pivotStamper!(groupLeaves);
+
+    if (this.groupColumns.length === 0) {
+      const root = buildPivotTotalRoot(leaves, computeAggregates(leaves));
+      this.groupRoots = [root];
+      this.groupNodesMap = new Map([[root.id, root]]);
+      return;
+    }
+
+    const result = buildGroupTree<Row>({
+      leaves,
+      groupColumns: this.groupColumns,
+      sortModel: this.sortModel,
+      // Leaf order never shows while pivoted, so leaf-order propagation into bucket order
+      // (hierarchy/global modes) would let an invisible sort reorder groups: force local.
+      groupSortMode: "local",
+      expansion: this.groupExpansion,
+      defaultExpanded: this.groupDefaultExpanded,
+      computeAggregates,
+      hideLeafRows: true,
+    });
+    this.groupRoots = result.roots;
+    this.groupNodesMap = result.groupNodesById;
+    if (this.groupExpansion.size > 0) {
+      for (const id of Array.from(this.groupExpansion.keys())) {
+        if (!result.groupNodesById.has(id)) this.groupExpansion.delete(id);
       }
     }
   }
@@ -453,8 +534,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
             text: this.quickFilterText,
             matchMode: this.quickFilterMatchMode,
             caseSensitive: this.quickFilterCaseSensitive,
-            // leafColumns is the set of visible, non-internal leaves supplied on the request.
-            columns: this.leafColumns,
+            // The visible, non-internal leaves supplied on the request — except while pivoted,
+            // where those are generated columns with no leaf values and the request supplies the
+            // source leaves separately.
+            columns: this.quickFilterColumns ?? this.leafColumns,
           },
           this.nodes,
           columnFiltered,
@@ -469,6 +552,17 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateValues.clear();
     if (this.aggregateScope === "none" || this.aggregates.length === 0) return;
 
+    // Pivot mode: the footer aggregate row shows grand totals per GENERATED column — the root
+    // bucket over every filtered leaf, computed by the same stamper as the group rows (so
+    // avg/median are true grand aggregates, not aggregates of aggregates). "page" scope is
+    // treated as "all": the page holds group rows, not a leaf subset.
+    if (this.pivot) {
+      if (!this.pivotStamper) return;
+      const stamped = this.pivotStamper(this.sortedIdx.map(i => this.nodes[i]));
+      this.aggregateValues = new Map(Object.entries(stamped));
+      return;
+    }
+
     const rows = this.getAggregateRows();
     this.aggregateValues = this.aggregateCalculator.calculateAggregates(this.leafColumns, this.aggregates, rows);
   }
@@ -481,10 +575,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     const { id, sortModel, filterModel, paginate, range, aggregateScope, groupSortMode } = params;
     const aggregateOnly = params.reason === "aggregateScope" || params.reason === "aggregateModel";
     if (!aggregateOnly) this.listener.onLoadingStart(id);
+    this.currentRequestId = id;
     this.aggregateScope = aggregateScope;
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
     this.groupColumns = params.groupColumns.slice();
+    this.pivot = params.pivot ?? null;
+    this.quickFilterColumns = params.quickFilterColumns?.slice() ?? null;
     this.sortModel = sortModel;
     this.groupSortMode = groupSortMode;
     if (params.quickFilter) {
@@ -503,7 +600,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         : groupIds ?? (groupId != null ? [groupId] : []);
       for (const id of targetIds) {
         const node = this.groupNodesMap.get(id);
-        if (!node) continue;
+        // Non-expandable groups (pivot mode's deepest level, the pivot grand-total row) ignore
+        // expansion no matter how it is requested — their children are hidden leaf rows.
+        if (!node || node.expandable === false) continue;
         const next = expanded ?? !node.isExpanded;
         node.isExpanded = next;
         this.groupExpansion.set(id, next);

@@ -14,6 +14,14 @@ export type {
   SavedGridView,
   SavedViewsOptions,
 } from "./gridView";
+export type {
+  PivotDiscovery,
+  PivotPathNode,
+  PivotResolution,
+  PivotResultColumnDescriptor,
+  PivotValueEntry,
+} from "./pivot";
+export type { GridViewAggregateState } from "./gridView";
 export type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
 export type { IMenuAdapter } from "./iMenuAdapter";
 export type { IRowModel, RowModelType } from "./iRowModel";

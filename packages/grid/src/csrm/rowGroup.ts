@@ -31,6 +31,10 @@ export interface BuildGroupTreeParams<Row = any> {
   defaultExpanded: number;
   // Optional per-group aggregate computation over a group's full leaf-descendant set.
   computeAggregates?: (leaves: IRowNode<Row>[]) => { [key: string]: any } | undefined;
+  // Pivot mode: leaf rows never display. Deepest-level group nodes are created non-expandable
+  // (expandable: false, forced collapsed) so the flatten skips their leaf children and the
+  // renderer draws no chevron.
+  hideLeafRows?: boolean;
 }
 
 export interface GroupTreeResult<Row = any> {
@@ -52,6 +56,7 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
     expansion,
     defaultExpanded,
     computeAggregates,
+    hideLeafRows = false,
   } = params;
   const groupNodesById = new Map<string, IRowNode<Row>>();
 
@@ -93,6 +98,12 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
     // A sort on the synthesized auto-group column ("singleColumn" display mode) has no leaf values
     // of its own — it means "order the group buckets", and controls every grouping level at once.
     const groupSort = sortModel?.items.find(item => item.col.isAutoGroupColumn() || matchesColumn(item, col));
+    // A sort on a generated pivot column means "order the buckets by their aggregate at that
+    // cell", at every level (each level's bucket carries its own aggregate for it). It competes
+    // with a group-column sort by sort-model position: whichever the user sorted first wins.
+    const pivotSort = sortModel?.items.find(item => item.dir !== null && item.col.isPivotResultColumn());
+    const usePivotSort = pivotSort != null && computeAggregates != null
+      && (!groupSort || sortModel!.items.indexOf(pivotSort) < sortModel!.items.indexOf(groupSort));
     const hasDescendantGroupSort = sortModel?.items.some(item =>
       groupColumns.slice(level + 1).some(groupCol => matchesColumn(item, groupCol))
     ) ?? false;
@@ -105,7 +116,30 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
         (groupSortMode === "hierarchy" && hasDescendantGroupSort)
         || (groupSortMode === "global" && (sortModel?.items.length ?? 0) > 0)
       );
-    if (!preserveGlobalLeafOrder) {
+
+    // Per-bucket aggregate values, computed before bucket ordering so a pivot-column sort can
+    // order buckets by them. Same work as computing at node creation, just earlier.
+    const valuesByKey = computeAggregates
+      ? new Map(order.map(key => [key, computeAggregates(buckets.get(key)!.nodes)]))
+      : undefined;
+
+    if (usePivotSort) {
+      const pivotDirection = pivotSort!.dir === "desc" ? -1 : 1;
+      const valueComparator = pivotSort!.col.getComparator();
+      order.sort((a, b) => {
+        const va = valuesByKey!.get(a)?.[pivotSort!.col.instanceID];
+        const vb = valuesByKey!.get(b)?.[pivotSort!.col.instanceID];
+        // Buckets with no rows at the sorted pivot cell go last regardless of direction.
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (valueComparator) {
+          return valueComparator(va, vb, buckets.get(a)!.nodes[0], buckets.get(b)!.nodes[0]) * pivotDirection;
+        }
+        if (typeof va === "number" && typeof vb === "number") return (va - vb) * pivotDirection;
+        return collator.compare(String(va), String(vb)) * pivotDirection;
+      });
+    } else if (!preserveGlobalLeafOrder) {
       order.sort((a, b) => {
         const ba = buckets.get(a)!;
         const bb = buckets.get(b)!;
@@ -123,6 +157,7 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
       const id = groupNodeId(path);
       const children = lastLevel ? bucket.nodes : build(bucket.nodes, level + 1, path);
       for (const child of children) child.parentId = id;
+      const leafRowsHidden = hideLeafRows && lastLevel;
       const groupNode: IRowNode<Row> = {
         id,
         // Synthetic data so Column.getValue on any column is safe on a group row.
@@ -132,12 +167,15 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
         type: "group",
         isGroup: true,
         level,
-        isExpanded: expansion.get(id) ?? isExpandedByDefault(level),
+        // A group whose only children are hidden leaf rows can never open: forced collapsed so
+        // the flatten skips the leaves even if a pre-pivot expansion entry says "expanded".
+        isExpanded: leafRowsHidden ? false : (expansion.get(id) ?? isExpandedByDefault(level)),
+        expandable: leafRowsHidden ? false : undefined,
         children,
         childCount: bucket.nodes.length,
         groupKey: key,
         groupValue: bucket.value,
-        aggregateValues: computeAggregates ? computeAggregates(bucket.nodes) : undefined,
+        aggregateValues: valuesByKey?.get(key),
       };
       groupNodesById.set(id, groupNode);
       return groupNode;
