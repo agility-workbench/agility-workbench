@@ -101,6 +101,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "columnPanel", props.columnPanel);
   setIfDefined(options, "toolbar", props.toolbar);
   setIfDefined(options, "savedViews", props.savedViews);
+  setIfDefined(options, "sheets", props.sheets);
   setIfDefined(options, "loadingMessage", props.loadingMessage);
   setIfDefined(options, "noRowsMessage", props.noRowsMessage);
   setIfDefined(options, "filterDebounceMs", props.filterDebounceMs);

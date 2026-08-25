@@ -13,6 +13,8 @@ export type {
   GridViewState,
   SavedGridView,
   SavedViewsOptions,
+  GridSheet,
+  SheetsOptions,
 } from "./gridView";
 export type {
   PivotDiscovery,

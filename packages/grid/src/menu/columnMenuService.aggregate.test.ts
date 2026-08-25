@@ -64,3 +64,69 @@ describe("column menu aggregatable capability", () => {
     ])).toBeUndefined();
   });
 });
+
+describe("column menu additive aggregate toggles", () => {
+  const ctxFor = (colIds: string[]): ColumnMenuContext => ({
+    trigger: "columnMenuButton",
+    targetColId: colIds[0],
+    colIds,
+  });
+  const subItem = (core: GridCore, colIds: string[], id: string) =>
+    aggregateItem(core, colIds)!.subMenu!.find(item => item.id === id)!;
+
+  it("accumulates types per column and checkmarks the applied ones", () => {
+    const core = makeGrid();
+    const service = new ColumnMenuService(core);
+    const qty = instanceId(core, "qty");
+
+    service.execute(subItem(core, [qty], "aggSum"), ctxFor([qty]));
+    expect(core.getAggregateModel()).toEqual([{ key: qty, type: "sum" }]);
+
+    // A second type joins the first instead of replacing it — each is a distinct pivot measure.
+    service.execute(subItem(core, [qty], "aggAvg"), ctxFor([qty]));
+    expect(core.getAggregateModel()).toEqual([
+      { key: qty, type: "sum" },
+      { key: qty, type: "avg" },
+    ]);
+
+    expect(subItem(core, [qty], "aggSum").right).toBe("icon-check");
+    expect(subItem(core, [qty], "aggAvg").right).toBe("icon-check");
+    expect(subItem(core, [qty], "aggMin").right).toBeUndefined();
+  });
+
+  it("toggles an applied type off", () => {
+    const core = makeGrid();
+    const service = new ColumnMenuService(core);
+    const qty = instanceId(core, "qty");
+
+    service.execute(subItem(core, [qty], "aggSum"), ctxFor([qty]));
+    service.execute(subItem(core, [qty], "aggAvg"), ctxFor([qty]));
+    service.execute(subItem(core, [qty], "aggSum"), ctxFor([qty]));
+    expect(core.getAggregateModel()).toEqual([{ key: qty, type: "avg" }]);
+  });
+
+  it("clears every type on the column through Clear Aggregation", () => {
+    const core = makeGrid();
+    const service = new ColumnMenuService(core);
+    const qty = instanceId(core, "qty");
+
+    service.execute(subItem(core, [qty], "aggSum"), ctxFor([qty]));
+    service.execute(subItem(core, [qty], "aggAvg"), ctxFor([qty]));
+    service.execute(subItem(core, [qty], "aggClear"), ctxFor([qty]));
+    expect(core.getAggregateModel()).toEqual([]);
+  });
+
+  it("keeps single-choice semantics for a payload marked mode: replace (the footer picker)", () => {
+    const core = makeGrid();
+    const service = new ColumnMenuService(core);
+    const qty = instanceId(core, "qty");
+
+    service.execute(subItem(core, [qty], "aggSum"), ctxFor([qty]));
+    const avg = subItem(core, [qty], "aggAvg");
+    service.execute(
+      { ...avg, payload: { ...avg.payload, mode: "replace" } },
+      ctxFor([qty]),
+    );
+    expect(core.getAggregateModel()).toEqual([{ key: qty, type: "avg" }]);
+  });
+});

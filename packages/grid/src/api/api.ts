@@ -210,6 +210,7 @@ export class GridAPI implements IGridAPI {
     if (has("tooltip")) config.setTooltipOptions(options.tooltip);
     if (has("columnPanel")) config.setColumnPanelOptions(options.columnPanel);
     if (has("savedViews")) config.setSavedViewsOptions(options.savedViews);
+    if (has("sheets")) config.setSheetsOptions(options.sheets);
     if (has("rowSelection")) config.setRowSelectionOptions(options.rowSelection);
     if (has("pagination")) config.togglePagination(options.pagination ?? false);
     if (has("paginationControls")) config.setPaginationControls(options.paginationControls);

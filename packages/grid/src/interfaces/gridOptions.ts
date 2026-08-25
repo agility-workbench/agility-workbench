@@ -18,7 +18,7 @@ import type {
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
-import type { SavedViewsOptions } from "./gridView";
+import type { SavedViewsOptions, SheetsOptions } from "./gridView";
 
 /**
  * Payload for the `onCellValueChanged` option: a cell's stored value changed. Covers every write
@@ -1326,6 +1326,12 @@ export interface GridOptions {
   /** Application-owned view definitions and persistence callbacks for `toolbar.views`. */
   savedViews?: SavedViewsOptions;
   /**
+   * Spreadsheet-style sheet tabs in the footer's left zone (Data sheet + pivot sheets over one
+   * shared row model). Supplying this option mounts the tab strip; the application owns the sheet
+   * list and persistence through its callbacks. See {@link SheetsOptions}.
+   */
+  sheets?: SheetsOptions;
+  /**
    * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
    * "Loading data...".
    */
@@ -1465,6 +1471,7 @@ export interface InternalGridOptions extends GridOptions {
   columnPanel: boolean | ColumnPanelOptions;
   toolbar: GridToolbarOptions;
   savedViews?: SavedViewsOptions;
+  sheets?: SheetsOptions;
   loadingMessage: string;
   noRowsMessage: string;
   filterDebounceMs: number;
@@ -1527,6 +1534,7 @@ export const WIDGET_OPTION_KEYS = [
   "tooltip",
   "columnPanel",
   "savedViews",
+  "sheets",
   "pagination",
   "paginationControls",
   "rowSelection",

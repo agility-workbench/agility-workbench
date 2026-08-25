@@ -192,6 +192,7 @@ export class AwbGrid implements OnDestroy {
   readonly columnPanel = input<GridOptions["columnPanel"]>();
   readonly toolbar = input<GridOptions["toolbar"]>();
   readonly savedViews = input<GridOptions["savedViews"]>();
+  readonly sheets = input<GridOptions["sheets"]>();
   readonly allowExportAsCSV = input<GridOptions["allowExportAsCSV"]>();
   readonly allowExportAsExcel = input<GridOptions["allowExportAsExcel"]>();
 
@@ -457,6 +458,13 @@ export class AwbGrid implements OnDestroy {
     this.syncEffect(() => {
       const savedViews = this.savedViews();
       return () => api.updateGridOptions({ savedViews });
+    });
+
+    // Sheet tabs are application-owned the same way: a new list/callback object re-syncs the tab
+    // strip in place (no view state is applied by a sync — see SheetsOptions).
+    this.syncEffect(() => {
+      const sheets = this.sheets();
+      return () => api.updateGridOptions({ sheets });
     });
 
     // Theme vars and icons are reconciled together: `icons` overrides any icons carried by

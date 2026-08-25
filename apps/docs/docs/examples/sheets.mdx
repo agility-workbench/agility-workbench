@@ -1,0 +1,70 @@
+---
+title: Sheets
+sidebar_position: 11
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Sheets
+
+Sheets are spreadsheet-style tabs over **one grid instance and one row model**:
+a Data sheet and any number of pivot sheets share the same rows, edit history,
+and transactions. Each sheet is a live view state — columns, sort, filters,
+grouping, aggregates, pivot configuration, group expansion, and page. Switching
+tabs captures the sheet you leave and applies the one you enter.
+
+Supplying the `sheets` option mounts the tab strip in the footer's left zone;
+the footer's three zones read tabs · aggregation · pagination, and each zone
+appears only when its feature is on.
+
+<LiveFeatureGrid feature="sheets" />
+
+<FrameworkCode feature="sheets" />
+
+## Working the tab strip
+
+- **+** appends a blank pivot sheet ("Pivot N"): pivot mode on, no roles
+  assigned yet, with an inline header hint until an aggregate is chosen.
+  Columns and filters carry over from the sheet you pressed + on.
+- **Double-click** a tab (or press **F2** on it) to rename inline.
+- **Right-click** a tab for Rename / Duplicate / Delete. Duplicating the active
+  sheet copies its live state; the last remaining sheet can't be deleted.
+- **Ctrl+PageDown / Ctrl+PageUp** switch to the neighboring sheet — the
+  spreadsheet convention. The chords are claimed only while the tab strip is
+  enabled.
+- The strip is an ARIA `tablist` with roving tabindex: arrow keys move between
+  tabs, Enter/Space activates one, and the active tab names the grid for
+  assistive technology (unless the app supplies its own `ariaLabel`).
+
+## The application owns the list
+
+`SheetsOptions` mirrors `savedViews`: the grid renders and optimistically
+updates the supplied list, then reports every complete next list through
+`onChange` — persistence is the application's job. A sheet's `state` is a
+plain `GridViewState` (the same shape `captureViewState()` returns), so sheets
+serialize anywhere a saved view does.
+
+```ts
+sheets: {
+  sheets: [{ id: "data", name: "Data" }],   // empty list → a synthesized Data tab
+  activeSheetId: "data",
+  onChange: (next) => persist(next),        // fired on add/rename/duplicate/delete/switch
+  onActiveSheetChange: (id) => setActive(id),
+}
+```
+
+Two contract edges worth knowing:
+
+- Re-supplying the option (`updateGridOptions({ sheets })`) is **sync-only** —
+  it updates the list and active highlight but never applies a view state. User
+  tab clicks (and the keyboard chords) are what swap states; for a programmatic
+  jump, call `api.applyViewState(sheet.state)` yourself.
+- A sheet supplied without a `state` adopts the grid's current state on its
+  first activation, and gets captured like any other sheet when the user leaves
+  it. Selection is not part of `GridViewState`, so switching sheets clears it.
+
+Because all sheets share the row model, a cell edit made on any sheet is
+immediately visible everywhere: the [pivot](./pivot.mdx) sheets re-derive from
+the same rows the Data sheet shows. Only the active sheet computes anything —
+inactive sheets are just stored state.

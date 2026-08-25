@@ -9,6 +9,7 @@ import { FullyThemedDemoComponent } from "./fully-themed-demo.component";
 import { GridDemoComponent } from "./grid-demo.component";
 import { GroupingDemoComponent } from "./grouping-demo.component";
 import { PivotDemoComponent } from "./pivot-demo.component";
+import { SheetsDemoComponent } from "./sheets-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
 import { HighFrequencyDemoComponent } from "./high-frequency-demo.component";
 import { IndexedInsertDemoComponent } from "./indexed-insert-demo.component";
@@ -44,6 +45,7 @@ const PAGES = [
   { id: "fullyThemed", label: "Fully themed grid" },
   { id: "grouping", label: "Row grouping" },
   { id: "pivot", label: "Pivot" },
+  { id: "sheets", label: "Sheets" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
   { id: "treeData", label: "Tree data" },
   { id: "pinnedRows", label: "Pinned rows" },
@@ -85,6 +87,7 @@ type PageId = (typeof PAGES)[number]["id"];
     MenusDemoComponent,
     PinnedRowsDemoComponent,
     PivotDemoComponent,
+    SheetsDemoComponent,
     QuickFilterDemoComponent,
     ResponsiveToolbarDemoComponent,
     RowSelectionCheckboxDemoComponent,
@@ -147,6 +150,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("pivot") {
           <pivot-demo />
+        }
+        @case ("sheets") {
+          <sheets-demo />
         }
         @case ("serverSideGrouping") {
           <server-side-grouping-demo />

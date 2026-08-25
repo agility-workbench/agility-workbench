@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
         "examples/editing",
         "examples/grouping",
         "examples/pivot",
+        "examples/sheets",
         "examples/tree-data",
         "examples/pinned-rows",
         "examples/rendering",

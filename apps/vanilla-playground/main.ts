@@ -27,6 +27,7 @@ import { mountSelectionDemo } from "./demos/selection-demo";
 import { mountServerSideGroupingDemo } from "./demos/server-side-grouping-demo";
 import { mountSetFilterComponentsDemo } from "./demos/set-filter-components-demo";
 import { mountSparklineDemo } from "./demos/sparkline-demo";
+import { mountSheetsDemo } from "./demos/sheets-demo";
 import { mountStickyGroupRowsDemo } from "./demos/sticky-group-rows-demo";
 import { mountToolbarDemo } from "./demos/toolbar-demo";
 import { mountTooltipDemo } from "./demos/tooltip-demo";
@@ -50,6 +51,7 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "fullyThemed", label: "Fully themed grid", mount: mountFullyThemedDemo },
   { id: "grouping", label: "Row grouping", mount: mountGroupingDemo },
   { id: "pivot", label: "Pivot", mount: mountPivotDemo },
+  { id: "sheets", label: "Sheets", mount: mountSheetsDemo },
   { id: "c3ViewIndex", label: "C3 grouped pagination", mount: mountC3ViewIndexDemo },
   { id: "serverSideGrouping", label: "Server-side grouping", mount: mountServerSideGroupingDemo },
   { id: "treeData", label: "Tree data", mount: mountTreeDataDemo },

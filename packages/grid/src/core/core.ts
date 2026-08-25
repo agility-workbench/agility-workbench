@@ -348,6 +348,7 @@ export class GridCore implements IGridCore {
       columnPanel: options.columnPanel ?? false,
       toolbar: options.toolbar ?? {},
       savedViews: options.savedViews,
+      sheets: options.sheets,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,

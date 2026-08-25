@@ -94,6 +94,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "columnPanel", grid.columnPanel());
   setIfDefined(options, "toolbar", grid.toolbar());
   setIfDefined(options, "savedViews", grid.savedViews());
+  setIfDefined(options, "sheets", grid.sheets());
   setIfDefined(options, "loadingMessage", grid.loadingMessage());
   setIfDefined(options, "noRowsMessage", grid.noRowsMessage());
   setIfDefined(options, "filterDebounceMs", grid.filterDebounceMs());

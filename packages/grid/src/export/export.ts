@@ -111,6 +111,14 @@ export interface ExportConfig {
   fullWidthText?: (rowData: any) => string;
   /** Public, Excel-only customization hook forwarded by ExportRenderer. */
   processCellForExcel?: ExcelExportCellProcessor;
+  /**
+   * The export is a pivot table: `rows` are group nodes (every level, pre-order), `columns` are
+   * the auto-group column plus the generated pivot value leaves — both grid-internal and normally
+   * filtered out, so column resolution admits exactly those two kinds instead. Cell values come
+   * from each node's stamped `aggregateValues`; the nested generated header is emitted by the
+   * ordinary column-tree header layout.
+   */
+  pivotExport?: boolean;
 }
 
 interface HeaderCell {
@@ -208,7 +216,9 @@ const resolveColumns = (config: ExportConfig): Column[] => {
   const range = clampSelection(config.selectionRange, config.rows?.length ?? 0, baseCols.length);
 
   let cols = range ? baseCols.slice(range.colStart, range.colEnd + 1) : baseCols.slice();
-  cols = cols.filter(c => !c.isInternal() && c.exportable);
+  cols = config.pivotExport
+    ? cols.filter(c => c.isPivotResultColumn() || c.isAutoGroupColumn())
+    : cols.filter(c => !c.isInternal() && c.exportable);
   if (config.columnIds && config.columnIds.length > 0) {
     const allowed = new Set(config.columnIds);
     cols = cols.filter(c => allowed.has(c.instanceID) || allowed.has(c.colId) || allowed.has(c.key));
@@ -317,9 +327,23 @@ const buildHeaderMatrix = (layout: HeaderLayout, columnCount: number): string[][
 };
 
 const getValueBundle = (row: any, col: Column): ValueBundle => {
-  const rowNode = row && typeof row === "object" && "data" in row
+  const rowNode = row && typeof row === "object" && ("data" in row || (row as IRowNode).isGroup === true)
     ? row as IRowNode
     : { data: row } as IRowNode;
+  // Pivot-export rows are group nodes. A generated value leaf reads the node's stamped aggregate
+  // (there is no underlying data row to read from); the auto-group column renders the node's
+  // label, level-indented so the hierarchy survives a flat sheet.
+  if (rowNode.isGroup) {
+    if (col.isPivotResultColumn()) {
+      const raw = rowNode.aggregateValues?.[col.instanceID];
+      if (raw == null) return { raw: null, formatted: "" };
+      return { raw, formatted: col.formatValue(raw, rowNode) };
+    }
+    if (col.isAutoGroupColumn()) {
+      const label = `${rowNode.groupKey ?? ""} (${rowNode.childCount ?? 0})`;
+      return { raw: label, formatted: `${"  ".repeat(Math.max(0, rowNode.level ?? 0))}${label}` };
+    }
+  }
   const raw = col.getValue(rowNode);
   const formatted = col.formatValue(raw, rowNode);
   if (formatted !== String(raw ?? "")) return { raw, formatted };

@@ -26,7 +26,10 @@ A pivot is configured from state the grid already has:
   groups, the pivot shows a single grand-total row.
 - **Values** — the existing aggregate model. Every aggregated column becomes a
   measure; a column may carry several aggregates (each is its own generated
-  column, labelled `Revenue (sum)`, `Revenue (avg)`, …).
+  column, labelled `Revenue (sum)`, `Revenue (avg)`, …). The column menu's
+  aggregate items are additive per-type toggles: checking Sum and Average on
+  one column yields two measures. While pivoted with no measures at all, an
+  inline header hint points at that menu.
 - **Pivot columns** — `setPivotColumns(colIds)`, in level order. Two pivot
   columns nest their values in the generated header (`2024 → Q1`). With none,
   pivot mode shows a plain grouped-aggregate view (one generated column per
@@ -88,5 +91,11 @@ model, so a saved view restores the complete pivot; `pivotChanged` reports
 mode/column changes and `getPivotResultColumns()` describes the generated
 columns.
 
+Exporting while pivoted (toolbar or API, CSV and Excel) writes the pivot table
+itself: the nested generated header over one row per group node (every level,
+indented), with real numbers in the aggregate cells.
+
 Pivot mode is mutually exclusive with [tree data](./tree-data.mdx), and pairs
-naturally with [row grouping](./grouping.mdx), whose group tree it reuses.
+naturally with [row grouping](./grouping.mdx), whose group tree it reuses. For
+Data + pivot views as coexisting tabs over one row model, see
+[sheets](./sheets.mdx).

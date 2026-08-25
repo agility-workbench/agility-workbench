@@ -156,6 +156,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
   pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar"],
+  sheets: ["Sheets", "Data + pivot sheets as footer tabs — press + for a new pivot sheet"],
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
   "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
   rendering: ["Rendering", "Status badges and Sparklines are custom cell renderers"],
@@ -271,6 +272,34 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
           api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
           api.setPivotColumns(["status"]);
           api.setPivotMode(true);
+        },
+      };
+      break;
+    case "sheets":
+      featureProps = {
+        pagination: true,
+        pageSize: 15,
+        groupDefaultExpanded: 1,
+        toolbar: { pivot: true },
+        onGridReady: (api) => {
+          // Seed a ready-made pivot sheet next to the Data sheet; the + tab derives blank ones.
+          const state = {
+            ...api.captureViewState(),
+            pivotMode: true,
+            pivotColumns: ["status"],
+            rowGroupColumns: ["region"],
+            aggregateModel: [{ colId: "revenue", type: "sum" }],
+            groupExpansion: [],
+          };
+          api.updateGridOptions({
+            sheets: {
+              sheets: [
+                { id: "data", name: "Data" },
+                { id: "by-status", name: "By Status", state },
+              ],
+              activeSheetId: "data",
+            },
+          });
         },
       };
       break;

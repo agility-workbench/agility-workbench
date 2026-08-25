@@ -93,22 +93,32 @@ export class ColumnMenuService {
     items.push(...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s));
     if (cap.aggregatable && cap.aggType) {
       const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
+      // Each type is an independent toggle (a checkmark marks the applied ones): a column may
+      // carry several aggregates at once — each is a distinct pivot measure.
+      const agg = (id: string, label: string, type: AggregateType, left?: string): MenuItem => ({
+        id,
+        label,
+        ...(left ? { left } : {}),
+        ...(this.aggregateTypeApplied(colIDs, type) ? { right: "icon-check" } : {}),
+        command: "aggregate.setMany",
+        payload: { colIDs, agg: type },
+      });
       if (cap.aggType === "numeric") {
         item.subMenu = [
-          { id: "aggSum", label: "Sum", left: "icon-sum", command: "aggregate.setMany", payload: { colIDs, agg: "sum" } },
-          { id: "aggAvg", label: "Average", left: "icon-avg", command: "aggregate.setMany", payload: { colIDs, agg: "avg" } },
-          { id: "aggMin", label: "Min", left: "icon-min-number", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", left: "icon-max-number", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
-          { id: "aggMedian", label: "Median", left: "icon-median", command: "aggregate.setMany", payload: { colIDs, agg: "median" } },
+          agg("aggSum", "Sum", AggregateType.SUM, "icon-sum"),
+          agg("aggAvg", "Average", AggregateType.AVG, "icon-avg"),
+          agg("aggMin", "Min", AggregateType.MIN, "icon-min-number"),
+          agg("aggMax", "Max", AggregateType.MAX, "icon-max-number"),
+          agg("aggMedian", "Median", AggregateType.MEDIAN, "icon-median"),
         ];
       } else if (cap.aggType === "string") {
         item.subMenu = [
-          { id: "aggCount", label: "Count", left: "icon-count", command: "aggregate.setMany", payload: { colIDs, agg: "count" } },
-          { id: "aggMin", label: "Min", left: "icon-min-string", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", left: "icon-max-string", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
+          agg("aggCount", "Count", AggregateType.COUNT, "icon-count"),
+          agg("aggMin", "Min", AggregateType.MIN, "icon-min-string"),
+          agg("aggMax", "Max", AggregateType.MAX, "icon-max-string"),
         ];
         if (cap.colType === ColumnType.STRING) {
-          item.subMenu.splice(1, 0, { id: "aggDistinctCount", label: "Distinct Count", command: "aggregate.setMany", payload: { colIDs, agg: "distinct_count" } });
+          item.subMenu.splice(1, 0, agg("aggDistinctCount", "Distinct Count", AggregateType.DISTINCT_COUNT));
         }
       }
       if (cap.aggregated) {
@@ -207,7 +217,11 @@ export class ColumnMenuService {
       case "aggregate.setMany":
         return this.core.dispatch({
           type: "aggregateModelSet",
-          aggregateModels: this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
+          // Default is the column menu's additive per-type toggle; the footer's function picker
+          // passes mode "replace" (one function per footer cell).
+          aggregateModels: item.payload.mode === "replace"
+            ? this.getReplacementAggregateModel(item.payload.colIDs, item.payload.agg)
+            : this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
         });
       case "columns.newSparklineCol":
         return this.core.dispatch({
@@ -319,7 +333,10 @@ export class ColumnMenuService {
 
     if (sortDir === "mixed") sortable = false;
 
-    const aggregated = this.core.getAggregateModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
+    // Every selected column carries at least one aggregate (a column may carry several types).
+    const aggregateModel = this.core.getAggregateModel();
+    const aggregated = colIDs.length > 0
+      && colIDs.every(id => aggregateModel.some(f => f.key === id));
 
     return {
       sortable,
@@ -535,13 +552,41 @@ export class ColumnMenuService {
     return ids;
   }
 
+  /**
+   * Toggle semantics per (column, type): every target column already carrying the type drops it,
+   * otherwise the type is added to the columns missing it — a column accumulates types, each a
+   * distinct pivot measure. `agg: null` clears every aggregate on the target columns.
+   */
   private getNextAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
+    const targetIds = this.expandAggregateColumnIds(colIDs);
+    const model = this.core.getAggregateModel();
+    if (agg == null) {
+      const selectedIds = new Set(targetIds);
+      return model.filter(item => !selectedIds.has(item.key));
+    }
+    const has = (id: string) => model.some(item => item.key === id && item.type === agg);
+    if (targetIds.length > 0 && targetIds.every(has)) {
+      return model.filter(item => !(item.type === agg && targetIds.includes(item.key)));
+    }
+    return [...model, ...targetIds.filter(id => !has(id)).map(key => ({ key, type: agg }))];
+  }
+
+  /** Single-choice semantics: drop every aggregate on the target columns, set the chosen type. */
+  private getReplacementAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
     const targetIds = this.expandAggregateColumnIds(colIDs);
     const selectedIds = new Set(targetIds);
     const next = this.core.getAggregateModel().filter(item => !selectedIds.has(item.key));
     if (agg == null) return next;
     next.push(...targetIds.map(key => ({ key, type: agg })));
     return next;
+  }
+
+  /** Whether every target column already carries this aggregate type (the menu checkmark). */
+  private aggregateTypeApplied(colIDs: string[], agg: AggregateType): boolean {
+    const targetIds = this.expandAggregateColumnIds(colIDs);
+    if (targetIds.length === 0) return false;
+    const model = this.core.getAggregateModel();
+    return targetIds.every(id => model.some(item => item.key === id && item.type === agg));
   }
 
   private expandAggregateColumnIds(colIDs: string[]): string[] {

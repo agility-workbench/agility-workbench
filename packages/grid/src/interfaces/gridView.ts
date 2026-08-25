@@ -57,6 +57,31 @@ export interface SavedGridView {
 }
 
 /**
+ * One spreadsheet-style sheet: a named, live view state over the shared row model. The grid
+ * captures the sheet's state whenever the user leaves it; a sheet supplied without a state adopts
+ * the grid's state on its first activation instead of resetting anything.
+ */
+export interface GridSheet {
+  id: string;
+  name: string;
+  state?: GridViewState;
+}
+
+/**
+ * Application-owned sheet tabs (footer, left zone). Supplying this option mounts the tab strip;
+ * like {@link SavedViewsOptions}, the grid renders and optimistically updates the supplied list,
+ * then reports the complete next list through `onChange` — persistence stays with the application.
+ * An empty/omitted `sheets` list shows a single synthesized "Data" tab for the grid's current
+ * state. The strip's **+** button appends a fresh pivot sheet (pivot mode on, no roles assigned).
+ */
+export interface SheetsOptions {
+  sheets?: readonly GridSheet[];
+  activeSheetId?: string | null;
+  onChange?: (sheets: GridSheet[]) => void;
+  onActiveSheetChange?: (sheetId: string | null) => void;
+}
+
+/**
  * Application-owned saved views. The grid renders and optimistically updates the supplied list,
  * then reports the complete next list through `onChange`; persistence remains the application's
  * responsibility.

@@ -22,6 +22,7 @@ export—without adding runtime dependencies to the core package.
 - CSV and Excel export, including grouped data, selection, and cell spans
 - Column groups, resizing, reordering, visibility, pinning, and a column panel
 - Custom renderers, editors, headers, tooltips, menus, and full-width rows
+- Client-side pivot mode with spreadsheet-style sheet tabs over one row model
 - Responsive toolbar, saved views, sparklines, and light/dark theming
 - React 18+ and Angular 20.3–22 bindings with TypeScript types throughout
 

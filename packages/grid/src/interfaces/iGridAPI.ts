@@ -112,6 +112,7 @@ export interface GridApiConfigController {
   setTooltipOptions: (options: GridOptions["tooltip"]) => void;
   setColumnPanelOptions: (options: GridOptions["columnPanel"]) => void;
   setSavedViewsOptions: (options: GridOptions["savedViews"]) => void;
+  setSheetsOptions: (options: GridOptions["sheets"]) => void;
   setRowSelectionOptions: (options: GridOptions["rowSelection"]) => void;
   setPinnedRowOptions: (options: {
     pinnedTopRowData?: RowData[];

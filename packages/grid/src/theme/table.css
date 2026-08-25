@@ -1580,8 +1580,30 @@
 .pte-header-wrapper {
   overflow: hidden;
   display: flex;
+  /* Containing block for the pivot empty-state hint. */
+  position: relative;
   background-color: var(--pte-header-background-color);
   border-bottom: 1px solid var(--pte-frame-border-color);
+}
+
+/* Pivot mode with no value columns: the header holds only the group column, so the free space
+   carries the pointer to the action that adds values. Non-interactive by design. */
+.pte-header-pivot-hint {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--pte-muted-text-color);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.pte-header-pivot-hint.visible {
+  display: block;
 }
 
 .pte-header-leading {
@@ -1961,8 +1983,143 @@
   display: flex;
 }
 
-.pte-aggregate-controls {
-  margin-right: auto;
+/* Footer zones, in visual/tab order: sheet tabs (left) · aggregation (center) · pagination
+   (right). The two outer zones flex equally so the center zone sits centered when tabs are
+   mounted; with the tab zone empty (today's degenerate case) aggregation hugs the left edge and
+   pagination the right, exactly as before. */
+.pte-footer-tabs {
+  display: none;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  align-self: stretch;
+  gap: 4px;
+}
+
+.pte-footer-tabs.pte-footer-tabs-enabled {
+  display: flex;
+}
+
+.pte-footer-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pte-footer-end {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Sheet tab strip. The scroller hides its scrollbar; overflow is signalled by edge fades on the
+   relative wrapper (scroll-toggled classes), so the strip reads as "more tabs this way". */
+.pte-sheet-scroll-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.pte-sheet-scroll-wrap::before,
+.pte-sheet-scroll-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+
+.pte-sheet-scroll-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--pte-surface-bg-color), transparent);
+}
+
+.pte-sheet-scroll-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--pte-surface-bg-color), transparent);
+}
+
+.pte-sheet-scroll-wrap.pte-sheet-overflow-left::before,
+.pte-sheet-scroll-wrap.pte-sheet-overflow-right::after {
+  opacity: 1;
+}
+
+.pte-sheet-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pte-sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.pte-sheet-tab {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.pte-sheet-tab:hover {
+  background-color: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-sheet-tab[aria-selected="true"] {
+  border-color: var(--pte-selected-border-color);
+  background-color: var(--pte-selected-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-sheet-rename-input {
+  height: 28px;
+  width: 120px;
+  border: 1px solid var(--pte-selected-border-color);
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-sheet-add {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--pte-muted-text-color);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.pte-sheet-add:hover {
+  background-color: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
 }
 
 .pte-pagination-section {

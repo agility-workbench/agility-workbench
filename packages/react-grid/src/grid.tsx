@@ -368,6 +368,12 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ savedViews: props.savedViews });
     }, [props.savedViews]);
 
+    // Sheet tabs are application-owned the same way: a new list/callback object re-syncs the tab
+    // strip in place (no view state is applied by a sync — see SheetsOptions).
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ sheets: props.sheets });
+    }, [props.sheets]);
+
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes. The merge is
     // done here (not left to the API's theme/icon resolution) because that resolution reads
