@@ -48,6 +48,10 @@ export interface GridViewState {
   pivotColumns?: string[];
   /** Whether pivot mode is on. Absent = leave untouched. */
   pivotMode?: boolean;
+  /** Manual arrangement of the generated pivot columns (displayed leaf order by generated colId,
+   * `pivotColumnMoveMode: "free"`). Absent = none captured; the role dispatches an apply always
+   * runs reset any prior arrangement, so a state without this field applies canonically. */
+  pivotColumnOrder?: string[];
 }
 
 export interface SavedGridView {

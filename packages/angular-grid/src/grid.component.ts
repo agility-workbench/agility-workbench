@@ -91,6 +91,7 @@ export class AwbGrid implements OnDestroy {
   readonly overscanRowCount = input<GridOptions["overscanRowCount"]>();
   readonly minResizeWidth = input<GridOptions["minResizeWidth"]>();
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
+  readonly pivotColumnMoveMode = input<GridOptions["pivotColumnMoveMode"]>();
   readonly autosizeColumnsOnDataChange = input<GridOptions["autosizeColumnsOnDataChange"]>();
 
   // --- row identity ---
@@ -351,6 +352,11 @@ export class AwbGrid implements OnDestroy {
     this.syncEffect(() => {
       const v = this.groupRowsSelectable();
       return () => api.updateGridOptions({ groupRowsSelectable: v });
+    });
+
+    this.syncEffect(() => {
+      const v = this.pivotColumnMoveMode();
+      return () => api.updateGridOptions({ pivotColumnMoveMode: v });
     });
 
     this.syncEffect(() => {

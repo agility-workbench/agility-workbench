@@ -141,4 +141,37 @@ describe("pivot rendering", () => {
     expect(titles).not.toContain("Q1");
     expect(bodyRows(container)).toHaveLength(4);
   });
+
+  it("paints a manual arrangement as split group fragments and keeps cell values", () => {
+    const { container, core } = mountGrid();
+    enterPivot(core);
+    // Two measures so groups have distinguishable spans.
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [
+        { key: "revenue", type: AggregateType.SUM },
+        { key: "revenue", type: AggregateType.AVG },
+      ],
+    });
+    // Move Q1's avg leaf between Q2's two leaves.
+    core.dispatch({
+      type: "pivotColumnOrderSet",
+      order: [
+        "pv:Q1|revenue|sum",
+        "pv:Q2|revenue|sum",
+        "pv:Q1|revenue|avg",
+        "pv:Q2|revenue|avg",
+      ],
+    });
+
+    // The header shows the fragment captions: Q1, Q2, Q1, Q2.
+    const titles = headerTexts(container);
+    expect(titles.filter(t => t === "Q1" || t === "Q2")).toEqual(["Q1", "Q2", "Q1", "Q2"]);
+
+    // Group-row cells still resolve their aggregates through the arranged layout, in the
+    // arranged order: Q1·sum=20, Q2·sum=10, Q1·avg=20, Q2·avg=10.
+    const rows = [...container.querySelectorAll<HTMLElement>(".pte-row.pte-group-row")];
+    const emea = rows.find(r => r.textContent?.includes("EMEA"))!;
+    expect(emea.textContent).toBe("EMEA (2)20102010");
+  });
 });

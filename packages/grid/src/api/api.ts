@@ -242,6 +242,9 @@ export class GridAPI implements IGridAPI {
       this.core.setGroupDisplayType(options.groupDisplayType ?? "singleColumn");
     }
     if (has("groupSortMode")) this.core.setGroupSortMode(options.groupSortMode ?? "local");
+    if (has("pivotColumnMoveMode")) {
+      this.core.setPivotColumnMoveMode(options.pivotColumnMoveMode ?? "measures");
+    }
     if (has("groupRowsSelectable")) {
       this.core.setGroupRowsSelectable(options.groupRowsSelectable ?? false);
     }
@@ -657,6 +660,14 @@ export class GridAPI implements IGridAPI {
     return this.core.getPivotResultColumns();
   }
 
+  setPivotColumnOrder(order: string[] | null): void {
+    this.dispatch({ type: "pivotColumnOrderSet", order });
+  }
+
+  getPivotColumnOrder(): string[] | null {
+    return this.core.getPivotColumnOrder();
+  }
+
   setRowGroupColumns(colIds: string[]): void {
     this.dispatch({ type: "rowGroupSet", colIds });
   }
@@ -695,6 +706,9 @@ export class GridAPI implements IGridAPI {
       }),
       pivotColumns: this.core.getPivotColumns().map(col => col.colId),
       pivotMode: this.core.getPivotMode(),
+      // Only present while a manual arrangement exists; the role dispatches an apply always runs
+      // reset any prior arrangement, so an absent field applies canonically.
+      pivotColumnOrder: this.core.getPivotColumnOrder() ?? undefined,
       sortModel: this.core.getSortModel().items.map(item => ({
         colId: item.col.colId,
         dir: item.dir,
@@ -751,6 +765,9 @@ export class GridAPI implements IGridAPI {
       });
     }
     if (state.pivotColumns) this.dispatch({ type: "pivotColumnsSet", colIds: state.pivotColumns });
+    // After the role dispatches (which reset any prior arrangement), before the mode toggle — so
+    // entering pivot lays out the arranged tree in the same derive.
+    if (state.pivotColumnOrder) this.dispatch({ type: "pivotColumnOrderSet", order: state.pivotColumnOrder });
     if (state.pivotMode === true) this.dispatch({ type: "pivotModeSet", on: true });
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on

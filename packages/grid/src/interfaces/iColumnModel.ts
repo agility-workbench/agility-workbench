@@ -24,6 +24,10 @@ export interface IColumnModel {
   getCenterLeaves(): Column[];
   getRightLeaves(): Column[];
   getLeavesBySection(section: ColumnSection): Column[];
+  /** The displayed generated pivot leaf colIds, in display order (empty when pivot display is off). */
+  getDisplayedPivotLeafOrder(): string[];
+  /** Canonical generated pivot column roots (empty when pivot display is off). */
+  getPivotResultRoots(): Column[];
   readonly maxHeaderDepth: number;
   readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;

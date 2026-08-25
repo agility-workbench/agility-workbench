@@ -114,6 +114,14 @@ const MEASURES: Array<{ colId: string; type: AggregateType; label: string }> = [
         }
       </div>
 
+      <label class="pivot-check">
+        Column drag
+        <select [value]="dragMode()" (change)="onDragModeChange($event)">
+          <option value="measures">Reorders measures</option>
+          <option value="free">Free arrangement</option>
+        </select>
+      </label>
+
       <button class="btn" type="button" (click)="bumpARevenueCell()">Bump a revenue cell (+25k)</button>
     </div>
 
@@ -126,6 +134,7 @@ const MEASURES: Array<{ colId: string; type: AggregateType; label: string }> = [
         [groupDefaultExpanded]="1"
         [toolbar]="{ pivot: true }"
         [columnPanel]="{ trigger: 'toolbar' }"
+        [pivotColumnMoveMode]="dragMode()"
         (gridReady)="onReady($event)"
       />
     </div>
@@ -181,6 +190,7 @@ export class PivotDemoComponent {
   readonly pivotCols = signal<string[]>(["quarter"]);
   readonly selectedMeasures = signal<Set<number>>(new Set([0]));
   readonly groupBy = signal<string[]>(["region"]);
+  readonly dragMode = signal<"measures" | "free">("measures");
 
   readonly columnDefs: NgColDef[] = [
     { colId: "region", key: "region", label: "Region", width: 130 },
@@ -201,6 +211,10 @@ export class PivotDemoComponent {
     api.setRowGroupColumns(this.groupBy());
     api.setPivotColumns(this.pivotCols());
     api.setPivotMode(this.pivotOn());
+  }
+
+  onDragModeChange(event: Event): void {
+    this.dragMode.set((event.target as HTMLSelectElement).value as "measures" | "free");
   }
 
   onPivotModeChange(event: Event): void {

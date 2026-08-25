@@ -330,6 +330,7 @@ export class GridCore implements IGridCore {
       maxPivotColumns: options.maxPivotColumns != null && options.maxPivotColumns >= 1
         ? Math.trunc(options.maxPivotColumns)
         : 200,
+      pivotColumnMoveMode: options.pivotColumnMoveMode ?? "measures",
       // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
       treeData: options.rowModelType === "serverSide"
         ? undefined
@@ -1253,6 +1254,8 @@ export class GridCore implements IGridCore {
    * grouped-aggregate view).
    */
   setPivotColumns(colIds: string[]): void {
+    // Explicit role edit → reset any manual arrangement (see setAggregateModel).
+    this.columnModel.setPivotLeafOrder(null);
     const resolved: Column[] = [];
     const seen = new Set<string>();
     for (const colId of colIds) {
@@ -1265,6 +1268,27 @@ export class GridCore implements IGridCore {
     this.emit("pivotChanged", { pivotMode: this.pivotMode, pivotColumns: this.pivotColumns.map(c => c.colId) });
     if (!this.pivotMode) return;
     this.refreshPivotView();
+  }
+
+  /**
+   * Replace the manual arrangement of the generated pivot columns (displayed leaf order by
+   * generated colId; null restores the canonical layout). Stored even while pivot mode is off —
+   * it applies on the next pivot layout build. Explicit role edits (setAggregateModel /
+   * setPivotColumns) reset it.
+   */
+  setPivotColumnOrder(order: string[] | null): void {
+    const changed = this.columnModel.setPivotLeafOrder(order);
+    if (!changed || !this.columnModel.isPivotDisplayActive()) return;
+    // setPivotLeafOrder already rebuilt the displayed layout; announce it like any other
+    // pivot-driven column change so the header/rows repaint against the new tree.
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "pivot" });
+    this.emit("rowsChanged", { reason: "pivot", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+  }
+
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null {
+    return this.columnModel.getPivotLeafOrder();
   }
 
   // Shared re-derive tail for pivot state changes: one model request (whose onPivotResult call
@@ -1350,6 +1374,11 @@ export class GridCore implements IGridCore {
       lastRowIndex: this.rowModel.getViewCount() - 1,
     });
     this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  /** Change what dragging a generated pivot column does. Read live at drag time — no rebuild. */
+  setPivotColumnMoveMode(mode: "measures" | "free"): void {
+    this.options.pivotColumnMoveMode = mode;
   }
 
   setGroupRowsSelectable(groupRowsSelectable: boolean): void {
@@ -1789,6 +1818,9 @@ export class GridCore implements IGridCore {
   }
 
   setAggregateModel(aggregates: AggregateModel[]) {
+    // An explicit role edit resets any manual pivot arrangement — the canonical layout (which
+    // this model's order determines) becomes visible again, so the wells/menus stay functional.
+    this.columnModel.setPivotLeafOrder(null);
     this.aggregates = this.resolveAggregateModels(aggregates);
     if (this.aggregates.length > 0 && this.aggregateScope === "none") {
       this.aggregateScope = this.normalizeAggregateScope("page");
@@ -2760,6 +2792,9 @@ export class GridCore implements IGridCore {
         break;
       case "pivotColumnsSet":
         this.setPivotColumns(action.colIds);
+        break;
+      case "pivotColumnOrderSet":
+        this.setPivotColumnOrder(action.order);
         break;
       case "groupToggleExpand":
         this.toggleGroupExpand(action.groupId, action.expanded);

@@ -80,6 +80,7 @@ export function PivotDemo() {
   const [pivotCols, setPivotCols] = useState<string[]>(["quarter"]);
   const [measures, setMeasures] = useState<Set<number>>(new Set([0]));
   const [groupBy, setGroupBy] = useState<string[]>(["region"]);
+  const [dragMode, setDragMode] = useState<"measures" | "free">("measures");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
     { colId: "region", key: "region", label: "Region", width: 130 },
@@ -181,6 +182,14 @@ export function PivotDemo() {
           ))}
         </div>
 
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Column drag
+          <select value={dragMode} onChange={(e) => setDragMode(e.target.value as "measures" | "free")}>
+            <option value="measures">Reorders measures</option>
+            <option value="free">Free arrangement</option>
+          </select>
+        </label>
+
         <button className="btn" type="button" onClick={bumpARevenueCell}>
           Bump a revenue cell (+25k)
         </button>
@@ -196,6 +205,7 @@ export function PivotDemo() {
           groupDefaultExpanded={1}
           toolbar={{ pivot: true }}
           columnPanel={{ trigger: "toolbar" }}
+          pivotColumnMoveMode={dragMode}
           style={{ width: "100%", height: "100%" }}
           onGridReady={handleReady}
         />

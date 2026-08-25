@@ -34,6 +34,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "overscanRowCount", props.overscanRowCount);
   setIfDefined(options, "minResizeWidth", props.minResizeWidth);
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);
+  setIfDefined(options, "pivotColumnMoveMode", props.pivotColumnMoveMode);
   setIfDefined(options, "autosizeColumnsOnDataChange", props.autosizeColumnsOnDataChange);
   setIfDefined(options, "allowExportAsCSV", props.allowExportAsCSV);
   setIfDefined(options, "allowExportAsExcel", props.allowExportAsExcel);

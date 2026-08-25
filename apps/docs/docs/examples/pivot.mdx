@@ -63,12 +63,30 @@ every level) — but read-only, unpinnable, and unfilterable. Their ids are
 stable (derived from the pivot-value path, source column, and aggregate), so
 widths and sorts survive data refreshes that re-derive the same columns.
 
-Dragging a generated value column in the header reorders the **measures**: leaf
-order inside every generated group is the value-entry order, so one drag
-reorders all groups consistently, and the new order persists across re-derives
-(it is the aggregate model's order — the same order `setAggregates` and the
-column panel's Values well control). A value column can never leave its group
-or split it; group headers themselves stay in `pivotComparator` order.
+Generated columns are still draggable — what a drag *means* is chosen by
+`pivotColumnMoveMode`:
+
+- **`"measures"`** (default) — dropping a value column reorders the
+  **measures**: leaf order inside every generated group is the value-entry
+  order, so one drag reorders all groups consistently, and the new order
+  persists everywhere (it is the aggregate model's order — the same order
+  `setAggregates` and the column panel's Values well control). A value column
+  never leaves its group; group headers stay in `pivotComparator` order.
+- **`"free"`** — value columns and whole generated groups arrange per
+  position: a leaf can sit anywhere in the pivot area, carrying a duplicated
+  group caption with it (the same split-and-carry behavior source column
+  groups have), and dragging a group header reorders the pivot values
+  themselves. The arrangement is a leaf-order list
+  (`setPivotColumnOrder(colIds)` / `getPivotColumnOrder()`, captured in view
+  state so [sheets](./sheets.mdx) keep per-sheet arrangements). It survives
+  data- and filter-driven re-discoveries — newly discovered columns slot in at
+  their canonical position — and resets to the canonical layout on any
+  explicit role edit (`setAggregates`, `setPivotColumns`, and the menus/wells
+  that call them).
+
+The mode is updatable at runtime (`updateGridOptions({ pivotColumnMoveMode })`,
+or the React prop / Angular input). In both modes generated columns stay
+unpinnable and confined to the pivot area.
 
 - `pivotResultColumnDef` styles every generated value column (width, cell
   class, formatter) without being able to unlock the grid-owned behavior.

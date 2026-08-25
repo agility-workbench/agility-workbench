@@ -385,6 +385,15 @@ export interface IGridAPI {
   getPivotColumns(): string[];
   /** Descriptors of the current generated pivot value columns, in header order. */
   getPivotResultColumns(): PivotResultColumnDescriptor[];
+  /**
+   * Replace the manual arrangement of the generated pivot columns: the displayed leaf order, by
+   * generated colId (`pivotColumnMoveMode: "free"` drags produce these; the split header tree is
+   * derived from the order). Null restores the canonical discovery layout. Explicit role edits
+   * (`setAggregates`, `setPivotColumns`) reset it; data- and filter-driven re-discoveries keep it.
+   */
+  setPivotColumnOrder(order: string[] | null): void;
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null;
 
   /**
    * Replace the row-grouping columns (order = grouping level), by colId. An empty array clears

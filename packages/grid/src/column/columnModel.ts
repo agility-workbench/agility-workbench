@@ -132,6 +132,9 @@ export class ColumnModel implements IColumnModel {
   private pivotResultRoots: Column[] = [];
   private pivotLayoutSignature: string | null = null;
   private pivotResolutionCache: Map<string, string> = new Map();
+  // Manual arrangement of the generated columns (leaf order by colId; null = canonical layout).
+  // Survives re-discoveries and pivot off/on; the core clears it on explicit role edits.
+  private pivotLeafOrder: string[] | null = null;
 
   private columns: Column[] = [];
   private leadingColumns: Column[] = [];
@@ -814,11 +817,124 @@ export class ColumnModel implements IColumnModel {
   }
 
   // Pivot display always shows the singleColumn auto-group column: it labels the row-group tree,
-  // including the synthesized "Total" row of an ungrouped pivot.
+  // including the synthesized "Total" row of an ungrouped pivot. The displayed generated tree is
+  // DERIVED per rebuild — canonical roots, or the manual arrangement laid over them — so the
+  // canonical `pivotResultRoots` instances are never mutated by arranging.
   private rebuildPivotLayout(): void {
     const auto = this.getAutoGroupColumn();
     this.autoGroupColumns = [auto];
-    this.updateColumns([auto, ...this.pivotResultRoots]);
+    this.updateColumns([auto, ...this.arrangedPivotRoots()]);
+  }
+
+  /**
+   * Replace the manual arrangement of the generated pivot columns (displayed leaf order by
+   * generated colId; null = canonical). Persisted for the session and re-applied over every
+   * re-discovery — the core clears it on explicit role edits.
+   */
+  setPivotLeafOrder(order: string[] | null): boolean {
+    const next = order && order.length > 0 ? order.slice() : null;
+    const same = (next == null && this.pivotLeafOrder == null)
+      || (next != null
+        && this.pivotLeafOrder != null
+        && next.length === this.pivotLeafOrder.length
+        && next.every((id, i) => id === this.pivotLeafOrder![i]));
+    if (same) return false;
+    this.pivotLeafOrder = next;
+    if (this.pivotDisplayActive) this.rebuildPivotLayout();
+    return true;
+  }
+
+  getPivotLeafOrder(): string[] | null {
+    return this.pivotLeafOrder ? this.pivotLeafOrder.slice() : null;
+  }
+
+  /** The displayed generated pivot leaf colIds, in display order (empty when pivot display is off). */
+  getDisplayedPivotLeafOrder(): string[] {
+    const out: string[] = [];
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        if (col.children.length > 0) walk(col.children);
+        else if (col.isPivotResultColumn()) out.push(col.colId);
+      }
+    };
+    walk(this.columns);
+    return out;
+  }
+
+  // The generated tree to display: canonical roots, or — with a manual arrangement — a derived
+  // split tree. The arrangement is only a LEAF order; the tree falls out of it by wrapping each
+  // contiguous run of leaves that share a canonical ancestor path in duplicated group columns
+  // (leaf instances ride along by reference, so widths/sorts/aggregate stamping are untouched).
+  private arrangedPivotRoots(): Column[] {
+    if (!this.pivotLeafOrder) return this.pivotResultRoots;
+
+    // Canonical leaves with their ancestor chains, in canonical order.
+    const canonical: Array<{ leaf: Column; ancestors: Column[] }> = [];
+    const collect = (col: Column, chain: Column[]) => {
+      if (col.children.length > 0) {
+        for (const child of col.children) collect(child, [...chain, col]);
+        return;
+      }
+      canonical.push({ leaf: col, ancestors: chain });
+    };
+    for (const root of this.pivotResultRoots) collect(root, []);
+    if (canonical.length === 0) return this.pivotResultRoots;
+
+    const byColId = new Map(canonical.map(entry => [entry.leaf.colId, entry]));
+
+    // Known leaves in arranged order; leaves the (possibly stale) order list doesn't know are
+    // inserted after their nearest canonical predecessor that made it in (front if none) — a new
+    // discovery lands at its canonical position relative to its surviving neighbors.
+    const ordered: Array<{ leaf: Column; ancestors: Column[] }> = [];
+    const placed = new Set<string>();
+    for (const colId of this.pivotLeafOrder) {
+      const entry = byColId.get(colId);
+      if (!entry || placed.has(colId)) continue;
+      ordered.push(entry);
+      placed.add(colId);
+    }
+    for (let i = 0; i < canonical.length; i++) {
+      const entry = canonical[i];
+      if (placed.has(entry.leaf.colId)) continue;
+      let insertAt = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const at = ordered.findIndex(candidate => candidate.leaf.colId === canonical[j].leaf.colId);
+        if (at >= 0) { insertAt = at + 1; break; }
+      }
+      ordered.splice(insertAt, 0, entry);
+      placed.add(entry.leaf.colId);
+    }
+
+    if (ordered.every((entry, i) => entry.leaf.colId === canonical[i].leaf.colId)) {
+      return this.pivotResultRoots;
+    }
+
+    // Wrap runs: one duplicated group per contiguous stretch that shares the canonical ancestor
+    // at each level. `openFragments[k]` is the current fragment for ancestor level k.
+    const roots: Column[] = [];
+    let previousAncestors: Column[] = [];
+    let openFragments: Column[] = [];
+    for (const { leaf, ancestors } of ordered) {
+      let level = 0;
+      while (
+        level < ancestors.length
+        && level < previousAncestors.length
+        && previousAncestors[level].instanceID === ancestors[level].instanceID
+        && openFragments[level] != null
+      ) level++;
+      openFragments = openFragments.slice(0, level);
+      for (let k = level; k < ancestors.length; k++) {
+        const fragment = ancestors[k].duplicate();
+        fragment.children = [];
+        if (k === 0) roots.push(fragment);
+        else openFragments[k - 1].children.push(fragment);
+        openFragments[k] = fragment;
+      }
+      if (ancestors.length === 0) roots.push(leaf);
+      else openFragments[ancestors.length - 1].children.push(leaf);
+      previousAncestors = ancestors;
+    }
+    return roots;
   }
 
   // Pre-order (colId, label) walk — labels participate so a formatter change repaints headers.

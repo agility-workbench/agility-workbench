@@ -1247,6 +1247,20 @@ export interface GridOptions {
    */
   maxPivotColumns?: number;
   /**
+   * What dragging a generated pivot value column in the header does (default `"measures"`).
+   *
+   * - `"measures"` — a drop reorders the MEASURES (the aggregate model): every generated group
+   *   re-renders its value leaves in the new order, symmetry is preserved, and the order is the
+   *   same one `setAggregates` and the column panel's Values well control.
+   * - `"free"` — value leaves (and whole generated groups) arrange per position: a leaf can leave
+   *   its group and sit anywhere in the pivot area, carrying duplicated group captions with it
+   *   (the split-and-carry behavior source column groups have). The arrangement is a leaf-order
+   *   list over the generated columns (`setPivotColumnOrder` / view state `pivotColumnOrder`); it
+   *   survives data- and filter-driven re-discoveries, and resets to the canonical layout on any
+   *   explicit role edit (`setAggregates`, `setPivotColumns`, and the menus/wells that call them).
+   */
+  pivotColumnMoveMode?: "measures" | "free";
+  /**
    * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
    * Tree data is mutually exclusive with column-value row grouping.
    */
@@ -1458,6 +1472,7 @@ export interface InternalGridOptions extends GridOptions {
   pivotColumns: string[];
   pivotResultColumnDef?: Partial<ColDef>;
   maxPivotColumns: number;
+  pivotColumnMoveMode: "measures" | "free";
   treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
   isRowSelectable?: (node: IRowNode) => boolean;
@@ -1547,6 +1562,7 @@ export const WIDGET_OPTION_KEYS = [
   "groupDisplayType",
   "groupSortMode",
   "groupRowsSelectable",
+  "pivotColumnMoveMode",
   "isRowSelectable",
   "serverSideDataSource",
   "serverSideAggregationSource",

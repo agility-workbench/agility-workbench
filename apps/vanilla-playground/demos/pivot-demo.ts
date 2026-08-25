@@ -5,7 +5,7 @@ import {
   type ColDef,
 } from "@grid";
 
-import { btn, checkbox, demoRoot, field, gridHost, h, toolbarRow } from "../dom";
+import { btn, checkbox, demoRoot, field, gridHost, h, select, toolbarRow } from "../dom";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -125,6 +125,14 @@ export function mountPivotDemo(container: HTMLElement): () => void {
         h("span", { text: "Group rows by", style: { fontSize: "13px" } }),
         ...groupChecks,
       ),
+      field("Column drag", select(
+        [
+          { value: "measures", label: "Reorders measures" },
+          { value: "free", label: "Free arrangement" },
+        ],
+        "measures",
+        value => api.updateGridOptions({ pivotColumnMoveMode: value as "measures" | "free" }),
+      )),
       btn("Bump a revenue cell (+25k)", () => {
         // setCellValue writes into the same row objects rowData holds, so the local ref is live.
         const row = rows[editCounter++ % 50];

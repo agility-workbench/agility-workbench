@@ -141,6 +141,7 @@ row count is known; the quick filter is client-side only.)
 | `pivotColumns` | `string[]` | Columns to pivot on, by colId, in level order |
 | `pivotResultColumnDef` | `Partial<ColDef>` | Overlay for every generated pivot value column |
 | `maxPivotColumns` | `number` | Cap on generated pivot columns (default 200; truncates + fires `pivotColumnLimitReached`) |
+| `pivotColumnMoveMode` | `"measures" \| "free"` | What dragging a generated pivot column does: reorder the measures everywhere (default) or arrange leaves freely, splitting groups (updatable at runtime) |
 
 ## Presentation and integration
 

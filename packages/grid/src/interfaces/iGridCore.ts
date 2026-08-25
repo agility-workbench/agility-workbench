@@ -133,6 +133,10 @@ export interface IGridCore {
   getRowGroupColumns(): Column[];
   getPivotMode(): boolean;
   getPivotColumns(): Column[];
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null;
+  /** Change what dragging a generated pivot column does. Read live at drag time — no rebuild. */
+  setPivotColumnMoveMode(mode: "measures" | "free"): void;
   /** Descriptors of the current generated pivot value columns, in header order. */
   getPivotResultColumns(): PivotResultColumnDescriptor[];
   /** Change how grouped rows are displayed without rebuilding the grid instance. */
