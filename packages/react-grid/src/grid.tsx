@@ -104,7 +104,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
 
       assignRef(forwardedRef, api);
       assignRef(props.apiRef, api);
-      onGridReadyRef.current?.(api);
+      // onGridReady is NOT announced here — see the announce effect below the columnDefs / rowData
+      // effects. The refs are assigned now, so imperative access is available as early as ever.
 
       return () => {
         if (instanceRef.current === instance) {
@@ -150,6 +151,28 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
 
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.data, props.rowData, props.rowModelType]);
+
+    // Announce the grid only once its schema and rows are in — declared AFTER the columnDefs and
+    // rowData effects, which run first because layout effects of one commit run in declaration
+    // order. Announcing from the creation effect made `onGridReady` fire against a grid with no
+    // columns, so every colId-addressed call in it (row groups, aggregates, pivot columns, sorts,
+    // column state) resolved to nothing and was silently dropped. Still the same commit, still
+    // synchronous, still before paint — and still ahead of the option-sync effects below, so
+    // prop-driven options keep winning over imperative mount-time calls.
+    const announcedRef = useRef<GridInstance | null>(null);
+    useLayoutEffect(() => {
+      const instance = instanceRef.current;
+      // Identity, not a boolean: StrictMode replays mount with a NEW instance, which must be
+      // announced too, while a re-run against an already-announced instance must not fire twice.
+      if (!instance || announcedRef.current === instance) return;
+      announcedRef.current = instance;
+      onGridReadyRef.current?.(instance.api);
+
+      return () => {
+        announcedRef.current = null;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // groupDisplayType changes the synthesized grouping columns and whether group nodes render as
     // full-width rows. Reconcile it explicitly so declarative prop changes do not require a key/remount.

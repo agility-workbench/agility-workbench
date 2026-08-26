@@ -30,8 +30,10 @@ export function Products() {
 `ReactColDef` accepts React cell renderers, editors, tooltips, and ActionFrame
 components. `<Grid />` also accepts every core `GridOptions` field as a prop.
 
-Use `ref`, `apiRef`, or `onGridReady` for imperative API access. Setup and
-cleanup support React Strict Mode effect replay.
+Use `ref`, `apiRef`, or `onGridReady` for imperative API access. `onGridReady`
+fires once per grid instance with the columns and row data already applied, so
+API calls that address columns or rows by id resolve there. Setup and cleanup
+support React Strict Mode effect replay.
 
 ## React components in grid slots
 
