@@ -158,6 +158,21 @@ describe("sheets tab strip", () => {
     expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 2"]);
   });
 
+  it("makes a new pivot sheet exit to the roles of the sheet + was pressed on", () => {
+    const changes: GridSheet[][] = [];
+    const { core, host } = makeGrid({ onChange: next => changes.push(next) });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+
+    host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
+    expect(core.getPivotMode()).toBe(true);
+    expect(core.getRowGroupColumns()).toEqual([]);
+    expect(changes.at(-1)![1].state?.prePivotState?.rowGroupColumns).toEqual(["region"]);
+
+    // Turning pivot mode off on the new sheet lands back on the Data sheet's grouping.
+    core.dispatch({ type: "pivotModeSet", on: false });
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+  });
+
   it("renames inline on double-click and reports the new name", () => {
     const changes: GridSheet[][] = [];
     const { host } = makeGrid({ onChange: next => changes.push(next) });

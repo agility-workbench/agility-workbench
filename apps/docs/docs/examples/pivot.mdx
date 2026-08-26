@@ -14,6 +14,12 @@ of each pivot column, with one value column per aggregate underneath.
 Non-participating source columns are hidden while pivoted and return exactly
 when pivot mode turns off. Client-side row model only.
 
+Pivot mode is a state **layer**, not a lens over the current state: the roles
+assigned while pivoted belong to the pivot view. Turning the mode off restores
+the grid exactly as it was before it turned on — grouping, measures and all —
+and turning it back on reinstates the pivot the user left rather than starting
+from scratch (see [Entering and leaving the mode](#entering-and-leaving-the-mode)).
+
 <LiveFeatureGrid feature="pivot" />
 
 <FrameworkCode feature="pivot" />
@@ -54,6 +60,38 @@ Pivot** / **Remove from Pivot** (gated by the `pivotable` column flag, default
 true), and the toolbar's `pivot` section shows a mode indicator + toggle.
 Initial state can also be seeded with the `pivotMode` and `pivotColumns` grid
 options.
+
+## Entering and leaving the mode
+
+The three roles are ordinary grid state, so the grid keeps two versions of them:
+the one the flat grid uses and the one the pivot view uses. `setPivotMode`
+swaps between them.
+
+- **Turning the mode on** stashes the current row groups, measures, pivot
+  columns, generated-column arrangement and aggregate scope, then reinstates
+  whatever the last pivot session ended with (nothing, the first time).
+- **Turning it off** stashes the pivot view's own version of all of that and
+  restores what was in force before the mode turned on. Nothing configured for
+  the pivot view leaks into the flat grid: group by Region inside pivot mode and
+  the flat grid is ungrouped again when you leave. Sorts on generated columns
+  leave with the columns that owned them.
+- Pivot mode entered from the `pivotMode` grid option has no earlier state to
+  return to, so leaving it clears the roles entirely.
+
+Filters and the quick filter are deliberately *not* layered — they select source
+rows, which means the same thing in both modes.
+
+Every exit path behaves identically: the toolbar toggle, the auto-group column
+menu's **Exit Pivot Mode**, and `api.setPivotMode(false)`.
+
+```ts
+api.setPivotMode(false); // flat grid, exactly as it was before pivot
+api.setPivotMode(true);  // the same pivot the user left
+```
+
+`captureViewState()` carries the inactive layer too (`prePivotState` while
+pivoted, `pivotState` while not), so a restored view — a saved view, or a
+[sheet](./sheets.mdx) switch — toggles the mode exactly like the live grid.
 
 ## Generated columns
 
@@ -144,9 +182,9 @@ footer aggregate row shows grand totals per generated column, computed from
 source rows (an average of averages can never appear).
 
 `captureViewState()` includes `pivotMode`, `pivotColumns`, and the aggregate
-model, so a saved view restores the complete pivot; `pivotChanged` reports
-mode/column changes and `getPivotResultColumns()` describes the generated
-columns.
+model, so a saved view restores the complete pivot — plus the inactive state
+layer described above; `pivotChanged` reports mode/column changes and
+`getPivotResultColumns()` describes the generated columns.
 
 The cell cursor, keyboard navigation, and range selection work on pivot rows
 without any configuration — while pivoted the group rows *are* the data, so

@@ -1,3 +1,4 @@
+import type { AggregateScope } from "./aggregate";
 import type { FilterDef } from "./filter";
 import type { ColumnState } from "./iGridCore";
 import type { SortDir } from "./sort";
@@ -29,6 +30,31 @@ export interface GridViewAggregateState {
   type: string;
 }
 
+/**
+ * One pivot state layer: the role assignments (row groups, pivot columns, values) that pivot mode
+ * swaps in and out as a unit. Pivot mode is a state *layer*, not a lens over the current state —
+ * see `GridViewState.prePivotState`.
+ */
+export interface GridPivotLayerState {
+  rowGroupColumns: string[];
+  aggregateModel: GridViewAggregateState[];
+  pivotColumns: string[];
+  /** Absent = the canonical generated-column order. */
+  pivotColumnOrder?: string[];
+  /** The aggregate scope in force in this layer. The state has no top-level scope field, so scope
+   * round-trips only inside a layer; absent = leave the live scope alone when the layer applies. */
+  aggregateScope?: AggregateScope;
+}
+
+/** The pair of pivot state layers a grid holds (see `IGridCore.getPivotStateLayers`). */
+export interface GridPivotStateLayers {
+  /** The state pivot mode exits to. Present while pivot mode is on. */
+  base?: GridPivotLayerState;
+  /** The pivot configuration re-entering pivot mode reinstates. Present while pivot mode is off,
+   * once a pivot session has been exited. */
+  pivot?: GridPivotLayerState;
+}
+
 /** Serializable grid presentation state captured by `api.captureViewState()`. */
 export interface GridViewState {
   version: 1;
@@ -52,6 +78,14 @@ export interface GridViewState {
    * `pivotColumnMoveMode: "free"`). Absent = none captured; the role dispatches an apply always
    * runs reset any prior arrangement, so a state without this field applies canonically. */
   pivotColumnOrder?: string[];
+  /** The state pivot mode returns to when it turns off — captured only while pivot mode is ON
+   * (while it is off, that state IS the live one). Without it, a restored pivoted view has no
+   * record of the flat grid it came from and exiting pivot mode clears the roles instead. */
+  prePivotState?: GridPivotLayerState;
+  /** The pivot configuration re-entering pivot mode reinstates — captured only while pivot mode is
+   * OFF, and only when a pivot session was exited earlier (while it is on, that state IS the live
+   * one). */
+  pivotState?: GridPivotLayerState;
 }
 
 export interface SavedGridView {

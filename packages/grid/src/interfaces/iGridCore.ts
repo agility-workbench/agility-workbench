@@ -10,8 +10,11 @@ import { IRowModel, RowDataChangeReason, RowTransaction, RowTransactionResult, S
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
-import { AggregateModel, AggregateScope } from "./aggregate";
+import { AggregateModel, AggregateScope, ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
+// Type-only: gridView.ts imports ColumnState from here, so this pair must never emit a runtime
+// import cycle.
+import type { GridPivotStateLayers } from "./gridView";
 import {
   GridOptions,
   GroupDisplayType,
@@ -129,6 +132,8 @@ export interface IGridCore {
   /** Current quick-filter (global search) text. Empty string when inactive. */
   getQuickFilterText(): string;
   getAggregateModel(): AggregateModel[];
+  /** The aggregate model keyed by public colId (the model keys by instanceID). */
+  getAggregateModelByColId(): ColumnAggregate[];
   getAggregateScope(): AggregateScope;
   getRowGroupColumns(): Column[];
   getPivotMode(): boolean;
@@ -139,6 +144,10 @@ export interface IGridCore {
   setPivotColumnMoveMode(mode: "measures" | "free"): void;
   /** Descriptors of the current generated pivot value columns, in header order. */
   getPivotResultColumns(): PivotResultColumnDescriptor[];
+  /** The stashed pivot state layers: what pivot mode exits to, and what it re-enters with. */
+  getPivotStateLayers(): GridPivotStateLayers;
+  /** Replace both stashed pivot state layers (bookkeeping only — nothing displayed changes). */
+  setPivotStateLayers(layers: GridPivotStateLayers): void;
   /** Change how grouped rows are displayed without rebuilding the grid instance. */
   setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
   /** Change whether non-grouped sorts can reorder group buckets. */

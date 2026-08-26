@@ -684,31 +684,29 @@ export class GridAPI implements IGridAPI {
   }
 
   getAggregates(): ColumnAggregate[] {
-    // The model keys entries by instanceID; report by public colId (entries whose column no
-    // longer resolves are dropped), mirroring the view-state serialization.
-    return this.core.getAggregateModel().flatMap(agg => {
-      const col = this.core.getColumnModel().getById(agg.key);
-      return col ? [{ colId: col.colId, type: agg.type }] : [];
-    });
+    return this.core.getAggregateModelByColId();
   }
 
   captureViewState(): GridViewState {
     const pagination = this.core.getPaginationInfo();
+    const pivotLayers = this.core.getPivotStateLayers();
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
       rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
       // Aggregates serialize by public colId (the model keys them by instanceID, which does not
       // survive a reload); entries on columns that no longer resolve are dropped.
-      aggregateModel: this.core.getAggregateModel().flatMap(agg => {
-        const col = this.core.getColumnModel().getById(agg.key);
-        return col ? [{ colId: col.colId, type: agg.type }] : [];
-      }),
+      aggregateModel: this.getAggregates(),
       pivotColumns: this.core.getPivotColumns().map(col => col.colId),
       pivotMode: this.core.getPivotMode(),
       // Only present while a manual arrangement exists; the role dispatches an apply always runs
       // reset any prior arrangement, so an absent field applies canonically.
       pivotColumnOrder: this.core.getPivotColumnOrder() ?? undefined,
+      // Pivot mode swaps a whole layer of role state in and out (see IGridCore.setPivotMode), so a
+      // capture carries the layer that is NOT live: without it a restored view has no state to
+      // return to when the mode turns off (or to re-enter with when it turns on).
+      ...(pivotLayers.base ? { prePivotState: pivotLayers.base } : {}),
+      ...(pivotLayers.pivot ? { pivotState: pivotLayers.pivot } : {}),
       sortModel: this.core.getSortModel().items.map(item => ({
         colId: item.col.colId,
         dir: item.dir,
@@ -731,8 +729,13 @@ export class GridAPI implements IGridAPI {
     // Pivot-aware states restore over the SOURCE layout: drop out of pivot first (column state,
     // sorts, and filters address source columns), re-enter at the end if the state says so.
     // States without a pivotMode field leave pivot untouched, like every absent field.
-    if (state.pivotMode != null && this.core.getPivotMode()) {
-      this.dispatch({ type: "pivotModeSet", on: false });
+    if (state.pivotMode != null) {
+      if (this.core.getPivotMode()) this.dispatch({ type: "pivotModeSet", on: false });
+      // Wipe the layer memo now that the outgoing view is gone: a restore rebuilds the state from
+      // the ground up, and the exit above stashed the view being *replaced* — re-entering below
+      // would otherwise reinstate that stash over the state being applied. The captured layers are
+      // seeded back at the end, once nothing else can overwrite them.
+      this.core.setPivotStateLayers({});
     }
 
     this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
@@ -769,6 +772,13 @@ export class GridAPI implements IGridAPI {
     // entering pivot lays out the arranged tree in the same derive.
     if (state.pivotColumnOrder) this.dispatch({ type: "pivotColumnOrderSet", order: state.pivotColumnOrder });
     if (state.pivotMode === true) this.dispatch({ type: "pivotModeSet", on: true });
+    // The layer memo is bookkeeping, not a mutation, so it is seeded LAST: entering pivot above
+    // records the layer it swaps out, and the captured layers must win over that. Only a
+    // pivot-addressing state touches it — for such a state an absent layer means "none", not
+    // "keep", so another view's stash can never be inherited here.
+    if (state.pivotMode != null) {
+      this.core.setPivotStateLayers({ base: state.prePivotState, pivot: state.pivotState });
+    }
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on
     // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.

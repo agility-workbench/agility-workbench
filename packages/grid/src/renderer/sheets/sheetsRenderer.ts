@@ -179,13 +179,23 @@ export class SheetsRenderer {
    */
   private addPivotSheet(): void {
     if (!this.isEnabled()) return;
+    const source = this.params.api.captureViewState();
     const state: GridViewState = {
-      ...this.params.api.captureViewState(),
+      ...source,
       pivotMode: true,
       pivotColumns: [],
       aggregateModel: [],
       rowGroupColumns: [],
       groupExpansion: [],
+      // Turning pivot mode off on this sheet lands on the sheet the user pressed + on — its
+      // non-pivot roles, which is its own base layer when it was itself pivoted. A fresh sheet has
+      // no earlier pivot configuration to reinstate, so the source sheet's stash never carries in.
+      prePivotState: source.prePivotState ?? {
+        rowGroupColumns: source.rowGroupColumns,
+        aggregateModel: source.aggregateModel ?? [],
+        pivotColumns: source.pivotColumns ?? [],
+      },
+      pivotState: undefined,
     };
     const sheet: GridSheet = { id: createSheetId(), name: this.nextPivotSheetName(), state };
     this.commitSheets([...this.withCapturedActiveState(this.sheets), sheet]);

@@ -6,6 +6,8 @@ import { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { AggregateType } from "../interfaces/aggregate";
 import { IRowNode } from "../interfaces/iRowNode";
 import { PIVOT_TOTAL_GROUP_ID } from "../csrm/pivot";
+import { ColumnMenuService } from "../menu/columnMenuService";
+import { MenuItem } from "../interfaces/menuItem";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -51,6 +53,16 @@ function enterPivot(core: GridCore) {
 
 const leafColIds = (core: GridCore) =>
   core.getColumnModel().getLeaves().map(c => c.colId);
+
+// Menu items nest into submenus; commands are addressed by name wherever they sit.
+function findMenuItem(items: MenuItem[], command: string): MenuItem | undefined {
+  for (const item of items) {
+    if (item.command === command) return item;
+    const found = item.subMenu && findMenuItem(item.subMenu, command);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 describe("GridCore pivot mode", () => {
   let core: GridCore;
@@ -232,6 +244,128 @@ describe("GridCore pivot mode", () => {
   });
 });
 
+describe("GridCore pivot state layers", () => {
+  let core: GridCore;
+  beforeEach(() => { core = makeGrid(); });
+
+  // The whole point of the layers: roles assigned while pivoted describe the pivot view only.
+  const configureInsidePivot = () => {
+    core.dispatch({ type: "pivotModeSet", on: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["quarter"] });
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+  };
+
+  it("discards roles assigned while pivoted, and reinstates them on re-entry", () => {
+    configureInsidePivot();
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+
+    core.dispatch({ type: "pivotModeSet", on: false });
+    // Back to the plain grid: no auto-group column, no grouping, no measures, leaf rows again.
+    expect(leafColIds(core)).toEqual(["region", "quarter", "revenue"]);
+    expect(core.getRowGroupColumns()).toEqual([]);
+    expect(core.getAggregateModel()).toEqual([]);
+    expect(core.getPivotColumns()).toEqual([]);
+    expect(viewNodes(core).map(n => n.id)).toEqual(["1", "2", "3", "4"]);
+
+    // Turning it back on reinstates the configuration the user left, not a blank pivot.
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+    expect(core.getRowGroupColumns().map(c => c.colId)).toEqual(["region"]);
+    expect(core.getPivotColumns().map(c => c.colId)).toEqual(["quarter"]);
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+  });
+
+  it("restores the state the flat grid had, not the state the pivot view ended with", () => {
+    // Grouped by region and pivoted from there; the pivot view then regroups by quarter.
+    enterPivot(core);
+    core.dispatch({ type: "rowGroupSet", colIds: ["quarter"] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["region"] });
+
+    core.dispatch({ type: "pivotModeSet", on: false });
+    expect(core.getRowGroupColumns().map(c => c.colId)).toEqual(["region"]);
+    expect(core.getAggregateModel()).toHaveLength(1);
+    expect(core.getPivotColumns().map(c => c.colId)).toEqual(["quarter"]);
+
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(core.getRowGroupColumns().map(c => c.colId)).toEqual(["quarter"]);
+    expect(core.getPivotColumns().map(c => c.colId)).toEqual(["region"]);
+  });
+
+  it("restores the aggregate scope of the flat grid", () => {
+    expect(core.getAggregateScope()).toBe("none");
+    configureInsidePivot();
+    expect(core.getAggregateScope()).toBe("page"); // measures forced a scope
+    core.dispatch({ type: "pivotModeSet", on: false });
+    expect(core.getAggregateScope()).toBe("none");
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(core.getAggregateScope()).toBe("page");
+  });
+
+  it("takes sorts on generated columns out with the layout that owned them", () => {
+    configureInsidePivot();
+    const q2 = core.getColumnModel().getLeaves()[2];
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: q2.instanceID, dir: "desc" }] });
+    expect(core.getSortModel().items).toHaveLength(1);
+
+    core.dispatch({ type: "pivotModeSet", on: false });
+    // A leftover pv: item cannot be seen or cleared from the flat grid, and silently stops group
+    // buckets from sorting — so it leaves with the generated columns.
+    expect(core.getSortModel().items).toEqual([]);
+  });
+
+  it("re-resolves a reinstated layer against replaced column defs", () => {
+    configureInsidePivot();
+    core.dispatch({ type: "pivotModeSet", on: false });
+    // "quarter" is gone: its pivot role drops, the rest of the layer survives.
+    core.setColumnDefsFromProps(COLUMN_DEFS.filter(d => d.colId !== "quarter").map(d => ({ ...d })));
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(core.getPivotColumns()).toEqual([]);
+    expect(core.getRowGroupColumns().map(c => c.colId)).toEqual(["region"]);
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:|revenue|sum"]);
+  });
+
+  it("exits to no roles at all when pivot mode came from the grid options", () => {
+    const seeded = makeGrid({ pivotMode: true, pivotColumns: ["quarter"] });
+    seeded.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    seeded.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+    expect(seeded.getPivotMode()).toBe(true);
+
+    seeded.dispatch({ type: "pivotModeSet", on: false });
+    // Nothing was ever configured outside pivot mode, so there is no earlier state to claim it.
+    expect(seeded.getRowGroupColumns()).toEqual([]);
+    expect(seeded.getAggregateModel()).toEqual([]);
+    expect(seeded.getColumnModel().getLeaves().map(c => c.colId))
+      .toEqual(["region", "quarter", "revenue"]);
+  });
+
+  it("exits pivot the same way from the column menu as from the API", () => {
+    configureInsidePivot();
+    const menu = new ColumnMenuService(core);
+    const autoGroup = core.getColumnModel().getLeaves()[0];
+    const ctx = {
+      targetColId: autoGroup.instanceID,
+      colIds: [autoGroup.instanceID],
+      trigger: "columnMenuButton" as const,
+    };
+    const exitItem = findMenuItem(menu.buildDefaultColumnMenu(ctx), "pivot.exit");
+    expect(exitItem).toBeDefined();
+    menu.execute(exitItem!, ctx);
+
+    expect(core.getPivotMode()).toBe(false);
+    expect(core.getRowGroupColumns()).toEqual([]);
+    // The pivot configuration is stashed, not cleared: re-entering brings it back.
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+  });
+});
+
 describe("GridAPI pivot view state", () => {
   it("round-trips pivot mode, pivot columns, and the aggregate model", () => {
     const core = makeGrid();
@@ -259,5 +393,75 @@ describe("GridAPI pivot view state", () => {
     expect(other.getPivotMode()).toBe(false);
     expect(other.getColumnModel().getLeaves().map(c => c.colId))
       .toEqual(["region", "quarter", "revenue"]);
+  });
+
+  it("carries the state pivot mode exits to, so a restored view toggles off cleanly", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    // Everything configured INSIDE pivot mode: the flat grid it exits to is empty.
+    core.dispatch({ type: "pivotModeSet", on: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["quarter"] });
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+
+    const state = api.captureViewState();
+    expect(state.prePivotState).toEqual({
+      rowGroupColumns: [],
+      aggregateModel: [],
+      pivotColumns: [],
+      aggregateScope: "none",
+    });
+    // While pivoted, the pivot layer IS the live state — nothing stale is reported alongside it.
+    expect(state.pivotState).toBeUndefined();
+
+    const other = makeGrid();
+    const otherApi = new GridAPI(other);
+    otherApi.applyViewState(state);
+    otherApi.setPivotMode(false);
+    expect(other.getRowGroupColumns()).toEqual([]);
+    expect(other.getAggregateModel()).toEqual([]);
+    expect(other.getColumnModel().getLeaves().map(c => c.colId))
+      .toEqual(["region", "quarter", "revenue"]);
+  });
+
+  it("carries the stashed pivot configuration of a view captured outside pivot mode", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    api.setPivotMode(false);
+
+    const state = api.captureViewState();
+    expect(state.pivotMode).toBe(false);
+    expect(state.pivotState).toMatchObject({
+      rowGroupColumns: ["region"],
+      pivotColumns: ["quarter"],
+      aggregateModel: [{ colId: "revenue", type: "sum" }],
+    });
+    expect(state.prePivotState).toBeUndefined();
+
+    const other = makeGrid();
+    const otherApi = new GridAPI(other);
+    otherApi.applyViewState(state);
+    otherApi.setPivotMode(true);
+    expect(other.getColumnModel().getLeaves().map(c => c.colId))
+      .toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+  });
+
+  it("never inherits another view's stashed pivot configuration", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    api.setPivotMode(false); // this grid now holds a stash
+
+    // A state that addresses pivot mode but carries no layers describes a view with no pivot
+    // history — entering pivot on it must start blank, not resurrect this grid's stash.
+    api.applyViewState({ ...new GridAPI(makeGrid()).captureViewState(), pivotMode: false });
+    api.setPivotMode(true);
+    expect(core.getRowGroupColumns()).toEqual([]);
+    expect(core.getPivotColumns()).toEqual([]);
+    expect(core.getAggregateModel()).toEqual([]);
   });
 });

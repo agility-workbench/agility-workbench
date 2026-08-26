@@ -102,11 +102,11 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
-| `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; exit restores the source columns exactly) |
+| `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; off restores the pre-pivot state exactly, on reinstates the last pivot) |
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `setPivotColumnOrder(order)` / `getPivotColumnOrder()` | Replace/read the manual arrangement of the generated pivot columns (leaf order by generated colId; null = canonical). Role edits reset it |
-| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page |
+| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
 | `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |

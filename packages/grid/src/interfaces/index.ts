@@ -7,6 +7,8 @@ export type { IFilterRenderer } from "./iFilterRenderer";
 export type { IGridAPI } from "./iGridAPI";
 export type { IGridCore } from "./iGridCore";
 export type {
+  GridPivotLayerState,
+  GridPivotStateLayers,
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewSortState,

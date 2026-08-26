@@ -143,6 +143,8 @@ export type {
   ActionFramePlacement,
 } from "./interfaces/gridOptions";
 export type {
+  GridPivotLayerState,
+  GridPivotStateLayers,
   GridViewAggregateState,
   GridViewFilterState,
   GridViewGroupExpansionState,

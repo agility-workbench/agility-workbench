@@ -290,7 +290,9 @@ export class ColumnMenuService {
         if (item.payload.enable) this.core.dispatch({ type: "pivotModeSet", on: true });
         return;
       case "pivot.exit":
-        this.core.dispatch({ type: "pivotColumnsSet", colIds: [] });
+        // Exit only — the mode itself stashes the pivot configuration so turning it back on
+        // reinstates it. Clearing the pivot columns here would make this path differ from the
+        // toolbar and the API, and would derive the whole model twice.
         return this.core.dispatch({ type: "pivotModeSet", on: false });
       case "export.csv":
         return this.exporter?.exportColumnCSV(item.payload.colIDs);
