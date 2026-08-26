@@ -17,6 +17,12 @@ const USER_DEFS: ColDef[] = [
   { colId: "revenue", key: "revenue", label: "Revenue", type: ColumnType.NUMBER },
 ];
 
+// A source column whose currency formatting comes from its TYPE, not an explicit valueFormatter.
+const CURRENCY_DEFS: ColDef[] = [
+  ...USER_DEFS,
+  { colId: "price", key: "price", label: "Price", type: ColumnType.CURRENCY, formatterOptions: { currency: "EUR" } },
+];
+
 function makeModel(defs: ColDef[] = USER_DEFS): ColumnModel {
   const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
   const model = core.getColumnModel() as ColumnModel;
@@ -78,6 +84,31 @@ describe("buildPivotResultColDefs", () => {
     const defs = buildPivotResultColDefs({ discovery, pivotColumns: [] });
     expect(defs.map(d => d.colId)).toEqual(["pv:|revenue|sum"]);
     expect(defs[0].children).toBeUndefined();
+  });
+
+  it("inherits the source column's resolved formatting for every value-preserving aggregate", () => {
+    const model = makeModel(CURRENCY_DEFS);
+    const aggregates = [AggregateType.SUM, AggregateType.AVG, AggregateType.MEDIAN, AggregateType.MIN, AggregateType.MAX];
+    const entries = aggregates.map(type => entryFor(model, "price", type));
+    const leaves = defsFor(model, ["Q1"], undefined, entries)[0].children!;
+    for (const leaf of leaves) {
+      expect(typeof leaf.valueFormatter).toBe("function");
+      expect(leaf.formatterOptions).toEqual({ currency: "EUR" });
+      // The formatter runs on the GENERATED column, so it must find the options there too.
+      const col = new Column(leaf as ColDef);
+      expect(col.formatValue(1234.5, undefined as any)).toBe("€1,234.50");
+    }
+  });
+
+  it("leaves counts as plain numbers, inheriting neither formatter nor options", () => {
+    const model = makeModel(CURRENCY_DEFS);
+    const entries = [AggregateType.COUNT, AggregateType.DISTINCT_COUNT].map(type => entryFor(model, "price", type));
+    const leaves = defsFor(model, ["Q1"], undefined, entries)[0].children!;
+    for (const leaf of leaves) {
+      expect(leaf.type).toBe(ColumnType.NUMBER);
+      expect(leaf.valueFormatter).toBeUndefined();
+      expect(leaf.formatterOptions).toBeUndefined();
+    }
   });
 
   it("lets the overlay style leaves but never override identity or behavior locks", () => {

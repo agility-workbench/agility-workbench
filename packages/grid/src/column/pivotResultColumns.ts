@@ -82,11 +82,25 @@ function aggregateOutputType(entry: PivotValueEntry): ColumnType {
   }
 }
 
-// Value-preserving aggregates inherit the source column's EXPLICIT formatter (a currency
-// formatter should format the sum of currencies); counts are plain numbers and never inherit.
+// Counts are plain numbers and never inherit formatting.
+function inheritsFormatting(entry: PivotValueEntry): boolean {
+  return entry.type !== AggregateType.COUNT && entry.type !== AggregateType.DISTINCT_COUNT;
+}
+
+// Value-preserving aggregates inherit the source column's RESOLVED formatter (a currency formatter
+// should format the sum of currencies) — resolved, not the raw ColDef's, because type-driven
+// formatters (currency, date) live only on the column instance. The generated leaf's own type is
+// the aggregate output type, so without this a summed currency would fall back to a bare number.
 function inheritedFormatter(entry: PivotValueEntry): ColDef["valueFormatter"] | undefined {
-  if (entry.type === AggregateType.COUNT || entry.type === AggregateType.DISTINCT_COUNT) return undefined;
-  return entry.column.col.valueFormatter ?? undefined;
+  if (!inheritsFormatting(entry)) return undefined;
+  return entry.column.valueFormatter ?? undefined;
+}
+
+// Built-in formatters read their currency/locale/format off the column they run on, so the options
+// have to travel with the formatter or a EUR column would sum in USD.
+function inheritedFormatterOptions(entry: PivotValueEntry): ColDef["formatterOptions"] | undefined {
+  if (!inheritsFormatting(entry)) return undefined;
+  return entry.column.formatterOptions ?? undefined;
 }
 
 // A generated group header shows the pivot value: the pivot column's explicit formatter when it
@@ -123,6 +137,7 @@ export function buildPivotResultColDefs(params: BuildPivotResultColDefsParams): 
     valueEntries.map((entry) => ({
       type: aggregateOutputType(entry),
       valueFormatter: inheritedFormatter(entry),
+      formatterOptions: inheritedFormatterOptions(entry),
       ...pivotResultColumnDef,
       ...forcedLeafDef(pivotLeafColIdFromKey(pathKey, entry.colId, entry.type)),
       label: (colIdCounts.get(entry.colId) ?? 0) > 1 ? `${entry.label} (${entry.type})` : entry.label,
