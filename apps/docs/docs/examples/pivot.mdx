@@ -59,7 +59,10 @@ Interactively, the column menu offers **Pivot on Column** / **Add to Existing
 Pivot** / **Remove from Pivot** (gated by the `pivotable` column flag, default
 true), and the toolbar's `pivot` section shows a mode indicator + toggle.
 Initial state can also be seeded with the `pivotMode` and `pivotColumns` grid
-options.
+options. All four pivot options (those two plus `pivotResultColumnDef` and
+`maxPivotColumns`) are React props and Angular inputs; `pivotMode` and
+`pivotColumns` are live — changing either reconciles through the API setters, so
+the mode can be driven declaratively instead of imperatively.
 
 ## Entering and leaving the mode
 

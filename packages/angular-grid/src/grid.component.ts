@@ -91,6 +91,10 @@ export class AwbGrid implements OnDestroy {
   readonly overscanRowCount = input<GridOptions["overscanRowCount"]>();
   readonly minResizeWidth = input<GridOptions["minResizeWidth"]>();
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
+  readonly pivotMode = input<GridOptions["pivotMode"]>();
+  readonly pivotColumns = input<GridOptions["pivotColumns"]>();
+  readonly pivotResultColumnDef = input<GridOptions["pivotResultColumnDef"]>();
+  readonly maxPivotColumns = input<GridOptions["maxPivotColumns"]>();
   readonly pivotColumnMoveMode = input<GridOptions["pivotColumnMoveMode"]>();
   readonly autosizeColumnsOnDataChange = input<GridOptions["autosizeColumnsOnDataChange"]>();
 
@@ -358,6 +362,21 @@ export class AwbGrid implements OnDestroy {
       const v = this.pivotColumnMoveMode();
       return () => api.updateGridOptions({ pivotColumnMoveMode: v });
     });
+
+    // pivotMode / pivotColumns are live inputs, but they are NOT updateGridOptions keys: core seeds
+    // them once from the creation options and owns them as model state afterwards, so later input
+    // changes go through the API setters. keyedEffect compares against the value the grid was
+    // created with, so the creation-time application is never repeated — which also keeps these
+    // from overwriting roles an app assigned in its gridReady handler.
+    this.keyedEffect(
+      () => this.pivotMode(),
+      (value) => { if (value != null) api.setPivotMode(value); },
+    );
+
+    this.keyedEffect(
+      () => this.pivotColumns(),
+      (value) => { if (value != null) api.setPivotColumns(value); },
+    );
 
     this.syncEffect(() => {
       const v = this.isRowSelectable();

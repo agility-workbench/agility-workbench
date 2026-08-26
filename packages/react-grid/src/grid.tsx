@@ -192,6 +192,33 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ pivotColumnMoveMode: props.pivotColumnMoveMode });
     }, [props.pivotColumnMoveMode]);
 
+    // pivotMode / pivotColumns are live props, but they are NOT updateGridOptions keys: core seeds
+    // them once from the creation options (when the columnDefs land) and owns them as model state
+    // afterwards, so later prop changes go through the API setters. Creation already applied the
+    // initial value, so — like rowSelection below — these reconcile only subsequent changes; that
+    // also keeps them from overwriting roles an app assigned in onGridReady.
+    const pivotModeMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pivotModeMountedRef.current) {
+        pivotModeMountedRef.current = true;
+        return;
+      }
+      if (props.pivotMode == null) return;
+      instanceRef.current?.api.setPivotMode(props.pivotMode);
+    }, [props.pivotMode]);
+
+    const pivotColumnsKey = JSON.stringify(props.pivotColumns ?? null);
+    const pivotColumnsMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pivotColumnsMountedRef.current) {
+        pivotColumnsMountedRef.current = true;
+        return;
+      }
+      if (props.pivotColumns == null) return;
+      instanceRef.current?.api.setPivotColumns(props.pivotColumns);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pivotColumnsKey]);
+
     useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ isRowSelectable: props.isRowSelectable });
     }, [props.isRowSelectable]);

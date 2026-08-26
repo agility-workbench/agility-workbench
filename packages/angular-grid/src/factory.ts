@@ -30,6 +30,10 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
+  setIfDefined(options, "pivotMode", grid.pivotMode());
+  setIfDefined(options, "pivotColumns", grid.pivotColumns());
+  setIfDefined(options, "pivotResultColumnDef", grid.pivotResultColumnDef());
+  setIfDefined(options, "maxPivotColumns", grid.maxPivotColumns());
   setIfDefined(options, "pivotColumnMoveMode", grid.pivotColumnMoveMode());
   setIfDefined(options, "autosizeColumnsOnDataChange", grid.autosizeColumnsOnDataChange());
   setIfDefined(options, "allowExportAsCSV", grid.allowExportAsCSV());
