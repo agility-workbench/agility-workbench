@@ -82,37 +82,48 @@ export function mountPivotDemo(container: HTMLElement): () => void {
 
   const host = gridHost();
 
-  const pivotChecks = PIVOTABLE.map(({ colId, label }) => field(
-    label,
-    checkbox(pivotCols.includes(colId), () => {
+  // Boxes are kept as handles: they are a VIEW of grid state, not the source of truth. The same
+  // roles are edited from the column menu, the column panel wells, the toolbar toggle, and —
+  // because pivot mode is a state layer — by the mode toggle itself, which swaps a whole set of
+  // roles in and out. `syncFromGrid` below writes grid state back into them.
+  const checkStyle = { style: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" } };
+
+  const pivotBoxes = new Map<string, HTMLInputElement>();
+  const pivotChecks = PIVOTABLE.map(({ colId, label }) => {
+    const box = checkbox(pivotCols.includes(colId), () => {
       pivotCols = pivotCols.includes(colId) ? pivotCols.filter(c => c !== colId) : [...pivotCols, colId];
       api.setPivotColumns(pivotCols);
-    }),
-    { style: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" } },
-  ));
+    });
+    pivotBoxes.set(colId, box);
+    return field(label, box, checkStyle);
+  });
 
-  const measureChecks = MEASURES.map((measure, index) => field(
-    measure.label,
-    checkbox(measures.has(index), () => {
+  const measureBoxes: HTMLInputElement[] = [];
+  const measureChecks = MEASURES.map((measure, index) => {
+    const box = checkbox(measures.has(index), () => {
       if (measures.has(index)) measures.delete(index);
       else measures.add(index);
       applyAggregates();
-    }),
-    { style: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" } },
-  ));
+    });
+    measureBoxes.push(box);
+    return field(measure.label, box, checkStyle);
+  });
 
-  const groupChecks = ["region", "country"].map(colId => field(
-    colId === "region" ? "Region" : "Country",
-    checkbox(groupBy.includes(colId), () => {
+  const groupBoxes = new Map<string, HTMLInputElement>();
+  const groupChecks = ["region", "country"].map(colId => {
+    const box = checkbox(groupBy.includes(colId), () => {
       groupBy = groupBy.includes(colId) ? groupBy.filter(c => c !== colId) : [...groupBy, colId];
       api.setRowGroupColumns(groupBy);
-    }),
-    { style: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" } },
-  ));
+    });
+    groupBoxes.set(colId, box);
+    return field(colId === "region" ? "Region" : "Country", box, checkStyle);
+  });
+
+  const pivotModeBox = checkbox(true, value => api.setPivotMode(value));
 
   container.appendChild(demoRoot(
     toolbarRow(
-      field("Pivot mode", checkbox(true, value => api.setPivotMode(value))),
+      field("Pivot mode", pivotModeBox),
       h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
         h("span", { text: "Pivot on", style: { fontSize: "13px" } }),
         ...pivotChecks,
@@ -157,8 +168,26 @@ export function mountPivotDemo(container: HTMLElement): () => void {
   api.setPivotColumns(pivotCols);
   api.setPivotMode(true);
 
+  // Subscriptions die with the grid instance, which this page destroys on unmount.
+  api.on("pivotChanged", syncFromGrid);
+  api.on("aggregateChanged", syncFromGrid);
+  api.on("columnsChanged", syncFromGrid);
+
   function applyAggregates(): void {
     api.setAggregates(MEASURES.filter((_, index) => measures.has(index)));
+  }
+
+  function syncFromGrid(): void {
+    pivotCols = api.getPivotColumns();
+    groupBy = api.getRowGroupColumns();
+    const applied = api.getAggregates();
+    measures = new Set(MEASURES.flatMap((measure, index) =>
+      applied.some(agg => agg.colId === measure.colId && agg.type === measure.type) ? [index] : []));
+
+    pivotModeBox.checked = api.getPivotMode();
+    for (const [colId, box] of pivotBoxes) box.checked = pivotCols.includes(colId);
+    for (const [colId, box] of groupBoxes) box.checked = groupBy.includes(colId);
+    measureBoxes.forEach((box, index) => { box.checked = measures.has(index); });
   }
 
   return () => api.destroy();

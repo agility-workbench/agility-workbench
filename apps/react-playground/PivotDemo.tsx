@@ -96,12 +96,32 @@ export function PivotDemo() {
     apiRef.current?.setAggregates(MEASURES.filter((_, i) => selected.has(i)));
   };
 
+  // These checkboxes are a VIEW of grid state, not the source of truth: the same roles are edited
+  // from the column menu, the column panel wells, the toolbar toggle, and — because pivot mode is
+  // a state layer — by the mode toggle itself, which swaps a whole set of roles in and out.
+  const syncFromGrid = (api: IGridAPI) => {
+    setPivotOn(api.getPivotMode());
+    setPivotCols(api.getPivotColumns());
+    setGroupBy(api.getRowGroupColumns());
+    const applied = api.getAggregates();
+    setMeasures(new Set(
+      MEASURES.flatMap((measure, index) =>
+        applied.some(agg => agg.colId === measure.colId && agg.type === measure.type) ? [index] : []),
+    ));
+  };
+
   const handleReady = (api: IGridAPI) => {
     apiRef.current = api;
+    // onGridReady fires with the columns and rows already applied, so these colId-addressed calls
+    // resolve (they used to be dropped — the wrapper announced the grid before its schema landed).
     applyAggregates(measures);
     api.setRowGroupColumns(groupBy);
     api.setPivotColumns(pivotCols);
     api.setPivotMode(pivotOn);
+    // Subscriptions die with the grid instance, which this page owns for its lifetime.
+    api.on("pivotChanged", () => syncFromGrid(api));
+    api.on("aggregateChanged", () => syncFromGrid(api));
+    api.on("columnsChanged", () => syncFromGrid(api));
   };
 
   const togglePivotCol = (colId: string) => {

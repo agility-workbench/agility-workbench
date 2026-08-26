@@ -1,4 +1,4 @@
-import { Component, signal } from "@angular/core";
+import { Component, NgZone, inject, signal } from "@angular/core";
 import {
   AggregateType,
   AwbGrid,
@@ -204,6 +204,7 @@ export class PivotDemoComponent {
 
   private api: IGridAPI | null = null;
   private editCounter = 0;
+  private readonly zone = inject(NgZone);
 
   onReady(api: IGridAPI): void {
     this.api = api;
@@ -211,6 +212,26 @@ export class PivotDemoComponent {
     api.setRowGroupColumns(this.groupBy());
     api.setPivotColumns(this.pivotCols());
     api.setPivotMode(this.pivotOn());
+    // Subscriptions die with the grid instance, which this page owns for its lifetime. The grid
+    // emits outside Angular's zone, so the resync re-enters it like the wrapper's own outputs do.
+    const resync = () => this.zone.run(() => this.syncFromGrid(api));
+    api.on("pivotChanged", resync);
+    api.on("aggregateChanged", resync);
+    api.on("columnsChanged", resync);
+  }
+
+  // These checkboxes are a VIEW of grid state, not the source of truth: the same roles are edited
+  // from the column menu, the column panel wells, the toolbar toggle, and — because pivot mode is
+  // a state layer — by the mode toggle itself, which swaps a whole set of roles in and out.
+  private syncFromGrid(api: IGridAPI): void {
+    this.pivotOn.set(api.getPivotMode());
+    this.pivotCols.set(api.getPivotColumns());
+    this.groupBy.set(api.getRowGroupColumns());
+    const applied = api.getAggregates();
+    this.selectedMeasures.set(new Set(
+      MEASURES.flatMap((measure, index) =>
+        applied.some((agg) => agg.colId === measure.colId && agg.type === measure.type) ? [index] : []),
+    ));
   }
 
   onDragModeChange(event: Event): void {
