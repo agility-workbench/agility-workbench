@@ -8,6 +8,7 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { PIVOT_TOTAL_GROUP_ID } from "../csrm/pivot";
 import { ColumnMenuService } from "../menu/columnMenuService";
 import { MenuItem } from "../interfaces/menuItem";
+import { GridViewState } from "../interfaces/gridView";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -448,6 +449,48 @@ describe("GridAPI pivot view state", () => {
     otherApi.setPivotMode(true);
     expect(other.getColumnModel().getLeaves().map(c => c.colId))
       .toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+  });
+
+  it("applies column state to the stashed sources while pivoted, leaving the pivot header intact", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    // A layout worth restoring: revenue first, quarter hidden and narrower.
+    const state = api.getColumnState().map(s => ({ ...s }));
+    const at = (colId: string) => state.find(s => s.colId === colId)!;
+    at("revenue").order = 0;
+    at("region").order = 1;
+    at("quarter").order = 2;
+    at("quarter").hidden = true;
+    at("quarter").widthPx = 77;
+
+    enterPivot(core);
+    // Column state addresses the SOURCE columns (that is what getColumnState captures while
+    // pivoted), so restoring must not walk the generated tree — it used to throw and wipe the
+    // header, leaving a layout the signature cache would never rebuild.
+    expect(() => api.applyColumnState(state)).not.toThrow();
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+
+    // The restore landed on the stash: getColumnState reads it back, and exiting pivot displays it.
+    expect(api.getColumnState().map(s => s.colId)).toEqual(["revenue", "region", "quarter"]);
+    api.setPivotMode(false);
+    expect(core.getColumnModel().getColumns().map(c => c.colId))
+      .toEqual(["__pte_group__", "revenue", "region", "quarter"]);
+    const quarter = core.getColumnModel().getByColId("quarter")!;
+    expect(quarter.hidden).toBe(true);
+    expect(quarter.computedWidth).toBe(77);
+  });
+
+  it("survives a pre-pivot view state (no pivotMode field) applied while pivoted", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    // A capture from before pivot existed: same shape, no pivotMode field.
+    const { pivotMode: _pivotMode, ...legacy } = api.captureViewState();
+    // Without a pivotMode field applyViewState leaves the mode alone (every other field is
+    // restored as usual), so the column state lands while the generated layout is displayed.
+    expect(() => api.applyViewState(legacy as GridViewState)).not.toThrow();
+    expect(core.getPivotMode()).toBe(true);
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
   });
 
   it("never inherits another view's stashed pivot configuration", () => {

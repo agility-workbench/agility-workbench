@@ -1215,6 +1215,12 @@ export class ColumnModel implements IColumnModel {
     column.setComparator(comparator);
   }
 
+  /**
+   * Root-first path to a column. While pivot display is active the stashed source tree is searched
+   * as a fallback: the stash stays addressable through every lookup map (see
+   * `registerPivotStashLookups`), so anything resolving a source colId — `applyColumnState`,
+   * `resizeColumn` — must be able to walk its ancestors too. Returns `[]` for an unknown id.
+   */
   getAncestors(colID: string): Column[] {
     const path: Column[] = [];
 
@@ -1234,7 +1240,9 @@ export class ColumnModel implements IColumnModel {
       return false;
     }
 
-    helper(this.columns, colID);
+    if (!helper(this.columns, colID) && this.pivotDisplayActive) {
+      helper(this.pivotSourceStash, colID);
+    }
     return path.reverse();
   }
 
@@ -1308,6 +1316,10 @@ export class ColumnModel implements IColumnModel {
    *  - pinning → `col.pinned` (top-level columns only), bucketed by `updateColumns`;
    *  - order → columns repositioned among siblings at every group depth (see above);
    *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes).
+   *
+   * While pivot display is active this restores the STASHED SOURCE columns — the mirror of
+   * `getColumnState`, which captures them. The displayed generated layout is derived data: it is
+   * rebuilt from the restored sources, never addressed by the state itself.
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
     const widthOps: { col: Column; width: number }[] = [];
@@ -1342,7 +1354,12 @@ export class ColumnModel implements IColumnModel {
       }
     });
 
-    const topLevel = this.columns.filter((c) => !c.isInternal());
+    // While pivoted the state addresses the STASHED source columns (that is what `getColumnState`
+    // captures), so the whole restore targets the stash: the displayed layout is generated and is
+    // re-derived from it afterwards. Walking the generated tree here would find no match for any
+    // entry and `updateColumns` would wipe the pivot header.
+    const pivoted = this.pivotDisplayActive;
+    const topLevel = (pivoted ? this.pivotSourceStash : this.columns).filter((c) => !c.isInternal());
 
     // Apply defaultState to columns absent from `state` entirely. This is the escape hatch that
     // makes an exact restore possible: without it these columns keep their current layout (merge).
@@ -1358,8 +1375,18 @@ export class ColumnModel implements IColumnModel {
       }
     }
 
-    this.updateColumns(this.reorderTreeByTargetOrder(topLevel, targetOrder));
-    this.updateParentColumnWidthsForAll();
+    const reordered = this.reorderTreeByTargetOrder(topLevel, targetOrder);
+    if (pivoted) {
+      this.pivotSourceStash = reordered;
+      this.registerPivotStashLookups();
+      for (const col of reordered) this.updateParentColumnWidth(col);
+      // Re-derive the displayed pivot layout so the auto-group column and the generated columns
+      // stay consistent with the restored sources.
+      this.rebuildPivotLayout();
+    } else {
+      this.updateColumns(reordered);
+      this.updateParentColumnWidthsForAll();
+    }
 
     // Widths last so they apply to the rebuilt layout (resizeColumn is a no-op for unknown ids).
     for (const { col, width } of widthOps) {
@@ -1465,8 +1492,9 @@ export class ColumnModel implements IColumnModel {
       width = totalWidth;
     }
     col.computedWidth = width;
+    // A column outside both trees (dropped mid-flight) has no root to roll the width up into.
     const ancestors = this.getAncestors(col.instanceID);
-    this.updateParentColumnWidth(ancestors[0]);
+    if (ancestors[0]) this.updateParentColumnWidth(ancestors[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
   }
 
