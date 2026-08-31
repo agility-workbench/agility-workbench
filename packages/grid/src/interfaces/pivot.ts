@@ -73,6 +73,15 @@ export interface PivotResultColumnDescriptor {
   aggregateType: AggregateType;
 }
 
+/**
+ * Whether a colId addresses a generated pivot column. Generated columns are internal, so they are
+ * absent from the public colId lookups — a captured `pv:` id has to be resolved against the live
+ * pivot layout instead (see IColumnModel.getPivotResultLeaf).
+ */
+export function isPivotResultColId(colId: string): boolean {
+  return colId.startsWith("pv:");
+}
+
 /** Stable, position-independent id for a pivot path (generated group column id). */
 export function pivotPathId(path: string[]): string {
   return "pv:" + path.map(encodeURIComponent).join("/");

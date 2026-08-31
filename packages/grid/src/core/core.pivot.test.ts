@@ -396,6 +396,68 @@ describe("GridAPI pivot view state", () => {
       .toEqual(["region", "quarter", "revenue"]);
   });
 
+  it("round-trips a sort on a generated pivot column onto a fresh grid", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    // Buckets order by group key by default; sorting Q1 descending orders them by that cell
+    // instead (EMEA 20 > APAC 5), so the restore is visible in the row order.
+    const q1 = core.getColumnModel().getLeaves()[1];
+    expect(q1.colId).toBe("pv:Q1|revenue|sum");
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: q1.instanceID, dir: "desc" }] });
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+
+    const state = api.captureViewState();
+    expect(state.sortModel).toEqual([{ colId: "pv:Q1|revenue|sum", dir: "desc" }]);
+
+    // A fresh grid has never seen these generated columns — they are created by the discovery the
+    // restore itself triggers, which is why the sort has to be replayed after the mode toggle.
+    const other = makeGrid();
+    new GridAPI(other).applyViewState(state);
+    expect(other.getPivotMode()).toBe(true);
+    expect(viewNodes(other).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+    // …and it addresses the LIVE generated instance, so bucket ordering reads its stamped values.
+    const restored = other.getSortModel().items;
+    expect(restored.map(item => item.col.colId)).toEqual(["pv:Q1|revenue|sum"]);
+    expect(restored[0].col).toBe(other.getColumnModel().getLeaves()[1]);
+  });
+
+  it("preserves whether a pivot or a group sort controls the buckets", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    const q1 = core.getColumnModel().getLeaves()[1];
+    // Pivot sort FIRST, then a source-column sort: position decides, so the pivot sort wins and
+    // the buckets order by Q1 revenue (EMEA 20 > APAC 5) rather than by region descending.
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: q1.instanceID, dir: "desc" }] });
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: "region", dir: "desc" }] });
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+
+    const state = api.captureViewState();
+    expect(state.sortModel!.map(item => item.colId)).toEqual(["pv:Q1|revenue|sum", "region"]);
+
+    const other = makeGrid();
+    new GridAPI(other).applyViewState(state);
+    expect(other.getSortModel().items.map(item => item.col.colId)).toEqual(["pv:Q1|revenue|sum", "region"]);
+    expect(viewNodes(other).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("drops a captured pivot sort when the state restores out of pivot mode", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    const q1 = core.getColumnModel().getLeaves()[1];
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: q1.instanceID, dir: "desc" }] });
+    const state = api.captureViewState();
+
+    const other = makeGrid();
+    new GridAPI(other).applyViewState({ ...state, pivotMode: false });
+    expect(other.getPivotMode()).toBe(false);
+    // Nothing dangling: a generated colId means nothing outside the pivot layout.
+    expect(other.getSortModel().items).toEqual([]);
+  });
+
   it("carries the state pivot mode exits to, so a restored view toggles off cleanly", () => {
     const core = makeGrid();
     const api = new GridAPI(core);

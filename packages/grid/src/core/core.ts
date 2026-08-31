@@ -5,7 +5,7 @@ import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope, AggregateType, ColumnAggregate } from "../interfaces/aggregate";
-import { PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
+import { isPivotResultColId, PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
 import { buildPivotResultColDefs } from "../column/pivotResultColumns";
 import {
   CellCommitSource,
@@ -670,7 +670,15 @@ export class GridCore implements IGridCore {
   }
 
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
-    return this.resolveModelColumn(sort);
+    const col = this.resolveModelColumn(sort);
+    if (col) return col;
+    // A sort can also address a GENERATED pivot column ("order the buckets by their aggregate at
+    // this cell"). Those are internal, so no public lookup holds them — resolve them against the
+    // live pivot layout, which yields nothing once pivot display is off.
+    const colId = sort.key ?? sort.col?.colId;
+    return colId != null && isPivotResultColId(colId)
+      ? this.columnModel.getPivotResultLeaf(colId)
+      : undefined;
   }
 
   private resolveModelColumn(item: { col?: Column; key?: string }): Column | undefined {

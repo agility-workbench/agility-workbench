@@ -2,6 +2,7 @@ import { GridCore } from "../../core/core";
 import type { GridSheet, GridViewState, SheetsOptions } from "../../interfaces/gridView";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { MenuItem } from "../../interfaces/menuItem";
+import { isPivotResultColId } from "../../interfaces/pivot";
 import { MenuRenderer } from "../menuRenderer";
 
 interface SheetsRendererParams {
@@ -187,6 +188,10 @@ export class SheetsRenderer {
       aggregateModel: [],
       rowGroupColumns: [],
       groupExpansion: [],
+      // A sort on a generated pivot column belongs to the sheet whose pivot generated it. This
+      // sheet starts with no pivot configuration at all, so carrying those ids over would sort it
+      // by columns it never produces — and persist them into its saved state.
+      sortModel: (source.sortModel ?? []).filter(item => !isPivotResultColId(item.colId)),
       // Turning pivot mode off on this sheet lands on the sheet the user pressed + on — its
       // non-pivot roles, which is its own base layer when it was itself pivoted. A fresh sheet has
       // no earlier pivot configuration to reinstate, so the source sheet's stash never carries in.

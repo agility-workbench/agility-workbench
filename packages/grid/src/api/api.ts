@@ -29,7 +29,7 @@ import {
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
-import { PivotResultColumnDescriptor } from "../interfaces/pivot";
+import { isPivotResultColId, PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
@@ -744,17 +744,25 @@ export class GridAPI implements IGridAPI {
       opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },
     );
 
-    const clearSorts: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
-      key: item.col.instanceID,
-      dir: null,
-    }));
-    this.dispatch({
-      type: "sortModelSet",
-      sortItems: [
-        ...clearSorts,
-        ...(state.sortModel ?? []).map(item => ({ key: item.colId, dir: item.dir })),
-      ],
-    });
+    // Replace the whole sort model with the captured list, in captured order — position is
+    // meaningful (a pivot-column sort and a group-column sort compete by it, first one winning).
+    const replaySorts = (items: NonNullable<GridViewState["sortModel"]>): void => {
+      const clear: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
+        key: item.col.instanceID,
+        dir: null,
+      }));
+      this.dispatch({
+        type: "sortModelSet",
+        sortItems: [...clear, ...items.map(item => ({ key: item.colId, dir: item.dir }))],
+      });
+    };
+    // A sort on a GENERATED pivot column cannot be replayed here: the column does not exist until
+    // the mode toggle below runs a discovery. Those are held back — unless the id also names a
+    // live source column, in which case it belongs to the source layout like any other sort.
+    const captured = state.sortModel ?? [];
+    const pivotSorts = captured.filter(item =>
+      isPivotResultColId(item.colId) && !this.core.getColumnModel().getByColId(item.colId));
+    replaySorts(captured.filter(item => !pivotSorts.includes(item)));
 
     this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
@@ -779,6 +787,13 @@ export class GridAPI implements IGridAPI {
     if (state.pivotMode != null) {
       this.core.setPivotStateLayers({ base: state.prePivotState, pivot: state.pivotState });
     }
+
+    // The generated columns exist now (the discovery ran inside the mode toggle), so the held-back
+    // sorts can address them. The whole list is replayed rather than appended, so the captured
+    // order — which decides whether a pivot or a group sort controls the buckets — is preserved.
+    // Still ahead of the pagination restore below, which must win over any `resetPageOn: ["sort"]`
+    // reset this triggers.
+    if (pivotSorts.length > 0 && this.core.getPivotMode()) replaySorts(captured);
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on
     // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.

@@ -740,6 +740,27 @@ export class ColumnModel implements IColumnModel {
   }
 
   /**
+   * The live generated value leaf carrying this generated colId, or undefined when pivot display
+   * is off or the current discovery has no such column. Generated columns are internal, so they
+   * never enter the public colId lookups — this is the only way a `pv:` id (a captured sort, an
+   * API argument) reaches its live instance, and it deliberately resolves nothing once the pivot
+   * layout is gone. Canonical roots, not the displayed tree: a manual arrangement only reorders
+   * these same leaf instances.
+   */
+  getPivotResultLeaf(colId: string): Column | undefined {
+    const find = (cols: Column[]): Column | undefined => {
+      for (const col of cols) {
+        if (col.children.length > 0) {
+          const hit = find(col.children);
+          if (hit) return hit;
+        } else if (col.colId === colId) return col;
+      }
+      return undefined;
+    };
+    return find(this.pivotResultRoots);
+  }
+
+  /**
    * Reconcile the generated pivot columns against freshly-discovered defs and swap the layout to
    * pivot display (stashing the source columns on first activation). Instances are reused from
    * the session registry by colId, so widths and live SortModel references survive

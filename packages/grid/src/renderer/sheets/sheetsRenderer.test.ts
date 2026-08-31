@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { GridAPI } from "../../api/api";
 import { GridCore } from "../../core/core";
+import { AggregateType } from "../../interfaces/aggregate";
 import { ColumnType } from "../../interfaces/column";
 import type { GridSheet, SheetsOptions } from "../../interfaces/gridView";
 import { ITextMeasurer } from "../../interfaces/iTextMeasure";
@@ -156,6 +157,27 @@ describe("sheets tab strip", () => {
     // A second + skips used numbers.
     host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
     expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 2"]);
+  });
+
+  it("does not carry a generated-pivot sort onto the new sheet", () => {
+    const changes: GridSheet[][] = [];
+    const { core, host } = makeGrid({ onChange: next => changes.push(next) });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["status"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    const generated = core.getColumnModel().getLeaves().find(c => c.isPivotResultColumn())!;
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: generated.instanceID, dir: "desc" }] });
+    expect(core.getSortModel().items).toHaveLength(1);
+
+    host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
+
+    // The new sheet has no pivot configuration, so the source sheet's generated colIds mean
+    // nothing on it — they must not ride along into its state or its live sort model.
+    const reported = changes.at(-1)!;
+    expect(reported[0].state?.sortModel).toEqual([{ colId: generated.colId, dir: "desc" }]);
+    expect(reported[1].state?.sortModel).toEqual([]);
+    expect(core.getSortModel().items).toEqual([]);
   });
 
   it("makes a new pivot sheet exit to the roles of the sheet + was pressed on", () => {
