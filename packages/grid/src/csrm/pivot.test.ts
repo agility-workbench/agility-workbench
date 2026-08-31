@@ -574,6 +574,154 @@ describe("ClientSideRowModel pivot mode", () => {
     expect(view.every(n => n.isGroup)).toBe(true);
     expect(model.getRowNode("g:EMEA")!.isExpanded).toBe(false);
   });
+
+  // Re-deriving the pivot is a full pass over every filtered row (discovery) plus a re-aggregation
+  // of every bucket. Requests that cannot have changed the answer must not pay for it — each of
+  // these asserts both halves: the work is skipped AND the displayed numbers are still right.
+  describe("derived-state reuse", () => {
+    function pivotModel() {
+      const { listener, calls } = makeListener(true);
+      const model = new ClientSideRowModel({ rowIdKey: "id" }, listener);
+      // Cloned: these cases edit rows in place, and ROWS is shared with every test in the file.
+      model.setRows(ROWS.map(r => ({ ...r })));
+      const region = col("region");
+      const quarter = col("quarter");
+      const revenue = col("revenue", ColumnType.NUMBER);
+      const of = (overrides: Partial<IRowModelRequestParams> = {}) => pivotRequest({
+        groupColumns: [region],
+        pivotColumns: [quarter],
+        entries: [valueEntry(revenue, AggregateType.SUM)],
+        overrides,
+      });
+      return { model, calls, region, quarter, revenue, of };
+    }
+
+    const page = (start: number, end: number) => ({ paginate: true, range: { start, end } });
+
+    it("turns a page without re-discovering the pivot or re-aggregating", () => {
+      const { model, calls, of } = pivotModel();
+      model.applyRequest(of(page(0, 1)));
+      expect(calls.discoveries).toHaveLength(1);
+      expect(calls.rows[0].map(n => n.groupKey)).toEqual(["APAC"]);
+
+      model.applyRequest(of({ ...page(1, 2), id: 2, reason: "pagination" }));
+
+      expect(calls.discoveries).toHaveLength(1);
+      const page2 = calls.rows[1];
+      expect(page2.map(n => n.groupKey)).toEqual(["EMEA"]);
+      // The reused tree still carries this page's cells...
+      expect(page2[0].aggregateValues!["pv:Q1|revenue|sum"]).toBe(20);
+      // ...and the footer still holds grand totals over every row, not just the page.
+      expect(model.getAggregateValues().get("pv:Q1|revenue|sum")).toBe(25);
+    });
+
+    it("re-sorts the buckets while keeping the discovered pivot columns", () => {
+      const { model, calls, region, of } = pivotModel();
+      model.applyRequest(of());
+      expect(calls.rows[0].map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+
+      const sortModel = new SortModel([{ col: region, key: "region", dir: "desc" }]);
+      model.applyRequest(of({ id: 2, reason: "sort", sortModel }));
+
+      // Discovery depends on the leaves' values, not their order — one discovery, two requests.
+      expect(calls.discoveries).toHaveLength(1);
+      const sorted = calls.rows[1];
+      expect(sorted.map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+      expect(sorted[0].aggregateValues!["pv:Q1|revenue|sum"]).toBe(20);
+      expect(sorted[1].aggregateValues!["pv:Q1|revenue|sum"]).toBe(5);
+    });
+
+    it("re-aggregates the footer on an aggregate-scope change, but does not re-discover", () => {
+      const { model, calls, of } = pivotModel();
+      model.applyRequest(of({ ...page(0, 1), aggregateScope: "page" }));
+      expect(model.getAggregateValues().get("pv:Q2|revenue|sum")).toBe(50);
+
+      model.applyRequest(of({ ...page(0, 1), id: 2, reason: "aggregateScope", aggregateScope: "all" }));
+
+      expect(calls.discoveries).toHaveLength(1);
+      // Pivot footers are grand totals under either scope — the point is that they survive intact.
+      expect(model.getAggregateValues().get("pv:Q2|revenue|sum")).toBe(50);
+    });
+
+    it("re-discovers when a filter changes which pivot values exist", () => {
+      const { model, calls, region, quarter, revenue, of } = pivotModel();
+      model.applyRequest(of());
+      model.applyRequest(of({
+        id: 2,
+        reason: "quickFilter",
+        quickFilter: { text: "Q1", matchMode: "multiTerm", caseSensitive: false },
+        quickFilterColumns: [region, quarter, revenue],
+      }));
+
+      expect(calls.discoveries).toHaveLength(2);
+      expect(calls.discoveries[1].roots.map(r => r.key)).toEqual(["Q1"]);
+    });
+
+    it("re-derives after a transaction, even under a reuse-eligible reason", () => {
+      const { model, calls, of } = pivotModel();
+      model.applyRequest(of(page(0, 2)));
+      model.applyTransaction({ update: [{ rowId: "2", row: { id: "2", region: "EMEA", quarter: "Q1", revenue: 100 } }] });
+
+      model.applyRequest(of({ ...page(0, 2), id: 2, reason: "pagination" }));
+
+      // Nothing derived from the node store survives a transaction: the cells and the footer both
+      // reflect the edit rather than the values the previous tree was built from.
+      expect(calls.discoveries).toHaveLength(2);
+      const emea = calls.rows[1].find(n => n.groupKey === "EMEA")!;
+      expect(emea.aggregateValues!["pv:Q1|revenue|sum"]).toBe(100);
+      expect(model.getAggregateValues().get("pv:Q1|revenue|sum")).toBe(105);
+    });
+
+    it("re-derives after a cell edit, even under a reuse-eligible reason", () => {
+      const { model, calls, revenue, of } = pivotModel();
+      model.applyRequest(of(page(0, 2)));
+      model.setCellValue("3", revenue.key, 500); // APAC Q1: 5 → 500
+
+      model.applyRequest(of({ ...page(0, 2), id: 2, reason: "pagination" }));
+
+      expect(calls.discoveries).toHaveLength(2);
+      const apac = calls.rows[1].find(n => n.groupKey === "APAC")!;
+      expect(apac.aggregateValues!["pv:Q1|revenue|sum"]).toBe(500);
+    });
+
+    it("re-discovers when the pivot configuration itself changes", () => {
+      const { model, calls, region, quarter, revenue } = pivotModel();
+      const entries = [valueEntry(revenue, AggregateType.SUM)];
+      model.applyRequest(pivotRequest({ groupColumns: [region], pivotColumns: [quarter], entries }));
+      model.applyRequest(pivotRequest({
+        groupColumns: [region],
+        pivotColumns: [quarter],
+        entries: [valueEntry(revenue, AggregateType.AVG)],
+        overrides: { id: 2, reason: "pagination" },
+      }));
+
+      expect(calls.discoveries).toHaveLength(2);
+      const emea = calls.rows[1].find(n => n.groupKey === "EMEA")!;
+      expect(emea.aggregateValues!["pv:Q1|revenue|avg"]).toBe(20);
+    });
+
+    it("still recomputes page-scoped footer aggregates for an unpivoted grid", () => {
+      const { listener } = makeListener(false);
+      const model = new ClientSideRowModel({ rowIdKey: "id" }, listener);
+      model.setRows(ROWS.map(r => ({ ...r })));
+      const revenue = col("revenue", ColumnType.NUMBER);
+      const of = (start: number, end: number, overrides: Partial<IRowModelRequestParams> = {}) => request({
+        aggregateScope: "page",
+        aggregates: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+        leafColumns: [revenue],
+        paginate: true,
+        range: { start, end },
+        ...overrides,
+      });
+      model.applyRequest(of(0, 2, { reason: "init" }));
+      expect(model.getAggregateValues().get(revenue.instanceID)).toBe(30);
+
+      model.applyRequest(of(2, 4, { id: 2, reason: "pagination" }));
+
+      // The page IS the aggregate's row set here, so this one must not be reused.
+      expect(model.getAggregateValues().get(revenue.instanceID)).toBe(45);
+    });
+  });
 });
 
 describe("buildPivotTotalRoot", () => {
