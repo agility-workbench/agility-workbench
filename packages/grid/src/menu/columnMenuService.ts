@@ -265,11 +265,11 @@ export class ColumnMenuService {
       case "aggregate.setMany":
         return this.core.dispatch({
           type: "aggregateModelSet",
-          // Default is the column menu's additive per-type toggle; the footer's function picker
-          // passes mode "replace" (one function per footer cell).
-          aggregateModels: item.payload.mode === "replace"
-            ? this.getReplacementAggregateModel(item.payload.colIDs, item.payload.agg)
-            : this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
+          aggregateModels: this.getAggregateModelFor(
+            item.payload.colIDs,
+            item.payload.agg,
+            item.payload.mode,
+          ),
         });
       case "columns.newSparklineCol":
         return this.core.dispatch({
@@ -619,6 +619,29 @@ export class ColumnMenuService {
       return model.filter(item => !(item.type === agg && targetIds.includes(item.key)));
     }
     return [...model, ...targetIds.filter(id => !has(id)).map(key => ({ key, type: agg }))];
+  }
+
+  /**
+   * The aggregate model an "aggregate.setMany" command produces.
+   *
+   * The column menu's per-type items are additive toggles — a column accumulates measures, each a
+   * distinct pivot value. That is a client-side notion: the server-side request contract carries
+   * one aggregate per column key, so a column there can only mean one thing, and the menu collapses
+   * to single-choice. The items stay toggles either way — clicking the applied type clears it —
+   * so a column's aggregate is still removable from the menu it was set in.
+   *
+   * The footer's function picker passes mode "replace": always single-choice, never toggling off
+   * (a footer cell always shows some function).
+   */
+  private getAggregateModelFor(
+    colIDs: string[],
+    agg: AggregateType | null,
+    mode?: string,
+  ): AggregateModel[] {
+    if (mode === "replace") return this.getReplacementAggregateModel(colIDs, agg);
+    if (this.core.getRowModel().getType() === "clientSide") return this.getNextAggregateModel(colIDs, agg);
+    const applied = agg != null && this.aggregateTypeApplied(colIDs, agg);
+    return this.getReplacementAggregateModel(colIDs, applied ? null : agg);
   }
 
   /** Single-choice semantics: drop every aggregate on the target columns, set the chosen type. */
