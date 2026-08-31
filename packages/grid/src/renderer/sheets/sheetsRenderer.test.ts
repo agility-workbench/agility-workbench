@@ -15,8 +15,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function makeGrid(sheetsOptions?: SheetsOptions) {
-  const core = new GridCore(measurer, { rowIdKey: "id" });
+function makeGrid(sheetsOptions?: SheetsOptions, coreOptions: object = {}) {
+  const core = new GridCore(measurer, { rowIdKey: "id", ...coreOptions });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
   core.setColumnDefsFromProps([
     { colId: "region", key: "region", label: "Region" },
@@ -157,6 +157,44 @@ describe("sheets tab strip", () => {
     // A second + skips used numbers.
     host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
     expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 2"]);
+  });
+
+  // The + button makes a PIVOT sheet, and pivot is client-side-only (see IGridCore.isPivotSupported).
+  describe("on a grid that cannot pivot", () => {
+    const addButton = (host: HTMLElement) =>
+      host.querySelector<HTMLButtonElement>(".pte-sheet-add")!;
+
+    it.each([
+      ["the server-side row model", {
+        rowModelType: "serverSide",
+        serverSideDataSource: { getRows: ({ success }: any) => success({ rows: [], totalRows: 0 }) },
+      }],
+      ["tree data", { treeData: { mode: "path", getPath: (row: any) => [row.id] } }],
+    ])("disables the + button and explains why: %s", (_label, coreOptions) => {
+      const { host } = makeGrid({}, coreOptions);
+      expect(addButton(host).disabled).toBe(true);
+      expect(addButton(host).title).toBe("Pivot sheets need the client-side row model without tree data");
+      expect(addButton(host).getAttribute("aria-label")).toBe(addButton(host).title);
+    });
+
+    it("adds no sheet and destroys no state if the click lands anyway", () => {
+      const changes: GridSheet[][] = [];
+      const { core, host } = makeGrid({ onChange: next => changes.push(next) }, {
+        rowModelType: "serverSide",
+        serverSideDataSource: { getRows: ({ success }: any) => success({ rows: [], totalRows: 0 }) },
+      });
+      core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+      core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+
+      addButton(host).click();
+
+      expect(tabNames(host)).toEqual(["Data"]);
+      expect(changes).toEqual([]);
+      // The roles the sheet was configured with survive — the old failure wiped them to set up a
+      // pivot the core then refused, leaving a dead tab behind.
+      expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+      expect(core.getAggregateModel()).toHaveLength(1);
+    });
   });
 
   it("does not carry a generated-pivot sort onto the new sheet", () => {

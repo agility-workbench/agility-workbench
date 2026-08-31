@@ -64,8 +64,17 @@ export class SheetsRenderer {
     this.addButton.type = "button";
     this.addButton.className = "pte-sheet-add";
     this.addButton.textContent = "+";
-    this.addButton.setAttribute("aria-label", "Add pivot sheet");
-    this.addButton.title = "Add pivot sheet";
+    // A new sheet is a PIVOT sheet, so on a grid that cannot pivot the button has nothing to
+    // offer — and pressing it would clear the roles of the sheet it was pressed on to set up a
+    // pivot the core then refuses. Both reasons are fixed for the life of the grid, so this is
+    // settled once. Disabled rather than hidden: the tooltip is where the "why" lives.
+    const pivotable = this.params.core.isPivotSupported();
+    this.addButton.disabled = !pivotable;
+    const label = pivotable
+      ? "Add pivot sheet"
+      : "Pivot sheets need the client-side row model without tree data";
+    this.addButton.setAttribute("aria-label", label);
+    this.addButton.title = label;
     this.addButton.addEventListener("click", () => this.addPivotSheet());
 
     this.params.host.append(this.scrollWrap, this.addButton);
@@ -179,7 +188,7 @@ export class SheetsRenderer {
    * be configured. Columns and filters carry over from the sheet the user pressed + on.
    */
   private addPivotSheet(): void {
-    if (!this.isEnabled()) return;
+    if (!this.isEnabled() || !this.params.core.isPivotSupported()) return;
     const source = this.params.api.captureViewState();
     const state: GridViewState = {
       ...source,

@@ -515,7 +515,7 @@ export class ColumnMenuService {
     pivotable: boolean,
     pluralize: (singular: string, plural?: string) => string,
   ): MenuItem[] {
-    if (this.core.getRowModel().getType() !== "clientSide" || this.core.getOptions().treeData) return [];
+    if (!this.core.isPivotSupported()) return [];
     const pivotMode = this.core.getPivotMode();
     const pivotColumns = this.core.getPivotColumns();
     const pivotIds = pivotColumns.map(col => col.instanceID);

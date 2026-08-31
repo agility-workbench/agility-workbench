@@ -1277,13 +1277,29 @@ export class GridCore implements IGridCore {
    * Filters and the quick filter deliberately stay put across the toggle: they select source rows,
    * which means the same thing in both modes.
    */
-  setPivotMode(on: boolean): void {
-    if (this.options.treeData) {
-      console.warn("Pivot mode cannot be combined with tree data.");
-      return;
+  /**
+   * Why this grid cannot pivot, or null when it can. Pivot is a client-side feature: the
+   * server-side row model has no pivot handling at all, and tree data owns the row hierarchy that
+   * pivot would take over. Both are fixed for the life of the grid, so callers can treat the
+   * answer as static — the UI uses it to hide or disable pivot affordances rather than let users
+   * reach a refusal (see IGridCore.isPivotSupported).
+   */
+  private pivotUnsupportedReason(): string | null {
+    if (this.options.treeData) return "Pivot mode cannot be combined with tree data.";
+    if (this.rowModel.getType() !== "clientSide") {
+      return "Pivot mode is not supported on the server-side row model yet.";
     }
-    if (this.rowModel.getType() === "serverSide") {
-      console.warn("Pivot mode is not supported on the server-side row model yet.");
+    return null;
+  }
+
+  isPivotSupported(): boolean {
+    return this.pivotUnsupportedReason() == null;
+  }
+
+  setPivotMode(on: boolean): void {
+    const unsupported = this.pivotUnsupportedReason();
+    if (unsupported) {
+      console.warn(unsupported);
       return;
     }
     if (on === this.pivotMode) return;
