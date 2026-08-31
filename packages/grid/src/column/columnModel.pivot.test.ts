@@ -144,6 +144,26 @@ describe("ColumnModel pivot display", () => {
     expect(model.getPivotSourceLeaves().map(c => c.colId)).toEqual(["region", "quarter", "revenue"]);
   });
 
+  it("reports only visible source leaves, excluding columnGroupShow-collapsed ones", () => {
+    // `memo` is shown only while the group is open, and the group starts closed.
+    const model = makeModel([
+      ...USER_DEFS,
+      {
+        colId: "detail",
+        label: "Detail",
+        children: [
+          { colId: "notes", key: "notes", label: "Notes" },
+          { colId: "memo", key: "memo", label: "Memo", columnGroupShow: "open" },
+        ],
+      },
+    ]);
+    model.setPivotResultColumns(defsFor(model, ["Q1"]));
+
+    expect(model.getPivotSourceColumns().map(c => c.colId)).toEqual(["region", "quarter", "revenue", "detail"]);
+    // Quick filter searches these — a row must not match on text no expanded group is showing.
+    expect(model.getPivotSourceLeaves().map(c => c.colId)).toEqual(["region", "quarter", "revenue", "notes"]);
+  });
+
   it("reuses generated instances by colId across re-discoveries, keeping runtime state", () => {
     const model = makeModel();
     model.setPivotResultColumns(defsFor(model, ["Q1", "Q2"]));

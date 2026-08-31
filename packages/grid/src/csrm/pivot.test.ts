@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildPivotTotalRoot,
   createPivotValueStamper,
@@ -532,6 +532,28 @@ describe("ClientSideRowModel pivot mode", () => {
     // True grand averages over source rows — not averages of the per-group averages.
     expect(totals.get("pv:Q1|revenue|avg")).toBe(12.5);
     expect(totals.get("pv:Q2|revenue|avg")).toBe(25);
+  });
+
+  it("takes the ungrouped footer grand totals from the Total root instead of re-aggregating", () => {
+    const { listener } = makeListener(true);
+    const model = new ClientSideRowModel({ rowIdKey: "id" }, listener);
+    model.setRows(ROWS);
+    const quarter = col("quarter");
+    const revenue = col("revenue", ColumnType.NUMBER);
+    const spy = vi.spyOn(AggregateCalculator.prototype, "calculateAggregate");
+    model.applyRequest(pivotRequest({
+      pivotColumns: [quarter],
+      entries: [valueEntry(revenue, AggregateType.SUM)],
+    }));
+    const aggregateCalls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    const totals = model.getAggregateValues();
+    expect(totals.get("pv:Q1|revenue|sum")).toBe(25);
+    expect(totals.get("pv:Q2|revenue|sum")).toBe(50);
+    // The Total root's values ARE these numbers, so one aggregate per generated cell — not two.
+    expect(model.getRowNode(PIVOT_TOTAL_GROUP_ID)!.aggregateValues!["pv:Q1|revenue|sum"]).toBe(25);
+    expect(aggregateCalls).toBe(2);
   });
 
   it("quick-filters through the supplied source columns, not the generated leaves", () => {

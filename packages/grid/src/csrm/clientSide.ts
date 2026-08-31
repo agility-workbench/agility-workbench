@@ -588,7 +588,11 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     // treated as "all": the page holds group rows, not a leaf subset.
     if (this.pivot) {
       if (!this.pivotStamper) return;
-      const stamped = this.pivotStamper(this.sortedIdx.map(i => this.nodes[i]));
+      // Without row groups the synthesized Total root has already aggregated exactly these rows
+      // (buildPivotTotalRoot's values ARE the grand totals) — reuse them instead of stamping every
+      // filtered leaf a second time.
+      const total = this.groupColumns.length === 0 ? this.groupRoots[0]?.aggregateValues : undefined;
+      const stamped = total ?? this.pivotStamper(this.sortedIdx.map(i => this.nodes[i]));
       this.aggregateValues = new Map(Object.entries(stamped));
       return;
     }

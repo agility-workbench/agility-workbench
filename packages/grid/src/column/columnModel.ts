@@ -725,17 +725,13 @@ export class ColumnModel implements IColumnModel {
     return this.pivotSourceStash.slice();
   }
 
-  /** Visible leaf descendants of the stashed source columns — what quick filter searches. */
+  /**
+   * Visible leaf descendants of the stashed source columns — what quick filter searches. Visible
+   * means what the user can actually see: `hidden` *and* the `columnGroupShow` collapse state,
+   * so a quick filter cannot match a row on a value no expanded group is showing.
+   */
   getPivotSourceLeaves(): Column[] {
-    const out: Column[] = [];
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        if (col.children.length > 0) walk(col.children);
-        else if (!col.hidden) out.push(col);
-      }
-    };
-    walk(this.pivotSourceStash);
-    return out;
+    return this.pivotSourceStash.flatMap(col => col.getVisibleLeaves());
   }
 
   /** Current generated pivot column roots (empty when pivot display is off). */
