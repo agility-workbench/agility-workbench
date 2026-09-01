@@ -77,6 +77,9 @@ export class ColumnPanelRenderer {
   private triggerTooltipDisposer: (() => void) | null = null;
   private listTooltipDisposers: Array<() => void> = [];
 
+  // Whether the panel body has fallen behind the grid while closed — see renderList.
+  private listStale = false;
+
   private roleUnsubscribes: Unsubscribe[] = [];
 
   constructor(private params: ColumnPanelRendererParams) {
@@ -119,7 +122,8 @@ export class ColumnPanelRenderer {
     if (this.enabled && !wasEnabled) {
       this.open = resolved.defaultOpen;
       this.captureInitialState(false);
-      this.renderList();
+      if (this.open) this.renderListNow();
+      else this.listStale = true;
     }
     if (!this.enabled) this.open = false;
     if (this.enabled) this.mountTrigger(resolved.trigger);
@@ -226,7 +230,9 @@ export class ColumnPanelRenderer {
     this.open = open;
     this.applyOpenState();
     if (open) {
-      this.renderList();
+      // Only if it actually fell behind: opening and closing without touching the grid should not
+      // pay for a rebuild.
+      if (this.listStale) this.renderListNow();
       this.searchInput.focus();
     } else {
       const focusTarget = this.trigger === "rail" ? this.railButton : this.triggerButton;
@@ -320,7 +326,25 @@ export class ColumnPanelRenderer {
     return state.pinned === "left" ? "left" : state.pinned === "right" ? "right" : "center";
   }
 
+  /**
+   * Request a rebuild of the panel body.
+   *
+   * A rebuild is a full teardown of the list DOM, and the grid asks for one on every
+   * `columnsChanged` / `aggregateChanged` / `pivotChanged` — three per pivot mutation alone. While
+   * the panel is closed none of that is observable, so it is recorded and settled on open.
+   */
   private renderList(): void {
+    if (!this.enabled) return;
+    if (!this.open) {
+      this.listStale = true;
+      return;
+    }
+    this.renderListNow();
+  }
+
+  /** Rebuild the panel body now, settling any rebuild deferred while it was closed. */
+  private renderListNow(): void {
+    this.listStale = false;
     if (!this.enabled) return;
     this.disposeListTooltips();
     this.list.replaceChildren();

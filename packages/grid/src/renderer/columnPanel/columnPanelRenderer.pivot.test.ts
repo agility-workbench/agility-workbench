@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GridCore } from "../../core/core";
 import { AggregateType } from "../../interfaces/aggregate";
 import { ColumnType } from "../../interfaces/column";
@@ -15,7 +15,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function makeGrid() {
+function makeGrid(opts: { open?: boolean } = {}) {
   const core = new GridCore(measurer, { rowIdKey: "id" });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
   core.setColumnDefsFromProps([
@@ -48,6 +48,9 @@ function makeGrid() {
     menuCoordinator,
     menuRenderer,
   });
+  // The panel body only tracks the grid while it is open (a closed panel defers its rebuild), so
+  // these tests, which read that DOM, open it.
+  if (opts.open !== false) renderer.openPanel();
   return { core, root, renderer };
 }
 
@@ -125,6 +128,45 @@ describe("column panel role chips", () => {
       { key: instanceId(core, "revenue"), type: AggregateType.SUM },
       { key: instanceId(core, "revenue"), type: AggregateType.AVG },
     ]);
+  });
+});
+
+// A rebuild tears down and re-creates the whole panel body, and the grid asks for one on each of
+// columnsChanged / aggregateChanged / pivotChanged — three per pivot mutation. None of it is
+// observable while the panel is closed.
+describe("column panel rebuild scheduling", () => {
+  const spyRebuilds = () => vi.spyOn(ColumnPanelRenderer.prototype as any, "renderListNow");
+
+  const closeButton = (root: HTMLElement) =>
+    root.querySelector<HTMLButtonElement>(".pte-column-panel-close")!;
+
+  it("does not rebuild while closed, and settles once on open", () => {
+    const spy = spyRebuilds();
+    const { core, root, renderer } = makeGrid({ open: false });
+    spy.mockClear();
+
+    setRoles(core, { groups: ["region"], values: [["revenue", AggregateType.SUM]], pivots: ["quarter"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(spy).not.toHaveBeenCalled();
+
+    renderer.openPanel();
+    expect(spy).toHaveBeenCalledTimes(1);
+    // One rebuild, and the panel shows the state it missed.
+    expect(wellLabels(root, "group")).toEqual(["Region"]);
+    expect(wellLabels(root, "value")).toEqual(["Revenue — Sum"]);
+    spy.mockRestore();
+  });
+
+  it("does not rebuild when reopened with nothing changed in between", () => {
+    const { core, root, renderer } = makeGrid();
+    setRoles(core, { groups: ["region"] });
+    const spy = spyRebuilds();
+
+    closeButton(root).click();
+    renderer.openPanel();
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 
