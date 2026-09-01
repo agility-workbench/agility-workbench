@@ -367,6 +367,68 @@ describe("GridCore pivot state layers", () => {
   });
 });
 
+// The panel's Values well renders one chip per aggregate entry, labelled by looking the entry's
+// instanceID up in the column model — so an entry that outlives its column shows a raw UUID and
+// its remove button does nothing (columnPanelRenderer's `if (col)`). The invariant that prevents
+// that is simply: every entry in a role model resolves to a live column.
+describe("column-defs swap while pivoted", () => {
+  const rolesResolve = (core: GridCore) =>
+    core.getAggregateModel().every(entry => core.getColumnModel().getById(entry.key) != null);
+
+  it("drops roles whose columns the new defs removed, leaving nothing dangling", () => {
+    const core = makeGrid();
+    enterPivot(core);
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+
+    // Every role's column disappears at once.
+    core.setColumnDefsFromProps([
+      { colId: "cost", key: "cost", label: "Cost", type: ColumnType.NUMBER },
+    ]);
+
+    expect(core.getAggregateModel()).toEqual([]);
+    expect(rolesResolve(core)).toBe(true);
+    expect(core.getRowGroupColumns()).toEqual([]);
+    expect(core.getPivotColumns()).toEqual([]);
+    // …and the generated columns go with the measures that produced them.
+    expect(leafColIds(core)).toEqual(["__pte_group__"]);
+  });
+
+  it("clears the generated columns of a measure the new defs removed", () => {
+    const core = makeGrid();
+    enterPivot(core);
+
+    // Only the measure goes; the group and pivot columns stay.
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region", type: ColumnType.STRING },
+      { colId: "quarter", key: "quarter", label: "Quarter", type: ColumnType.STRING },
+    ]);
+
+    expect(core.getAggregateModel()).toEqual([]);
+    expect(rolesResolve(core)).toBe(true);
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+    expect(core.getPivotColumns().map(col => col.colId)).toEqual(["quarter"]);
+    expect(leafColIds(core)).toEqual(["__pte_group__"]);
+  });
+
+  it("keeps every role, and its generated columns, when the defs still carry them", () => {
+    const core = makeGrid();
+    enterPivot(core);
+    const revenueBefore = core.getColumnModel().getByColId("revenue")!.instanceID;
+
+    core.setColumnDefsFromProps([
+      ...COLUMN_DEFS.map(d => ({ ...d, label: `${d.label}!` })),
+      { colId: "cost", key: "cost", label: "Cost", type: ColumnType.NUMBER },
+    ]);
+
+    // Instances are reused from the stash, so the instanceID-keyed models still point at them.
+    expect(core.getAggregateModel()).toEqual([{ key: revenueBefore, type: "sum" }]);
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+    expect(core.getPivotColumns().map(col => col.colId)).toEqual(["quarter"]);
+    expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum", "pv:Q2|revenue|sum"]);
+    expect(core.getColumnModel().getByColId("revenue")!.label).toBe("Revenue!");
+  });
+});
+
 describe("GridAPI pivot view state", () => {
   it("round-trips pivot mode, pivot columns, and the aggregate model", () => {
     const core = makeGrid();

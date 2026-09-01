@@ -163,6 +163,10 @@ export class ColumnModel implements IColumnModel {
       // While pivoted the user columns live in the stash; the visible pivot layout stays until
       // the follow-up re-derive reconciles the generated columns against the new sources. Lookup
       // maps refresh immediately so group/aggregate/filter reconciliation resolves new instances.
+      // The OUTGOING stash has to come out first: those reconciles run within this same defs swap,
+      // and an instance left behind in the lookups reads to them as a column that still exists, so
+      // a role on a column the new defs dropped would survive pointing at a dead instance.
+      this.unregisterPivotStashLookups();
       this.pivotSourceStash = built;
       this.registerPivotStashLookups();
       return;
@@ -270,6 +274,21 @@ export class ColumnModel implements IColumnModel {
     // The stashed source columns stay resolvable (by instanceID / colId / key) while the pivot
     // layout is displayed — the group model, aggregate model, and filters all address them.
     if (this.pivotDisplayActive) this.registerPivotStashLookups();
+  }
+
+  // Mirror of registerPivotStashLookups: drop the stashed source columns from the lookups. Entries
+  // are removed only when they still point at the instance being retired, so a re-registration that
+  // already claimed the id (same colId in the incoming defs) is never clobbered.
+  private unregisterPivotStashLookups(): void {
+    const walk = (cols: Column[]) => {
+      for (const col of cols) {
+        if (this.columnsById.get(col.instanceID) === col) this.columnsById.delete(col.instanceID);
+        if (this.columnsByColId.get(col.colId) === col) this.columnsByColId.delete(col.colId);
+        if (this.columnsByKey.get(col.key) === col) this.columnsByKey.delete(col.key);
+        if (col.children.length > 0) walk(col.children);
+      }
+    };
+    walk(this.pivotSourceStash);
   }
 
   private registerPivotStashLookups(): void {

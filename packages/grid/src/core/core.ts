@@ -454,6 +454,9 @@ export class GridCore implements IGridCore {
     const activeComparatorChanged = this.sorts.items.some(
       item => sortedComparatorSnapshot.get(item.col.instanceID) !== item.col.userComparator,
     );
+    // Whether the aggregate request below will fire — the pivot fallback branch reads it, since a
+    // request of any reason re-derives the generated columns.
+    const aggregatesRequested = this.aggregates.length > 0;
     // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
     // Dropping a filtered column changes the effective row set. A "filter" request re-runs both
     // filtering and sorting; a "sort" request deliberately skips filtering, which previously left
@@ -468,8 +471,20 @@ export class GridCore implements IGridCore {
       if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (seededSort || activeComparatorChanged) {
       this.applyRowModelRequest(() => this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    } else if (this.pivotMode && !aggregatesRequested) {
+      // A defs swap replaces the columns the generated pivot layout is derived FROM, so the layout
+      // has to be rebuilt against the new sources — otherwise a measure the new defs dropped keeps
+      // its generated column in the header. Every derive runs discovery, so the branches above and
+      // the aggregate request below already cover it; this is the case where nothing else fires
+      // one. The page is kept: nothing in a defs swap changes the row set.
+      this.applyRowModelRequest(() => this.createRowModelRequest(
+        "pivot",
+        { start: this.pageStartIdx, end: this.pageEndIdx },
+        this.getInitialServerSideLoadRange(),
+      ));
+      this.autosizeColumns();
     }
-    if (this.aggregates.length > 0) {
+    if (aggregatesRequested) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
     this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged, filtersDropped);
