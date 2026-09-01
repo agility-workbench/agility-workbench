@@ -308,10 +308,19 @@ export type GridEventPivotChangedParams = {
   pivotColumns: ColId[];
 };
 
-/** A pivot discovery produced more generated leaf columns than `maxPivotColumns`; the excess was
- * truncated deterministically (first columns in header order survive). */
+/**
+ * The truncation state of the generated pivot columns changed: a discovery started producing more
+ * generated leaf columns than `maxPivotColumns` (the excess is truncated deterministically, first
+ * columns in header order surviving), the number dropped changed, or truncation ended.
+ *
+ * Latched — it fires on change, not on every re-derivation, so it drives a notice directly: show
+ * it while `limited`, update the count, take it down when `limited` turns false. Leaving pivot
+ * mode reports `limited: false` too, since the generated columns go with it.
+ */
 export type GridEventPivotColumnLimitReachedParams = {
-  /** How many generated leaf columns were dropped. */
+  /** Whether the generated columns are currently truncated. False = back under the limit. */
+  limited: boolean;
+  /** How many generated leaf columns were dropped. 0 when `limited` is false. */
   truncatedColumnCount: number;
   maxPivotColumns: number;
 };

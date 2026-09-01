@@ -1243,7 +1243,8 @@ export interface GridOptions {
   /**
    * Cap on generated pivot leaf columns (default 200). A discovery past the cap truncates
    * deterministically — the first columns in header order survive — and fires
-   * `pivotColumnLimitReached`; never a hard failure.
+   * `pivotColumnLimitReached`; never a hard failure. That event is latched: it reports the start
+   * of truncation, any change in how much is dropped, and the return under the cap.
    */
   maxPivotColumns?: number;
   /**

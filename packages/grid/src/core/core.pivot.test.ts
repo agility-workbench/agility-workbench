@@ -165,8 +165,67 @@ describe("GridCore pivot mode", () => {
     core.on("pivotColumnLimitReached", e => limitEvents.push(e));
     enterPivot(core);
     expect(leafColIds(core)).toEqual(["__pte_group__", "pv:Q1|revenue|sum"]);
-    expect(limitEvents.length).toBeGreaterThan(0);
-    expect(limitEvents[0]).toMatchObject({ truncatedColumnCount: 1, maxPivotColumns: 1 });
+    expect(limitEvents).toHaveLength(1);
+    expect(limitEvents[0]).toMatchObject({ limited: true, truncatedColumnCount: 1, maxPivotColumns: 1 });
+  });
+
+  // The event is the only signal an app has for a "columns hidden" notice, so it has to say when
+  // truncation starts, when the number moves, and when it is over — and stay quiet otherwise.
+  describe("pivotColumnLimitReached is latched", () => {
+    const listen = (c: GridCore) => {
+      const events: any[] = [];
+      c.on("pivotColumnLimitReached", e => events.push(e));
+      return events;
+    };
+
+    it("stays quiet across re-derivations that do not change the truncation", () => {
+      core = makeGrid({ maxPivotColumns: 1 });
+      enterPivot(core);
+      const events = listen(core);
+
+      core.setQuickFilter("EMEA");
+      core.setQuickFilter("");
+      core.dispatch({ type: "sortModelSet", sortItems: [{ key: "region", dir: "desc" }] });
+      new GridAPI(core).setCellValue({ rowId: "1", colId: "revenue" }, 11);
+
+      // Every one of those re-derived the pivot; none of them changed what is hidden.
+      expect(events).toEqual([]);
+    });
+
+    it("reports the count changing while still over the limit", () => {
+      core = makeGrid({ maxPivotColumns: 1 });
+      enterPivot(core);
+      const events = listen(core);
+
+      // A third quarter appears: two generated columns dropped now instead of one.
+      core.applyTransaction({ add: [{ id: "9", region: "EMEA", quarter: "Q3", revenue: 7 }] });
+
+      expect(events).toEqual([{ limited: true, truncatedColumnCount: 2, maxPivotColumns: 1 }]);
+    });
+
+    it("reports the return under the limit exactly once", () => {
+      core = makeGrid({ maxPivotColumns: 1 });
+      enterPivot(core);
+      const events = listen(core);
+
+      // Only Q1 rows survive, so there is nothing left to truncate.
+      core.setQuickFilter("Q1");
+      expect(events).toEqual([{ limited: false, truncatedColumnCount: 0, maxPivotColumns: 1 }]);
+
+      core.setQuickFilter("Q1 EMEA");
+      expect(events).toHaveLength(1);
+    });
+
+    it("reports cleared when pivot mode turns off while truncated", () => {
+      core = makeGrid({ maxPivotColumns: 1 });
+      enterPivot(core);
+      const events = listen(core);
+
+      core.dispatch({ type: "pivotModeSet", on: false });
+
+      // The generated columns are gone with the mode; no discovery runs to say so on its own.
+      expect(events).toEqual([{ limited: false, truncatedColumnCount: 0, maxPivotColumns: 1 }]);
+    });
   });
 
   it("keeps quick filter searching source columns while pivoted", () => {

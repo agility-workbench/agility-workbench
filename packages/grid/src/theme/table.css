@@ -2251,6 +2251,9 @@
 }
 
 .pte-sheet-rename-input {
+  /* A direct child of the flex tab strip now (it replaces the tab button during a rename), so it
+     needs the same no-shrink sizing the tabs carry. */
+  flex: 0 0 auto;
   height: 28px;
   width: 120px;
   border: 1px solid var(--pte-selected-border-color);

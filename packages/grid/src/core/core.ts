@@ -138,6 +138,8 @@ export class GridCore implements IGridCore {
   private pivotColumns: Column[] = [];
   // Guards one-time seeding of the initial pivot options once columns exist (like initialSortSeeded).
   private pivotSeeded = false;
+  // Last reported generated-column truncation (0 = not truncated) — see setPivotColumnLimit.
+  private pivotLimitTruncated = 0;
   // Pivot mode is a state LAYER, not a lens over the current state: the roles assigned while
   // pivoted (row groups, pivot columns, values) describe the pivot view alone. So entering stashes
   // the flat grid's state here and exiting restores it, while exiting stashes the pivot view's own
@@ -1311,6 +1313,22 @@ export class GridCore implements IGridCore {
     return this.pivotUnsupportedReason() == null;
   }
 
+  /**
+   * Report the generated columns' truncation state, latched: every derive runs a discovery, so
+   * emitting unconditionally would repeat an identical payload on every edit and every filter,
+   * and an app showing a "columns hidden" notice would never learn when to take it down. Firing
+   * on change alone makes the event the whole story — it starts, it moves, it ends.
+   */
+  private setPivotColumnLimit(truncatedColumnCount: number): void {
+    if (truncatedColumnCount === this.pivotLimitTruncated) return;
+    this.pivotLimitTruncated = truncatedColumnCount;
+    this.emit("pivotColumnLimitReached", {
+      limited: truncatedColumnCount > 0,
+      truncatedColumnCount,
+      maxPivotColumns: this.options.maxPivotColumns,
+    });
+  }
+
   setPivotMode(on: boolean): void {
     const unsupported = this.pivotUnsupportedReason();
     if (unsupported) {
@@ -1336,6 +1354,9 @@ export class GridCore implements IGridCore {
       this.restorePivotStateLayer(this.basePivotLayer ?? EMPTY_PIVOT_LAYER);
       this.basePivotLayer = null;
       this.columnModel.setRowGroupColumns(this.groupColumns.slice(), this.options.groupDisplayType, false);
+      // The generated columns leave with the mode, so any truncation of them is over. Nothing else
+      // reports it: without a discovery to run, onPivotResult never fires on the way out.
+      this.setPivotColumnLimit(0);
       this.clearSelectionForColumnChange();
       // Rebuild the row pool / header for the restored column set BEFORE the repaint. Entering
       // pivot needs no such emit here: the layout swaps mid-request via onPivotResult, which
@@ -3632,12 +3653,7 @@ export class GridCore implements IGridCore {
       // first, so cells exist for every generated leaf.
       this.emit("columnsChanged", { reason: "pivot" });
     }
-    if (discovery.truncatedLeafCount > 0) {
-      this.emit("pivotColumnLimitReached", {
-        truncatedColumnCount: discovery.truncatedLeafCount,
-        maxPivotColumns: this.options.maxPivotColumns,
-      });
-    }
+    this.setPivotColumnLimit(discovery.truncatedLeafCount);
     return resolution;
   }
 
