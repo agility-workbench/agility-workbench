@@ -247,6 +247,26 @@ describe("sheets tab strip", () => {
     expect(changes.at(-1)!.map(sheet => sheet.name)).toEqual(["Orders"]);
   });
 
+  it("replaces the tab with the input while renaming instead of nesting them", () => {
+    const { host, renderer } = makeGrid({});
+    tabs(host)[0].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    const input = host.querySelector<HTMLInputElement>(".pte-sheet-rename-input")!;
+
+    // A control inside a control is invalid HTML: browsers may route the click and the focus to
+    // the outer button, which can leave the rename stuck open.
+    expect(input.closest("button")).toBeNull();
+    expect(input.parentElement!.getAttribute("role")).toBe("tablist");
+    expect(tabs(host)).toHaveLength(0);
+    // The input stands in for the tab, id included — the grid root labels itself by that id, so it
+    // has to keep resolving to something rendered.
+    expect(host.querySelector(`[id="${renderer.getActiveTabElementId()}"]`)).toBe(input);
+
+    input.value = "Orders";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(tabNames(host)).toEqual(["Orders"]);
+    expect(activeTab(host)!.id).toBe(renderer.getActiveTabElementId());
+  });
+
   it("cancels a rename on Escape without reporting", () => {
     const changes: GridSheet[][] = [];
     const { host } = makeGrid({ onChange: next => changes.push(next) });

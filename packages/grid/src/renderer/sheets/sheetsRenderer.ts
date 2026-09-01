@@ -292,26 +292,12 @@ export class SheetsRenderer {
     }
 
     for (const sheet of this.sheets) {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.className = "pte-sheet-tab";
-      tab.id = this.tabElementId(sheet.id);
-      tab.setAttribute("role", "tab");
-      const active = sheet.id === this.activeSheetId;
-      tab.setAttribute("aria-selected", String(active));
-      // Roving tabindex: the strip is one tab stop; arrows move within it.
-      tab.tabIndex = active ? 0 : -1;
-      tab.dataset.sheetId = sheet.id;
-
-      if (this.renamingSheetId === sheet.id) {
-        tab.appendChild(this.buildRenameInput(sheet));
-      } else {
-        tab.textContent = sheet.name;
-        tab.addEventListener("click", () => this.activateSheet(sheet.id));
-        tab.addEventListener("dblclick", () => this.startRename(sheet.id));
-        tab.addEventListener("contextmenu", (e) => this.openTabMenu(e, sheet.id));
-      }
-      this.tablist.appendChild(tab);
+      // A tab being renamed IS the text field — the input replaces the button rather than nesting
+      // inside it. A control inside a control is invalid HTML, and browsers are free to route the
+      // click and the focus to the outer button, which is what could leave a rename stuck open.
+      this.tablist.appendChild(
+        this.renamingSheetId === sheet.id ? this.buildRenameInput(sheet) : this.buildTab(sheet),
+      );
     }
 
     if (hadFocus && this.renamingSheetId == null) {
@@ -321,6 +307,24 @@ export class SheetsRenderer {
       this.tablist.querySelector<HTMLInputElement>(".pte-sheet-rename-input")?.focus();
     }
     this.updateOverflowFades();
+  }
+
+  private buildTab(sheet: GridSheet): HTMLButtonElement {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "pte-sheet-tab";
+    tab.id = this.tabElementId(sheet.id);
+    tab.setAttribute("role", "tab");
+    const active = sheet.id === this.activeSheetId;
+    tab.setAttribute("aria-selected", String(active));
+    // Roving tabindex: the strip is one tab stop; arrows move within it.
+    tab.tabIndex = active ? 0 : -1;
+    tab.dataset.sheetId = sheet.id;
+    tab.textContent = sheet.name;
+    tab.addEventListener("click", () => this.activateSheet(sheet.id));
+    tab.addEventListener("dblclick", () => this.startRename(sheet.id));
+    tab.addEventListener("contextmenu", (e) => this.openTabMenu(e, sheet.id));
+    return tab;
   }
 
   private startRename(sheetId: string): void {
@@ -335,6 +339,10 @@ export class SheetsRenderer {
     input.className = "pte-sheet-rename-input";
     input.value = sheet.name;
     input.setAttribute("aria-label", `Rename sheet ${sheet.name}`);
+    // The input stands in for the tab, so it carries the tab's identity: `focusTab` addresses it,
+    // and the grid root's aria-labelledby points at this id while the active sheet is renamed.
+    input.id = this.tabElementId(sheet.id);
+    input.dataset.sheetId = sheet.id;
     let done = false;
     const finish = (commit: boolean) => {
       if (done) return;
