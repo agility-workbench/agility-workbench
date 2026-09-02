@@ -22,6 +22,7 @@ import {
   GridEventCellsChangedParams,
   GridEventPaginationChangedParams,
   GridEventViewportChangedParams,
+  Unsubscribe,
 } from "../events/events";
 import { MenuCoordinator } from "../menu/coordinator";
 import { MenuRenderer } from "./menuRenderer";
@@ -70,6 +71,7 @@ import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterRestoreState } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterOptions } from "../interfaces/gridOptions";
 import { PaginationRenderer } from "./pagination/renderer";
+import { SheetsRenderer } from "./sheets/sheetsRenderer";
 import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
@@ -110,6 +112,9 @@ export class GridRenderer {
   _actionFrameRenderer: ActionFrameRenderer;
   _headerRenderer: HeaderRenderer;
   _paginationRenderer: PaginationRenderer;
+  _sheetsRenderer!: SheetsRenderer;
+  private _pivotHintEl!: HTMLDivElement;
+  private _pivotHintDisposers: Unsubscribe[] = [];
   _bodyRowPoolRenderer: BodyRowPoolRenderer;
   _bodyViewportRenderer: BodyViewportRenderer;
   _bodyWindowRenderer: BodyWindowRenderer;
@@ -526,6 +531,7 @@ export class GridRenderer {
       setTooltipOptions: (options) => this.setTooltipOptions(options),
       setColumnPanelOptions: (options) => this.setColumnPanelOptions(options),
       setSavedViewsOptions: (options) => this.setSavedViewsOptions(options),
+      setSheetsOptions: (options) => this.setSheetsOptions(options),
       setRowSelectionOptions: (options) => this.setRowSelectionOptions(options),
       setPinnedRowOptions: (options) => this.setPinnedRowOptions(options),
       togglePagination: (enabled) => this.togglePagination(enabled),
@@ -787,6 +793,7 @@ export class GridRenderer {
       root: this.root,
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       setAggregateScope: (scope) => this._aggregateModelController.setAggregateScope(scope),
+      hasSheetTabs: () => this._sheetsRenderer?.isEnabled() === true,
     });
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
@@ -827,6 +834,34 @@ export class GridRenderer {
       exportCSV: options => this._exportRenderer.exportCSV(options),
       exportExcel: options => this._exportRenderer.exportExcel(options),
     });
+    // Sheet tabs live in the footer's left zone; the pagination renderer owns the footer element
+    // and keeps that zone intact across its own rebuilds.
+    this._sheetsRenderer = new SheetsRenderer({
+      core: this.core,
+      api: this.api,
+      host: this._paginationRenderer.getTabsZone(),
+      menuRenderer: this._menuRenderer,
+      options: this.core.getOptions().sheets,
+      onEnabledChange: () => this._paginationRenderer.refreshVisibility(),
+      onActiveTabChange: () => this._applyGridLabel(),
+    });
+    // Pivot-mode hint for the "no value columns" empty state: pivot on, but no aggregates chosen,
+    // so the header shows only the group column. Points at the action that adds values.
+    this._pivotHintEl = div("pte-header-pivot-hint");
+    this._pivotHintEl.textContent = this.core.options.pivotNoValuesMessage;
+    headerRefs.wrapper.appendChild(this._pivotHintEl);
+    const updatePivotHint = () => {
+      this._pivotHintEl.classList.toggle(
+        "visible",
+        this.core.getPivotMode() && this.core.getAggregateModel().length === 0,
+      );
+    };
+    updatePivotHint();
+    this._pivotHintDisposers = [
+      this.core.on("pivotChanged", updatePivotHint),
+      this.core.on("aggregateChanged", updatePivotHint),
+    ];
+
     // This zero-height host participates in the root's column flow immediately after the header.
     // Its absolutely-positioned child can overlay the rows below the header without measuring
     // detached DOM or being clipped by the header.
@@ -850,6 +885,8 @@ export class GridRenderer {
         });
       },
       toolbar: this._toolbarRenderer,
+      menuCoordinator,
+      menuRenderer: this._menuRenderer,
     });
     menuCoordinator.setColumnPanelTarget({
       openColumnPanel: () => this._columnPanelRenderer.openPanel(),
@@ -1026,6 +1063,11 @@ export class GridRenderer {
     return restoreFocus;
   }
 
+  setSheetsOptions(options: GridOptions["sheets"]) {
+    this._sheetsRenderer.setOptions(options);
+    this._paginationRenderer.refreshVisibility();
+  }
+
   setSavedViewsOptions(options: SavedViewsOptions | undefined) {
     (this.core.options as { savedViews: SavedViewsOptions | undefined }).savedViews = options;
     this._toolbarRenderer.setSavedViewsOptions(options);
@@ -1157,6 +1199,26 @@ export class GridRenderer {
         label: "Quick filter",
         when: () => this._quickFilterWidget != null,
         run: () => this._quickFilterWidget!.show(),
+      },
+      // Spreadsheet-convention sheet switching. Only live while the tab strip is enabled (the
+      // `when` gate follows live option changes); the body cursor's paging bindings deliberately
+      // leave Mod+PageUp/PageDown alone, so no built-in is shadowed. `run` declines at either end
+      // of the strip, handing the chord back to the browser.
+      {
+        id: "sheets.next",
+        chord: "mod+pagedown",
+        scope: "grid",
+        label: "Next sheet",
+        when: () => this._sheetsRenderer?.isEnabled() === true,
+        run: () => this._sheetsRenderer.activateAdjacent(1),
+      },
+      {
+        id: "sheets.previous",
+        chord: "mod+pageup",
+        scope: "grid",
+        label: "Previous sheet",
+        when: () => this._sheetsRenderer?.isEnabled() === true,
+        run: () => this._sheetsRenderer.activateAdjacent(-1),
       },
     ]);
     router.register(this._headerInteractionHandler.keyboardBindings());
@@ -1307,6 +1369,9 @@ export class GridRenderer {
     this._quickFilterFloatingHost.remove();
     this._columnPanelRenderer.destroy();
     this._toolbarRenderer.destroy();
+    this._sheetsRenderer.destroy();
+    for (const dispose of this._pivotHintDisposers) dispose();
+    this._pivotHintDisposers = [];
     this._interactionEventBinder.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
@@ -1669,9 +1734,15 @@ export class GridRenderer {
    */
   private _applyGridLabel() {
     const { ariaLabel, ariaLabelledBy } = this.core.options;
-    if (ariaLabelledBy) this.root.setAttribute("aria-labelledby", ariaLabelledBy);
+    // With sheet tabs mounted and no application-supplied name, the active tab names the grid —
+    // AT then reads which sheet the grid is showing. An explicit label/labelledby always wins.
+    const sheetTabId = !ariaLabel && !ariaLabelledBy
+      ? this._sheetsRenderer?.getActiveTabElementId() ?? null
+      : null;
+    const labelledBy = ariaLabelledBy || sheetTabId;
+    if (labelledBy) this.root.setAttribute("aria-labelledby", labelledBy);
     else this.root.removeAttribute("aria-labelledby");
-    if (ariaLabel && !ariaLabelledBy) this.root.setAttribute("aria-label", ariaLabel);
+    if (ariaLabel && !labelledBy) this.root.setAttribute("aria-label", ariaLabel);
     else this.root.removeAttribute("aria-label");
   }
 

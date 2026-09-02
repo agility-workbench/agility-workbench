@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { escapeTSV, firstCellFromTSV, parseTSV } from "./tsv";
+import { escapeTSV, firstCellFromTSV, parseTSV, serializeNodesToTSV } from "./tsv";
+import { Column } from "../../column/column";
+import { ColumnType } from "../../interfaces/column";
+import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
 
 describe("escapeTSV", () => {
   it("returns empty string for null/undefined", () => {
@@ -76,5 +79,34 @@ describe("parseTSV", () => {
     expect(parseTSV('"a\tb"\tc')).toEqual([["a\tb", "c"]]);
     expect(parseTSV('"line1\nline2"\tx')).toEqual([["line1\nline2", "x"]]);
     expect(parseTSV('"say ""hi"""\tx')).toEqual([['say "hi"', "x"]]);
+  });
+});
+
+describe("serializeNodesToTSV group rows", () => {
+  const autoGroupCol = () => {
+    const col = new Column(
+      { colId: "__pte_group__", key: "__pte_group__", label: "Group", __internalRole: "autoGroup" } as any,
+      "__pte_group__",
+    );
+    return col;
+  };
+  const groupNode = (over: Partial<IRowNode>): IRowNode => ({
+    id: "g", data: {}, viewIndex: 0, selected: false, type: "group",
+    isGroup: true, level: 0, isExpanded: false, ...over,
+  });
+
+  it("copies the count a group row has", () => {
+    const node = groupNode({ groupKey: "EMEA", childCount: 2 });
+    expect(serializeNodesToTSV([autoGroupCol()], [node], false)).toBe("EMEA (2)");
+  });
+
+  it("copies what the screen shows when the count is unknown, not \"(0)\"", () => {
+    // A server-side group with no supplied child count: the cell renderer writes just the key, and
+    // a copy that invented "(0)" would put a number in the user's clipboard that the grid never
+    // displayed and the data never claimed.
+    const node = groupNode({ groupKey: "EMEA" });
+    const copied = serializeNodesToTSV([autoGroupCol()], [node], false);
+    expect(copied).toBe("EMEA");
+    expect(copied).toBe(groupRowLabel(node));
   });
 });

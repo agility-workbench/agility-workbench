@@ -102,6 +102,9 @@ export class ColumnMenuOpener {
         ...item,
         disabled: active,
         right: active ? "icon-check" : undefined,
+        // The footer cell shows ONE function, so this menu keeps single-choice semantics: picking
+        // a function replaces the cell's current one, unlike the column menu's additive toggles.
+        payload: item.payload ? { ...item.payload, mode: "replace" } : item.payload,
       };
     });
     if (!items?.length) {

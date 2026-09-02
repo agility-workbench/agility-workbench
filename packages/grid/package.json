@@ -1,6 +1,6 @@
 {
   "name": "@agility-workbench/grid",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A high-performance, framework-agnostic TypeScript data grid for building modern data workspaces.",
   "type": "module",
   "license": "MIT",

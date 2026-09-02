@@ -29,6 +29,8 @@ import {
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { PivotResultColumnDescriptor } from "../interfaces/pivot";
+import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
@@ -208,6 +210,7 @@ export class GridAPI implements IGridAPI {
     if (has("tooltip")) config.setTooltipOptions(options.tooltip);
     if (has("columnPanel")) config.setColumnPanelOptions(options.columnPanel);
     if (has("savedViews")) config.setSavedViewsOptions(options.savedViews);
+    if (has("sheets")) config.setSheetsOptions(options.sheets);
     if (has("rowSelection")) config.setRowSelectionOptions(options.rowSelection);
     if (has("pagination")) config.togglePagination(options.pagination ?? false);
     if (has("paginationControls")) config.setPaginationControls(options.paginationControls);
@@ -239,6 +242,9 @@ export class GridAPI implements IGridAPI {
       this.core.setGroupDisplayType(options.groupDisplayType ?? "singleColumn");
     }
     if (has("groupSortMode")) this.core.setGroupSortMode(options.groupSortMode ?? "local");
+    if (has("pivotColumnMoveMode")) {
+      this.core.setPivotColumnMoveMode(options.pivotColumnMoveMode ?? "measures");
+    }
     if (has("groupRowsSelectable")) {
       this.core.setGroupRowsSelectable(options.groupRowsSelectable ?? false);
     }
@@ -633,12 +639,74 @@ export class GridAPI implements IGridAPI {
     this.core.setTreeDataKeyboardNavigationOptions(mode, enableModeSwitch);
   }
 
+  // ---------------- Pivot ----------------
+  setPivotMode(on: boolean): void {
+    this.dispatch({ type: "pivotModeSet", on });
+  }
+
+  getPivotMode(): boolean {
+    return this.core.getPivotMode();
+  }
+
+  setPivotColumns(colIds: string[]): void {
+    this.dispatch({ type: "pivotColumnsSet", colIds });
+  }
+
+  getPivotColumns(): string[] {
+    return this.core.getPivotColumns().map(col => col.colId);
+  }
+
+  getPivotResultColumns(): PivotResultColumnDescriptor[] {
+    return this.core.getPivotResultColumns();
+  }
+
+  setPivotColumnOrder(order: string[] | null): void {
+    this.dispatch({ type: "pivotColumnOrderSet", order });
+  }
+
+  getPivotColumnOrder(): string[] | null {
+    return this.core.getPivotColumnOrder();
+  }
+
+  setRowGroupColumns(colIds: string[]): void {
+    this.dispatch({ type: "rowGroupSet", colIds });
+  }
+
+  getRowGroupColumns(): string[] {
+    return this.core.getRowGroupColumns().map(col => col.colId);
+  }
+
+  setAggregates(aggregates: ColumnAggregate[]): void {
+    this.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: aggregates.map(a => ({ key: a.colId, type: a.type })),
+    });
+  }
+
+  getAggregates(): ColumnAggregate[] {
+    return this.core.getAggregateModelByColId();
+  }
+
   captureViewState(): GridViewState {
     const pagination = this.core.getPaginationInfo();
+    const pivotLayers = this.core.getPivotStateLayers();
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
       rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
+      // Aggregates serialize by public colId (the model keys them by instanceID, which does not
+      // survive a reload); entries on columns that no longer resolve are dropped.
+      aggregateModel: this.getAggregates(),
+      pivotColumns: this.core.getPivotColumns().map(col => col.colId),
+      pivotMode: this.core.getPivotMode(),
+      // Only present while a manual arrangement exists; the role dispatches an apply always runs
+      // reset any prior arrangement, so an absent field applies canonically.
+      pivotColumnOrder: this.core.getPivotColumnOrder() ?? undefined,
+      // Pivot mode swaps a whole layer of role state in and out (see IGridCore.setPivotMode), so a
+      // capture carries the layer that is NOT live: without it a restored view has no state to
+      // return to when the mode turns off (or to re-enter with when it turns on).
+      ...(pivotLayers.base ? { prePivotState: pivotLayers.base } : {}),
+      ...(pivotLayers.pivot ? { pivotState: pivotLayers.pivot } : {}),
       sortModel: this.core.getSortModel().items.map(item => ({
         colId: item.col.colId,
         dir: item.dir,
@@ -658,26 +726,75 @@ export class GridAPI implements IGridAPI {
   applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void {
     if (!state || state.version !== 1) return;
 
+    // Pivot-aware states restore over the SOURCE layout: drop out of pivot first (column state,
+    // sorts, and filters address source columns), re-enter at the end if the state says so.
+    // States without a pivotMode field leave pivot untouched, like every absent field.
+    if (state.pivotMode != null) {
+      if (this.core.getPivotMode()) this.dispatch({ type: "pivotModeSet", on: false });
+      // Wipe the layer memo now that the outgoing view is gone: a restore rebuilds the state from
+      // the ground up, and the exit above stashed the view being *replaced* — re-entering below
+      // would otherwise reinstate that stash over the state being applied. The captured layers are
+      // seeded back at the end, once nothing else can overwrite them.
+      this.core.setPivotStateLayers({});
+    }
+
     this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
     this.applyColumnState(
       state.columns ?? [],
       opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },
     );
 
-    const clearSorts: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
-      key: item.col.instanceID,
-      dir: null,
-    }));
-    this.dispatch({
-      type: "sortModelSet",
-      sortItems: [
-        ...clearSorts,
-        ...(state.sortModel ?? []).map(item => ({ key: item.colId, dir: item.dir })),
-      ],
-    });
+    // Replace the whole sort model with the captured list, in captured order — position is
+    // meaningful (a pivot-column sort and a group-column sort compete by it, first one winning).
+    const replaySorts = (items: NonNullable<GridViewState["sortModel"]>): void => {
+      const clear: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
+        key: item.col.instanceID,
+        dir: null,
+      }));
+      this.dispatch({
+        type: "sortModelSet",
+        sortItems: [...clear, ...items.map(item => ({ key: item.colId, dir: item.dir }))],
+      });
+    };
+    // Some captured sorts cannot be replayed here, because the column they address does not exist
+    // yet: a GENERATED pivot column appears only when the mode toggle below runs its discovery, and
+    // in an UNGROUPED pivot so does the auto-group column. Those are held back and replayed once
+    // the toggle has run; every id that already names a live column sorts now.
+    const captured = state.sortModel ?? [];
+    const deferred = captured.filter(item => !this.core.canResolveSortColId(item.colId));
+    replaySorts(captured.filter(item => !deferred.includes(item)));
 
     this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
     this.setQuickFilter(state.quickFilterText ?? "");
+
+    // Aggregates and pivot columns before the mode toggle, so entering pivot derives with its
+    // measures in place (one derive, not two).
+    if (state.aggregateModel) {
+      this.dispatch({
+        type: "aggregateModelSet",
+        aggregateModels: state.aggregateModel.map(a => ({ key: a.colId, type: a.type as AggregateType })),
+      });
+    }
+    if (state.pivotColumns) this.dispatch({ type: "pivotColumnsSet", colIds: state.pivotColumns });
+    // After the role dispatches (which reset any prior arrangement), before the mode toggle — so
+    // entering pivot lays out the arranged tree in the same derive.
+    if (state.pivotColumnOrder) this.dispatch({ type: "pivotColumnOrderSet", order: state.pivotColumnOrder });
+    if (state.pivotMode === true) this.dispatch({ type: "pivotModeSet", on: true });
+    // The layer memo is bookkeeping, not a mutation, so it is seeded LAST: entering pivot above
+    // records the layer it swaps out, and the captured layers must win over that. Only a
+    // pivot-addressing state touches it — for such a state an absent layer means "none", not
+    // "keep", so another view's stash can never be inherited here.
+    if (state.pivotMode != null) {
+      this.core.setPivotStateLayers({ base: state.prePivotState, pivot: state.pivotState });
+    }
+
+    // The deferred columns may exist now (the discovery ran inside the mode toggle), so replay if
+    // any of them became addressable — a held-back sort that still resolves to nothing stays
+    // dropped, and costs no second dispatch. The whole list is replayed rather than appended, so
+    // the captured order — which decides whether a pivot or a group sort controls the buckets — is
+    // preserved. Still ahead of the pagination restore below, which must win over any
+    // `resetPageOn: ["sort"]` reset this triggers.
+    if (deferred.some(item => this.core.canResolveSortColId(item.colId))) replaySorts(captured);
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on
     // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.

@@ -143,6 +143,9 @@ export type {
   ActionFramePlacement,
 } from "./interfaces/gridOptions";
 export type {
+  GridPivotLayerState,
+  GridPivotStateLayers,
+  GridViewAggregateState,
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewPaginationState,
@@ -150,7 +153,17 @@ export type {
   GridViewState,
   SavedGridView,
   SavedViewsOptions,
+  GridSheet,
+  SheetsOptions,
+  SheetTabColor,
 } from "./interfaces/gridView";
+export type {
+  PivotDiscovery,
+  PivotPathNode,
+  PivotResolution,
+  PivotResultColumnDescriptor,
+  PivotValueEntry,
+} from "./interfaces/pivot";
 export type { GridIconMap, GridIconName, GridIconSource } from "./theme/icons";
 export { getIconClassName } from "./theme/icons";
 
@@ -164,7 +177,7 @@ export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
 export type { ColDef, ColumnMenuItemsGetter, DefaultColDef } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
-export type { AggregateModel, AggregateScope } from "./interfaces/aggregate";
+export type { AggregateModel, AggregateScope, ColumnAggregate } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";
 export type {
   ComparatorFn,
@@ -218,6 +231,8 @@ export type {
   GridEventName,
   GridEventOverlayShowParams,
   GridEventPaginationChangedParams,
+  GridEventPivotChangedParams,
+  GridEventPivotColumnLimitReachedParams,
   GridEventRowsChangedParams,
   GridEventSelectionChangedParams,
   GridEventTooltipParams,

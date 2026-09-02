@@ -1,3 +1,5 @@
+import { AggregateModel } from "../../interfaces/aggregate";
+import { parsePivotLeafColId } from "../../interfaces/pivot";
 import { ColumnSection } from "../../interfaces/column";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
@@ -12,6 +14,89 @@ import {
 } from "../toolbar/sortModelOperations";
 
 const COLUMN_DRAG_THRESHOLD_PX = 4;
+
+function isPivotMeasureLeaf(col: Column): boolean {
+  return col.isPivotResultColumn() && col.children.length === 0;
+}
+
+// The aggregate-model index of the measure a generated value leaf represents; -1 for any other
+// column.
+function measureIndexOf(core: GridCore, col: Column, model: { key: string; type: string }[]): number {
+  if (!isPivotMeasureLeaf(col)) return -1;
+  const measure = parsePivotLeafColId(col.colId);
+  if (!measure) return -1;
+  return model.findIndex(entry => {
+    const source = core.getColumnModel().getById(entry.key);
+    return source?.colId === measure.valueColId && entry.type === measure.type;
+  });
+}
+
+/**
+ * The manual leaf order implied by dropping a generated pivot column (value leaf or whole group)
+ * at `targetIndex` within `anchors`, or null for a no-op drop — `pivotColumnMoveMode: "free"`.
+ * The dragged block is removed from the displayed leaf order and re-inserted before the first
+ * non-dragged generated leaf at/after the drop point (at the end when there is none). Exported
+ * for tests.
+ */
+export function computePivotArrangeOrder(
+  core: GridCore,
+  col: Column,
+  targetIndex: number,
+  anchors: Column[],
+): string[] | null {
+  if (targetIndex < 0 || !col.isPivotResultColumn()) return null;
+  const collectLeafColIds = (c: Column): string[] =>
+    c.children.length === 0 ? [c.colId] : c.children.flatMap(collectLeafColIds);
+  const dragged = collectLeafColIds(col);
+  if (dragged.length === 0) return null;
+  const draggedSet = new Set(dragged);
+
+  const displayed = core.getColumnModel().getDisplayedPivotLeafOrder();
+  const remaining = displayed.filter(id => !draggedSet.has(id));
+
+  let before: string | null = null;
+  for (let i = targetIndex; i < anchors.length; i++) {
+    const anchor = anchors[i];
+    if (isPivotMeasureLeaf(anchor) && !draggedSet.has(anchor.colId)) { before = anchor.colId; break; }
+  }
+  const insertAt = before != null ? remaining.indexOf(before) : remaining.length;
+  const next = [...remaining.slice(0, insertAt), ...dragged, ...remaining.slice(insertAt)];
+  if (next.length === displayed.length && next.every((id, i) => id === displayed[i])) return null;
+  return next;
+}
+
+/**
+ * The aggregate-model reorder implied by dropping a generated pivot value leaf at `targetIndex`
+ * within `anchors` (the drop-anchor leaves the indicator was positioned against), or null for a
+ * no-op drop — `pivotColumnMoveMode: "measures"` (the default). Leaf order inside every generated
+ * group is the value-entry order, so one move reorders all groups consistently and survives
+ * re-discovery — the pivot itself is untouched. Exported for tests.
+ */
+export function computePivotMeasureReorder(
+  core: GridCore,
+  col: Column,
+  targetIndex: number,
+  anchors: Column[],
+): AggregateModel[] | null {
+  if (targetIndex < 0) return null;
+  const model = core.getAggregateModel();
+  const from = measureIndexOf(core, col, model);
+  if (from < 0) return null;
+
+  // The measure sequence restarts inside every generated group, so the drop's LEFT neighbor names
+  // the position: after that measure. With no measure on the left (start of the pivot area), the
+  // right neighbor names insert-before instead. Neither a measure → dropped outside the pivot area.
+  const leftIdx = targetIndex > 0 ? measureIndexOf(core, anchors[targetIndex - 1], model) : -1;
+  const rightIdx = targetIndex < anchors.length ? measureIndexOf(core, anchors[targetIndex], model) : -1;
+  const to = leftIdx >= 0 ? leftIdx + 1 : rightIdx >= 0 ? rightIdx : -1;
+  if (to < 0) return null;
+  if (to === from || to === from + 1) return null;
+
+  const next = model.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to > from ? to - 1 : to, 0, moved);
+  return next;
+}
 
 interface ColumnInteractionRendererParams {
   core: GridCore;
@@ -86,7 +171,9 @@ export class ColumnInteractionRenderer {
     const col = this.params.core.getColumnModel().getById(header.id);
     if (!col || col.hidden || col.isRowNumberColumn()) return;
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
-    const allowDrop = col.movable;
+    // Generated pivot columns are immovable, but dragging one reorders the measures (default) or
+    // arranges the leaf order (pivotColumnMoveMode "free") — so they are drag sources anyway.
+    const allowDrop = col.movable || this.isPivotDraggable(col);
     this.maybeStartColumnDrag(col, header, e, allowDrop);
   }
 
@@ -253,9 +340,39 @@ export class ColumnInteractionRenderer {
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
       return;
     }
+    if (col.isPivotResultColumn()) {
+      this.applyPivotDrop(col, targetIndex, section);
+      this.suppressHeaderClick = true;
+      setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+      return;
+    }
     this.params.core.dispatch({ type: "columnMove", colId: col.instanceID, toIndex: targetIndex, toSection: section });
     this.suppressHeaderClick = true;
     setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+  }
+
+  // Value leaves drag in both pivotColumnMoveMode modes; whole generated groups only arrange, so
+  // they drag in "free" mode alone.
+  private isPivotDraggable(col: Column): boolean {
+    if (!col.isPivotResultColumn()) return false;
+    if (col.children.length === 0) return true;
+    return this.params.core.getOptions().pivotColumnMoveMode === "free";
+  }
+
+  // Dropping a generated pivot column, per pivotColumnMoveMode: "measures" reorders the aggregate
+  // model (value leaves only); "free" replaces the manual leaf-order arrangement (leaves and whole
+  // groups, constrained to the center section — generated columns never pin). `targetIndex`
+  // indexes the section's drop-anchor leaves — the list the drop indicator was positioned against.
+  private applyPivotDrop(col: Column, targetIndex: number, section: ColumnSection): void {
+    if (this.params.core.getOptions().pivotColumnMoveMode === "free") {
+      if (section !== "center") return;
+      const order = computePivotArrangeOrder(this.params.core, col, targetIndex, this.getDropAnchorLeaves(section));
+      if (order) this.params.core.dispatch({ type: "pivotColumnOrderSet", order });
+      return;
+    }
+    if (!isPivotMeasureLeaf(col)) return;
+    const next = computePivotMeasureReorder(this.params.core, col, targetIndex, this.getDropAnchorLeaves(section));
+    if (next) this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
   }
 
   onHeaderDoubleClick(e: MouseEvent) {
@@ -537,7 +654,7 @@ export class ColumnInteractionRenderer {
 
   private isDragSource(col: Column): boolean {
     if (!col) return false;
-    return !col.isRowNumberColumn() && col.movable && col.isVisible();
+    return !col.isRowNumberColumn() && (col.movable || this.isPivotDraggable(col)) && col.isVisible();
   }
 
   private isDropAnchor(col: Column): boolean {

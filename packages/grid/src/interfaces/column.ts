@@ -248,6 +248,19 @@ export interface ColDef {
    * appear.
    */
   aggregatable?: boolean;
+  /**
+   * When true (default), this column can be pivoted on: the column menu offers "Pivot on Column"
+   * and `setPivotColumns` accepts it. For a multi-column selection, every selected column must be
+   * pivotable for the pivot item to appear.
+   */
+  pivotable?: boolean;
+  /**
+   * Orders this column's distinct values across the generated pivot header when the column is
+   * pivoted on: `(a, b) => number` over raw cell values, applied ascending. When omitted, the
+   * column's sort `comparator` (or its type-derived default) orders the pivot values; blanks
+   * always sort last.
+   */
+  pivotComparator?: (a: any, b: any) => number;
   resizable?: boolean;
   movable?: boolean;
   hideable?: boolean;

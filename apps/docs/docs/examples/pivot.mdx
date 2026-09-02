@@ -1,0 +1,217 @@
+---
+title: Pivot
+sidebar_position: 10
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Pivot
+
+Pivot mode turns the grid into a cross-tab: rows become the row-group tree, and
+the header is generated from data — one nested column group per distinct value
+of each pivot column, with one value column per aggregate underneath.
+Non-participating source columns are hidden while pivoted and return exactly
+when pivot mode turns off. Client-side row model only.
+
+Pivot mode is a state **layer**, not a lens over the current state: the roles
+assigned while pivoted belong to the pivot view. Turning the mode off restores
+the grid exactly as it was before it turned on — grouping, measures and all —
+and turning it back on reinstates the pivot the user left rather than starting
+from scratch (see [Entering and leaving the mode](#entering-and-leaving-the-mode)).
+
+<LiveFeatureGrid feature="pivot" />
+
+<FrameworkCode feature="pivot" />
+
+## The three roles
+
+A pivot is configured from state the grid already has:
+
+- **Row groups** — the existing row-grouping model (`rowGroupSet`). With no row
+  groups, the pivot shows a single grand-total row.
+- **Values** — the existing aggregate model. Every aggregated column becomes a
+  measure; a column may carry several aggregates (each is its own generated
+  column, labelled `Revenue (sum)`, `Revenue (avg)`, …). The column menu's
+  aggregate items are additive per-type toggles: checking Sum and Average on
+  one column yields two measures. While pivoted with no measures at all, an
+  inline header hint points at that menu.
+- **Pivot columns** — `setPivotColumns(colIds)`, in level order. Two pivot
+  columns nest their values in the generated header (`2024 → Q1`). With none,
+  pivot mode shows a plain grouped-aggregate view (one generated column per
+  measure).
+
+```ts
+api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+api.setRowGroupColumns(["region"]);
+api.setPivotColumns(["quarter"]);
+api.setPivotMode(true);
+```
+
+Everything is addressed by public `colId` — `setRowGroupColumns` and `setPivotColumns`
+take level-ordered colId arrays, and `setAggregates` takes `{ colId, type }`
+entries (`ColumnAggregate[]`; a column may carry several types, and entry order
+sets the generated column order). `getRowGroupColumns`, `getPivotColumns`, and
+`getAggregates` read the same state back. The column panel, column menus, and
+toolbar are optional chrome over exactly this API.
+
+Interactively, the column menu offers **Pivot on Column** / **Add to Existing
+Pivot** / **Remove from Pivot** (gated by the `pivotable` column flag, default
+true), and the toolbar's `pivot` section shows a mode indicator + toggle.
+Initial state can also be seeded with the `pivotMode` and `pivotColumns` grid
+options. All four pivot options (those two plus `pivotResultColumnDef` and
+`maxPivotColumns`) are React props and Angular inputs; `pivotMode` and
+`pivotColumns` are live — changing either reconciles through the API setters, so
+the mode can be driven declaratively instead of imperatively.
+
+## Entering and leaving the mode
+
+The three roles are ordinary grid state, so the grid keeps two versions of them:
+the one the flat grid uses and the one the pivot view uses. `setPivotMode`
+swaps between them.
+
+- **Turning the mode on** stashes the current row groups, measures, pivot
+  columns, generated-column arrangement and aggregate scope, then reinstates
+  whatever the last pivot session ended with (nothing, the first time).
+- **Turning it off** stashes the pivot view's own version of all of that and
+  restores what was in force before the mode turned on. Nothing configured for
+  the pivot view leaks into the flat grid: group by Region inside pivot mode and
+  the flat grid is ungrouped again when you leave. Sorts on generated columns
+  leave with the columns that owned them.
+- Pivot mode entered from the `pivotMode` grid option has no earlier state to
+  return to, so leaving it clears the roles entirely.
+
+Filters and the quick filter are deliberately *not* layered — they select source
+rows, which means the same thing in both modes.
+
+Every exit path behaves identically: the toolbar toggle, the auto-group column
+menu's **Exit Pivot Mode**, and `api.setPivotMode(false)`.
+
+```ts
+api.setPivotMode(false); // flat grid, exactly as it was before pivot
+api.setPivotMode(true);  // the same pivot the user left
+```
+
+`captureViewState()` carries the inactive layer too (`prePivotState` while
+pivoted, `pivotState` while not), so a restored view — a saved view, or a
+[sheet](./sheets.mdx) switch — toggles the mode exactly like the live grid.
+
+## Generated columns
+
+Generated value columns are ordinary columns for reading purposes — resizable
+and sortable (sorting one orders the group rows by that cell's aggregate at
+every level) — but read-only, unpinnable, and unfilterable. Their ids are
+stable (derived from the pivot-value path, source column, and aggregate), so
+widths and sorts survive data refreshes that re-derive the same columns.
+
+Generated columns are still draggable — what a drag *means* is chosen by
+`pivotColumnMoveMode`:
+
+- **`"measures"`** (default) — dropping a value column reorders the
+  **measures**: leaf order inside every generated group is the value-entry
+  order, so one drag reorders all groups consistently, and the new order
+  persists everywhere (it is the aggregate model's order — the same order
+  `setAggregates` and the column panel's Values well control). A value column
+  never leaves its group; group headers stay in `pivotComparator` order.
+- **`"free"`** — value columns and whole generated groups arrange per
+  position: a leaf can sit anywhere in the pivot area, carrying a duplicated
+  group caption with it (the same split-and-carry behavior source column
+  groups have), and dragging a group header reorders the pivot values
+  themselves. The arrangement is a leaf-order list
+  (`setPivotColumnOrder(colIds)` / `getPivotColumnOrder()`, captured in view
+  state so [sheets](./sheets.mdx) keep per-sheet arrangements). It survives
+  data- and filter-driven re-discoveries — newly discovered columns slot in at
+  their canonical position — and resets to the canonical layout on any
+  explicit role edit (`setAggregates`, `setPivotColumns`, and the menus/wells
+  that call them).
+
+The mode is updatable at runtime (`updateGridOptions({ pivotColumnMoveMode })`,
+or the React prop / Angular input). In both modes generated columns stay
+unpinnable and confined to the pivot area.
+
+- `pivotResultColumnDef` styles every generated value column (width, cell
+  class, formatter) without being able to unlock the grid-owned behavior.
+- `pivotComparator` on a pivot column orders its distinct values across the
+  header (default: the column's sort comparator, ascending; blanks last).
+- `maxPivotColumns` (default 200) caps the generated columns; past it the
+  discovery truncates deterministically and fires `pivotColumnLimitReached`.
+  The cap is a target rather than an exact ceiling, because truncation is per
+  pivot value: a value is kept or dropped with all of its measures, so the
+  generated count is a whole multiple of the measure count. Three measures
+  against a cap of 200 keep ⌊200 / 3⌋ = 66 values — 198 columns, under the cap
+  — while at least one value always survives, so five measures against a cap of
+  three generate five columns, over it.
+- `pivotNoValuesMessage` rewords the inline header hint shown while pivot mode
+  is on with no aggregates chosen (default "Choose Aggregate on a column to add
+  values") — for different wording, a different entry point, or another
+  language.
+
+```ts
+const options = {
+  pivotResultColumnDef: { width: 110 },
+  maxPivotColumns: 120,
+  columnDefs: [
+    { key: "quarter", label: "Quarter", pivotComparator: (a, b) => quarterRank(a) - quarterRank(b) },
+    // ...
+  ],
+} satisfies GridOptions;
+```
+
+## The column panel is the pivot customizer
+
+Enable the [column panel](./columns.mdx) alongside pivot mode and it becomes the
+place to edit the three roles. Every column row shows removable role chips —
+`Group 1`, `Pivot 1`, and one chip per aggregate type (`Sum`, `Average`, …) —
+so the current pivot recipe is readable at a glance in any mode.
+
+While pivot mode is **on**, the panel swaps into customizer form:
+
+- Three field wells at the top — **Row groups**, **Column labels**, and
+  **Values** — list the roles in level order. Each entry moves up/down (level
+  order matters for groups and pivot columns; value order sets the generated
+  column order) or removes, and each well's **+** menu adds any eligible source
+  column (values pick an aggregate type from a nested menu).
+- Column rows collapse to label + chips, and each gains a **+** editor chip
+  opening a grouping / pivot / aggregate menu — the same items as the column
+  header menu, which matters because pivoted source columns have no header to
+  right-click.
+- The visibility, pin, and reorder controls (and the bulk toggle and layout
+  reset) hide while pivoted: the displayed columns are generated, so those
+  controls would act on the invisible source layout. They return exactly when
+  pivot mode turns off.
+
+Removing the last pivot column from its well keeps pivot mode on — that is the
+grouped-aggregate view; the mode switch stays with the toolbar indicator and
+the column menu. Everything the panel edits is per-sheet state, so with
+[sheets](./sheets.mdx) enabled the customizer always edits the active sheet in
+place.
+
+## Live behavior
+
+Filters and the quick filter keep operating on **source rows**, pre-pivot.
+Cell edits (`setCellValue`, transactions) re-derive the affected pivot cells
+immediately — the pivot is always live against the shared row model. The
+footer aggregate row shows grand totals per generated column, computed from
+source rows (an average of averages can never appear).
+
+`captureViewState()` includes `pivotMode`, `pivotColumns`, and the aggregate
+model, so a saved view restores the complete pivot — plus the inactive state
+layer described above; `pivotChanged` reports mode/column changes and
+`getPivotResultColumns()` describes the generated columns.
+
+The cell cursor, keyboard navigation, and range selection work on pivot rows
+without any configuration — while pivoted the group rows *are* the data, so
+they are always cell-selectable (`groupRowsSelectable` keeps governing group
+rows in ordinary grouped views, and row-checkability everywhere). Copying a
+pivot range puts the formatted aggregate values on the clipboard, with group
+labels as `key (count)` under the group column. Editing stays blocked — pivot
+cells are derived.
+
+Exporting while pivoted (toolbar or API, CSV and Excel) writes the pivot table
+itself: the nested generated header over one row per group node (every level,
+indented), with real numbers in the aggregate cells.
+
+Pivot mode is mutually exclusive with [tree data](./tree-data.mdx), and pairs
+naturally with [row grouping](./grouping.mdx), whose group tree it reuses. For
+Data + pivot views as coexisting tabs over one row model, see
+[sheets](./sheets.mdx).

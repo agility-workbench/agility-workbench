@@ -248,6 +248,48 @@ describe("Grid React lifecycle", () => {
     container.remove();
   });
 
+  it("announces onGridReady with the columns and rows already applied, once per instance", async () => {
+    const container = createContainer();
+    const root = createRoot(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const seen: Array<{ cols: string[]; rowCount: number }> = [];
+
+    await act(async () => {
+      root.render(
+        <React.StrictMode>
+          <Grid
+            apiRef={apiRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            rowIdKey="id"
+            onGridReady={(api) => {
+              let rowCount = 0;
+              api.forEachNodeAfterFilter(() => { rowCount++; });
+              seen.push({
+                cols: api.getColumnState().map((state) => state.colId),
+                rowCount,
+              });
+              // Anything colId-addressed has to resolve here — while this fired from the creation
+              // effect, calls like this one hit a column-less grid and were silently dropped.
+              api.setRowGroupColumns(["name"]);
+            }}
+          />
+        </React.StrictMode>,
+      );
+    });
+
+    // StrictMode replays mount, so each created instance is announced exactly once.
+    expect(seen.length).toBeGreaterThan(0);
+    for (const announced of seen) {
+      expect(announced.cols).toEqual(["name", "price"]);
+      expect(announced.rowCount).toBe(rows.length);
+    }
+    expect(apiRef.current!.getRowGroupColumns()).toEqual(["name"]);
+
+    await unmountTestRoot(root);
+    container.remove();
+  });
+
   it("leaves object and callback refs pointing at the final live API and clears them on unmount", async () => {
     const objectContainer = createContainer();
     const objectRoot = createRoot(objectContainer);

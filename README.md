@@ -22,6 +22,7 @@ export—without adding runtime dependencies to the core package.
 - CSV and Excel export, including grouped data, selection, and cell spans
 - Column groups, resizing, reordering, visibility, pinning, and a column panel
 - Custom renderers, editors, headers, tooltips, menus, and full-width rows
+- Client-side pivot mode with spreadsheet-style sheet tabs over one row model
 - Responsive toolbar, saved views, sparklines, and light/dark theming
 - React 18+ and Angular 20.3–22 bindings with TypeScript types throughout
 
@@ -267,7 +268,8 @@ find package boundaries, build ordering, and release notes in the
 ## Project status and limitations
 
 The feature set is broad, but the project is still evolving. Notable current
-gaps include variable/automatic row heights, master-detail rows, and pivoting.
+gaps include variable/automatic row heights, master-detail rows, and
+server-side pivoting (client-side pivot mode is supported).
 The data surface exposes an ARIA grid model with a roving-focus
 (`aria-activedescendant`) model, state semantics, and live announcements, and
 all interactions are keyboard-reachable; column-group (parent) header cells are

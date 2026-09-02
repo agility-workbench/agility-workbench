@@ -29,6 +29,11 @@ export interface GridProps extends Omit<
 
   /** Expose API (AG Grid style) */
   apiRef?: React.Ref<IGridAPI | null>;
+  /**
+   * Called once per grid instance, in the mounting commit (synchronously, before paint), with the
+   * `columnDefs` and row data already applied — so colId- and rowId-addressed API calls made here
+   * resolve. Prop-driven option syncing still runs after it.
+   */
   onGridReady?: (api: IGridAPI) => void;
 
   /* If true, shows loading overlay */

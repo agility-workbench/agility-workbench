@@ -62,14 +62,20 @@ export function setAriaSelected(el: HTMLElement, selected: boolean, wasSelected:
  */
 export function stampRowHierarchyAria(
   rowEl: HTMLElement,
-  row: { isGroup?: boolean; isExpanded?: boolean; level?: number; children?: unknown[] },
+  row: { isGroup?: boolean; isExpanded?: boolean; expandable?: boolean; level?: number; children?: unknown[] },
 ): void {
-  const expandable = !!row.isGroup || (row.children?.length ?? 0) > 0;
+  // `expandable: false` (pivot mode's deepest level, the pivot grand-total row) means the group
+  // can never open — announcing a permanent "collapsed" would promise an interaction that does
+  // not exist, so such rows carry no aria-expanded. They keep their aria-level.
+  const expandable = row.expandable !== false && (!!row.isGroup || (row.children?.length ?? 0) > 0);
   if (expandable) rowEl.setAttribute("aria-expanded", String(!!row.isExpanded));
   else rowEl.removeAttribute("aria-expanded");
   const level = row.level ?? 0;
-  if (expandable || level > 0) rowEl.setAttribute("aria-level", String(level + 1));
-  else rowEl.removeAttribute("aria-level");
+  if (expandable || level > 0 || (row.expandable === false && !!row.isGroup)) {
+    rowEl.setAttribute("aria-level", String(level + 1));
+  } else {
+    rowEl.removeAttribute("aria-level");
+  }
 }
 
 /**

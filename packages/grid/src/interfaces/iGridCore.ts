@@ -10,7 +10,11 @@ import { IRowModel, RowDataChangeReason, RowTransaction, RowTransactionResult, S
 import { IColumnModel } from "./iColumnModel";
 import { GridAction } from "../events/action";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "./selection";
-import { AggregateModel, AggregateScope } from "./aggregate";
+import { AggregateModel, AggregateScope, ColumnAggregate } from "./aggregate";
+import { PivotResultColumnDescriptor } from "./pivot";
+// Type-only: gridView.ts imports ColumnState from here, so this pair must never emit a runtime
+// import cycle.
+import type { GridPivotStateLayers } from "./gridView";
 import {
   GridOptions,
   GroupDisplayType,
@@ -83,6 +87,15 @@ export interface IGridCore {
   /** Dispatch an action (from renderer and/or API). */
   dispatch(action: GridAction): void;
 
+  /**
+   * Run `fn` once the dispatch in progress has finished — synchronously, before `dispatch` returns,
+   * and once however many times it was asked for (dedup is by function identity, so pass a stable
+   * reference). For a listener whose response to a change is expensive and idempotent: one mutation
+   * can emit several events, and this collapses the response into a single run once the state has
+   * settled. Outside a dispatch it runs `fn` immediately.
+   */
+  afterDispatch(fn: () => void): void;
+
   /** Subscribe to core events. */
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe;
 
@@ -124,12 +137,36 @@ export interface IGridCore {
 
   /* ----- Models via facade getters (optional but handy) ----- */
   getSortModel(): SortModel;
+  /** Whether a sort colId addresses a column that exists right now — including the internal ones a
+   * user can sort (the auto-group column, a generated pivot column), which the public column
+   * lookups deliberately do not hold. */
+  canResolveSortColId(colId: string): boolean;
   getFilterModel(): FilterModel;
   /** Current quick-filter (global search) text. Empty string when inactive. */
   getQuickFilterText(): string;
   getAggregateModel(): AggregateModel[];
+  /** The aggregate model keyed by public colId (the model keys by instanceID). */
+  getAggregateModelByColId(): ColumnAggregate[];
   getAggregateScope(): AggregateScope;
   getRowGroupColumns(): Column[];
+  /**
+   * Whether this grid can pivot at all — false for the server-side row model (no pivot handling)
+   * and for tree data. Fixed for the life of the grid: pivot affordances gate on it rather than
+   * letting users reach `setPivotMode`'s refusal.
+   */
+  isPivotSupported(): boolean;
+  getPivotMode(): boolean;
+  getPivotColumns(): Column[];
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null;
+  /** Change what dragging a generated pivot column does. Read live at drag time — no rebuild. */
+  setPivotColumnMoveMode(mode: "measures" | "free"): void;
+  /** Descriptors of the current generated pivot value columns, in header order. */
+  getPivotResultColumns(): PivotResultColumnDescriptor[];
+  /** The stashed pivot state layers: what pivot mode exits to, and what it re-enters with. */
+  getPivotStateLayers(): GridPivotStateLayers;
+  /** Replace both stashed pivot state layers (bookkeeping only — nothing displayed changes). */
+  setPivotStateLayers(layers: GridPivotStateLayers): void;
   /** Change how grouped rows are displayed without rebuilding the grid instance. */
   setGroupDisplayType(groupDisplayType: GroupDisplayType): void;
   /** Change whether non-grouped sorts can reorder group buckets. */

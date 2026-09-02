@@ -5,7 +5,7 @@ import { GridOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
-import { BLANK_GROUP_KEY, groupNodeId } from "../csrm/rowGroup";
+import { BLANK_GROUP_KEY, groupKeyForValue, groupNodeId } from "../csrm/rowGroup";
 import {
   IServerSideAggregationRequest,
   IServerSideDataSource,
@@ -722,7 +722,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       let node: IRowNode<Row>;
       if (isGroupLevel && groupCol) {
         const value = (raw as any)[groupCol.key];
-        const key = value == null || value === "" ? BLANK_GROUP_KEY : String(value);
+        const key = groupKeyForValue(value);
         const id = groupNodeId([...listing.path, key]);
         node = {
           id,
@@ -854,7 +854,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private toDisplayKey(value: any): string {
-    return value == null || value === "" ? BLANK_GROUP_KEY : String(value);
+    return groupKeyForValue(value);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -894,14 +894,21 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return Array.from(sortsByKey.values());
   }
 
-  /** Configured aggregates on the wire, keyed by column key (core keys them by instance id). */
+  /**
+   * Configured aggregates on the wire, keyed by column key (core keys them by instance id). One
+   * entry per column, last wins: the request contract puts each aggregated value on the group row
+   * under its own column key, so a duplicate key has nowhere to land. The aggregate model itself
+   * may legally carry several types for one column (a client-side pivot measure set), and the
+   * grand-total request already collapses those the same way — see buildServerAggregateRequest,
+   * whose keyed Map is what the group rows would otherwise disagree with.
+   */
   private serializeAggregates(): AggregateModel[] {
-    const out: AggregateModel[] = [];
+    const byKey = new Map<string, AggregateModel>();
     for (const aggregate of this.aggregates) {
       const col = this.leafColumns.find(c => c.instanceID === aggregate.key || c.key === aggregate.key);
-      if (col) out.push({ key: col.key, type: aggregate.type });
+      if (col) byKey.set(col.key, { key: col.key, type: aggregate.type });
     }
-    return out;
+    return Array.from(byKey.values());
   }
 
   // ---------------------------------------------------------------------------------------------

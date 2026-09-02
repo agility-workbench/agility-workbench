@@ -34,6 +34,11 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "overscanRowCount", props.overscanRowCount);
   setIfDefined(options, "minResizeWidth", props.minResizeWidth);
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);
+  setIfDefined(options, "pivotMode", props.pivotMode);
+  setIfDefined(options, "pivotColumns", props.pivotColumns);
+  setIfDefined(options, "pivotResultColumnDef", props.pivotResultColumnDef);
+  setIfDefined(options, "maxPivotColumns", props.maxPivotColumns);
+  setIfDefined(options, "pivotColumnMoveMode", props.pivotColumnMoveMode);
   setIfDefined(options, "autosizeColumnsOnDataChange", props.autosizeColumnsOnDataChange);
   setIfDefined(options, "allowExportAsCSV", props.allowExportAsCSV);
   setIfDefined(options, "allowExportAsExcel", props.allowExportAsExcel);
@@ -101,8 +106,10 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "columnPanel", props.columnPanel);
   setIfDefined(options, "toolbar", props.toolbar);
   setIfDefined(options, "savedViews", props.savedViews);
+  setIfDefined(options, "sheets", props.sheets);
   setIfDefined(options, "loadingMessage", props.loadingMessage);
   setIfDefined(options, "noRowsMessage", props.noRowsMessage);
+  setIfDefined(options, "pivotNoValuesMessage", props.pivotNoValuesMessage);
   setIfDefined(options, "filterDebounceMs", props.filterDebounceMs);
   setIfDefined(options, "cellFlashDuration", props.cellFlashDuration);
   setIfDefined(options, "cellFadeDuration", props.cellFadeDuration);

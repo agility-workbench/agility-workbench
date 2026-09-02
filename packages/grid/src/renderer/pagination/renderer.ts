@@ -15,6 +15,8 @@ interface PaginationRendererParams {
   root: HTMLElement;
   resetScrollPosition: () => void;
   setAggregateScope: (scope: AggregateScope) => void;
+  /** Whether the footer's sheet-tab zone is populated — the footer stays visible for it alone. */
+  hasSheetTabs?: () => boolean;
 }
 
 /**
@@ -42,6 +44,14 @@ export class PaginationRenderer {
   aggregateClearBtn!: HTMLButtonElement;
   private navSection: HTMLDivElement | null = null;
   private paginator: HTMLDivElement;
+  /**
+   * The footer's three stable zones, in visual/tab order: sheet tabs (left, owned by the sheets
+   * renderer), aggregation controls (center), pagination (right). `buildControls` rebuilds only the
+   * two it owns, so the tab strip survives every pagination/aggregation rebuild.
+   */
+  private tabsZone: HTMLDivElement;
+  private centerZone: HTMLDivElement;
+  private endZone: HTMLDivElement;
   private controlsPaginationEnabled: boolean | null = null;
   private controlsAggregationAvailable: boolean | null = null;
   private controlsOptions: ResolvedPaginationControlsOptions;
@@ -49,6 +59,13 @@ export class PaginationRenderer {
   constructor(private params: PaginationRendererParams) {
     this.controlsOptions = resolvePaginationControlsOptions(params.core.options.paginationControls);
     this.paginator = createPaginationWrapper();
+    this.tabsZone = document.createElement("div");
+    this.tabsZone.className = "pte-footer-tabs";
+    this.centerZone = document.createElement("div");
+    this.centerZone.className = "pte-footer-center";
+    this.endZone = document.createElement("div");
+    this.endZone.className = "pte-footer-end";
+    this.paginator.append(this.tabsZone, this.centerZone, this.endZone);
     this.params.root.appendChild(this.paginator);
   }
 
@@ -56,10 +73,31 @@ export class PaginationRenderer {
     return this.paginator;
   }
 
+  /** Host element for the sheet tab strip (footer left zone). */
+  getTabsZone(): HTMLDivElement {
+    return this.tabsZone;
+  }
+
+  /** Footer visibility given the current pagination/aggregation state plus the sheet-tab zone. */
+  private footerVisible(paginationEnabled: boolean, aggregateCount: number): boolean {
+    return paginationEnabled || aggregateCount > 0 || this.params.hasSheetTabs?.() === true;
+  }
+
+  /** Re-evaluate footer visibility; called when the sheet-tab zone mounts or unmounts. */
+  refreshVisibility(): void {
+    this.paginator.classList.toggle(
+      "visible",
+      this.footerVisible(
+        this.params.core.getPaginationInfo().paginationEnabled,
+        this.params.core.getAggregateModel().length,
+      ),
+    );
+  }
+
   buildControls() {
     const { core } = this.params;
-    const paginator = this.paginator;
-    paginator.innerHTML = "";
+    this.centerZone.innerHTML = "";
+    this.endZone.innerHTML = "";
     // A configured layout may omit controls that existed in the previous build. Clear references
     // so updateControls never mutates detached DOM.
     this.pageSizeSelect = undefined!;
@@ -82,7 +120,7 @@ export class PaginationRenderer {
     this.controlsAggregationAvailable = this.hasAggregatableColumns();
 
     if (this.controlsAggregationAvailable) {
-      paginator.appendChild(this.buildAggregationControls());
+      this.centerZone.appendChild(this.buildAggregationControls());
     }
 
     if (!paginationEnabled) {
@@ -97,7 +135,7 @@ export class PaginationRenderer {
       navSection.appendChild(this.buildPaginationControl(control, pageSize, pageSizes));
     }
 
-    paginator.appendChild(navSection);
+    this.endZone.appendChild(navSection);
     this.populatePageSelector(pageIndex, totalPageCount, totalRowCountKnown);
     this.updateControls();
   }
@@ -391,7 +429,10 @@ export class PaginationRenderer {
     }
     if (!paginationEnabled) {
       this.updateAggregateControls();
-      this.paginator.classList.toggle("visible", this.params.core.getAggregateModel().length > 0);
+      this.paginator.classList.toggle(
+        "visible",
+        this.footerVisible(false, this.params.core.getAggregateModel().length),
+      );
       return;
     }
     this.paginator.classList.add("visible");
@@ -439,7 +480,7 @@ export class PaginationRenderer {
     this.aggregateClearBtn.disabled = aggregateCount === 0;
 
     const paginationEnabled = this.params.core.getPaginationInfo().paginationEnabled;
-    this.paginator.classList.toggle("visible", paginationEnabled || aggregateCount > 0);
+    this.paginator.classList.toggle("visible", this.footerVisible(paginationEnabled, aggregateCount));
   }
 
   private hasAggregatableColumns(): boolean {

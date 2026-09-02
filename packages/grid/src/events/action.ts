@@ -154,6 +154,31 @@ export type GridActionRowGroupSet = {
   colIds: string[];
 };
 
+// Turn pivot mode on or off. Off restores the source columns exactly; on derives the generated
+// pivot header from the current pivot columns + aggregate model. Client-side row model only.
+export type GridActionPivotModeSet = {
+  type: "pivotModeSet";
+  on: boolean;
+};
+
+// Replace the set of columns pivoted on (order = pivot level). Stored even while pivot mode is
+// off (it applies when the mode turns on); an empty array clears the pivot columns but leaves the
+// mode alone (the degenerate grouped-aggregate view). Client-side row model only.
+export type GridActionPivotColumnsSet = {
+  type: "pivotColumnsSet";
+  colIds: string[];
+};
+
+// Replace the manual arrangement of the generated pivot columns: the displayed leaf order, by
+// generated colId (the split header tree is derived from it — a group caption repeats around each
+// contiguous run). Null clears back to the canonical discovery layout. Stored until the next
+// explicit role edit (aggregateModelSet / pivotColumnsSet), which resets it; data- and
+// filter-driven re-discoveries keep it. Client-side row model only.
+export type GridActionPivotColumnOrderSet = {
+  type: "pivotColumnOrderSet";
+  order: string[] | null;
+};
+
 // Expand or collapse a single group node. When `expanded` is omitted the node's state is toggled.
 export type GridActionGroupToggleExpand = {
   type: "groupToggleExpand";
@@ -369,6 +394,9 @@ export type GridAction =
   | GridActionQuickFilterSet
   | GridActionAggregateModelSet
   | GridActionRowGroupSet
+  | GridActionPivotModeSet
+  | GridActionPivotColumnsSet
+  | GridActionPivotColumnOrderSet
   | GridActionGroupToggleExpand
   | GridActionGroupSetExpanded
   | GridActionKeyboardNavigationModeSet

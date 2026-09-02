@@ -155,6 +155,8 @@ const labels: Record<DemoFeature, [string, string]> = {
   selection: ["Selection", "Drag a range or select rows from row numbers"],
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
+  pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar, customize roles via Columns"],
+  sheets: ["Sheets", "Data + pivot sheets as footer tabs — press + for a new pivot sheet"],
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
   "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
   rendering: ["Rendering", "Status badges and Sparklines are custom cell renderers"],
@@ -249,9 +251,49 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         groupDefaultExpanded: 1,
         groupRowsSticky: true,
         onGridReady: (api) => {
-          api.dispatch({ type: "rowGroupSet", colIds: ["region"] });
-          const revenue = api.getColumnModel().getByColId("revenue");
-          if (revenue) api.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }] });
+          api.setRowGroupColumns(["region"]);
+          api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+        },
+      };
+      break;
+    case "pivot":
+      featureProps = {
+        toolbar: { pivot: true },
+        columnPanel: { trigger: "toolbar" },
+        groupDefaultExpanded: 1,
+        onGridReady: (api) => {
+          api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+          api.setRowGroupColumns(["region"]);
+          api.setPivotColumns(["status"]);
+          api.setPivotMode(true);
+        },
+      };
+      break;
+    case "sheets":
+      featureProps = {
+        pagination: true,
+        pageSize: 15,
+        groupDefaultExpanded: 1,
+        toolbar: { pivot: true },
+        onGridReady: (api) => {
+          // Seed a ready-made pivot sheet next to the Data sheet; the + tab derives blank ones.
+          const state = {
+            ...api.captureViewState(),
+            pivotMode: true,
+            pivotColumns: ["status"],
+            rowGroupColumns: ["region"],
+            aggregateModel: [{ colId: "revenue", type: "sum" }],
+            groupExpansion: [],
+          };
+          api.updateGridOptions({
+            sheets: {
+              sheets: [
+                { id: "data", name: "Data" },
+                { id: "by-status", name: "By Status", state },
+              ],
+              activeSheetId: "data",
+            },
+          });
         },
       };
       break;

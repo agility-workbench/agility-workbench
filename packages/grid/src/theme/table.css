@@ -50,6 +50,7 @@
   --pte-icon-group-expanded: url(icons/down-chevron.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
+  --pte-icon-pivot: url(icons/pivot.svg);
   --pte-icon-column-hide: url(icons/column-hide.svg);
   --pte-icon-count: url(icons/count.svg);
   --pte-icon-sum: url(icons/sum.svg);
@@ -101,6 +102,10 @@
   --pte-aggregate-row-bg-color: #f3f4f6;
   --pte-aggregate-cell-bg-color: #f3f4f6;
   --pte-surface-bg-color: #ffffff;
+  /* Sheet-tab rail. The resting fill has to read as "behind" the active tab, which is filled with
+     --pte-surface-bg-color, so it is a deliberate step darker than the header background. */
+  --pte-sheet-tab-bg: #eef1f5;
+  --pte-sheet-tab-hover-bg: #e2e8f0;
   --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
   --pte-control-border-color: rgba(0, 0, 0, 0.15);
   --pte-button-primary-bg: rgba(0, 0, 0, 0.85);
@@ -171,6 +176,8 @@
   --pte-aggregate-row-bg-color: #1e293b;
   --pte-aggregate-cell-bg-color: #1e293b;
   --pte-surface-bg-color: #0f172a;
+  --pte-sheet-tab-bg: #182338;
+  --pte-sheet-tab-hover-bg: #22304a;
   --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
   --pte-control-border-color: rgba(148, 163, 184, 0.35);
   --pte-button-primary-bg: #2563eb;
@@ -1012,10 +1019,47 @@
   font: inherit;
 }
 
+.pte-grid-toolbar-pivot-button {
+  min-width: 84px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-pivot-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
 .pte-grid-toolbar-export-button:hover,
+.pte-grid-toolbar-pivot-button:hover,
 .pte-grid-toolbar-more-button:hover {
   background: var(--pte-hover-bg-color);
   color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-pivot-button.pte-grid-toolbar-pivot-active {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-pivot-button.pte-grid-toolbar-pivot-active .pte-grid-toolbar-pivot-icon {
+  background-color: var(--pte-text-color);
 }
 
 .pte-grid-toolbar-export-button:disabled {
@@ -1422,6 +1466,164 @@
   cursor: default;
 }
 
+/* Pivot-role chips: a second grid row under the column row's controls. While pivot mode is on,
+   rows collapse to label + chips (the layout controls would act on the invisible stashed layout)
+   and the field wells above the list carry the ordered role editing. */
+.pte-column-panel-roles {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 0 2px 3px 19px;
+}
+
+.pte-column-panel-row-pivot {
+  min-height: 0;
+  grid-template-columns: 1fr;
+  row-gap: 2px;
+}
+
+.pte-column-panel-row-pivot .pte-column-panel-label {
+  padding-top: 4px;
+}
+
+.pte-column-panel-row-pivot .pte-column-panel-roles {
+  padding-left: 2px;
+}
+
+.pte-column-panel-role-chip,
+.pte-column-panel-role-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 10px;
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pte-column-panel-role-add {
+  padding: 0;
+  width: 20px;
+  justify-content: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+}
+
+.pte-column-panel-role-chip:hover,
+.pte-column-panel-role-add:hover {
+  border-color: var(--pte-selected-border-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-role-chip:focus-visible,
+.pte-column-panel-role-add:focus-visible,
+.pte-column-panel-well-add:focus-visible,
+.pte-column-panel-well-remove:focus-visible {
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-role-chip-x {
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+}
+
+.pte-column-panel-role-chip:hover .pte-column-panel-role-chip-x {
+  color: var(--pte-text-color);
+}
+
+/* The pivot customizer's field wells (visible only while pivot mode is on). */
+.pte-column-panel-wells {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 8px 8px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--pte-border-color);
+}
+
+.pte-column-panel-wells[hidden] {
+  display: none;
+}
+
+.pte-column-panel-well + .pte-column-panel-well {
+  margin-top: 8px;
+}
+
+.pte-column-panel-well-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.pte-column-panel-well-title {
+  color: var(--pte-muted-text-color);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pte-column-panel-well-add,
+.pte-column-panel-well-remove {
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pte-column-panel-well-add:hover,
+.pte-column-panel-well-remove:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-column-panel-well-item {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(50px, 1fr) 48px 24px;
+  gap: 4px;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  border-radius: 5px;
+}
+
+.pte-column-panel-well-item:hover {
+  background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel-well-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pte-column-panel-well-empty {
+  padding: 2px 8px 4px;
+  color: var(--pte-muted-text-color);
+  font-size: 12px;
+  font-style: italic;
+}
+
 .pte-column-panel-root-dropzone {
   display: none;
   margin: 4px 5px 2px;
@@ -1542,8 +1744,30 @@
 .pte-header-wrapper {
   overflow: hidden;
   display: flex;
+  /* Containing block for the pivot empty-state hint. */
+  position: relative;
   background-color: var(--pte-header-background-color);
   border-bottom: 1px solid var(--pte-frame-border-color);
+}
+
+/* Pivot mode with no value columns: the header holds only the group column, so the free space
+   carries the pointer to the action that adds values. Non-interactive by design. */
+.pte-header-pivot-hint {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--pte-muted-text-color);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.pte-header-pivot-hint.visible {
+  display: block;
 }
 
 .pte-header-leading {
@@ -1923,8 +2147,300 @@
   display: flex;
 }
 
-.pte-aggregate-controls {
-  margin-right: auto;
+/* Footer zones, in visual/tab order: sheet tabs (left) · aggregation (center) · pagination
+   (right). The two outer zones flex equally so the center zone sits centered when tabs are
+   mounted; with the tab zone empty (today's degenerate case) aggregation hugs the left edge and
+   pagination the right, exactly as before. */
+.pte-footer-tabs {
+  display: none;
+  flex: 1 1 0;
+  min-width: 0;
+  /* Tabs fill the strip's height rather than floating in it — see the tab-shape note below. */
+  align-items: stretch;
+  align-self: stretch;
+  gap: 4px;
+  /* Pulls the strip out of the footer's own padding box: -9px is the footer's 8px top padding plus
+     its 1px top border, so the strip starts ON that border line (a negative cross-axis margin
+     grows a stretched flex item rather than moving it). That is what lets a tab own the boundary
+     between the grid body and the footer. The left inset shrinks to 4px so the first tab sits near
+     the grid's edge without running into the root's rounded corner. */
+  margin-top: -9px;
+  margin-left: -8px;
+}
+
+.pte-footer-tabs.pte-footer-tabs-enabled {
+  display: flex;
+}
+
+.pte-footer-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pte-footer-end {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Sheet tab strip. The scroller hides its scrollbar; overflow is signalled by edge fades on the
+   relative wrapper (scroll-toggled classes), so the strip reads as "more tabs this way". */
+.pte-sheet-scroll-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  /* The scroller is the full height of the strip: a tab that has to reach the footer's top border
+     cannot do it with a negative margin, because a scroll container clips to its padding box. */
+  align-items: stretch;
+}
+
+.pte-sheet-scroll-wrap::before,
+.pte-sheet-scroll-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+
+.pte-sheet-scroll-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--pte-surface-bg-color), transparent);
+}
+
+.pte-sheet-scroll-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--pte-surface-bg-color), transparent);
+}
+
+.pte-sheet-scroll-wrap.pte-sheet-overflow-left::before,
+.pte-sheet-scroll-wrap.pte-sheet-overflow-right::after {
+  opacity: 1;
+}
+
+.pte-sheet-tabs {
+  display: flex;
+  align-items: stretch;
+  /* Gaps, not borders, separate the tabs: the strip sits over the footer's top border, so a
+     transparent gap is where that border shows back through and the line stays continuous. */
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pte-sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Spreadsheet tab shape, not a toolbar button: a tab hangs off the grid body above it — square at
+   the top where it meets the body, rounded at its free bottom edge. An inactive tab continues the
+   footer's top border along its own top edge; the ACTIVE tab breaks that line and fills with the
+   body's own surface colour, so the sheet reads as opening onto the tab the user is on. This is
+   the Excel/Sheets convention, and it is what separates a tab strip from a row of buttons. */
+.pte-sheet-tab {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  max-width: 200px;
+  height: 100%;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--pte-frame-border-color);
+  border-radius: 0 0 3px 3px;
+  background-color: var(--pte-sheet-tab-bg);
+  color: var(--pte-muted-text-color);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pte-sheet-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* The tint overlay below is a positioned box, so it paints above the button's in-flow text.
+     Lifting the label into the positioned layer too puts it back on top — no stacking context and
+     no z-index ordering to keep straight. */
+  position: relative;
+}
+
+.pte-sheet-tab:hover {
+  background-color: var(--pte-sheet-tab-hover-bg);
+  color: var(--pte-text-color);
+}
+
+.pte-sheet-tab[aria-selected="true"] {
+  background-color: var(--pte-surface-bg-color);
+  color: var(--pte-text-color);
+  font-weight: 600;
+  /* Transparent rather than absent: the tab still paints its own background across the full border
+     box, so the footer's border underneath is covered and the line breaks exactly here. */
+  border-top-color: transparent;
+  /* Sides and the accent underline as insets, so selection never changes a tab's metrics. */
+  box-shadow:
+    inset 1px 0 0 var(--pte-frame-border-color),
+    inset -1px 0 0 var(--pte-frame-border-color),
+    inset 0 -3px 0 var(--pte-selected-border-color);
+}
+
+/* The shared control-focus rule rounds all four corners and replaces the box-shadow; both are
+   wrong for a tab, whose square top edge IS what attaches it to the grid. Same specificity,
+   declared later. */
+.pte-root .pte-sheet-tab:focus-visible {
+  border-radius: 0 0 3px 3px;
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
+}
+
+/* A tab colour is worn as a tint, never as a fill. The overlay carries the colour at low opacity
+   over the tab's own rail fill, so the theme's label colour stays legible whatever colour is
+   picked, in light and dark alike — no luminance test, no per-colour text colour, and an
+   application-supplied colour in any CSS notation works the same as a built-in one.
+
+   The ACTIVE tab is exempt: it keeps the body's surface fill (that is what merges it with the grid)
+   and shows its colour solid, in the underline, exactly as Sheets does. */
+.pte-sheet-tab-colored:not([aria-selected="true"])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: var(--pte-sheet-tab-color);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.pte-sheet-tab-colored:not([aria-selected="true"]):hover::before {
+  opacity: 0.34;
+}
+
+/* Same three insets as an uncoloured active tab, with the sheet's colour standing in for the
+   accent. Equal specificity to that rule, declared later. */
+.pte-sheet-tab-colored[aria-selected="true"] {
+  box-shadow:
+    inset 1px 0 0 var(--pte-frame-border-color),
+    inset -1px 0 0 var(--pte-frame-border-color),
+    inset 0 -3px 0 var(--pte-sheet-tab-color);
+}
+
+/* Colour chip in the "Change color" menu. It sits inside the menu's 22px icon slot, which is a
+   mask box for real icons and pure padding here. */
+.pte-sheet-color-swatch {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 3px;
+  border-radius: 4px;
+  border: 1px solid var(--pte-control-border-color);
+}
+
+/* "Custom…": a spectrum standing for "any colour", until the sheet actually wears a custom one —
+   then the chip shows that colour like any palette entry. */
+.pte-sheet-color-swatch-custom {
+  background-image: conic-gradient(
+    #ef4444, #f59e0b, #84cc16, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444
+  );
+}
+
+/* The control behind "Custom…". Invisible rather than `display: none`: a browser will not open a
+   picker on a control it is not rendering. Absolutely positioned, and moved onto the tab before the
+   picker opens (see positionColorInput) — Chromium anchors the popup to this box, so where the box
+   sits is where the picker appears. Absolute rather than fixed so the offsets stay in the grid's
+   own coordinate space, which survives an application transforming an ancestor. */
+.pte-sheet-color-input {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* "None": an empty chip struck through, rather than a chip of some colour that means no colour. */
+.pte-sheet-color-swatch-none {
+  background-image: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 1px),
+    var(--pte-muted-text-color) calc(50% - 1px),
+    var(--pte-muted-text-color) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+
+.pte-sheet-rename-input {
+  /* A direct child of the flex tab strip now (it replaces the tab button during a rename), so it
+     needs the same no-shrink sizing the tabs carry — but it is a field, not a tab: it keeps the
+     centred pill shape instead of stretching into the tab lane. */
+  flex: 0 0 auto;
+  align-self: center;
+  height: 28px;
+  width: 140px;
+  border: 1px solid var(--pte-selected-border-color);
+  border-radius: 6px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+}
+
+/* The + is an affordance beside the strip, not a tab: a round ghost button, centred in the footer
+   rather than stretched to the tab lane. */
+.pte-sheet-add {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--pte-muted-text-color);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pte-sheet-add:hover:not(:disabled) {
+  background-color: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+/* Disabled on a grid that cannot pivot. It stays visible because its tooltip carries the "why",
+   so it has to LOOK unavailable rather than merely behave that way. */
+.pte-sheet-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pte-root .pte-sheet-add:focus-visible {
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
 }
 
 .pte-pagination-section {
@@ -3555,6 +4071,11 @@
 
 .icon-group {
   mask-image: var(--pte-icon-group);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-pivot {
+  mask-image: var(--pte-icon-pivot);
   background-color: var(--pte-icon-color);
 }
 

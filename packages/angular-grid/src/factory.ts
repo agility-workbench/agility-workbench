@@ -30,6 +30,11 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
+  setIfDefined(options, "pivotMode", grid.pivotMode());
+  setIfDefined(options, "pivotColumns", grid.pivotColumns());
+  setIfDefined(options, "pivotResultColumnDef", grid.pivotResultColumnDef());
+  setIfDefined(options, "maxPivotColumns", grid.maxPivotColumns());
+  setIfDefined(options, "pivotColumnMoveMode", grid.pivotColumnMoveMode());
   setIfDefined(options, "autosizeColumnsOnDataChange", grid.autosizeColumnsOnDataChange());
   setIfDefined(options, "allowExportAsCSV", grid.allowExportAsCSV());
   setIfDefined(options, "allowExportAsExcel", grid.allowExportAsExcel());
@@ -94,8 +99,10 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "columnPanel", grid.columnPanel());
   setIfDefined(options, "toolbar", grid.toolbar());
   setIfDefined(options, "savedViews", grid.savedViews());
+  setIfDefined(options, "sheets", grid.sheets());
   setIfDefined(options, "loadingMessage", grid.loadingMessage());
   setIfDefined(options, "noRowsMessage", grid.noRowsMessage());
+  setIfDefined(options, "pivotNoValuesMessage", grid.pivotNoValuesMessage());
   setIfDefined(options, "filterDebounceMs", grid.filterDebounceMs());
   setIfDefined(options, "cellFlashDuration", grid.cellFlashDuration());
   setIfDefined(options, "cellFadeDuration", grid.cellFadeDuration());

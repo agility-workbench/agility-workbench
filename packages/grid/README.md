@@ -10,7 +10,8 @@ workspaces.
 - **Angular binding** — using Angular 20.3+? Install [`@agility-workbench/angular-grid`](https://www.npmjs.com/package/@agility-workbench/angular-grid),
   which provides the standalone `<awb-grid>` component on top of this core.
 - **Virtualized** rendering, client-side and server-side row models, row grouping, tree data,
-  aggregation, quick filter, editing, and CSV / Excel export (zero-dependency `.xlsx` writer).
+  aggregation, client-side pivot mode, spreadsheet-style sheet tabs, quick filter, editing, and
+  CSV / Excel export (zero-dependency `.xlsx` writer).
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
   per grid instance.
 
@@ -277,6 +278,70 @@ collapsible groups; searching a group name reveals its descendants, and reorderi
 appropriate sibling group. Columns conditionally shown by `columnGroupShow` reflect their effective
 visibility as the header group expands or collapses; group-hidden columns are excluded from bulk
 visibility and their individual checkbox explains which parent currently controls them.
+
+## Pivot mode
+
+Pivot mode (client-side row model) turns the grid into a pivot table over its own rows: row
+groups down the side, one generated column group per distinct value of each pivot column, and one
+read-only, sortable leaf per value aggregate underneath. Filters and the quick filter keep running
+on the source rows, cell edits re-derive the pivot live, and the three roles are ordinary grid
+state — row groups, the aggregate model (a column may carry several aggregate types at once), and
+the new `pivotColumns` list:
+
+```ts
+import { AggregateType, createGrid } from "@agility-workbench/grid";
+
+const api = createGrid(host, { rowIdKey: "id", columnDefs, rowData });
+
+api.setRowGroupColumns(["region"]);
+api.setPivotColumns(["quarter"]);
+api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+api.setPivotMode(true);
+```
+
+Users reach the same state through the column menu ("Pivot on Column", per-type aggregate
+toggles), the toolbar's `pivot` section (mode indicator + toggle), and the column panel, which
+becomes the pivot customizer while pivoted: role chips on every column, a role-editor menu, and
+ordered Row groups / Column labels / Values field wells. Turning the mode off restores the exact
+pre-pivot grouping and aggregates; turning it back on reinstates the last pivot session.
+
+Generated columns take their formatting from the source value column (overridable via
+`pivotResultColumnDef`), get stable ids so widths and sorts survive data changes, and can be
+dragged in two modes (`pivotColumnMoveMode`): `"measures"` reorders the value measures
+consistently across every group, `"free"` arranges leaves and whole groups. `maxPivotColumns`
+caps the generated set (whole pivot values at a time), firing the latched
+`pivotColumnLimitReached` event instead of failing. Pivot state — including everything a sheet
+needs — rides the ordinary view-state capture/apply, and CSV/Excel export writes the generated
+nested headers with every group row.
+
+## Sheets
+
+Supplying `sheets` renders a spreadsheet-style tab strip in the footer (tabs left, aggregation
+center, pagination right). One grid, one row model, one edit history — each sheet is a named, live
+view state (columns, sort, filters, grouping, aggregates, pivot config, expansion, page), and
+switching tabs captures the outgoing sheet and applies the target. The contract mirrors
+`savedViews`: the application owns the list, the grid reports changes back.
+
+```ts
+const api = createGrid(host, {
+  rowIdKey: "id",
+  columnDefs,
+  rowData,
+  sheets: {
+    sheets: [{ id: "data", name: "Data" }],
+    activeSheetId: "data",
+    onChange: (sheets) => save(sheets),
+    onActiveSheetChange: (sheetId) => remember(sheetId),
+  },
+});
+```
+
+**+** appends a fresh pivot sheet; tabs rename inline (double-click / F2) and carry a context menu
+with Rename / Change color / Duplicate / Delete. Ctrl+PageDown / Ctrl+PageUp switch to the
+neighboring sheet, and the strip is a full ARIA tablist with roving tabindex. Tab colors land on
+`GridSheet.color` and render as a tint, so any CSS color stays legible in both themes; the palette
+is replaceable (per sheet, if needed) through `SheetsOptions.colors`, and
+`SheetsOptions.customColor` adds the platform color picker.
 
 ## Sparklines
 

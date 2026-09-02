@@ -18,7 +18,7 @@ import type {
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
-import type { SavedViewsOptions } from "./gridView";
+import type { SavedViewsOptions, SheetsOptions } from "./gridView";
 
 /**
  * Payload for the `onCellValueChanged` option: a cell's stored value changed. Covers every write
@@ -753,6 +753,8 @@ export interface GridToolbarOptions {
   views?: boolean;
   /** CSV/Excel export menu. */
   export?: boolean;
+  /** Pivot-mode indicator + toggle. Client-side row model only. */
+  pivot?: boolean;
 }
 
 export interface ResolvedGridToolbarOptions {
@@ -761,6 +763,7 @@ export interface ResolvedGridToolbarOptions {
   quickFilter: boolean;
   views: boolean;
   export: boolean;
+  pivot: boolean;
 }
 
 export function resolveGridToolbarOptions(
@@ -772,6 +775,7 @@ export function resolveGridToolbarOptions(
     quickFilter: options?.quickFilter === true,
     views: options?.views === true,
     export: options?.export === true,
+    pivot: options?.pivot === true,
   };
 }
 
@@ -1217,6 +1221,53 @@ export interface GridOptions {
    */
   groupSortMode?: GroupSortMode;
   /**
+   * Start the grid in pivot mode. Rows display as the row-group tree (leaf rows never show) and
+   * the header is generated from data: one nested column group per distinct value of each pivot
+   * column, one value leaf per aggregated column. Non-participating source columns are hidden
+   * while pivoted (they return exactly on exit). Toggle at runtime with `api.setPivotMode` or the
+   * `pivotModeSet` action. Client-side row model only; mutually exclusive with tree data.
+   */
+  pivotMode?: boolean;
+  /**
+   * Columns to pivot on, in level order (outermost first), by colId. Stored even while pivot mode
+   * is off; change at runtime with `api.setPivotColumns`. With pivot mode on and no pivot columns
+   * the grid shows the degenerate grouped-aggregate view (one generated leaf per value entry).
+   */
+  pivotColumns?: string[];
+  /**
+   * Definition overlay for every generated pivot VALUE column (width, cellClass, formatter…).
+   * Identity and behavior locks (`colId`, `editable: false`, `movable: false`, `filter: false`,
+   * …) are grid-owned and cannot be overridden. Generated group headers take no overlay.
+   */
+  pivotResultColumnDef?: Partial<ColDef>;
+  /**
+   * Cap on generated pivot leaf columns (default 200). A discovery past the cap truncates
+   * deterministically — the first columns in header order survive — and fires
+   * `pivotColumnLimitReached`; never a hard failure. That event is latched: it reports the start
+   * of truncation, any change in how much is dropped, and the return under the cap.
+   *
+   * The cap is a target, not an exact ceiling, because truncation is **per pivot value**: a value
+   * is kept or dropped with all of its measures, so the generated count is always a whole multiple
+   * of the measure count. It can land under the cap — 3 measures against a cap of 200 keep
+   * `⌊200 / 3⌋ = 66` values, so 198 columns — and, because at least one value always survives, it
+   * can land over it: 5 measures against a cap of 3 generate 5 columns.
+   */
+  maxPivotColumns?: number;
+  /**
+   * What dragging a generated pivot value column in the header does (default `"measures"`).
+   *
+   * - `"measures"` — a drop reorders the MEASURES (the aggregate model): every generated group
+   *   re-renders its value leaves in the new order, symmetry is preserved, and the order is the
+   *   same one `setAggregates` and the column panel's Values well control.
+   * - `"free"` — value leaves (and whole generated groups) arrange per position: a leaf can leave
+   *   its group and sit anywhere in the pivot area, carrying duplicated group captions with it
+   *   (the split-and-carry behavior source column groups have). The arrangement is a leaf-order
+   *   list over the generated columns (`setPivotColumnOrder` / view state `pivotColumnOrder`); it
+   *   survives data- and filter-driven re-discoveries, and resets to the canonical layout on any
+   *   explicit role edit (`setAggregates`, `setPivotColumns`, and the menus/wells that call them).
+   */
+  pivotColumnMoveMode?: "measures" | "free";
+  /**
    * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
    * Tree data is mutually exclusive with column-value row grouping.
    */
@@ -1296,6 +1347,12 @@ export interface GridOptions {
   /** Application-owned view definitions and persistence callbacks for `toolbar.views`. */
   savedViews?: SavedViewsOptions;
   /**
+   * Spreadsheet-style sheet tabs in the footer's left zone (Data sheet + pivot sheets over one
+   * shared row model). Supplying this option mounts the tab strip; the application owns the sheet
+   * list and persistence through its callbacks. See {@link SheetsOptions}.
+   */
+  sheets?: SheetsOptions;
+  /**
    * Text shown in the loading overlay (while the `loading` flag is set). Defaults to
    * "Loading data...".
    */
@@ -1306,6 +1363,13 @@ export interface GridOptions {
    * shown instead and this option does not apply.
    */
   noRowsMessage?: string;
+  /**
+   * Text of the inline header hint shown while pivot mode is on but no aggregates have been chosen
+   * (pivot mode with no values generates no columns, so the header would otherwise be a bare group
+   * column). Defaults to "Choose Aggregate on a column to add values" — override it to match the
+   * wording of your own aggregate entry point, or to translate it.
+   */
+  pivotNoValuesMessage?: string;
   /**
    * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
    * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
@@ -1418,6 +1482,11 @@ export interface InternalGridOptions extends GridOptions {
   groupColumnDef?: Partial<ColDef>;
   groupDefaultExpanded: number;
   groupSortMode: GroupSortMode;
+  pivotMode: boolean;
+  pivotColumns: string[];
+  pivotResultColumnDef?: Partial<ColDef>;
+  maxPivotColumns: number;
+  pivotColumnMoveMode: "measures" | "free";
   treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
   isRowSelectable?: (node: IRowNode) => boolean;
@@ -1431,8 +1500,10 @@ export interface InternalGridOptions extends GridOptions {
   columnPanel: boolean | ColumnPanelOptions;
   toolbar: GridToolbarOptions;
   savedViews?: SavedViewsOptions;
+  sheets?: SheetsOptions;
   loadingMessage: string;
   noRowsMessage: string;
+  pivotNoValuesMessage: string;
   filterDebounceMs: number;
   cellFlashDuration: number;
   cellFadeDuration: number;
@@ -1493,6 +1564,7 @@ export const WIDGET_OPTION_KEYS = [
   "tooltip",
   "columnPanel",
   "savedViews",
+  "sheets",
   "pagination",
   "paginationControls",
   "rowSelection",
@@ -1505,6 +1577,7 @@ export const WIDGET_OPTION_KEYS = [
   "groupDisplayType",
   "groupSortMode",
   "groupRowsSelectable",
+  "pivotColumnMoveMode",
   "isRowSelectable",
   "serverSideDataSource",
   "serverSideAggregationSource",

@@ -8,6 +8,8 @@ export type DemoFeature =
   | "selection"
   | "editing"
   | "grouping"
+  | "pivot"
+  | "sheets"
   | "tree-data"
   | "pinned-rows"
   | "rendering"
@@ -339,6 +341,87 @@ group(api: IGridAPI) {
 
 api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
 api.setAllGroupsExpanded(true);`,
+  },
+  pivot: {
+    react: String.raw`<Grid
+  rowData={rows}
+  columnDefs={columns}
+  toolbar={{ pivot: true }}
+  columnPanel={{ trigger: "toolbar" }}
+  onGridReady={(api) => {
+    api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+    api.setRowGroupColumns(["region"]);
+    api.setPivotColumns(["status"]);
+    api.setPivotMode(true);
+  }}
+/>`,
+    angular: String.raw`<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [toolbar]="{ pivot: true }"
+  [columnPanel]="{ trigger: 'toolbar' }"
+  (gridReady)="pivot($event)"
+/>
+
+pivot(api: IGridAPI) {
+  api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+  api.setRowGroupColumns(["region"]);
+  api.setPivotColumns(["status"]);
+  api.setPivotMode(true);
+}`,
+    core: String.raw`const core = new GridCore(measurer, {
+  columnDefs,
+  // Or seed at construction: pivotMode: true, pivotColumns: ["status"]
+  toolbar: { pivot: true },
+  columnPanel: { trigger: "toolbar" }, // the panel doubles as the pivot customizer
+});
+
+api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
+api.setRowGroupColumns(["region"]);
+api.setPivotColumns(["status"]);
+api.setPivotMode(true);`,
+  },
+  sheets: {
+    react: String.raw`const [sheets, setSheets] = useState<GridSheet[]>([{ id: "data", name: "Data" }]);
+const [activeSheetId, setActiveSheetId] = useState<string | null>("data");
+
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  pagination
+  toolbar={{ pivot: true }}
+  sheets={{
+    sheets,
+    activeSheetId,
+    onChange: setSheets,               // persist anywhere — the app owns the list
+    onActiveSheetChange: setActiveSheetId,
+  }}
+/>`,
+    angular: String.raw`<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  [pagination]="true"
+  [toolbar]="{ pivot: true }"
+  [sheets]="sheetsOptions()"
+/>
+
+readonly sheets = signal<GridSheet[]>([{ id: "data", name: "Data" }]);
+readonly sheetsOptions = computed<SheetsOptions>(() => ({
+  sheets: this.sheets(),
+  onChange: (next) => this.sheets.set(next), // persist anywhere — the app owns the list
+}));`,
+    core: String.raw`const api = createGrid(host, {
+  rowData,
+  columnDefs,
+  pagination: true,
+  toolbar: { pivot: true },
+  // Supplying the option mounts the footer tab strip. A sheet is a live view
+  // state: switching tabs captures the sheet you leave and applies the next.
+  sheets: {
+    sheets: [{ id: "data", name: "Data" }],
+    onChange: (next) => save(next), // persist anywhere — the app owns the list
+  },
+});`,
   },
   "tree-data": {
     react: String.raw`<Grid

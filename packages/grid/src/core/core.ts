@@ -4,7 +4,9 @@ import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
-import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
+import { AggregateModel, AggregateScope, AggregateType, ColumnAggregate } from "../interfaces/aggregate";
+import { isPivotResultColId, parsePivotLeafColId, PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
+import { buildPivotResultColDefs } from "../column/pivotResultColumns";
 import {
   CellCommitSource,
   GridOptions,
@@ -23,6 +25,7 @@ import {
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
+import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
   GridEventHandler,
@@ -70,6 +73,25 @@ function resolveAsyncTransactionWaitMs(value: number | undefined): number {
 
 type SchemaSource = "auto" | "props" | "server";
 
+/** What exiting pivot mode restores when no base layer was ever recorded (see setPivotMode). */
+const EMPTY_PIVOT_LAYER: GridPivotLayerState = {
+  rowGroupColumns: [],
+  aggregateModel: [],
+  pivotColumns: [],
+};
+
+// Layers are handed across the API boundary and stored, so neither side can alias the other's
+// arrays.
+function clonePivotLayer(layer: GridPivotLayerState): GridPivotLayerState {
+  return {
+    rowGroupColumns: layer.rowGroupColumns.slice(),
+    aggregateModel: layer.aggregateModel.map(agg => ({ ...agg })),
+    pivotColumns: layer.pivotColumns.slice(),
+    ...(layer.pivotColumnOrder ? { pivotColumnOrder: layer.pivotColumnOrder.slice() } : {}),
+    ...(layer.aggregateScope ? { aggregateScope: layer.aggregateScope } : {}),
+  };
+}
+
 interface RangeColumnSnapshot {
   layout: Array<{ id: string; section: "left" | "center" | "right" }>;
 }
@@ -109,6 +131,23 @@ export class GridCore implements IGridCore {
 
   private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
+
+  // Pivot state. `pivotColumns` persists while pivot mode is off (it applies when the mode turns
+  // on). Client-side row model only.
+  private pivotMode = false;
+  private pivotColumns: Column[] = [];
+  // Guards one-time seeding of the initial pivot options once columns exist (like initialSortSeeded).
+  private pivotSeeded = false;
+  // Last reported generated-column truncation (0 = not truncated) — see setPivotColumnLimit.
+  private pivotLimitTruncated = 0;
+  // Pivot mode is a state LAYER, not a lens over the current state: the roles assigned while
+  // pivoted (row groups, pivot columns, values) describe the pivot view alone. So entering stashes
+  // the flat grid's state here and exiting restores it, while exiting stashes the pivot view's own
+  // state so turning the mode back on reinstates it. Exactly one of the two is populated at a time
+  // (the other layer is the live state). Stored by colId, not Column refs, so a columnDefs swap
+  // needs no reconcile pass and the layers serialize straight into the view state.
+  private basePivotLayer: GridPivotLayerState | null = null;
+  private stashedPivotLayer: GridPivotLayerState | null = null;
   // Columns the rows are grouped by, in grouping-level order. Empty = no grouping. Client-side only.
   private groupColumns: Column[] = [];
   private schemaSource: SchemaSource = "auto";
@@ -116,6 +155,10 @@ export class GridCore implements IGridCore {
   private serverSchemaSignature: string | undefined;
 
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
+  // End-of-dispatch work: see afterDispatch. Depth, not a boolean — actions nest.
+  private dispatchDepth = 0;
+  private pendingAfterDispatch = new Set<() => void>();
+  private flushingAfterDispatch = false;
   // Seeded with the measure-path fallback fonts so autosize is safe before the first header build
   // probes the real theme fonts (themeFontSet re-runs autosize, so these widths never survive).
   private textMeasureParams: TextMeasureParams = { headerFont: "500 14px Arial", cellFont: "14px Arial" };
@@ -315,6 +358,13 @@ export class GridCore implements IGridCore {
       groupColumnDef: options.groupColumnDef,
       groupDefaultExpanded: options.groupDefaultExpanded ?? 0,
       groupSortMode: options.groupSortMode ?? "local",
+      pivotMode: isTrue(options.pivotMode),
+      pivotColumns: options.pivotColumns ?? [],
+      pivotResultColumnDef: options.pivotResultColumnDef,
+      maxPivotColumns: options.maxPivotColumns != null && options.maxPivotColumns >= 1
+        ? Math.trunc(options.maxPivotColumns)
+        : 200,
+      pivotColumnMoveMode: options.pivotColumnMoveMode ?? "measures",
       // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
       treeData: options.rowModelType === "serverSide"
         ? undefined
@@ -333,8 +383,11 @@ export class GridCore implements IGridCore {
       columnPanel: options.columnPanel ?? false,
       toolbar: options.toolbar ?? {},
       savedViews: options.savedViews,
+      sheets: options.sheets,
       loadingMessage: options.loadingMessage ?? "Loading data...",
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
+      pivotNoValuesMessage:
+        options.pivotNoValuesMessage ?? "Choose Aggregate on a column to add values",
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
       cellFlashDuration: options.cellFlashDuration != null && options.cellFlashDuration >= 0 ? options.cellFlashDuration : 500,
       cellFadeDuration: options.cellFadeDuration != null && options.cellFadeDuration >= 0 ? options.cellFadeDuration : 1000,
@@ -395,10 +448,23 @@ export class GridCore implements IGridCore {
     const filtersDropped = droppedFilterCols.length > 0;
     this.reconcileAggregateModelColumns();
     this.reconcileGroupModelColumns();
+    this.reconcilePivotModelColumns();
+    // One-time: apply the initial pivot options now that columns exist to resolve against. The
+    // next data-bearing request carries the pivot state; entering mode here costs no extra derive.
+    if (!this.pivotSeeded) {
+      this.pivotSeeded = true;
+      if (this.options.pivotColumns.length > 0) {
+        this.setPivotColumns(this.options.pivotColumns);
+      }
+      if (this.options.pivotMode) this.setPivotMode(true);
+    }
     this.autosizeColumns();
     const activeComparatorChanged = this.sorts.items.some(
       item => sortedComparatorSnapshot.get(item.col.instanceID) !== item.col.userComparator,
     );
+    // Whether the aggregate request below will fire — the pivot fallback branch reads it, since a
+    // request of any reason re-derives the generated columns.
+    const aggregatesRequested = this.aggregates.length > 0;
     // autosizeColumns() has now (re)identified comparators, so the seeded sort can be produced.
     // Dropping a filtered column changes the effective row set. A "filter" request re-runs both
     // filtering and sorting; a "sort" request deliberately skips filtering, which previously left
@@ -413,8 +479,20 @@ export class GridCore implements IGridCore {
       if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (seededSort || activeComparatorChanged) {
       this.applyRowModelRequest(() => this.createRowModelRequest("sort", { start: this.pageStartIdx, end: this.pageEndIdx }, this.getInitialServerSideLoadRange()));
+    } else if (this.pivotMode && !aggregatesRequested) {
+      // A defs swap replaces the columns the generated pivot layout is derived FROM, so the layout
+      // has to be rebuilt against the new sources — otherwise a measure the new defs dropped keeps
+      // its generated column in the header. Every derive runs discovery, so the branches above and
+      // the aggregate request below already cover it; this is the case where nothing else fires
+      // one. The page is kept: nothing in a defs swap changes the row set.
+      this.applyRowModelRequest(() => this.createRowModelRequest(
+        "pivot",
+        { start: this.pageStartIdx, end: this.pageEndIdx },
+        this.getInitialServerSideLoadRange(),
+      ));
+      this.autosizeColumns();
     }
-    if (this.aggregates.length > 0) {
+    if (aggregatesRequested) {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
     this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged, filtersDropped);
@@ -614,8 +692,27 @@ export class GridCore implements IGridCore {
     );
   }
 
+  /**
+   * Whether a sort colId addresses a column that exists RIGHT NOW. `applyViewState` uses it to hold
+   * back captured sorts whose column a later restore step still has to create.
+   */
+  canResolveSortColId(colId: string): boolean {
+    return this.resolveSortColumn({ key: colId }) != null;
+  }
+
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
-    return this.resolveModelColumn(sort);
+    const col = this.resolveModelColumn(sort);
+    if (col) return col;
+    // A sort can also address one of the two INTERNAL columns a user can sort. Internal columns are
+    // registered by instanceID only, so no public lookup holds them, and their instanceIDs are
+    // per-grid UUIDs — a captured colId is all a saved view has to go on.
+    const colId = sort.key ?? sort.col?.colId;
+    if (colId == null) return undefined;
+    // A GENERATED pivot column ("order the buckets by their aggregate at this cell"), resolved
+    // against the live pivot layout, which yields nothing once pivot display is off.
+    if (isPivotResultColId(colId)) return this.columnModel.getPivotResultLeaf(colId);
+    // The synthesized auto-group column ("order the group buckets by their label").
+    return this.columnModel.getAutoGroupColumnByColId(colId);
   }
 
   private resolveModelColumn(item: { col?: Column; key?: string }): Column | undefined {
@@ -634,6 +731,25 @@ export class GridCore implements IGridCore {
       ?? this.columnModel.getByKey(item.key);
   }
 
+  /**
+   * Resolve role assignments (row groups / pivot columns) from colIds, in the given order: skips
+   * what no longer exists, what the role is disabled for, internal columns, and duplicates. Shared
+   * by `setRowGroupModel`, `setPivotColumns` and the pivot state layers so one rule governs all.
+   */
+  private resolveRoleColumns(colIds: string[], role: "group" | "pivot"): Column[] {
+    const resolved: Column[] = [];
+    const seen = new Set<string>();
+    for (const colId of colIds) {
+      const col = this.resolveModelColumn({ key: colId });
+      if (!col || col.isInternal()) continue;
+      if (!(role === "group" ? col.groupable : col.pivotable)) continue;
+      if (seen.has(col.instanceID)) continue;
+      seen.add(col.instanceID);
+      resolved.push(col);
+    }
+    return resolved;
+  }
+
   private resolveAggregateModels(aggregates: AggregateModel[]): AggregateModel[] {
     const next: AggregateModel[] = [];
     const seenColIds = new Set<string>();
@@ -646,8 +762,11 @@ export class GridCore implements IGridCore {
 
       const leaves = col.children.length > 0 ? col.getVisibleLeaves() : [col];
       for (const leaf of leaves) {
-        if (seenColIds.has(leaf.instanceID)) continue;
-        seenColIds.add(leaf.instanceID);
+        // A column may carry several aggregates (distinct pivot measures; in the footer row the
+        // last one wins) — only exact (column, type) duplicates collapse.
+        const seenKey = `${leaf.instanceID}|${aggregate.type}`;
+        if (seenColIds.has(seenKey)) continue;
+        seenColIds.add(seenKey);
         next.push({ key: leaf.instanceID, type: aggregate.type });
       }
     }
@@ -752,6 +871,18 @@ export class GridCore implements IGridCore {
         matchMode: this.quickFilterMatchMode,
         caseSensitive: this.quickFilterCaseSensitive,
       },
+      pivot: this.pivotMode
+        ? {
+            columns: this.pivotColumns.slice(),
+            valueEntries: this.buildPivotValueEntries(),
+            maxPivotColumns: this.options.maxPivotColumns,
+          }
+        : undefined,
+      // While the pivot layout is displayed, the visible leaves are generated columns with no
+      // leaf values — quick filter keeps searching the stashed source leaves.
+      quickFilterColumns: this.pivotMode && this.columnModel.isPivotDisplayActive()
+        ? this.columnModel.getPivotSourceLeaves().filter(col => !col.isInternal())
+        : undefined,
     };
   }
 
@@ -873,7 +1004,9 @@ export class GridCore implements IGridCore {
     const structural = result.added > 0 || result.removed > 0;
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
     // when reevaluateOnEdit is set; otherwise values change in place and rows keep their positions.
-    const reevaluate = structural || this.options.reevaluateOnEdit;
+    // Pivot mode always reflows: the displayed rows are derived aggregates (see
+    // reevaluateAfterEdit for the same rule on the editing path).
+    const reevaluate = structural || this.options.reevaluateOnEdit || this.pivotMode;
 
     if (reevaluate) {
       this.applyRowModelRequest(() => this.createRowModelRequest(
@@ -1089,17 +1222,13 @@ export class GridCore implements IGridCore {
       console.warn("Column-value row grouping cannot be combined with tree data.");
       return;
     }
-    const resolved: Column[] = [];
-    const seen = new Set<string>();
-    for (const colId of colIds) {
-      const col = this.resolveModelColumn({ key: colId });
-      if (!col || !col.groupable || col.isInternal()) continue;
-      if (seen.has(col.instanceID)) continue;
-      seen.add(col.instanceID);
-      resolved.push(col);
-    }
+    const resolved = this.resolveRoleColumns(colIds, "group");
     this.groupColumns = resolved;
     this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType, false);
+    // A sort on the auto-group column goes when that column does (clearing the grouping, or a
+    // display mode that surfaces the label elsewhere) — the same rule any other retired column
+    // gets. The re-derive below applies the drop; sorts on columns that survived are untouched.
+    this.reconcileSortModelColumns();
     // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
@@ -1146,6 +1275,271 @@ export class GridCore implements IGridCore {
     return this.groupColumns.slice();
   }
 
+  getPivotMode(): boolean {
+    return this.pivotMode;
+  }
+
+  getPivotColumns(): Column[] {
+    return this.pivotColumns.slice();
+  }
+
+  /** Descriptors of the current generated pivot leaf columns, in header order. */
+  getPivotResultColumns(): PivotResultColumnDescriptor[] {
+    const out: PivotResultColumnDescriptor[] = [];
+    const walk = (col: Column, path: string[]) => {
+      if (col.children.length > 0) {
+        for (const child of col.children) walk(child, [...path, col.label]);
+        return;
+      }
+      const measure = parsePivotLeafColId(col.colId);
+      out.push({
+        colId: col.colId,
+        label: col.label,
+        groupPath: path,
+        valueColId: measure?.valueColId ?? "",
+        aggregateType: measure?.type as AggregateType,
+      });
+    };
+    for (const root of this.columnModel.getPivotResultRoots()) walk(root, []);
+    return out;
+  }
+
+  /**
+   * Turn pivot mode on or off. The mode owns a whole LAYER of state, not just the column layout:
+   * off restores the source columns exactly *and* the row groups / values / pivot columns that
+   * were in force before the mode turned on, so nothing configured for the pivot view leaks into
+   * the flat grid. The pivot view's own layer is stashed on the way out, so turning the mode back
+   * on reinstates the configuration the user left rather than starting from scratch.
+   *
+   * Filters and the quick filter deliberately stay put across the toggle: they select source rows,
+   * which means the same thing in both modes.
+   */
+  /**
+   * Why this grid cannot pivot, or null when it can. Pivot is a client-side feature: the
+   * server-side row model has no pivot handling at all, and tree data owns the row hierarchy that
+   * pivot would take over. Both are fixed for the life of the grid, so callers can treat the
+   * answer as static — the UI uses it to hide or disable pivot affordances rather than let users
+   * reach a refusal (see IGridCore.isPivotSupported).
+   */
+  private pivotUnsupportedReason(): string | null {
+    if (this.options.treeData) return "Pivot mode cannot be combined with tree data.";
+    if (this.rowModel.getType() !== "clientSide") {
+      return "Pivot mode is not supported on the server-side row model yet.";
+    }
+    return null;
+  }
+
+  isPivotSupported(): boolean {
+    return this.pivotUnsupportedReason() == null;
+  }
+
+  /**
+   * Report the generated columns' truncation state, latched: every derive runs a discovery, so
+   * emitting unconditionally would repeat an identical payload on every edit and every filter,
+   * and an app showing a "columns hidden" notice would never learn when to take it down. Firing
+   * on change alone makes the event the whole story — it starts, it moves, it ends.
+   */
+  private setPivotColumnLimit(truncatedColumnCount: number): void {
+    if (truncatedColumnCount === this.pivotLimitTruncated) return;
+    this.pivotLimitTruncated = truncatedColumnCount;
+    this.emit("pivotColumnLimitReached", {
+      limited: truncatedColumnCount > 0,
+      truncatedColumnCount,
+      maxPivotColumns: this.options.maxPivotColumns,
+    });
+  }
+
+  setPivotMode(on: boolean): void {
+    const unsupported = this.pivotUnsupportedReason();
+    if (unsupported) {
+      console.warn(unsupported);
+      return;
+    }
+    if (on === this.pivotMode) return;
+    this.pivotMode = on;
+    if (!on) {
+      this.stashedPivotLayer = this.capturePivotStateLayer();
+      // Sorts on generated columns address columns that cease to exist here. Nothing outside pivot
+      // mode can display or clear such an item, and a leftover one silently stops group buckets
+      // from sorting, so they leave with the layout that owned them.
+      this.dropPivotResultSorts();
+      // Restore the source layout, then resynthesize the group display (auto columns, level tags)
+      // for the non-pivot world — pivot display had forced singleColumn. The layer restore runs
+      // between the two: after setPivotDisplay(false) so colIds resolve against the source
+      // columns, before setRowGroupColumns so it synthesizes for the restored group model.
+      this.columnModel.setPivotDisplay(false);
+      // No base layer recorded (pivot mode came from the grid options, or from a view state that
+      // predates the layers) = exit to no roles at all: everything set now belongs to the pivot
+      // view, and there is no earlier state to claim it.
+      this.restorePivotStateLayer(this.basePivotLayer ?? EMPTY_PIVOT_LAYER);
+      this.basePivotLayer = null;
+      this.columnModel.setRowGroupColumns(this.groupColumns.slice(), this.options.groupDisplayType, false);
+      // Generated pivot columns are gone with the display, and the restored group model may not
+      // synthesize an auto-group column at all, so sorts addressing either go with them (see
+      // setRowGroupModel). `refreshPivotView` below re-derives with what is left.
+      this.reconcileSortModelColumns();
+      // The generated columns leave with the mode, so any truncation of them is over. Nothing else
+      // reports it: without a discovery to run, onPivotResult never fires on the way out.
+      this.setPivotColumnLimit(0);
+      this.clearSelectionForColumnChange();
+      // Rebuild the row pool / header for the restored column set BEFORE the repaint. Entering
+      // pivot needs no such emit here: the layout swaps mid-request via onPivotResult, which
+      // emits columnsChanged itself before rows paint.
+      this.emit("columnsChanged", { reason: "pivot" });
+    } else {
+      this.basePivotLayer = this.capturePivotStateLayer();
+      if (this.stashedPivotLayer) {
+        this.restorePivotStateLayer(this.stashedPivotLayer);
+        // The reinstated layer IS the live state now; keeping a copy would report a stale pivot
+        // configuration through getPivotStateLayers / captureViewState.
+        this.stashedPivotLayer = null;
+      }
+      this.clearSelectionForColumnChange();
+    }
+    this.refreshPivotView();
+  }
+
+  /**
+   * The stashed pivot state layers: the state pivot mode exits to (while it is on) and the pivot
+   * configuration it re-enters with (while it is off). Captured into the view state so a restored
+   * view toggles the mode exactly like the live grid did.
+   */
+  getPivotStateLayers(): GridPivotStateLayers {
+    return {
+      ...(this.basePivotLayer ? { base: clonePivotLayer(this.basePivotLayer) } : {}),
+      ...(this.stashedPivotLayer ? { pivot: clonePivotLayer(this.stashedPivotLayer) } : {}),
+    };
+  }
+
+  /**
+   * Replace both stashed layers (a view-state restore). Pure bookkeeping — it changes nothing that
+   * is displayed, only what the next `setPivotMode` swaps in, so restores seed it *after* applying
+   * the state they carry.
+   */
+  setPivotStateLayers(layers: GridPivotStateLayers): void {
+    this.basePivotLayer = layers.base ? clonePivotLayer(layers.base) : null;
+    this.stashedPivotLayer = layers.pivot ? clonePivotLayer(layers.pivot) : null;
+  }
+
+  // Snapshot the pivot-swappable role state as one layer, by public colId (see basePivotLayer).
+  private capturePivotStateLayer(): GridPivotLayerState {
+    const pivotColumnOrder = this.columnModel.getPivotLeafOrder();
+    return {
+      rowGroupColumns: this.groupColumns.map(col => col.colId),
+      aggregateModel: this.getAggregateModelByColId(),
+      pivotColumns: this.pivotColumns.map(col => col.colId),
+      ...(pivotColumnOrder ? { pivotColumnOrder: pivotColumnOrder.slice() } : {}),
+      aggregateScope: this.aggregateScope,
+    };
+  }
+
+  /**
+   * Adopt one layer as the live role state WITHOUT deriving — `setPivotMode`'s single
+   * `refreshPivotView()` covers the derive for both directions. Entries whose column no longer
+   * resolves drop out, like every other model reconcile.
+   */
+  private restorePivotStateLayer(layer: GridPivotLayerState): void {
+    this.groupColumns = this.resolveRoleColumns(layer.rowGroupColumns, "group");
+    this.pivotColumns = this.resolveRoleColumns(layer.pivotColumns, "pivot");
+    this.aggregates = this.resolveAggregateModels(
+      layer.aggregateModel.map(agg => ({ key: agg.colId, type: agg.type as AggregateType })),
+    );
+    this.columnModel.setPivotLeafOrder(layer.pivotColumnOrder ?? null);
+    // A layer captured in this session carries its scope; a deserialized one may not (the view
+    // state has no scope field), in which case values need at least a page scope to show up.
+    const scope = layer.aggregateScope
+      ?? (this.aggregates.length > 0 && this.aggregateScope === "none" ? "page" : this.aggregateScope);
+    this.aggregateScope = this.normalizeAggregateScope(scope);
+    this.rowModel.setAggregateScope(this.aggregateScope);
+  }
+
+  // Drop sort items on generated pivot columns (see setPivotMode).
+  private dropPivotResultSorts(): void {
+    const items = this.sorts.items.filter(item => !item.col.isPivotResultColumn());
+    if (items.length === this.sorts.items.length) return;
+    this.sorts = new SortModel(items);
+  }
+
+  /**
+   * Replace the set of columns pivoted on (order = pivot level). Stored even while pivot mode is
+   * off; an empty array clears the columns but leaves the mode alone (the degenerate
+   * grouped-aggregate view).
+   */
+  setPivotColumns(colIds: string[]): void {
+    // Explicit role edit → reset any manual arrangement (see setAggregateModel).
+    this.columnModel.setPivotLeafOrder(null);
+    this.pivotColumns = this.resolveRoleColumns(colIds, "pivot");
+    this.emit("pivotChanged", { pivotMode: this.pivotMode, pivotColumns: this.pivotColumns.map(c => c.colId) });
+    if (!this.pivotMode) return;
+    this.refreshPivotView();
+  }
+
+  /**
+   * Replace the manual arrangement of the generated pivot columns (displayed leaf order by
+   * generated colId; null restores the canonical layout). Stored even while pivot mode is off —
+   * it applies on the next pivot layout build. Explicit role edits (setAggregateModel /
+   * setPivotColumns) reset it.
+   */
+  setPivotColumnOrder(order: string[] | null): void {
+    const changed = this.columnModel.setPivotLeafOrder(order);
+    if (!changed || !this.columnModel.isPivotDisplayActive()) return;
+    // setPivotLeafOrder already rebuilt the displayed layout; announce it like any other
+    // pivot-driven column change so the header/rows repaint against the new tree.
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "pivot" });
+    this.emit("rowsChanged", { reason: "pivot", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+  }
+
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null {
+    return this.columnModel.getPivotLeafOrder();
+  }
+
+  // Shared re-derive tail for pivot state changes: one model request (whose onPivotResult call
+  // reconciles the generated columns), then autosize + repaint bookkeeping, mirroring
+  // setRowGroupModel.
+  private refreshPivotView(): void {
+    this.applyRowModelRequest(() => this.createRowModelRequest("pivot", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
+    const changedColIds = this.autosizeColumns();
+    if (changedColIds.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
+    this.emit("rowsChanged", { reason: "pivot", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    this.emit("paginationChanged", this.getPaginationInfo());
+    this.emit("pivotChanged", { pivotMode: this.pivotMode, pivotColumns: this.pivotColumns.map(c => c.colId) });
+  }
+
+  // Re-resolve pivot columns against a rebuilt column set (colDef replacement creates new Column
+  // instances), mirroring reconcileGroupModelColumns.
+  private reconcilePivotModelColumns(): void {
+    if (this.pivotColumns.length === 0) return;
+    const resolved: Column[] = [];
+    const seen = new Set<string>();
+    for (const col of this.pivotColumns) {
+      const next = this.resolveModelColumn({ col });
+      if (!next || !next.pivotable || seen.has(next.instanceID)) continue;
+      seen.add(next.instanceID);
+      resolved.push(next);
+    }
+    this.pivotColumns = resolved;
+  }
+
+  // The pivot's measures: one entry per aggregate-model item, carrying the live source column.
+  // Multiple aggregates of the same column are distinct measures.
+  private buildPivotValueEntries(): PivotValueEntry[] {
+    const entries: PivotValueEntry[] = [];
+    for (const aggregate of this.aggregates) {
+      const col = this.columnModel.getById(aggregate.key);
+      if (!col || col.isInternal()) continue;
+      entries.push({
+        column: col,
+        instanceID: col.instanceID,
+        colId: col.colId,
+        label: col.label,
+        type: aggregate.type,
+      });
+    }
+    return entries;
+  }
+
   // Switch the visual grouping layout in place. The grouped row tree itself is unchanged, which
   // preserves expansion state; only the synthesized/tagged columns and full-width-row treatment
   // need to be rebuilt by the renderer.
@@ -1158,6 +1552,12 @@ export class GridCore implements IGridCore {
       groupDisplayType,
       this.options.treeData != null,
     );
+    // The auto-group column exists only under "singleColumn", so switching away retires it — and
+    // with it any sort addressing it (see setRowGroupModel). No re-derive follows: the buckets keep
+    // the order they are in (this switch deliberately leaves the row tree alone) until the next
+    // request rebuilds them, but the model no longer reports — or captures — a sort on a column
+    // that is not there.
+    this.reconcileSortModelColumns();
     this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "group" });
 
@@ -1184,6 +1584,11 @@ export class GridCore implements IGridCore {
       lastRowIndex: this.rowModel.getViewCount() - 1,
     });
     this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  /** Change what dragging a generated pivot column does. Read live at drag time — no rebuild. */
+  setPivotColumnMoveMode(mode: "measures" | "free"): void {
+    this.options.pivotColumnMoveMode = mode;
   }
 
   setGroupRowsSelectable(groupRowsSelectable: boolean): void {
@@ -1300,6 +1705,9 @@ export class GridCore implements IGridCore {
       : this.rowModel.getRowNodeAtViewIndex(active.row);
     if (!node) return;
 
+    // Non-expandable groups (pivot mode's deepest level, the pivot grand-total row) ignore
+    // keyboard expand/collapse — their children are hidden leaf rows.
+    if (node.expandable === false) return;
     if (command === "expand" || (command === "collapse" && !!node.children?.length && node.isExpanded)) {
       const targetExpanded = command === "expand";
       if (!node.children?.length || node.isExpanded === targetExpanded) return;
@@ -1620,6 +2028,9 @@ export class GridCore implements IGridCore {
   }
 
   setAggregateModel(aggregates: AggregateModel[]) {
+    // An explicit role edit resets any manual pivot arrangement — the canonical layout (which
+    // this model's order determines) becomes visible again, so the wells/menus stay functional.
+    this.columnModel.setPivotLeafOrder(null);
     this.aggregates = this.resolveAggregateModels(aggregates);
     if (this.aggregates.length > 0 && this.aggregateScope === "none") {
       this.aggregateScope = this.normalizeAggregateScope("page");
@@ -1668,15 +2079,21 @@ export class GridCore implements IGridCore {
 
   private isNodeSelectable(node: IRowNode): boolean {
     if (this.isBodyRowPinned(node.id)) return false;
-    if (this.options.groupRowsSelectable) return true;
-    return !node.isGroup;
+    if (!node.isGroup) return true;
+    // While pivoted the group rows ARE the data — the cell cursor and ranges work on them without
+    // opting into groupRowsSelectable, which governs group rows in ordinary grouped views (and
+    // row-checkability everywhere, see isNodeCheckable).
+    return this.options.groupRowsSelectable || this.pivotMode;
   }
 
   // Whether a row can be ROW-selected (checked). Narrower than isNodeSelectable, which also decides
   // navigation stops: an app-disabled row (isRowSelectable → false) stays a live cursor target but
-  // cannot join the row selection through any route.
+  // cannot join the row selection through any route, and pivot rows are cursor targets without
+  // becoming checkable.
   private isNodeCheckable(node: IRowNode): boolean {
-    return this.isNodeSelectable(node) && this.options.isRowSelectable?.(node) !== false;
+    if (this.isBodyRowPinned(node.id)) return false;
+    if (node.isGroup && !this.options.groupRowsSelectable) return false;
+    return this.options.isRowSelectable?.(node) !== false;
   }
 
   // View-index form of isNodeCheckable. Rows not present (e.g. unloaded server-side slots) cannot
@@ -1837,6 +2254,18 @@ export class GridCore implements IGridCore {
 
   getAggregateScope(): AggregateScope {
     return this.aggregateScope;
+  }
+
+  /**
+   * The aggregate model keyed by public colId. The model itself keys entries by instanceID, which
+   * survives neither a reload nor a columnDefs swap; entries whose column no longer resolves are
+   * dropped. This is the form the API, the view state, and the pivot state layers all report.
+   */
+  getAggregateModelByColId(): ColumnAggregate[] {
+    return this.aggregates.flatMap(agg => {
+      const col = this.columnModel.getById(agg.key);
+      return col ? [{ colId: col.colId, type: agg.type }] : [];
+    });
   }
 
   // ---------------- Selection reads ----------------
@@ -2401,6 +2830,54 @@ export class GridCore implements IGridCore {
   }
 
   dispatch(action: GridAction): void {
+    this.dispatchDepth++;
+    try {
+      this.dispatchAction(action);
+    } finally {
+      this.dispatchDepth--;
+    }
+    // Outside any enclosing dispatch now, so anything a listener deferred to the end of the burst
+    // runs here — still synchronously, before this call returns.
+    if (this.dispatchDepth === 0) this.flushAfterDispatch();
+  }
+
+  /**
+   * Run `fn` once the dispatch in progress has finished — synchronously, before `dispatch` returns,
+   * and once no matter how many times it was asked for. One mutation commonly emits several events
+   * (a pivot-mode toggle emits `columnsChanged`, `aggregateChanged` and `pivotChanged` from inside
+   * one dispatch), and a listener whose response is a full rebuild would otherwise pay for each of
+   * them; requesting the same function reference collapses that into one run at the end, when the
+   * state has settled. Pass a STABLE reference (a bound method or an arrow property) — dedup is by
+   * identity.
+   *
+   * Called outside a dispatch (a DOM event handler, a row-model callback), it runs `fn` immediately,
+   * so "the state is settled when the call returns" holds either way.
+   */
+  afterDispatch(fn: () => void): void {
+    if (this.dispatchDepth === 0 && !this.flushingAfterDispatch) {
+      fn();
+      return;
+    }
+    this.pendingAfterDispatch.add(fn);
+  }
+
+  // Drain the queue, including anything the callbacks add while it drains. Re-entrant calls are
+  // ignored: a callback that dispatches would otherwise start a second drain over the same queue.
+  private flushAfterDispatch(): void {
+    if (this.flushingAfterDispatch) return;
+    this.flushingAfterDispatch = true;
+    try {
+      while (this.pendingAfterDispatch.size > 0) {
+        const pending = [...this.pendingAfterDispatch];
+        this.pendingAfterDispatch.clear();
+        for (const fn of pending) fn();
+      }
+    } finally {
+      this.flushingAfterDispatch = false;
+    }
+  }
+
+  private dispatchAction(action: GridAction): void {
     switch (action.type) {
       case "init":
         this.emit("viewportChanged", {
@@ -2579,6 +3056,15 @@ export class GridCore implements IGridCore {
         break;
       case "rowGroupSet":
         this.setRowGroupModel(action.colIds);
+        break;
+      case "pivotModeSet":
+        this.setPivotMode(action.on);
+        break;
+      case "pivotColumnsSet":
+        this.setPivotColumns(action.colIds);
+        break;
+      case "pivotColumnOrderSet":
+        this.setPivotColumnOrder(action.order);
         break;
       case "groupToggleExpand":
         this.toggleGroupExpand(action.groupId, action.expanded);
@@ -2973,20 +3459,26 @@ export class GridCore implements IGridCore {
    * cleared instead.
    */
   private reevaluateAfterEdit(changedColIds: Set<string>, followSelection = true): boolean {
-    if (!this.options.reevaluateOnEdit) return false;
     if (this.rowModel.getType() !== "clientSide") return false;
+    // Pivot mode displays only derived aggregates, so any committed write re-derives — including
+    // under reevaluateOnEdit: false, whose "keep the edited row in place" contract has nothing to
+    // keep in place here (source rows are not displayed; without the re-derive the write would be
+    // invisible). This is what keeps pivot cells live against cell edits.
+    const pivotEdit = this.pivotMode;
+    if (!pivotEdit && !this.options.reevaluateOnEdit) return false;
 
     const inFilter = this.filters.items.some(i => changedColIds.has(i.col.instanceID));
     const inSort = this.sorts.items.some(i => changedColIds.has(i.col.instanceID));
-    if (!inFilter && !inSort) return false;
+    if (!inFilter && !inSort && !pivotEdit) return false;
 
     // Remember which row the active cell is on so we can follow it to its new position.
     const active = followSelection ? this.selectionModel.getActiveCell() : null;
     const activeColIdx = active?.colIdx ?? null;
     const activeRowId = active ? this.getRowIdAtViewIndex(active.row) : null;
 
-    // "filter" re-runs both filter and sort; "sort" re-runs sort only.
-    const reason = inFilter ? "filter" : "sort";
+    // "filter" re-runs both filter and sort; "sort" re-runs sort only; a pivot-only re-derive
+    // uses "pivot" (full re-derive, like "group").
+    const reason = inFilter ? "filter" : inSort ? "sort" : "pivot";
     this.applyRowModelRequest(() => this.createRowModelRequest(
       reason,
       { start: this.pageStartIdx, end: this.pageEndIdx },
@@ -3220,6 +3712,27 @@ export class GridCore implements IGridCore {
       aggregateModel: params.aggregateModel,
       valuesAvailable: params.valuesAvailable,
     });
+  }
+
+  // Pushed by the row model mid-request, after pivot discovery and BEFORE onRows: reconcile the
+  // generated pivot columns and hand back generated-leaf colId → instanceID so the model stamps
+  // group-node aggregateValues the cell renderer can read directly. An unchanged discovery is a
+  // no-op (no layout rebuild, no event), so per-request reconciles don't thrash the header.
+  onPivotResult(_id: number, discovery: PivotDiscovery): PivotResolution {
+    const defs = buildPivotResultColDefs({
+      discovery,
+      pivotColumns: this.pivotColumns,
+      pivotResultColumnDef: this.options.pivotResultColumnDef,
+    });
+    const { resolution, changed } = this.columnModel.setPivotResultColumns(defs);
+    if (changed) {
+      this.clearSelectionForColumnChange();
+      // Rows paint right after this returns — the renderer rebuilds its pool/header on this event
+      // first, so cells exist for every generated leaf.
+      this.emit("columnsChanged", { reason: "pivot" });
+    }
+    this.setPivotColumnLimit(discovery.truncatedLeafCount);
+    return resolution;
   }
 
   onLoadingEnd(id: number) {

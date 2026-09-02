@@ -10,6 +10,17 @@ import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
 import { buildGroupTree, flattenGroupTree } from "./rowGroup";
 import { buildTreeData, prepareTreeRows } from "./treeData";
+import { PivotRequestState } from "../interfaces/pivot";
+import {
+  buildPivotTotalRoot,
+  createPivotValueStamper,
+  discoverPivot,
+  identityPivotResolution,
+  PivotValueStamper,
+} from "./pivot";
+
+// Identity of a column list for signature comparison — instanceIDs, in order.
+const columnSignature = (columns: Column[]): string => columns.map(c => c.instanceID).join(",");
 
 export class ClientSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private nodes: IRowNode<Row>[] = [];
@@ -37,6 +48,23 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // viewNodes; the flat viewIdx path is bypassed. Synthetic group nodes never enter nodes[].
   private groupColumns: Column[] = [];
   private groupExpansion: Map<string, boolean> = new Map();
+  // Pivot state. Non-null = pivot mode: the group tree is built with hidden leaf rows and each
+  // group node's aggregateValues carry the generated pivot cells (keyed by resolved instanceID —
+  // see onPivotResult). The stamper survives between full rebuilds so reAggregate can reuse it.
+  private pivot: PivotRequestState | null = null;
+  private pivotStamper: PivotValueStamper | null = null;
+  // Columns the quick filter searches; while pivoted these are the source leaves, not the
+  // generated ones (whose getValue on data rows is undefined). Null = use leafColumns.
+  private quickFilterColumns: Column[] | null = null;
+  // Request id of the applyRequest currently executing, for mid-request listener callbacks.
+  private currentRequestId = 0;
+  // Whether the derived state (group tree, pivot discovery, footer aggregates) currently holds:
+  // false until the first rebuild, and cleared by anything that mutates the node store. The two
+  // signatures record the configuration the current derived state was built from — see
+  // treeStateSignature / pivotStateSignature.
+  private derivedTreeValid = false;
+  private treeSignature = "";
+  private pivotSignature = "";
   private groupRoots: IRowNode<Row>[] = [];
   private groupNodesMap: Map<string, IRowNode<Row>> = new Map();
   private groupedFlatAll: IRowNode<Row>[] = [];
@@ -63,7 +91,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private get grouped(): boolean {
-    return this.groupColumns.length > 0 || this.treeData != null;
+    // Pivot mode always displays a group tree — with no group columns, the synthesized "Total"
+    // root is the whole tree.
+    return this.groupColumns.length > 0 || this.treeData != null || this.pivot != null;
   }
 
   getType(): RowModelType {
@@ -88,6 +118,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   setRows(rows: Row[]) {
+    this.derivedTreeValid = false;
     const prepared = this.treeData
       ? prepareTreeRows(rows, this.treeData, this.getId)
       : { rows, nestedParents: new Map<string, string | undefined>() };
@@ -117,6 +148,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // applied first, then updates (data replaced in place, node identity kept), then adds are inserted
   // at addIndex (or appended when it is omitted).
   applyTransaction(tx: RowTransaction<Row>, order?: string[]): RowTransactionResult {
+    this.derivedTreeValid = false;
     let removed = 0;
     if (tx.remove?.length) {
       const removeIds = new Set(tx.remove);
@@ -279,8 +311,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // sorted order within each bucket. Per-group aggregate values are computed over each group's full
   // leaf-descendant set (only when aggregates are configured). Expansion state is read from
   // groupExpansion, falling back to the default depth.
-  private rebuildGroupTree() {
+  private rebuildGroupTree(reuseDiscovery = false) {
     const leaves = this.sortedIdx.map(i => this.nodes[i]);
+    if (this.pivot) {
+      this.rebuildPivotTree(leaves, reuseDiscovery);
+      return;
+    }
+    this.pivotStamper = null;
     // Only compute per-group totals for columns with an aggregate explicitly configured. Unlike the
     // footer aggregate row (which fills every column via a default op), group rows show a value only
     // where one was asked for — otherwise every column reads as aggregated and the grid looks cluttered.
@@ -339,11 +376,82 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
+  // Pivot-mode tree rebuild: discover the generated header structure from the filtered leaves,
+  // let the core reconcile the generated columns (onPivotResult returns generated colId →
+  // instanceID), then build the group tree with a stamper that fills each group node's
+  // aggregateValues per (pivot path × value entry). Leaf rows never display.
+  //
+  // `reuseDiscovery` keeps the existing stamper instead of re-deriving it: discovery is a function
+  // of the leaves' VALUES, not their order, so a re-sort — which reorders the same leaf set under
+  // an unchanged pivot configuration — leaves the discovered paths, the per-leaf path stamps and
+  // the generated columns the core already reconciled all intact. The one thing it does not
+  // preserve is which row is a path's representative leaf for a `sortComparator` that reads the
+  // row node rather than the value; sibling order stays as first discovered in that case.
+  private rebuildPivotTree(leaves: IRowNode<Row>[], reuseDiscovery: boolean) {
+    const pivot = this.pivot!;
+    if (!reuseDiscovery || !this.pivotStamper) {
+      const { discovery, leafPathKeys, includedPaths } = discoverPivot({
+        leaves,
+        pivotColumns: pivot.columns,
+        valueEntries: pivot.valueEntries,
+        maxPivotColumns: pivot.maxPivotColumns,
+      });
+      const resolution = this.listener.onPivotResult
+        ? this.listener.onPivotResult(this.currentRequestId, discovery)
+        : identityPivotResolution(discovery);
+
+      const valueColumns = new Map<string, Column>();
+      for (const entry of pivot.valueEntries) valueColumns.set(entry.instanceID, entry.column);
+      this.pivotStamper = createPivotValueStamper({
+        leafPathKeys,
+        includedPaths,
+        valueEntries: pivot.valueEntries,
+        valueColumns,
+        resolution,
+        calculator: this.aggregateCalculator,
+      });
+    }
+    const computeAggregates = (groupLeaves: IRowNode<Row>[]) => this.pivotStamper!(groupLeaves);
+
+    if (this.groupColumns.length === 0) {
+      const root = buildPivotTotalRoot(leaves, computeAggregates(leaves));
+      this.groupRoots = [root];
+      this.groupNodesMap = new Map([[root.id, root]]);
+      return;
+    }
+
+    const result = buildGroupTree<Row>({
+      leaves,
+      groupColumns: this.groupColumns,
+      sortModel: this.sortModel,
+      // Leaf order never shows while pivoted, so leaf-order propagation into bucket order
+      // (hierarchy/global modes) would let an invisible sort reorder groups: force local.
+      groupSortMode: "local",
+      expansion: this.groupExpansion,
+      defaultExpanded: this.groupDefaultExpanded,
+      computeAggregates,
+      hideLeafRows: true,
+    });
+    this.groupRoots = result.roots;
+    this.groupNodesMap = result.groupNodesById;
+    if (this.groupExpansion.size > 0) {
+      for (const id of Array.from(this.groupExpansion.keys())) {
+        if (!result.groupNodesById.has(id)) this.groupExpansion.delete(id);
+      }
+    }
+  }
+
   // Flatten the group tree into the display list (pre-order, collapsed subtrees skipped), then apply
   // pagination. groupedFlatAll is the full flat list (used for pagination totals); viewNodes is the
   // paginated slice the viewport renders.
   private rebuildGroupedView() {
     this.groupedFlatAll = flattenGroupTree(this.groupRoots);
+    this.sliceGroupedView();
+  }
+
+  // The pagination half of rebuildGroupedView, on its own: a request that only moves the page
+  // re-slices the flat list the last rebuild produced (expansion toggles keep it current).
+  private sliceGroupedView() {
     const end = this.paginate ? this.endIdx : undefined;
     this.viewNodes = this.groupedFlatAll.slice(this.startIdx, end);
   }
@@ -398,6 +506,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     const node = this.nodesMap.get(rowId);
     if (!node) return false;
     (node.data as any)[key] = value;
+    // The edited value may belong to a group key, a pivot key or an aggregated column, so nothing
+    // derived from the node store can be reused on the next request.
+    this.derivedTreeValid = false;
     return true;
   }
 
@@ -453,8 +564,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
             text: this.quickFilterText,
             matchMode: this.quickFilterMatchMode,
             caseSensitive: this.quickFilterCaseSensitive,
-            // leafColumns is the set of visible, non-internal leaves supplied on the request.
-            columns: this.leafColumns,
+            // The visible, non-internal leaves supplied on the request — except while pivoted,
+            // where those are generated columns with no leaf values and the request supplies the
+            // source leaves separately.
+            columns: this.quickFilterColumns ?? this.leafColumns,
           },
           this.nodes,
           columnFiltered,
@@ -469,6 +582,21 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateValues.clear();
     if (this.aggregateScope === "none" || this.aggregates.length === 0) return;
 
+    // Pivot mode: the footer aggregate row shows grand totals per GENERATED column — the root
+    // bucket over every filtered leaf, computed by the same stamper as the group rows (so
+    // avg/median are true grand aggregates, not aggregates of aggregates). "page" scope is
+    // treated as "all": the page holds group rows, not a leaf subset.
+    if (this.pivot) {
+      if (!this.pivotStamper) return;
+      // Without row groups the synthesized Total root has already aggregated exactly these rows
+      // (buildPivotTotalRoot's values ARE the grand totals) — reuse them instead of stamping every
+      // filtered leaf a second time.
+      const total = this.groupColumns.length === 0 ? this.groupRoots[0]?.aggregateValues : undefined;
+      const stamped = total ?? this.pivotStamper(this.sortedIdx.map(i => this.nodes[i]));
+      this.aggregateValues = new Map(Object.entries(stamped));
+      return;
+    }
+
     const rows = this.getAggregateRows();
     this.aggregateValues = this.aggregateCalculator.calculateAggregates(this.leafColumns, this.aggregates, rows);
   }
@@ -481,10 +609,13 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     const { id, sortModel, filterModel, paginate, range, aggregateScope, groupSortMode } = params;
     const aggregateOnly = params.reason === "aggregateScope" || params.reason === "aggregateModel";
     if (!aggregateOnly) this.listener.onLoadingStart(id);
+    this.currentRequestId = id;
     this.aggregateScope = aggregateScope;
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
     this.groupColumns = params.groupColumns.slice();
+    this.pivot = params.pivot ?? null;
+    this.quickFilterColumns = params.quickFilterColumns?.slice() ?? null;
     this.sortModel = sortModel;
     this.groupSortMode = groupSortMode;
     if (params.quickFilter) {
@@ -492,6 +623,14 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       this.quickFilterMatchMode = params.quickFilter.matchMode;
       this.quickFilterCaseSensitive = params.quickFilter.caseSensitive;
     }
+
+    // Is the state the last rebuild produced still the state this request would produce? The two
+    // signatures cover every configuration input the tree (resp. the pivot discovery) is derived
+    // from; the leaf set behind both is covered by derivedTreeValid, which the node-store mutators
+    // clear. Sort order sits in the tree signature and not the pivot one — that is what lets a
+    // re-sort rebuild the tree while keeping discovery.
+    const treeValid = this.derivedTreeValid && this.treeStateSignature() === this.treeSignature;
+    const pivotValid = this.derivedTreeValid && this.pivotStateSignature() === this.pivotSignature;
 
     // A pure expand/collapse toggle: update expansion state and re-flatten only — no filter, sort,
     // or tree rebuild. Batched targets (`groupIds`/`all`) share the single re-flatten below.
@@ -503,7 +642,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         : groupIds ?? (groupId != null ? [groupId] : []);
       for (const id of targetIds) {
         const node = this.groupNodesMap.get(id);
-        if (!node) continue;
+        // Non-expandable groups (pivot mode's deepest level, the pivot grand-total row) ignore
+        // expansion no matter how it is requested — their children are hidden leaf rows.
+        if (!node || node.expandable === false) continue;
         const next = expanded ?? !node.isExpanded;
         node.isExpanded = next;
         this.groupExpansion.set(id, next);
@@ -511,11 +652,19 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       this.setPagination(paginate, range.start, range.end);
       this.rebuildGroupedView();
     } else {
+      // Turning a page (or switching the aggregate scope) changes neither the leaf set, its order,
+      // nor any configuration the tree is derived from: the existing tree and pivot discovery are
+      // exactly what a rebuild would produce, so the request re-slices the view and stops there.
+      // A re-sort does need a new tree — but not new discovery (see rebuildPivotTree).
+      const reuseTree = treeValid && this.isTreeReusableFor(params.reason);
       if (this.isReasonBeforeStep(params.reason, "filter")) this.applyFilters(filterModel);
       if (this.isReasonBeforeStep(params.reason, "sort")) this.setSorts(sortModel);
       this.setPagination(paginate, range.start, range.end);
-      if (this.grouped) {
-        this.rebuildGroupTree();
+      if (reuseTree) {
+        if (this.grouped) this.sliceGroupedView();
+        else this.rebuildView();
+      } else if (this.grouped) {
+        this.rebuildGroupTree(pivotValid && params.reason === "sort");
         this.rebuildGroupedView();
       } else {
         for (const node of this.nodes) delete node.parentId;
@@ -525,7 +674,19 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         this.viewNodes = [];
         this.rebuildView();
       }
-      this.reAggregate();
+      // Stamped here rather than on entry: an expand/collapse request rebuilds nothing, so it must
+      // leave the signatures describing the state that is actually in hand.
+      this.derivedTreeValid = true;
+      this.treeSignature = this.treeStateSignature();
+      this.pivotSignature = this.pivotStateSignature();
+      // The footer aggregates follow the same logic one step further: while pivoted they are grand
+      // totals over every filtered leaf, and under "all" scope they aggregate the same rows, so a
+      // page move cannot move them. "page" scope aggregates the slice that just changed, and an
+      // explicit scope change is by definition a change of the row set.
+      const reuseAggregates = reuseTree
+        && params.reason !== "aggregateScope"
+        && (this.pivot != null || this.aggregateScope === "all");
+      if (!reuseAggregates) this.reAggregate();
     }
 
     // An aggregate-only request normally skips the row repaint (only the footer aggregate row
@@ -556,6 +717,45 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.groupNodesMap.clear();
     this.groupExpansion.clear();
     this.warnedMissingTreeParents.clear();
+  }
+
+  // Reasons that cannot invalidate the derived tree: they move the page window, or they change
+  // only which rows the footer aggregate covers. Everything else re-derives.
+  private isTreeReusableFor(reason: RowDataChangeReason): boolean {
+    return reason === "page" || reason === "pagination" || reason === "aggregateScope";
+  }
+
+  // Everything the group tree is a function of, other than the leaf set itself. Compared between
+  // requests so a reuse-eligible reason can never carry a configuration change past the rebuild
+  // (the core routes those through their own reasons, but the tree must not depend on that).
+  private treeStateSignature(): string {
+    return [
+      // Content, not the SortModel's identity: a caller that hands over an equivalent instance per
+      // request must not silently disable reuse.
+      this.sortModel.items.map(i => `${i.col.instanceID}:${i.dir}`).join(","),
+      this.groupSortMode,
+      columnSignature(this.groupColumns),
+      // The visible leaves select which columns get per-group totals — a non-pivot concern only.
+      // While pivoted they ARE the generated columns, which the rebuild replaces mid-request via
+      // onPivotResult; including them would make every rebuild invalidate the state it just
+      // produced, and the pivot tree never reads them anyway.
+      this.pivot ? "" : columnSignature(this.leafColumns),
+      this.aggregates.map(a => `${a.key}:${a.type}`).join(","),
+      this.pivotStateSignature(),
+    ].join("\u0000");
+  }
+
+  // The subset of the above that pivot discovery reads: which columns are pivoted on, which
+  // measures they carry, and where the generated-column cap falls. Deliberately excludes sort
+  // order and grouping, neither of which discovery looks at.
+  private pivotStateSignature(): string {
+    const pivot = this.pivot;
+    if (!pivot) return "";
+    return [
+      columnSignature(pivot.columns),
+      pivot.valueEntries.map(e => `${e.instanceID}:${e.type}`).join(","),
+      pivot.maxPivotColumns,
+    ].join("\u0001");
   }
 
   private isReasonBeforeStep(reason: RowDataChangeReason, step: RowDataChangeReason): boolean {

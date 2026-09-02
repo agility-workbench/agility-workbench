@@ -223,6 +223,24 @@ describe("server-side row grouping", () => {
     expect(byKey.get("APAC")!.aggregateValues?.[salesId]).toBe(85);
   });
 
+  it("sends one aggregate per column key even when the model carries several", async () => {
+    const { core, ds } = makeGrid();
+    await flush();
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    await flush();
+    // An app can still put several measures on one column through the API (the column menu is
+    // single-choice here). The request contract has one slot per column key, so the boundary
+    // collapses them last-wins — the same way the grand-total request does.
+    core.setAggregateModel([
+      { key: "sales", type: AggregateType.SUM },
+      { key: "sales", type: AggregateType.AVG },
+    ]);
+    await flush();
+
+    const groupRequest = [...ds.requests].reverse().find(r => r.groupKeys.length < r.groupBy.length)!;
+    expect(groupRequest.aggregates).toEqual([{ key: "sales", type: AggregateType.AVG }]);
+  });
+
   it("sorting purges the store but keeps expansion; children reload with the sorts", async () => {
     const { core, ds } = makeGrid();
     await flush();

@@ -1,4 +1,4 @@
-import { IRowNode } from "../../interfaces/iRowNode";
+import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
 
 // Horizontal indent applied per grouping level, in pixels.
 export const INDENT_PER_LEVEL = 20;
@@ -13,29 +13,39 @@ export const INDENT_PER_LEVEL = 20;
 export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
   cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
 
-  const toggle = document.createElement("span");
-  toggle.className = "pte-group-toggle";
-  toggle.setAttribute("data-group-id", row.id);
-  toggle.setAttribute("role", "button");
-  toggle.setAttribute("aria-expanded", String(!!row.isExpanded));
-  // Hidden from AT on purpose: the chevron is mouse-only — expand/collapse is dispatched
-  // from mousedown — and it is unnamed, so exposing it adds an anonymous button an AT user cannot
-  // operate, right next to a row that already announces the same state via its own `aria-expanded`.
-  // The attribute stays on the element regardless, because tests and client CSS select on it.
-  toggle.setAttribute("aria-hidden", "true");
+  const parts: HTMLElement[] = [];
+  // A non-expandable group (pivot mode's deepest level, the pivot grand-total row) gets no
+  // chevron — its children are hidden leaf rows and can never open. The spacer keeps its label
+  // aligned with expandable siblings' labels.
+  if (row.expandable === false) {
+    const spacer = document.createElement("span");
+    spacer.className = "pte-tree-toggle-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    parts.push(spacer);
+  } else {
+    const toggle = document.createElement("span");
+    toggle.className = "pte-group-toggle";
+    toggle.setAttribute("data-group-id", row.id);
+    toggle.setAttribute("role", "button");
+    toggle.setAttribute("aria-expanded", String(!!row.isExpanded));
+    // Hidden from AT on purpose: the chevron is mouse-only — expand/collapse is dispatched
+    // from mousedown — and it is unnamed, so exposing it adds an anonymous button an AT user cannot
+    // operate, right next to a row that already announces the same state via its own `aria-expanded`.
+    // The attribute stays on the element regardless, because tests and client CSS select on it.
+    toggle.setAttribute("aria-hidden", "true");
 
-  const icon = document.createElement("span");
-  icon.className = "pte-group-toggle-icon " + (row.isExpanded ? "icon-group-expanded" : "icon-group-collapsed");
-  toggle.appendChild(icon);
+    const icon = document.createElement("span");
+    icon.className = "pte-group-toggle-icon " + (row.isExpanded ? "icon-group-expanded" : "icon-group-collapsed");
+    toggle.appendChild(icon);
+    parts.push(toggle);
+  }
 
   const label = document.createElement("span");
   label.className = "pte-group-label";
-  const text = row.treeKey
-    ?? (row.groupValue == null || row.groupValue === "" ? row.groupKey ?? "" : String(row.groupValue));
-  const count = row.childCount != null ? ` (${row.childCount})` : "";
-  label.textContent = `${text}${count}`;
+  label.textContent = groupRowLabel(row);
+  parts.push(label);
 
-  cell.replaceChildren(toggle, label);
+  cell.replaceChildren(...parts);
 }
 
 /** Render a data-bearing tree row in the generated tree column. */

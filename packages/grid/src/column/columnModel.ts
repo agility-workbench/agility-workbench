@@ -32,6 +32,7 @@ const ROW_NUMBER_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: false,
   movable: false,
   hideable: false,
@@ -54,6 +55,7 @@ const CHECKBOX_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: false,
   movable: false,
   hideable: false,
@@ -78,6 +80,7 @@ const AUTO_GROUP_COLUMN_DEF = {
   filter: false,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: true,
   movable: true,
   hideable: false,
@@ -95,6 +98,7 @@ const TREE_COLUMN_DEF = {
   filter: true,
   groupable: false,
   aggregatable: false,
+  pivotable: false,
   resizable: true,
   movable: true,
   hideable: true,
@@ -106,6 +110,9 @@ export class ColumnModel implements IColumnModel {
   private originalColDefs: ColDef[] = [];
   private rowNumberColumn?: Column;
   private checkboxColumn?: Column;
+  // Last synthesized auto-group column, kept so layouts that momentarily drop it (pivot exit)
+  // reuse the same instance — see getAutoGroupColumn.
+  private keptAutoGroupColumn?: Column;
   // Synthesized auto-group columns, in grouping-level order. Empty unless grouping is active in
   // "singleColumn" (one column) or "multipleColumns" (one per level) display mode.
   private autoGroupColumns: Column[] = [];
@@ -113,6 +120,21 @@ export class ColumnModel implements IColumnModel {
   private columnsById: Map<string, Column> = new Map();
   private columnsByColId: Map<string, Column> = new Map();
   private columnsByKey: Map<string, Column> = new Map();
+
+  // Pivot display state. While active, `columns` holds the pivot layout (auto-group column +
+  // generated pivot columns) and the SOURCE user columns live in `pivotSourceStash` — never
+  // destroyed, `hidden` never mutated, so exiting pivot restores them exactly. The registry maps
+  // generated colId → live Column and persists for the session: a pivot value that vanishes under
+  // a filter and returns keeps its width and any live SortModel reference.
+  private pivotDisplayActive = false;
+  private pivotSourceStash: Column[] = [];
+  private pivotResultRegistry: Map<string, Column> = new Map();
+  private pivotResultRoots: Column[] = [];
+  private pivotLayoutSignature: string | null = null;
+  private pivotResolutionCache: Map<string, string> = new Map();
+  // Manual arrangement of the generated columns (leaf order by colId; null = canonical layout).
+  // Survives re-discoveries and pivot off/on; the core clears it on explicit role edits.
+  private pivotLeafOrder: string[] | null = null;
 
   private columns: Column[] = [];
   private leadingColumns: Column[] = [];
@@ -136,7 +158,20 @@ export class ColumnModel implements IColumnModel {
 
   setColumnDefs(colDefs: ColDef[]): void {
     this.originalColDefs = colDefs.map((c) => this.deepCopyColDef(c));
-    this.updateColumns(this.withInternalColumns(this.buildColumns(colDefs, undefined, "", this.createReuseContext())));
+    const built = this.buildColumns(colDefs, undefined, "", this.createReuseContext());
+    if (this.pivotDisplayActive) {
+      // While pivoted the user columns live in the stash; the visible pivot layout stays until
+      // the follow-up re-derive reconciles the generated columns against the new sources. Lookup
+      // maps refresh immediately so group/aggregate/filter reconciliation resolves new instances.
+      // The OUTGOING stash has to come out first: those reconciles run within this same defs swap,
+      // and an instance left behind in the lookups reads to them as a column that still exists, so
+      // a role on a column the new defs dropped would survive pointing at a dead instance.
+      this.unregisterPivotStashLookups();
+      this.pivotSourceStash = built;
+      this.registerPivotStashLookups();
+      return;
+    }
+    this.updateColumns(this.withInternalColumns(built));
   }
 
   /**
@@ -236,6 +271,30 @@ export class ColumnModel implements IColumnModel {
     this.computeHeaderDepth();
     this.updateLeafColumnLookup();
     this.setExpanders();
+    // The stashed source columns stay resolvable (by instanceID / colId / key) while the pivot
+    // layout is displayed — the group model, aggregate model, and filters all address them.
+    if (this.pivotDisplayActive) this.registerPivotStashLookups();
+  }
+
+  // Mirror of registerPivotStashLookups: drop the stashed source columns from the lookups. Entries
+  // are removed only when they still point at the instance being retired, so a re-registration that
+  // already claimed the id (same colId in the incoming defs) is never clobbered.
+  private unregisterPivotStashLookups(): void {
+    this.walkColumns((col) => {
+      if (this.columnsById.get(col.instanceID) === col) this.columnsById.delete(col.instanceID);
+      if (this.columnsByColId.get(col.colId) === col) this.columnsByColId.delete(col.colId);
+      if (this.columnsByKey.get(col.key) === col) this.columnsByKey.delete(col.key);
+    }, this.pivotSourceStash);
+  }
+
+  private registerPivotStashLookups(): void {
+    this.walkColumns((col) => {
+      this.columnsById.set(col.instanceID, col);
+      if (!col.isInternal()) {
+        this.columnsByColId.set(col.colId, col);
+        this.columnsByKey.set(col.key, col);
+      }
+    }, this.pivotSourceStash);
   }
 
   private getSectionArray(section: ColumnSection): Column[] {
@@ -325,11 +384,14 @@ export class ColumnModel implements IColumnModel {
       used: new Set(),
     };
 
-    this.walkColumns((col) => {
+    const add = (col: Column) => {
       if (col.isInternal()) return;
       this.addReusableColumn(context.byColId, col.colId, col);
       this.addReusableColumn(context.byKey, col.key, col);
-    });
+    };
+    // While pivot display is active the reusable user columns are the stashed sources, not the
+    // displayed pivot layout.
+    this.walkColumns(add, this.pivotDisplayActive ? this.pivotSourceStash : this.columns);
 
     return context;
   }
@@ -597,6 +659,7 @@ export class ColumnModel implements IColumnModel {
       // These capabilities have no meaningful operation in tree mode.
       groupable: false,
       aggregatable: false,
+      pivotable: false,
       __treeColumn: true,
     } as ColDef & { __treeColumn: true }, "tree");
   }
@@ -613,6 +676,20 @@ export class ColumnModel implements IColumnModel {
     mode: "singleColumn" | "multipleColumns" | "groupRows",
     treeData: boolean = false,
   ): void {
+    if (this.pivotDisplayActive) {
+      // Pivot display forces the singleColumn auto column (the other display modes surface group
+      // values on columns that are hidden while pivoted). Level tags on the stashed sources are
+      // cleared; the requested mode reapplies when pivot display exits and this runs again.
+      const clearTags = (cols: Column[]) => {
+        for (const col of cols) {
+          if (!col.isAutoGroupColumn()) col.groupLevel = undefined;
+          if (col.children.length > 0) clearTags(col.children);
+        }
+      };
+      clearTags(this.pivotSourceStash);
+      this.rebuildPivotLayout();
+      return;
+    }
     // Clear any prior per-column group-level tags before re-tagging for the new grouping.
     this.walkColumns((c) => { if (!c.isAutoGroupColumn()) c.groupLevel = undefined; });
 
@@ -641,6 +718,263 @@ export class ColumnModel implements IColumnModel {
     return this.autoGroupColumns;
   }
 
+  /**
+   * The live auto-group column for a public colId. Internal columns are registered by instanceID
+   * only (see `registerColumns`), and the auto-group instance carries a fresh UUID per grid, so its
+   * colId is the only durable handle a saved view has on it — while sorting it is an ordinary,
+   * capturable user gesture. Resolved against the columns actually in the layout, so a state
+   * captured under `singleColumn` grouping restores nothing under `groupRows` / `multipleColumns`,
+   * where no such column exists. Sibling of `getPivotResultLeaf`, which exists for the same reason.
+   */
+  getAutoGroupColumnByColId(colId: string): Column | undefined {
+    return this.autoGroupColumns.find(col => col.colId === colId);
+  }
+
+  isPivotDisplayActive(): boolean {
+    return this.pivotDisplayActive;
+  }
+
+  /** The stashed source user columns while pivot display is active (empty otherwise). */
+  getPivotSourceColumns(): Column[] {
+    return this.pivotSourceStash.slice();
+  }
+
+  /**
+   * Visible leaf descendants of the stashed source columns — what quick filter searches. Visible
+   * means what the user can actually see: `hidden` *and* the `columnGroupShow` collapse state,
+   * so a quick filter cannot match a row on a value no expanded group is showing.
+   */
+  getPivotSourceLeaves(): Column[] {
+    return this.pivotSourceStash.flatMap(col => col.getVisibleLeaves());
+  }
+
+  /** Current generated pivot column roots (empty when pivot display is off). */
+  getPivotResultRoots(): Column[] {
+    return this.pivotResultRoots.slice();
+  }
+
+  /**
+   * The live generated value leaf carrying this generated colId, or undefined when pivot display
+   * is off or the current discovery has no such column. Generated columns are internal, so they
+   * never enter the public colId lookups — this is the only way a `pv:` id (a captured sort, an
+   * API argument) reaches its live instance, and it deliberately resolves nothing once the pivot
+   * layout is gone. Canonical roots, not the displayed tree: a manual arrangement only reorders
+   * these same leaf instances.
+   */
+  getPivotResultLeaf(colId: string): Column | undefined {
+    const find = (cols: Column[]): Column | undefined => {
+      for (const col of cols) {
+        if (col.children.length > 0) {
+          const hit = find(col.children);
+          if (hit) return hit;
+        } else if (col.colId === colId) return col;
+      }
+      return undefined;
+    };
+    return find(this.pivotResultRoots);
+  }
+
+  /**
+   * Reconcile the generated pivot columns against freshly-discovered defs and swap the layout to
+   * pivot display (stashing the source columns on first activation). Instances are reused from
+   * the session registry by colId, so widths and live SortModel references survive
+   * re-discoveries. Returns generated leaf colId → instanceID plus whether the layout actually
+   * changed — an identical discovery (same ids and labels) is a no-op, so per-request reconciles
+   * don't thrash the header.
+   */
+  setPivotResultColumns(defs: ColDef[]): { resolution: Map<string, string>; changed: boolean } {
+    if (!this.pivotDisplayActive) this.enterPivotDisplay();
+    const signature = this.pivotDefsSignature(defs);
+    if (signature === this.pivotLayoutSignature) {
+      return { resolution: new Map(this.pivotResolutionCache), changed: false };
+    }
+
+    const context: ColumnReuseContext = { byColId: new Map(), byKey: new Map(), used: new Set() };
+    for (const col of this.pivotResultRegistry.values()) {
+      this.addReusableColumn(context.byColId, col.colId, col);
+    }
+    // claimReusableColumn skips internal columns only through createReuseContext; the registry
+    // context feeds buildColumns directly, so generated (internal) instances are reclaimed here.
+    const roots = this.buildColumns(defs, undefined, "pv", context);
+
+    const resolution = new Map<string, string>();
+    const register = (col: Column) => {
+      this.pivotResultRegistry.set(col.colId, col);
+      if (col.children.length === 0) resolution.set(col.colId, col.instanceID);
+      else col.children.forEach(register);
+    };
+    roots.forEach(register);
+
+    this.pivotResultRoots = roots;
+    this.pivotLayoutSignature = signature;
+    this.pivotResolutionCache = new Map(resolution);
+    this.rebuildPivotLayout();
+    return { resolution, changed: true };
+  }
+
+  /**
+   * Enter (bare, before any discovery) or exit pivot display. Exiting restores the stashed source
+   * columns exactly; the caller re-runs setRowGroupColumns afterwards so the group display mode
+   * (and its auto columns) resynthesize for the non-pivot world.
+   */
+  setPivotDisplay(active: boolean): void {
+    if (active === this.pivotDisplayActive) return;
+    if (active) {
+      this.enterPivotDisplay();
+      this.rebuildPivotLayout();
+      return;
+    }
+    this.pivotDisplayActive = false;
+    this.pivotResultRoots = [];
+    this.pivotLayoutSignature = null;
+    this.pivotResolutionCache = new Map();
+    // Drop the pivot-forced auto column from the layout; the caller re-runs setRowGroupColumns
+    // right after, which resynthesizes it (same instance — see getAutoGroupColumn) if grouping is
+    // still active in a display mode that wants one.
+    this.autoGroupColumns = [];
+    const restore = this.pivotSourceStash;
+    this.pivotSourceStash = [];
+    this.updateColumns(restore);
+  }
+
+  private enterPivotDisplay(): void {
+    this.pivotDisplayActive = true;
+    this.pivotSourceStash = this.columns.filter(
+      (c) => !c.isLeadingUtilityColumn() && !c.isAutoGroupColumn() && !c.isPivotResultColumn(),
+    );
+    this.pivotResultRoots = [];
+    this.pivotLayoutSignature = null;
+    this.pivotResolutionCache = new Map();
+  }
+
+  // Pivot display always shows the singleColumn auto-group column: it labels the row-group tree,
+  // including the synthesized "Total" row of an ungrouped pivot. The displayed generated tree is
+  // DERIVED per rebuild — canonical roots, or the manual arrangement laid over them — so the
+  // canonical `pivotResultRoots` instances are never mutated by arranging.
+  private rebuildPivotLayout(): void {
+    const auto = this.getAutoGroupColumn();
+    this.autoGroupColumns = [auto];
+    this.updateColumns([auto, ...this.arrangedPivotRoots()]);
+  }
+
+  /**
+   * Replace the manual arrangement of the generated pivot columns (displayed leaf order by
+   * generated colId; null = canonical). Persisted for the session and re-applied over every
+   * re-discovery — the core clears it on explicit role edits.
+   */
+  setPivotLeafOrder(order: string[] | null): boolean {
+    const next = order && order.length > 0 ? order.slice() : null;
+    const same = (next == null && this.pivotLeafOrder == null)
+      || (next != null
+        && this.pivotLeafOrder != null
+        && next.length === this.pivotLeafOrder.length
+        && next.every((id, i) => id === this.pivotLeafOrder![i]));
+    if (same) return false;
+    this.pivotLeafOrder = next;
+    if (this.pivotDisplayActive) this.rebuildPivotLayout();
+    return true;
+  }
+
+  getPivotLeafOrder(): string[] | null {
+    return this.pivotLeafOrder ? this.pivotLeafOrder.slice() : null;
+  }
+
+  /** The displayed generated pivot leaf colIds, in display order (empty when pivot display is off). */
+  getDisplayedPivotLeafOrder(): string[] {
+    const out: string[] = [];
+    this.walkColumns((col) => {
+      if (col.children.length === 0 && col.isPivotResultColumn()) out.push(col.colId);
+    });
+    return out;
+  }
+
+  // The generated tree to display: canonical roots, or — with a manual arrangement — a derived
+  // split tree. The arrangement is only a LEAF order; the tree falls out of it by wrapping each
+  // contiguous run of leaves that share a canonical ancestor path in duplicated group columns
+  // (leaf instances ride along by reference, so widths/sorts/aggregate stamping are untouched).
+  private arrangedPivotRoots(): Column[] {
+    if (!this.pivotLeafOrder) return this.pivotResultRoots;
+
+    // Canonical leaves with their ancestor chains, in canonical order.
+    const canonical: Array<{ leaf: Column; ancestors: Column[] }> = [];
+    const collect = (col: Column, chain: Column[]) => {
+      if (col.children.length > 0) {
+        for (const child of col.children) collect(child, [...chain, col]);
+        return;
+      }
+      canonical.push({ leaf: col, ancestors: chain });
+    };
+    for (const root of this.pivotResultRoots) collect(root, []);
+    if (canonical.length === 0) return this.pivotResultRoots;
+
+    const byColId = new Map(canonical.map(entry => [entry.leaf.colId, entry]));
+
+    // Known leaves in arranged order; leaves the (possibly stale) order list doesn't know are
+    // inserted after their nearest canonical predecessor that made it in (front if none) — a new
+    // discovery lands at its canonical position relative to its surviving neighbors.
+    const ordered: Array<{ leaf: Column; ancestors: Column[] }> = [];
+    const placed = new Set<string>();
+    for (const colId of this.pivotLeafOrder) {
+      const entry = byColId.get(colId);
+      if (!entry || placed.has(colId)) continue;
+      ordered.push(entry);
+      placed.add(colId);
+    }
+    for (let i = 0; i < canonical.length; i++) {
+      const entry = canonical[i];
+      if (placed.has(entry.leaf.colId)) continue;
+      let insertAt = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const at = ordered.findIndex(candidate => candidate.leaf.colId === canonical[j].leaf.colId);
+        if (at >= 0) { insertAt = at + 1; break; }
+      }
+      ordered.splice(insertAt, 0, entry);
+      placed.add(entry.leaf.colId);
+    }
+
+    if (ordered.every((entry, i) => entry.leaf.colId === canonical[i].leaf.colId)) {
+      return this.pivotResultRoots;
+    }
+
+    // Wrap runs: one duplicated group per contiguous stretch that shares the canonical ancestor
+    // at each level. `openFragments[k]` is the current fragment for ancestor level k.
+    const roots: Column[] = [];
+    let previousAncestors: Column[] = [];
+    let openFragments: Column[] = [];
+    for (const { leaf, ancestors } of ordered) {
+      let level = 0;
+      while (
+        level < ancestors.length
+        && level < previousAncestors.length
+        && previousAncestors[level].instanceID === ancestors[level].instanceID
+        && openFragments[level] != null
+      ) level++;
+      openFragments = openFragments.slice(0, level);
+      for (let k = level; k < ancestors.length; k++) {
+        const fragment = ancestors[k].duplicate();
+        fragment.children = [];
+        if (k === 0) roots.push(fragment);
+        else openFragments[k - 1].children.push(fragment);
+        openFragments[k] = fragment;
+      }
+      if (ancestors.length === 0) roots.push(leaf);
+      else openFragments[ancestors.length - 1].children.push(leaf);
+      previousAncestors = ancestors;
+    }
+    return roots;
+  }
+
+  // Pre-order (colId, label) walk — labels participate so a formatter change repaints headers.
+  private pivotDefsSignature(defs: ColDef[]): string {
+    const parts: string[] = [];
+    const walk = (def: ColDef) => {
+      parts.push(`${def.colId}\u0000${def.label ?? ""}`);
+      def.children?.forEach(walk);
+    };
+    defs.forEach(walk);
+    return parts.join("\u0001");
+  }
+
   // The singleColumn auto-group column def: the client's gridOptions.groupColumnDef layered over
   // the defaults. Identity and the grouping machinery stay grid-owned regardless of the client def
   // (filtering/grouping/aggregating the synthesized column has no meaningful operation).
@@ -653,6 +987,7 @@ export class ColumnModel implements IColumnModel {
       children: undefined,
       groupable: false,
       aggregatable: false,
+      pivotable: false,
       filter: false,
       __internalRole: "autoGroup",
     } as ColDef;
@@ -662,12 +997,17 @@ export class ColumnModel implements IColumnModel {
   // instanceID stable, so an active sort on the group column (and its user-resized width) survives
   // grouping changes and colDef swaps; def-driven props (label, width, pinned, flags) re-apply.
   private getAutoGroupColumn(): Column {
-    const existing = this.autoGroupColumns[0];
+    // `keptAutoGroupColumn` carries the instance across layouts that momentarily drop it (the
+    // pivot-display exit), so its instanceID — and any sort or resize state addressed by it —
+    // survives a pivot roundtrip exactly like it survives regroups.
+    const existing = this.autoGroupColumns[0] ?? this.keptAutoGroupColumn;
     if (existing) {
       existing.updateFromColDef(this.buildAutoGroupColDef(), "auto-group");
+      this.keptAutoGroupColumn = existing;
       return existing;
     }
-    return new Column(this.buildAutoGroupColDef(), "auto-group");
+    this.keptAutoGroupColumn = new Column(this.buildAutoGroupColDef(), "auto-group");
+    return this.keptAutoGroupColumn;
   }
 
   getHierarchyColumn(): Column | undefined {
@@ -902,6 +1242,12 @@ export class ColumnModel implements IColumnModel {
     column.setComparator(comparator);
   }
 
+  /**
+   * Root-first path to a column. While pivot display is active the stashed source tree is searched
+   * as a fallback: the stash stays addressable through every lookup map (see
+   * `registerPivotStashLookups`), so anything resolving a source colId — `applyColumnState`,
+   * `resizeColumn` — must be able to walk its ancestors too. Returns `[]` for an unknown id.
+   */
   getAncestors(colID: string): Column[] {
     const path: Column[] = [];
 
@@ -921,11 +1267,32 @@ export class ColumnModel implements IColumnModel {
       return false;
     }
 
-    helper(this.columns, colID);
+    if (!helper(this.columns, colID) && this.pivotDisplayActive) {
+      helper(this.pivotSourceStash, colID);
+    }
     return path.reverse();
   }
 
   getColumnState(): ColumnState[] {
+    // While pivoted, column state describes the STASHED source columns — the generated pivot
+    // columns are derived data (internal, excluded like every internal column) and the displayed
+    // layout is not what a saved view should restore.
+    if (this.pivotDisplayActive) {
+      const state: ColumnState[] = [];
+      let order = 0;
+      const leaves = this.pivotSourceStash.flatMap((col) => col.getLeaves());
+      for (const col of leaves) {
+        if (col.isInternal()) continue;
+        state.push({
+          colId: col.colId,
+          widthPx: col.computedWidth,
+          pinned: col.pinned,
+          hidden: col.hidden,
+          order: order++,
+        });
+      }
+      return state;
+    }
     const state: ColumnState[] = [];
     // Walk section columns (not getLeaves(), which drops hidden leaves) so hidden columns are
     // captured too — otherwise a persisted layout couldn't restore a column's hidden state. Section
@@ -976,6 +1343,10 @@ export class ColumnModel implements IColumnModel {
    *  - pinning → `col.pinned` (top-level columns only), bucketed by `updateColumns`;
    *  - order → columns repositioned among siblings at every group depth (see above);
    *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes).
+   *
+   * While pivot display is active this restores the STASHED SOURCE columns — the mirror of
+   * `getColumnState`, which captures them. The displayed generated layout is derived data: it is
+   * rebuilt from the restored sources, never addressed by the state itself.
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
     const widthOps: { col: Column; width: number }[] = [];
@@ -1010,7 +1381,12 @@ export class ColumnModel implements IColumnModel {
       }
     });
 
-    const topLevel = this.columns.filter((c) => !c.isInternal());
+    // While pivoted the state addresses the STASHED source columns (that is what `getColumnState`
+    // captures), so the whole restore targets the stash: the displayed layout is generated and is
+    // re-derived from it afterwards. Walking the generated tree here would find no match for any
+    // entry and `updateColumns` would wipe the pivot header.
+    const pivoted = this.pivotDisplayActive;
+    const topLevel = (pivoted ? this.pivotSourceStash : this.columns).filter((c) => !c.isInternal());
 
     // Apply defaultState to columns absent from `state` entirely. This is the escape hatch that
     // makes an exact restore possible: without it these columns keep their current layout (merge).
@@ -1026,8 +1402,18 @@ export class ColumnModel implements IColumnModel {
       }
     }
 
-    this.updateColumns(this.reorderTreeByTargetOrder(topLevel, targetOrder));
-    this.updateParentColumnWidthsForAll();
+    const reordered = this.reorderTreeByTargetOrder(topLevel, targetOrder);
+    if (pivoted) {
+      this.pivotSourceStash = reordered;
+      this.registerPivotStashLookups();
+      for (const col of reordered) this.updateParentColumnWidth(col);
+      // Re-derive the displayed pivot layout so the auto-group column and the generated columns
+      // stay consistent with the restored sources.
+      this.rebuildPivotLayout();
+    } else {
+      this.updateColumns(reordered);
+      this.updateParentColumnWidthsForAll();
+    }
 
     // Widths last so they apply to the rebuilt layout (resizeColumn is a no-op for unknown ids).
     for (const { col, width } of widthOps) {
@@ -1133,8 +1519,9 @@ export class ColumnModel implements IColumnModel {
       width = totalWidth;
     }
     col.computedWidth = width;
+    // A column outside both trees (dropped mid-flight) has no root to roll the width up into.
     const ancestors = this.getAncestors(col.instanceID);
-    this.updateParentColumnWidth(ancestors[0]);
+    if (ancestors[0]) this.updateParentColumnWidth(ancestors[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
   }
 
@@ -1227,16 +1614,19 @@ export class ColumnModel implements IColumnModel {
     return true;
   }
 
-  walkColumns(callback: (col: Column) => void): void {
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        callback(col);
-        if (col.children.length > 0) {
-          walk(col.children);
-        }
-      }
-    };
-    walk(this.columns);
+  /**
+   * Pre-order walk of a column tree — parent before its children, siblings in order. Defaults to
+   * the displayed columns; pass `roots` for another tree, which while pivot display is active means
+   * `pivotSourceStash` (the user's own columns, which the lookups and reuse still address).
+   *
+   * The width walks are deliberately NOT built on this: they recurse through `getVisibleChildren`
+   * and accumulate per level, which is a different traversal, not a callback over the same one.
+   */
+  walkColumns(callback: (col: Column) => void, roots: Column[] = this.columns): void {
+    for (const col of roots) {
+      callback(col);
+      if (col.children.length > 0) this.walkColumns(callback, col.children);
+    }
   }
 
 }

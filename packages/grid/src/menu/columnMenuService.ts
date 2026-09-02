@@ -10,6 +10,7 @@ type CapSummary = {
   sortable: boolean;
   groupable: boolean;
   aggregatable: boolean;
+  pivotable: boolean;
   hideable: boolean;
   pinnable: boolean;
   pinning: "left" | "right" | "mixed" | null;
@@ -23,6 +24,17 @@ type CapSummary = {
 type GroupMenuItem = MenuItem & {
   command: "group.setMany";
   payload: { colIDs: string[] };
+};
+
+/** Display names for aggregate types, shared by the menus and the column panel's role chips. */
+export const AGGREGATE_TYPE_LABELS: Record<AggregateType, string> = {
+  [AggregateType.COUNT]: "Count",
+  [AggregateType.DISTINCT_COUNT]: "Distinct Count",
+  [AggregateType.SUM]: "Sum",
+  [AggregateType.AVG]: "Average",
+  [AggregateType.MIN]: "Min",
+  [AggregateType.MAX]: "Max",
+  [AggregateType.MEDIAN]: "Median",
 };
 
 /** Column-scoped export hooks, injected once the renderer's ExportRenderer exists. */
@@ -89,31 +101,8 @@ export class ColumnMenuService {
       items.push({ isSeparator: true });
     }
     items.push(...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s));
-    if (cap.aggregatable && cap.aggType) {
-      const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
-      if (cap.aggType === "numeric") {
-        item.subMenu = [
-          { id: "aggSum", label: "Sum", left: "icon-sum", command: "aggregate.setMany", payload: { colIDs, agg: "sum" } },
-          { id: "aggAvg", label: "Average", left: "icon-avg", command: "aggregate.setMany", payload: { colIDs, agg: "avg" } },
-          { id: "aggMin", label: "Min", left: "icon-min-number", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", left: "icon-max-number", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
-          { id: "aggMedian", label: "Median", left: "icon-median", command: "aggregate.setMany", payload: { colIDs, agg: "median" } },
-        ];
-      } else if (cap.aggType === "string") {
-        item.subMenu = [
-          { id: "aggCount", label: "Count", left: "icon-count", command: "aggregate.setMany", payload: { colIDs, agg: "count" } },
-          { id: "aggMin", label: "Min", left: "icon-min-string", command: "aggregate.setMany", payload: { colIDs, agg: "min" } },
-          { id: "aggMax", label: "Max", left: "icon-max-string", command: "aggregate.setMany", payload: { colIDs, agg: "max" } },
-        ];
-        if (cap.colType === ColumnType.STRING) {
-          item.subMenu.splice(1, 0, { id: "aggDistinctCount", label: "Distinct Count", command: "aggregate.setMany", payload: { colIDs, agg: "distinct_count" } });
-        }
-      }
-      if (cap.aggregated) {
-        item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
-      }
-      items.push(item);
-    }
+    items.push(...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s));
+    items.push(...this.getAggregateMenuItems(colIDs, cap, s));
     if (cap.pinnable && cap.pinning !== "mixed") {
       if (items.length > 0) {
         items.push({ isSeparator: true });
@@ -176,6 +165,77 @@ export class ColumnMenuService {
     return items;
   }
 
+  /**
+   * Just the role-editing items — grouping, pivot, and the aggregate submenu — for UI that edits a
+   * column's pivot roles in place (the column panel's role chips). Same items, commands, and
+   * toggle semantics as the full column menu; execute selections through {@link execute}.
+   */
+  buildRoleMenuItems(ctx: ColumnMenuContext): MenuItem[] {
+    const cap = this.summarize(ctx);
+    const colIDs = [...ctx.colIds];
+    if (!colIDs.includes(ctx.targetColId)) colIDs.push(ctx.targetColId);
+    const multi = colIDs.length > 1;
+    const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
+    return [
+      ...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s),
+      ...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s),
+      ...this.getAggregateMenuItems(colIDs, cap, s),
+    ];
+  }
+
+  /**
+   * The per-type aggregate toggle items for one column (no "Clear" entry) — the column panel's
+   * "add value" pickers list these under each aggregatable column.
+   */
+  buildAggregateTypeItems(colID: string): MenuItem[] {
+    const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: colID, colIds: [colID] };
+    const cap = this.summarize(ctx);
+    if (!cap.aggregatable || !cap.aggType) return [];
+    const [item] = this.getAggregateMenuItems([colID], cap, (singular) => singular);
+    return (item?.subMenu ?? []).filter(sub => sub.id !== "aggClear");
+  }
+
+  private getAggregateMenuItems(
+    colIDs: string[],
+    cap: CapSummary,
+    s: (singular: string, plural?: string) => string,
+  ): MenuItem[] {
+    if (!cap.aggregatable || !cap.aggType) return [];
+    const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
+    // Each type is an independent toggle (a checkmark marks the applied ones): a column may
+    // carry several aggregates at once — each is a distinct pivot measure.
+    const agg = (id: string, type: AggregateType, left?: string): MenuItem => ({
+      id,
+      label: AGGREGATE_TYPE_LABELS[type],
+      ...(left ? { left } : {}),
+      ...(this.aggregateTypeApplied(colIDs, type) ? { right: "icon-check" } : {}),
+      command: "aggregate.setMany",
+      payload: { colIDs, agg: type },
+    });
+    if (cap.aggType === "numeric") {
+      item.subMenu = [
+        agg("aggSum", AggregateType.SUM, "icon-sum"),
+        agg("aggAvg", AggregateType.AVG, "icon-avg"),
+        agg("aggMin", AggregateType.MIN, "icon-min-number"),
+        agg("aggMax", AggregateType.MAX, "icon-max-number"),
+        agg("aggMedian", AggregateType.MEDIAN, "icon-median"),
+      ];
+    } else if (cap.aggType === "string") {
+      item.subMenu = [
+        agg("aggCount", AggregateType.COUNT, "icon-count"),
+        agg("aggMin", AggregateType.MIN, "icon-min-string"),
+        agg("aggMax", AggregateType.MAX, "icon-max-string"),
+      ];
+      if (cap.colType === ColumnType.STRING) {
+        item.subMenu.splice(1, 0, agg("aggDistinctCount", AggregateType.DISTINCT_COUNT));
+      }
+    }
+    if (cap.aggregated) {
+      item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
+    }
+    return [item];
+  }
+
   execute(item: MenuItem, ctx: ColumnMenuContext) {
     // app onClick takes precedence
     if (item.disabled) return;
@@ -205,7 +265,11 @@ export class ColumnMenuService {
       case "aggregate.setMany":
         return this.core.dispatch({
           type: "aggregateModelSet",
-          aggregateModels: this.getNextAggregateModel(item.payload.colIDs, item.payload.agg),
+          aggregateModels: this.getAggregateModelFor(
+            item.payload.colIDs,
+            item.payload.agg,
+            item.payload.mode,
+          ),
         });
       case "columns.newSparklineCol":
         return this.core.dispatch({
@@ -219,6 +283,17 @@ export class ColumnMenuService {
           type: "rowGroupSet",
           colIds: item.payload.colIDs,
         });
+      case "pivot.setMany":
+        // Columns first (a state-only write while the mode is off), then the mode — entering
+        // pivot derives once, with the new columns already in place.
+        this.core.dispatch({ type: "pivotColumnsSet", colIds: item.payload.colIDs });
+        if (item.payload.enable) this.core.dispatch({ type: "pivotModeSet", on: true });
+        return;
+      case "pivot.exit":
+        // Exit only — the mode itself stashes the pivot configuration so turning it back on
+        // reinstates it. Clearing the pivot columns here would make this path differ from the
+        // toolbar and the API, and would derive the whole model twice.
+        return this.core.dispatch({ type: "pivotModeSet", on: false });
       case "export.csv":
         return this.exporter?.exportColumnCSV(item.payload.colIDs);
       case "export.excel":
@@ -254,6 +329,7 @@ export class ColumnMenuService {
     let sortable = true;
     let groupable = true;
     let aggregatable = true;
+    let pivotable = true;
     let hideable = true;
     let pinnable = true;
     let colTypes: ColumnType | "mixed" | null = null;
@@ -275,6 +351,7 @@ export class ColumnMenuService {
       }
       if (!col.groupable) groupable = false;
       if (!col.aggregatable) aggregatable = false;
+      if (!col.pivotable) pivotable = false;
       if (!col.hideable) hideable = false;
       if (!col.pinnable) pinnable = false;
       if (col.children.length == 0) {
@@ -306,12 +383,16 @@ export class ColumnMenuService {
 
     if (sortDir === "mixed") sortable = false;
 
-    const aggregated = this.core.getAggregateModel().filter(f => colIDs.includes(f.key)).length == colIDs.length;
+    // Every selected column carries at least one aggregate (a column may carry several types).
+    const aggregateModel = this.core.getAggregateModel();
+    const aggregated = colIDs.length > 0
+      && colIDs.every(id => aggregateModel.some(f => f.key === id));
 
     return {
       sortable,
       groupable,
       aggregatable,
+      pivotable,
       sortDir,
       hideable,
       pinnable,
@@ -423,6 +504,86 @@ export class ColumnMenuService {
     }];
   }
 
+  // Pivot items mirror the grouping items' shapes: fresh pivot / replace-or-add submenu /
+  // remove-or-clear, collapsing to "Clear Pivot" (which also exits pivot mode) when the selection
+  // covers every pivot column. Client-side row model only. Generated pivot columns and the
+  // synthesized auto/tree/utility columns are pivotable: false, so they never grow these items —
+  // except the auto-group column while pivoted, which offers the exit.
+  private getPivotMenuItems(
+    colIDs: string[],
+    targetColId: string,
+    pivotable: boolean,
+    pluralize: (singular: string, plural?: string) => string,
+  ): MenuItem[] {
+    if (!this.core.isPivotSupported()) return [];
+    const pivotMode = this.core.getPivotMode();
+    const pivotColumns = this.core.getPivotColumns();
+    const pivotIds = pivotColumns.map(col => col.instanceID);
+    const pivoted = new Set(pivotIds);
+    const targetCol = this.core.getColumnModel().getById(targetColId);
+
+    const exitItem: MenuItem = {
+      id: "pivotExit",
+      label: "Exit Pivot Mode",
+      left: "icon-pivot",
+      command: "pivot.exit",
+      payload: {},
+    };
+    if (pivotMode && targetCol?.isAutoGroupColumn()) return [exitItem];
+
+    if (!pivotable) return [];
+    const userColIDs = this.expandUserColumnIds(colIDs).filter(id => {
+      const col = this.core.getColumnModel().getById(id);
+      return col?.pivotable ?? false;
+    });
+    if (userColIDs.length === 0) return [];
+
+    const allSelectedArePivoted = pivotMode && userColIDs.every(id => pivoted.has(id));
+    if (allSelectedArePivoted) {
+      const selected = new Set(userColIDs);
+      const remainingIds = pivotIds.filter(id => !selected.has(id));
+      if (remainingIds.length === 0) return [exitItem];
+      return [{
+        id: "unpivotColumnsMenu",
+        label: "Pivot",
+        left: "icon-pivot",
+        subMenu: [
+          {
+            id: "unpivotColumns",
+            label: `Remove ${pluralize("Column")} from Pivot`,
+            command: "pivot.setMany",
+            payload: { colIDs: remainingIds },
+          },
+          exitItem,
+        ],
+      }];
+    }
+
+    const replaceItem: MenuItem = {
+      id: "pivotColumns",
+      label: pivotMode && pivotIds.length > 0 ? "Replace Existing Pivot" : `Pivot on ${pluralize("Column")}`,
+      command: "pivot.setMany",
+      payload: { colIDs: userColIDs, enable: true },
+    };
+    if (!pivotMode || pivotIds.length === 0) {
+      replaceItem.left = "icon-pivot";
+      return [replaceItem];
+    }
+
+    const addItem: MenuItem = {
+      id: "addPivotColumns",
+      label: "Add to Existing Pivot",
+      command: "pivot.setMany",
+      payload: { colIDs: [...pivotIds, ...userColIDs.filter(id => !pivoted.has(id))], enable: true },
+    };
+    return [{
+      id: "pivotColumnsMenu",
+      label: `Pivot on ${pluralize("Column")}`,
+      left: "icon-pivot",
+      subMenu: [replaceItem, addItem],
+    }];
+  }
+
   private expandUserColumnIds(colIDs: string[]): string[] {
     const ids: string[] = [];
     const seen = new Set<string>();
@@ -441,13 +602,64 @@ export class ColumnMenuService {
     return ids;
   }
 
+  /**
+   * Toggle semantics per (column, type): every target column already carrying the type drops it,
+   * otherwise the type is added to the columns missing it — a column accumulates types, each a
+   * distinct pivot measure. `agg: null` clears every aggregate on the target columns.
+   */
   private getNextAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
+    const targetIds = this.expandAggregateColumnIds(colIDs);
+    const model = this.core.getAggregateModel();
+    if (agg == null) {
+      const selectedIds = new Set(targetIds);
+      return model.filter(item => !selectedIds.has(item.key));
+    }
+    const has = (id: string) => model.some(item => item.key === id && item.type === agg);
+    if (targetIds.length > 0 && targetIds.every(has)) {
+      return model.filter(item => !(item.type === agg && targetIds.includes(item.key)));
+    }
+    return [...model, ...targetIds.filter(id => !has(id)).map(key => ({ key, type: agg }))];
+  }
+
+  /**
+   * The aggregate model an "aggregate.setMany" command produces.
+   *
+   * The column menu's per-type items are additive toggles — a column accumulates measures, each a
+   * distinct pivot value. That is a client-side notion: the server-side request contract carries
+   * one aggregate per column key, so a column there can only mean one thing, and the menu collapses
+   * to single-choice. The items stay toggles either way — clicking the applied type clears it —
+   * so a column's aggregate is still removable from the menu it was set in.
+   *
+   * The footer's function picker passes mode "replace": always single-choice, never toggling off
+   * (a footer cell always shows some function).
+   */
+  private getAggregateModelFor(
+    colIDs: string[],
+    agg: AggregateType | null,
+    mode?: string,
+  ): AggregateModel[] {
+    if (mode === "replace") return this.getReplacementAggregateModel(colIDs, agg);
+    if (this.core.getRowModel().getType() === "clientSide") return this.getNextAggregateModel(colIDs, agg);
+    const applied = agg != null && this.aggregateTypeApplied(colIDs, agg);
+    return this.getReplacementAggregateModel(colIDs, applied ? null : agg);
+  }
+
+  /** Single-choice semantics: drop every aggregate on the target columns, set the chosen type. */
+  private getReplacementAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
     const targetIds = this.expandAggregateColumnIds(colIDs);
     const selectedIds = new Set(targetIds);
     const next = this.core.getAggregateModel().filter(item => !selectedIds.has(item.key));
     if (agg == null) return next;
     next.push(...targetIds.map(key => ({ key, type: agg })));
     return next;
+  }
+
+  /** Whether every target column already carries this aggregate type (the menu checkmark). */
+  private aggregateTypeApplied(colIDs: string[], agg: AggregateType): boolean {
+    const targetIds = this.expandAggregateColumnIds(colIDs);
+    if (targetIds.length === 0) return false;
+    const model = this.core.getAggregateModel();
+    return targetIds.every(id => model.some(item => item.key === id && item.type === agg));
   }
 
   private expandAggregateColumnIds(colIDs: string[]): string[] {

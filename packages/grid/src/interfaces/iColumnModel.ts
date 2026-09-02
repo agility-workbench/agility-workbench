@@ -24,12 +24,19 @@ export interface IColumnModel {
   getCenterLeaves(): Column[];
   getRightLeaves(): Column[];
   getLeavesBySection(section: ColumnSection): Column[];
+  /** The displayed generated pivot leaf colIds, in display order (empty when pivot display is off). */
+  getDisplayedPivotLeafOrder(): string[];
+  /** Canonical generated pivot column roots (empty when pivot display is off). */
+  getPivotResultRoots(): Column[];
+  /** The live generated pivot leaf with this generated colId (see ColumnModel implementation). */
+  getPivotResultLeaf(colId: string): Column | undefined;
   readonly maxHeaderDepth: number;
   readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
   getAncestors(colId: string): Column[];
-  walkColumns(callback: (col: Column) => void): void;
+  /** Pre-order walk of the displayed column tree, or of `roots` when another tree is given. */
+  walkColumns(callback: (col: Column) => void, roots?: Column[]): void;
   toggleGroupExpansion(colId: string): boolean;
   setRowGroupColumns(
     groupColumns: Column[],

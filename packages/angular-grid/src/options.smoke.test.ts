@@ -78,6 +78,7 @@ class OptionsHost {
       [loading]="loading"
       loadingMessage="Fetching rows…"
       noRowsMessage="Nothing to see"
+      pivotNoValuesMessage="Pick a measure to begin"
       (gridReady)="api = $event"
     />
   `,
@@ -288,5 +289,8 @@ describe("AwbGrid visual and runtime options", () => {
     host.loading = false;
     await syncGridInputs(fixture);
     expect(gridEl.querySelector(".pte-norows-label")?.textContent).toBe("Nothing to see");
+    // The pivot no-values hint is copy too, and it is set whether or not pivot mode is on.
+    expect(gridEl.querySelector(".pte-header-pivot-hint")?.textContent)
+      .toBe("Pick a measure to begin");
   });
 });

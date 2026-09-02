@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildGroupTree, flattenGroupTree, groupNodeId, BLANK_GROUP_KEY } from "./rowGroup";
+import {
+  buildGroupTree,
+  flattenGroupTree,
+  groupKeyForValue,
+  groupNodeId,
+  BLANK_GROUP_KEY,
+} from "./rowGroup";
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
@@ -228,5 +234,31 @@ describe("flattenGroupTree", () => {
     expect(flat[2].isGroup).toBe(false);
     expect(flat[3].groupKey).toBe("EMEA");
     flat.forEach((n, i) => expect(n.viewIndex).toBe(i));
+  });
+});
+
+// The one blank rule row grouping, pivot discovery and the server-side row model all key by, so a
+// value that groups as a blank pivots as one too.
+describe("groupKeyForValue", () => {
+  it("collapses only null, undefined and the empty string to the blank key", () => {
+    expect(groupKeyForValue(null)).toBe(BLANK_GROUP_KEY);
+    expect(groupKeyForValue(undefined)).toBe(BLANK_GROUP_KEY);
+    expect(groupKeyForValue("")).toBe(BLANK_GROUP_KEY);
+  });
+
+  it("keeps the falsy values that are real data", () => {
+    // The classic trap: a truthiness test here would bucket every zero and every `false` under
+    // "(Blanks)", and NaN is a value the user can see in a cell.
+    expect(groupKeyForValue(0)).toBe("0");
+    expect(groupKeyForValue(false)).toBe("false");
+    expect(groupKeyForValue(NaN)).toBe("NaN");
+  });
+
+  it("stringifies everything else", () => {
+    expect(groupKeyForValue("EMEA")).toBe("EMEA");
+    expect(groupKeyForValue(12)).toBe("12");
+    expect(groupKeyForValue(new Date(Date.UTC(2026, 0, 1)))).toBe(
+      new Date(Date.UTC(2026, 0, 1)).toString(),
+    );
   });
 });

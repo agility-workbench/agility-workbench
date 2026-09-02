@@ -17,6 +17,8 @@ import {
   UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
+import { ColumnAggregate } from "./aggregate";
+import { PivotResultColumnDescriptor } from "./pivot";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
@@ -111,6 +113,7 @@ export interface GridApiConfigController {
   setTooltipOptions: (options: GridOptions["tooltip"]) => void;
   setColumnPanelOptions: (options: GridOptions["columnPanel"]) => void;
   setSavedViewsOptions: (options: GridOptions["savedViews"]) => void;
+  setSheetsOptions: (options: GridOptions["sheets"]) => void;
   setRowSelectionOptions: (options: GridOptions["rowSelection"]) => void;
   setPinnedRowOptions: (options: {
     pinnedTopRowData?: RowData[];
@@ -361,6 +364,53 @@ export interface IGridAPI {
    * data rows; use this to address a group — for example to pin one with `setRowPinned`.
    */
   getGroupNodes(): IRowNode[];
+
+  /* ----- Pivot ----- */
+  /**
+   * Turn pivot mode on or off. On: rows display as the row-group tree (leaf rows never show) and
+   * the header is generated from data — one nested column group per distinct value of each pivot
+   * column, one value leaf per aggregated column; non-participating source columns are hidden.
+   * Off restores the source columns exactly. Client-side row model only; mutually exclusive with
+   * tree data.
+   */
+  setPivotMode(on: boolean): void;
+  getPivotMode(): boolean;
+  /**
+   * Replace the set of columns pivoted on (order = pivot level), by colId. Stored even while
+   * pivot mode is off; an empty array clears the pivot columns but leaves the mode alone (the
+   * degenerate grouped-aggregate view). Non-pivotable and unknown colIds are skipped.
+   */
+  setPivotColumns(colIds: string[]): void;
+  /** The pivot columns' colIds, in level order. */
+  getPivotColumns(): string[];
+  /** Descriptors of the current generated pivot value columns, in header order. */
+  getPivotResultColumns(): PivotResultColumnDescriptor[];
+  /**
+   * Replace the manual arrangement of the generated pivot columns: the displayed leaf order, by
+   * generated colId (`pivotColumnMoveMode: "free"` drags produce these; the split header tree is
+   * derived from the order). Null restores the canonical discovery layout. Explicit role edits
+   * (`setAggregates`, `setPivotColumns`) reset it; data- and filter-driven re-discoveries keep it.
+   */
+  setPivotColumnOrder(order: string[] | null): void;
+  /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
+  getPivotColumnOrder(): string[] | null;
+
+  /**
+   * Replace the row-grouping columns (order = grouping level), by colId. An empty array clears
+   * all grouping. Non-groupable and unknown colIds are skipped.
+   */
+  setRowGroupColumns(colIds: string[]): void;
+  /** The row-grouping columns' colIds, in level order. */
+  getRowGroupColumns(): string[];
+  /**
+   * Replace the aggregate assignments (grid footer totals, group-row totals, and pivot measures),
+   * by colId. A column may appear several times with different types — each is a distinct
+   * measure; entry order sets the generated pivot column order. An empty array clears all
+   * aggregates. Unknown colIds are skipped.
+   */
+  setAggregates(aggregates: ColumnAggregate[]): void;
+  /** The current aggregate assignments by colId, in model order. */
+  getAggregates(): ColumnAggregate[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
   captureViewState(): GridViewState;

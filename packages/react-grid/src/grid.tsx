@@ -104,7 +104,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
 
       assignRef(forwardedRef, api);
       assignRef(props.apiRef, api);
-      onGridReadyRef.current?.(api);
+      // onGridReady is NOT announced here — see the announce effect below the columnDefs / rowData
+      // effects. The refs are assigned now, so imperative access is available as early as ever.
 
       return () => {
         if (instanceRef.current === instance) {
@@ -151,6 +152,28 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.data, props.rowData, props.rowModelType]);
 
+    // Announce the grid only once its schema and rows are in — declared AFTER the columnDefs and
+    // rowData effects, which run first because layout effects of one commit run in declaration
+    // order. Announcing from the creation effect made `onGridReady` fire against a grid with no
+    // columns, so every colId-addressed call in it (row groups, aggregates, pivot columns, sorts,
+    // column state) resolved to nothing and was silently dropped. Still the same commit, still
+    // synchronous, still before paint — and still ahead of the option-sync effects below, so
+    // prop-driven options keep winning over imperative mount-time calls.
+    const announcedRef = useRef<GridInstance | null>(null);
+    useLayoutEffect(() => {
+      const instance = instanceRef.current;
+      // Identity, not a boolean: StrictMode replays mount with a NEW instance, which must be
+      // announced too, while a re-run against an already-announced instance must not fire twice.
+      if (!instance || announcedRef.current === instance) return;
+      announcedRef.current = instance;
+      onGridReadyRef.current?.(instance.api);
+
+      return () => {
+        announcedRef.current = null;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // groupDisplayType changes the synthesized grouping columns and whether group nodes render as
     // full-width rows. Reconcile it explicitly so declarative prop changes do not require a key/remount.
     useLayoutEffect(() => {
@@ -164,6 +187,37 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ groupRowsSelectable: props.groupRowsSelectable });
     }, [props.groupRowsSelectable]);
+
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ pivotColumnMoveMode: props.pivotColumnMoveMode });
+    }, [props.pivotColumnMoveMode]);
+
+    // pivotMode / pivotColumns are live props, but they are NOT updateGridOptions keys: core seeds
+    // them once from the creation options (when the columnDefs land) and owns them as model state
+    // afterwards, so later prop changes go through the API setters. Creation already applied the
+    // initial value, so — like rowSelection below — these reconcile only subsequent changes; that
+    // also keeps them from overwriting roles an app assigned in onGridReady.
+    const pivotModeMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pivotModeMountedRef.current) {
+        pivotModeMountedRef.current = true;
+        return;
+      }
+      if (props.pivotMode == null) return;
+      instanceRef.current?.api.setPivotMode(props.pivotMode);
+    }, [props.pivotMode]);
+
+    const pivotColumnsKey = JSON.stringify(props.pivotColumns ?? null);
+    const pivotColumnsMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pivotColumnsMountedRef.current) {
+        pivotColumnsMountedRef.current = true;
+        return;
+      }
+      if (props.pivotColumns == null) return;
+      instanceRef.current?.api.setPivotColumns(props.pivotColumns);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pivotColumnsKey]);
 
     useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ isRowSelectable: props.isRowSelectable });
@@ -367,6 +421,12 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ savedViews: props.savedViews });
     }, [props.savedViews]);
+
+    // Sheet tabs are application-owned the same way: a new list/callback object re-syncs the tab
+    // strip in place (no view state is applied by a sync — see SheetsOptions).
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ sheets: props.sheets });
+    }, [props.sheets]);
 
     // Theme vars and icons are reconciled together: props.icons override any icons
     // carried by props.theme, so recompute the merged set whenever either changes. The merge is

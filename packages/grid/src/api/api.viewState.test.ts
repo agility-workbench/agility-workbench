@@ -118,6 +118,49 @@ describe("GridAPI saved view state", () => {
     expect(core.getPaginationInfo().paginationEnabled).toBe(false);
   });
 
+  it("round-trips a sort on the auto-group column", () => {
+    const { core, api } = makeGrid();
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const groupCol = () => core.getColumnModel().getAutoGroupColumns()[0];
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol().instanceID });
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol().instanceID });
+    expect(core.getSortModel().items.map(item => [item.col.colId, item.dir]))
+      .toEqual([["__pte_group__", "desc"]]);
+
+    // The auto-group column is internal, so its instanceID is a per-grid UUID and the capture can
+    // only name its colId — which the public column lookups deliberately do not hold.
+    const persisted = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(persisted.sortModel).toEqual([{ colId: "__pte_group__", dir: "desc" }]);
+
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: groupCol().instanceID, dir: null }] });
+    expect(core.getSortModel().items).toEqual([]);
+
+    api.applyViewState(persisted);
+    expect(core.getSortModel().items.map(item => [item.col.colId, item.dir]))
+      .toEqual([["__pte_group__", "desc"]]);
+    expect(core.getSortModel().items[0].col).toBe(groupCol());
+    expect(core.getRowModel().getGroupNodes().map(node => node.groupKey)).toEqual(["EMEA", "APAC"]);
+  });
+
+  it("drops a captured group-column sort when the restored grid has no group column", () => {
+    const source = makeGrid();
+    source.core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const groupCol = source.core.getColumnModel().getAutoGroupColumns()[0];
+    source.core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol.instanceID });
+    const persisted = JSON.parse(JSON.stringify(source.api.captureViewState()));
+    expect(persisted.sortModel).toEqual([{ colId: "__pte_group__", dir: "asc" }]);
+
+    // `groupRows` display surfaces the label on a full-width row instead of a column, so the
+    // captured id addresses nothing here — the sort must stay dropped rather than revive a column
+    // this grid never puts in its layout.
+    const target = makeGrid();
+    target.core.setGroupDisplayType("groupRows");
+    target.api.applyViewState(persisted);
+    expect(target.core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+    expect(target.core.getColumnModel().getAutoGroupColumns()).toEqual([]);
+    expect(target.core.getSortModel().items).toEqual([]);
+  });
+
   it("supports exact and merge column restoration", () => {
     const { core, api } = makeGrid();
     const state = api.captureViewState();

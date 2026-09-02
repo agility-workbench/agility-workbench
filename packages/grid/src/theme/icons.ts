@@ -13,6 +13,7 @@ export type GridIconName =
   | "group-expanded"
   | "check"
   | "group"
+  | "pivot"
   | "column-hide"
   | "count"
   | "sum"

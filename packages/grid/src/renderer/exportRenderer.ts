@@ -146,6 +146,10 @@ export class ExportRenderer {
   }
 
   private buildExportConfig(options: ExportOptions): ExportConfig | null {
+    if (this.params.core.getPivotMode()) {
+      return this.buildPivotExportConfig(options);
+    }
+
     const scope = this.resolveExportScope(options);
     const columns = this.params.leafColumns()?.length ? this.params.leafColumns().slice() : [];
     if (!columns.length) return null;
@@ -202,13 +206,65 @@ export class ExportRenderer {
       pinnedBottomRows,
       selectionRange,
       selectedColumnIDs,
+      aggregates,
+      ...this.commonExportConfig(options),
+      ...this.buildSpanResolvers(),
+    };
+  }
+
+  /**
+   * What every export config carries whatever its shape: the caller's pass-through options, plus
+   * the column tree and measured widths. The tree is what makes the nested header shared rather
+   * than per-shape — the exporter derives each column's ancestor path from it, so a grouped header
+   * and a generated pivot header are laid out by the same code (the pivot path differs only in
+   * which columns are admitted, see `pivotExport`).
+   */
+  private commonExportConfig(options: ExportOptions): Pick<
+    ExportConfig,
+    "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths"
+  > {
+    return {
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
       processCellForExcel: options.processCellForExcel,
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
-      aggregates,
-      ...this.buildSpanResolvers(),
+    };
+  }
+
+  /**
+   * Pivot-mode export: the on-screen pivot table, whole. Columns are the auto-group column plus
+   * the generated value leaves under their nested pivot header (the ordinary column-tree header
+   * layout renders the nesting); rows are the group nodes of every level in pre-order, expanded or
+   * not, with each cell reading the node's stamped aggregate. Selection scopes don't subset a
+   * pivot export — the aggregates only mean anything as a table — but an explicit `columnIds`
+   * filter (the auto-group column's header-menu export) is honored.
+   */
+  private buildPivotExportConfig(options: ExportOptions): ExportConfig | null {
+    const columnModel = this.params.core.getColumnModel();
+    const autoGroup = columnModel.getHierarchyColumn();
+    const pivotLeaves = columnModel.getLeaves().filter(col => col.isPivotResultColumn());
+    const columns = [...(autoGroup ? [autoGroup] : []), ...pivotLeaves];
+    if (columns.length === 0) return null;
+
+    const rowModel = this.params.core.getRowModel();
+    const roots = rowModel.getHierarchyRoots?.()
+      ?? rowModel.getGroupNodes().filter(node => node.level === 0);
+    const rows: IRowNode[] = [];
+    const walk = (node: IRowNode) => {
+      rows.push(node);
+      for (const child of node.children ?? []) {
+        if (child.isGroup) walk(child);
+      }
+    };
+    for (const root of roots) walk(root);
+    if (rows.length === 0) return null;
+
+    return {
+      rows,
+      columns,
+      pivotExport: true,
+      ...this.commonExportConfig(options),
     };
   }
 
@@ -308,13 +364,11 @@ export class ExportRenderer {
       columns,
       pinnedTopRows,
       pinnedBottomRows,
-      columnIds: columnIds ?? options.columnIds,
       selectedColumnIDs: scope === "selectedColumns" ? this.params.selectedColumnIDs() : undefined,
-      includeHeaders: options.includeHeaders,
-      processCellForExcel: options.processCellForExcel,
-      columnTree: this.params.core.getColumnModel().getColumns(),
-      columnWidths: this.params.columnWidths(),
       aggregates,
+      ...this.commonExportConfig(options),
+      // A cell range narrows the export to the columns it covers, overriding the caller's list.
+      columnIds: columnIds ?? options.columnIds,
       groupRoots,
       groupColumns,
       groupDisplayType: this.params.core.getOptions().groupDisplayType,
@@ -437,6 +491,7 @@ export class ExportRenderer {
 
   private defaultExportFileName(format: "csv" | "excel", options: ExportOptions): string {
     const ext = format === "csv" ? "csv" : "xlsx";
+    if (this.params.core.getPivotMode()) return `grid-pivot.${ext}`;
     if (options.columnIds && options.columnIds.length === 1) {
       const col = this.params.core.getColumnModel().getById(options.columnIds[0]);
       if (col) return `${col.label ?? col.key}.${ext}`;
