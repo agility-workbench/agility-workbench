@@ -45,3 +45,16 @@ import "@agility-workbench/grid/styles.css";
 Then set `suppressStyleInjection` on every grid. For a strict CSP, keep automatic
 injection and pass the page's nonce through `styleNonce`.
 
+## Don't re-transpile the package to ES5
+
+The published bundles target **ES2022** and use `Set`/`Map` spreads and class
+fields throughout. Build pipelines normally leave `node_modules` alone, so
+nothing is required — but a pipeline that re-runs the package through
+`@babel/preset-env` with **`loose: true` and no (or ES5) browser targets**
+miscompiles it: loose mode assumes every spread iterable is an array, so
+`[...set]` becomes an array *containing* the set, and the grid fails at runtime
+with errors like `TypeError: t is not a function` from minified internals. If
+your bundler transpiles dependencies (common with monorepo symlinks, where the
+resolved path escapes a `node_modules` exclude), give it a modern `browserslist`
+or exclude `@agility-workbench/*` from transpilation.
+
