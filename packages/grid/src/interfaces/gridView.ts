@@ -127,6 +127,39 @@ export interface SheetsOptions {
   activeSheetId?: string | null;
   onChange?: (sheets: GridSheet[]) => void;
   onActiveSheetChange?: (sheetId: string | null) => void;
+  /**
+   * The palette offered by the tab menu's "Change color", **replacing** the built-in one — a brand
+   * set rather than a superset, so an application decides the whole list.
+   *
+   * A function form makes the palette per-sheet: it is consulted each time a tab menu opens, with
+   * the sheet it was opened on, so it can key off live application state as well as the sheet
+   * itself. An array is simply the same list for every tab.
+   *
+   * An empty array (or an empty return) drops "Change color" from the menu, which is how an
+   * application opts out of tab colours — per sheet, in the function form; omitting the option
+   * keeps the built-in palette. Colours a sheet already carries are unaffected either way:
+   * `GridSheet.color` is honoured whether or not the palette contains it, so a colour set
+   * programmatically, or persisted from an older palette, still paints its tab (the menu simply
+   * shows no entry checked, and "None" still clears it).
+   */
+  colors?: readonly SheetTabColor[] | ((sheet: GridSheet) => readonly SheetTabColor[]);
+}
+
+/**
+ * One entry of the sheet tab colour palette.
+ *
+ * A tab wears its colour as a tint over the tab's own fill, and paints it solid only in the active
+ * tab's underline, so an entry here never has to win a contrast fight with the label — any CSS
+ * colour works, in either theme, with no light/dark variant to supply.
+ */
+export interface SheetTabColor {
+  color: string;
+  /**
+   * The menu item's label, and how assistive technology names the colour. Falls back to `color`
+   * itself, so an unnamed entry is announced as "#ef4444" — supply a name for anything
+   * user-facing.
+   */
+  name?: string;
 }
 
 /**

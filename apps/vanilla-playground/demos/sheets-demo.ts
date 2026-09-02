@@ -1,6 +1,8 @@
-import { createGrid, ColumnType, type ColDef, type GridSheet } from "@grid";
+import {
+  createGrid, ColumnType, type ColDef, type GridSheet, type SheetTabColor,
+} from "@grid";
 
-import { bold, demoRoot, gridHost, h, note } from "../dom";
+import { bold, btn, controlGroup, demoRoot, field, gridHost, h, note, select } from "../dom";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -58,11 +60,41 @@ const COLUMNS: ColDef[] = [
   { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
 ];
 
+/**
+ * Twelve random hues, named so the menu (and assistive tech) has something to read. `hsl()` rather
+ * than hex on purpose: a palette entry can be any CSS colour, since a tab tints from the single
+ * value it is given rather than needing a light/dark pair.
+ */
+function randomPalette(prefix: string): SheetTabColor[] {
+  return Array.from({ length: 12 }, (_, i) => ({
+    name: `${prefix} ${i + 1}`,
+    color: `hsl(${Math.round(Math.random() * 360)} 72% 55%)`,
+  }));
+}
+
+function swatches(palette: SheetTabColor[]): HTMLElement {
+  return h("span", { style: { display: "inline-flex", gap: "3px" } },
+    ...palette.map(entry => h("span", {
+      title: `${entry.name} — ${entry.color}`,
+      style: {
+        width: "12px", height: "12px", borderRadius: "3px",
+        background: entry.color, border: "1px solid rgba(0,0,0,0.15)",
+      },
+    })));
+}
+
 export function mountSheetsDemo(container: HTMLElement): () => void {
   let sheets: GridSheet[] = [{ id: "data", name: "Data" }];
   let activeSheetId: string | null = "data";
 
+  // Tab-colour palettes. `palette` null = the grid's built-in list; supplying one unlocks the
+  // per-sheet override, which is what turns the option from an array into a function.
+  let palette: SheetTabColor[] | null = null;
+  let overrideSheetId = "";
+  let overridePalette: SheetTabColor[] | null = null;
+
   const host = gridHost();
+  const colorControls = h("div");
   const list = h("ol", {
     style: { margin: "10px 0 0", paddingLeft: "20px", fontSize: "12px", lineHeight: "1.7" },
   });
@@ -77,6 +109,7 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
       " with ", bold("Ctrl+PageDown/PageUp"), ". Edits made on any sheet update every sheet's",
       " derived values, because the data is shared.",
     ),
+    colorControls,
     h("div", { style: { display: "flex", gap: "12px", flex: "1", minHeight: "0" } },
       // minWidth:0 keeps the grid from widening the page as generated pivot columns appear.
       host,
@@ -91,6 +124,10 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
         h("div", {
           text: "Held by this page; every tab mutation reports the full next list.",
           style: { marginTop: "4px", fontSize: "11px", color: "#6b7280" },
+        }),
+        h("div", {
+          text: "`colors` replaces the built-in palette. An array is one list for every tab; a function is asked per sheet, per menu-open — that's the Override control, which hands one sheet a palette of its own.",
+          style: { marginTop: "8px", fontSize: "11px", color: "#6b7280" },
         }),
         list,
       ),
@@ -128,6 +165,7 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
     return {
       sheets,
       activeSheetId,
+      colors: resolveColors(),
       onChange: (next: GridSheet[]) => {
         sheets = next;
         renderList();
@@ -145,11 +183,66 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
     renderList();
   }
 
+  /** The `colors` option in whichever form the controls currently call for. */
+  function resolveColors() {
+    if (!palette) return undefined;                                       // built-in palette
+    const grid = palette;
+    if (!overrideSheetId || !overridePalette) return grid;                // array: one list for all
+    const own = overridePalette;
+    // Function form: consulted per menu-open, with the sheet the menu was opened on.
+    return (sheet: GridSheet) => (sheet.id === overrideSheetId ? own : grid);
+  }
+
+  function renderColorControls(): void {
+    const overrideSheet = sheets.find(sheet => sheet.id === overrideSheetId);
+    colorControls.replaceChildren(controlGroup("Tab colors",
+      btn(palette ? "Randomize again" : "Randomize 12 colors", () => {
+        palette = randomPalette("Random");
+        syncSheets();
+      }),
+      palette ? swatches(palette) : null,
+      field("Override", select(
+        [{ value: "", label: "— no override —" }, ...sheets.map(s2 => ({ value: s2.id, label: s2.name }))],
+        overrideSheetId,
+        (value) => {
+          overrideSheetId = value;
+          // A fresh set for the chosen sheet, so the two palettes are visibly different.
+          overridePalette = value ? randomPalette("Custom") : null;
+          syncSheets();
+        },
+        { disabled: !palette },
+      )),
+      overrideSheet && overridePalette
+        ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: "6px", color: "#4b5563" } },
+          `${overrideSheet.name}:`, swatches(overridePalette))
+        : null,
+      btn("Built-in palette", () => {
+        palette = null;
+        overrideSheetId = "";
+        overridePalette = null;
+        syncSheets();
+      }, { disabled: !palette }),
+    ));
+  }
+
   function renderList(): void {
     list.replaceChildren(...sheets.map(sheet => h("li", {},
       bold(sheet.name),
-      (sheet.id === activeSheetId ? " — active" : "") + (sheet.state?.pivotMode ? " (pivot)" : ""),
+      (sheet.id === activeSheetId ? " — active" : "")
+      + (sheet.state?.pivotMode ? " (pivot)" : "")
+      + (sheet.id === overrideSheetId ? " (own palette)" : ""),
+      sheet.color
+        ? h("span", {
+          title: sheet.color,
+          style: {
+            display: "inline-block", width: "10px", height: "10px", marginLeft: "6px",
+            borderRadius: "3px", background: sheet.color, border: "1px solid rgba(0,0,0,0.15)",
+          },
+        })
+        : null,
     )));
+    // The override picker lists the sheets, so it re-renders with them.
+    renderColorControls();
   }
 
   return () => api.destroy();

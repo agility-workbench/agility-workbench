@@ -6,6 +6,7 @@ import {
   type IGridAPI,
   type NgColDef,
   type SheetsOptions,
+  type SheetTabColor,
 } from "@agility-workbench/angular-grid";
 
 /**
@@ -64,6 +65,18 @@ function buildRows(count: number): SaleRow[] {
   });
 }
 
+/**
+ * Twelve random hues, named so the menu (and assistive tech) has something to read. `hsl()` rather
+ * than hex on purpose: a palette entry can be any CSS colour, since a tab tints from the single
+ * value it is given rather than needing a light/dark pair.
+ */
+function randomPalette(prefix: string): SheetTabColor[] {
+  return Array.from({ length: 12 }, (_, i) => ({
+    name: `${prefix} ${i + 1}`,
+    color: `hsl(${Math.round(Math.random() * 360)} 72% 55%)`,
+  }));
+}
+
 @Component({
   selector: "sheets-demo",
   standalone: true,
@@ -76,6 +89,45 @@ function buildRows(count: number): SaleRow[] {
       rename it, right-click for Rename / Change color / Duplicate / Delete, or switch with
       <strong>Ctrl+PageDown/PageUp</strong>. Edits made on any sheet update every sheet's derived
       values, because the data is shared.
+    </div>
+
+    <div class="sheets-colors">
+      <strong class="sheets-colors-title">Tab colors</strong>
+      <button type="button" (click)="randomize()">
+        {{ palette() ? "Randomize again" : "Randomize 12 colors" }}
+      </button>
+      @if (palette(); as grid) {
+        <span class="sheets-swatches">
+          @for (entry of grid; track $index) {
+            <span class="sheets-swatch" [style.background]="entry.color"
+              [title]="entry.name + ' — ' + entry.color"></span>
+          }
+        </span>
+      }
+      <label class="sheets-colors-field">
+        Override
+        <select [disabled]="!palette()" [value]="overrideSheetId()"
+          (change)="setOverride($any($event.target).value)">
+          <option value="">— no override —</option>
+          @for (sheet of sheets(); track sheet.id) {
+            <option [value]="sheet.id">{{ sheet.name }}</option>
+          }
+        </select>
+      </label>
+      @if (overrideSheet(); as target) {
+        @if (overridePalette(); as own) {
+          <span class="sheets-colors-override">
+            {{ target.name }}:
+            <span class="sheets-swatches">
+              @for (entry of own; track $index) {
+                <span class="sheets-swatch" [style.background]="entry.color"
+                  [title]="entry.name + ' — ' + entry.color"></span>
+              }
+            </span>
+          </span>
+        }
+      }
+      <button type="button" [disabled]="!palette()" (click)="useBuiltIn()">Built-in palette</button>
     </div>
 
     <div class="sheets-main">
@@ -96,11 +148,21 @@ function buildRows(count: number): SaleRow[] {
       <aside class="sheets-aside">
         <strong class="sheets-aside-title">Application-owned sheets</strong>
         <div class="sheets-aside-sub">Held in a signal; every tab mutation reports the full next list.</div>
+        <div class="sheets-aside-sub">
+          <code>colors</code> replaces the built-in palette. An array is one list for every tab; a
+          function is asked per sheet, per menu-open &mdash; that's the Override control, which
+          hands one sheet a palette of its own.
+        </div>
         <ol class="sheets-list">
           @for (sheet of sheets(); track sheet.id) {
             <li>
               <strong>{{ sheet.name }}</strong
-              >{{ sheet.id === activeSheetId() ? " — active" : "" }}{{ sheet.state?.pivotMode ? " (pivot)" : "" }}
+              >{{ sheet.id === activeSheetId() ? " — active" : "" }}{{ sheet.state?.pivotMode ? " (pivot)" : "" }}{{
+                sheet.id === overrideSheetId() ? " (own palette)" : "" }}
+              @if (sheet.color; as color) {
+                <span class="sheets-swatch sheets-swatch-inline" [style.background]="color"
+                  [title]="color"></span>
+              }
             </li>
           }
         </ol>
@@ -156,6 +218,45 @@ function buildRows(count: number): SaleRow[] {
         font-size: 12px;
         line-height: 1.7;
       }
+      .sheets-colors {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 6px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+      .sheets-colors-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: #6b7280;
+      }
+      .sheets-colors-field,
+      .sheets-colors-override {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #4b5563;
+      }
+      .sheets-swatches {
+        display: inline-flex;
+        gap: 3px;
+      }
+      .sheets-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+      }
+      .sheets-swatch-inline {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-left: 6px;
+      }
     `,
   ],
 })
@@ -174,12 +275,49 @@ export class SheetsDemoComponent {
     { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
   ];
 
+  // Tab-colour palettes. `palette` null = the grid's built-in list; supplying one unlocks the
+  // per-sheet override, which is what turns the option from an array into a function.
+  readonly palette = signal<SheetTabColor[] | null>(null);
+  readonly overrideSheetId = signal<string>("");
+  readonly overridePalette = signal<SheetTabColor[] | null>(null);
+
+  readonly overrideSheet = computed(() =>
+    this.sheets().find(sheet => sheet.id === this.overrideSheetId()));
+
   readonly sheetsOptions = computed<SheetsOptions>(() => ({
     sheets: this.sheets(),
     activeSheetId: this.activeSheetId(),
+    colors: this.colors(),
     onChange: (next) => this.sheets.set(next),
     onActiveSheetChange: (sheetId) => this.activeSheetId.set(sheetId),
   }));
+
+  /** The `colors` option in whichever form the controls currently call for. */
+  private readonly colors = computed<SheetsOptions["colors"]>(() => {
+    const grid = this.palette();
+    if (!grid) return undefined;                              // built-in palette
+    const own = this.overridePalette();
+    const targetId = this.overrideSheetId();
+    if (!targetId || !own) return grid;                       // array form: one list for every tab
+    // Function form: consulted per menu-open, with the sheet the menu was opened on.
+    return (sheet: GridSheet) => (sheet.id === targetId ? own : grid);
+  });
+
+  randomize(): void {
+    this.palette.set(randomPalette("Random"));
+  }
+
+  setOverride(sheetId: string): void {
+    this.overrideSheetId.set(sheetId);
+    // A fresh set for the chosen sheet, so the two palettes are visibly different.
+    this.overridePalette.set(sheetId ? randomPalette("Custom") : null);
+  }
+
+  useBuiltIn(): void {
+    this.palette.set(null);
+    this.overrideSheetId.set("");
+    this.overridePalette.set(null);
+  }
 
   // Seed a ready-made pivot sheet next to the Data sheet: the + button does the same derivation
   // (current state, pivot on) — this one just arrives pre-configured with roles.

@@ -1,5 +1,5 @@
 import { GridCore } from "../../core/core";
-import type { GridSheet, GridViewState, SheetsOptions } from "../../interfaces/gridView";
+import type { GridSheet, GridViewState, SheetsOptions, SheetTabColor } from "../../interfaces/gridView";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { MenuItem } from "../../interfaces/menuItem";
 import { isPivotResultColId } from "../../interfaces/pivot";
@@ -400,13 +400,28 @@ export class SheetsRenderer {
   }
 
   /**
-   * The "Change color" submenu: "None" first, then the built-in palette. A check marks the sheet's
-   * current colour — matched case-insensitively, since the list round-trips through the
-   * application's own storage and can come back as `#EF4444`. A colour the application set outside
-   * the palette simply leaves every entry unchecked; "None" still clears it.
+   * The palette for one sheet: the application's if it supplied one, else the built-in list. The
+   * function form is called per menu-open rather than cached, so it sees the application's current
+   * state — and the sheet it is asked about, which is what makes a palette sheet-specific.
    */
-  private colorMenuItems(sheetId: string): MenuItem[] {
-    const current = this.sheets.find(sheet => sheet.id === sheetId)?.color?.toLowerCase();
+  private paletteFor(sheet: GridSheet): readonly SheetTabColor[] {
+    const colors = this.sheetsOptions?.colors;
+    if (colors == null) return SHEET_COLORS;
+    return typeof colors === "function" ? colors(sheet) : colors;
+  }
+
+  /**
+   * The "Change color" submenu: "None" first, then the palette. A check marks the sheet's current
+   * colour — matched case-insensitively, since the list round-trips through the application's own
+   * storage and can come back as `#EF4444`. A colour outside the palette (set programmatically, or
+   * persisted from a palette since changed) leaves every entry unchecked and still paints its tab;
+   * "None" clears it either way.
+   *
+   * Only ever called for a non-empty palette — an empty one drops the parent item entirely, since a
+   * "Change color" offering nothing but "None" is a dead end.
+   */
+  private colorMenuItems(sheet: GridSheet, palette: readonly SheetTabColor[]): MenuItem[] {
+    const current = sheet.color?.toLowerCase();
     return [
       {
         id: "sheetColorNone",
@@ -417,22 +432,28 @@ export class SheetsRenderer {
         right: current ? undefined : "icon-check",
       },
       { id: "sheetColorSeparator", isSeparator: true },
-      ...SHEET_COLORS.map((entry): MenuItem => ({
-        id: `sheetColor-${entry.id}`,
-        label: entry.name,
+      // Index-based ids: a supplied entry has no identity of its own, and two entries sharing a
+      // name (or a colour) must still get distinct menu items.
+      ...palette.map((entry, idx): MenuItem => ({
+        id: `sheetColor-${idx}`,
+        label: entry.name ?? entry.color,
         command: "sheet.color",
         payload: entry.color,
         left: createSheetColorSwatch(entry.color),
-        right: current === entry.color ? "icon-check" : undefined,
+        right: current === entry.color.toLowerCase() ? "icon-check" : undefined,
       })),
     ];
   }
 
   private openTabMenu(e: MouseEvent, sheetId: string): void {
     e.preventDefault();
+    const sheet = this.sheets.find(candidate => candidate.id === sheetId);
+    const palette = sheet ? this.paletteFor(sheet) : [];
     const items: MenuItem[] = [
       { id: "sheetRename", label: "Rename", command: "sheet.rename" },
-      { id: "sheetColor", label: "Change color", subMenu: this.colorMenuItems(sheetId) },
+      ...(sheet && palette.length > 0
+        ? [{ id: "sheetColor", label: "Change color", subMenu: this.colorMenuItems(sheet, palette) }]
+        : []),
       { id: "sheetDuplicate", label: "Duplicate", command: "sheet.duplicate" },
       {
         id: "sheetDelete",

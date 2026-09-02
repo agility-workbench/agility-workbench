@@ -378,6 +378,60 @@ describe("sheets tab strip", () => {
     expect(tabs(host)[0].classList.contains("pte-sheet-tab-colored")).toBe(false);
   });
 
+  it("offers an application-supplied palette in place of the built-in one", () => {
+    const changes: GridSheet[][] = [];
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }],
+      colors: [{ name: "Brand", color: "#123456" }, { color: "#654321" }],
+      onChange: next => changes.push(next),
+    });
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    // The supplied list replaces the built-ins wholesale, and an unnamed entry labels itself.
+    expect(menuItem("Blue")).toBeUndefined();
+    expect(menuItem("#654321")).toBeDefined();
+    menuItem("Brand")!.click();
+
+    expect(changes.at(-1)![0].color).toBe("#123456");
+    expect(tabs(host)[0].style.getPropertyValue("--pte-sheet-tab-color")).toBe("#123456");
+  });
+
+  it("asks a function palette per sheet, on every open", () => {
+    const asked: string[] = [];
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1" }],
+      colors: sheet => {
+        asked.push(sheet.id);
+        // The second sheet opts out of colours entirely; the first gets a one-entry palette.
+        return sheet.id === "data" ? [{ name: "Only", color: "#0f766e" }] : [];
+      },
+    });
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    expect(menuItem("Only")).toBeDefined();
+
+    // Same strip, different sheet, different answer — including no menu item at all.
+    tabs(host)[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(menuItem("Change color")).toBeUndefined();
+    // Consulted per open (never cached), so the answer can follow live application state.
+    expect(asked).toEqual(["data", "p1"]);
+  });
+
+  it("drops Change color entirely for an empty palette, colors already set still paint", () => {
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data", color: "#ef4444" }],
+      colors: [],
+    });
+
+    // Opting out of the menu is not opting out of the colour: a sheet that carries one keeps it.
+    expect(tabs(host)[0].classList.contains("pte-sheet-tab-colored")).toBe(true);
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(menuItem("Change color")).toBeUndefined();
+    expect(menuItem("Rename")).toBeDefined();
+  });
+
   it("carries a tab color into a duplicate", () => {
     const { host } = makeGrid({
       sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1", color: "#ef4444" }],

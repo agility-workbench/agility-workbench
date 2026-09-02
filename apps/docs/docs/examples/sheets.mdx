@@ -32,13 +32,50 @@ appears only when its feature is on.
 - **Right-click** a tab for Rename / Change color / Duplicate / Delete.
   Duplicating the active sheet copies its live state (and its color); the last
   remaining sheet can't be deleted.
-- **Change color** picks from a built-in palette, or clears the color with
-  **None**. An inactive tab wears its color as a tint over the tab fill and the
-  active one shows it solid in its underline, so the label keeps the theme's own
-  contrast in light and dark whatever color is chosen. The color lands on
-  `GridSheet.color` and is reported through `onChange` like any other change —
-  it is sheet metadata, not view state, so it survives every switch untouched.
-  An app can set `color` to any CSS color, palette or not.
+- **Change color** picks from the palette, or clears the color with **None**.
+  An inactive tab wears its color as a tint over the tab fill and the active one
+  shows it solid in its underline, so the label keeps the theme's own contrast in
+  light and dark whatever color is chosen. The color lands on `GridSheet.color`
+  and is reported through `onChange` like any other change — it is sheet
+  metadata, not view state, so it survives every switch untouched.
+
+## Tab colors
+
+`colors` **replaces** the built-in palette with the application's own, so the
+menu offers a brand set rather than a superset:
+
+```ts
+sheets: {
+  sheets,
+  colors: [
+    { name: "Revenue", color: "#0f766e" },
+    { name: "Ops", color: "#b45309" },
+    { color: "#6d28d9" },   // unnamed: labelled (and announced) as "#6d28d9"
+  ],
+}
+```
+
+Any CSS color works, and no light/dark variant is needed — the tint and the
+underline both derive from the one value. Because a color is only ever tinted
+under the label, an entry never has to clear a contrast bar.
+
+A **function** makes the palette sheet-specific. It is asked each time a tab menu
+opens, with the sheet it was opened on, so it can also key off live application
+state:
+
+```ts
+sheets: {
+  sheets,
+  colors: (sheet) => (sheet.id === "budget" ? BUDGET_COLORS : BRAND_COLORS),
+}
+```
+
+An empty `colors: []` — or an empty return from the function, which makes it per
+sheet — drops **Change color** from the menu entirely, which is how an
+application opts out of tab colors. Either way `GridSheet.color` is still
+honored: a color set programmatically, or persisted from a palette since
+changed, paints its tab as usual — the menu just shows no entry checked, and
+**None** still clears it.
 - **Ctrl+PageDown / Ctrl+PageUp** switch to the neighboring sheet — the
   spreadsheet convention. The chords are claimed only while the tab strip is
   enabled.

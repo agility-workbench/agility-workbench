@@ -155,6 +155,7 @@ export type {
   SavedViewsOptions,
   GridSheet,
   SheetsOptions,
+  SheetTabColor,
 } from "./interfaces/gridView";
 export type {
   PivotDiscovery,
