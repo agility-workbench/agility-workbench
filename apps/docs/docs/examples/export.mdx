@@ -69,6 +69,16 @@ api.exportDataAsExcel({ groupMode: "leaves" }); // flat leaves with group paths
 
 CSV and Excel include application-pinned top and bottom rows around the body.
 
+## Pivot export
+
+While [pivot mode](./pivot.mdx) is on, the same commands export the pivot table
+itself: the generated nested header over one row per group node (every level,
+expanded or not, indented under the group column), with real numbers in the
+aggregate cells. Pivot exports are whole-table by design — the range and
+selected-column scopes are ignored — and the default filename becomes
+`grid-pivot.csv` / `grid-pivot.xlsx`. Turn pivot mode off to export the source
+rows instead.
+
 ## Get bytes without downloading
 
 ```ts

@@ -30,6 +30,10 @@ const labelled = {
 Something short and distinguishing is what a screen-reader user hears on
 entering the grid.
 
+With [sheets](./examples/sheets.mdx) enabled and neither option supplied, the
+grid falls back to naming itself after the active sheet tab — "Data",
+"Pivot 1" — so a sheet switch renames the grid the way it renames the view.
+
 ## The ARIA grid model
 
 The root element carries `role="grid"` with:
@@ -100,6 +104,11 @@ clipboard, menus (Shift+F10 / the menu key), filters, ActionFrames
 controls. The header row is part of the navigable surface: ArrowUp from the
 first body row moves the cursor into the headers, where `Space` selects a
 column and `Enter` sorts.
+
+The [sheet tab strip](./examples/sheets.mdx) is an ARIA `tablist` with roving
+tabindex — one tab stop, arrows move within it, Enter/Space activates, F2
+renames — and Ctrl+PageDown / Ctrl+PageUp switch sheets from anywhere in the
+grid (claimed only while the strip is enabled).
 
 The active shortcut set is a queryable registry — `api.getKeyboardShortcuts()`
 returns it, and applications can register their own shortcuts without

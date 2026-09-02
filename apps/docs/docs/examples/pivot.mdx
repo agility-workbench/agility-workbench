@@ -141,6 +141,14 @@ unpinnable and confined to the pivot area.
   against a cap of 200 keep ⌊200 / 3⌋ = 66 values — 198 columns, under the cap
   — while at least one value always survives, so five measures against a cap of
   three generate five columns, over it.
+
+  The grid shows no built-in truncation notice — that UI is the application's,
+  driven by the event. It is **latched** so one subscription can drive a notice
+  through its whole life: it fires when truncation starts, when the truncated
+  count changes, and once more when it ends (including on leaving pivot mode) —
+  never repeatedly for re-derivations that change nothing. The payload is
+  `{ limited, truncatedColumnCount, maxPivotColumns }`; `limited: false` means
+  "back under the limit, take the notice down".
 - `pivotNoValuesMessage` rewords the inline header hint shown while pivot mode
   is on with no aggregates chosen (default "Choose Aggregate on a column to add
   values") — for different wording, a different entry point, or another
