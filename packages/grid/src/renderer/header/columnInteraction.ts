@@ -1,4 +1,5 @@
 import { AggregateModel } from "../../interfaces/aggregate";
+import { parsePivotLeafColId } from "../../interfaces/pivot";
 import { ColumnSection } from "../../interfaces/column";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
@@ -18,16 +19,15 @@ function isPivotMeasureLeaf(col: Column): boolean {
   return col.isPivotResultColumn() && col.children.length === 0;
 }
 
-// The aggregate-model index of the measure a generated value leaf represents (leaf colId shape:
-// "pv:<encoded path>|<encoded source colId>|<aggregate type>"); -1 for any other column.
+// The aggregate-model index of the measure a generated value leaf represents; -1 for any other
+// column.
 function measureIndexOf(core: GridCore, col: Column, model: { key: string; type: string }[]): number {
   if (!isPivotMeasureLeaf(col)) return -1;
-  const [, encodedColId, aggType] = col.colId.split("|");
-  if (encodedColId == null || aggType == null) return -1;
-  const valueColId = decodeURIComponent(encodedColId);
+  const measure = parsePivotLeafColId(col.colId);
+  if (!measure) return -1;
   return model.findIndex(entry => {
     const source = core.getColumnModel().getById(entry.key);
-    return source?.colId === valueColId && entry.type === aggType;
+    return source?.colId === measure.valueColId && entry.type === measure.type;
   });
 }
 

@@ -96,3 +96,44 @@ export function pivotLeafColId(path: string[], valueColId: string, type: Aggrega
 export function pivotLeafColIdFromKey(pathKey: string, valueColId: string, type: AggregateType): string {
   return "pv:" + pathKey + "|" + encodeURIComponent(valueColId) + "|" + type;
 }
+
+/** The parts a generated value leaf's colId is built from — see {@link parsePivotLeafColId}. */
+export interface ParsedPivotLeafColId {
+  /** Encoded path key, exactly as it appears in the id ("" = the root path). */
+  pathKey: string;
+  /** Decoded pivot path segments, outermost first. Empty for the root path. */
+  path: string[];
+  /** Decoded colId of the source column this leaf aggregates. */
+  valueColId: string;
+  type: AggregateType;
+}
+
+/**
+ * Read a generated value leaf's colId back into its parts — the inverse of
+ * {@link pivotLeafColIdFromKey}, and the only place the id format is taken apart.
+ *
+ * Total: null for anything that is not a generated value leaf (a plain column, a generated GROUP
+ * header, a malformed id). Callers get one answer to "is this a measure, and which one" instead of
+ * re-deriving the split and each choosing what to do about the parts that might be missing.
+ */
+export function parsePivotLeafColId(colId: string): ParsedPivotLeafColId | null {
+  if (!isPivotResultColId(colId)) return null;
+  // Path segments and the source colId are percent-encoded on the way in, so neither can contain a
+  // literal separator: a value leaf splits into exactly prefix+path, source colId, aggregate type.
+  const parts = colId.split("|");
+  if (parts.length !== 3) return null;
+  const [prefixedPathKey, encodedValueColId, type] = parts;
+  if (type === "") return null;
+  const pathKey = prefixedPathKey.slice("pv:".length);
+  try {
+    return {
+      pathKey,
+      path: pathKey === "" ? [] : pathKey.split("/").map(decodeURIComponent),
+      valueColId: decodeURIComponent(encodedValueColId),
+      type: type as AggregateType,
+    };
+  } catch {
+    // Malformed percent-encoding — a hand-written id, not one this module produced.
+    return null;
+  }
+}

@@ -5,7 +5,7 @@ import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
 import { AggregateModel, AggregateScope, AggregateType, ColumnAggregate } from "../interfaces/aggregate";
-import { isPivotResultColId, PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
+import { isPivotResultColId, parsePivotLeafColId, PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
 import { buildPivotResultColDefs } from "../column/pivotResultColumns";
 import {
   CellCommitSource,
@@ -1270,14 +1270,13 @@ export class GridCore implements IGridCore {
         for (const child of col.children) walk(child, [...path, col.label]);
         return;
       }
-      // Leaf colId: "pv:<encoded path>|<encoded source colId>|<aggregate type>".
-      const [, valueColId, aggregateType] = col.colId.split("|");
+      const measure = parsePivotLeafColId(col.colId);
       out.push({
         colId: col.colId,
         label: col.label,
         groupPath: path,
-        valueColId: valueColId != null ? decodeURIComponent(valueColId) : "",
-        aggregateType: aggregateType as AggregateType,
+        valueColId: measure?.valueColId ?? "",
+        aggregateType: measure?.type as AggregateType,
       });
     };
     for (const root of this.columnModel.getPivotResultRoots()) walk(root, []);
