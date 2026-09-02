@@ -231,8 +231,9 @@ export class ColumnPanelRenderer {
     this.applyOpenState();
     if (open) {
       // Only if it actually fell behind: opening and closing without touching the grid should not
-      // pay for a rebuild.
-      if (this.listStale) this.renderListNow();
+      // pay for a rebuild. Through renderList, so an open that happens INSIDE a dispatch settles
+      // with that dispatch's own rebuild instead of running one mid-flight and one at the end.
+      if (this.listStale) this.renderList();
       this.searchInput.focus();
     } else {
       const focusTarget = this.trigger === "rail" ? this.railButton : this.triggerButton;
@@ -331,16 +332,30 @@ export class ColumnPanelRenderer {
    *
    * A rebuild is a full teardown of the list DOM, and the grid asks for one on every
    * `columnsChanged` / `aggregateChanged` / `pivotChanged` — three per pivot mutation alone. While
-   * the panel is closed none of that is observable, so it is recorded and settled on open.
+   * the panel is closed none of that is observable, so it is recorded and settled on open. While it
+   * is open, the requests of one mutation collapse into a single rebuild at the end of the dispatch
+   * (`core.afterDispatch`), which is where the state they each describe has settled. That end is
+   * still inside the `dispatch` call, so the panel DOM is up to date the moment the API call that
+   * changed it returns — a rebuild is coalesced, never deferred past the mutation. Requests from
+   * outside a dispatch (the search box, a row-level toggle) rebuild immediately, as before.
    */
   private renderList(): void {
+    if (!this.enabled) return;
+    this.params.core.afterDispatch(this.renderListCoalesced);
+  }
+
+  // One stable reference, because afterDispatch dedups by identity. Open/closed is decided HERE
+  // rather than in renderList, because it is the state at the end of the dispatch that matters:
+  // the rest of the mutation may have opened the panel (rebuild once, with settled state — not
+  // twice, once mid-flight) or closed it (record the staleness and settle on open).
+  private renderListCoalesced = (): void => {
     if (!this.enabled) return;
     if (!this.open) {
       this.listStale = true;
       return;
     }
     this.renderListNow();
-  }
+  };
 
   /** Rebuild the panel body now, settling any rebuild deferred while it was closed. */
   private renderListNow(): void {

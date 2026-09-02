@@ -168,6 +168,57 @@ describe("column panel rebuild scheduling", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("coalesces the events of one mutation into a single rebuild while open", () => {
+    const { core, root } = makeGrid();
+    setRoles(core, { groups: ["region"], values: [["revenue", AggregateType.SUM]], pivots: ["quarter"] });
+    const spy = spyRebuilds();
+
+    // pivotModeSet emits columnsChanged, aggregateChanged and pivotChanged from inside one
+    // dispatch. Rebuilding per event cost three teardowns of the same DOM for one mutation.
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // Coalesced, not deferred: the panel is already showing the mutation when dispatch returns —
+    // read synchronously, with no microtask or frame in between.
+    expect(root.querySelector(".pte-column-panel-wells")?.children.length).toBeGreaterThan(0);
+    expect(wellLabels(root, "pivot")).toEqual(["Quarter"]);
+    expect(wellLabels(root, "value")).toEqual(["Revenue — Sum"]);
+    spy.mockRestore();
+  });
+
+  it("rebuilds once, with settled state, when the same dispatch opens the panel", () => {
+    const { core, root, renderer } = makeGrid({ open: false });
+    setRoles(core, { groups: ["region"], values: [["revenue", AggregateType.SUM]], pivots: ["quarter"] });
+    // Opening from inside the burst: the deferred rebuild the closed panel owed and the rebuild
+    // this mutation asks for are the same rebuild, and it runs once, at the end, on settled state.
+    const unsubscribe = core.on("pivotChanged", () => renderer.openPanel());
+    const spy = spyRebuilds();
+
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(wellLabels(root, "pivot")).toEqual(["Quarter"]);
+    unsubscribe();
+    spy.mockRestore();
+  });
+
+  it("skips the coalesced rebuild when the same dispatch also closed the panel", () => {
+    const { core, root, renderer } = makeGrid();
+    setRoles(core, { groups: ["region"], values: [["revenue", AggregateType.SUM]], pivots: ["quarter"] });
+    // Close from inside the burst: the rebuild is requested before the close and settles after it,
+    // so it has to re-check, and record the staleness the closed panel settles on open.
+    const unsubscribe = core.on("pivotChanged", () => closeButton(root).click());
+    const spy = spyRebuilds();
+
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(spy).not.toHaveBeenCalled();
+    unsubscribe();
+
+    renderer.openPanel();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(wellLabels(root, "pivot")).toEqual(["Quarter"]);
+    spy.mockRestore();
+  });
 });
 
 describe("column panel pivot customizer", () => {

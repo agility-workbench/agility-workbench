@@ -87,6 +87,15 @@ export interface IGridCore {
   /** Dispatch an action (from renderer and/or API). */
   dispatch(action: GridAction): void;
 
+  /**
+   * Run `fn` once the dispatch in progress has finished — synchronously, before `dispatch` returns,
+   * and once however many times it was asked for (dedup is by function identity, so pass a stable
+   * reference). For a listener whose response to a change is expensive and idempotent: one mutation
+   * can emit several events, and this collapses the response into a single run once the state has
+   * settled. Outside a dispatch it runs `fn` immediately.
+   */
+  afterDispatch(fn: () => void): void;
+
   /** Subscribe to core events. */
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe;
 

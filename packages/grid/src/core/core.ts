@@ -155,6 +155,10 @@ export class GridCore implements IGridCore {
   private serverSchemaSignature: string | undefined;
 
   private eventHandlers: Map<string, GridEventHandler<GridEventName>[]> = new Map();
+  // End-of-dispatch work: see afterDispatch. Depth, not a boolean — actions nest.
+  private dispatchDepth = 0;
+  private pendingAfterDispatch = new Set<() => void>();
+  private flushingAfterDispatch = false;
   // Seeded with the measure-path fallback fonts so autosize is safe before the first header build
   // probes the real theme fonts (themeFontSet re-runs autosize, so these widths never survive).
   private textMeasureParams: TextMeasureParams = { headerFont: "500 14px Arial", cellFont: "14px Arial" };
@@ -2826,6 +2830,54 @@ export class GridCore implements IGridCore {
   }
 
   dispatch(action: GridAction): void {
+    this.dispatchDepth++;
+    try {
+      this.dispatchAction(action);
+    } finally {
+      this.dispatchDepth--;
+    }
+    // Outside any enclosing dispatch now, so anything a listener deferred to the end of the burst
+    // runs here — still synchronously, before this call returns.
+    if (this.dispatchDepth === 0) this.flushAfterDispatch();
+  }
+
+  /**
+   * Run `fn` once the dispatch in progress has finished — synchronously, before `dispatch` returns,
+   * and once no matter how many times it was asked for. One mutation commonly emits several events
+   * (a pivot-mode toggle emits `columnsChanged`, `aggregateChanged` and `pivotChanged` from inside
+   * one dispatch), and a listener whose response is a full rebuild would otherwise pay for each of
+   * them; requesting the same function reference collapses that into one run at the end, when the
+   * state has settled. Pass a STABLE reference (a bound method or an arrow property) — dedup is by
+   * identity.
+   *
+   * Called outside a dispatch (a DOM event handler, a row-model callback), it runs `fn` immediately,
+   * so "the state is settled when the call returns" holds either way.
+   */
+  afterDispatch(fn: () => void): void {
+    if (this.dispatchDepth === 0 && !this.flushingAfterDispatch) {
+      fn();
+      return;
+    }
+    this.pendingAfterDispatch.add(fn);
+  }
+
+  // Drain the queue, including anything the callbacks add while it drains. Re-entrant calls are
+  // ignored: a callback that dispatches would otherwise start a second drain over the same queue.
+  private flushAfterDispatch(): void {
+    if (this.flushingAfterDispatch) return;
+    this.flushingAfterDispatch = true;
+    try {
+      while (this.pendingAfterDispatch.size > 0) {
+        const pending = [...this.pendingAfterDispatch];
+        this.pendingAfterDispatch.clear();
+        for (const fn of pending) fn();
+      }
+    } finally {
+      this.flushingAfterDispatch = false;
+    }
+  }
+
+  private dispatchAction(action: GridAction): void {
     switch (action.type) {
       case "init":
         this.emit("viewportChanged", {
