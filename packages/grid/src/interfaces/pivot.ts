@@ -82,6 +82,16 @@ export function isPivotResultColId(colId: string): boolean {
   return colId.startsWith("pv:");
 }
 
+/**
+ * Append one segment to an encoded pivot path key — the address a generated column and a stamped
+ * cell share. Segments are percent-encoded individually and joined by "/", so a "/" inside a value
+ * cannot collide with the separator; "" is the root path (a pivot with no pivot columns). Owned
+ * here with the id encoders, since {@link pivotLeafColIdFromKey} consumes exactly this form.
+ */
+export function appendPivotPathKey(pathKey: string, segment: string): string {
+  return pathKey === "" ? encodeURIComponent(segment) : pathKey + "/" + encodeURIComponent(segment);
+}
+
 /** Stable, position-independent id for a pivot path (generated group column id). */
 export function pivotPathId(path: string[]): string {
   return "pv:" + path.map(encodeURIComponent).join("/");

@@ -280,29 +280,21 @@ export class ColumnModel implements IColumnModel {
   // are removed only when they still point at the instance being retired, so a re-registration that
   // already claimed the id (same colId in the incoming defs) is never clobbered.
   private unregisterPivotStashLookups(): void {
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        if (this.columnsById.get(col.instanceID) === col) this.columnsById.delete(col.instanceID);
-        if (this.columnsByColId.get(col.colId) === col) this.columnsByColId.delete(col.colId);
-        if (this.columnsByKey.get(col.key) === col) this.columnsByKey.delete(col.key);
-        if (col.children.length > 0) walk(col.children);
-      }
-    };
-    walk(this.pivotSourceStash);
+    this.walkColumns((col) => {
+      if (this.columnsById.get(col.instanceID) === col) this.columnsById.delete(col.instanceID);
+      if (this.columnsByColId.get(col.colId) === col) this.columnsByColId.delete(col.colId);
+      if (this.columnsByKey.get(col.key) === col) this.columnsByKey.delete(col.key);
+    }, this.pivotSourceStash);
   }
 
   private registerPivotStashLookups(): void {
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        this.columnsById.set(col.instanceID, col);
-        if (!col.isInternal()) {
-          this.columnsByColId.set(col.colId, col);
-          this.columnsByKey.set(col.key, col);
-        }
-        if (col.children.length > 0) walk(col.children);
+    this.walkColumns((col) => {
+      this.columnsById.set(col.instanceID, col);
+      if (!col.isInternal()) {
+        this.columnsByColId.set(col.colId, col);
+        this.columnsByKey.set(col.key, col);
       }
-    };
-    walk(this.pivotSourceStash);
+    }, this.pivotSourceStash);
   }
 
   private getSectionArray(section: ColumnSection): Column[] {
@@ -397,18 +389,9 @@ export class ColumnModel implements IColumnModel {
       this.addReusableColumn(context.byColId, col.colId, col);
       this.addReusableColumn(context.byKey, col.key, col);
     };
-    if (this.pivotDisplayActive) {
-      // The reusable user columns are the stashed sources, not the displayed pivot layout.
-      const walk = (cols: Column[]) => {
-        for (const col of cols) {
-          add(col);
-          if (col.children.length > 0) walk(col.children);
-        }
-      };
-      walk(this.pivotSourceStash);
-    } else {
-      this.walkColumns(add);
-    }
+    // While pivot display is active the reusable user columns are the stashed sources, not the
+    // displayed pivot layout.
+    this.walkColumns(add, this.pivotDisplayActive ? this.pivotSourceStash : this.columns);
 
     return context;
   }
@@ -899,13 +882,9 @@ export class ColumnModel implements IColumnModel {
   /** The displayed generated pivot leaf colIds, in display order (empty when pivot display is off). */
   getDisplayedPivotLeafOrder(): string[] {
     const out: string[] = [];
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        if (col.children.length > 0) walk(col.children);
-        else if (col.isPivotResultColumn()) out.push(col.colId);
-      }
-    };
-    walk(this.columns);
+    this.walkColumns((col) => {
+      if (col.children.length === 0 && col.isPivotResultColumn()) out.push(col.colId);
+    });
     return out;
   }
 
@@ -1635,16 +1614,19 @@ export class ColumnModel implements IColumnModel {
     return true;
   }
 
-  walkColumns(callback: (col: Column) => void): void {
-    const walk = (cols: Column[]) => {
-      for (const col of cols) {
-        callback(col);
-        if (col.children.length > 0) {
-          walk(col.children);
-        }
-      }
-    };
-    walk(this.columns);
+  /**
+   * Pre-order walk of a column tree — parent before its children, siblings in order. Defaults to
+   * the displayed columns; pass `roots` for another tree, which while pivot display is active means
+   * `pivotSourceStash` (the user's own columns, which the lookups and reuse still address).
+   *
+   * The width walks are deliberately NOT built on this: they recurse through `getVisibleChildren`
+   * and accumulate per level, which is a different traversal, not a callback over the same one.
+   */
+  walkColumns(callback: (col: Column) => void, roots: Column[] = this.columns): void {
+    for (const col of roots) {
+      callback(col);
+      if (col.children.length > 0) this.walkColumns(callback, col.children);
+    }
   }
 
 }

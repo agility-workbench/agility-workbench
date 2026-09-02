@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { valuesAreSame } from "./misc";
+import { createRecordId, valuesAreSame } from "./misc";
 
 // The grid's "did this cell value change?" rule: SameValueZero plus Date-by-instant. Drives no-op
 // write suppression (core editCommit/cellsCommit) and the change-flash renderer.
@@ -45,5 +45,26 @@ describe("valuesAreSame", () => {
     expect(valuesAreSame(obj, obj)).toBe(true);
     expect(valuesAreSame(obj, { a: 1 })).toBe(false);
     expect(valuesAreSame([1], [1])).toBe(false);
+  });
+});
+
+// Ids the grid mints for application-owned records (saved views, sheets).
+describe("createRecordId", () => {
+  it("mints distinct ids", () => {
+    const ids = new Set(Array.from({ length: 50 }, () => createRecordId("view")));
+    expect(ids.size).toBe(50);
+  });
+
+  it("falls back to a prefixed id where crypto.randomUUID is unavailable", () => {
+    // randomUUID needs a secure context, so an app served over plain http does not get one — the
+    // fallback is why "Save view" does not throw there.
+    const crypto = globalThis.crypto;
+    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    try {
+      expect(createRecordId("sheet")).toMatch(/^sheet-[a-z0-9]+-[a-z0-9]+$/);
+      expect(createRecordId("view")).toMatch(/^view-/);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { value: crypto, configurable: true });
+    }
   });
 });

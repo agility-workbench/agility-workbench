@@ -11,6 +11,7 @@ import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { SavedGridView, SavedViewsOptions } from "../../interfaces/gridView";
 import { MenuItem } from "../../interfaces/menuItem";
 import { SortDir } from "../../interfaces/sort";
+import { createRecordId } from "../../misc";
 import { button, div, span } from "../element";
 import { canonicalKey, matchesAnyChord, matchesChord } from "../interaction/keyChord";
 import { MenuRenderer } from "../menuRenderer";
@@ -340,7 +341,7 @@ export class GridToolbarRenderer {
     if (item.command === "toolbar.views.create") {
       this.openViewNameEditor("Save current view", "", name => {
         const view: SavedGridView = {
-          id: createSavedViewId(),
+          id: createRecordId("view"),
           name,
           state: this.params.api.captureViewState(),
         };
@@ -1023,8 +1024,3 @@ export class GridToolbarRenderer {
   }
 }
 
-function createSavedViewId(): string {
-  const randomUUID = globalThis.crypto?.randomUUID;
-  if (randomUUID) return randomUUID.call(globalThis.crypto);
-  return `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}

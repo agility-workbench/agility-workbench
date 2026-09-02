@@ -6,6 +6,16 @@ import { GroupSortMode } from "../interfaces/gridOptions";
 // Placeholder group key used when a grouped column's value is null/undefined/empty.
 export const BLANK_GROUP_KEY = "(Blanks)";
 
+/**
+ * The bucket key a raw cell value groups under: blank (null, undefined, or the empty string)
+ * collapses to {@link BLANK_GROUP_KEY}, everything else stringifies. One rule for row grouping,
+ * pivot discovery, and their server-side equivalents — so a value that groups as a blank pivots as
+ * one too, and the set filter's "empty means blank" policy holds at every end.
+ */
+export function groupKeyForValue(value: unknown): string {
+  return value == null || value === "" ? BLANK_GROUP_KEY : String(value);
+}
+
 // Stable, position-independent id for a group node, derived from its key path (root → node).
 // Because it depends only on content, the same group gets the same id across data refreshes, so
 // per-group expansion state survives setRowData / transactions. The "g:" prefix guarantees no
@@ -75,7 +85,7 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
     const buckets = new Map<string, { value: any; nodes: IRowNode<Row>[] }>();
     for (const node of nodes) {
       const rawValue = col.getValue(node);
-      const key = rawValue == null || rawValue === "" ? BLANK_GROUP_KEY : String(rawValue);
+      const key = groupKeyForValue(rawValue);
       let bucket = buckets.get(key);
       if (!bucket) {
         bucket = { value: rawValue, nodes: [] };

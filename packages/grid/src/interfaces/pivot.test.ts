@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AggregateType } from "./aggregate";
 import {
+  appendPivotPathKey,
   isPivotResultColId,
   parsePivotLeafColId,
   pivotLeafColId,
@@ -39,5 +40,27 @@ describe("parsePivotLeafColId", () => {
     expect(parsePivotLeafColId("pv:Q1|revenue")).toBeNull();
     expect(parsePivotLeafColId("pv:Q1|revenue|")).toBeNull();
     expect(parsePivotLeafColId("pv:Q1|%ZZ|sum")).toBeNull();
+  });
+});
+
+// The path key is the address a generated column and a stamped cell share; discovery builds it one
+// segment at a time (one owner, so a value containing the separator cannot collide).
+describe("appendPivotPathKey", () => {
+  it("starts from the root path and joins with /", () => {
+    expect(appendPivotPathKey("", "Q1")).toBe("Q1");
+    expect(appendPivotPathKey("Q1", "EMEA")).toBe("Q1/EMEA");
+  });
+
+  it("encodes each segment, so a slash in a value cannot pose as a separator", () => {
+    const nested = appendPivotPathKey(appendPivotPathKey("", "a/b"), "c");
+    expect(nested).toBe("a%2Fb/c");
+    expect(nested.split("/").map(decodeURIComponent)).toEqual(["a/b", "c"]);
+  });
+
+  it("builds the same key the id encoders do", () => {
+    const path = ["a/b", "(Blanks)"];
+    const key = path.reduce(appendPivotPathKey, "");
+    expect(pivotLeafColIdFromKey(key, "revenue", AggregateType.SUM))
+      .toBe(pivotLeafColId(path, "revenue", AggregateType.SUM));
   });
 });

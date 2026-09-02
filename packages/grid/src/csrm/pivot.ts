@@ -6,9 +6,10 @@ import {
   PivotPathNode,
   PivotResolution,
   PivotValueEntry,
+  appendPivotPathKey,
   pivotLeafColIdFromKey,
 } from "../interfaces/pivot";
-import { BLANK_GROUP_KEY } from "./rowGroup";
+import { BLANK_GROUP_KEY, groupKeyForValue } from "./rowGroup";
 
 // Mutable trie node used during discovery only; flattened to PivotPathNode for the core.
 interface TrieNode {
@@ -68,11 +69,11 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
   const rootChildren = new Map<string, TrieNode>();
   for (const leaf of leaves) {
     let level = rootChildren;
-    const encoded: string[] = [];
+    let pathKey = "";
     for (const col of pivotColumns) {
       const raw = col.getValue(leaf);
-      const key = raw == null || raw === "" ? BLANK_GROUP_KEY : String(raw);
-      encoded.push(encodeURIComponent(key));
+      const key = groupKeyForValue(raw);
+      pathKey = appendPivotPathKey(pathKey, key);
       let node = level.get(key);
       if (!node) {
         node = { key, value: raw, firstLeaf: leaf, children: new Map() };
@@ -80,7 +81,7 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
       }
       level = node.children;
     }
-    leafPathKeys.set(leaf.id, encoded.join("/"));
+    leafPathKeys.set(leaf.id, pathKey);
   }
 
   const sortSiblings = (nodes: TrieNode[], col: Column): TrieNode[] => {
@@ -110,7 +111,7 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
   // depth: deepest-level nodes ARE the paths.
   const allPaths: string[] = [];
   const collect = (node: PivotPathNode, prefix: string) => {
-    const key = prefix === "" ? encodeURIComponent(node.key) : prefix + "/" + encodeURIComponent(node.key);
+    const key = appendPivotPathKey(prefix, node.key);
     if (node.children.length === 0) allPaths.push(key);
     else node.children.forEach(c => collect(c, key));
   };
@@ -126,7 +127,7 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
     const prune = (nodes: PivotPathNode[], prefix: string): PivotPathNode[] =>
       nodes
         .map((n): PivotPathNode | null => {
-          const key = prefix === "" ? encodeURIComponent(n.key) : prefix + "/" + encodeURIComponent(n.key);
+          const key = appendPivotPathKey(prefix, n.key);
           if (n.children.length === 0) return kept.has(key) ? n : null;
           const children = prune(n.children, key);
           return children.length > 0 ? { ...n, children } : null;
@@ -154,7 +155,7 @@ export function enumeratePivotLeafColIds(discovery: PivotDiscovery): string[] {
     return out;
   }
   const walk = (node: PivotPathNode, prefix: string) => {
-    const key = prefix === "" ? encodeURIComponent(node.key) : prefix + "/" + encodeURIComponent(node.key);
+    const key = appendPivotPathKey(prefix, node.key);
     if (node.children.length === 0) emit(key);
     else node.children.forEach(c => walk(c, key));
   };

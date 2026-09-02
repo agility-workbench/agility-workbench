@@ -957,26 +957,26 @@ export class ColumnPanelRenderer {
   }
 
   private reorderGroupRoles(from: number, to: number): void {
-    const next = this.reorderIds(this.params.core.getRowGroupColumns().map(col => col.instanceID), from, to);
+    const next = this.reordered(this.params.core.getRowGroupColumns().map(col => col.instanceID), from, to);
     if (next) this.params.core.dispatch({ type: "rowGroupSet", colIds: next });
   }
 
   private reorderPivotRoles(from: number, to: number): void {
-    const next = this.reorderIds(this.params.core.getPivotColumns().map(col => col.instanceID), from, to);
+    const next = this.reordered(this.params.core.getPivotColumns().map(col => col.instanceID), from, to);
     if (next) this.params.core.dispatch({ type: "pivotColumnsSet", colIds: next });
   }
 
   private reorderValueRoles(from: number, to: number): void {
-    const model = this.params.core.getAggregateModel();
-    if (from < 0 || from >= model.length || to < 0 || to >= model.length || from === to) return;
-    const [moved] = model.splice(from, 1);
-    model.splice(to, 0, moved);
-    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: model });
+    // The values well reorders whole aggregate entries, not colIds — one column can appear in it
+    // several times, once per aggregate type — but the move itself is the same move.
+    const next = this.reordered(this.params.core.getAggregateModel(), from, to);
+    if (next) this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
   }
 
-  private reorderIds(ids: string[], from: number, to: number): string[] | null {
-    if (from < 0 || from >= ids.length || to < 0 || to >= ids.length || from === to) return null;
-    const next = ids.slice();
+  /** A copy of `items` with one entry moved, or null when the indices make it a no-op. */
+  private reordered<T>(items: T[], from: number, to: number): T[] | null {
+    if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return null;
+    const next = items.slice();
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     return next;

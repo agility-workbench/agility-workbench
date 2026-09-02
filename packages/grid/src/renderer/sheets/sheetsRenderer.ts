@@ -3,6 +3,7 @@ import type { GridSheet, GridViewState, SheetsOptions } from "../../interfaces/g
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { MenuItem } from "../../interfaces/menuItem";
 import { isPivotResultColId } from "../../interfaces/pivot";
+import { createRecordId } from "../../misc";
 import { MenuRenderer } from "../menuRenderer";
 
 interface SheetsRendererParams {
@@ -16,12 +17,6 @@ interface SheetsRendererParams {
   onEnabledChange: () => void;
   /** The active tab changed (or the strip toggled) — the grid root re-resolves its accessible name. */
   onActiveTabChange: () => void;
-}
-
-function createSheetId(): string {
-  const randomUUID = globalThis.crypto?.randomUUID;
-  if (randomUUID) return randomUUID.call(globalThis.crypto);
-  return `sheet-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -217,7 +212,7 @@ export class SheetsRenderer {
       },
       pivotState: undefined,
     };
-    const sheet: GridSheet = { id: createSheetId(), name: this.nextPivotSheetName(), state };
+    const sheet: GridSheet = { id: createRecordId("sheet"), name: this.nextPivotSheetName(), state };
     this.commitSheets([...this.withCapturedActiveState(this.sheets), sheet]);
     this.setActiveSheet(sheet.id);
     this.params.api.applyViewState(state);
@@ -253,7 +248,7 @@ export class SheetsRenderer {
       ? this.params.api.captureViewState()
       : source.state;
     const copy: GridSheet = {
-      id: createSheetId(),
+      id: createRecordId("sheet"),
       name: `${source.name} (copy)`,
       ...(state ? { state: structuredClone(state) } : {}),
     };

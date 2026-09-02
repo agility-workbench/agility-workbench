@@ -35,7 +35,8 @@ export interface IColumnModel {
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
   getAncestors(colId: string): Column[];
-  walkColumns(callback: (col: Column) => void): void;
+  /** Pre-order walk of the displayed column tree, or of `roots` when another tree is given. */
+  walkColumns(callback: (col: Column) => void, roots?: Column[]): void;
   toggleGroupExpansion(colId: string): boolean;
   setRowGroupColumns(
     groupColumns: Column[],

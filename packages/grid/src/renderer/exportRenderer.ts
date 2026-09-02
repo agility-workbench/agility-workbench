@@ -206,13 +206,29 @@ export class ExportRenderer {
       pinnedBottomRows,
       selectionRange,
       selectedColumnIDs,
+      aggregates,
+      ...this.commonExportConfig(options),
+      ...this.buildSpanResolvers(),
+    };
+  }
+
+  /**
+   * What every export config carries whatever its shape: the caller's pass-through options, plus
+   * the column tree and measured widths. The tree is what makes the nested header shared rather
+   * than per-shape — the exporter derives each column's ancestor path from it, so a grouped header
+   * and a generated pivot header are laid out by the same code (the pivot path differs only in
+   * which columns are admitted, see `pivotExport`).
+   */
+  private commonExportConfig(options: ExportOptions): Pick<
+    ExportConfig,
+    "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths"
+  > {
+    return {
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
       processCellForExcel: options.processCellForExcel,
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
-      aggregates,
-      ...this.buildSpanResolvers(),
     };
   }
 
@@ -248,11 +264,7 @@ export class ExportRenderer {
       rows,
       columns,
       pivotExport: true,
-      columnIds: options.columnIds,
-      includeHeaders: options.includeHeaders,
-      processCellForExcel: options.processCellForExcel,
-      columnTree: columnModel.getColumns(),
-      columnWidths: this.params.columnWidths(),
+      ...this.commonExportConfig(options),
     };
   }
 
@@ -352,13 +364,11 @@ export class ExportRenderer {
       columns,
       pinnedTopRows,
       pinnedBottomRows,
-      columnIds: columnIds ?? options.columnIds,
       selectedColumnIDs: scope === "selectedColumns" ? this.params.selectedColumnIDs() : undefined,
-      includeHeaders: options.includeHeaders,
-      processCellForExcel: options.processCellForExcel,
-      columnTree: this.params.core.getColumnModel().getColumns(),
-      columnWidths: this.params.columnWidths(),
       aggregates,
+      ...this.commonExportConfig(options),
+      // A cell range narrows the export to the columns it covers, overriding the caller's list.
+      columnIds: columnIds ?? options.columnIds,
       groupRoots,
       groupColumns,
       groupDisplayType: this.params.core.getOptions().groupDisplayType,

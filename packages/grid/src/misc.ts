@@ -53,3 +53,18 @@ export function validatePageSizes(pageSizes: number[] | boolean, defPageSizes: n
   normalized.sort((a, b) => a - b);
   return normalized;
 }
+
+/**
+ * An id for an application-owned, persisted record the grid mints on the user's behalf (a saved
+ * view, a sheet). `crypto.randomUUID` where it exists; otherwise a time-and-random string, since
+ * these ids only have to be unique within one application's own list — the fallback exists because
+ * `randomUUID` requires a secure context, and an app served over plain http would otherwise crash
+ * on "Save view".
+ *
+ * `prefix` labels the fallback form only, so a stray id is traceable to what minted it.
+ */
+export function createRecordId(prefix: string): string {
+  const randomUUID = globalThis.crypto?.randomUUID;
+  if (randomUUID) return randomUUID.call(globalThis.crypto);
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}

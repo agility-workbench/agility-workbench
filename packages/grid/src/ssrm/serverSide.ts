@@ -5,7 +5,7 @@ import { GridOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
-import { BLANK_GROUP_KEY, groupNodeId } from "../csrm/rowGroup";
+import { BLANK_GROUP_KEY, groupKeyForValue, groupNodeId } from "../csrm/rowGroup";
 import {
   IServerSideAggregationRequest,
   IServerSideDataSource,
@@ -722,7 +722,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       let node: IRowNode<Row>;
       if (isGroupLevel && groupCol) {
         const value = (raw as any)[groupCol.key];
-        const key = value == null || value === "" ? BLANK_GROUP_KEY : String(value);
+        const key = groupKeyForValue(value);
         const id = groupNodeId([...listing.path, key]);
         node = {
           id,
@@ -854,7 +854,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private toDisplayKey(value: any): string {
-    return value == null || value === "" ? BLANK_GROUP_KEY : String(value);
+    return groupKeyForValue(value);
   }
 
   // ---------------------------------------------------------------------------------------------
