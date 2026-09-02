@@ -2351,6 +2351,31 @@
   border: 1px solid var(--pte-control-border-color);
 }
 
+/* "Custom…": a spectrum standing for "any colour", until the sheet actually wears a custom one —
+   then the chip shows that colour like any palette entry. */
+.pte-sheet-color-swatch-custom {
+  background-image: conic-gradient(
+    #ef4444, #f59e0b, #84cc16, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444
+  );
+}
+
+/* The control behind "Custom…". Invisible rather than `display: none`: a browser will not open a
+   picker on a control it is not rendering. Absolutely positioned, and moved onto the tab before the
+   picker opens (see positionColorInput) — Chromium anchors the popup to this box, so where the box
+   sits is where the picker appears. Absolute rather than fixed so the offsets stay in the grid's
+   own coordinate space, which survives an application transforming an ancestor. */
+.pte-sheet-color-input {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* "None": an empty chip struck through, rather than a chip of some colour that means no colour. */
 .pte-sheet-color-swatch-none {
   background-image: linear-gradient(

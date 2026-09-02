@@ -70,9 +70,30 @@ sheets: {
 }
 ```
 
+`customColor` adds a **Custom…** entry below the palette that opens the
+platform's own color picker — the browser's, so it is the picker the user
+already knows, keyboard-accessible and translated, with no in-grid picker UI to
+maintain. It commits when the picker confirms (dismissing it changes nothing),
+always as `#rrggbb`. It takes the same two forms as `colors`, and it is off by
+default: a palette is usually a palette on purpose.
+
+```ts
+sheets: {
+  sheets,
+  colors: BRAND_COLORS,
+  customColor: true,                              // or: (sheet) => sheet.id !== "budget"
+}
+```
+
+When a sheet wears a color the palette does not offer — picked with **Custom…**,
+set programmatically, or left behind by a palette since changed — the check mark
+and the chip move to the **Custom…** entry, so the menu still shows what the tab
+is wearing.
+
 An empty `colors: []` — or an empty return from the function, which makes it per
 sheet — drops **Change color** from the menu entirely, which is how an
-application opts out of tab colors. Either way `GridSheet.color` is still
+application opts out of tab colors. With `customColor` on, the picker stands on
+its own: `colors: []` then means "any color, no presets". Either way `GridSheet.color` is still
 honored: a color set programmatically, or persisted from a palette since
 changed, paints its tab as usual — the menu just shows no entry checked, and
 **None** still clears it.

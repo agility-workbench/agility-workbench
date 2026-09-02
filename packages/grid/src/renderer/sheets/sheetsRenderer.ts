@@ -5,7 +5,7 @@ import type { MenuItem } from "../../interfaces/menuItem";
 import { isPivotResultColId } from "../../interfaces/pivot";
 import { createRecordId } from "../../misc";
 import { MenuRenderer } from "../menuRenderer";
-import { createSheetColorSwatch, SHEET_COLORS } from "./sheetColors";
+import { createCustomColorSwatch, createSheetColorSwatch, SHEET_COLORS } from "./sheetColors";
 
 interface SheetsRendererParams {
   core: GridCore;
@@ -46,6 +46,8 @@ export class SheetsRenderer {
   private readonly addButton: HTMLButtonElement;
   private renamingSheetId: string | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  /** The offscreen `<input type="color">` behind "Custom…", built on first use. */
+  private colorInput: HTMLInputElement | null = null;
 
   constructor(private params: SheetsRendererParams) {
     this.scrollWrap = document.createElement("div");
@@ -131,6 +133,8 @@ export class SheetsRenderer {
   destroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.colorInput?.remove();
+    this.colorInput = null;
   }
 
   // ---------------- Switching ----------------
@@ -410,6 +414,12 @@ export class SheetsRenderer {
     return typeof colors === "function" ? colors(sheet) : colors;
   }
 
+  /** Whether this sheet's menu offers the platform colour picker. Off unless asked for. */
+  private customColorFor(sheet: GridSheet): boolean {
+    const custom = this.sheetsOptions?.customColor;
+    return typeof custom === "function" ? custom(sheet) : custom === true;
+  }
+
   /**
    * The "Change color" submenu: "None" first, then the palette. A check marks the sheet's current
    * colour — matched case-insensitively, since the list round-trips through the application's own
@@ -422,6 +432,11 @@ export class SheetsRenderer {
    */
   private colorMenuItems(sheet: GridSheet, palette: readonly SheetTabColor[]): MenuItem[] {
     const current = sheet.color?.toLowerCase();
+    // A colour the palette does not offer is, by definition, the custom one — so the check and the
+    // chip move to "Custom…" rather than the menu showing nothing selected at all.
+    const custom = this.customColorFor(sheet);
+    const currentIsCustom = current != null
+      && !palette.some(entry => entry.color.toLowerCase() === current);
     return [
       {
         id: "sheetColorNone",
@@ -442,16 +457,110 @@ export class SheetsRenderer {
         left: createSheetColorSwatch(entry.color),
         right: current === entry.color.toLowerCase() ? "icon-check" : undefined,
       })),
+      ...(custom
+        ? [
+          // The separator only earns its place between two groups; with an empty palette the
+          // picker is the whole menu below "None".
+          ...(palette.length > 0
+            ? [{ id: "sheetColorCustomSeparator", isSeparator: true } satisfies MenuItem]
+            : []),
+          {
+            id: "sheetColorCustom",
+            label: "Custom…",
+            command: "sheet.colorCustom",
+            left: createCustomColorSwatch(currentIsCustom ? sheet.color : undefined),
+            right: currentIsCustom ? "icon-check" : undefined,
+          } satisfies MenuItem,
+        ]
+        : []),
     ];
+  }
+
+  /**
+   * Open the platform colour picker for a sheet. Reached from a menu item click, so the call still
+   * carries the user activation `showPicker()` requires; `click()` is the fallback for engines
+   * without it. Committing on `change` and not on `input` is what makes a dismissed picker a
+   * no-op — and keeps a drag across the spectrum from reporting a hundred lists to the application.
+   */
+  private openColorPicker(sheetId: string): void {
+    const sheet = this.sheets.find(candidate => candidate.id === sheetId);
+    if (!sheet) return;
+    const input = this.ensureColorInput();
+    this.positionColorInput(sheetId);
+    // The control only speaks #rrggbb: seeding it with anything else silently lands on black, so a
+    // sheet wearing an hsl()/named colour opens the picker on the palette's blue instead.
+    input.value = /^#[0-9a-f]{6}$/i.test(sheet.color ?? "") ? sheet.color! : "#3b82f6";
+    // Assigned, not added: the handler closes over one sheet id, and each open replaces the last.
+    input.onchange = () => {
+      this.setSheetColor(sheetId, input.value);
+      // The picker took focus out of the strip, so render() cannot restore it on its own.
+      this.focusTab(sheetId);
+    };
+    try {
+      if (typeof input.showPicker === "function") input.showPicker();
+      else input.click();
+    } catch {
+      input.click();
+    }
+  }
+
+  /**
+   * Park the invisible control on the tab it belongs to. Chromium anchors the picker popup to the
+   * control's box, so a control left where it was laid out — 1px, at the origin of its containing
+   * block — opens the picker in the corner of the grid instead of under the tab the menu came from.
+   * Sized to the tab as well as placed on it, so the popup clears the tab the way a menu would.
+   * (Firefox and Safari open a dialog of their own and ignore all of this.)
+   *
+   * The offsets are measured against the containing block — the padding box of `offsetParent`,
+   * which is the grid root — rather than against the viewport, so the control still lands on the
+   * tab when the application has the grid inside a translated ancestor.
+   */
+  private positionColorInput(sheetId: string): void {
+    const input = this.ensureColorInput();
+    const anchor = this.tablist.querySelector<HTMLElement>(`[id="${this.tabElementId(sheetId)}"]`)
+      ?? this.scrollWrap;
+    const rect = anchor.getBoundingClientRect();
+    const parent = input.offsetParent as HTMLElement | null;
+    const parentRect = parent?.getBoundingClientRect();
+    const originX = parentRect ? parentRect.left + parent!.clientLeft : 0;
+    const originY = parentRect ? parentRect.top + parent!.clientTop : 0;
+    input.style.left = `${rect.left - originX}px`;
+    input.style.top = `${rect.top - originY}px`;
+    input.style.width = `${rect.width}px`;
+    input.style.height = `${rect.height}px`;
+    // Force the box to be laid out now. Blink reads the control's CURRENT layout to place the
+    // popup, and a control styled and opened inside one task has none yet — which is how the
+    // picker ended up in the grid's top corner, at the control's declared 0,0, rather than on the
+    // tab. Reading a layout property is the flush.
+    void input.offsetWidth;
+  }
+
+  private ensureColorInput(): HTMLInputElement {
+    if (this.colorInput) return this.colorInput;
+    const input = document.createElement("input");
+    input.type = "color";
+    // Offscreen rather than display:none — a picker cannot be opened on an unrendered control —
+    // and out of the tab order and the accessibility tree, since the menu item is the real control.
+    input.className = "pte-sheet-color-input";
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
+    this.params.host.appendChild(input);
+    this.colorInput = input;
+    return input;
   }
 
   private openTabMenu(e: MouseEvent, sheetId: string): void {
     e.preventDefault();
     const sheet = this.sheets.find(candidate => candidate.id === sheetId);
     const palette = sheet ? this.paletteFor(sheet) : [];
+    // Park the picker's control on this tab now rather than when "Custom…" is clicked: opening the
+    // menu, walking to the submenu and clicking is many frames, so the box is long since laid out
+    // by the time the picker asks where it is. openColorPicker repositions anyway, for the case
+    // where something moved the strip while the menu was open.
+    if (sheet && this.customColorFor(sheet)) this.positionColorInput(sheetId);
     const items: MenuItem[] = [
       { id: "sheetRename", label: "Rename", command: "sheet.rename" },
-      ...(sheet && palette.length > 0
+      ...(sheet && (palette.length > 0 || this.customColorFor(sheet))
         ? [{ id: "sheetColor", label: "Change color", subMenu: this.colorMenuItems(sheet, palette) }]
         : []),
       { id: "sheetDuplicate", label: "Duplicate", command: "sheet.duplicate" },
@@ -471,6 +580,7 @@ export class SheetsRenderer {
       onItemClick: (item) => {
         if (item.command === "sheet.rename") this.startRename(sheetId);
         else if (item.command === "sheet.color") this.setSheetColor(sheetId, item.payload ?? null);
+        else if (item.command === "sheet.colorCustom") this.openColorPicker(sheetId);
         else if (item.command === "sheet.duplicate") this.duplicateSheet(sheetId);
         else if (item.command === "sheet.delete") this.deleteSheet(sheetId);
       },

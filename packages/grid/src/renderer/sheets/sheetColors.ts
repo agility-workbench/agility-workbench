@@ -31,6 +31,19 @@ export const SHEET_COLORS: readonly SheetTabColor[] = [
 ];
 
 /**
+ * The chip for the "Custom…" entry: the sheet's own colour when it is already one the palette does
+ * not offer, else a spectrum standing for "any colour". Decorative, like the palette chips.
+ */
+export function createCustomColorSwatch(current?: string): HTMLSpanElement {
+  const swatch = createSheetColorSwatch(current);
+  if (!current) {
+    swatch.classList.remove("pte-sheet-color-swatch-none");
+    swatch.classList.add("pte-sheet-color-swatch-custom");
+  }
+  return swatch;
+}
+
+/**
  * The colour chip for a "Change color" menu item, or — with no colour — the crossed-out chip that
  * stands for "None". Decorative: the item's own label is what names the colour to assistive tech,
  * so the chip is hidden from it rather than repeating that name.

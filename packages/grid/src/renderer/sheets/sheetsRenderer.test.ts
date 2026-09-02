@@ -432,6 +432,69 @@ describe("sheets tab strip", () => {
     expect(menuItem("Rename")).toBeDefined();
   });
 
+  it("opens the platform picker for Custom and commits what it confirms", () => {
+    const changes: GridSheet[][] = [];
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }],
+      customColor: true,
+      onChange: next => changes.push(next),
+    });
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    menuItem("Custom")!.click();
+
+    const input = host.querySelector<HTMLInputElement>(".pte-sheet-color-input")!;
+    // Parked on the tab: Chromium anchors the picker popup to this box, so an unplaced control
+    // opens the picker in the corner of the grid instead of under the tab.
+    const rect = tabs(host)[0].getBoundingClientRect();
+    expect([input.style.left, input.style.top]).toEqual([`${rect.left}px`, `${rect.top}px`]);
+    expect([input.style.width, input.style.height]).toEqual([`${rect.width}px`, `${rect.height}px`]);
+    // Out of the tab order and the accessibility tree: the menu item is the real control.
+    expect(input.type).toBe("color");
+    expect(input.tabIndex).toBe(-1);
+    expect(input.getAttribute("aria-hidden")).toBe("true");
+    // A picker that is dismissed fires nothing, so nothing is committed.
+    expect(changes).toHaveLength(0);
+
+    input.value = "#123456";
+    input.dispatchEvent(new Event("change"));
+    expect(changes.at(-1)![0].color).toBe("#123456");
+    expect(tabs(host)[0].style.getPropertyValue("--pte-sheet-tab-color")).toBe("#123456");
+  });
+
+  it("marks Custom as the current color when the palette does not offer it", () => {
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data", color: "#123456" }],
+      colors: [{ name: "Blue", color: "#3b82f6" }],
+      customColor: true,
+    });
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    expect(menuItem("Custom")!.querySelector(".icon-check")).not.toBeNull();
+    expect(menuItem("None")!.querySelector(".icon-check")).toBeNull();
+    expect(menuItem("Blue")!.querySelector(".icon-check")).toBeNull();
+  });
+
+  it("offers the picker alone when the palette is empty, per sheet", () => {
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1" }],
+      colors: [],
+      customColor: sheet => sheet.id === "data",
+    });
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    expect(menuItem("Custom")).toBeDefined();
+    // "None", its divider, "Custom…" — the palette/picker divider has no two groups to separate.
+    expect(document.querySelectorAll(".pte-submenu .pte-menu-separator")).toHaveLength(1);
+
+    // The other sheet asked for neither a palette nor a picker: no entry at all.
+    tabs(host)[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(menuItem("Change color")).toBeUndefined();
+  });
+
   it("carries a tab color into a duplicate", () => {
     const { host } = makeGrid({
       sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1", color: "#ef4444" }],

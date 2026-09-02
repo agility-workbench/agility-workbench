@@ -2,7 +2,9 @@ import {
   createGrid, ColumnType, type ColDef, type GridSheet, type SheetTabColor,
 } from "@grid";
 
-import { bold, btn, controlGroup, demoRoot, field, gridHost, h, note, select } from "../dom";
+import {
+  bold, btn, checkbox, controlGroup, demoRoot, field, gridHost, h, note, select,
+} from "../dom";
 import { mulberry32, picker } from "../helpers";
 
 /**
@@ -92,6 +94,7 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
   let palette: SheetTabColor[] | null = null;
   let overrideSheetId = "";
   let overridePalette: SheetTabColor[] | null = null;
+  let customColor = false;
 
   const host = gridHost();
   const colorControls = h("div");
@@ -166,6 +169,7 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
       sheets,
       activeSheetId,
       colors: resolveColors(),
+      customColor,
       onChange: (next: GridSheet[]) => {
         sheets = next;
         renderList();
@@ -216,6 +220,10 @@ export function mountSheetsDemo(container: HTMLElement): () => void {
         ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: "6px", color: "#4b5563" } },
           `${overrideSheet.name}:`, swatches(overridePalette))
         : null,
+      field("Custom… (platform picker)", checkbox(customColor, (checked) => {
+        customColor = checked;
+        syncSheets();
+      })),
       btn("Built-in palette", () => {
         palette = null;
         overrideSheetId = "";

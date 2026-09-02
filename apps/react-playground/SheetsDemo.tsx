@@ -103,6 +103,7 @@ export function SheetsDemo() {
   const [palette, setPalette] = useState<SheetTabColor[] | null>(null);
   const [overrideSheetId, setOverrideSheetId] = useState<string>("");
   const [overridePalette, setOverridePalette] = useState<SheetTabColor[] | null>(null);
+  const [customColor, setCustomColor] = useState(false);
 
   const colors = useMemo(() => {
     if (!palette) return undefined;                            // built-in palette
@@ -186,6 +187,14 @@ export function SheetsDemo() {
             {overrideSheet.name}: <Swatches palette={overridePalette} />
           </span>
         )}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={customColor}
+            onChange={e => setCustomColor(e.target.checked)}
+          />
+          Custom… (platform picker)
+        </label>
         <button
           type="button"
           disabled={!palette}
@@ -211,6 +220,7 @@ export function SheetsDemo() {
               sheets,
               activeSheetId,
               colors,
+              customColor,
               onChange: setSheets,
               onActiveSheetChange: setActiveSheetId,
             }}

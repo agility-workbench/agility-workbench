@@ -127,6 +127,11 @@ function randomPalette(prefix: string): SheetTabColor[] {
           </span>
         }
       }
+      <label class="sheets-colors-field">
+        <input type="checkbox" [checked]="customColor()"
+          (change)="customColor.set($any($event.target).checked)" />
+        Custom&hellip; (platform picker)
+      </label>
       <button type="button" [disabled]="!palette()" (click)="useBuiltIn()">Built-in palette</button>
     </div>
 
@@ -280,6 +285,7 @@ export class SheetsDemoComponent {
   readonly palette = signal<SheetTabColor[] | null>(null);
   readonly overrideSheetId = signal<string>("");
   readonly overridePalette = signal<SheetTabColor[] | null>(null);
+  readonly customColor = signal(false);
 
   readonly overrideSheet = computed(() =>
     this.sheets().find(sheet => sheet.id === this.overrideSheetId()));
@@ -288,6 +294,7 @@ export class SheetsDemoComponent {
     sheets: this.sheets(),
     activeSheetId: this.activeSheetId(),
     colors: this.colors(),
+    customColor: this.customColor(),
     onChange: (next) => this.sheets.set(next),
     onActiveSheetChange: (sheetId) => this.activeSheetId.set(sheetId),
   }));

@@ -143,6 +143,17 @@ export interface SheetsOptions {
    * shows no entry checked, and "None" still clears it).
    */
   colors?: readonly SheetTabColor[] | ((sheet: GridSheet) => readonly SheetTabColor[]);
+  /**
+   * Adds a **Custom…** entry below the palette, opening the platform's own colour picker — the
+   * browser's, so it is the picker the user already knows, keyboard-accessible and translated,
+   * with no in-grid picker UI to maintain. It commits the picked colour when the picker confirms
+   * (a dismissed picker changes nothing), always as `#rrggbb`.
+   *
+   * Off by default: a palette is usually a palette on purpose, and an application that supplies a
+   * brand list rarely wants it escaped. The function form is per sheet, like {@link colors} — and
+   * it stands on its own, so `colors: []` with this on gives a picker and nothing else.
+   */
+  customColor?: boolean | ((sheet: GridSheet) => boolean);
 }
 
 /**
