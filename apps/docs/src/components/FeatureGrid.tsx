@@ -8,6 +8,8 @@ import {
   type ActionFrameComponentParams,
   type CellRendererParams,
   type GridProps,
+  type GridSheet,
+  type GridViewState,
   type IGridAPI,
   type IServerSideDataSource,
   type ReactColDef,
@@ -207,6 +209,12 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       return [];
     }
   });
+  // Sheets are application-owned: the list and the active tab live in React state and reach the
+  // grid as a prop. Seeding them imperatively in onGridReady does not work — the wrapper's
+  // option-sync effects run after the ready announcement, so a `sheets` prop left undefined
+  // immediately unmounts the tab strip again.
+  const [sheets, setSheets] = useState<GridSheet[]>([{ id: "data", name: "Data" }]);
+  const [activeSheetId, setActiveSheetId] = useState<string | null>("data");
   const [label, hint] = labels[feature];
   let columnDefs: ReactColDef[] = baseColumns;
   let rowData: unknown[] | undefined = rows;
@@ -275,24 +283,34 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         pageSize: 15,
         groupDefaultExpanded: 1,
         toolbar: { pivot: true },
+        sheets: {
+          sheets,
+          activeSheetId,
+          onChange: (next) => setSheets(next),
+          onActiveSheetChange: (id) => setActiveSheetId(id),
+        },
         onGridReady: (api) => {
           // Seed a ready-made pivot sheet next to the Data sheet; the + tab derives blank ones.
-          const state = {
-            ...api.captureViewState(),
-            pivotMode: true,
-            pivotColumns: ["status"],
-            rowGroupColumns: ["region"],
-            aggregateModel: [{ colId: "revenue", type: "sum" }],
-            groupExpansion: [],
-          };
-          api.updateGridOptions({
-            sheets: {
-              sheets: [
-                { id: "data", name: "Data" },
-                { id: "by-status", name: "By Status", state },
-              ],
-              activeSheetId: "data",
-            },
+          // The list is prop-driven, so this goes through React state rather than
+          // updateGridOptions — the wrapper would otherwise overwrite it from the prop.
+          setSheets((current) => {
+            if (current.some((sheet) => sheet.id === "by-status")) return current;
+            const dataState = api.captureViewState();
+            const state: GridViewState = {
+              ...dataState,
+              pivotMode: true,
+              pivotColumns: ["status"],
+              rowGroupColumns: ["region"],
+              aggregateModel: [{ colId: "revenue", type: AggregateType.SUM }],
+              groupExpansion: [],
+              // Turning pivot mode off on this sheet lands on the flat Data view it came from.
+              prePivotState: {
+                rowGroupColumns: dataState.rowGroupColumns,
+                aggregateModel: dataState.aggregateModel ?? [],
+                pivotColumns: dataState.pivotColumns ?? [],
+              },
+            };
+            return [...current, { id: "by-status", name: "By Status", state }];
           });
         },
       };
