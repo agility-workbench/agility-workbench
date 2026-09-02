@@ -1,4 +1,4 @@
-import { IRowNode } from "../../interfaces/iRowNode";
+import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
 
 // Horizontal indent applied per grouping level, in pixels.
 export const INDENT_PER_LEVEL = 20;
@@ -42,10 +42,7 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
 
   const label = document.createElement("span");
   label.className = "pte-group-label";
-  const text = row.treeKey
-    ?? (row.groupValue == null || row.groupValue === "" ? row.groupKey ?? "" : String(row.groupValue));
-  const count = row.childCount != null ? ` (${row.childCount})` : "";
-  label.textContent = `${text}${count}`;
+  label.textContent = groupRowLabel(row);
   parts.push(label);
 
   cell.replaceChildren(...parts);

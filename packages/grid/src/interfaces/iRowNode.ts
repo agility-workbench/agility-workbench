@@ -38,6 +38,24 @@ export interface IRowNode<Row = any> {
   rowPinned?: "top" | "bottom";
 }
 
+/**
+ * The label a group (or tree) row shows: its key, followed by the child count when one is known.
+ *
+ * One owner for the format, because every surface that writes a group row — the cell renderer,
+ * the clipboard, both exporters — has to agree with what the user is looking at. In particular an
+ * unknown count is written as nothing at all, never `(0)`: a server-side group whose data source
+ * does not supply a child count has no count, and claiming it has zero children states something
+ * false about the data on screen.
+ *
+ * `childCount` overrides the node's own for a caller that computed the count itself (the grouped
+ * Excel export walks the leaves it is about to write).
+ */
+export function groupRowLabel(node: IRowNode, childCount = node.childCount): string {
+  const text = node.treeKey
+    ?? (node.groupValue == null || node.groupValue === "" ? node.groupKey ?? "" : String(node.groupValue));
+  return childCount != null ? `${text} (${childCount})` : text;
+}
+
 export function createRowIdFactory(opts: GridOptions): (row: object) => string {
   const wm = new WeakMap<object, string>();
   let seq = 1;

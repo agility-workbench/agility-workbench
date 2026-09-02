@@ -1,6 +1,6 @@
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
-import { IRowNode } from "../interfaces/iRowNode";
+import { groupRowLabel, IRowNode } from "../interfaces/iRowNode";
 import { AggregateModel, AggregateType } from "../interfaces/aggregate";
 import { GroupDisplayType } from "../interfaces/gridOptions";
 import { AggregateCalculator } from "../aggregate/calculator";
@@ -340,7 +340,7 @@ const getValueBundle = (row: any, col: Column): ValueBundle => {
       return { raw, formatted: col.formatValue(raw, rowNode) };
     }
     if (col.isAutoGroupColumn()) {
-      const label = `${rowNode.groupKey ?? ""} (${rowNode.childCount ?? 0})`;
+      const label = groupRowLabel(rowNode);
       return { raw: label, formatted: `${"  ".repeat(Math.max(0, rowNode.level ?? 0))}${label}` };
     }
   }
@@ -847,7 +847,9 @@ const buildGroupedBody = (
     });
 
     // "<value> (<count>)" in the mode's label column.
-    const label = `${node.groupKey ?? ""} (${node.childCount ?? groupLeaves.length})`;
+    // This walk holds the leaves it is about to write, so the count is known even when the node
+    // does not carry one.
+    const label = groupRowLabel(node, node.childCount ?? groupLeaves.length);
     headerCells[labelColIdx] = { value: { kind: "string", value: label }, style: { bold: true } };
 
     // Children render at the next outline level; hidden if this group is collapsed (or an ancestor
