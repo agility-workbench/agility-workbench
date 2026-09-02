@@ -61,6 +61,12 @@ export class ExampleComponent {
 The grid fills its host element — give `<awb-grid>` (or a wrapper) a height. The component is
 also available via template reference: `<awb-grid #grid="awbGrid" />` → `grid.api`.
 
+Grid options are signal inputs, including pivot mode and sheets: `[pivotMode]` /
+`[pivotColumns]` are live (synced through the imperative API, so values assigned in `gridReady`
+are not overwritten), `[pivotResultColumnDef]` / `[maxPivotColumns]` are creation-time, and
+`[sheets]` renders the footer tab strip with the same app-owned persistence contract as
+`[savedViews]`. See the core README for what pivot mode and sheets do.
+
 ## Styling
 
 Nothing to do — the grid delivers its own stylesheet when it attaches, once per document, and

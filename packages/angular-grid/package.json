@@ -1,6 +1,6 @@
 {
   "name": "@agility-workbench/angular-grid",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Angular bindings for @agility-workbench/grid — a high-performance data grid. Supports Angular 20.3 through 22.",
   "license": "MIT",
   "author": "Himanshu M",

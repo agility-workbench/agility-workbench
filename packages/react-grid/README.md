@@ -70,8 +70,8 @@ when a setup is cleaned up.
 `columnPanel.trigger` accepts `"rail"`, `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. All
 five entry points open the same right-hand column-management drawer.
 
-`toolbar` independently enables the `views`, `grouping`, `sorting`, `quickFilter`, and `export`
-sections.
+`toolbar` independently enables the `views`, `grouping`, `sorting`, `quickFilter`, `export`, and
+`pivot` sections.
 Every section is off by default; enabling any one shows the toolbar. The quick-filter section reuses
 the existing filter and its behavioral `quickFilter` configuration, but supersedes its floating
 placement and close controls. Changing the object live adds/removes sections without remounting the
@@ -85,6 +85,13 @@ application-level resize handling.
 `toolbar.views` adds the saved-view picker. Supply `savedViews={{ views, activeViewId, onChange,
 onActiveViewChange }}` to keep persistence controlled by React state, local storage, or a remote
 service. The grid reports complete updated arrays and does not write to storage itself.
+
+Pivot mode and sheets pass through the same way: `pivotMode` / `pivotColumns` are live props
+(synced through the imperative API, so values assigned in `onGridReady` are not overwritten),
+`pivotResultColumnDef` / `maxPivotColumns` are creation-time, and `sheets={{ sheets,
+activeSheetId, onChange, onActiveSheetChange }}` renders the footer tab strip with the same
+app-owned persistence contract as `savedViews`. See the core README for what pivot mode and
+sheets do.
 
 ## Styling
 

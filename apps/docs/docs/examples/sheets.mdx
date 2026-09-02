@@ -38,6 +38,12 @@ appears only when its feature is on.
   light and dark whatever color is chosen. The color lands on `GridSheet.color`
   and is reported through `onChange` like any other change — it is sheet
   metadata, not view state, so it survives every switch untouched.
+- **Ctrl+PageDown / Ctrl+PageUp** switch to the neighboring sheet — the
+  spreadsheet convention. The chords are claimed only while the tab strip is
+  enabled.
+- The strip is an ARIA `tablist` with roving tabindex: arrow keys move between
+  tabs, Enter/Space activates one, and the active tab names the grid for
+  assistive technology (unless the app supplies its own `ariaLabel`).
 
 ## Tab colors
 
@@ -97,12 +103,6 @@ its own: `colors: []` then means "any color, no presets". Either way `GridSheet.
 honored: a color set programmatically, or persisted from a palette since
 changed, paints its tab as usual — the menu just shows no entry checked, and
 **None** still clears it.
-- **Ctrl+PageDown / Ctrl+PageUp** switch to the neighboring sheet — the
-  spreadsheet convention. The chords are claimed only while the tab strip is
-  enabled.
-- The strip is an ARIA `tablist` with roving tabindex: arrow keys move between
-  tabs, Enter/Space activates one, and the active tab names the grid for
-  assistive technology (unless the app supplies its own `ariaLabel`).
 
 ## The application owns the list
 
