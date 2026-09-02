@@ -102,6 +102,10 @@
   --pte-aggregate-row-bg-color: #f3f4f6;
   --pte-aggregate-cell-bg-color: #f3f4f6;
   --pte-surface-bg-color: #ffffff;
+  /* Sheet-tab rail. The resting fill has to read as "behind" the active tab, which is filled with
+     --pte-surface-bg-color, so it is a deliberate step darker than the header background. */
+  --pte-sheet-tab-bg: #eef1f5;
+  --pte-sheet-tab-hover-bg: #e2e8f0;
   --pte-overlay-border-color: rgba(0, 0, 0, 0.12);
   --pte-control-border-color: rgba(0, 0, 0, 0.15);
   --pte-button-primary-bg: rgba(0, 0, 0, 0.85);
@@ -172,6 +176,8 @@
   --pte-aggregate-row-bg-color: #1e293b;
   --pte-aggregate-cell-bg-color: #1e293b;
   --pte-surface-bg-color: #0f172a;
+  --pte-sheet-tab-bg: #182338;
+  --pte-sheet-tab-hover-bg: #22304a;
   --pte-overlay-border-color: rgba(148, 163, 184, 0.25);
   --pte-control-border-color: rgba(148, 163, 184, 0.35);
   --pte-button-primary-bg: #2563eb;
@@ -2149,9 +2155,17 @@
   display: none;
   flex: 1 1 0;
   min-width: 0;
-  align-items: center;
+  /* Tabs fill the strip's height rather than floating in it — see the tab-shape note below. */
+  align-items: stretch;
   align-self: stretch;
   gap: 4px;
+  /* Pulls the strip out of the footer's own padding box: -9px is the footer's 8px top padding plus
+     its 1px top border, so the strip starts ON that border line (a negative cross-axis margin
+     grows a stretched flex item rather than moving it). That is what lets a tab own the boundary
+     between the grid body and the footer. The left inset shrinks to 4px so the first tab sits near
+     the grid's edge without running into the root's rounded corner. */
+  margin-top: -9px;
+  margin-left: -8px;
 }
 
 .pte-footer-tabs.pte-footer-tabs-enabled {
@@ -2181,7 +2195,9 @@
   min-width: 0;
   align-self: stretch;
   display: flex;
-  align-items: center;
+  /* The scroller is the full height of the strip: a tab that has to reach the footer's top border
+     cannot do it with a negative margin, because a scroll container clips to its padding box. */
+  align-items: stretch;
 }
 
 .pte-sheet-scroll-wrap::before,
@@ -2214,7 +2230,9 @@
 
 .pte-sheet-tabs {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  /* Gaps, not borders, separate the tabs: the strip sits over the footer's top border, so a
+     transparent gap is where that border shows back through and the line stays continuous. */
   gap: 2px;
   min-width: 0;
   overflow-x: auto;
@@ -2226,61 +2244,121 @@
   display: none;
 }
 
+/* Spreadsheet tab shape, not a toolbar button: a tab hangs off the grid body above it — square at
+   the top where it meets the body, rounded at its free bottom edge. An inactive tab continues the
+   footer's top border along its own top edge; the ACTIVE tab breaks that line and fills with the
+   body's own surface colour, so the sheet reads as opening onto the tab the user is on. This is
+   the Excel/Sheets convention, and it is what separates a tab strip from a row of buttons. */
 .pte-sheet-tab {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  max-width: 200px;
+  height: 100%;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--pte-frame-border-color);
+  border-radius: 0 0 3px 3px;
+  background-color: var(--pte-sheet-tab-bg);
   color: var(--pte-muted-text-color);
+  font: inherit;
   font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  flex: 0 0 auto;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pte-sheet-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pte-sheet-tab:hover {
-  background-color: var(--pte-hover-bg-color);
+  background-color: var(--pte-sheet-tab-hover-bg);
   color: var(--pte-text-color);
 }
 
 .pte-sheet-tab[aria-selected="true"] {
-  border-color: var(--pte-selected-border-color);
-  background-color: var(--pte-selected-bg-color);
+  background-color: var(--pte-surface-bg-color);
   color: var(--pte-text-color);
+  font-weight: 600;
+  /* Transparent rather than absent: the tab still paints its own background across the full border
+     box, so the footer's border underneath is covered and the line breaks exactly here. */
+  border-top-color: transparent;
+  /* Sides and the accent underline as insets, so selection never changes a tab's metrics. */
+  box-shadow:
+    inset 1px 0 0 var(--pte-frame-border-color),
+    inset -1px 0 0 var(--pte-frame-border-color),
+    inset 0 -3px 0 var(--pte-selected-border-color);
+}
+
+/* The shared control-focus rule flattens every button to a 3px radius and replaces its box-shadow;
+   both are wrong for a tab, whose shape IS its identity. Same specificity, declared later. */
+.pte-root .pte-sheet-tab:focus-visible {
+  border-radius: 0 0 3px 3px;
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
 }
 
 .pte-sheet-rename-input {
   /* A direct child of the flex tab strip now (it replaces the tab button during a rename), so it
-     needs the same no-shrink sizing the tabs carry. */
+     needs the same no-shrink sizing the tabs carry — but it is a field, not a tab: it keeps the
+     centred pill shape instead of stretching into the tab lane. */
   flex: 0 0 auto;
+  align-self: center;
   height: 28px;
-  width: 120px;
+  width: 140px;
   border: 1px solid var(--pte-selected-border-color);
   border-radius: 6px;
   padding: 0 8px;
+  font: inherit;
   font-size: 13px;
   background-color: var(--pte-input-bg-color);
   color: var(--pte-text-color);
 }
 
+/* The + is an affordance beside the strip, not a tab: a round ghost button, centred in the footer
+   rather than stretched to the tab lane. */
 .pte-sheet-add {
-  height: 32px;
-  min-width: 32px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
   background: none;
   color: var(--pte-muted-text-color);
-  font-size: 16px;
+  font: inherit;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  flex: 0 0 auto;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.pte-sheet-add:hover {
+.pte-sheet-add:hover:not(:disabled) {
   background-color: var(--pte-hover-bg-color);
   color: var(--pte-text-color);
+}
+
+/* Disabled on a grid that cannot pivot. It stays visible because its tooltip carries the "why",
+   so it has to LOOK unavailable rather than merely behave that way. */
+.pte-sheet-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pte-root .pte-sheet-add:focus-visible {
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
 }
 
 .pte-pagination-section {

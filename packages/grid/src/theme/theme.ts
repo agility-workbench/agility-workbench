@@ -369,6 +369,8 @@ export const themeDark: GridTheme = createTheme({
     "--pte-aggregate-row-bg-color": "#1e293b",
     "--pte-aggregate-cell-bg-color": "#1e293b",
     "--pte-surface-bg-color": "#0f172a",
+    "--pte-sheet-tab-bg": "#182338",
+    "--pte-sheet-tab-hover-bg": "#22304a",
     "--pte-overlay-border-color": "rgba(148, 163, 184, 0.25)",
     "--pte-control-border-color": "rgba(148, 163, 184, 0.35)",
     "--pte-button-primary-bg": "#2563eb",

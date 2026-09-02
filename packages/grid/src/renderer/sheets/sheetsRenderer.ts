@@ -321,7 +321,15 @@ export class SheetsRenderer {
     // Roving tabindex: the strip is one tab stop; arrows move within it.
     tab.tabIndex = active ? 0 : -1;
     tab.dataset.sheetId = sheet.id;
-    tab.textContent = sheet.name;
+    // The name lives in a span so a long one can ellipsize against the tab's max width; the tab
+    // itself is a flex container, where `text-overflow` has no bare text box to act on.
+    const label = document.createElement("span");
+    label.className = "pte-sheet-tab-label";
+    label.textContent = sheet.name;
+    tab.appendChild(label);
+    // The visible label may be the truncated one, so the full name stays reachable on hover. The
+    // accessible name still comes from the tab's own text, not from this.
+    tab.title = sheet.name;
     tab.addEventListener("click", () => this.activateSheet(sheet.id));
     tab.addEventListener("dblclick", () => this.startRename(sheet.id));
     tab.addEventListener("contextmenu", (e) => this.openTabMenu(e, sheet.id));
