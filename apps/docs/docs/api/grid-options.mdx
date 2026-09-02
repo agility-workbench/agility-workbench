@@ -140,7 +140,7 @@ row count is known; the quick filter is client-side only.)
 | `pivotMode` | `boolean` | Start in pivot mode (client-side; exclusive with tree data). Live in both wrappers — a prop/input change toggles the mode |
 | `pivotColumns` | `string[]` | Columns to pivot on, by colId, in level order. Live in both wrappers |
 | `pivotResultColumnDef` | `Partial<ColDef>` | Overlay for every generated pivot value column |
-| `maxPivotColumns` | `number` | Cap on generated pivot columns (default 200; truncates + fires `pivotColumnLimitReached`) |
+| `maxPivotColumns` | `number` | Cap on generated pivot columns (default 200; truncates + fires `pivotColumnLimitReached`). A target, not an exact ceiling — truncation is per pivot value, so the count can land under or over it |
 | `pivotColumnMoveMode` | `"measures" \| "free"` | What dragging a generated pivot column does: reorder the measures everywhere (default) or arrange leaves freely, splitting groups (updatable at runtime) |
 
 ## Presentation and integration
@@ -158,6 +158,7 @@ row count is known; the quick filter is client-side only.)
 | `styleNonce` | `string` | CSP nonce for injected styles |
 | `loadingMessage` | `string` | Loading overlay copy |
 | `noRowsMessage` | `string` | Empty-data copy |
+| `pivotNoValuesMessage` | `string` | Copy of the header hint shown while pivot mode has no aggregates |
 
 The package's TypeScript declarations remain the source of truth for less
 common callbacks and detailed nested option types.

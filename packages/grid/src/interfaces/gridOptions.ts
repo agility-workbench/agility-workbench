@@ -1245,6 +1245,12 @@ export interface GridOptions {
    * deterministically — the first columns in header order survive — and fires
    * `pivotColumnLimitReached`; never a hard failure. That event is latched: it reports the start
    * of truncation, any change in how much is dropped, and the return under the cap.
+   *
+   * The cap is a target, not an exact ceiling, because truncation is **per pivot value**: a value
+   * is kept or dropped with all of its measures, so the generated count is always a whole multiple
+   * of the measure count. It can land under the cap — 3 measures against a cap of 200 keep
+   * `⌊200 / 3⌋ = 66` values, so 198 columns — and, because at least one value always survives, it
+   * can land over it: 5 measures against a cap of 3 generate 5 columns.
    */
   maxPivotColumns?: number;
   /**
@@ -1357,6 +1363,13 @@ export interface GridOptions {
    * shown instead and this option does not apply.
    */
   noRowsMessage?: string;
+  /**
+   * Text of the inline header hint shown while pivot mode is on but no aggregates have been chosen
+   * (pivot mode with no values generates no columns, so the header would otherwise be a bare group
+   * column). Defaults to "Choose Aggregate on a column to add values" — override it to match the
+   * wording of your own aggregate entry point, or to translate it.
+   */
+  pivotNoValuesMessage?: string;
   /**
    * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
    * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
@@ -1490,6 +1503,7 @@ export interface InternalGridOptions extends GridOptions {
   sheets?: SheetsOptions;
   loadingMessage: string;
   noRowsMessage: string;
+  pivotNoValuesMessage: string;
   filterDebounceMs: number;
   cellFlashDuration: number;
   cellFadeDuration: number;

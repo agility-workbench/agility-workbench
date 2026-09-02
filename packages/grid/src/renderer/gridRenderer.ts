@@ -848,7 +848,7 @@ export class GridRenderer {
     // Pivot-mode hint for the "no value columns" empty state: pivot on, but no aggregates chosen,
     // so the header shows only the group column. Points at the action that adds values.
     this._pivotHintEl = div("pte-header-pivot-hint");
-    this._pivotHintEl.textContent = "Choose Aggregate on a column to add values";
+    this._pivotHintEl.textContent = this.core.options.pivotNoValuesMessage;
     headerRefs.wrapper.appendChild(this._pivotHintEl);
     const updatePivotHint = () => {
       this._pivotHintEl.classList.toggle(

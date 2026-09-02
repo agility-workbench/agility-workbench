@@ -30,11 +30,11 @@ const ROWS = [
   { id: "4", region: "APAC", quarter: "Q2", revenue: 40 },
 ];
 
-function mountGrid() {
+function mountGrid(options: object = {}) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 400, configurable: true });
   document.body.appendChild(container);
-  const core = new GridCore(measurer, { rowIdKey: "id" });
+  const core = new GridCore(measurer, { rowIdKey: "id", ...options });
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" } as any);
   const { renderer, api } = initDomRenderer(core, menuAdapter);
   renderer.attach(container);
@@ -128,6 +128,32 @@ describe("pivot rendering", () => {
       expect(row.querySelector(".pte-group-toggle")).toBeNull();
       expect(row.hasAttribute("aria-expanded")).toBe(false);
     }
+  });
+
+  it("shows the no-values hint while pivot mode has no aggregates, with overridable copy", () => {
+    const { container, core } = mountGrid();
+    const hint = () => container.querySelector<HTMLElement>(".pte-header-pivot-hint")!;
+    expect(hint().textContent).toBe("Choose Aggregate on a column to add values");
+    expect(hint().classList.contains("visible")).toBe(false);
+
+    // Pivot on with no aggregate chosen: nothing is generated, so the header would be a bare group
+    // column — the hint names the way out.
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["quarter"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(hint().classList.contains("visible")).toBe(true);
+
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+    expect(hint().classList.contains("visible")).toBe(false);
+
+    // The copy is a grid option, so an app can reword it for its own aggregate entry point (or
+    // translate it) instead of shipping this library's English.
+    const other = mountGrid({ pivotNoValuesMessage: "Pick a measure to begin" });
+    expect(other.container.querySelector(".pte-header-pivot-hint")?.textContent)
+      .toBe("Pick a measure to begin");
   });
 
   it("exits pivot back to the source header and leaf rows", () => {

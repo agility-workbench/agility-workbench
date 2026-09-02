@@ -48,4 +48,18 @@ describe("overlay message options", () => {
     expect(label?.textContent).toBe("Nothing to see");
     await unmountTestRoot(root);
   });
+
+  it("uses a custom pivotNoValuesMessage for the pivot header hint", async () => {
+    const { container, root } = await mount({ pivotNoValuesMessage: "Pick a measure to begin" });
+    expect(container.querySelector(".pte-header-pivot-hint")?.textContent)
+      .toBe("Pick a measure to begin");
+    await unmountTestRoot(root);
+  });
+
+  it("defaults the pivot header hint when pivotNoValuesMessage is omitted", async () => {
+    const { container, root } = await mount({});
+    expect(container.querySelector(".pte-header-pivot-hint")?.textContent)
+      .toBe("Choose Aggregate on a column to add values");
+    await unmountTestRoot(root);
+  });
 });

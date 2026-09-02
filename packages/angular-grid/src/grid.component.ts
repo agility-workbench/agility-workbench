@@ -210,6 +210,7 @@ export class AwbGrid implements OnDestroy {
   readonly loading = input<boolean | undefined>();
   readonly loadingMessage = input<GridOptions["loadingMessage"]>();
   readonly noRowsMessage = input<GridOptions["noRowsMessage"]>();
+  readonly pivotNoValuesMessage = input<GridOptions["pivotNoValuesMessage"]>();
 
   // --- menus ---
   /** Hook to customize column menu items (slots may be `TemplateRef`s). */

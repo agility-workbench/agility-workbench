@@ -109,6 +109,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "sheets", props.sheets);
   setIfDefined(options, "loadingMessage", props.loadingMessage);
   setIfDefined(options, "noRowsMessage", props.noRowsMessage);
+  setIfDefined(options, "pivotNoValuesMessage", props.pivotNoValuesMessage);
   setIfDefined(options, "filterDebounceMs", props.filterDebounceMs);
   setIfDefined(options, "cellFlashDuration", props.cellFlashDuration);
   setIfDefined(options, "cellFadeDuration", props.cellFadeDuration);
