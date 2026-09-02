@@ -190,6 +190,9 @@ export class SheetsRenderer {
   private addPivotSheet(): void {
     if (!this.isEnabled() || !this.params.core.isPivotSupported()) return;
     const source = this.params.api.captureViewState();
+    const autoGroupColIds = new Set(
+      this.params.core.getColumnModel().getAutoGroupColumns().map(col => col.colId),
+    );
     const state: GridViewState = {
       ...source,
       pivotMode: true,
@@ -199,8 +202,11 @@ export class SheetsRenderer {
       groupExpansion: [],
       // A sort on a generated pivot column belongs to the sheet whose pivot generated it. This
       // sheet starts with no pivot configuration at all, so carrying those ids over would sort it
-      // by columns it never produces — and persist them into its saved state.
-      sortModel: (source.sortModel ?? []).filter(item => !isPivotResultColId(item.colId)),
+      // by columns it never produces — and persist them into its saved state. A sort on the
+      // auto-group column goes the same way: it orders the group buckets of a grouping this sheet
+      // clears above, so it would arrive as a sort the user never asked this sheet for.
+      sortModel: (source.sortModel ?? []).filter(item =>
+        !isPivotResultColId(item.colId) && !autoGroupColIds.has(item.colId)),
       // Turning pivot mode off on this sheet lands on the sheet the user pressed + on — its
       // non-pivot roles, which is its own base layer when it was itself pivoted. A fresh sheet has
       // no earlier pivot configuration to reinstate, so the source sheet's stash never carries in.

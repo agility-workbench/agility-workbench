@@ -218,6 +218,42 @@ describe("sheets tab strip", () => {
     expect(core.getSortModel().items).toEqual([]);
   });
 
+  it("does not carry an auto-group sort onto the new sheet", () => {
+    const changes: GridSheet[][] = [];
+    const { core, host } = makeGrid({ onChange: next => changes.push(next) });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const groupCol = core.getColumnModel().getAutoGroupColumns()[0];
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: groupCol.instanceID, dir: "desc" }] });
+
+    host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
+
+    // The new sheet clears the row groups, so a sort on the group label orders buckets it does not
+    // have — it stays with the sheet whose grouping it belongs to.
+    const reported = changes.at(-1)!;
+    expect(reported[0].state?.sortModel).toEqual([{ colId: "__pte_group__", dir: "desc" }]);
+    expect(reported[1].state?.sortModel).toEqual([]);
+    expect(core.getSortModel().items).toEqual([]);
+  });
+
+  it("keeps a sort on the auto-group column across a sheet switch", () => {
+    const { core, host } = makeGrid({
+      sheets: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
+      onChange: () => {},
+    });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const groupCol = () => core.getColumnModel().getAutoGroupColumns()[0];
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: groupCol().instanceID, dir: "desc" }] });
+
+    // Leaving captures sheet A by colId; returning replays it. The auto-group column is internal,
+    // so only its colId is in the capture — it must still resolve on the way back.
+    tabs(host)[1].click();
+    tabs(host)[0].click();
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+    expect(core.getSortModel().items.map(item => [item.col.colId, item.dir]))
+      .toEqual([["__pte_group__", "desc"]]);
+    expect(core.getSortModel().items[0].col).toBe(groupCol());
+  });
+
   it("makes a new pivot sheet exit to the roles of the sheet + was pressed on", () => {
     const changes: GridSheet[][] = [];
     const { core, host } = makeGrid({ onChange: next => changes.push(next) });

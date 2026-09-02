@@ -686,16 +686,27 @@ export class GridCore implements IGridCore {
     );
   }
 
+  /**
+   * Whether a sort colId addresses a column that exists RIGHT NOW. `applyViewState` uses it to hold
+   * back captured sorts whose column a later restore step still has to create.
+   */
+  canResolveSortColId(colId: string): boolean {
+    return this.resolveSortColumn({ key: colId }) != null;
+  }
+
   private resolveSortColumn(sort: Partial<SortItemUpdate>): Column | undefined {
     const col = this.resolveModelColumn(sort);
     if (col) return col;
-    // A sort can also address a GENERATED pivot column ("order the buckets by their aggregate at
-    // this cell"). Those are internal, so no public lookup holds them — resolve them against the
-    // live pivot layout, which yields nothing once pivot display is off.
+    // A sort can also address one of the two INTERNAL columns a user can sort. Internal columns are
+    // registered by instanceID only, so no public lookup holds them, and their instanceIDs are
+    // per-grid UUIDs — a captured colId is all a saved view has to go on.
     const colId = sort.key ?? sort.col?.colId;
-    return colId != null && isPivotResultColId(colId)
-      ? this.columnModel.getPivotResultLeaf(colId)
-      : undefined;
+    if (colId == null) return undefined;
+    // A GENERATED pivot column ("order the buckets by their aggregate at this cell"), resolved
+    // against the live pivot layout, which yields nothing once pivot display is off.
+    if (isPivotResultColId(colId)) return this.columnModel.getPivotResultLeaf(colId);
+    // The synthesized auto-group column ("order the group buckets by their label").
+    return this.columnModel.getAutoGroupColumnByColId(colId);
   }
 
   private resolveModelColumn(item: { col?: Column; key?: string }): Column | undefined {
@@ -1208,6 +1219,10 @@ export class GridCore implements IGridCore {
     const resolved = this.resolveRoleColumns(colIds, "group");
     this.groupColumns = resolved;
     this.columnModel.setRowGroupColumns(resolved, this.options.groupDisplayType, false);
+    // A sort on the auto-group column goes when that column does (clearing the grouping, or a
+    // display mode that surfaces the label elsewhere) — the same rule any other retired column
+    // gets. The re-derive below applies the drop; sorts on columns that survived are untouched.
+    this.reconcileSortModelColumns();
     // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
@@ -1353,6 +1368,10 @@ export class GridCore implements IGridCore {
       this.restorePivotStateLayer(this.basePivotLayer ?? EMPTY_PIVOT_LAYER);
       this.basePivotLayer = null;
       this.columnModel.setRowGroupColumns(this.groupColumns.slice(), this.options.groupDisplayType, false);
+      // Generated pivot columns are gone with the display, and the restored group model may not
+      // synthesize an auto-group column at all, so sorts addressing either go with them (see
+      // setRowGroupModel). `refreshPivotView` below re-derives with what is left.
+      this.reconcileSortModelColumns();
       // The generated columns leave with the mode, so any truncation of them is over. Nothing else
       // reports it: without a discovery to run, onPivotResult never fires on the way out.
       this.setPivotColumnLimit(0);
@@ -1527,6 +1546,12 @@ export class GridCore implements IGridCore {
       groupDisplayType,
       this.options.treeData != null,
     );
+    // The auto-group column exists only under "singleColumn", so switching away retires it — and
+    // with it any sort addressing it (see setRowGroupModel). No re-derive follows: the buckets keep
+    // the order they are in (this switch deliberately leaves the row tree alone) until the next
+    // request rebuilds them, but the model no longer reports — or captures — a sort on a column
+    // that is not there.
+    this.reconcileSortModelColumns();
     this.clearSelectionForColumnChange();
     this.emit("columnsChanged", { reason: "group" });
 

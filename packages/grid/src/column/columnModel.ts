@@ -735,6 +735,18 @@ export class ColumnModel implements IColumnModel {
     return this.autoGroupColumns;
   }
 
+  /**
+   * The live auto-group column for a public colId. Internal columns are registered by instanceID
+   * only (see `registerColumns`), and the auto-group instance carries a fresh UUID per grid, so its
+   * colId is the only durable handle a saved view has on it — while sorting it is an ordinary,
+   * capturable user gesture. Resolved against the columns actually in the layout, so a state
+   * captured under `singleColumn` grouping restores nothing under `groupRows` / `multipleColumns`,
+   * where no such column exists. Sibling of `getPivotResultLeaf`, which exists for the same reason.
+   */
+  getAutoGroupColumnByColId(colId: string): Column | undefined {
+    return this.autoGroupColumns.find(col => col.colId === colId);
+  }
+
   isPivotDisplayActive(): boolean {
     return this.pivotDisplayActive;
   }

@@ -564,6 +564,50 @@ describe("GridAPI pivot view state", () => {
     expect(viewNodes(other).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
   });
 
+  it("round-trips a sort on the auto-group column taken while pivoted", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    enterPivot(core);
+    const groupCol = core.getColumnModel().getAutoGroupColumns()[0];
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: groupCol.instanceID, dir: "desc" }] });
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+
+    // The auto-group column is internal too, so the capture holds only its colId.
+    const state = api.captureViewState();
+    expect(state.sortModel).toEqual([{ colId: "__pte_group__", dir: "desc" }]);
+
+    const other = makeGrid();
+    new GridAPI(other).applyViewState(state);
+    expect(other.getPivotMode()).toBe(true);
+    expect(viewNodes(other).map(n => n.groupKey)).toEqual(["EMEA", "APAC"]);
+    expect(other.getSortModel().items[0].col).toBe(other.getColumnModel().getAutoGroupColumns()[0]);
+  });
+
+  it("drops a group-column sort when the pivot exit leaves no group column behind", () => {
+    const core = makeGrid();
+    const api = new GridAPI(core);
+    // Roles set INSIDE pivot mode belong to the pivot layer, so the exit restores no grouping —
+    // and the auto-group column goes with it. A sort addressing it must not linger in the model,
+    // where the next capture would carry it into a view that has no such column.
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["quarter"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const groupCol = core.getColumnModel().getAutoGroupColumns()[0];
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: groupCol.instanceID, dir: "desc" }] });
+    expect(core.getSortModel().items).toHaveLength(1);
+
+    core.dispatch({ type: "pivotModeSet", on: false });
+    expect(core.getRowGroupColumns()).toEqual([]);
+    expect(core.getColumnModel().getAutoGroupColumns()).toEqual([]);
+    expect(core.getSortModel().items).toEqual([]);
+    expect(api.captureViewState().sortModel).toEqual([]);
+  });
+
   it("drops a captured pivot sort when the state restores out of pivot mode", () => {
     const core = makeGrid();
     const api = new GridAPI(core);

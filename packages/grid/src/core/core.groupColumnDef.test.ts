@@ -174,6 +174,38 @@ describe("sorting the auto-group column", () => {
     expect(groupKeysAtLevel(core, 1)).toEqual(["UK", "France", "Japan", "India"]);
   });
 
+  it("retires the sort with the column when grouping is cleared", () => {
+    const core = makeGrid({ groupDefaultExpanded: -1 });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol(core).instanceID });
+    expect(core.getSortModel().items).toHaveLength(1);
+
+    // No grouping, no group column — and no sort left pointing at one. A lingering item would
+    // sort by a column the grid no longer shows, and ride into every state capture.
+    core.dispatch({ type: "rowGroupSet", colIds: [] });
+    expect(core.getColumnModel().getAutoGroupColumns()).toEqual([]);
+    expect(core.getSortModel().items).toEqual([]);
+  });
+
+  it("retires the sort when the display mode stops synthesizing the column", () => {
+    const core = makeGrid({ groupDefaultExpanded: -1 });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol(core).instanceID });
+    core.dispatch({ type: "headerAction", action: "toggleSort", colId: groupCol(core).instanceID });
+    expect(groupKeysAtLevel(core, 0)).toEqual(["EMEA", "APAC"]); // desc, against the default asc
+
+    // "groupRows" puts the label on a full-width row instead of a column, so the sorted column
+    // ceases to exist and the sort goes with it. The switch leaves the row tree alone by design,
+    // so the buckets stay in the order they are already in; the next re-derive rebuilds them
+    // without the dropped sort.
+    core.setGroupDisplayType("groupRows");
+    expect(core.getColumnModel().getAutoGroupColumns()).toEqual([]);
+    expect(core.getSortModel().items).toEqual([]);
+    expect(groupKeysAtLevel(core, 0)).toEqual(["EMEA", "APAC"]);
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    expect(groupKeysAtLevel(core, 0)).toEqual(["APAC", "EMEA"]);
+  });
+
   it("keeps an active group-column sort across regrouping (instance reuse)", () => {
     const core = makeGrid({ groupDefaultExpanded: -1 });
     core.dispatch({ type: "rowGroupSet", colIds: ["region"] });

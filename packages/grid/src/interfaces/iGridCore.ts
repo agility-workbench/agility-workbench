@@ -128,6 +128,10 @@ export interface IGridCore {
 
   /* ----- Models via facade getters (optional but handy) ----- */
   getSortModel(): SortModel;
+  /** Whether a sort colId addresses a column that exists right now — including the internal ones a
+   * user can sort (the auto-group column, a generated pivot column), which the public column
+   * lookups deliberately do not hold. */
+  canResolveSortColId(colId: string): boolean;
   getFilterModel(): FilterModel;
   /** Current quick-filter (global search) text. Empty string when inactive. */
   getQuickFilterText(): string;
