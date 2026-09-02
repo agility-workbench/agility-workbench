@@ -12,7 +12,8 @@ import {
  * Sheets playground: spreadsheet-style tabs in the footer's left zone over ONE grid instance and
  * ONE row model. Each sheet is a live view state — switching tabs captures the sheet you leave
  * and applies the one you enter. The **+** button appends a blank pivot sheet; double-click
- * renames; right-click offers Rename / Duplicate / Delete; Ctrl+PageDown/PageUp switches sheets.
+ * renames; right-click offers Rename / Change color / Duplicate / Delete; Ctrl+PageDown/PageUp
+ * switches sheets.
  * The sheet list is application-owned: this page holds it in a signal.
  */
 
@@ -72,7 +73,7 @@ function buildRows(count: number): SaleRow[] {
       One grid, one row model — the footer tabs are live view states. Switch to
       <strong>By Quarter</strong> for a pre-built pivot sheet, press <strong>+</strong> for a blank
       one (pivot mode on, hint in the header until you choose an aggregate), double-click a tab to
-      rename it, right-click for Rename / Duplicate / Delete, or switch with
+      rename it, right-click for Rename / Change color / Duplicate / Delete, or switch with
       <strong>Ctrl+PageDown/PageUp</strong>. Edits made on any sheet update every sheet's derived
       values, because the data is shared.
     </div>

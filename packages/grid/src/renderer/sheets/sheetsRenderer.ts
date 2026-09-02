@@ -5,6 +5,7 @@ import type { MenuItem } from "../../interfaces/menuItem";
 import { isPivotResultColId } from "../../interfaces/pivot";
 import { createRecordId } from "../../misc";
 import { MenuRenderer } from "../menuRenderer";
+import { createSheetColorSwatch, SHEET_COLORS } from "./sheetColors";
 
 interface SheetsRendererParams {
   core: GridCore;
@@ -239,6 +240,25 @@ export class SheetsRenderer {
     ));
   }
 
+  /**
+   * Apply a tab colour, or clear it with `null`. Colour is sheet metadata, not view state, so this
+   * touches only the list — no capture, no state application, and the active sheet is unaffected
+   * by colouring a different one.
+   */
+  private setSheetColor(sheetId: string, color: string | null): void {
+    const current = this.sheets.find(sheet => sheet.id === sheetId);
+    if (!current || (current.color ?? null) === color) return;
+    this.commitSheets(this.sheets.map(sheet => {
+      if (sheet.id !== sheetId) return sheet;
+      const next = { ...sheet };
+      // Deleted rather than set to undefined: the list goes to the application to persist, and an
+      // explicit `color: undefined` survives a structuredClone but not a JSON round-trip.
+      if (color) next.color = color;
+      else delete next.color;
+      return next;
+    }));
+  }
+
   /** Duplicate a sheet (active one: from its live state) and insert the copy right after it. */
   private duplicateSheet(sheetId: string): void {
     const idx = this.sheets.findIndex(sheet => sheet.id === sheetId);
@@ -250,6 +270,7 @@ export class SheetsRenderer {
     const copy: GridSheet = {
       id: createRecordId("sheet"),
       name: `${source.name} (copy)`,
+      ...(source.color ? { color: source.color } : {}),
       ...(state ? { state: structuredClone(state) } : {}),
     };
     const next = [...this.sheets];
@@ -321,6 +342,12 @@ export class SheetsRenderer {
     // Roving tabindex: the strip is one tab stop; arrows move within it.
     tab.tabIndex = active ? 0 : -1;
     tab.dataset.sheetId = sheet.id;
+    if (sheet.color) {
+      // The class is what arms the tint overlay; the raw colour rides a custom property so the
+      // stylesheet owns how much of it reaches the tab (tinted here, solid in the underline).
+      tab.classList.add("pte-sheet-tab-colored");
+      tab.style.setProperty("--pte-sheet-tab-color", sheet.color);
+    }
     // The name lives in a span so a long one can ellipsize against the tab's max width; the tab
     // itself is a flex container, where `text-overflow` has no bare text box to act on.
     const label = document.createElement("span");
@@ -372,10 +399,40 @@ export class SheetsRenderer {
     return input;
   }
 
+  /**
+   * The "Change color" submenu: "None" first, then the built-in palette. A check marks the sheet's
+   * current colour — matched case-insensitively, since the list round-trips through the
+   * application's own storage and can come back as `#EF4444`. A colour the application set outside
+   * the palette simply leaves every entry unchecked; "None" still clears it.
+   */
+  private colorMenuItems(sheetId: string): MenuItem[] {
+    const current = this.sheets.find(sheet => sheet.id === sheetId)?.color?.toLowerCase();
+    return [
+      {
+        id: "sheetColorNone",
+        label: "None",
+        command: "sheet.color",
+        payload: null,
+        left: createSheetColorSwatch(),
+        right: current ? undefined : "icon-check",
+      },
+      { id: "sheetColorSeparator", isSeparator: true },
+      ...SHEET_COLORS.map((entry): MenuItem => ({
+        id: `sheetColor-${entry.id}`,
+        label: entry.name,
+        command: "sheet.color",
+        payload: entry.color,
+        left: createSheetColorSwatch(entry.color),
+        right: current === entry.color ? "icon-check" : undefined,
+      })),
+    ];
+  }
+
   private openTabMenu(e: MouseEvent, sheetId: string): void {
     e.preventDefault();
     const items: MenuItem[] = [
       { id: "sheetRename", label: "Rename", command: "sheet.rename" },
+      { id: "sheetColor", label: "Change color", subMenu: this.colorMenuItems(sheetId) },
       { id: "sheetDuplicate", label: "Duplicate", command: "sheet.duplicate" },
       {
         id: "sheetDelete",
@@ -392,6 +449,7 @@ export class SheetsRenderer {
       ariaLabel: "Sheet actions",
       onItemClick: (item) => {
         if (item.command === "sheet.rename") this.startRename(sheetId);
+        else if (item.command === "sheet.color") this.setSheetColor(sheetId, item.payload ?? null);
         else if (item.command === "sheet.duplicate") this.duplicateSheet(sheetId);
         else if (item.command === "sheet.delete") this.deleteSheet(sheetId);
       },

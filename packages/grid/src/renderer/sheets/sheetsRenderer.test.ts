@@ -59,6 +59,11 @@ const tabs = (host: HTMLElement) =>
 const tabNames = (host: HTMLElement) => tabs(host).map(tab => tab.textContent);
 const activeTab = (host: HTMLElement) =>
   host.querySelector<HTMLButtonElement>(".pte-sheet-tab[aria-selected=\"true\"]");
+/** An open menu's item by label — submenu levels included, since every level renders into the
+ * document. Labels are distinct across the sheet menu and its color submenu. */
+const menuItem = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>(".pte-menu-item[data-item-id]")]
+    .find(el => el.textContent?.includes(label));
 
 describe("sheets tab strip", () => {
   it("stays unmounted without the sheets option", () => {
@@ -324,10 +329,6 @@ describe("sheets tab strip", () => {
       ],
     });
 
-    const menuItem = (label: string) =>
-      [...document.querySelectorAll<HTMLElement>(".pte-menu-item[data-item-id]")]
-        .find(el => el.textContent?.includes(label));
-
     tabs(host)[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     menuItem("Duplicate")!.click();
     expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 1 (copy)"]);
@@ -335,6 +336,58 @@ describe("sheets tab strip", () => {
     tabs(host)[2].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     menuItem("Delete")!.click();
     expect(tabNames(host)).toEqual(["Data", "Pivot 1"]);
+  });
+
+  it("colors a tab from the Change color submenu and reports it", () => {
+    const changes: GridSheet[][] = [];
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1" }],
+      onChange: next => changes.push(next),
+    });
+
+    tabs(host)[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    menuItem("Blue")!.click();
+
+    expect(changes.at(-1)!.map(sheet => sheet.color)).toEqual([undefined, "#3b82f6"]);
+    // The class arms the tint; the raw colour rides a custom property the stylesheet meters out.
+    const tab = tabs(host)[1];
+    expect(tab.classList.contains("pte-sheet-tab-colored")).toBe(true);
+    expect(tab.style.getPropertyValue("--pte-sheet-tab-color")).toBe("#3b82f6");
+    // Colour is metadata, not view state: colouring a sheet never switches to it.
+    expect(activeTab(host)!.textContent).toBe("Data");
+  });
+
+  it("checks the current color and clears it with None", () => {
+    const changes: GridSheet[][] = [];
+    const { host } = makeGrid({
+      // Cased differently from the palette entry: the list round-trips through app storage.
+      sheets: [{ id: "data", name: "Data", color: "#3B82F6" }],
+      onChange: next => changes.push(next),
+    });
+    expect(tabs(host)[0].classList.contains("pte-sheet-tab-colored")).toBe(true);
+
+    tabs(host)[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Change color")!.click();
+    expect(menuItem("Blue")!.querySelector(".icon-check")).not.toBeNull();
+    expect(menuItem("None")!.querySelector(".icon-check")).toBeNull();
+    menuItem("None")!.click();
+
+    // Deleted, not set to undefined: an explicit undefined does not survive a JSON round-trip.
+    expect("color" in changes.at(-1)![0]).toBe(false);
+    expect(tabs(host)[0].classList.contains("pte-sheet-tab-colored")).toBe(false);
+  });
+
+  it("carries a tab color into a duplicate", () => {
+    const { host } = makeGrid({
+      sheets: [{ id: "data", name: "Data" }, { id: "p1", name: "Pivot 1", color: "#ef4444" }],
+    });
+
+    tabs(host)[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    menuItem("Duplicate")!.click();
+
+    expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 1 (copy)"]);
+    expect(tabs(host)[2].style.getPropertyValue("--pte-sheet-tab-color")).toBe("#ef4444");
   });
 
   it("refuses to delete the last sheet", () => {

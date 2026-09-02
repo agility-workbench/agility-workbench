@@ -103,6 +103,16 @@ export interface GridSheet {
   id: string;
   name: string;
   state?: GridViewState;
+  /**
+   * Tab colour, in any CSS colour notation. Sheet metadata rather than view state: it belongs to
+   * the tab, not to what the tab shows, so it survives every switch and capture untouched.
+   *
+   * The strip wears it as a tint over the tab's own fill and paints it solid only in the active
+   * tab's underline — so a colour never has to win a contrast fight with the label, in either
+   * theme. Set through the tab menu's "Change color", and reported through `onChange` like any
+   * other change to the list.
+   */
+  color?: string;
 }
 
 /**

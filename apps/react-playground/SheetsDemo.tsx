@@ -11,7 +11,8 @@ import type { IGridAPI } from "@grid/interfaces/iGridAPI";
  * ONE row model. Each sheet is a live view state (columns, sort, filters, grouping, aggregates,
  * pivot, expansion, page) — switching tabs captures the sheet you leave and applies the one you
  * enter. The **+** button appends a blank pivot sheet; double-click renames; right-click offers
- * Rename / Duplicate / Delete; Ctrl+PageDown/PageUp switches sheets from the keyboard. The sheet
+ * Rename / Change color / Duplicate / Delete; Ctrl+PageDown/PageUp switches sheets from the
+ * keyboard. The sheet
  * list is application-owned: this page holds it in React state and could persist it anywhere.
  */
 
@@ -101,7 +102,7 @@ export function SheetsDemo() {
         One grid, one row model — the footer tabs are live view states. Switch to
         <strong> By Quarter</strong> for a pre-built pivot sheet, press <strong>+</strong> for a
         blank one (pivot mode on, hint in the header until you choose an aggregate), double-click a
-        tab to rename it, right-click for Rename / Duplicate / Delete, or switch with
+        tab to rename it, right-click for Rename / Change color / Duplicate / Delete, or switch with
         <strong> Ctrl+PageDown/PageUp</strong>. Edits made on any sheet update every sheet's
         derived values, because the data is shared.
       </div>

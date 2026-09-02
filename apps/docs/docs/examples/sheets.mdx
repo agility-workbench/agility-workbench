@@ -29,8 +29,16 @@ appears only when its feature is on.
   Columns and filters carry over from the sheet you pressed + on, and so does
   its grouping — turning pivot mode off on the new sheet lands on that view.
 - **Double-click** a tab (or press **F2** on it) to rename inline.
-- **Right-click** a tab for Rename / Duplicate / Delete. Duplicating the active
-  sheet copies its live state; the last remaining sheet can't be deleted.
+- **Right-click** a tab for Rename / Change color / Duplicate / Delete.
+  Duplicating the active sheet copies its live state (and its color); the last
+  remaining sheet can't be deleted.
+- **Change color** picks from a built-in palette, or clears the color with
+  **None**. An inactive tab wears its color as a tint over the tab fill and the
+  active one shows it solid in its underline, so the label keeps the theme's own
+  contrast in light and dark whatever color is chosen. The color lands on
+  `GridSheet.color` and is reported through `onChange` like any other change —
+  it is sheet metadata, not view state, so it survives every switch untouched.
+  An app can set `color` to any CSS color, palette or not.
 - **Ctrl+PageDown / Ctrl+PageUp** switch to the neighboring sheet — the
   spreadsheet convention. The chords are claimed only while the tab strip is
   enabled.
@@ -50,7 +58,7 @@ serialize anywhere a saved view does.
 sheets: {
   sheets: [{ id: "data", name: "Data" }],   // empty list → a synthesized Data tab
   activeSheetId: "data",
-  onChange: (next) => persist(next),        // fired on add/rename/duplicate/delete/switch
+  onChange: (next) => persist(next),        // add/rename/recolor/duplicate/delete/switch
   onActiveSheetChange: (id) => setActive(id),
 }
 ```
