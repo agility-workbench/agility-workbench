@@ -114,6 +114,19 @@ accessible names on the select or numbered-button group.
 Numbered pagination keeps the first and last known pages visible, centers a bounded
 window around the current page, and inserts ellipses when pages are skipped.
 
+The footer adapts to its own width, on the same ladder the toolbar uses — see
+[Narrow bars](#narrow-bars). Its rungs, cheapest first: the text beside each control
+("Rows per page", "Aggregate", "Page") is hidden; the **first** and **last** page buttons
+go, since the page picker beside them already reaches any page; rows-per-page moves into
+the footer's overflow menu; then the aggregate scope; then the sheet strip's **+**. Page
+navigation itself never gives way — a footer that cannot page is not a footer — so a
+footer still short of room scrolls instead. Trimming `controls` is how an application
+spends that width on something else — a wide sheet-tab strip, for instance.
+
+```ts
+paginationControls: { responsive: "collapse" }   // "collapse" (default) | "scroll" | false
+```
+
 :::warning Behavior change
 
 Filter and quick-filter changes used to reset pagination to page 1 (and sort
@@ -151,7 +164,7 @@ row count is known; the quick filter is client-side only.)
 | `icons` | `GridIconMap` | Named icon overrides |
 | `tooltip` | `boolean \| TooltipOptions` | Global tooltip behavior |
 | `getRowPresentation` | `(params) => RowPresentation` | Row/cell styling defaults, tooltip defaults, editability, ARIA description/busy state, and metadata |
-| `toolbar` | `GridToolbarOptions` | Opt-in toolbar sections |
+| `toolbar` | `GridToolbarOptions` | Opt-in toolbar sections, plus `responsive` (see [Narrow bars](#narrow-bars)) |
 | `savedViews` | `SavedViewsOptions` | Application-owned view persistence |
 | `sheets` | `SheetsOptions` | Spreadsheet-style footer tabs (Data + pivot sheets over one row model); application-owned list |
 | `suppressStyleInjection` | `boolean` | Use imported CSS instead |
@@ -159,6 +172,52 @@ row count is known; the quick filter is client-side only.)
 | `loadingMessage` | `string` | Loading overlay copy |
 | `noRowsMessage` | `string` | Empty-data copy |
 | `pivotNoValuesMessage` | `string` | Copy of the header hint shown while pivot mode has no aggregates |
+
+### Narrow bars
+
+Both bars — the toolbar above the header and the footer below the body — cope with a width
+their controls do not fit by the same rule: **nothing is ever clipped, overlapped, or
+compressed**. Every control is laid out at its natural size in one of its presentation
+stages, or it moves into that bar's overflow menu (`⋮`); a bar that runs out of stages
+scrolls, so nothing becomes unreachable.
+
+The toolbar's rungs, cheapest first:
+
+1. every button caption at once — the tooltip on each button carries the label it lost;
+2. the quick-filter input narrows — a field you can still read and type in costs less than
+   the name of a column you grouped by;
+3. **Grouped by** / **Sort by** chips fold from the end into a `+N` chip, one at a time;
+4. each chip section becomes a summary button (`Grouped by 3`) that opens the same
+   drag-reorder editor as a popover — and stays a drop target for a column dragged out of
+   the header;
+5. **Export**, **Pivot**, **Views**, then the two chip sections move into the `⋮`;
+6. the quick filter becomes a search icon that expands the box back over the bar in place;
+7. **Columns** last, because the column panel is the escape hatch to everything else.
+
+Two rules keep that honest. A control that holds focus, or that carries state the user is
+relying on (a quick filter with a query), is **not** displaced — the next rung goes
+instead — so nothing collapses out from under someone mid-use. And when something *is*
+displaced, its state does not vanish quietly: the `⋮` wears a dot while anything inside it
+is active, and focus follows a displaced control to the button that now holds it.
+
+A settled bar has no hole in it. The last rung applied usually frees more room than was
+needed, and rather than leaving that as blank space in the middle of the bar, one control
+takes it: the search field, which stretches into it (up to a limit), or — with no quick
+filter configured — the last chip section, which widens its drop zone instead.
+
+The order is fixed. An application that wants a different one configures **fewer
+controls** rather than re-ordering the ladder; every ordering is a degradation path that
+has to hold up at every width. What is configurable is whether the ladder runs at all:
+
+```ts
+toolbar: { grouping: true, sorting: true, quickFilter: true, responsive: "collapse" }
+```
+
+`"collapse"` (the default) walks the ladder above. `"scroll"` leaves every control at full
+size and scrolls the bar as soon as they do not fit — simplest to reason about, at the cost
+of controls sitting off-screen. `false` lays the bar out and lets it clip, for an
+application that guarantees its own width. `paginationControls.responsive` says the same
+for the footer.
 
 The package's TypeScript declarations remain the source of truth for less
 common callbacks and detailed nested option types.

@@ -33,6 +33,21 @@ function colId(core: GridCore, key: string): string {
   return core.getColumnModel().getLeaves().find(col => col.key === key)!.instanceID;
 }
 
+function groupColIds(core: GridCore, keys: string[]): string[] {
+  return keys.map(key => colId(core, key));
+}
+
+/**
+ * The right-hand region always ends with the bar's overflow button — it is mounted whether or not it
+ * holds anything, because a fit pass measures the bar it is already part of. It is the bar's own
+ * affordance rather than one of the application's controls, so assertions about control order look
+ * past it.
+ */
+function controls(region: Element): Element[] {
+  return Array.from(region.children)
+    .filter(child => !child.classList.contains("pte-grid-toolbar-more-button"));
+}
+
 describe("GridToolbarRenderer", () => {
   it("applies and manages application-owned saved views through the public view API", () => {
     const core = makeCore();
@@ -110,24 +125,93 @@ describe("GridToolbarRenderer", () => {
     root.remove();
   });
 
-  it("compresses from full controls to icon controls and delegates narrow overflow actions", () => {
-    const originalResizeObserver = globalThis.ResizeObserver;
-    let notifyWidth: ((width: number) => void) | undefined;
+  /**
+   * happy-dom has no layout, so the fit check is modelled: the toolbar reports a content width built
+   * from what is currently visible in it, and the harness sets the width it has to fit into. The
+   * model only has to be monotonic in the same direction the real layout is — what these tests pin
+   * is the *order* controls give way in, which is the part that is a decision rather than a measure.
+   */
+  function withModelledLayout(run: (setWidth: (width: number) => void) => void): void {
+    const originalClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    const originalObserver = globalThis.ResizeObserver;
+    const callbacks: ResizeObserverCallback[] = [];
     class TestResizeObserver {
-      constructor(callback: ResizeObserverCallback) {
-        notifyWidth = width => callback(
-          [{ contentRect: { width } } as ResizeObserverEntry],
-          this as unknown as ResizeObserver,
-        );
-      }
+      constructor(callback: ResizeObserverCallback) { callbacks.push(callback); }
       observe() {}
       unobserve() {}
       disconnect() {}
     }
     globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
+    let barWidth = 1400;
+
+    const visible = (el: Element) => !el.classList.contains("pte-bar-displaced");
+    const modelWidth = (bar: HTMLElement): number => {
+      const captionsOff = bar.classList.contains("pte-grid-toolbar-compact");
+      let total = 0;
+      for (const section of bar.querySelectorAll<HTMLElement>(
+        ".pte-grid-toolbar-group-section, .pte-grid-toolbar-sort-section",
+      )) {
+        if (!visible(section)) continue;
+        if (section.classList.contains("pte-bar-section-summary")) {
+          total += 110;
+          continue;
+        }
+        total += 130;  // caption, add button and clear
+        total += Array.from(section.querySelectorAll(
+          ".pte-grid-toolbar-group-chip, .pte-grid-toolbar-sort-chip",
+        )).filter(visible).length * 90;
+        const more = section.querySelector(".pte-grid-toolbar-chip-more");
+        if (more && visible(more)) total += 40;
+      }
+      const host = bar.querySelector<HTMLElement>(".pte-grid-toolbar-quick-filter");
+      if (host && visible(host)) {
+        total += host.classList.contains("pte-bar-qf-summary") ? 42
+          : host.classList.contains("pte-bar-qf-compact") ? 130
+          : 200;
+      }
+      for (const selector of [
+        ".pte-grid-toolbar-views-button",
+        ".pte-grid-toolbar-pivot-button",
+        ".pte-grid-toolbar-export-button",
+      ]) {
+        const el = bar.querySelector<HTMLElement>(selector);
+        if (el && visible(el)) total += captionsOff ? 42 : 110;
+      }
+      if (bar.classList.contains("pte-grid-toolbar-has-overflow")) total += 42;
+      return total;
+    };
+
+    const isBar = (el: HTMLElement) => el.classList.contains("pte-grid-toolbar");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: HTMLElement) { return isBar(this) ? barWidth : 0; },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get(this: HTMLElement) { return isBar(this) ? modelWidth(this) : 0; },
+    });
 
     try {
+      run(width => {
+        barWidth = width;
+        // What a real ResizeObserver would deliver. The engine reads the width itself rather than
+        // trusting the entry, so an empty notification is enough to make it re-decide.
+        for (const callback of callbacks) {
+          callback([], undefined as unknown as ResizeObserver);
+        }
+      });
+    } finally {
+      globalThis.ResizeObserver = originalObserver;
+      if (originalClient) Object.defineProperty(HTMLElement.prototype, "clientWidth", originalClient);
+      if (originalScroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", originalScroll);
+    }
+  }
+
+  it("gives way one rung at a time: captions, then chips, then summaries, then the overflow menu", () => {
+    withModelledLayout(setWidth => {
       const core = makeCore();
+      core.dispatch({ type: "rowGroupSet", colIds: groupColIds(core, ["region", "country"]) });
       const root = document.createElement("div");
       document.body.appendChild(root);
       const exportCSV = vi.fn();
@@ -136,7 +220,7 @@ describe("GridToolbarRenderer", () => {
         api: new GridAPI(core),
         root,
         menuRenderer: new MenuRenderer(root),
-        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        options: { grouping: true, sorting: true, quickFilter: true, export: true, views: true },
         exportCSV,
         exportExcel: vi.fn(),
       });
@@ -144,24 +228,65 @@ describe("GridToolbarRenderer", () => {
       const openColumns = vi.fn();
       columns.addEventListener("click", openColumns);
       toolbar.mountColumnTrigger(columns);
-      const toolbarEl = root.querySelector(".pte-grid-toolbar")!;
+      const bar = root.querySelector<HTMLElement>(".pte-grid-toolbar")!;
+      const groupSection = root.querySelector<HTMLElement>(".pte-grid-toolbar-group-section")!;
+      const displaced = (selector: string) =>
+        root.querySelector(selector)!.classList.contains("pte-bar-displaced");
 
-      notifyWidth!(900);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(false);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(false);
+      setWidth(1400);
+      expect(bar.classList.contains("pte-grid-toolbar-compact")).toBe(false);
+      expect(bar.classList.contains("pte-grid-toolbar-has-overflow")).toBe(false);
+      expect(displaced(".pte-grid-toolbar-chip-more")).toBe(true);
 
-      notifyWidth!(700);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(true);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(false);
+      // Cheapest rung first: every caption at once, and no control has moved or folded.
+      setWidth(780);
+      expect(bar.classList.contains("pte-grid-toolbar-compact")).toBe(true);
+      expect(displaced(".pte-grid-toolbar-chip-more")).toBe(true);
+      expect(bar.classList.contains("pte-grid-toolbar-has-overflow")).toBe(false);
 
-      notifyWidth!(480);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-overflow")).toBe(true);
-      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
-      root.querySelector<HTMLButtonElement>(
-        '.pte-menu-item[data-item-id="toolbarMoreColumns"]',
-      )!.click();
-      expect(openColumns).toHaveBeenCalledTimes(1);
+      // The search box gives up its slack width before any chip folds: narrowing a field the user
+      // can still read and type in costs less than hiding the name of a grouped column.
+      setWidth(700);
+      expect(root.querySelector(".pte-grid-toolbar-quick-filter")!
+        .classList.contains("pte-bar-qf-compact")).toBe(true);
+      expect(displaced(".pte-grid-toolbar-chip-more")).toBe(true);
+      expect(groupSection.querySelectorAll(
+        ".pte-grid-toolbar-group-chip:not(.pte-bar-displaced)",
+      ).length).toBe(2);
 
+      // Then chips fold into a `+N` rather than being squeezed to nothing — one at a time.
+      setWidth(620);
+      expect(root.querySelector(".pte-grid-toolbar-chip-more")!.textContent).toBe("+1");
+      expect(groupSection.querySelectorAll(
+        ".pte-grid-toolbar-group-chip:not(.pte-bar-displaced)",
+      ).length).toBe(1);
+
+      setWidth(560);
+      expect(root.querySelector(".pte-grid-toolbar-chip-more")!.textContent).toBe("+2");
+      expect(groupSection.querySelectorAll(
+        ".pte-grid-toolbar-group-chip:not(.pte-bar-displaced)",
+      ).length).toBe(0);
+      expect(bar.classList.contains("pte-grid-toolbar-has-overflow")).toBe(false);
+
+      // Then whole sections become summary buttons that still carry their state — and still with
+      // nothing displaced: the overflow button's own width is counted from the rung that fills it,
+      // so the bar never ends a pass overflowing by the button it just revealed.
+      setWidth(440);
+      expect(groupSection.classList.contains("pte-bar-section-summary")).toBe(true);
+      expect(root.querySelector(".pte-grid-toolbar-section-summary")!.textContent)
+        .toBe("Grouped by 2");
+
+      // Only then do controls leave the bar, Export before Columns.
+      setWidth(200);
+      expect(bar.classList.contains("pte-grid-toolbar-has-overflow")).toBe(true);
+      expect(displaced(".pte-grid-toolbar-export-button")).toBe(true);
+      expect(columns.classList.contains("pte-bar-displaced")).toBe(false);
+
+      // And the dot says the state that went with them is still in force.
+      expect(root.querySelector(".pte-grid-toolbar-more-button")!
+        .classList.contains("pte-grid-toolbar-more-active")).toBe(true);
+
+      // Everything in the menu is still reachable from it.
       root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
       root.querySelector<HTMLButtonElement>(
         '.pte-menu-item[data-item-id="toolbarMoreExport"]',
@@ -171,13 +296,274 @@ describe("GridToolbarRenderer", () => {
       )!.click();
       expect(exportCSV).toHaveBeenCalledWith({ scope: "all" });
 
-      notifyWidth!(800);
-      expect(toolbarEl.classList.contains("pte-grid-toolbar-compact")).toBe(false);
+      // Growing back restores every rung.
+      setWidth(1400);
+      expect(bar.classList.contains("pte-grid-toolbar-compact")).toBe(false);
+      expect(bar.classList.contains("pte-grid-toolbar-has-overflow")).toBe(false);
+      expect(groupSection.classList.contains("pte-bar-section-summary")).toBe(false);
+      expect(displaced(".pte-grid-toolbar-export-button")).toBe(false);
+
       toolbar.destroy();
       root.remove();
-    } finally {
-      globalThis.ResizeObserver = originalResizeObserver;
-    }
+    });
+  });
+
+  it("scrolls rather than clipping once every rung has been applied", () => {
+    withModelledLayout(setWidth => {
+      const core = makeCore();
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const toolbar = new GridToolbarRenderer({
+        core,
+        api: new GridAPI(core),
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV: vi.fn(),
+        exportExcel: vi.fn(),
+      });
+      const bar = root.querySelector<HTMLElement>(".pte-grid-toolbar")!;
+
+      setWidth(300);
+      expect(bar.classList.contains("pte-grid-toolbar-scrolling")).toBe(false);
+
+      setWidth(30);
+      expect(bar.classList.contains("pte-grid-toolbar-scrolling")).toBe(true);
+
+      setWidth(1400);
+      expect(bar.classList.contains("pte-grid-toolbar-scrolling")).toBe(false);
+
+      toolbar.destroy();
+      root.remove();
+    });
+  });
+
+  it("edits grouping from the summary button's editor, which survives its own edits", () => {
+    withModelledLayout(setWidth => {
+      const core = makeCore();
+      core.dispatch({ type: "rowGroupSet", colIds: groupColIds(core, ["region", "country"]) });
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const toolbar = new GridToolbarRenderer({
+        core,
+        api: new GridAPI(core),
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV: vi.fn(),
+        exportExcel: vi.fn(),
+      });
+      const groupSection = root.querySelector<HTMLElement>(".pte-grid-toolbar-group-section")!;
+
+      setWidth(420);
+      expect(groupSection.classList.contains("pte-bar-section-summary")).toBe(true);
+      const summary = groupSection.querySelector<HTMLButtonElement>(
+        ".pte-grid-toolbar-section-summary",
+      )!;
+      expect(summary.textContent).toBe("Grouped by 2");
+
+      summary.click();
+      const editor = () => root.querySelector<HTMLElement>(".pte-grid-toolbar-chip-editor");
+      expect(editor()).not.toBeNull();
+      expect(editor()!.querySelectorAll(".pte-grid-toolbar-group-chip")).toHaveLength(2);
+
+      // Removing a chip from inside the editor changes what is displaced, which moves the anchors
+      // menus hang from — but the editor follows its own anchor rather than closing, so a second
+      // chip can be removed without reopening it.
+      editor()!.querySelector<HTMLButtonElement>(".pte-grid-toolbar-group-remove")!.click();
+      expect(core.getRowGroupColumns()).toHaveLength(1);
+      expect(editor()).not.toBeNull();
+      expect(editor()!.querySelectorAll(".pte-grid-toolbar-group-chip")).toHaveLength(1);
+
+      editor()!.querySelector<HTMLButtonElement>(".pte-grid-toolbar-group-remove")!.click();
+      expect(core.getRowGroupColumns()).toHaveLength(0);
+
+      toolbar.destroy();
+      root.remove();
+    });
+  });
+
+  it("names the displaced sections in the overflow menu, sort with its own direction", () => {
+    withModelledLayout(setWidth => {
+      const core = makeCore();
+      core.dispatch({ type: "rowGroupSet", colIds: groupColIds(core, ["region"]) });
+      const year = core.getColumnModel().getByColId("year")!;
+      core.dispatch({
+        type: "sortModelSet",
+        sortItems: [{ key: year.instanceID, dir: "desc" }],
+      });
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const toolbar = new GridToolbarRenderer({
+        core,
+        api: new GridAPI(core),
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV: vi.fn(),
+        exportExcel: vi.fn(),
+      });
+
+      setWidth(120);
+      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
+      const iconOf = (itemId: string) => root
+        .querySelector(`.pte-menu-item[data-item-id="${itemId}"] .pte-menu-item-icon-left`)!
+        .className;
+
+      expect(iconOf("toolbarMoreGroup")).toContain("icon-group");
+      // A descending sort reads `icon-desc`. Both classes have to be ones the stylesheet defines:
+      // `icon-sort-asc` matched no rule, so the row drew an empty icon slot.
+      expect(iconOf("toolbarMoreSort")).toContain("icon-desc");
+
+      root.querySelector<HTMLButtonElement>(
+        '.pte-menu-item[data-item-id="toolbarMoreSort"]',
+      )!.click();
+      // Ascending once the direction flips back.
+      core.dispatch({
+        type: "sortModelSet",
+        sortItems: [{ key: year.instanceID, dir: "asc" }],
+      });
+      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-more-button")!.click();
+      expect(iconOf("toolbarMoreSort")).toContain("icon-asc");
+
+      toolbar.destroy();
+      root.remove();
+    });
+  });
+
+  /**
+   * At its last stage the search box is an icon that expands over the bar, because at that width
+   * there is no room to show the field inline. Every mechanism around it used to close it again: the
+   * reset at the top of each pass cleared the expansion, the pinning rule refused the very stage the
+   * overlay hangs from, and the engine offered focus a new home outside the field it had collapsed.
+   */
+  it("keeps the icon's expanded search open across a fit pass, until focus leaves it", () => {
+    withModelledLayout(setWidth => {
+      const core = makeCore();
+      core.dispatch({ type: "rowGroupSet", colIds: groupColIds(core, ["region"]) });
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const toolbar = new GridToolbarRenderer({
+        core,
+        api: new GridAPI(core),
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV: vi.fn(),
+        exportExcel: vi.fn(),
+      });
+      const host = root.querySelector<HTMLElement>(".pte-grid-toolbar-quick-filter")!;
+      // The toolbar owns the host; the widget itself is mounted into it by the grid renderer, so
+      // stand its field in here — the expansion is about where focus goes and stays.
+      const field = document.createElement("input");
+      field.className = "pte-quick-filter-input";
+      host.appendChild(field);
+      const input = () => host.querySelector<HTMLInputElement>(".pte-quick-filter-input")!;
+
+      setWidth(120);
+      expect(host.classList.contains("pte-bar-qf-summary")).toBe(true);
+      expect(host.classList.contains("pte-bar-qf-expanded")).toBe(false);
+
+      root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-quick-filter-trigger")!.click();
+      expect(host.classList.contains("pte-bar-qf-expanded")).toBe(true);
+      expect(document.activeElement).toBe(input());
+
+      // The pass that focus itself provokes must leave both the overlay and the focus in place.
+      setWidth(120);
+      expect(host.classList.contains("pte-bar-qf-summary")).toBe(true);
+      expect(host.classList.contains("pte-bar-qf-expanded")).toBe(true);
+      expect(document.activeElement).toBe(input());
+
+      // Focus leaving takes the expansion with it, so a later narrowing shows the icon rather than
+      // reopening the overlay on its own.
+      const outside = document.createElement("button");
+      root.appendChild(outside);
+      outside.focus();
+      expect(host.classList.contains("pte-bar-qf-expanded")).toBe(false);
+      setWidth(120);
+      expect(host.classList.contains("pte-bar-qf-expanded")).toBe(false);
+
+      toolbar.destroy();
+      root.remove();
+    });
+  });
+
+  it("leaves a control alone while it holds focus, and takes the next rung instead", () => {
+    withModelledLayout(setWidth => {
+      const core = makeCore();
+      core.dispatch({ type: "rowGroupSet", colIds: groupColIds(core, ["region"]) });
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      const toolbar = new GridToolbarRenderer({
+        core,
+        api: new GridAPI(core),
+        root,
+        menuRenderer: new MenuRenderer(root),
+        options: { grouping: true, sorting: true, quickFilter: true, export: true },
+        exportCSV: vi.fn(),
+        exportExcel: vi.fn(),
+      });
+      const groupSection = root.querySelector<HTMLElement>(".pte-grid-toolbar-group-section")!;
+      const sortSection = root.querySelector<HTMLElement>(".pte-grid-toolbar-sort-section")!;
+
+      setWidth(420);
+      expect(groupSection.classList.contains("pte-bar-section-summary")).toBe(true);
+
+      // A chip the user is holding stays put, so the pass takes the rungs past it instead — far
+      // enough that the sort section leaves the bar altogether.
+      setWidth(1400);
+      root.querySelector<HTMLElement>(".pte-grid-toolbar-group-chip")!.focus();
+      setWidth(420);
+      expect(groupSection.classList.contains("pte-bar-section-summary")).toBe(false);
+      expect(groupSection.classList.contains("pte-bar-displaced")).toBe(false);
+      expect(sortSection.classList.contains("pte-bar-displaced")).toBe(true);
+
+      toolbar.destroy();
+      root.remove();
+    });
+  });
+
+  /**
+   * The bar's spare width has to belong to something, or it collects between the two regions as a
+   * hole — blank space sitting there while the controls beside it are collapsed, which is what a
+   * bar that had already spent rungs looked like.
+   */
+  it("hands leftover width to the search field, or to the last chip section without one", () => {
+    const core = makeCore();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const toolbar = new GridToolbarRenderer({
+      core,
+      api: new GridAPI(core),
+      root,
+      menuRenderer: new MenuRenderer(root),
+      options: { grouping: true, sorting: true, quickFilter: true },
+      exportCSV: vi.fn(),
+      exportExcel: vi.fn(),
+    });
+    const elastic = () => root.querySelector(".pte-bar-elastic");
+    const bar = () => root.querySelector<HTMLElement>(".pte-grid-toolbar")!;
+
+    // The search field is the one control that is better wide.
+    expect(elastic()).toBe(root.querySelector(".pte-grid-toolbar-quick-filter"));
+    expect(bar().classList.contains("pte-grid-toolbar-elastic-left")).toBe(false);
+
+    // Without one, the last chip section takes it instead — the slack becomes drop zone.
+    toolbar.setOptions({ grouping: true, sorting: true });
+    expect(elastic()).toBe(root.querySelector(".pte-grid-toolbar-sort-section"));
+    expect(bar().classList.contains("pte-grid-toolbar-elastic-left")).toBe(true);
+
+    toolbar.setOptions({ grouping: true });
+    expect(elastic()).toBe(root.querySelector(".pte-grid-toolbar-group-section"));
+
+    // And it moves back the moment there is a field again: exactly one control is ever elastic.
+    toolbar.setOptions({ grouping: true, quickFilter: true });
+    expect(root.querySelectorAll(".pte-bar-elastic")).toHaveLength(1);
+    expect(elastic()).toBe(root.querySelector(".pte-grid-toolbar-quick-filter"));
+    expect(bar().classList.contains("pte-grid-toolbar-elastic-left")).toBe(false);
+
+    toolbar.destroy();
+    root.remove();
   });
 
   it("mounts only for opted-in sections and reconciles them live", () => {
@@ -199,9 +585,6 @@ describe("GridToolbarRenderer", () => {
     expect(root.querySelector(".pte-grid-toolbar-group-section")).not.toBeNull();
     expect(root.querySelector(".pte-grid-toolbar-sort-section")).toBeNull();
     expect(root.querySelector(".pte-grid-toolbar-export-button")).toBeNull();
-    expect(
-      root.querySelector<HTMLElement>(".pte-grid-toolbar-left")!.style.gridTemplateColumns,
-    ).toContain("repeat(1");
 
     toolbar.setOptions({ sorting: true, export: true });
     expect(root.querySelector(".pte-grid-toolbar-group-section")).toBeNull();
@@ -215,11 +598,11 @@ describe("GridToolbarRenderer", () => {
     columns.textContent = "Columns";
     toolbar.mountColumnTrigger(columns);
     expect(root.querySelector(".pte-grid-toolbar")).not.toBeNull();
-    expect(root.querySelector(".pte-grid-toolbar-right")?.lastElementChild).toBe(columns);
+    expect(controls(root.querySelector(".pte-grid-toolbar-right")!).at(-1)).toBe(columns);
 
     toolbar.setOptions({ export: true });
     expect(root.querySelector(".pte-grid-toolbar-export-button")).not.toBeNull();
-    expect(root.querySelector(".pte-grid-toolbar-right")?.lastElementChild).toBe(columns);
+    expect(controls(root.querySelector(".pte-grid-toolbar-right")!).at(-1)).toBe(columns);
 
     toolbar.setOptions(undefined);
     expect(root.querySelector(".pte-grid-toolbar")).not.toBeNull();
@@ -251,7 +634,7 @@ describe("GridToolbarRenderer", () => {
     toolbar.mountColumnTrigger(columns);
 
     const right = root.querySelector(".pte-grid-toolbar-right")!;
-    expect(right.lastElementChild).toBe(columns);
+    expect(controls(right).at(-1)).toBe(columns);
     const exportButton = root.querySelector<HTMLButtonElement>(".pte-grid-toolbar-export-button")!;
     exportButton.click();
     expect(root.querySelector(

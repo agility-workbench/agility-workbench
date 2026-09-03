@@ -1,4 +1,6 @@
-import { ColumnType, createGrid, type ColDef } from "@grid";
+import {
+  AggregateType, ColumnType, createGrid, type ColDef, type GridSheet,
+} from "@grid";
 
 import { btn, demoRoot, h, note } from "../dom";
 
@@ -11,7 +13,7 @@ type Row = {
   revenue: number;
 };
 
-const WIDTH_PRESETS = [900, 700, 480, 360] as const;
+const WIDTH_PRESETS = [1100, 900, 700, 560, 480, 360] as const;
 
 function buildRows(): Row[] {
   return Array.from({ length: 80 }, (_, index) => ({
@@ -35,6 +37,14 @@ const COLUMNS: ColDef[] = [
 export function mountResponsiveToolbarDemo(container: HTMLElement): () => void {
   const widthLabel = h("code", { text: "900px", style: { marginLeft: "auto", fontSize: "12px" } });
 
+  // Sheets are application-owned, but the strip updates itself optimistically before reporting,
+  // so keeping the list this demo is handed back is all it takes to stay in sync.
+  let sheets: GridSheet[] = [
+    { id: "data", name: "Data" },
+    { id: "pipeline", name: "Pipeline" },
+  ];
+  let activeSheetId: string | null = "data";
+
   const frame = h("div", {
     style: {
       width: "900px", maxWidth: "100%", minWidth: "340px", height: "100%", minHeight: "440px",
@@ -47,7 +57,7 @@ export function mountResponsiveToolbarDemo(container: HTMLElement): () => void {
 
   container.appendChild(demoRoot(
     h("div", { style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" } },
-      h("strong", { text: "Resizable toolbar", style: { fontSize: "13px" } }),
+      h("strong", { text: "Resizable toolbar and footer", style: { fontSize: "13px" } }),
       h("span", {
         text: "Drag the container’s bottom-right resize handle, or choose a preset:",
         style: { fontSize: "12px", color: "#6b7280" },
@@ -59,8 +69,18 @@ export function mountResponsiveToolbarDemo(container: HTMLElement): () => void {
       widthLabel,
     ),
     note(
-      "Full labels become icon-only controls as space tightens. At the narrowest width, Export and"
-      + " Columns move into the More menu while grouping, sorting, and quick filter remain available.",
+      "Toolbar: captions first, then the search field gives up its slack width, then chip lists"
+      + " fold into a +N, then Grouped by / Sort by become summary buttons that still open the full"
+      + " editor, then the least important controls move into the overflow menu — Columns last."
+      + " Whatever room the last rung leaves over goes to the search field, so the bar never sits"
+      + " with a hole in it.",
+    ),
+    note(
+      "Footer, on its own ladder: captions, then the redundant first/last page buttons go (the page"
+      + " picker already reaches any page), then rows-per-page, the aggregate scope and the sheet"
+      + " strip's + move into the footer's own ⋮ — which wears a dot while aggregation is on behind"
+      + " it. Page navigation never gives way. Nothing ever overlaps in either bar, and a bar out of"
+      + " rungs scrolls rather than clipping.",
     ),
     h("div", { style: { flex: "1", minHeight: "0", overflow: "auto" } }, frame),
   ));
@@ -75,6 +95,16 @@ export function mountResponsiveToolbarDemo(container: HTMLElement): () => void {
     allowExportAsCSV: true,
     allowExportAsExcel: true,
     groupDefaultExpanded: 1,
+    // The footer at its richest: every page control, a live aggregate scope select, and a sheet
+    // strip with its "+" — so all of its rungs have something to give way.
+    pagination: true,
+    pageSize: 25,
+    sheets: {
+      sheets,
+      activeSheetId,
+      onChange: (next) => { sheets = next; },
+      onActiveSheetChange: (sheetId) => { activeSheetId = sheetId; },
+    },
   });
 
   const model = api.getColumnModel();
@@ -83,6 +113,12 @@ export function mountResponsiveToolbarDemo(container: HTMLElement): () => void {
   if (region) api.dispatch({ type: "rowGroupSet", colIds: [region.instanceID] });
   if (revenue) {
     api.dispatch({ type: "sortModelSet", sortItems: [{ key: revenue.instanceID, dir: "desc" }] });
+    // An aggregate the footer is actually running, so the scope select is live rather than
+    // disabled — and so the overflow button has a reason to show its dot once it is displaced.
+    api.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
+    });
   }
 
   // Report the frame's own border-box width so the readout tracks a manual drag too.

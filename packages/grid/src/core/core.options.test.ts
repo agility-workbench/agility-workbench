@@ -120,6 +120,7 @@ describe("paginationControls resolution", () => {
     expect(resolved().paginationControls).toEqual({
       pageSelection: "select",
       showPageLabel: true,
+      responsive: "collapse",
       controls: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
       maxPageButtons: 7,
     });
@@ -135,6 +136,7 @@ describe("paginationControls resolution", () => {
       },
     }).paginationControls).toEqual({
       pageSelection: "buttons",
+      responsive: "collapse",
       showPageLabel: false,
       controls: ["nextPage", "pageSelector", "pageSize"],
       maxPageButtons: 3,

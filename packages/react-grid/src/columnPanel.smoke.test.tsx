@@ -483,7 +483,11 @@ describe("column panel", () => {
     if (trigger === "toolbar") {
       const exportButton = parent.querySelector<HTMLButtonElement>(".pte-grid-toolbar-export-button");
       expect(exportButton).toBeNull();
-      expect(parent.lastElementChild).toBe(triggerButton);
+      // Last of the controls. The bar's overflow button sits after it and is always mounted, since
+      // what it holds is decided by a fit pass measuring the bar it is part of.
+      const controls = Array.from(parent.children)
+        .filter(child => !child.classList.contains("pte-grid-toolbar-more-button"));
+      expect(controls.at(-1)).toBe(triggerButton);
     }
     expect(container.querySelector(".pte-root")!.classList.contains(`pte-column-panel-trigger-${trigger}`))
       .toBe(true);

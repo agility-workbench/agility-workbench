@@ -281,6 +281,10 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       featureProps = {
         pagination: true,
         pageSize: 15,
+        // A trimmed page nav, so all three footer zones fit this frame with their labels showing —
+        // the tab strip is what this page is about, and the footer goes compact (labels hidden) once
+        // the zones crowd it. The full control set is on the Client-side data page.
+        paginationControls: { controls: ["previousPage", "pageSelector", "nextPage"] },
         groupDefaultExpanded: 1,
         toolbar: { pivot: true },
         sheets: {

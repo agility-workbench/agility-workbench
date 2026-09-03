@@ -3,14 +3,18 @@ import {
   ElementRef,
   OnDestroy,
   afterNextRender,
+  computed,
   signal,
   viewChild,
 } from "@angular/core";
 import {
+  AggregateType,
   AwbGrid,
   ColumnType,
+  type GridSheet,
   type IGridAPI,
   type NgColDef,
+  type SheetsOptions,
 } from "@agility-workbench/angular-grid";
 
 type Row = {
@@ -22,7 +26,7 @@ type Row = {
   revenue: number;
 };
 
-const WIDTH_PRESETS = [900, 700, 480, 360] as const;
+const WIDTH_PRESETS = [1100, 900, 700, 560, 480, 360] as const;
 
 function buildRows(): Row[] {
   return Array.from({ length: 80 }, (_, index) => ({
@@ -41,7 +45,7 @@ function buildRows(): Row[] {
   imports: [AwbGrid],
   template: `
     <div class="preset-row">
-      <strong class="preset-title">Resizable toolbar</strong>
+      <strong class="preset-title">Resizable toolbar and footer</strong>
       <span class="preset-sub">
         Drag the container’s bottom-right resize handle, or choose a preset:
       </span>
@@ -52,8 +56,19 @@ function buildRows(): Row[] {
     </div>
 
     <p class="hint">
-      Full labels become icon-only controls as space tightens. At the narrowest width, Export and
-      Columns move into the More menu while grouping, sorting, and quick filter remain available.
+      Toolbar: captions first, then the search field gives up its slack width, then chip lists
+      fold into a <code>+N</code>, then Grouped by / Sort by become summary buttons that still
+      open the full editor, then the least important controls move into the overflow menu —
+      Columns last. Whatever room the last rung leaves over goes to the search field, so the bar
+      never sits with a hole in it.
+    </p>
+
+    <p class="hint">
+      Footer, on its own ladder: captions, then the redundant first/last page buttons go (the page
+      picker already reaches any page), then rows-per-page, the aggregate scope and the sheet
+      strip's <code>+</code> move into the footer's own <code>&#8942;</code> — which wears a dot
+      while aggregation is on behind it. Page navigation never gives way. Nothing ever overlaps in
+      either bar, and a bar out of rungs scrolls rather than clipping.
     </p>
 
     <div class="resize-outer">
@@ -68,6 +83,9 @@ function buildRows(): Row[] {
           [allowExportAsCSV]="true"
           [allowExportAsExcel]="true"
           [groupDefaultExpanded]="1"
+          [pagination]="true"
+          [pageSize]="25"
+          [sheets]="sheetsOptions()"
           (gridReady)="onReady($event)"
         />
       </div>
@@ -129,6 +147,23 @@ export class ResponsiveToolbarDemoComponent implements OnDestroy {
   readonly presets = WIDTH_PRESETS;
   readonly width = signal(900);
 
+  // Sheets are application-owned, but the strip updates itself optimistically before reporting,
+  // so keeping the list this demo is handed back is all it takes to stay in sync.
+  readonly sheets = signal<GridSheet[]>([
+    { id: "data", name: "Data" },
+    { id: "pipeline", name: "Pipeline" },
+  ]);
+  readonly activeSheetId = signal<string | null>("data");
+
+  // The footer at its richest: every page control, a live aggregate scope select, and a sheet
+  // strip with its "+" — so all of its rungs have something to give way.
+  readonly sheetsOptions = computed<SheetsOptions>(() => ({
+    sheets: this.sheets(),
+    activeSheetId: this.activeSheetId(),
+    onChange: (next) => this.sheets.set(next),
+    onActiveSheetChange: (sheetId) => this.activeSheetId.set(sheetId),
+  }));
+
   readonly columnDefs: NgColDef[] = [
     { colId: "region", key: "region", label: "Region", width: 130 },
     { colId: "product", key: "product", label: "Product", width: 140 },
@@ -174,6 +209,12 @@ export class ResponsiveToolbarDemoComponent implements OnDestroy {
       api.dispatch({
         type: "sortModelSet",
         sortItems: [{ key: revenue.instanceID, dir: "desc" }],
+      });
+      // An aggregate the footer is actually running, so the scope select is live rather than
+      // disabled — and so the overflow button has a reason to show its dot once it is displaced.
+      api.dispatch({
+        type: "aggregateModelSet",
+        aggregateModels: [{ key: revenue.instanceID, type: AggregateType.SUM }],
       });
     }
   }

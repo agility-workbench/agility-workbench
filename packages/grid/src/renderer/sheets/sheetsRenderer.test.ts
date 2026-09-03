@@ -164,6 +164,56 @@ describe("sheets tab strip", () => {
     expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 2"]);
   });
 
+  /**
+   * The strip scrolls sideways, but a mouse wheel only ever reports `deltaY` and the browser sends
+   * that to the nearest vertical scroller — the grid body. So the tabs behind the strip's own
+   * overflow fade were unreachable to anyone without a trackpad.
+   */
+  it("scrolls the tab strip with a vertical wheel, and only while it can move", () => {
+    const { host } = makeGrid({ sheets: [{ id: "a", name: "Alpha" }, { id: "b", name: "Beta" }] });
+    const strip = host.querySelector<HTMLElement>(".pte-sheet-tabs")!;
+    // happy-dom has no layout: model a strip showing 100px of 260px of tabs.
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 260 });
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 100 });
+    strip.scrollLeft = 0;
+
+    const wheel = (init: WheelEventInit) => {
+      const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
+      strip.dispatchEvent(event);
+      return event;
+    };
+
+    // A vertical wheel becomes a horizontal scroll, and the event is claimed so the page does not
+    // also move.
+    const down = wheel({ deltaY: 120 });
+    expect(strip.scrollLeft).toBe(120);
+    expect(down.defaultPrevented).toBe(true);
+
+    // Past the end it clamps, and at the end it stops claiming the wheel: scrolling out of the
+    // strip has to keep working.
+    wheel({ deltaY: 120 });
+    expect(strip.scrollLeft).toBe(160);
+    const spent = wheel({ deltaY: 120 });
+    expect(strip.scrollLeft).toBe(160);
+    expect(spent.defaultPrevented).toBe(false);
+
+    // And back the other way.
+    const up = wheel({ deltaY: -400 });
+    expect(strip.scrollLeft).toBe(0);
+    expect(up.defaultPrevented).toBe(true);
+  });
+
+  it("leaves the wheel alone on a strip with nothing to scroll", () => {
+    const { host } = makeGrid({ sheets: [{ id: "a", name: "Alpha" }] });
+    const strip = host.querySelector<HTMLElement>(".pte-sheet-tabs")!;
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 100 });
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 100 });
+
+    const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+    strip.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   // The + button makes a PIVOT sheet, and pivot is client-side-only (see IGridCore.isPivotSupported).
   describe("on a grid that cannot pivot", () => {
     const addButton = (host: HTMLElement) =>

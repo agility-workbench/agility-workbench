@@ -128,12 +128,16 @@ describe("toolbar options", () => {
     expect(container.querySelectorAll(".pte-quick-filter")).toHaveLength(1);
     expect(toolbar.querySelector(".pte-quick-filter-anchor-select")).toBeNull();
 
+    // The bar's overflow button is always mounted, and always last: what it holds is decided by a
+    // fit pass, and a pass measures the bar the button is already part of.
     const rightChildren = Array.from(toolbar.querySelector(".pte-grid-toolbar-right")!.children);
     expect(rightChildren.map(child => child.className)).toEqual([
-      "pte-grid-toolbar-quick-filter",
+      // The quick filter is also the bar's elastic control — it takes whatever width the fit pass
+      // leaves over, so the bar has no hole in it.
+      "pte-grid-toolbar-quick-filter pte-bar-elastic",
       "pte-grid-toolbar-export-button",
-      "pte-grid-toolbar-more-button",
       expect.stringContaining("pte-column-panel-trigger-toolbar-button"),
+      "pte-grid-toolbar-more-button",
     ]);
 
     toolbarFilter!.value = "acme";

@@ -66,6 +66,10 @@
   --pte-icon-not-allowed: url(icons/not-allowed.svg);
   --pte-icon-filter: url(icons/filter.svg);
   --pte-icon-menu: url(icons/menu-vertical.svg);
+  /* Search options. Deliberately NOT the vertical-dots menu glyph: that is the bars' overflow
+     affordance, and two identical ⋮ buttons side by side in a narrow toolbar read as one control
+     duplicated rather than two different ones. */
+  --pte-icon-search-options: url(icons/search-options.svg);
   --pte-icon-pin: url(icons/pin.svg);
   --pte-icon-copy: url(icons/copy.svg);
   --pte-icon-cut: url(icons/cut.svg);
@@ -616,37 +620,49 @@
   flex: 0 0 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* flex-start, not space-between: the right-hand region is pushed over by its own auto margin,
+     and on overflow `scrollWidth` only counts what spills past the inline END — which is what
+     ResponsiveBar measures to decide whether the controls fit. */
+  justify-content: flex-start;
   border-bottom: 1px solid var(--pte-frame-border-color);
   background: var(--pte-surface-bg-color);
 }
 
+/* Last resort, once every rung of the ladder has been applied and the controls still do not fit.
+   Reached only with the quick filter already collapsed to its icon, so no popover of the bar's own
+   is open inside the scroll container to be clipped by it. */
+.pte-grid-toolbar-scrolling {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pte-grid-toolbar-scrolling::-webkit-scrollbar {
+  height: 0;
+}
+
+/* The grouping and sorting sections. Content-sized rather than two equal tracks: 1fr columns split
+   the bar 50/50 however full each section was, and a grid item overflows its track — which is how
+   "Grouped by" came to print on top of "Sort by". Nothing here clips, either: the bar's own
+   `scrollWidth` has to see the overflow for ResponsiveBar to know the controls do not fit. */
 .pte-grid-toolbar-left {
-  min-width: 0;
   align-self: stretch;
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  overflow: hidden;
 }
 
 .pte-grid-toolbar-group-section,
 .pte-grid-toolbar-sort-section {
   position: relative;
-  min-width: 0;
   align-self: stretch;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.pte-grid-toolbar-group-section {
-  width: 100%;
-}
-
 .pte-grid-toolbar-sort-section {
-  width: 100%;
   box-sizing: border-box;
 }
 
@@ -674,11 +690,9 @@
 
 .pte-grid-toolbar-group-list,
 .pte-grid-toolbar-sort-list {
-  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: hidden;
 }
 
 .pte-grid-toolbar-group-chip,
@@ -763,8 +777,14 @@
   line-height: 1;
 }
 
+/* A chip label has a floor and a ceiling. Without the floor it collapsed to nothing and a chip
+   rendered as a bare handle and an ×; without the ceiling one very long column name could push the
+   whole bar into scrolling on its own. Between them, chips give way by *count* — the ladder folds
+   the ones that do not fit into a `+N` — never by squeezing every label at once. */
 .pte-grid-toolbar-group-chip-label,
 .pte-grid-toolbar-sort-chip-label {
+  min-width: 3ch;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -799,7 +819,7 @@
 .pte-grid-toolbar-sort-add {
   height: 100%;
   min-width: 48px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   padding: 0 0 0 8px;
   border: 0;
   border-radius: 0;
@@ -893,11 +913,63 @@
   mask-position: center;
 }
 
+/* The right-hand region. It GROWS into the bar's spare width rather than being pushed over to the
+   end by an auto margin: an auto margin swallows every spare pixel before `flex-grow` is offered
+   any, so nothing inside could ever take the leftover and the bar always kept a hole in the middle.
+   Growing instead hands that space to whichever control is marked elastic (see
+   `markElasticSection`), and `justify-content: flex-end` keeps the buttons on the end for the cases
+   where nothing in here can use it — the quick filter collapsed to its icon, or absent.
+
+   Grow, never shrink, and floored at its content: a region that could shrink would compress its
+   controls into each other and report to ResponsiveBar that they all fit. */
 .pte-grid-toolbar-right {
   height: 100%;
-  margin-left: auto;
+  flex: 1 0 auto;
+  min-width: max-content;
   display: flex;
   align-items: stretch;
+  justify-content: flex-end;
+}
+
+/* With no quick filter to widen, the growth moves to the left region so its last chip section can
+   take the slack instead; the right region then sits at the end on its own content width. */
+.pte-grid-toolbar-elastic-left > .pte-grid-toolbar-left {
+  flex-grow: 1;
+}
+
+.pte-grid-toolbar-elastic-left > .pte-grid-toolbar-right {
+  flex-grow: 0;
+}
+
+/* The nominated control takes the leftover width. On the quick filter the growth has to reach the
+   input itself, so every wrapper between the two grows with it.
+
+   Each selector names its element as well as the marker: the base rules that set `flex: 0 0 auto`
+   on these three are single-class too, so a marker on its own would be decided by which rule came
+   later in the file. */
+.pte-grid-toolbar-group-section.pte-bar-elastic,
+.pte-grid-toolbar-sort-section.pte-bar-elastic,
+.pte-grid-toolbar-quick-filter.pte-bar-elastic {
+  flex-grow: 1;
+}
+
+.pte-grid-toolbar-quick-filter.pte-bar-elastic {
+  /* A search field that keeps growing with the window stops looking like a control. Past the cap
+     the leftover goes back to being a gap, which at that width is unremarkable. */
+  max-width: 420px;
+}
+
+.pte-bar-elastic .pte-quick-filter-toolbar,
+.pte-bar-elastic .pte-quick-filter-row,
+.pte-bar-elastic .pte-quick-filter-field {
+  flex: 1 0 auto;
+  min-width: 0;
+}
+
+/* Collapsed to its icon (or expanded over the bar from it), the quick filter is a 42px button: it
+   has nothing to do with spare width, so it hands the growth back to the buttons beside it. */
+.pte-grid-toolbar-quick-filter.pte-bar-qf-summary {
+  flex-grow: 0;
 }
 
 .pte-grid-toolbar-views-button {
@@ -940,7 +1012,9 @@
 }
 
 .pte-grid-toolbar-quick-filter {
+  position: relative;
   min-width: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   padding: 4px 8px;
@@ -965,9 +1039,15 @@
   min-width: 0;
 }
 
+/* The stage width stays a `width`, so it is what the input contributes to the intrinsic size its
+   ancestors are floored at — an `auto` width here would let the input report its default 20-character
+   size instead, which is wider than the compact stage and made that rung free nothing at all.
+   `flex-grow` then lets the field take whatever the bar has spare above that width; shrink stays 0,
+   because a field that could shrink would hide the bar's overflow from the fit check. */
 .pte-quick-filter-toolbar .pte-quick-filter-input {
   width: 160px;
   min-width: 72px;
+  flex: 1 0 auto;
 }
 
 .pte-quick-filter-toolbar .pte-quick-filter-options-panel {
@@ -1004,6 +1084,7 @@
 }
 
 .pte-grid-toolbar-more-button {
+  position: relative;
   width: 42px;
   min-width: 42px;
   display: none;
@@ -1084,11 +1165,15 @@
   flex: 0 0 16px;
 }
 
-.pte-grid-toolbar-compact .pte-quick-filter-toolbar .pte-quick-filter-input {
-  width: 112px;
-}
+/* Captions rung — the cheapest one, and the only bar-wide presentation: every button caption goes
+   at once, so the bar changes shape once instead of stuttering through five widths. The tooltip
+   registered on each button carries the label it just lost.
 
+   The grouping and sorting *section* captions ("Grouped by", "Sort by") deliberately stay: they are
+   what tells the two chip lists apart, and the sections have their own rungs — a `+N` fold and then
+   a summary button whose text carries the caption instead. */
 .pte-grid-toolbar-compact .pte-grid-toolbar-export-button,
+.pte-grid-toolbar-compact .pte-grid-toolbar-pivot-button,
 .pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button,
 .pte-grid-toolbar-compact .pte-grid-toolbar-views-button {
   min-width: 42px;
@@ -1097,22 +1182,301 @@
 }
 
 .pte-grid-toolbar-compact .pte-grid-toolbar-export-label,
+.pte-grid-toolbar-compact .pte-grid-toolbar-pivot-label,
 .pte-grid-toolbar-compact .pte-column-panel-trigger-toolbar-button .pte-column-panel-trigger-label,
 .pte-grid-toolbar-compact .pte-grid-toolbar-views-label {
   display: none;
 }
 
-.pte-grid-toolbar-overflow .pte-quick-filter-toolbar .pte-quick-filter-input {
-  width: 88px;
+/* Displaced: the control is in the overflow menu, or (`hidden`) genuinely redundant. Not removed
+   from the DOM — a fit pass resets every item to its richest stage before it measures, and moving
+   nodes in and out on every resize would lose focus and event state for nothing. */
+.pte-bar-displaced {
+  display: none !important;
 }
 
-.pte-grid-toolbar-overflow .pte-grid-toolbar-export-button,
-.pte-grid-toolbar-overflow .pte-column-panel-trigger-toolbar-button {
+/* Quick-filter rungs. The input narrows before anything is displaced, and only collapses to an
+   icon at the very bottom of the ladder — and never while it holds focus or a query, which is what
+   `isPinned` refuses. */
+.pte-bar-qf-compact .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: 112px;
+}
+
+/* Summary rung: the search box becomes an icon that expands it back over the bar in place. The
+   widget is never re-parented — it is the same element, the same instance, the same debounce and
+   options state, shown from a different box. Moving it into a popover and back would cost its
+   focus and would leave a fit pass measuring a bar the input had temporarily left. */
+.pte-grid-toolbar-quick-filter.pte-bar-qf-summary > .pte-quick-filter {
   display: none;
 }
 
-.pte-grid-toolbar-overflow .pte-grid-toolbar-more-button {
+/* Expanded from the icon: the field hangs leftwards off the trigger, over the bar, because at this
+   width there is no room to show it inline.
+
+   Positioned against the HOST, which is `position: relative` and exactly the trigger's 42px — so
+   `right: 42px` puts the overlay's right edge on the host's left edge, and `height: 100%` is the
+   bar's height. Making the host `position: static` to "let the overlay escape" instead resolved
+   both against the grid root: a full-height white column down the middle of the grid. */
+.pte-grid-toolbar-quick-filter.pte-bar-qf-summary.pte-bar-qf-expanded > .pte-quick-filter {
+  position: absolute;
+  top: 0;
+  right: 42px;
+  z-index: 3;
+  height: 100%;
   display: inline-flex;
+  /* The widget is a COLUMN flex container (the options panel stacks under the search row), so the
+     row is stretched to the overlay's width rather than centred at its own content width — centring
+     it left the row laid out at 270-odd px inside a capped overlay, which is what pushed the field
+     back off the edge. Vertical centring comes from the main axis instead. */
+  align-items: stretch;
+  justify-content: center;
+  padding: 0 8px;
+  /* The room to the left of the icon, measured by the renderer (`syncQuickFilterOverlayRoom`). An
+     absolutely positioned box is otherwise laid out at its content width — 260-odd px, which on a
+     250px bar hung off the side of the grid where nothing could reach it. */
+  max-width: var(--pte-qf-overlay-room, 320px);
+  background: var(--pte-surface-bg-color);
+  box-shadow: -8px 0 8px -8px rgb(0 0 0 / 25%);
+}
+
+/* Expanded over a bar this narrow, the field's own chrome is what there is no room for: the icon
+   inside it repeats the trigger beside it, and the options popover is an affordance for the widths
+   where the field is inline. Dropping both is what leaves the input itself something to occupy. */
+.pte-bar-qf-expanded .pte-quick-filter-icon,
+.pte-bar-qf-expanded .pte-quick-filter-options {
+  display: none;
+}
+
+.pte-grid-toolbar-quick-filter.pte-bar-qf-summary.pte-bar-qf-expanded > .pte-quick-filter {
+  padding: 0 4px;
+}
+
+/* Inside the overlay the field shrinks to the room it was given. Safe here in a way it never is in
+   the bar itself: the overlay is out of flow, so a shrinking field cannot absorb the bar's overflow
+   and tell ResponsiveBar that everything fits. */
+.pte-bar-qf-expanded .pte-quick-filter-row,
+.pte-bar-qf-expanded .pte-quick-filter-field {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pte-bar-qf-expanded .pte-quick-filter-toolbar .pte-quick-filter-input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pte-grid-toolbar-quick-filter-trigger {
+  position: relative;
+  width: 42px;
+  min-width: 42px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--pte-frame-border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.pte-bar-qf-summary .pte-grid-toolbar-quick-filter-trigger {
+  display: inline-flex;
+}
+
+.pte-grid-toolbar-quick-filter-trigger:hover {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+/* The same glyph the search box itself wears. Masked here rather than through an `.icon-*` class,
+   which is how the widget's other icons do it — the var is what the `icons` option overrides, so
+   the glyph stays replaceable either way. */
+.pte-grid-toolbar-quick-filter-trigger-icon {
+  width: 16px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--pte-icon-filter);
+  background-color: var(--pte-icon-color);
+}
+
+/* At the summary stage the host is only the trigger, so its own inset would double the button's. */
+.pte-grid-toolbar-quick-filter.pte-bar-qf-summary:not(.pte-bar-qf-expanded) {
+  padding: 0;
+}
+
+/* An icon standing in for a search box has to say whether it is filtering anything. */
+.pte-grid-toolbar-quick-filter-trigger.pte-grid-toolbar-quick-filter-active {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-grid-toolbar-quick-filter-trigger.pte-grid-toolbar-quick-filter-active::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pte-hcell-filter-active-color);
+}
+
+/* A chip list that cannot show every chip shows what fits and folds the rest into this, which opens
+   the same editor the summary button does. Styled as a chip so the fold reads as part of the list. */
+.pte-grid-toolbar-chip-more {
+  height: 26px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--pte-frame-border-color);
+  border-radius: 4px;
+  background: var(--pte-root-bg-color);
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pte-grid-toolbar-chip-more:hover,
+.pte-grid-toolbar-chip-more:focus-visible {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  outline: none;
+}
+
+/* Summary rung: one button stands in for a whole section, and still says how much state it holds.
+   It stays a drop target for a column dragged out of the header. */
+.pte-grid-toolbar-section-summary {
+  height: 26px;
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  /* Inset at BOTH ends. The section's other trailing control is the borderless clear button, which
+     can sit flush against the next section's divider without showing it; this one has a border of
+     its own, and a bordered box touching that divider reads as a seam. */
+  margin: 0 8px;
+  padding: 0 8px;
+  border: 1px solid var(--pte-frame-border-color);
+  border-radius: 4px;
+  background: var(--pte-root-bg-color);
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pte-grid-toolbar-section-summary:hover,
+.pte-grid-toolbar-section-summary:focus-visible {
+  background: var(--pte-hover-bg-color);
+  outline: none;
+}
+
+.pte-bar-section-summary .pte-grid-toolbar-section-summary {
+  display: inline-flex;
+}
+
+.pte-bar-section-summary .pte-grid-toolbar-group-label,
+.pte-bar-section-summary .pte-grid-toolbar-sort-label,
+.pte-bar-section-summary .pte-grid-toolbar-group-list,
+.pte-bar-section-summary .pte-grid-toolbar-sort-list,
+.pte-bar-section-summary .pte-grid-toolbar-group-add,
+.pte-bar-section-summary .pte-grid-toolbar-sort-add,
+.pte-bar-section-summary .pte-grid-toolbar-group-clear,
+.pte-bar-section-summary .pte-grid-toolbar-sort-clear {
+  display: none;
+}
+
+/* The chip editor behind a `+N` or a summary button: the same chips, stacked, with the same drag,
+   arrow-key reorder, and remove affordances the bar's own list has. */
+.pte-grid-toolbar-chip-editor {
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.pte-grid-toolbar-chip-editor .pte-grid-toolbar-group-chip,
+.pte-grid-toolbar-chip-editor .pte-grid-toolbar-sort-chip {
+  height: 28px;
+  justify-content: space-between;
+}
+
+.pte-grid-toolbar-chip-editor .pte-grid-toolbar-group-chip-label,
+.pte-grid-toolbar-chip-editor .pte-grid-toolbar-sort-chip-label {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+.pte-grid-toolbar-chip-editor-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The editor's own column. Flex rather than a plain block, because that is what makes the add
+   button below the list stretch to the same width as the chips: a flex item is blockified and
+   stretched on the cross axis, whereas an inline-level button in a block wrapper shrank to its
+   label and read as a stray link under a full-width list. */
+.pte-grid-toolbar-chip-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pte-grid-toolbar-chip-editor-add {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pte-muted-text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.pte-grid-toolbar-chip-editor-add:hover,
+.pte-grid-toolbar-chip-editor-add:focus-visible {
+  background: var(--pte-hover-bg-color);
+  color: var(--pte-text-color);
+  outline: none;
+}
+
+.pte-grid-toolbar-chip-editor-add:disabled {
+  color: var(--pte-muted-text-color);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The bar's overflow menu button, shown only while it holds something. Its dot is how state that
+   has been displaced out of sight still announces itself. */
+.pte-grid-toolbar-has-overflow .pte-grid-toolbar-more-button {
+  display: inline-flex;
+}
+
+.pte-grid-toolbar-more-button.pte-grid-toolbar-more-active::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pte-hcell-filter-active-color);
 }
 
 .pte-grid-toolbar-view-form {
@@ -2136,9 +2500,17 @@
   flex: 0 0 var(--pte-pagination-footer-height);
   flex-direction: row;
   align-items: center;
-  justify-content: end;
+  /* flex-start, not end: the zones already fill the row (both outer ones grow), and when the footer
+     is too narrow for them, `end` would push the overflow off the LEFT edge — tab strip and
+     aggregation label first — instead of leaving it where it can be scrolled to. */
+  justify-content: flex-start;
   gap: 12px;
-  padding: 8px 12px;
+  /* No padding on the inline END: a flex scroll container's end padding is not part of its
+     `scrollWidth`, so once the footer scrolls that padding is simply gone and the last page button
+     sits flush against the grid's edge. The end zone carries those 12px itself instead — an item's
+     own padding IS part of the scrollable content — and it carries them in both states, so the
+     footer's width does not change when the scroll class goes on and no measurement can latch. */
+  padding: 8px 0 8px 12px;
   border-top: 1px solid var(--pte-frame-border-color);
   background: var(--pte-surface-bg-color);
 }
@@ -2150,11 +2522,20 @@
 /* Footer zones, in visual/tab order: sheet tabs (left) · aggregation (center) · pagination
    (right). The two outer zones flex equally so the center zone sits centered when tabs are
    mounted; with the tab zone empty (today's degenerate case) aggregation hugs the left edge and
-   pagination the right, exactly as before. */
+   pagination the right, exactly as before.
+
+   Only the tab zone shrinks. The other two are floored at their content width, because a zone
+   squeezed below it does not compress — it overflows, and the end zone's `justify-content:
+   flex-end` sends that overflow LEFTWARD, straight over the aggregation controls. The tab strip is
+   the zone that can absorb the squeeze: it owns a scroller with overflow fades for exactly this. */
 .pte-footer-tabs {
   display: none;
   flex: 1 1 0;
   min-width: 0;
+  /* The zone that absorbs the squeeze clips what will not fit — the strip's own scroller handles
+     the tabs, but the "+" button beside it is not shrinkable, and without this it paints over the
+     aggregation controls once the zone is narrower than the button. */
+  overflow: hidden;
   /* Tabs fill the strip's height rather than floating in it — see the tab-shape note below. */
   align-items: stretch;
   align-self: stretch;
@@ -2170,10 +2551,67 @@
 
 .pte-footer-tabs.pte-footer-tabs-enabled {
   display: flex;
+  /* The elastic zone, with a floor. The floor is what makes the footer's own overflow honest: with
+     the strip free to shrink to nothing, `scrollWidth` would equal `clientWidth` and the bar would
+     report that everything fits while the tabs quietly disappeared. Below it the strip scrolls
+     (its own scroller), and below *that* the footer does. */
+  min-width: 140px;
+}
+
+/* With the "+" displaced into the overflow menu, the floor comes down by the width it occupied. */
+.pte-footer-tabs.pte-footer-tabs-enabled.pte-footer-tabs-narrow {
+  min-width: 110px;
+}
+
+/* Last resort, once every rung has been applied and the controls still do not fit. */
+.pte-pagination-wrapper.pte-footer-scrolling {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pte-pagination-wrapper.pte-footer-scrolling::-webkit-scrollbar {
+  height: 0;
+}
+
+/* The footer's overflow menu button: same affordance as the toolbar's, at the end of the page
+   controls, shown only while it holds something. */
+.pte-footer-overflow-button {
+  position: relative;
+  display: none;
+  /* Centred explicitly: the button becomes `inline-flex` when it has something to hold, and a flex
+     container with no alignment of its own leaves its one 16px child at the cross-axis start — the
+     `⋮` sat against the button's top border rather than in the middle of it. The toolbar's own
+     overflow button has carried these two lines from the start. */
+  align-items: center;
+  justify-content: center;
+}
+
+.pte-footer-has-overflow .pte-footer-overflow-button {
+  display: inline-flex;
+}
+
+.pte-footer-overflow-icon {
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+}
+
+.pte-footer-overflow-button.pte-footer-overflow-active::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pte-hcell-filter-active-color);
 }
 
 .pte-footer-center {
   display: flex;
+  flex: 0 0 auto;
+  min-width: max-content;
   align-items: center;
   gap: 12px;
 }
@@ -2181,10 +2619,21 @@
 .pte-footer-end {
   display: flex;
   flex: 1 1 0;
-  min-width: 0;
+  /* Grows with the tab zone so the center zone stays centered, but never below its own controls:
+     the floor is what turns "no room" into a scrolled tab strip instead of an overlap. */
+  min-width: max-content;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+  /* The footer's inline-end padding (see the wrapper's note). */
+  padding-right: 12px;
+}
+
+/* Compact footer (PaginationRenderer measures the threshold): the text beside each control is what
+   gives way when the zones' floors leave the tab strip no room. The controls stay named — each is
+   `aria-labelledby` its label, and that name survives the label being hidden. */
+.pte-footer-compact .pte-pagination-label {
+  display: none;
 }
 
 /* Sheet tab strip. The scroller hides its scrollbar; overflow is signalled by edge fades on the
@@ -2483,6 +2932,13 @@
 
 .pte-pagination-page-select {
   min-width: 140px;
+}
+
+/* Compact footer: the picker sizes to its own longest option instead of a floor set for long page
+   counts. Page navigation is the one thing the footer never gives up, so at the widths where it is
+   all that is left it should not also be the widest thing in the bar. */
+.pte-footer-compact .pte-pagination-page-select {
+  min-width: max-content;
 }
 
 /* Total row count is provisional (server-side listing without totalRows, end not reached): the
@@ -2824,6 +3280,8 @@
 
 /* The options button's own background is the hover highlight; its icon lives in a child span so the
    hover background never overwrites the icon's mask fill (the previous bug that made it vanish). */
+/* The element carries `icon-search-options`, which supplies the mask; the rule keeps the sizing
+   only, so the glyph stays overridable through the icon var like every other one. */
 .pte-quick-filter-options-icon {
   display: inline-block;
   width: 15px;
@@ -2831,7 +3289,6 @@
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;
-  mask-image: var(--pte-icon-menu);
   background-color: var(--pte-icon-color);
 }
 
@@ -4071,6 +4528,11 @@
 
 .icon-group {
   mask-image: var(--pte-icon-group);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-search-options {
+  mask-image: var(--pte-icon-search-options);
   background-color: var(--pte-icon-color);
 }
 
