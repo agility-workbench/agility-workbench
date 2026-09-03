@@ -78,6 +78,9 @@ export class SheetsRenderer {
     this.params.host.append(this.scrollWrap, this.addButton);
 
     this.tablist.addEventListener("scroll", () => this.updateOverflowFades());
+    // Not passive: the handler turns a vertical wheel into a horizontal one, which means
+    // preventing the default it would otherwise have.
+    this.tablist.addEventListener("wheel", (e) => this.onTablistWheel(e), { passive: false });
     this.tablist.addEventListener("keydown", (e) => this.onTablistKeyDown(e));
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.updateOverflowFades());
@@ -89,6 +92,27 @@ export class SheetsRenderer {
 
   isEnabled(): boolean {
     return this.sheetsOptions != null;
+  }
+
+  /** Whether "+" has anything to offer: pivot sheets need a row model that can pivot. */
+  canAddPivotSheet(): boolean {
+    return this.isEnabled() && this.params.core.isPivotSupported();
+  }
+
+  /**
+   * Hide the "+" button because the footer's ladder displaced it into the overflow menu. The strip
+   * itself is never displaced — it is the elastic zone, and scrolls instead.
+   */
+  setAddButtonDisplaced(displaced: boolean): void {
+    this.addButton.classList.toggle("pte-bar-displaced", displaced);
+    // The zone's floor comes down with the button, so displacing it actually buys the footer room
+    // rather than just taking the button away.
+    this.params.host.classList.toggle("pte-footer-tabs-narrow", displaced);
+  }
+
+  /** The "+" action, for the footer's overflow menu to offer once the button itself is gone. */
+  addPivotSheetFromMenu(): void {
+    this.addPivotSheet();
   }
 
   /** DOM id of the active tab, for the grid root's `aria-labelledby` fallback. Null when disabled. */
@@ -614,6 +638,26 @@ export class SheetsRenderer {
 
   private focusTab(sheetId: string): void {
     this.tablist.querySelector<HTMLButtonElement>(`[id="${this.tabElementId(sheetId)}"]`)?.focus();
+  }
+
+  /**
+   * A tab strip scrolls sideways, but a mouse wheel only ever sends `deltaY` — and a browser sends
+   * that to the nearest *vertical* scroller, which is the grid body, not the strip. So the strip
+   * showed its overflow fades while the tabs behind them stayed unreachable to anyone without a
+   * trackpad. Translate the dominant axis into a horizontal scroll.
+   *
+   * The event is claimed only while the strip can actually move that way, so at either end the
+   * wheel goes back to meaning what it usually means and the page still scrolls.
+   */
+  private onTablistWheel(e: WheelEvent): void {
+    const el = this.tablist;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) return;
+    const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    const next = Math.max(0, Math.min(max, el.scrollLeft + delta));
+    if (next === el.scrollLeft) return;
+    e.preventDefault();
+    el.scrollLeft = next;
   }
 
   private updateOverflowFades(): void {

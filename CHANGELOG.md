@@ -68,6 +68,50 @@ states saved by 1.0.0 apply unchanged.
   and retires with the column instead of lingering in the sort model.
 - React: `onGridReady` now fires after the `columnDefs` / `rowData` effects, so
   colId-addressed calls in a ready handler are no longer dropped.
+- **Neither bar overlaps its own controls at a narrow width any more.** Space in the toolbar
+  and the footer used to be handed out by flex/grid *shrink*, which has no floor: a control
+  squeezed past its min-content width did not compress, it overflowed its box and painted over
+  its neighbour. Grouping chips lost their labels entirely by 900px; by 480px `Sort by` printed
+  on top of its own clear button; the footer's page controls printed over the aggregation ones.
+
+  Both bars now share one rule — nothing is clipped, overlapped, or compressed. Every control
+  is laid out at its natural size in one of its presentation stages, or it moves into that
+  bar's overflow menu (`⋮`), and a bar out of stages scrolls rather than clipping. New:
+  `+N` chip folds, `Grouped by 3` / `Sort by 2` summary buttons opening the full chip editor
+  as a popover (and still taking column drops), one overflow menu per bar with a dot when the
+  state it hides is active, and a footer `⋮` holding rows-per-page, the aggregate scope, and
+  the sheet strip's `+`. A control keeps its place while it holds focus or carries a live
+  query, and focus follows a displaced control to the button that now holds it.
+- `toolbar.responsive` and `paginationControls.responsive` (`"collapse"` by default,
+  `"scroll"`, or `false`) choose how a bar copes with a width its controls do not fit. The
+  toolbar's old fixed 760px/520px breakpoints are gone — a bar now measures what it actually
+  holds, so a toolbar with two controls no longer goes icon-only at 759px.
+- The quick filter's search-options button no longer wears the same `⋮` glyph as the bars'
+  overflow menus, which read as one control duplicated when both were on screen.
+- **A settled bar no longer sits with a hole in it.** The rung a bar stops on usually frees
+  more room than it needed, and that leftover collected as blank space between the controls
+  and the overflow area — visible at every width, and sitting there while the controls beside
+  it were collapsed. One control now takes it: the search field stretches into it (to a cap),
+  or with no quick filter the last chip section widens its drop zone. Growth cannot hide a
+  bar's overflow from its own measurement the way shrink would, so the ladder stays honest.
+- The toolbar now narrows the search field **before** folding a chip into `+N`: at 900px a
+  single sorted column no longer collapses to `+1` while the bar still has room to spare.
+- A bar no longer ends a fit pass overflowing by the width of the overflow button it just
+  revealed. The `⋮` is shown only while it holds something, so it entered the layout after the
+  pass had decided — leaving the toolbar 13px over its box at 480px with no scroll fallback.
+- The footer's overflow menu opens **above** the footer instead of across it: menus anchored
+  `top-*` were placed with their top edge at the anchor, because the height they are offset by
+  was read from an overlay that was still `display: none`. The aggregate footer cell's function
+  menu was misplaced the same way.
+- Sheet tabs now scroll with a plain mouse wheel. The strip showed its overflow fades while the
+  tabs behind them stayed unreachable: a wheel only reports `deltaY`, which the browser sends to
+  the nearest *vertical* scroller.
+- The narrow footer keeps its trailing padding once it scrolls, so the last page button no longer
+  sits flush against the grid's edge, and the compact page picker sizes to its own longest option
+  instead of a floor set for four-digit page counts.
+- At its narrowest stage the search icon's expanded field renders in the bar again, and stays open
+  while it is in use: it was laid out at its content width and hung off the side of the grid, and
+  every fit pass — including the one focus itself provokes — closed it.
 
 Both wrappers expose everything above — pivot props/inputs are live-synced, and
 `sheets` passes through — with smoke tests on each binding.

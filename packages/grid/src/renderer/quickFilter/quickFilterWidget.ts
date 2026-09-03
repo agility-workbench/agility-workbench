@@ -126,7 +126,7 @@ export class QuickFilterWidget {
       this.optionsBtn.setAttribute("aria-label", "Search options");
       this.optionsBtn.setAttribute("aria-haspopup", "true");
       this.optionsBtn.setAttribute("aria-expanded", "false");
-      const optionsIcon = span(`pte-quick-filter-options-icon ${getIconClassName("menu")}`);
+      const optionsIcon = span(`pte-quick-filter-options-icon ${getIconClassName("search-options")}`);
       optionsIcon.setAttribute("aria-hidden", "true");
       this.optionsBtn.appendChild(optionsIcon);
       this.searchRow.appendChild(this.optionsBtn);

@@ -99,49 +99,30 @@ export class MenuRenderer {
       menuOverlay.setAttribute("aria-label", ariaLabel ?? "Menu");
     }
 
-    let left = clientX;
-    let top = clientY;
     const W = 220;
 
-    if (anchorEl) {
-      const r = anchorEl.getBoundingClientRect();
-      switch (position) {
-        case "bottom-left":
-          left = r.left;
-          top = r.bottom + 4;
-          break;
-        case "bottom-right":
-          left = r.right - W;
-          top = r.bottom + 4;
-          break;
-        case "top-left":
-          left = r.left;
-          top = r.top - 4;
-          break;
-        case "top-right":
-          left = r.right - W;
-          top = r.top - 4;
-          break;
-        default:
-          left = r.left;
-          top = r.bottom + 4;
-      }
-    }
-
-    const bounds = this.getMenuBounds();
-
-    if (position.includes("right")) {
-      left = clientX - W;
-    }
-    if (position.includes("top")) {
-      top = clientY - menuOverlay.offsetHeight;
-    }
-
+    // Laid out (but not yet visible) BEFORE anything is positioned, because a `top-*` placement is
+    // the menu's own height above its anchor and a `display: none` overlay measures zero. Reading
+    // the height first is what stopped those menus from being placed with their TOP at the anchor —
+    // which is how the footer's overflow menu came to open across the footer it belongs to.
     menuOverlay.style.minWidth = `${W}px`;
     menuOverlay.style.visibility = "hidden";
     menuOverlay.style.display = "flex";
     const menuRect = menuOverlay.getBoundingClientRect();
     menuOverlay.style.opacity = "1";
+
+    const above = position.includes("top");
+    const alignRight = position.includes("right");
+    let left = alignRight ? clientX - W : clientX;
+    let top = above ? clientY - menuRect.height : clientY;
+
+    if (anchorEl) {
+      const r = anchorEl.getBoundingClientRect();
+      left = alignRight ? r.right - W : r.left;
+      top = above ? r.top - 4 - menuRect.height : r.bottom + 4;
+    }
+
+    const bounds = this.getMenuBounds();
 
     if (left + menuRect.width > bounds.right) {
       left = bounds.right - menuRect.width;

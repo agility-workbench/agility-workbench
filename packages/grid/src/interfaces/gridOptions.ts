@@ -420,6 +420,8 @@ export interface PaginationControlsOptions {
   showPageLabel?: boolean;
   controls?: readonly PaginationControl[];
   maxPageButtons?: number;
+  /** How the footer copes with a width its controls do not fit. Defaults to `"collapse"`. */
+  responsive?: BarResponsiveMode;
 }
 
 export interface ResolvedPaginationControlsOptions {
@@ -427,6 +429,7 @@ export interface ResolvedPaginationControlsOptions {
   showPageLabel: boolean;
   controls: PaginationControl[];
   maxPageButtons: number;
+  responsive: BarResponsiveMode;
 }
 
 export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
@@ -457,6 +460,7 @@ export function resolvePaginationControlsOptions(
   return {
     pageSelection: options?.pageSelection === "buttons" ? "buttons" : "select",
     showPageLabel: options?.showPageLabel ?? true,
+    responsive: resolveBarResponsiveMode(options?.responsive),
     controls,
     maxPageButtons,
   };
@@ -738,6 +742,23 @@ export function resolveColumnPanelOptions(
  * Opt-in sections for the grid toolbar. The toolbar has no separate visibility flag: it is mounted
  * when at least one section is enabled (or when the column panel uses its toolbar trigger).
  */
+/**
+ * What a bar does when it is too narrow for its controls.
+ *
+ * - `"collapse"` (default) — a fixed ladder: captions give way first, then chip lists fold into a
+ *   `+N`, then whole regions become summary buttons, then the least important controls move into
+ *   the bar's overflow menu. Nothing overlaps, and nothing becomes unreachable — a bar that runs
+ *   out of ladder scrolls.
+ * - `"scroll"` — no control ever changes presentation; the bar scrolls horizontally as soon as its
+ *   controls do not fit. Simplest to reason about, at the cost of controls sitting off-screen
+ *   behind a scroll the user has to discover.
+ * - `false` — lay the bar out and let it clip, for an application that guarantees its own width.
+ *
+ * An application that wants a different order of sacrifice configures *fewer controls* rather than
+ * re-ordering the ladder: every ordering is a degradation path that has to hold up at every width.
+ */
+export type BarResponsiveMode = "collapse" | "scroll" | false;
+
 export interface GridToolbarOptions {
   /** Row-grouping picker, ordered chips, and drop zone. */
   grouping?: boolean;
@@ -755,6 +776,8 @@ export interface GridToolbarOptions {
   export?: boolean;
   /** Pivot-mode indicator + toggle. Client-side row model only. */
   pivot?: boolean;
+  /** How the toolbar copes with a width its controls do not fit. Defaults to `"collapse"`. */
+  responsive?: BarResponsiveMode;
 }
 
 export interface ResolvedGridToolbarOptions {
@@ -764,6 +787,7 @@ export interface ResolvedGridToolbarOptions {
   views: boolean;
   export: boolean;
   pivot: boolean;
+  responsive: BarResponsiveMode;
 }
 
 export function resolveGridToolbarOptions(
@@ -776,7 +800,14 @@ export function resolveGridToolbarOptions(
     views: options?.views === true,
     export: options?.export === true,
     pivot: options?.pivot === true,
+    responsive: resolveBarResponsiveMode(options?.responsive),
   };
+}
+
+/** `"collapse"` unless the application asked for one of the other two. */
+export function resolveBarResponsiveMode(mode: BarResponsiveMode | undefined): BarResponsiveMode {
+  if (mode === false || mode === "scroll") return mode;
+  return "collapse";
 }
 
 export interface GridOptions {

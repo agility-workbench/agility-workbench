@@ -7,7 +7,15 @@ import {
   ResolvedPaginationControlsOptions,
   resolvePaginationControlsOptions,
 } from "../../interfaces/gridOptions";
+import type { MenuItem } from "../../interfaces/menuItem";
 import { isTrue } from "../../misc";
+import {
+  ResponsiveBar,
+  type BarItemStage,
+  type ResponsiveBarItem,
+  type ResponsiveBarStep,
+} from "../responsive/responsiveBar";
+import type { MenuRenderer } from "../menuRenderer";
 import { createPaginationWrapper } from "./wrapper";
 
 interface PaginationRendererParams {
@@ -17,6 +25,18 @@ interface PaginationRendererParams {
   setAggregateScope: (scope: AggregateScope) => void;
   /** Whether the footer's sheet-tab zone is populated — the footer stays visible for it alone. */
   hasSheetTabs?: () => boolean;
+  /**
+   * The sheet strip's "+" button, which is the last thing the footer gives up: it lives in the tab
+   * zone but takes its turn in the footer's ladder like any other control, and offers itself
+   * through the footer's overflow menu once displaced.
+   */
+  sheetAdd?: {
+    canAdd: () => boolean;
+    add: () => void;
+    setDisplaced: (displaced: boolean) => void;
+  };
+  /** For the footer's overflow menu — the same renderer every other grid menu opens through. */
+  menuRenderer?: MenuRenderer;
 }
 
 /**
@@ -31,6 +51,21 @@ function paginationIcon(): HTMLSpanElement {
   icon.setAttribute("aria-hidden", "true");
   return icon;
 }
+
+/** The aggregate scopes offered, in order, by both the footer select and its overflow submenu. */
+const AGGREGATE_SCOPE_OPTIONS: ReadonlyArray<{ value: AggregateScope; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "page", label: "Current page" },
+  { value: "all", label: "Entire dataset" },
+];
+
+/** Ids the footer's ladder addresses its controls by. */
+const FOOTER_ITEMS = {
+  aggregate: "aggregate",
+  pageSize: "pageSize",
+  edgePages: "edgePages",
+  sheetAdd: "sheetAdd",
+} as const;
 
 export class PaginationRenderer {
   pageSizeSelect!: HTMLSelectElement;
@@ -55,6 +90,14 @@ export class PaginationRenderer {
   private controlsPaginationEnabled: boolean | null = null;
   private controlsAggregationAvailable: boolean | null = null;
   private controlsOptions: ResolvedPaginationControlsOptions;
+  private responsive: ResponsiveBar | null = null;
+  /** The bar's one overflow menu, holding whatever the last fit pass displaced. */
+  private overflowButton: HTMLButtonElement;
+  /** Rebuilt per `buildControls`, and addressed by the ladder — hence read through a getter. */
+  private aggregateSection: HTMLElement | null = null;
+  private pageSizeControl: HTMLElement | null = null;
+  /** Page-select option count at the last fit; a wider page picker moves the threshold. */
+  private lastPageOptionCount = -1;
 
   constructor(private params: PaginationRendererParams) {
     this.controlsOptions = resolvePaginationControlsOptions(params.core.options.paginationControls);
@@ -66,7 +109,23 @@ export class PaginationRenderer {
     this.endZone = document.createElement("div");
     this.endZone.className = "pte-footer-end";
     this.paginator.append(this.tabsZone, this.centerZone, this.endZone);
+    this.overflowButton = this.buildOverflowButton();
     this.params.root.appendChild(this.paginator);
+    this.responsive = new ResponsiveBar({
+      bar: this.paginator,
+      scrollClass: "pte-footer-scrolling",
+      items: () => this.barItems(),
+      ladder: () => this.barLadder(),
+      mode: () => this.controlsOptions.responsive,
+      fallbackFocus: () => this.overflowButton,
+      syncFurniture: () => this.syncOverflowFurniture(),
+      onFit: () => this.syncOverflowFurniture(),
+    });
+  }
+
+  destroy(): void {
+    this.responsive?.destroy();
+    this.responsive = null;
   }
 
   getElement() {
@@ -92,6 +151,9 @@ export class PaginationRenderer {
         this.params.core.getAggregateModel().length,
       ),
     );
+    // Mounting the tab strip adds both a zone with a floor and the "+" as a ladder item, so the
+    // footer has a different set of controls to fit than it did a moment ago.
+    this.responsive?.refresh();
   }
 
   buildControls() {
@@ -119,12 +181,17 @@ export class PaginationRenderer {
     this.controlsPaginationEnabled = paginationEnabled;
     this.controlsAggregationAvailable = this.hasAggregatableColumns();
 
+    this.aggregateSection = null;
+    this.pageSizeControl = null;
     if (this.controlsAggregationAvailable) {
-      this.centerZone.appendChild(this.buildAggregationControls());
+      this.aggregateSection = this.buildAggregationControls();
+      this.centerZone.appendChild(this.aggregateSection);
     }
 
     if (!paginationEnabled) {
+      this.endZone.appendChild(this.overflowButton);
       this.updateControls();
+      this.responsive?.refresh();
       return;
     }
 
@@ -136,8 +203,206 @@ export class PaginationRenderer {
     }
 
     this.endZone.appendChild(navSection);
+    // Always last in the zone, and shown by class only while it holds something: a fit pass has to
+    // measure the bar the button is already part of.
+    this.endZone.appendChild(this.overflowButton);
     this.populatePageSelector(pageIndex, totalPageCount, totalRowCountKnown);
     this.updateControls();
+    this.responsive?.refresh();
+  }
+
+  // ---------------- Responsive footer ----------------
+
+  /**
+   * The footer's controls, for the shared ladder. The zones themselves are not items: they are
+   * floored at their content width in CSS so that a squeezed zone can never overflow onto its
+   * neighbour, and the sheet-tab strip is the one elastic thing here — it takes the squeeze by
+   * scrolling, down to the floor its own rule keeps.
+   */
+  private barItems(): ResponsiveBarItem[] {
+    const items: ResponsiveBarItem[] = [];
+    const displaceable = (el: HTMLElement | null) => (stage: BarItemStage) =>
+      stage !== "full" && !!el && el.contains(el.ownerDocument.activeElement);
+
+    if (this.aggregateSection) {
+      const section = this.aggregateSection;
+      items.push({
+        id: FOOTER_ITEMS.aggregate,
+        el: section,
+        stages: ["full", "overflow"],
+        applyStage: stage => this.setDisplaced(section, stage === "overflow"),
+        isPinned: displaceable(section),
+      });
+    }
+    if (this.pageSizeControl) {
+      const control = this.pageSizeControl;
+      items.push({
+        id: FOOTER_ITEMS.pageSize,
+        el: control,
+        stages: ["full", "overflow"],
+        applyStage: stage => this.setDisplaced(control, stage === "overflow"),
+        isPinned: displaceable(control),
+      });
+    }
+    const edgeButtons = [this.firstPageBtn, this.lastPageBtn].filter(Boolean) as HTMLElement[];
+    if (edgeButtons.length > 0) {
+      items.push({
+        id: FOOTER_ITEMS.edgePages,
+        // `hidden`, not `overflow`: first and last page are the only controls here that lead
+        // nowhere new — the page picker beside them already goes to any page, so they are the one
+        // thing that can be dropped outright rather than moved somewhere the user must hunt for.
+        stages: ["full", "hidden"],
+        applyStage: stage => {
+          for (const button of edgeButtons) this.setDisplaced(button, stage === "hidden");
+        },
+      });
+    }
+    if (this.params.sheetAdd?.canAdd()) {
+      const sheetAdd = this.params.sheetAdd;
+      items.push({
+        id: FOOTER_ITEMS.sheetAdd,
+        stages: ["full", "overflow"],
+        applyStage: stage => sheetAdd.setDisplaced(stage === "overflow"),
+      });
+    }
+    return items;
+  }
+
+  /**
+   * Cheapest rung first: the text beside each control, then the redundant edge-page buttons, then
+   * the controls that have somewhere else to live. Page navigation itself never gives way — a
+   * footer that cannot page is not a footer — so a bar still short of room scrolls instead.
+   */
+  private barLadder(): ResponsiveBarStep[] {
+    return [
+      { id: "captions", barClass: "pte-footer-compact" },
+      { id: "edgePages:hidden", itemId: FOOTER_ITEMS.edgePages, stage: "hidden" },
+      { id: "pageSize:overflow", itemId: FOOTER_ITEMS.pageSize, stage: "overflow" },
+      { id: "aggregate:overflow", itemId: FOOTER_ITEMS.aggregate, stage: "overflow" },
+      { id: "sheetAdd:overflow", itemId: FOOTER_ITEMS.sheetAdd, stage: "overflow" },
+    ];
+  }
+
+  private setDisplaced(el: HTMLElement, displaced: boolean): void {
+    el.classList.toggle("pte-bar-displaced", displaced);
+  }
+
+  private buildOverflowButton(): HTMLButtonElement {
+    const overflow = document.createElement("button");
+    overflow.type = "button";
+    overflow.className = "pte-pagination-btn pte-footer-overflow-button";
+    overflow.setAttribute("aria-haspopup", "menu");
+    overflow.setAttribute("aria-label", "More footer controls");
+    overflow.title = "More footer controls";
+    const icon = document.createElement("span");
+    icon.className = "pte-footer-overflow-icon pte-menu-icon";
+    icon.setAttribute("aria-hidden", "true");
+    overflow.appendChild(icon);
+    overflow.addEventListener("click", () => this.openOverflowMenu());
+    return overflow;
+  }
+
+  private overflowedIds(): string[] {
+    return this.responsive?.getOverflowedItemIds() ?? [];
+  }
+
+  /**
+   * Run after every rung of a fit pass, so the button's own 42px is part of the width the next
+   * check measures — it is shown by class only while it holds something, and a button that appears
+   * *after* the pass has decided leaves the footer overflowing by exactly its own width.
+   */
+  private syncOverflowFurniture(): void {
+    const overflowed = this.overflowedIds();
+    this.paginator.classList.toggle("pte-footer-has-overflow", overflowed.length > 0);
+    // Aggregation displaced while it is actually aggregating is exactly the state that must not
+    // disappear quietly.
+    const active = overflowed.includes(FOOTER_ITEMS.aggregate)
+      && this.params.core.getAggregateScope() !== "none";
+    this.overflowButton.classList.toggle("pte-footer-overflow-active", active);
+    this.overflowButton.setAttribute(
+      "aria-label",
+      active ? "More footer controls (aggregation on)" : "More footer controls",
+    );
+  }
+
+
+  private openOverflowMenu(): void {
+    const items: MenuItem[] = [];
+    for (const id of this.overflowedIds()) {
+      if (id === FOOTER_ITEMS.pageSize) {
+        const { pageSize, pageSizes } = this.params.core.getPaginationInfo();
+        items.push({
+          id: "footerOverflowPageSize",
+          label: "Rows per page",
+          subMenu: pageSizes.map(size => ({
+            id: `footerOverflowPageSize-${size}`,
+            label: String(size),
+            left: size === pageSize ? "icon-check" : undefined,
+            command: "footer.pageSize.set",
+            payload: { pageSize: size },
+          })),
+        });
+      } else if (id === FOOTER_ITEMS.aggregate) {
+        const scope = this.params.core.getAggregateScope();
+        items.push({
+          id: "footerOverflowAggregate",
+          label: "Aggregate",
+          subMenu: AGGREGATE_SCOPE_OPTIONS.map(option => ({
+            id: `footerOverflowAggregate-${option.value}`,
+            label: option.label,
+            left: option.value === scope ? "icon-check" : undefined,
+            command: "footer.aggregateScope.set",
+            payload: { scope: option.value },
+          })),
+        });
+      } else if (id === FOOTER_ITEMS.sheetAdd) {
+        items.push({
+          id: "footerOverflowAddSheet",
+          label: "New pivot sheet",
+          command: "footer.sheets.add",
+        });
+      }
+    }
+    const rect = this.overflowButton.getBoundingClientRect();
+    this.params.menuRenderer?.open({
+      anchorEl: this.overflowButton,
+      clientX: rect.right,
+      clientY: rect.top,
+      items,
+      position: "top-right",
+      ariaLabel: "More footer controls",
+      // Commands rather than per-item handlers: MenuRenderer routes every click through one
+      // callback, and only the column/body menu *services* honour `MenuItem.onClick`.
+      onItemClick: item => this.executeOverflowCommand(item),
+    });
+  }
+
+  private executeOverflowCommand(item: MenuItem): void {
+    switch (item.command) {
+      case "footer.pageSize.set":
+        this.applyPageSize(Number(item.payload?.pageSize));
+        return;
+      case "footer.aggregateScope.set":
+        this.params.setAggregateScope(item.payload?.scope as AggregateScope);
+        return;
+      case "footer.sheets.add":
+        this.params.sheetAdd?.add();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private applyPageSize(size: number): void {
+    if (!Number.isFinite(size) || size <= 0) return;
+    if (size === this.params.core.getPaginationInfo().pageSize) return;
+    this.params.resetScrollPosition();
+    this.params.core.dispatch({
+      type: "paginationSet",
+      enabled: true,
+      pageIndex: 0,
+      pageSize: size,
+    });
   }
 
   private buildPaginationControl(
@@ -159,6 +424,7 @@ export class PaginationRenderer {
     const { core } = this.params;
     const sizeSection = document.createElement("div");
     sizeSection.className = "pte-pagination-control pte-pagination-size-control";
+    this.pageSizeControl = sizeSection;
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "pte-pagination-label";
     sizeLabel.textContent = "Rows per page";
@@ -268,12 +534,7 @@ export class PaginationRenderer {
     this.aggregateScopeSelect = document.createElement("select");
     this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
     this.aggregateScopeSelect.setAttribute("aria-labelledby", aggLabel.id);
-    const aggOptions: Array<{ value: AggregateScope; label: string }> = [
-      { value: "none", label: "None" },
-      { value: "page", label: "Current page" },
-      { value: "all", label: "Entire dataset" },
-    ];
-    for (const optDef of aggOptions) {
+    for (const optDef of AGGREGATE_SCOPE_OPTIONS) {
       const opt = document.createElement("option");
       opt.value = optDef.value;
       opt.textContent = optDef.label;

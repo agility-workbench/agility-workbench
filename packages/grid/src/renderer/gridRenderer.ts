@@ -794,6 +794,15 @@ export class GridRenderer {
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
       setAggregateScope: (scope) => this._aggregateModelController.setAggregateScope(scope),
       hasSheetTabs: () => this._sheetsRenderer?.isEnabled() === true,
+      menuRenderer: this._menuRenderer,
+      // The sheet strip's "+" takes its turn in the footer's ladder: it is the last control the
+      // footer gives up, and the overflow menu offers the action once the button is gone. Read
+      // through callbacks because the sheets renderer is constructed after this one.
+      sheetAdd: {
+        canAdd: () => this._sheetsRenderer?.canAddPivotSheet() === true,
+        add: () => this._sheetsRenderer?.addPivotSheetFromMenu(),
+        setDisplaced: (displaced) => this._sheetsRenderer?.setAddButtonDisplaced(displaced),
+      },
     });
     this._bodyPoolSizer = new BodyPoolSizer({
       core: this.core,
@@ -1370,6 +1379,7 @@ export class GridRenderer {
     this._columnPanelRenderer.destroy();
     this._toolbarRenderer.destroy();
     this._sheetsRenderer.destroy();
+    this._paginationRenderer.destroy();
     for (const dispose of this._pivotHintDisposers) dispose();
     this._pivotHintDisposers = [];
     this._interactionEventBinder.destroy();
