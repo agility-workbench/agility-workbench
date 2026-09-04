@@ -704,6 +704,17 @@ export function resolveActionFrameOptions(
  */
 export interface ColumnPanelOptions {
   defaultOpen?: boolean;
+  /**
+   * When the panel exists at all:
+   * - `always` (default): whenever the grid is mounted.
+   * - `pivot`: only while pivot mode is on. While pivoted the panel *is* the pivot setup (three
+   *   role wells, nothing else), so this is for apps that manage columns their own way but want
+   *   the grid's pivot customizer. Entering pivot mode with nothing configured opens it.
+   *
+   * Independent of whether pivot mode can be entered — an app driving pivot entirely through the
+   * API can leave the panel off altogether.
+   */
+  availability?: ColumnPanelAvailability;
   width?: number;
   /**
    * Where the drawer toggle is exposed:
@@ -718,11 +729,26 @@ export interface ColumnPanelOptions {
 
 export type ColumnPanelTrigger = "rail" | "header" | "menu" | "footer" | "toolbar";
 
+export type ColumnPanelAvailability = "always" | "pivot";
+
 export interface ResolvedColumnPanelOptions {
   enabled: boolean;
   defaultOpen: boolean;
   width: number;
   trigger: ColumnPanelTrigger;
+  availability: ColumnPanelAvailability;
+}
+
+/**
+ * Whether the panel is available right now — `enabled` is the app's configuration, this folds in
+ * `availability`, which depends on live pivot mode. Every consumer gates on this, so a
+ * `pivot`-scoped panel has no trigger, no menu item and no drawer outside pivot mode.
+ */
+export function isColumnPanelAvailable(
+  resolved: ResolvedColumnPanelOptions,
+  pivotMode: boolean,
+): boolean {
+  return resolved.enabled && (resolved.availability === "always" || pivotMode);
 }
 
 export function resolveColumnPanelOptions(
@@ -735,6 +761,7 @@ export function resolveColumnPanelOptions(
     defaultOpen: o.defaultOpen ?? false,
     width,
     trigger: o.trigger ?? "rail",
+    availability: o.availability ?? "always",
   };
 }
 

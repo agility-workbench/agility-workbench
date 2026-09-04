@@ -81,6 +81,10 @@ blank: row groups alone show the group tree, a value alone shows the grand-total
 row, and a pivot column alone shows the group tree under the "no values" header
 hint — which is the affordance telling you what is still missing.
 
+Where the grid's [column panel](#the-column-panel-is-the-pivot-setup) is
+enabled, entering pivot mode with nothing configured opens it, since the blank
+canvas has no header to reach a column menu from.
+
 ## Entering and leaving the mode
 
 The three roles are ordinary grid state, so the grid keeps two versions of them:
@@ -185,7 +189,10 @@ const options = {
 ## The column panel is the pivot setup
 
 Enable the [column panel](./columns.mdx) alongside pivot mode and it becomes the
-place to edit the three roles. Outside pivot mode every column row shows
+place to edit the three roles. `columnPanel: { availability: "pivot" }` mounts
+it *only* while pivoted, for apps that manage columns their own way but want the
+grid's pivot customizer. Either way, entering pivot mode with nothing configured
+opens the drawer. Outside pivot mode every column row shows
 removable role chips — `Group 1`, `Pivot 1`, and one chip per aggregate type
 (`Sum`, `Average`, …) — so the pivot recipe stays readable from the flat grid.
 

@@ -35,6 +35,9 @@ states saved by 1.0.0 apply unchanged.
   displays nothing at all (previously a lone auto-group column over a "Total" row that
   could not be acted on), showing the new `pivotEmptyMessage` instead; new
   `isPivotUnconfigured()` reports the state.
+- **Pivot-scoped column panel** — entering pivot mode with nothing configured opens the
+  column panel, and the new `columnPanel.availability: "pivot"` mounts that panel only
+  while pivoted: the pivot customizer without the column management drawer.
 - **Pivot export** — CSV and Excel export the generated nested headers with all group
   rows; aggregate cells export as real numbers.
 - Filters and the quick filter keep running on **source rows**; cell edits re-derive

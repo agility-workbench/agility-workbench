@@ -5,6 +5,7 @@ import { ColumnState } from "../../interfaces/iGridCore";
 import {
   ColumnPanelOptions,
   ColumnPanelTrigger,
+  isColumnPanelAvailable,
   resolveColumnPanelOptions,
 } from "../../interfaces/gridOptions";
 import { AggregateType } from "../../interfaces/aggregate";
@@ -95,6 +96,9 @@ export class ColumnPanelRenderer {
   private enabled = false;
   private open = false;
   private trigger: ColumnPanelTrigger = "rail";
+  private resolved = resolveColumnPanelOptions(undefined);
+  // Pivot mode as of the last pivotChanged, so entering it can be told from editing within it.
+  private lastPivotMode = false;
   private draggedColId: string | null = null;
   private draggedWell: { role: string; index: number } | null = null;
   private initialState: ColumnState[] | null = null;
@@ -115,16 +119,31 @@ export class ColumnPanelRenderer {
     });
     // Role state (grouping rides columnsChanged already) — the chips and pivot wells track these.
     this.roleUnsubscribes = [
-      this.params.core.on("pivotChanged", () => this.renderList()),
+      this.params.core.on("pivotChanged", () => this.onPivotChanged()),
       this.params.core.on("aggregateChanged", () => this.renderList()),
     ];
+    this.lastPivotMode = this.params.core.getPivotMode();
     this.setOptions(this.params.options);
   }
 
   setOptions(options: boolean | ColumnPanelOptions | undefined): void {
-    const resolved = resolveColumnPanelOptions(options);
+    this.resolved = resolveColumnPanelOptions(options);
+    this.applyAvailability(true);
+  }
+
+  /**
+   * Mount or unmount the panel for the current configuration and the live pivot mode — an
+   * `availability: "pivot"` panel comes and goes with the mode. Re-applied unconditionally when
+   * the options change (width and trigger may have moved too) and on every pivot change, where a
+   * cheap equality check keeps it to the transitions that matter: pivotChanged fires on every
+   * role edit, and each pass ends in an onLayoutChange the grid pays for.
+   */
+  private applyAvailability(force: boolean): void {
+    const resolved = this.resolved;
     const wasEnabled = this.enabled;
-    this.enabled = resolved.enabled;
+    const nextEnabled = isColumnPanelAvailable(resolved, this.params.core.getPivotMode());
+    if (!force && nextEnabled === wasEnabled) return;
+    this.enabled = nextEnabled;
     this.trigger = resolved.trigger;
 
     this.params.root.style.setProperty("--pte-column-panel-width", `${resolved.width}px`);
@@ -157,6 +176,21 @@ export class ColumnPanelRenderer {
 
   openPanel(): void {
     this.setOpen(true);
+  }
+
+  /**
+   * An `availability: "pivot"` panel appears and disappears with the mode, and entering pivot mode
+   * with nothing configured opens the panel: the grid is a blank canvas at that point, and this
+   * panel is what fills it in. Deliberately only on the way IN — switching to an already-configured
+   * pivot sheet, or clearing the last role while pivoted, leaves the drawer as the user left it.
+   */
+  private onPivotChanged(): void {
+    const pivotMode = this.params.core.getPivotMode();
+    const entered = pivotMode && !this.lastPivotMode;
+    this.lastPivotMode = pivotMode;
+    this.applyAvailability(false);
+    this.renderList();
+    if (entered && this.params.core.isPivotUnconfigured()) this.openPanel();
   }
 
   destroy(): void {

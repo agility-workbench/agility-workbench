@@ -35,6 +35,7 @@ function makeGrid(sheetsOptions?: SheetsOptions, coreOptions: object = {}) {
   const menuRenderer = new MenuRenderer(document.body);
   let enabledChanges = 0;
   let activeTabChanges = 0;
+  let columnPanelOpens = 0;
   const renderer = new SheetsRenderer({
     core,
     api,
@@ -43,6 +44,7 @@ function makeGrid(sheetsOptions?: SheetsOptions, coreOptions: object = {}) {
     options: sheetsOptions,
     onEnabledChange: () => enabledChanges++,
     onActiveTabChange: () => activeTabChanges++,
+    openColumnPanel: () => columnPanelOpens++,
   });
   return {
     core,
@@ -50,7 +52,11 @@ function makeGrid(sheetsOptions?: SheetsOptions, coreOptions: object = {}) {
     host,
     renderer,
     menuRenderer,
-    counts: { enabled: () => enabledChanges, activeTab: () => activeTabChanges },
+    counts: {
+      enabled: () => enabledChanges,
+      activeTab: () => activeTabChanges,
+      columnPanelOpens: () => columnPanelOpens,
+    },
   };
 }
 
@@ -250,6 +256,21 @@ describe("sheets tab strip", () => {
       expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
       expect(core.getAggregateModel()).toHaveLength(1);
     });
+  });
+
+  it("opens the column panel for the blank sheet it just created", () => {
+    const { core, host, counts } = makeGrid({});
+    expect(counts.columnPanelOpens()).toBe(0);
+
+    host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
+    expect(core.isPivotUnconfigured()).toBe(true);
+    expect(counts.columnPanelOpens()).toBe(1);
+
+    // Again from a pivot sheet: the mode never turns over, so nothing but this explicit ask would
+    // surface the setup surface for the second blank canvas.
+    host.querySelector<HTMLButtonElement>(".pte-sheet-add")!.click();
+    expect(tabNames(host)).toEqual(["Data", "Pivot 1", "Pivot 2"]);
+    expect(counts.columnPanelOpens()).toBe(2);
   });
 
   it("does not carry a generated-pivot sort onto the new sheet", () => {

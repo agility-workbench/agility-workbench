@@ -4,7 +4,7 @@ import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
 import { Column } from "../column/column";
-import { resolveColumnPanelOptions } from "../interfaces/gridOptions";
+import { isColumnPanelAvailable, resolveColumnPanelOptions } from "../interfaces/gridOptions";
 
 type CapSummary = {
   sortable: boolean;
@@ -138,7 +138,7 @@ export class ColumnMenuService {
       }
     }
     const panelOptions = resolveColumnPanelOptions(this.core.getOptions().columnPanel);
-    if (panelOptions.enabled && panelOptions.trigger === "menu") {
+    if (isColumnPanelAvailable(panelOptions, this.core.getPivotMode()) && panelOptions.trigger === "menu") {
       if (items.length > 0 && !items[items.length - 1].isSeparator) {
         items.push({ isSeparator: true });
       }

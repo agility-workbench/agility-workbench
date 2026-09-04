@@ -33,6 +33,17 @@ drawer provides search, show/hide, pinning, pointer/keyboard ordering, bulk
 visibility, nested groups, and reset. Opt a column out with
 `suppressColumnPanel: true`.
 
+Set `availability: "pivot"` to mount the panel **only while pivot mode is on**.
+Since a pivoted panel is the pivot setup and nothing else, this gives an app
+that manages columns its own way the grid's pivot customizer without the column
+management drawer:
+
+```ts
+const options = {
+  columnPanel: { availability: "pivot" },
+} satisfies GridOptions;
+```
+
 Columns with pivot roles (row group, pivot column, aggregate) show removable
 role chips under their rows, and while pivot mode is on the panel becomes the
 [pivot setup](./pivot.mdx#the-column-panel-is-the-pivot-setup): the column list

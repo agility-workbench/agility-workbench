@@ -18,6 +18,8 @@ interface SheetsRendererParams {
   onEnabledChange: () => void;
   /** The active tab changed (or the strip toggled) — the grid root re-resolves its accessible name. */
   onActiveTabChange: () => void;
+  /** Open the column panel, if the grid has one — a fresh pivot sheet needs its setup surface. */
+  openColumnPanel: () => void;
 }
 
 /**
@@ -245,6 +247,11 @@ export class SheetsRenderer {
     this.commitSheets([...this.withCapturedActiveState(this.sheets), sheet]);
     this.setActiveSheet(sheet.id);
     this.params.api.applyViewState(state);
+    // The new sheet is a blank canvas — no columns, no rows — so surface what fills it in. The
+    // panel opens itself when pivot mode is ENTERED, which covers + pressed on the data sheet;
+    // pressed on a pivot sheet the mode never turns over, hence the explicit ask here. A no-op
+    // when the grid has no column panel (an app driving pivot through the API).
+    this.params.openColumnPanel();
     this.focusTab(sheet.id);
   }
 

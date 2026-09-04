@@ -853,6 +853,8 @@ export class GridRenderer {
       options: this.core.getOptions().sheets,
       onEnabledChange: () => this._paginationRenderer.refreshVisibility(),
       onActiveTabChange: () => this._applyGridLabel(),
+      // Resolved at call time: the column panel is constructed after this renderer.
+      openColumnPanel: () => this._columnPanelRenderer?.openPanel(),
     });
     // Pivot-mode hint for the "no value columns" empty state: pivot on, but no aggregates chosen,
     // so the header shows only the group column. Points at the action that adds values.
