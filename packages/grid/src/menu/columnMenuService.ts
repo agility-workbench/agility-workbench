@@ -166,24 +166,6 @@ export class ColumnMenuService {
   }
 
   /**
-   * Just the role-editing items — grouping, pivot, and the aggregate submenu — for UI that edits a
-   * column's pivot roles in place (the column panel's role chips). Same items, commands, and
-   * toggle semantics as the full column menu; execute selections through {@link execute}.
-   */
-  buildRoleMenuItems(ctx: ColumnMenuContext): MenuItem[] {
-    const cap = this.summarize(ctx);
-    const colIDs = [...ctx.colIds];
-    if (!colIDs.includes(ctx.targetColId)) colIDs.push(ctx.targetColId);
-    const multi = colIDs.length > 1;
-    const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
-    return [
-      ...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s),
-      ...this.getPivotMenuItems(colIDs, ctx.targetColId, cap.pivotable, s),
-      ...this.getAggregateMenuItems(colIDs, cap, s),
-    ];
-  }
-
-  /**
    * The per-type aggregate toggle items for one column (no "Clear" entry) — the column panel's
    * "add value" pickers list these under each aggregatable column.
    */

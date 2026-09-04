@@ -1677,6 +1677,13 @@
   cursor: default;
 }
 
+.pte-column-panel-search[hidden],
+.pte-column-panel-bulk[hidden],
+.pte-column-panel-list[hidden],
+.pte-column-panel-footer[hidden] {
+  display: none;
+}
+
 .pte-column-panel-list {
   flex: 1 1 auto;
   min-height: 0;
@@ -1888,9 +1895,9 @@
   cursor: default;
 }
 
-/* Pivot-role chips: a second grid row under the column row's controls. While pivot mode is on,
-   rows collapse to label + chips (the layout controls would act on the invisible stashed layout)
-   and the field wells above the list carry the ordered role editing. */
+/* Pivot-role chips: a second grid row under the column row's controls, so the flat grid still
+   reads back its pivot recipe. While pivot mode is on the panel lists no columns at all — the
+   field wells are the whole panel. */
 .pte-column-panel-roles {
   grid-column: 1 / -1;
   display: flex;
@@ -1900,22 +1907,7 @@
   padding: 0 2px 3px 19px;
 }
 
-.pte-column-panel-row-pivot {
-  min-height: 0;
-  grid-template-columns: 1fr;
-  row-gap: 2px;
-}
-
-.pte-column-panel-row-pivot .pte-column-panel-label {
-  padding-top: 4px;
-}
-
-.pte-column-panel-row-pivot .pte-column-panel-roles {
-  padding-left: 2px;
-}
-
-.pte-column-panel-role-chip,
-.pte-column-panel-role-add {
+.pte-column-panel-role-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1931,24 +1923,12 @@
   line-height: 1;
 }
 
-.pte-column-panel-role-add {
-  padding: 0;
-  width: 20px;
-  justify-content: center;
-  border-style: dashed;
-  background: transparent;
-  color: var(--pte-muted-text-color);
-  font-size: 13px;
-}
-
-.pte-column-panel-role-chip:hover,
-.pte-column-panel-role-add:hover {
+.pte-column-panel-role-chip:hover {
   border-color: var(--pte-selected-border-color);
   color: var(--pte-text-color);
 }
 
 .pte-column-panel-role-chip:focus-visible,
-.pte-column-panel-role-add:focus-visible,
 .pte-column-panel-well-add:focus-visible,
 .pte-column-panel-well-remove:focus-visible {
   box-shadow: 0 0 0 2px var(--pte-selected-border-color);
@@ -1963,14 +1943,14 @@
   color: var(--pte-text-color);
 }
 
-/* The pivot customizer's field wells (visible only while pivot mode is on). */
+/* The pivot setup's field wells (visible only while pivot mode is on). Pivoted, they are the
+   panel's whole body — there is no column list under them to share the height with. */
 .pte-column-panel-wells {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  margin: 0 8px 8px;
+  margin: 12px 8px 8px;
   padding: 0 0 8px;
-  border-bottom: 1px solid var(--pte-border-color);
 }
 
 .pte-column-panel-wells[hidden] {
@@ -2018,18 +1998,44 @@
   color: var(--pte-text-color);
 }
 
+.pte-column-panel-well-items {
+  position: relative;
+}
+
 .pte-column-panel-well-item {
   min-height: 28px;
   display: grid;
-  grid-template-columns: minmax(50px, 1fr) 56px 24px;
+  grid-template-columns: 14px minmax(50px, 1fr) 56px 24px;
   gap: 4px;
   align-items: center;
-  padding: 0 4px 0 8px;
+  padding: 0 4px 0 2px;
   border-radius: 5px;
 }
 
 .pte-column-panel-well-item:hover {
   background: var(--pte-hover-bg-color);
+}
+
+.pte-column-panel-well-item:hover .pte-column-panel-drag {
+  background-color: var(--pte-text-color);
+}
+
+.pte-column-panel-well-item.dragging {
+  opacity: 0.45;
+}
+
+/* Drag inside a well reorders that role; a drag never leaves its well, so this line is the only
+   drop feedback there is — it marks the gap the entry lands in. */
+.pte-column-panel-well-drop-indicator {
+  position: absolute;
+  z-index: 2;
+  left: 2px;
+  right: 4px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--pte-selected-border-color);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .pte-column-panel-well-item-label {

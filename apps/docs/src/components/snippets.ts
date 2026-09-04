@@ -373,7 +373,7 @@ pivot(api: IGridAPI) {
   columnDefs,
   // Or seed at construction: pivotMode: true, pivotColumns: ["status"]
   toolbar: { pivot: true },
-  columnPanel: { trigger: "toolbar" }, // the panel doubles as the pivot customizer
+  columnPanel: { trigger: "toolbar" }, // pivoted, the panel becomes the pivot setup
 });
 
 api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);

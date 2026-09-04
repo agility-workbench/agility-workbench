@@ -14,6 +14,11 @@ import { MenuCoordinator } from "../../menu/coordinator";
 import { AGGREGATE_TYPE_LABELS } from "../../menu/columnMenuService";
 import { ColumnMenuContext } from "../../menu/context";
 import { MenuRenderer } from "../menuRenderer";
+import {
+  clearGroupDropPosition,
+  resolveGroupDropIndex,
+  showGroupDropPosition,
+} from "../toolbar/groupDropPosition";
 import { button, createElement, div, span } from "../element";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 
@@ -40,6 +45,19 @@ type PanelTreeItem =
   | { kind: "column"; entry: PanelColumn }
   | { kind: "group"; group: Column; items: PanelTreeItem[] };
 
+/** One of the pivot setup's three role wells: what it holds, and how its entries are edited. */
+interface WellSpec {
+  role: string;
+  title: string;
+  addLabel: string;
+  entries: Array<{ label: string; remove: () => void }>;
+  reorder: (from: number, to: number) => void;
+  addItems: () => MenuItem[];
+}
+
+const WELL_ITEM_SELECTOR = ".pte-column-panel-well-item";
+const WELL_DROP_INDICATOR = "pte-column-panel-well-drop-indicator";
+
 const SECTION_LABELS: Record<ColumnSection, string> = {
   left: "Pinned left",
   center: "Columns",
@@ -54,6 +72,7 @@ export class ColumnPanelRenderer {
   private panel = createElement("aside", "pte-column-panel");
   private railButton = button("pte-column-panel-rail");
   private content = div("pte-column-panel-content");
+  private titleEl = createElement("h2", "pte-column-panel-title", "Columns");
   private searchInput = createElement("input", "pte-column-panel-search");
   private bulkVisibility = createElement("label", "pte-column-panel-bulk");
   private bulkVisibilityCheckbox = createElement("input", "pte-column-panel-bulk-checkbox");
@@ -72,6 +91,7 @@ export class ColumnPanelRenderer {
   private open = false;
   private trigger: ColumnPanelTrigger = "rail";
   private draggedColId: string | null = null;
+  private draggedWell: { role: string; index: number } | null = null;
   private initialState: ColumnState[] | null = null;
   private collapsedGroups = new Set<string>();
   private triggerTooltipDisposer: (() => void) | null = null;
@@ -188,12 +208,11 @@ export class ColumnPanelRenderer {
     this.triggerButton.addEventListener("keydown", (event) => event.stopPropagation());
 
     const header = div("pte-column-panel-header");
-    const title = createElement("h2", "pte-column-panel-title", "Columns");
     const close = button("pte-column-panel-close", "×");
     close.type = "button";
     close.setAttribute("aria-label", "Close column panel");
     close.addEventListener("click", () => this.setOpen(false));
-    header.append(title, close);
+    header.append(this.titleEl, close);
 
     this.searchInput.type = "search";
     this.searchInput.placeholder = "Search columns…";
@@ -234,7 +253,11 @@ export class ColumnPanelRenderer {
       // pay for a rebuild. Through renderList, so an open that happens INSIDE a dispatch settles
       // with that dispatch's own rebuild instead of running one mid-flight and one at the end.
       if (this.listStale) this.renderList();
-      this.searchInput.focus();
+      // Pivoted there is no search box to land on — the first well control is the panel's entry point.
+      const entry = this.searchInput.hidden
+        ? this.wells.querySelector<HTMLElement>("button")
+        : this.searchInput;
+      entry?.focus();
     } else {
       const focusTarget = this.trigger === "rail" ? this.railButton : this.triggerButton;
       if (focusTarget.isConnected) focusTarget.focus();
@@ -363,13 +386,20 @@ export class ColumnPanelRenderer {
     if (!this.enabled) return;
     this.disposeListTooltips();
     this.list.replaceChildren();
-    // While pivoted the panel is the pivot customizer: the grid displays generated columns, so the
-    // layout chrome (bulk visibility, reset) would act on the invisible stashed sources — it hides,
-    // and the role wells take its place.
+    // While pivoted the panel IS the pivot setup, and nothing else: the grid displays generated
+    // columns, so a list of the stashed source columns has no layout to edit — search, visibility,
+    // pinning, ordering, the bulk toggle and the reset footer would all act on a layout nobody can
+    // see. The three role wells are the whole panel until the mode turns off.
     const pivoting = this.params.core.getPivotMode();
+    this.titleEl.textContent = pivoting ? "Pivot setup" : "Columns";
+    this.panel.setAttribute("aria-label", pivoting ? "Pivot setup" : "Column management");
+    this.searchInput.hidden = pivoting;
     this.bulkVisibility.hidden = pivoting;
     this.footerEl.hidden = pivoting;
+    this.list.hidden = pivoting;
     this.renderWells(pivoting);
+    if (pivoting) return;
+
     const query = this.searchInput.value.trim().toLocaleLowerCase();
     const columns = this.getPanelColumns();
     this.updateModifiedState(columns);
@@ -553,17 +583,6 @@ export class ColumnPanelRenderer {
     const row = div("pte-column-panel-row");
     row.dataset.colId = col.colId;
 
-    if (this.params.core.getPivotMode()) {
-      // Customizer row: label + role chips only. Visibility/pin/reorder target the displayed
-      // layout, which is the generated pivot columns — not these stashed sources.
-      row.classList.add("pte-column-panel-row-pivot");
-      const pivotLabel = span("pte-column-panel-label");
-      pivotLabel.textContent = col.label;
-      this.listTooltipDisposers.push(registerRendererTooltipTarget(pivotLabel, () => col.label));
-      row.append(pivotLabel, this.buildRolesStrip(col, true)!);
-      return row;
-    }
-
     row.draggable = col.movable;
 
     // Six-dot grip; a column that cannot move greys it out to match `row.draggable` above.
@@ -629,7 +648,7 @@ export class ColumnPanelRenderer {
     actions.append(up, down);
 
     row.append(drag, checkbox, label, pin, actions);
-    const roles = this.buildRolesStrip(col, false);
+    const roles = this.buildRolesStrip(col);
     if (roles) row.appendChild(roles);
     this.bindDrag(row, entry, section);
     return row;
@@ -637,11 +656,11 @@ export class ColumnPanelRenderer {
 
   /**
    * The role chips under a column row: one removable chip per active role (row group, pivot
-   * column, each aggregate type), plus — while pivoted, where source columns have no header menu —
-   * a trailing editor chip opening the grouping/pivot/aggregate role menu. Outside pivot mode a
-   * role-less column renders no strip (`null`).
+   * column, each aggregate type), so the pivot recipe stays readable from the flat grid. A
+   * role-less column renders no strip (`null`). Only reached outside pivot mode — while pivoted
+   * the panel lists no columns, and the wells carry the roles.
    */
-  private buildRolesStrip(col: Column, includeEditor: boolean): HTMLDivElement | null {
+  private buildRolesStrip(col: Column): HTMLDivElement | null {
     const core = this.params.core;
     const strip = div("pte-column-panel-roles");
 
@@ -675,16 +694,7 @@ export class ColumnPanelRenderer {
       ));
     }
 
-    if (!includeEditor && strip.childElementCount === 0) return null;
-    if (includeEditor) {
-      const edit = button("pte-column-panel-role-add", "+");
-      edit.type = "button";
-      edit.setAttribute("aria-label", `Edit roles for ${col.label}`);
-      edit.setAttribute("aria-haspopup", "menu");
-      edit.addEventListener("click", () => this.openRoleMenu(col, edit));
-      strip.appendChild(edit);
-    }
-    return strip;
+    return strip.childElementCount === 0 ? null : strip;
   }
 
   private roleChip(text: string, ariaLabel: string, onRemove: () => void): HTMLButtonElement {
@@ -696,28 +706,6 @@ export class ColumnPanelRenderer {
     chip.append(span("pte-column-panel-role-chip-text", text), remove);
     chip.addEventListener("click", onRemove);
     return chip;
-  }
-
-  private openRoleMenu(col: Column, anchorEl: HTMLElement): void {
-    const ctx: ColumnMenuContext = {
-      trigger: "columnMenuButton",
-      targetColId: col.instanceID,
-      colIds: [col.instanceID],
-      anchorEl,
-    };
-    const session = this.params.menuCoordinator.openRoleMenu(ctx);
-    if (session.items.length === 0) return;
-    const rect = anchorEl.getBoundingClientRect();
-    this.params.menuRenderer.open({
-      anchorEl,
-      clientX: rect.left,
-      clientY: rect.bottom + 4,
-      items: session.items,
-      position: "bottom-left",
-      ariaLabel: `Roles for ${col.label}`,
-      onItemClick: session.onItemClick,
-      onClose: session.onClose,
-    });
   }
 
   private removeGroupRole(col: Column): void {
@@ -800,12 +788,14 @@ export class ColumnPanelRenderer {
   }
 
   /**
-   * The pivot customizer's field wells: the three role lists (row groups, pivot column labels,
-   * values) in level order, each with add / reorder / remove. Rendered only while pivot mode is
-   * on; every mutation dispatches the same core actions as the menus, so the grid re-derives and
+   * The pivot setup's field wells: the three role lists (row groups, pivot column labels, values)
+   * in level order, each with add / reorder / remove. Rendered only while pivot mode is on; every
+   * mutation dispatches the same core actions as the menus, so the grid re-derives and
    * `columnsChanged`/`pivotChanged`/`aggregateChanged` repaint this panel.
    */
   private renderWells(pivoting: boolean): void {
+    // The DOM a drag started on is about to go; whatever it was carrying went with it.
+    this.draggedWell = null;
     this.wells.replaceChildren();
     this.wells.hidden = !pivoting;
     if (!pivoting) return;
@@ -852,14 +842,7 @@ export class ColumnPanelRenderer {
     );
   }
 
-  private buildWell(params: {
-    role: string;
-    title: string;
-    addLabel: string;
-    entries: Array<{ label: string; remove: () => void }>;
-    reorder: (from: number, to: number) => void;
-    addItems: () => MenuItem[];
-  }): HTMLDivElement {
+  private buildWell(params: WellSpec): HTMLDivElement {
     const well = div("pte-column-panel-well");
     well.dataset.role = params.role;
 
@@ -879,30 +862,107 @@ export class ColumnPanelRenderer {
     }
 
     const items = div("pte-column-panel-well-items");
+    items.setAttribute("role", "list");
+    items.setAttribute("aria-label", `${params.title} order`);
     params.entries.forEach((entry, index) => {
       const item = div("pte-column-panel-well-item");
+      item.setAttribute("role", "listitem");
+      item.draggable = true;
+      const grip = span("pte-column-panel-drag icon-grip");
+      grip.setAttribute("aria-hidden", "true");
       const label = span("pte-column-panel-well-item-label", entry.label);
       this.listTooltipDisposers.push(registerRendererTooltipTarget(label, () => entry.label));
       const actions = div("pte-column-panel-order-actions");
       const up = this.orderButton("up", `Move ${entry.label} up`, index === 0, () => {
-        params.reorder(index, index - 1);
+        this.moveWellEntry(params, index, index - 1);
       });
       const down = this.orderButton(
         "down",
         `Move ${entry.label} down`,
         index === params.entries.length - 1,
-        () => params.reorder(index, index + 1),
+        () => this.moveWellEntry(params, index, index + 1),
       );
       actions.append(up, down);
       const remove = button("pte-column-panel-well-remove", "×");
       remove.type = "button";
       remove.setAttribute("aria-label", `Remove ${entry.label} from ${params.title}`);
       remove.addEventListener("click", entry.remove);
-      item.append(label, actions, remove);
+      item.append(grip, label, actions, remove);
+      this.bindWellItemDrag(item, params.role, index, entry.label);
       items.appendChild(item);
     });
+    this.bindWellDrop(items, params);
     well.appendChild(items);
     return well;
+  }
+
+  /**
+   * A well entry as a drag source. The gesture is confined to the well the entry lives in: the
+   * three roles hold different things (Values holds column+aggregate pairs, not columns), so a
+   * cross-well drop would have to invent a role change out of a gesture that reads as a move.
+   * Dragging out of a well is simply not a drop target — role changes stay with `+` and `×`.
+   */
+  private bindWellItemDrag(item: HTMLElement, role: string, index: number, label: string): void {
+    item.addEventListener("dragstart", (event) => {
+      this.draggedWell = { role, index };
+      item.classList.add("dragging");
+      // Firefox starts no drag without payload, even one nothing reads back.
+      event.dataTransfer?.setData("text/plain", label);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => this.clearWellDragState());
+  }
+
+  /** The well's item list as a drop zone, accepting only a drag that started in this same well. */
+  private bindWellDrop(items: HTMLElement, params: WellSpec): void {
+    const dragged = () => this.draggedWell?.role === params.role ? this.draggedWell : null;
+    items.addEventListener("dragover", (event) => {
+      if (!dragged()) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      showGroupDropPosition(
+        items,
+        resolveGroupDropIndex(items, event.clientY, WELL_ITEM_SELECTOR, "y"),
+        WELL_ITEM_SELECTOR,
+        WELL_DROP_INDICATOR,
+        "y",
+      );
+    });
+    items.addEventListener("dragleave", (event) => {
+      const next = event.relatedTarget as Node | null;
+      if (!next || !items.contains(next)) clearGroupDropPosition(items, WELL_DROP_INDICATOR);
+    });
+    items.addEventListener("drop", (event) => {
+      const drag = dragged();
+      clearGroupDropPosition(items, WELL_DROP_INDICATOR);
+      if (!drag) return;
+      event.preventDefault();
+      const slot = resolveGroupDropIndex(items, event.clientY, WELL_ITEM_SELECTOR, "y");
+      // The reorder rebuilds this DOM, so `dragend` may never reach the element it started on.
+      this.clearWellDragState();
+      // `slot` names a gap in the list as it stands; the move lifts the entry out first, so every
+      // gap after it closes up by one.
+      this.moveWellEntry(params, drag.index, slot > drag.index ? slot - 1 : slot);
+    });
+  }
+
+  /** Move one well entry, however the move was asked for, and say so. */
+  private moveWellEntry(params: WellSpec, from: number, to: number): void {
+    const count = params.entries.length;
+    if (from === to || from < 0 || to < 0 || from >= count || to >= count) return;
+    const label = params.entries[from].label;
+    params.reorder(from, to);
+    this.announce(`${label} moved to position ${to + 1} of ${count} in ${params.title}`);
+  }
+
+  private clearWellDragState(): void {
+    this.draggedWell = null;
+    for (const dragging of this.wells.querySelectorAll(".dragging")) {
+      dragging.classList.remove("dragging");
+    }
+    for (const items of this.wells.querySelectorAll<HTMLElement>(".pte-column-panel-well-items")) {
+      clearGroupDropPosition(items, WELL_DROP_INDICATOR);
+    }
   }
 
   private openWellAddMenu(anchorEl: HTMLElement, ariaLabel: string, items: MenuItem[]): void {

@@ -80,6 +80,30 @@ const wellLabels = (root: HTMLElement, role: string) =>
   [...(well(root, role)?.querySelectorAll(".pte-column-panel-well-item-label") ?? [])].map(el => el.textContent);
 const menuItems = () =>
   [...document.querySelectorAll<HTMLElement>(".pte-menu-item[data-item-id]")];
+const wellItems = (root: HTMLElement, role: string) =>
+  [...(well(root, role)?.querySelectorAll<HTMLElement>(".pte-column-panel-well-item") ?? [])];
+
+/**
+ * Stack a well's entries at 28px each, so the drop resolver has real rects to compare a pointer
+ * against — happy-dom reports an all-zero rect for every element otherwise, which would land every
+ * drop at the end of the list.
+ */
+function layOutWell(root: HTMLElement, role: string): HTMLElement[] {
+  const items = wellItems(root, role);
+  items.forEach((item, index) => {
+    item.getBoundingClientRect = () => ({
+      x: 0, y: index * 28, left: 0, right: 200, top: index * 28, bottom: (index + 1) * 28,
+      width: 200, height: 28, toJSON: () => ({}),
+    });
+  });
+  return items;
+}
+
+const dragOver = (target: HTMLElement, clientY: number) => {
+  const event = new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY });
+  target.dispatchEvent(event);
+  return event;
+};
 
 describe("column panel role chips", () => {
   it("shows removable role chips outside pivot mode and none on role-less columns", () => {
@@ -111,23 +135,6 @@ describe("column panel role chips", () => {
       { key: instanceId(core, "revenue"), type: AggregateType.AVG },
     ]);
     expect(chipTexts(root, "revenue")).toEqual(["Average"]);
-  });
-
-  it("opens the role menu from the editor chip and toggles an aggregate through it", () => {
-    const { core, root } = makeGrid();
-    setRoles(core, { groups: ["region"], values: [["revenue", AggregateType.SUM]], pivots: ["quarter"] });
-    core.dispatch({ type: "pivotModeSet", on: true });
-    const editor = row(root, "revenue")!.querySelector<HTMLButtonElement>(".pte-column-panel-role-add")!;
-    editor.click();
-    const aggregate = menuItems().find(item => item.dataset.itemId === "aggregateColumns")!;
-    aggregate.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    aggregate.click();
-    const average = menuItems().find(item => item.dataset.itemId === "aggAvg")!;
-    average.click();
-    expect(core.getAggregateModel()).toEqual([
-      { key: instanceId(core, "revenue"), type: AggregateType.SUM },
-      { key: instanceId(core, "revenue"), type: AggregateType.AVG },
-    ]);
   });
 });
 
@@ -233,28 +240,32 @@ describe("column panel pivot customizer", () => {
     return grid;
   }
 
-  it("swaps rows to the customizer form and shows the wells", () => {
+  it("is nothing but the wells while pivoted — no column list, no layout chrome", () => {
     const { root } = makePivotGrid();
-    const regionRow = row(root, "region")!;
-    expect(regionRow.classList.contains("pte-column-panel-row-pivot")).toBe(true);
-    expect(regionRow.querySelector(".pte-column-panel-checkbox")).toBeNull();
-    expect(regionRow.querySelector(".pte-column-panel-pin")).toBeNull();
-    expect(regionRow.querySelector(".pte-column-panel-role-add")).not.toBeNull();
+    // The listed columns are the stashed sources: the grid displays generated columns, so every
+    // control over them (search, visibility, pin, order, bulk, reset) had nothing to act on.
+    expect(root.querySelector(".pte-column-panel-list")!.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelectorAll(".pte-column-panel-row")).toHaveLength(0);
+    expect(root.querySelector(".pte-column-panel-search")!.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelector(".pte-column-panel-bulk")!.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelector(".pte-column-panel-footer")!.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelector(".pte-column-panel-title")!.textContent).toBe("Pivot setup");
+
     expect(root.querySelector(".pte-column-panel-wells")!.hasAttribute("hidden")).toBe(false);
     expect(wellLabels(root, "group")).toEqual(["Region"]);
     expect(wellLabels(root, "pivot")).toEqual(["Quarter"]);
     expect(wellLabels(root, "value")).toEqual(["Revenue — Sum"]);
-    // Bulk visibility and the reset footer act on the hidden stashed layout — gone while pivoted.
-    expect(root.querySelector(".pte-column-panel-bulk")!.hasAttribute("hidden")).toBe(true);
-    expect(root.querySelector(".pte-column-panel-footer")!.hasAttribute("hidden")).toBe(true);
   });
 
-  it("restores the layout chrome when pivot mode exits", () => {
+  it("restores the column list and its chrome when pivot mode exits", () => {
     const { core, root } = makePivotGrid();
     core.dispatch({ type: "pivotModeSet", on: false });
     expect(root.querySelector(".pte-column-panel-wells")!.hasAttribute("hidden")).toBe(true);
+    expect(root.querySelector(".pte-column-panel-list")!.hasAttribute("hidden")).toBe(false);
+    expect(root.querySelector(".pte-column-panel-search")!.hasAttribute("hidden")).toBe(false);
     expect(root.querySelector(".pte-column-panel-bulk")!.hasAttribute("hidden")).toBe(false);
     expect(root.querySelector(".pte-column-panel-footer")!.hasAttribute("hidden")).toBe(false);
+    expect(root.querySelector(".pte-column-panel-title")!.textContent).toBe("Columns");
     expect(row(root, "region")!.querySelector(".pte-column-panel-checkbox")).not.toBeNull();
   });
 
@@ -294,6 +305,38 @@ describe("column panel pivot customizer", () => {
     buttons[1].click();
     expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["quarter", "region"]);
     expect(wellLabels(root, "group")).toEqual(["Quarter", "Region"]);
+  });
+
+  it("reorders a well by dragging one of its entries past another", () => {
+    const { core, root } = makePivotGrid();
+    setRoles(core, { groups: ["region", "quarter"] });
+    const items = layOutWell(root, "group");
+    const list = items[0].parentElement!;
+
+    items[0].dispatchEvent(new Event("dragstart", { bubbles: true }));
+    // Past the midpoint of the second entry, i.e. into the gap after it.
+    expect(dragOver(list, 50).defaultPrevented).toBe(true);
+    expect(list.querySelector(".pte-column-panel-well-drop-indicator")).not.toBeNull();
+    list.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: 50 }));
+
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["quarter", "region"]);
+    expect(wellLabels(root, "group")).toEqual(["Quarter", "Region"]);
+  });
+
+  it("refuses a drag that started in another well", () => {
+    const { core, root } = makePivotGrid();
+    layOutWell(root, "group");
+    const valueList = layOutWell(root, "value")[0].parentElement!;
+
+    wellItems(root, "group")[0].dispatchEvent(new Event("dragstart", { bubbles: true }));
+    // Roles are not interchangeable — Values holds column+aggregate pairs, not columns — so the
+    // other wells are simply not drop targets, and the unprevented dragover says so to the browser.
+    expect(dragOver(valueList, 10).defaultPrevented).toBe(false);
+    expect(valueList.querySelector(".pte-column-panel-well-drop-indicator")).toBeNull();
+    valueList.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: 10 }));
+
+    expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
+    expect(core.getAggregateModel()).toHaveLength(1);
   });
 
   it("removes roles from the wells and keeps pivot mode on when the last pivot column goes", () => {
