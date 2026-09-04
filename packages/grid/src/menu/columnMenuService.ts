@@ -21,6 +21,14 @@ type CapSummary = {
   exportable: boolean;
 };
 
+/** One aggregate type a column admits, as the menus present it. */
+export interface AggregateChoice {
+  /** Menu item id, stable per type (`aggSum`, `aggAvg`, …). */
+  id: string;
+  type: AggregateType;
+  icon?: string;
+}
+
 type GroupMenuItem = MenuItem & {
   command: "group.setMany";
   payload: { colIDs: string[] };
@@ -177,6 +185,46 @@ export class ColumnMenuService {
     return (item?.subMenu ?? []).filter(sub => sub.id !== "aggClear");
   }
 
+  /**
+   * The aggregate types one column can carry (the column panel's per-value function picker, which
+   * REPLACES an entry's type rather than toggling a type on the column).
+   */
+  getAggregateChoices(colID: string): AggregateChoice[] {
+    const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: colID, colIds: [colID] };
+    const cap = this.summarize(ctx);
+    if (!cap.aggregatable || !cap.aggType) return [];
+    return this.aggregateChoicesFor(cap);
+  }
+
+  /**
+   * Which aggregate types a column admits, in menu order, each with the id and icon every menu
+   * labels it with. One table behind the column menu's aggregate submenu and the column panel's
+   * function picker — the two differ in what a click DOES, never in what is on offer.
+   */
+  private aggregateChoicesFor(cap: CapSummary): AggregateChoice[] {
+    if (cap.aggType === "numeric") {
+      return [
+        { id: "aggSum", type: AggregateType.SUM, icon: "icon-sum" },
+        { id: "aggAvg", type: AggregateType.AVG, icon: "icon-avg" },
+        { id: "aggMin", type: AggregateType.MIN, icon: "icon-min-number" },
+        { id: "aggMax", type: AggregateType.MAX, icon: "icon-max-number" },
+        { id: "aggMedian", type: AggregateType.MEDIAN, icon: "icon-median" },
+      ];
+    }
+    if (cap.aggType === "string") {
+      return [
+        { id: "aggCount", type: AggregateType.COUNT, icon: "icon-count" },
+        // Distinct count is a string-column-only refinement of Count, and sits with it.
+        ...(cap.colType === ColumnType.STRING
+          ? [{ id: "aggDistinctCount", type: AggregateType.DISTINCT_COUNT }]
+          : []),
+        { id: "aggMin", type: AggregateType.MIN, icon: "icon-min-string" },
+        { id: "aggMax", type: AggregateType.MAX, icon: "icon-max-string" },
+      ];
+    }
+    return [];
+  }
+
   private getAggregateMenuItems(
     colIDs: string[],
     cap: CapSummary,
@@ -186,34 +234,16 @@ export class ColumnMenuService {
     const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
     // Each type is an independent toggle (a checkmark marks the applied ones): a column may
     // carry several aggregates at once — each is a distinct pivot measure.
-    const agg = (id: string, type: AggregateType, left?: string): MenuItem => ({
-      id,
-      label: AGGREGATE_TYPE_LABELS[type],
-      ...(left ? { left } : {}),
-      ...(this.aggregateTypeApplied(colIDs, type) ? { right: "icon-check" } : {}),
+    item.subMenu = this.aggregateChoicesFor(cap).map(choice => ({
+      id: choice.id,
+      label: AGGREGATE_TYPE_LABELS[choice.type],
+      ...(choice.icon ? { left: choice.icon } : {}),
+      ...(this.aggregateTypeApplied(colIDs, choice.type) ? { right: "icon-check" } : {}),
       command: "aggregate.setMany",
-      payload: { colIDs, agg: type },
-    });
-    if (cap.aggType === "numeric") {
-      item.subMenu = [
-        agg("aggSum", AggregateType.SUM, "icon-sum"),
-        agg("aggAvg", AggregateType.AVG, "icon-avg"),
-        agg("aggMin", AggregateType.MIN, "icon-min-number"),
-        agg("aggMax", AggregateType.MAX, "icon-max-number"),
-        agg("aggMedian", AggregateType.MEDIAN, "icon-median"),
-      ];
-    } else if (cap.aggType === "string") {
-      item.subMenu = [
-        agg("aggCount", AggregateType.COUNT, "icon-count"),
-        agg("aggMin", AggregateType.MIN, "icon-min-string"),
-        agg("aggMax", AggregateType.MAX, "icon-max-string"),
-      ];
-      if (cap.colType === ColumnType.STRING) {
-        item.subMenu.splice(1, 0, agg("aggDistinctCount", AggregateType.DISTINCT_COUNT));
-      }
-    }
+      payload: { colIDs, agg: choice.type },
+    }));
     if (cap.aggregated) {
-      item.subMenu!.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
+      item.subMenu.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
     }
     return [item];
   }

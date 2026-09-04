@@ -183,6 +183,11 @@ the roles in level order.
   role changes stay with the **+** and **×** buttons.
 - Each well's **+** menu adds any eligible source column; values pick an
   aggregate type from a nested menu.
+- Clicking a **Values** row opens its function picker — the aggregate types that
+  column admits, its own one checked — and picking one retypes that entry in
+  place. (Unlike the column menu's per-type toggles, which add a second measure
+  alongside the first.) Retyping onto a type the column already carries merges
+  the two entries, keeping the clicked row's position.
 - The column list itself is gone while pivoted, along with search, the bulk
   visibility toggle and the layout reset. The displayed columns are generated,
   so the listed source columns had no visible layout for those controls to act

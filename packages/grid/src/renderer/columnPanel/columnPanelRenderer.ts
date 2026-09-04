@@ -11,7 +11,7 @@ import { AggregateType } from "../../interfaces/aggregate";
 import { MenuItem } from "../../interfaces/menuItem";
 import { Unsubscribe } from "../../events/events";
 import { MenuCoordinator } from "../../menu/coordinator";
-import { AGGREGATE_TYPE_LABELS } from "../../menu/columnMenuService";
+import { AggregateChoice, AGGREGATE_TYPE_LABELS } from "../../menu/columnMenuService";
 import { ColumnMenuContext } from "../../menu/context";
 import { MenuRenderer } from "../menuRenderer";
 import {
@@ -50,7 +50,12 @@ interface WellSpec {
   role: string;
   title: string;
   addLabel: string;
-  entries: Array<{ label: string; remove: () => void }>;
+  entries: Array<{
+    label: string;
+    remove: () => void;
+    /** Present when the entry itself is editable — the Values well's aggregate function. */
+    openMenu?: (anchorEl: HTMLElement) => void;
+  }>;
   reorder: (from: number, to: number) => void;
   addItems: () => MenuItem[];
 }
@@ -726,6 +731,23 @@ export class ColumnPanelRenderer {
     this.announce(`${col.label} removed from pivot columns`);
   }
 
+  /** Retype one Values entry in place, keeping its position in the generated column order. */
+  private setValueRoleType(index: number, type: AggregateType): void {
+    const model = this.params.core.getAggregateModel();
+    const entry = model[index];
+    if (!entry || entry.type === type) return;
+    const retyped = { key: entry.key, type };
+    // A column carries each type at most once, so retyping onto one it already has MERGES the two:
+    // the clicked entry keeps its place and the other copy goes.
+    const next = model
+      .map((other, at) => (at === index ? retyped : other))
+      .filter((other, at) =>
+        at === index || other.key !== retyped.key || other.type !== retyped.type);
+    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    const label = this.params.core.getColumnModel().getById(entry.key)?.label ?? entry.key;
+    this.announce(`${label} aggregate changed to ${AGGREGATE_TYPE_LABELS[type] ?? type}`);
+  }
+
   private removeValueRole(col: Column, type: AggregateType): void {
     const next = this.params.core.getAggregateModel()
       .filter(entry => !(entry.key === col.instanceID && entry.type === type));
@@ -828,12 +850,20 @@ export class ColumnPanelRenderer {
         role: "value",
         title: "Values",
         addLabel: "Add value",
-        entries: core.getAggregateModel().map(entry => {
+        entries: core.getAggregateModel().map((entry, index) => {
           const col = core.getColumnModel().getById(entry.key);
           const typeLabel = AGGREGATE_TYPE_LABELS[entry.type] ?? entry.type;
+          // Nothing to pick from when the column admits a single type — the row stays a plain label.
+          const choices = col ? this.params.menuCoordinator.getAggregateChoices(col.instanceID) : [];
           return {
             label: `${col?.label ?? entry.key} — ${typeLabel}`,
             remove: () => { if (col) this.removeValueRole(col, entry.type); },
+            ...(col && choices.length > 1
+              ? {
+                openMenu: (anchorEl: HTMLElement) =>
+                  this.openValueTypeMenu(anchorEl, index, col, entry.type, choices),
+              }
+              : {}),
           };
         }),
         reorder: (from, to) => this.reorderValueRoles(from, to),
@@ -887,13 +917,40 @@ export class ColumnPanelRenderer {
       remove.type = "button";
       remove.setAttribute("aria-label", `Remove ${entry.label} from ${params.title}`);
       remove.addEventListener("click", entry.remove);
-      item.append(grip, label, actions, remove);
+      item.append(grip, this.wellItemLabelSlot(item, label, entry.openMenu), actions, remove);
       this.bindWellItemDrag(item, params.role, index, entry.label);
       items.appendChild(item);
     });
     this.bindWellDrop(items, params);
     well.appendChild(items);
     return well;
+  }
+
+  /**
+   * The label cell of a well entry. An entry with something to edit (today: a Values entry's
+   * aggregate function) wears its label as the menu button, and the whole row opens it — the ↑ ↓ ×
+   * buttons keep their own clicks. An entry with nothing to edit stays a plain label.
+   */
+  private wellItemLabelSlot(
+    item: HTMLElement,
+    label: HTMLElement,
+    openMenu: ((anchorEl: HTMLElement) => void) | undefined,
+  ): HTMLElement {
+    if (!openMenu) return label;
+    const trigger = button("pte-column-panel-well-item-button");
+    trigger.type = "button";
+    trigger.setAttribute("aria-haspopup", "menu");
+    const caret = span("pte-column-panel-well-item-caret", "⌄");
+    caret.setAttribute("aria-hidden", "true");
+    trigger.append(label, caret);
+    trigger.addEventListener("click", () => openMenu(trigger));
+    item.addEventListener("click", (event) => {
+      // A click that landed on a button is that button's — including this trigger's own, whose
+      // listener above already ran.
+      if ((event.target as HTMLElement).closest("button")) return;
+      openMenu(trigger);
+    });
+    return trigger;
   }
 
   /**
@@ -970,10 +1027,45 @@ export class ColumnPanelRenderer {
       this.announce("No columns available to add");
       return;
     }
-    const rect = anchorEl.getBoundingClientRect();
     // The items carry complete payloads, so the execution context is nominal (no command the
     // wells build reads it).
     const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: "", colIds: [] };
+    this.openWellMenu(anchorEl, ariaLabel, items, (item) =>
+      this.params.menuCoordinator.executeMenuItem(item, ctx));
+  }
+
+  /**
+   * The function picker on a Values entry: the types this column admits, the entry's own one
+   * checked. Picking one RETYPES that entry — deliberately not the column menu's per-type toggle,
+   * which would leave the old measure in place and add a second one.
+   */
+  private openValueTypeMenu(
+    anchorEl: HTMLElement,
+    index: number,
+    col: Column,
+    current: AggregateType,
+    choices: AggregateChoice[],
+  ): void {
+    const items: MenuItem[] = choices.map(choice => ({
+      id: choice.id,
+      label: AGGREGATE_TYPE_LABELS[choice.type] ?? choice.type,
+      ...(choice.icon ? { left: choice.icon } : {}),
+      ...(choice.type === current ? { right: "icon-check" } : {}),
+      payload: { agg: choice.type },
+    }));
+    this.openWellMenu(anchorEl, `Aggregate function for ${col.label}`, items, (item) => {
+      const type = item.payload?.agg as AggregateType | undefined;
+      if (type) this.setValueRoleType(index, type);
+    });
+  }
+
+  private openWellMenu(
+    anchorEl: HTMLElement,
+    ariaLabel: string,
+    items: MenuItem[],
+    onItemClick: (item: MenuItem) => void,
+  ): void {
+    const rect = anchorEl.getBoundingClientRect();
     this.params.menuRenderer.open({
       anchorEl,
       clientX: rect.left,
@@ -981,7 +1073,7 @@ export class ColumnPanelRenderer {
       items,
       position: "bottom-left",
       ariaLabel,
-      onItemClick: (item) => this.params.menuCoordinator.executeMenuItem(item, ctx),
+      onItemClick,
       onClose: () => undefined,
     });
   }

@@ -339,6 +339,56 @@ describe("column panel pivot customizer", () => {
     expect(core.getAggregateModel()).toHaveLength(1);
   });
 
+  it("changes a value's aggregate function from a click on its row", () => {
+    const { core, root } = makePivotGrid();
+    // Anywhere on the row that is not one of its own buttons — the label carries the menu, but the
+    // whole row is the target.
+    wellItems(root, "value")[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // The entry's own type is the checked one, not every type the column happens to carry.
+    const sum = menuItems().find(item => item.dataset.itemId === "aggSum")!;
+    expect(sum.querySelector(".icon-check")).not.toBeNull();
+    expect(menuItems().find(item => item.dataset.itemId === "aggAvg")!.querySelector(".icon-check"))
+      .toBeNull();
+
+    menuItems().find(item => item.dataset.itemId === "aggAvg")!.click();
+    expect(core.getAggregateModel()).toEqual([
+      { key: instanceId(core, "revenue"), type: AggregateType.AVG },
+    ]);
+    expect(wellLabels(root, "value")).toEqual(["Revenue — Average"]);
+  });
+
+  it("keeps the retyped entry's place and merges away a duplicate of the new type", () => {
+    const { core, root } = makePivotGrid();
+    setRoles(core, {
+      values: [["revenue", AggregateType.SUM], ["revenue", AggregateType.AVG], ["revenue", AggregateType.MIN]],
+    });
+    // Retyping Min → Sum meets the Sum already at the front: one column carries each type once, so
+    // the two merge, and it is the clicked entry that keeps its position.
+    wellItems(root, "value")[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    menuItems().find(item => item.dataset.itemId === "aggSum")!.click();
+
+    expect(core.getAggregateModel()).toEqual([
+      { key: instanceId(core, "revenue"), type: AggregateType.AVG },
+      { key: instanceId(core, "revenue"), type: AggregateType.SUM },
+    ]);
+    expect(wellLabels(root, "value")).toEqual(["Revenue — Average", "Revenue — Sum"]);
+  });
+
+  it("offers the picker on value rows only, and leaves the row's own buttons alone", () => {
+    const { core, root } = makePivotGrid();
+    const button = ".pte-column-panel-well-item-button";
+    expect(wellItems(root, "value")[0].querySelector(button)).not.toBeNull();
+    // A row group is a column, with no function to pick.
+    expect(wellItems(root, "group")[0].querySelector(button)).toBeNull();
+
+    // The × on a value row removes it rather than opening the picker.
+    wellItems(root, "value")[0]
+      .querySelector<HTMLButtonElement>(".pte-column-panel-well-remove")!
+      .click();
+    expect(core.getAggregateModel()).toHaveLength(0);
+    expect(document.querySelectorAll(".pte-menu-item[data-item-id]")).toHaveLength(0);
+  });
+
   it("removes roles from the wells and keeps pivot mode on when the last pivot column goes", () => {
     const { core, root } = makePivotGrid();
     well(root, "pivot")!.querySelector<HTMLButtonElement>(".pte-column-panel-well-remove")!.click();

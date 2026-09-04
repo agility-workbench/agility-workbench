@@ -2,6 +2,7 @@ import { MenuItem } from "../interfaces/menuItem";
 import { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import { IGridCore } from "../interfaces";
 import {
+  AggregateChoice,
   ColumnMenuService,
   ColumnMenuExportTarget,
   ColumnPanelMenuTarget,
@@ -53,6 +54,11 @@ export class MenuCoordinator {
   /** Per-type aggregate toggle items for one column (the column panel's "add value" picker). */
   buildAggregateTypeItems(colID: string): MenuItem[] {
     return this.menuSvc.buildAggregateTypeItems(colID);
+  }
+
+  /** The aggregate types one column admits (the column panel's per-value function picker). */
+  getAggregateChoices(colID: string): AggregateChoice[] {
+    return this.menuSvc.getAggregateChoices(colID);
   }
 
   private isVetoedMultiColumnMenu(ctx: ColumnMenuContext): boolean {

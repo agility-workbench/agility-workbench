@@ -2045,6 +2045,49 @@
   font-size: 12px;
 }
 
+/* A Values entry's aggregate function picker. The whole row opens it, so the row says so with a
+   pointer; the label IS the button, which is what keeps the gesture reachable by keyboard. */
+.pte-column-panel-well-item:has(.pte-column-panel-well-item-button) {
+  cursor: pointer;
+}
+
+.pte-column-panel-well-item-button {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pte-text-color);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.pte-column-panel-well-item-button .pte-column-panel-well-item-label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pte-column-panel-well-item-button:hover {
+  border-color: var(--pte-control-border-color);
+  background: var(--pte-input-bg-color);
+}
+
+.pte-column-panel-well-item-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pte-selected-border-color);
+}
+
+.pte-column-panel-well-item-caret {
+  flex: 0 0 auto;
+  color: var(--pte-muted-text-color);
+  font-size: 13px;
+  line-height: 1;
+}
+
 .pte-column-panel-well-empty {
   padding: 2px 8px 4px;
   color: var(--pte-muted-text-color);
