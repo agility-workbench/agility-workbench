@@ -24,6 +24,7 @@ export type GridIconName =
   | "max-number"
   | "median"
   | "drag"
+  | "grip"
   | "plus-frame"
   | "minus-frame"
   | "not-allowed"

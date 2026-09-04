@@ -566,8 +566,10 @@ export class ColumnPanelRenderer {
 
     row.draggable = col.movable;
 
-    const drag = span("pte-column-panel-drag", "⋮⋮");
+    // Six-dot grip; a column that cannot move greys it out to match `row.draggable` above.
+    const drag = span("pte-column-panel-drag icon-grip");
     drag.setAttribute("aria-hidden", "true");
+    if (!col.movable) drag.classList.add("pte-column-panel-drag-disabled");
 
     const checkbox = createElement("input", "pte-column-panel-checkbox");
     checkbox.type = "checkbox";

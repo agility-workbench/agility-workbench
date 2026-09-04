@@ -60,7 +60,13 @@
   --pte-icon-max-string: url(icons/sort-desc-letters.svg);
   --pte-icon-max-number: url(icons/sort-desc-numbers.svg);
   --pte-icon-median: url(icons/median.svg);
+  /* Four-arrows "this is being moved": the header drag ghost. NOT a handle — nothing wears
+     it at rest — so the column panel's grab affordance is `--pte-icon-grip` instead. */
   --pte-icon-drag: url(icons/drag.svg);
+  /* Six dots in two columns, i.e. the grip everyone recognises as "drag me". Authored on a 10x16
+     viewBox, not the usual 24x24 square, so masking it into a handle-shaped box neither letterboxes
+     the grip nor lands its dots on half-pixels. */
+  --pte-icon-grip: url(icons/grip.svg);
   --pte-icon-plus-frame: url(icons/plus-frame.svg);
   --pte-icon-minus-frame: url(icons/minus-frame.svg);
   --pte-icon-not-allowed: url(icons/not-allowed.svg);
@@ -1785,11 +1791,39 @@
   border-top-color: var(--pte-selected-border-color);
 }
 
+/* The grip that says "pick this row up and move it". This was two `⋮` glyphs pulled together with
+   negative letter-spacing, which rendered as a single column of dots — i.e. the *menu* glyph,
+   promising a menu where the row actually offers a drag. `.icon-grip` masks the six-dot grip at
+   its natural 10x16, so it lands on whole pixels and stays themeable like every other icon. */
 .pte-column-panel-drag {
-  color: var(--pte-muted-text-color);
+  justify-self: center;
+  width: 10px;
+  height: 16px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
   cursor: grab;
-  font-size: 11px;
-  letter-spacing: -3px;
+}
+
+.pte-column-panel-row:hover .pte-column-panel-drag {
+  background-color: var(--pte-text-color);
+}
+
+.pte-column-panel-drag:active,
+.pte-column-panel-row.dragging .pte-column-panel-drag {
+  cursor: grabbing;
+}
+
+/* An immovable column's row is not `draggable`, so its handle must not offer the gesture either. */
+.pte-column-panel-drag-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Hovering the row must not brighten a handle that cannot be used (the rule above it wins on
+   source order, so the tint has to be undone explicitly rather than merely not applied). */
+.pte-column-panel-row:hover .pte-column-panel-drag-disabled {
+  background-color: var(--pte-icon-color);
 }
 
 .pte-column-panel-bulk-checkbox,
@@ -4593,6 +4627,11 @@
 
 .icon-drag {
   mask-image: var(--pte-icon-drag);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-grip {
+  mask-image: var(--pte-icon-grip);
   background-color: var(--pte-icon-color);
 }
 
