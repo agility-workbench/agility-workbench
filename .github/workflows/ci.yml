@@ -199,6 +199,15 @@ jobs:
           # Angular 22's CLI requires Node >= 22.22.3; latest 22.x satisfies all legs.
           node-version: 22
 
+      # npm 10 (bundled with Node 22) crashes resolving the vitest ^4 fixtures'
+      # peer graph since vitest 5.0.0 published (2026-09-03): Arborist dies with
+      # "Cannot read properties of null (reading 'edgesOut')" in #loadPeerSet
+      # walking vitest -> @vitest/browser-playwright@5 (peer: vitest@5). npm 11
+      # resolves the same graph fine, and the fixtures install fresh from the
+      # registry by design, so they need the fixed resolver.
+      - name: Upgrade npm (Arborist peer-set crash on npm 10)
+        run: npm install -g npm@11
+
       - uses: actions/download-artifact@v4
         with:
           name: npm-tarballs
