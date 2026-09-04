@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## 1.1.0 — 2026-09-02
+## 1.1.0 — 2026-09-04
 
 Client-side pivot mode and spreadsheet-style sheets. No breaking API changes; view
 states saved by 1.0.0 apply unchanged.
@@ -21,8 +21,10 @@ states saved by 1.0.0 apply unchanged.
   (new `ColumnAggregate` type). New events `pivotChanged` and `pivotColumnLimitReached`
   (latched: reports the start, the change, and the end of truncation via `limited`).
 - **Pivot UI** — column-menu pivot items, a toolbar `pivot` section, and the column
-  panel as the pivot customizer while pivoted: removable role chips, a role-editor
-  menu, and ordered Row groups / Column labels / Values field wells.
+  panel as the pivot setup: while pivoted it shows exactly three ordered field wells —
+  Row groups / Column labels / Values — with per-well drag reorder, and clicking a
+  Values entry picks that measure's aggregate function in place. Outside pivot mode,
+  panel rows wear removable role chips that read the recipe back.
 - **Column drag of generated columns** — two modes via `pivotColumnMoveMode`
   (runtime-updatable): `"measures"` (default) reorders the value measures consistently
   across every group; `"free"` arranges leaves and whole generated groups, and the

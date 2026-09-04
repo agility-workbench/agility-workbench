@@ -301,9 +301,11 @@ api.setPivotMode(true);
 
 Users reach the same state through the column menu ("Pivot on Column", per-type aggregate
 toggles), the toolbar's `pivot` section (mode indicator + toggle), and the column panel, which
-becomes the pivot customizer while pivoted: role chips on every column, a role-editor menu, and
-ordered Row groups / Column labels / Values field wells. Turning the mode off restores the exact
-pre-pivot grouping and aggregates; turning it back on reinstates the last pivot session.
+becomes the pivot setup while pivoted: three ordered field wells — Row groups / Column labels /
+Values — each drag-reorderable, with a Values entry's aggregate function picked in place by
+clicking it. Outside pivot mode, panel rows wear removable role chips that read the recipe back.
+Turning the mode off restores the exact pre-pivot grouping and aggregates; turning it back on
+reinstates the last pivot session.
 
 Generated columns take their formatting from the source value column (overridable via
 `pivotResultColumnDef`), get stable ids so widths and sorts survive data changes, and can be

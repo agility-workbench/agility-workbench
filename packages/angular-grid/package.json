@@ -39,7 +39,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@agility-workbench/grid": "^1.0.0",
+    "@agility-workbench/grid": "^1.1.0",
     "tslib": "^2.3.0"
   },
   "peerDependencies": {
