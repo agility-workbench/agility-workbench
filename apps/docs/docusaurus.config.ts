@@ -12,6 +12,10 @@ const config: Config = {
   projectName: "agility-workbench",
   onBrokenLinks: "throw",
   markdown: { mermaid: false },
+  // Vercel Web Analytics beacon: the /_vercel/insights/ path is rewritten by the
+  // Vercel deployment itself (404s harmlessly in local dev), and the dashboard's
+  // Analytics toggle must be on for data to collect.
+  scripts: [{ src: "/_vercel/insights/script.js", defer: true }],
   plugins: [
     function generatedModuleCompatibilityPlugin() {
       return {
