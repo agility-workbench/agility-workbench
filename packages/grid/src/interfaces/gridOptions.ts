@@ -1402,6 +1402,13 @@ export interface GridOptions {
    */
   pivotNoValuesMessage?: string;
   /**
+   * Text of the empty-state message shown while pivot mode is on but nothing is configured — no
+   * row group, no pivot column, no value. That state displays no columns and no rows at all (the
+   * blank canvas a fresh pivot sheet opens on), so this message is the whole screen. Defaults to
+   * "Add row groups, column labels or values to build the pivot".
+   */
+  pivotEmptyMessage?: string;
+  /**
    * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
    * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
    * to 300.
@@ -1535,6 +1542,7 @@ export interface InternalGridOptions extends GridOptions {
   loadingMessage: string;
   noRowsMessage: string;
   pivotNoValuesMessage: string;
+  pivotEmptyMessage: string;
   filterDebounceMs: number;
   cellFlashDuration: number;
   cellFadeDuration: number;

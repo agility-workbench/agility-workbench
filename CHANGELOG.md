@@ -31,6 +31,10 @@ states saved by 1.0.0 apply unchanged.
   arrangement survives data-driven rediscovery and pivot off/on.
 - **Pivot mode is a state layer** — turning it off restores the exact pre-pivot
   grouping/aggregates; turning it back on reinstates the last pivot session.
+- **Blank pivot canvas** — pivot mode with no row group, no pivot column and no value
+  displays nothing at all (previously a lone auto-group column over a "Total" row that
+  could not be acted on), showing the new `pivotEmptyMessage` instead; new
+  `isPivotUnconfigured()` reports the state.
 - **Pivot export** — CSV and Excel export the generated nested headers with all group
   rows; aggregate cells export as real numbers.
 - Filters and the quick filter keep running on **source rows**; cell edits re-derive

@@ -103,6 +103,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
 | `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; off restores the pre-pivot state exactly, on reinstates the last pivot) |
+| `isPivotUnconfigured()` | Pivot mode is on with no row group, pivot column or value — the blank canvas (no columns, no rows) |
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `setPivotColumnOrder(order)` / `getPivotColumnOrder()` | Replace/read the manual arrangement of the generated pivot columns (leaf order by generated colId; null = canonical). Role edits reset it |

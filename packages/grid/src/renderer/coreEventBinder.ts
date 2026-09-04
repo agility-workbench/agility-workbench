@@ -64,7 +64,11 @@ export class GridRendererCoreEventBinder {
       }),
       this.params.core.on("rowsChanged", (params: GridEventRowsChangedParams) => {
         this.params.onDataChanged(params);
-        this.params.setEmpty(params.rowCount === 0);
+        // `rowCount` is optional: the core's own repaint emits (a group/pivot/state change) say
+        // "rebind the rows", not "here is the new count", and the model's own emit has already
+        // reported the real one. Reading an absent count as 0 would make every such emit declare
+        // the grid non-empty and clobber the overlay the model just asked for.
+        if (params.rowCount !== undefined) this.params.setEmpty(params.rowCount === 0);
       }),
       this.params.core.on("aggregateChanged", (params: GridEventAggregateChangedParams) => {
         this.params.onAggregateChanged(params);

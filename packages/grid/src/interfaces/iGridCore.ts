@@ -156,6 +156,12 @@ export interface IGridCore {
    */
   isPivotSupported(): boolean;
   getPivotMode(): boolean;
+  /**
+   * Pivot mode is on but no row group, pivot column or value is configured — the blank canvas a
+   * fresh pivot sheet opens on. Nothing is displayed in this state: no columns (not even the
+   * auto-group column) and no rows.
+   */
+  isPivotUnconfigured(): boolean;
   getPivotColumns(): Column[];
   /** The manual arrangement of the generated pivot columns, or null when the layout is canonical. */
   getPivotColumnOrder(): string[] | null;

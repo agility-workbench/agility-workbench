@@ -388,6 +388,8 @@ export class GridCore implements IGridCore {
       noRowsMessage: options.noRowsMessage ?? "No rows to show",
       pivotNoValuesMessage:
         options.pivotNoValuesMessage ?? "Choose Aggregate on a column to add values",
+      pivotEmptyMessage:
+        options.pivotEmptyMessage ?? "Add row groups, column labels or values to build the pivot",
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
       cellFlashDuration: options.cellFlashDuration != null && options.cellFlashDuration >= 0 ? options.cellFlashDuration : 500,
       cellFadeDuration: options.cellFadeDuration != null && options.cellFadeDuration >= 0 ? options.cellFadeDuration : 1000,
@@ -892,6 +894,10 @@ export class GridCore implements IGridCore {
    */
   private applyRowModelRequest(createRequest: () => IRowModelRequestParams): void {
     this.flushAsyncTransactions();
+    // Every role edit ends in a request, so this is the one place that catches all of them —
+    // including the paths that never touch refreshPivotView (aggregate edits, view-state
+    // restores, colDef replacements that re-resolve roles). A no-op unless the split flipped.
+    this.syncPivotConfigured();
     this.rowModel.applyRequest(createRequest());
   }
 
@@ -1277,6 +1283,40 @@ export class GridCore implements IGridCore {
 
   getPivotMode(): boolean {
     return this.pivotMode;
+  }
+
+  /**
+   * Whether the pivot has any role filled: a row group, a pivot column, or a value. Pivot mode
+   * with none of the three has nothing to display — no group tree to label, no generated columns
+   * to fill — so the layout and the row set are both empty and the grid shows its blank-pivot
+   * canvas instead (see {@link isPivotUnconfigured}). Roles are stored even while the mode is
+   * off, hence the separate mode check there.
+   */
+  private isPivotConfigured(): boolean {
+    return this.groupColumns.length > 0
+      || this.pivotColumns.length > 0
+      || this.aggregates.length > 0;
+  }
+
+  /**
+   * Pivot mode is on but nothing is configured yet — the blank canvas an app or the column panel
+   * fills in. Public so an app driving its own pivot UI can render the same empty state.
+   */
+  isPivotUnconfigured(): boolean {
+    return this.pivotMode && !this.isPivotConfigured();
+  }
+
+  /**
+   * Push the configured/unconfigured split down to the column model, which drops the auto-group
+   * column while nothing is configured. Layout-affecting, so a change that actually rebuilt the
+   * pivot layout is announced like any other pivot-driven column change: an unconfigured pivot's
+   * discovery is empty either way, so `onPivotResult` sees an unchanged signature and would emit
+   * nothing on its own (clearing the last pivot column with no values is exactly that case).
+   */
+  private syncPivotConfigured(): void {
+    if (!this.columnModel.setPivotConfigured(this.isPivotConfigured())) return;
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", { reason: "pivot" });
   }
 
   getPivotColumns(): Column[] {

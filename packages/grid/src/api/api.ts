@@ -648,6 +648,10 @@ export class GridAPI implements IGridAPI {
     return this.core.getPivotMode();
   }
 
+  isPivotUnconfigured(): boolean {
+    return this.core.isPivotUnconfigured();
+  }
+
   setPivotColumns(colIds: string[]): void {
     this.dispatch({ type: "pivotColumnsSet", colIds });
   }

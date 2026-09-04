@@ -448,8 +448,10 @@ describe("column-defs swap while pivoted", () => {
     expect(rolesResolve(core)).toBe(true);
     expect(core.getRowGroupColumns()).toEqual([]);
     expect(core.getPivotColumns()).toEqual([]);
-    // …and the generated columns go with the measures that produced them.
-    expect(leafColIds(core)).toEqual(["__pte_group__"]);
+    // …and the generated columns go with the measures that produced them. With no role left at
+    // all the pivot is back to its blank canvas, so not even the auto-group column survives.
+    expect(leafColIds(core)).toEqual([]);
+    expect(core.isPivotUnconfigured()).toBe(true);
   });
 
   it("clears the generated columns of a measure the new defs removed", () => {

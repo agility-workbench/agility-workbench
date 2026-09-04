@@ -92,8 +92,17 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
 
   private get grouped(): boolean {
     // Pivot mode always displays a group tree — with no group columns, the synthesized "Total"
-    // root is the whole tree.
+    // root is the whole tree (and with no roles at all, an empty one: see rebuildPivotTree).
     return this.groupColumns.length > 0 || this.treeData != null || this.pivot != null;
+  }
+
+  // Pivot mode with no row group, no pivot column and no value. Deliberately still `grouped`:
+  // falling back to the flat leaf rows would paint a row per source row under an empty header.
+  private get isPivotUnconfigured(): boolean {
+    return this.pivot != null
+      && this.groupColumns.length === 0
+      && this.pivot.columns.length === 0
+      && this.pivot.valueEntries.length === 0;
   }
 
   getType(): RowModelType {
@@ -412,6 +421,16 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       });
     }
     const computeAggregates = (groupLeaves: IRowNode<Row>[]) => this.pivotStamper!(groupLeaves);
+
+    // A pivot with no role filled has nothing to show: no group tree, and no generated column for
+    // a Total row to carry. The discovery above still runs so the core empties the displayed
+    // layout; the view itself stays empty and the renderer paints its blank-pivot canvas. Note
+    // this is NOT the same as a pivot that merely lacks values — that one still groups.
+    if (this.isPivotUnconfigured) {
+      this.groupRoots = [];
+      this.groupNodesMap = new Map();
+      return;
+    }
 
     if (this.groupColumns.length === 0) {
       const root = buildPivotTotalRoot(leaves, computeAggregates(leaves));

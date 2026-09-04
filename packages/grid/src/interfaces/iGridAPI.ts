@@ -376,6 +376,13 @@ export interface IGridAPI {
   setPivotMode(on: boolean): void;
   getPivotMode(): boolean;
   /**
+   * Pivot mode is on but no row group, pivot column or value is configured yet — the grid
+   * displays no columns and no rows, showing its blank-pivot message instead
+   * (`pivotEmptyMessage`). Exposed so an app driving its own pivot UI can react to the same state
+   * the grid's column panel does.
+   */
+  isPivotUnconfigured(): boolean;
+  /**
    * Replace the set of columns pivoted on (order = pivot level), by colId. Stored even while
    * pivot mode is off; an empty array clears the pivot columns but leaves the mode alone (the
    * degenerate grouped-aggregate view). Non-pivotable and unknown colIds are skipped.

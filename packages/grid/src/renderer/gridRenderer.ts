@@ -862,13 +862,20 @@ export class GridRenderer {
     const updatePivotHint = () => {
       this._pivotHintEl.classList.toggle(
         "visible",
-        this.core.getPivotMode() && this.core.getAggregateModel().length === 0,
+        this.core.getPivotMode()
+          && this.core.getAggregateModel().length === 0
+          // Nothing configured at all = the blank canvas: no header to hint under, and the
+          // empty-state overlay already says what to do (see emptyMessage).
+          && !this.core.isPivotUnconfigured(),
       );
     };
     updatePivotHint();
     this._pivotHintDisposers = [
       this.core.on("pivotChanged", updatePivotHint),
       this.core.on("aggregateChanged", updatePivotHint),
+      // Row groups are the third role the blank-canvas test reads, and they arrive as a column
+      // change rather than a pivot one — adding the first group turns the canvas into a hint.
+      this.core.on("columnsChanged", updatePivotHint),
     ];
 
     // This zero-height host participates in the root's column flow immediately after the header.
@@ -1310,20 +1317,27 @@ export class GridRenderer {
   }
 
   setEmpty(isEmpty: boolean) {
-    if (this._noRowsOverlayRenderer.getEmpty() === isEmpty) return;
-    if (isEmpty) {
-      // Tailor the message: an active search/filter reads differently from a genuinely empty dataset.
-      const quick = this.core.getQuickFilterText().trim();
-      const hasColumnFilter = this.core.getFilterModel().items.length > 0;
-      if (quick !== "") {
-        this._noRowsOverlayRenderer.setMessage(`No rows match "${quick}"`);
-      } else if (hasColumnFilter) {
-        this._noRowsOverlayRenderer.setMessage("No rows match the current filters");
-      } else {
-        this._noRowsOverlayRenderer.setMessage(this.core.options.noRowsMessage);
-      }
+    if (!isEmpty) {
+      this._noRowsOverlayRenderer.setEmpty(false);
+      return;
     }
-    this._noRowsOverlayRenderer.setEmpty(isEmpty);
+    // Recomputed on every empty report, not just on the transition into empty: the reason can
+    // change while the grid stays empty (entering pivot mode on a grid whose filters already
+    // matched nothing), and a stale message is worse than none.
+    this._noRowsOverlayRenderer.setMessage(this.emptyMessage());
+    this._noRowsOverlayRenderer.setEmpty(true);
+  }
+
+  // Why the grid is showing nothing, in the user's words.
+  private emptyMessage(): string {
+    // An unconfigured pivot is empty by construction — no roles, so no columns and no rows. It
+    // outranks the filter wording: filters are not why there is nothing to see.
+    if (this.core.isPivotUnconfigured()) return this.core.options.pivotEmptyMessage;
+    // Otherwise tailor it: an active search/filter reads differently from a genuinely empty dataset.
+    const quick = this.core.getQuickFilterText().trim();
+    if (quick !== "") return `No rows match "${quick}"`;
+    if (this.core.getFilterModel().items.length > 0) return "No rows match the current filters";
+    return this.core.options.noRowsMessage;
   }
 
   setIcons(icons?: GridIconMap) {
@@ -1712,7 +1726,10 @@ export class GridRenderer {
   // not counted.
   private _refreshAriaCounts() {
     const rowModel = this.core.getRowModel();
-    this.root.setAttribute("aria-colcount", String(this.core.getColumnModel().leafColumnLookup.size));
+    // A grid can legitimately display no columns (every column hidden, or an unconfigured pivot).
+    // aria-colcount takes a positive count or -1 for "unknown" — 0 is invalid, so report -1.
+    const colCount = this.core.getColumnModel().leafColumnLookup.size;
+    this.root.setAttribute("aria-colcount", String(colCount > 0 ? colCount : -1));
     // aria-rowcount is the size of the WHOLE set, not of what is currently rendered or paged to,
     // and `aria-rowindex` counts absolutely across pages (`getRowNumberForViewIndex` adds the page
     // offset). Using the page size here made page 2 of 10 report 11 rows with indices 12-21 — every

@@ -29,7 +29,8 @@ from scratch (see [Entering and leaving the mode](#entering-and-leaving-the-mode
 A pivot is configured from state the grid already has:
 
 - **Row groups** — the existing row-grouping model (`rowGroupSet`). With no row
-  groups, the pivot shows a single grand-total row.
+  groups, the pivot shows a single grand-total row (with no roles at all it
+  shows nothing — see [the blank canvas](#the-blank-canvas)).
 - **Values** — the existing aggregate model. Every aggregated column becomes a
   measure; a column may carry several aggregates (each is its own generated
   column, labelled `Revenue (sum)`, `Revenue (avg)`, …). The column menu's
@@ -63,6 +64,22 @@ options. All four pivot options (those two plus `pivotResultColumnDef` and
 `maxPivotColumns`) are React props and Angular inputs; `pivotMode` and
 `pivotColumns` are live — changing either reconciles through the API setters, so
 the mode can be driven declaratively instead of imperatively.
+
+## The blank canvas
+
+Pivot mode with **no** row group, no pivot column and no value displays nothing
+at all — no columns (not even the auto-group column) and no rows, just an empty
+state reading *"Add row groups, column labels or values to build the pivot"*
+(`pivotEmptyMessage`). That is the state a fresh pivot sheet opens on, and the
+state the toolbar toggle lands on when the grid had no roles configured.
+
+`api.isPivotUnconfigured()` reports it, so an app driving pivot through its own
+UI can react to the same state the grid does.
+
+Filling any one of the three roles ends it. A *partly* configured pivot is not
+blank: row groups alone show the group tree, a value alone shows the grand-total
+row, and a pivot column alone shows the group tree under the "no values" header
+hint — which is the affordance telling you what is still missing.
 
 ## Entering and leaving the mode
 

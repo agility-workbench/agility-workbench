@@ -127,6 +127,8 @@ export class ColumnModel implements IColumnModel {
   // generated colId → live Column and persists for the session: a pivot value that vanishes under
   // a filter and returns keeps its width and any live SortModel reference.
   private pivotDisplayActive = false;
+  // Whether the live pivot has any role filled; drives the blank-canvas layout (rebuildPivotLayout).
+  private pivotConfigured = false;
   private pivotSourceStash: Column[] = [];
   private pivotResultRegistry: Map<string, Column> = new Map();
   private pivotResultRoots: Column[] = [];
@@ -847,11 +849,34 @@ export class ColumnModel implements IColumnModel {
     this.pivotResolutionCache = new Map();
   }
 
-  // Pivot display always shows the singleColumn auto-group column: it labels the row-group tree,
-  // including the synthesized "Total" row of an ungrouped pivot. The displayed generated tree is
-  // DERIVED per rebuild — canonical roots, or the manual arrangement laid over them — so the
-  // canonical `pivotResultRoots` instances are never mutated by arranging.
+  /**
+   * Whether the pivot has any role filled (see GridCore.isPivotConfigured). An unconfigured pivot
+   * displays no columns at all, so the flag has to reach the layout build. Returns whether the
+   * layout was rebuilt, so the core knows when to announce the column change.
+   */
+  setPivotConfigured(configured: boolean): boolean {
+    if (configured === this.pivotConfigured) return false;
+    this.pivotConfigured = configured;
+    if (!this.pivotDisplayActive) return false;
+    this.rebuildPivotLayout();
+    return true;
+  }
+
+  // A configured pivot display always shows the singleColumn auto-group column: it labels the
+  // row-group tree, including the synthesized "Total" row of an ungrouped pivot. With no role
+  // filled there is no tree to label and no generated column to sit beside it, so the layout is
+  // empty — the blank canvas a fresh pivot opens on. The displayed generated tree is DERIVED per
+  // rebuild — canonical roots, or the manual arrangement laid over them — so the canonical
+  // `pivotResultRoots` instances are never mutated by arranging.
   private rebuildPivotLayout(): void {
+    // Generated columns are themselves proof the pivot has values, so the flag only decides the
+    // roles that generate nothing (row groups, and pivot columns with no measure yet). Reading
+    // both keeps a model driven without a core — the model-level tests — out of the blank state.
+    if (!this.pivotConfigured && this.pivotResultRoots.length === 0) {
+      this.autoGroupColumns = [];
+      this.updateColumns([]);
+      return;
+    }
     const auto = this.getAutoGroupColumn();
     this.autoGroupColumns = [auto];
     this.updateColumns([auto, ...this.arrangedPivotRoots()]);
