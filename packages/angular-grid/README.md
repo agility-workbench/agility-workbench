@@ -63,7 +63,8 @@ also available via template reference: `<awb-grid #grid="awbGrid" />` → `grid.
 
 Grid options are signal inputs, including pivot mode and sheets: `[pivotMode]` /
 `[pivotColumns]` are live (synced through the imperative API, so values assigned in `gridReady`
-are not overwritten), `[pivotResultColumnDef]` / `[maxPivotColumns]` are creation-time, and
+are not overwritten), `[pivotColumnMoveMode]` is live, `[pivotResultColumnDef]` /
+`[maxPivotColumns]` / `[pivotNoValuesMessage]` / `[pivotEmptyMessage]` are creation-time, and
 `[sheets]` renders the footer tab strip with the same app-owned persistence contract as
 `[savedViews]`. See the core README for what pivot mode and sheets do.
 

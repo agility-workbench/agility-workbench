@@ -1,6 +1,8 @@
 # Non-publishing CI: every mandatory release gate that can run without
-# registry credentials. Publishing (Trusted Publishing / OIDC) is deliberately
-# NOT configured here — see docs/maintainers/repository.md before adding it.
+# registry credentials. Publishing lives in release.yml, which consumes THIS
+# workflow's `npm-tarballs` artifact on a v* tag — never rebuilding — so a
+# change to the packaging steps below changes what gets released
+# (docs/maintainers/repository.md §6).
 name: CI
 
 on:

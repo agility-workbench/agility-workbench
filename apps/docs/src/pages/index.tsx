@@ -6,7 +6,7 @@ import styles from "./index.module.css";
 
 const features = [
   ["01", "Work at scale", "Virtualized rendering, lazy server blocks, pinned sections, and predictable updates."],
-  ["02", "Shape the data", "Filtering, multi-sort, grouping, tree data, aggregation, pagination, and saved views."],
+  ["02", "Shape the data", "Filtering, multi-sort, grouping, tree data, aggregation, pivot tables, and sheet tabs."],
   ["03", "Edit like a workspace", "Typed editors, ranges, clipboard workflows, keyboard navigation, undo, and redo."],
   ["04", "Ship every framework", "A dependency-free core with first-party React and Angular adapters."],
   ["05", "Export the real view", "CSV and native Excel output with groups, formulas, spans, panes, and selections."],

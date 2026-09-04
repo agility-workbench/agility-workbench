@@ -1,0 +1,105 @@
+# Publishing workflow — the counterpart to ci.yml's non-publishing gates.
+#
+# Trigger: pushing a v* tag whose commit has a GREEN ci.yml run on it. The job
+# downloads that run's `npm-tarballs` artifact and publishes those exact files —
+# it never rebuilds (docs/maintainers/repository.md §7).
+#
+# Auth: npm Trusted Publishing (OIDC). Each package on npmjs.com names this
+# repository + workflow file as its trusted publisher, so no npm token exists
+# anywhere. Requires npm >= 11.5.1 (Node 24 bundles npm 11); `id-token: write`
+# also produces the provenance attestation the manifests already opt into.
+#
+# Rollout checklist (one-time, on npmjs.com and GitHub — see repository.md §6/§7):
+#   1. GitHub repo → Settings → Environments → create `npm-publish`
+#      (add required reviewers if you want a manual approval gate).
+#   2. For EACH package on npmjs.com → Settings → Trusted Publisher →
+#      GitHub Actions: repository owner/name, workflow `release.yml`,
+#      environment `npm-publish`.
+#   3. Optionally set each package's publishing access to
+#      "Require two-factor authentication and disallow tokens" — trusted
+#      publishing still works, classic tokens stop working.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions:
+  contents: read
+  id-token: write # OIDC: npm Trusted Publishing + provenance attestation
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  publish:
+    name: Publish tagged tarballs to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # npm >= 11.5.1 is the Trusted Publishing floor; Node 24 bundles npm 11.
+          # Deliberately NO registry-url here: setup-node would write an .npmrc
+          # expecting NODE_AUTH_TOKEN, which OIDC publishing neither has nor needs.
+          node-version: 24
+
+      - name: npm version sanity
+        run: npm --version
+
+      # An annotated tag's github.sha is not reliably the commit — dereference it.
+      - name: Resolve tagged commit
+        id: commit
+        run: echo "sha=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_OUTPUT"
+
+      - name: Find the green CI run for the tagged commit
+        id: ci-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${{ steps.commit.outputs.sha }}&status=success&per_page=1" \
+            --jq '.workflow_runs[0].id')
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "::error::No successful CI run for ${{ steps.commit.outputs.sha }}. Let CI go green on this commit before tagging (or re-push the tag afterwards)."
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: artifacts/npm
+          run-id: ${{ steps.ci-run.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify every tarball's version matches the tag
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          ls -l artifacts/npm
+          for t in artifacts/npm/*.tgz; do
+            v=$(tar -xzOf "$t" package/package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).version))')
+            echo "$t -> $v"
+            if [ "$v" != "$tag_version" ]; then
+              echo "::error::$t carries $v but the tag says $tag_version — retag the right commit."
+              exit 1
+            fi
+          done
+
+      # Core first: both bindings depend on it by semver range
+      # (docs/maintainers/repository.md "Release order & version coupling").
+      - name: Publish core, then bindings
+        run: |
+          npm publish artifacts/npm/agility-workbench-grid-*.tgz --provenance
+          npm publish artifacts/npm/agility-workbench-react-grid-*.tgz --provenance
+          npm publish artifacts/npm/agility-workbench-angular-grid-*.tgz --provenance
+
+      - name: Verify on the registry
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          for p in grid react-grid angular-grid; do
+            npm view "@agility-workbench/$p@$tag_version" version
+          done

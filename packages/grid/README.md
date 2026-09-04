@@ -204,21 +204,54 @@ const core = new GridCore(new CanvasMeasurer(), {
     quickFilter: true,
     views: true,
     export: true,
+    pivot: true,
   },
 });
 ```
 
-All five sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
+All six sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
 the toolbar; the separate `quickFilter` option still configures matching, case sensitivity, and
 debouncing, while floating-only placement and close behavior do not apply there. If `quickFilter`
 is omitted, enabling the toolbar section uses its defaults. The React binding applies section
 changes live without remounting the grid. A column panel configured with `trigger: "toolbar"` also
 keeps the toolbar visible for its Columns button, independently of these section flags.
 
-The toolbar observes its own rendered width. At narrower widths the quick filter contracts and the
-Export and Columns controls become icon-only; at the narrowest width those secondary actions move
-into a More menu. The behavior therefore follows the grid's container rather than the browser
-window.
+`toolbar.pivot` adds the pivot-mode indicator and toggle (client-side row model only) — see
+[Pivot mode](#pivot-mode).
+
+### Narrow bars
+
+The toolbar and the footer both measure their own rendered width — the grid's container, not the
+browser window — and cope with a width their controls do not fit by the same rule: **nothing is
+clipped, overlapped, or compressed.** Every control is laid out at its natural size in one of its
+presentation stages, or it moves into that bar's overflow menu (`⋮`); a bar that runs out of
+stages scrolls, so no control becomes unreachable.
+
+The toolbar's ladder runs cheapest first: button captions go (each button's tooltip carries the
+label it lost), then the quick-filter input narrows, then **Grouped by** / **Sort by** chips fold
+from the end into a `+N`, then each chip section becomes a summary button (`Grouped by 3`) that
+opens the same drag-reorder editor as a popover and stays a drop target for a column dragged out
+of the header, then Export / Pivot / Views and the chip sections move into the `⋮`, then the
+quick filter becomes a search icon that expands back over the bar in place — and Columns last,
+because the column panel is the escape hatch to everything else. Two rules keep it usable: a
+control holding focus or carrying live state (a quick filter with a query) is not displaced — the
+next rung goes instead — and when something *is* displaced the `⋮` wears a dot while anything
+inside it is active, with focus following the displaced control to the button that now holds it.
+
+The order is fixed; an application that wants a different one configures *fewer controls* rather
+than re-ordering the ladder. What is configurable is whether the ladder runs at all:
+
+```ts
+const options = {
+  toolbar: { grouping: true, sorting: true, quickFilter: true, responsive: "collapse" },
+  paginationControls: { responsive: "collapse" },
+};
+```
+
+`"collapse"` (the default) walks the ladder above. `"scroll"` leaves every control at full size
+and scrolls the bar as soon as they do not fit. `false` lays the bar out and lets it clip, for an
+application that guarantees its own width. `paginationControls.responsive` says the same for the
+footer, whose own `⋮` holds rows-per-page, the aggregate scope, and the sheet strip's **+**.
 
 ### Saved views
 
@@ -304,8 +337,20 @@ toggles), the toolbar's `pivot` section (mode indicator + toggle), and the colum
 becomes the pivot setup while pivoted: three ordered field wells — Row groups / Column labels /
 Values — each drag-reorderable, with a Values entry's aggregate function picked in place by
 clicking it. Outside pivot mode, panel rows wear removable role chips that read the recipe back.
+`columnPanel: { availability: "pivot" }` mounts that panel *only* while pivoted — the pivot
+customizer without the column-management drawer — for apps that manage columns their own way.
 Turning the mode off restores the exact pre-pivot grouping and aggregates; turning it back on
 reinstates the last pivot session.
+
+Pivot mode with **no** row group, no pivot column and no value displays nothing at all — no
+columns, not even the auto-group column — and shows an empty state instead, whose copy is the
+app's through `pivotEmptyMessage`. That is the state a fresh pivot sheet opens on, and
+`api.isPivotUnconfigured()` reports it, so an app driving pivot through its own UI can react to
+the same state the grid does. Where the column panel is enabled, entering pivot mode with nothing
+configured opens it, since a blank canvas has no header to reach a column menu from. Filling any
+one of the three roles ends the blank state: a *partly* configured pivot is not blank — row
+groups alone show the group tree, a value alone the grand-total row, and a pivot column alone the
+group tree under the "no values" header hint (`pivotNoValuesMessage`).
 
 Generated columns take their formatting from the source value column (overridable via
 `pivotResultColumnDef`), get stable ids so widths and sorts survive data changes, and can be

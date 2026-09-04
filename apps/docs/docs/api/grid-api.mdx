@@ -90,6 +90,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | Method | Purpose |
 | --- | --- |
 | `setQuickFilter(text, options?)` | Apply client-side global search |
+| `getQuickFilterText()` | Current quick-filter text (`""` when inactive) |
 | `getFilterModel()` | Read the per-column filters as serializable `{ colId, filters, join }` items |
 | `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
 | `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |
@@ -118,12 +119,17 @@ Filter, grouping, aggregate, and pivot methods address columns by the public
 ## Selection and navigation
 
 `setFocusedCell`, `selectRange`, `extendRangeTo`, `selectRow`, `selectColumn`,
-`selectAll`, `selectAllRows`, `clearSelection`, and `navigate` mirror rendered
-keyboard and pointer behavior. `selectRowsById(ids, mode?)` drives row
+`selectAll`, `selectAllRows`, `deselectAllRows`, `clearSelection`, and
+`navigate` mirror rendered keyboard and pointer behavior.
+`navigateToCorner(corner, opts?)` jumps the active cell to `"topLeft"` or
+`"bottomRight"` (Ctrl+Home / Ctrl+End), optionally extending the range.
+`selectRowsById(ids, mode?)` drives row
 selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
 `getSelection`, `getSelectedRows`, and `getSelectedNodes` return current state
 (always copies — safe to mutate). `selectAllRows`/`areAllRowsSelected` span the
-whole filtered set by default (`selectAllScope` option).
+whole filtered set by default (`selectAllScope` option), and
+`getKeyboardNavigationMode()` reports the live tree-data navigation mode
+(non-tree grids always report `"grid"`).
 
 ## Keyboard shortcuts
 
@@ -202,6 +208,7 @@ if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { positio
 | --- | --- |
 | `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
 | `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
+| `getEditingCell()` | The cell being edited as `{ rowId, colId }`, or `null` |
 | `setCellValue(cell, value)` | Write one cell without opening an editor |
 | `setCellValues(edits)` | Write many cells as **one** undo step (changed cells only) |
 | `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
@@ -219,7 +226,8 @@ configured, while `setCellValue(cell, "99")` gives the parser its say.
 ## Floating UI and pinned rows
 
 `showTooltip`, `hideTooltip`, `openActionFrame`, and `closeActionFrame` address
-cells by stable row and column IDs. `setPinnedTopRowData`,
+cells by stable row and column IDs; `getActionFrameCell()` returns the cell
+with an open ActionFrame, or `null`. `setPinnedTopRowData`,
 `setPinnedBottomRowData`, and `setRowPinned` update frozen row bands.
 
 Rows supplied through `pinnedTopRowData` or `pinnedBottomRowData` stay fixed in

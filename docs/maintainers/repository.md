@@ -19,8 +19,9 @@ versioned, independently publishable packages:
 | `packages/angular-grid` | `@agility-workbench/angular-grid` | Standalone Angular binding (`<awb-grid>`) built on the core. Depends on `@agility-workbench/grid`; **publishes from its generated `dist/`** (see §5, §6). |
 
 The workspace globs are `packages/*` **and** `apps/docs`. `apps/docs` is the
-Docusaurus site (`@agility-workbench/docs`, private, never published); the two
-playgrounds under `apps/` are plain Vite apps, not workspaces.
+Docusaurus site (`@agility-workbench/docs`, private, never published); the three
+playgrounds under `apps/` (React, Angular, vanilla) are plain Vite apps, not
+workspaces.
 
 The repository **root is private** (`"private": true`, name `agility-workbench`) and
 is never published — it only orchestrates the workspaces, the shared dev tooling, the
@@ -46,20 +47,34 @@ agility-workbench/                 ← private workspace root
 ├── tsconfig.json                  root config for the react-playground app + editor (path aliases)
 ├── vite.config.ts                 react-playground dev server; aliases → packages/*/src
 ├── vite.angular.config.ts         angular-playground dev server (analog Angular plugin; port 5180)
+├── vite.vanilla.config.ts         vanilla-playground dev server (core only; port 5182)
 ├── vitest.config.ts               test discovery + aliases (grid + react-grid)
+├── vercel.json                    docs-site deploy config (root-workspace build, path-scoped ignore rule)
+├── CHANGELOG.md                   one entry per release; all three packages version together (§6)
+├── .github/workflows/
+│   ├── ci.yml                     non-publishing gates + the npm-tarballs artifact a release uses
+│   └── release.yml                publishes those tarballs on a v* tag via OIDC (§6, §7)
 ├── scripts/
-│   └── check-export-parity.mjs    release gate: built .d.ts/.d.cts vs ESM/CJS runtime exports (§6)
+│   ├── check-export-parity.mjs    release gate: built .d.ts/.d.cts vs ESM/CJS runtime exports (§6)
+│   └── check-pack-contents.mjs    release gate: exact packed-file allowlist per package (§6)
+├── ci/
+│   └── consumers/                 standalone consumer fixtures (core, React, Angular 20/21/22) that
+│                                  install the packed tarballs like external npm users; see its README
 ├── examples/                      pointer to the docs site's example pages (content migrated to apps/docs)
 ├── docs/
 │   ├── maintainers/repository.md  ← this document
-│   └── architecture/current-state.md   feature/architecture reference
+│   ├── architecture/current-state.md   feature/architecture reference
+│   ├── keyboard-shortcut-resolution.md design record for the keyboard system
+│   └── planned-work.md            tracker: scoped-but-unfinished work
 │
 ├── apps/
 │   ├── docs/                      Docusaurus site — a workspace, private, never published
 │   ├── react-playground/          demo app (NOT published; consumes packages via aliases)
 │   │   ├── App.tsx, *Demo.tsx, main.tsx, index.html, *.css
-│   └── angular-playground/        Angular demo app (zoneless bootstrap; own tsconfig for the analog plugin)
-│       ├── app.component.ts, *-demo.component.ts, main.ts, index.html, style.css
+│   ├── angular-playground/        Angular demo app (zoneless bootstrap; own tsconfig for the analog plugin)
+│   │   ├── app.component.ts, *-demo.component.ts, main.ts, index.html, style.css
+│   └── vanilla-playground/        framework-free demo app (createGrid + plain DOM; own tsconfig)
+│       ├── demos/*.ts, main.ts, index.html, style.css
 │
 └── packages/
     ├── grid/                      @agility-workbench/grid
@@ -240,7 +255,7 @@ one, bump its toolchain, verify locally), add the major to the `consumer-angular
 
 | Command | Effect |
 | --- | --- |
-| `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^1.0.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
+| `npm install` | Installs all deps and symlinks the workspaces into `node_modules/@agility-workbench/`. The plain `^1.1.0` semver range in react-grid's `dependencies` links to the local `packages/grid` automatically. |
 | `npm run build` | `build:grid` → `build:react` → `build:angular` — explicit order (both bindings' builds need grid's `dist/*.d.ts`; see §4B). |
 | `npm run typecheck` | `build:grid` (so grid declarations exist on a clean checkout) → typecheck grid → `typecheck:react` → `typecheck:angular` → `typecheck:react-playground` → `typecheck:angular-playground`. Explicit, not workspace-traversal order. |
 | `npm test` | Runs the root Vitest suite (grid + react-grid, including the package-resolution regression guard), then `test:angular`. |
@@ -264,12 +279,12 @@ All three packages are publish-ready. Current state of the manifests:
 - `@agility-workbench/grid` — `"private"` is absent (publishable), `publishConfig.access: "public"`,
   `provenance: true`, `exports` map (`.`, `./styles.css`, `./package.json`), `files: ["dist","README.md","LICENSE"]`,
   `prepublishOnly: "npm run build"`, `sideEffects: ["**/*.css"]`.
-- `@agility-workbench/react-grid` — same publish config; `dependencies: { "@agility-workbench/grid": "^1.0.0" }`,
+- `@agility-workbench/react-grid` — same publish config; `dependencies: { "@agility-workbench/grid": "^1.1.0" }`,
   `peerDependencies: { react, react-dom }` (optional in practice — provided by the host app),
   `sideEffects: false`.
 - `@agility-workbench/angular-grid` — same publish config plus `publishConfig.directory: "dist"`
   (ng-packagr generates the real manifest there — publish the `dist/` folder, see §5);
-  `dependencies: { "@agility-workbench/grid": "^1.0.0", tslib }`,
+  `dependencies: { "@agility-workbench/grid": "^1.1.0", tslib }`,
   `peerDependencies: { "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0" }`.
 
 ### What is achievable today
@@ -278,7 +293,7 @@ All three packages are publish-ready. Current state of the manifests:
   in any framework (or none). `npm publish` from `packages/grid` produces a tarball with
   `dist/{index.js,index.cjs,index.d.ts,index.css}` + LICENSE + README.
 - ✅ **Publish the React binding.** `@agility-workbench/react-grid` resolves the core from the
-  registry via its `^1.0.0` range. Its tarball is tiny because the core is not bundled in.
+  registry via its `^1.1.0` range. Its tarball is tiny because the core is not bundled in.
 - ✅ **Dual module formats.** Both ship ESM + CJS + type declarations, resolved through the
   `exports` map for modern bundlers and `main`/`module`/`types` for legacy resolution.
 - ✅ **CSS needs no setup.** The grid injects its own stylesheet on attach — a `<style>` first
@@ -297,18 +312,55 @@ Because **both** bindings depend on grid by semver range, **publish
 `@agility-workbench/angular-grid` in either order. If a binding release requires a new core
 symbol, bump and publish the core, then bump that binding's dependency range to match.
 
-### Manual publish (first release)
+### Automated publish (the normal path)
+
+`.github/workflows/release.yml` publishes on a pushed `v*` tag. It does **not** build: it finds
+the successful `ci.yml` run for the tagged commit, downloads that run's `npm-tarballs` artifact,
+checks every tarball's `version` against the tag, then publishes core → react → angular with
+`--provenance`, and reads each version back off the registry. So the release is exactly the
+artifact CI already gated.
+
+Auth is npm **Trusted Publishing** (OIDC) — no npm token exists anywhere. That needs one-time
+setup, and until it is done a tag push will fail at the publish step:
+
+1. GitHub → Settings → Environments → create `npm-publish` (add required reviewers for a manual
+   approval gate).
+2. On npmjs.com, for **each** of the three packages → Settings → Trusted Publisher → GitHub
+   Actions: this repository, workflow `release.yml`, environment `npm-publish`.
+3. Optionally set each package's publishing access to "Require two-factor authentication and
+   disallow tokens" — trusted publishing keeps working, classic tokens stop.
+
+Because the tarballs come from a CI run, **the tagged commit must be on `main` and have a green
+CI run** (`ci.yml` triggers on pushes to `main` and on PRs, not on tags). Tag after CI passes on
+that commit; if you tagged early, re-push the tag once it is green.
+
+To release: bump the three versions (+ the bindings' ranges on the core), update `CHANGELOG.md`,
+merge to `main`, wait for green CI, then `git tag v<version> && git push origin v<version>`.
+
+### Manual publish (fallback)
+
+Use this only when the workflow is unavailable — trusted publishing not yet configured, or a
+release that cannot go through CI. It needs an npm login with scope access.
 
 ```bash
 # from repo root
-npm run build                                   # all three, in order
+npm run build                                   # all three, in order — REQUIRED, see the note below
 npm test                                        # root suite (grid + react) then test:angular — all must pass
 npm run check:exports                           # declaration/runtime parity gate
+npm run check:pack                              # packed-content allowlist gate
 
 cd packages/grid          && npm publish        # prepublishOnly re-builds
-cd ../react-grid          && npm publish
+cd ../react-grid          && npm publish        # prepublishOnly re-builds
 cd ../angular-grid/dist   && npm publish        # NOTE: publish from dist/, not the package root
 ```
+
+**The Angular publish has no rebuild safety net.** `prepublishOnly` lives in
+`packages/angular-grid/package.json`, but the tarball is packed from
+`packages/angular-grid/dist`, whose ng-packagr-generated manifest carries no `scripts` at all — so
+`npm publish` there ships whatever `dist/` currently holds, however old. The core and React
+packages re-build themselves on publish; Angular does not. Always run `npm run build` from the
+root first, and if in doubt confirm a symbol from the newest commit is actually in
+`dist/fesm2022/agility-workbench-angular-grid.mjs` before publishing.
 
 npm workspaces also allow `npm publish --workspace @agility-workbench/grid` from the root —
 **but not for the Angular package.** `publishConfig.directory` does *not* redirect npm's packing:
@@ -318,31 +370,48 @@ fields. The Angular package must always be published/packed from `packages/angul
 
 ### Pre-publish checklist
 
-- [ ] `npm run build && npm test` clean.
-- [ ] `npm run check:exports` passes.
+CI enforces the first three on every push; run them locally before tagging anyway, because a red
+CI run means no tarballs to release from.
+
+- [ ] `npm run build && npm test` clean. For a manual publish the build is not optional — the
+      Angular tarball is whatever `dist/` holds (see above).
+- [ ] `npm run check:exports` and `npm run check:pack` pass.
 - [ ] `npm pack --dry-run ./packages/grid ./packages/react-grid ./packages/angular-grid/dist` shows
       only `dist/` + LICENSE + README + package.json per package (8, 7, and 5 files respectively).
       Note the explicit `angular-grid/dist` path — do **not** use `--workspace` for Angular.
 - [ ] Versions bumped (core before dependents, if coupled).
 - [ ] Both bindings' dependency ranges on the core match the version being released.
-- [ ] Logged in to npm with access to the `@agility-workbench` scope.
+- [ ] `CHANGELOG.md` has an entry for the version, and the READMEs describe what it adds — the
+      package READMEs ship *inside* the tarballs, so a stale one is published for good.
+- [ ] Trusted publishing configured for all three packages (once, ever) — or, for a manual
+      publish, logged in to npm with access to the `@agility-workbench` scope.
+- [ ] The tagged commit is on `main` with a **green CI run**, then push the tag
+      (`git tag v<version> && git push origin v<version>`) — the tag is what publishes.
 
 ## 7. Not yet set up (recommended follow-ups)
 
-These are **not** in place today and are needed for a smooth, repeatable release process:
+What is still missing for a smooth, repeatable release process. One entry is struck through
+because it landed — kept here so the shape of the release story stays in one place:
 
 - **Automated versioning/changelogs** — e.g. [changesets](https://github.com/changesets/changesets),
   which understands workspaces and the inter-package dependency bump.
-- **Publishing automation** — non-publishing CI exists (`.github/workflows/ci.yml`: locked
-  install, builds, typecheck, all tests, docs and playground production builds, `check:exports`,
-  `check:pack`, checksummed tarball artifacts, and standalone consumer jobs — core, React 18/19,
-  Angular 20/21/22 — that install those tarballs like external npm users, see
-  `ci/consumers/README.md`), but there is no release workflow yet. When one is added it must
-  consume the CI-produced `npm-tarballs` artifact — never rebuild — and run
-  `npm publish --provenance` per package on a tag/release (requires `id-token: write`).
+- ~~**Publishing automation**~~ — **DONE**: `.github/workflows/release.yml` publishes on a
+  `v*` tag push. It locates the green `ci.yml` run for the tagged commit, downloads that run's
+  `npm-tarballs` artifact — never rebuilds — verifies each tarball's version against the tag,
+  and runs `npm publish --provenance` core-first. Auth is npm **Trusted Publishing** (OIDC,
+  `id-token: write`, no stored token); the one-time npmjs.com + GitHub-environment setup steps
+  are in §6 ("Automated publish") and the workflow's header comment. Non-publishing CI is unchanged
+  (`.github/workflows/ci.yml`: locked install, builds, typecheck, all tests, docs and
+  playground production builds, `check:exports`, `check:pack`, checksummed tarball artifacts,
+  and standalone consumer jobs — core, React 18/19, Angular 20/21/22 — that install those
+  tarballs like external npm users, see `ci/consumers/README.md`).
 - **Lint** — no lint script, dependency, or configuration exists.
-- **Documentation *deployment*** — the Docusaurus source **is** in this repo (`apps/docs`, built
-  with `npm run docs:build`), but its deployment to the `homepage`
-  (`https://agilityworkbench.dev`) is not automated here.
+- **Documentation *deployment*** — configured, not verified here. `vercel.json` at the root drives
+  the deploy to the `homepage` (`https://agilityworkbench.dev`): `npm ci` install,
+  `npm run docs:build` (which builds grid + react-grid first, because the live demos import the
+  packages), output at `apps/docs/build`, and an `ignoreCommand` that skips the build unless
+  `apps/docs`, either published package's `src`/`package.json`, the lockfile, or `vercel.json`
+  changed. What is *not* in the repo is any check that the deploy succeeded — the docs build is
+  covered by CI (`npm run docs:build`), the deployment is not.
 - **Alias cleanup** — optionally remove the dev-only `@grid`/`@react-grid` aliases (§4) by
   converting core/test imports to relative or package-name specifiers.

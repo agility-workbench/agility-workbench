@@ -68,15 +68,8 @@ states saved by 1.0.0 apply unchanged.
 - Behavior note: when duplicate aggregates target one column, the footer aggregate row
   resolves **last-wins** (previously first-won via dedup).
 
-### Fixes
+### Responsive toolbar and footer
 
-- Copying group rows now writes the group label and its aggregate values instead of
-  blank cells, and the label matches the screen: custom tree labels copy as shown, and
-  an unknown child count no longer copies or exports as `(0)`.
-- A sort on the auto-group column now survives view save/restore and sheet switches,
-  and retires with the column instead of lingering in the sort model.
-- React: `onGridReady` now fires after the `columnDefs` / `rowData` effects, so
-  colId-addressed calls in a ready handler are no longer dropped.
 - **Neither bar overlaps its own controls at a narrow width any more.** Space in the toolbar
   and the footer used to be handed out by flex/grid *shrink*, which has no floor: a control
   squeezed past its min-content width did not compress, it overflowed its box and painted over
@@ -121,6 +114,16 @@ states saved by 1.0.0 apply unchanged.
 - At its narrowest stage the search icon's expanded field renders in the bar again, and stays open
   while it is in use: it was laid out at its content width and hung off the side of the grid, and
   every fit pass — including the one focus itself provokes — closed it.
+
+### Fixes
+
+- Copying group rows now writes the group label and its aggregate values instead of
+  blank cells, and the label matches the screen: custom tree labels copy as shown, and
+  an unknown child count no longer copies or exports as `(0)`.
+- A sort on the auto-group column now survives view save/restore and sheet switches,
+  and retires with the column instead of lingering in the sort model.
+- React: `onGridReady` now fires after the `columnDefs` / `rowData` effects, so
+  colId-addressed calls in a ready handler are no longer dropped.
 
 Both wrappers expose everything above — pivot props/inputs are live-synced, and
 `sheets` passes through — with smoke tests on each binding.

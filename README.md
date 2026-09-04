@@ -174,16 +174,19 @@ tabs, and each example isolates one option, API workflow, or framework adapter
 instead of recreating a full playground screen. The pages live in
 [`apps/docs/docs/examples`](apps/docs/docs/examples).
 
-The deployable documentation site lives in [`apps/docs`](apps/docs). Its first
-curated release pairs 12 interactive React examples with switchable React,
-Angular, and framework-neutral code, plus getting-started guides, limitations,
-and a manually maintained API reference.
+The deployable documentation site lives in [`apps/docs`](apps/docs). It pairs 20
+interactive React examples with switchable React, Angular, and framework-neutral
+code, plus getting-started guides, an accessibility page, limitations, and a
+manually maintained API reference.
 
 ## Developing locally
 
 ### Prerequisites
 
-- Node.js 18 or newer (the repository is developed on Node.js 22)
+- Node.js 18 or newer for the core and React packages; the Angular package's
+  toolchain requires `^20.19.0 || ^22.12.0 || >=24.0.0`, so building or testing
+  the whole workspace needs one of those (the repository is developed on
+  Node.js 22)
 - npm with workspace support
 
 Install dependencies from the repository root:

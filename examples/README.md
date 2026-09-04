@@ -7,9 +7,10 @@ Angular) code tabs:
 
 - **Site:** https://agilityworkbench.dev/docs/examples
 - **Source:** [`apps/docs/docs/examples/`](../apps/docs/docs/examples/) — one
-  MDX page per feature area (columns, sorting, filtering, selection, editing,
-  grouping, tree data, pinned rows, rendering, tooltips, ActionFrames, menus,
-  toolbar & views, export, theming, and the two row models).
+  MDX page per feature area (columns, column groups, sorting, filtering,
+  selection, editing, grouping, pivot, sheets, tree data, pinned rows,
+  rendering, tooltips, ActionFrames, menus, toolbar & views, export, theming,
+  and the two row models).
 - **Framework binding setup** (React/Angular components in grid slots, outputs,
   refs, menu slots) lives in the site's *Getting started* pages:
   [`apps/docs/docs/getting-started/`](../apps/docs/docs/getting-started/).

@@ -69,6 +69,8 @@ when a setup is cleaned up.
 
 `columnPanel.trigger` accepts `"rail"`, `"header"`, `"menu"`, `"footer"`, or `"toolbar"`. All
 five entry points open the same right-hand column-management drawer.
+`columnPanel.availability` chooses when the panel exists at all: `"always"` (default), or
+`"pivot"` to mount it only while pivot mode is on.
 
 `toolbar` independently enables the `views`, `grouping`, `sorting`, `quickFilter`, `export`, and
 `pivot` sections.
@@ -78,9 +80,13 @@ placement and close controls. Changing the object live adds/removes sections wit
 grid. The toolbar-hosted Columns trigger also counts as content, so
 `columnPanel={{ trigger: "toolbar" }}` can display a Columns-only toolbar.
 
-Responsive toolbar breakpoints follow the grid container. Labels collapse first, then Export and
-Columns move into a More menu, so embedding the grid in a resizable panel does not require any
-application-level resize handling.
+Both bars measure the grid container rather than the window, so embedding the grid in a resizable
+panel needs no application-level resize handling. At a width their controls do not fit, nothing is
+clipped, overlapped, or compressed: each control is laid out at its natural size in one of its
+presentation stages, or it moves into that bar's overflow menu (`⋮`), and a bar out of stages
+scrolls. `toolbar={{ responsive }}` and `paginationControls={{ responsive }}` choose the strategy
+— `"collapse"` (default) walks the ladder, `"scroll"` keeps every control at full size and scrolls,
+`false` lets the bar clip. See the core README for the ladder's order.
 
 `toolbar.views` adds the saved-view picker. Supply `savedViews={{ views, activeViewId, onChange,
 onActiveViewChange }}` to keep persistence controlled by React state, local storage, or a remote
@@ -88,7 +94,8 @@ service. The grid reports complete updated arrays and does not write to storage 
 
 Pivot mode and sheets pass through the same way: `pivotMode` / `pivotColumns` are live props
 (synced through the imperative API, so values assigned in `onGridReady` are not overwritten),
-`pivotResultColumnDef` / `maxPivotColumns` are creation-time, and `sheets={{ sheets,
+`pivotColumnMoveMode` is live, `pivotResultColumnDef` / `maxPivotColumns` /
+`pivotNoValuesMessage` / `pivotEmptyMessage` are creation-time, and `sheets={{ sheets,
 activeSheetId, onChange, onActiveSheetChange }}` renders the footer tab strip with the same
 app-owned persistence contract as `savedViews`. See the core README for what pivot mode and
 sheets do.
