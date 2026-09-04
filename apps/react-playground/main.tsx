@@ -8,6 +8,7 @@ import App from "./App";
 import SelectionDemo from "./SelectionDemo";
 import GroupingDemo from "./GroupingDemo";
 import PivotDemo from "./PivotDemo";
+import BlankPivotDemo from "./BlankPivotDemo";
 import SheetsDemo from "./SheetsDemo";
 import C3ViewIndexDemo from "./C3ViewIndexDemo";
 import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
@@ -45,6 +46,7 @@ const PAGES = [
   { id: "fullyThemed", label: "Fully themed grid", render: () => <FullyThemedDemo /> },
   { id: "grouping", label: "Row grouping", render: () => <GroupingDemo /> },
   { id: "pivot", label: "Pivot", render: () => <PivotDemo /> },
+  { id: "blankPivot", label: "Blank pivot canvas", render: () => <BlankPivotDemo /> },
   { id: "sheets", label: "Sheets", render: () => <SheetsDemo /> },
   { id: "c3ViewIndex", label: "C3 grouped pagination", render: () => <C3ViewIndexDemo /> },
   { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },

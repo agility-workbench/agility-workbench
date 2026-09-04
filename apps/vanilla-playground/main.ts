@@ -14,6 +14,7 @@ import { mountFullyThemedDemo } from "./demos/fully-themed-demo";
 import { mountGridDemo } from "./demos/grid-demo";
 import { mountGroupingDemo } from "./demos/grouping-demo";
 import { mountPivotDemo } from "./demos/pivot-demo";
+import { mountBlankPivotDemo } from "./demos/blank-pivot-demo";
 import { mountHeaderComponentDemo } from "./demos/header-component-demo";
 import { mountHighFrequencyDemo } from "./demos/high-frequency-demo";
 import { mountIndexedInsertDemo } from "./demos/indexed-insert-demo";
@@ -51,6 +52,7 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "fullyThemed", label: "Fully themed grid", mount: mountFullyThemedDemo },
   { id: "grouping", label: "Row grouping", mount: mountGroupingDemo },
   { id: "pivot", label: "Pivot", mount: mountPivotDemo },
+  { id: "blankPivot", label: "Blank pivot canvas", mount: mountBlankPivotDemo },
   { id: "sheets", label: "Sheets", mount: mountSheetsDemo },
   { id: "c3ViewIndex", label: "C3 grouped pagination", mount: mountC3ViewIndexDemo },
   { id: "serverSideGrouping", label: "Server-side grouping", mount: mountServerSideGroupingDemo },

@@ -62,4 +62,22 @@ describe("overlay message options", () => {
       .toBe("Choose Aggregate on a column to add values");
     await unmountTestRoot(root);
   });
+
+  // The blank canvas: pivot on with no role filled displays no columns and no rows, so this
+  // message is the whole screen. A row is supplied so the empty state can only be the pivot's.
+  it("uses a custom pivotEmptyMessage on the blank pivot canvas", async () => {
+    const { container, root } = await mount(
+      { pivotMode: true, pivotEmptyMessage: "Drop a field to begin" },
+      [{ id: 1 }],
+    );
+    expect(container.querySelector(".pte-norows-label")?.textContent).toBe("Drop a field to begin");
+    await unmountTestRoot(root);
+  });
+
+  it("defaults the blank-pivot message when pivotEmptyMessage is omitted", async () => {
+    const { container, root } = await mount({ pivotMode: true }, [{ id: 1 }]);
+    expect(container.querySelector(".pte-norows-label")?.textContent)
+      .toBe("Add row groups, column labels or values to build the pivot");
+    await unmountTestRoot(root);
+  });
 });
