@@ -62,7 +62,15 @@ export class ColumnMove {
       moveTo = targetSection.length;
     }
 
+    // The relocated node is a duplicate, but it is the SAME column: `duplicate()` mints a fresh
+    // instanceID for split copies (two nodes from one, so they cannot share one), and here the
+    // source node is spliced out of its section above / detached by newColumnHierarchy, so nothing
+    // else claims the id. Carrying it over keeps every instanceID-keyed piece of state — row-group
+    // and pivot roles, aggregate entries, sorts, filters — pointing at the column the user moved.
+    // Without this a top-level leaf silently became a different column on every move, which is why
+    // its Group/Pivot/Value chips vanished the moment the move landed.
     const movedCol: Column = topLevelDrag.duplicate();
+    movedCol.instanceID = topLevelDrag.instanceID;
     movedCol.pinned = section === "center" ? null : section;
     if (topLevelDrag.pinned !== movedCol.pinned && movedCol.children.length > 0) {
       // If moving between sections, and has children, we need to adjust the pinned state of children

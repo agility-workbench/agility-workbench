@@ -132,19 +132,20 @@ describe("ColumnModel.addColumnDef", () => {
       expect(model.getByColId("spark")).toBeDefined();
     });
 
-    it("survives being reordered (identity tracked by colId, not instanceID)", () => {
+    it("survives being reordered, keeping both its colId and its instanceID", () => {
       const model = makeModel();
       const id = model.addColumnDef({ colId: "spark", key: "spark", label: "Spark" });
 
       // Move the added column to the front of the center section.
       model.moveColumnTo(id, 0, "center");
 
-      // A reorder duplicates the column, so its instanceID changes, but the
-      // column itself remains — resolvable by its stable colId.
+      // A reorder rebuilds the node, but it is the same column: the instanceID rides along, so
+      // instanceID-keyed state (roles, aggregates, sorts) still addresses it. This used to mint a
+      // fresh id and strand every such reference.
       const moved = model.getByColId("spark");
       expect(moved).toBeDefined();
-      expect(moved!.instanceID).not.toBe(id);
-      expect(model.getById(id)).toBeUndefined();
+      expect(moved!.instanceID).toBe(id);
+      expect(model.getById(id)).toBe(moved);
     });
 
     it("is dropped by reset()", () => {
