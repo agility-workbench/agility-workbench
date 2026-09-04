@@ -25,6 +25,8 @@ export type GridIconName =
   | "median"
   | "drag"
   | "grip"
+  | "move-up"
+  | "move-down"
   | "plus-frame"
   | "minus-frame"
   | "not-allowed"

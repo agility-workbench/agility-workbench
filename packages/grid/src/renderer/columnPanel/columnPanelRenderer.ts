@@ -617,11 +617,11 @@ export class ColumnPanelRenderer {
     });
 
     const actions = div("pte-column-panel-order-actions");
-    const up = this.orderButton("↑", `Move ${col.label} up`, index === 0 || !col.movable, () => {
+    const up = this.orderButton("up", `Move ${col.label} up`, index === 0 || !col.movable, () => {
       this.reorderWithinSection(sectionColumns, index, index - 1);
     });
     const down = this.orderButton(
-      "↓",
+      "down",
       `Move ${col.label} down`,
       index === sectionColumns.length - 1 || !col.movable,
       () => this.reorderWithinSection(sectionColumns, index, index + 1),
@@ -745,16 +745,26 @@ export class ColumnPanelRenderer {
     this.announce(`${AGGREGATE_TYPE_LABELS[type] ?? type} aggregate removed from ${col.label}`);
   }
 
+  /**
+   * One of the two reorder buttons. The arrow is a masked child span rather than an `↑`/`↓`
+   * character: those glyphs sit small inside their em box, so at this button size they read as
+   * specks. `title` gives the pointer user the same wording the accessible name already carries —
+   * an icon-only control that moves a row is worth spelling out.
+   */
   private orderButton(
-    text: string,
+    direction: "up" | "down",
     label: string,
     disabled: boolean,
     action: () => void,
   ): HTMLButtonElement {
-    const control = button("pte-column-panel-order", text);
+    const control = button("pte-column-panel-order");
     control.type = "button";
     control.disabled = disabled;
     control.setAttribute("aria-label", label);
+    control.title = label;
+    const icon = span(`pte-column-panel-order-icon icon-move-${direction}`);
+    icon.setAttribute("aria-hidden", "true");
+    control.appendChild(icon);
     control.addEventListener("click", action);
     return control;
   }
@@ -874,11 +884,11 @@ export class ColumnPanelRenderer {
       const label = span("pte-column-panel-well-item-label", entry.label);
       this.listTooltipDisposers.push(registerRendererTooltipTarget(label, () => entry.label));
       const actions = div("pte-column-panel-order-actions");
-      const up = this.orderButton("↑", `Move ${entry.label} up`, index === 0, () => {
+      const up = this.orderButton("up", `Move ${entry.label} up`, index === 0, () => {
         params.reorder(index, index - 1);
       });
       const down = this.orderButton(
-        "↓",
+        "down",
         `Move ${entry.label} down`,
         index === params.entries.length - 1,
         () => params.reorder(index, index + 1),

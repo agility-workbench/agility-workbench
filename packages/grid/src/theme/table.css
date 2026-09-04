@@ -67,6 +67,11 @@
      viewBox, not the usual 24x24 square, so masking it into a handle-shaped box neither letterboxes
      the grip nor lands its dots on half-pixels. */
   --pte-icon-grip: url(icons/grip.svg);
+  /* "Move this one up/down a place". Drawn on a 12x12 viewBox so the arrow fills its box: the
+     24x24 sort arrows leave two thirds of the box empty, which is what made these buttons read as
+     specks rather than arrows at the 24px the panel gives them. */
+  --pte-icon-move-up: url(icons/move-up.svg);
+  --pte-icon-move-down: url(icons/move-down.svg);
   --pte-icon-plus-frame: url(icons/plus-frame.svg);
   --pte-icon-minus-frame: url(icons/minus-frame.svg);
   --pte-icon-not-allowed: url(icons/not-allowed.svg);
@@ -1771,7 +1776,7 @@
 .pte-column-panel-row {
   min-height: 40px;
   display: grid;
-  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 48px;
+  grid-template-columns: 14px 20px minmax(60px, 1fr) 78px 56px;
   gap: 5px;
   align-items: center;
   padding: 3px 5px;
@@ -1852,15 +1857,34 @@
 .pte-column-panel-order-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 4px;
 }
 
 .pte-column-panel-order {
-  width: 24px;
+  width: 26px;
   height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
+/* The arrow rides in a child, not on the button: a mask clips everything its own element paints,
+   so masking the button would erase the :focus-visible ring below. `currentColor` then inherits
+   the button's muted -> text-color hover transition instead of restating it. */
+.pte-column-panel-order-icon {
+  width: 15px;
+  height: 15px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: currentColor;
+}
+
+/* Faint enough to read as unavailable, not so faint that the arrow stops being an arrow — the
+   first and last row in every section always show one of these. */
 .pte-column-panel-order:disabled {
-  opacity: 0.25;
+  opacity: 0.35;
   cursor: default;
 }
 
@@ -1997,7 +2021,7 @@
 .pte-column-panel-well-item {
   min-height: 28px;
   display: grid;
-  grid-template-columns: minmax(50px, 1fr) 48px 24px;
+  grid-template-columns: minmax(50px, 1fr) 56px 24px;
   gap: 4px;
   align-items: center;
   padding: 0 4px 0 8px;
@@ -4632,6 +4656,16 @@
 
 .icon-grip {
   mask-image: var(--pte-icon-grip);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-move-up {
+  mask-image: var(--pte-icon-move-up);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-move-down {
+  mask-image: var(--pte-icon-move-down);
   background-color: var(--pte-icon-color);
 }
 
