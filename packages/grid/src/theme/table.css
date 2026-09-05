@@ -266,8 +266,10 @@
 /* Scrollbar appearance. There are two mutually exclusive ways to style a scrollbar and the grid
  * needs both, because no single one covers every engine:
  *
- *   - The standard properties (`scrollbar-color`, `scrollbar-width`) — Firefox always, Chromium
- *     121+, Safari 18.2+. Portable, but they express only colours and a coarse width keyword.
+ *   - The standard properties — Firefox 64+, Chromium 121+ (both together), Safari 18.2+ for
+ *     `scrollbar-width` but only 26.2+ for `scrollbar-color`, and Android WebView for neither at
+ *     any version. Portable, but they express only colours and a coarse width keyword, and as the
+ *     Safari split shows they are not a single feature to test for.
  *   - The legacy `::-webkit-scrollbar` pseudo-elements — Chromium and Safari only, never
  *     standardised. Expressive: exact pixel widths, radii, borders.
  *
@@ -286,9 +288,13 @@
  * The colours themselves are declared in the pte-armor layer further down, not here — see the note
  * on that rule for why appearance had to join the structural invariants. */
 
-/* LEGACY ONLY — Chromium <121 and Safari <18.2. Unreachable on anything newer; see above.
+/* LEGACY APPEARANCE ONLY — Chromium <121, Safari <26.2, Android WebView always.
  * --pte-scrollbar-size and --pte-scrollbar-radius exist solely to feed this block and have no
- * effect on a current browser. */
+ * effect on an engine that has `scrollbar-color`.
+ *
+ * The condition tests `scrollbar-color`, the property this block substitutes for, and nothing here
+ * may assume it also answers for `scrollbar-width` — on Safari 18.2 to 26.1 it does not. Hiding a
+ * scrollbar is a `scrollbar-width` question and is handled below this block, outside the guard. */
 @supports not (scrollbar-color: auto) {
   .pte-root::-webkit-scrollbar,
   .pte-root *::-webkit-scrollbar,
@@ -328,6 +334,45 @@
   .pte-filter *::-webkit-scrollbar-thumb:hover {
     background: var(--pte-scrollbar-thumb-hover-color);
   }
+}
+
+/* Hiding the mirrors, the legacy way — and DELIBERATELY NOT inside the @supports guard above.
+ *
+ * The guard asks about `scrollbar-color` because that block is about scrollbar *appearance*, which
+ * is the property that governs it. That is the wrong question for *hiding*, which `scrollbar-width`
+ * governs, and the two are not interchangeable: Safari shipped them four major versions apart —
+ * `scrollbar-width` in 18.2, `scrollbar-color` only in 26.2. Every Safari in between answers the
+ * guard's question with "legacy engine", which opens the block above and lets `.pte-root *` paint
+ * each mirror a full themed 10px bar; WebKit gives its own pseudo-element precedence there, so the
+ * mirror's `scrollbar-width: none` does not save it. That is the reported bug: column headers
+ * carrying their own horizontal and vertical scrollbars over the body's.
+ *
+ * Unguarded, the rule is correct on every engine rather than on the ones a proxy guessed right:
+ *   - engine paints ::-webkit-scrollbar (Safari <26.2, Chromium <121, Android WebView — which has
+ *     never supported either standard property at any version) → this rule hides the mirror;
+ *   - engine uses the standard properties → it discards this pseudo-element, and the mirror's own
+ *     `scrollbar-width: none` hides it.
+ * The two can never disagree, which is what makes shipping both safe HERE and not in the appearance
+ * block above, where the legacy and standard vocabularies say different things.
+ *
+ * Must stay after the sizing rule: `.pte-root *` and a bare `.pte-*` are both one class of
+ * specificity, so source order alone settles the tie.
+ *
+ * Only the mirrors that had no hide rule of their own are listed. The toolbar, the pagination
+ * footer, the sheet tab strip and the pinned-row bands each carry one next to their own
+ * declaration — already unguarded, which is why none of them ever showed this bug. */
+.pte-header::-webkit-scrollbar,
+.pte-header-left::-webkit-scrollbar,
+.pte-header-right::-webkit-scrollbar,
+.pte-spacer::-webkit-scrollbar,
+.pte-spacer-left::-webkit-scrollbar,
+.pte-spacer-right::-webkit-scrollbar,
+.pte-aggregate-leading::-webkit-scrollbar,
+.pte-aggregate-left::-webkit-scrollbar,
+.pte-aggregate-center::-webkit-scrollbar,
+.pte-aggregate-right::-webkit-scrollbar,
+.pte-scroller-horizontal-container-wrapper::-webkit-scrollbar {
+  display: none;
 }
 
 /* Structural invariants. Overriding any of these does not restyle the grid, it breaks it: the
@@ -2257,6 +2302,7 @@
   display: flex;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
   position: relative;
 }
@@ -2265,9 +2311,13 @@
   border-right: 1px solid var(--pte-frame-border-color);
 }
 
+/* overflow-y is pinned on all three header mirrors, not left to compute: an `auto` on one axis
+   promotes a `visible` other axis to `auto`, so the header — which never scrolls vertically —
+   was offering a vertical scrollbar alongside its hidden horizontal one. */
 .pte-header {
   display: flex;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
   padding-right: 0;
   flex: 1 1 auto;
@@ -2278,6 +2328,7 @@
   display: flex;
   box-shadow: -2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
   position: relative;
 }

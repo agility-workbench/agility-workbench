@@ -3,6 +3,28 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.1.1 — 2026-09-05
+
+Patch release. No API changes; a CSS-only fix in the core, with the two bindings
+republished in lockstep as the release process requires.
+
+### Fixes
+
+- The column header, the aggregate row and the section spacers no longer show
+  scrollbars of their own. These scrollers mirror the body's `scrollLeft` and are meant
+  to be invisible, but they were hidden with `scrollbar-width: none` alone — a property
+  Safari only shipped in 18.2 and Android WebView has never shipped at any version. On
+  those engines the grid's legacy `::-webkit-scrollbar` rules painted each mirror a full
+  themed bar, so the header carried its own horizontal and vertical scrollbars over the
+  body's. Reported on Safari and on DuckDuckGo for Android. Each mirror now also hides
+  the legacy way, outside the `scrollbar-color` `@supports` guard — Safari shipped
+  `scrollbar-color` four majors after `scrollbar-width` (26.2 vs 18.2), so that guard
+  cannot answer for hiding.
+- The header sections pin `overflow-y: hidden` rather than letting it compute from
+  `visible`, which the horizontal `auto` was promoting to `auto` — the source of the
+  vertical scrollbar on a row that never scrolls vertically. Matches what the spacer and
+  aggregate sections already did.
+
 ## 1.1.0 — 2026-09-04
 
 Client-side pivot mode and spreadsheet-style sheets. No breaking API changes; view

@@ -131,4 +131,66 @@ describe("empty-grid horizontal scroll", () => {
       expect(rule(selector), `${selector} must pin overflow-y`).toContain("overflow-y: hidden");
     }
   });
+
+  it("pins overflow-y on the header mirrors too", () => {
+    // Same promotion, different symptom: the header never scrolls vertically, so an `auto` it did
+    // not ask for is only ever a second scrollbar on an engine that paints one.
+    for (const selector of [".pte-header", ".pte-header-left", ".pte-header-right"]) {
+      expect(rule(selector), `${selector} must pin overflow-y`).toContain("overflow-y: hidden");
+    }
+  });
+});
+
+// `scrollbar-width: none` hides the mirrors on the engines that have it; everywhere else the legacy
+// `::-webkit-scrollbar` sizing rule reaches every scroller under `.pte-root` and paints the mirrors
+// a full themed scrollbar unless each is hidden the legacy way too. The gap shipped, on Android
+// WebView (no `scrollbar-width` at any version) and on Safari, where the column header carried its
+// own horizontal and vertical bars over the body's.
+describe("legacy scrollbar hiding", () => {
+  it("hides every mirror the legacy way as well as the standard way", () => {
+    for (const cls of [
+      ".pte-header", ".pte-header-left", ".pte-header-right",
+      ".pte-spacer", ".pte-spacer-left", ".pte-spacer-right",
+      ".pte-aggregate-leading", ".pte-aggregate-left",
+      ".pte-aggregate-center", ".pte-aggregate-right",
+      ".pte-scroller-horizontal-container-wrapper",
+      ".pte-pinned-rows-leading", ".pte-pinned-rows-left",
+      ".pte-pinned-rows-center", ".pte-pinned-rows-right",
+    ]) {
+      expect(
+        GRID_STYLES,
+        `${cls} has no ::-webkit-scrollbar rule to hide it on a pre-121 engine`,
+      ).toContain(`${cls}::-webkit-scrollbar`);
+    }
+  });
+
+  it("keeps the legacy hide rule after the legacy sizing rule it has to outrank", () => {
+    // `.pte-root *` and a bare `.pte-*` are the same one class of specificity, so the tie is
+    // settled by source order alone.
+    const sizing = GRID_STYLES.indexOf(".pte-root *::-webkit-scrollbar");
+    const hide = GRID_STYLES.indexOf(".pte-header::-webkit-scrollbar");
+    expect(sizing).toBeGreaterThan(-1);
+    expect(hide).toBeGreaterThan(sizing);
+  });
+
+  it("keeps the hide rule OUTSIDE the scrollbar-color @supports guard", () => {
+    // The guard asks about `scrollbar-color`; hiding is a `scrollbar-width` question, and Safari
+    // shipped the two four majors apart (18.2 vs 26.2). Every Safari in between answers the guard
+    // as a legacy engine, so a hide rule tucked inside it would be applied there — but so would the
+    // sizing rule it has to beat on Safari, and skipped on 26.2+ where it is merely redundant.
+    // Moving it inside is the regression: it makes correctness depend on a proxy that is wrong.
+    const guardStart = GRID_STYLES.indexOf("@supports not (scrollbar-color: auto)");
+    expect(guardStart).toBeGreaterThan(-1);
+    let depth = 0;
+    let guardEnd = -1;
+    for (let i = GRID_STYLES.indexOf("{", guardStart); i < GRID_STYLES.length; i++) {
+      if (GRID_STYLES[i] === "{") depth++;
+      else if (GRID_STYLES[i] === "}" && --depth === 0) {
+        guardEnd = i;
+        break;
+      }
+    }
+    expect(guardEnd).toBeGreaterThan(guardStart);
+    expect(GRID_STYLES.indexOf(".pte-header::-webkit-scrollbar")).toBeGreaterThan(guardEnd);
+  });
 });
