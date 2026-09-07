@@ -78,6 +78,8 @@ import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { SelectionRenderer } from "./selection/selectionRenderer";
 import { FindHighlightRenderer } from "./quickFilter/findHighlightRenderer";
+import { planOcclusionEscape } from "./quickFilter/findOcclusion";
+import type { OcclusionAxis } from "./quickFilter/findOcclusion";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
 import { serializeNodesToTSV, serializeRowsToTSV } from "./clipboard/tsv";
@@ -1334,11 +1336,158 @@ export class GridRenderer {
     }
     const viewIdx = this.core.getViewIndexForRowId(match.rowId);
     const colIdx = this._leafColumns.findIndex(col => col.instanceID === match.colInstanceId);
+    if (colIdx >= 0) this._revealFindMatch(match.rowId, viewIdx, colIdx);
+    this._announcer.announce(`Match ${params.activeIndex} of ${params.matchCount}`);
+  }
+
+  /**
+   * Bring the active find match into view AND out from under the floating quick-filter widget.
+   *
+   * "In view" alone is not enough in find mode: the widget is a control surface the user keeps
+   * operating while reading the cells, so a match under it is unreachable — they cannot dismiss the
+   * widget to look without losing next/previous. Scrolling is the preferred escape, but it runs out
+   * exactly where the widget's default placement sits (the top row at `scrollTop: 0`, the last
+   * column at maximum `scrollLeft`, pinned columns and frozen bands, none of which can move); there
+   * the widget yields instead. See `findOcclusion` for the geometry.
+   */
+  private _revealFindMatch(
+    rowId: string,
+    viewIdx: number | null,
+    colIdx: number,
+    allowDodge = true,
+  ): void {
     // A null view index means the row is not in the body pool — it is mirrored into a frozen band,
     // where it is on screen wherever the body is scrolled, so only the column may need moving.
-    if (viewIdx != null && colIdx >= 0) this._ensureCellVisible(viewIdx, colIdx);
-    else if (colIdx >= 0) this.ensureColumnVisible(colIdx);
-    this._announcer.announce(`Match ${params.activeIndex} of ${params.matchCount}`);
+    if (viewIdx != null) this._ensureCellVisible(viewIdx, colIdx);
+    else this.ensureColumnVisible(colIdx);
+
+    const widget = this._quickFilterWidget;
+    const occluder = widget?.getOccluderRect();
+    if (!widget || !occluder) return;
+    // Measured AFTER the reveal above: assigning scrollTop/scrollLeft updates them synchronously, so
+    // these read the position the match was just scrolled to without waiting for the row pool to
+    // re-render at it.
+    const plan = planOcclusionEscape(
+      this._findMatchVerticalAxis(rowId, viewIdx, colIdx, occluder),
+      this._findMatchHorizontalAxis(colIdx, occluder),
+    );
+    if (!plan) return;
+
+    if (plan.scroll) {
+      const refs = this._bodyViewportRenderer.getRefs();
+      // Only the center section scrolls horizontally, which is also the only case that reports a
+      // movable horizontal axis.
+      if (plan.scroll.axis === "vertical") refs.body.scrollTop = plan.scroll.offset;
+      else refs.centerSpacer.scrollLeft = plan.scroll.offset;
+      return;
+    }
+
+    // Nothing can be scrolled clear, so the widget moves. Re-run once — never twice, hence the
+    // flag — because the far edge may itself cover the match on a grid only just wide enough for
+    // the flip, and from there a scroll may finish the job.
+    if (allowDodge && widget.dodge()) this._revealFindMatch(rowId, viewIdx, colIdx, false);
+  }
+
+  /**
+   * Where the match's row sits relative to the body viewport, and whether scrolling can move it.
+   * Null when it cannot be established, which tells the planner to leave the grid alone.
+   */
+  private _findMatchVerticalAxis(
+    rowId: string,
+    viewIdx: number | null,
+    colIdx: number,
+    occluder: DOMRect,
+  ): OcclusionAxis | null {
+    const refs = this._bodyViewportRenderer.getRefs();
+    const bodyRect = refs.body.getBoundingClientRect();
+    const occluderStart = occluder.top - bodyRect.top;
+    const occluderEnd = occluder.bottom - bodyRect.top;
+
+    // A row docked in a pinned or sticky band has no body slot and no scroll that can move it, so
+    // its position has to be measured off the band itself. Bands are small and never virtualized,
+    // so the cell is there to measure whenever the row really is banded.
+    if (viewIdx == null) {
+      const banded = this._bandedCellRect(rowId, colIdx);
+      if (!banded) return null;
+      return {
+        targetStart: banded.top - bodyRect.top,
+        targetSize: banded.height,
+        viewportSize: refs.body.clientHeight,
+        occluderStart,
+        occluderEnd,
+        scroll: null,
+      };
+    }
+
+    // Body positions are compacted for application-pinned model rows, exactly as in ensureRowVisible.
+    const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+    return {
+      targetStart: rowTop - refs.body.scrollTop,
+      targetSize: this.rowHeight,
+      viewportSize: refs.body.clientHeight,
+      occluderStart,
+      occluderEnd,
+      scroll: {
+        current: refs.body.scrollTop,
+        max: Math.max(0, refs.body.scrollHeight - refs.body.clientHeight),
+      },
+    };
+  }
+
+  /**
+   * Where the match's column sits relative to its own section, and whether scrolling can move it.
+   * Coordinates are per-section on purpose: a pinned column's box is its section's, and the center's
+   * escape has to stay inside the center section rather than slide under a pinned one.
+   */
+  private _findMatchHorizontalAxis(colIdx: number, occluder: DOMRect): OcclusionAxis | null {
+    const col = this._leafColumns[colIdx];
+    if (!col) return null;
+    const meta = this._leafColumnLookup.get(col.instanceID);
+    if (!meta) return null;
+    const refs = this._bodyViewportRenderer.getRefs();
+    const spacer = meta.section === "center"
+      ? refs.centerSpacer
+      : meta.section === "left" ? refs.leftSpacer : refs.rightSpacer;
+    // Located by identity rather than by the lookup's localIndex: the leading row-number gutter is
+    // recorded under the "left" section but is not among its leaves, and a find match never lands
+    // there anyway, so a miss is the honest answer.
+    const leaves = this.core.getColumnModel().getLeavesBySection(meta.section);
+    const localIdx = leaves.findIndex(leaf => leaf.instanceID === col.instanceID);
+    if (localIdx < 0) return null;
+
+    let colLeft = 0;
+    for (let i = 0; i < localIdx; i++) colLeft += leaves[i].computedWidth;
+
+    const spacerRect = spacer.getBoundingClientRect();
+    return {
+      targetStart: colLeft - spacer.scrollLeft,
+      targetSize: col.computedWidth,
+      viewportSize: spacer.clientWidth,
+      occluderStart: occluder.left - spacerRect.left,
+      occluderEnd: occluder.right - spacerRect.left,
+      // Pinned sections do not scroll at all (ensureColumnVisible declines them too), so an occluded
+      // pinned cell goes straight to the dodge.
+      scroll: meta.section !== "center" ? null : {
+        current: spacer.scrollLeft,
+        max: Math.max(0, spacer.scrollWidth - spacer.clientWidth),
+      },
+    };
+  }
+
+  /**
+   * The rect of the match's cell as drawn in a pinned or sticky band, if it is drawn in one. The row
+   * is matched on its id rather than selected for: a band holds several rows, and `data-row-id`
+   * carries values the app supplies, which have no business being interpolated into a selector.
+   */
+  private _bandedCellRect(rowId: string, colIdx: number): DOMRect | null {
+    const rows = this.root.querySelectorAll<HTMLElement>(".pte-pinned-row");
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].dataset.rowId !== rowId) continue;
+      // A band row is per-section, like a body row, so the cell is in whichever one holds the column.
+      const cell = rows[i].querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+      if (cell) return cell.getBoundingClientRect();
+    }
+    return null;
   }
 
   private _announceSort() {

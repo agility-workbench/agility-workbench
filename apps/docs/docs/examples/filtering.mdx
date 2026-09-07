@@ -363,6 +363,16 @@ wrapping at the ends. Focus stays in the search box, so the cell cursor and the
 selection are left alone — stepping through matches is a search gesture, not a
 navigation one.
 
+Stepping to a match also gets it out from under the floating widget, which in
+find mode is a control surface the user keeps operating rather than chrome they
+dismiss. The grid scrolls the match clear when it can; where no scroll can — the
+first row, the last column, a pinned column, a row docked in a frozen band — the
+widget flips to the opposite edge for the duration of the search. The flip does
+not touch `position.anchor` or the end user's Anchor pick: closing the search or
+emptying the box brings the widget home. A widget hosted in the
+[toolbar](./toolbar-and-views.mdx) sits outside the data region and never needs
+any of this.
+
 Subscribe to `quickFilterFindChanged` (or the `onQuickFilterFindChanged` option
 / the wrappers' `quickFilterFindChanged` output) to drive an app-owned counter;
 a finding quick filter deliberately does **not** fire `filterChanged`, since no

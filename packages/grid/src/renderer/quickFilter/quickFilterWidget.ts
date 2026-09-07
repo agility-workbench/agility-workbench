@@ -91,6 +91,16 @@ export class QuickFilterWidget {
   // toggle; forced by the config when they do not.
   private behavior: QuickFilterBehavior;
 
+  // Which edge a dodge has pushed the widget to, or null while it sits where the config (or the
+  // user's popover choice) put it. Deliberately NOT folded into `anchor`: the anchor is the user's,
+  // and uncovering one find match is no reason to rewrite it — the popover's Anchor select keeps
+  // reading their choice, and closing the widget or reconfiguring it returns the widget home.
+  private dodgedAnchor: "left" | "right" | null = null;
+  // A dodge asked for while the pointer was over the widget, held until it leaves. Clicking
+  // next/previous repeatedly must not teleport the button out from under the cursor.
+  private dodgePending = false;
+  private pointerInside = false;
+
   private debounceTimer: number | null = null;
   private open = false;
   private optionsExpanded = false;
@@ -320,6 +330,9 @@ export class QuickFilterWidget {
   syncFindState(state: QuickFilterFindState): void {
     if (!this.findNav || !this.findCountText || !this.findCountSr) return;
     const searching = this.isFinding() && this.input.value.trim() !== "";
+    // A dodge only earns its place while there is a match to uncover, so an emptied search box (or a
+    // switch back to filtering) brings the widget home.
+    if (!searching) this.resetDodge();
     const count = state.matchCount;
     // `activeIndex/matchCount`, one shape for every state: 0 in the numerator means "no match
     // stepped to yet", which makes the no-match state fall out as "0/0" rather than needing prose
@@ -471,6 +484,9 @@ export class QuickFilterWidget {
 
   private setOpen(open: boolean): void {
     this.open = open;
+    // Closing ends the dodge: the next search starts from the placement the app and the user chose,
+    // rather than wherever the last match happened to push the widget.
+    if (!open) this.resetDodge();
     if (open) {
       if (!this.isToolbarPresentation()) this.applyPosition();
       this.updateClearVisibility();
@@ -494,7 +510,7 @@ export class QuickFilterWidget {
     // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
     // width. Clearing to "" would fall back to the stylesheet's base `right` rule, pinning *both*
     // edges and stretching the panel across the full width.
-    if (this.anchor === "left") {
+    if (this.effectiveAnchor() === "left") {
       this.wrapper.style.left = `${offsetX}px`;
       this.wrapper.style.right = "auto";
     } else {
@@ -504,7 +520,77 @@ export class QuickFilterWidget {
     }
   }
 
+  /** The edge the widget is currently drawn against: the dodge, if one is in force, else the anchor. */
+  private effectiveAnchor(): "left" | "right" {
+    return this.dodgedAnchor ?? this.anchor;
+  }
+
+  /**
+   * The box the widget covers, in client coordinates, or null when it cannot be covering a cell at
+   * all: in the toolbar it sits outside the data region, and while closed with nothing to show
+   * (no persisted-filter pill) it has no box.
+   */
+  getOccluderRect(): DOMRect | null {
+    if (this.isToolbarPresentation()) return null;
+    if (!this.open && (this.indicatorPill == null || this.indicatorPill.hidden)) return null;
+    const rect = this.wrapper.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
+  }
+
+  /**
+   * Get out from over the active find match by flipping to the opposite horizontal edge. Called only
+   * when no scroll could clear the match (see `planOcclusionEscape`), and only in find mode,
+   * where the widget is a control surface the user keeps operating rather than chrome they dismiss.
+   *
+   * Returns whether the widget actually moved. It stays put when:
+   *  - it is in the toolbar (nothing to uncover), or
+   *  - the grid is too narrow to hold it on either side, where the other edge covers the same cells, or
+   *  - the pointer is over it — a click-through of next/previous must not have the button jump away,
+   *    so the move is deferred to `pointerleave`.
+   */
+  dodge(): boolean {
+    if (this.isToolbarPresentation() || !this.canDodge()) return false;
+    if (this.pointerInside) {
+      this.dodgePending = true;
+      return false;
+    }
+    this.applyDodge();
+    return true;
+  }
+
+  // Flipping only helps if the widget can stand clear of where it stands now, which needs room for
+  // it (plus its inset) twice over in the host it is positioned against.
+  private canDodge(): boolean {
+    const hostWidth = this.params.root.clientWidth;
+    if (hostWidth === 0) return false;
+    return hostWidth >= (this.wrapper.offsetWidth + this.opts.position.offsetX) * 2;
+  }
+
+  private applyDodge(): void {
+    this.dodgedAnchor = this.effectiveAnchor() === "right" ? "left" : "right";
+    this.dodgePending = false;
+    this.applyPosition();
+  }
+
+  // Put the widget back where the config (or the user's popover choice) wants it, re-placing it so
+  // no stale inline edge is left behind on a widget that may be hidden at the time.
+  private resetDodge(): void {
+    if (this.dodgedAnchor === null && !this.dodgePending) return;
+    this.dodgedAnchor = null;
+    this.dodgePending = false;
+    this.applyPosition();
+  }
+
   private bind(): void {
+    // Pointer tracking exists only for the deferred dodge: while the cursor is on the widget its
+    // buttons must stay put, so a dodge asked for now is applied when the pointer leaves.
+    this.wrapper.addEventListener("pointerenter", () => {
+      this.pointerInside = true;
+    });
+    this.wrapper.addEventListener("pointerleave", () => {
+      this.pointerInside = false;
+      if (this.dodgePending) this.applyDodge();
+    });
     this.input.addEventListener("input", () => {
       this.updateClearVisibility();
       // Reflect "typing" immediately (the counter blanks while the box is empty); the real count
@@ -676,6 +762,9 @@ export class QuickFilterWidget {
     this.anchorSelect.value = this.anchor;
     this.anchorSelect.addEventListener("change", () => {
       this.anchor = this.anchorSelect!.value as "left" | "right";
+      // An explicit choice outranks a dodge: put the widget where they asked, even if that is back
+      // over the active match. A later match with nowhere to scroll can dodge again from there.
+      this.resetDodge();
       this.applyPosition();
     });
     anchorLabel.appendChild(this.anchorSelect);

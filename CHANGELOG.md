@@ -19,6 +19,21 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   client-side view — all pages, and rows inside collapsed groups — and `findNext()`
   reveals its match by expanding ancestors and paging to it.
 
+### Quick-filter find: the widget no longer hides its own matches
+
+- **Stepping to a match now moves it out from under the floating widget.** In find mode the
+  widget is a control surface the user keeps operating (next/previous, the counter) while
+  reading the cells, so a match underneath it was unreachable — unlike a filter, it cannot be
+  dismissed to look. The reveal scrolls the match clear where it can, and where no scroll can —
+  the first row (already at `scrollTop: 0`), the last column (already at maximum `scrollLeft`),
+  a pinned column, or a row docked in a frozen band — the widget flips to the opposite edge for
+  as long as the search lasts.
+- The flip never rewrites `position.anchor` or the end user's Anchor pick: closing the search,
+  emptying the box, or choosing an anchor brings the widget home. It is also held back while the
+  pointer is over the widget, so clicking next/previous repeatedly cannot move the button out
+  from under the cursor, and it is skipped entirely for a widget hosted in the toolbar, which
+  sits outside the data region.
+
 ### Quick-filter whole-cell matching
 
 - **New `matchMode: "wholeCell"`** — a cell matches only when its entire text equals the

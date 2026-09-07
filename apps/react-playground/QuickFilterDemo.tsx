@@ -16,6 +16,13 @@ import type { GridTheme, QuickFilterMatchMode, QuickFilterOptions } from "@grid"
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
  *  - `showOptions` / `showLayoutOptions`: which controls the widget exposes in its options popover.
  *
+ * In find mode the widget is not chrome you dismiss once the search is typed — you keep operating it
+ * (next/previous, the counter) while reading the cells — so a match that lands underneath it would
+ * be unreachable. Stepping onto one therefore moves it out from under the widget: the reveal scrolls
+ * the match clear where it can, and where no scroll can (the first row, the last column, and the
+ * pinned Status column, none of which have anywhere to go) the widget flips to the opposite edge.
+ * The configured anchor is untouched by that — a dodge lasts as long as the search does.
+ *
  * The highlight color comes from somewhere else — the theme, not the quick-filter config: the
  * `findMatchColor` theme param derives all three find CSS variables (the tint for every match, the
  * stronger tint for the active one, and its outline) from a single color. It is applied as a custom
@@ -28,7 +35,23 @@ import type { GridTheme, QuickFilterMatchMode, QuickFilterOptions } from "@grid"
  * pinned in "always" mode).
  */
 
-type Company = { id: number; name: string; region: string; sector: string; employees: number };
+type Company = {
+  id: number;
+  name: string;
+  region: string;
+  sector: string;
+  employees: number;
+  ceo: string;
+  hq: string;
+  country: string;
+  currency: string;
+  founded: number;
+  revenue: number;
+  tier: string;
+  status: string;
+  domain: string;
+  notes: string;
+};
 
 const NAMES = [
   "Acme Corp", "Acme Labs", "Globex", "Initech", "Umbrella", "Soylent", "Hooli", "Vandelay",
@@ -37,29 +60,80 @@ const NAMES = [
 ];
 const REGIONS = ["West", "East", "North", "South", "Central"];
 const SECTORS = ["Tech", "Finance", "Retail", "Energy", "Health", "Media"];
+const CEOS = [
+  "Dana Whitfield", "Marcus Lee", "Priya Nair", "Tom Okafor", "Elena Rossi",
+  "Hiro Tanaka", "Sara Kaufman", "Luis Ferreira", "Anna Novak", "Owen Bradley",
+];
+const CITIES = [
+  "Seattle", "Austin", "Boston", "Denver", "Atlanta",
+  "Chicago", "Portland", "Miami", "Phoenix", "Newark",
+];
+// Paired so a row's country and currency never contradict each other.
+const LOCALES = [
+  { country: "USA", currency: "USD" },
+  { country: "Canada", currency: "CAD" },
+  { country: "UK", currency: "GBP" },
+  { country: "Germany", currency: "EUR" },
+  { country: "Japan", currency: "JPY" },
+  { country: "Australia", currency: "AUD" },
+];
+const TIERS = ["Enterprise", "Mid-Market", "SMB"];
+const STATUSES = ["Active", "Prospect", "Churned", "On Hold"];
+const NOTE_TOPICS = [
+  "renewal pending", "expansion review", "pilot in flight", "quarterly audit", "migration planned",
+];
 
 // The light stylesheet's own find tint, so the swatch opens showing what the grid is already using.
 const DEFAULT_FIND_MATCH_COLOR = "#facc15";
 
 function buildRows(): Company[] {
   // Deterministic (no Math.random) so the demo data is stable across reloads.
-  return NAMES.map((name, i) => ({
-    id: i + 1,
-    name,
-    region: REGIONS[i % REGIONS.length],
-    sector: SECTORS[i % SECTORS.length],
-    employees: 50 + ((i * 137) % 950),
-  }));
+  return NAMES.map((name, i) => {
+    const sector = SECTORS[i % SECTORS.length];
+    const locale = LOCALES[i % LOCALES.length];
+    return {
+      id: i + 1,
+      name,
+      region: REGIONS[i % REGIONS.length],
+      sector,
+      employees: 50 + ((i * 137) % 950),
+      ceo: CEOS[i % CEOS.length],
+      hq: CITIES[i % CITIES.length],
+      country: locale.country,
+      currency: locale.currency,
+      founded: 1958 + ((i * 7) % 60),
+      revenue: 4 + ((i * 31) % 480),
+      tier: TIERS[i % TIERS.length],
+      status: STATUSES[i % STATUSES.length],
+      // Echoes the name in a different shape, so "whole cell" and "exact phrase" visibly disagree.
+      domain: `${name.toLowerCase().replace(/[^a-z0-9]+/g, "")}.com`,
+      notes: `${sector} ${NOTE_TOPICS[i % NOTE_TOPICS.length]}`,
+    };
+  });
 }
 
 export function QuickFilterDemo() {
   const rows = useMemo(buildRows, []);
   const columnDefs = useMemo<ReactColDef[]>(() => [
+    // Deliberately wider than the viewport: find-mode stepping has to scroll matches
+    // into view horizontally, not just vertically.
     { colId: "id", key: "id", label: "ID", width: 70 },
     { colId: "name", key: "name", label: "Name", width: 200 },
     { colId: "region", key: "region", label: "Region", width: 120 },
     { colId: "sector", key: "sector", label: "Sector", width: 120 },
     { colId: "employees", key: "employees", label: "Employees", width: 120 },
+    { colId: "ceo", key: "ceo", label: "CEO", width: 160 },
+    { colId: "hq", key: "hq", label: "HQ", width: 120 },
+    { colId: "country", key: "country", label: "Country", width: 110 },
+    { colId: "currency", key: "currency", label: "Currency", width: 100 },
+    { colId: "founded", key: "founded", label: "Founded", width: 100 },
+    { colId: "revenue", key: "revenue", label: "Revenue ($M)", width: 130 },
+    { colId: "tier", key: "tier", label: "Tier", width: 130 },
+    // Pinned right, which is the case scrolling can never rescue: a match here sits under a
+    // right-anchored search widget and no scroll can move it, so the widget has to step aside.
+    { colId: "status", key: "status", label: "Status", width: 110, pinned: "right" },
+    { colId: "domain", key: "domain", label: "Domain", width: 200 },
+    { colId: "notes", key: "notes", label: "Notes", width: 240 },
   ], []);
 
   // Live-editable quick-filter config.
@@ -265,6 +339,9 @@ export function QuickFilterDemo() {
         exposes the Anchor and “Keep filter when closed” controls.
         {" "}The <code>findMatchColor</code> swatch re-tints the highlights live (theme param, not a
         quick-filter option) — try it with a search active.
+        {" "}In find mode the search box steps out of its own way: search <code>Active</code> and step
+        to the first row's pinned Status cell — nothing can scroll it out from under the box, so the
+        box flips to the other edge instead (your Anchor setting stays as you left it).
         {" "}To verify focus preservation during live reconfiguration, click
         “Test focused reconfigure,” press Ctrl/Cmd+F, and leave the search input focused before the
         four-second timer expires. {reconfigureResult}

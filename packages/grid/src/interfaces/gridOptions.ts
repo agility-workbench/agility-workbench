@@ -535,7 +535,9 @@ export interface QuickFilterOptions {
 /**
  * Placement of the floating quick-filter widget within the grid root.
  * - `anchor`: which horizontal edge the widget is pinned to. "right" (default) preserves the
- *   historical placement; "left" pins it to the left edge instead.
+ *   historical placement; "left" pins it to the left edge instead. While a find-mode search is
+ *   active the widget may transiently sit at the other edge, to uncover an active match that no
+ *   scroll can move out from under it; that never rewrites this setting.
  * - `offsetX`: inset in px from the anchored edge. Defaults to 8. On the right edge this is added
  *   on top of the scrollbar gutter so the widget never overlaps the scrollbar thumb.
  * - `offsetTop`: gap in px between the bottom of the header and the top of the widget. Defaults to 6.
