@@ -17,6 +17,7 @@ import { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
+  QuickFilterBehavior,
   QuickFilterMatchMode,
   RowPinnedPosition,
   RUNTIME_OPTION_KEYS,
@@ -29,6 +30,7 @@ import {
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
@@ -431,12 +433,40 @@ export class GridAPI implements IGridAPI {
     this.core.flushAsyncTransactions();
   }
 
-  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
-    this.dispatch({ type: "quickFilterSet", text, matchMode: opts?.matchMode, caseSensitive: opts?.caseSensitive });
+  setQuickFilter(
+    text: string,
+    opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean; behavior?: QuickFilterBehavior },
+  ): void {
+    this.dispatch({
+      type: "quickFilterSet",
+      text,
+      matchMode: opts?.matchMode,
+      caseSensitive: opts?.caseSensitive,
+      behavior: opts?.behavior,
+    });
   }
 
   getQuickFilterText(): string {
     return this.core.getQuickFilterText();
+  }
+
+  getQuickFilterBehavior(): QuickFilterBehavior {
+    return this.core.getQuickFilterBehavior();
+  }
+
+  // ---------------- Quick-filter find ----------------
+  getFindState(): QuickFilterFindState {
+    return this.core.getFindState();
+  }
+
+  findNext(): QuickFilterFindMatch | null {
+    this.dispatch({ type: "findNavigate", direction: "next" });
+    return this.core.getFindState().activeMatch;
+  }
+
+  findPrevious(): QuickFilterFindMatch | null {
+    this.dispatch({ type: "findNavigate", direction: "previous" });
+    return this.core.getFindState().activeMatch;
   }
 
   // ---------------- Filtering ----------------

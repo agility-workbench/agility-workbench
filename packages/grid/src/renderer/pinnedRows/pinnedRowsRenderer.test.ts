@@ -6,6 +6,7 @@ import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { BodyCellRenderer } from "../body/cellRenderer";
 import { ActiveDescendantTracker } from "../aria";
 import { PinnedRowsRenderer } from "./pinnedRowsRenderer";
+import type { FindHighlightRenderer } from "../quickFilter/findHighlightRenderer";
 
 function createRenderer() {
   const root = document.createElement("div");
@@ -21,6 +22,7 @@ function createRenderer() {
     bodyCellRenderer: {} as BodyCellRenderer,
     onHeightChanged: () => undefined,
     onBodyPartitionChanged: () => undefined,
+    findHighlights: () => ({}) as FindHighlightRenderer,
   });
   const lanes = Array.from(root.querySelectorAll<HTMLDivElement>(".pte-pinned-rows-vertical"));
   return { renderer, lanes };

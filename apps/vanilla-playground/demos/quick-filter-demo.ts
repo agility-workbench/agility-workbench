@@ -4,6 +4,8 @@ import { checkbox, code, demoRoot, field, gridHost, h, note, numberInput, select
 
 /**
  * Showcases the quick-filter (global search) configuration:
+ *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
+ *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -46,6 +48,8 @@ const COLUMNS: ColDef[] = [
 export function mountQuickFilterDemo(container: HTMLElement): () => void {
   const config = {
     mode: "onDemand" as "onDemand" | "always",
+    behavior: "filter" as "filter" | "find",
+    showBehaviorToggle: true,
     clearOnClose: false,
     anchor: "right" as "left" | "right",
     offsetX: 8,
@@ -84,6 +88,21 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
           applyQuickFilter();
         },
       )),
+      field("Behavior", select(
+        [
+          { value: "filter", label: "filter (narrow rows)" },
+          { value: "find", label: "find (highlight cells)" },
+        ],
+        config.behavior,
+        value => {
+          config.behavior = value as typeof config.behavior;
+          applyQuickFilter();
+        },
+      )),
+      field("showBehaviorToggle", checkbox(config.showBehaviorToggle, value => {
+        config.showBehaviorToggle = value;
+        applyQuickFilter();
+      })),
       field("clearOnClose", checkbox(config.clearOnClose, value => {
         config.clearOnClose = value;
         applyQuickFilter();
@@ -122,6 +141,8 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
   function quickFilterOptions(): QuickFilterOptions {
     return {
       mode: config.mode,
+      behavior: config.behavior,
+      showBehaviorToggle: config.showBehaviorToggle,
       clearOnClose: config.clearOnClose,
       position: { anchor: config.anchor, offsetX: config.offsetX, offsetTop: config.offsetTop },
       showOptions: config.showOptions,
@@ -165,6 +186,12 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
       config.mode === "onDemand"
         ? "Press Ctrl/Cmd+F over the grid to open the search."
         : "Search is pinned open under the header.",
+      config.behavior === "find"
+        ? " Find mode: nothing is filtered — matching cells are highlighted, and Enter / Shift+Enter"
+          + " step through them (the counter shows where you are)."
+        : " Filter mode: non-matching rows are hidden.",
+      " With ", code("showBehaviorToggle"),
+      " on, the ⋯ popover lets you switch between the two without touching grid options.",
       " With ", code("clearOnClose"),
       " off, dismissing the search leaves the filter active and shows a pill you can click to reopen."
       + " With ", code("showLayoutOptions"),

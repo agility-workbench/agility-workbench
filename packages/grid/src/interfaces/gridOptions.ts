@@ -14,6 +14,7 @@ import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
   GridEventFilterChangedParams,
+  GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
@@ -347,6 +348,16 @@ export interface RowSelectionOptions {
 /** How the quick-filter search string is matched against each row. */
 export type QuickFilterMatchMode = "substring" | "multiTerm";
 
+/**
+ * What the quick filter does with the rows the search text matches:
+ * - "filter" (default): non-matching rows are filtered out of the view — the historical behavior.
+ * - "find": nothing is filtered. Every cell whose own text contains the search string is
+ *   highlighted in place and the widget gains a match counter with next/previous navigation, like
+ *   Excel's Find. Matching is always "contains, within one cell" (`matchMode` is a row-level
+ *   notion and does not apply); `caseSensitive` still does.
+ */
+export type QuickFilterBehavior = "filter" | "find";
+
 /** One entry of a grid-level initial sort: a column id and its direction, in priority order. */
 export interface InitialSortItem {
   colId: string;
@@ -470,9 +481,15 @@ export function resolvePaginationControlsOptions(
  * Quick filter (global search) configuration.
  * - `mode`: "onDemand" (default) hides the widget until summoned with Ctrl/Cmd+F; "always" keeps it
  *   pinned open under the header.
+ * - `behavior`: "filter" (default) filters non-matching rows out; "find" filters nothing and
+ *   highlights matching cells in place, with a match counter and next/previous navigation. See
+ *   {@link QuickFilterBehavior}.
+ * - `showBehaviorToggle`: whether the widget's options popover lets the end user switch between
+ *   filtering and finding. Defaults to false, so `behavior` alone forces one of them.
  * - `matchMode`: "multiTerm" (default) splits the search on whitespace and requires every token to
- *   match somewhere in the row; "substring" matches the whole string as one contiguous run.
- * - `caseSensitive`: false by default.
+ *   match somewhere in the row; "substring" matches the whole string as one contiguous run. Applies
+ *   to `behavior: "filter"` only — find always matches a contiguous run within a single cell.
+ * - `caseSensitive`: false by default. Applies to both behaviors.
  * - `debounceMs`: delay before a keystroke triggers a refilter. Defaults to 150.
  * - `showOptions`: whether the widget exposes the match-mode / match-case popover to end users.
  *   Defaults to true. When false the configured defaults are fixed.
@@ -488,6 +505,8 @@ export function resolvePaginationControlsOptions(
  */
 export interface QuickFilterOptions {
   mode?: "always" | "onDemand";
+  behavior?: QuickFilterBehavior;
+  showBehaviorToggle?: boolean;
   matchMode?: QuickFilterMatchMode;
   caseSensitive?: boolean;
   debounceMs?: number;
@@ -516,6 +535,8 @@ export interface QuickFilterPositionOptions {
 export interface ResolvedQuickFilterOptions {
   enabled: boolean;
   mode: "always" | "onDemand";
+  behavior: QuickFilterBehavior;
+  showBehaviorToggle: boolean;
   matchMode: QuickFilterMatchMode;
   caseSensitive: boolean;
   debounceMs: number;
@@ -533,6 +554,8 @@ export function resolveQuickFilterOptions(
   return {
     enabled: opt === true || (typeof opt === "object" && opt !== null),
     mode: o.mode ?? "onDemand",
+    behavior: o.behavior === "find" ? "find" : "filter",
+    showBehaviorToggle: o.showBehaviorToggle ?? false,
     matchMode: o.matchMode ?? "multiTerm",
     caseSensitive: o.caseSensitive ?? false,
     debounceMs: o.debounceMs != null && o.debounceMs >= 0 ? o.debounceMs : 150,
@@ -970,6 +993,12 @@ export interface GridOptions {
    * canonical `filterChanged` event.
    */
   onFilterChanged?: (params: GridEventFilterChangedParams) => void;
+  /**
+   * Called when the quick filter's find state changes — the search text, the match count, or which
+   * match is active (`quickFilter.behavior: "find"` only). Convenience wrapper over the
+   * `quickFilterFindChanged` event; use it to render an app-owned match counter.
+   */
+  onQuickFilterFindChanged?: (params: GridEventQuickFilterFindChangedParams) => void;
   /**
    * Called when the undo/redo stacks move — a step recorded, undone, redone, or the history
    * cleared. Convenience wrapper over the `historyChanged` event; the payload carries

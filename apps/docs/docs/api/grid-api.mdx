@@ -89,8 +89,11 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 
 | Method | Purpose |
 | --- | --- |
-| `setQuickFilter(text, options?)` | Apply client-side global search |
+| `setQuickFilter(text, options?)` | Apply client-side global search (`options.behavior` chooses filtering or finding) |
 | `getQuickFilterText()` | Current quick-filter text (`""` when inactive) |
+| `getQuickFilterBehavior()` | Whether the search filters rows (`"filter"`) or highlights matches (`"find"`) |
+| `getFindState()` | Find behavior: `{ behavior, available, text, matchCount, activeIndex, activeMatch }` |
+| `findNext()` / `findPrevious()` | Step the active find match in display order (wraps), revealing and scrolling to it |
 | `getFilterModel()` | Read the per-column filters as serializable `{ colId, filters, join }` items |
 | `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
 | `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |
@@ -255,6 +258,16 @@ need to subscribe to both `columnsChanged {reason:"filter"}` and
 client-side row model the handler runs after the view is re-derived, so row
 counts and `getPaginationInfo()` read post-filter state. The declarative
 `onFilterChanged` option callback wraps it.
+
+`quickFilterFindChanged` is the find behavior's counterpart to `filterChanged`:
+it fires when the search text or case setting changes (`reason: "query"`, which
+also covers switching behavior), when the user steps to another match
+(`"navigate"`), and when the rows or columns under the search move and the
+matches are re-counted (`"model"`). Its payload is the whole
+[`getFindState()`](#view-and-grouping) plus that reason, so an app can render
+its own "3 of 27" counter. A *filtering* quick filter never fires it — it
+reports through `filterChanged` (`source: "quickFilter"`) as before. The
+declarative option callback is `onQuickFilterFindChanged`.
 
 `historyChanged` fires whenever the undo/redo stacks move, with
 `{ reason, canUndo, canRedo, undoDepth, redoDepth }` — enough to drive toolbar

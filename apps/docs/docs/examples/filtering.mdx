@@ -283,6 +283,74 @@ filter, or `mode: "onDemand"` can open its floating UI with Ctrl/Cmd+F.
 Quick filtering is client-side. Server-side applications receive structured
 column filters in each data-source request.
 
+### Find instead of filter
+
+`behavior: "find"` turns the same box into Excel's Find: **nothing is filtered**
+— every row stays where it is and each cell whose own text contains the search
+string is highlighted, with a match counter and next/previous steppers in the
+widget.
+
+```ts
+const options = {
+  quickFilter: {
+    mode: "always",
+    behavior: "find",          // "filter" (default) | "find"
+    showBehaviorToggle: true,  // let the end user switch; omit to force `behavior`
+    caseSensitive: false,
+  },
+} satisfies GridOptions;
+
+api.setQuickFilter("smith", { behavior: "find" });
+api.findNext();      // → { rowId, colId, colInstanceId } | null
+api.findPrevious();
+api.getFindState();  // { behavior, available, text, matchCount, activeIndex, activeMatch }
+```
+
+The two behaviors share the search text and the `caseSensitive` setting, so
+switching between them re-runs the same search the other way. Set `behavior`
+alone to force one of them; add `showBehaviorToggle` to offer the choice in the
+widget's options popover, where the end user's pick is sticky for the session
+(like match case, it is not written back to grid options).
+
+Matching is deliberately narrower than the filter behavior's: a match is a
+contiguous run of the search text **inside one cell**, compared against the
+cell's formatted display value — so `$1,200` matches what the user sees.
+`matchMode` is a row-level notion ("all words, anywhere in the row") that cannot
+point at a cell to highlight, so it does not apply while finding and the widget
+hides its control.
+
+What is searched, and what is not:
+
+- Every visible data-row cell, across **all pages** and inside **collapsed
+  groups** — `matchCount` does not depend on what is scrolled into view, and
+  `findNext()` reveals its match by expanding ancestors and paging to it.
+- Not group rows: their cells hold a hierarchy label or an aggregate the grid
+  derives, not a column value. The auto-group column, tree column, row-number
+  and checkbox columns are skipped for the same reason. A hidden column is not
+  searched either.
+- `matchCount` counts **cells**: a term in three columns of one row is three
+  matches, each separately reachable.
+
+Finding needs data-row cells to highlight, so it is unavailable on the
+server-side row model and while the pivot layout is displayed (every displayed
+row there is a group row). In both cases `getFindState().available` is false and
+the search falls back to filtering rather than going inert — the widget's toggle
+disables itself and says why.
+
+Keyboard: `Enter` steps to the next match, `Shift+Enter` to the previous, both
+wrapping at the ends. Focus stays in the search box, so the cell cursor and the
+selection are left alone — stepping through matches is a search gesture, not a
+navigation one.
+
+Subscribe to `quickFilterFindChanged` (or the `onQuickFilterFindChanged` option
+/ the wrappers' `quickFilterFindChanged` output) to drive an app-owned counter;
+a finding quick filter deliberately does **not** fire `filterChanged`, since no
+rows moved.
+
+Theming: `--pte-find-match-bg-color` tints every match,
+`--pte-find-match-active-bg-color` plus `--pte-find-match-active-border-color`
+mark the active one.
+
 ## Reacting to filter changes
 
 Subscribe to the canonical `filterChanged` event (or pass the `onFilterChanged`
@@ -294,7 +362,8 @@ per effective filter change, whatever the path:
   the affected public `changedColIds`;
 - `source: "quickFilter"` — a quick-filter change (`changedColIds` is empty;
   client-side row model only, since the quick filter is a no-op on the
-  server-side model);
+  server-side model). A *finding* quick filter (`behavior: "find"`) changes no
+  rows and so fires `quickFilterFindChanged` instead;
 - `source: "columns"` — a columnDefs update dropped an active filter.
 
 On the client-side row model the handler runs after the view is re-derived, so

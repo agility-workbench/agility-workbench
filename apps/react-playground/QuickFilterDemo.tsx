@@ -6,6 +6,8 @@ import type { QuickFilterOptions } from "@grid";
 
 /**
  * Showcases the quick-filter (global search) configuration:
+ *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
+ *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -50,6 +52,8 @@ export function QuickFilterDemo() {
 
   // Live-editable quick-filter config.
   const [mode, setMode] = useState<"onDemand" | "always">("onDemand");
+  const [behavior, setBehavior] = useState<"filter" | "find">("filter");
+  const [showBehaviorToggle, setShowBehaviorToggle] = useState(true);
   const [clearOnClose, setClearOnClose] = useState(false);
   const [anchor, setAnchor] = useState<"left" | "right">("right");
   const [offsetX, setOffsetX] = useState(8);
@@ -89,11 +93,16 @@ export function QuickFilterDemo() {
 
   const quickFilter = useMemo<QuickFilterOptions>(() => ({
     mode,
+    behavior,
+    showBehaviorToggle,
     clearOnClose,
     position: { anchor, offsetX, offsetTop },
     showOptions,
     showLayoutOptions,
-  }), [mode, clearOnClose, anchor, offsetX, offsetTop, showOptions, showLayoutOptions]);
+  }), [
+    mode, behavior, showBehaviorToggle, clearOnClose, anchor, offsetX, offsetTop,
+    showOptions, showLayoutOptions,
+  ]);
 
   const labelStyle = { fontSize: 13, display: "flex", alignItems: "center", gap: 6 } as const;
 
@@ -106,6 +115,26 @@ export function QuickFilterDemo() {
             <option value="onDemand">onDemand (Ctrl/Cmd+F)</option>
             <option value="always">always (pinned)</option>
           </select>
+        </label>
+
+        <label style={labelStyle}>
+          Behavior
+          <select
+            value={behavior}
+            onChange={(e) => setBehavior(e.target.value as "filter" | "find")}
+          >
+            <option value="filter">filter (narrow rows)</option>
+            <option value="find">find (highlight cells)</option>
+          </select>
+        </label>
+
+        <label style={labelStyle}>
+          <input
+            type="checkbox"
+            checked={showBehaviorToggle}
+            onChange={(e) => setShowBehaviorToggle(e.target.checked)}
+          />
+          showBehaviorToggle
         </label>
 
         <label style={labelStyle}>
@@ -174,6 +203,11 @@ export function QuickFilterDemo() {
         {mode === "onDemand"
           ? "Press Ctrl/Cmd+F over the grid to open the search."
           : "Search is pinned open under the header."}
+        {" "}{behavior === "find"
+          ? "Find mode: nothing is filtered — matching cells are highlighted, and Enter / Shift+Enter step through them (the counter shows where you are)."
+          : "Filter mode: non-matching rows are hidden."}
+        {" "}With <code>showBehaviorToggle</code> on, the ⋯ popover switches between the two without
+        touching grid options.
         {" "}With <code>clearOnClose</code> off, dismissing the search leaves the filter active and shows a
         pill you can click to reopen. With <code>showLayoutOptions</code> on, the ⋯ options popover
         exposes the Anchor and “Keep filter when closed” controls.

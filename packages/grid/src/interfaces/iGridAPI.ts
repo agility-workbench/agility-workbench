@@ -9,6 +9,7 @@ import type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
 import type { IMenuAdapter } from "./iMenuAdapter";
 import {
   GridOptions,
+  QuickFilterBehavior,
   QuickFilterMatchMode,
   RowPinnedPosition,
   RuntimeGridOptions,
@@ -17,6 +18,7 @@ import {
   UpdatableGridOptions,
 } from "./gridOptions";
 import { GridViewFilterState, GridViewState } from "./gridView";
+import { QuickFilterFindMatch, QuickFilterFindState } from "./find";
 import { ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
 import { SetFilterMode } from "./filter";
@@ -290,10 +292,40 @@ export interface IGridAPI {
   /** Immediately finalize any pending asynchronous transactions. No-op when none are pending. */
   flushAsyncTransactions(): void;
 
-  /** Set the quick-filter (global search) text. Client-side row model only. */
-  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void;
+  /**
+   * Set the quick-filter (global search) text. Client-side row model only.
+   *
+   * `behavior` chooses what the text does: "filter" narrows the rows, "find" leaves every row in
+   * place and highlights the matching cells instead (see {@link QuickFilterBehavior}). It defaults
+   * to whatever is in force — the `quickFilter.behavior` option, or the end user's choice when the
+   * widget offers the toggle — so passing text alone never changes behavior.
+   */
+  setQuickFilter(
+    text: string,
+    opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean; behavior?: QuickFilterBehavior },
+  ): void;
   /** Current quick-filter text ("" when inactive). */
   getQuickFilterText(): string;
+  /** Whether the quick filter currently filters rows or highlights matches. */
+  getQuickFilterBehavior(): QuickFilterBehavior;
+
+  /* ----- Quick-filter find ----- */
+  /**
+   * The find behavior's live state: how many cells the search matches, which one is active, and the
+   * text being searched for. Reports 0 matches while the behavior is "filter", on the server-side
+   * row model, and while the pivot layout is displayed (there are no data-row cells to find in).
+   */
+  getFindState(): QuickFilterFindState;
+  /**
+   * Step to the next find match in display order, wrapping at the end, and reveal it: collapsed
+   * ancestors are expanded, the grid pages to it when paginated, and it is scrolled into view.
+   * Returns the match, or null when the search has none. The cell cursor is deliberately NOT moved
+   * — stepping through matches is a search gesture, not a navigation one, so whatever had keyboard
+   * focus (usually the search box) keeps it.
+   */
+  findNext(): QuickFilterFindMatch | null;
+  /** Step to the previous find match, wrapping at the start. @see findNext */
+  findPrevious(): QuickFilterFindMatch | null;
 
   /* ----- Filtering ----- */
   /** Current per-column filters in serializable form (`colId` is the public ColDef colId). */

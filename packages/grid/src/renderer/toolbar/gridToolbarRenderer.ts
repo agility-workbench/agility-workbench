@@ -832,11 +832,19 @@ export class GridToolbarRenderer {
   }
 
   private syncQuickFilterTrigger(): void {
-    const filtering = this.hasQuickFilterQuery();
-    this.quickFilterTrigger.classList.toggle("pte-grid-toolbar-quick-filter-active", filtering);
+    const active = this.hasQuickFilterQuery();
+    this.quickFilterTrigger.classList.toggle("pte-grid-toolbar-quick-filter-active", active);
+    const find = this.params.core.getFindState();
+    const term = this.params.core.getQuickFilterText();
+    // The collapsed trigger is the only sign of an active search, so it has to say which kind:
+    // "filtering by X" hides rows, "highlighting X" does not.
     this.quickFilterTrigger.setAttribute(
       "aria-label",
-      filtering ? `Search — filtering by “${this.params.core.getQuickFilterText()}”` : "Search",
+      !active
+        ? "Search"
+        : find.behavior === "find"
+          ? `Search — highlighting “${term}”`
+          : `Search — filtering by “${term}”`,
     );
   }
 

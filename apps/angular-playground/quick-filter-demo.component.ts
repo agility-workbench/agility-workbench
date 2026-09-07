@@ -14,6 +14,8 @@ import {
 
 /**
  * Showcases the quick-filter (global search) configuration:
+ *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
+ *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -58,6 +60,23 @@ function buildRows(): Company[] {
           <option value="onDemand" [selected]="mode() === 'onDemand'">onDemand (Ctrl/Cmd+F)</option>
           <option value="always" [selected]="mode() === 'always'">always (pinned)</option>
         </select>
+      </label>
+
+      <label class="ctl">
+        Behavior
+        <select (change)="onBehaviorChange($event)">
+          <option value="filter" [selected]="behavior() === 'filter'">filter (narrow rows)</option>
+          <option value="find" [selected]="behavior() === 'find'">find (highlight cells)</option>
+        </select>
+      </label>
+
+      <label class="ctl">
+        <input
+          type="checkbox"
+          [checked]="showBehaviorToggle()"
+          (change)="onShowBehaviorToggleToggle($event)"
+        />
+        showBehaviorToggle
       </label>
 
       <label class="ctl">
@@ -108,6 +127,13 @@ function buildRows(): Company[] {
           ? "Press Ctrl/Cmd+F over the grid to open the search."
           : "Search is pinned open under the header."
       }}
+      {{
+        behavior() === "find"
+          ? "Find mode: nothing is filtered — matching cells are highlighted, and Enter / Shift+Enter step through them (the counter shows where you are)."
+          : "Filter mode: non-matching rows are hidden."
+      }}
+      With <code>showBehaviorToggle</code> on, the ⋯ popover switches between the two without
+      touching grid options.
       With <code>clearOnClose</code> off, dismissing the search leaves the filter active and shows a
       pill you can click to reopen. With <code>showLayoutOptions</code> on, the ⋯ options popover
       exposes the Anchor and “Keep filter when closed” controls.
@@ -171,6 +197,8 @@ export class QuickFilterDemoComponent implements OnDestroy {
 
   // Live-editable quick-filter config.
   readonly mode = signal<"onDemand" | "always">("onDemand");
+  readonly behavior = signal<"filter" | "find">("filter");
+  readonly showBehaviorToggle = signal(true);
   readonly clearOnClose = signal(false);
   readonly anchor = signal<"left" | "right">("right");
   readonly offsetX = signal(8);
@@ -182,6 +210,8 @@ export class QuickFilterDemoComponent implements OnDestroy {
 
   readonly quickFilter = computed<QuickFilterOptions>(() => ({
     mode: this.mode(),
+    behavior: this.behavior(),
+    showBehaviorToggle: this.showBehaviorToggle(),
     clearOnClose: this.clearOnClose(),
     position: { anchor: this.anchor(), offsetX: this.offsetX(), offsetTop: this.offsetTop() },
     showOptions: this.showOptions(),
@@ -219,6 +249,14 @@ export class QuickFilterDemoComponent implements OnDestroy {
 
   onModeChange(event: Event): void {
     this.mode.set((event.target as HTMLSelectElement).value as "onDemand" | "always");
+  }
+
+  onBehaviorChange(event: Event): void {
+    this.behavior.set((event.target as HTMLSelectElement).value as "filter" | "find");
+  }
+
+  onShowBehaviorToggleToggle(event: Event): void {
+    this.showBehaviorToggle.set((event.target as HTMLInputElement).checked);
   }
 
   onClearOnCloseToggle(event: Event): void {

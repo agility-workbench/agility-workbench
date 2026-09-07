@@ -5,6 +5,7 @@ import type { RowPinnedPosition } from "../../interfaces/gridOptions";
 import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
+import type { FindHighlightRenderer } from "../quickFilter/findHighlightRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import {
@@ -63,6 +64,8 @@ interface PinnedRowsRendererParams {
   /** Scroll the grid body by a wheel delta. The sticky overlay covers real body rows even at rest,
    * so wheel gestures over it must keep scrolling the grid as if the overlay were not there. */
   forwardWheel?: (deltaX: number, deltaY: number) => void;
+  /** Paints quick-filter find highlights on one cell (see FindHighlightRenderer.applyToCell). */
+  findHighlights: () => FindHighlightRenderer;
 }
 
 /**
@@ -224,6 +227,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const stickyChanged = this.renderStickyOverlay(this.computeStickyStack(this.lastScrollTop), force);
     if (bandsChanged || stickyChanged) {
       this.refreshSelectionStyles();
+      this.refreshFindHighlights();
       this.updateLayout();
     }
 
@@ -372,6 +376,38 @@ export class PinnedRowsRenderer implements PinnedRowsController {
           : colSelected && !colSelectedAt(colIndex + 1),
         active: isActive && highlight,
       });
+    });
+  }
+
+  /**
+   * Repaint quick-filter find highlights on the bands and the sticky mirror. A pinned or mirrored
+   * row is the same data row as its body copy, so a matching cell has to look matched here too —
+   * and a mirror covers its body copy, which would otherwise hide the highlight underneath.
+   */
+  refreshFindHighlights(): void {
+    const core = this.params.core;
+    const find = this.params.findHighlights();
+    const leaves = core.getColumnModel().getLeaves();
+    const paint = (cell: HTMLElement, node: IRowNode | null) => {
+      const colIndex = Number(cell.dataset.colIdx);
+      find.applyToCell(cell, node, Number.isFinite(colIndex) ? leaves[colIndex] : undefined);
+    };
+    for (const { band, position } of [
+      { band: this.top, position: "top" as const },
+      { band: this.bottom, position: "bottom" as const },
+    ]) {
+      band.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
+        const rowIndex = Number(cell.closest<HTMLElement>(".pte-row")?.dataset.viewIdx);
+        paint(cell, Number.isFinite(rowIndex) ? core.getDisplayedPinnedRow(position, rowIndex) : null);
+      });
+    }
+    // Mirror rows carry their row's real body view index and no rowPinned tag.
+    this.sticky.root.querySelectorAll<HTMLElement>(".pte-cell").forEach(cell => {
+      const rowIndex = Number(cell.closest<HTMLElement>(".pte-row")?.dataset.viewIdx);
+      const node = Number.isFinite(rowIndex)
+        ? core.getRowModel().getRowNodeAtViewIndex(rowIndex) ?? null
+        : null;
+      paint(cell, node);
     });
   }
 

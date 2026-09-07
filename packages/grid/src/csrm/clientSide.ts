@@ -543,6 +543,24 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.sortedIdx.forEach((i: number) => callback(this.nodes[i], i));
   }
 
+  // Data rows in display order, collapsed subtrees included (see IRowModel). Mirrors
+  // flattenGroupTree's recursion minus its `isExpanded` gate, so the order is the one the grid
+  // paints and stays stable while the user expands and collapses. Synthetic group nodes are
+  // skipped; tree-data rows are real data rows and are visited like any other.
+  forEachDataNodeInDisplayOrder(callback: (node: IRowNode<Row>) => void): void {
+    if (!this.grouped) {
+      for (const i of this.sortedIdx) callback(this.nodes[i]);
+      return;
+    }
+    const walk = (nodes: IRowNode<Row>[]) => {
+      for (const node of nodes) {
+        if (!node.isGroup) callback(node);
+        if ((node.isGroup || node.isTreeData) && node.children) walk(node.children);
+      }
+    };
+    walk(this.groupRoots);
+  }
+
   getGroupNodes(): IRowNode<Row>[] {
     return this.grouped ? Array.from(this.groupNodesMap.values()) : [];
   }

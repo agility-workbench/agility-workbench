@@ -21,6 +21,7 @@ import {
   GridEventAggregateChangedParams,
   GridEventCellsChangedParams,
   GridEventPaginationChangedParams,
+  GridEventQuickFilterFindChangedParams,
   GridEventViewportChangedParams,
   Unsubscribe,
 } from "../events/events";
@@ -76,6 +77,7 @@ import { RootAttachmentRenderer } from "./rootAttachment";
 import { HorizontalScrollRenderer } from "./scroll/horizontal";
 import { GridScrollSyncRenderer } from "./scroll/sync";
 import { SelectionRenderer } from "./selection/selectionRenderer";
+import { FindHighlightRenderer } from "./quickFilter/findHighlightRenderer";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
 import { serializeNodesToTSV, serializeRowsToTSV } from "./clipboard/tsv";
@@ -144,6 +146,7 @@ export class GridRenderer {
   _horizontalScrollRenderer: HorizontalScrollRenderer;
   _scrollSyncRenderer: GridScrollSyncRenderer;
   _selectionRenderer: SelectionRenderer;
+  _findHighlightRenderer: FindHighlightRenderer;
   _cellEditRenderer: CellEditRenderer;
   _clipboardRenderer: ClipboardRenderer;
   rowHeight: number = 43;
@@ -296,6 +299,7 @@ export class GridRenderer {
       onHeaderFocusChanged: (params) => this._onHeaderFocusChanged(params.colIdx ?? null),
       onEditingChanged: (params) => this._cellEditRenderer.onEditingChanged(params),
       onCellsChanged: (params) => this._onCellsChanged(params),
+      onQuickFilterFindChanged: (params) => this._onQuickFilterFindChanged(params),
       onKeyboardNavigationModeChanged: ({ mode }) => {
         this.root.dataset.keyboardNavigationMode = mode;
         this._keyboardNavigationAnnouncer.textContent =
@@ -330,6 +334,12 @@ export class GridRenderer {
     });
     this._clipboardRenderer = new ClipboardRenderer({
       core: this.core,
+    });
+    this._findHighlightRenderer = new FindHighlightRenderer({
+      core: this.core,
+      rowPool: () => this._rowPool,
+      startIndex: () => this._startIndex,
+      leafColumns: () => this._leafColumns,
     });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
@@ -472,6 +482,7 @@ export class GridRenderer {
       bodyFrame: bodyWrapper.bodyFrame,
       rowHeight: () => this.rowHeight,
       bodyCellRenderer: this._bodyCellRenderer,
+      findHighlights: () => this._findHighlightRenderer,
       onHeightChanged: () => {
         this._bodyViewportRenderer.recomputeView();
         requestAnimationFrame(() => this._maybeUpdatePoolSize());
@@ -785,7 +796,10 @@ export class GridRenderer {
           slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation,
         ),
       clearFullWidthCell: (slot) => this._bodyCellRenderer.clearFullWidthCell(slot.fullWidthCellEl, slot.cellRendererInstances),
-      applySelectionToSlot: (slot, viewIndex) => this._selectionRenderer.applySelectionToSlot(slot, viewIndex),
+      applyCellStateToSlot: (slot, viewIndex) => {
+        this._selectionRenderer.applySelectionToSlot(slot, viewIndex);
+        this._findHighlightRenderer.applyToSlot(slot, viewIndex);
+      },
     });
 
     this._paginationRenderer = new PaginationRenderer({
@@ -997,12 +1011,19 @@ export class GridRenderer {
       this._quickFilterWidget = widget;
       // A rebuild can happen before a pending debounce fires. Preserve the visible value as the
       // authoritative state instead of silently reverting the rows to the last committed query.
-      if (restore && this.core.getQuickFilterText() !== restore.text) {
+      // The behavior is re-committed on the same terms: the rebuilt widget may have taken a newly
+      // configured `behavior`, and the core would otherwise keep filtering (or highlighting) under
+      // the old one.
+      const behavior = widget.getBehavior();
+      if (restore
+        && (this.core.getQuickFilterText() !== restore.text
+          || this.core.getQuickFilterBehavior() !== behavior)) {
         this.core.dispatch({
           type: "quickFilterSet",
           text: restore.text,
           matchMode: restore.matchMode,
           caseSensitive: restore.caseSensitive,
+          behavior,
         });
       }
       if (restoreFocus) widget.restoreFocus();
@@ -1293,6 +1314,33 @@ export class GridRenderer {
   }
 
   /** Announce the sort model in reading order (primary first). */
+  /**
+   * A find-state change: repaint the highlights everywhere a data cell can be drawn, tell the
+   * widget its counter moved, and — when the user stepped to another match — scroll that match into
+   * view and say where they are.
+   *
+   * The core has already done the model half of revealing the match (expanded its ancestors, paged
+   * to it), so the row has a slot by the time this runs.
+   */
+  private _onQuickFilterFindChanged(params: GridEventQuickFilterFindChangedParams) {
+    this._findHighlightRenderer.refresh();
+    this._pinnedRowsRenderer?.refreshFindHighlights();
+    this._quickFilterWidget?.onFindChanged(params);
+    if (params.reason !== "navigate") return;
+    const match = params.activeMatch;
+    if (!match) {
+      this._announcer.announce("No matches");
+      return;
+    }
+    const viewIdx = this.core.getViewIndexForRowId(match.rowId);
+    const colIdx = this._leafColumns.findIndex(col => col.instanceID === match.colInstanceId);
+    // A null view index means the row is not in the body pool — it is mirrored into a frozen band,
+    // where it is on screen wherever the body is scrolled, so only the column may need moving.
+    if (viewIdx != null && colIdx >= 0) this._ensureCellVisible(viewIdx, colIdx);
+    else if (colIdx >= 0) this.ensureColumnVisible(colIdx);
+    this._announcer.announce(`Match ${params.activeIndex} of ${params.matchCount}`);
+  }
+
   private _announceSort() {
     this._announcer.sortChanged(
       this.core.getSortModel().items.map(item => ({ label: item.col.label, dir: item.dir })),

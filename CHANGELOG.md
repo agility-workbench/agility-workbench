@@ -3,6 +3,36 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Quick-filter find (client-side row model)
+
+- **`quickFilter.behavior: "find"`** turns the quick filter into Excel's Find: no rows
+  are filtered, and every cell whose own text contains the search string is highlighted
+  in place. The widget gains a match counter and previous/next steppers, with `Enter` /
+  `Shift+Enter` walking the matches (wrapping at both ends) while focus stays in the
+  search box — the cell cursor and the selection are left alone. `showBehaviorToggle`
+  offers the choice to the end user in the options popover, where it is sticky for the
+  session; `behavior` alone forces one of the two.
+- Matching is "contains, within one cell", against the cell's *formatted* display value,
+  honouring `caseSensitive`. `matchMode` is row-level and does not apply while finding,
+  so the widget hides its control. Matches are counted over the whole client-side view —
+  all pages, and rows inside collapsed groups — and `findNext()` reveals its match by
+  expanding ancestors and paging to it.
+- **New API**: `getFindState()`, `findNext()`, `findPrevious()`,
+  `getQuickFilterBehavior()`, and a `behavior` option on `setQuickFilter`. New event
+  `quickFilterFindChanged` (option callback `onQuickFilterFindChanged`, wrapper output
+  `quickFilterFindChanged`) reports `{ behavior, available, text, matchCount,
+  activeIndex, activeMatch, reason }`. A finding quick filter deliberately does not fire
+  `filterChanged` — no rows moved.
+- Group rows, the auto-group/tree columns and the utility columns are not find targets
+  (their cells are labels, aggregates or controls, not column values). Finding is
+  unavailable on the server-side row model and while the pivot layout is displayed;
+  `getFindState().available` reports that, and the search falls back to filtering rather
+  than going inert.
+- New theme variables: `--pte-find-match-bg-color`,
+  `--pte-find-match-active-bg-color`, `--pte-find-match-active-border-color`.
+
 ## 1.1.1 — 2026-09-05
 
 Patch release. No API changes; a CSS-only fix in the core, with the two bindings

@@ -139,6 +139,9 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-find-match-bg-color: rgba(250, 204, 21, 0.35);
+  --pte-find-match-active-bg-color: rgba(250, 204, 21, 0.75);
+  --pte-find-match-active-border-color: #b45309;
   --pte-tooltip-bg: #1f2937;
   --pte-tooltip-text-color: #f9fafb;
   --pte-tooltip-border-color: transparent;
@@ -211,6 +214,9 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-find-match-bg-color: rgba(250, 204, 21, 0.28);
+  --pte-find-match-active-bg-color: rgba(250, 204, 21, 0.6);
+  --pte-find-match-active-border-color: #fbbf24;
   --pte-tooltip-bg: #0f172a;
   --pte-tooltip-text-color: #e2e8f0;
   --pte-tooltip-border-color: #334155;
@@ -3454,6 +3460,53 @@
   background: var(--pte-hover-bg-color);
 }
 
+/* Find navigation: the match counter and its two steppers, between the field and the options
+   button. Shown only while the find behavior is in force (the widget hides the whole group). */
+.pte-quick-filter-find-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* An author `display` rule beats the user agent's `[hidden] { display: none }` — author origin wins
+   over UA origin whatever the specificity — so anything laid out here needs its own hidden rule or
+   `el.hidden = true` sets the attribute and changes nothing on screen. Same reason as the options
+   panel and the indicator pill below. */
+.pte-quick-filter-find-nav[hidden] {
+  display: none;
+}
+
+.pte-quick-filter-find-count {
+  color: var(--pte-muted-text-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding: 0 2px;
+  /* The counter's text changes width as the user types ("No matches" ↔ "3 of 27"); a floor keeps
+     the steppers from sliding under the pointer mid-click. */
+  min-width: 54px;
+  text-align: right;
+}
+
+.pte-quick-filter-find-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pte-quick-filter-find-step:disabled:hover {
+  background: transparent;
+}
+
+.pte-quick-filter-find-step-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: var(--pte-icon-color);
+}
+
 /* Options panel revealed inline below the search row when the widget is expanded. */
 .pte-quick-filter-options-panel {
   display: flex;
@@ -3471,6 +3524,12 @@
 .pte-quick-filter-option-row {
   display: flex;
   align-items: center;
+}
+
+/* Hidden when the row has no meaning for the behavior in force (the match-mode row while finding).
+   See the cascade note on .pte-quick-filter-find-nav[hidden]. */
+.pte-quick-filter-option-row[hidden] {
+  display: none;
 }
 
 /* Divider between the match-controls section and the layout-controls section of the panel. */
@@ -4257,6 +4316,27 @@
 .pte-cell-flash-fading.pte-cell-flash-neutral {
   background-color: transparent;
   transition: background-color var(--pte-cell-flash-fade-duration, 1000ms) ease-out;
+}
+
+/* Quick-filter find highlights. The whole cell is tinted (rather than the matched run inside the
+   text) so a cell drawn by an app-supplied cellRenderer highlights identically to a plain one, and
+   painting stays a class toggle on the render hot path.
+
+   `inset` box-shadow rather than a border: a border would change the cell's content box and shift
+   the text by a pixel as highlights come and go while the user types. */
+.pte-cell.pte-find-match {
+  background-color: var(--pte-find-match-bg-color);
+}
+
+.pte-cell.pte-find-match-active {
+  background-color: var(--pte-find-match-active-bg-color);
+  box-shadow: inset 0 0 0 2px var(--pte-find-match-active-border-color);
+}
+
+/* A selected cell keeps its selection tint on top: the selection is the user's current gesture,
+   the highlight is standing state. The active match still reads through its outline. */
+.pte-cell.pte-find-match.selected {
+  background-color: var(--pte-selected-bg-color);
 }
 
 .pte-cell-right-aligned {

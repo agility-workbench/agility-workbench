@@ -34,6 +34,11 @@ transactions require the client-side model. Server-side grouping and sticky
 group rows are supported, but server-side group sorting is local to each
 listing.
 
+The quick filter's [find behavior](./examples/filtering.mdx#find-instead-of-filter)
+additionally needs data-row cells to highlight, so it is unavailable while the
+pivot layout is displayed (every displayed row there is a group row). In both
+cases `getFindState().available` is false and the search filters instead.
+
 ## Server-side differences
 
 The server is responsible for filtering and sorting complete data. As a result,

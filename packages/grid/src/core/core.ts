@@ -13,6 +13,7 @@ import {
   GroupDisplayType,
   GroupSortMode,
   InternalGridOptions,
+  QuickFilterBehavior,
   QuickFilterMatchMode,
   REJECT,
   ResetPageTrigger,
@@ -25,6 +26,8 @@ import {
   resolveQuickFilterOptions,
 } from "../interfaces/gridOptions";
 import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "../interfaces/iGridCore";
+import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
+import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
@@ -96,6 +99,17 @@ interface RangeColumnSnapshot {
   layout: Array<{ id: string; section: "left" | "center" | "right" }>;
 }
 
+// Events after which the find index can no longer be trusted: the displayed rows, their order,
+// their values or the searched columns may all have changed. `modelUpdated` covers filter/sort/
+// group/pivot/data, `rowsChanged` a transaction, `cellsChanged` an edit, and `columnsChanged` a
+// visibility or definition change.
+const FIND_INVALIDATING_EVENTS = new Set<GridEventName>([
+  "modelUpdated",
+  "rowsChanged",
+  "cellsChanged",
+  "columnsChanged",
+]);
+
 export class GridCore implements IGridCore {
   readonly id: string;
 
@@ -128,6 +142,13 @@ export class GridCore implements IGridCore {
   private quickFilterText = "";
   private quickFilterMatchMode: QuickFilterMatchMode;
   private quickFilterCaseSensitive: boolean;
+  // "filter" narrows the rows (the historical behavior); "find" filters nothing and the search text
+  // instead drives the highlight index below. The widget may toggle it at runtime when the
+  // quickFilter option allows.
+  private quickFilterBehavior: QuickFilterBehavior;
+  // Which cells the find behavior matches, and which of them is active. Empty while the behavior is
+  // "filter" — the two behaviors share the search text and nothing else.
+  private readonly find: QuickFilterFind;
 
   private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
@@ -201,6 +222,17 @@ export class GridCore implements IGridCore {
     const qf = resolveQuickFilterOptions(this.options.quickFilter);
     this.quickFilterMatchMode = qf.matchMode;
     this.quickFilterCaseSensitive = qf.caseSensitive;
+    this.quickFilterBehavior = qf.behavior;
+    this.find = new QuickFilterFind({
+      getRowModel: () => this.rowModel,
+      // The cells a find can highlight: visible data leaves. Internal columns (row numbers,
+      // checkboxes, the auto-group column) and any tree column are excluded because their cells do
+      // not render `formatValue` — the cell renderer draws a checkbox, a row number or a hierarchy
+      // label there, so matching their value would highlight text the user cannot see.
+      getColumns: () => this.columnModel.getLeaves()
+        .filter(col => !col.isInternal() && !col.isTreeColumn()),
+      canFind: () => this.isFindAvailable(),
+    });
     this.selectionModel = new SelectionModel({
       getRowModel: () => this.rowModel,
       getColumnModel: () => this.columnModel,
@@ -242,6 +274,7 @@ export class GridCore implements IGridCore {
       }
     });
     this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
+    this.on("quickFilterFindChanged", (ev) => o.onQuickFilterFindChanged?.(ev));
     this.on("historyChanged", (ev) => o.onHistoryChanged?.(ev));
   }
 
@@ -300,6 +333,7 @@ export class GridCore implements IGridCore {
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
       onFilterChanged: options.onFilterChanged,
+      onQuickFilterFindChanged: options.onQuickFilterFindChanged,
       onHistoryChanged: options.onHistoryChanged,
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
@@ -869,7 +903,9 @@ export class GridCore implements IGridCore {
       groupSortMode: this.options.groupSortMode,
       groupExpansion,
       quickFilter: {
-        text: this.quickFilterText,
+        // Not `quickFilterText`: while the find behavior is on, the search highlights cells and
+        // must never narrow the rows, so every request the grid makes filters by nothing.
+        text: this.effectiveQuickFilterText(),
         matchMode: this.quickFilterMatchMode,
         caseSensitive: this.quickFilterCaseSensitive,
       },
@@ -1162,22 +1198,59 @@ export class GridCore implements IGridCore {
 
   /**
    * Set the quick-filter (global search) state. `text` is the raw search string; the optional
-   * `matchMode` / `caseSensitive` override the resolved defaults (the widget passes them so the
-   * user's popover choices take effect). Keeps the current page (clamped to the last page when the
-   * result shrinks past it) unless "quickFilter" is in `resetPageOn`; clears the selection per
-   * `selectionPersistence` (it may point at rows about to be hidden). No-op for the server-side
-   * row model.
+   * `matchMode` / `caseSensitive` / `behavior` override the resolved defaults (the widget passes
+   * them so the user's popover choices take effect).
+   *
+   * With `behavior: "filter"` (the default) this narrows the rows: the current page is kept (clamped
+   * to the last page when the result shrinks past it) unless "quickFilter" is in `resetPageOn`, and
+   * the selection is cleared per `selectionPersistence` (it may point at rows about to be hidden).
+   *
+   * With `behavior: "find"` NOTHING is filtered — the text builds the find index instead, and the
+   * rows, the page and the selection are all left alone. Switching between the two behaviors while
+   * a search is active therefore re-derives the view: the same text starts or stops filtering.
+   *
+   * No-op for the server-side row model.
    */
-  setQuickFilter(text: string, opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean }): void {
+  setQuickFilter(
+    text: string,
+    opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean; behavior?: QuickFilterBehavior },
+  ): void {
     if (this.rowModel.getType() === "serverSide") return;
     const nextMode = opts?.matchMode ?? this.quickFilterMatchMode;
     const nextCase = opts?.caseSensitive ?? this.quickFilterCaseSensitive;
-    if (text === this.quickFilterText && nextMode === this.quickFilterMatchMode && nextCase === this.quickFilterCaseSensitive) {
+    const nextBehavior = opts?.behavior ?? this.quickFilterBehavior;
+    if (
+      text === this.quickFilterText
+      && nextMode === this.quickFilterMatchMode
+      && nextCase === this.quickFilterCaseSensitive
+      && nextBehavior === this.quickFilterBehavior
+    ) {
       return;
     }
+    // What the ROW MODEL is asked to filter by, before and after. In find behavior that is the empty
+    // string whatever the user typed, so a find never narrows the view — and flipping the behavior
+    // with text in the box is itself an effective-filter change that must re-derive it.
+    const behaviorBefore = this.effectiveQuickFilterBehavior();
+    const filterTextBefore = this.effectiveQuickFilterText();
+    const filterModelBefore = `${filterTextBefore}\u0000${this.quickFilterMatchMode}\u0000${this.quickFilterCaseSensitive}`;
     this.quickFilterText = text;
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
+    this.quickFilterBehavior = nextBehavior;
+    const filterTextAfter = this.effectiveQuickFilterText();
+    const filterModelAfter = `${filterTextAfter}\u0000${nextMode}\u0000${nextCase}`;
+
+    // Report unconditionally only when finding is involved on either side of the change — a purely
+    // filtering quick filter has no find state to speak of, and firing `quickFilterFindChanged` on
+    // its every keystroke would be noise.
+    const touchesFind = behaviorBefore === "find" || this.effectiveQuickFilterBehavior() === "find";
+    this.refreshFindMatches(touchesFind);
+
+    if (filterModelBefore === filterModelAfter) {
+      // A find-only change: no rows moved, so none of the filter-path consequences (re-derivation,
+      // page clamp, selection clear, filterChanged) apply.
+      return;
+    }
     const range = this.pageRangeFor("quickFilter");
     this.applyRowModelRequest(() => this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
     this.clampPageToLastPage();
@@ -1190,6 +1263,122 @@ export class GridCore implements IGridCore {
 
   getQuickFilterText(): string {
     return this.quickFilterText;
+  }
+
+  /** The behavior that was asked for, whether or not it can currently be honoured. */
+  getQuickFilterBehavior(): QuickFilterBehavior {
+    return this.quickFilterBehavior;
+  }
+
+  /**
+   * Whether finding can work at all right now: it needs data-row cells to highlight, which the
+   * server-side model does not hold and a displayed pivot layout does not have (all its rows are
+   * group rows).
+   */
+  isFindAvailable(): boolean {
+    return this.rowModel.getType() === "clientSide"
+      && !(this.pivotMode && this.columnModel.isPivotDisplayActive());
+  }
+
+  /**
+   * The behavior in force. Requesting "find" where it cannot work falls back to filtering rather
+   * than leaving the search box inert — filtering is what a pivoted quick filter has always done.
+   */
+  private effectiveQuickFilterBehavior(): QuickFilterBehavior {
+    return this.quickFilterBehavior === "find" && this.isFindAvailable() ? "find" : "filter";
+  }
+
+  /** The text the ROW MODEL filters by: the search text while filtering, nothing while finding. */
+  private effectiveQuickFilterText(): string {
+    return this.effectiveQuickFilterBehavior() === "find" ? "" : this.quickFilterText;
+  }
+
+  /** @see QuickFilterFindState */
+  getFindState(): QuickFilterFindState {
+    return {
+      behavior: this.effectiveQuickFilterBehavior(),
+      available: this.isFindAvailable(),
+      text: this.quickFilterText,
+      matchCount: this.find.matchCount(),
+      activeIndex: this.find.activeIndex(),
+      activeMatch: this.find.activeMatch(),
+    };
+  }
+
+  /** Whether a rendered data cell is a find match — the renderer's per-cell paint question. */
+  isFindMatch(node: IRowNode | null | undefined, col: Column): boolean {
+    return this.find.matches(node, col);
+  }
+
+  /** Whether a rendered data cell is the ACTIVE find match (the one navigation last landed on). */
+  isActiveFindMatch(rowId: GridId, colInstanceId: string): boolean {
+    return this.find.isActiveMatch(rowId, colInstanceId);
+  }
+
+  /**
+   * Move the active find match one step forward (or back) in display order, wrapping at the ends,
+   * and give its row a slot: collapsed ancestors are expanded and, under pagination, the grid pages
+   * to it — exactly what {@link revealRow} does, since a match the user cannot reach is no answer.
+   * Returns the match, or null when the search has none. Scrolling to it is the renderer's half,
+   * driven by the `quickFilterFindChanged` event this emits.
+   */
+  findNext(): QuickFilterFindMatch | null {
+    return this.navigateFind("next");
+  }
+
+  findPrevious(): QuickFilterFindMatch | null {
+    return this.navigateFind("previous");
+  }
+
+  private navigateFind(dir: "next" | "previous"): QuickFilterFindMatch | null {
+    const match = dir === "next" ? this.find.next() : this.find.previous();
+    if (!match) {
+      this.emitFindChanged("navigate");
+      return null;
+    }
+    // Reveal first: expanding a group re-derives the view (and re-scans the index, keeping this
+    // match active), so the state the event reports is the settled one.
+    this.revealRow(match.rowId);
+    this.emitFindChanged("navigate");
+    return match;
+  }
+
+  /**
+   * Re-scan the find index. Called on a query change and, coalesced, at the end of any dispatch
+   * that emitted a model/column change (see `emit`). `force` emits the event even when the state
+   * looks unchanged — a query edit always reports, so a widget's counter tracks every keystroke.
+   */
+  private refreshFindMatches(force = false): void {
+    const before = force
+      ? null
+      : `${this.find.matchCount()}\u0000${this.find.activeIndex()}`;
+    const queryChanged = this.find.setQuery({
+      text: this.quickFilterText,
+      caseSensitive: this.quickFilterCaseSensitive,
+      enabled: this.effectiveQuickFilterBehavior() === "find",
+    });
+    // Same query, but the rows or columns under it moved — re-scan, keeping the active match.
+    if (!queryChanged) this.find.invalidate();
+    if (before != null && before === `${this.find.matchCount()}\u0000${this.find.activeIndex()}`) return;
+    this.emitFindChanged(force ? "query" : "model");
+  }
+
+  /**
+   * Whether a model/column change should re-scan. True while a find is running, and also while one
+   * is merely REQUESTED — otherwise a find that went dormant (the grid entered pivot mode) would
+   * never notice the condition lifting, and exiting pivot mode would leave the box inert.
+   */
+  private findWantsRefresh(): boolean {
+    return this.find.isFinding()
+      || (this.quickFilterBehavior === "find" && this.quickFilterText.trim() !== "");
+  }
+
+  // Stable reference for afterDispatch dedup (see `emit`): one re-scan per dispatch, not one per
+  // event the dispatch emitted.
+  private readonly refreshFindMatchesAfterDispatch = () => this.refreshFindMatches(false);
+
+  private emitFindChanged(reason: "query" | "navigate" | "model"): void {
+    this.emit("quickFilterFindChanged", { ...this.getFindState(), reason });
   }
 
   setSortModel(sorts: SortItemUpdate[]) {
@@ -2989,7 +3178,15 @@ export class GridCore implements IGridCore {
         this.setFilterModel(action.filterModel);
         break;
       case "quickFilterSet":
-        this.setQuickFilter(action.text, { matchMode: action.matchMode, caseSensitive: action.caseSensitive });
+        this.setQuickFilter(action.text, {
+          matchMode: action.matchMode,
+          caseSensitive: action.caseSensitive,
+          behavior: action.behavior,
+        });
+        break;
+      case "findNavigate":
+        if (action.direction === "next") this.findNext();
+        else this.findPrevious();
         break;
       case "columnPin":
         this.columnModel.setPinneds(action.colIds, action.pinned);
@@ -3678,6 +3875,15 @@ export class GridCore implements IGridCore {
   }
 
   emit<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]): void {
+    // The find index is derived from the displayed rows and their values, so anything that changes
+    // those invalidates it. Hooked here, ahead of the no-handlers bail-out, because this is the one
+    // funnel every such change passes through — a row transaction, a sort, an expansion toggle, a
+    // cell edit and a column-visibility change would otherwise each need their own hook, and one
+    // missed hook means stale highlights. afterDispatch collapses the several events of one
+    // mutation into a single re-scan.
+    if (this.findWantsRefresh() && FIND_INVALIDATING_EVENTS.has(eventType)) {
+      this.afterDispatch(this.refreshFindMatchesAfterDispatch);
+    }
     if (!this.eventHandlers.has(eventType)) return;
     const handlers = this.eventHandlers.get(eventType)!;
     for (const handler of handlers) {

@@ -74,6 +74,10 @@ const openWidget = async (c: HTMLElement) => {
     rootEl.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true }));
   });
 };
+const matchedCells = (c: HTMLElement) =>
+  [...c.querySelectorAll(".pte-cell.pte-find-match")].map(cell => cell.textContent ?? "");
+const findCount = (c: HTMLElement) =>
+  c.querySelector<HTMLElement>(".pte-quick-filter-find-count")?.textContent ?? "";
 const noRowsVisible = (c: HTMLElement) => {
   const el = c.querySelector<HTMLElement>(".pte-norows-overlay");
   return !!el && !el.classList.contains("hidden");
@@ -530,6 +534,73 @@ describe("quick filter: live reconfigure (no remount)", () => {
     await rerender(false);
     expect(widget(container)).toBeNull(); // torn down
     expect(document.activeElement).toBe(container.querySelector(".pte-root"));
+
+    await unmountTestRoot(root);
+  });
+
+  it("highlights matches instead of filtering under behavior: \"find\"", async () => {
+    const { container, apiRef, root } = await mountGrid({ mode: "always", behavior: "find" });
+    const core = apiRef.current!.getCore();
+
+    await setSearch(container, "acme");
+    expect(core.getRowModel().getViewCount()).toBe(3); // nothing filtered
+    expect(matchedCells(container)).toEqual(["Acme Corp", "Acme Labs"]);
+    expect(findCount(container)).toBe("2 matches");
+
+    await act(async () => {
+      input(container).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(findCount(container)).toBe("1 of 2");
+    expect(container.querySelectorAll(".pte-find-match-active")).toHaveLength(1);
+
+    await unmountTestRoot(root);
+  });
+
+  it("switches behavior live from the prop, keeping the search text", async () => {
+    const { container, apiRef, root, rerender } = await mountGrid({ mode: "always", debounceMs: 0 });
+    const core = apiRef.current!.getCore();
+
+    await setSearch(container, "acme");
+    expect(core.getRowModel().getViewCount()).toBe(2); // filtering
+
+    await rerender({ mode: "always", debounceMs: 0, behavior: "find" });
+    expect(input(container).value).toBe("acme");
+    expect(core.getRowModel().getViewCount()).toBe(3);
+    expect(matchedCells(container)).toEqual(["Acme Corp", "Acme Labs"]);
+
+    await unmountTestRoot(root);
+  });
+
+  it("reports find state through the onQuickFilterFindChanged prop", async () => {
+    const events: any[] = [];
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={ROWS}
+          columnDefs={[
+            { colId: "name", key: "name", label: "Name" },
+            { colId: "region", key: "region", label: "Region" },
+          ]}
+          rowIdKey="id"
+          quickFilter={{ mode: "always", debounceMs: 0, behavior: "find" }}
+          onQuickFilterFindChanged={(ev) => events.push(ev)}
+        />,
+      );
+    });
+
+    await setSearch(container, "west");
+    expect(events.at(-1)).toMatchObject({ reason: "query", matchCount: 2, behavior: "find" });
+
+    await act(async () => {
+      apiRef.current!.findNext();
+    });
+    expect(events.at(-1)).toMatchObject({ reason: "navigate", activeIndex: 1 });
 
     await unmountTestRoot(root);
   });

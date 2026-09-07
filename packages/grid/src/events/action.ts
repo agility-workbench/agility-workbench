@@ -4,7 +4,7 @@ import { FilterItem } from "../interfaces/filter";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
-import { QuickFilterMatchMode, TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
+import { QuickFilterBehavior, QuickFilterMatchMode, TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
 
 export type GridActionInit = {
   type: "init";
@@ -139,6 +139,14 @@ export type GridActionQuickFilterSet = {
   text: string;
   matchMode?: QuickFilterMatchMode;
   caseSensitive?: boolean;
+  behavior?: QuickFilterBehavior;
+};
+
+// Step the active find match (quickFilter behavior "find"). Wraps at either end; a no-op when the
+// search has no matches.
+export type GridActionFindNavigate = {
+  type: "findNavigate";
+  direction: "next" | "previous";
 };
 
 export type GridActionAggregateModelSet = {
@@ -392,6 +400,7 @@ export type GridAction =
   | GridActionSortModelSet
   | GridActionFilterModelSet
   | GridActionQuickFilterSet
+  | GridActionFindNavigate
   | GridActionAggregateModelSet
   | GridActionRowGroupSet
   | GridActionPivotModeSet
