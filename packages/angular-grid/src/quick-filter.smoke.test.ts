@@ -210,7 +210,7 @@ describe("AwbGrid quick filter", () => {
     expect(api.getCore().getRowModel().getViewCount()).toBe(3);
     expect([...gridEl.querySelectorAll(".pte-cell.pte-find-match")].map(c => c.textContent))
       .toEqual(["Acme Corp", "Acme Labs"]);
-    expect(gridEl.querySelector(".pte-quick-filter-find-count")!.textContent).toBe("2 matches");
+    expect(gridEl.querySelector(".pte-quick-filter-find-count-text")!.textContent).toBe("0/2");
     expect(host.findEvents.at(-1)).toMatchObject({ reason: "query", matchCount: 2 });
 
     api.findNext();

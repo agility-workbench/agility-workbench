@@ -77,7 +77,7 @@ const openWidget = async (c: HTMLElement) => {
 const matchedCells = (c: HTMLElement) =>
   [...c.querySelectorAll(".pte-cell.pte-find-match")].map(cell => cell.textContent ?? "");
 const findCount = (c: HTMLElement) =>
-  c.querySelector<HTMLElement>(".pte-quick-filter-find-count")?.textContent ?? "";
+  c.querySelector<HTMLElement>(".pte-quick-filter-find-count-text")?.textContent ?? "";
 const noRowsVisible = (c: HTMLElement) => {
   const el = c.querySelector<HTMLElement>(".pte-norows-overlay");
   return !!el && !el.classList.contains("hidden");
@@ -545,12 +545,12 @@ describe("quick filter: live reconfigure (no remount)", () => {
     await setSearch(container, "acme");
     expect(core.getRowModel().getViewCount()).toBe(3); // nothing filtered
     expect(matchedCells(container)).toEqual(["Acme Corp", "Acme Labs"]);
-    expect(findCount(container)).toBe("2 matches");
+    expect(findCount(container)).toBe("0/2");
 
     await act(async () => {
       input(container).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
-    expect(findCount(container)).toBe("1 of 2");
+    expect(findCount(container)).toBe("1/2");
     expect(container.querySelectorAll(".pte-find-match-active")).toHaveLength(1);
 
     await unmountTestRoot(root);

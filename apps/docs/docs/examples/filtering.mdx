@@ -305,8 +305,9 @@ column filters in each data-source request.
 
 `behavior: "find"` turns the same box into Excel's Find: **nothing is filtered**
 — every row stays where it is and each cell whose own text contains the search
-string is highlighted, with a match counter and next/previous steppers in the
-widget.
+string is highlighted. The widget counts the matches inside the search box
+(`3/27` — the active match over the total, `0/0` when nothing matches), with
+next/previous steppers beside it.
 
 ```ts
 const options = {

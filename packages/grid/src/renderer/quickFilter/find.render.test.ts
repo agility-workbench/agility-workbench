@@ -61,8 +61,14 @@ function press(key: string, init: KeyboardEventInit = {}): void {
   input().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...init }));
 }
 
+/** The painted counter: the terse "3/27" inside the field. */
 function counter(): string {
-  return host.querySelector(".pte-quick-filter-find-count")?.textContent ?? "";
+  return host.querySelector(".pte-quick-filter-find-count-text")?.textContent ?? "";
+}
+
+/** The same state in the words a screen reader is given, from the sr-only half of the live region. */
+function counterSr(): string {
+  return host.querySelector(".pte-quick-filter-find-count-sr")?.textContent ?? "";
 }
 
 function findNav(): HTMLElement {
@@ -119,28 +125,32 @@ describe("quick-filter find rendering", () => {
     type("west");
     expect(matchedCells()).toEqual(["West", "West"]);
     expect(activeCells()).toEqual([]);
-    expect(counter()).toBe("2 matches");
+    // Nothing stepped to yet: the numerator is 0, and only the verbose half spells that out.
+    expect(counter()).toBe("0/2");
+    expect(counterSr()).toBe("2 matches");
 
     press("Enter");
     expect(activeCells()).toEqual(["West"]);
-    expect(counter()).toBe("1 of 2");
+    expect(counter()).toBe("1/2");
+    expect(counterSr()).toBe("Match 1 of 2");
 
     press("Enter");
-    expect(counter()).toBe("2 of 2");
+    expect(counter()).toBe("2/2");
     // Both cells read "West"; the active one is the second row's, so the match class count holds
     // while the active class stays a single cell.
     expect(activeCells()).toHaveLength(1);
     expect(matchedCells()).toHaveLength(2);
 
     press("Enter", { shiftKey: true });
-    expect(counter()).toBe("1 of 2");
+    expect(counter()).toBe("1/2");
     api.destroy();
   });
 
   it("reports an empty search with no matches", () => {
     const api = mount();
     type("nowhere");
-    expect(counter()).toBe("No matches");
+    expect(counter()).toBe("0/0");
+    expect(counterSr()).toBe("No matches");
     expect(matchedCells()).toEqual([]);
     const next = host.querySelector<HTMLButtonElement>(".pte-quick-filter-find-step:last-child")!;
     expect(next.disabled).toBe(true);
@@ -154,6 +164,7 @@ describe("quick-filter find rendering", () => {
     type("");
     expect(matchedCells()).toEqual([]);
     expect(counter()).toBe("");
+    expect(counterSr()).toBe("");
     api.destroy();
   });
 
@@ -217,7 +228,7 @@ describe("quick-filter find rendering", () => {
     type("acme");
     expect(rowCount(api)).toBe(3);
     expect(matchedCells()).toEqual(["Acme Corp", "Acme Labs"]);
-    expect(counter()).toBe("2 matches");
+    expect(counter()).toBe("0/2");
 
     // …and back, with the search text surviving and filtering again.
     api.updateGridOptions({ quickFilter: options("filter") });
@@ -246,7 +257,7 @@ describe("quick-filter find rendering", () => {
     // …but a partial word is no longer a match.
     type("wes");
     expect(matchedCells()).toEqual([]);
-    expect(counter()).toBe("No matches");
+    expect(counter()).toBe("0/0");
 
     // Cell-scoped multiTerm: both words must be in the one cell being highlighted.
     modeSelect.value = "multiTerm";

@@ -8,7 +8,7 @@ import {
   resolveQuickFilterOptions,
 } from "../../interfaces/gridOptions";
 import { QuickFilterFindState } from "../../interfaces/find";
-import { button, div, span } from "../element";
+import { button, createElement, div, span } from "../element";
 import { matchesChord } from "../interaction/keyChord";
 
 // Transient state carried across a config-driven rebuild so the live search isn't lost when the
@@ -58,10 +58,16 @@ export class QuickFilterWidget {
   private optionsBtn?: HTMLButtonElement;
   private closeBtn?: HTMLButtonElement;
   private optionsPanel?: HTMLDivElement;
-  // Find navigation: "3 of 27" plus the two steppers. Present only when the find behavior is
-  // reachable at all (configured, or offered through the behavior toggle); hidden while filtering.
+  // Find navigation: the two steppers, on the chrome beside the field. Present only when the find
+  // behavior is reachable at all (configured, or offered through the behavior toggle); hidden while
+  // filtering.
   private findNav?: HTMLDivElement;
+  // The match counter, which sits INSIDE the field over the right end of the input (Google Sheets /
+  // Chrome's find bar). Two texts: the compact "3/27" that is painted, and a verbose one that only
+  // AT reads — see buildFindNav.
   private findCountLabel?: HTMLSpanElement;
+  private findCountText?: HTMLSpanElement;
+  private findCountSr?: HTMLSpanElement;
   private findPrevBtn?: HTMLButtonElement;
   private findNextBtn?: HTMLButtonElement;
   private behaviorSelect?: HTMLSelectElement;
@@ -140,7 +146,13 @@ export class QuickFilterWidget {
     // The search icon + input + clear button live inside a plain (white, in light theme) bordered
     // field; the surrounding row/container is tinted, so the field reads clearly as the text entry
     // and the trailing buttons read as controls sitting on the chrome.
-    const field = div("pte-quick-filter-field");
+    //
+    // A <label> rather than a <div>, so the whole field — the icon, the padding either side of the
+    // input, the gaps — focuses the input when clicked, natively and with no handler of our own.
+    // (Label activation is skipped when the click lands on interactive content, so the clear button
+    // inside still behaves as a button.) The field carries no text, so the input's `aria-label`
+    // remains its accessible name.
+    const field = createElement("label", "pte-quick-filter-field");
     field.appendChild(searchIcon);
     field.appendChild(this.input);
     field.appendChild(this.clearBtn);
@@ -148,7 +160,7 @@ export class QuickFilterWidget {
 
     // Built whenever finding is possible — configured now, or one popover toggle away — so switching
     // behavior never has to rebuild the row.
-    if (this.opts.behavior === "find" || this.opts.showBehaviorToggle) this.buildFindNav();
+    if (this.opts.behavior === "find" || this.opts.showBehaviorToggle) this.buildFindNav(field);
 
     if (this.hasOptionsPopover()) {
       // The button's own background is used for the hover highlight, so the icon lives in a child
@@ -223,14 +235,34 @@ export class QuickFilterWidget {
     return this.params.core.getFindState().behavior === "find";
   }
 
-  // "3 of 27" plus previous/next steppers, sitting between the input field and the options button.
-  private buildFindNav(): void {
-    this.findNav = div("pte-quick-filter-find-nav");
+  /**
+   * The find affordances: the counter, and the previous/next steppers.
+   *
+   * The counter goes in the FIELD, right-aligned over the end of the input, the way every find bar
+   * does it (Sheets, Chrome, VS Code) — the count belongs to the query, and the chrome beside the
+   * field stays buttons. It is positioned out of flow: in flow, its width would be added to a
+   * content-sized, right-anchored widget, so the whole box (and the caret in it) would shift left
+   * and right as the number of digits changed while typing.
+   *
+   * Two texts, because the painted one is deliberately terse. "3/27" is what a find bar shows and
+   * what fits inside the box; "Match 3 of 27" is what a screen reader should say, rather than
+   * "three slash twenty-seven". The live region wraps both, so only the verbose one is announced.
+   */
+  private buildFindNav(field: HTMLElement): void {
     this.findCountLabel = span("pte-quick-filter-find-count");
     // Polite, not assertive: the count changes on every keystroke, and the grid announces the
     // navigation result itself when the user steps to a match.
     this.findCountLabel.setAttribute("aria-live", "polite");
-    this.findNav.appendChild(this.findCountLabel);
+    this.findCountText = span("pte-quick-filter-find-count-text");
+    this.findCountText.setAttribute("aria-hidden", "true");
+    this.findCountSr = span("pte-quick-filter-find-count-sr");
+    this.findCountLabel.appendChild(this.findCountText);
+    this.findCountLabel.appendChild(this.findCountSr);
+    // Before the clear button: reading order follows the visual order, and the counter is content
+    // where the "×" is a control.
+    field.insertBefore(this.findCountLabel, this.clearBtn);
+
+    this.findNav = div("pte-quick-filter-find-nav");
 
     const stepper = (label: string, title: string, icon: string, dir: "previous" | "next") => {
       const btn = button(`pte-quick-filter-btn pte-quick-filter-find-step`);
@@ -286,15 +318,19 @@ export class QuickFilterWidget {
 
   /** Reflect the core's find state in the counter and the steppers. */
   syncFindState(state: QuickFilterFindState): void {
-    if (!this.findNav || !this.findCountLabel) return;
+    if (!this.findNav || !this.findCountText || !this.findCountSr) return;
     const searching = this.isFinding() && this.input.value.trim() !== "";
     const count = state.matchCount;
-    this.findCountLabel.textContent = !searching
+    // `activeIndex/matchCount`, one shape for every state: 0 in the numerator means "no match
+    // stepped to yet", which makes the no-match state fall out as "0/0" rather than needing prose
+    // that does not fit inside the box.
+    this.findCountText.textContent = searching ? `${state.activeIndex}/${count}` : "";
+    this.findCountSr.textContent = !searching
       ? ""
       : count === 0
         ? "No matches"
         : state.activeIndex > 0
-          ? `${state.activeIndex} of ${count}`
+          ? `Match ${state.activeIndex} of ${count}`
           : `${count} ${count === 1 ? "match" : "matches"}`;
     const stepsDisabled = !searching || count === 0;
     if (this.findPrevBtn) this.findPrevBtn.disabled = stepsDisabled;

@@ -58,6 +58,24 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   so it takes hex or `rgb()`/`rgba()`; any other form is ignored with a console warning
   instead of a guess, leaving the defaults in place.
 
+### Quick-filter chrome
+
+- The search box is now one box. Its border, focus ring and text cursor belong to the
+  field that holds the icon, the input and the clear button, not to the input in the
+  middle of it: keyboard focus drew a second, smaller rectangle inside the field's border
+  (the generic control focus ring, applied to the input), and only the input's own strip
+  answered a click. The field is a `<label>`, so clicking the icon or the padding puts the
+  caret in the input.
+- The find match counter moved inside that box, right-aligned over the end of the input
+  the way a find bar does it (Sheets, Chrome), leaving the chrome beside the field to the
+  steppers. It is terser to fit: `3/27` for the active match over the total, `0/27` before
+  the first step, `0/0` for no matches — replacing "3 of 27" / "27 matches" / "No matches",
+  which a screen reader still hears, from a visually-hidden half of the same live region.
+  Narrow toolbar rungs shrink the room it reserves rather than dropping it.
+- The field's focus ring is drawn on a pseudo-element rather than as the field's own inset
+  shadow, so the counter's background — and the clear button's hover fill — can no longer
+  notch a 1px hole in it. An element's inset shadow paints before its descendants.
+
 ## 1.1.1 — 2026-09-05
 
 Patch release. No API changes; a CSS-only fix in the core, with the two bindings
