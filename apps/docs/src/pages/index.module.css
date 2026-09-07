@@ -43,12 +43,43 @@
 .featureNum { color: var(--awb-orange); font: 750 .78rem/1 var(--ifm-heading-font-family); letter-spacing: .12em; }
 .feature h3 { margin: 2.2rem 0 .5rem; font-size: 1.18rem; }
 .feature p { margin: 0; color: var(--awb-muted); line-height: 1.6; }
+.contact { padding: 5rem 0; border-top: 1px solid var(--awb-line); }
+.contactCard {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2rem;
+  padding: 2.2rem;
+  border: 1px solid var(--awb-line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--awb-surface) 70%, transparent);
+}
+.contactCard h2 { margin: .5rem 0 0; font-size: clamp(1.8rem, 4vw, 2.6rem); }
+.contactCard p { max-width: 560px; margin: .8rem 0 0; color: var(--awb-muted); font-size: 1.05rem; line-height: 1.7; }
+.contactLinks { display: flex; flex-direction: column; gap: .6rem; }
+.contactEmail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 1.15rem;
+  border-radius: 12px;
+  color: #061225 !important;
+  background: var(--awb-cyan);
+  font-weight: 750;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+.contactEmail:hover { transform: translateY(-1px); }
+.contactAlt { color: var(--awb-muted); font-size: .9rem; text-align: center; }
+
 .cta { padding: 6rem 0; text-align: center; }
 .cta h2 { max-width: 760px; margin: 0 auto 1.5rem; font-size: clamp(2.25rem, 5vw, 4.2rem); }
 .cta p { max-width: 620px; margin: 0 auto 2rem; color: var(--awb-muted); font-size: 1.1rem; }
 
 @media (max-width: 850px) {
   .sectionHead { grid-template-columns: 1fr; gap: .75rem; }
+  .contactCard { grid-template-columns: 1fr; }
   .featureGrid { grid-template-columns: 1fr; }
   .hero { padding-top: 4rem; }
 }

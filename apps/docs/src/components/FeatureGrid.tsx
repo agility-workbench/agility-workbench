@@ -4,18 +4,19 @@ import {
   ColumnType,
   Grid,
   SparklineRenderer,
-  themeDark,
   type ActionFrameComponentParams,
   type CellRendererParams,
   type GridProps,
   type GridSheet,
   type GridViewState,
   type IGridAPI,
+  type IRowNode,
   type IServerSideDataSource,
   type ReactColDef,
   type SavedGridView,
 } from "@agility-workbench/react-grid";
 import { DemoFrame } from "./DemoFrame";
+import { brandTheme } from "./gridTheme";
 import demoStyles from "./DemoFrame.module.css";
 import type { DemoFeature } from "./snippets";
 
@@ -62,6 +63,10 @@ const ownerEmail = (owner: string) => `${owner.toLowerCase().replace(/\s+/g, "."
 /** Deterministic per-row series for the Sparkline demo. */
 const trendSeries = (row: Order) =>
   Array.from({ length: 10 }, (_, i) => 20 + ((row.units * (i + 3) * 17 + row.margin) % 80));
+
+// A column's `valueGetter` is handed the row NODE, so the data object comes off `node.data`.
+// Reading the fields straight off the node yields undefined and a sparkline with nothing to draw.
+const rowOf = (node: IRowNode) => node.data as Order;
 
 const statusColors: Record<string, string> = {
   "On track": "#1f9d63",
@@ -123,17 +128,104 @@ const treeRows: Order[] = [
   { ...rows[6], id: "docs", customer: "Documentation", parentId: "company" },
 ];
 
-const brandTheme = themeDark.withParams({
-  accentColor: "#2fd2e2",
-  backgroundColor: "#0a172b",
-  headerBackgroundColor: "#0f2140",
-  borderColor: "#243b62",
-  rowHoverColor: "#122b50",
-  selectedBackgroundColor: "#123f63",
-  fontFamily: "DM Sans, sans-serif",
-  fontSize: 13,
-  rowHeight: 39,
+type AccountTrend = {
+  id: string;
+  account: string;
+  segment: string;
+  /** Twelve monthly revenue figures, one per column below. */
+  monthly: number[];
+  /** Eight weekly order counts. */
+  orders: number[];
+  /** Ten CSAT samples, 0-100. */
+  satisfaction: number[];
+};
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+const segments = ["Enterprise", "Commercial", "Growth"];
+
+/** Small deterministic PRNG, so the page renders the same series on the server and the client. */
+function seeded(seed: number) {
+  return () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) % 4_294_967_296;
+    return seed / 4_294_967_296;
+  };
+}
+
+const trendRows: AccountTrend[] = Array.from({ length: 24 }, (_, index) => {
+  const random = seeded(index * 7 + 13);
+  let revenue = 40_000 + random() * 120_000;
+  return {
+    id: `account-${index + 1}`,
+    account: `${customers[index % customers.length]} ${String.fromCharCode(65 + (index % 6))}`,
+    segment: segments[index % segments.length],
+    monthly: MONTHS.map(() => {
+      revenue = Math.max(6_000, revenue * (0.86 + random() * 0.3));
+      return Math.round(revenue);
+    }),
+    orders: Array.from({ length: 8 }, () => 12 + Math.round(random() * 70)),
+    satisfaction: Array.from({ length: 10 }, () => 55 + Math.round(random() * 45)),
+  };
 });
+
+const usd = (value: number) => `$${Math.round(value).toLocaleString("en-US")}`;
+
+const sparklineColumns: ReactColDef[] = [
+  { colId: "account", key: "account", label: "Account", width: 175, pinned: "left" },
+  { colId: "segment", key: "segment", label: "Segment", width: 125 },
+  {
+    colId: "orderVolume",
+    label: "Weekly orders",
+    width: 145,
+    // A bar sparkline over a plain number[]: the array index is the X value.
+    valueGetter: (node: IRowNode) => (node.data as AccountTrend).orders,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: {
+      type: "bar",
+      tooltipValueFormatter: ({ xValue, yValue }) => `Week ${Number(xValue) + 1}: ${yValue} orders`,
+    },
+    sortable: false,
+    filter: false,
+    headerTooltip: "Bar sparkline over the last eight weeks of order volume.",
+  },
+  {
+    colId: "csat",
+    label: "CSAT",
+    width: 140,
+    valueGetter: (node: IRowNode) => (node.data as AccountTrend).satisfaction,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: { type: "line", showPoints: true },
+    sortable: false,
+    filter: false,
+    headerTooltip: "Line sparkline with a marker at each of the last ten survey scores.",
+  },
+  ...MONTHS.map((month, monthIndex): ReactColDef => ({
+    colId: month.toLowerCase(),
+    label: month,
+    width: 104,
+    type: ColumnType.CURRENCY,
+    valueGetter: (node: IRowNode) => (node.data as AccountTrend).monthly[monthIndex],
+  })),
+  {
+    colId: "annualTrend",
+    label: "Annual trend",
+    width: 190,
+    pinned: "right",
+    // A tuple series carries its own X values, so the tooltip can name the month.
+    valueGetter: (node: IRowNode) =>
+      MONTHS.map((month, monthIndex) => [month, (node.data as AccountTrend).monthly[monthIndex]] as const),
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: {
+      type: "area",
+      showPoints: true,
+      tooltipValueFormatter: ({ xValue, yValue }) => `${String(xValue)}: ${usd(yValue)}`,
+    },
+    sortable: false,
+    filter: false,
+    groupable: false,
+    aggregatable: false,
+    headerTooltip: "Area sparkline over an [x, y] tuple series covering all twelve months.",
+  },
+];
 
 const baseColumns: ReactColDef[] = [
   { colId: "orderNo", key: "orderNo", label: "Order", width: 115, pinned: "left" },
@@ -162,6 +254,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   "tree-data": ["Tree data", "Expand the organization hierarchy"],
   "pinned-rows": ["Pinned rows", "Target and Total stay put; right-click a row to pin it"],
   rendering: ["Rendering", "Status badges and Sparklines are custom cell renderers"],
+  sparklines: ["Sparklines", "Hover any series; Ctrl/Cmd+click two month headers, then Show Sparklines in the column menu"],
   tooltips: ["Tooltips", "Hover Owner or Revenue cells, or the Margin header"],
   "action-frames": ["ActionFrames", "Click a Comment cell to open its persistent form"],
   menus: ["Menus", "Right-click headers, cells, and row numbers for custom items"],
@@ -347,7 +440,7 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
           colId: "trend",
           label: "Trend",
           width: 170,
-          valueGetter: (row: Order) => trendSeries(row),
+          valueGetter: (node: IRowNode) => trendSeries(rowOf(node)),
           cellRenderer: SparklineRenderer,
           cellRendererParams: { type: "area", showPoints: true },
         },
@@ -355,6 +448,17 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         { colId: "owner", key: "owner", label: "Owner", width: 145 },
       ];
       featureProps = { zebraRows: true, rowHover: true, columnHover: true };
+      break;
+    case "sparklines":
+      rowData = trendRows;
+      columnDefs = sparklineColumns;
+      // `columnSelection` is what unlocks the built-in generator: Ctrl/Cmd+click two or more
+      // numeric headers and the column menu grows a "Show Sparklines" submenu.
+      featureProps = {
+        columnSelection: true,
+        rowNumbers: true,
+        tooltip: { showDelay: 100, hideDelay: 60 },
+      };
       break;
     case "tooltips":
       columnDefs = baseColumns.map((column) => {

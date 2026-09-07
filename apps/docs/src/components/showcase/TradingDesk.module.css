@@ -1,0 +1,15 @@
+.symbol { display: inline-flex; align-items: center; gap: 8px; }
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.up { color: #34d399; font-variant-numeric: tabular-nums; }
+.down { color: #f87171; font-variant-numeric: tabular-nums; }

@@ -55,6 +55,32 @@ export default function Home() {
           </div>
         </section>
 
+        <section className={styles.contact}>
+          <div className="container">
+            <div className={styles.contactCard}>
+              <div>
+                <div className="awb-kicker">Contact</div>
+                <h2>Talk to us.</h2>
+                <p>
+                  Questions about adopting the grid, a feature you need, or a licensing conversation —
+                  email us and a human answers. For reproducible bugs, a GitHub issue gets there fastest.
+                </p>
+              </div>
+              <div className={styles.contactLinks}>
+                <a className={styles.contactEmail} href="mailto:support@agilityworkbench.dev">
+                  support@agilityworkbench.dev
+                </a>
+                <a
+                  className={styles.contactAlt}
+                  href="https://github.com/agility-workbench/agility-workbench/issues"
+                >
+                  Report an issue on GitHub →
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className={styles.cta}>
           <div className="container">
             <h2>Build the workspace your data deserves.</h2>

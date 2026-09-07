@@ -13,6 +13,7 @@ export type DemoFeature =
   | "tree-data"
   | "pinned-rows"
   | "rendering"
+  | "sparklines"
   | "tooltips"
   | "action-frames"
   | "menus"
@@ -590,6 +591,97 @@ columns: NgColDef[] = [
     },
   ],
   zebraRows: true,
+});`,
+  },
+  sparklines: {
+    react: String.raw`const columns: ReactColDef[] = [
+  // A plain number[]: the array index becomes the X value.
+  {
+    colId: "orderVolume",
+    label: "Weekly orders",
+    valueGetter: (node) => node.data.orders,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: {
+      type: "bar",
+      tooltipValueFormatter: ({ xValue, yValue }) => "Week " + (Number(xValue) + 1) + ": " + yValue,
+    },
+  },
+  // An [x, y] tuple series: each point carries its own label.
+  {
+    colId: "annualTrend",
+    label: "Annual trend",
+    pinned: "right",
+    sortable: false,
+    filter: false,
+    valueGetter: (node) => MONTHS.map((m, i) => [m, node.data.monthly[i]] as const),
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: {
+      type: "area",
+      showPoints: true,
+      tooltipValueFormatter: ({ xValue, yValue }) => xValue + ": $" + yValue.toLocaleString(),
+    },
+  },
+];
+
+<Grid rowData={accounts} columnDefs={columns} columnSelection theme={theme} />`,
+    angular: String.raw`columns: NgColDef[] = [
+  {
+    colId: "orderVolume",
+    label: "Weekly orders",
+    valueGetter: (node: IRowNode) => node.data.orders,
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: { type: "bar" } satisfies SparklineParams,
+  },
+  {
+    colId: "annualTrend",
+    label: "Annual trend",
+    pinned: "right",
+    sortable: false,
+    valueGetter: (node: IRowNode) =>
+      this.months.map((m, i) => [m, node.data.monthly[i]] as const),
+    cellRenderer: SparklineRenderer,
+    cellRendererParams: { type: "area", showPoints: true } satisfies SparklineParams,
+  },
+];
+
+// template
+<awb-grid
+  [rowData]="accounts"
+  [columnDefs]="columns"
+  [columnSelection]="true"
+  [theme]="theme"
+/>`,
+    core: String.raw`const core = new GridCore(measurer, {
+  rowIdKey: "id",
+  // Ctrl/Cmd+click two or more numeric headers to unlock "Show Sparklines".
+  columnSelection: true,
+  theme: themeDark.withParams({
+    sparklineStrokeColor: "#2fd2e2",
+    sparklineBarColor: "#7c9cff",
+  }),
+  columnDefs: [
+    {
+      colId: "annualTrend",
+      label: "Annual trend",
+      pinned: "right",
+      sortable: false,
+      valueGetter: (node) => MONTHS.map((m, i) => [m, node.data.monthly[i]]),
+      cellRenderer: SparklineRenderer,
+      cellRendererParams: {
+        type: "area",
+        showPoints: true,
+        tooltipValueFormatter: ({ xValue, yValue }) => xValue + ": $" + yValue,
+      },
+    },
+  ],
+});
+
+// The same column the "Show Sparklines" menu item builds, dispatched directly.
+api.dispatch({
+  type: "addSparklineColumn",
+  targetColId: "jan",
+  colIds: ["jan", "feb", "mar", "apr", "may", "jun"],
+  sparklineType: "line",
 });`,
   },
   tooltips: {

@@ -62,6 +62,7 @@ const config: Config = {
       items: [
         { type: "docSidebar", sidebarId: "docs", position: "left", label: "Documentation" },
         { to: "/docs/examples/columns", label: "Examples", position: "left" },
+        { to: "/docs/showcase", label: "Showcase", position: "left" },
         { to: "/docs/api/grid-options", label: "API", position: "left" },
         { href: "https://github.com/agility-workbench/agility-workbench", label: "GitHub", position: "right" },
       ],
@@ -74,6 +75,7 @@ const config: Config = {
           items: [
             { label: "Getting started", to: "/docs/getting-started/installation" },
             { label: "Examples", to: "/docs/examples/columns" },
+            { label: "Showcase", to: "/docs/showcase" },
             { label: "API reference", to: "/docs/api/grid-options" },
           ],
         },
@@ -90,6 +92,12 @@ const config: Config = {
           items: [
             { label: "GitHub", href: "https://github.com/agility-workbench/agility-workbench" },
             { label: "Issues", href: "https://github.com/agility-workbench/agility-workbench/issues" },
+          ],
+        },
+        {
+          title: "Contact",
+          items: [
+            { label: "support@agilityworkbench.dev", href: "mailto:support@agilityworkbench.dev" },
           ],
         },
       ],

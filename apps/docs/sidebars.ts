@@ -27,12 +27,23 @@ const sidebars: SidebarsConfig = {
         "examples/tree-data",
         "examples/pinned-rows",
         "examples/rendering",
+        "examples/sparklines",
         "examples/tooltips",
         "examples/action-frames",
         "examples/menus",
         "examples/toolbar-and-views",
         "examples/export",
         "examples/theming",
+      ],
+    },
+    {
+      type: "category",
+      label: "Showcase",
+      link: { type: "generated-index", title: "Showcase", slug: "/showcase", description: "Complete workspaces built from several features at once, rather than one feature at a time." },
+      items: [
+        "showcase/trading-desk",
+        "showcase/analytics-workbench",
+        "showcase/planning-workspace",
       ],
     },
     {

@@ -40,6 +40,9 @@ jobs:
       - name: Test (core + React, then Angular)
         run: npm test
 
+      - name: Docs typecheck
+        run: npm run typecheck --workspace @agility-workbench/docs
+
       - name: Docs production build
         run: npm run docs:build
 

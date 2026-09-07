@@ -1,0 +1,103 @@
+---
+title: Trading desk
+sidebar_position: 1
+---
+
+import { LiveShowcase } from "@site/src/components/LiveShowcase";
+
+# Trading desk
+
+A grid under a live feed, sorted by the column the feed is changing. Thirty-two
+symbols receive quote updates at up to three thousand per second, each one
+submitted as its own transaction, while sorting, filtering, grouping, and range
+selection stay available.
+
+<LiveShowcase name="trading-desk" />
+
+## What is composed here
+
+| Capability | How it is used |
+| --- | --- |
+| [Async transactions](/docs/examples/client-side-data) | One `applyTransactionAsync` per quote, coalesced by a 32 ms window |
+| [Change flash](/docs/examples/rendering) | `ChangeFlashCellRenderer` on Last, Bid, Ask, Change, Change % |
+| [Sparklines](/docs/examples/sparklines) | A rolling twenty-tick window redrawn from the stream |
+| [Custom renderers](/docs/examples/rendering) | A React component for the symbol chip |
+| [Pinned columns](/docs/examples/columns) | Symbol stays put while the quote columns scroll |
+| [Toolbar](/docs/examples/toolbar-and-views) | Grouping, sorting, and quick filter over a moving dataset |
+
+## One transaction per quote
+
+The naive approach — rebuild `rowData` on every tick — re-derives the whole
+model for a one-cell change. Transactions address rows individually:
+
+```ts
+api.applyTransactionAsync({ update: [{ rowId: symbol, row: nextQuote }] });
+```
+
+`applyTransactionAsync` returns a promise that settles once the batch the
+transaction landed in has been applied, which is what the *pending* counter
+above tracks. With `asyncTransactionWaitMs: 32`, everything submitted inside a
+32 ms window is applied in a single pass: one filter, one sort, one model
+update, one repaint — regardless of whether that window held three updates or
+three hundred.
+
+```tsx
+<Grid
+  rowData={quotes}
+  columnDefs={columnDefs}
+  rowIdKey="symbol"
+  asyncTransactionWaitMs={32}
+/>
+```
+
+`rowIdKey` is what makes this work: it gives every row a stable identity, so an
+update finds its row, the change-flash renderer keeps its baseline value, and
+the sparkline keeps its series across the update.
+
+To apply everything outstanding right now — before pausing the feed, or before
+reading a total — flush the queue:
+
+```ts
+api.flushAsyncTransactions();
+```
+
+## Sorting under a moving feed
+
+The grid is sorted by Change % descending. Because the sort is re-evaluated per
+batch rather than per update, rows visibly reorder as the market moves without
+the sort ever being applied thousands of times a second. Grouping by Sector
+behaves the same way: the aggregates recompute once per batch.
+
+## Flash direction is a decision, not a delta
+
+`ChangeFlashCellRenderer` colours a flash from what its `direction` callback
+returns, not from whether the number rose or fell:
+
+```ts
+const flashBySign = (previous, next) =>
+  next > 0 ? "up" : next < 0 ? "down" : "neutral";
+
+const column = {
+  key: "change",
+  cellRenderer: ChangeFlashCellRenderer,
+  cellRendererParams: { direction: flashBySign, cellFlashDuration: 140, cellFadeDuration: 300 },
+};
+```
+
+Here Change and Change % flash by the *sign of the value* — a still-negative
+number that improved flashes red, because red is what a loss means on this
+desk. Last, Bid, and Ask omit `direction` and take the neutral flash.
+
+The same durations can be set grid-wide with `cellFlashDuration` and
+`cellFadeDuration`.
+
+## Cost control
+
+Three things keep this affordable at three thousand updates a second:
+
+- **Batching.** The work is proportional to batches, not updates.
+- **Virtualization.** Only the visible rows hold renderers; an update to an
+  off-screen row costs a model write and nothing else.
+- **Cached sparkline geometry.** The renderer measures its cell after mount and
+  after a column resize, then reuses those dimensions, so a redraw does not
+  force layout.

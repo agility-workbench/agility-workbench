@@ -1,0 +1,14 @@
+.overspent { background: color-mix(in srgb, #f87171 14%, transparent) !important; }
+.negative { color: #f87171; font-variant-numeric: tabular-nums; }
+.positive { color: #34d399; font-variant-numeric: tabular-nums; }
+
+.frameForm { display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.frameForm textarea { resize: vertical; font: inherit; }
+.frameRow { display: flex; gap: 8px; justify-content: flex-end; }
+
+.log {
+  margin: 0;
+  max-height: 3.2em;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}

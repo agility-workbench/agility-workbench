@@ -1,0 +1,147 @@
+---
+title: Sparklines
+sidebar_position: 15
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Sparklines
+
+`SparklineRenderer` draws a compact line, area, or bar chart inside a cell. It
+is an ordinary cell renderer: the column supplies a series through its
+`valueGetter`, and the renderer sizes itself to the cell, redraws on resize, and
+registers one grid tooltip target per data point.
+
+<LiveFeatureGrid feature="sparklines" />
+
+<FrameworkCode feature="sparklines" />
+
+## Series shapes
+
+A sparkline column's value must be an array. Two shapes are accepted:
+
+| Shape | X values | Use it when |
+| --- | --- | --- |
+| `number[]` | The array index | The points are evenly spaced and unlabelled |
+| `[xValue, number][]` | The first tuple element | Each point has a label — a month, a date, a bucket |
+
+```ts
+// Indexed series — index 0…7 becomes the X value.
+valueGetter: (node) => node.data.orders,
+
+// Tuple series — the label travels with the point and reaches the tooltip.
+valueGetter: (node) => MONTHS.map((month, i) => [month, node.data.monthly[i]]),
+```
+
+:::caution
+A `valueGetter` receives the **row node**, not the row object. Read the record
+off `node.data`; reading fields straight off the node yields `undefined`, and a
+series of non-finite values draws nothing at all.
+:::
+
+Invalid entries are skipped rather than fatal. In a tuple series the valid
+tuples are compacted and evenly spaced; in a number series the gaps left by a
+non-finite value are preserved, so the surviving points keep their X positions.
+A non-array value logs one warning per cell renderer and draws nothing.
+
+## Renderer parameters
+
+```ts
+const column = {
+  colId: "annualTrend",
+  label: "Annual trend",
+  valueGetter: (node) => node.data.monthlyRevenue,
+  cellRenderer: SparklineRenderer,
+  cellRendererParams: {
+    type: "area",          // "line" (default) | "area" | "bar"
+    showPoints: true,      // markers on line/area charts; ignored for bars
+    tooltipValueFormatter: ({ xValue, yValue, data, rowId }) =>
+      `${xValue}: $${yValue.toLocaleString()}`,
+  } satisfies SparklineParams,
+} satisfies ColDef;
+```
+
+`tooltipValueFormatter` receives the point (`xValue`, `yValue`, `index`) plus
+the full row context (`data`, `rowNode`, `rowId`, `rowIndex`, `colDef`, `api`),
+so a point's tooltip can name the record it belongs to.
+
+Every point owns the vertical band halfway to each neighbour, so hovering
+anywhere above or below a point activates it — the pointer never has to land on
+a two-pixel marker. Sparkline tooltips use the grid's own tooltip service, so
+`tooltip: { showDelay, hideDelay, placement }` governs them like any other.
+
+## Theming
+
+Two theme parameters cover sparkline color:
+
+```ts
+const theme = themeDark.withParams({
+  sparklineStrokeColor: "#2fd2e2", // line and area outline
+  sparklineBarColor: "#7c9cff",    // bars
+});
+```
+
+The underlying CSS variables are `--pte-sparkline-stroke-color` and
+`--pte-sparkline-bar-color`. Point markers inherit the stroke color; the area
+fill is a translucent wash under the stroke.
+
+## Sparklines the user builds
+
+With `columnSelection` enabled, the grid ships a generator: Ctrl/Cmd+click two
+or more numeric or currency headers, open one of their column menus, and choose
+**Show Sparklines** with a chart type. The grid adds a column whose series is
+the selected columns' values, in selection order, labelled by their headers.
+
+```ts
+const options = { columnSelection: true } satisfies GridOptions;
+```
+
+The same column can be created programmatically:
+
+```ts
+api.dispatch({
+  type: "addSparklineColumn",
+  targetColId: "jan",
+  colIds: ["jan", "feb", "mar", "apr", "may", "jun"],
+  sparklineType: "line",
+});
+```
+
+Point tooltips reuse a value formatter from the selection: the menu's target
+column wins if it declares one explicitly, otherwise the first selected column
+that does, otherwise the target column's datatype default. Generated columns are
+resizable, movable, and hideable, but not sortable, filterable, or groupable.
+
+## Columns that hold a series
+
+A sparkline column has no scalar value, so the operations that compare values do
+not apply to it. Turn them off explicitly rather than letting a default column
+definition switch them on:
+
+```ts
+const column = {
+  colId: "trend",
+  sortable: false,
+  filter: false,
+  groupable: false,
+  aggregatable: false,
+  cellRenderer: SparklineRenderer,
+} satisfies ColDef;
+```
+
+Export writes the cell's formatted text, which for a series is not meaningful —
+keep the underlying numeric columns in the grid (hidden if need be) when the
+export matters, or mark the sparkline column `exportable: false`.
+
+## Cost
+
+The renderer measures its cell once after mount and again after an explicit
+column resize, then reuses the cached dimensions while rows recycle during
+scrolling — so a screen full of sparklines does not force layout on every
+vertical scroll. Points are drawn as SVG, one element per point plus one hit
+band; series of a few dozen points per cell are comfortable, thousands are not.
+
+For a sparkline over a live series, see the
+[trading desk showcase](/docs/showcase/trading-desk), where a rolling
+twenty-tick window is redrawn from streamed transactions.

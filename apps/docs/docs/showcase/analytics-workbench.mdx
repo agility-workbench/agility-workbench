@@ -1,0 +1,139 @@
+---
+title: Revenue analytics workbench
+sidebar_position: 2
+---
+
+import { LiveShowcase } from "@site/src/components/LiveShowcase";
+
+# Revenue analytics workbench
+
+One fact table, four ways to interrogate it. Group and aggregate it, pivot it
+into a matrix, keep each arrangement on its own sheet, and save the ones worth
+returning to as named views.
+
+<LiveShowcase name="analytics-workbench" />
+
+## What is composed here
+
+| Capability | How it is used |
+| --- | --- |
+| [Grouping](/docs/examples/grouping) | Region, then any dimension, with sticky group headers |
+| [Aggregation](/docs/examples/grouping) | Sum of revenue, margin, and units; average discount |
+| [Pivot](/docs/examples/pivot) | Region × Channel revenue matrix on its own sheet |
+| [Sheets](/docs/examples/sheets) | A data sheet and a pivot sheet, each with its own captured state |
+| [Saved views](/docs/examples/toolbar-and-views) | Named layouts persisted to `localStorage` |
+| [Set filters](/docs/examples/filtering) | Value pickers on every dimension column |
+| [Export](/docs/examples/export) | CSV and native Excel, honouring the grouped shape |
+
+## Roles, not columns
+
+Grouping, pivoting, and aggregating are three *roles* a column can take. The
+API sets them independently, and the toolbar and Columns panel are two front
+ends over the same calls:
+
+```ts
+api.setRowGroupColumns(["region", "channel"]);   // rows
+api.setPivotColumns(["quarter"]);                // columns
+api.setAggregates([                              // values
+  { colId: "revenue", type: AggregateType.SUM },
+  { colId: "discount", type: AggregateType.AVG },
+]);
+api.setPivotMode(true);
+```
+
+A column opts into the roles it can play with `groupable`, `pivotable`, and
+`aggregatable`. Turning pivot mode off restores the pre-pivot arrangement
+rather than clearing it.
+
+## A sheet is a captured state
+
+Sheets are application-owned. The grid renders the tab strip and reports
+changes; the list and the active tab live in application state:
+
+```tsx
+const [sheets, setSheets] = useState<GridSheet[]>([{ id: "data", name: "Data" }]);
+const [activeSheetId, setActiveSheetId] = useState<string | null>("data");
+
+<Grid
+  sheets={{
+    sheets,
+    activeSheetId,
+    onChange: setSheets,
+    onActiveSheetChange: setActiveSheetId,
+  }}
+/>
+```
+
+A sheet carries a `GridViewState` — the same object `captureViewState()`
+returns — so a pre-built sheet is just a captured state with the pivot fields
+overwritten:
+
+```ts
+const dataState = api.captureViewState();
+
+const pivotSheet: GridSheet = {
+  id: "by-channel",
+  name: "Revenue × Channel",
+  state: {
+    ...dataState,
+    pivotMode: true,
+    pivotColumns: ["channel"],
+    rowGroupColumns: ["region", "category"],
+    aggregateModel: [{ colId: "revenue", type: AggregateType.SUM }],
+    // What turning pivot mode off on this sheet falls back to.
+    prePivotState: {
+      rowGroupColumns: dataState.rowGroupColumns,
+      aggregateModel: dataState.aggregateModel ?? [],
+      pivotColumns: dataState.pivotColumns ?? [],
+    },
+  },
+};
+```
+
+:::caution
+Seed sheets through application state, not `updateGridOptions`. The wrapper
+syncs options from props after `onGridReady`, so a sheet written imperatively is
+overwritten by the next prop sync — and leaving `sheets` undefined unmounts the
+tab strip.
+:::
+
+## Totals that follow the filter
+
+The stat strip above the grid is not grid furniture — it reads the row model
+after filtering, recomputed whenever the filter changes:
+
+```tsx
+const recomputeTotals = () => {
+  let revenue = 0;
+  api.forEachNodeAfterFilter((node) => { revenue += node.data.revenue; });
+  setTotals({ revenue });
+};
+
+<Grid onFilterChanged={recomputeTotals} onGridReady={(api) => recomputeTotals()} />
+```
+
+`onFilterChanged` is the canonical filter signal: it covers column filters, the
+quick filter, and a `columnDefs` update that dropped an active filter, and it
+fires after the row model has re-derived the view — so counts read inside the
+handler are already post-filter.
+
+## Saved views
+
+A view is a named `GridViewState`. The grid owns the picker; the application
+owns the list, which is what makes views persistable anywhere:
+
+```tsx
+<Grid
+  toolbar={{ views: true }}
+  savedViews={{
+    views,
+    onChange: (next) => {
+      setViews([...next]);
+      window.localStorage.setItem(KEY, JSON.stringify(next));
+    },
+  }}
+/>
+```
+
+The views on this page are stored in your own browser, so they survive a reload
+and belong to nobody else.

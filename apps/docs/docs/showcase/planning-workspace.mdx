@@ -1,0 +1,135 @@
+---
+title: Planning workspace
+sidebar_position: 3
+---
+
+import { LiveShowcase } from "@site/src/components/LiveShowcase";
+
+# Planning workspace
+
+An editable budget hierarchy. Real parent rows carry their own figures, every
+write passes validation before it reaches the data, and everything the user does
+is undoable.
+
+<LiveShowcase name="planning-workspace" />
+
+## What is composed here
+
+| Capability | How it is used |
+| --- | --- |
+| [Tree data](/docs/examples/tree-data) | `mode: "parent"` over rows that name their parent's id |
+| [Editing](/docs/examples/editing) | Number editors on Plan and Actual, a select on Status |
+| Pre-commit validation | `onBeforeCellCommit` rejects, clamps, and coerces |
+| [Undo / redo](/docs/examples/editing) | `api.undo()` / `api.redo()`, with buttons driven by `onHistoryChanged` |
+| [Row presentation](/docs/examples/rendering) | One rule tints and describes every over-plan row |
+| [ActionFrames](/docs/examples/action-frames) | A note form anchored to its cell |
+| [Menus](/docs/examples/menus) | A custom body item plus row-number insertion |
+| [Selection](/docs/examples/selection) | Range selection, so a block of figures can be pasted in |
+
+## A hierarchy of real records
+
+Tree data is not grouping. There is no generated bucket row: `FY plan` is a
+record with an owner, a status, and its own numbers, and it can be sorted,
+filtered, edited, and exported like any other row.
+
+```tsx
+<Grid
+  rowData={planRows}
+  rowIdKey="id"
+  treeData={{
+    mode: "parent",
+    getParentId: (row) => row.parentId,
+    getLabel: (row) => row.name,
+    columnDef: { label: "Cost centre", width: 250, pinned: "left" },
+    keyboardNavigationMode: "hierarchy",
+    enableKeyboardNavigationModeSwitch: true,
+  }}
+  groupDefaultExpanded={2}
+/>
+```
+
+In hierarchy navigation mode Ctrl/Cmd+Right expands, Ctrl/Cmd+Left collapses or
+moves to the parent, and Ctrl/Cmd+Up jumps to the parent.
+Ctrl/Cmd+Shift+Space switches back to ordinary grid navigation.
+
+## Validation before the write
+
+`onBeforeCellCommit` runs synchronously on every user-initiated write — an
+editor commit, `setCellValue`, and each cell of a paste — after the column's
+`valueParser` and never on undo/redo replay. It returns one of three things:
+
+```ts
+const onBeforeCellCommit = (params) => {
+  if (params.colId !== "plan" && params.colId !== "actual") return undefined;
+  const value = Number(params.value);
+  if (!Number.isFinite(value) || value < 0) return REJECT;   // veto
+  if (value > 5_000_000) return 5_000_000;                    // clamp
+  return value;                                               // coerce and accept
+};
+```
+
+| Return | Effect |
+| --- | --- |
+| `REJECT` | The cell keeps its old value, nothing enters undo history, no `cellValueChanged` fires |
+| A value | That value is stored instead of the proposed one |
+| `undefined` | The proposed value is stored unchanged |
+
+Returning the coerced number rather than `undefined` matters for paste: a pasted
+cell arrives as text, and accepting the proposal unchanged would store a string
+in a currency column.
+
+## Undo that the application can see
+
+The grid keeps an undo stack of committed edits, one step per edit, paste, or
+cut. Driving buttons from it means listening for the state rather than guessing:
+
+```tsx
+const [history, setHistory] = useState({ canUndo: false, canRedo: false });
+
+<Grid
+  undoLimit={50}
+  onHistoryChanged={(state) => setHistory(state)}
+/>
+
+<button disabled={!history.canUndo} onClick={() => api.undo()}>Undo</button>
+```
+
+Rejected writes never enter history, so undo never walks back through an edit
+the user was not allowed to make.
+
+## One rule instead of ten callbacks
+
+Over-plan rows are tinted, described to screen readers, and given a tooltip by a
+single row-level rule — not by repeating a `cellClass` callback on every column:
+
+```ts
+const getRowPresentation = ({ data }) => data.actual > data.plan ? {
+  cellClass: "overspent",
+  tooltip: { content: `Over plan by $${(data.actual - data.plan).toLocaleString()}` },
+  accessibility: { description: "Line item is over plan" },
+  metadata: { state: "overspent" },
+} : undefined;
+```
+
+Column `cellClass` values compose with the row's; explicit column tooltip
+content overrides the row default. When the rule depends on state outside the
+row data, call `api.refreshRowPresentation()` after that state changes.
+
+## Rows the application creates
+
+Row insertion is opt-in and the application builds the row, so required fields
+and stable ids stay under its control — here the new row joins the hierarchy as
+a sibling of the row it was inserted next to:
+
+```ts
+const rowInsertionMenu = {
+  createRow: ({ data, position }) => ({
+    id: `line-${++sequence}`,
+    parentId: data.parentId,
+    name: `New line item ${sequence}`,
+    status: "Draft",
+    plan: 0,
+    actual: 0,
+  }),
+};
+```
