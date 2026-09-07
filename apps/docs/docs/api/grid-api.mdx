@@ -93,7 +93,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `getQuickFilterText()` | Current quick-filter text (`""` when inactive) |
 | `getQuickFilterBehavior()` | Whether the search filters rows (`"filter"`) or highlights matches (`"find"`) |
 | `getFindState()` | Find behavior: `{ behavior, available, text, matchCount, activeIndex, activeMatch }` |
-| `findNext()` / `findPrevious()` | Step the active find match in display order (wraps), revealing and scrolling to it |
+| `findNext()` / `findPrevious()` | Step the active find match in display order (wraps), revealing it — expanding ancestors, paging, scrolling, and [moving the search widget aside](../examples/filtering.mdx#keeping-matches-visible) when nothing else can uncover the cell |
 | `getFilterModel()` | Read the per-column filters as serializable `{ colId, filters, join }` items |
 | `setFilterModel(filters)` | Replace all column filters (empty array clears; resets to page 1 and clears selection) |
 | `addFilterModel(filter)` | Add or replace one column's filter, keeping the others |

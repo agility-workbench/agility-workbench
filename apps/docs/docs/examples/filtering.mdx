@@ -295,11 +295,36 @@ job of a column filter's `isBlank`. It is not the same comparison as a column
 `eq` filter either: that normalizes the **raw** value through `textFormatter` /
 `trimValues`, while the quick filter compares what is rendered.
 
-The toolbar can host quick filter, or `mode: "onDemand"` can open its floating
-UI with Ctrl/Cmd+F.
-
 Quick filtering is client-side. Server-side applications receive structured
 column filters in each data-source request.
+
+### The floating widget
+
+The search box lives inside the grid, in the strip just below the header and
+against its right edge by default. `mode` decides whether it is there all the
+time:
+
+```ts
+quickFilter: {
+  mode: "onDemand",                                  // Ctrl/Cmd+F opens it | "always" pins it open
+  position: { anchor: "right", offsetX: 8, offsetTop: 6 },
+  clearOnClose: false,                               // keep filtering after dismissal
+  showOptions: true,                                 // match-mode + match-case popover
+  showLayoutOptions: true,                           // ...plus Anchor and "Keep filter when closed"
+}
+```
+
+`position` moves it: `anchor` picks the edge, `offsetX` insets it from that edge
+(on top of the scrollbar gutter, so it never sits over the thumb) and `offsetTop`
+is the gap below the header. With `clearOnClose: false` a dismissed search keeps
+filtering, and a compact pill takes the widget's place so the filtering is never
+silent — clicking it reopens the box. Every option is listed in
+[Quick filter options](../api/grid-options.mdx#quick-filter).
+
+The alternative is to hand the widget to the
+[toolbar](./toolbar-and-views.mdx), which puts it outside the data region
+entirely; `position`, `clearOnClose` and `showLayoutOptions` then do not apply,
+because the bar owns the layout.
 
 ### Find instead of filter
 
@@ -363,16 +388,6 @@ wrapping at the ends. Focus stays in the search box, so the cell cursor and the
 selection are left alone — stepping through matches is a search gesture, not a
 navigation one.
 
-Stepping to a match also gets it out from under the floating widget, which in
-find mode is a control surface the user keeps operating rather than chrome they
-dismiss. The grid scrolls the match clear when it can; where no scroll can — the
-first row, the last column, a pinned column, a row docked in a frozen band — the
-widget flips to the opposite edge for the duration of the search. The flip does
-not touch `position.anchor` or the end user's Anchor pick: closing the search or
-emptying the box brings the widget home. A widget hosted in the
-[toolbar](./toolbar-and-views.mdx) sits outside the data region and never needs
-any of this.
-
 Subscribe to `quickFilterFindChanged` (or the `onQuickFilterFindChanged` option
 / the wrappers' `quickFilterFindChanged` output) to drive an app-owned counter;
 a finding quick filter deliberately does **not** fire `filterChanged`, since no
@@ -382,6 +397,37 @@ Theming: `--pte-find-match-bg-color` tints every match,
 `--pte-find-match-active-bg-color` plus `--pte-find-match-active-border-color`
 mark the active one — or set all three from one color with the
 [`findMatchColor`](./theming.mdx#semantic-parameters) theme parameter.
+
+### Keeping matches visible
+
+While filtering, the widget is chrome you dismiss once the search is typed. While
+finding it is the opposite: a control surface you keep operating — next, previous,
+the counter — as you read the cells it points at. So a match that lands
+underneath it would be unreachable, since dismissing the box to look means losing
+the steppers.
+
+Stepping to a match therefore moves it out from under the widget. The grid
+scrolls the match clear where it can, and where no scroll can, the widget itself
+gives way and flips to the opposite edge. Those unscrollable cases are exactly
+where the default placement sits:
+
+- the **first row**, already at the top of its scroll range — the content cannot
+  move down;
+- the **last column**, already at the end of the horizontal range;
+- a **pinned column**, which does not scroll at all;
+- a row docked in a **[frozen band](./pinned-rows.mdx)**, which stays put wherever
+  the body is scrolled.
+
+The flip lasts as long as the search does. It never rewrites `position.anchor` or
+the end user's Anchor pick: closing the search, emptying the box, or choosing an
+anchor brings the widget home. It is also held back while the pointer is over the
+widget — so clicking next or previous repeatedly cannot move the button out from
+under the cursor — and taken as soon as the pointer leaves. `api.findNext()` and
+`api.findPrevious()` reveal their match the same way, since they are the same
+navigation the steppers perform.
+
+A widget hosted in the [toolbar](./toolbar-and-views.mdx) sits outside the data
+region and never needs any of this.
 
 ## Reacting to filter changes
 

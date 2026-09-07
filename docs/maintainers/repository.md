@@ -279,12 +279,12 @@ All three packages are publish-ready. Current state of the manifests:
 - `@agility-workbench/grid` — `"private"` is absent (publishable), `publishConfig.access: "public"`,
   `provenance: true`, `exports` map (`.`, `./styles.css`, `./package.json`), `files: ["dist","README.md","LICENSE"]`,
   `prepublishOnly: "npm run build"`, `sideEffects: ["**/*.css"]`.
-- `@agility-workbench/react-grid` — same publish config; `dependencies: { "@agility-workbench/grid": "^1.1.0" }`,
+- `@agility-workbench/react-grid` — same publish config; `dependencies: { "@agility-workbench/grid": "^1.2.0" }`,
   `peerDependencies: { react, react-dom }` (optional in practice — provided by the host app),
   `sideEffects: false`.
 - `@agility-workbench/angular-grid` — same publish config plus `publishConfig.directory: "dist"`
   (ng-packagr generates the real manifest there — publish the `dist/` folder, see §5);
-  `dependencies: { "@agility-workbench/grid": "^1.1.0", tslib }`,
+  `dependencies: { "@agility-workbench/grid": "^1.2.0", tslib }`,
   `peerDependencies: { "@angular/core": "^20.3.0 || ^21.0.0 || ^22.0.0" }`.
 
 ### What is achievable today
@@ -293,7 +293,7 @@ All three packages are publish-ready. Current state of the manifests:
   in any framework (or none). `npm publish` from `packages/grid` produces a tarball with
   `dist/{index.js,index.cjs,index.d.ts,index.css}` + LICENSE + README.
 - ✅ **Publish the React binding.** `@agility-workbench/react-grid` resolves the core from the
-  registry via its `^1.1.0` range. Its tarball is tiny because the core is not bundled in.
+  registry via its `^1.2.0` range. Its tarball is tiny because the core is not bundled in.
 - ✅ **Dual module formats.** Both ship ESM + CJS + type declarations, resolved through the
   `exports` map for modern bundlers and `main`/`module`/`types` for legacy resolution.
 - ✅ **CSS needs no setup.** The grid injects its own stylesheet on attach — a `<style>` first

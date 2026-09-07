@@ -140,6 +140,45 @@ row count is known; the quick filter is client-side only.)
 
 :::
 
+### Quick filter
+
+`quickFilter: true` enables the search with every default below; an object
+overrides them. See [Quick filter](../examples/filtering.mdx#quick-filter) for
+what each one does to the search itself.
+
+| Option | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `mode` | `"onDemand" \| "always"` | `"onDemand"` | Open the floating widget with Ctrl/Cmd+F, or pin it open |
+| `behavior` | `"filter" \| "find"` | `"filter"` | Hide non-matching rows, or leave every row and highlight matching cells |
+| `showBehaviorToggle` | `boolean` | `false` | Offer the filter/find choice in the options popover |
+| `matchMode` | `"multiTerm" \| "substring" \| "wholeCell"` | `"multiTerm"` | How the input is matched against a cell |
+| `caseSensitive` | `boolean` | `false` | Case-sensitive comparison |
+| `debounceMs` | `number` | `150` | Delay from keystroke to search |
+| `showOptions` | `boolean` | `true` | Expose the match-mode / match-case popover to end users |
+| `showLayoutOptions` | `boolean` | `false` | Also expose Anchor and "Keep filter when closed" in that popover |
+| `clearOnClose` | `boolean` | `true` | Dismissing the widget clears the search; `false` keeps it applied behind a re-openable pill |
+| `position` | `QuickFilterPositionOptions` | see below | Where the floating widget sits |
+
+End-user picks in the options popover are sticky for the session and are **not**
+written back to these options.
+
+`position` places the widget inside the grid, relative to the bottom of the
+header:
+
+| Option | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `anchor` | `"left" \| "right"` | `"right"` | Which horizontal edge the widget is pinned to |
+| `offsetX` | `number` | `8` | Inset from that edge, added on top of the scrollbar gutter on the right |
+| `offsetTop` | `number` | `6` | Gap between the header's bottom edge and the widget |
+
+While a **find** search is active the widget may sit at the opposite edge, to
+uncover an active match that no scroll can move out from under it — see
+[Keeping matches visible](../examples/filtering.mdx#keeping-matches-visible).
+That never rewrites `anchor`.
+
+`position`, `clearOnClose` and `showLayoutOptions` are floating-only: a widget
+hosted in the [toolbar](#narrow-bars) is laid out by the bar instead.
+
 ## Grouping and hierarchy
 
 | Option | Type | Purpose |

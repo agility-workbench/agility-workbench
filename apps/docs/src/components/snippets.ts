@@ -176,8 +176,13 @@ await api.refreshServerSideData({ purge: false });`,
   rowData={rows}
   columnDefs={columns}
   toolbar={{ quickFilter: true }}
-  quickFilter={{ matchMode: "multiTerm" }}
+  quickFilter={{
+    matchMode: "multiTerm",
+    behavior: "filter",       // "find" highlights matching cells instead of hiding rows
+    showBehaviorToggle: true, // ...or let the user switch, in the search box's options
+  }}
   onFilterChanged={(ev) => recomputeSummary(ev.source, ev.changedColIds)}
+  onQuickFilterFindChanged={(ev) => setMatches(ev.activeIndex, ev.matchCount)}
 />`,
     angular: String.raw`columns: NgColDef[] = [
   { key: "customer", label: "Customer", filter: "text" },
@@ -189,7 +194,9 @@ await api.refreshServerSideData({ purge: false });`,
   [rowData]="rows"
   [columnDefs]="columns"
   [toolbar]="{ quickFilter: true }"
+  [quickFilter]="{ matchMode: 'multiTerm', showBehaviorToggle: true }"
   (filterChanged)="recomputeSummary($event)"
+  (quickFilterFindChanged)="onFind($event)"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs: [
@@ -197,12 +204,17 @@ await api.refreshServerSideData({ purge: false });`,
     { key: "status", label: "Status", filter: "set" },
     { key: "revenue", label: "Revenue", filter: "number" },
   ],
-  quickFilter: { matchMode: "multiTerm" },
+  quickFilter: { matchMode: "multiTerm", showBehaviorToggle: true },
 });
 
 api.setQuickFilter("EMEA on track");
 // One canonical signal for column filters AND quick filter:
-api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));`,
+api.on("filterChanged", (ev) => recomputeSummary(ev.source, ev.changedColIds));
+
+// Or search without filtering: every row stays, matching cells are highlighted.
+api.setQuickFilter("EMEA", { behavior: "find" });
+api.findNext();  // steps and reveals the match; the box moves aside if it covers it
+api.on("quickFilterFindChanged", (ev) => setMatches(ev.activeIndex, ev.matchCount));`,
   },
   sorting: {
     react: String.raw`<Grid

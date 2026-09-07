@@ -152,7 +152,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   "column-groups": ["Column groups", "Expand Revenue and inspect nested headers"],
   "client-side-data": ["Client-side data", "Insert at source index 2, then sort or page local rows"],
   "server-side-data": ["Server-side data", "Scroll to request block-aligned slices"],
-  filtering: ["Filtering", "Use the toolbar search or a column filter"],
+  filtering: ["Filtering", "Search rows, switch the search to Find in its ⋯ options, or use a column filter"],
   sorting: ["Sorting", "Shift-click sort icons for an ordered multi-sort"],
   selection: ["Selection", "Drag a range or select rows from row numbers"],
   editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
@@ -241,7 +241,18 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       break;
     case "filtering":
       columnDefs = baseColumns.map((column) => ({ ...column, filter: column.colId === "status" ? "set" : true }));
-      featureProps = { toolbar: { quickFilter: true }, quickFilter: { debounceMs: 0, showOptions: true } };
+      // The search box is floating rather than toolbar-hosted here, so the find behavior can be
+      // tried as documented: Ctrl/Cmd+F opens it, and stepping matches moves the box off the ones
+      // it covers. `showBehaviorToggle` puts filter/find in its options popover.
+      featureProps = {
+        quickFilter: {
+          mode: "always",
+          debounceMs: 0,
+          showOptions: true,
+          showBehaviorToggle: true,
+          showLayoutOptions: true,
+        },
+      };
       break;
     case "sorting":
       featureProps = { toolbar: { sorting: true }, initialSort: [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }], showSortPriority: "always" };
