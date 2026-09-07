@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
-import type { QuickFilterMatchMode, QuickFilterOptions } from "@grid";
+import { themeLight } from "@grid";
+import type { GridTheme, QuickFilterMatchMode, QuickFilterOptions } from "@grid";
 
 /**
  * Showcases the quick-filter (global search) configuration:
@@ -14,6 +15,12 @@ import type { QuickFilterMatchMode, QuickFilterOptions } from "@grid";
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
  *  - `showOptions` / `showLayoutOptions`: which controls the widget exposes in its options popover.
+ *
+ * The highlight color comes from somewhere else — the theme, not the quick-filter config: the
+ * `findMatchColor` theme param derives all three find CSS variables (the tint for every match, the
+ * stronger tint for the active one, and its outline) from a single color. It is applied as a custom
+ * property on the grid root, so changing it re-tints the cells already painted without a remount or
+ * a re-render; the swatch below is live even mid-search.
  *
  * Changing any control below reconfigures the live grid in place — the React wrapper forwards the
  * new `quickFilter` config to the renderer, which rebuilds the widget without remounting the grid
@@ -30,6 +37,9 @@ const NAMES = [
 ];
 const REGIONS = ["West", "East", "North", "South", "Central"];
 const SECTORS = ["Tech", "Finance", "Retail", "Energy", "Health", "Media"];
+
+// The light stylesheet's own find tint, so the swatch opens showing what the grid is already using.
+const DEFAULT_FIND_MATCH_COLOR = "#facc15";
 
 function buildRows(): Company[] {
   // Deterministic (no Math.random) so the demo data is stable across reloads.
@@ -63,6 +73,7 @@ export function QuickFilterDemo() {
   const [offsetTop, setOffsetTop] = useState(6);
   const [showOptions, setShowOptions] = useState(true);
   const [showLayoutOptions, setShowLayoutOptions] = useState(true);
+  const [findMatchColor, setFindMatchColor] = useState<string | null>(null);
   const [reconfigurePending, setReconfigurePending] = useState(false);
   const [reconfigureResult, setReconfigureResult] = useState("");
   const reconfigureTimer = useRef<number | null>(null);
@@ -107,6 +118,13 @@ export function QuickFilterDemo() {
     mode, behavior, showBehaviorToggle, matchMode, clearOnClose, anchor, offsetX, offsetTop,
     showOptions, showLayoutOptions,
   ]);
+
+  // Left undefined until the swatch is touched, so the stylesheet's own (light/dark-aware)
+  // defaults are what the demo starts from.
+  const theme = useMemo<GridTheme | undefined>(
+    () => (findMatchColor == null ? undefined : themeLight.withParams({ findMatchColor })),
+    [findMatchColor],
+  );
 
   const labelStyle = { fontSize: 13, display: "flex", alignItems: "center", gap: 6 } as const;
 
@@ -210,6 +228,24 @@ export function QuickFilterDemo() {
           showLayoutOptions
         </label>
 
+        <label style={labelStyle}>
+          findMatchColor
+          <input
+            type="color"
+            value={findMatchColor ?? DEFAULT_FIND_MATCH_COLOR}
+            style={{ width: 40, height: 24, padding: 0 }}
+            onChange={(e) => setFindMatchColor(e.target.value)}
+          />
+        </label>
+
+        <button
+          type="button"
+          disabled={findMatchColor == null}
+          onClick={() => setFindMatchColor(null)}
+        >
+          Reset color
+        </button>
+
         <button type="button" disabled={reconfigurePending} onClick={scheduleFocusedReconfigure}>
           {reconfigurePending ? "Reconfiguring in 4s…" : "Test focused reconfigure"}
         </button>
@@ -227,6 +263,8 @@ export function QuickFilterDemo() {
         {" "}With <code>clearOnClose</code> off, dismissing the search leaves the filter active and shows a
         pill you can click to reopen. With <code>showLayoutOptions</code> on, the ⋯ options popover
         exposes the Anchor and “Keep filter when closed” controls.
+        {" "}The <code>findMatchColor</code> swatch re-tints the highlights live (theme param, not a
+        quick-filter option) — try it with a search active.
         {" "}To verify focus preservation during live reconfiguration, click
         “Test focused reconfigure,” press Ctrl/Cmd+F, and leave the search input focused before the
         four-second timer expires. {reconfigureResult}
@@ -239,6 +277,7 @@ export function QuickFilterDemo() {
           rowIdKey="id"
           rowNumbers
           quickFilter={quickFilter}
+          theme={theme}
           style={{ width: "100%", height: "100%" }}
         />
       </div>

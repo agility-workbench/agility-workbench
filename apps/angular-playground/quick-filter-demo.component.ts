@@ -8,6 +8,8 @@ import {
 } from "@angular/core";
 import {
   AwbGrid,
+  themeLight,
+  type GridTheme,
   type NgColDef,
   type QuickFilterMatchMode,
   type QuickFilterOptions,
@@ -24,6 +26,12 @@ import {
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
  *  - `showOptions` / `showLayoutOptions`: which controls the widget exposes in its options popover.
  *
+ * The highlight color comes from somewhere else — the theme, not the quick-filter config: the
+ * `findMatchColor` theme param derives all three find CSS variables (the tint for every match, the
+ * stronger tint for the active one, and its outline) from a single color. It is applied as a custom
+ * property on the grid root, so changing it re-tints the cells already painted without a remount or
+ * a re-render; the swatch below is live even mid-search.
+ *
  * Changing any control below reconfigures the live grid in place — the Angular wrapper forwards the
  * new `quickFilter` config to the renderer, which rebuilds the widget without remounting the grid
  * (an active search is preserved across the change). Open the search with Ctrl/Cmd+F (or it's
@@ -39,6 +47,9 @@ const NAMES = [
 ];
 const REGIONS = ["West", "East", "North", "South", "Central"];
 const SECTORS = ["Tech", "Finance", "Retail", "Energy", "Health", "Media"];
+
+// The light stylesheet's own find tint, so the swatch opens showing what the grid is already using.
+const DEFAULT_FIND_MATCH_COLOR = "#facc15";
 
 function buildRows(): Company[] {
   // Deterministic (no Math.random) so the demo data is stable across reloads.
@@ -128,6 +139,20 @@ function buildRows(): Company[] {
         showLayoutOptions
       </label>
 
+      <label class="ctl">
+        findMatchColor
+        <input
+          type="color"
+          class="swatch"
+          [value]="findMatchColor() ?? defaultFindMatchColor"
+          (input)="onFindMatchColorInput($event)"
+        />
+      </label>
+
+      <button type="button" [disabled]="findMatchColor() === null" (click)="resetFindMatchColor()">
+        Reset color
+      </button>
+
       <button type="button" [disabled]="reconfigurePending()" (click)="scheduleFocusedReconfigure()">
         {{ reconfigurePending() ? "Reconfiguring in 4s…" : "Test focused reconfigure" }}
       </button>
@@ -149,6 +174,8 @@ function buildRows(): Company[] {
       With <code>clearOnClose</code> off, dismissing the search leaves the filter active and shows a
       pill you can click to reopen. With <code>showLayoutOptions</code> on, the ⋯ options popover
       exposes the Anchor and “Keep filter when closed” controls.
+      The <code>findMatchColor</code> swatch re-tints the highlights live (a theme param, not a
+      quick-filter option) — try it with a search active.
       To verify focus preservation during live reconfiguration, click
       “Test focused reconfigure,” press Ctrl/Cmd+F, and leave the search input focused before the
       four-second timer expires. {{ reconfigureResult() }}
@@ -161,6 +188,7 @@ function buildRows(): Company[] {
         rowIdKey="id"
         [rowNumbers]="true"
         [quickFilter]="quickFilter()"
+        [theme]="theme()"
       />
     </div>
   `,
@@ -187,6 +215,11 @@ function buildRows(): Company[] {
       }
       .num {
         width: 64px;
+      }
+      .swatch {
+        width: 40px;
+        height: 24px;
+        padding: 0;
       }
       .hint {
         font-size: 12px;
@@ -220,6 +253,10 @@ export class QuickFilterDemoComponent implements OnDestroy {
   readonly showLayoutOptions = signal(true);
   readonly reconfigurePending = signal(false);
   readonly reconfigureResult = signal("");
+  // Left null until the swatch is touched, so the stylesheet's own (light/dark-aware) defaults are
+  // what the demo starts from.
+  readonly findMatchColor = signal<string | null>(null);
+  readonly defaultFindMatchColor = DEFAULT_FIND_MATCH_COLOR;
 
   readonly quickFilter = computed<QuickFilterOptions>(() => ({
     mode: this.mode(),
@@ -231,6 +268,11 @@ export class QuickFilterDemoComponent implements OnDestroy {
     showOptions: this.showOptions(),
     showLayoutOptions: this.showLayoutOptions(),
   }));
+
+  readonly theme = computed<GridTheme | undefined>(() => {
+    const color = this.findMatchColor();
+    return color === null ? undefined : themeLight.withParams({ findMatchColor: color });
+  });
 
   private readonly gridHost = viewChild.required<ElementRef<HTMLDivElement>>("gridHost");
   private reconfigureTimer: number | null = null;
@@ -299,5 +341,13 @@ export class QuickFilterDemoComponent implements OnDestroy {
 
   onShowLayoutOptionsToggle(event: Event): void {
     this.showLayoutOptions.set((event.target as HTMLInputElement).checked);
+  }
+
+  onFindMatchColorInput(event: Event): void {
+    this.findMatchColor.set((event.target as HTMLInputElement).value);
+  }
+
+  resetFindMatchColor(): void {
+    this.findMatchColor.set(null);
   }
 }

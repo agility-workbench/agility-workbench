@@ -36,6 +36,21 @@ const theme = themeLight.withParams({
 const options = { theme } satisfies GridOptions;
 ```
 
+One parameter *derives* rather than fans out: `findMatchColor` turns a single
+color into the quick filter's three find-highlight variables — the tint on every
+matching cell (35% alpha), the stronger tint on the
+[active match](./filtering.mdx#find-instead-of-filter) (65%), and that match's
+outline (the color as given).
+
+```ts
+const theme = themeLight.withParams({ findMatchColor: "#38bdf8" });
+```
+
+Because it reads the color's channels, it accepts hex or `rgb()` / `rgba()`
+only. A named color or another color space is ignored with a console warning
+rather than guessed at — set the three variables through `vars` for those, or to
+choose the alphas yourself.
+
 Themes apply inline to one grid and its portaled popups, so two grids on one
 page can look different. `vars` overrides semantic fan-out for any individual
 `--pte-*` variable:

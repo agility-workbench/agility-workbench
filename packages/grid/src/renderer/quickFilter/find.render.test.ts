@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createGrid } from "../../createGrid";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { ColumnType } from "../../interfaces/column";
+import { themeLight } from "../../theme/theme";
 
 beforeAll(() => {
   (HTMLCanvasElement.prototype as any).getContext = () => ({
@@ -280,6 +281,42 @@ describe("quick-filter find rendering", () => {
     api.getCore().dispatch({ type: "quickFilterSet", text: "acme", behavior: "find" } as any);
     expect(matchedCells()).toHaveLength(2);
     expect(host.querySelector<HTMLElement>(".pte-quick-filter-pill")!.hidden).toBe(false);
+    api.destroy();
+  });
+
+  it("re-tints live when the theme changes, without disturbing the search", () => {
+    // Highlights are painted through CSS variables on the grid root, so a theme change repaints
+    // them through the cascade: no remount, no cell re-render, and the find state is untouched.
+    const api = createGrid(host, {
+      rowIdKey: "id",
+      columnDefs,
+      rowData,
+      quickFilter: { mode: "always", debounceMs: 0, behavior: "find" },
+      theme: themeLight.withParams({ findMatchColor: "#38bdf8" }),
+    } as any);
+    type("acme");
+    api.findNext();
+
+    const root = host.querySelector<HTMLElement>(".pte-root")!;
+    const activeCell = host.querySelector<HTMLElement>(".pte-find-match-active")!;
+    expect(root.style.getPropertyValue("--pte-find-match-bg-color")).toBe("rgba(56, 189, 248, 0.35)");
+    expect(getComputedStyle(activeCell).backgroundColor).toBe("rgba(56, 189, 248, 0.65)");
+
+    api.updateGridOptions({
+      theme: themeLight.withParams({ findMatchColor: "rgb(250, 204, 21)" }),
+    } as any);
+
+    expect(root.style.getPropertyValue("--pte-find-match-bg-color")).toBe("rgba(250, 204, 21, 0.35)");
+    expect(getComputedStyle(activeCell).backgroundColor).toBe("rgba(250, 204, 21, 0.65)");
+    // The same cell element, still the active match, on the same grid.
+    expect(host.querySelector(".pte-find-match-active")).toBe(activeCell);
+    expect(api.getFindState()).toMatchObject({ matchCount: 2, activeIndex: 1, text: "acme" });
+
+    // Dropping the theme takes the override off the root, so the stylesheet's own default tint is
+    // what paints again (the playgrounds' "reset color" path).
+    api.updateGridOptions({ theme: undefined } as any);
+    expect(root.style.getPropertyValue("--pte-find-match-bg-color")).toBe("");
+    expect(getComputedStyle(activeCell).backgroundColor).toBe("rgba(250, 204, 21, 0.75)");
     api.destroy();
   });
 

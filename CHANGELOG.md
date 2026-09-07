@@ -52,7 +52,11 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   `getFindState().available` reports that, and the search falls back to filtering rather
   than going inert.
 - New theme variables: `--pte-find-match-bg-color`,
-  `--pte-find-match-active-bg-color`, `--pte-find-match-active-border-color`.
+  `--pte-find-match-active-bg-color`, `--pte-find-match-active-border-color`, plus a
+  `findMatchColor` theme parameter that derives all three from one color (the match tint at
+  35% alpha, the active match at 65%, its outline as given). It reads the color's channels,
+  so it takes hex or `rgb()`/`rgba()`; any other form is ignored with a console warning
+  instead of a guess, leaving the defaults in place.
 
 ## 1.1.1 — 2026-09-05
 
