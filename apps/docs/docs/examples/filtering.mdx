@@ -274,11 +274,29 @@ const options = {
 
 api.setQuickFilter("open europe");
 api.setQuickFilter("exact phrase", { matchMode: "substring" });
+api.setQuickFilter("42", { matchMode: "wholeCell" });
 ```
 
-`multiTerm` requires every whitespace-separated term to match somewhere in the
-row. `substring` treats the input as one phrase. The toolbar can host quick
-filter, or `mode: "onDemand"` can open its floating UI with Ctrl/Cmd+F.
+Three match modes, all compared against each cell's **formatted** display value
+(so the user searches what they see, `$1,200.00` included):
+
+| `matchMode` | Matches when | Notes |
+| --- | --- | --- |
+| `multiTerm` (default) | every whitespace-separated word is found | while **filtering**, the words may sit in different cells of the row; while **finding**, all of them must be in the one cell being highlighted |
+| `substring` | the whole input is one contiguous run inside a cell | a run never spans two columns |
+| `wholeCell` | a cell's entire text equals the input | no partial hits: `42` matches neither `142` nor `4.2`. Both sides are trimmed |
+
+`wholeCell` is the exact lookup a global search otherwise lacks — "the row whose
+id is exactly 42", without knowing which column holds it. Its one sharp edge is
+formatting: a column rendered `$1,200.00` has to be typed that way, since
+equality has none of substring's forgiveness. Note also that it cannot express
+"cells that are empty" — an empty search box means *no search* — which stays the
+job of a column filter's `isBlank`. It is not the same comparison as a column
+`eq` filter either: that normalizes the **raw** value through `textFormatter` /
+`trimValues`, while the quick filter compares what is rendered.
+
+The toolbar can host quick filter, or `mode: "onDemand"` can open its floating
+UI with Ctrl/Cmd+F.
 
 Quick filtering is client-side. Server-side applications receive structured
 column filters in each data-source request.
@@ -306,18 +324,20 @@ api.findPrevious();
 api.getFindState();  // { behavior, available, text, matchCount, activeIndex, activeMatch }
 ```
 
-The two behaviors share the search text and the `caseSensitive` setting, so
-switching between them re-runs the same search the other way. Set `behavior`
+The two behaviors share the search text, `matchMode` and `caseSensitive`, so
+switching between them re-runs the same search the other way. Editing those
+settings while finding is a search edit, not a filter edit: no rows move, the
+page holds, and the selection is left alone. Set `behavior`
 alone to force one of them; add `showBehaviorToggle` to offer the choice in the
 widget's options popover, where the end user's pick is sticky for the session
 (like match case, it is not written back to grid options).
 
-Matching is deliberately narrower than the filter behavior's: a match is a
-contiguous run of the search text **inside one cell**, compared against the
-cell's formatted display value — so `$1,200` matches what the user sees.
-`matchMode` is a row-level notion ("all words, anywhere in the row") that cannot
-point at a cell to highlight, so it does not apply while finding and the widget
-hides its control.
+A match is always scoped to **one cell** — a highlight has to land on a single
+cell — and `matchMode` picks the shape within that scope, exactly as it does when
+filtering. The one value that reads differently is `multiTerm`: filtering lets
+its words land in different cells of a row, finding requires them all in the cell
+it highlights, which makes `john smith` find `Smith, John`. `wholeCell` and
+`substring` mean the same thing in both behaviors.
 
 What is searched, and what is not:
 

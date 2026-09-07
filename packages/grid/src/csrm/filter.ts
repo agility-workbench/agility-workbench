@@ -15,10 +15,40 @@ export interface QuickFilterSpec {
   columns: Column[];
 }
 
+/**
+ * Match one cell's already-folded display text against the search. Shared by the row filter and by
+ * the find index so the two can never drift on what a mode means.
+ *
+ * `terms` is read for "multiTerm" only, and only the FIND path passes it: multiTerm is row-scoped
+ * when filtering (each word may live in a different cell), so `performQuickFilter` tracks the words
+ * across a whole row itself and calls this for the other two modes.
+ */
+export function cellTextMatches(
+  value: string,
+  needle: string,
+  matchMode: QuickFilterMatchMode,
+  terms: readonly string[] = [],
+): boolean {
+  switch (matchMode) {
+    // Both sides trimmed: the search box trims its own input, so a padded display value would
+    // otherwise be impossible to match exactly.
+    case "wholeCell": return value.trim() === needle;
+    case "multiTerm": return terms.every(term => value.includes(term));
+    default: return value.includes(needle);
+  }
+}
+
 // Narrow an existing list of row indices (already passing the column filters) to those that also
 // match the quick-filter search text. Matching is against each column's *formatted display value*
-// so the user searches what they see (e.g. "$1,200"), joined by a tab so tokens can't bridge two
-// adjacent columns. Returns `candidateIdx` unchanged when the search text is empty.
+// so the user searches what they see (e.g. "$1,200"), and it is evaluated per cell so nothing ever
+// matches across a column boundary. Returns `candidateIdx` unchanged when the search text is empty.
+//
+// Per cell rather than against one joined row string: "wholeCell" needs a single cell's whole text
+// to compare against, and the previous tab-joined haystack was already equivalent to per-cell
+// matching for the other two modes — whitespace-split terms can never contain the tab separator,
+// so no term could bridge two columns. (One microscopic change: a *pasted* tab inside a substring
+// search could previously bridge two adjacent columns. That was the separator failing at its one
+// job.) Formatting each column lazily also lets a row bail out on its first hit.
 export function performQuickFilter(
   spec: QuickFilterSpec,
   rows: IRowNode[],
@@ -29,10 +59,12 @@ export function performQuickFilter(
 
   const fold = (s: string) => (spec.caseSensitive ? s : s.toLowerCase());
   const needle = fold(raw);
-  // In multiTerm mode every whitespace-separated token must be found; in substring mode the whole
-  // string is a single term.
-  const terms = spec.matchMode === "multiTerm" ? needle.split(/\s+/).filter(Boolean) : [needle];
-  if (terms.length === 0) return candidateIdx;
+  const columns = spec.columns;
+  // Only multiTerm splits; the other modes match the whole string as one unit.
+  const terms = spec.matchMode === "multiTerm" ? needle.split(/\s+/).filter(Boolean) : [];
+  if (spec.matchMode === "multiTerm" && terms.length === 0) return candidateIdx;
+  // Reused across rows: one allocation, not one per row.
+  const termFound: boolean[] = new Array(terms.length);
 
   const out: number[] = [];
   for (let k = 0; k < candidateIdx.length; k++) {
@@ -41,21 +73,37 @@ export function performQuickFilter(
     // Group nodes carry synthetic data; skip them here — the grouped path rebuilds groups from the
     // surviving leaves, so a group's visibility follows from its children.
     if (node.isGroup) continue;
-    let haystack = "";
-    for (let c = 0; c < spec.columns.length; c++) {
-      const col = spec.columns[c];
-      const formatted = col.formatValue(col.getValue(node), node);
-      if (formatted) haystack += (haystack ? "\t" : "") + formatted;
-    }
-    const folded = fold(haystack);
-    let matchedAll = true;
-    for (let t = 0; t < terms.length; t++) {
-      if (!folded.includes(terms[t])) {
-        matchedAll = false;
-        break;
+
+    let keep = false;
+    if (spec.matchMode === "multiTerm") {
+      // Row-scoped: each word may be found in a different cell, so the row is kept once every word
+      // has been seen somewhere in it.
+      termFound.fill(false);
+      let remaining = terms.length;
+      for (let c = 0; c < columns.length && remaining > 0; c++) {
+        const col = columns[c];
+        const formatted = col.formatValue(col.getValue(node), node);
+        if (!formatted) continue;
+        const value = fold(formatted);
+        for (let t = 0; t < terms.length; t++) {
+          if (termFound[t] || !value.includes(terms[t])) continue;
+          termFound[t] = true;
+          remaining--;
+        }
+      }
+      keep = remaining === 0;
+    } else {
+      for (let c = 0; c < columns.length; c++) {
+        const col = columns[c];
+        const formatted = col.formatValue(col.getValue(node), node);
+        if (!formatted) continue;
+        if (cellTextMatches(fold(formatted), needle, spec.matchMode)) {
+          keep = true;
+          break;
+        }
       }
     }
-    if (matchedAll) out.push(i);
+    if (keep) out.push(i);
   }
   return out;
 }

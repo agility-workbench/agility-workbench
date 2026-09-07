@@ -3526,12 +3526,6 @@
   align-items: center;
 }
 
-/* Hidden when the row has no meaning for the behavior in force (the match-mode row while finding).
-   See the cascade note on .pte-quick-filter-find-nav[hidden]. */
-.pte-quick-filter-option-row[hidden] {
-  display: none;
-}
-
 /* Divider between the match-controls section and the layout-controls section of the panel. */
 .pte-quick-filter-option-sep {
   height: 1px;

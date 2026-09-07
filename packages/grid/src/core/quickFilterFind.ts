@@ -1,5 +1,7 @@
 import { Column } from "../column/column";
+import { cellTextMatches } from "../csrm/filter";
 import { QuickFilterFindMatch } from "../interfaces/find";
+import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { IRowModel } from "../interfaces/iRowModel";
 import { IRowNode } from "../interfaces/iRowNode";
 
@@ -19,10 +21,12 @@ export interface QuickFilterFindDeps {
  * The quick filter's find index: which CELLS the search text occurs in, in display order, plus
  * which one of them is currently active.
  *
- * Match semantics are deliberately narrower than the filter behavior's: a match is a contiguous
- * run of the search text inside ONE cell's formatted display value ("find within cell contents"),
- * honouring `caseSensitive`. The filter behavior's `matchMode` is a row-level notion — "all words,
- * anywhere in the row" cannot point at a cell to highlight — so it does not apply here.
+ * A match is always scoped to ONE cell — a highlight has to land on a single cell — and compared
+ * against that cell's formatted display value, honouring `caseSensitive`. Within that scope
+ * `matchMode` picks the shape: every word present in this cell, one contiguous run, or the whole
+ * cell equal to the search text. The cell-shaped comparisons live in `cellTextMatches` so the find
+ * index and the row filter cannot drift on what a mode means; the one difference is that filtering
+ * lets multiTerm's words land in *different* cells of a row, which no highlight could point at.
  *
  * Only data rows are searched. A synthetic group row's cells are a label, a blank or an aggregate
  * that the cell renderer derives, so they are not find targets (see IRowModel's
@@ -37,9 +41,12 @@ export interface QuickFilterFindDeps {
 export class QuickFilterFind {
   private text = "";
   private caseSensitive = false;
+  private matchMode: QuickFilterMatchMode = "multiTerm";
   private enabled = false;
   /** Folded search needle, or null when nothing is being searched for. */
   private needle: string | null = null;
+  /** The needle split into words — multiTerm only. Split once per rebuild, not once per cell. */
+  private terms: string[] = [];
 
   // ---- Scan results ----
   // Data rows in display order; the index into this array is a match code's `seq`.
@@ -56,16 +63,26 @@ export class QuickFilterFind {
   constructor(private deps: QuickFilterFindDeps) {}
 
   /** Update the query. Returns whether anything about the find state changed. */
-  setQuery(query: { text: string; caseSensitive: boolean; enabled: boolean }): boolean {
+  setQuery(query: {
+    text: string;
+    caseSensitive: boolean;
+    matchMode: QuickFilterMatchMode;
+    enabled: boolean;
+  }): boolean {
     const changed = query.text !== this.text
       || query.caseSensitive !== this.caseSensitive
+      || query.matchMode !== this.matchMode
       || query.enabled !== this.enabled;
     if (!changed) return false;
     // A changed query starts a fresh search: the previous active cell is not meaningfully "the same
-    // match" once the term changes, and Enter should walk from the top again.
-    const keepActive = query.text === this.text && query.caseSensitive === this.caseSensitive;
+    // match" once what is being searched for changes, and Enter should walk from the top again.
+    // Only `enabled` (a behavior flip) keeps it.
+    const keepActive = query.text === this.text
+      && query.caseSensitive === this.caseSensitive
+      && query.matchMode === this.matchMode;
     this.text = query.text;
     this.caseSensitive = query.caseSensitive;
+    this.matchMode = query.matchMode;
     this.enabled = query.enabled;
     this.rebuild(keepActive);
     return true;
@@ -141,6 +158,9 @@ export class QuickFilterFind {
     const previousKey = keepActive ? this.activeKey : null;
     const raw = this.text.trim();
     this.needle = this.enabled && raw !== "" && this.deps.canFind() ? this.fold(raw) : null;
+    this.terms = this.needle != null && this.matchMode === "multiTerm"
+      ? this.needle.split(/\s+/).filter(Boolean)
+      : [];
     this.nodes = [];
     this.columns = [];
     this.codes = [];
@@ -176,7 +196,7 @@ export class QuickFilterFind {
   private cellMatches(node: IRowNode, col: Column): boolean {
     const formatted = col.formatValue(col.getValue(node), node);
     if (!formatted) return false;
-    return this.fold(formatted).includes(this.needle!);
+    return cellTextMatches(this.fold(formatted), this.needle!, this.matchMode, this.terms);
   }
 
   private fold(s: string): string {

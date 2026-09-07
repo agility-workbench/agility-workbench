@@ -65,7 +65,6 @@ export class QuickFilterWidget {
   private findPrevBtn?: HTMLButtonElement;
   private findNextBtn?: HTMLButtonElement;
   private behaviorSelect?: HTMLSelectElement;
-  private matchModeRow?: HTMLDivElement;
   private matchModeSelect?: HTMLSelectElement;
   private caseCheckbox?: HTMLInputElement;
   private anchorSelect?: HTMLSelectElement;
@@ -311,9 +310,9 @@ export class QuickFilterWidget {
     const finding = this.isFinding();
     this.wrapper.classList.toggle("pte-quick-filter-finding", finding);
     if (this.findNav) this.findNav.hidden = !finding;
-    // `matchMode` is row-level ("all words, anywhere in the row") and cannot point at a cell, so it
-    // has no meaning while finding — hidden rather than disabled, since there is nothing to choose.
-    if (this.matchModeRow) this.matchModeRow.hidden = finding;
+    // The match mode itself stays put: all three shapes mean something in both behaviors. Only
+    // multiTerm's *scope* differs — the whole row while filtering, the one cell while finding,
+    // since a highlight has to land on a single cell.
     if (this.behaviorSelect) {
       const available = this.params.core.getFindState().available;
       // Show what is in force, not what was asked for, and say why the choice is gone.
@@ -538,13 +537,16 @@ export class QuickFilterWidget {
     if (this.opts.showOptions) {
       // Match mode row.
       const modeRow = div("pte-quick-filter-option-row");
-      this.matchModeRow = modeRow;
       const modeLabel = document.createElement("label");
       modeLabel.className = "pte-quick-filter-option-label";
       modeLabel.textContent = "Match";
       this.matchModeSelect = document.createElement("select");
       this.matchModeSelect.className = "pte-select pte-quick-filter-option-select";
-      for (const [value, text] of [["multiTerm", "All words"], ["substring", "Exact phrase"]] as const) {
+      for (const [value, text] of [
+        ["multiTerm", "All words"],
+        ["substring", "Exact phrase"],
+        ["wholeCell", "Whole cell"],
+      ] as const) {
         const o = document.createElement("option");
         o.value = value;
         o.textContent = text;

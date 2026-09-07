@@ -1231,14 +1231,12 @@ export class GridCore implements IGridCore {
     // string whatever the user typed, so a find never narrows the view — and flipping the behavior
     // with text in the box is itself an effective-filter change that must re-derive it.
     const behaviorBefore = this.effectiveQuickFilterBehavior();
-    const filterTextBefore = this.effectiveQuickFilterText();
-    const filterModelBefore = `${filterTextBefore}\u0000${this.quickFilterMatchMode}\u0000${this.quickFilterCaseSensitive}`;
+    const rowSignatureBefore = this.quickFilterRowSignature();
     this.quickFilterText = text;
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
     this.quickFilterBehavior = nextBehavior;
-    const filterTextAfter = this.effectiveQuickFilterText();
-    const filterModelAfter = `${filterTextAfter}\u0000${nextMode}\u0000${nextCase}`;
+    const rowSignatureAfter = this.quickFilterRowSignature();
 
     // Report unconditionally only when finding is involved on either side of the change — a purely
     // filtering quick filter has no find state to speak of, and firing `quickFilterFindChanged` on
@@ -1246,7 +1244,7 @@ export class GridCore implements IGridCore {
     const touchesFind = behaviorBefore === "find" || this.effectiveQuickFilterBehavior() === "find";
     this.refreshFindMatches(touchesFind);
 
-    if (filterModelBefore === filterModelAfter) {
+    if (rowSignatureBefore === rowSignatureAfter) {
       // A find-only change: no rows moved, so none of the filter-path consequences (re-derivation,
       // page clamp, selection clear, filterChanged) apply.
       return;
@@ -1291,6 +1289,21 @@ export class GridCore implements IGridCore {
   /** The text the ROW MODEL filters by: the search text while filtering, nothing while finding. */
   private effectiveQuickFilterText(): string {
     return this.effectiveQuickFilterBehavior() === "find" ? "" : this.quickFilterText;
+  }
+
+  /**
+   * Identity of what the quick filter currently asks the ROW MODEL for. Two states with the same
+   * signature keep the same rows, so the whole filter path (re-derivation, page clamp, selection
+   * clear, `filterChanged`) can be skipped between them.
+   *
+   * With no effective text there is nothing to filter by, so the match settings cannot move a row
+   * and must not register as a filter change — toggling Match case or the match mode while finding
+   * is a search edit, not a filter edit, and clearing the user's selection over it would be wrong.
+   */
+  private quickFilterRowSignature(): string {
+    const text = this.effectiveQuickFilterText();
+    if (text === "") return "";
+    return `${text}\u0000${this.quickFilterMatchMode}\u0000${this.quickFilterCaseSensitive}`;
   }
 
   /** @see QuickFilterFindState */
@@ -1355,6 +1368,7 @@ export class GridCore implements IGridCore {
     const queryChanged = this.find.setQuery({
       text: this.quickFilterText,
       caseSensitive: this.quickFilterCaseSensitive,
+      matchMode: this.quickFilterMatchMode,
       enabled: this.effectiveQuickFilterBehavior() === "find",
     });
     // Same query, but the rows or columns under it moved — re-scan, keeping the active match.

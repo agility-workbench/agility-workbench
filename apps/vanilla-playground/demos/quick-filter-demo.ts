@@ -6,6 +6,8 @@ import { checkbox, code, demoRoot, field, gridHost, h, note, numberInput, select
  * Showcases the quick-filter (global search) configuration:
  *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
  *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
+ *  - `matchMode`: all words / one contiguous run / the cell's whole text (the same three shapes in
+ *    both behaviors; only "all words" widens to the whole row while filtering).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -50,6 +52,7 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
     mode: "onDemand" as "onDemand" | "always",
     behavior: "filter" as "filter" | "find",
     showBehaviorToggle: true,
+    matchMode: "multiTerm" as "multiTerm" | "substring" | "wholeCell",
     clearOnClose: false,
     anchor: "right" as "left" | "right",
     offsetX: 8,
@@ -99,6 +102,18 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
           applyQuickFilter();
         },
       )),
+      field("Match", select(
+        [
+          { value: "multiTerm", label: "All words" },
+          { value: "substring", label: "Exact phrase" },
+          { value: "wholeCell", label: "Whole cell" },
+        ],
+        config.matchMode,
+        value => {
+          config.matchMode = value as typeof config.matchMode;
+          applyQuickFilter();
+        },
+      )),
       field("showBehaviorToggle", checkbox(config.showBehaviorToggle, value => {
         config.showBehaviorToggle = value;
         applyQuickFilter();
@@ -143,6 +158,7 @@ export function mountQuickFilterDemo(container: HTMLElement): () => void {
       mode: config.mode,
       behavior: config.behavior,
       showBehaviorToggle: config.showBehaviorToggle,
+      matchMode: config.matchMode,
       clearOnClose: config.clearOnClose,
       position: { anchor: config.anchor, offsetX: config.offsetX, offsetTop: config.offsetTop },
       showOptions: config.showOptions,

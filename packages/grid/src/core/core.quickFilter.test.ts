@@ -54,6 +54,35 @@ describe("GridCore quick filter", () => {
     expect(viewIds(core)).toEqual([]);
   });
 
+  it("wholeCell keeps a row only when a cell's whole text is the search string", () => {
+    core.dispatch({ type: "quickFilterSet", text: "globex", matchMode: "wholeCell" });
+    expect(viewIds(core)).toEqual(["3"]);
+    // A substring of a cell is not a whole cell.
+    core.dispatch({ type: "quickFilterSet", text: "glob", matchMode: "wholeCell" });
+    expect(viewIds(core)).toEqual([]);
+    // Any searched column may be the one that matches.
+    core.dispatch({ type: "quickFilterSet", text: "west", matchMode: "wholeCell" });
+    expect(viewIds(core).sort()).toEqual(["1", "3"]);
+    // And it cannot be assembled from two columns.
+    core.dispatch({ type: "quickFilterSet", text: "globex west", matchMode: "wholeCell" });
+    expect(viewIds(core)).toEqual([]);
+  });
+
+  it("wholeCell honours case sensitivity like the other modes", () => {
+    core.dispatch({ type: "quickFilterSet", text: "GLOBEX", matchMode: "wholeCell" });
+    expect(viewIds(core)).toEqual(["3"]);
+    core.dispatch({ type: "quickFilterSet", text: "GLOBEX", matchMode: "wholeCell", caseSensitive: true });
+    expect(viewIds(core)).toEqual([]);
+  });
+
+  it("multiTerm still lets its words land in different columns", () => {
+    // The per-cell rewrite must not have narrowed this: "acme" is in Name, "west" in Region.
+    core.dispatch({ type: "quickFilterSet", text: "acme west" });
+    expect(viewIds(core)).toEqual(["1"]);
+    core.dispatch({ type: "quickFilterSet", text: "west acme" });
+    expect(viewIds(core)).toEqual(["1"]);
+  });
+
   it("composes (ANDs) with an active column filter", () => {
     const regionCol = core.getColumnModel().getByColId("region")!;
     core.setFilterModel([{ col: regionCol, key: "region", filters: [{ type: "contains" as any, values: ["West"] }] }]);

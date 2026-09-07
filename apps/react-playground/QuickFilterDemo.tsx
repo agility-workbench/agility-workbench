@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
-import type { QuickFilterOptions } from "@grid";
+import type { QuickFilterMatchMode, QuickFilterOptions } from "@grid";
 
 /**
  * Showcases the quick-filter (global search) configuration:
  *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
  *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
+ *  - `matchMode`: all words / one contiguous run / the cell's whole text (the same three shapes in
+ *    both behaviors; only "all words" widens to the whole row while filtering).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -54,6 +56,7 @@ export function QuickFilterDemo() {
   const [mode, setMode] = useState<"onDemand" | "always">("onDemand");
   const [behavior, setBehavior] = useState<"filter" | "find">("filter");
   const [showBehaviorToggle, setShowBehaviorToggle] = useState(true);
+  const [matchMode, setMatchMode] = useState<QuickFilterMatchMode>("multiTerm");
   const [clearOnClose, setClearOnClose] = useState(false);
   const [anchor, setAnchor] = useState<"left" | "right">("right");
   const [offsetX, setOffsetX] = useState(8);
@@ -95,12 +98,13 @@ export function QuickFilterDemo() {
     mode,
     behavior,
     showBehaviorToggle,
+    matchMode,
     clearOnClose,
     position: { anchor, offsetX, offsetTop },
     showOptions,
     showLayoutOptions,
   }), [
-    mode, behavior, showBehaviorToggle, clearOnClose, anchor, offsetX, offsetTop,
+    mode, behavior, showBehaviorToggle, matchMode, clearOnClose, anchor, offsetX, offsetTop,
     showOptions, showLayoutOptions,
   ]);
 
@@ -125,6 +129,18 @@ export function QuickFilterDemo() {
           >
             <option value="filter">filter (narrow rows)</option>
             <option value="find">find (highlight cells)</option>
+          </select>
+        </label>
+
+        <label style={labelStyle}>
+          Match
+          <select
+            value={matchMode}
+            onChange={(e) => setMatchMode(e.target.value as QuickFilterMatchMode)}
+          >
+            <option value="multiTerm">All words</option>
+            <option value="substring">Exact phrase</option>
+            <option value="wholeCell">Whole cell</option>
           </select>
         </label>
 

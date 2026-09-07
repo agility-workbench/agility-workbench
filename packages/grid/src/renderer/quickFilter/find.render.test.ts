@@ -95,7 +95,7 @@ function widgetBehaviorUI() {
   return {
     placeholder: input().placeholder,
     navShown: shown(findNav()),
-    matchModeRowShown: shown(matchModeRow()),
+    matchModeShown: shown(matchModeRow()),
     select: behaviorSelect().value,
   };
 }
@@ -180,7 +180,7 @@ describe("quick-filter find rendering", () => {
   it("shows no find affordances while filtering, and no match-mode control while finding", () => {
     const api = mount({ mode: "always", debounceMs: 0, showBehaviorToggle: true });
     expect(widgetBehaviorUI()).toEqual({
-      placeholder: "Search…", navShown: false, matchModeRowShown: true, select: "filter",
+      placeholder: "Search…", navShown: false, matchModeShown: true, select: "filter",
     });
 
     // Filtering: the rows narrow and nothing is highlighted.
@@ -193,9 +193,9 @@ describe("quick-filter find rendering", () => {
 
     expect(rowCount(api)).toBe(3);
     expect(matchedCells()).toEqual(["Acme Corp", "Acme Labs"]);
-    // `matchMode` is row-level and cannot point at a cell, so its control goes away while finding.
+    // The match-mode control stays: all three of its shapes mean something while finding.
     expect(widgetBehaviorUI()).toEqual({
-      placeholder: "Find…", navShown: true, matchModeRowShown: false, select: "find",
+      placeholder: "Find…", navShown: true, matchModeShown: true, select: "find",
     });
     api.destroy();
   });
@@ -210,7 +210,7 @@ describe("quick-filter find rendering", () => {
 
     api.updateGridOptions({ quickFilter: options("find") });
     expect(widgetBehaviorUI()).toEqual({
-      placeholder: "Find…", navShown: true, matchModeRowShown: false, select: "find",
+      placeholder: "Find…", navShown: true, matchModeShown: true, select: "find",
     });
 
     type("acme");
@@ -221,7 +221,7 @@ describe("quick-filter find rendering", () => {
     // …and back, with the search text surviving and filtering again.
     api.updateGridOptions({ quickFilter: options("filter") });
     expect(widgetBehaviorUI()).toEqual({
-      placeholder: "Search…", navShown: false, matchModeRowShown: true, select: "filter",
+      placeholder: "Search…", navShown: false, matchModeShown: true, select: "filter",
     });
     expect(input().value).toBe("acme");
     expect(rowCount(api)).toBe(2);
@@ -229,11 +229,37 @@ describe("quick-filter find rendering", () => {
     api.destroy();
   });
 
+  it("offers all three match modes while finding, and switching one re-highlights", () => {
+    const api = mount();
+    const modeSelect = matchModeRow().querySelector<HTMLSelectElement>("select")!;
+    expect([...modeSelect.options].map(o => o.value)).toEqual(["multiTerm", "substring", "wholeCell"]);
+
+    type("west");
+    expect(matchedCells()).toEqual(["West", "West"]);
+
+    // "west" is the whole of both Region cells, so whole-cell keeps them…
+    modeSelect.value = "wholeCell";
+    modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(matchedCells()).toEqual(["West", "West"]);
+
+    // …but a partial word is no longer a match.
+    type("wes");
+    expect(matchedCells()).toEqual([]);
+    expect(counter()).toBe("No matches");
+
+    // Cell-scoped multiTerm: both words must be in the one cell being highlighted.
+    modeSelect.value = "multiTerm";
+    modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    type("corp acme");
+    expect(matchedCells()).toEqual(["Acme Corp"]);
+    api.destroy();
+  });
+
   it("follows a behavior change made through the API", () => {
     const api = mount({ mode: "always", debounceMs: 0, showBehaviorToggle: true });
     api.setQuickFilter("acme", { behavior: "find" });
     expect(widgetBehaviorUI()).toEqual({
-      placeholder: "Find…", navShown: true, matchModeRowShown: false, select: "find",
+      placeholder: "Find…", navShown: true, matchModeShown: true, select: "find",
     });
     expect(input().value).toBe("acme");
     expect(rowCount(api)).toBe(3);

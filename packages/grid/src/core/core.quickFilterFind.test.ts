@@ -72,6 +72,56 @@ describe("GridCore quick-filter find behavior", () => {
     expect(viewIds(core)).toEqual(["1", "2", "3", "4"]);
   });
 
+  it("wholeCell matches only a cell whose entire text is the search string", () => {
+    core.dispatch({ type: "quickFilterSet", text: "west", matchMode: "wholeCell" });
+    expect(core.getFindState().matchCount).toBe(2);
+    expect(viewIds(core)).toEqual(["1", "2", "3", "4"]);
+    // "acme" is a substring of two names but the whole of neither cell.
+    core.dispatch({ type: "quickFilterSet", text: "acme", matchMode: "wholeCell" });
+    expect(core.getFindState().matchCount).toBe(0);
+    core.dispatch({ type: "quickFilterSet", text: "acme corp", matchMode: "wholeCell" });
+    expect(core.getFindState().matchCount).toBe(1);
+    expect(core.findNext()).toMatchObject({ rowId: "1", colId: "name" });
+  });
+
+  it("multiTerm is cell-scoped while finding: every word in the one cell, any order", () => {
+    // As a filter, "acme west" keeps row 1 (words in different cells). As a find, no single cell
+    // holds both, so there is nothing to highlight.
+    core.dispatch({ type: "quickFilterSet", text: "acme west", matchMode: "multiTerm" });
+    expect(core.getFindState().matchCount).toBe(0);
+    // Both words in one cell, in either order — this is what multiTerm buys over substring.
+    core.dispatch({ type: "quickFilterSet", text: "corp acme", matchMode: "multiTerm" });
+    expect(core.getFindState().matchCount).toBe(1);
+    expect(core.findNext()).toMatchObject({ rowId: "1", colId: "name" });
+    // The same search as one contiguous run finds nothing.
+    core.dispatch({ type: "quickFilterSet", text: "corp acme", matchMode: "substring" });
+    expect(core.getFindState().matchCount).toBe(0);
+  });
+
+  it("changing the match mode re-counts and drops the active match", () => {
+    core.dispatch({ type: "quickFilterSet", text: "west", matchMode: "substring" });
+    core.findNext();
+    expect(core.getFindState().activeIndex).toBe(1);
+    core.dispatch({ type: "quickFilterSet", text: "west", matchMode: "wholeCell" });
+    expect(core.getFindState()).toMatchObject({ matchCount: 2, activeIndex: 0, activeMatch: null });
+  });
+
+  it("treats a match-setting change as a search edit, not a filter change", () => {
+    // Nothing filters while finding, so toggling the match settings must not re-derive the view,
+    // clear the selection, or claim the filter changed.
+    const grid = makeGrid({ rowSelection: true });
+    const filterEvents: string[] = [];
+    grid.on("filterChanged", (ev) => filterEvents.push(ev.source));
+    grid.dispatch({ type: "quickFilterSet", text: "west" });
+    grid.selectRowsById(["1"]);
+
+    grid.dispatch({ type: "quickFilterSet", text: "west", caseSensitive: true });
+    grid.dispatch({ type: "quickFilterSet", text: "west", matchMode: "wholeCell" });
+
+    expect(filterEvents).toEqual([]);
+    expect([...grid.getSelectedRowIds()]).toEqual(["1"]);
+  });
+
   it("honours case sensitivity", () => {
     core.dispatch({ type: "quickFilterSet", text: "ACME" });
     expect(core.getFindState().matchCount).toBe(2);

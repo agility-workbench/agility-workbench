@@ -9,6 +9,7 @@ import {
 import {
   AwbGrid,
   type NgColDef,
+  type QuickFilterMatchMode,
   type QuickFilterOptions,
 } from "@agility-workbench/angular-grid";
 
@@ -16,6 +17,8 @@ import {
  * Showcases the quick-filter (global search) configuration:
  *  - `behavior` / `showBehaviorToggle`: filter the rows, or leave every row in place and highlight
  *    the matching cells (Excel-style find, with a match counter and Enter/Shift+Enter stepping).
+ *  - `matchMode`: all words / one contiguous run / the cell's whole text (the same three shapes in
+ *    both behaviors; only "all words" widens to the whole row while filtering).
  *  - `clearOnClose`: keep the filter applied after the widget is dismissed (a collapsed pill stands
  *    in so the active search stays visible / re-openable).
  *  - `position`: anchor left/right, plus X (from the edge) and Y (below the header) offsets.
@@ -67,6 +70,15 @@ function buildRows(): Company[] {
         <select (change)="onBehaviorChange($event)">
           <option value="filter" [selected]="behavior() === 'filter'">filter (narrow rows)</option>
           <option value="find" [selected]="behavior() === 'find'">find (highlight cells)</option>
+        </select>
+      </label>
+
+      <label class="ctl">
+        Match
+        <select (change)="onMatchModeChange($event)">
+          <option value="multiTerm" [selected]="matchMode() === 'multiTerm'">All words</option>
+          <option value="substring" [selected]="matchMode() === 'substring'">Exact phrase</option>
+          <option value="wholeCell" [selected]="matchMode() === 'wholeCell'">Whole cell</option>
         </select>
       </label>
 
@@ -199,6 +211,7 @@ export class QuickFilterDemoComponent implements OnDestroy {
   readonly mode = signal<"onDemand" | "always">("onDemand");
   readonly behavior = signal<"filter" | "find">("filter");
   readonly showBehaviorToggle = signal(true);
+  readonly matchMode = signal<QuickFilterMatchMode>("multiTerm");
   readonly clearOnClose = signal(false);
   readonly anchor = signal<"left" | "right">("right");
   readonly offsetX = signal(8);
@@ -212,6 +225,7 @@ export class QuickFilterDemoComponent implements OnDestroy {
     mode: this.mode(),
     behavior: this.behavior(),
     showBehaviorToggle: this.showBehaviorToggle(),
+    matchMode: this.matchMode(),
     clearOnClose: this.clearOnClose(),
     position: { anchor: this.anchor(), offsetX: this.offsetX(), offsetTop: this.offsetTop() },
     showOptions: this.showOptions(),
@@ -253,6 +267,10 @@ export class QuickFilterDemoComponent implements OnDestroy {
 
   onBehaviorChange(event: Event): void {
     this.behavior.set((event.target as HTMLSelectElement).value as "filter" | "find");
+  }
+
+  onMatchModeChange(event: Event): void {
+    this.matchMode.set((event.target as HTMLSelectElement).value as QuickFilterMatchMode);
   }
 
   onShowBehaviorToggleToggle(event: Event): void {

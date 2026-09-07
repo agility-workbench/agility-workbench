@@ -14,11 +14,32 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   search box — the cell cursor and the selection are left alone. `showBehaviorToggle`
   offers the choice to the end user in the options popover, where it is sticky for the
   session; `behavior` alone forces one of the two.
-- Matching is "contains, within one cell", against the cell's *formatted* display value,
-  honouring `caseSensitive`. `matchMode` is row-level and does not apply while finding,
-  so the widget hides its control. Matches are counted over the whole client-side view —
-  all pages, and rows inside collapsed groups — and `findNext()` reveals its match by
-  expanding ancestors and paging to it.
+- Matching is scoped to one cell and compared against its *formatted* display value,
+  honouring `caseSensitive` and `matchMode`. Matches are counted over the whole
+  client-side view — all pages, and rows inside collapsed groups — and `findNext()`
+  reveals its match by expanding ancestors and paging to it.
+
+### Quick-filter whole-cell matching
+
+- **New `matchMode: "wholeCell"`** — a cell matches only when its entire text equals the
+  search string, so `42` matches neither `142` nor `4.2`. Available in both behaviors: as
+  a filter it is the exact lookup a global search otherwise lacks ("the row whose id is
+  exactly 42", whichever column holds it), and as a find it highlights only exact cells.
+  Both sides are trimmed. It compares the *formatted* value, so a column rendered
+  `$1,200.00` must be typed that way — and it cannot express "empty cells", which stays a
+  column filter's `isBlank`.
+- `matchMode` now applies while finding too, and the widget keeps its Match control in
+  both behaviors. `multiTerm` is the only value whose scope differs: filtering lets its
+  words land in different cells of a row, finding requires them all in the one cell it
+  highlights (so `john smith` finds `Smith, John`).
+- Editing `matchMode` or `caseSensitive` while finding no longer re-derives the view,
+  clamps the page, clears the selection or fires `filterChanged` — with nothing being
+  filtered, the match settings cannot move a row, so they are a search edit.
+- `performQuickFilter` now evaluates per cell instead of building one tab-joined string per
+  row (equivalent for the existing modes, since whitespace-split terms can never contain
+  the tab separator) and bails out of a row on its first hit.
+- **Type change**: `QuickFilterMatchMode` gains a third member, which breaks an exhaustive
+  `switch` over it.
 - **New API**: `getFindState()`, `findNext()`, `findPrevious()`,
   `getQuickFilterBehavior()`, and a `behavior` option on `setQuickFilter`. New event
   `quickFilterFindChanged` (option callback `onQuickFilterFindChanged`, wrapper output
