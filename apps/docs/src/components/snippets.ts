@@ -34,7 +34,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
 <Grid
   rowData={rows}
   columnDefs={columns}
-  columnPanel={{ trigger: "toolbar" }}
+  {{options}}
 />`,
     angular: String.raw`columns: NgColDef[] = [
   { key: "orderNo", label: "Order", pinned: "left" },
@@ -46,7 +46,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
 <awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [columnPanel]="{ trigger: 'toolbar' }"
+  {{options}}
 />`,
     core: String.raw`const core = new GridCore(new CanvasMeasurer(), {
   columnDefs: [
@@ -54,7 +54,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
     { key: "customer", label: "Customer", width: 180 },
     { key: "revenue", label: "Revenue", type: ColumnType.CURRENCY },
   ],
-  columnPanel: { trigger: "toolbar" },
+  {{options}}
 });`,
   },
   "column-groups": {
@@ -94,9 +94,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
   rowIdKey="id"
   rowData={rows}
   columnDefs={columns}
-  pagination
-  pageSize={25}
-  pageSizes={[10, 25, 50]}
+  {{options}}
   onGridReady={(api) => {
     api.applyTransaction({ add: [newOrder], addIndex: 2 });
   }}
@@ -105,9 +103,7 @@ export const snippets: Record<DemoFeature, FrameworkSnippets> = {
   rowIdKey="id"
   [rowData]="rows"
   [columnDefs]="columns"
-  [pagination]="true"
-  [pageSize]="25"
-  [pageSizes]="[10, 25, 50]"
+  {{options}}
   (gridReady)="api = $event"
 />
 
@@ -116,8 +112,7 @@ this.api.applyTransaction({ add: [newOrder], addIndex: 2 });`,
     core: String.raw`const core = new GridCore(measurer, {
   rowIdKey: "id",
   columnDefs,
-  pagination: true,
-  pageSize: 25,
+  {{options}}
 });
 
 api.setRowData(rows);
@@ -139,7 +134,11 @@ api.applyTransaction({
   },
 };
 
-<Grid rowModelType="serverSide" serverSideDataSource={dataSource} />`,
+<Grid
+  rowModelType="serverSide"
+  serverSideDataSource={dataSource}
+  {{options}}
+/>`,
     angular: String.raw`dataSource: IServerSideDataSource = {
   getRows: async ({ request }) => {
     const response = await fetch("/api/orders", {
@@ -153,10 +152,11 @@ api.applyTransaction({
 <awb-grid
   rowModelType="serverSide"
   [serverSideDataSource]="dataSource"
+  {{options}}
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   rowModelType: "serverSide",
-  serverSideBlockSize: 100,
+  {{options}}
   serverSideDataSource: {
     async getRows({ request }) {
       return fetchOrders(request); // { rows, totalRows }
@@ -176,12 +176,7 @@ await api.refreshServerSideData({ purge: false });`,
 <Grid
   rowData={rows}
   columnDefs={columns}
-  toolbar={{ quickFilter: true }}
-  quickFilter={{
-    matchMode: "multiTerm",
-    behavior: "filter",       // "find" highlights matching cells instead of hiding rows
-    showBehaviorToggle: true, // ...or let the user switch, in the search box's options
-  }}
+  {{options}}
   onFilterChanged={(ev) => recomputeSummary(ev.source, ev.changedColIds)}
   onQuickFilterFindChanged={(ev) => setMatches(ev.activeIndex, ev.matchCount)}
 />`,
@@ -194,8 +189,7 @@ await api.refreshServerSideData({ purge: false });`,
 <awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [toolbar]="{ quickFilter: true }"
-  [quickFilter]="{ matchMode: 'multiTerm', showBehaviorToggle: true }"
+  {{options}}
   (filterChanged)="recomputeSummary($event)"
   (quickFilterFindChanged)="onFind($event)"
 />`,
@@ -205,7 +199,7 @@ await api.refreshServerSideData({ purge: false });`,
     { key: "status", label: "Status", filter: "set" },
     { key: "revenue", label: "Revenue", filter: "number" },
   ],
-  quickFilter: { matchMode: "multiTerm", showBehaviorToggle: true },
+  {{options}}
 });
 
 api.setQuickFilter("EMEA on track");
@@ -225,8 +219,7 @@ api.on("quickFilterFindChanged", (ev) => setMatches(ev.activeIndex, ev.matchCoun
     { colId: "region", dir: "asc" },
     { colId: "revenue", dir: "desc" },
   ]}
-  showSortPriority="always"
-  toolbar={{ sorting: true }}
+  {{options}}
 />`,
     angular: String.raw`initialSort = [
   { colId: "region", dir: "asc" as const },
@@ -237,7 +230,7 @@ api.on("quickFilterFindChanged", (ev) => setMatches(ev.activeIndex, ev.matchCoun
   [rowData]="rows"
   [columnDefs]="columns"
   [initialSort]="initialSort"
-  showSortPriority="always"
+  {{options}}
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs,
@@ -245,35 +238,25 @@ api.on("quickFilterFindChanged", (ev) => setMatches(ev.activeIndex, ev.matchCoun
     { colId: "region", dir: "asc" },
     { colId: "revenue", dir: "desc" },
   ],
-  showSortPriority: "always",
+  {{options}}
 });`,
   },
   selection: {
     react: String.raw`<Grid
   rowData={rows}
   columnDefs={columns}
-  rowNumbers
-  rowSelection
-  selectAllRowsOnHeaderClick
-  rangeSelection
-  highlightActiveCell
+  {{options}}
   onSelectionChanged={({ snapshot }) => console.log(snapshot)}
 />`,
     angular: String.raw`<awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [rowNumbers]="true"
-  [rowSelection]="true"
-  [rangeSelection]="true"
-  [highlightActiveCell]="true"
+  {{options}}
   (selectionChanged)="selection = $event.snapshot"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs,
-  rowNumbers: true,
-  rowSelection: true,
-  rangeSelection: true,
-  highlightActiveCell: true,
+  {{options}}
 });
 
 api.selectRange(2, 1);
@@ -292,7 +275,7 @@ console.log(api.getSelection());`,
 <Grid
   rowData={rows}
   columnDefs={columns}
-  undoLimit={50}
+  {{options}}
   onCellValueChanged={saveChange}
 />`,
     angular: String.raw`columns: NgColDef[] = [{
@@ -306,7 +289,7 @@ console.log(api.getSelection());`,
 <awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [undoLimit]="50"
+  {{options}}
   (cellValueChanged)="saveChange($event)"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
@@ -317,7 +300,7 @@ console.log(api.getSelection());`,
     cellEditor: "select",
     cellEditorParams: { values: ["On track", "At risk", "Blocked"] },
   }],
-  undoLimit: 50,
+  {{options}}
 });
 
 api.startEditingCell({ rowId: "order-1", colId: "status" });`,
@@ -326,9 +309,7 @@ api.startEditingCell({ rowId: "order-1", colId: "status" });`,
     react: String.raw`<Grid
   rowData={rows}
   columnDefs={columns}
-  groupDefaultExpanded={1}
-  groupRowsSticky
-  toolbar={{ grouping: true }}
+  {{options}}
   onGridReady={(api) => {
     api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
   }}
@@ -336,9 +317,7 @@ api.startEditingCell({ rowId: "order-1", colId: "status" });`,
     angular: String.raw`<awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [groupDefaultExpanded]="1"
-  [groupRowsSticky]="true"
-  [toolbar]="{ grouping: true }"
+  {{options}}
   (gridReady)="group($event)"
 />
 
@@ -347,9 +326,7 @@ group(api: IGridAPI) {
 }`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs,
-  groupDisplayType: "singleColumn",
-  groupDefaultExpanded: 1,
-  groupRowsSticky: true,
+  {{options}}
 });
 
 api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
@@ -359,8 +336,7 @@ api.setAllGroupsExpanded(true);`,
     react: String.raw`<Grid
   rowData={rows}
   columnDefs={columns}
-  toolbar={{ pivot: true }}
-  columnPanel={{ trigger: "toolbar" }}
+  {{options}}
   onGridReady={(api) => {
     api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
     api.setRowGroupColumns(["region"]);
@@ -371,8 +347,7 @@ api.setAllGroupsExpanded(true);`,
     angular: String.raw`<awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [toolbar]="{ pivot: true }"
-  [columnPanel]="{ trigger: 'toolbar' }"
+  {{options}}
   (gridReady)="pivot($event)"
 />
 
@@ -385,8 +360,8 @@ pivot(api: IGridAPI) {
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs,
   // Or seed at construction: pivotMode: true, pivotColumns: ["status"]
-  toolbar: { pivot: true },
-  columnPanel: { trigger: "toolbar" }, // pivoted, the panel becomes the pivot setup
+  // Pivoted, the column panel becomes the pivot setup.
+  {{options}}
 });
 
 api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
@@ -441,7 +416,7 @@ readonly sheetsOptions = computed<SheetsOptions>(() => ({
   rowIdKey="id"
   rowData={rows}
   columnDefs={columns}
-  groupDefaultExpanded={2}
+  {{options}}
   treeData={{
     mode: "parent",
     getParentId: (row) => row.parentId,
@@ -460,12 +435,13 @@ readonly sheetsOptions = computed<SheetsOptions>(() => ({
   rowIdKey="id"
   [rowData]="rows"
   [columnDefs]="columns"
+  {{options}}
   [treeData]="treeData"
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   rowIdKey: "id",
   columnDefs,
-  groupDefaultExpanded: 2,
+  {{options}}
   treeData: {
     mode: "parent",
     getParentId: (row) => row.parentId,
@@ -478,9 +454,7 @@ readonly sheetsOptions = computed<SheetsOptions>(() => ({
     react: String.raw`<Grid
   rowData={rows}
   columnDefs={columns}
-  allowExportAsCSV
-  allowExportAsExcel
-  toolbar={{ export: true }}
+  {{options}}
   onGridReady={(api) => {
     // api.exportDataAsExcel({ scope: "selection" });
   }}
@@ -489,9 +463,7 @@ readonly sheetsOptions = computed<SheetsOptions>(() => ({
   #grid="awbGrid"
   [rowData]="rows"
   [columnDefs]="columns"
-  [allowExportAsCSV]="true"
-  [allowExportAsExcel]="true"
-  [toolbar]="{ export: true }"
+  {{options}}
 />
 
 <button (click)="grid.api?.exportDataAsExcel({ scope: 'selection' })">
@@ -499,23 +471,21 @@ readonly sheetsOptions = computed<SheetsOptions>(() => ({
 </button>`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs,
-  allowExportAsCSV: true,
-  allowExportAsExcel: true,
-  toolbar: { export: true },
+  {{options}}
 });
 
 api.exportDataAsCsv({ scope: "all" });
 api.exportDataAsExcel({ scope: "selection", groupMode: "tree" });`,
   },
   "pinned-rows": {
-    react: String.raw`<Grid
+    react: String.raw`const pinnedTop = [{ id: "target", label: "Target", amount: 1_000_000 }];
+const pinnedBottom = [{ id: "total", label: "Total", amount: 842_000 }];
+
+<Grid
   rowIdKey="id"
   rowData={rows}
   columnDefs={columns}
-  pinnedTopRowData={[{ id: "target", label: "Target", amount: 1_000_000 }]}
-  pinnedBottomRowData={[{ id: "total", label: "Total", amount: 842_000 }]}
-  rowPinningMenu
-  groupRowsSticky
+  {{options}}
 />`,
     angular: String.raw`pinnedTop = [{ id: "target", label: "Target", amount: 1_000_000 }];
 pinnedBottom = [{ id: "total", label: "Total", amount: 842_000 }];
@@ -524,16 +494,15 @@ pinnedBottom = [{ id: "total", label: "Total", amount: 842_000 }];
   rowIdKey="id"
   [rowData]="rows"
   [columnDefs]="columns"
-  [pinnedTopRowData]="pinnedTop"
-  [pinnedBottomRowData]="pinnedBottom"
-  [rowPinningMenu]="true"
+  {{options}}
 />`,
-    core: String.raw`const core = new GridCore(measurer, {
+    core: String.raw`const pinnedTop = [{ id: "target", label: "Target", amount: 1_000_000 }];
+const pinnedBottom = [{ id: "total", label: "Total", amount: 842_000 }];
+
+const core = new GridCore(measurer, {
   rowIdKey: "id",
   columnDefs,
-  pinnedTopRowData: [{ id: "target", label: "Target", amount: 1_000_000 }],
-  pinnedBottomRowData: [{ id: "total", label: "Total", amount: 842_000 }],
-  rowPinningMenu: true,
+  {{options}}
 });
 
 api.setPinnedTopRowData(nextTargets);   // replace a band at runtime
@@ -556,7 +525,11 @@ const columns: ReactColDef[] = [
   },
 ];
 
-<Grid rowData={rows} columnDefs={columns} zebraRows columnHover />`,
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  {{options}}
+/>`,
     angular: String.raw`// Any Angular component works in a cell slot; params arrive as an input.
 columns: NgColDef[] = [
   { key: "status", label: "Status", cellRenderer: StatusBadgeComponent },
@@ -569,7 +542,11 @@ columns: NgColDef[] = [
   },
 ];
 
-<awb-grid [rowData]="rows" [columnDefs]="columns" [zebraRows]="true" />`,
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  {{options}}
+/>`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs: [
     {
@@ -590,7 +567,7 @@ columns: NgColDef[] = [
       cellRendererParams: { type: "area", showPoints: true },
     },
   ],
-  zebraRows: true,
+  {{options}}
 });`,
   },
   sparklines: {
@@ -698,7 +675,7 @@ api.dispatch({
 <Grid
   rowData={rows}
   columnDefs={columns}
-  tooltip={{ showDelay: 150, mode: "anchored", placement: "auto" }}
+  {{options}}
 />`,
     angular: String.raw`columns: NgColDef[] = [
   { key: "owner", label: "Owner", tooltipField: "ownerEmail" },
@@ -713,7 +690,7 @@ api.dispatch({
 <awb-grid
   [rowData]="rows"
   [columnDefs]="columns"
-  [tooltip]="{ showDelay: 150, mode: 'anchored', placement: 'auto' }"
+  {{options}}
 />`,
     core: String.raw`const core = new GridCore(measurer, {
   columnDefs: [
@@ -725,7 +702,7 @@ api.dispatch({
     },
     { key: "margin", label: "Margin", headerTooltip: "Revenue minus direct cost" },
   ],
-  tooltip: { showDelay: 150, hideDelay: 75, mode: "anchored", placement: "auto" },
+  {{options}}
 });
 
 api.showTooltip({ rowId: "order-1", colId: "owner" });
@@ -899,7 +876,12 @@ api.applyViewState(state, { columns: "merge" });`,
   spacing: 10,
 });
 
-<Grid rowData={rows} columnDefs={columns} theme={theme} />`,
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  theme={theme}
+  {{options}}
+/>`,
     angular: String.raw`theme = themeDark.withParams({
   accentColor: "#2fd2e2",
   backgroundColor: "#0a172b",
@@ -912,6 +894,7 @@ api.applyViewState(state, { columns: "merge" });`,
   [rowData]="rows"
   [columnDefs]="columns"
   [theme]="theme"
+  {{options}}
 />`,
     core: String.raw`const theme = themeDark.withParams({
   accentColor: "#2fd2e2",
@@ -921,6 +904,10 @@ api.applyViewState(state, { columns: "merge" });`,
   spacing: 10,
 });
 
-const core = new GridCore(measurer, { columnDefs, theme });`,
+const core = new GridCore(measurer, {
+  columnDefs,
+  theme,
+  {{options}}
+});`,
   },
 };

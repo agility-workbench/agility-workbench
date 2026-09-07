@@ -43,3 +43,46 @@
   .hint { display: none; }
   .canvas { height: 430px; padding: 8px; }
 }
+
+/* Knob bar: the example's configurable options, one control each. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem .9rem;
+  padding: .55rem .85rem;
+  border-bottom: 1px solid var(--awb-line);
+  color: var(--awb-ink);
+  font-size: .8rem;
+}
+.knob { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; white-space: nowrap; }
+.knob input[type="checkbox"] { accent-color: var(--awb-orange); margin: 0; }
+.knob select,
+.knob input[type="number"] {
+  padding: .22rem .38rem;
+  border: 1px solid var(--awb-line);
+  border-radius: 7px;
+  background: var(--ifm-background-color);
+  color: var(--awb-ink);
+  font: inherit;
+  font-weight: 500;
+}
+.knob input[type="number"] { width: 5.5em; }
+.structural { color: var(--awb-muted); font-weight: 500; font-size: .7rem; }
+.reset {
+  margin-left: auto;
+  padding: .22rem .55rem;
+  border: 1px solid var(--awb-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--awb-muted);
+  font: inherit;
+  font-size: .76rem;
+  cursor: pointer;
+}
+.reset:hover { color: var(--awb-ink); border-color: color-mix(in srgb, var(--awb-orange) 55%, var(--awb-line)); }
+.reset:focus-visible { outline: 2px solid var(--awb-orange); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .reset { margin-left: 0; }
+}

@@ -2,11 +2,13 @@ import React, { type ReactNode } from "react";
 import clsx from "clsx";
 import styles from "./DemoFrame.module.css";
 
-export function DemoFrame({ label, hint, compact, actions, children }: {
+export function DemoFrame({ label, hint, compact, actions, controls, children }: {
   label: string;
   hint: string;
   compact?: boolean;
   actions?: ReactNode;
+  /** The example's configuration bar (knobs); rendered between the title bar and the canvas. */
+  controls?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -18,6 +20,7 @@ export function DemoFrame({ label, hint, compact, actions, children }: {
           {actions}
         </div>
       </div>
+      {controls && <div className={styles.controls}>{controls}</div>}
       <div className={styles.canvas}>{children}</div>
     </section>
   );
