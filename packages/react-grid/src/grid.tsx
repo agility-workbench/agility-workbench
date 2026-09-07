@@ -47,6 +47,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onSelectionChangedRef = useRef(props.onSelectionChanged);
     const onSortChangedRef = useRef(props.onSortChanged);
     const onFilterChangedRef = useRef(props.onFilterChanged);
+    const onQuickFilterFindChangedRef = useRef(props.onQuickFilterFindChanged);
     const onHistoryChangedRef = useRef(props.onHistoryChanged);
     const onBeforeCellCommitRef = useRef(props.onBeforeCellCommit);
 
@@ -59,6 +60,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onSelectionChangedRef.current = props.onSelectionChanged;
     onSortChangedRef.current = props.onSortChanged;
     onFilterChangedRef.current = props.onFilterChanged;
+    onQuickFilterFindChangedRef.current = props.onQuickFilterFindChanged;
     onHistoryChangedRef.current = props.onHistoryChanged;
     onBeforeCellCommitRef.current = props.onBeforeCellCommit;
 
@@ -77,6 +79,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onSelectionChanged = (ev) => onSelectionChangedRef.current?.(ev);
       options.onSortChanged = (ev) => onSortChangedRef.current?.(ev);
       options.onFilterChanged = (ev) => onFilterChangedRef.current?.(ev);
+      options.onQuickFilterFindChanged = (ev) => onQuickFilterFindChangedRef.current?.(ev);
       options.onHistoryChanged = (ev) => onHistoryChangedRef.current?.(ev);
       // Value-returning hook: an absent callback returns undefined, which core reads as "accept".
       options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);

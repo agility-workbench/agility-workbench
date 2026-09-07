@@ -34,6 +34,21 @@ transactions require the client-side model. Server-side grouping and sticky
 group rows are supported, but server-side group sorting is local to each
 listing.
 
+The quick filter's [find behavior](./examples/filtering.mdx#find-instead-of-filter)
+additionally needs data-row cells to highlight, so it is unavailable while the
+pivot layout is displayed (every displayed row there is a group row). In both
+cases `getFindState().available` is false and the search filters instead.
+
+Finding in a **very narrow grid** keeps one rough edge. A match the grid cannot
+scroll clear of the floating search box is normally uncovered by moving the box
+to the opposite edge ([Keeping matches
+visible](./examples/filtering.mdx#keeping-matches-visible)), but that only helps
+where the grid can hold the box clear of where it already stands — under roughly
+twice its width, both edges cover the same cells, so the box stays put and the
+match stays behind it. Host the widget in the
+[toolbar](./examples/toolbar-and-views.mdx) at those widths, where it sits
+outside the data region altogether.
+
 ## Server-side differences
 
 The server is responsible for filtering and sorting complete data. As a result,

@@ -46,6 +46,20 @@ export interface GridThemeParams {
   /** Active (focused) cell outline color (when `highlightActiveCell` is enabled). */
   activeCellBorderColor?: string;
   /**
+   * Quick-filter find highlight. One color drives all three of its variables: the tint on every
+   * matching cell (35% alpha), the stronger tint on the active match (65%), and that match's
+   * outline (the color as given). An alpha in the input is multiplied through, so a translucent
+   * color stays translucent.
+   *
+   * Unlike the other params this one derives values, so it needs a color it can read the channels
+   * of: hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) or `rgb()` / `rgba()`. Anything else — a
+   * named color, `hsl()`, `oklch()`, a gradient — is ignored with a console warning rather than
+   * guessed at; set `--pte-find-match-bg-color`, `--pte-find-match-active-bg-color` and
+   * `--pte-find-match-active-border-color` through `vars` to use those, or to choose the alphas
+   * yourself.
+   */
+  findMatchColor?: string;
+  /**
    * Keyboard focus ring for the grid's own controls (toolbar, paginator, quick filter, column
    * panel). Needs to clear 3:1 against the surface behind it to satisfy WCAG 2.4.11, so it is a
    * stronger blue than the selection colours rather than sharing `accentColor`.
@@ -264,6 +278,60 @@ const FANOUT: Record<string, Fanout> = {
   rootBorderWidth: { vars: ["--pte-root-border-width"], px: true },
 };
 
+/** Colors already warned about, so a per-render resolve cannot spam the console. */
+const warnedFindMatchColors = new Set<string>();
+
+/** Trim trailing zeros off a derived alpha so the emitted value reads as authored. */
+function round(alpha: number): string {
+  return String(Math.round(alpha * 1000) / 1000);
+}
+
+/**
+ * Read a color's channels, for the one param that has to derive values from them. Deliberately
+ * narrow — hex and `rgb()`/`rgba()`, the forms the presets and app themes actually use — and null
+ * for everything else rather than half-parsing a color space.
+ */
+function parseRgba(color: string): { r: number; g: number; b: number; a: number } | null {
+  const value = color.trim();
+
+  const hex = /^#([0-9a-f]{3,8})$/i.exec(value);
+  if (hex) {
+    const digits = hex[1];
+    // #rgb / #rgba expand each digit; #rrggbb / #rrggbbaa read pairs. Other lengths are invalid.
+    if (digits.length === 3 || digits.length === 4) {
+      const [r, g, b, a] = [...digits].map(d => parseInt(d + d, 16));
+      return { r, g, b, a: digits.length === 4 ? a / 255 : 1 };
+    }
+    if (digits.length === 6 || digits.length === 8) {
+      const pair = (i: number) => parseInt(digits.slice(i * 2, i * 2 + 2), 16);
+      return { r: pair(0), g: pair(1), b: pair(2), a: digits.length === 8 ? pair(3) / 255 : 1 };
+    }
+    return null;
+  }
+
+  const fn = /^rgba?\(([^)]*)\)$/i.exec(value);
+  if (!fn) return null;
+  // Both syntaxes: "r, g, b, a" and the space-separated "r g b / a".
+  const parts = fn[1].split("/").flatMap(part => part.trim().split(/[\s,]+/)).filter(Boolean);
+  if (parts.length < 3 || parts.length > 4) return null;
+  const channel = (raw: string): number | null => {
+    const num = parseFloat(raw);
+    if (!Number.isFinite(num)) return null;
+    const scaled = raw.trim().endsWith("%") ? (num / 100) * 255 : num;
+    return Math.min(255, Math.max(0, Math.round(scaled)));
+  };
+  const [r, g, b] = [channel(parts[0]), channel(parts[1]), channel(parts[2])];
+  if (r == null || g == null || b == null) return null;
+  let a = 1;
+  if (parts.length === 4) {
+    const raw = parts[3].trim();
+    const num = parseFloat(raw);
+    if (!Number.isFinite(num)) return null;
+    a = Math.min(1, Math.max(0, raw.endsWith("%") ? num / 100 : num));
+  }
+  return { r, g, b, a };
+}
+
 function toCssValue(value: string | number, px: boolean): string {
   return typeof value === "number" && px ? `${value}px` : String(value);
 }
@@ -277,6 +345,27 @@ function resolveVars(params: GridThemeParams): Record<string, string> {
     const v = toCssValue(params.spacing, px);
     for (const name of FANOUT.cellHorizontalPadding.vars) out[name] = v;
     for (const name of FANOUT.cellVerticalPadding.vars) out[name] = v;
+  }
+
+  // `findMatchColor` derives three values rather than fanning one out, so it is resolved here
+  // instead of through FANOUT. Ignored (with one warning per distinct value) when the color's
+  // channels cannot be read — better a working default than a highlight painted in a guess.
+  if (params.findMatchColor != null) {
+    const rgba = parseRgba(params.findMatchColor);
+    if (rgba) {
+      const { r, g, b, a } = rgba;
+      out["--pte-find-match-bg-color"] = `rgba(${r}, ${g}, ${b}, ${round(a * 0.35)})`;
+      out["--pte-find-match-active-bg-color"] = `rgba(${r}, ${g}, ${b}, ${round(a * 0.65)})`;
+      out["--pte-find-match-active-border-color"] = params.findMatchColor;
+    } else if (!warnedFindMatchColors.has(params.findMatchColor)) {
+      warnedFindMatchColors.add(params.findMatchColor);
+      console.warn(
+        `theme: findMatchColor "${params.findMatchColor}" is not a hex or rgb()/rgba() color, so the `
+        + "find-highlight tints cannot be derived from it; ignoring. Set --pte-find-match-bg-color, "
+        + "--pte-find-match-active-bg-color and --pte-find-match-active-border-color through `vars` "
+        + "instead.",
+      );
+    }
   }
 
   // Semantic params fan out to their atomic variables.

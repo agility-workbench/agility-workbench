@@ -28,7 +28,8 @@ interface BodyWindowRendererParams {
   renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   clearFullWidthCell: (slot: RowPoolDef) => void;
-  applySelectionToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
+  /** Per-slot cell state that is painted, not rendered: selection classes and find highlights. */
+  applyCellStateToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
 }
 
 export class BodyWindowRenderer {
@@ -110,7 +111,7 @@ export class BodyWindowRenderer {
         this.hideSlot(slot);
         this.clearSlotIdentity(slot);
         this.clearRowStyling(slot);
-        this.params.applySelectionToSlot(slot, null);
+        this.params.applyCellStateToSlot(slot, null);
         continue;
       }
 
@@ -121,7 +122,7 @@ export class BodyWindowRenderer {
         this.hideSlot(slot);
         this.clearSlotIdentity(slot);
         this.clearRowStyling(slot);
-        this.params.applySelectionToSlot(slot, null);
+        this.params.applyCellStateToSlot(slot, null);
         continue;
       }
       if (this.params.core.isBodyRowPinned(row.id)) {
@@ -133,7 +134,7 @@ export class BodyWindowRenderer {
         this.hideSlot(slot);
         this.clearSlotIdentity(slot);
         this.clearRowStyling(slot);
-        this.params.applySelectionToSlot(slot, null);
+        this.params.applyCellStateToSlot(slot, null);
         continue;
       }
 
@@ -171,7 +172,7 @@ export class BodyWindowRenderer {
         this.applyFullWidthLayout(slot, null);
         this.patchCells(slot, row, viewIndex, rowNumber, rowPresentation);
       }
-      this.params.applySelectionToSlot(slot, viewIndex);
+      this.params.applyCellStateToSlot(slot, viewIndex);
     }
   }
 

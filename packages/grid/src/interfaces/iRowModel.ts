@@ -163,6 +163,22 @@ export interface IRowModel<Row = any> {
    */
   getViewIndexInFullView?(rowId: string): number | undefined;
 
+  /**
+   * Every DATA row in the order the grid would display it, descending into collapsed groups and
+   * ignoring pagination — the order a user reads down the grid if everything were expanded and it
+   * were one long page. Synthetic group nodes are not visited (they hold no cell values of their
+   * own); tree-data rows are, since they are data rows that happen to have children.
+   *
+   * Deliberately distinct from `forEachNodeAfterFilterAndSort`, which walks the flat filtered/sorted
+   * leaf order and therefore says nothing about where a row sits once grouping reorders the view.
+   * Also distinct from the *view*, which omits collapsed subtrees: a quick-filter find must be able
+   * to report — and then reveal — a match hidden inside a collapsed group.
+   *
+   * The walk order does not depend on expansion state, so a position in it stays valid across
+   * expand/collapse. Absent on models that cannot enumerate their rows (server-side).
+   */
+  forEachDataNodeInDisplayOrder?(callback: (node: IRowNode<Row>) => void): void;
+
   /** View index of a group's last visible descendant (its own index when collapsed/empty),
    * answered from store metadata so it works when the rows themselves are not loaded. Absent on
    * models where every visible row is materialized (client-side) — callers scan rows instead. */

@@ -15,10 +15,12 @@ import { PivotResultColumnDescriptor } from "./pivot";
 // Type-only: gridView.ts imports ColumnState from here, so this pair must never emit a runtime
 // import cycle.
 import type { GridPivotStateLayers } from "./gridView";
+import type { QuickFilterFindState } from "./find";
 import {
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
+  QuickFilterBehavior,
   RowPinnedPosition,
   RowPresentation,
   RuntimeGridOptions,
@@ -144,6 +146,10 @@ export interface IGridCore {
   getFilterModel(): FilterModel;
   /** Current quick-filter (global search) text. Empty string when inactive. */
   getQuickFilterText(): string;
+  /** Whether the quick filter narrows the rows ("filter") or highlights matching cells ("find"). */
+  getQuickFilterBehavior(): QuickFilterBehavior;
+  /** The find behavior's live state — match count, active match. @see QuickFilterFindState */
+  getFindState(): QuickFilterFindState;
   getAggregateModel(): AggregateModel[];
   /** The aggregate model keyed by public colId (the model keys by instanceID). */
   getAggregateModelByColId(): ColumnAggregate[];

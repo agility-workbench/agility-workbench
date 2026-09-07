@@ -2,6 +2,7 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridHistoryState } from "../core/historyModel";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
+import { QuickFilterFindState } from "../interfaces/find";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
 
@@ -21,6 +22,7 @@ export type GridEventName =
   | "cellValueChanged"
   | "historyChanged"
   | "filterChanged"
+  | "quickFilterFindChanged"
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
@@ -229,6 +231,19 @@ export type GridEventFilterChangedParams = {
   changedColInstanceIds: string[];
 };
 
+/**
+ * The quick filter's find state changed (`quickFilter.behavior: "find"`) — the search text or the
+ * case setting was edited (`reason: "query"`, which also covers switching behavior), the user
+ * stepped to another match (`"navigate"`), or the rows/columns under the search moved and the
+ * matches were re-counted (`"model"`).
+ *
+ * Fires only for the find behavior. A filtering quick filter reports through `filterChanged`
+ * (`source: "quickFilter"`) as it always has.
+ */
+export type GridEventQuickFilterFindChangedParams = QuickFilterFindState & {
+  reason: "query" | "navigate" | "model";
+};
+
 export type GridEventPaginationChangedParams = {
   paginationEnabled: boolean;
   pageIndex: number;
@@ -347,6 +362,7 @@ export interface GridEventMap {
   cellValueChanged: GridEventCellValueChangedParams;
   historyChanged: GridEventHistoryChangedParams;
   filterChanged: GridEventFilterChangedParams;
+  quickFilterFindChanged: GridEventQuickFilterFindChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;

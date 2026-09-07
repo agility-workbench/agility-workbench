@@ -17,11 +17,13 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
       [quickFilter]="quickFilter"
       [toolbar]="toolbar"
       (gridReady)="api = $event"
+      (quickFilterFindChanged)="findEvents.push($event)"
     />
   `,
 })
 class QuickFilterHost {
   api: IGridAPI | null = null;
+  findEvents: any[] = [];
   quickFilter: GridOptions["quickFilter"] = true;
   toolbar: GridOptions["toolbar"] = undefined;
   rows = [
@@ -196,5 +198,38 @@ describe("AwbGrid quick filter", () => {
     expect(gridEl.querySelector(".pte-grid-toolbar .pte-quick-filter-input")).toBeNull();
     expect(input(gridEl).value).toBe("acme");
     expect(host.api!.getCore().getQuickFilterText()).toBe("acme");
+  });
+
+  it("highlights matches instead of filtering under behavior: \"find\", and emits find state", async () => {
+    const { gridEl, host } = await mountGridHost(QuickFilterHost, 600, (instance) => {
+      instance.quickFilter = { mode: "always", debounceMs: 0, behavior: "find" };
+    });
+
+    await setSearch(gridEl, "acme");
+    const api = host.api!;
+    expect(api.getCore().getRowModel().getViewCount()).toBe(3);
+    expect([...gridEl.querySelectorAll(".pte-cell.pte-find-match")].map(c => c.textContent))
+      .toEqual(["Acme Corp", "Acme Labs"]);
+    expect(gridEl.querySelector(".pte-quick-filter-find-count-text")!.textContent).toBe("0/2");
+    expect(host.findEvents.at(-1)).toMatchObject({ reason: "query", matchCount: 2 });
+
+    api.findNext();
+    await tick(5);
+    expect(host.findEvents.at(-1)).toMatchObject({ reason: "navigate", activeIndex: 1 });
+    expect(gridEl.querySelectorAll(".pte-find-match-active")).toHaveLength(1);
+  });
+
+  it("switches behavior live from the input, keeping the search text", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(QuickFilterHost, 600, (instance) => {
+      instance.quickFilter = { mode: "always", debounceMs: 0 };
+    });
+    await setSearch(gridEl, "acme");
+    expect(host.api!.getCore().getRowModel().getViewCount()).toBe(2);
+
+    host.quickFilter = { mode: "always", debounceMs: 0, behavior: "find" };
+    await syncGridInputs(fixture);
+    expect(input(gridEl).value).toBe("acme");
+    expect(host.api!.getCore().getRowModel().getViewCount()).toBe(3);
+    expect(gridEl.querySelectorAll(".pte-cell.pte-find-match")).toHaveLength(2);
   });
 });

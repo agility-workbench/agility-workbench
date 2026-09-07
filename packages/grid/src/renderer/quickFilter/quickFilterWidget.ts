@@ -1,12 +1,14 @@
 import { IGridCore } from "../../interfaces/iGridCore";
 import { getIconClassName } from "../../theme/icons";
 import {
+  QuickFilterBehavior,
   QuickFilterMatchMode,
   QuickFilterOptions,
   ResolvedQuickFilterOptions,
   resolveQuickFilterOptions,
 } from "../../interfaces/gridOptions";
-import { button, div, span } from "../element";
+import { QuickFilterFindState } from "../../interfaces/find";
+import { button, createElement, div, span } from "../element";
 import { matchesChord } from "../interaction/keyChord";
 
 // Transient state carried across a config-driven rebuild so the live search isn't lost when the
@@ -18,6 +20,14 @@ export interface QuickFilterRestoreState {
   open: boolean;
   matchMode: QuickFilterMatchMode;
   caseSensitive: boolean;
+  /** The live behavior, which the end user may have toggled away from the configured one. */
+  behavior: QuickFilterBehavior;
+  /**
+   * The behavior the OUTGOING config resolved to. Comparing it with the incoming config's tells a
+   * user toggle apart from an app-driven change: an app that reconfigures `quickFilter.behavior`
+   * means it, and wins; a reconfigure that leaves it alone must not throw away the user's choice.
+   */
+  configBehavior: QuickFilterBehavior;
 }
 
 interface QuickFilterWidgetParams {
@@ -48,6 +58,19 @@ export class QuickFilterWidget {
   private optionsBtn?: HTMLButtonElement;
   private closeBtn?: HTMLButtonElement;
   private optionsPanel?: HTMLDivElement;
+  // Find navigation: the two steppers, on the chrome beside the field. Present only when the find
+  // behavior is reachable at all (configured, or offered through the behavior toggle); hidden while
+  // filtering.
+  private findNav?: HTMLDivElement;
+  // The match counter, which sits INSIDE the field over the right end of the input (Google Sheets /
+  // Chrome's find bar). Two texts: the compact "3/27" that is painted, and a verbose one that only
+  // AT reads — see buildFindNav.
+  private findCountLabel?: HTMLSpanElement;
+  private findCountText?: HTMLSpanElement;
+  private findCountSr?: HTMLSpanElement;
+  private findPrevBtn?: HTMLButtonElement;
+  private findNextBtn?: HTMLButtonElement;
+  private behaviorSelect?: HTMLSelectElement;
   private matchModeSelect?: HTMLSelectElement;
   private caseCheckbox?: HTMLInputElement;
   private anchorSelect?: HTMLSelectElement;
@@ -64,11 +87,25 @@ export class QuickFilterWidget {
   // Layout state is also sticky per-session and, when `showLayoutOptions` is on, user-editable.
   private anchor: "left" | "right";
   private clearOnClose: boolean;
+  // Filter rows, or highlight matches? Sticky per-session like match/case when the user owns the
+  // toggle; forced by the config when they do not.
+  private behavior: QuickFilterBehavior;
+
+  // Which edge a dodge has pushed the widget to, or null while it sits where the config (or the
+  // user's popover choice) put it. Deliberately NOT folded into `anchor`: the anchor is the user's,
+  // and uncovering one find match is no reason to rewrite it — the popover's Anchor select keeps
+  // reading their choice, and closing the widget or reconfiguring it returns the widget home.
+  private dodgedAnchor: "left" | "right" | null = null;
+  // A dodge asked for while the pointer was over the widget, held until it leaves. Clicking
+  // next/previous repeatedly must not teleport the button out from under the cursor.
+  private dodgePending = false;
+  private pointerInside = false;
 
   private debounceTimer: number | null = null;
   private open = false;
   private optionsExpanded = false;
   private unsubscribeCore: (() => void) | null = null;
+  private unsubscribePivot: (() => void) | null = null;
 
   constructor(private params: QuickFilterWidgetParams) {
     this.opts = resolveQuickFilterOptions(params.options);
@@ -76,6 +113,12 @@ export class QuickFilterWidget {
     // live state (via `restore`); on first build they seed from the resolved config.
     this.matchMode = params.restore?.matchMode ?? this.opts.matchMode;
     this.caseSensitive = params.restore?.caseSensitive ?? this.opts.caseSensitive;
+    // Behavior is sticky the same way, with one exception: a reconfigure that CHANGED
+    // `quickFilter.behavior` is the app saying which one it wants, and overrides the user's choice.
+    const restore = params.restore;
+    this.behavior = restore == null || restore.configBehavior !== this.opts.behavior
+      ? this.opts.behavior
+      : restore.behavior;
     // Anchor/clearOnClose always take the *new* config on a rebuild (the reconfigure is what changed
     // them), so they are seeded from `opts`, not from `restore`.
     this.anchor = this.opts.position.anchor;
@@ -98,6 +141,7 @@ export class QuickFilterWidget {
     this.input = document.createElement("input");
     this.input.type = "text";
     this.input.className = "pte-quick-filter-input";
+    // Wording follows the behavior (see syncBehaviorUI); seeded here for the filtering default.
     this.input.placeholder = "Search…";
     this.input.setAttribute("aria-label", "Search all columns");
     this.input.autocomplete = "off";
@@ -112,11 +156,21 @@ export class QuickFilterWidget {
     // The search icon + input + clear button live inside a plain (white, in light theme) bordered
     // field; the surrounding row/container is tinted, so the field reads clearly as the text entry
     // and the trailing buttons read as controls sitting on the chrome.
-    const field = div("pte-quick-filter-field");
+    //
+    // A <label> rather than a <div>, so the whole field — the icon, the padding either side of the
+    // input, the gaps — focuses the input when clicked, natively and with no handler of our own.
+    // (Label activation is skipped when the click lands on interactive content, so the clear button
+    // inside still behaves as a button.) The field carries no text, so the input's `aria-label`
+    // remains its accessible name.
+    const field = createElement("label", "pte-quick-filter-field");
     field.appendChild(searchIcon);
     field.appendChild(this.input);
     field.appendChild(this.clearBtn);
     this.searchRow.appendChild(field);
+
+    // Built whenever finding is possible — configured now, or one popover toggle away — so switching
+    // behavior never has to rebuild the row.
+    if (this.opts.behavior === "find" || this.opts.showBehaviorToggle) this.buildFindNav(field);
 
     if (this.hasOptionsPopover()) {
       // The button's own background is used for the hover highlight, so the icon lives in a child
@@ -154,6 +208,8 @@ export class QuickFilterWidget {
     if (canPersist && !this.isPermanent()) this.buildIndicatorPill();
 
     this.bind();
+    // Pivot mode decides whether finding is possible at all, so the affordances have to follow it.
+    this.unsubscribePivot = this.params.core.on("pivotChanged", () => this.syncBehaviorUI());
     this.unsubscribeCore = this.params.core.on("modelUpdated", event => {
       if (event.reason !== "filter") return;
       const text = this.params.core.getQuickFilterText();
@@ -170,9 +226,157 @@ export class QuickFilterWidget {
       this.updateClearVisibility();
     }
 
+    this.syncBehaviorUI();
+    this.syncFindState(this.params.core.getFindState());
+
     // Open if "always" mode (pinned), or if a rebuild is restoring a previously-open widget.
     const startOpen = this.isPermanent() || (params.restore?.open ?? false);
     this.setOpen(startOpen);
+  }
+
+  // ---------------- Find behavior ----------------
+
+  /**
+   * Whether the widget is showing its find affordances. The CORE decides, not `this.behavior`: a
+   * requested find that cannot run (pivoted, server-side) falls back to filtering, and the widget
+   * must show what is actually happening.
+   */
+  private isFinding(): boolean {
+    return this.params.core.getFindState().behavior === "find";
+  }
+
+  /**
+   * The find affordances: the counter, and the previous/next steppers.
+   *
+   * The counter goes in the FIELD, right-aligned over the end of the input, the way every find bar
+   * does it (Sheets, Chrome, VS Code) — the count belongs to the query, and the chrome beside the
+   * field stays buttons. It is positioned out of flow: in flow, its width would be added to a
+   * content-sized, right-anchored widget, so the whole box (and the caret in it) would shift left
+   * and right as the number of digits changed while typing.
+   *
+   * Two texts, because the painted one is deliberately terse. "3/27" is what a find bar shows and
+   * what fits inside the box; "Match 3 of 27" is what a screen reader should say, rather than
+   * "three slash twenty-seven". The live region wraps both, so only the verbose one is announced.
+   */
+  private buildFindNav(field: HTMLElement): void {
+    this.findCountLabel = span("pte-quick-filter-find-count");
+    // Polite, not assertive: the count changes on every keystroke, and the grid announces the
+    // navigation result itself when the user steps to a match.
+    this.findCountLabel.setAttribute("aria-live", "polite");
+    this.findCountText = span("pte-quick-filter-find-count-text");
+    this.findCountText.setAttribute("aria-hidden", "true");
+    this.findCountSr = span("pte-quick-filter-find-count-sr");
+    this.findCountLabel.appendChild(this.findCountText);
+    this.findCountLabel.appendChild(this.findCountSr);
+    // Before the clear button: reading order follows the visual order, and the counter is content
+    // where the "×" is a control.
+    field.insertBefore(this.findCountLabel, this.clearBtn);
+
+    this.findNav = div("pte-quick-filter-find-nav");
+
+    const stepper = (label: string, title: string, icon: string, dir: "previous" | "next") => {
+      const btn = button(`pte-quick-filter-btn pte-quick-filter-find-step`);
+      btn.type = "button";
+      btn.setAttribute("aria-label", label);
+      btn.title = title;
+      const iconSpan = span(`pte-quick-filter-find-step-icon ${getIconClassName(icon)}`);
+      iconSpan.setAttribute("aria-hidden", "true");
+      btn.appendChild(iconSpan);
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.navigateFind(dir);
+        // Steppers are a search gesture: keyboard ownership stays with the box so Enter carries on.
+        this.input.focus();
+      });
+      this.findNav!.appendChild(btn);
+      return btn;
+    };
+    this.findPrevBtn = stepper("Previous match", "Previous match (Shift+Enter)", "move-up", "previous");
+    this.findNextBtn = stepper("Next match", "Next match (Enter)", "move-down", "next");
+    this.searchRow.appendChild(this.findNav);
+  }
+
+  private navigateFind(direction: "previous" | "next"): void {
+    if (!this.isFinding()) return;
+    // Flush a pending debounce first, or Enter would step through the matches of the term the user
+    // has already finished editing away from.
+    this.flushPendingCommit();
+    this.params.core.dispatch({ type: "findNavigate", direction });
+  }
+
+  /**
+   * The core's find state changed. Adopt anything a programmatic `api.setQuickFilter` changed
+   * behind the widget's back — a find-only change moves no rows, so it emits no `modelUpdated` and
+   * the filtering path's own catch-up handler never sees it — then refresh the counter.
+   */
+  onFindChanged(state: QuickFilterFindState): void {
+    this.behavior = this.params.core.getQuickFilterBehavior();
+    // Not while a debounce is in flight: the box then holds newer text than the state being
+    // reported, and adopting would undo the user's last keystrokes.
+    if (this.debounceTimer == null && this.input.value !== state.text) {
+      this.input.value = state.text;
+      this.updateClearVisibility();
+      this.syncIndicator();
+    }
+    // Unconditionally, and from the CORE's state — never gated on this widget's own `behavior`
+    // field agreeing. A reconfigure builds the replacement widget from the new config and only
+    // *then* re-commits that behavior to the core (see GridRenderer._buildQuickFilterWidget), so
+    // the field already reads the new behavior while the affordances still show the old one; a
+    // field-vs-field check finds nothing to do and leaves the widget a flip behind for good.
+    this.syncBehaviorUI();
+  }
+
+  /** Reflect the core's find state in the counter and the steppers. */
+  syncFindState(state: QuickFilterFindState): void {
+    if (!this.findNav || !this.findCountText || !this.findCountSr) return;
+    const searching = this.isFinding() && this.input.value.trim() !== "";
+    // A dodge only earns its place while there is a match to uncover, so an emptied search box (or a
+    // switch back to filtering) brings the widget home.
+    if (!searching) this.resetDodge();
+    const count = state.matchCount;
+    // `activeIndex/matchCount`, one shape for every state: 0 in the numerator means "no match
+    // stepped to yet", which makes the no-match state fall out as "0/0" rather than needing prose
+    // that does not fit inside the box.
+    this.findCountText.textContent = searching ? `${state.activeIndex}/${count}` : "";
+    this.findCountSr.textContent = !searching
+      ? ""
+      : count === 0
+        ? "No matches"
+        : state.activeIndex > 0
+          ? `Match ${state.activeIndex} of ${count}`
+          : `${count} ${count === 1 ? "match" : "matches"}`;
+    const stepsDisabled = !searching || count === 0;
+    if (this.findPrevBtn) this.findPrevBtn.disabled = stepsDisabled;
+    if (this.findNextBtn) this.findNextBtn.disabled = stepsDisabled;
+  }
+
+  /**
+   * Show the find affordances (and hide the row-level match-mode control) while finding. Reads the
+   * core, not `this.behavior`, so it reports what is actually in force; idempotent, so any caller
+   * that suspects a change can just call it.
+   */
+  private syncBehaviorUI(): void {
+    const finding = this.isFinding();
+    this.wrapper.classList.toggle("pte-quick-filter-finding", finding);
+    if (this.findNav) this.findNav.hidden = !finding;
+    // The match mode itself stays put: all three shapes mean something in both behaviors. Only
+    // multiTerm's *scope* differs — the whole row while filtering, the one cell while finding,
+    // since a highlight has to land on a single cell.
+    if (this.behaviorSelect) {
+      const available = this.params.core.getFindState().available;
+      // Show what is in force, not what was asked for, and say why the choice is gone.
+      this.behaviorSelect.value = finding ? "find" : "filter";
+      this.behaviorSelect.disabled = !available;
+      this.behaviorSelect.title = available
+        ? ""
+        : "Highlighting matches is not available while the grid is pivoted";
+    }
+    this.input.placeholder = finding ? "Find…" : "Search…";
+    this.input.setAttribute(
+      "aria-label",
+      finding ? "Find in all columns" : "Search all columns",
+    );
+    this.syncFindState(this.params.core.getFindState());
   }
 
   isEnabled(): boolean {
@@ -186,12 +390,21 @@ export class QuickFilterWidget {
       open: this.open,
       matchMode: this.matchMode,
       caseSensitive: this.caseSensitive,
+      behavior: this.behavior,
+      configBehavior: this.opts.behavior,
     };
+  }
+
+  /** The behavior the widget is driving — read by the renderer to re-commit after a rebuild. */
+  getBehavior(): QuickFilterBehavior {
+    return this.behavior;
   }
 
   // The options popover is present when either the match controls or the layout controls are enabled.
   private hasOptionsPopover(): boolean {
-    return this.opts.showOptions || (!this.isToolbarPresentation() && this.opts.showLayoutOptions);
+    return this.opts.showOptions
+      || this.opts.showBehaviorToggle
+      || (!this.isToolbarPresentation() && this.opts.showLayoutOptions);
   }
 
   private isToolbarPresentation(): boolean {
@@ -260,6 +473,8 @@ export class QuickFilterWidget {
   destroy(): void {
     this.unsubscribeCore?.();
     this.unsubscribeCore = null;
+    this.unsubscribePivot?.();
+    this.unsubscribePivot = null;
     if (this.debounceTimer != null) {
       window.clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -269,6 +484,9 @@ export class QuickFilterWidget {
 
   private setOpen(open: boolean): void {
     this.open = open;
+    // Closing ends the dodge: the next search starts from the placement the app and the user chose,
+    // rather than wherever the last match happened to push the widget.
+    if (!open) this.resetDodge();
     if (open) {
       if (!this.isToolbarPresentation()) this.applyPosition();
       this.updateClearVisibility();
@@ -292,7 +510,7 @@ export class QuickFilterWidget {
     // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
     // width. Clearing to "" would fall back to the stylesheet's base `right` rule, pinning *both*
     // edges and stretching the panel across the full width.
-    if (this.anchor === "left") {
+    if (this.effectiveAnchor() === "left") {
       this.wrapper.style.left = `${offsetX}px`;
       this.wrapper.style.right = "auto";
     } else {
@@ -302,9 +520,82 @@ export class QuickFilterWidget {
     }
   }
 
+  /** The edge the widget is currently drawn against: the dodge, if one is in force, else the anchor. */
+  private effectiveAnchor(): "left" | "right" {
+    return this.dodgedAnchor ?? this.anchor;
+  }
+
+  /**
+   * The box the widget covers, in client coordinates, or null when it cannot be covering a cell at
+   * all: in the toolbar it sits outside the data region, and while closed with nothing to show
+   * (no persisted-filter pill) it has no box.
+   */
+  getOccluderRect(): DOMRect | null {
+    if (this.isToolbarPresentation()) return null;
+    if (!this.open && (this.indicatorPill == null || this.indicatorPill.hidden)) return null;
+    const rect = this.wrapper.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
+  }
+
+  /**
+   * Get out from over the active find match by flipping to the opposite horizontal edge. Called only
+   * when no scroll could clear the match (see `planOcclusionEscape`), and only in find mode,
+   * where the widget is a control surface the user keeps operating rather than chrome they dismiss.
+   *
+   * Returns whether the widget actually moved. It stays put when:
+   *  - it is in the toolbar (nothing to uncover), or
+   *  - the grid is too narrow to hold it on either side, where the other edge covers the same cells, or
+   *  - the pointer is over it — a click-through of next/previous must not have the button jump away,
+   *    so the move is deferred to `pointerleave`.
+   */
+  dodge(): boolean {
+    if (this.isToolbarPresentation() || !this.canDodge()) return false;
+    if (this.pointerInside) {
+      this.dodgePending = true;
+      return false;
+    }
+    this.applyDodge();
+    return true;
+  }
+
+  // Flipping only helps if the widget can stand clear of where it stands now, which needs room for
+  // it (plus its inset) twice over in the host it is positioned against.
+  private canDodge(): boolean {
+    const hostWidth = this.params.root.clientWidth;
+    if (hostWidth === 0) return false;
+    return hostWidth >= (this.wrapper.offsetWidth + this.opts.position.offsetX) * 2;
+  }
+
+  private applyDodge(): void {
+    this.dodgedAnchor = this.effectiveAnchor() === "right" ? "left" : "right";
+    this.dodgePending = false;
+    this.applyPosition();
+  }
+
+  // Put the widget back where the config (or the user's popover choice) wants it, re-placing it so
+  // no stale inline edge is left behind on a widget that may be hidden at the time.
+  private resetDodge(): void {
+    if (this.dodgedAnchor === null && !this.dodgePending) return;
+    this.dodgedAnchor = null;
+    this.dodgePending = false;
+    this.applyPosition();
+  }
+
   private bind(): void {
+    // Pointer tracking exists only for the deferred dodge: while the cursor is on the widget its
+    // buttons must stay put, so a dodge asked for now is applied when the pointer leaves.
+    this.wrapper.addEventListener("pointerenter", () => {
+      this.pointerInside = true;
+    });
+    this.wrapper.addEventListener("pointerleave", () => {
+      this.pointerInside = false;
+      if (this.dodgePending) this.applyDodge();
+    });
     this.input.addEventListener("input", () => {
       this.updateClearVisibility();
+      // Reflect "typing" immediately (the counter blanks while the box is empty); the real count
+      // arrives with the debounced commit's quickFilterFindChanged.
+      this.syncFindState(this.params.core.getFindState());
       this.commit(false);
     });
     // The input is a descendant of the grid root, so its keydowns bubble to the grid's root-level
@@ -324,6 +615,14 @@ export class QuickFilterWidget {
       if (e.key === "Escape") {
         e.preventDefault();
         this.hide();
+        return;
+      }
+      // Enter walks the matches, the way a browser's find bar does — and Shift+Enter walks back.
+      // While filtering there is nothing to walk (the rows already narrowed as the user typed), so
+      // Enter is swallowed rather than doing something surprising.
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (this.isFinding()) this.navigateFind(e.shiftKey ? "previous" : "next");
       }
     });
     this.clearBtn.addEventListener("click", () => {
@@ -353,6 +652,9 @@ export class QuickFilterWidget {
     this.optionsPanel = div("pte-quick-filter-options-panel");
     this.optionsPanel.hidden = true;
 
+    // Behavior row — first, because it changes what the rows below mean.
+    if (this.opts.showBehaviorToggle) this.buildBehaviorRow();
+
     // Match controls (match-mode + case sensitivity) — only when `showOptions` is on.
     if (this.opts.showOptions) {
       // Match mode row.
@@ -362,7 +664,11 @@ export class QuickFilterWidget {
       modeLabel.textContent = "Match";
       this.matchModeSelect = document.createElement("select");
       this.matchModeSelect.className = "pte-select pte-quick-filter-option-select";
-      for (const [value, text] of [["multiTerm", "All words"], ["substring", "Exact phrase"]] as const) {
+      for (const [value, text] of [
+        ["multiTerm", "All words"],
+        ["substring", "Exact phrase"],
+        ["wholeCell", "Whole cell"],
+      ] as const) {
         const o = document.createElement("option");
         o.value = value;
         o.textContent = text;
@@ -391,6 +697,7 @@ export class QuickFilterWidget {
       caseLabel.appendChild(document.createTextNode(" Match case"));
       caseRow.appendChild(caseLabel);
 
+      if (this.opts.showBehaviorToggle) this.optionsPanel.appendChild(div("pte-quick-filter-option-sep"));
       this.optionsPanel.appendChild(modeRow);
       this.optionsPanel.appendChild(caseRow);
     }
@@ -399,6 +706,35 @@ export class QuickFilterWidget {
     if (!this.isToolbarPresentation() && this.opts.showLayoutOptions) this.buildLayoutRows();
 
     this.wrapper.appendChild(this.optionsPanel);
+  }
+
+  /**
+   * The filter-or-find switch. Changing it re-commits the current text under the new behavior, so
+   * the same search immediately stops filtering and starts highlighting (or the reverse).
+   */
+  private buildBehaviorRow(): void {
+    const row = div("pte-quick-filter-option-row");
+    const label = document.createElement("label");
+    label.className = "pte-quick-filter-option-label";
+    label.textContent = "Search";
+    this.behaviorSelect = document.createElement("select");
+    this.behaviorSelect.className = "pte-select pte-quick-filter-option-select pte-quick-filter-behavior-select";
+    for (const [value, text] of [["filter", "Filter rows"], ["find", "Highlight matches"]] as const) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = text;
+      this.behaviorSelect.appendChild(o);
+    }
+    this.behaviorSelect.value = this.behavior;
+    this.behaviorSelect.addEventListener("change", () => {
+      this.behavior = this.behaviorSelect!.value as QuickFilterBehavior;
+      // Commit before syncing the UI: the affordances follow the behavior the CORE settled on.
+      this.commit(true);
+      this.syncBehaviorUI();
+    });
+    label.appendChild(this.behaviorSelect);
+    row.appendChild(label);
+    this.optionsPanel!.appendChild(row);
   }
 
   // Anchor (left/right) and keep-filter-on-close controls, appended to the options panel. Changing
@@ -426,6 +762,9 @@ export class QuickFilterWidget {
     this.anchorSelect.value = this.anchor;
     this.anchorSelect.addEventListener("change", () => {
       this.anchor = this.anchorSelect!.value as "left" | "right";
+      // An explicit choice outranks a dodge: put the widget where they asked, even if that is back
+      // over the active match. A later match with nowhere to scroll can dodge again from there.
+      this.resetDodge();
       this.applyPosition();
     });
     anchorLabel.appendChild(this.anchorSelect);
@@ -504,6 +843,12 @@ export class QuickFilterWidget {
     this.wrapper.classList.toggle("pte-quick-filter-has-indicator", active);
   }
 
+  /** Run a debounced commit now, if one is pending. */
+  private flushPendingCommit(): void {
+    if (this.debounceTimer == null) return;
+    this.commit(true);
+  }
+
   // Push the current search state into the core. `immediate` skips the debounce (used for clears and
   // option toggles, where the user expects an instant refilter).
   private commit(immediate: boolean): void {
@@ -518,6 +863,7 @@ export class QuickFilterWidget {
         text: this.input.value,
         matchMode: this.matchMode,
         caseSensitive: this.caseSensitive,
+        behavior: this.behavior,
       });
     };
     if (immediate || this.opts.debounceMs === 0) {

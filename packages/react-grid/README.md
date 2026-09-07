@@ -88,6 +88,13 @@ scrolls. `toolbar={{ responsive }}` and `paginationControls={{ responsive }}` ch
 — `"collapse"` (default) walks the ladder, `"scroll"` keeps every control at full size and scrolls,
 `false` lets the bar clip. See the core README for the ladder's order.
 
+`quickFilter` is a live prop — the global search over every visible column. It filters rows by
+default, or set `behavior: "find"` to leave every row in place and highlight matching cells instead,
+with a match counter, `Enter` / `Shift+Enter` stepping, and `showBehaviorToggle` to let the end user
+switch. Reconfiguring the object rebuilds the search box without remounting the grid or losing an
+active search, and the `onQuickFilterFindChanged` prop reports the match count and active match for
+an app-owned counter. See the core README for the match modes and what find can search.
+
 `toolbar.views` adds the saved-view picker. Supply `savedViews={{ views, activeViewId, onChange,
 onActiveViewChange }}` to keep persistence controlled by React state, local storage, or a remote
 service. The grid reports complete updated arrays and does not write to storage itself.

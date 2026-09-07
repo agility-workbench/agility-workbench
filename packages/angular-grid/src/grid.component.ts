@@ -26,6 +26,7 @@ import type {
   ColumnMenuContext,
   GridEventCellClickedParams,
   GridEventFilterChangedParams,
+  GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
   GridEventSelectionChangedParams,
@@ -238,6 +239,7 @@ export class AwbGrid implements OnDestroy {
   readonly selectionChanged = output<GridEventSelectionChangedParams>();
   readonly sortChanged = output<SortChangedParams>();
   readonly filterChanged = output<GridEventFilterChangedParams>();
+  readonly quickFilterFindChanged = output<GridEventQuickFilterFindChangedParams>();
   readonly historyChanged = output<GridEventHistoryChangedParams>();
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -276,6 +278,8 @@ export class AwbGrid implements OnDestroy {
       options.onSelectionChanged = (ev) => this.zone.run(() => this.selectionChanged.emit(ev));
       options.onSortChanged = (ev) => this.zone.run(() => this.sortChanged.emit(ev));
       options.onFilterChanged = (ev) => this.zone.run(() => this.filterChanged.emit(ev));
+      options.onQuickFilterFindChanged = (ev) =>
+        this.zone.run(() => this.quickFilterFindChanged.emit(ev));
       options.onHistoryChanged = (ev) => this.zone.run(() => this.historyChanged.emit(ev));
       // Value-returning hook, read through the signal so it stays reactive to input changes.
       // zone.run propagates the return value, so veto/transform results reach the grid.

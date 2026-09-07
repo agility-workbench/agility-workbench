@@ -128,6 +128,7 @@ export type {
   QuickFilterOptions,
   QuickFilterPositionOptions,
   QuickFilterMatchMode,
+  QuickFilterBehavior,
   ColumnPanelOptions,
   ColumnPanelTrigger,
   GridToolbarOptions,
@@ -157,6 +158,7 @@ export type {
   SheetsOptions,
   SheetTabColor,
 } from "./interfaces/gridView";
+export type { QuickFilterFindMatch, QuickFilterFindState } from "./interfaces/find";
 export type {
   PivotDiscovery,
   PivotPathNode,
@@ -216,6 +218,7 @@ export type {
   GridEventCellClickedParams,
   GridEventCellValueChangedParams,
   GridEventFilterChangedParams,
+  GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   HistoryChangeReason,
   GridEventRowClickedParams,

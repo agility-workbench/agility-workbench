@@ -61,6 +61,12 @@ export class ExampleComponent {
 The grid fills its host element — give `<awb-grid>` (or a wrapper) a height. The component is
 also available via template reference: `<awb-grid #grid="awbGrid" />` → `grid.api`.
 
+`[quickFilter]` is a live input — the global search over every visible column. It filters rows by
+default, or `behavior: "find"` leaves every row in place and highlights matching cells instead, with
+a match counter, `Enter` / `Shift+Enter` stepping, and `showBehaviorToggle` to let the end user
+switch; the `(quickFilterFindChanged)` output reports the match count and the active match. See the
+core README for the match modes and what find can search.
+
 Grid options are signal inputs, including pivot mode and sheets: `[pivotMode]` /
 `[pivotColumns]` are live (synced through the imperative API, so values assigned in `gridReady`
 are not overwritten), `[pivotColumnMoveMode]` is live, `[pivotResultColumnDef]` /

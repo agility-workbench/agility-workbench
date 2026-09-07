@@ -191,6 +191,93 @@ on a mounted grid (pass `null` to remove it); the change applies to the next men
 
 </details>
 
+## Quick filter
+
+One search box over every visible column, client-side. `quickFilter: true` takes the defaults; an
+object configures the matching and the box itself:
+
+```ts
+const core = new GridCore(new CanvasMeasurer(), {
+  quickFilter: {
+    mode: "onDemand",         // Ctrl/Cmd+F opens the box; "always" pins it open
+    matchMode: "multiTerm",   // "substring" | "wholeCell"
+    caseSensitive: false,
+    debounceMs: 150,
+    showOptions: true,        // the match-mode / match-case popover
+    showLayoutOptions: false, // ...plus Anchor and "Keep filter when closed"
+    clearOnClose: true,       // false leaves a dismissed search running behind a re-openable pill
+    position: { anchor: "right", offsetX: 8, offsetTop: 6 },
+  },
+});
+
+api.setQuickFilter("emea on track");
+api.setQuickFilter("42", { matchMode: "wholeCell" });
+api.getQuickFilterText();
+```
+
+Every comparison is against a cell's **formatted** text, so the user searches what they see —
+`$1,200.00` included. `multiTerm` (the default) needs every whitespace-separated word, `substring`
+needs the input as one contiguous run inside a cell, and `wholeCell` needs a cell's entire text:
+the exact lookup a global search otherwise lacks — "the row whose id is exactly 42", without
+knowing which column holds it. Options the widget exposes are sticky for the session, not written
+back to grid options.
+
+Without a toolbar the box floats inside the grid, in the strip below the header and against its
+right edge; `position` moves it, and `toolbar: { quickFilter: true }` hands it to the
+[toolbar](#toolbar) instead, where the bar owns the layout and `position` / `clearOnClose` /
+`showLayoutOptions` no longer apply. Quick filtering is client-side: server-side applications
+receive structured column filters in each data-source request.
+
+### Find instead of filter
+
+`behavior: "find"` turns the same box into Excel's Find. Nothing is filtered — every row stays
+where it is and each cell whose own text matches is highlighted, with the match count inside the
+box (`3/27`, the active match over the total) and previous/next steppers beside it.
+
+```ts
+quickFilter: {
+  behavior: "find",         // "filter" (default) | "find"
+  showBehaviorToggle: true, // let the end user switch; omit to force `behavior`
+}
+```
+
+```ts
+api.setQuickFilter("smith", { behavior: "find" });
+api.findNext();       // → { rowId, colId, colInstanceId } | null
+api.findPrevious();
+api.getFindState();   // { behavior, available, text, matchCount, activeIndex, activeMatch }
+```
+
+Both behaviors share the text, `matchMode` and `caseSensitive`, so switching re-runs the same
+search the other way. A match is scoped to **one cell**, since a highlight has to land on one, which
+is the only place `multiTerm` reads differently: filtering lets its words fall in different cells of
+a row, finding needs them all in the cell it highlights, so `john smith` finds `Smith, John`.
+Matches are counted over the whole client-side view — every page, and rows inside collapsed groups
+— and they count *cells*, so a term in three columns of one row is three separately reachable
+matches.
+
+`Ctrl/Cmd+F` opens the box, `Enter` and `Shift+Enter` step forward and back (wrapping at both
+ends), and `Escape` dismisses it. Focus stays in the box throughout, so the cell cursor and the
+selection are left alone — stepping matches is a search gesture, not a navigation one.
+
+Stepping to a match reveals it: expanding its ancestor groups, paging to it, scrolling it into
+view, and — because the floating box is a control surface the user keeps operating while reading
+the cells under it — moving that box out of the way when nothing else can. The grid scrolls the
+match clear where it can; where no scroll can (the first row, the last column, a pinned column, a
+row docked in a frozen band) the box flips to the grid's other edge for as long as the search
+lasts, without rewriting `position.anchor`.
+
+Finding needs data-row cells to highlight, so it is unavailable on the server-side row model and
+while the pivot layout is displayed (there, every displayed row is a group row). In both cases
+`getFindState().available` is false and the search falls back to filtering rather than going inert.
+Group rows, the auto-group and tree columns, utility columns and hidden columns are never searched.
+
+Subscribe to `quickFilterFindChanged` for an app-owned counter; a finding quick filter deliberately
+does **not** fire `filterChanged`, because no rows moved. `--pte-find-match-bg-color`,
+`--pte-find-match-active-bg-color` and `--pte-find-match-active-border-color` tint the highlights,
+or set all three from one color with the [`findMatchColor`](#semantic-params--escape-hatch) theme
+parameter.
+
 ## Toolbar
 
 Toolbar sections are individually opt-in. There is no separate visibility flag: the toolbar appears
@@ -209,9 +296,10 @@ const core = new GridCore(new CanvasMeasurer(), {
 });
 ```
 
-All six sections default to `false`. `toolbar.quickFilter` hosts the existing quick-filter UI in
-the toolbar; the separate `quickFilter` option still configures matching, case sensitivity, and
-debouncing, while floating-only placement and close behavior do not apply there. If `quickFilter`
+All six sections default to `false`. `toolbar.quickFilter` hosts the [quick
+filter](#quick-filter) in the toolbar; the separate `quickFilter` option still configures matching,
+case sensitivity, and debouncing, while floating-only placement and close behavior do not apply
+there. If `quickFilter`
 is omitted, enabling the toolbar section uses its defaults. The React binding applies section
 changes live without remounting the grid. A column panel configured with `trigger: "toolbar"` also
 keeps the toolbar visible for its Columns button, independently of these section flags.
@@ -621,6 +709,11 @@ The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow`
 `PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
 characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
 `Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
+
+Whole-grid chords are last in that resolution order: `Ctrl/Cmd+F` opens the [quick
+filter](#quick-filter), where `Enter` / `Shift+Enter` step find matches and `Escape` dismisses the
+box — the search owns its own keyboard while focus is inside it, so typing there never reaches a
+cell editor.
 
 Two options decide how much of this keyboard surface exists. `cellSelection` governs the body
 cursor: with `false` (inert cells) or `"text"` (native text selection), the body scope goes dark as

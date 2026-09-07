@@ -3,6 +3,94 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.2.0 — 2026-09-07
+
+### Quick-filter find (client-side row model)
+
+- **`quickFilter.behavior: "find"`** turns the quick filter into Excel's Find: no rows
+  are filtered, and every cell whose own text contains the search string is highlighted
+  in place. The widget gains a match counter and previous/next steppers, with `Enter` /
+  `Shift+Enter` walking the matches (wrapping at both ends) while focus stays in the
+  search box — the cell cursor and the selection are left alone. `showBehaviorToggle`
+  offers the choice to the end user in the options popover, where it is sticky for the
+  session; `behavior` alone forces one of the two.
+- Matching is scoped to one cell and compared against its *formatted* display value,
+  honouring `caseSensitive` and `matchMode`. Matches are counted over the whole
+  client-side view — all pages, and rows inside collapsed groups — and `findNext()`
+  reveals its match by expanding ancestors and paging to it.
+
+### Quick-filter find: the widget no longer hides its own matches
+
+- **Stepping to a match now moves it out from under the floating widget.** In find mode the
+  widget is a control surface the user keeps operating (next/previous, the counter) while
+  reading the cells, so a match underneath it was unreachable — unlike a filter, it cannot be
+  dismissed to look. The reveal scrolls the match clear where it can, and where no scroll can —
+  the first row (already at `scrollTop: 0`), the last column (already at maximum `scrollLeft`),
+  a pinned column, or a row docked in a frozen band — the widget flips to the opposite edge for
+  as long as the search lasts.
+- The flip never rewrites `position.anchor` or the end user's Anchor pick: closing the search,
+  emptying the box, or choosing an anchor brings the widget home. It is also held back while the
+  pointer is over the widget, so clicking next/previous repeatedly cannot move the button out
+  from under the cursor, and it is skipped entirely for a widget hosted in the toolbar, which
+  sits outside the data region.
+
+### Quick-filter whole-cell matching
+
+- **New `matchMode: "wholeCell"`** — a cell matches only when its entire text equals the
+  search string, so `42` matches neither `142` nor `4.2`. Available in both behaviors: as
+  a filter it is the exact lookup a global search otherwise lacks ("the row whose id is
+  exactly 42", whichever column holds it), and as a find it highlights only exact cells.
+  Both sides are trimmed. It compares the *formatted* value, so a column rendered
+  `$1,200.00` must be typed that way — and it cannot express "empty cells", which stays a
+  column filter's `isBlank`.
+- `matchMode` now applies while finding too, and the widget keeps its Match control in
+  both behaviors. `multiTerm` is the only value whose scope differs: filtering lets its
+  words land in different cells of a row, finding requires them all in the one cell it
+  highlights (so `john smith` finds `Smith, John`).
+- Editing `matchMode` or `caseSensitive` while finding no longer re-derives the view,
+  clamps the page, clears the selection or fires `filterChanged` — with nothing being
+  filtered, the match settings cannot move a row, so they are a search edit.
+- `performQuickFilter` now evaluates per cell instead of building one tab-joined string per
+  row (equivalent for the existing modes, since whitespace-split terms can never contain
+  the tab separator) and bails out of a row on its first hit.
+- **Type change**: `QuickFilterMatchMode` gains a third member, which breaks an exhaustive
+  `switch` over it.
+- **New API**: `getFindState()`, `findNext()`, `findPrevious()`,
+  `getQuickFilterBehavior()`, and a `behavior` option on `setQuickFilter`. New event
+  `quickFilterFindChanged` (option callback `onQuickFilterFindChanged`, wrapper output
+  `quickFilterFindChanged`) reports `{ behavior, available, text, matchCount,
+  activeIndex, activeMatch, reason }`. A finding quick filter deliberately does not fire
+  `filterChanged` — no rows moved.
+- Group rows, the auto-group/tree columns and the utility columns are not find targets
+  (their cells are labels, aggregates or controls, not column values). Finding is
+  unavailable on the server-side row model and while the pivot layout is displayed;
+  `getFindState().available` reports that, and the search falls back to filtering rather
+  than going inert.
+- New theme variables: `--pte-find-match-bg-color`,
+  `--pte-find-match-active-bg-color`, `--pte-find-match-active-border-color`, plus a
+  `findMatchColor` theme parameter that derives all three from one color (the match tint at
+  35% alpha, the active match at 65%, its outline as given). It reads the color's channels,
+  so it takes hex or `rgb()`/`rgba()`; any other form is ignored with a console warning
+  instead of a guess, leaving the defaults in place.
+
+### Quick-filter chrome
+
+- The search box is now one box. Its border, focus ring and text cursor belong to the
+  field that holds the icon, the input and the clear button, not to the input in the
+  middle of it: keyboard focus drew a second, smaller rectangle inside the field's border
+  (the generic control focus ring, applied to the input), and only the input's own strip
+  answered a click. The field is a `<label>`, so clicking the icon or the padding puts the
+  caret in the input.
+- The find match counter moved inside that box, right-aligned over the end of the input
+  the way a find bar does it (Sheets, Chrome), leaving the chrome beside the field to the
+  steppers. It is terser to fit: `3/27` for the active match over the total, `0/27` before
+  the first step, `0/0` for no matches — replacing "3 of 27" / "27 matches" / "No matches",
+  which a screen reader still hears, from a visually-hidden half of the same live region.
+  Narrow toolbar rungs shrink the room it reserves rather than dropping it.
+- The field's focus ring is drawn on a pseudo-element rather than as the field's own inset
+  shadow, so the counter's background — and the clear button's hover fill — can no longer
+  notch a 1px hole in it. An element's inset shadow paints before its descendants.
+
 ## 1.1.1 — 2026-09-05
 
 Patch release. No API changes; a CSS-only fix in the core, with the two bindings

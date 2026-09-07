@@ -139,6 +139,9 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-find-match-bg-color: rgba(250, 204, 21, 0.35);
+  --pte-find-match-active-bg-color: rgba(250, 204, 21, 0.75);
+  --pte-find-match-active-border-color: #b45309;
   --pte-tooltip-bg: #1f2937;
   --pte-tooltip-text-color: #f9fafb;
   --pte-tooltip-border-color: transparent;
@@ -211,6 +214,9 @@
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
+  --pte-find-match-bg-color: rgba(250, 204, 21, 0.28);
+  --pte-find-match-active-bg-color: rgba(250, 204, 21, 0.6);
+  --pte-find-match-active-border-color: #fbbf24;
   --pte-tooltip-bg: #0f172a;
   --pte-tooltip-text-color: #e2e8f0;
   --pte-tooltip-border-color: #334155;
@@ -1258,6 +1264,14 @@
   width: 112px;
 }
 
+/* At these widths the input has little enough to spend that the counter's reserve is worth
+   shrinking — "3/27" fits 38px. Overriding the field's variable moves the counter's box and the
+   input's padding together, so the two cannot disagree. */
+.pte-bar-qf-compact .pte-quick-filter-field,
+.pte-bar-qf-expanded .pte-quick-filter-field {
+  --pte-qf-count-width: 38px;
+}
+
 /* Summary rung: the search box becomes an icon that expands it back over the bar in place. The
    widget is never re-parented — it is the same element, the same instance, the same debounce and
    options state, shown from a different box. Moving it into a popover and back would cost its
@@ -2201,7 +2215,8 @@
 /* Screen-reader-only live regions: present in the accessibility tree, never painted. The grid
    announcer below is a *visible* toast and is deliberately not part of this rule. */
 .pte-column-panel-announcer,
-.pte-grid-sr-announcer {
+.pte-grid-sr-announcer,
+.pte-quick-filter-find-count-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -3357,8 +3372,15 @@
 }
 
 /* The text-entry field: search icon + input + clear, on a plain input background with a border,
-   so it stands out against the tinted container. */
+   so it stands out against the tinted container. This element — not the input inside it — is the
+   text box the user sees, so it owns the border, the focus indicator and the text cursor; it is a
+   <label> in the DOM, which is what makes a click on the icon or the padding land in the input. */
 .pte-quick-filter-field {
+  position: relative;
+  /* Width the in-field match counter is given, and the room the input leaves for it. Declared on
+     the field so the counter's box and the input's padding cannot drift apart, and so a narrow
+     toolbar rung can shrink both with one override. */
+  --pte-qf-count-width: 52px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3367,10 +3389,46 @@
   background: var(--pte-input-bg-color);
   border: 1px solid var(--pte-control-border-color);
   border-radius: 6px;
+  cursor: text;
 }
 
 .pte-quick-filter-field:focus-within {
   border-color: var(--pte-select-border-color);
+}
+
+/* Keyboard focus draws the chrome's inset ring on the FIELD, and only there. The ring used to come
+   from the generic `.pte-root input:focus-visible` rule, which put it around the input — a second,
+   smaller rectangle inside the field's own border, since the input is only the middle of the field.
+   Border and ring share a color so the two paint as one 2px edge rather than as two lines.
+
+   `:has` keeps it keyboard-only, like every other control in the file. Where `:has` is unsupported
+   the selector is dropped and the `:focus-within` border-color change above is still a visible
+   focus indicator, so the fallback is a weaker ring, never no ring. */
+.pte-quick-filter-field:has(.pte-quick-filter-input:focus-visible) {
+  border-color: var(--pte-focus-ring-color);
+}
+
+/* The ring itself is a pseudo-element, not the field's own `box-shadow: inset`. An element's inset
+   shadow is painted before its descendants, so every opaque box inside the field cut a 1px notch
+   out of it: the match counter's background over its 52px, and the clear button's hover fill over
+   its 22px (both are as tall as the field's content box). `::after` is a positioned descendant that
+   comes after them in paint order, so the ring lands on top of all of it.
+
+   `inset: 0` is the padding box — the same 1px inside the border box the shadow covered — and the
+   radius is the field's 6px less that 1px of border, so the curve matches. */
+.pte-quick-filter-field:has(.pte-quick-filter-input:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--pte-focus-ring-color);
+  pointer-events: none;
+}
+
+/* Two classes plus the pseudo-class, to beat `.pte-root input:focus-visible` (one class, one type)
+   above — otherwise the input keeps painting the inner ring this moved to the field. */
+.pte-quick-filter-field .pte-quick-filter-input:focus-visible {
+  box-shadow: none;
 }
 
 .pte-quick-filter-icon {
@@ -3383,6 +3441,8 @@
   mask-position: center;
   mask-image: var(--pte-icon-filter);
   background-color: var(--pte-icon-color);
+  /* Clicks belong to the field's label behavior (i.e. the input), not to the glyph. */
+  pointer-events: none;
 }
 
 .pte-quick-filter-input {
@@ -3393,6 +3453,9 @@
   font: inherit;
   width: 220px;
   padding: 2px 2px;
+  /* The field is the box; the input fills the height of it so the whole strip is the text cursor's
+     target rather than just the glyph line. */
+  align-self: stretch;
 }
 
 .pte-quick-filter-input::placeholder {
@@ -3452,6 +3515,83 @@
 
 .pte-quick-filter-options[aria-expanded="true"] {
   background: var(--pte-hover-bg-color);
+}
+
+/* Find navigation: the match counter and its two steppers, between the field and the options
+   button. Shown only while the find behavior is in force (the widget hides the whole group). */
+.pte-quick-filter-find-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* An author `display` rule beats the user agent's `[hidden] { display: none }` — author origin wins
+   over UA origin whatever the specificity — so anything laid out here needs its own hidden rule or
+   `el.hidden = true` sets the attribute and changes nothing on screen. Same reason as the options
+   panel and the indicator pill below. */
+.pte-quick-filter-find-nav[hidden] {
+  display: none;
+}
+
+/* The match counter, over the right end of the input — inside the field's border, outside the
+   input's text. Out of flow (see buildFindNav) and only painted while finding: in filter mode there
+   is no count, and the input takes the room back.
+
+   Offsets resolve against the field's PADDING box, so the right edge clears its 6px padding, the
+   clear button's 22px and the 4px flex gap between them — landing the counter exactly on the last
+   `--pte-qf-count-width` of the input's own box, which is the room the input reserves below. An
+   opaque background, in the field's own color, so a count wider than the reserve covers the tail of
+   a long query instead of colliding with it — which is what a find bar does at that width anyway. */
+.pte-quick-filter-find-count {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 32px;
+  align-items: center;
+  justify-content: flex-end;
+  width: var(--pte-qf-count-width);
+  background: var(--pte-input-bg-color);
+  color: var(--pte-muted-text-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Transparent to the pointer, so a click over the counter reaches the input underneath and places
+     a caret — the field's <label> would only focus the input, and a stray text selection of the
+     count is never what the user meant. */
+  user-select: none;
+  pointer-events: none;
+}
+
+.pte-quick-filter-finding .pte-quick-filter-find-count {
+  display: flex;
+}
+
+/* The room the counter needs — exactly its width, since the counter's box starts where the input's
+   own box ends (both clear the same 26px of clear button + gap). Conditional, or filter mode would
+   carry a dead 52px at the end of the box; constant while finding, so typing the first character
+   cannot yank the caret sideways. */
+.pte-quick-filter-finding .pte-quick-filter-input {
+  padding-right: var(--pte-qf-count-width);
+}
+
+.pte-quick-filter-find-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pte-quick-filter-find-step:disabled:hover {
+  background: transparent;
+}
+
+.pte-quick-filter-find-step-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: var(--pte-icon-color);
 }
 
 /* Options panel revealed inline below the search row when the widget is expanded. */
@@ -4257,6 +4397,27 @@
 .pte-cell-flash-fading.pte-cell-flash-neutral {
   background-color: transparent;
   transition: background-color var(--pte-cell-flash-fade-duration, 1000ms) ease-out;
+}
+
+/* Quick-filter find highlights. The whole cell is tinted (rather than the matched run inside the
+   text) so a cell drawn by an app-supplied cellRenderer highlights identically to a plain one, and
+   painting stays a class toggle on the render hot path.
+
+   `inset` box-shadow rather than a border: a border would change the cell's content box and shift
+   the text by a pixel as highlights come and go while the user types. */
+.pte-cell.pte-find-match {
+  background-color: var(--pte-find-match-bg-color);
+}
+
+.pte-cell.pte-find-match-active {
+  background-color: var(--pte-find-match-active-bg-color);
+  box-shadow: inset 0 0 0 2px var(--pte-find-match-active-border-color);
+}
+
+/* A selected cell keeps its selection tint on top: the selection is the user's current gesture,
+   the highlight is standing state. The active match still reads through its outline. */
+.pte-cell.pte-find-match.selected {
+  background-color: var(--pte-selected-bg-color);
 }
 
 .pte-cell-right-aligned {
