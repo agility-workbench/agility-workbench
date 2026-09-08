@@ -16,8 +16,11 @@ import {
   type SavedGridView,
 } from "@agility-workbench/react-grid";
 import { DemoFrame } from "./DemoFrame";
+import { KnobBar } from "./KnobBar";
 import { brandTheme } from "./gridTheme";
 import demoStyles from "./DemoFrame.module.css";
+import { knobOptions, structuralKey, type KnobOptions } from "./knobs";
+import { useKnobValues } from "./knobStore";
 import type { DemoFeature } from "./snippets";
 
 type Order = {
@@ -291,6 +294,16 @@ function serverSource(): IServerSideDataSource {
   };
 }
 
+/** Swap `$name` reference strings in knob options for the values they name. */
+function resolveRefs(options: KnobOptions, refs: Record<string, unknown>): KnobOptions {
+  return Object.fromEntries(
+    Object.entries(options).map(([key, value]) => [
+      key,
+      typeof value === "string" && value.startsWith("$") ? refs[value.slice(1)] : value,
+    ]),
+  );
+}
+
 export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature; compact?: boolean }) {
   const source = useMemo(serverSource, []);
   const apiRef = useRef<IGridAPI | null>(null);
@@ -309,13 +322,14 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
   const [sheets, setSheets] = useState<GridSheet[]>([{ id: "data", name: "Data" }]);
   const [activeSheetId, setActiveSheetId] = useState<string | null>("data");
   const [label, hint] = labels[feature];
+  const { values: knobValues } = useKnobValues(feature);
   let columnDefs: ReactColDef[] = baseColumns;
   let rowData: unknown[] | undefined = rows;
   let featureProps: Partial<GridProps> = {};
 
   switch (feature) {
     case "columns":
-      featureProps = { rowNumbers: true, columnPanel: { trigger: "toolbar" }, toolbar: { quickFilter: true } };
+      // Every option on this page is a knob (see knobs.ts).
       break;
     case "column-groups":
       columnDefs = [
@@ -326,42 +340,27 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       ];
       break;
     case "client-side-data":
-      featureProps = { pagination: true, pageSize: 10, pageSizes: [10, 20, 50], rowNumbers: true };
       break;
     case "server-side-data":
       rowData = undefined;
-      featureProps = { rowModelType: "serverSide", serverSideBlockSize: 12, serverSideDataSource: source, pagination: true, pageSize: 12 };
+      featureProps = { rowModelType: "serverSide", serverSideDataSource: source };
       break;
     case "filtering":
       columnDefs = baseColumns.map((column) => ({ ...column, filter: column.colId === "status" ? "set" : true }));
-      // The search box is floating rather than toolbar-hosted here, so the find behavior can be
-      // tried as documented: Ctrl/Cmd+F opens it, and stepping matches moves the box off the ones
-      // it covers. `showBehaviorToggle` puts filter/find in its options popover.
-      featureProps = {
-        quickFilter: {
-          mode: "always",
-          debounceMs: 0,
-          showOptions: true,
-          showBehaviorToggle: true,
-          showLayoutOptions: true,
-        },
-      };
+      // The search box is floating rather than toolbar-hosted here (the `quickFilter` knobs), so
+      // the find behavior can be tried as documented: Ctrl/Cmd+F opens it, and stepping matches
+      // moves the box off the ones it covers.
       break;
     case "sorting":
-      featureProps = { toolbar: { sorting: true }, initialSort: [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }], showSortPriority: "always" };
+      featureProps = { initialSort: [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }] };
       break;
     case "selection":
-      featureProps = { rowNumbers: true, rowSelection: true, selectAllRowsOnHeaderClick: true, rangeSelection: true, highlightActiveCell: true };
       break;
     case "editing":
       columnDefs = baseColumns.map((column) => ({ ...column, editable: ["status", "units", "revenue", "owner"].includes(column.colId ?? ""), cellEditor: column.colId === "status" ? "select" : undefined, cellEditorParams: column.colId === "status" ? { values: statuses } : undefined }));
-      featureProps = { editTrigger: "doubleClick", undoLimit: 50, highlightActiveCell: true };
       break;
     case "grouping":
       featureProps = {
-        toolbar: { grouping: true },
-        groupDefaultExpanded: 1,
-        groupRowsSticky: true,
         onGridReady: (api) => {
           api.setRowGroupColumns(["region"]);
           api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
@@ -370,9 +369,6 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       break;
     case "pivot":
       featureProps = {
-        toolbar: { pivot: true },
-        columnPanel: { trigger: "toolbar" },
-        groupDefaultExpanded: 1,
         onGridReady: (api) => {
           api.setAggregates([{ colId: "revenue", type: AggregateType.SUM }]);
           api.setRowGroupColumns(["region"]);
@@ -426,10 +422,10 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
     case "tree-data":
       rowData = treeRows;
       columnDefs = [{ key: "status", label: "Status", width: 130 }, { key: "owner", label: "Owner", width: 160 }, { key: "revenue", label: "Budget", type: ColumnType.CURRENCY, width: 150 }];
-      featureProps = { groupDefaultExpanded: 2, treeData: { mode: "parent", getParentId: (row: Order) => row.parentId, getLabel: (row: Order) => row.customer, columnDef: { label: "Workspace", width: 260 } } };
+      featureProps = { treeData: { mode: "parent", getParentId: (row: Order) => row.parentId, getLabel: (row: Order) => row.customer, columnDef: { label: "Workspace", width: 260 } } };
       break;
     case "pinned-rows":
-      featureProps = { rowNumbers: true, rowPinningMenu: true, pinnedTopRowData: pinnedTop, pinnedBottomRowData: pinnedBottom };
+      // The bands come from the knobs, which name `pinnedTop` / `pinnedBottom` by reference.
       break;
     case "rendering":
       columnDefs = [
@@ -447,7 +443,6 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         { colId: "revenue", key: "revenue", label: "Revenue", width: 140, type: ColumnType.CURRENCY },
         { colId: "owner", key: "owner", label: "Owner", width: 145 },
       ];
-      featureProps = { zebraRows: true, rowHover: true, columnHover: true };
       break;
     case "sparklines":
       rowData = trendRows;
@@ -473,7 +468,6 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         }
         return column;
       });
-      featureProps = { tooltip: { showDelay: 150, hideDelay: 75, mode: "anchored", placement: "auto" } };
       break;
     case "action-frames":
       columnDefs = [
@@ -549,12 +543,15 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       };
       break;
     case "export":
-      featureProps = { rowNumbers: true, allowExportAsCSV: true, allowExportAsExcel: true, toolbar: { export: true } };
-      break;
     case "theming":
-      featureProps = { zebraRows: true, columnHover: true, highlightActiveCell: true };
       break;
   }
+
+  // Knob-driven options win over the case's fixed ones. Knobs describe options as plain data, so
+  // the pinned-rows bands arrive as `$pinnedTop` / `$pinnedBottom` references and resolve here.
+  const knobProps = resolveRefs(knobOptions(feature, knobValues), { pinnedTop, pinnedBottom }) as Partial<GridProps>;
+  const defaultColDef = { sortable: true, resizable: true, movable: true, ...(knobProps.defaultColDef ?? {}) };
+  const gridProps: Partial<GridProps> = { ...featureProps, ...knobProps, defaultColDef };
 
   const insertAtIndexTwo = () => {
     const sequence = ++insertedRowCount.current;
@@ -575,6 +572,7 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       label={label}
       hint={hint}
       compact={compact}
+      controls={compact ? undefined : <KnobBar feature={feature} />}
       actions={feature === "client-side-data" ? (
         <button className={demoStyles.action} type="button" onClick={insertAtIndexTwo}>
           Insert at index 2
@@ -582,15 +580,16 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       ) : undefined}
     >
       <Grid
-        key={feature}
+        // Structural knobs (row numbers, block size, default expansion…) are fixed at construction,
+        // so their values are part of the key: changing one mounts a fresh grid, as an app would.
+        key={`${feature}|${structuralKey(feature, knobValues)}`}
         apiRef={apiRef}
         rowData={rowData}
         columnDefs={columnDefs}
         rowIdKey="id"
-        defaultColDef={{ sortable: true, resizable: true, movable: true }}
         theme={brandTheme}
         style={{ width: "100%", height: "100%" }}
-        {...featureProps}
+        {...gridProps}
       />
     </DemoFrame>
   );
