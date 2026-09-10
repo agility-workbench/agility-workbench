@@ -115,6 +115,7 @@ export type {
   TreeDataPathOptions,
   TreeDataParentOptions,
   TreeDataChildrenOptions,
+  TreeDataServerOptions,
   RowPinnedPosition,
   IsRowPinnedParams,
   CellSelectionMode,
@@ -268,6 +269,7 @@ export type {
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,
+  IServerSideTreeParent,
 } from "./interfaces/serverSide";
 
 export { ServerSideRowModel } from "./ssrm/serverSide";

@@ -29,7 +29,7 @@ import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "..
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
-import { IRowNode } from "../interfaces/iRowNode";
+import { IRowNode, isExpandableNode } from "../interfaces/iRowNode";
 import {
   GridEventHandler,
   GridEventMap,
@@ -72,6 +72,37 @@ function resolveAsyncTransactionWaitMs(value: number | undefined): number {
   return value != null && Number.isFinite(value) && value >= 0
     ? value
     : DEFAULT_ASYNC_TRANSACTION_WAIT_MS;
+}
+
+/**
+ * `treeData` for the configured row model, or undefined plus a warning when the two disagree.
+ *
+ * A relationship mode belongs to exactly one row model: `"server"` needs the lazy per-parent
+ * store, and the three client-side modes need the whole row set in memory to normalize into one
+ * tree. Half-honoring a mismatch (a hierarchy column over a hierarchy nothing can build) would be
+ * worse than dropping the option, so the option goes and the mismatch is stated.
+ *
+ * The kept value is a shallow copy: runtime keyboard-mode changes are written to it, and the
+ * client's own option object must never be mutated.
+ */
+function resolveTreeDataOption(options: GridOptions): GridOptions["treeData"] {
+  const treeData = options.treeData;
+  if (!treeData) return undefined;
+  const serverSide = options.rowModelType === "serverSide";
+  if (serverSide && treeData.mode !== "server") {
+    console.warn(
+      `Tree data mode "${treeData.mode}" requires the client-side row model; `
+      + `rowModelType "serverSide" needs treeData mode "server". Ignoring treeData.`,
+    );
+    return undefined;
+  }
+  if (!serverSide && treeData.mode === "server") {
+    console.warn(
+      'Tree data mode "server" requires rowModelType "serverSide". Ignoring treeData.',
+    );
+    return undefined;
+  }
+  return { ...treeData } as GridOptions["treeData"];
 }
 
 type SchemaSource = "auto" | "props" | "server";
@@ -400,11 +431,7 @@ export class GridCore implements IGridCore {
         : 200,
       pivotColumnMoveMode: options.pivotColumnMoveMode ?? "measures",
       // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
-      treeData: options.rowModelType === "serverSide"
-        ? undefined
-        : options.treeData
-          ? { ...options.treeData } as typeof options.treeData
-          : undefined,
+      treeData: resolveTreeDataOption(options),
       groupRowsSelectable: options.groupRowsSelectable ?? false,
       isRowSelectable: options.isRowSelectable,
       isRowPinned: options.isRowPinned,
@@ -1949,11 +1976,14 @@ export class GridCore implements IGridCore {
     if (!node) return;
 
     // Non-expandable groups (pivot mode's deepest level, the pivot grand-total row) ignore
-    // keyboard expand/collapse — their children are hidden leaf rows.
+    // keyboard expand/collapse — their children are hidden leaf rows. A server-side tree parent
+    // has no materialized children yet, so expandability is the node's declared answer, not its
+    // `children` array: Ctrl/Cmd+Right on one expands it and fetches the block.
     if (node.expandable === false) return;
-    if (command === "expand" || (command === "collapse" && !!node.children?.length && node.isExpanded)) {
+    const expandable = isExpandableNode(node);
+    if (command === "expand" || (command === "collapse" && expandable && node.isExpanded)) {
       const targetExpanded = command === "expand";
-      if (!node.children?.length || node.isExpanded === targetExpanded) return;
+      if (!expandable || node.isExpanded === targetExpanded) return;
       this.toggleGroupExpand(node.id, targetExpanded);
 
       // toggleGroupExpand reconciles selection because the visible row set changed. Restore focus

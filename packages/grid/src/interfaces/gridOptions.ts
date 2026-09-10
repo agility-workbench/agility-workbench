@@ -299,13 +299,35 @@ export interface TreeDataChildrenOptions<Row = any> extends TreeDataCommonOption
 }
 
 /**
- * Describes how client-side rows relate to one another. Relationship modes are deliberately
- * explicit and mutually exclusive; all three normalize to the same runtime tree.
+ * A lazily loaded hierarchy owned by the server: the data source answers "the children of this
+ * row" (`IServerSideRequest.treeParent`), so unbounded depth and ragged siblings — a parent and a
+ * leaf side by side — cost nothing up front. Requires `rowModelType: "serverSide"`; the other
+ * three modes require the client-side model.
+ *
+ * Rows stay ordinary data rows, so row ids (`getRowId`/`rowIdKey`) must be unique across the WHOLE
+ * tree rather than per parent: expansion state, the node map, and
+ * `refreshServerSideData({ rowId })` all key on them.
+ */
+export interface TreeDataServerOptions<Row = any> extends TreeDataCommonOptions<Row> {
+  mode: "server";
+  /**
+   * Whether this row owns children. True renders a chevron and requests the row's children on its
+   * first expand; false renders a leaf. Deliberately not a count: the tree column shows labels
+   * only, on both row models.
+   */
+  hasChildren: (row: Row) => boolean;
+}
+
+/**
+ * Describes how rows relate to one another. Relationship modes are deliberately explicit and
+ * mutually exclusive; the three client-side modes normalize to the same runtime tree, and
+ * `"server"` builds the same tree lazily from per-parent server responses.
  */
 export type TreeDataOptions<Row = any> =
   | TreeDataPathOptions<Row>
   | TreeDataParentOptions<Row>
-  | TreeDataChildrenOptions<Row>;
+  | TreeDataChildrenOptions<Row>
+  | TreeDataServerOptions<Row>;
 
 /** Frozen row band occupied by a row. `null` means the row is not explicitly pinned. */
 export type RowPinnedPosition = "top" | "bottom";
@@ -1373,8 +1395,11 @@ export interface GridOptions {
    */
   pivotColumnMoveMode?: "measures" | "free";
   /**
-   * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
-   * Tree data is mutually exclusive with column-value row grouping.
+   * Hierarchical data. The client-side row model takes full paths, parent-id references, or nested
+   * children; the server-side row model takes `mode: "server"`, where the data source answers one
+   * parent's children at a time. Tree data is mutually exclusive with column-value row grouping,
+   * and a relationship mode belongs to exactly one row model — the mismatched pair is dropped with
+   * a warning.
    */
   treeData?: TreeDataOptions;
   /**

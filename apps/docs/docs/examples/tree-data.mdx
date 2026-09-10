@@ -17,15 +17,21 @@ parent rows remain data-bearing, selectable, editable, sortable, and filterable.
 
 ## Relationship modes
 
-| Mode | Supply |
-| --- | --- |
-| `path` | `getPath(row)` returning the complete hierarchy path |
-| `parent` | Stable IDs plus `getParentId(row)` |
-| `children` | Root objects plus `getChildren(row)` |
+| Mode | Row model | Supply |
+| --- | --- | --- |
+| `path` | client-side | `getPath(row)` returning the complete hierarchy path |
+| `parent` | client-side | Stable IDs plus `getParentId(row)` |
+| `children` | client-side | Root objects plus `getChildren(row)` |
+| `server` | server-side | `hasChildren(row)`; the data source answers each parent's children |
 
-All modes support ancestor-preserving filtering, sibling sorting, saved
-expansion, sticky ancestors, selection, editing, and export. A generated
-hierarchy column can be configured through `treeData.columnDef`.
+The three client-side modes support ancestor-preserving filtering, sibling
+sorting, saved expansion, sticky ancestors, selection, editing, and export. A
+generated hierarchy column can be configured through `treeData.columnDef` in
+every mode.
+
+A mode belongs to exactly one row model. Pairing a client-side mode with
+`rowModelType: "serverSide"` — or `mode: "server"` with the client-side model —
+logs a warning and drops the option rather than half-applying it.
 
 ```ts
 // Paths
@@ -57,6 +63,47 @@ const childrenOptions = {
 } satisfies GridOptions;
 ```
 
+## Server-side tree data
+
+`mode: "server"` moves the hierarchy to the data source: each row declares
+whether it has children, and the children themselves are requested the first
+time a row is expanded. Depth is unbounded and siblings are ragged — a parent
+and a leaf sit side by side — because nothing is derived from column values.
+
+```ts
+const options = {
+  rowModelType: "serverSide",
+  rowIdKey: "id",
+  serverSideDataSource,
+  treeData: {
+    mode: "server",
+    hasChildren: (row) => row.kind === "folder",
+    getLabel: (row) => row.name,
+    // Naming the server's own field lets the server sort and filter the hierarchy column.
+    columnDef: { label: "Path", key: "name", width: 340 },
+  },
+} satisfies GridOptions;
+```
+
+Requests for a parent's children carry `request.treeParent` — see
+[server-side data](./server-side-data.mdx#tree-requests) for the wire contract
+and for refreshing one row's subtree with
+`refreshServerSideData({ rowId })`.
+
+Rows stay ordinary data rows: selectable, editable, copyable, and sortable, with
+the same chevrons, indentation, expansion state, sticky ancestors, and hierarchy
+keyboard mode as the client-side modes. Three consequences of the server owning
+the data are worth planning for:
+
+- **Row IDs must be unique across the whole tree**, not per parent. Expansion
+  state, the node map, and subtree refreshes all key on `getRowId`/`rowIdKey`.
+- **Filtering is the server's job**, ancestor preservation included: a matching
+  descendant is only reachable if the server still returns the parents above it.
+- **Export covers the rows the client holds.** The exporter walks materialized
+  child arrays, and a server tree keeps its descendants in per-parent blocks, so
+  a CSV/Excel export of a server tree writes the loaded top-level rows — not the
+  expanded descendants. Produce full extracts on the server.
+
 ## Keyboard navigation
 
 Tree navigation defaults to ordinary grid behavior. Hierarchy mode maps
@@ -79,5 +126,6 @@ api.setTreeDataKeyboardNavigationOptions({ enableKeyboardNavigationModeSwitch: f
 ```
 
 :::note
-Tree data is client-side and cannot be combined with value-based row grouping.
+Tree data cannot be combined with value-based row grouping or pivot mode, on
+either row model.
 :::

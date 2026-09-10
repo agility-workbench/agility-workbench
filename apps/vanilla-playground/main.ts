@@ -26,6 +26,7 @@ import { mountRowSelectionCheckboxDemo } from "./demos/row-selection-checkbox-de
 import { mountSavedViewsDemo } from "./demos/saved-views-demo";
 import { mountSelectionDemo } from "./demos/selection-demo";
 import { mountServerSideGroupingDemo } from "./demos/server-side-grouping-demo";
+import { mountServerSideTreeDataDemo } from "./demos/server-side-tree-data-demo";
 import { mountSetFilterComponentsDemo } from "./demos/set-filter-components-demo";
 import { mountSparklineDemo } from "./demos/sparkline-demo";
 import { mountSheetsDemo } from "./demos/sheets-demo";
@@ -56,6 +57,7 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "sheets", label: "Sheets", mount: mountSheetsDemo },
   { id: "c3ViewIndex", label: "C3 grouped pagination", mount: mountC3ViewIndexDemo },
   { id: "serverSideGrouping", label: "Server-side grouping", mount: mountServerSideGroupingDemo },
+  { id: "serverSideTreeData", label: "Server-side tree data", mount: mountServerSideTreeDataDemo },
   { id: "treeData", label: "Tree data", mount: mountTreeDataDemo },
   { id: "pinnedRows", label: "Pinned rows", mount: mountPinnedRowsDemo },
   { id: "stickyGroups", label: "Sticky group rows", mount: mountStickyGroupRowsDemo },

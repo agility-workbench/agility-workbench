@@ -14,6 +14,11 @@ export interface ServerSideRefreshOptions {
   /** Group path identifying the subtree to refresh (that parent's listing and every descendant
    * listing). Omitted = the whole store. Each entry is a grouped column key + raw group value. */
   groupKeys?: Array<{ key: string; value: any }>;
+  /** Server-side tree data (`treeData: { mode: "server" }`) only: row id of the parent whose
+   * subtree to refresh — its children listing and every listing below it. Omitted = the whole
+   * store. Mutually exclusive with `groupKeys` (a store is either grouped or a tree), and carries
+   * the same soft/purge semantics. */
+  rowId?: string;
   /** True drops the affected rows and counts immediately (loading state, exact reload). False
    * (default) keeps current rows rendered while visible blocks refetch and swap in place;
    * off-screen blocks are dropped and lazily reload on scroll. */

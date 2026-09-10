@@ -1,6 +1,6 @@
 import { GridCore } from "../../core/core";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
-import type { IRowNode } from "../../interfaces/iRowNode";
+import { isExpandableNode, type IRowNode } from "../../interfaces/iRowNode";
 import type { RowPinnedPosition } from "../../interfaces/gridOptions";
 import type { Column } from "../../column/column";
 import type { RendererRecord } from "../renderer";
@@ -696,11 +696,12 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   /** True for nodes that can hold a slot in the sticky stack: synthetic group rows and tree-data
-   * parents that actually own children. Server-side group nodes never materialize a `children`
-   * array (their children live in lazy blocks), so a group without one still counts. */
+   * parents that own children. Server-side parents never materialize a `children` array (their
+   * children live in lazy blocks) — a group without one still counts, and a server tree parent
+   * declares itself through `expandable: true`, which is what the shared helper reads. */
   private isStickyParent(node: IRowNode): boolean {
     if (node.isGroup) return node.children ? node.children.length > 0 : true;
-    return !!node.isTreeData && !!node.children?.length;
+    return !!node.isTreeData && isExpandableNode(node);
   }
 
   /** Sticky-parent chain for a view slot whose row may not be loaded: the model resolves the

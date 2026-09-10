@@ -188,7 +188,7 @@ hosted in the [toolbar](#narrow-bars) is laid out by the bar instead.
 | `groupSortMode` | `local \| hierarchy \| global` | Client-side group ordering |
 | `groupRowsSelectable` | `boolean` | Include generated groups in selection |
 | `groupRowsSticky` | `boolean` | Dock the active ancestor chain |
-| `treeData` | `TreeDataOptions` | Enable path, parent, or children hierarchy |
+| `treeData` | `TreeDataOptions` | Enable a row hierarchy: `path`, `parent`, or `children` on the client-side model, or `server` (per-row `hasChildren`, children fetched per parent) on the server-side one |
 | `pivotMode` | `boolean` | Start in pivot mode (client-side; exclusive with tree data). Live in both wrappers — a prop/input change toggles the mode |
 | `pivotColumns` | `string[]` | Columns to pivot on, by colId, in level order. Live in both wrappers |
 | `pivotResultColumnDef` | `Partial<ColDef>` | Overlay for every generated pivot value column |

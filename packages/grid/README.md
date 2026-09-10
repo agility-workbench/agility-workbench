@@ -574,9 +574,12 @@ than hidden underneath it.
 
 ## Tree data
 
-Client-side tree data supports three explicit relationship modes. All modes share expansion,
-sibling sorting, ancestor-preserving filtering, selection, editing, saved-view expansion, sticky
-ancestors, and export behavior. Tree data cannot be combined with column-value row grouping.
+Tree data supports four explicit relationship modes: three client-side ones, and `"server"` on the
+server-side row model. The client-side modes share expansion, sibling sorting, ancestor-preserving
+filtering, selection, editing, saved-view expansion, sticky ancestors, and export behavior. Tree
+data cannot be combined with column-value row grouping (or pivot mode) on either row model, and a
+relationship mode belongs to exactly one row model — the mismatched pair warns and drops the
+option.
 
 Use complete paths when rows arrive as a flat hierarchy. Missing prefixes become deterministic
 synthetic ancestors:
@@ -621,6 +624,34 @@ const options = {
   },
 };
 ```
+
+Use `mode: "server"` on the server-side row model when the hierarchy is too large (or too deep) to
+ship: each row says whether it has children, and a parent's children are requested the first time it
+is expanded, through `IServerSideRequest.treeParent` (the parent's row id, its root→parent row-id
+path, and its row object). Ragged siblings and unbounded depth cost nothing up front:
+
+```ts
+const options = {
+  rowModelType: "serverSide",
+  rowIdKey: "id", // must be unique across the WHOLE tree, not per parent
+  serverSideDataSource,
+  treeData: {
+    mode: "server",
+    hasChildren: row => row.kind === "folder",
+    getLabel: row => row.name,
+    // Naming the server's own label field puts hierarchy-column sorts/filters on the wire under it.
+    columnDef: { label: "Path", key: "name", width: 340 },
+  },
+};
+
+// One row's subtree — its children listing and everything below it — reloads on demand:
+await api.refreshServerSideData({ rowId: "folder-42", purge: true });
+```
+
+Server tree rows are ordinary data rows (selectable, editable, copyable) with the same chevrons,
+indentation, expansion state, sticky ancestors, and hierarchy keyboard mode. Filtering is the
+server's responsibility, ancestor preservation included, and export writes the rows the client holds
+— for a server tree, the loaded top-level rows, since descendants live in per-parent server blocks.
 
 Real rows remain data-bearing and editable even when they own children. Duplicate ids, duplicate
 paths, and relationship cycles throw descriptive errors. A missing parent-id reference is rendered

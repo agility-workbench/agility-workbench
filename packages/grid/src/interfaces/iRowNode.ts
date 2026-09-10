@@ -19,8 +19,14 @@ export interface IRowNode<Row = any> {
   isGroup: boolean;
   isExpanded: boolean;
   /**
-   * False for group nodes that can never open (pivot mode's deepest level, the synthesized pivot
-   * grand-total row): no chevron, expand actions no-op. Absent/true = normal expandable group.
+   * Explicit override of whether this node opens, for the cases the node's own shape cannot state:
+   * - `false` — never opens (pivot mode's deepest level, the synthesized pivot grand-total row):
+   *   no chevron, expand actions no-op.
+   * - `true` — opens even with no materialized `children` array (a server-side tree parent, whose
+   *   children live in lazy blocks and are requested on the first expand).
+   * - absent — derived: group rows open, data rows open iff they carry children.
+   *
+   * Read it through {@link isExpandableNode} rather than testing the field directly.
    */
   expandable?: boolean;
   children?: IRowNode<Row>[];
@@ -54,6 +60,28 @@ export function groupRowLabel(node: IRowNode, childCount = node.childCount): str
   const text = node.treeKey
     ?? (node.groupValue == null || node.groupValue === "" ? node.groupKey ?? "" : String(node.groupValue));
   return childCount != null ? `${text} (${childCount})` : text;
+}
+
+/** The fields {@link isExpandableNode} reads. ARIA stamping hands it a narrower row shape. */
+export type ExpandableNodeLike = {
+  isGroup?: boolean;
+  expandable?: boolean;
+  children?: unknown[];
+};
+
+/**
+ * Whether a row node can open — the one answer the chevron, the row's `aria-expanded`, the sticky
+ * stack, keyboard hierarchy navigation, and the server-side store all have to agree on.
+ *
+ * Three shapes say "expandable" and they cannot be collapsed into one test: a synthetic group row
+ * (server-side group nodes never materialize a `children` array — their children are lazy blocks),
+ * a node explicitly flagged `expandable: true` (a server-side tree parent, per `hasChildren`), and
+ * a data row that actually owns children (client-side tree data). `expandable: false` overrules
+ * all three.
+ */
+export function isExpandableNode(node: ExpandableNodeLike): boolean {
+  return node.expandable !== false
+    && (!!node.isGroup || node.expandable === true || (node.children?.length ?? 0) > 0);
 }
 
 export function createRowIdFactory(opts: GridOptions): (row: object) => string {

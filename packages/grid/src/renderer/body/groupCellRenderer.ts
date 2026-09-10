@@ -1,4 +1,4 @@
-import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
+import { groupRowLabel, IRowNode, isExpandableNode } from "../../interfaces/iRowNode";
 
 // Horizontal indent applied per grouping level, in pixels.
 export const INDENT_PER_LEVEL = 20;
@@ -51,10 +51,11 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
 /** Render a data-bearing tree row in the generated tree column. */
 export function renderTreeCell(cell: HTMLDivElement, row: IRowNode): void {
   cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
-  const children = row.children ?? [];
   const parts: HTMLElement[] = [];
 
-  if (children.length > 0) {
+  // Not `children.length`: a server-side tree parent declares itself expandable (`hasChildren`)
+  // long before any child block is fetched, and it must show the chevron that fetches them.
+  if (isExpandableNode(row)) {
     const toggle = document.createElement("span");
     toggle.className = "pte-group-toggle";
     toggle.setAttribute("data-group-id", row.id);

@@ -11,6 +11,8 @@
  * Cells hidden by colSpan shadowing or full-width layout are `display:none` and leave the tree.
  */
 
+import { isExpandableNode } from "../interfaces/iRowNode";
+
 /**
  * Expose `centerRowEl` as the ARIA row owning `orderedCells` (visual order). Cells without
  * an id get one derived from `idPrefix` — prefix ids with the grid instance id (`core.id`)
@@ -66,8 +68,9 @@ export function stampRowHierarchyAria(
 ): void {
   // `expandable: false` (pivot mode's deepest level, the pivot grand-total row) means the group
   // can never open — announcing a permanent "collapsed" would promise an interaction that does
-  // not exist, so such rows carry no aria-expanded. They keep their aria-level.
-  const expandable = row.expandable !== false && (!!row.isGroup || (row.children?.length ?? 0) > 0);
+  // not exist, so such rows carry no aria-expanded. They keep their aria-level. `expandable: true`
+  // is the opposite case: a server-side tree parent whose children are not materialized yet.
+  const expandable = isExpandableNode(row);
   if (expandable) rowEl.setAttribute("aria-expanded", String(!!row.isExpanded));
   else rowEl.removeAttribute("aria-expanded");
   const level = row.level ?? 0;

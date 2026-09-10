@@ -72,7 +72,7 @@ which run before the adapter.
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
 | `getColumnModel()` | Read runtime columns and sections |
-| `refreshServerSideData(options?)` | Soft-refresh or purge a server cache/subtree |
+| `refreshServerSideData(options?)` | Soft-refresh or purge the server cache, or one subtree of it — `groupKeys` for a group path, `rowId` for a server-tree row |
 | `refreshRowPresentation()` | Re-evaluate row presentation for rendered body, pinned, and sticky rows after external state changes |
 
 **Who owns the column schema.** A server-side response can carry its own `columns`, and the grid

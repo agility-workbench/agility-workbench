@@ -511,9 +511,10 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Group default-expanded depth + stable expansion across refresh | ✅ Complete | `groupDefaultExpanded` option; content-based `groupNodeId` |
 | Full-width rows (span all sections, pinned left of viewport) | ✅ Complete (CSRM) | `isFullWidthRow` + `fullWidthCellRenderer` options; `renderer/body/window.ts`; `groupRows` group rows are auto full-width |
 | Tree data (path / parent-id / nested-children relationships) | ✅ Complete (CSRM) | `csrm/treeData.ts`; normalized into the grouped-view pipeline |
+| Server-side tree data (`treeData.mode: "server"`) | ✅ Complete (SSRM) | `ssrm/serverSide.ts` tree mode — `hasChildren` per row, `IServerSideRequest.treeParent` for a parent's children; ragged siblings, unbounded depth; rows stay data rows (`isTreeData`, `expandable: true`) |
 | Server-side grouping (lazy per-parent blocks) | ✅ Complete | `ssrm/serverSide.ts` — `groupBy`/`groupKeys` on `IServerSideRequest`; one listing per expanded group path; per-group aggregates inline on group rows; `getGroupChildCount` option for the "(N)" badge |
 | Open-ended listings (`totalRows` omitted) | ✅ Complete | Phantom-slot probing extends the count; a short block pins the end; pager shows a provisional "N+" (`totalRowCountKnown` on `paginationChanged`, tooltip via `paginationUnknownTotalTooltip`) |
-| Targeted server-side refresh | ✅ Complete | `api.refreshServerSideData({ groupKeys?, purge? })` — whole store or one subtree; soft in-place swap (default) or purge |
+| Targeted server-side refresh | ✅ Complete | `api.refreshServerSideData({ groupKeys?, rowId?, purge? })` — whole store, one group subtree, or one server-tree row's subtree; soft in-place swap (default) or purge |
 
 ### 5.3 Filter Features
 
@@ -984,7 +985,8 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Tree data** — path, parent-reference, and nested-children relationship modes normalized through
   `csrm/treeData.ts`; real parent rows remain data-bearing and editable. Tree data supports runtime
   grid/hierarchy keyboard-navigation modes, an opt-in fixed mode toggle, and parent navigation
-  across pagination pages.
+  across pagination pages. A fourth mode, `"server"`, moves the same hierarchy to the server-side
+  row model: `hasChildren` per row and one lazy child listing per expanded parent.
 
 ### Genuine gaps (no implementation)
 
@@ -1004,8 +1006,12 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
 - **Server-side row model** `forEachNodeAfterFilter` and `forEachNodeAfterFilterAndSort` are
   identical: the server pre-applies both operations, so the node cache has no distinct pre-sort
   universe. With server-side **grouping** active, both iterate the visible flattened order (group
-  rows included, collapsed subtrees skipped); `forEachNode` instead iterates all loaded **leaf**
-  rows regardless of expansion.
-- **Quick filter, full-width rows, custom filter functions, and tree data are client-side (CSRM) only.** Row grouping and sticky group rows work on both models; SSRM group sorting always behaves as `groupSortMode: "local"`.
+  rows included, collapsed subtrees skipped); `forEachNode` instead iterates all loaded **data**
+  rows regardless of expansion — in server tree mode that includes the parents, which are data rows
+  that also own children.
+- **Quick filter, full-width rows, custom filter functions, and row transactions are client-side (CSRM) only.** Row grouping, tree data, and sticky ancestors work on both models — tree data's `path`/`parent`/`children` modes on CSRM and `mode: "server"` on SSRM, each rejected (with a warning) on the other model. SSRM group sorting always behaves as `groupSortMode: "local"`.
+- **Server-side tree data leaves two things to the server**: filtering (ancestor preservation
+  included) and full extracts. Export walks materialized `children`, which an SSRM tree never has,
+  so a CSV/Excel export of a server tree writes the loaded top-level rows only.
 - **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.

@@ -19,8 +19,9 @@ the data source instead of calculated over an incomplete browser cache.
 ## Request contract
 
 `getRows({ request })` receives `startRow`, `endRow`, active `filters`, ordered
-`sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates`.
-Return `{ rows, totalRows }`; root responses may also provide `columns` and a
+`sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates` —
+plus `treeParent` under [server-side tree data](#tree-requests). Return
+`{ rows, totalRows }`; root responses may also provide `columns` and a
 `schemaVersion` for server-driven schemas.
 
 ```ts
@@ -74,17 +75,58 @@ Omitting `totalRows` creates an open-ended listing. The grid probes forward
 until a short block establishes the end and displays provisional pagination
 totals with a `+` suffix.
 
+## Tree requests
+
+With [server-side tree data](./tree-data.mdx#server-side-tree-data)
+(`treeData: { mode: "server" }`) the hierarchy is the rows' own rather than a
+column-value grouping, and a request asks for one parent's children through
+`request.treeParent`:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    const parent = request.treeParent; // undefined for the root listing
+    const rows = await loadChildren({
+      parentId: parent?.id ?? null,
+      offset: request.startRow,
+      limit: (request.endRow ?? 0) - (request.startRow ?? 0),
+      sorts: request.sorts,
+      filters: request.filters,
+    });
+    return { rows, totalRows: await countChildren(parent?.id ?? null) };
+  },
+};
+```
+
+`treeParent` carries the parent's `id` (its grid row ID), `path` (the row IDs
+from the root down to and including the parent), and `data` (the parent row
+object exactly as the server returned it). `startRow`/`endRow` are relative to
+that parent's children, and `totalRows` is its immediate-children count — the
+same open-ended-listing rules apply per parent. In tree mode `groupBy`,
+`groupKeys`, and `aggregates` are always empty.
+
+A sort or filter on the generated hierarchy column arrives under that column's
+key, which is `__pte_tree__` unless `treeData.columnDef.key` names the server
+field the labels come from.
+
 ## Refresh server data
 
 ```ts
 await api.refreshServerSideData();
 await api.refreshServerSideData({ purge: true });
-await api.refreshServerSideData({ groupKeys: ["EMEA"], purge: false });
+// Grouping: one group subtree, by raw group path.
+await api.refreshServerSideData({ groupKeys: [{ key: "region", value: "EMEA" }] });
+// Server tree data: one row's subtree, by row ID.
+await api.refreshServerSideData({ rowId: "folder-42", purge: true });
 ```
 
 Use a soft refresh to keep visible rows while refetching, or `{ purge: true }`
-to discard affected blocks immediately. A `groupKeys` path limits refresh to
-one subtree.
+to discard affected blocks immediately. A `groupKeys` path or a `rowId` limits
+the refresh to one subtree — that parent's children listing and every listing
+below it; the two are mutually exclusive. Expansion state survives either way.
+The call resolves `false` when the named subtree is not one the store holds (an
+unknown group path, or a row that has never been expanded, so nothing below it
+is loaded).
 
 For server-side pagination with expensive counts, pair an open-ended listing
 with a hint:

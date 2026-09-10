@@ -261,11 +261,14 @@ export interface IGridAPI {
   /**
    * Server-side row model only: re-invoke the data source because the server's data changed —
    * distinct from a plain redraw. `groupKeys` scopes the refresh to one group subtree (that
-   * parent's listing and everything below it); omitted = the whole store. `purge: true` drops the
-   * affected rows and counts immediately (loading state); the default keeps current rows rendered
-   * while blocks in the current view refetch and swap in place, and drops off-screen blocks to
-   * reload lazily on scroll. Expansion state is kept either way. Resolves true if a refresh was
-   * issued.
+   * parent's listing and everything below it); `rowId` does the same for one row's subtree under
+   * server-side tree data (`treeData: { mode: "server" }`); omitted = the whole store. The two
+   * scopes are mutually exclusive. `purge: true` drops the affected rows and counts immediately
+   * (loading state); the default keeps current rows rendered while blocks in the current view
+   * refetch and swap in place, and drops off-screen blocks to reload lazily on scroll. Expansion
+   * state is kept either way. Resolves true if a refresh was issued — false when the named
+   * subtree is not one the store holds (an unknown group path, or a row that has never been
+   * expanded, so nothing below it is loaded).
    */
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean>;
 
