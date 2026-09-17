@@ -24,6 +24,7 @@ import { SavedViewsDemoComponent } from "./saved-views-demo.component";
 import { SelectionDemoComponent } from "./selection-demo.component";
 import { ServerSideGroupingDemoComponent } from "./server-side-grouping-demo.component";
 import { ServerSideTreeDataDemoComponent } from "./server-side-tree-data-demo.component";
+import { ServerSideTreeDuplicateIdDemoComponent } from "./server-side-tree-duplicate-id-demo.component";
 import { SparklineDemoComponent } from "./sparkline-demo.component";
 import { StickyGroupRowsDemoComponent } from "./sticky-group-rows-demo.component";
 import { ToolbarDemoComponent } from "./toolbar-demo.component";
@@ -51,6 +52,7 @@ const PAGES = [
   { id: "sheets", label: "Sheets" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
   { id: "serverSideTreeData", label: "Server-side tree data" },
+  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id bug" },
   { id: "treeData", label: "Tree data" },
   { id: "pinnedRows", label: "Pinned rows" },
   { id: "stickyGroups", label: "Sticky group rows" },
@@ -100,6 +102,7 @@ type PageId = (typeof PAGES)[number]["id"];
     SelectionDemoComponent,
     ServerSideGroupingDemoComponent,
     ServerSideTreeDataDemoComponent,
+    ServerSideTreeDuplicateIdDemoComponent,
     SparklineDemoComponent,
     StickyGroupRowsDemoComponent,
     ToolbarDemoComponent,
@@ -168,6 +171,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("serverSideTreeData") {
           <server-side-tree-data-demo />
+        }
+        @case ("serverSideTreeDuplicateId") {
+          <server-side-tree-duplicate-id-demo />
         }
         @case ("treeData") {
           <tree-data-demo />
