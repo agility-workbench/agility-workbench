@@ -11,6 +11,9 @@ import { adaptReactGetRowPresentation } from "./cellRenderer";
 type GridInstance = {
   api: IGridAPI;
   destroyed: boolean;
+  /** The server-side data source createGrid was handed (identity only), so the data-source effect
+   * can tell a changed prop from the one the grid already bootstrapped from. */
+  appliedServerSideDataSource: unknown;
 };
 
 function assignRef<T>(ref: React.ForwardedRef<T> | undefined, value: T | null): void {
@@ -102,7 +105,11 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
           },
         }),
       });
-      const instance: GridInstance = { api, destroyed: false };
+      const instance: GridInstance = {
+        api,
+        destroyed: false,
+        appliedServerSideDataSource: options.serverSideDataSource,
+      };
       instanceRef.current = instance;
 
       assignRef(forwardedRef, api);
@@ -326,6 +333,11 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       const instance = instanceRef.current;
       if (!instance || props.rowModelType !== "serverSide") return;
       if (!props.serverSideDataSource) return;
+      // createGrid already asked the server for the first block with the creation-time source;
+      // re-applying the same object would purge the store and fetch it again. Only a changed prop
+      // goes through updateGridOptions (which refetches, as a new source must).
+      if (props.serverSideDataSource === instance.appliedServerSideDataSource) return;
+      instance.appliedServerSideDataSource = props.serverSideDataSource;
       instance.api.updateGridOptions({ serverSideDataSource: props.serverSideDataSource });
 
       // eslint-disable-next-line react-hooks/exhaustive-deps

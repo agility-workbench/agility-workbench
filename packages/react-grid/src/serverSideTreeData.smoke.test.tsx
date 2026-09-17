@@ -75,6 +75,9 @@ describe("server-side tree data through the React Grid", () => {
     expect(core.getColumnModel().getHierarchyColumn()?.label).toBe("Files");
     expect(core.getRowModel().getViewCount()).toBe(2);
     // The root request carries no treeParent at all.
+    // The mount asks for the root block exactly once: createGrid bootstraps from the creation-time
+    // source, and the data-source effect must not re-apply that same object (a refetch).
+    expect(requests).toHaveLength(1);
     expect(requests[0].treeParent).toBeUndefined();
     expect(requests[0].groupBy).toEqual([]);
     // A parent shows the chevron; the sibling file shows the alignment spacer.
