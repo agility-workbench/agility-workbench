@@ -97,6 +97,13 @@ the data are worth planning for:
 
 - **Row IDs must be unique across the whole tree**, not per parent. Expansion
   state, the node map, and subtree refreshes all key on `getRowId`/`rowIdKey`.
+  A children block that breaks the rule in a way the grid can be certain of — a
+  row repeating one of its own ancestors' IDs, or one response listing an ID
+  twice — is rejected whole and reported through the `error` event (code
+  `row_model_error`) with a `ServerSideDataError` as its `details`: `reason`,
+  `rowId`, `parentId`, `path`, and the offending `row`, so a handler can tell
+  bad data from a failed request with `isServerSideDataError(ev.details)`. The
+  parent stays open over an unloaded slot until the server answers correctly.
 - **Filtering is the server's job**, ancestor preservation included: a matching
   descendant is only reachable if the server still returns the parents above it.
 - **Export covers the rows the client holds.** The exporter walks materialized

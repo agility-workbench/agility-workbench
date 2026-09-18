@@ -52,7 +52,7 @@ const PAGES = [
   { id: "sheets", label: "Sheets" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
   { id: "serverSideTreeData", label: "Server-side tree data" },
-  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id bug" },
+  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard" },
   { id: "treeData", label: "Tree data" },
   { id: "pinnedRows", label: "Pinned rows" },
   { id: "stickyGroups", label: "Sticky group rows" },

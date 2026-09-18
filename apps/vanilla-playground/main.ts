@@ -59,7 +59,7 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "c3ViewIndex", label: "C3 grouped pagination", mount: mountC3ViewIndexDemo },
   { id: "serverSideGrouping", label: "Server-side grouping", mount: mountServerSideGroupingDemo },
   { id: "serverSideTreeData", label: "Server-side tree data", mount: mountServerSideTreeDataDemo },
-  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id bug", mount: mountServerSideTreeDuplicateIdDemo },
+  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard", mount: mountServerSideTreeDuplicateIdDemo },
   { id: "treeData", label: "Tree data", mount: mountTreeDataDemo },
   { id: "pinnedRows", label: "Pinned rows", mount: mountPinnedRowsDemo },
   { id: "stickyGroups", label: "Sticky group rows", mount: mountStickyGroupRowsDemo },

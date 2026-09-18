@@ -4,6 +4,7 @@ import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { IRowNode } from "../interfaces/iRowNode";
 import { IServerSideDataSource, IServerSideRequest } from "../interfaces/serverSide";
+import { ServerSideDataError, isServerSideDataError } from "./serverSideDataError";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -444,5 +445,271 @@ describe("server-side tree data", () => {
     expect(core.getOptions().treeData).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Tree data mode "server" requires rowModelType "serverSide"'));
     warn.mockRestore();
+  });
+});
+
+// Trees that break the id contract on purpose. The source serves an arbitrary node list (honoring
+// the first sort), records every request, and the grid's `error` events are collected.
+function makeGridOver(tree: Node[], options: object = {}) {
+  const requests: IServerSideRequest[] = [];
+  const source: IServerSideDataSource = {
+    getRows: ({ request, success }) => {
+      requests.push(request);
+      const parentId = request.treeParent?.id ?? null;
+      let rows = tree.filter(n => n.parent === parentId);
+      const sort = request.sorts[0];
+      if (sort) {
+        const dir = sort.dir === "desc" ? -1 : 1;
+        rows = rows.slice().sort((a, b) => {
+          const av = (a as any)[sort.key];
+          const bv = (b as any)[sort.key];
+          return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+        });
+      }
+      const start = request.startRow ?? 0;
+      const end = request.endRow ?? rows.length;
+      success({ rows: rows.slice(start, end).map(row => ({ ...row })), totalRows: rows.length });
+    },
+  };
+  const core = new GridCore(measurer, {
+    rowIdKey: "id",
+    rowModelType: "serverSide",
+    treeData: {
+      mode: "server",
+      hasChildren: (row: any) => tree.some(n => n.parent === row.id),
+      getLabel: (row: any) => row.name,
+    },
+    ...options,
+  });
+  core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+  core.setColumnDefsFromProps([
+    { colId: "kind", key: "kind", label: "Kind", type: ColumnType.STRING },
+    { colId: "size", key: "size", label: "Size", type: ColumnType.NUMBER },
+  ]);
+  const errors: { code: string; message: string; details: unknown }[] = [];
+  core.on("error", ev => errors.push({ code: ev.code, message: ev.message, details: ev.details }));
+  core.setServerSideDataSource(source);
+  return { core, requests, errors };
+}
+
+const folder = (id: string, parent: string | null, name = id): Node => ({ id, name, kind: "folder", parent, size: 0 });
+const file = (id: string, parent: string | null, size = 1): Node => ({ id, name: `${id}.md`, kind: "file", parent, size });
+
+const RULE = "Row ids must be unique across the whole tree (getRowId / rowIdKey); the block was not loaded.";
+
+describe("server-side tree data: duplicate row ids", () => {
+  // docs/ holds a folder whose id is ALSO "docs" — the child would inherit its parent's expansion
+  // entry and the flatten walk would splice docs into docs without end.
+  const selfParent = () => [
+    folder("docs", null), file("readme", null), folder("src", null),
+    folder("docs", "docs", "archive"), file("spec", "docs"), file("index", "src"),
+  ];
+
+  it("rejects a child block whose row repeats its parent's id and reports it as an error event", async () => {
+    const { core, requests, errors } = makeGridOver(selfParent());
+    await flush();
+    expect(ids(core)).toEqual(["docs", "readme", "src"]);
+
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+
+    expect(errors).toMatchObject([{
+      code: "row_model_error",
+      message: `Server-side tree data: row "docs" in the children of "docs" repeats the id of one of its ancestors (docs). ${RULE}`,
+    }]);
+    // The same failure, machine-readable: handlers switch on `details` instead of parsing text.
+    const [refused] = errors;
+    expect(isServerSideDataError(refused.details)).toBe(true);
+    expect(refused.details).toBeInstanceOf(ServerSideDataError);
+    expect(refused.details).toMatchObject({
+      name: "ServerSideDataError",
+      reason: "row_id_repeats_ancestor",
+      rowId: "docs",
+      parentId: "docs",
+      path: ["docs"],
+      row: expect.objectContaining({ id: "docs", name: "archive", kind: "folder" }),
+    });
+    // Nothing from the bad block entered the store: docs stays open over its one unloaded slot,
+    // and the parent itself is untouched.
+    const rm = core.getRowModel();
+    expect(rm.getViewCount()).toBe(4);
+    expect(rm.getRowNodeAtViewIndex(1)).toBeUndefined();
+    expect(ids(core)).toEqual(["docs", "readme", "src"]);
+    expect(rm.getRowNode("docs")).toMatchObject({ parentId: undefined, isExpanded: true, level: 0 });
+    // The walks the corruption used to loop all answer.
+    expect(rm.getAncestorChainAtViewIndex!(1).map(n => n.id)).toEqual(["docs"]);
+    const visited: string[] = [];
+    rm.forEachNode(node => visited.push(node.id));
+    expect(visited).toEqual(["docs", "readme", "src"]);
+    // No retry storm: the failed block is asked for again only by a later action.
+    const settled = requests.length;
+    await flush();
+    expect(requests.length).toBe(settled);
+  });
+
+  it("stays usable after a rejected block: collapse, re-expand, sort, and refresh elsewhere", async () => {
+    const { core, errors } = makeGridOver(selfParent());
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    expect(errors).toHaveLength(1);
+
+    // Collapse: a synchronous re-flatten, which used to be the uncaught RangeError.
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    expect(ids(core)).toEqual(["docs", "readme", "src"]);
+    expect(core.getRowModel().getViewCount()).toBe(3);
+
+    // Re-expand: the server is asked again and answers the same way, so one more error.
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    expect(errors).toHaveLength(2);
+
+    // Sort: purges and reloads root and the expanded docs listing — the root loads sorted, the bad
+    // docs block is rejected once more.
+    const sizeCol = core.getColumnModel().getByColId("size")!;
+    core.setSortModel([{ key: sizeCol.instanceID, dir: "desc" }]);
+    await flush();
+    expect(ids(core)).toEqual(["readme", "docs", "src"]);
+    expect(errors).toHaveLength(3);
+
+    // A healthy subtree next to the bad one expands and refreshes normally. Each of those fills
+    // the view again, which asks for the still-missing docs block again and gets the same answer:
+    // a failed block is retried on the next fill (as after a network error), one error per try.
+    core.dispatch({ type: "groupToggleExpand", groupId: "src" });
+    await flush();
+    expect(ids(core)).toEqual(["readme", "docs", "src", "index"]);
+    await expect(core.refreshServerSideData({ rowId: "src", purge: true })).resolves.toBe(true);
+    await flush();
+    expect(ids(core)).toEqual(["readme", "docs", "src", "index"]);
+    expect(errors.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(errors.map(e => e.message)).size).toBe(1);
+  });
+
+  it("names the whole ancestor chain when a deeper row repeats a grandparent's id", async () => {
+    const { core, errors } = makeGridOver([
+      folder("docs", null), folder("images", "docs"), file("docs", "images"),
+    ]);
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "images" });
+    await flush();
+
+    expect(errors.map(e => e.message)).toEqual([
+      `Server-side tree data: row "docs" in the children of "images" repeats the id of one of its ancestors (docs › images). ${RULE}`,
+    ]);
+    expect(errors[0].details).toMatchObject({
+      reason: "row_id_repeats_ancestor",
+      rowId: "docs",
+      parentId: "images",
+      path: ["docs", "images"],
+    });
+    expect(ids(core)).toEqual(["docs", "images"]);
+  });
+
+  it("rejects a block that lists one id twice", async () => {
+    const { core, errors } = makeGridOver([folder("docs", null), file("readme", null), file("readme", null, 2)]);
+    await flush();
+
+    expect(errors.map(e => e.message)).toEqual([
+      `Server-side tree data: two rows with id "readme" arrived in one block of the root listing. ${RULE}`,
+    ]);
+    // The second occurrence is the offender, and a root-level block has no parent and an empty path.
+    expect(errors[0].details).toMatchObject({
+      reason: "row_id_repeats_sibling",
+      rowId: "readme",
+      parentId: undefined,
+      path: [],
+      row: expect.objectContaining({ id: "readme", size: 2 }),
+    });
+    expect(ids(core)).toEqual([]);
+  });
+
+  it("keeps the empty-id check for tree rows", async () => {
+    const { errors } = makeGridOver([folder("docs", null), file("", null)]);
+    await flush();
+    expect(errors.map(e => e.message)).toEqual([
+      "Server-side tree data rows need a non-empty row id (getRowId / rowIdKey).",
+    ]);
+    expect(errors[0].details).toMatchObject({ reason: "empty_row_id", rowId: "", parentId: undefined, path: [] });
+  });
+
+  it("isServerSideDataError tells a refused block apart from any other failure", () => {
+    const refused = new ServerSideDataError({
+      reason: "row_id_repeats_sibling", rowId: "x", parentId: undefined, path: [], row: null,
+    });
+    expect(isServerSideDataError(refused)).toBe(true);
+    expect(refused.message).toBe(`Server-side tree data: two rows with id "x" arrived in one block of the root listing. ${RULE}`);
+    // Matched by name too, so a second copy of the grid bundle cannot hide one.
+    expect(isServerSideDataError({ name: "ServerSideDataError" })).toBe(true);
+    // Whatever a data source hands to `error()` — or a plain thrown Error — is not one.
+    expect(isServerSideDataError(new Error("network down"))).toBe(false);
+    expect(isServerSideDataError("Maximum call stack size exceeded")).toBe(false);
+    expect(isServerSideDataError(undefined)).toBe(false);
+    expect(isServerSideDataError(null)).toBe(false);
+  });
+
+  it("accepts the same id under a new parent while a moved row's old slot is still loaded", async () => {
+    // spec.md moves from docs/ to src/ on the server between two answers; a soft refresh sees it
+    // under src before docs' block has confirmed it is gone. That is not a duplicate.
+    const tree = [folder("docs", null), folder("src", null), file("spec", "docs"), file("index", "src")];
+    const { core, errors } = makeGridOver(tree);
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "src" });
+    await flush();
+    expect(ids(core)).toEqual(["docs", "spec", "src", "index"]);
+
+    tree.find(n => n.id === "spec")!.parent = "src";
+    await expect(core.refreshServerSideData({ purge: false })).resolves.toBe(true);
+    await flush();
+
+    expect(errors).toEqual([]);
+    expect(ids(core)).toEqual(["docs", "src", "spec", "index"]);
+    // The node map follows the row to its new parent rather than losing it when the old slot goes.
+    expect(core.getRowModel().getRowNode("spec")).toMatchObject({ parentId: "src", level: 1 });
+  });
+
+  it("never loops when duplicate ids make a listing reachable from its own descendant", async () => {
+    // B exists under A and under E, and B's own children include an A. Each block passes the
+    // ancestor check when it arrives (no row is its own ancestor by the node map at that moment),
+    // yet once every parent is expanded the listings A → B → A refer to each other.
+    const { core, errors } = makeGridOver([
+      folder("A", null), folder("B", null), folder("E", null),
+      folder("B", "A", "B under A"), folder("B", "E", "B under E"), folder("A", "B", "A under B"),
+    ]);
+    await flush();
+    for (const id of ["A", "E", "B"]) {
+      core.dispatch({ type: "groupToggleExpand", groupId: id });
+      await flush();
+    }
+    // Re-ingesting every loaded block with all three expanded closes the cycle: listing A holds an
+    // expanded B and listing B an expanded A.
+    await expect(core.refreshServerSideData({ purge: false })).resolves.toBe(true);
+    await flush();
+
+    // No block was refused (none could be, with certainty), and the flatten walk neither looped
+    // nor overflowed into an error event. Each shared listing is spliced under each of its parents
+    // once; the row that would re-enter its own ancestor's listing is shown as a plain row.
+    // forEachNode mirrors that, visiting a shared listing's rows once per parent.
+    expect(errors).toEqual([]);
+    expect(ids(core)).toEqual(["A", "B", "A", "B", "A", "B", "E", "B", "A", "B"]);
+    const rm = core.getRowModel();
+    let visited = 0;
+    rm.forEachNode(() => visited++);
+    expect(visited).toBe(10);
+    for (let i = 0; i < rm.getViewCount(); i++) {
+      expect(Array.isArray(rm.getAncestorChainAtViewIndex!(i))).toBe(true);
+    }
+    // Dropping the entangled subtrees terminates too. (What the view shows afterwards is not
+    // pinned down: an id that names several rows can only ever address one of them.)
+    await expect(core.refreshServerSideData({ rowId: "A", purge: true })).resolves.toBe(true);
+    await flush();
+    expect(rm.getViewCount()).toBeLessThan(40);
+    visited = 0;
+    rm.forEachNode(() => visited++);
+    expect(visited).toBeLessThan(40);
   });
 });

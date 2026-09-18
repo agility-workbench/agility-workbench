@@ -2,6 +2,7 @@ import { Component, HostListener, OnDestroy, computed, signal } from "@angular/c
 import {
   AwbGrid,
   ColumnType,
+  isServerSideDataError,
   type GridOptions,
   type IGridAPI,
   type IServerSideDataSource,
@@ -10,24 +11,27 @@ import {
 } from "@agility-workbench/angular-grid";
 
 /**
- * BUG REPRO — server-side tree data with a row id that repeats an ancestor's id.
+ * Server-side tree data with a row id that repeats an ancestor's id — the store's guard in action.
  *
- * The contract says row ids must be unique across the whole tree. This page shows what happens
- * when a server breaks that rule: folder "alpha" has a child folder whose id is ALSO "alpha".
+ * The contract says row ids must be unique across the whole tree. This page shows what the grid
+ * does when a server breaks that rule: folder "alpha" has a child folder whose id is ALSO "alpha".
  *
- * Expanding alpha fetches its child block. The store registers the child under the id its parent
- * already owns, the child inherits the parent's "expanded" state (same id, same expansion entry),
- * and the flatten walk (`rebuildFlat`) re-enters the same child listing until the stack overflows.
- * The core surfaces that only as an `error` event. Observed consequences, in order:
+ * Expanding alpha fetches its child block. The store checks every id in the block before any row
+ * enters it; "alpha" repeats its own parent's id, so the block is rejected whole and reported as an
+ * `error` event (code `row_model_error`) naming the row, its parent, and the ancestor chain. What
+ * to look for:
  *
- *   1. The paint goes stale: alpha shows open with a permanently blank slot under it, the row
- *      count freezes, and the model's visible walk reports thousands of copies of "alpha".
- *   2. Every later expand/collapse click re-enters the recursion synchronously — an UNCAUGHT
- *      RangeError out of the grid's mousedown handler, and the click does nothing.
- *   3. A sort or filter purges and re-fetches, hits the overflow again, and leaves blank rows.
- *   4. The duplicate node's `parentId` points at itself, so every `parentId` walk cycles: sticky
- *      ancestors (on scroll) and `refreshServerSideData({ rowId })` on another subtree hang the tab.
- *      Both are behind explicit opt-ins below.
+ *   1. One error event with that message and NO uncaught errors — the panel's second list stays
+ *      empty whatever you click.
+ *   2. alpha stays open over one blank slot (the unloaded block) and everything else keeps working:
+ *      collapse/expand alpha, sort a column, sticky ancestors while scrolling, refresh beta's subtree.
+ *   3. Every later fill that covers the blank slot asks the server again and gets the same answer,
+ *      so the error count grows by one per attempt — and stays put while the grid is idle.
+ *
+ * Before the guard, the block entered the store, the child inherited its parent's expansion entry,
+ * and the flatten walk re-entered the same listing until the stack overflowed: a stale paint,
+ * thousands of "alpha" copies in the model's walk, an uncaught RangeError on every chevron click,
+ * and a hung tab from sticky ancestors or a subtree refresh.
  *
  * Turn "Child repeats parent id" off to see the same tree behave normally. Mirrors the React page
  * (apps/react-playground/ServerSideTreeDuplicateIdDemo.tsx).
@@ -88,6 +92,17 @@ function serveTree(rows: FsRow[], request: IServerSideRequest) {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// One entry per error: the structured `details` first (what a handler would switch on), then the
+// human message. Whatever a data source's own error() rejection carries shows as just the message.
+function describeError(ev: { code: string; message: string; details?: unknown }): string {
+  const head = isServerSideDataError(ev.details)
+    ? `details: ServerSideDataError reason=${ev.details.reason} rowId="${ev.details.rowId}" `
+      + `parentId=${ev.details.parentId === undefined ? "(root)" : `"${ev.details.parentId}"`} `
+      + `path=[${ev.details.path.join(" › ")}]\n`
+    : "";
+  return `${head}${ev.code}: ${ev.message}`;
+}
+
 type StoreWalk = { count: number; ids: string[] };
 
 @Component({
@@ -96,15 +111,15 @@ type StoreWalk = { count: number; ids: string[] };
   imports: [AwbGrid],
   template: `
     <div style="font-size: 12px; line-height: 1.5; max-width: 1100px">
-      <strong>Bug repro:</strong> folder <code>alpha</code> has a child folder whose row id is
-      also <code>alpha</code>. Press <em>Run repro</em> (or expand <code>beta</code>, then
-      <code>alpha</code>, by hand). The child fetch succeeds, then the store's flatten walk
-      re-enters the same listing until the stack overflows — the grid reports it only as an
-      <code>error</code> event. Then: alpha stays open over a blank slot while the row count
-      freezes and the model's walk (right panel) returns thousands of copies of
-      <code>alpha</code>; <strong>click any chevron</strong> → an uncaught RangeError and no
-      change; <strong>sort a column</strong> → a re-fetch that overflows again and leaves blank
-      rows. Turn the checkbox off to see the same tree behave normally.
+      <strong>Duplicate id guard:</strong> folder <code>alpha</code> has a child folder whose row id
+      is also <code>alpha</code>. Press <em>Run repro</em> (or expand <code>beta</code>, then
+      <code>alpha</code>, by hand). The grid checks every id in the child block before any row
+      enters the store, rejects the block whole, and reports one <code>error</code> event naming
+      the row, its parent, and the ancestor chain. alpha stays open over one blank slot and nothing
+      else is affected: <strong>click any chevron</strong>, <strong>sort a column</strong>, turn on
+      sticky ancestors and scroll, or refresh <code>beta</code> — no uncaught errors, no hang. Each
+      later fill that covers the blank slot asks the server again, so the error count grows by one
+      per attempt. Turn the checkbox off to see the same tree behave normally.
     </div>
 
     <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap">
@@ -122,23 +137,15 @@ type StoreWalk = { count: number; ids: string[] };
       <label style="font-size: 12px; display: flex; align-items: center; gap: 4px">
         <input type="checkbox" [checked]="sticky()" (change)="onStickyChange($event)" />
         Sticky ancestors
-        <span style="color: #b45309">⚠ once corrupted, scrolling with this on hangs the tab</span>
       </label>
 
-      <button
-        class="btn"
-        type="button"
-        (click)="refreshBeta()"
-        [style.background-color]="corrupted() ? '#b91c1c' : null"
-      >
-        Refresh beta subtree{{ corrupted() ? " ⚠ hangs the tab" : "" }}
-      </button>
+      <button class="btn" type="button" (click)="refreshBeta()">Refresh beta subtree</button>
     </div>
 
     <div
       style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 11px; font-family: monospace; padding: 8px; border-radius: 4px"
-      [style.border]="corrupted() ? '1px solid #ef4444' : '1px solid #d1d5db'"
-      [style.background]="corrupted() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(156, 163, 175, 0.08)'"
+      [style.border]="hasErrors() ? '1px solid #ef4444' : '1px solid #d1d5db'"
+      [style.background]="hasErrors() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(156, 163, 175, 0.08)'"
     >
       <div>
         <div style="font-weight: 600; margin-bottom: 4px">grid "error" events ({{ errors().length }})</div>
@@ -146,7 +153,7 @@ type StoreWalk = { count: number; ids: string[] };
           <div style="color: #9ca3af">none</div>
         } @else {
           @for (message of errors(); track $index) {
-            <div style="color: #b91c1c">{{ message }}</div>
+            <div style="color: #b91c1c; white-space: pre-wrap">{{ message }}</div>
           }
         }
         <div style="font-weight: 600; margin-top: 8px; margin-bottom: 4px">
@@ -163,7 +170,7 @@ type StoreWalk = { count: number; ids: string[] };
       </div>
       <div>
         <div style="font-weight: 600; margin-bottom: 4px">forEachNodeAfterFilterAndSort walk: {{ walkHeading() }}</div>
-        <div style="word-break: break-all" [style.color]="corrupted() ? '#b91c1c' : 'inherit'">{{ walkIds() }}</div>
+        <div style="word-break: break-all">{{ walkIds() }}</div>
         <div style="margin-top: 8px; color: #9ca3af">children requests: {{ requestLogText() }}</div>
       </div>
     </div>
@@ -198,7 +205,7 @@ export class ServerSideTreeDuplicateIdDemoComponent implements OnDestroy {
    * Rendered through `@for … track generation()` because an `@if` flipped off and back on inside
    * one change-detection turn never actually destroys the component. */
   readonly generation = signal(0);
-  readonly corrupted = computed(() => this.errors().length > 0);
+  readonly hasErrors = computed(() => this.errors().length > 0);
 
   private rows: FsRow[] = buildTree(true);
   private api: IGridAPI | null = null;
@@ -228,8 +235,9 @@ export class ServerSideTreeDuplicateIdDemoComponent implements OnDestroy {
     { colId: "size", key: "size", label: "Size (KB)", width: 110, type: ColumnType.NUMBER },
   ];
 
-  // The synchronous re-entries (a chevron click after the corruption) escape the grid's own event
-  // handlers as uncaught errors — the only place to see them is window "error".
+  // Before the guard, a chevron click after the corruption re-entered the recursion synchronously
+  // and escaped the grid's own event handlers as an uncaught error; window "error" is the only
+  // place to see those, and this list must now stay empty.
   @HostListener("window:error", ["$event"])
   onWindowError(ev: ErrorEvent): void {
     this.uncaught.update(list => [...list, ev.message].slice(-6));
@@ -263,7 +271,7 @@ export class ServerSideTreeDuplicateIdDemoComponent implements OnDestroy {
     this.detach();
     this.unsubscribe = [
       api.on("error", ev => {
-        this.errors.update(list => [...list, `${ev.code}: ${ev.message}`]);
+        this.errors.update(list => [...list, describeError(ev)]);
         this.inspectStore(api);
       }),
       api.on("rowsChanged", ev => {
@@ -311,19 +319,14 @@ export class ServerSideTreeDuplicateIdDemoComponent implements OnDestroy {
     }
   }
 
+  // Used to hang the tab: the refresh walked parentId links that formed a cycle.
   refreshBeta(): void {
-    const api = this.api;
-    if (!api) return;
-    if (this.corrupted() && !window.confirm(
-      "The store is corrupted: this refresh walks parentId links that now form a cycle and will "
-      + "hang this tab. Continue anyway?",
-    )) return;
-    void api.refreshServerSideData({ rowId: "beta", purge: true });
+    void this.api?.refreshServerSideData({ rowId: "beta", purge: true });
   }
 
-  // What the model would hand the renderer: walk the visible order and count what comes back. On
-  // the corrupted store this walks thousands of half-built segments while `rowsChanged` last
-  // announced a few dozen rows.
+  // What the model would hand the renderer: walk the visible order and count what comes back.
+  // With the guard this is rowsChanged's count minus the one unloaded slot; before it, the walk
+  // covered thousands of half-built segments while `rowsChanged` last announced a few dozen rows.
   private inspectStore(api: IGridAPI): void {
     const ids: string[] = [];
     let count = 0;

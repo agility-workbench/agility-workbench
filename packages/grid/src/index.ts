@@ -273,6 +273,8 @@ export type {
 } from "./interfaces/serverSide";
 
 export { ServerSideRowModel } from "./ssrm/serverSide";
+export { ServerSideDataError, isServerSideDataError } from "./ssrm/serverSideDataError";
+export type { ServerSideDataErrorReason } from "./ssrm/serverSideDataError";
 
 export type {
   FormatterOptionsParams,

@@ -1,3 +1,4 @@
+import { ServerSideDataError, type ServerSideDataErrorReason } from "./serverSideDataError";
 import { IRowModel, IRowModelRequestParams, RowModelType, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
 import { AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
@@ -175,13 +176,18 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     // model, whose forEachNode skips synthetic group nodes). A server tree parent is a data row
     // that also owns children, so it is both visited and descended into.
     let idx = 0;
+    // Listings on the walk's current path: tree ids the server failed to keep unique can make a
+    // listing reachable from its own descendant, and it is descended into once, not without end.
+    const onPath = new Set<string>();
     const walk = (listing: ChildListing<Row> | undefined) => {
-      if (!listing) return;
+      if (!listing || onPath.has(listing.id)) return;
+      onPath.add(listing.id);
       for (const childIdx of this.sortedIndices(listing)) {
         const node = listing.nodes.get(childIdx)!;
         if (!node.isGroup) callback(node, idx++);
         walk(this.listings.get(node.id));
       }
+      onPath.delete(listing.id);
     };
     walk(this.listings.get(ROOT_LISTING_ID));
   }
@@ -478,21 +484,30 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private dropListing(listing: ChildListing<Row>): void {
+    // Unregister first: a listing reachable from its own descendant (tree ids the server failed to
+    // keep unique) is then dropped once instead of recursing without end.
+    this.listings.delete(listing.id);
     for (const node of listing.nodes.values()) {
-      this.nodesMap.delete(node.id);
+      this.unregisterNode(node);
       const child = this.listings.get(node.id);
       if (child) this.dropListing(child);
     }
-    this.listings.delete(listing.id);
   }
 
   private dropNodeAt(listing: ChildListing<Row>, childIdx: number): void {
     const node = listing.nodes.get(childIdx);
     if (!node) return;
     listing.nodes.delete(childIdx);
-    this.nodesMap.delete(node.id);
+    this.unregisterNode(node);
     const child = this.listings.get(node.id);
     if (child) this.dropListing(child);
+  }
+
+  /** Remove a node's id → node entry, but only while it still points at this node: during a soft
+   * refresh a row that moved to another parent is already registered from its new slot by the
+   * time its old slot is dropped, and that fresher registration must survive. */
+  private unregisterNode(node: IRowNode<Row>): void {
+    if (this.nodesMap.get(node.id) === node) this.nodesMap.delete(node.id);
   }
 
   private getOrCreateListing(
@@ -545,6 +560,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         if (childIdx >= slots) break;
         const node = listing.nodes.get(childIdx)!;
         if (!isExpandableNode(node) || !node.isExpanded) continue;
+        // Tree ids the server failed to keep unique can make one listing reachable from two
+        // parents; a row whose id is already on the path being walked would splice its own
+        // ancestor's subtree into itself without end. It stays a plain row here, chevron and all.
+        if (this.treeMode && listing.treeParent?.path.includes(node.id)) continue;
         // Segment covering [cursor, childIdx] — ends with the expanded parent's own row — then the
         // parent's subtree spliced in directly after.
         this.pushSegment(listing, cursor, childIdx + 1, flat, viewOffset);
@@ -802,6 +821,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const isGroupLevel = this.isGroupLevel(listing);
     const level = listing.groupKeys.length;
     const groupCol = this.groupBy[level];
+    // Tree rows: every id in the block is checked before any row enters the store, so a bad block
+    // is rejected whole and the listing is left exactly as it was.
+    const treeIds = this.treeOptions ? this.checkTreeRowIds(listing, rows) : undefined;
 
     rows.forEach((raw, i) => {
       const childIdx = startRow + i;
@@ -830,13 +852,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         // own children. `expandable: true` is the whole chevron contract — the children live in a
         // lazy child listing that does not exist until the row is first expanded — so it must not
         // be inferred from a `children` array that never materializes here.
-        const id = this.getId(raw);
-        // A tree row's id doubles as the id of its children listing, and "" is the root listing: a row
-        // with an empty id would alias the root and the flatten/iteration walks would recurse without
-        // end. Surface it as a data error (the fetch's catch reports it through onError) instead.
-        if (id === ROOT_LISTING_ID) {
-          throw new Error("Server-side tree data rows need a non-empty row id (getRowId / rowIdKey).");
-        }
+        const id = treeIds![i];
         const treeLevel = this.listingLevel(listing);
         const expandable = this.treeOptions.hasChildren(raw) ? true : undefined;
         node = {
@@ -896,6 +912,47 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         if (childIdx >= listing.knownCount) this.dropNodeAt(listing, childIdx);
       }
     }
+  }
+
+  /**
+   * The ids of a block of tree rows, or a thrown data error if the block may not enter the store.
+   *
+   * A tree row's id is structural: it is also the key of the row's children listing and of its
+   * expansion entry, and `parentId` links resolve through the node map by id. An id that repeats
+   * one of the row's own ancestors would therefore make a subtree contain itself — the flatten
+   * walk would recurse until the stack overflowed, and every `parentId` walk (here, in the core,
+   * in the sticky-rows renderer) would cycle — and two siblings with one id would share a single
+   * subtree. Both are caught with certainty: a row can never legitimately be its own ancestor, and
+   * one response never legitimately lists an id twice. The fetch's catch reports the
+   * `ServerSideDataError` through onError as an `error` event (it is the event's `details`), and
+   * the block is rejected whole — skipping the offender alone would leave a hole at its slot that
+   * the renderer would fetch again forever.
+   *
+   * The same id under two DIFFERENT parents is deliberately accepted: part-way through a soft
+   * refresh, a row that moved between folders is legitimately present twice until the old parent's
+   * block arrives. The ancestor check walks the node map exactly as `parentId` walks do, which
+   * keeps that map free of cycles no matter what else the server repeats; the listing walks
+   * (rebuildFlat, forEachNode, dropListing) tolerate the shared listing on their own.
+   */
+  private checkTreeRowIds(listing: ChildListing<Row>, rows: Row[]): string[] {
+    const ancestors: string[] = [];
+    for (let id: string | undefined = listing.id || undefined; id; id = this.nodesMap.get(id)?.parentId) {
+      ancestors.push(id);
+    }
+    const parentId = listing.id === ROOT_LISTING_ID ? undefined : listing.id;
+    const path = ancestors.slice().reverse();
+    const refuse = (reason: ServerSideDataErrorReason, rowId: string, row: Row) =>
+      new ServerSideDataError({ reason, rowId, parentId, path, row });
+    const seen = new Set<string>();
+    return rows.map(raw => {
+      const id = this.getId(raw);
+      // "" is the root listing's own id: a row with an empty id would alias the root.
+      if (id === ROOT_LISTING_ID) throw refuse("empty_row_id", id, raw);
+      if (ancestors.includes(id)) throw refuse("row_id_repeats_ancestor", id, raw);
+      if (seen.has(id)) throw refuse("row_id_repeats_sibling", id, raw);
+      seen.add(id);
+      return id;
+    });
   }
 
   private buildGroupAggregates(raw: Row): { [key: string]: any } | undefined {

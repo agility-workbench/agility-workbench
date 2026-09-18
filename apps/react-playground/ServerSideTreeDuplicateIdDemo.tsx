@@ -3,28 +3,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
+import { isServerSideDataError } from "@grid";
 import type { IServerSideDataSource, IServerSideRequest, TreeDataOptions } from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 
 /**
- * BUG REPRO — server-side tree data with a row id that repeats an ancestor's id.
+ * Server-side tree data with a row id that repeats an ancestor's id — the store's guard in action.
  *
- * The contract says row ids must be unique across the whole tree. This page shows what happens
- * when a server breaks that rule: folder "alpha" has a child folder whose id is ALSO "alpha".
+ * The contract says row ids must be unique across the whole tree. This page shows what the grid
+ * does when a server breaks that rule: folder "alpha" has a child folder whose id is ALSO "alpha".
  *
- * Expanding alpha fetches its child block. The store registers the child under the id its parent
- * already owns, the child inherits the parent's "expanded" state (same id, same expansion entry),
- * and the flatten walk (`rebuildFlat`) re-enters the same child listing until the stack overflows.
- * The core surfaces that only as an `error` event. Observed consequences, in order:
+ * Expanding alpha fetches its child block. The store checks every id in the block before any row
+ * enters it; "alpha" repeats its own parent's id, so the block is rejected whole and reported as an
+ * `error` event (code `row_model_error`) naming the row, its parent, and the ancestor chain. What
+ * to look for:
  *
- *   1. The paint goes stale: alpha shows open with a permanently blank slot under it, the row
- *      count freezes, and the model's visible walk reports thousands of copies of "alpha".
- *   2. Every later expand/collapse click re-enters the recursion synchronously — an UNCAUGHT
- *      RangeError out of the grid's mousedown handler, and the click does nothing.
- *   3. A sort or filter purges and re-fetches, hits the overflow again, and leaves blank rows.
- *   4. The duplicate node's `parentId` points at itself, so every `parentId` walk cycles: sticky
- *      ancestors (on scroll) and `refreshServerSideData({ rowId })` on another subtree hang the tab.
- *      Both are behind explicit opt-ins below.
+ *   1. One error event with that message and NO uncaught errors — the panel's second list stays
+ *      empty whatever you click.
+ *   2. alpha stays open over one blank slot (the unloaded block) and everything else keeps working:
+ *      collapse/expand alpha, sort a column, sticky ancestors while scrolling, refresh beta's subtree.
+ *   3. Every later fill that covers the blank slot asks the server again and gets the same answer,
+ *      so the error count grows by one per attempt — and stays put while the grid is idle.
+ *
+ * Before the guard, the block entered the store, the child inherited its parent's expansion entry,
+ * and the flatten walk re-entered the same listing until the stack overflowed: a stale paint,
+ * thousands of "alpha" copies in the model's walk, an uncaught RangeError on every chevron click,
+ * and a hung tab from sticky ancestors or a subtree refresh.
  *
  * Turn "Child repeats parent id" off to see the same tree behave normally.
  */
@@ -84,6 +88,17 @@ function serveTree(rows: FsRow[], request: IServerSideRequest) {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// One entry per error: the structured `details` first (what a handler would switch on), then the
+// human message. Whatever a data source's own error() rejection carries shows as just the message.
+function describeError(ev: { code: string; message: string; details?: unknown }): string {
+  const head = isServerSideDataError(ev.details)
+    ? `details: ServerSideDataError reason=${ev.details.reason} rowId="${ev.details.rowId}" `
+      + `parentId=${ev.details.parentId === undefined ? "(root)" : `"${ev.details.parentId}"`} `
+      + `path=[${ev.details.path.join(" › ")}]\n`
+    : "";
+  return `${head}${ev.code}: ${ev.message}`;
+}
+
 type StoreWalk = { count: number; ids: string[] };
 
 const mono: React.CSSProperties = { fontSize: 11, fontFamily: "monospace" };
@@ -128,8 +143,8 @@ export function ServerSideTreeDuplicateIdDemo() {
   ], []);
 
   // What the model would hand the renderer: walk the visible order and count what comes back.
-  // On the corrupted store this walks thousands of half-built segments while `rowsChanged` last
-  // announced a few dozen rows.
+  // With the guard this is rowsChanged's count minus the one unloaded slot; before it, the walk
+  // covered thousands of half-built segments while `rowsChanged` last announced a few dozen rows.
   const inspectStore = (api: IGridAPI) => {
     const ids: string[] = [];
     let count = 0;
@@ -144,7 +159,7 @@ export function ServerSideTreeDuplicateIdDemo() {
     for (const off of unsubscribeRef.current) off();
     unsubscribeRef.current = [
       api.on("error", ev => {
-        setErrors(list => [...list, `${ev.code}: ${ev.message}`]);
+        setErrors(list => [...list, describeError(ev)]);
         inspectStore(api);
       }),
       api.on("rowsChanged", ev => {
@@ -154,8 +169,9 @@ export function ServerSideTreeDuplicateIdDemo() {
     ];
   };
 
-  // The synchronous re-entries (a chevron click after the corruption) escape the grid's own event
-  // handlers as uncaught errors — the only place to see them is window "error".
+  // Before the guard, a chevron click after the corruption re-entered the recursion synchronously
+  // and escaped the grid's own event handlers as an uncaught error; window "error" is the only
+  // place to see those, and this list must now stay empty.
   useEffect(() => {
     const onWindowError = (ev: ErrorEvent) => {
       setUncaught(list => [...list, ev.message].slice(-6));
@@ -195,30 +211,25 @@ export function ServerSideTreeDuplicateIdDemo() {
     }
   };
 
+  // Used to hang the tab: the refresh walked parentId links that formed a cycle.
   const refreshBeta = () => {
-    const api = apiRef.current;
-    if (!api) return;
-    if (errors.length > 0 && !window.confirm(
-      "The store is corrupted: this refresh walks parentId links that now form a cycle and will "
-      + "hang this tab. Continue anyway?",
-    )) return;
-    void api.refreshServerSideData({ rowId: "beta", purge: true });
+    void apiRef.current?.refreshServerSideData({ rowId: "beta", purge: true });
   };
 
-  const corrupted = errors.length > 0;
+  const hasErrors = errors.length > 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       <div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 1100 }}>
-        <strong>Bug repro:</strong> folder <code>alpha</code> has a child folder whose row id is
-        also <code>alpha</code>. Press <em>Run repro</em> (or expand <code>beta</code>, then{" "}
-        <code>alpha</code>, by hand). The child fetch succeeds, then the store's flatten walk
-        re-enters the same listing until the stack overflows — the grid reports it only as an{" "}
-        <code>error</code> event. Then: alpha stays open over a blank slot while the row count
-        freezes and the model's walk (right panel) returns thousands of copies of{" "}
-        <code>alpha</code>; <strong>click any chevron</strong> → an uncaught RangeError and no
-        change; <strong>sort a column</strong> → a re-fetch that overflows again and leaves blank
-        rows. Turn the checkbox off to see the same tree behave normally.
+        <strong>Duplicate id guard:</strong> folder <code>alpha</code> has a child folder whose row
+        id is also <code>alpha</code>. Press <em>Run repro</em> (or expand <code>beta</code>, then{" "}
+        <code>alpha</code>, by hand). The grid checks every id in the child block before any row
+        enters the store, rejects the block whole, and reports one <code>error</code> event naming
+        the row, its parent, and the ancestor chain. alpha stays open over one blank slot and
+        nothing else is affected: <strong>click any chevron</strong>, <strong>sort a column</strong>,
+        turn on sticky ancestors and scroll, or refresh <code>beta</code> — no uncaught errors, no
+        hang. Each later fill that covers the blank slot asks the server again, so the error count
+        grows by one per attempt. Turn the checkbox off to see the same tree behave normally.
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -242,18 +253,10 @@ export function ServerSideTreeDuplicateIdDemo() {
         <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
           <input type="checkbox" checked={sticky} onChange={(e) => setSticky(e.target.checked)} />
           Sticky ancestors
-          <span style={{ color: "#b45309" }}>
-            ⚠ once corrupted, scrolling with this on hangs the tab
-          </span>
         </label>
 
-        <button
-          className="btn"
-          type="button"
-          onClick={refreshBeta}
-          style={corrupted ? { backgroundColor: "#b91c1c" } : undefined}
-        >
-          Refresh beta subtree{corrupted ? " ⚠ hangs the tab" : ""}
+        <button className="btn" type="button" onClick={refreshBeta}>
+          Refresh beta subtree
         </button>
       </div>
 
@@ -265,8 +268,8 @@ export function ServerSideTreeDuplicateIdDemo() {
           gap: 12,
           padding: 8,
           borderRadius: 4,
-          border: `1px solid ${corrupted ? "#ef4444" : "#d1d5db"}`,
-          background: corrupted ? "rgba(239, 68, 68, 0.08)" : "rgba(156, 163, 175, 0.08)",
+          border: `1px solid ${hasErrors ? "#ef4444" : "#d1d5db"}`,
+          background: hasErrors ? "rgba(239, 68, 68, 0.08)" : "rgba(156, 163, 175, 0.08)",
         }}
       >
         <div>
@@ -275,7 +278,9 @@ export function ServerSideTreeDuplicateIdDemo() {
           </div>
           {errors.length === 0
             ? <div style={{ color: "#9ca3af" }}>none</div>
-            : errors.map((message, i) => <div key={i} style={{ color: "#b91c1c" }}>{message}</div>)}
+            : errors.map((message, i) => (
+              <div key={i} style={{ color: "#b91c1c", whiteSpace: "pre-wrap" }}>{message}</div>
+            ))}
           <div style={{ fontWeight: 600, marginTop: 8, marginBottom: 4 }}>
             uncaught errors from grid event handlers ({uncaught.length})
           </div>
@@ -290,7 +295,7 @@ export function ServerSideTreeDuplicateIdDemo() {
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             forEachNodeAfterFilterAndSort walk: {walk ? `${walk.count} loaded rows` : "—"}
           </div>
-          <div style={{ color: corrupted ? "#b91c1c" : "inherit", wordBreak: "break-all" }}>
+          <div style={{ wordBreak: "break-all" }}>
             {walk ? walk.ids.join(", ") + (walk.count > walk.ids.length ? ", …" : "") : ""}
           </div>
           <div style={{ marginTop: 8, color: "#9ca3af" }}>
