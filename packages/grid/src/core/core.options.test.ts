@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { GridCore } from "./core";
-import { InternalGridOptions, GridOptions } from "../interfaces/gridOptions";
+import { DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE, InternalGridOptions, GridOptions } from "../interfaces/gridOptions";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
@@ -123,6 +123,10 @@ describe("paginationControls resolution", () => {
       responsive: "collapse",
       controls: ["pageSize", "firstPage", "previousPage", "pageSelector", "nextPage", "lastPage"],
       maxPageButtons: 7,
+      aggregateScope: {
+        whenUnavailable: "disabled",
+        unavailableMessage: DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+      },
     });
   });
 
@@ -140,6 +144,10 @@ describe("paginationControls resolution", () => {
       showPageLabel: false,
       controls: ["nextPage", "pageSelector", "pageSize"],
       maxPageButtons: 3,
+      aggregateScope: {
+        whenUnavailable: "disabled",
+        unavailableMessage: DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+      },
     });
   });
 });

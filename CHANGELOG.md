@@ -3,6 +3,21 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Server-side whole-dataset totals
+
+- **A data source's own `getAggregates` now serves the footer's "Entire dataset" scope.** The
+  method was declared on `IServerSideDataSource` and shown in the docs, but only the separate
+  `serverSideAggregationSource` option ever reached the grid. Both work now; the option wins
+  when both exist, and clearing it falls back to the data source's method.
+- **An unavailable "Entire dataset" says so.** Without a server aggregation source the
+  server-side row model keeps the scope at "Current page". The choice is now greyed out with an
+  explanatory tooltip, in the footer control and in its overflow menu alike, instead of a
+  disabled control with no reason — and the other scopes stay reachable.
+  `paginationControls.aggregateScope` chooses `whenUnavailable: "disabled" | "hidden"` and sets
+  `unavailableMessage`.
+
 ## 1.2.0 — 2026-09-07
 
 ### Quick-filter find (client-side row model)

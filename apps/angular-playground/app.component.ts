@@ -23,6 +23,7 @@ import { RowSelectionCheckboxDemoComponent } from "./row-selection-checkbox-demo
 import { SavedViewsDemoComponent } from "./saved-views-demo.component";
 import { SelectionDemoComponent } from "./selection-demo.component";
 import { ServerSideGroupingDemoComponent } from "./server-side-grouping-demo.component";
+import { ServerSideAggregateScopeDemoComponent } from "./server-side-aggregate-scope-demo.component";
 import { ServerSideTreeDataDemoComponent } from "./server-side-tree-data-demo.component";
 import { ServerSideTreeDuplicateIdDemoComponent } from "./server-side-tree-duplicate-id-demo.component";
 import { SparklineDemoComponent } from "./sparkline-demo.component";
@@ -51,6 +52,7 @@ const PAGES = [
   { id: "blankPivot", label: "Blank pivot canvas" },
   { id: "sheets", label: "Sheets" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
+  { id: "serverSideAggregateScope", label: "SSRM: aggregate scope" },
   { id: "serverSideTreeData", label: "Server-side tree data" },
   { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard" },
   { id: "treeData", label: "Tree data" },
@@ -101,6 +103,7 @@ type PageId = (typeof PAGES)[number]["id"];
     SavedViewsDemoComponent,
     SelectionDemoComponent,
     ServerSideGroupingDemoComponent,
+    ServerSideAggregateScopeDemoComponent,
     ServerSideTreeDataDemoComponent,
     ServerSideTreeDuplicateIdDemoComponent,
     SparklineDemoComponent,
@@ -168,6 +171,9 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("serverSideGrouping") {
           <server-side-grouping-demo />
+        }
+        @case ("serverSideAggregateScope") {
+          <server-side-aggregate-scope-demo />
         }
         @case ("serverSideTreeData") {
           <server-side-tree-data-demo />

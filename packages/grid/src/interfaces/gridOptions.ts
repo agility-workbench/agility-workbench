@@ -471,7 +471,43 @@ export interface PaginationControlsOptions {
   maxPageButtons?: number;
   /** How the footer copes with a width its controls do not fit. Defaults to `"collapse"`. */
   responsive?: BarResponsiveMode;
+  /** The footer's aggregate-scope control. See {@link AggregateScopeControlOptions}. */
+  aggregateScope?: AggregateScopeControlOptions;
 }
+
+/**
+ * The footer's aggregate-scope control (None / Current page / Entire dataset). "Entire dataset" is
+ * unavailable on the server-side row model until the grid has a server aggregation source — the
+ * data source's own `getAggregates`, or `serverSideAggregationSource` — because totals over rows the
+ * browser never holds can only come from the server. While it is unavailable the grid keeps the
+ * scope at "Current page" (a programmatic or restored "all" becomes "page"), and this option decides
+ * what the end user sees of the missing choice.
+ */
+export interface AggregateScopeControlOptions {
+  /**
+   * What the control does with "Entire dataset" while it is unavailable:
+   *  - `"disabled"` (default): keeps it in the list, greyed out, with {@link unavailableMessage} as
+   *    the control's tooltip — the choice exists, and the tooltip says what would enable it.
+   *  - `"hidden"`: leaves it out of the list, and out of the footer's overflow menu — for a grid
+   *    that deliberately offers no whole-dataset totals.
+   */
+  whenUnavailable?: "disabled" | "hidden";
+  /**
+   * Tooltip explaining why "Entire dataset" is unavailable (shown on the footer control and on the
+   * overflow menu's item). Defaults to {@link DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE}, which
+   * speaks to the developer; replace it with wording for your end users. An empty string shows no
+   * tooltip.
+   */
+  unavailableMessage?: string;
+}
+
+export interface ResolvedAggregateScopeControlOptions {
+  whenUnavailable: "disabled" | "hidden";
+  unavailableMessage: string;
+}
+
+export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE =
+  "Entire-dataset totals need a server aggregation source: the data source's getAggregates, or serverSideAggregationSource.";
 
 export interface ResolvedPaginationControlsOptions {
   pageSelection: PaginationPageSelection;
@@ -479,6 +515,7 @@ export interface ResolvedPaginationControlsOptions {
   controls: PaginationControl[];
   maxPageButtons: number;
   responsive: BarResponsiveMode;
+  aggregateScope: ResolvedAggregateScopeControlOptions;
 }
 
 export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
@@ -512,6 +549,10 @@ export function resolvePaginationControlsOptions(
     responsive: resolveBarResponsiveMode(options?.responsive),
     controls,
     maxPageButtons,
+    aggregateScope: {
+      whenUnavailable: options?.aggregateScope?.whenUnavailable === "hidden" ? "hidden" : "disabled",
+      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+    },
   };
 }
 
@@ -1200,6 +1241,12 @@ export interface GridOptions {
   serverSideBlockSize?: number;
   rowModelType?: RowModelType;
   serverSideDataSource?: IServerSideDataSource;
+  /**
+   * Where whole-dataset footer totals (aggregate scope "all") come from on the server-side row
+   * model. Optional: a data source that implements its own `getAggregates` is used without this.
+   * When both exist this one wins. With neither, "Entire dataset" is unavailable — the scope stays
+   * at "page" and the footer says so (see `paginationControls.aggregateScope`).
+   */
   serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
   /**
    * Server-side grouping: reads a group row's leaf-descendant count (the "(N)" badge next to the

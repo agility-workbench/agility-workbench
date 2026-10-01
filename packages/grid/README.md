@@ -339,7 +339,10 @@ const options = {
 `"collapse"` (the default) walks the ladder above. `"scroll"` leaves every control at full size
 and scrolls the bar as soon as they do not fit. `false` lays the bar out and lets it clip, for an
 application that guarantees its own width. `paginationControls.responsive` says the same for the
-footer, whose own `⋮` holds rows-per-page, the aggregate scope, and the sheet strip's **+**.
+footer, whose own `⋮` holds rows-per-page, the aggregate scope, and the sheet strip's **+**. On the
+server-side row model the scope's **Entire dataset** choice needs a server aggregation source (the
+data source's `getAggregates`, or `serverSideAggregationSource`); until one exists it is greyed out
+with a tooltip, or hidden, as `paginationControls.aggregateScope` says.
 
 ### Saved views
 

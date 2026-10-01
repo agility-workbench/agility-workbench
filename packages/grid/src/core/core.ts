@@ -2284,10 +2284,8 @@ export class GridCore implements IGridCore {
       return;
     }
     (this.rowModel as any).serverAggregationSource = callback;
-    if (!callback && this.aggregateScope === "all") {
-      this.aggregateScope = "page";
-      this.rowModel.setAggregateScope(this.aggregateScope);
-    }
+    // applyAggregateRequest re-normalizes the scope: clearing the option drops "all" to "page"
+    // only when the data source has no getAggregates of its own to fall back on.
     this.applyAggregateRequest("aggregateModel", "dataSource");
   }
 
@@ -2330,8 +2328,11 @@ export class GridCore implements IGridCore {
     ));
   }
 
+  /** Whether aggregate scope "all" is unavailable right now — the server-side row model without a
+   * server aggregation source (the data source's `getAggregates` or `serverSideAggregationSource`).
+   * The client-side model holds every row, so it is never locked. */
   isAggregateScopeLockedToPage(): boolean {
-    return this.rowModel.getType() === "serverSide" && !(this.rowModel as any).serverAggregationSource;
+    return this.rowModel.canAggregateWholeDataset?.() === false;
   }
 
   private normalizeAggregateScope(scope: AggregateScope): AggregateScope {

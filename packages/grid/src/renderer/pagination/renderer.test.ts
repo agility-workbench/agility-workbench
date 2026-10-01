@@ -1,12 +1,26 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GridCore } from "../../core/core";
+import { AggregateType } from "../../interfaces/aggregate";
 import { ColumnType } from "../../interfaces/column";
+import { DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE, type PaginationControlsOptions } from "../../interfaces/gridOptions";
+import type { IServerSideDataSource } from "../../interfaces/serverSide";
 import { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { MenuRenderer } from "../menuRenderer";
 import { PaginationRenderer } from "./renderer";
 
 const measurer: ITextMeasurer = { measure: (text: string) => text.length * 7 };
+
+// A fake server for the server-side footer tests: thirty rows, answered synchronously.
+const SERVER_ROWS = Array.from({ length: 30 }, (_, index) => ({ id: String(index), name: `Row ${index}`, amount: index }));
+const getRows: IServerSideDataSource["getRows"] = ({ request, success }) => {
+  const start = request.startRow ?? 0;
+  const end = request.endRow ?? SERVER_ROWS.length;
+  success({ rows: SERVER_ROWS.slice(start, end), totalRows: SERVER_ROWS.length });
+};
+const getAggregates: NonNullable<IServerSideDataSource["getAggregates"]> = ({ success }) => {
+  success({ values: { amount: 435 } });
+};
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -396,8 +410,233 @@ describe("responsive footer", () => {
     });
   });
 
+  it("greys out an unavailable Entire dataset in the overflow menu's Aggregate submenu", () => {
+    withModelledLayout(harness => {
+      const grid = makeResponsiveServerSideGrid({ getRows });
+      harness.setWidth(180);
+      expect(displaced(grid.root, ".pte-aggregate-controls")).toBe(true);
+
+      expect(openAggregateSubmenu(grid.root)).toEqual([
+        { value: "none", disabled: false, title: "" },
+        { value: "page", disabled: false, title: "" },
+        { value: "all", disabled: true, title: DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE },
+      ]);
+
+      grid.renderer.destroy();
+      grid.root.remove();
+    });
+  });
+
+  it("leaves an unavailable Entire dataset out of the submenu when the control hides it", () => {
+    withModelledLayout(harness => {
+      const grid = makeResponsiveServerSideGrid({ getRows }, { aggregateScope: { whenUnavailable: "hidden" } });
+      harness.setWidth(180);
+      expect(displaced(grid.root, ".pte-aggregate-controls")).toBe(true);
+
+      expect(openAggregateSubmenu(grid.root).map(item => item.value)).toEqual(["none", "page"]);
+
+      grid.renderer.destroy();
+      grid.root.remove();
+    });
+  });
+
+  it("offers Entire dataset in the submenu once the data source can answer it", () => {
+    withModelledLayout(harness => {
+      const grid = makeResponsiveServerSideGrid({ getRows, getAggregates });
+      harness.setWidth(180);
+      expect(displaced(grid.root, ".pte-aggregate-controls")).toBe(true);
+
+      expect(openAggregateSubmenu(grid.root)).toEqual([
+        { value: "none", disabled: false, title: "" },
+        { value: "page", disabled: false, title: "" },
+        { value: "all", disabled: false, title: "" },
+      ]);
+
+      grid.renderer.destroy();
+      grid.root.remove();
+    });
+  });
+
+  // A server-side grid for the footer: the fake server answers blocks synchronously, and the
+  // aggregate section exists as soon as a numeric column does — no rows need to land for the
+  // scope control's state, which is what these tests read.
+  function makeResponsiveServerSideGrid(source: IServerSideDataSource, paginationControls?: PaginationControlsOptions) {
+    const core = new GridCore(measurer, {
+      rowIdKey: "id",
+      rowModelType: "serverSide",
+      pagination: true,
+      pageSize: 10,
+      pageSizes: [10, 25, 50],
+      paginationControls,
+    });
+    core.dispatch({
+      type: "themeFontSet",
+      headerFont: "12px sans",
+      cellFont: "12px sans",
+      reason: "test",
+    });
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name" },
+      { colId: "amount", key: "amount", label: "Amount", type: ColumnType.NUMBER },
+    ]);
+    core.setServerSideDataSource(source);
+    core.setAggregateModel([{ key: "amount", type: AggregateType.SUM }]);
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const renderer = new PaginationRenderer({
+      core,
+      root,
+      resetScrollPosition: () => undefined,
+      setAggregateScope: scope => core.setAggregateScope(scope),
+      menuRenderer: new MenuRenderer(root),
+    });
+    renderer.buildControls();
+    return { core, renderer, root };
+  }
+
+  function openAggregateSubmenu(root: HTMLElement) {
+    root.querySelector<HTMLButtonElement>(".pte-footer-overflow-button")!.click();
+    root.querySelector<HTMLButtonElement>('.pte-menu-item[data-item-id="footerOverflowAggregate"]')!.click();
+    return [...root.querySelectorAll<HTMLButtonElement>('.pte-menu-item[data-item-id^="footerOverflowAggregate-"]')]
+      .map(el => ({
+        value: el.getAttribute("data-item-id")!.replace("footerOverflowAggregate-", ""),
+        disabled: el.disabled,
+        title: el.title,
+      }));
+  }
+
   it("stops observing on destroy", () => {
     const { renderer } = makeGrid();
     expect(() => renderer.destroy()).not.toThrow();
+  });
+});
+
+
+// The server-side row model cannot sum rows the browser never holds, so "Entire dataset" is only
+// on offer once a server aggregation source exists; until then the footer must say so rather than
+// go quiet, and the other two scopes must stay reachable.
+describe("aggregate scope on the server-side row model", () => {
+  function makeServerSideGrid(source: IServerSideDataSource, paginationControls?: PaginationControlsOptions) {
+    const core = new GridCore(measurer, {
+      rowIdKey: "id",
+      rowModelType: "serverSide",
+      pagination: true,
+      pageSize: 10,
+      pageSizes: [10, 25],
+      paginationControls,
+    });
+    core.dispatch({
+      type: "themeFontSet",
+      headerFont: "12px sans",
+      cellFont: "12px sans",
+      reason: "test",
+    });
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name" },
+      { colId: "amount", key: "amount", label: "Amount", type: ColumnType.NUMBER },
+    ]);
+    core.setServerSideDataSource(source);
+    core.setAggregateModel([{ key: "amount", type: AggregateType.SUM }]);
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const renderer = new PaginationRenderer({
+      core,
+      root,
+      resetScrollPosition: () => undefined,
+      setAggregateScope: scope => core.setAggregateScope(scope),
+    });
+    renderer.buildControls();
+    const select = () => root.querySelector<HTMLSelectElement>("select.pte-aggregate-scope")!;
+    const values = () => [...select().options].map(option => option.value);
+    const allOption = () => select().querySelector<HTMLOptionElement>('option[value="all"]');
+    return { core, renderer, select, values, allOption };
+  }
+
+  it("greys out Entire dataset with the explanation while no server aggregation source exists", () => {
+    const { core, renderer, select, allOption } = makeServerSideGrid({ getRows });
+    expect(core.isAggregateScopeLockedToPage()).toBe(true);
+
+    // The lock concerns one choice: the control itself stays usable, at page scope.
+    expect(select().disabled).toBe(false);
+    expect(select().value).toBe("page");
+    expect(allOption()!.disabled).toBe(true);
+    expect(select().title).toBe(DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE);
+
+    // A source arriving later lifts it, explanation included.
+    core.setServerSideAggregationSource(getAggregates);
+    renderer.updateAggregateControls();
+    expect(allOption()!.disabled).toBe(false);
+    expect(select().hasAttribute("title")).toBe(false);
+  });
+
+  it("shows None as None while locked — the lock concerns only Entire dataset", () => {
+    const { core, renderer, select } = makeServerSideGrid({ getRows });
+    expect(core.isAggregateScopeLockedToPage()).toBe(true);
+
+    // The user picks None through the control itself.
+    select().value = "none";
+    select().dispatchEvent(new Event("change"));
+    expect(core.getAggregateScope()).toBe("none");
+    renderer.updateAggregateControls();
+    expect(select().value).toBe("none");
+
+    // And back to the page.
+    select().value = "page";
+    select().dispatchEvent(new Event("change"));
+    renderer.updateAggregateControls();
+    expect(core.getAggregateScope()).toBe("page");
+    expect(select().value).toBe("page");
+  });
+
+  it("needs no option when the data source implements getAggregates itself", () => {
+    const { core, select, allOption } = makeServerSideGrid({ getRows, getAggregates });
+    expect(core.isAggregateScopeLockedToPage()).toBe(false);
+    expect(allOption()!.disabled).toBe(false);
+    expect(select().hasAttribute("title")).toBe(false);
+  });
+
+  it("leaves Entire dataset out when configured to hide it, and puts it back once a source exists", () => {
+    const { core, renderer, select, values } = makeServerSideGrid(
+      { getRows },
+      { aggregateScope: { whenUnavailable: "hidden" } },
+    );
+    expect(values()).toEqual(["none", "page"]);
+    expect(select().hasAttribute("title")).toBe(false);
+
+    core.setServerSideAggregationSource(getAggregates);
+    renderer.updateAggregateControls();
+    expect(values()).toEqual(["none", "page", "all"]);
+
+    core.setServerSideAggregationSource(null);
+    renderer.updateAggregateControls();
+    expect(values()).toEqual(["none", "page"]);
+  });
+
+  it("uses the configured explanation, and none at all for an empty one", () => {
+    const custom = makeServerSideGrid(
+      { getRows },
+      { aggregateScope: { unavailableMessage: "Totals over all orders are not available in this view." } },
+    );
+    expect(custom.allOption()!.disabled).toBe(true);
+    expect(custom.select().title).toBe("Totals over all orders are not available in this view.");
+
+    const silent = makeServerSideGrid({ getRows }, { aggregateScope: { unavailableMessage: "" } });
+    expect(silent.allOption()!.disabled).toBe(true);
+    expect(silent.select().hasAttribute("title")).toBe(false);
+  });
+
+  it("re-applies a live footer configuration", () => {
+    const { renderer, values, allOption } = makeServerSideGrid({ getRows });
+    expect(values()).toEqual(["none", "page", "all"]);
+    expect(allOption()!.disabled).toBe(true);
+
+    renderer.setPaginationControls({ aggregateScope: { whenUnavailable: "hidden" } });
+    expect(values()).toEqual(["none", "page"]);
+
+    renderer.setPaginationControls({ aggregateScope: { unavailableMessage: "Ask an administrator." } });
+    expect(values()).toEqual(["none", "page", "all"]);
+    expect(allOption()!.disabled).toBe(true);
+    expect(renderer.getElement().querySelector<HTMLSelectElement>("select.pte-aggregate-scope")!.title)
+      .toBe("Ask an administrator.");
   });
 });

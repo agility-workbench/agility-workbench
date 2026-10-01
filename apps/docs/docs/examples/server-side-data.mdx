@@ -109,6 +109,35 @@ A sort or filter on the generated hierarchy column arrives under that column's
 key, which is `__pte_tree__` unless `treeData.columnDef.key` names the server
 field the labels come from.
 
+## Whole-dataset totals
+
+The footer's aggregate scope offers **Current page**, summed in the browser over
+the page's rows, and **Entire dataset**. On the server-side row model the browser
+never holds the whole dataset, so **Entire dataset** needs a server aggregation
+source: implement `getAggregates` on the data source, or pass
+`serverSideAggregationSource` (which wins when both exist). The grid asks it for
+one value per aggregated column, keyed by the column's field, under the current
+filters:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    /* … */
+  },
+  async getAggregates({ request }) {
+    // request.aggregates: [{ key: "total", type: "sum" }, …]; request.filters as in getRows
+    return { values: await loadTotals(request) }; // e.g. { total: 1234567 }
+  },
+};
+```
+
+Without a source the scope is locked to **Current page**: a programmatic or
+restored `"all"` becomes `"page"`, and **Entire dataset** stays in the footer's
+list greyed out, with a tooltip saying what would enable it, on the control and
+in the footer's overflow menu alike. `paginationControls.aggregateScope` tunes
+that: `whenUnavailable: "hidden"` drops the choice from both lists, and
+`unavailableMessage` replaces the tooltip with wording for your users.
+
 ## Refresh server data
 
 ```ts

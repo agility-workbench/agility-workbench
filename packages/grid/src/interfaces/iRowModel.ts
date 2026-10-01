@@ -198,6 +198,12 @@ export interface IRowModel<Row = any> {
    * `requestId` is a fresh core request id used for the resulting listener callbacks. */
   refreshServerSideData?(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean>;
 
+  /** Whether the model can answer footer totals over the entire dataset (aggregate scope "all").
+   * Absent means yes — the client-side model holds every row. The server-side model says yes only
+   * while it has a server aggregation source to ask; without one the core keeps the scope at "page"
+   * and the footer shows why. */
+  canAggregateWholeDataset?(): boolean;
+
   // in-place cell edit: mutate a single field of a row's data. Returns true if the row exists.
   setCellValue(rowId: string, key: string, value: any): boolean;
 

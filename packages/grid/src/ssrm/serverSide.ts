@@ -1094,7 +1094,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateValues.clear();
     const requestSeq = ++this.aggregateRequestSeq;
     if (this.aggregateScope !== "none" && this.aggregates.length > 0) {
-      if (this.aggregateScope === "all" && this.serverAggregationSource) {
+      if (this.aggregateScope === "all" && this.canAggregateWholeDataset()) {
         await this.requestServerAggregates(requestSeq);
       } else {
         this.calculateLocalAggregates();
@@ -1128,15 +1128,32 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return rows;
   }
 
+  /**
+   * Whole-dataset totals come from the server: the explicit `serverSideAggregationSource` when one
+   * is set, else the data source's own `getAggregates`. The data source's method is invoked AS a
+   * method of that object, so a class-based source keeps its `this`.
+   */
+  private resolveAggregationSource(): ServerSideAggregationSource | undefined {
+    if (this.serverAggregationSource) return this.serverAggregationSource;
+    const source = this.serverDataSource;
+    if (source?.getAggregates) return params => source.getAggregates!(params);
+    return undefined;
+  }
+
+  canAggregateWholeDataset(): boolean {
+    return this.resolveAggregationSource() !== undefined;
+  }
+
   private async requestServerAggregates(requestSeq: number): Promise<void> {
-    if (!this.serverAggregationSource) return;
+    const aggregationSource = this.resolveAggregationSource();
+    if (!aggregationSource) return;
     const aggregates = this.buildServerAggregateRequest();
     if (aggregates.length === 0) return;
     const params = this.lastRequestParams;
 
     try {
       const result = await new Promise<any>((resolve, reject) => {
-        const maybePromise = this.serverAggregationSource!({
+        const maybePromise = aggregationSource({
           request: {
             aggregates,
             aggregateScope: "all",
@@ -1185,7 +1202,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private normalizeAggregateScope(scope: AggregateScope): AggregateScope {
-    if (scope === "all" && !this.serverAggregationSource) return "page";
+    if (scope === "all" && !this.canAggregateWholeDataset()) return "page";
     return scope;
   }
 }

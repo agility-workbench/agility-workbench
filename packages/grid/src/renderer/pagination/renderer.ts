@@ -76,6 +76,9 @@ export class PaginationRenderer {
   lastPageBtn!: HTMLButtonElement;
   pageButtonsContainer!: HTMLDivElement;
   aggregateScopeSelect!: HTMLSelectElement;
+  /** The select's "Entire dataset" option, kept so an unavailable scope can be greyed out or
+   * taken out of the list and put back (see `syncWholeDatasetOption`). */
+  private aggregateScopeAllOption: HTMLOptionElement | null = null;
   aggregateClearBtn!: HTMLButtonElement;
   private navSection: HTMLDivElement | null = null;
   private paginator: HTMLDivElement;
@@ -344,16 +347,25 @@ export class PaginationRenderer {
         });
       } else if (id === FOOTER_ITEMS.aggregate) {
         const scope = this.params.core.getAggregateScope();
+        const lockedToPage = this.params.core.isAggregateScopeLockedToPage();
+        const { whenUnavailable, unavailableMessage } = this.controlsOptions.aggregateScope;
         items.push({
           id: "footerOverflowAggregate",
           label: "Aggregate",
-          subMenu: AGGREGATE_SCOPE_OPTIONS.map(option => ({
-            id: `footerOverflowAggregate-${option.value}`,
-            label: option.label,
-            left: option.value === scope ? "icon-check" : undefined,
-            command: "footer.aggregateScope.set",
-            payload: { scope: option.value },
-          })),
+          // An unavailable "Entire dataset" gets the same treatment as in the footer's own select:
+          // greyed out with the explanation, or left out of the list.
+          subMenu: AGGREGATE_SCOPE_OPTIONS
+            .filter(option => !(lockedToPage && option.value === "all" && whenUnavailable === "hidden"))
+            .map(option => ({
+              id: `footerOverflowAggregate-${option.value}`,
+              label: option.label,
+              left: option.value === scope ? "icon-check" : undefined,
+              command: "footer.aggregateScope.set",
+              payload: { scope: option.value },
+              ...(lockedToPage && option.value === "all"
+                ? { disabled: true, ...(unavailableMessage ? { title: unavailableMessage } : {}) }
+                : {}),
+            })),
         });
       } else if (id === FOOTER_ITEMS.sheetAdd) {
         items.push({
@@ -534,10 +546,12 @@ export class PaginationRenderer {
     this.aggregateScopeSelect = document.createElement("select");
     this.aggregateScopeSelect.className = "pte-select pte-pagination-select pte-aggregate-scope";
     this.aggregateScopeSelect.setAttribute("aria-labelledby", aggLabel.id);
+    this.aggregateScopeAllOption = null;
     for (const optDef of AGGREGATE_SCOPE_OPTIONS) {
       const opt = document.createElement("option");
       opt.value = optDef.value;
       opt.textContent = optDef.label;
+      if (optDef.value === "all") this.aggregateScopeAllOption = opt;
       this.aggregateScopeSelect.appendChild(opt);
     }
     this.aggregateScopeSelect.addEventListener("change", (e) => {
@@ -736,12 +750,40 @@ export class PaginationRenderer {
     if (!this.controlsAggregationAvailable || !this.aggregateScopeSelect || !this.aggregateClearBtn) return;
     const aggregateCount = this.params.core.getAggregateModel().length;
     const lockedToPage = this.params.core.isAggregateScopeLockedToPage();
-    this.aggregateScopeSelect.value = lockedToPage ? "page" : this.params.core.getAggregateScope();
-    this.aggregateScopeSelect.disabled = aggregateCount === 0 || lockedToPage;
+    this.syncWholeDatasetOption(lockedToPage);
+    // The control shows the scope in force — "none" included, which the lock does not touch. The
+    // core never holds "all" while locked; the fallback only guards a stale read.
+    const scope = this.params.core.getAggregateScope();
+    this.aggregateScopeSelect.value = lockedToPage && scope === "all" ? "page" : scope;
+    // The lock concerns one choice, not the control: None and Current page stay reachable.
+    this.aggregateScopeSelect.disabled = aggregateCount === 0;
     this.aggregateClearBtn.disabled = aggregateCount === 0;
 
     const paginationEnabled = this.params.core.getPaginationInfo().paginationEnabled;
     this.paginator.classList.toggle("visible", this.footerVisible(paginationEnabled, aggregateCount));
+  }
+
+  /**
+   * "Entire dataset" while the grid cannot serve it (the server-side row model without a server
+   * aggregation source): greyed out with the configured explanation as the control's tooltip, or
+   * taken out of the list — `paginationControls.aggregateScope` decides. Back the moment a source
+   * exists.
+   */
+  private syncWholeDatasetOption(lockedToPage: boolean): void {
+    const option = this.aggregateScopeAllOption;
+    if (!option) return;
+    const { whenUnavailable, unavailableMessage } = this.controlsOptions.aggregateScope;
+    const hidden = lockedToPage && whenUnavailable === "hidden";
+    // Removed rather than marked `hidden`: not every browser hides an <option hidden>.
+    if (hidden) {
+      option.remove();
+    } else if (option.parentNode !== this.aggregateScopeSelect) {
+      this.aggregateScopeSelect.appendChild(option);
+    }
+    option.disabled = lockedToPage && !hidden;
+    const title = lockedToPage && !hidden ? unavailableMessage : "";
+    if (title) this.aggregateScopeSelect.title = title;
+    else this.aggregateScopeSelect.removeAttribute("title");
   }
 
   private hasAggregatableColumns(): boolean {

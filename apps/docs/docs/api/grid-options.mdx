@@ -21,6 +21,7 @@ inputs. Optional fields use documented defaults when omitted.
 | `rowModelType` | `clientSide \| serverSide` | Select the row model |
 | `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
 | `serverSideBlockSize` | `number` | Requested block size |
+| `serverSideAggregationSource` | `IServerSideDataSource["getAggregates"]` | Whole-dataset footer totals; optional when the data source implements `getAggregates`, and wins over it when both exist |
 
 React and Angular expose `rowData` through their bindings; core integrations use
 `api.setRowData()`.
@@ -113,6 +114,21 @@ Set `showPageLabel: false` to remove the visible `Page` label while preserving
 accessible names on the select or numbered-button group.
 Numbered pagination keeps the first and last known pages visible, centers a bounded
 window around the current page, and inserts ellipses when pages are skipped.
+
+`paginationControls.aggregateScope` governs the footer's aggregate-scope control while
+**Entire dataset** is unavailable: the server-side row model without a server aggregation
+source (see [whole-dataset totals](../examples/server-side-data.mdx#whole-dataset-totals)).
+By default the choice stays in the list greyed out, with a tooltip saying what would enable
+it; `"hidden"` drops it from the list and from the footer's overflow menu.
+
+```ts
+paginationControls: {
+  aggregateScope: {
+    whenUnavailable: "disabled", // default; "hidden" removes the choice instead
+    unavailableMessage: "Totals over all orders are not available in this view.",
+  },
+}
+```
 
 The footer adapts to its own width, on the same ladder the toolbar uses — see
 [Narrow bars](#narrow-bars). Its rungs, cheapest first: the text beside each control

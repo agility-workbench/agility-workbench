@@ -121,6 +121,8 @@ export type {
   CellSelectionMode,
   PaginationControl,
   PaginationControlsOptions,
+  AggregateScopeControlOptions,
+  ResolvedAggregateScopeControlOptions,
   PaginationPageSelection,
   ResolvedPaginationControlsOptions,
   BodyContextMenuGetter,
