@@ -4568,9 +4568,13 @@
   white-space: nowrap;
 }
 
+/* Greyed out, but still under the pointer: a disabled item's `title` is how a menu says why it is
+   disabled, and no browser shows a tooltip for an element that cannot be hit-tested. The button is
+   disabled, so it cannot be activated anyway; the hover rule below keeps it from highlighting, and
+   the menu's hover handler already skips disabled items (keyboard position stays put). */
 .pte-menu-item.disabled {
   opacity: 0.5;
-  pointer-events: none;
+  cursor: default;
 }
 
 .pte-menu-item.disabled:hover {

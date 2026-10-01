@@ -17,6 +17,9 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   disabled control with no reason — and the other scopes stay reachable.
   `paginationControls.aggregateScope` chooses `whenUnavailable: "disabled" | "hidden"` and sets
   `unavailableMessage`.
+- **Disabled menu items show their tooltip.** `MenuItem.title` on a disabled item — the documented
+  way to say why it is disabled — never surfaced, because the stylesheet took disabled items out of
+  hit-testing. Every menu benefits, the footer's overflow menu included.
 
 ## 1.2.0 — 2026-09-07
 
