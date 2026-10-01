@@ -341,8 +341,13 @@ export type GridEventPivotColumnLimitReachedParams = {
 };
 
 export type GridEventErrorParams = {
+  /** Machine-readable kind of failure. A failed row-model request — the data source rejected it,
+   * or the grid refused what it returned — is `"row_model_error"`. */
   code: string;
   message: string;
+  /** What failed, when known: the value a data source passed to `error()`, or a
+   * `ServerSideDataError` for a server-side tree block whose row ids break the contract —
+   * `isServerSideDataError(details)` tells the two apart. */
   details?: unknown;
 };
 

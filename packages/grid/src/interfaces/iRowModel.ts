@@ -14,6 +14,11 @@ export interface ServerSideRefreshOptions {
   /** Group path identifying the subtree to refresh (that parent's listing and every descendant
    * listing). Omitted = the whole store. Each entry is a grouped column key + raw group value. */
   groupKeys?: Array<{ key: string; value: any }>;
+  /** Server-side tree data (`treeData: { mode: "server" }`) only: row id of the parent whose
+   * subtree to refresh — its children listing and every listing below it. Omitted = the whole
+   * store. Mutually exclusive with `groupKeys` (a store is either grouped or a tree), and carries
+   * the same soft/purge semantics. */
+  rowId?: string;
   /** True drops the affected rows and counts immediately (loading state, exact reload). False
    * (default) keeps current rows rendered while visible blocks refetch and swap in place;
    * off-screen blocks are dropped and lazily reload on scroll. */
@@ -143,7 +148,11 @@ export interface IRowModel<Row = any> {
   // All synthetic group nodes in the current grouping (empty when not grouping). Used e.g. to size
   // columns to their per-group aggregate values.
   getGroupNodes(): IRowNode<Row>[];
-  /** Root nodes of the current grouped/tree hierarchy, including data-bearing tree roots. */
+  /**
+   * Root nodes of the current grouped/tree hierarchy, including data-bearing tree roots. The
+   * server-side model returns a snapshot — clones of its loaded nodes, each expanded parent carrying
+   * the loaded children of its listing — because its live nodes never own a `children` array.
+   */
   getHierarchyRoots?(): IRowNode<Row>[];
 
   // identity
@@ -192,6 +201,12 @@ export interface IRowModel<Row = any> {
   /** Server-side only: re-invoke the data source for the whole store or one group subtree.
    * `requestId` is a fresh core request id used for the resulting listener callbacks. */
   refreshServerSideData?(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean>;
+
+  /** Whether the model can answer footer totals over the entire dataset (aggregate scope "all").
+   * Absent means yes — the client-side model holds every row. The server-side model says yes only
+   * while it has a server aggregation source to ask; without one the core keeps the scope at "page"
+   * and the footer shows why. */
+  canAggregateWholeDataset?(): boolean;
 
   // in-place cell edit: mutate a single field of a row's data. Returns true if the row exists.
   setCellValue(rowId: string, key: string, value: any): boolean;

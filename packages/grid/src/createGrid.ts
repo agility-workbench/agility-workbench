@@ -76,6 +76,16 @@ export function createGrid(container: HTMLElement, options: CreateGridOptions = 
   if (columnDefs != null) core.setColumnDefsFromProps(columnDefs);
   if (rowData != null) api.setRowData(rowData);
 
+  // The core's `init` only announces the viewport; nothing in it asks the row model for data. A
+  // client-side grid gets its first request from `setRowData` above, and a server-side grid from
+  // having its data source set — which the framework bindings do through `updateGridOptions`
+  // after mount. A data source handed over as a creation option must take the same door, after
+  // the column definitions so the first block sees caller-owned columns, or the grid never asks
+  // the server for its first block.
+  if (gridOptions.rowModelType === "serverSide" && gridOptions.serverSideDataSource != null) {
+    core.setServerSideDataSource(gridOptions.serverSideDataSource);
+  }
+
   // `destroy` is the only teardown handle a createGrid caller holds, but `GridAPI.destroy()`
   // on its own leaves the renderer attached and the core alive. Shadowing the prototype
   // method with an own property means every reference to this api — including the one passed

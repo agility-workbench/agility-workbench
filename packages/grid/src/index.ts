@@ -115,11 +115,14 @@ export type {
   TreeDataPathOptions,
   TreeDataParentOptions,
   TreeDataChildrenOptions,
+  TreeDataServerOptions,
   RowPinnedPosition,
   IsRowPinnedParams,
   CellSelectionMode,
   PaginationControl,
   PaginationControlsOptions,
+  AggregateScopeControlOptions,
+  ResolvedAggregateScopeControlOptions,
   PaginationPageSelection,
   ResolvedPaginationControlsOptions,
   BodyContextMenuGetter,
@@ -268,9 +271,12 @@ export type {
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,
+  IServerSideTreeParent,
 } from "./interfaces/serverSide";
 
 export { ServerSideRowModel } from "./ssrm/serverSide";
+export { ServerSideDataError, isServerSideDataError } from "./ssrm/serverSideDataError";
+export type { ServerSideDataErrorReason } from "./ssrm/serverSideDataError";
 
 export type {
   FormatterOptionsParams,

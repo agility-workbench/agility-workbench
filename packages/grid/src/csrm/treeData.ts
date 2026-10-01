@@ -15,14 +15,20 @@ function pathKey(path: readonly string[]): string {
   return JSON.stringify(path);
 }
 
-function defaultLabel(row: any, id: string): string {
+/**
+ * The label a tree row falls back to when the relationship mode supplies no path segment and the
+ * app supplies no `getLabel`: the row's own `name`, then `label`, then its id. Shared with the
+ * server-side tree store so both models name a row the same way.
+ */
+export function defaultLabel(row: any, id: string): string {
   const value = row?.name ?? row?.label ?? id;
   return value == null ? id : String(value);
 }
 
-function labelFor<Row>(
+/** `getLabel` if the app supplied one, else the path segment (path mode) or {@link defaultLabel}. */
+export function labelFor<Row>(
   options: TreeDataOptions<Row>,
-  node: IRowNode<Row>,
+  node: Pick<IRowNode<Row>, "id" | "data">,
   pathLabel?: string,
 ): string {
   const custom = options.getLabel?.(node.data);

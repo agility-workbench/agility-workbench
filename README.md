@@ -281,8 +281,10 @@ validation pass is still pending — see the documentation site's Accessibility
 page for the full picture.
 
 Server-side and client-side row models also differ intentionally in a few areas.
-For example, client-side transactions, quick filtering, full-width rows, custom
-filter functions, and tree data are currently client-side features. Consult the
+For example, client-side transactions, quick filtering, full-width rows, and
+custom filter functions are currently client-side features, and tree data's
+`path`/`parent`/`children` relationship modes are client-side while the
+server-side model has its own lazy `mode: "server"`. Consult the
 [current limitations](docs/architecture/current-state.md#10-current-limitations--gaps)
 before committing to an advanced integration.
 

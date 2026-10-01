@@ -316,3 +316,62 @@ describe("menu adapters", () => {
     warn.mockRestore();
   });
 });
+
+describe("createGrid with the server-side row model", () => {
+  // The core's `init` never asks the row model for data, so a data source passed as a creation
+  // option has to be applied by createGrid itself — the framework bindings do it through
+  // `updateGridOptions` after mount. Without that step the grid renders its header over an empty
+  // body and never calls the server.
+  const settle = async () => {
+    for (let i = 0; i < 6; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }
+  };
+
+  it("asks the server for its first block when the data source is a creation option", async () => {
+    const requests: Array<{ startRow: number | undefined; treeParent: unknown }> = [];
+    const api = createGrid(host, {
+      rowIdKey: "id",
+      rowModelType: "serverSide",
+      serverSideBlockSize: 50,
+      columnDefs,
+      serverSideDataSource: {
+        getRows: ({ request, success }) => {
+          requests.push({ startRow: request.startRow, treeParent: request.treeParent });
+          success({ rows: [{ id: 1, name: "Widget", price: 9.99 }, { id: 2, name: "Gadget", price: 4.5 }], totalRows: 2 });
+        },
+      },
+    });
+    await settle();
+
+    expect(requests).toEqual([{ startRow: 0, treeParent: undefined }]);
+    expect(host.textContent).toContain("Widget");
+    expect(host.textContent).toContain("Gadget");
+    api.destroy();
+  });
+
+  it("does the same under server-side tree data, with the hierarchy column in place", async () => {
+    const requests: unknown[] = [];
+    const api = createGrid(host, {
+      rowIdKey: "id",
+      rowModelType: "serverSide",
+      columnDefs,
+      treeData: { mode: "server", hasChildren: (row: any) => row.kind === "folder", getLabel: (row: any) => row.name },
+      serverSideDataSource: {
+        getRows: ({ request, success }) => {
+          requests.push(request.treeParent);
+          success({ rows: [{ id: "docs", name: "docs", kind: "folder" }, { id: "readme", name: "readme.md", kind: "file" }], totalRows: 2 });
+        },
+      },
+    });
+    await settle();
+
+    // Exactly one root request (treeParent absent), and the parent row painted with its chevron.
+    expect(requests).toEqual([undefined]);
+    const parent = host.querySelector<HTMLElement>('.pte-row[row-id="docs"]');
+    expect(parent?.querySelector(".pte-group-toggle")).toBeTruthy();
+    expect(host.textContent).toContain("readme.md");
+    api.destroy();
+  });
+});

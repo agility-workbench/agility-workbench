@@ -448,9 +448,15 @@ export class AwbGrid implements OnDestroy {
       return () => api.updateGridOptions(opts);
     });
 
+    // createGrid already asked the server for the first block with the creation-time source, and
+    // re-applying the same object would purge the store and fetch it again — so, like columnDefs
+    // and rowData above, startup compares against the creation-time snapshot and only a changed
+    // input goes through updateGridOptions (which refetches, as a new source must).
+    let lastSource = untracked(() => this.serverSideDataSource());
     this.syncEffect(() => {
       const source = this.serverSideDataSource();
-      if (this.rowModelType() !== "serverSide" || !source) return null;
+      if (this.rowModelType() !== "serverSide" || !source || source === lastSource) return null;
+      lastSource = source;
       return () => api.updateGridOptions({ serverSideDataSource: source });
     });
 

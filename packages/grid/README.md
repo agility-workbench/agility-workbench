@@ -339,7 +339,10 @@ const options = {
 `"collapse"` (the default) walks the ladder above. `"scroll"` leaves every control at full size
 and scrolls the bar as soon as they do not fit. `false` lays the bar out and lets it clip, for an
 application that guarantees its own width. `paginationControls.responsive` says the same for the
-footer, whose own `⋮` holds rows-per-page, the aggregate scope, and the sheet strip's **+**.
+footer, whose own `⋮` holds rows-per-page, the aggregate scope, and the sheet strip's **+**. On the
+server-side row model the scope's **Entire dataset** choice needs a server aggregation source (the
+data source's `getAggregates`, or `serverSideAggregationSource`); until one exists it is greyed out
+with a tooltip, or hidden, as `paginationControls.aggregateScope` says.
 
 ### Saved views
 
@@ -574,9 +577,12 @@ than hidden underneath it.
 
 ## Tree data
 
-Client-side tree data supports three explicit relationship modes. All modes share expansion,
-sibling sorting, ancestor-preserving filtering, selection, editing, saved-view expansion, sticky
-ancestors, and export behavior. Tree data cannot be combined with column-value row grouping.
+Tree data supports four explicit relationship modes: three client-side ones, and `"server"` on the
+server-side row model. The client-side modes share expansion, sibling sorting, ancestor-preserving
+filtering, selection, editing, saved-view expansion, sticky ancestors, and export behavior. Tree
+data cannot be combined with column-value row grouping (or pivot mode) on either row model, and a
+relationship mode belongs to exactly one row model — the mismatched pair warns and drops the
+option.
 
 Use complete paths when rows arrive as a flat hierarchy. Missing prefixes become deterministic
 synthetic ancestors:
@@ -621,6 +627,40 @@ const options = {
   },
 };
 ```
+
+Use `mode: "server"` on the server-side row model when the hierarchy is too large (or too deep) to
+ship: each row says whether it has children, and a parent's children are requested the first time it
+is expanded, through `IServerSideRequest.treeParent` (the parent's row id, its root→parent row-id
+path, and its row object). Ragged siblings and unbounded depth cost nothing up front:
+
+```ts
+const options = {
+  rowModelType: "serverSide",
+  rowIdKey: "id", // must be unique across the WHOLE tree, not per parent
+  serverSideDataSource,
+  treeData: {
+    mode: "server",
+    hasChildren: row => row.kind === "folder",
+    getLabel: row => row.name,
+    // Naming the server's own label field puts hierarchy-column sorts/filters on the wire under it.
+    columnDef: { label: "Path", key: "name", width: 340 },
+  },
+};
+
+// One row's subtree — its children listing and everything below it — reloads on demand:
+await api.refreshServerSideData({ rowId: "folder-42", purge: true });
+```
+
+Server tree rows are ordinary data rows (selectable, editable, copyable) with the same chevrons,
+indentation, expansion state, sticky ancestors, and hierarchy keyboard mode. Filtering is the
+server's responsibility, ancestor preservation included, and export writes the rows the client holds
+in the shape on screen — an expanded parent with the children the grid has fetched, a collapsed one
+alone, nothing from blocks never requested.
+A children block that breaks the id rule in a way the grid can be certain of — a row repeating one
+of its own ancestors' ids, or one response listing an id twice — is rejected whole and reported
+through the `error` event (`code: "row_model_error"`) instead of entering the store. The event's
+`details` is a `ServerSideDataError` (`reason`, `rowId`, `parentId`, `path`, `row`), and
+`isServerSideDataError(ev.details)` tells it apart from a data source's own `error()`.
 
 Real rows remain data-bearing and editable even when they own children. Duplicate ids, duplicate
 paths, and relationship cycles throw descriptive errors. A missing parent-id reference is rendered

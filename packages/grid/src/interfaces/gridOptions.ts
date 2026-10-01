@@ -299,13 +299,35 @@ export interface TreeDataChildrenOptions<Row = any> extends TreeDataCommonOption
 }
 
 /**
- * Describes how client-side rows relate to one another. Relationship modes are deliberately
- * explicit and mutually exclusive; all three normalize to the same runtime tree.
+ * A lazily loaded hierarchy owned by the server: the data source answers "the children of this
+ * row" (`IServerSideRequest.treeParent`), so unbounded depth and ragged siblings — a parent and a
+ * leaf side by side — cost nothing up front. Requires `rowModelType: "serverSide"`; the other
+ * three modes require the client-side model.
+ *
+ * Rows stay ordinary data rows, so row ids (`getRowId`/`rowIdKey`) must be unique across the WHOLE
+ * tree rather than per parent: expansion state, the node map, and
+ * `refreshServerSideData({ rowId })` all key on them.
+ */
+export interface TreeDataServerOptions<Row = any> extends TreeDataCommonOptions<Row> {
+  mode: "server";
+  /**
+   * Whether this row owns children. True renders a chevron and requests the row's children on its
+   * first expand; false renders a leaf. Deliberately not a count: the tree column shows labels
+   * only, on both row models.
+   */
+  hasChildren: (row: Row) => boolean;
+}
+
+/**
+ * Describes how rows relate to one another. Relationship modes are deliberately explicit and
+ * mutually exclusive; the three client-side modes normalize to the same runtime tree, and
+ * `"server"` builds the same tree lazily from per-parent server responses.
  */
 export type TreeDataOptions<Row = any> =
   | TreeDataPathOptions<Row>
   | TreeDataParentOptions<Row>
-  | TreeDataChildrenOptions<Row>;
+  | TreeDataChildrenOptions<Row>
+  | TreeDataServerOptions<Row>;
 
 /** Frozen row band occupied by a row. `null` means the row is not explicitly pinned. */
 export type RowPinnedPosition = "top" | "bottom";
@@ -449,7 +471,43 @@ export interface PaginationControlsOptions {
   maxPageButtons?: number;
   /** How the footer copes with a width its controls do not fit. Defaults to `"collapse"`. */
   responsive?: BarResponsiveMode;
+  /** The footer's aggregate-scope control. See {@link AggregateScopeControlOptions}. */
+  aggregateScope?: AggregateScopeControlOptions;
 }
+
+/**
+ * The footer's aggregate-scope control (None / Current page / Entire dataset). "Entire dataset" is
+ * unavailable on the server-side row model until the grid has a server aggregation source — the
+ * data source's own `getAggregates`, or `serverSideAggregationSource` — because totals over rows the
+ * browser never holds can only come from the server. While it is unavailable the grid keeps the
+ * scope at "Current page" (a programmatic or restored "all" becomes "page"), and this option decides
+ * what the end user sees of the missing choice.
+ */
+export interface AggregateScopeControlOptions {
+  /**
+   * What the control does with "Entire dataset" while it is unavailable:
+   *  - `"disabled"` (default): keeps it in the list, greyed out, with {@link unavailableMessage} as
+   *    the control's tooltip — the choice exists, and the tooltip says what would enable it.
+   *  - `"hidden"`: leaves it out of the list, and out of the footer's overflow menu — for a grid
+   *    that deliberately offers no whole-dataset totals.
+   */
+  whenUnavailable?: "disabled" | "hidden";
+  /**
+   * Tooltip explaining why "Entire dataset" is unavailable (shown on the footer control and on the
+   * overflow menu's item). Defaults to {@link DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE}, which
+   * speaks to the developer; replace it with wording for your end users. An empty string shows no
+   * tooltip.
+   */
+  unavailableMessage?: string;
+}
+
+export interface ResolvedAggregateScopeControlOptions {
+  whenUnavailable: "disabled" | "hidden";
+  unavailableMessage: string;
+}
+
+export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE =
+  "Entire-dataset totals need a server aggregation source: the data source's getAggregates, or serverSideAggregationSource.";
 
 export interface ResolvedPaginationControlsOptions {
   pageSelection: PaginationPageSelection;
@@ -457,6 +515,7 @@ export interface ResolvedPaginationControlsOptions {
   controls: PaginationControl[];
   maxPageButtons: number;
   responsive: BarResponsiveMode;
+  aggregateScope: ResolvedAggregateScopeControlOptions;
 }
 
 export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
@@ -490,6 +549,10 @@ export function resolvePaginationControlsOptions(
     responsive: resolveBarResponsiveMode(options?.responsive),
     controls,
     maxPageButtons,
+    aggregateScope: {
+      whenUnavailable: options?.aggregateScope?.whenUnavailable === "hidden" ? "hidden" : "disabled",
+      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+    },
   };
 }
 
@@ -1178,6 +1241,12 @@ export interface GridOptions {
   serverSideBlockSize?: number;
   rowModelType?: RowModelType;
   serverSideDataSource?: IServerSideDataSource;
+  /**
+   * Where whole-dataset footer totals (aggregate scope "all") come from on the server-side row
+   * model. Optional: a data source that implements its own `getAggregates` is used without this.
+   * When both exist this one wins. With neither, "Entire dataset" is unavailable — the scope stays
+   * at "page" and the footer says so (see `paginationControls.aggregateScope`).
+   */
   serverSideAggregationSource?: IServerSideDataSource["getAggregates"];
   /**
    * Server-side grouping: reads a group row's leaf-descendant count (the "(N)" badge next to the
@@ -1373,8 +1442,11 @@ export interface GridOptions {
    */
   pivotColumnMoveMode?: "measures" | "free";
   /**
-   * Client-side hierarchical data. Supports full paths, parent-id references, or nested children.
-   * Tree data is mutually exclusive with column-value row grouping.
+   * Hierarchical data. The client-side row model takes full paths, parent-id references, or nested
+   * children; the server-side row model takes `mode: "server"`, where the data source answers one
+   * parent's children at a time. Tree data is mutually exclusive with column-value row grouping,
+   * and a relationship mode belongs to exactly one row model — the mismatched pair is dropped with
+   * a warning.
    */
   treeData?: TreeDataOptions;
   /**

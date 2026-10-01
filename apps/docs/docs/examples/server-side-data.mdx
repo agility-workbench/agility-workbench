@@ -19,8 +19,9 @@ the data source instead of calculated over an incomplete browser cache.
 ## Request contract
 
 `getRows({ request })` receives `startRow`, `endRow`, active `filters`, ordered
-`sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates`.
-Return `{ rows, totalRows }`; root responses may also provide `columns` and a
+`sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates` —
+plus `treeParent` under [server-side tree data](#tree-requests). Return
+`{ rows, totalRows }`; root responses may also provide `columns` and a
 `schemaVersion` for server-driven schemas.
 
 ```ts
@@ -74,17 +75,102 @@ Omitting `totalRows` creates an open-ended listing. The grid probes forward
 until a short block establishes the end and displays provisional pagination
 totals with a `+` suffix.
 
+## Tree requests
+
+With [server-side tree data](./tree-data.mdx#server-side-tree-data)
+(`treeData: { mode: "server" }`) the hierarchy is the rows' own rather than a
+column-value grouping, and a request asks for one parent's children through
+`request.treeParent`:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    const parent = request.treeParent; // undefined for the root listing
+    const rows = await loadChildren({
+      parentId: parent?.id ?? null,
+      offset: request.startRow,
+      limit: (request.endRow ?? 0) - (request.startRow ?? 0),
+      sorts: request.sorts,
+      filters: request.filters,
+    });
+    return { rows, totalRows: await countChildren(parent?.id ?? null) };
+  },
+};
+```
+
+`treeParent` carries the parent's `id` (its grid row ID), `path` (the row IDs
+from the root down to and including the parent), and `data` (the parent row
+object exactly as the server returned it). `startRow`/`endRow` are relative to
+that parent's children, and `totalRows` is its immediate-children count — the
+same open-ended-listing rules apply per parent. In tree mode `groupBy`,
+`groupKeys`, and `aggregates` are always empty.
+
+A sort or filter on the generated hierarchy column arrives under that column's
+key, which is `__pte_tree__` unless `treeData.columnDef.key` names the server
+field the labels come from.
+
+## Whole-dataset totals
+
+The footer's aggregate scope offers **Current page**, summed in the browser over
+the page's rows, and **Entire dataset**. On the server-side row model the browser
+never holds the whole dataset, so **Entire dataset** needs a server aggregation
+source: implement `getAggregates` on the data source, or pass
+`serverSideAggregationSource` (which wins when both exist). The grid asks it for
+one value per aggregated column, keyed by the column's field, under the current
+filters:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    /* … */
+  },
+  async getAggregates({ request }) {
+    // request.aggregates: [{ key: "total", type: "sum" }, …]; request.filters as in getRows
+    return { values: await loadTotals(request) }; // e.g. { total: 1234567 }
+  },
+};
+```
+
+Without a source the scope is locked to **Current page**: a programmatic or
+restored `"all"` becomes `"page"`, and **Entire dataset** stays in the footer's
+list greyed out, with a tooltip saying what would enable it, on the control and
+in the footer's overflow menu alike. `paginationControls.aggregateScope` tunes
+that: `whenUnavailable: "hidden"` drops the choice from both lists, and
+`unavailableMessage` replaces the tooltip with wording for your users.
+
+## Export
+
+An export writes what the client holds, in the shape on screen: the loaded
+group or tree rows, an expanded parent followed by the children the grid has
+fetched, a collapsed one alone, and nothing for blocks never requested — across
+every page, not only the current one. The row-selection and cell-range scopes
+prune that tree exactly as on the client-side model.
+
+Aggregate cells are the numbers the grid displays, written as values rather
+than formulas: a group row's subtotal is the one the server stamped on it (it
+covers rows that were never fetched), its count is `getGroupChildCount`'s or
+none, and the footer is the footer's — the current page's sum or the server's
+whole-dataset total. A formula over the exported rows could not reproduce any of
+them. Produce full extracts on the server.
+
 ## Refresh server data
 
 ```ts
 await api.refreshServerSideData();
 await api.refreshServerSideData({ purge: true });
-await api.refreshServerSideData({ groupKeys: ["EMEA"], purge: false });
+// Grouping: one group subtree, by raw group path.
+await api.refreshServerSideData({ groupKeys: [{ key: "region", value: "EMEA" }] });
+// Server tree data: one row's subtree, by row ID.
+await api.refreshServerSideData({ rowId: "folder-42", purge: true });
 ```
 
 Use a soft refresh to keep visible rows while refetching, or `{ purge: true }`
-to discard affected blocks immediately. A `groupKeys` path limits refresh to
-one subtree.
+to discard affected blocks immediately. A `groupKeys` path or a `rowId` limits
+the refresh to one subtree — that parent's children listing and every listing
+below it; the two are mutually exclusive. Expansion state survives either way.
+The call resolves `false` when the named subtree is not one the store holds (an
+unknown group path, or a row that has never been expanded, so nothing below it
+is loaded).
 
 For server-side pagination with expensive counts, pair an open-ended listing
 with a hint:

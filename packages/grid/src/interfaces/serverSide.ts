@@ -29,6 +29,19 @@ export interface IServerSideGroupKey {
   value: any;
 }
 
+/**
+ * The parent whose children a tree-mode request asks for (`treeData: { mode: "server" }`).
+ * `undefined` on the request means the root listing.
+ */
+export interface IServerSideTreeParent {
+  /** The parent row's grid row id, from `getRowId`/`rowIdKey`. */
+  id: string;
+  /** Row ids from the root down to and including the parent. */
+  path: string[];
+  /** The parent's row object, exactly as the server returned it. */
+  data: any;
+}
+
 export interface IServerSideRequest {
   /** Leaf-level column filters, applied before grouping at every level: a group exists only if it
    * has at least one matching leaf, and its aggregates/counts reflect filtered leaves only. */
@@ -50,6 +63,12 @@ export interface IServerSideRequest {
    * requested level is a group level and aggregates are configured. Put each aggregated value on
    * the group row under its own column key. */
   aggregates: AggregateModel[];
+  /** Tree mode only (`treeData: { mode: "server" }`): the parent whose children are requested;
+   * absent/undefined = the root listing. `startRow`/`endRow` are relative to that parent's
+   * children and `totalRows` in the result is its immediate-children count. In tree mode
+   * `groupBy`, `groupKeys`, and `aggregates` are always empty — the hierarchy is the rows'
+   * own, not a column-value grouping. */
+  treeParent?: IServerSideTreeParent;
 }
 
 export interface IServerSideResult {
@@ -61,7 +80,7 @@ export interface IServerSideResult {
    * requested), the total row/page count is provisional until then, and with pagination enabled
    * page boundaries drift as children load. Return it unless counting is genuinely prohibitive. */
   totalRows?: number;
-  /** Dynamic schema. Honored on root requests only (groupKeys empty). */
+  /** Dynamic schema. Honored on root requests only (no `groupKeys`, no `treeParent`). */
   columns?: ColDef[];
   schemaVersion?: string;
 }

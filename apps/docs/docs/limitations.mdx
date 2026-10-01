@@ -29,10 +29,13 @@ dedicated [accessibility](./accessibility.mdx) page.
 
 ## Client-side-only behavior
 
-Quick filter, tree data, full-width rows, custom filter matchers, and row
-transactions require the client-side model. Server-side grouping and sticky
-group rows are supported, but server-side group sorting is local to each
-listing.
+Quick filter, full-width rows, custom filter matchers, and row transactions
+require the client-side model. Server-side grouping, [server-side tree
+data](./examples/tree-data.mdx#server-side-tree-data), and sticky ancestors are
+supported, but server-side group sorting is local to each listing. Tree data's
+`path`, `parent`, and `children` relationship modes are client-side; the
+server-side model uses `mode: "server"`, where the data source answers one
+parent's children at a time.
 
 The quick filter's [find behavior](./examples/filtering.mdx#find-instead-of-filter)
 additionally needs data-row cells to highlight, so it is unavailable while the
@@ -54,7 +57,13 @@ outside the data region altogether.
 The server is responsible for filtering and sorting complete data. As a result,
 iteration cannot expose a separate pre-filter/pre-sort universe. Open-ended
 listings have provisional row/page counts until a short block establishes the
-end.
+end. Under server-side tree data, filtering — ancestor preservation included —
+is likewise the server's. Export writes the rows the client holds, in the shape
+on screen: an expanded parent with the children the grid has fetched, a
+collapsed one alone, and nothing from blocks never requested. The aggregate
+cells of a server-side export — group subtotals and the footer — are the numbers
+the grid displays, written as values rather than formulas, since a formula over
+the exported rows could not reproduce them.
 
 ## Layout
 

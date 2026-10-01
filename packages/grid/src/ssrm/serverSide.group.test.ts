@@ -223,6 +223,26 @@ describe("server-side row grouping", () => {
     expect(byKey.get("APAC")!.aggregateValues?.[salesId]).toBe(85);
   });
 
+  it("snapshots the displayed group tree, loaded children attached to clones of the group rows", async () => {
+    const { core } = makeGrid();
+    await flush();
+    core.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: groupNodeId(["EMEA"]) });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: groupNodeId(["EMEA", "UK"]) });
+    await flush();
+
+    const rm = core.getRowModel();
+    const shape = (n: IRowNode): any => n.children ? [n.groupKey ?? n.id, n.children.map(shape)] : n.groupKey ?? n.id;
+    // Collapsed APAC and France stand alone; open EMEA and UK carry what their listings hold.
+    expect(rm.getHierarchyRoots!().map(shape)).toEqual(["APAC", ["EMEA", ["France", ["UK", ["1", "2"]]]]]);
+    // The live group row is untouched — the snapshot is for the exporter, which walks `children`.
+    const emea = viewNodes(core).find(n => n.groupKey === "EMEA")!;
+    expect(emea.children).toBeUndefined();
+    expect(rm.getHierarchyRoots!()[1]).not.toBe(emea);
+  });
+
   it("sends one aggregate per column key even when the model carries several", async () => {
     const { core, ds } = makeGrid();
     await flush();

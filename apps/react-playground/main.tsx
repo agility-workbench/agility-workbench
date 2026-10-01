@@ -12,6 +12,9 @@ import BlankPivotDemo from "./BlankPivotDemo";
 import SheetsDemo from "./SheetsDemo";
 import C3ViewIndexDemo from "./C3ViewIndexDemo";
 import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
+import ServerSideAggregateScopeDemo from "./ServerSideAggregateScopeDemo";
+import ServerSideTreeDataDemo from "./ServerSideTreeDataDemo";
+import ServerSideTreeDuplicateIdDemo from "./ServerSideTreeDuplicateIdDemo";
 import TreeDataDemo from "./TreeDataDemo";
 import ColumnStateDemo from "./ColumnStateDemo";
 import VisualStatesDemo from "./VisualStatesDemo";
@@ -50,6 +53,9 @@ const PAGES = [
   { id: "sheets", label: "Sheets", render: () => <SheetsDemo /> },
   { id: "c3ViewIndex", label: "C3 grouped pagination", render: () => <C3ViewIndexDemo /> },
   { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },
+  { id: "serverSideAggregateScope", label: "SSRM: aggregate scope", render: () => <ServerSideAggregateScopeDemo /> },
+  { id: "serverSideTreeData", label: "Server-side tree data", render: () => <ServerSideTreeDataDemo /> },
+  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard", render: () => <ServerSideTreeDuplicateIdDemo /> },
   { id: "treeData", label: "Tree data", render: () => <TreeDataDemo /> },
   { id: "pinnedRows", label: "Pinned rows", render: () => <PinnedRowsDemo /> },
   { id: "stickyGroups", label: "Sticky group rows", render: () => <StickyGroupRowsDemo /> },

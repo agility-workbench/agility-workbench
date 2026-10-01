@@ -23,6 +23,9 @@ import { RowSelectionCheckboxDemoComponent } from "./row-selection-checkbox-demo
 import { SavedViewsDemoComponent } from "./saved-views-demo.component";
 import { SelectionDemoComponent } from "./selection-demo.component";
 import { ServerSideGroupingDemoComponent } from "./server-side-grouping-demo.component";
+import { ServerSideAggregateScopeDemoComponent } from "./server-side-aggregate-scope-demo.component";
+import { ServerSideTreeDataDemoComponent } from "./server-side-tree-data-demo.component";
+import { ServerSideTreeDuplicateIdDemoComponent } from "./server-side-tree-duplicate-id-demo.component";
 import { SparklineDemoComponent } from "./sparkline-demo.component";
 import { StickyGroupRowsDemoComponent } from "./sticky-group-rows-demo.component";
 import { ToolbarDemoComponent } from "./toolbar-demo.component";
@@ -49,6 +52,9 @@ const PAGES = [
   { id: "blankPivot", label: "Blank pivot canvas" },
   { id: "sheets", label: "Sheets" },
   { id: "serverSideGrouping", label: "Server-side grouping" },
+  { id: "serverSideAggregateScope", label: "SSRM: aggregate scope" },
+  { id: "serverSideTreeData", label: "Server-side tree data" },
+  { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard" },
   { id: "treeData", label: "Tree data" },
   { id: "pinnedRows", label: "Pinned rows" },
   { id: "stickyGroups", label: "Sticky group rows" },
@@ -97,6 +103,9 @@ type PageId = (typeof PAGES)[number]["id"];
     SavedViewsDemoComponent,
     SelectionDemoComponent,
     ServerSideGroupingDemoComponent,
+    ServerSideAggregateScopeDemoComponent,
+    ServerSideTreeDataDemoComponent,
+    ServerSideTreeDuplicateIdDemoComponent,
     SparklineDemoComponent,
     StickyGroupRowsDemoComponent,
     ToolbarDemoComponent,
@@ -162,6 +171,15 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("serverSideGrouping") {
           <server-side-grouping-demo />
+        }
+        @case ("serverSideAggregateScope") {
+          <server-side-aggregate-scope-demo />
+        }
+        @case ("serverSideTreeData") {
+          <server-side-tree-data-demo />
+        }
+        @case ("serverSideTreeDuplicateId") {
+          <server-side-tree-duplicate-id-demo />
         }
         @case ("treeData") {
           <tree-data-demo />

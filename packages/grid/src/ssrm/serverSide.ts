@@ -1,11 +1,13 @@
+import { ServerSideDataError, type ServerSideDataErrorReason } from "./serverSideDataError";
 import { IRowModel, IRowModelRequestParams, RowModelType, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
+import { createRowIdFactory, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
 import { AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
-import { GridOptions } from "../interfaces/gridOptions";
+import { GridOptions, TreeDataServerOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
 import { BLANK_GROUP_KEY, groupKeyForValue, groupNodeId } from "../csrm/rowGroup";
+import { labelFor } from "../csrm/treeData";
 import {
   IServerSideAggregationRequest,
   IServerSideDataSource,
@@ -14,6 +16,7 @@ import {
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,
+  IServerSideTreeParent,
 } from "../interfaces/serverSide";
 
 export type ServerSideRequest = IServerSideRequest;
@@ -22,17 +25,21 @@ export type ServerSideDataSource = IServerSideDataSource;
 export type ServerSideAggregationRequest = IServerSideAggregationRequest;
 export type ServerSideAggregationSource = NonNullable<IServerSideDataSource["getAggregates"]>;
 
-// The children of one parent group path ("listing"). The root listing (id "") holds top-level
-// rows: group rows while grouping is active, leaf rows otherwise. Child listings exist only for
-// group nodes that have been expanded (or default-expanded) — nothing below a collapsed group is
-// ever requested.
+// The children of one parent ("listing"). The root listing (id "") holds top-level rows: group
+// rows while grouping is active, tree roots in tree mode, leaf rows otherwise. Child listings
+// exist only for parents that have been expanded (or default-expanded) — nothing below a collapsed
+// parent is ever requested.
 interface ChildListing<Row> {
-  /** Owning group node id; "" for the root listing. */
+  /** Owning parent node id; "" for the root listing. */
   id: string;
-  /** Raw-value path sent to the server (empty for root). */
+  /** Raw-value path sent to the server (empty for root, and always empty in tree mode). */
   groupKeys: IServerSideGroupKey[];
-  /** Display-key path (stringified values / blank placeholder) used to derive child node ids. */
+  /** Display-key path (stringified values / blank placeholder) used to derive child node ids.
+   * Empty in tree mode, where child ids come from the rows themselves. */
   path: string[];
+  /** Tree mode only: the parent this listing asks the server about (absent on the root listing).
+   * Its `path` is the row-id chain root→parent, which also gives the listing's depth. */
+  treeParent?: IServerSideTreeParent;
   /** Loaded child nodes keyed by child index within this listing. */
   nodes: Map<number, IRowNode<Row>>;
   /** Immediate children discovered so far; equals the exact count once `counted`. */
@@ -44,8 +51,8 @@ interface ChildListing<Row> {
 }
 
 // One contiguous run of a listing's child indices in the flattened display list. Runs break only
-// at loaded expanded group nodes (whose own row ends a run and whose subtree is spliced in after),
-// so the segment count is proportional to the number of expanded groups, not the row count.
+// at loaded expanded parents (whose own row ends a run and whose subtree is spliced in after), so
+// the segment count is proportional to the number of expanded parents, not the row count.
 interface FlatSegment {
   listingId: string;
   childStart: number;
@@ -61,8 +68,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   private segments: FlatSegment[] = [];
   private flatTotal = 0;
   private totalKnown = true;
-  // Exclusive flat end of each expanded loaded group's subtree (its own row, descendants, and any
-  // probe slot). Rebuilt with the segments; lets the sticky overlay know where a group's block
+  // Exclusive flat end of each expanded loaded parent's subtree (its own row, descendants, and any
+  // probe slot). Rebuilt with the segments; lets the sticky overlay know where a parent's block
   // ends without its rows being loaded.
   private subtreeEndFlat: Map<string, number> = new Map();
 
@@ -98,6 +105,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   private readonly blockSize: number;
   private getId: (row: Row) => string;
+  // Server-side tree data: the hierarchy is the rows' own (`hasChildren` per row, children fetched
+  // per parent), not a column-value grouping. Fixed at construction — the relationship mode
+  // decides the row shape and cannot change on a mounted grid.
+  private readonly treeOptions?: TreeDataServerOptions<Row>;
 
   constructor(
     private opts: GridOptions,
@@ -107,6 +118,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   ) {
     this.getId = createRowIdFactory(opts);
     this.blockSize = Math.max(1, opts.serverSideBlockSize ?? opts.pageSize ?? 100);
+    this.treeOptions = opts.treeData?.mode === "server"
+      ? opts.treeData as TreeDataServerOptions<Row>
+      : undefined;
+  }
+
+  private get treeMode(): boolean {
+    return this.treeOptions != null;
   }
 
   getType(): RowModelType {
@@ -154,19 +172,22 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   forEachNode(callback: (node: IRowNode, idx: number) => void): void {
-    // All loaded leaf rows in document order, regardless of expansion (mirrors the client-side
-    // model, whose forEachNode iterates leaves only).
+    // All loaded DATA rows in document order, regardless of expansion (mirrors the client-side
+    // model, whose forEachNode skips synthetic group nodes). A server tree parent is a data row
+    // that also owns children, so it is both visited and descended into.
     let idx = 0;
+    // Listings on the walk's current path: tree ids the server failed to keep unique can make a
+    // listing reachable from its own descendant, and it is descended into once, not without end.
+    const onPath = new Set<string>();
     const walk = (listing: ChildListing<Row> | undefined) => {
-      if (!listing) return;
+      if (!listing || onPath.has(listing.id)) return;
+      onPath.add(listing.id);
       for (const childIdx of this.sortedIndices(listing)) {
         const node = listing.nodes.get(childIdx)!;
-        if (node.isGroup) {
-          walk(this.listings.get(node.id));
-        } else {
-          callback(node, idx++);
-        }
+        if (!node.isGroup) callback(node, idx++);
+        walk(this.listings.get(node.id));
       }
+      onPath.delete(listing.id);
     };
     walk(this.listings.get(ROOT_LISTING_ID));
   }
@@ -195,17 +216,51 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const out: IRowNode[] = [];
     for (const listing of this.listings.values()) {
       for (const node of listing.nodes.values()) {
-        if (node.isGroup) out.push(node);
+        // Tree mode has no synthetic group rows at all: its addressable hierarchy nodes are the
+        // loaded data rows that own children — the same set the client-side tree model reports
+        // here — so saved-view expansion capture/restore keys on parents on both row models.
+        if (this.treeMode ? isExpandableNode(node) : node.isGroup) out.push(node);
       }
     }
     return out;
   }
 
+  /**
+   * The hierarchy as displayed, as a snapshot: clones of the loaded root nodes, each expanded
+   * parent carrying clones of its listing's loaded children, recursively. A collapsed parent
+   * carries none (the grid shows none), and a slot that was never fetched is simply absent — so
+   * the exporter, this method's consumer, writes exactly the rows the store holds in the shape the
+   * user sees. Live nodes are never given a `children` array: `isExpandableNode` and the sticky
+   * stack read it, and a server parent's chevron comes from `expandable`, not from materialized
+   * children.
+   */
   getHierarchyRoots(): IRowNode[] {
-    if (this.groupBy.length === 0) return [];
     const root = this.listings.get(ROOT_LISTING_ID);
     if (!root) return [];
-    return this.sortedIndices(root).map(i => root.nodes.get(i)!).filter(n => n.isGroup);
+    const roots = this.snapshotListing(root, new Set());
+    // Tree mode: every loaded top-level row is a hierarchy root (a root leaf is a one-node tree).
+    if (this.treeMode) return roots;
+    if (this.groupBy.length === 0) return [];
+    return roots.filter(n => n.isGroup);
+  }
+
+  private snapshotListing(listing: ChildListing<Row>, onPath: Set<string>): IRowNode<Row>[] {
+    // Listings on the walk's current path, exactly as forEachNode keeps them: tree ids the server
+    // failed to keep unique can make a listing reachable from its own descendant.
+    onPath.add(listing.id);
+    const out: IRowNode<Row>[] = [];
+    // The same slot bound as the flattening, so a row past a listing's known end stays unseen.
+    const slots = listing.knownCount + (listing.counted ? 0 : 1);
+    for (const childIdx of this.sortedIndices(listing)) {
+      if (childIdx >= slots) break;
+      const node = listing.nodes.get(childIdx)!;
+      const clone: IRowNode<Row> = { ...node };
+      const children = isExpandableNode(node) && node.isExpanded ? this.listings.get(node.id) : undefined;
+      if (children && !onPath.has(children.id)) clone.children = this.snapshotListing(children, onPath);
+      out.push(clone);
+    }
+    onPath.delete(listing.id);
+    return out;
   }
 
   getViewCount() {
@@ -247,22 +302,24 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return (this.paginate ? this.viewStartRow : 0) + node.viewIndex;
   }
 
-  // View index of a group's last visible descendant (its own index when collapsed or empty).
+  // View index of an expandable row's last visible descendant (its own index when collapsed or
+  // empty) — a group node, or a tree parent in tree mode.
   // Derived from the flattened spans, so it stays correct when the group's rows are not loaded —
   // the sticky overlay needs the block end of groups whose children are still lazy blocks. For an
   // uncounted listing the span ends at the probe slot and extends as blocks arrive.
   getSubtreeEndViewIndex(groupId: string): number | undefined {
     const node = this.nodesMap.get(groupId);
-    if (!node || !node.isGroup) return undefined;
+    if (!node || !isExpandableNode(node)) return undefined;
     const end = this.subtreeEndFlat.get(groupId);
     if (end == null) return node.viewIndex;
     const viewOffset = this.paginate ? this.viewStartRow : 0;
     return end - 1 - viewOffset;
   }
 
-  // Root-first chain of the loaded ancestor group nodes owning a view slot, excluding the slot's
-  // own row. Resolves through the segment index, so it works for slots whose row data has not
-  // loaded yet (a group's ancestors are always loaded before any of its descendants).
+  // Root-first chain of the loaded ancestor nodes owning a view slot (group nodes, or tree parents
+  // in tree mode), excluding the slot's own row. Resolves through the segment index, so it works
+  // for slots whose row data has not loaded yet (a parent is always loaded before its
+  // descendants).
   getAncestorChainAtViewIndex(viewRowIndex: number): IRowNode<Row>[] {
     const flatIdx = (this.paginate ? this.viewStartRow : 0) + viewRowIndex;
     const seg = this.findSegment(flatIdx);
@@ -350,28 +407,30 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return new Map(this.aggregateValues);
   }
 
-  // Re-invoke the data source for the whole store or one group subtree (see
-  // IGridAPI.refreshServerSideData). purge=true drops affected rows immediately; purge=false keeps
-  // them rendered while blocks in the current view refetch and swap in place (off-view blocks are
-  // dropped and lazily reload on scroll).
+  // Re-invoke the data source for the whole store, one group subtree (`groupKeys`), or one row's
+  // subtree (`rowId`, server tree data) — see IGridAPI.refreshServerSideData. purge=true drops
+  // affected rows immediately; purge=false keeps them rendered while blocks in the current view
+  // refetch and swap in place (off-view blocks are dropped and lazily reload on scroll).
   async refreshServerSideData(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean> {
     if (!this.isValid()) return false;
     this.latestRequestId = Math.max(this.latestRequestId, requestId);
     const purge = options?.purge === true;
-    const targetId = options?.groupKeys?.length
-      ? groupNodeId(options.groupKeys.map(k => this.toDisplayKey(k.value)))
-      : ROOT_LISTING_ID;
+    const targetId = this.resolveRefreshTarget(options);
     const target = this.listings.get(targetId);
+    // A named subtree the store does not hold: an unknown group path, or a row whose children have
+    // never been fetched (nothing below a collapsed parent is loaded, so there is nothing to
+    // refresh). Say so rather than silently refreshing the whole store.
     if (targetId !== ROOT_LISTING_ID && !target) return false;
 
-    const inSubtree = (listing: ChildListing<Row>): boolean =>
-      targetId === ROOT_LISTING_ID
-      || listing.id === targetId
-      || listing.id.startsWith(targetId + "/");
+    // Which listings the target subtree covers. Deliberately an ancestor walk over `parentId`, not
+    // a string-prefix test on listing ids: group ids are "/"-joined display paths, but tree
+    // listings are keyed by the app's own row ids, which say nothing about ancestry. Resolved up
+    // front so dropping a listing (which unregisters its nodes) cannot break a later chain walk.
+    const affected = Array.from(this.listings.values()).filter(listing => this.inSubtree(listing, targetId));
 
     if (purge) {
-      for (const listing of Array.from(this.listings.values())) {
-        if (inSubtree(listing)) this.dropListing(listing);
+      for (const listing of affected) {
+        if (this.listings.has(listing.id)) this.dropListing(listing);
       }
       this.storeGeneration++;
       this.rebuildFlat();
@@ -386,8 +445,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     // loaded blocks so stale off-screen rows cannot linger (they reload lazily on scroll).
     const viewBlocks = this.collectViewBlocks();
     const params = this.viewportParams(requestId);
-    for (const listing of Array.from(this.listings.values())) {
-      if (!inSubtree(listing)) continue;
+    for (const listing of affected) {
+      // Dropping a node takes its child listings with it, so a deeper entry in the snapshot can
+      // already be gone by the time the loop reaches it.
+      if (!this.listings.has(listing.id)) continue;
       const keep = viewBlocks.get(listing.id) ?? new Set<number>();
       for (const childIdx of Array.from(listing.nodes.keys())) {
         const block = Math.floor(childIdx / this.blockSize) * this.blockSize;
@@ -401,6 +462,34 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       this.ensureViewRange(params);
     }
     return true;
+  }
+
+  /**
+   * Listing id the refresh is scoped to: a group path (`groupKeys`), a row's children listing
+   * (`rowId`, server tree data), or the root listing when neither is given. The two scopes address
+   * different stores — a store is either grouped or a tree — so asking for both is a caller bug
+   * worth saying out loud rather than resolving by precedence in silence.
+   */
+  private resolveRefreshTarget(options: ServerSideRefreshOptions | undefined): string {
+    if (options?.groupKeys?.length) {
+      if (options.rowId != null) {
+        console.warn("refreshServerSideData takes groupKeys or rowId, not both; ignoring rowId.");
+      }
+      return groupNodeId(options.groupKeys.map(k => this.toDisplayKey(k.value)));
+    }
+    if (options?.rowId != null) return options.rowId;
+    return ROOT_LISTING_ID;
+  }
+
+  /** Whether a listing sits at or below the target listing, by walking its owner's ancestors. */
+  private inSubtree(listing: ChildListing<Row>, targetId: string): boolean {
+    if (targetId === ROOT_LISTING_ID) return true;
+    let id: string | undefined = listing.id || undefined;
+    while (id) {
+      if (id === targetId) return true;
+      id = this.nodesMap.get(id)?.parentId;
+    }
+    return false;
   }
 
   destroy(): void {
@@ -422,30 +511,55 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private dropListing(listing: ChildListing<Row>): void {
+    // Unregister first: a listing reachable from its own descendant (tree ids the server failed to
+    // keep unique) is then dropped once instead of recursing without end.
+    this.listings.delete(listing.id);
     for (const node of listing.nodes.values()) {
-      this.nodesMap.delete(node.id);
+      this.unregisterNode(node);
       const child = this.listings.get(node.id);
       if (child) this.dropListing(child);
     }
-    this.listings.delete(listing.id);
   }
 
   private dropNodeAt(listing: ChildListing<Row>, childIdx: number): void {
     const node = listing.nodes.get(childIdx);
     if (!node) return;
     listing.nodes.delete(childIdx);
-    this.nodesMap.delete(node.id);
+    this.unregisterNode(node);
     const child = this.listings.get(node.id);
     if (child) this.dropListing(child);
   }
 
-  private getOrCreateListing(id: string, groupKeys: IServerSideGroupKey[], path: string[]): ChildListing<Row> {
+  /** Remove a node's id → node entry, but only while it still points at this node: during a soft
+   * refresh a row that moved to another parent is already registered from its new slot by the
+   * time its old slot is dropped, and that fresher registration must survive. */
+  private unregisterNode(node: IRowNode<Row>): void {
+    if (this.nodesMap.get(node.id) === node) this.nodesMap.delete(node.id);
+  }
+
+  private getOrCreateListing(
+    id: string,
+    groupKeys: IServerSideGroupKey[],
+    path: string[],
+    treeParent?: IServerSideTreeParent,
+  ): ChildListing<Row> {
     let listing = this.listings.get(id);
     if (!listing) {
-      listing = { id, groupKeys, path, nodes: new Map(), knownCount: 0, counted: false, inFlight: new Set() };
+      listing = { id, groupKeys, path, treeParent, nodes: new Map(), knownCount: 0, counted: false, inFlight: new Set() };
       this.listings.set(id, listing);
+      return listing;
     }
+    // Re-point an existing listing at the parent row currently loaded in its slot: a refetch of the
+    // parent's block hands back a fresh row object, and the request carries that object as
+    // `treeParent.data`.
+    if (treeParent) listing.treeParent = treeParent;
     return listing;
+  }
+
+  /** Depth of a listing's children: root children are level 0, and the row-id path to a tree
+   * parent has exactly as many entries as its children have ancestors. */
+  private listingLevel(listing: ChildListing<Row>): number {
+    return listing.treeParent?.path.length ?? 0;
   }
 
   private sortedIndices(listing: ChildListing<Row>): number[] {
@@ -472,17 +586,27 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       for (const childIdx of this.sortedIndices(listing)) {
         if (childIdx >= slots) break;
         const node = listing.nodes.get(childIdx)!;
-        if (!node.isGroup || !node.isExpanded) continue;
-        // Segment covering [cursor, childIdx] — ends with the expanded group's own row — then the
-        // group's subtree spliced in directly after.
+        if (!isExpandableNode(node) || !node.isExpanded) continue;
+        // Tree ids the server failed to keep unique can make one listing reachable from two
+        // parents; a row whose id is already on the path being walked would splice its own
+        // ancestor's subtree into itself without end. It stays a plain row here, chevron and all.
+        if (this.treeMode && listing.treeParent?.path.includes(node.id)) continue;
+        // Segment covering [cursor, childIdx] — ends with the expanded parent's own row — then the
+        // parent's subtree spliced in directly after.
         this.pushSegment(listing, cursor, childIdx + 1, flat, viewOffset);
         flat += childIdx + 1 - cursor;
         cursor = childIdx + 1;
-        walk(this.getOrCreateListing(
-          node.id,
-          [...listing.groupKeys, { key: this.groupBy[listing.groupKeys.length]?.key ?? "", value: node.groupValue ?? null }],
-          [...listing.path, node.groupKey ?? BLANK_GROUP_KEY],
-        ));
+        walk(this.treeMode
+          ? this.getOrCreateListing(node.id, [], [], {
+            id: node.id,
+            path: [...(listing.treeParent?.path ?? []), node.id],
+            data: node.data,
+          })
+          : this.getOrCreateListing(
+            node.id,
+            [...listing.groupKeys, { key: this.groupBy[listing.groupKeys.length]?.key ?? "", value: node.groupValue ?? null }],
+            [...listing.path, node.groupKey ?? BLANK_GROUP_KEY],
+          ));
         this.subtreeEndFlat.set(node.id, flat);
       }
       if (cursor < slots) {
@@ -545,7 +669,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     let anyExpanded = false;
     for (const id of targetIds) {
       const node = this.nodesMap.get(id);
-      if (!node || !node.isGroup) continue;
+      // Tree parents expand through the same door as group rows; non-expandable rows (plain
+      // leaves, and anything flagged expandable: false) ignore the request.
+      if (!node || !isExpandableNode(node)) continue;
       const next = expanded ?? !node.isExpanded;
       this.expansion.set(id, next);
       node.isExpanded = next;
@@ -636,6 +762,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       groupBy: this.groupBy.map(col => col.key),
       groupKeys: listing.groupKeys,
       aggregates: this.isGroupLevel(listing) ? this.serializeAggregates() : [],
+      // Tree mode only, and only below the root: the key stays off the root request entirely so
+      // "children of nothing" reads as absent rather than as an empty parent.
+      ...(listing.treeParent ? { treeParent: listing.treeParent } : {}),
     };
 
     void (async () => {
@@ -704,6 +833,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private isGroupLevel(listing: ChildListing<Row>): boolean {
+    // Tree mode has no group levels at all: rows are data rows the whole way down, so no request
+    // ever carries aggregates.
+    if (this.treeMode) return false;
     return listing.groupKeys.length < this.groupBy.length;
   }
 
@@ -716,6 +848,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const isGroupLevel = this.isGroupLevel(listing);
     const level = listing.groupKeys.length;
     const groupCol = this.groupBy[level];
+    // Tree rows: every id in the block is checked before any row enters the store, so a bad block
+    // is rejected whole and the listing is left exactly as it was.
+    const treeIds = this.treeOptions ? this.checkTreeRowIds(listing, rows) : undefined;
 
     rows.forEach((raw, i) => {
       const childIdx = startRow + i;
@@ -739,6 +874,28 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           parentId: listing.id === ROOT_LISTING_ID ? undefined : listing.id,
           aggregateValues: this.buildGroupAggregates(raw),
         };
+      } else if (this.treeOptions) {
+        // Server tree row: an ordinary data row (selectable, editable, exportable) that may also
+        // own children. `expandable: true` is the whole chevron contract — the children live in a
+        // lazy child listing that does not exist until the row is first expanded — so it must not
+        // be inferred from a `children` array that never materializes here.
+        const id = treeIds![i];
+        const treeLevel = this.listingLevel(listing);
+        const expandable = this.treeOptions.hasChildren(raw) ? true : undefined;
+        node = {
+          id,
+          data: raw,
+          viewIndex: -1,
+          selected: this.nodesMap.get(id)?.selected ?? false,
+          type: "leaf",
+          isGroup: false,
+          isTreeData: true,
+          level: treeLevel,
+          treeKey: labelFor(this.treeOptions, { id, data: raw }),
+          expandable,
+          isExpanded: this.expansion.get(id) ?? (expandable === true && this.isExpandedByDefault(treeLevel)),
+          parentId: listing.id === ROOT_LISTING_ID ? undefined : listing.id,
+        };
       } else {
         const id = this.getId(raw);
         node = {
@@ -754,7 +911,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         };
       }
       // Same node id at the same slot (a refetch): keep the child listing so an expanded subtree
-      // survives its parent block's refresh. A different id displaces the old node and its subtree.
+      // survives its parent block's refresh — group listings and tree-child listings alike. A
+      // different id displaces the old node and its subtree.
       const existing = listing.nodes.get(childIdx);
       if (existing && existing.id !== node.id) {
         this.dropNodeAt(listing, childIdx);
@@ -781,6 +939,47 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         if (childIdx >= listing.knownCount) this.dropNodeAt(listing, childIdx);
       }
     }
+  }
+
+  /**
+   * The ids of a block of tree rows, or a thrown data error if the block may not enter the store.
+   *
+   * A tree row's id is structural: it is also the key of the row's children listing and of its
+   * expansion entry, and `parentId` links resolve through the node map by id. An id that repeats
+   * one of the row's own ancestors would therefore make a subtree contain itself — the flatten
+   * walk would recurse until the stack overflowed, and every `parentId` walk (here, in the core,
+   * in the sticky-rows renderer) would cycle — and two siblings with one id would share a single
+   * subtree. Both are caught with certainty: a row can never legitimately be its own ancestor, and
+   * one response never legitimately lists an id twice. The fetch's catch reports the
+   * `ServerSideDataError` through onError as an `error` event (it is the event's `details`), and
+   * the block is rejected whole — skipping the offender alone would leave a hole at its slot that
+   * the renderer would fetch again forever.
+   *
+   * The same id under two DIFFERENT parents is deliberately accepted: part-way through a soft
+   * refresh, a row that moved between folders is legitimately present twice until the old parent's
+   * block arrives. The ancestor check walks the node map exactly as `parentId` walks do, which
+   * keeps that map free of cycles no matter what else the server repeats; the listing walks
+   * (rebuildFlat, forEachNode, dropListing) tolerate the shared listing on their own.
+   */
+  private checkTreeRowIds(listing: ChildListing<Row>, rows: Row[]): string[] {
+    const ancestors: string[] = [];
+    for (let id: string | undefined = listing.id || undefined; id; id = this.nodesMap.get(id)?.parentId) {
+      ancestors.push(id);
+    }
+    const parentId = listing.id === ROOT_LISTING_ID ? undefined : listing.id;
+    const path = ancestors.slice().reverse();
+    const refuse = (reason: ServerSideDataErrorReason, rowId: string, row: Row) =>
+      new ServerSideDataError({ reason, rowId, parentId, path, row });
+    const seen = new Set<string>();
+    return rows.map(raw => {
+      const id = this.getId(raw);
+      // "" is the root listing's own id: a row with an empty id would alias the root.
+      if (id === ROOT_LISTING_ID) throw refuse("empty_row_id", id, raw);
+      if (ancestors.includes(id)) throw refuse("row_id_repeats_ancestor", id, raw);
+      if (seen.has(id)) throw refuse("row_id_repeats_sibling", id, raw);
+      seen.add(id);
+      return id;
+    });
   }
 
   private buildGroupAggregates(raw: Row): { [key: string]: any } | undefined {
@@ -922,7 +1121,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateValues.clear();
     const requestSeq = ++this.aggregateRequestSeq;
     if (this.aggregateScope !== "none" && this.aggregates.length > 0) {
-      if (this.aggregateScope === "all" && this.serverAggregationSource) {
+      if (this.aggregateScope === "all" && this.canAggregateWholeDataset()) {
         await this.requestServerAggregates(requestSeq);
       } else {
         this.calculateLocalAggregates();
@@ -956,15 +1155,32 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return rows;
   }
 
+  /**
+   * Whole-dataset totals come from the server: the explicit `serverSideAggregationSource` when one
+   * is set, else the data source's own `getAggregates`. The data source's method is invoked AS a
+   * method of that object, so a class-based source keeps its `this`.
+   */
+  private resolveAggregationSource(): ServerSideAggregationSource | undefined {
+    if (this.serverAggregationSource) return this.serverAggregationSource;
+    const source = this.serverDataSource;
+    if (source?.getAggregates) return params => source.getAggregates!(params);
+    return undefined;
+  }
+
+  canAggregateWholeDataset(): boolean {
+    return this.resolveAggregationSource() !== undefined;
+  }
+
   private async requestServerAggregates(requestSeq: number): Promise<void> {
-    if (!this.serverAggregationSource) return;
+    const aggregationSource = this.resolveAggregationSource();
+    if (!aggregationSource) return;
     const aggregates = this.buildServerAggregateRequest();
     if (aggregates.length === 0) return;
     const params = this.lastRequestParams;
 
     try {
       const result = await new Promise<any>((resolve, reject) => {
-        const maybePromise = this.serverAggregationSource!({
+        const maybePromise = aggregationSource({
           request: {
             aggregates,
             aggregateScope: "all",
@@ -1013,7 +1229,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private normalizeAggregateScope(scope: AggregateScope): AggregateScope {
-    if (scope === "all" && !this.serverAggregationSource) return "page";
+    if (scope === "all" && !this.canAggregateWholeDataset()) return "page";
     return scope;
   }
 }
