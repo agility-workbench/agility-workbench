@@ -3,7 +3,55 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.3.0 — 2026-10-01
+
+### Server-side tree data
+
+- **`treeData: { mode: "server" }` brings tree data to the server-side row model.** Each row
+  declares whether it has children through `hasChildren`, and a parent's children are requested
+  the first time it is expanded, so depth is unbounded and siblings are ragged — a folder and a
+  file sit side by side. Rows stay ordinary data rows (selectable, editable, copyable, sortable)
+  with the same chevrons, indentation, expansion state, sticky ancestors, and hierarchy keyboard
+  mode as the client-side modes. The mode requires `rowModelType: "serverSide"`; a client mode
+  under the server-side model, or `"server"` under the client-side one, is dropped with a console
+  warning.
+- **Requests carry `treeParent`.** A children request names its parent as `{ id, path, data }` —
+  `path` the row-id chain from the root down to the parent, `data` the parent row exactly as the
+  server returned it; the root listing carries none. `startRow`/`endRow` and `totalRows` are
+  relative to that parent's children, with the same open-ended-listing rules per parent, and
+  `groupBy`, `groupKeys`, and `aggregates` are empty in tree mode. A sort or filter on the
+  hierarchy column arrives under its key: `__pte_tree__`, unless `treeData.columnDef.key` names the
+  server field the labels come from.
+- **`refreshServerSideData({ rowId })`** reloads one row's subtree — its children listing and
+  everything below — soft or purged, beside the existing `groupKeys` scope; the two are mutually
+  exclusive. Filtering is the server's, ancestor preservation included.
+- **New exports**: `TreeDataServerOptions`, `IServerSideTreeParent`, and `isExpandableNode(node)`,
+  the one rule for whether a row opens — a server parent opens through `expandable: true`, with no
+  materialized `children` array. Row ids must be unique across the whole tree, not per parent.
+
+### Duplicate row ids on a server tree
+
+- **A children block that breaks the id rule is refused and reported, instead of overflowing the
+  stack.** A row repeating one of its own ancestors' ids, one id listed twice in a single response,
+  or an empty id rejects the block whole — before any of it enters the store — and reports it
+  through the `error` event (`code: "row_model_error"`) with a `ServerSideDataError` as `details`:
+  `reason` (`"empty_row_id" | "row_id_repeats_ancestor" | "row_id_repeats_sibling"`), `rowId`,
+  `parentId`, `path`, and the offending `row`. `isServerSideDataError(ev.details)` tells it from a
+  data source's own `error()`. The parent stays open over an unloaded slot until the server answers
+  correctly, and each later fill retries the block, as after a network error. The same id under two
+  different parents is accepted — a row that moved between parents mid-refresh looks exactly like
+  that — and the store's walks are cycle-safe on their own.
+- **New exports**: `ServerSideDataError`, `isServerSideDataError`, `ServerSideDataErrorReason`.
+
+### Fixes
+
+- **`createGrid` with a creation-time `serverSideDataSource` now loads its first block.** The
+  core's init announces the viewport and asks the row model for nothing: a server-side grid gets its
+  first request from having its data source set, which the bindings did after mount through
+  `updateGridOptions` and `createGrid` never did, so a server-side grid built from options alone
+  sat empty. `createGrid` now sets the source after the column definitions, and the React and
+  Angular bindings skip re-applying a source the grid already bootstrapped from, so the first block
+  is requested exactly once.
 
 ### Server-side whole-dataset totals
 
