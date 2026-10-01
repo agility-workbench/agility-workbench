@@ -106,10 +106,10 @@ the data are worth planning for:
   parent stays open over an unloaded slot until the server answers correctly.
 - **Filtering is the server's job**, ancestor preservation included: a matching
   descendant is only reachable if the server still returns the parents above it.
-- **Export covers the rows the client holds.** The exporter walks materialized
-  child arrays, and a server tree keeps its descendants in per-parent blocks, so
-  a CSV/Excel export of a server tree writes the loaded top-level rows — not the
-  expanded descendants. Produce full extracts on the server.
+- **Export covers the rows the client holds**, in the shape on screen: an
+  expanded parent is followed by the children the grid has fetched, a collapsed
+  one stands alone, and nothing is written for blocks never requested. Produce
+  full extracts on the server.
 
 ## Keyboard navigation
 

@@ -148,7 +148,11 @@ export interface IRowModel<Row = any> {
   // All synthetic group nodes in the current grouping (empty when not grouping). Used e.g. to size
   // columns to their per-group aggregate values.
   getGroupNodes(): IRowNode<Row>[];
-  /** Root nodes of the current grouped/tree hierarchy, including data-bearing tree roots. */
+  /**
+   * Root nodes of the current grouped/tree hierarchy, including data-bearing tree roots. The
+   * server-side model returns a snapshot — clones of its loaded nodes, each expanded parent carrying
+   * the loaded children of its listing — because its live nodes never own a `children` array.
+   */
   getHierarchyRoots?(): IRowNode<Row>[];
 
   // identity

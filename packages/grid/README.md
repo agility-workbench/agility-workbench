@@ -654,7 +654,8 @@ await api.refreshServerSideData({ rowId: "folder-42", purge: true });
 Server tree rows are ordinary data rows (selectable, editable, copyable) with the same chevrons,
 indentation, expansion state, sticky ancestors, and hierarchy keyboard mode. Filtering is the
 server's responsibility, ancestor preservation included, and export writes the rows the client holds
-— for a server tree, the loaded top-level rows, since descendants live in per-parent server blocks.
+in the shape on screen — an expanded parent with the children the grid has fetched, a collapsed one
+alone, nothing from blocks never requested.
 A children block that breaks the id rule in a way the grid can be certain of — a row repeating one
 of its own ancestors' ids, or one response listing an id twice — is rejected whole and reported
 through the `error` event (`code: "row_model_error"`) instead of entering the store. The event's

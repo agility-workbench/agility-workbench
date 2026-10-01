@@ -225,15 +225,42 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return out;
   }
 
+  /**
+   * The hierarchy as displayed, as a snapshot: clones of the loaded root nodes, each expanded
+   * parent carrying clones of its listing's loaded children, recursively. A collapsed parent
+   * carries none (the grid shows none), and a slot that was never fetched is simply absent — so
+   * the exporter, this method's consumer, writes exactly the rows the store holds in the shape the
+   * user sees. Live nodes are never given a `children` array: `isExpandableNode` and the sticky
+   * stack read it, and a server parent's chevron comes from `expandable`, not from materialized
+   * children.
+   */
   getHierarchyRoots(): IRowNode[] {
     const root = this.listings.get(ROOT_LISTING_ID);
     if (!root) return [];
+    const roots = this.snapshotListing(root, new Set());
     // Tree mode: every loaded top-level row is a hierarchy root (a root leaf is a one-node tree).
-    // Their descendants live in lazy child listings, not in a `children` array — callers that walk
-    // `children` therefore see the loaded roots only.
-    if (this.treeMode) return this.sortedIndices(root).map(i => root.nodes.get(i)!);
+    if (this.treeMode) return roots;
     if (this.groupBy.length === 0) return [];
-    return this.sortedIndices(root).map(i => root.nodes.get(i)!).filter(n => n.isGroup);
+    return roots.filter(n => n.isGroup);
+  }
+
+  private snapshotListing(listing: ChildListing<Row>, onPath: Set<string>): IRowNode<Row>[] {
+    // Listings on the walk's current path, exactly as forEachNode keeps them: tree ids the server
+    // failed to keep unique can make a listing reachable from its own descendant.
+    onPath.add(listing.id);
+    const out: IRowNode<Row>[] = [];
+    // The same slot bound as the flattening, so a row past a listing's known end stays unseen.
+    const slots = listing.knownCount + (listing.counted ? 0 : 1);
+    for (const childIdx of this.sortedIndices(listing)) {
+      if (childIdx >= slots) break;
+      const node = listing.nodes.get(childIdx)!;
+      const clone: IRowNode<Row> = { ...node };
+      const children = isExpandableNode(node) && node.isExpanded ? this.listings.get(node.id) : undefined;
+      if (children && !onPath.has(children.id)) clone.children = this.snapshotListing(children, onPath);
+      out.push(clone);
+    }
+    onPath.delete(listing.id);
+    return out;
   }
 
   getViewCount() {

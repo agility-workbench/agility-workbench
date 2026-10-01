@@ -1011,7 +1011,12 @@ earlier drafts (grouping, sparklines, `addColumnDef`, column hierarchy, filter-m
   that also own children.
 - **Quick filter, full-width rows, custom filter functions, and row transactions are client-side (CSRM) only.** Row grouping, tree data, and sticky ancestors work on both models — tree data's `path`/`parent`/`children` modes on CSRM and `mode: "server"` on SSRM, each rejected (with a warning) on the other model. SSRM group sorting always behaves as `groupSortMode: "local"`.
 - **Server-side tree data leaves two things to the server**: filtering (ancestor preservation
-  included) and full extracts. Export walks materialized `children`, which an SSRM tree never has,
-  so a CSV/Excel export of a server tree writes the loaded top-level rows only.
+  included) and full extracts. Export walks materialized `children`, which an SSRM node never has,
+  so `ServerSideRowModel.getHierarchyRoots()` hands the exporter a snapshot — clones of the loaded
+  nodes, each expanded parent carrying its listing's loaded children — and a server-side export
+  (tree or grouped) writes what the client holds in the shape on screen. Its aggregate cells are
+  the displayed numbers as static values: server-stamped group subtotals and the footer's own
+  total, since a formula over the fetched rows could not reproduce them
+  (`ExportConfig.serverSide`).
 - **Zero runtime dependencies** — the core's `dependencies` is empty (`react`/`react-dom` are the React binding's peer deps). `exceljs` is a dev-only test verifier; installing either package pulls in nothing but the peers.
 - **Excel export uses `CompressionStream`** for DEFLATE; where it's unavailable the writer falls back to uncompressed STORE (still valid, larger files) — no hard runtime requirement.

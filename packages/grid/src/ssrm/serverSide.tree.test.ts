@@ -409,6 +409,31 @@ describe("server-side tree data", () => {
     expect(seen).toEqual(["docs", "spec", "images", "logo", "notes", "readme", "src"]);
   });
 
+  it("snapshots the displayed tree for the exporter without touching the live rows", async () => {
+    const { core } = makeGrid();
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "docs" });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "images" });
+    await flush();
+    core.dispatch({ type: "groupToggleExpand", groupId: "images", expanded: false });
+    await flush();
+
+    const rm = core.getRowModel();
+    const roots = rm.getHierarchyRoots!();
+    const shape = (n: IRowNode): any => n.children ? [n.id, n.children.map(shape)] : n.id;
+    // docs is open and carries its loaded children; images is closed, so its loaded child stays
+    // out — the snapshot is what the user sees, not everything the store holds.
+    expect(roots.map(shape)).toEqual([["docs", ["spec", "images", "notes"]], "readme", "src"]);
+    // Clones: a live row never grows a `children` array, which the chevron rule and the sticky
+    // stack would otherwise read.
+    const live = rm.getRowNodeAtViewIndex(0)!;
+    expect(live.id).toBe("docs");
+    expect(roots[0]).not.toBe(live);
+    expect(live.children).toBeUndefined();
+    expect(roots[0].children![0].data).toBe(rm.getRowNodeAtViewIndex(1)!.data);
+  });
+
   it("reports loaded tree parents as the hierarchy nodes, leaves excluded", async () => {
     // The set saved views capture and restore expansion against. Tree mode has no synthetic group
     // rows, so this is the loaded parents — matching what the client-side tree model reports.
@@ -700,6 +725,9 @@ describe("server-side tree data: duplicate row ids", () => {
     let visited = 0;
     rm.forEachNode(() => visited++);
     expect(visited).toBe(10);
+    // The exporter's snapshot walks the same shared listings, once per path, and ends too.
+    const shape = (n: IRowNode): string => n.id + (n.children ? `[${n.children.map(shape).join(",")}]` : "");
+    expect(rm.getHierarchyRoots!().map(shape).join(" ")).toBe("A[B[A]] B[A[B]] E[B[A[B]]]");
     for (let i = 0; i < rm.getViewCount(); i++) {
       expect(Array.isArray(rm.getAncestorChainAtViewIndex!(i))).toBe(true);
     }

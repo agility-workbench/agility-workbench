@@ -21,6 +21,20 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   way to say why it is disabled — never surfaced, because the stylesheet took disabled items out of
   hit-testing. Every menu benefits, the footer's overflow menu included.
 
+### Server-side export
+
+- **A grouped server-side grid exports again.** Every root was a group row without a `children`
+  array, so the exporter found no leaves and silently produced nothing. The server-side row model
+  now hands the exporter a snapshot of the displayed tree: the loaded group rows, an expanded group
+  followed by the children the grid has fetched, a collapsed one alone — across every page.
+- **A server tree export includes expanded descendants.** It wrote the loaded top-level rows only;
+  it now writes an expanded parent's fetched children at their depth, and a collapsed parent alone.
+- **Server-side aggregate cells are the grid's numbers.** Group subtotals are the server-stamped
+  values (they cover rows never fetched), group counts the server's or none, and the footer the
+  footer's current-page or whole-dataset total — all written as values rather than formulas, since
+  a formula over the exported rows could not reproduce them. This changes the flat server-side
+  export's footer too, which was a formula over the exported rows.
+
 ## 1.2.0 — 2026-09-07
 
 ### Quick-filter find (client-side row model)

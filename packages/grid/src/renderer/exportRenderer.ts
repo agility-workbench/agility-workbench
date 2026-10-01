@@ -208,8 +208,20 @@ export class ExportRenderer {
       selectedColumnIDs,
       aggregates,
       ...this.commonExportConfig(options),
+      ...this.serverSideExportConfig(),
       ...this.buildSpanResolvers(),
     };
+  }
+
+  /**
+   * The server-side row model holds only the rows the client has fetched, so its exports carry the
+   * aggregate numbers the grid displays rather than recomputing them over the exported rows (see
+   * `ExportConfig.serverSide`). Empty for the client-side model, whose rows are the whole dataset.
+   */
+  private serverSideExportConfig(): Pick<ExportConfig, "serverSide"> {
+    const rowModel = this.params.core.getRowModel();
+    if (rowModel.getType() !== "serverSide") return {};
+    return { serverSide: { aggregateValues: rowModel.getAggregateValues() } };
   }
 
   /**
@@ -347,10 +359,12 @@ export class ExportRenderer {
     const groupRoots = nodeIds && nodeIds.size > 0 ? pruneGroupTree(allRoots, nodeIds) : allRoots;
     if (groupRoots.length === 0) return null;
 
-    // Leaf data drives the empty-guard and (in leaves mode) the grand total.
+    // Leaf data drives the empty-guard and (in leaves mode) the grand total. A server-side tree
+    // may hold no leaves at all — every root a collapsed group — and still have group rows to write.
+    const serverSide = this.serverSideExportConfig();
     const leafData: any[] = [];
     for (const root of groupRoots) collectLeafData(root, leafData);
-    if (leafData.length === 0) return null;
+    if (leafData.length === 0 && !serverSide.serverSide) return null;
 
     const aggregates =
       this.params.core.getAggregateScope() !== "none"
@@ -379,6 +393,7 @@ export class ExportRenderer {
         ? this.params.core.getColumnModel().getHierarchyColumn()
         : undefined,
       groupMode: options.groupMode ?? "tree",
+      ...serverSide,
       // Leaf-row colSpan is honored in grouped exports too; full-width (group) rows keep their
       // existing SUBTOTAL-header layout, so only getCellColSpan is meaningful here.
       ...this.buildSpanResolvers(),

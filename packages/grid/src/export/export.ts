@@ -119,6 +119,16 @@ export interface ExportConfig {
    * ordinary column-tree header layout.
    */
   pivotExport?: boolean;
+  /**
+   * The rows come from the server-side row model, whose store holds only the rows the client has
+   * fetched. Numbers the grid displays from elsewhere are then written as displayed, never
+   * recomputed over the exported rows, and as static cells rather than formulas: a group row's
+   * label shows the server's child count (or none), its subtotal cells its server-stamped
+   * `aggregateValues`, and the footer the `aggregateValues` given here — the grid footer's current
+   * numbers by column instance id, which are the current page's or the server's whole-dataset
+   * totals.
+   */
+  serverSide?: { aggregateValues: ReadonlyMap<string, any> };
 }
 
 interface HeaderCell {
@@ -723,14 +733,22 @@ const aggregateCell = (
   }
 
   // Static fallback: write the grid's computed value directly.
-  if (typeof computed === "number") return { value: { kind: "number", value: computed }, style };
-  return { value: { kind: "string", value: String(computed ?? "") }, style: { bold: true } };
+  return staticAggregateCell(col, computed);
+};
+
+/** An aggregate cell holding a value as is — the grid's number, with no formula behind it. */
+const staticAggregateCell = (col: Column, value: any): SheetCell => {
+  if (typeof value === "number") {
+    return { value: { kind: "number", value }, style: { bold: true, numFmt: resolveNumberFormat(col) } };
+  }
+  return { value: { kind: "string", value: String(value ?? "") }, style: { bold: true } };
 };
 
 /**
  * Build the grand-total aggregate footer row. Uses SUBTOTAL when the body is grouped (so it ignores
  * the per-group subtotal rows) and plain functions otherwise. Returns null when there's nothing to
  * aggregate. `dataStartRow`/`dataEndRow` bound the full body block (1-based sheet rows).
+ * `displayed` (server-side exports) writes the grid footer's own numbers as static cells instead.
  */
 const buildAggregateFooter = (
   columns: Column[],
@@ -739,10 +757,21 @@ const buildAggregateFooter = (
   dataStartRow: number,
   dataEndRow: number,
   useSubtotal: boolean,
+  displayed?: ReadonlyMap<string, any>,
 ): SheetCell[] | null => {
-  if (!aggregates || aggregates.length === 0 || rows.length === 0) return null;
-
+  if (!aggregates || aggregates.length === 0) return null;
   const opByCol = new Map(aggregates.map(a => [a.key, a.type]));
+
+  if (displayed) {
+    const cells = columns.map(col =>
+      opByCol.has(col.instanceID) && displayed.get(col.instanceID) != null
+        ? staticAggregateCell(col, displayed.get(col.instanceID))
+        : { value: { kind: "empty" } as CellValue });
+    // Nothing displayed yet (the server has not answered, or the page holds no rows): no footer.
+    return cells.some(cell => cell.value.kind !== "empty") ? cells : null;
+  }
+
+  if (rows.length === 0) return null;
   const calculator = new AggregateCalculator();
 
   return columns.map((col, colIdx) => {
@@ -848,8 +877,9 @@ const buildGroupedBody = (
 
     // "<value> (<count>)" in the mode's label column.
     // This walk holds the leaves it is about to write, so the count is known even when the node
-    // does not carry one.
-    const label = groupRowLabel(node, node.childCount ?? groupLeaves.length);
+    // does not carry one — except for a server-side group, whose leaves below are only the fetched
+    // ones: it shows the server's count, or none.
+    const label = groupRowLabel(node, config.serverSide ? node.childCount : node.childCount ?? groupLeaves.length);
     headerCells[labelColIdx] = { value: { kind: "string", value: label }, style: { bold: true } };
 
     // Children render at the next outline level; hidden if this group is collapsed (or an ancestor
@@ -871,6 +901,17 @@ const buildGroupedBody = (
       if (columns.length > 1) {
         merges.push(...spanMergesToRanges([{ colStart: 0, span: columns.length }], headerSheetRow));
       }
+      return;
+    }
+
+    // A server-side group's subtotals are the ones the server stamped on it (they cover rows that
+    // were never fetched), written as static cells — a collapsed group still shows them on screen.
+    if (config.serverSide) {
+      columns.forEach((col, colIdx) => {
+        if (colIdx === labelColIdx || !opByCol.has(col.instanceID)) return;
+        const value = node.aggregateValues?.[col.instanceID];
+        if (value != null) headerCells[colIdx] = staticAggregateCell(col, value);
+      });
       return;
     }
 
@@ -1164,7 +1205,15 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
       if (rowMeta) rowMeta.push({}); // pinned rows sit at the top outline level
     });
     const footer = config.aggregates
-      ? buildAggregateFooter(columns, footerRows, config.aggregates, dataStartRow, dataEndRow, treeExport)
+      ? buildAggregateFooter(
+          columns,
+          footerRows,
+          config.aggregates,
+          dataStartRow,
+          dataEndRow,
+          treeExport,
+          config.serverSide?.aggregateValues,
+        )
       : null;
     if (footer) {
       sheetRows.push(footer);

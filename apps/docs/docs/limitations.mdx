@@ -58,9 +58,12 @@ The server is responsible for filtering and sorting complete data. As a result,
 iteration cannot expose a separate pre-filter/pre-sort universe. Open-ended
 listings have provisional row/page counts until a short block establishes the
 end. Under server-side tree data, filtering — ancestor preservation included —
-is likewise the server's, and export writes the rows the client holds: for a
-server tree that is the loaded top-level rows, since descendants live in
-per-parent server blocks rather than on the nodes.
+is likewise the server's. Export writes the rows the client holds, in the shape
+on screen: an expanded parent with the children the grid has fetched, a
+collapsed one alone, and nothing from blocks never requested. The aggregate
+cells of a server-side export — group subtotals and the footer — are the numbers
+the grid displays, written as values rather than formulas, since a formula over
+the exported rows could not reproduce them.
 
 ## Layout
 

@@ -26,6 +26,10 @@ Grouped export supports a tree with outline levels and per-group subtotals, or
 a flat leaf mode with full group paths. Selection export prunes the group tree
 to relevant rows.
 
+On the [server-side row model](./server-side-data.mdx#export) an export holds
+the rows the client has fetched, in the shape on screen, and its aggregate cells
+are the grid's displayed numbers written as values rather than formulas.
+
 Use `getDataAsCsv()` or `getDataAsExcel()` when the application needs bytes
 without triggering a browser download—for example, to upload or encrypt a file.
 

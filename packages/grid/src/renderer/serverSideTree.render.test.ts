@@ -181,18 +181,23 @@ describe("server-side tree data in the DOM", () => {
     container.remove();
   });
 
-  it("exports the rows the store holds — the loaded roots, not lazy descendants", async () => {
-    // Pinning down what a server tree export actually is, because the docs state it: the exporter
-    // walks materialized `children`, and a server tree keeps its descendants in lazy per-parent
-    // listings rather than on the nodes.
+  it("exports the displayed tree: expanded parents with their loaded children, collapsed ones alone", async () => {
+    // The exporter walks `children`, which a server tree never materializes on its live rows; the
+    // store hands it a snapshot of the loaded listings instead, in the shape the user sees.
     const { container, core, api } = mountGrid();
     await settle();
     core.dispatch({ type: "groupToggleExpand", groupId: "alpha" });
     await settle();
 
-    // "Hierarchy,Kind\nalpha,folder\nbeta,folder\nloose.txt,file" — the roots, flat.
-    const csv = api.getDataAsCsv();
-    expect(csv.split("\n")).toEqual(["Hierarchy,Kind", "alpha,folder", "beta,folder", "loose.txt,file"]);
+    const expanded = api.getDataAsCsv()!.split("\n");
+    expect(expanded.slice(0, 3)).toEqual(["Hierarchy,Kind", "alpha,folder", "a0.txt,file"]);
+    expect(expanded.slice(-2)).toEqual(["beta,folder", "loose.txt,file"]);
+    expect(expanded).toHaveLength(1 + 1 + 20 + 1 + 1);
+
+    // Collapsing alpha takes its children out of the export too, loaded as they still are.
+    core.dispatch({ type: "groupToggleExpand", groupId: "alpha", expanded: false });
+    await settle();
+    expect(api.getDataAsCsv()!.split("\n")).toEqual(["Hierarchy,Kind", "alpha,folder", "beta,folder", "loose.txt,file"]);
 
     container.remove();
   });
