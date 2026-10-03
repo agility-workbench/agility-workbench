@@ -227,6 +227,8 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date series (Ctrl/Cmd flips)"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -347,6 +349,18 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
       )),
       field("Header keyboard nav", checkbox(true, checked =>
         api.updateGridOptions({ headerKeyboardNavigation: checked }))),
+      // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+      field("Fill handle", select(
+        [
+          { value: "auto", label: "auto — series where possible" },
+          { value: "copy", label: "copy — always repeat" },
+          { value: "off", label: "off" },
+        ],
+        "auto",
+        value => api.updateGridOptions({
+          fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" },
+        }),
+      )),
       h("div", { style: { display: "flex", gap: "8px" } },
         btn("Select all (API)", () => api.selectAll()),
         btn("Clear", () => api.clearSelection("all")),

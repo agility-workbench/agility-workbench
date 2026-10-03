@@ -167,8 +167,11 @@ export type GridEventEditingChangedParams = {
   charPress?: string;
 };
 
-/** What wrote the cell: an editor commit / `setCellValue`, a clipboard batch, or history. */
-export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "undo" | "redo";
+/**
+ * What wrote the cell: an editor commit / `setCellValue`, a clipboard batch, a fill (the fill
+ * handle or `Ctrl/Cmd+D` / `Ctrl/Cmd+R`), or history.
+ */
+export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "fill" | "undo" | "redo";
 
 /**
  * A cell's stored value changed. Covers every write path — editor commits, `setCellValue`,

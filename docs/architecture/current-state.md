@@ -592,6 +592,7 @@ Staleness: the store carries a monotonic `storeGeneration`, bumped on every purg
 | Undo/redo (per-cell and batch paste/cut/clear) | ✅ Complete | `core/historyModel.ts` |
 | Re-evaluate sort/filter after edit | ✅ Complete | `GridCore.reevaluateAfterEdit()` (gated by `reevaluateOnEdit` option) |
 | Multi-cell paste/clear | ✅ Complete | `renderer/clipboard/clipboardRenderer.ts` |
+| Fill handle (drag copy/series, `Ctrl/Cmd+D` / `Ctrl/Cmd+R`, body-menu Fill down/right) | ✅ Complete | `renderer/fill/fillHandleController.ts` (gesture, handle placement, writes via `cellsCommit reason: "fill"`), `renderer/fill/fillModel.ts` (pure target geometry + series math); option `fillHandle` (runtime) |
 | Paste tiling (fill selection when block divides evenly) | ✅ Complete | `clipboardRenderer.paste()` |
 | Value parser on commit | ✅ Complete | `column/column.ts` → `parseValue` |
 

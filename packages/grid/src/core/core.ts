@@ -388,6 +388,7 @@ export class GridCore implements IGridCore {
         : "left",
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
+      fillHandle: options.fillHandle ?? true,
       columnSelection: options.columnSelection ?? true,
       headerKeyboardNavigation: options.headerKeyboardNavigation ?? true,
       showColumnButtonsOnHover: isTrue(options.showColumnButtonsOnHover),
@@ -3588,8 +3589,9 @@ export class GridCore implements IGridCore {
         const recorded: CellEdit[] = [];
         const source: CellCommitSource = action.reason === "cut" ? "cut"
           : action.reason === "clear" ? "clear"
-            : action.reason === "api" ? "edit"
-              : "paste";
+            : action.reason === "fill" ? "fill"
+              : action.reason === "api" ? "edit"
+                : "paste";
         for (const edit of action.edits) {
           const col = this.resolveCellColumn(edit.cell);
           const row = this.resolveCellRow(edit.cell);
@@ -3620,8 +3622,9 @@ export class GridCore implements IGridCore {
         if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
           const label = action.reason === "cut" ? "cut"
             : action.reason === "clear" ? "clear"
-              : action.reason === "api" ? "api"
-                : "paste";
+              : action.reason === "fill" ? "fill"
+                : action.reason === "api" ? "api"
+                  : "paste";
           recordedBatch = this.recordHistory({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {

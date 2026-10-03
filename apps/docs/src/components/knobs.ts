@@ -169,6 +169,7 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       { id: "commitOnBlur", label: "Commit on blur", kind: "toggle", default: true },
       { id: "suppressTypeToEdit", label: "Disable type-to-edit", kind: "toggle", default: false },
       { id: "readOnlyEdit", label: "Read-only edit (events only)", kind: "toggle", default: false },
+      { id: "fillHandle", label: "Fill handle", kind: "select", options: [{ value: "auto", label: "Series where possible" }, { value: "copy", label: "Always copy" }, { value: "off", label: "Off" }], default: "auto" },
       { id: "undoLimit", label: "Undo depth", kind: "select", options: [{ value: "0", label: "Off" }, { value: "10" }, { value: "50" }], default: "50", structural: true },
     ],
     toProps: (v) => ({
@@ -178,6 +179,8 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       ...(bool(v.commitOnBlur) ? {} : { commitOnBlur: false }),
       ...onOff(v.suppressTypeToEdit, "suppressTypeToEdit"),
       ...onOff(v.readOnlyEdit, "readOnlyEdit"),
+      // The fill handle defaults to ON with series; only the other two settings need saying.
+      ...(v.fillHandle === "off" ? { fillHandle: false } : v.fillHandle === "copy" ? { fillHandle: { mode: "copy" } } : {}),
       undoLimit: num(v.undoLimit),
       highlightActiveCell: true,
     }),

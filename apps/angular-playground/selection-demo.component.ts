@@ -3,6 +3,7 @@ import {
   AwbGrid,
   ColumnType,
   formatChord,
+  type FillHandleOptions,
   type GridEventSelectionChangedParams,
   type ICellEditorNgComp,
   type ICellEditorParams,
@@ -210,6 +211,8 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date series (Ctrl/Cmd flips)"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -266,6 +269,14 @@ function describeSelection(sel: SelectionSnapshot | null): string {
         />
         Header keyboard nav
       </label>
+      <div class="sel-row-count">
+        <label for="fill-handle" style="font-size: 13px">Fill handle</label>
+        <select id="fill-handle" (change)="setFillHandle($event)">
+          <option value="auto" selected>auto — series where possible</option>
+          <option value="copy">copy — always repeat</option>
+          <option value="off">off</option>
+        </select>
+      </div>
       <div style="display: flex; gap: 8px">
         <button class="btn" type="button" (click)="api?.selectAll()">Select all (API)</button>
         <button class="btn" type="button" (click)="api?.clearSelection('all')">Clear</button>
@@ -289,6 +300,7 @@ function describeSelection(sel: SelectionSnapshot | null): string {
           [selectAllRowsOnHeaderClick]="true"
           [cellSelection]="cellSelection()"
           [headerKeyboardNavigation]="headerKeyboardNav()"
+          [fillHandle]="fillHandle()"
           (gridReady)="onReady($event)"
         />
       </div>
@@ -390,6 +402,8 @@ export class SelectionDemoComponent {
   // wrapper reconciles them live — no grid rebuild.
   readonly cellSelection = signal<boolean | "text">(true);
   readonly headerKeyboardNav = signal(true);
+  // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+  readonly fillHandle = signal<boolean | FillHandleOptions>(true);
   readonly headerAt = signal<number | null>(null);
   // App shortcuts (api.registerShortcut): held disposers, the rows read back from
   // api.getKeyboardShortcuts() so the panel shows the router's truth, and what fired last.
@@ -457,6 +471,11 @@ export class SelectionDemoComponent {
   setCellSelection(ev: Event): void {
     const value = (ev.target as HTMLSelectElement).value;
     this.cellSelection.set(value === "text" ? "text" : value === "true");
+  }
+
+  setFillHandle(ev: Event): void {
+    const value = (ev.target as HTMLSelectElement).value;
+    this.fillHandle.set(value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" });
   }
 
   private refreshAppShortcuts(): void {

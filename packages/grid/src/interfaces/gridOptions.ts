@@ -446,6 +446,40 @@ export type EditTrigger = "doubleClick" | "singleClick" | "none";
  */
 export type CellSelectionMode = boolean | "text";
 
+/**
+ * How the fill handle derives the values it writes.
+ * - `"auto"` (default): a line of numbers or dates extends its series — two or more source cells
+ *   continue their linear trend, a single date steps one day — and everything else repeats the
+ *   source. Holding Ctrl/Cmd when the drag ends flips the choice (a single number then counts up
+ *   by one; a series repeats instead).
+ * - `"copy"`: always repeat the source block; the modifier has no effect.
+ */
+export type FillHandleMode = "auto" | "copy";
+
+/** Which way the fill handle can be dragged: rows and columns, rows only, or columns only. */
+export type FillHandleDirection = "xy" | "y" | "x";
+
+export interface FillHandleOptions {
+  /** See {@link FillHandleMode}. Defaults to `"auto"`. */
+  mode?: FillHandleMode;
+  /** Defaults to `"xy"`. `Ctrl/Cmd+D` needs `"y"` or `"xy"`; `Ctrl/Cmd+R` needs `"x"` or `"xy"`. */
+  direction?: FillHandleDirection;
+}
+
+export interface ResolvedFillHandleOptions {
+  mode: FillHandleMode;
+  direction: FillHandleDirection;
+}
+
+/** `null` when the handle is off; otherwise the options with defaults filled in. */
+export function resolveFillHandleOptions(
+  value: boolean | FillHandleOptions | undefined,
+): ResolvedFillHandleOptions | null {
+  if (value === false) return null;
+  const opts = typeof value === "object" && value !== null ? value : {};
+  return { mode: opts.mode ?? "auto", direction: opts.direction ?? "xy" };
+}
+
 /** A configurable control in the pagination footer. The array order is the visual/tab order. */
 export type PaginationControl =
   | "pageSize"
@@ -1159,6 +1193,26 @@ export interface GridOptions {
    */
   rangeSelection?: boolean;
   /**
+   * The spreadsheet fill handle: a small square on the bottom-right corner of the cell selection
+   * that drags to copy the selection into the cells below, above, left, or right of it — one
+   * direction per drag, decided by where the pointer goes. While dragging, the cells about to be
+   * written show a dashed outline; releasing writes them as one undoable step (`cellValueChanged`
+   * reports `source: "fill"`) and extends the selection over the result. `Ctrl/Cmd+D` fills the
+   * selection down from its first row and `Ctrl/Cmd+R` fills it right from its first column
+   * (a single cell takes the value above or to its left), always by copying.
+   *
+   * Values are written as stored, without re-parsing, when the target column has the same `type`
+   * as the column they came from — always the case when filling down or up. Into a column of a
+   * different type the value's text goes through that column's `valueParser`, exactly as a paste
+   * would. `onBeforeCellCommit` runs for every cell; non-editable cells, group rows, and rows not
+   * yet loaded are skipped and keep their place in the pattern.
+   *
+   * Shown only on body rows (a selection that reaches into a pinned band has no handle) and only
+   * while the selection covers at least one editable column; requires `cellSelection: true`.
+   * `true` (default) is `{ mode: "auto", direction: "xy" }`; see {@link FillHandleOptions}.
+   */
+  fillHandle?: boolean | FillHandleOptions;
+  /**
    * When true, clicking a column header selects that column (Ctrl/Cmd+click toggles). When false,
    * header clicks no longer select the column; sorting (Shift+click / sort affordances), the column
    * menu, and filtering are unaffected. Defaults to true.
@@ -1635,6 +1689,7 @@ export interface InternalGridOptions extends GridOptions {
   rowSelectionCheckboxColumnPinned: "left" | "right" | null;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
+  fillHandle: boolean | FillHandleOptions;
   columnSelection: boolean;
   headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
@@ -1711,6 +1766,7 @@ export const RUNTIME_OPTION_KEYS = [
   "highlightActiveCell",
   "cellSelection",
   "rangeSelection",
+  "fillHandle",
   "columnSelection",
   "headerKeyboardNavigation",
   "showColumnButtonsOnHover",

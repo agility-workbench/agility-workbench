@@ -4,6 +4,7 @@ import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
 import { ActiveDescendantTracker, setAriaSelected } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
+import type { FillHandleController } from "../fill/fillHandleController";
 import { hasMod } from "../interaction/keyChord";
 import type { KeyboardBinding } from "../interaction/keyboardRouter";
 import { RowPoolDef } from "../types";
@@ -13,6 +14,8 @@ interface SelectionRendererParams {
   root: HTMLDivElement;
   activeDescendant: ActiveDescendantTracker;
   clipboard: () => ClipboardRenderer;
+  /** The fill handle rides on the selection paint: it places its grip and drag preview per cell. */
+  fill: () => FillHandleController;
   rowPool: () => RowPoolDef[];
   startIndex: () => number;
   leafColumns: () => Column[];
@@ -37,6 +40,8 @@ export class SelectionRenderer {
 
   // ---------------- Hot path: per-row styling ----------------
   applySelectionToSlot(slot: RowPoolDef, viewIndex: number | null) {
+    const fill = this.params.fill();
+    fill.beginSlotPaint();
     const range = this.params.core.getSelectionRange();
     const selectedRowIDs = this.params.core.getSelectedRowIds();
     const selectedColumnIDs = this.params.core.getSelectedColumnIds();
@@ -159,6 +164,7 @@ export class SelectionRenderer {
         cls.toggle("pte-active-cell", isActive && highlight);
         cls.toggle("pte-checkbox-cell-focused", checkboxFocused);
         cls.toggle("pte-row-number-cell-focused", rowNumberFocused);
+        if (Number.isFinite(colIdx)) fill.paintCell(cell, slot, viewIndex, colIdx, colEnd);
       }
     };
 
@@ -169,6 +175,7 @@ export class SelectionRenderer {
 
     focusedCellEl = this.applySelectionToFullWidthCell(slot, viewIndex, rangeRow, rowSelected, activeCell, highlight)
       ?? focusedCellEl;
+    fill.endSlotPaint(slot);
 
     // Row-level selected state is net-new: row selection has always been painted per
     // cell, with no row element carrying it. It goes on the center fragment, which is the ARIA row.
@@ -536,6 +543,27 @@ export class SelectionRenderer {
         command: "body.paste",
         run: () => void this.params.clipboard().paste(),
       },
+      // Fill down / right: the spreadsheet chords for copying the selection's first row / column
+      // across it. Declined while the fill handle is off (or that axis is), so the browser keeps
+      // its own meaning for the key.
+      {
+        id: "fillDown",
+        chord: "mod+d",
+        scope: "bodyCursor",
+        label: "Fill down",
+        command: "body.fillDown",
+        when: () => this.params.fill().options()?.direction !== "x" && this.params.fill().isEnabled(),
+        run: () => this.params.fill().fillDown(),
+      },
+      {
+        id: "fillRight",
+        chord: "mod+r",
+        scope: "bodyCursor",
+        label: "Fill right",
+        command: "body.fillRight",
+        when: () => this.params.fill().options()?.direction !== "y" && this.params.fill().isEnabled(),
+        run: () => this.params.fill().fillRight(),
+      },
       {
         id: "undo",
         chord: "mod+z",
@@ -652,6 +680,14 @@ export class SelectionRenderer {
 
   onCellMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
+
+    // The fill handle sits inside the selection's corner cell: pressing it starts a fill drag, not
+    // a new selection, and the cell under it keeps its place as the range's corner.
+    if (this.params.fill().isHandleTarget(e.target)) {
+      e.preventDefault();
+      if (this.params.fill().beginDrag()) this.params.root.focus();
+      return;
+    }
 
     // Clicking a group row's expand/collapse chevron toggles that group and consumes the event so
     // it doesn't also start a cell-range selection.
@@ -781,6 +817,8 @@ export class SelectionRenderer {
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
     if (this.params.core.options.cellSelection !== true) return;
+    // A double-click on the fill handle is two handle presses, not a request to edit its cell.
+    if (this.params.fill().isHandleTarget(e.target)) return;
     if (this.params.core.options.editTrigger !== "doubleClick") return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
@@ -811,6 +849,10 @@ export class SelectionRenderer {
   }
 
   onCellMouseMove(e: MouseEvent) {
+    if (this.params.fill().isDragging()) {
+      this.params.fill().updateDrag(this.getCellLocation(e.target));
+      return;
+    }
     if (!this.isSelecting) return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
@@ -823,7 +865,11 @@ export class SelectionRenderer {
     });
   }
 
-  onCellMouseUp() {
+  onCellMouseUp(e: MouseEvent) {
+    if (this.params.fill().isDragging()) {
+      this.params.fill().endDrag(e);
+      return;
+    }
     if (!this.isSelecting) return;
     this.isSelecting = false;
   }

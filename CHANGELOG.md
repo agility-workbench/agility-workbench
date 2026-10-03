@@ -3,6 +3,38 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Fill handle
+
+- **The cell selection grows a spreadsheet fill handle.** A small square on the bottom-right
+  corner of the selection drags to copy the selected cells into the rows below or above, or the
+  columns to the right or left — one direction per drag, the one the pointer travels further
+  along. While dragging, the cells about to be written show a dashed outline; releasing writes
+  them as one undoable step and extends the selection over the result, with the active cell
+  still on a cell the user chose. Non-editable cells, group rows, and rows not yet loaded are
+  skipped and keep their place in the pattern.
+- **Series, not just copies.** Two or more numbers continue their linear trend (`10, 20` → `30,
+  40`; `1, 2, 6` → `8, 10.5, 13`), a lone date steps a day and a run of dates keeps its
+  interval, and everything else repeats. Holding Ctrl/Cmd when the drag ends flips the choice:
+  a lone number counts up, a series repeats instead. `fillHandle: { mode: "copy" }` turns the
+  series off; `direction: "y"` or `"x"` restricts the handle to rows or columns.
+- **`Ctrl/Cmd+D` fills down and `Ctrl/Cmd+R` fills right**, copying the selection's first row
+  or column across it (a single cell takes the value above or to its left), always as a copy
+  and without moving the selection. The body menu offers the same two commands as "Fill down"
+  and "Fill right" whenever they would write something, with the chords beside them.
+- **Values move as stored** when the target column shares the source column's `type` — always
+  the case filling down or up — so parsers never see them; into a differently typed column the
+  value's displayed text goes through that column's `valueParser`, as a paste would.
+  `onBeforeCellCommit` runs for every cell, and `cellValueChanged` reports `source: "fill"`
+  (`CellValueChangeSource` and `CellCommitSource` gain the member; the `cellsCommit` action
+  gains `reason: "fill"`).
+- **New option `fillHandle`** (default `true`, requires `cellSelection: true` and
+  `rangeSelection`), live-reconciled in both bindings; new exports `FillHandleOptions`,
+  `FillHandleMode`, `FillHandleDirection`. The handle only appears while the selection covers an
+  editable column and never on a selection reaching into a pinned band. New theme variable
+  `--pte-fill-preview-bg-color`.
+
 ## 1.3.0 — 2026-10-01
 
 ### Server-side tree data

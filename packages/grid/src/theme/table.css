@@ -20,6 +20,7 @@
   --pte-selected-resize-handle-color: #84b6fb;
   --pte-hover-bg-color: #f3f4f6;
   --pte-selected-bg-color: #dbeafe;
+  --pte-fill-preview-bg-color: rgba(59, 130, 246, 0.08);
   --pte-selected-hover-bg-color: #cfe3ff;
   --pte-selected-border-color: #3b82f6;
   --pte-active-cell-border-color: #3b82f6;
@@ -171,6 +172,7 @@
   --pte-selected-resize-handle-color: #60a5fa;
   --pte-hover-bg-color: #13223a;
   --pte-selected-bg-color: #1e3a8a;
+  --pte-fill-preview-bg-color: rgba(96, 165, 250, 0.14);
   --pte-selected-hover-bg-color: #27459b;
   --pte-selected-border-color: #60a5fa;
   --pte-active-cell-border-color: #93c5fd;
@@ -4478,6 +4480,51 @@
 .pte-cell.pte-active-cell {
   outline: 2px solid var(--pte-active-cell-border-color);
   outline-offset: -2px;
+}
+
+/* Fill handle: the drag grip on the selection's bottom-right cell, and the dashed outline of the
+   cells a drag is about to write. Only the corner cell becomes a positioning context, so nothing
+   else inside a cell changes its containing block. */
+.pte-cell.pte-fill-corner {
+  position: relative;
+}
+
+.pte-fill-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  background-color: var(--pte-selected-border-color);
+  border: 1px solid var(--pte-root-bg-color);
+  cursor: crosshair;
+  z-index: 1;
+}
+
+.pte-root.pte-fill-dragging,
+.pte-root.pte-fill-dragging .pte-cell {
+  cursor: crosshair;
+}
+
+.pte-cell.pte-fill-preview {
+  background-color: var(--pte-fill-preview-bg-color);
+}
+
+.pte-cell.pte-fill-preview-top {
+  border-top: 1px dashed var(--pte-selected-border-color);
+}
+
+.pte-cell.pte-fill-preview-bottom {
+  border-bottom: 1px dashed var(--pte-selected-border-color);
+}
+
+.pte-cell.pte-fill-preview-left {
+  border-left: 1px dashed var(--pte-selected-border-color);
+}
+
+.pte-cell.pte-fill-preview-right {
+  border-right: 1px dashed var(--pte-selected-border-color);
 }
 
 .pte-menu {

@@ -177,7 +177,7 @@ stored value **actually changes**: committing the value a cell already holds
 emits nothing (equality is SameValueZero plus `Date`s compared by instant —
 the same rule is exported as `valuesAreSame`). `value`/`oldValue` are the
 stored (parsed) forms, and `source` says what wrote the cell (`"edit"`,
-`"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff consumers (dirty
+`"paste"`, `"cut"`, `"clear"`, `"fill"`, `"undo"`, `"redo"`), so diff consumers (dirty
 tracking, server sync, analytics) need no shadow copy of the data. Two
 exceptions: under `readOnlyEdit` the grid writes nothing and cannot compare,
 so it fires for every *accepted* write (the value it reports is what the grid
@@ -209,6 +209,50 @@ it instead of polling. `reason` is `"commit"`, `"undo"`, `"redo"`, or `"clear"`.
 Replacing `rowData` clears history (its entries reference rows by id) and
 reports `reason: "clear"`. `getHistoryState()` reads the same snapshot on demand,
 for the toolbar's first render.
+
+### Fill handle
+
+The selection carries a small square on its bottom-right corner. Drag it down,
+up, right, or left — one direction per drag, the one the pointer travels further
+along — and the cells it passes show a dashed outline; release to write them as
+one undo step. The selection then covers source and result together, with the
+active cell still on a cell you chose.
+
+What gets written follows the spreadsheet rules, decided per line (a column when
+filling vertically, a row when horizontally):
+
+- Two or more numbers continue their linear trend: `10, 20` → `30, 40`, and
+  `1, 2, 6` → `8, 10.5, 13`.
+- A lone date steps one calendar day; a run of dates keeps its interval, across
+  month ends and DST changes.
+- Everything else — text, booleans, a lone number, a mixed line — repeats.
+- Hold **Ctrl/Cmd** when you release to flip the choice: a lone number counts up
+  by one, and a series repeats instead.
+
+`Ctrl/Cmd+D` fills the selection down from its first row and `Ctrl/Cmd+R` fills
+it right from its first column; a single cell takes the value above or to its
+left. Both are copies, never series, and leave the selection where it is. The
+body context menu offers the same two commands as **Fill down** and **Fill
+right** whenever they would write something.
+
+```ts
+fillHandle: true                           // default: series where possible, any direction
+fillHandle: { mode: "copy" }               // always repeat; Ctrl/Cmd does nothing
+fillHandle: { direction: "y" }             // rows only (Ctrl/Cmd+R is left to the browser)
+fillHandle: false
+```
+
+Filling down or up stays inside one column, so values move as stored and the
+`valueParser` never runs. Filling across columns, a value reaches a column of
+the same `type` as stored too; into a differently typed column its displayed
+text goes through that column's parser, exactly as a paste would. Every cell
+still passes `onBeforeCellCommit`, and `cellValueChanged` reports
+`source: "fill"`. Non-editable cells, group rows, and rows not yet loaded are
+skipped without disturbing the pattern.
+
+The handle needs `cellSelection: true` and `rangeSelection`, appears only while
+the selection covers at least one editable column, and never on a selection
+that reaches into a pinned band.
 
 ### Programmatic writes and history
 

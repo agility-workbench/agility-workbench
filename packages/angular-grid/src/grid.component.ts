@@ -129,6 +129,7 @@ export class AwbGrid implements OnDestroy {
   readonly isRowSelectable = input<GridOptions["isRowSelectable"]>();
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
+  readonly fillHandle = input<GridOptions["fillHandle"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
   readonly headerKeyboardNavigation = input<GridOptions["headerKeyboardNavigation"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
@@ -428,6 +429,7 @@ export class AwbGrid implements OnDestroy {
         highlightActiveCell: this.highlightActiveCell() ?? false,
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,
+        fillHandle: this.fillHandle() ?? true,
         columnSelection: this.columnSelection() ?? true,
         headerKeyboardNavigation: this.headerKeyboardNavigation() ?? true,
         showColumnButtonsOnHover: this.showColumnButtonsOnHover() ?? false,

@@ -22,6 +22,15 @@ export interface BodyMenuClipboardTarget {
   pasteSelection: (opts: { ctx: BodyMenuContext }) => void;
   /** Whether the current selection contains at least one editable cell (gates Cut / Paste). */
   hasEditableCells: () => boolean;
+  /**
+   * The fill handle's keyboard commands as menu items (`Ctrl/Cmd+D`, `Ctrl/Cmd+R`). Each `can…`
+   * says whether the command would write anything from the current selection — the item is
+   * omitted otherwise. Absent entirely when the host has no fill handle.
+   */
+  canFillDown?: () => boolean;
+  canFillRight?: () => boolean;
+  fillDown?: () => void;
+  fillRight?: () => void;
 }
 
 interface BodyMenuServiceParams {
@@ -50,6 +59,14 @@ export class BodyMenuService {
     items.push({ id: "copyWithHeaders", label: "Copy with Headers", left: "icon-copy", command: "body.copyWithHeaders" });
     if (canEdit) {
       items.push({ id: "paste", label: "Paste", left: "icon-paste", command: "body.paste" });
+      // Fill down / right are copies of the selection's own first row / column — edit operations
+      // like Paste, so they sit with it, and only when they would write something.
+      if (this.params.clipboard.canFillDown?.()) {
+        items.push({ id: "fillDown", label: "Fill down", command: "body.fillDown" });
+      }
+      if (this.params.clipboard.canFillRight?.()) {
+        items.push({ id: "fillRight", label: "Fill right", command: "body.fillRight" });
+      }
     }
 
     const opts = this.params.core.getOptions();
@@ -318,6 +335,10 @@ export class BodyMenuService {
         return this.params.clipboard.cutSelection({ ctx });
       case "body.paste":
         return this.params.clipboard.pasteSelection({ ctx });
+      case "body.fillDown":
+        return this.params.clipboard.fillDown?.();
+      case "body.fillRight":
+        return this.params.clipboard.fillRight?.();
       case "body.export.csv":
         return this.params.exporter.exportCSV({ scope });
       case "body.export.excel":

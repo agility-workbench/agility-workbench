@@ -708,6 +708,28 @@ Only the fields you pass change. A mode set this way reports `source: "options"`
 `keyboardNavigationModeChanged`, distinguishing configuration from the imperative
 `setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
 
+## Fill handle
+
+The cell selection carries a small square on its bottom-right corner. Drag it down, up, right, or
+left — one direction per drag — and the cells it passes show a dashed outline; release to write
+them as one undo step, after which the selection covers source and result together. Lines of two
+or more numbers continue their trend, dates step by their interval (a lone date by one day), and
+everything else repeats; holding Ctrl/Cmd at release flips series and copy. `Ctrl/Cmd+D` and
+`Ctrl/Cmd+R` fill the selection down / right from its first row / column as a copy, and the body
+menu offers the same as "Fill down" / "Fill right".
+
+```ts
+fillHandle: true                 // default (needs cellSelection: true and rangeSelection)
+fillHandle: { mode: "copy" }     // never a series
+fillHandle: { direction: "y" }   // rows only; "x" for columns only
+fillHandle: false
+```
+
+Within a column (or into a column of the same `type`) values move as stored; into a differently
+typed column the displayed text goes through that column's `valueParser`, as a paste would.
+`onBeforeCellCommit` runs per cell and `cellValueChanged` reports `source: "fill"`. The handle shows
+only while the selection covers an editable column, and not on a selection reaching a pinned band.
+
 ## Keyboard bindings
 
 Bindings live in a table rather than in nested `if`s, resolved by *scope*: an open cell editor and a
@@ -747,7 +769,8 @@ has nothing to mean.
 The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
 `Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/
 `PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
-characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
+characters start an edit, `Ctrl/Cmd+D` / `Ctrl/Cmd+R` fill the selection down / right (see
+[Fill handle](#fill-handle)), and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
 `Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
 
 Whole-grid chords are last in that resolution order: `Ctrl/Cmd+F` opens the [quick

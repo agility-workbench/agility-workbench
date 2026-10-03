@@ -168,6 +168,8 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date series (Ctrl/Cmd flips)"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -205,6 +207,8 @@ export function SelectionDemo() {
   // wrapper reconciles them live — no grid rebuild.
   const [cellSelection, setCellSelection] = useState<boolean | "text">(true);
   const [headerKeyboardNav, setHeaderKeyboardNav] = useState(true);
+  // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+  const [fillHandle, setFillHandle] = useState<"auto" | "copy" | "off">("auto");
   const [headerAt, setHeaderAt] = useState<number | null>(null);
   // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
   // read back from api.getKeyboardShortcuts(), and what fired last.
@@ -338,6 +342,18 @@ export function SelectionDemo() {
           />
           Header keyboard nav
         </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="fill-handle" style={{ fontSize: 13 }}>Fill handle</label>
+          <select
+            id="fill-handle"
+            value={fillHandle}
+            onChange={(e) => setFillHandle(e.target.value as "auto" | "copy" | "off")}
+          >
+            <option value="auto">auto — series where possible</option>
+            <option value="copy">copy — always repeat</option>
+            <option value="off">off</option>
+          </select>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
@@ -361,6 +377,7 @@ export function SelectionDemo() {
             selectAllRowsOnHeaderClick
             cellSelection={cellSelection}
             headerKeyboardNavigation={headerKeyboardNav}
+            fillHandle={fillHandle === "off" ? false : { mode: fillHandle }}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />
