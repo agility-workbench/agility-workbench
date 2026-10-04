@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { unmountTestRoot } from "./testUtils";
 import { Grid } from "./grid";
 import { ColumnType } from "@agility-workbench/grid";
-import type { FillHandleOptions, IGridAPI } from "@agility-workbench/grid";
+import type { FillHandleOptions, FillOperationParams, FillOperationResult, IGridAPI } from "@agility-workbench/grid";
 
 /**
  * The fill handle through the React binding: the `fillHandle` prop reaches the grid at creation and
@@ -23,7 +23,9 @@ beforeAll(() => {
 
 type Row = { id: number; name: string; qty: number };
 
-async function mountGrid(fillHandle?: boolean | FillHandleOptions) {
+type FillOperation = (params: FillOperationParams) => FillOperationResult | undefined;
+
+async function mountGrid(fillHandle?: boolean | FillHandleOptions, fillOperation?: FillOperation) {
   const container = document.createElement("div");
   Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
   document.body.appendChild(container);
@@ -36,7 +38,7 @@ async function mountGrid(fillHandle?: boolean | FillHandleOptions) {
   ];
   const sources: string[] = [];
   const root = createRoot(container);
-  const render = async (next?: boolean | FillHandleOptions) => {
+  const render = async (next?: boolean | FillHandleOptions, operation?: FillOperation) => {
     await act(async () => {
       root.render(
         <Grid
@@ -48,12 +50,13 @@ async function mountGrid(fillHandle?: boolean | FillHandleOptions) {
           ]}
           rowIdKey="id"
           fillHandle={next}
+          fillOperation={operation}
           onCellValueChanged={(ev) => sources.push(ev.source)}
         />,
       );
     });
   };
-  await render(fillHandle);
+  await render(fillHandle, fillOperation);
   return { container, apiRef, render, root, data, sources };
 }
 
@@ -99,6 +102,27 @@ describe("React Grid fill handle", () => {
 
     await render(false);
     expect(container.querySelector(".pte-fill-handle")).toBeNull();
+    await unmountTestRoot(root);
+  });
+
+  it("bridges fillOperation through a ref: its value is written, and a new function applies without a remount", async () => {
+    const { container, apiRef, render, root, data } = await mountGrid(true, ({ defaultValue }) => ({ value: `${defaultValue}!` }));
+    const api = apiRef.current!;
+    api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    const drag = (to: number) => {
+      const handle = container.querySelector<HTMLElement>(".pte-fill-handle")!;
+      handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      cell(container, to, 0).dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    };
+    drag(1);
+    expect(data.map(r => r.name)).toEqual(["AAA", "AAA!", "CCC", "DDD"]);
+
+    await render(true, ({ rowId }) => (rowId === "3" ? { skipCell: true } : undefined));
+    expect(apiRef.current).toBe(api);
+    api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    drag(3);
+    expect(data.map(r => r.name)).toEqual(["AAA", "AAA", "CCC", "AAA"]);
     await unmountTestRoot(root);
   });
 });

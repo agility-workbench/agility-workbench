@@ -6,6 +6,7 @@ import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
 import type { ICellEditorParams } from "@grid";
+import type { FillOperationParams, FillOperationResult } from "@grid";
 import { formatChord, ValueFormatterParams, ValueParserParams } from "@grid";
 import { formatDate } from "./helpers";
 
@@ -95,6 +96,34 @@ const LAST_NAMES = [
 const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support", "Legal"];
 const TITLES = ["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"];
 const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Series the grid cannot know, for the `fillOperation` demo: "Joined On" steps by business days
+// (weekends skipped) and "Department" cycles through the company's list; every other column keeps
+// the grid's own value. The grid's `lineMode` is honoured for the dates, so Ctrl/Cmd still copies.
+function appFillOperation(params: FillOperationParams): FillOperationResult | undefined {
+  const { colId, values, index, lineMode } = params;
+  if (colId === "joinedOn") {
+    const last = values[values.length - 1];
+    if (lineMode !== "series" || !(last instanceof Date)) return undefined;
+    return { value: addBusinessDays(last, index - (values.length - 1)) };
+  }
+  if (colId === "department") {
+    const at = DEPARTMENTS.indexOf(String(values[0]));
+    if (at < 0) return undefined;
+    const n = DEPARTMENTS.length;
+    return { value: DEPARTMENTS[(((at + index) % n) + n) % n] };
+  }
+  return undefined;
+}
+
+function addBusinessDays(from: Date, steps: number): Date {
+  const date = new Date(from);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return date;
+}
 
 // Deterministic PRNG so the demo data is stable across reloads (no Math.random in the grid path).
 function mulberry32(seed: number) {
@@ -210,6 +239,9 @@ export function SelectionDemo() {
   const [headerKeyboardNav, setHeaderKeyboardNav] = useState(true);
   // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
   const [fillHandle, setFillHandle] = useState<"auto" | "copy" | "off">("auto");
+  // `fillOperation` is a callback, bridged through a ref like onBeforeCellCommit: swapping the
+  // function (or passing none) applies to the next fill without a grid rebuild.
+  const [fillRules, setFillRules] = useState<"grid" | "app">("grid");
   const [headerAt, setHeaderAt] = useState<number | null>(null);
   // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
   // read back from api.getKeyboardShortcuts(), and what fired last.
@@ -355,6 +387,17 @@ export function SelectionDemo() {
             <option value="off">off</option>
           </select>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="fill-rules" style={{ fontSize: 13 }}>Fill rules</label>
+          <select
+            id="fill-rules"
+            value={fillRules}
+            onChange={(e) => setFillRules(e.target.value === "app" ? "app" : "grid")}
+          >
+            <option value="grid">grid — built-in series</option>
+            <option value="app">app — business days, department cycle</option>
+          </select>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
@@ -379,6 +422,7 @@ export function SelectionDemo() {
             cellSelection={cellSelection}
             headerKeyboardNavigation={headerKeyboardNav}
             fillHandle={fillHandle === "off" ? false : { mode: fillHandle }}
+            fillOperation={fillRules === "app" ? appFillOperation : undefined}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />

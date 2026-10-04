@@ -3,6 +3,8 @@ import {
   createGrid,
   formatChord,
   type ColDef,
+  type FillOperationParams,
+  type FillOperationResult,
   type ICellEditor,
   type ICellEditorParams,
   type SelectionSnapshot,
@@ -60,6 +62,34 @@ const LAST_NAMES = [
 const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support", "Legal"];
 const TITLES = ["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"];
 const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Series the grid cannot know, for the `fillOperation` demo: "Joined On" steps by business days
+// (weekends skipped) and "Department" cycles through the company's list; every other column keeps
+// the grid's own value. The grid's `lineMode` is honoured for the dates, so Ctrl/Cmd still copies.
+function appFillOperation(params: FillOperationParams): FillOperationResult | undefined {
+  const { colId, values, index, lineMode } = params;
+  if (colId === "joinedOn") {
+    const last = values[values.length - 1];
+    if (lineMode !== "series" || !(last instanceof Date)) return undefined;
+    return { value: addBusinessDays(last, index - (values.length - 1)) };
+  }
+  if (colId === "department") {
+    const at = DEPARTMENTS.indexOf(String(values[0]));
+    if (at < 0) return undefined;
+    const n = DEPARTMENTS.length;
+    return { value: DEPARTMENTS[(((at + index) % n) + n) % n] };
+  }
+  return undefined;
+}
+
+function addBusinessDays(from: Date, steps: number): Date {
+  const date = new Date(from);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return date;
+}
 
 function buildRows(count: number): EmployeeRow[] {
   const rand = mulberry32(42);
@@ -258,6 +288,8 @@ function describeSelection(sel: SelectionSnapshot | null): string {
 
 export function mountSelectionDemo(container: HTMLElement): () => void {
   let rowCount = 120;
+  // Which fill rules apply: the grid's own, or the page's `appFillOperation`.
+  let fillRules: "grid" | "app" = "grid";
   let active: { viewIdx?: number; colIdx?: number } | null = null;
   let selection: SelectionSnapshot | null = null;
   let headerAt: number | null = null;
@@ -362,6 +394,16 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
           fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" },
         }),
       )),
+      // `fillOperation` is a callback, not a runtime option: the one passed at creation stays, and
+      // reads this page state on every call, so the switch applies to the next fill.
+      field("Fill rules", select(
+        [
+          { value: "grid", label: "grid — built-in series" },
+          { value: "app", label: "app — business days, department cycle" },
+        ],
+        "grid",
+        value => { fillRules = value === "app" ? "app" : "grid"; },
+      )),
       h("div", { style: { display: "flex", gap: "8px" } },
         btn("Select all (API)", () => api.selectAll()),
         btn("Clear", () => api.clearSelection("all")),
@@ -446,6 +488,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     quickFilter: true,
     rowSelection: true,
     selectAllRowsOnHeaderClick: true,
+    fillOperation: params => (fillRules === "app" ? appFillOperation(params) : undefined),
   });
 
   const offSelection = api.on("selectionChanged", ev => {

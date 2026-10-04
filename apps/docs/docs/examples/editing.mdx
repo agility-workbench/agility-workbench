@@ -293,6 +293,36 @@ still passes `onBeforeCellCommit`, and `cellValueChanged` reports
 `source: "fill"`. Non-editable cells, group rows, rows not yet loaded, and
 refused cells are skipped without disturbing the pattern.
 
+Series the grid cannot know — fiscal periods, business days, ordered
+enumerations, codes with rules, values derived from the row — belong to
+`fillOperation`. It is called once per target cell on every fill path (drag,
+double-click, `Ctrl/Cmd+D` / `Ctrl/Cmd+R`, the menu items and redo) with the
+line's source values, the cell's position in the pattern, and the value the
+grid would write on its own. Return `{ value }` to write that value as the
+cell's stored value, `{ skipCell: true }` to leave the cell untouched while it
+keeps its place in the pattern, or nothing to keep the grid's value:
+
+```ts
+// Dates in the "due" column step by business days; everything else is the grid's own.
+fillOperation: ({ colId, values, index, lineMode }) => {
+  if (colId !== "due" || lineMode !== "series") return;        // keep the grid's value
+  const last = values[values.length - 1] as Date;
+  const steps = index - (values.length - 1);                   // 1 for the first cell past the source
+  const date = new Date(last);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));           // negative when filling upward
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return { value: date };
+},
+```
+
+A returned value does not run the column's parser — the callback already knows
+the target column — but still passes `onBeforeCellCommit` and the no-op check;
+`null` is the blank. The grid also consults the callback when deciding whether
+a fill would write anything (to show or hide the menu's fill items), so keep it
+free of side effects.
+
 The handle needs `cellSelection: true` and `rangeSelection`, appears only while
 the selection covers at least one editable column, and never on a selection
 that reaches into a pinned band.

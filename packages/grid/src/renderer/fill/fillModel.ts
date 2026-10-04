@@ -1,5 +1,7 @@
 import { isoFromLocal, parseIsoDate } from "../../column/parsers";
-import type { FillHandleDirection, FillHandleMode } from "../../interfaces/gridOptions";
+import type { FillAxis, FillHandleDirection, FillHandleMode, FillLineMode } from "../../interfaces/gridOptions";
+
+export type { FillAxis, FillLineMode };
 
 /**
  * The fill handle's arithmetic, with no grid in it: which cells a drag targets, and what value each
@@ -15,17 +17,11 @@ export interface FillRect {
   colEnd: number;
 }
 
-/** The one direction a fill runs in. A drag never fills two ways at once. */
-export type FillAxis = "down" | "up" | "right" | "left";
-
 /** The cells a fill writes (`rect` excludes the source) and the direction they extend in. */
 export interface FillTarget {
   axis: FillAxis;
   rect: FillRect;
 }
-
-/** How one line of the fill (a column when filling vertically, a row when horizontally) is derived. */
-export type FillLineMode = "copy" | "series";
 
 /**
  * Where a drag from `source`'s handle to the cell under the pointer would fill. The pointer picks

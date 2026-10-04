@@ -5,6 +5,7 @@ import {
   REJECT,
   resolveFillHandleOptions,
   type FillHandleMode,
+  type FillTrigger,
   type ResolvedFillHandleOptions,
 } from "../../interfaces/gridOptions";
 import type { IGridCore } from "../../interfaces/iGridCore";
@@ -20,6 +21,7 @@ import {
   resolveLineMode,
   seriesKind,
   unionRect,
+  type FillAxis,
   type FillLineMode,
   type FillRect,
   type FillTarget,
@@ -236,7 +238,7 @@ export class FillHandleController {
     const drag = this.drag;
     this.finishDrag();
     if (!drag) return;
-    if (drag.target) this.commit(drag.source, drag.target, e.ctrlKey || e.metaKey);
+    if (drag.target) this.commit(drag.source, drag.target, e.ctrlKey || e.metaKey, "drag");
     else this.params.refreshSelection();
   }
 
@@ -290,7 +292,7 @@ export class FillHandleController {
       return;
     }
     const target: FillTarget = { axis: "down", rect: { ...source, rowStart: source.rowEnd + 1, rowEnd: end } };
-    this.commit(source, target, e.ctrlKey || e.metaKey);
+    this.commit(source, target, e.ctrlKey || e.metaKey, "doubleClick");
   }
 
   /** The nearest usable column on each side of `rect`, the left one first. */
@@ -310,12 +312,12 @@ export class FillHandleController {
 
   canFillDown(): boolean {
     const plan = this.planFillDown();
-    return !!plan && this.buildEdits(plan.source, plan.target, "copy", false).length > 0;
+    return !!plan && this.buildEdits(plan.source, plan.target, "copy", false, null, "command").length > 0;
   }
 
   canFillRight(): boolean {
     const plan = this.planFillRight();
-    return !!plan && this.buildEdits(plan.source, plan.target, "copy", false).length > 0;
+    return !!plan && this.buildEdits(plan.source, plan.target, "copy", false, null, "command").length > 0;
   }
 
   /**
@@ -325,7 +327,7 @@ export class FillHandleController {
   fillDown(): void {
     const plan = this.planFillDown();
     if (!plan) return;
-    this.write(plan.source, plan.target, "copy", false);
+    this.write(plan.source, plan.target, "copy", false, null, "command");
   }
 
   /** `Ctrl/Cmd+R`: copy the selection's first column into the columns to its right; a single
@@ -333,7 +335,7 @@ export class FillHandleController {
   fillRight(): void {
     const plan = this.planFillRight();
     if (!plan) return;
-    this.write(plan.source, plan.target, "copy", false);
+    this.write(plan.source, plan.target, "copy", false, null, "command");
   }
 
   private planFillDown(): { source: FillRect; target: FillTarget } | null {
@@ -386,11 +388,11 @@ export class FillHandleController {
    * The selection goes first because the live region keeps only the latest of the messages that
    * arrive together, and the fill's own count is the one worth hearing.
    */
-  private commit(source: FillRect, target: FillTarget, flip: boolean): void {
+  private commit(source: FillRect, target: FillTarget, flip: boolean, trigger: FillTrigger): void {
     const opts = this.options();
     if (!opts) return;
     this.selectUnion(source, target);
-    const written = this.write(source, target, opts.mode, flip);
+    const written = this.write(source, target, opts.mode, flip, null, trigger);
     // Recorded after the write: the fill's own change events run inside it and would clear this.
     this.lastFill = written > 0
       ? { source, target, flip, force: null, ...this.idsUnder(unionRect(source, target.rect)) }
@@ -398,8 +400,15 @@ export class FillHandleController {
   }
 
   /** Write the fill and announce it; returns how many cells it wrote. */
-  private write(source: FillRect, target: FillTarget, mode: FillHandleMode, flip: boolean, force: FillLineMode | null = null): number {
-    const edits = this.buildEdits(source, target, mode, flip, force);
+  private write(
+    source: FillRect,
+    target: FillTarget,
+    mode: FillHandleMode,
+    flip: boolean,
+    force: FillLineMode | null,
+    trigger: FillTrigger,
+  ): number {
+    const edits = this.buildEdits(source, target, mode, flip, force, trigger);
     if (edits.length > 0) {
       this.params.core.dispatch({ type: "cellsCommit", edits, reason: "fill" });
     }
@@ -424,11 +433,12 @@ export class FillHandleController {
     if (!last || !opts || at.rowPinned) return [];
     const col = this.params.leafColumns().find(c => c.instanceID === at.colId || c.colId === at.colId);
     if (!col || !last.rowIds.includes(at.rowId) || !last.colIds.includes(col.instanceID)) return [];
-    const current = this.buildEdits(last.source, last.target, opts.mode, last.flip, last.force);
+    const current = this.buildEdits(last.source, last.target, opts.mode, last.flip, last.force, "command");
     const out: FillLineMode[] = [];
     for (const force of ["copy", "series"] as const) {
       if (force === last.force || (force === "series" && opts.mode === "copy")) continue;
-      if (!sameEdits(current, this.buildEdits(last.source, last.target, opts.mode, last.flip, force))) out.push(force);
+      const other = this.buildEdits(last.source, last.target, opts.mode, last.flip, force, "command");
+      if (!sameEdits(current, other)) out.push(force);
     }
     return out;
   }
@@ -444,7 +454,7 @@ export class FillHandleController {
     if (!last || !opts) return;
     this.refilling = true;
     try {
-      this.write(last.source, last.target, opts.mode, last.flip, force);
+      this.write(last.source, last.target, opts.mode, last.flip, force, "command");
     } finally {
       this.refilling = false;
     }
@@ -483,7 +493,8 @@ export class FillHandleController {
     target: FillTarget,
     mode: FillHandleMode,
     flip: boolean,
-    force: FillLineMode | null = null,
+    force: FillLineMode | null,
+    trigger: FillTrigger,
   ): FillEdit[] {
     const core = this.params.core;
     const leaves = this.params.leafColumns();
@@ -505,9 +516,8 @@ export class FillHandleController {
         for (let r = target.rect.rowStart; r <= target.rect.rowEnd; r++) {
           const node = nodeAt(r);
           if (!node || !col.isCellEditable(node, core.resolveRowPresentation(node, r))) continue;
-          const value = fillValueAt(values, r - source.rowStart, lineMode);
-          const edit = writeForm(value, col, col, node);
-          if (edit) edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...edit });
+          const edit = this.editFor({ values, index: r - source.rowStart, lineMode, axis: target.axis, trigger }, node, col, col);
+          if (edit) edits.push(edit);
         }
       }
       return edits;
@@ -527,14 +537,48 @@ export class FillHandleController {
         // Rightward the targets continue past the pattern's end; leftward the nearest target is
         // index -1, so the pattern continues backward from its start.
         const index = target.axis === "right" ? sourceCols.length + k : k - targetCols.length;
-        const value = fillValueAt(values, index, lineMode);
         const n = sourceCols.length;
         const from = lineMode === "copy" ? sourceCols[((index % n) + n) % n] : sourceCols[0];
-        const edit = writeForm(value, from, col, node);
-        if (edit) edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...edit });
+        const edit = this.editFor({ values, index, lineMode, axis: target.axis, trigger }, node, from, col);
+        if (edit) edits.push(edit);
       });
     }
     return edits;
+  }
+
+  /**
+   * One target cell's edit: the grid's own value (copy or series), offered to the application's
+   * `fillOperation` first — which may replace it, skip the cell, or decline — and then put into the
+   * shape its column stores. A value from the application is stored as given.
+   */
+  private editFor(
+    line: { values: readonly unknown[]; index: number; lineMode: FillLineMode; axis: FillAxis; trigger: FillTrigger },
+    node: IRowNode,
+    from: Column,
+    to: Column,
+  ): FillEdit | null {
+    const value = fillValueAt(line.values, line.index, line.lineMode);
+    const cell: CellRef = { rowId: node.id, colId: to.instanceID };
+    const operation = this.params.core.getOptions().fillOperation;
+    if (operation) {
+      const result = operation({
+        values: line.values,
+        index: line.index,
+        direction: line.axis,
+        lineMode: line.lineMode,
+        defaultValue: value,
+        oldValue: to.getValue(node),
+        rowId: node.id,
+        colId: to.colId,
+        colInstanceId: to.instanceID,
+        node,
+        trigger: line.trigger,
+      });
+      if (result && result.skipCell) return null;
+      if (result && "value" in result) return { cell, value: result.value, parsed: true };
+    }
+    const edit = writeForm(value, from, to, node);
+    return edit ? { cell, ...edit } : null;
   }
 
   /**

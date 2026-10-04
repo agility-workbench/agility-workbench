@@ -42,6 +42,12 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   `onBeforeCellCommit` runs for every cell, and `cellValueChanged` reports `source: "fill"`
   (`CellValueChangeSource` and `CellCommitSource` gain the member; the `cellsCommit` action
   gains `reason: "fill"`).
+- **New option `fillOperation`** for series the grid cannot know. Called once per target cell on
+  every fill path with the line's source values, the cell's position in the pattern, the grid's
+  own value, the target node and column, and what triggered the fill; return `{ value }` to write
+  a value as stored, `{ skipCell: true }` to leave the cell untouched in place, or nothing to keep
+  the grid's value. Bridged by both bindings like `onBeforeCellCommit`. New exports
+  `FillOperationParams`, `FillOperationResult`, `FillAxis`, `FillLineMode`, `FillTrigger`.
 - **New option `fillHandle`** (default `true`, requires `cellSelection: true` and
   `rangeSelection`), live-reconciled in both bindings; new exports `FillHandleOptions`,
   `FillHandleMode`, `FillHandleDirection`. The handle only appears while the selection covers an

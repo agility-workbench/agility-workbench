@@ -732,7 +732,10 @@ fillHandle: false
 Within a column (or into a column of the same `type`) values move as stored; into a differently
 typed column the displayed text goes through that column's parser — its `valueParser`, or the
 built-in one for its type — as a paste would, so a name dragged over a number column is refused.
-`onBeforeCellCommit` runs per cell and `cellValueChanged` reports `source: "fill"`. The handle shows
+`onBeforeCellCommit` runs per cell and `cellValueChanged` reports `source: "fill"`. For series the
+grid cannot know, `fillOperation` is called per target cell with the line's values, the cell's pattern
+index, and the grid's own value; return `{ value }`, `{ skipCell: true }`, or nothing to keep the
+grid's. The handle shows
 only while the selection covers an editable column, and not on a selection reaching a pinned band.
 
 ## Keyboard bindings

@@ -468,6 +468,53 @@ export interface FillHandleOptions {
   direction?: FillHandleDirection;
 }
 
+/** The one direction a fill runs in. A fill never runs two ways at once. */
+export type FillAxis = "down" | "up" | "right" | "left";
+
+/** How one line of a fill (a column when filling vertically, a row when horizontally) is derived. */
+export type FillLineMode = "copy" | "series";
+
+/** What started a fill: a handle drag, a double-click on the handle, or a command — `Ctrl/Cmd+D`,
+ * `Ctrl/Cmd+R`, the body menu's fill items, and a menu redo of the last fill. */
+export type FillTrigger = "drag" | "doubleClick" | "command";
+
+/** What {@link GridOptions.fillOperation} learns about one target cell before the fill writes it. */
+export interface FillOperationParams {
+  /** The line's source values in pattern order — the column's selected cells when filling
+   * vertically, the row's when horizontally. */
+  values: readonly unknown[];
+  /**
+   * The target cell's position in the pattern: `0..values.length - 1` are the source cells, so the
+   * first cell past the source is `values.length`; filling up or left counts down from `-1`.
+   */
+  index: number;
+  direction: FillAxis;
+  /** Whether the grid would repeat the pattern or step it for this line. */
+  lineMode: FillLineMode;
+  /**
+   * The value the grid would write on its own — the copy or the next step of the series — before
+   * any crossing into another column type. Return nothing to keep it.
+   */
+  defaultValue: unknown;
+  /** The target cell's current value. */
+  oldValue: unknown;
+  rowId: string;
+  colId: string;
+  colInstanceId: string;
+  node: IRowNode;
+  trigger: FillTrigger;
+}
+
+/**
+ * What {@link GridOptions.fillOperation} returns for one cell: `{ skipCell: true }` leaves the cell
+ * untouched (it keeps its place in the pattern), `{ value }` writes that value as the cell's stored
+ * value, and nothing at all — `undefined`, `null`, or an object without `value` — keeps the grid's
+ * own. `skipCell` wins when both are present.
+ */
+export type FillOperationResult =
+  | { skipCell: true; value?: undefined }
+  | { value: unknown; skipCell?: false | null };
+
 export interface ResolvedFillHandleOptions {
   mode: FillHandleMode;
   direction: FillHandleDirection;
@@ -1090,6 +1137,21 @@ export interface GridOptions {
    * Undo/redo replay already-accepted values and do not run the hook.
    */
   onBeforeCellCommit?: (params: BeforeCellCommitParams) => unknown;
+  /**
+   * Decide what a fill writes into each target cell, for series the grid cannot know — fiscal
+   * periods, business days, ordered enumerations, codes with rules, values derived from the row.
+   * Called once per target cell on every fill path (handle drag, double-click, `Ctrl/Cmd+D` /
+   * `Ctrl/Cmd+R`, the body menu's fill items and redo) with the line's source values, the cell's
+   * position in the pattern, and the value the grid would write on its own. Return:
+   *   - nothing (`undefined`, `null`, or an object without `value`) to keep the grid's value, which
+   *     still crosses column types and runs the target's parser as a plain fill would;
+   *   - `{ value }` to write that value as the target cell's stored value — it does not run the
+   *     column parser, but still passes `onBeforeCellCommit` and the no-op check; `null` is the blank;
+   *   - `{ skipCell: true }` to leave the cell untouched; it keeps its place in the pattern.
+   * Also consulted when the grid checks whether a fill would write anything (to show or hide the
+   * body menu's fill items), so keep it free of side effects.
+   */
+  fillOperation?: (params: FillOperationParams) => FillOperationResult | null | undefined | void;
   /**
    * Called when a cell edit is committed with a new value. Convenience wrapper over the
    * `editingChanged` event (state "committed").

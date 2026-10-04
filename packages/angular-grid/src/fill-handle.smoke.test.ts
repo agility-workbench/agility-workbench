@@ -1,7 +1,7 @@
 import { Component } from "@angular/core";
 import { describe, expect, it } from "vitest";
 import { ColumnType } from "@agility-workbench/grid";
-import type { FillHandleOptions, IGridAPI } from "@agility-workbench/grid";
+import type { FillHandleOptions, FillOperationParams, FillOperationResult, IGridAPI } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
 import type { NgColDef } from "./interface";
 import { mountGridHost, syncGridInputs } from "./test-utils";
@@ -21,6 +21,7 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
       [columnDefs]="cols"
       rowIdKey="id"
       [fillHandle]="fillHandle"
+      [fillOperation]="fillOperation"
       (gridReady)="api = $event"
     />
   `,
@@ -28,6 +29,7 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
 class FillHandleHost {
   api: IGridAPI | null = null;
   fillHandle: boolean | FillHandleOptions = true;
+  fillOperation: ((params: FillOperationParams) => FillOperationResult | undefined) | undefined = undefined;
   rows = [
     { id: "1", name: "AAA", qty: 1 },
     { id: "2", name: "BBB", qty: 2 },
@@ -84,5 +86,21 @@ describe("AwbGrid fill handle", () => {
     host.fillHandle = false;
     await syncGridInputs(fixture);
     expect(gridEl.querySelector(".pte-fill-handle")).toBeNull();
+  });
+
+  it("bridges fillOperation: its value is written, a skip leaves the cell, and a new function applies live", async () => {
+    const { gridEl, host, fixture } = await mountGridHost(FillHandleHost, 600, (instance) => {
+      instance.fillOperation = ({ defaultValue }) => ({ value: `${defaultValue}!` });
+    });
+    const api = host.api!;
+    api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    dragHandle(gridEl, 1, 0);
+    expect(host.rows.map(r => r.name)).toEqual(["AAA", "AAA!", "CCC", "DDD"]);
+
+    host.fillOperation = ({ rowId }) => (rowId === "3" ? { skipCell: true } : undefined);
+    await syncGridInputs(fixture);
+    api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    dragHandle(gridEl, 3, 0);
+    expect(host.rows.map(r => r.name)).toEqual(["AAA", "AAA", "CCC", "AAA"]);
   });
 });

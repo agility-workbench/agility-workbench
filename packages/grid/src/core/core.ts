@@ -360,6 +360,7 @@ export class GridCore implements IGridCore {
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,
+      fillOperation: options.fillOperation,
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,

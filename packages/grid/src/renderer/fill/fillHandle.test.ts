@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { GridCore } from "../../core/core";
 import { ColumnType } from "../../interfaces/column";
 import type { ColDef } from "../../interfaces/column";
-import type { GridOptions } from "../../interfaces/gridOptions";
+import type { FillOperationParams, FillOperationResult, GridOptions } from "../../interfaces/gridOptions";
 import type { IMenuAdapter } from "../../interfaces/iMenuAdapter";
 import type { ITextMeasurer } from "../../interfaces/iTextMeasure";
 import { initDomRenderer } from "../dom";
@@ -544,6 +544,73 @@ describe("redoing a fill the other way from the body menu", () => {
     expect(fillItems(openMenu(root, 2, 1))).toEqual(["Fill series instead"]);
     core.dispatch({ type: "sortModelSet", sortItems: [{ key: "name", dir: "desc" }] });
     expect(fillItems(openMenu(root, 2, 1))).toEqual([]);
+  });
+});
+
+describe("fillOperation", () => {
+  it("sees the line, the grid's value, and the target cell, and its value is stored as given", () => {
+    const seen: FillOperationParams[] = [];
+    const { core, root, column } = mountGrid({
+      fillOperation: params => {
+        seen.push(params);
+        return { value: (params.defaultValue as number) * 10 };
+      },
+    });
+    select(core, 0, 1, 1, 1); // 10, 20
+    drag(root, 3, 1);
+    expect(column("qty")).toEqual([10, 20, 300, 400, 50, 60]);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatchObject({
+      values: [10, 20], index: 2, direction: "down", lineMode: "series", defaultValue: 30, oldValue: 30,
+      rowId: "r2", colId: "qty", trigger: "drag",
+    });
+    expect(seen[0].colInstanceId).toBe(core.getColumnModel().getByColId("qty")!.instanceID);
+    expect(seen[0].node.id).toBe("r2");
+    expect(seen[1]).toMatchObject({ index: 3, defaultValue: 40, rowId: "r3" });
+  });
+
+  it("skips a cell, keeping the pattern aligned and the count honest; skipCell beats value", async () => {
+    const { core, root, column } = mountGrid({
+      fillOperation: ({ rowId }) => (rowId === "r3" ? { skipCell: true, value: "never" } as any : undefined),
+    });
+    select(core, 0, 0); // "A"
+    drag(root, 4, 0);
+    expect(column("name")).toEqual(["A", "A", "A", "D", "A", "F"]);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(root.querySelector(".pte-grid-sr-announcer")!.textContent).toContain("Filled 3 cells");
+  });
+
+  it("keeps the grid's own value when it returns nothing, crossing column types as a plain fill would", () => {
+    let calls = 0;
+    const { core, root, column, data } = mountGrid({
+      // `{}` is what a JavaScript caller may hand back; the TypeScript type is deliberately stricter.
+      fillOperation: () => { calls++; return calls % 3 === 0 ? ({} as FillOperationResult) : calls % 3 === 1 ? null : undefined; },
+    });
+    select(core, 0, 1, 1, 1);
+    drag(root, 3, 1);
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+    select(core, 2, 2); // when: Jan 3 → note (string) as its text, through the usual crossing
+    drag(root, 2, 3, { ctrlKey: true });
+    expect(data("r2").note).toBe("2026-01-03");
+    expect(calls).toBeGreaterThan(0);
+  });
+
+  it("runs for the keyboard and double-click forms, naming the trigger", () => {
+    const triggers: string[] = [];
+    const modes: string[] = [];
+    const { core, root, column } = mountGrid({
+      fillOperation: ({ trigger, lineMode }) => { triggers.push(trigger); modes.push(lineMode); return undefined; },
+    });
+    select(core, 0, 1, 2, 1); // 10, 20, 30
+    press(root, "d", { ctrlKey: true });
+    expect(column("qty")).toEqual([10, 10, 10, 40, 50, 60]);
+    expect(triggers).toEqual(["command", "command"]);
+    expect(modes).toEqual(["copy", "copy"]);
+
+    select(core, 0, 0);
+    handle(root)!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, button: 0 }));
+    expect(column("name")).toEqual(["A", "A", "A", "A", "A", "A"]);
+    expect(triggers.slice(2)).toEqual(Array(5).fill("doubleClick"));
   });
 });
 
