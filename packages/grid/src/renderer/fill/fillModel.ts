@@ -68,6 +68,28 @@ export function unionRect(a: FillRect, b: FillRect): FillRect {
 }
 
 /**
+ * Where a double-click on the handle fills down to: the last row of the run of data that starts
+ * in the row below `source` in a neighbouring column. `guides` are the candidate columns, nearest
+ * on the left first, then nearest on the right — the first with data in that row is followed (the
+ * spreadsheet rule), and the run ends at the first row where `hasData` says no, or at `rowCount`.
+ * Null when no guide has data in the row below the source, or there is no row below it.
+ */
+export function adjacentBlockEnd(
+  source: FillRect,
+  guides: readonly number[],
+  rowCount: number,
+  hasData: (row: number, col: number) => boolean,
+): number | null {
+  const first = source.rowEnd + 1;
+  if (first >= rowCount) return null;
+  const guide = guides.find(col => hasData(first, col));
+  if (guide === undefined) return null;
+  let end = first;
+  while (end + 1 < rowCount && hasData(end + 1, guide)) end++;
+  return end;
+}
+
+/**
  * Whether a line of source values can extend as a series: every value a finite number, or every
  * value a valid `Date`. Anything mixed, blank, or textual repeats instead.
  */

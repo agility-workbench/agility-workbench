@@ -255,6 +255,13 @@ left. Both are copies, never series, and leave the selection where it is. The
 body context menu offers the same two commands as **Fill down** and **Fill
 right** whenever they would write something.
 
+Double-click the handle to fill the selection down to the end of the data
+beside it, the way a spreadsheet completes a column. The column to the left of
+the selection is the guide — the one to its right when the left is blank in the
+row just below — and the fill runs through the guide's unbroken run of non-blank
+rows. A group row ends the run, so a fill inside one group stays there. Copy or
+series is decided as for a drag, and Ctrl/Cmd flips it the same way.
+
 ```ts
 fillHandle: true                           // default: series where possible, any direction
 fillHandle: { mode: "copy" }               // always repeat; Ctrl/Cmd does nothing

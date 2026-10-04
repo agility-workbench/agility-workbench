@@ -10,8 +10,10 @@ import {
 import type { IGridCore } from "../../interfaces/iGridCore";
 import type { IRowNode } from "../../interfaces/iRowNode";
 import type { CellRef } from "../../interfaces/selection";
+import { isBlankValue } from "../../misc";
 import type { RowPoolDef } from "../types";
 import {
+  adjacentBlockEnd,
   computeFillTarget,
   fillValueAt,
   resolveLineMode,
@@ -44,8 +46,9 @@ interface CellLocation {
 
 /**
  * The fill handle: the drag grip on the bottom-right cell of the selection, the dashed preview of
- * the cells a drag will write, and the write itself — plus the keyboard forms, `Ctrl/Cmd+D` (fill
- * down) and `Ctrl/Cmd+R` (fill right).
+ * the cells a drag will write, and the write itself — plus the double-click that fills down to the
+ * end of the data beside the selection, and the keyboard forms, `Ctrl/Cmd+D` (fill down) and
+ * `Ctrl/Cmd+R` (fill right).
  *
  * Holds no selection state. The handle's position is re-derived from the core's selection on every
  * selection paint: the selection renderer calls {@link paintCell} for each cell it paints, and the
@@ -229,6 +232,53 @@ export class FillHandleController {
     this.cancelDrag();
   };
 
+  // ---------------- Double-click ----------------
+
+  /**
+   * Double-click on the handle: fill the selection down to the end of the data beside it, as a
+   * spreadsheet does, so a column is completed without dragging to the bottom. The nearest usable
+   * column left of the selection is the guide — or the nearest to its right when the left one is
+   * blank in the row below the selection — and the fill covers the guide's unbroken run of rows
+   * holding a value. A group row, or a row not yet loaded, ends the run, so a fill inside one group
+   * stays in it. Copy or series as a drag would decide, with Ctrl/Cmd flipping it the same way.
+   * The two presses the double-click is made of each begin and end an empty drag beforehand;
+   * neither writes.
+   */
+  fillToAdjacentBlock(e: MouseEvent): void {
+    const opts = this.options();
+    if (!opts || opts.direction === "x") return;
+    const source = this.handleSource();
+    if (!source) return;
+    const core = this.params.core;
+    const leaves = this.params.leafColumns();
+    const rowModel = core.getRowModel();
+    const hasData = (viewIdx: number, colIdx: number): boolean => {
+      const rowId = core.getRowIdAtViewIndex(viewIdx);
+      const node = rowId ? rowModel.getRowNode(rowId) : undefined;
+      return !!node && !node.isGroup && !isBlankValue(leaves[colIdx].getValue(node));
+    };
+    const end = adjacentBlockEnd(source, this.guideColumns(source), rowModel.getViewCount(), hasData);
+    if (end === null) {
+      this.params.announce("Nothing to fill: no data beside the selection");
+      return;
+    }
+    const target: FillTarget = { axis: "down", rect: { ...source, rowStart: source.rowEnd + 1, rowEnd: end } };
+    this.commit(source, target, e.ctrlKey || e.metaKey);
+  }
+
+  /** The nearest usable column on each side of `rect`, the left one first. */
+  private guideColumns(rect: FillRect): number[] {
+    const leaves = this.params.leafColumns();
+    const guides: number[] = [];
+    for (let c = rect.colStart - 1; c >= 0; c--) {
+      if (leaves[c] && usable(leaves[c])) { guides.push(c); break; }
+    }
+    for (let c = rect.colEnd + 1; c < leaves.length; c++) {
+      if (leaves[c] && usable(leaves[c])) { guides.push(c); break; }
+    }
+    return guides;
+  }
+
   // ---------------- Keyboard / menu commands ----------------
 
   canFillDown(): boolean {
@@ -304,12 +354,16 @@ export class FillHandleController {
 
   // ---------------- Writing ----------------
 
-  /** A drag's commit: write, then select source and target together so the result is visible. */
+  /**
+   * A gesture's commit: select source and target together so the result is visible, then write.
+   * The selection goes first because the live region keeps only the latest of the messages that
+   * arrive together, and the fill's own count is the one worth hearing.
+   */
   private commit(source: FillRect, target: FillTarget, flip: boolean): void {
     const opts = this.options();
     if (!opts) return;
-    this.write(source, target, opts.mode, flip);
     this.selectUnion(source, target);
+    this.write(source, target, opts.mode, flip);
   }
 
   private write(source: FillRect, target: FillTarget, mode: FillHandleMode, flip: boolean): void {

@@ -169,6 +169,7 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
   ["Drag the ■ corner", "Fill: repeat, or extend a number/date series (Ctrl/Cmd flips)"],
+  ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
   [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],

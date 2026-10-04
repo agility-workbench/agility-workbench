@@ -23,6 +23,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   or column across it (a single cell takes the value above or to its left), always as a copy
   and without moving the selection. The body menu offers the same two commands as "Fill down"
   and "Fill right" whenever they would write something, with the chords beside them.
+- **Double-click the handle to fill down to the end of the adjacent data.** The column to the
+  left of the selection guides the fill (the one to its right when the left is blank in the row
+  just below), which runs through the guide's unbroken run of non-blank rows; a group row or a
+  row not yet loaded ends it. Copy or series is decided as for a drag, Ctrl/Cmd flipping it.
 - **Values move as stored** when the target column shares the source column's `type` — always
   the case filling down or up — so parsers never see them; into a differently typed column the
   value's displayed text goes through that column's `valueParser`, as a paste would.

@@ -352,11 +352,99 @@ describe("dragging the handle", () => {
     expect(column("qty")).toEqual([10, 20, 10, 20, 50, 60]);
   });
 
-  it("does not open the editor on a double-click of the handle", () => {
-    const { core, root } = mountGrid();
-    select(core, 0, 0);
-    handle(root)!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, button: 0 }));
+});
+
+describe("double-click on the handle", () => {
+  const dblclick = (root: HTMLElement, mods: Partial<MouseEventInit> = {}) =>
+    handle(root)!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, button: 0, ...mods }));
+  // The live region coalesces announcements for 150 ms before writing.
+  const announced = async (root: HTMLElement) => {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return root.querySelector<HTMLElement>(".pte-grid-sr-announcer")!.textContent;
+  };
+  // Gaps: `qty` is blank in r4 (its run below r0 is r1..r3), `when` is blank from r1 down.
+  const sparse = () => rows().map((r, i) => ({
+    ...r,
+    qty: i === 4 ? "" : r.qty,
+    when: i >= 1 ? null : r.when,
+  }));
+
+  it("fills down to the end of the data in the column to its left, selects the result, and never edits", async () => {
+    const { core, api, root, column } = mountGrid();
+    api.setRowData(sparse());
+    select(core, 0, 1); // qty 10; the guide is `name`, filled to the bottom
+    // The real gesture: two presses with no movement, then the double-click. Only the last writes.
+    pressHandle(root);
+    release();
+    pressHandle(root);
+    release();
+    dblclick(root);
+    expect(column("qty")).toEqual([10, 10, 10, 10, 10, 10]);
+    expect(range(core)).toEqual([0, 5, 1, 1]);
+    expect(core.getActiveCell()).toMatchObject({ row: 0, colIdx: 1 });
+    expect(api.getHistoryState().undoDepth).toBe(1);
     expect(core.getEditingCell()).toBeNull();
+    expect(await announced(root)).toContain("Filled 5 cells");
+  });
+
+  it("stops where the guide column goes blank, series and modifier as a drag would", () => {
+    const { core, api, root, column } = mountGrid();
+    api.setRowData(sparse());
+    select(core, 0, 2); // Jan 1; the guide is `qty`, running r1..r3
+    dblclick(root);
+    expect(column("when")).toEqual([
+      new Date(2026, 0, 1), new Date(2026, 0, 2), new Date(2026, 0, 3), new Date(2026, 0, 4), null, null,
+    ]);
+
+    api.setRowData(sparse());
+    select(core, 0, 2);
+    dblclick(root, { ctrlKey: true });
+    expect(column("when")).toEqual([
+      new Date(2026, 0, 1), new Date(2026, 0, 1), new Date(2026, 0, 1), new Date(2026, 0, 1), null, null,
+    ]);
+  });
+
+  it("uses the column to its right when the left one is blank below the selection", () => {
+    const { core, api, root, column } = mountGrid();
+    api.setRowData(sparse());
+    select(core, 0, 3); // note; `when` is blank in r1, so `locked` (filled, read-only) guides
+    dblclick(root);
+    expect(column("note")).toEqual(["n0", "n0", "n0", "n0", "n0", "n0"]);
+  });
+
+  it("does nothing with no data beside the selection, or from the last row", async () => {
+    const { core, api, root, column } = mountGrid({}, columnDefs.slice(1, 2)); // qty alone
+    select(core, 0, 0);
+    dblclick(root);
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(api.getHistoryState().undoDepth).toBe(0);
+    expect(await announced(root)).toContain("no data beside the selection");
+
+    const bottom = mountGrid();
+    select(bottom.core, 5, 1);
+    dblclick(bottom.root);
+    expect(bottom.column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+  });
+
+  it("a group row ends the run, so the fill stays inside its group", async () => {
+    const defs = [...columnDefs, { colId: "dept", key: "dept", label: "Dept" }];
+    const { core, api, root, column } = mountGrid({ groupDisplayType: "groupRows" }, defs);
+    api.setRowData(rows().map((r, i) => ({ ...r, dept: i < 3 ? "a" : "b" })));
+    core.dispatch({ type: "rowGroupSet", colIds: ["dept"] } as any);
+    api.setAllGroupsExpanded(true);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    // View: group a, r0, r1, r2, group b, r3, r4, r5.
+    select(core, 1, 1); // qty of r0
+    dblclick(root);
+    expect(column("qty")).toEqual([10, 10, 10, 40, 50, 60]);
+  });
+
+  it("is off with a columns-only direction", () => {
+    const { core, api, root, column } = mountGrid({ fillHandle: { direction: "x" } });
+    select(core, 0, 0);
+    dblclick(root);
+    expect(column("name")).toEqual(["A", "B", "C", "D", "E", "F"]);
+    expect(api.getHistoryState().undoDepth).toBe(0);
   });
 });
 

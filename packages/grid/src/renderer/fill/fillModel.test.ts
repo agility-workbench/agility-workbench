@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjacentBlockEnd,
   computeFillTarget,
   copyAt,
   fillValueAt,
@@ -147,5 +148,31 @@ describe("fillValueAt", () => {
   it("dispatches on the line mode", () => {
     expect(fillValueAt([1, 2], 2, "copy")).toBe(1);
     expect(fillValueAt([1, 2], 2, "series")).toBe(3);
+  });
+});
+
+describe("adjacentBlockEnd", () => {
+  const src = { rowStart: 1, rowEnd: 2, colStart: 2, colEnd: 2 };
+  // Column 1 holds data in rows 0-5, column 3 in rows 0-3 and 6-7; everything else is blank.
+  const data: Record<number, number[]> = { 1: [0, 1, 2, 3, 4, 5], 3: [0, 1, 2, 3, 6, 7] };
+  const hasData = (row: number, col: number) => (data[col] ?? []).includes(row);
+
+  it("follows the run in the column to the left, stopping at its first blank", () => {
+    expect(adjacentBlockEnd(src, [1, 3], 10, hasData)).toBe(5);
+  });
+
+  it("falls back to the column on the right when the left one is blank below the source", () => {
+    // Rows 0-5 selected: column 1 is blank in row 6, column 3 runs 6-7.
+    expect(adjacentBlockEnd({ ...src, rowEnd: 5 }, [1, 3], 10, hasData)).toBe(7);
+  });
+
+  it("runs to the last row when the guide never goes blank", () => {
+    expect(adjacentBlockEnd(src, [1], 5, hasData)).toBe(4);
+  });
+
+  it("is null with no guide, with blank guides below the source, or on the last row", () => {
+    expect(adjacentBlockEnd(src, [], 10, hasData)).toBeNull();
+    expect(adjacentBlockEnd({ ...src, rowEnd: 7 }, [1, 3], 10, hasData)).toBeNull();
+    expect(adjacentBlockEnd({ ...src, rowEnd: 9 }, [1, 3], 10, hasData)).toBeNull();
   });
 });

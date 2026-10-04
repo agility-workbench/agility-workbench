@@ -817,8 +817,13 @@ export class SelectionRenderer {
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
     if (this.params.core.options.cellSelection !== true) return;
-    // A double-click on the fill handle is two handle presses, not a request to edit its cell.
-    if (this.params.fill().isHandleTarget(e.target)) return;
+    // A double-click on the fill handle fills down to the end of the data beside the selection; it
+    // is not a request to edit the corner cell.
+    if (this.params.fill().isHandleTarget(e.target)) {
+      e.preventDefault();
+      this.params.fill().fillToAdjacentBlock(e);
+      return;
+    }
     if (this.params.core.options.editTrigger !== "doubleClick") return;
     const location = this.getCellLocation(e.target);
     if (!location) return;
