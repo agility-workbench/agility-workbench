@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.4.0 — 2026-10-04
 
 ### Fill handle
 
@@ -16,14 +16,15 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   skipped and keep their place in the pattern.
 - **Series, not just copies.** Two or more numbers continue their linear trend (`10, 20` → `30,
   40`; `1, 2, 6` → `8, 10.5, 13`), a lone date steps a day and a run of dates keeps its
-  interval (`YYYY-MM-DD` text too, staying text), text ending in a number counts up (`Item 1` → `Item 2`; `Item 1, Item 3` → `Item
-  5`, zero padding kept), weekday and month names cycle in order, long or short, in the casing
-  typed (`Nov, Dec` → `Jan`; English names plus the browser language's), quarters wrap (`Q4` →
-  `Q1`), application sequences given as `fillHandle: { lists: [["Low", "Medium", "High"]] }` cycle
-  the same way (a spreadsheet's custom lists, tried before the built-in names and the counter), and
-  everything else repeats. Holding Ctrl/Cmd when the drag ends flips the choice: a lone number counts up, a
-  series repeats instead. `fillHandle: { mode: "copy" }` turns the
-  series off; `direction: "y"` or `"x"` restricts the handle to rows or columns.
+  interval (`YYYY-MM-DD` text too, staying text), text ending in a number counts up (`Item 1` →
+  `Item 2`; `Item 1, Item 3` → `Item 5`, zero padding kept), weekday and month names cycle in
+  order, long or short, in the casing typed (`Nov, Dec` → `Jan`; English names plus the browser
+  language's), quarters wrap (`Q4` → `Q1`), application sequences given as `fillHandle: { lists:
+  [["Low", "Medium", "High"]] }` cycle the same way (a spreadsheet's custom lists, tried before
+  the built-in names and the counter; an entry spelled as listed takes the list's spellings), and
+  everything else repeats. Holding Ctrl/Cmd when the drag ends flips the choice: a lone number
+  counts up, a series repeats instead. `fillHandle: { mode: "copy" }` turns the series off;
+  `direction: "y"` or `"x"` restricts the handle to rows or columns.
 - **`Ctrl/Cmd+D` fills down and `Ctrl/Cmd+R` fills right**, copying the selection's first row
   or column across it (a single cell takes the value above or to its left), always as a copy
   and without moving the selection. The body menu offers the same two commands as "Fill down"
