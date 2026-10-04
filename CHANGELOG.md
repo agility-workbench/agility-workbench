@@ -30,7 +30,8 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   double-click fill, the body menu on any cell the fill covered offers the other choice, as a
   spreadsheet's Auto Fill Options do: copies where the fill stepped a series, a series where a
   line that could step was copied. Each redo is its own undo step and keeps the selection; the
-  offer lasts until another write or a change of row order retires it.
+  offer lasts until another write, or any change to the rows or columns under the fill, retires
+  it.
 - **Double-click the handle to fill down to the end of the adjacent data.** The column to the
   left of the selection guides the fill (the one to its right when the left is blank in the row
   just below), which runs through the guide's unbroken run of non-blank rows; a group row or a
