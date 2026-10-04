@@ -26,6 +26,11 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   or column across it (a single cell takes the value above or to its left), always as a copy
   and without moving the selection. The body menu offers the same two commands as "Fill down"
   and "Fill right" whenever they would write something, with the chords beside them.
+- **"Copy cells instead" / "Fill series instead" after a fill.** Right after a drag or
+  double-click fill, the body menu on any cell the fill covered offers the other choice, as a
+  spreadsheet's Auto Fill Options do: copies where the fill stepped a series, a series where a
+  line that could step was copied. Each redo is its own undo step and keeps the selection; the
+  offer lasts until another write or a change of row order retires it.
 - **Double-click the handle to fill down to the end of the adjacent data.** The column to the
   left of the selection guides the fill (the one to its right when the left is blank in the row
   just below), which runs through the guide's unbroken run of non-blank rows; a group row or a

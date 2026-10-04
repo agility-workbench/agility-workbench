@@ -31,6 +31,14 @@ export interface BodyMenuClipboardTarget {
   canFillRight?: () => boolean;
   fillDown?: () => void;
   fillRight?: () => void;
+  /**
+   * The ways the last fill-handle gesture could be redone from the clicked cell — `"copy"` to
+   * repeat the source where the fill stepped a series, `"series"` to step where it copied — and
+   * the redo itself. Offered only while the fill's result still stands and the click is on a cell
+   * it covered. Absent without a fill handle.
+   */
+  fillAlternatives?: (ctx: BodyMenuContext) => Array<"copy" | "series">;
+  refill?: (mode: "copy" | "series") => void;
 }
 
 interface BodyMenuServiceParams {
@@ -66,6 +74,13 @@ export class BodyMenuService {
       }
       if (this.params.clipboard.canFillRight?.()) {
         items.push({ id: "fillRight", label: "Fill right", command: "body.fillRight" });
+      }
+      // Right after a fill, the spreadsheet's "Copy Cells" / "Fill Series" choice, as items on the
+      // cells the fill covered.
+      for (const mode of this.params.clipboard.fillAlternatives?.(ctx) ?? []) {
+        items.push(mode === "copy"
+          ? { id: "fillAsCopy", label: "Copy cells instead", command: "body.fillAsCopy" }
+          : { id: "fillAsSeries", label: "Fill series instead", command: "body.fillAsSeries" });
       }
     }
 
@@ -339,6 +354,10 @@ export class BodyMenuService {
         return this.params.clipboard.fillDown?.();
       case "body.fillRight":
         return this.params.clipboard.fillRight?.();
+      case "body.fillAsCopy":
+        return this.params.clipboard.refill?.("copy");
+      case "body.fillAsSeries":
+        return this.params.clipboard.refill?.("series");
       case "body.export.csv":
         return this.params.exporter.exportCSV({ scope });
       case "body.export.excel":

@@ -10,14 +10,17 @@ import {
 import type { IGridCore } from "../../interfaces/iGridCore";
 import type { IRowNode } from "../../interfaces/iRowNode";
 import type { CellRef } from "../../interfaces/selection";
-import { isBlankValue } from "../../misc";
+import type { Unsubscribe } from "../../events/events";
+import { isBlankValue, valuesAreSame } from "../../misc";
 import type { RowPoolDef } from "../types";
 import {
   adjacentBlockEnd,
   computeFillTarget,
   fillValueAt,
   resolveLineMode,
+  seriesKind,
   unionRect,
+  type FillLineMode,
   type FillRect,
   type FillTarget,
 } from "./fillModel";
@@ -45,6 +48,22 @@ interface CellLocation {
 }
 
 /**
+ * The last handle gesture's fill, kept while its result still stands so the body menu can offer
+ * to redo it the other way (the spreadsheet's "Copy Cells" / "Fill Series" choice).
+ */
+interface LastFill {
+  source: FillRect;
+  target: FillTarget;
+  flip: boolean;
+  /** The line mode a menu redo forced, or null while the result is the gesture's own. */
+  force: FillLineMode | null;
+  /** What sat under source ∪ target when the fill ran — rects are view indices, and a sort,
+   * filter, or column move would silently re-aim them. */
+  rowIds: (string | null)[];
+  colIds: (string | undefined)[];
+}
+
+/**
  * The fill handle: the drag grip on the bottom-right cell of the selection, the dashed preview of
  * the cells a drag will write, and the write itself — plus the double-click that fills down to the
  * end of the data beside the selection, and the keyboard forms, `Ctrl/Cmd+D` (fill down) and
@@ -69,12 +88,20 @@ export class FillHandleController {
   private paintSource: FillRect | null = null;
   private claimedInPass = false;
   private drag: { source: FillRect; target: FillTarget | null } | null = null;
+  private lastFill: LastFill | null = null;
+  private refilling = false;
+  private readonly stopWatchingWrites: Unsubscribe;
 
   constructor(private readonly params: FillHandleControllerParams) {
     this.handleEl = document.createElement("div");
     this.handleEl.className = "pte-fill-handle";
     // Pointer-only affordance; the keyboard route is Ctrl/Cmd+D / Ctrl/Cmd+R on the body cursor.
     this.handleEl.setAttribute("aria-hidden", "true");
+    // Any write the controller did not make itself — an edit, a paste, an undo, a keyboard fill —
+    // retires the last fill's alternatives: its cells may no longer hold what it left there.
+    this.stopWatchingWrites = params.core.on("cellValueChanged", () => {
+      if (!this.refilling) this.lastFill = null;
+    });
   }
 
   /** The resolved options, or null while the handle is off or has nothing to ride on. */
@@ -363,26 +390,101 @@ export class FillHandleController {
     const opts = this.options();
     if (!opts) return;
     this.selectUnion(source, target);
-    this.write(source, target, opts.mode, flip);
+    const written = this.write(source, target, opts.mode, flip);
+    // Recorded after the write: the fill's own change events run inside it and would clear this.
+    this.lastFill = written > 0
+      ? { source, target, flip, force: null, ...this.idsUnder(unionRect(source, target.rect)) }
+      : null;
   }
 
-  private write(source: FillRect, target: FillTarget, mode: FillHandleMode, flip: boolean): void {
-    const edits = this.buildEdits(source, target, mode, flip);
+  /** Write the fill and announce it; returns how many cells it wrote. */
+  private write(source: FillRect, target: FillTarget, mode: FillHandleMode, flip: boolean, force: FillLineMode | null = null): number {
+    const edits = this.buildEdits(source, target, mode, flip, force);
     if (edits.length > 0) {
       this.params.core.dispatch({ type: "cellsCommit", edits, reason: "fill" });
     }
+    const how = force === "copy" ? " as copies" : force === "series" ? " as a series" : "";
     this.params.announce(edits.length > 0
-      ? `Filled ${edits.length} ${edits.length === 1 ? "cell" : "cells"}`
+      ? `Filled ${edits.length} ${edits.length === 1 ? "cell" : "cells"}${how}`
       : "Nothing to fill: no editable cells");
+    return edits.length;
+  }
+
+  // ---------------- Redoing the last fill the other way ----------------
+
+  /**
+   * How the last handle fill could be redone from the cell at `at`, for the body menu: `"copy"`
+   * repeats the source where the fill stepped a series, `"series"` steps every line that can where
+   * it copied (never under `mode: "copy"`). Offered only on a cell the fill covered, and only when
+   * the redo would change something — a plain-text copy has no series to offer.
+   */
+  fillAlternatives(at: { rowId: string; colId: string; rowPinned?: "top" | "bottom" }): FillLineMode[] {
+    const last = this.recallFill();
+    const opts = this.options();
+    if (!last || !opts || at.rowPinned) return [];
+    const col = this.params.leafColumns().find(c => c.instanceID === at.colId || c.colId === at.colId);
+    if (!col || !last.rowIds.includes(at.rowId) || !last.colIds.includes(col.instanceID)) return [];
+    const current = this.buildEdits(last.source, last.target, opts.mode, last.flip, last.force);
+    const out: FillLineMode[] = [];
+    for (const force of ["copy", "series"] as const) {
+      if (force === last.force || (force === "series" && opts.mode === "copy")) continue;
+      if (!sameEdits(current, this.buildEdits(last.source, last.target, opts.mode, last.flip, force))) out.push(force);
+    }
+    return out;
+  }
+
+  /**
+   * Redo the last handle fill with every line copied or stepped. A fresh write over the same
+   * target — its own undo step, the selection left alone — rather than an undo and a refill, so it
+   * neither depends on the fill still topping the history nor replays undo events to the app.
+   */
+  refill(force: FillLineMode): void {
+    const last = this.recallFill();
+    const opts = this.options();
+    if (!last || !opts) return;
+    this.refilling = true;
+    try {
+      this.write(last.source, last.target, opts.mode, last.flip, force);
+    } finally {
+      this.refilling = false;
+    }
+    last.force = force;
+  }
+
+  // The last fill, if the rows and columns it covered still sit at the same indices.
+  private recallFill(): LastFill | null {
+    const last = this.lastFill;
+    if (!last) return null;
+    const now = this.idsUnder(unionRect(last.source, last.target.rect));
+    const same = now.rowIds.every((id, i) => id === last.rowIds[i])
+      && now.colIds.every((id, i) => id === last.colIds[i]);
+    if (!same) this.lastFill = null;
+    return same ? last : null;
+  }
+
+  private idsUnder(rect: FillRect): { rowIds: (string | null)[]; colIds: (string | undefined)[] } {
+    const leaves = this.params.leafColumns();
+    const rowIds: (string | null)[] = [];
+    for (let r = rect.rowStart; r <= rect.rowEnd; r++) rowIds.push(this.params.core.getRowIdAtViewIndex(r));
+    const colIds: (string | undefined)[] = [];
+    for (let c = rect.colStart; c <= rect.colEnd; c++) colIds.push(leaves[c]?.instanceID);
+    return { rowIds, colIds };
   }
 
   /**
    * The edits a fill produces. Filling vertically, every column of the source is one line and its
    * rows are the pattern; horizontally, every row is a line and its columns are the pattern. Each
-   * line decides copy-or-series on its own values. Non-editable cells, group rows, and unloaded
-   * rows are skipped but keep their place in the pattern, so alignment survives a locked row.
+   * line decides copy-or-series on its own values, unless `force` settles it for every line (a menu
+   * redo). Non-editable cells, group rows, and unloaded rows are skipped but keep their place in
+   * the pattern, so alignment survives a locked row.
    */
-  private buildEdits(source: FillRect, target: FillTarget, mode: FillHandleMode, flip: boolean): FillEdit[] {
+  private buildEdits(
+    source: FillRect,
+    target: FillTarget,
+    mode: FillHandleMode,
+    flip: boolean,
+    force: FillLineMode | null = null,
+  ): FillEdit[] {
     const core = this.params.core;
     const leaves = this.params.leafColumns();
     const rowModel = core.getRowModel();
@@ -399,7 +501,7 @@ export class FillHandleController {
         const col = leaves[c];
         if (!col || !usable(col)) continue;
         const values = sourceNodes.map(node => node ? col.getValue(node) : undefined);
-        const lineMode = resolveLineMode(values, mode, flip);
+        const lineMode = lineModeFor(values, mode, flip, force);
         for (let r = target.rect.rowStart; r <= target.rect.rowEnd; r++) {
           const node = nodeAt(r);
           if (!node || !col.isCellEditable(node, core.resolveRowPresentation(node, r))) continue;
@@ -419,7 +521,7 @@ export class FillHandleController {
       if (!node) continue;
       const presentation = core.resolveRowPresentation(node, r);
       const values = sourceCols.map(col => col.getValue(node));
-      const lineMode = resolveLineMode(values, mode, flip);
+      const lineMode = lineModeFor(values, mode, flip, force);
       targetCols.forEach((col, k) => {
         if (!col.isCellEditable(node, presentation)) return;
         // Rightward the targets continue past the pattern's end; leftward the nearest target is
@@ -483,7 +585,23 @@ export class FillHandleController {
   destroy(): void {
     this.finishDrag();
     this.detach();
+    this.stopWatchingWrites();
+    this.lastFill = null;
   }
+}
+
+// The gesture's own rule, or the mode a menu redo forces: `"series"` only where a line can step.
+function lineModeFor(values: readonly unknown[], mode: FillHandleMode, flip: boolean, force: FillLineMode | null): FillLineMode {
+  if (force === "copy") return "copy";
+  if (force === "series") return seriesKind(values) ? "series" : "copy";
+  return resolveLineMode(values, mode, flip);
+}
+
+function sameEdits(a: readonly FillEdit[], b: readonly FillEdit[]): boolean {
+  return a.length === b.length && a.every((edit, i) =>
+    edit.cell.rowId === b[i].cell.rowId
+    && edit.cell.colId === b[i].cell.colId
+    && valuesAreSame(edit.value, b[i].value));
 }
 
 // A column that takes part in a fill: visible, and not one of the grid's own (row numbers,

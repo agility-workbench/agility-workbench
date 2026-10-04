@@ -23,7 +23,11 @@ function makeGrid() {
   return core;
 }
 
-function makeService(core: GridCore, fill: { down: boolean; right: boolean } | null, hasEditableCells = true) {
+function makeService(
+  core: GridCore,
+  fill: { down: boolean; right: boolean; alternatives?: Array<"copy" | "series"> } | null,
+  hasEditableCells = true,
+) {
   const calls: string[] = [];
   const clipboard: BodyMenuClipboardTarget = {
     copySelection: () => calls.push("copy"),
@@ -35,6 +39,8 @@ function makeService(core: GridCore, fill: { down: boolean; right: boolean } | n
       canFillRight: () => fill.right,
       fillDown: () => calls.push("fillDown"),
       fillRight: () => calls.push("fillRight"),
+      fillAlternatives: () => fill.alternatives ?? [],
+      refill: (mode: "copy" | "series") => calls.push(`refill:${mode}`),
     } : {}),
   };
   const svc = new BodyMenuService({
@@ -87,5 +93,23 @@ describe("body menu Fill down / Fill right", () => {
     svc.execute(items.find(i => i.id === "fillDown")!, ctx);
     svc.execute(items.find(i => i.id === "fillRight")!, ctx);
     expect(calls).toEqual(["fillDown", "fillRight"]);
+  });
+
+  it("offers the last fill's alternatives after the fill items, and redoes through the target", () => {
+    const { svc, calls } = makeService(makeGrid(), { down: true, right: true, alternatives: ["copy", "series"] });
+    const items = svc.buildDefaultBodyMenu(ctx);
+    const order = ids(items);
+    expect(order.indexOf("fillAsCopy")).toBe(order.indexOf("fillRight") + 1);
+    expect(order.indexOf("fillAsSeries")).toBe(order.indexOf("fillAsCopy") + 1);
+    expect(items.find(i => i.id === "fillAsCopy")).toMatchObject({ label: "Copy cells instead", command: "body.fillAsCopy" });
+    expect(items.find(i => i.id === "fillAsSeries")).toMatchObject({ label: "Fill series instead", command: "body.fillAsSeries" });
+    svc.execute(items.find(i => i.id === "fillAsCopy")!, ctx);
+    svc.execute(items.find(i => i.id === "fillAsSeries")!, ctx);
+    expect(calls).toEqual(["refill:copy", "refill:series"]);
+
+    expect(ids(makeService(makeGrid(), { down: false, right: false }).svc.buildDefaultBodyMenu(ctx)))
+      .not.toContain("fillAsCopy");
+    expect(ids(makeService(makeGrid(), { down: true, right: true, alternatives: ["copy"] }, false).svc.buildDefaultBodyMenu(ctx)))
+      .not.toContain("fillAsCopy");
   });
 });

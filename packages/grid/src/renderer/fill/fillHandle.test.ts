@@ -468,6 +468,85 @@ describe("double-click on the handle", () => {
   });
 });
 
+describe("redoing a fill the other way from the body menu", () => {
+  function openMenu(root: HTMLElement, viewIdx: number, colIdx: number): string[] {
+    cell(root, viewIdx, colIdx).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    return [...document.querySelectorAll<HTMLElement>(".pte-menu-item .pte-menu-item-text")].map(el => el.textContent ?? "");
+  }
+  function chooseItem(label: string) {
+    const item = [...document.querySelectorAll<HTMLElement>(".pte-menu-item")]
+      .find(el => el.querySelector(".pte-menu-item-text")?.textContent === label);
+    if (!item) throw new Error(`no menu item "${label}"`);
+    item.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  }
+  const fillItems = (labels: string[]) => labels.filter(l => l === "Copy cells instead" || l === "Fill series instead");
+
+  it("offers copies after a series, then the series again, each as its own undo step", () => {
+    const { core, api, root, column } = mountGrid();
+    // Zeros below the source: the fixture's own 30..60 IS the series, and a fill that changes
+    // nothing records nothing.
+    api.setRowData(rows().map((r, i) => ({ ...r, qty: i < 2 ? r.qty : 0 })));
+    select(core, 0, 1, 1, 1); // 10, 20
+    drag(root, 5, 1);
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(api.getHistoryState().undoDepth).toBe(1);
+
+    expect(fillItems(openMenu(root, 4, 1))).toEqual(["Copy cells instead"]);
+    chooseItem("Copy cells instead");
+    expect(column("qty")).toEqual([10, 20, 10, 20, 10, 20]);
+    expect(range(core)).toEqual([0, 5, 1, 1]);
+    expect(api.getHistoryState().undoDepth).toBe(2);
+
+    expect(fillItems(openMenu(root, 0, 1))).toEqual(["Fill series instead"]);
+    chooseItem("Fill series instead");
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(api.getHistoryState().undoDepth).toBe(3);
+  });
+
+  it("offers a series after a lone number was copied, and nothing after plain text", () => {
+    const { core, root, column } = mountGrid();
+    select(core, 2, 1); // 30
+    drag(root, 4, 1);
+    expect(column("qty")).toEqual([10, 20, 30, 30, 30, 60]);
+    expect(fillItems(openMenu(root, 3, 1))).toEqual(["Fill series instead"]);
+    chooseItem("Fill series instead");
+    expect(column("qty")).toEqual([10, 20, 30, 31, 32, 60]);
+
+    select(core, 0, 0); // "A"
+    drag(root, 2, 0);
+    expect(fillItems(openMenu(root, 1, 0))).toEqual([]);
+  });
+
+  it("is offered only on the cells the fill covered, and never under copy mode", () => {
+    const { core, root } = mountGrid();
+    select(core, 0, 1, 1, 1);
+    drag(root, 3, 1);
+    expect(fillItems(openMenu(root, 2, 0))).toEqual([]); // beside the fill
+    expect(fillItems(openMenu(root, 5, 1))).toEqual([]); // below it
+    expect(fillItems(openMenu(root, 2, 1))).toEqual(["Copy cells instead"]);
+
+    const copyOnly = mountGrid({ fillHandle: { mode: "copy" } });
+    select(copyOnly.core, 0, 1, 1, 1);
+    drag(copyOnly.root, 3, 1);
+    expect(copyOnly.column("qty")).toEqual([10, 20, 10, 20, 50, 60]);
+    expect(fillItems(openMenu(copyOnly.root, 2, 1))).toEqual([]);
+  });
+
+  it("is retired by any other write and by a change of row order", () => {
+    const { core, api, root } = mountGrid();
+    select(core, 0, 1, 1, 1);
+    drag(root, 3, 1);
+    api.setCellValue({ rowId: "r5", colId: core.getColumnModel().getByColId("name")!.instanceID }, "Z");
+    expect(fillItems(openMenu(root, 2, 1))).toEqual([]);
+
+    select(core, 0, 1, 1, 1);
+    drag(root, 3, 1, { ctrlKey: true }); // copies; a series could be offered
+    expect(fillItems(openMenu(root, 2, 1))).toEqual(["Fill series instead"]);
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: "name", dir: "desc" }] });
+    expect(fillItems(openMenu(root, 2, 1))).toEqual([]);
+  });
+});
+
 describe("Ctrl/Cmd+D and Ctrl/Cmd+R", () => {
   it("fills the selection down from its first row and keeps the selection", () => {
     const { core, root, column } = mountGrid();

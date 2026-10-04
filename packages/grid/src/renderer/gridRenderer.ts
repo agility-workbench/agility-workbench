@@ -432,6 +432,8 @@ export class GridRenderer {
           canFillRight: () => this._fillHandle.canFillRight(),
           fillDown: () => this._fillHandle.fillDown(),
           fillRight: () => this._fillHandle.fillRight(),
+          fillAlternatives: (ctx) => this._fillHandle.fillAlternatives(ctx),
+          refill: (mode) => this._fillHandle.refill(mode),
         },
         {
           // Deferred: _pinnedRowsRenderer is constructed after the menu wiring; menu clicks run

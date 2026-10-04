@@ -263,6 +263,13 @@ left. Both are copies, never series, and leave the selection where it is. The
 body context menu offers the same two commands as **Fill down** and **Fill
 right** whenever they would write something.
 
+Right after a drag or double-click fill, the context menu on any cell the fill
+covered offers the other choice: **Copy cells instead** where the fill stepped a
+series, or **Fill series instead** where a line that could step was copied (a
+lone number, for instance). Each redo is its own undo step and leaves the
+selection where it is; the offer lasts until another write, or a change of row
+order, retires it.
+
 Double-click the handle to fill the selection down to the end of the data
 beside it, the way a spreadsheet completes a column. The column to the left of
 the selection is the guide — the one to its right when the left is blank in the
