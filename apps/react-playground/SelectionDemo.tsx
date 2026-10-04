@@ -200,7 +200,7 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
-  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips)"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
   ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
   [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
@@ -241,6 +241,7 @@ export function SelectionDemo() {
   const [cellSelection, setCellSelection] = useState<boolean | "text">(true);
   const [headerKeyboardNav, setHeaderKeyboardNav] = useState(true);
   // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+  // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
   const [fillHandle, setFillHandle] = useState<"auto" | "copy" | "off">("auto");
   // `fillOperation` is a callback, bridged through a ref like onBeforeCellCommit: swapping the
   // function (or passing none) applies to the next fill without a grid rebuild.
@@ -440,7 +441,7 @@ export function SelectionDemo() {
             selectAllRowsOnHeaderClick
             cellSelection={cellSelection}
             headerKeyboardNavigation={headerKeyboardNav}
-            fillHandle={fillHandle === "off" ? false : { mode: fillHandle }}
+            fillHandle={fillHandle === "off" ? false : { mode: fillHandle, lists: [TITLES] }}
             fillOperation={fillRules === "app" ? appFillOperation : undefined}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}

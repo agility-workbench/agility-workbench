@@ -499,6 +499,8 @@ export class FillHandleController {
   ): FillEdit[] {
     const core = this.params.core;
     const leaves = this.params.leafColumns();
+    // The application's cycles (`fillHandle.lists`) ride the runtime option, so read them per fill.
+    const lists = this.options()?.lists ?? [];
     const rowModel = core.getRowModel();
     const nodeAt = (viewIdx: number): IRowNode | null => {
       const rowId = core.getRowIdAtViewIndex(viewIdx);
@@ -513,11 +515,11 @@ export class FillHandleController {
         const col = leaves[c];
         if (!col || !usable(col)) continue;
         const values = sourceNodes.map(node => node ? col.getValue(node) : undefined);
-        const lineMode = lineModeFor(values, mode, flip, force);
+        const lineMode = lineModeFor(values, mode, flip, force, lists);
         for (let r = target.rect.rowStart; r <= target.rect.rowEnd; r++) {
           const node = nodeAt(r);
           if (!node || !col.isCellEditable(node, core.resolveRowPresentation(node, r))) continue;
-          const edit = this.editFor({ values, index: r - source.rowStart, lineMode, axis: target.axis, trigger }, node, col, col);
+          const edit = this.editFor({ values, index: r - source.rowStart, lineMode, axis: target.axis, trigger, lists }, node, col, col);
           if (edit) edits.push(edit);
         }
       }
@@ -532,7 +534,7 @@ export class FillHandleController {
       if (!node) continue;
       const presentation = core.resolveRowPresentation(node, r);
       const values = sourceCols.map(col => col.getValue(node));
-      const lineMode = lineModeFor(values, mode, flip, force);
+      const lineMode = lineModeFor(values, mode, flip, force, lists);
       targetCols.forEach((col, k) => {
         if (!col.isCellEditable(node, presentation)) return;
         // Rightward the targets continue past the pattern's end; leftward the nearest target is
@@ -540,7 +542,7 @@ export class FillHandleController {
         const index = target.axis === "right" ? sourceCols.length + k : k - targetCols.length;
         const n = sourceCols.length;
         const from = lineMode === "copy" ? sourceCols[((index % n) + n) % n] : sourceCols[0];
-        const edit = this.editFor({ values, index, lineMode, axis: target.axis, trigger }, node, from, col);
+        const edit = this.editFor({ values, index, lineMode, axis: target.axis, trigger, lists }, node, from, col);
         if (edit) edits.push(edit);
       });
     }
@@ -553,12 +555,19 @@ export class FillHandleController {
    * shape its column stores. A value from the application is stored as given.
    */
   private editFor(
-    line: { values: readonly unknown[]; index: number; lineMode: FillLineMode; axis: FillAxis; trigger: FillTrigger },
+    line: {
+      values: readonly unknown[];
+      index: number;
+      lineMode: FillLineMode;
+      axis: FillAxis;
+      trigger: FillTrigger;
+      lists: readonly (readonly string[])[];
+    },
     node: IRowNode,
     from: Column,
     to: Column,
   ): FillEdit | null {
-    const value = fillValueAt(line.values, line.index, line.lineMode);
+    const value = fillValueAt(line.values, line.index, line.lineMode, line.lists);
     const cell: CellRef = { rowId: node.id, colId: to.instanceID };
     const operation = this.params.core.getOptions().fillOperation;
     if (operation) {
@@ -636,10 +645,16 @@ export class FillHandleController {
 }
 
 // The gesture's own rule, or the mode a menu redo forces: `"series"` only where a line can step.
-function lineModeFor(values: readonly unknown[], mode: FillHandleMode, flip: boolean, force: FillLineMode | null): FillLineMode {
+function lineModeFor(
+  values: readonly unknown[],
+  mode: FillHandleMode,
+  flip: boolean,
+  force: FillLineMode | null,
+  lists: readonly (readonly string[])[],
+): FillLineMode {
   if (force === "copy") return "copy";
-  if (force === "series") return seriesKind(values) ? "series" : "copy";
-  return resolveLineMode(values, mode, flip);
+  if (force === "series") return seriesKind(values, lists) ? "series" : "copy";
+  return resolveLineMode(values, mode, flip, lists);
 }
 
 function sameEdits(a: readonly FillEdit[], b: readonly FillEdit[]): boolean {

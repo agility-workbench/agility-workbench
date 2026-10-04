@@ -3,6 +3,9 @@ import type { FillAxis, FillHandleDirection, FillHandleMode, FillLineMode } from
 
 export type { FillAxis, FillLineMode };
 
+/** Application cycles (`fillHandle.lists`), tried before the built-in name lists. */
+type Lists = readonly (readonly string[])[];
+
 /**
  * The fill handle's arithmetic, with no grid in it: which cells a drag targets, and what value each
  * of them receives. Everything here is in body view-index rows × global leaf-column indices,
@@ -88,14 +91,14 @@ export function adjacentBlockEnd(
 
 /**
  * Whether a line of source values can extend as a series: every value a finite number, every value
- * a valid `Date`, or every value a string sharing a {@link textSeries} pattern. Anything mixed,
- * blank, or otherwise textual repeats instead.
+ * a valid `Date`, or every value a string sharing a {@link textSeries} pattern (the application's
+ * `lists` included). Anything mixed, blank, or otherwise textual repeats instead.
  */
-export function seriesKind(values: readonly unknown[]): "number" | "date" | "text" | null {
+export function seriesKind(values: readonly unknown[], lists: Lists = []): "number" | "date" | "text" | null {
   if (values.length === 0) return null;
   if (values.every(v => typeof v === "number" && Number.isFinite(v))) return "number";
   if (values.every(v => v instanceof Date && !Number.isNaN(v.getTime()))) return "date";
-  if (textSeries(values)) return "text";
+  if (textSeries(values, lists)) return "text";
   return null;
 }
 
@@ -106,9 +109,14 @@ export function seriesKind(values: readonly unknown[]): "number" | "date" | "tex
  * drag ends — inverts that choice wherever a series is possible, so a lone number counts up and a
  * run of numbers repeats. `"copy"` mode is just that.
  */
-export function resolveLineMode(values: readonly unknown[], mode: FillHandleMode, flip: boolean): FillLineMode {
+export function resolveLineMode(
+  values: readonly unknown[],
+  mode: FillHandleMode,
+  flip: boolean,
+  lists: Lists = [],
+): FillLineMode {
   if (mode === "copy") return "copy";
-  const kind = seriesKind(values);
+  const kind = seriesKind(values, lists);
   if (kind === null) return "copy";
   const series = kind !== "number" || values.length >= 2;
   return (flip ? !series : series) ? "series" : "copy";
@@ -118,8 +126,10 @@ export function resolveLineMode(values: readonly unknown[], mode: FillHandleMode
  * A line of text that can extend. A counter is text whose last run of digits counts (`Item 1`,
  * `Week 1 of 52`, `v08`): the rest must be the same in every cell, and the digits' width is kept
  * as a minimum, so `08` is followed by `09` and `10`. A cycle is a run of weekday or month names,
- * long or short, in English or the runtime's language, matched regardless of case. Dates written
- * as `YYYY-MM-DD` text step as dates do and stay text, so `2026-05-31` is followed by `2026-06-01`.
+ * long or short, in English or the runtime's language, of quarters (`Q1`, `Qtr1`, `Quarter 1`), or
+ * of the entries of an application list, matched regardless of case; application lists are tried
+ * first, then the built-in ones, then the counter. Dates written as `YYYY-MM-DD` text step as
+ * dates do and stay text, so `2026-05-31` is followed by `2026-06-01`.
  */
 export type TextSeries =
   | { kind: "counter"; prefix: string; suffix: string; width: number; numbers: number[] }
@@ -127,10 +137,10 @@ export type TextSeries =
   | { kind: "isoDate"; dates: Date[] };
 
 /** The text pattern `values` share, or null when they are not all strings or share none. */
-export function textSeries(values: readonly unknown[]): TextSeries | null {
+export function textSeries(values: readonly unknown[], lists: Lists = []): TextSeries | null {
   if (values.length === 0 || !values.every(v => typeof v === "string")) return null;
   const texts = values as string[];
-  return nameCycle(texts) ?? isoDates(texts) ?? counter(texts);
+  return nameCycle(texts, lists) ?? isoDates(texts) ?? counter(texts);
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -171,12 +181,12 @@ function counter(texts: readonly string[]): TextSeries | null {
   return prefix === null ? null : { kind: "counter", prefix, suffix, width, numbers };
 }
 
-function nameCycle(texts: readonly string[]): TextSeries | null {
-  for (const names of nameLists()) {
+function nameCycle(texts: readonly string[], lists: Lists): TextSeries | null {
+  for (const names of [...usableLists(lists), ...nameLists()]) {
     const indices: number[] = [];
     for (const text of texts) {
       const wanted = text.trim().toLowerCase();
-      const at = names.findIndex(name => name.toLowerCase() === wanted);
+      const at = names.findIndex(name => name.trim().toLowerCase() === wanted);
       if (at < 0) break;
       indices.push(at);
     }
@@ -187,10 +197,17 @@ function nameCycle(texts: readonly string[]): TextSeries | null {
   return null;
 }
 
+// An application list needs two entries to cycle; blanks and non-strings would never match a cell.
+function usableLists(lists: Lists): Lists {
+  return lists.filter(list =>
+    list.length >= 2 && list.every(name => typeof name === "string" && name.trim() !== ""));
+}
+
 let cachedNameLists: readonly (readonly string[])[] | null = null;
 
 // Weekday and month names, long then short, English first and then the runtime's language where
-// it differs. Long lists come before short ones so "May" continues as "June", not "Jun".
+// it differs, then the quarter spellings spreadsheets know. Long lists come before short ones so
+// "May" continues as "June", not "Jun".
 function nameLists(): readonly (readonly string[])[] {
   if (cachedNameLists) return cachedNameLists;
   const lists: string[][] = [];
@@ -206,6 +223,10 @@ function nameLists(): readonly (readonly string[])[] {
       add(calendarNames(locale, { month: width }, 12, i => new Date(2024, i, 1)));
     }
   }
+  add(["Quarter 1", "Quarter 2", "Quarter 3", "Quarter 4"]);
+  add(["Qtr 1", "Qtr 2", "Qtr 3", "Qtr 4"]);
+  add(["Qtr1", "Qtr2", "Qtr3", "Qtr4"]);
+  add(["Q1", "Q2", "Q3", "Q4"]);
   return (cachedNameLists = lists);
 }
 
@@ -266,24 +287,27 @@ export function copyAt(values: readonly unknown[], index: number): unknown {
  * Dates sharing a time of day advance in calendar days (so a daily series survives a DST change);
  * otherwise they advance in milliseconds. A text counter's number follows the same trend, rounded
  * to a whole number; a name cycle's position does too, wrapping around the list. `values` must
- * satisfy {@link seriesKind}.
+ * satisfy {@link seriesKind} (with the same `lists`).
  */
-export function seriesAt(values: readonly unknown[], index: number): unknown {
-  const kind = seriesKind(values);
+export function seriesAt(values: readonly unknown[], index: number, lists: Lists = []): unknown {
+  const kind = seriesKind(values, lists);
   if (kind === "number") {
     // 15 significant digits is where a double's shortest round-trip text stops carrying noise.
     return Number(trend(values as number[], 1)(index).toPrecision(15));
   }
   if (kind === "text") {
-    const text = textSeries(values)!;
+    const text = textSeries(values, lists)!;
     if (text.kind === "counter") {
       const n = Math.round(trend(text.numbers, 1)(index));
       return text.prefix + padCount(n, text.width) + text.suffix;
     }
     if (text.kind === "isoDate") return isoFromLocal(seriesAt(text.dates, index) as Date);
     const length = text.names.length;
-    const at = Math.round(trend(text.indices, 1)(index));
-    return matchCase(text.sample, text.names[((at % length) + length) % length]);
+    const wrap = (i: number) => text.names[((i % length) + length) % length];
+    const name = wrap(Math.round(trend(text.indices, 1)(index)));
+    // A sample spelled exactly as listed takes the list's own spelling ("Associate" → "VP"); one
+    // typed in another casing carries that casing along ("MON" → "TUE", "associate" → "vp").
+    return text.sample === wrap(text.indices[0]).trim() ? name.trim() : matchCase(text.sample, name);
   }
   if (kind === "date") {
     const dates = values as Date[];
@@ -302,8 +326,13 @@ export function seriesAt(values: readonly unknown[], index: number): unknown {
 }
 
 /** {@link copyAt} or {@link seriesAt}, by line mode. */
-export function fillValueAt(values: readonly unknown[], index: number, lineMode: FillLineMode): unknown {
-  return lineMode === "series" ? seriesAt(values, index) : copyAt(values, index);
+export function fillValueAt(
+  values: readonly unknown[],
+  index: number,
+  lineMode: FillLineMode,
+  lists: Lists = [],
+): unknown {
+  return lineMode === "series" ? seriesAt(values, index, lists) : copyAt(values, index);
 }
 
 // The least-squares line through (0, ys[0]) … (n-1, ys[n-1]); with one point, a line of slope

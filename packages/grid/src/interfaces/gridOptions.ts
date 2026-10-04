@@ -466,6 +466,18 @@ export interface FillHandleOptions {
   mode?: FillHandleMode;
   /** Defaults to `"xy"`. `Ctrl/Cmd+D` needs `"y"` or `"xy"`; `Ctrl/Cmd+R` needs `"x"` or `"xy"`. */
   direction?: FillHandleDirection;
+  /**
+   * Application sequences a fill cycles through, as a spreadsheet's custom lists: a cell whose text
+   * is an entry (matched whole, ignoring case and surrounding spaces) continues along its list and
+   * wraps at the end. An entry spelled as listed is followed by the list's own spellings
+   * (`Associate` → `VP`); one typed in another casing carries that casing — with `[["Low",
+   * "Medium", "High"]]`, `low` is followed by `medium`, `high`, `low`. Two or more selected cells must sit on the same list and
+   * their step is kept (`Low, High` → `Medium`). These lists are tried before the built-in ones
+   * (weekday and month names, quarters) and before the text counter, so a list can replace a
+   * built-in order or make `Item 1` cycle instead of count. Lists with fewer than two entries are
+   * ignored. Defaults to none.
+   */
+  lists?: readonly (readonly string[])[];
 }
 
 /** The one direction a fill runs in. A fill never runs two ways at once. */
@@ -518,6 +530,7 @@ export type FillOperationResult =
 export interface ResolvedFillHandleOptions {
   mode: FillHandleMode;
   direction: FillHandleDirection;
+  lists: readonly (readonly string[])[];
 }
 
 /** `null` when the handle is off; otherwise the options with defaults filled in. */
@@ -526,7 +539,7 @@ export function resolveFillHandleOptions(
 ): ResolvedFillHandleOptions | null {
   if (value === false) return null;
   const opts = typeof value === "object" && value !== null ? value : {};
-  return { mode: opts.mode ?? "auto", direction: opts.direction ?? "xy" };
+  return { mode: opts.mode ?? "auto", direction: opts.direction ?? "xy", lists: opts.lists ?? [] };
 }
 
 /** A configurable control in the pagination footer. The array order is the visual/tab order. */

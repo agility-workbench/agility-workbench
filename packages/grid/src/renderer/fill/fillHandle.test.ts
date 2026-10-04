@@ -773,3 +773,22 @@ describe("api.fillDown / fillRight / canFillDown / canFillRight", () => {
     warn.mockRestore();
   });
 });
+
+describe("fillHandle.lists", () => {
+  it("cycles an application list and the built-in quarters, and a runtime change of the option applies to the next drag", () => {
+    const { core, api, root, column } = mountGrid({ fillHandle: { lists: [["Low", "Medium", "High"]] } });
+    api.setRowData(rows().map((r, i) => ({ ...r, name: i === 0 ? "low" : r.name, note: i === 0 ? "Q3" : r.note })));
+    select(core, 0, 0);
+    drag(root, 3, 0);
+    expect(column("name")).toEqual(["low", "medium", "high", "low", "E", "F"]);
+    select(core, 0, 3);
+    drag(root, 2, 3);
+    expect(column("note")).toEqual(["Q3", "Q4", "Q1", "nd", "ne", "nf"]);
+
+    // The lists ride the runtime option: without them, "low" is plain text and repeats.
+    api.updateGridOptions({ fillHandle: true });
+    select(core, 0, 0);
+    drag(root, 2, 0);
+    expect(column("name")).toEqual(["low", "low", "low", "low", "E", "F"]);
+  });
+});

@@ -244,7 +244,7 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
-  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips)"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
   ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
   [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
@@ -447,7 +447,8 @@ export class SelectionDemoComponent {
   readonly cellSelection = signal<boolean | "text">(true);
   readonly headerKeyboardNav = signal(true);
   // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
-  readonly fillHandle = signal<boolean | FillHandleOptions>(true);
+  // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
+  readonly fillHandle = signal<boolean | FillHandleOptions>({ lists: [TITLES] });
   // `fillOperation` is a callback input, read through a signal by the wrapper: swapping the
   // function (or passing none) applies to the next fill without a grid rebuild.
   readonly fillRules = signal<"grid" | "app">("grid");
@@ -533,7 +534,7 @@ export class SelectionDemoComponent {
 
   setFillHandle(ev: Event): void {
     const value = (ev.target as HTMLSelectElement).value;
-    this.fillHandle.set(value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" });
+    this.fillHandle.set(value === "off" ? false : { mode: value === "copy" ? "copy" : "auto", lists: [TITLES] });
     afterNextRender(() => this.refreshCanFill(), { injector: this.injector });
   }
 

@@ -210,6 +210,25 @@ describe("textSeries", () => {
     expect(textSeries(["Jan", "February"])).toBeNull();
     expect(seriesKind(["Mon", "Tue"])).toBe("text");
   });
+
+  it("cycles quarters out of the box, and application lists before the built-ins and the counter", () => {
+    expect(textSeries(["Q1"])).toMatchObject({ kind: "cycle", names: ["Q1", "Q2", "Q3", "Q4"], indices: [0] });
+    expect(textSeries(["qtr 4", "Qtr 1"])).toMatchObject({ kind: "cycle", indices: [3, 4] });
+    expect(textSeries(["Quarter 2"])).toMatchObject({ kind: "cycle", names: ["Quarter 1", "Quarter 2", "Quarter 3", "Quarter 4"] });
+
+    const lists = [["Low", "Medium", "High"], ["Mon", "Wed", "Fri"], ["Item 1", "Item 2", "Item 9"], ["lonely"], ["", "blank"]];
+    expect(textSeries(["low"], lists)).toMatchObject({ kind: "cycle", names: lists[0], indices: [0] });
+    // The app's weekday list wins over the built-in one, so Mon, Wed are neighbours.
+    expect(textSeries(["Mon", "Wed"], lists)).toMatchObject({ kind: "cycle", names: lists[1], indices: [0, 1] });
+    // A list beats the counter, so Item 1 cycles instead of counting.
+    expect(textSeries(["Item 1"], lists)).toMatchObject({ kind: "cycle", names: lists[2] });
+    // Lists that cannot cycle are ignored, and a line must sit on ONE list.
+    expect(textSeries(["lonely"], lists)).toBeNull();
+    expect(textSeries(["blank"], lists)).toBeNull();
+    expect(textSeries(["Low", "Monday"], lists)).toBeNull();
+    expect(seriesKind(["Low"], lists)).toBe("text");
+    expect(seriesKind(["Low"])).toBeNull();
+  });
 });
 
 describe("seriesAt with text", () => {
@@ -238,6 +257,30 @@ describe("seriesAt with text", () => {
     expect(series(["monday", "wednesday"], 2, 3)).toEqual(["friday", "sunday"]);
     expect(series(["Fri", "Sat", "Sun", "Mon"], 4)).toEqual(["Tue"]);
     expect(series(["May"], 1)).toEqual(["June"]);
+  });
+
+  it("wraps quarters and application lists in the first value's casing, keeping the step", () => {
+    expect(series(["Q1"], 1, 2, 3, 4)).toEqual(["Q2", "Q3", "Q4", "Q1"]);
+    expect(series(["Quarter 4"], 1)).toEqual(["Quarter 1"]);
+    expect(series(["qtr2", "qtr4"], 2)).toEqual(["qtr2"]);
+
+    const lists = [["Low", "Medium", "High"]];
+    const at = (values: unknown[], ...indices: number[]) => indices.map(i => seriesAt(values, i, lists));
+    expect(at(["low"], 1, 2, 3)).toEqual(["medium", "high", "low"]);
+    expect(at(["HIGH"], -1)).toEqual(["MEDIUM"]);
+    // Low, High is one step backward on a three-entry cycle (the nearest turn), as Fri, Sun is
+    // two forward on the week — and on three entries that lands where two forward would anyway.
+    expect(at(["Low", "High"], 2, 3)).toEqual(["Medium", "Low"]);
+    expect(resolveLineMode(["Low"], "auto", false, lists)).toBe("series");
+    expect(resolveLineMode(["Low"], "auto", false)).toBe("copy");
+    expect(fillValueAt(["Low"], 1, "series", lists)).toBe("Medium");
+    expect(fillValueAt(["Low"], 1, "copy", lists)).toBe("Low");
+
+    // Spelled as listed, the list's own spelling comes out; typed in another casing, that casing.
+    const ladder = [["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"]];
+    expect([4, 5, 6].map(i => seriesAt(["Associate"], i, ladder))).toEqual(["Director", "VP", "Analyst"]);
+    expect(seriesAt(["associate"], 5, ladder)).toBe("vp");
+    expect(seriesAt(["ASSOCIATE"], 2, ladder)).toBe("SENIOR");
   });
 
   it("makes a lone text pattern a series, like a date, unless flipped", () => {

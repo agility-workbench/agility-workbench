@@ -45,7 +45,7 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | --- | --- | --- |
 | `cellSelection` | `boolean \| "text"` | `true` (`false`/`"text"` also disable the body keyboard cursor — navigation, clipboard, and editing keys) |
 | `rangeSelection` | `boolean` | `true` |
-| `fillHandle` | `boolean \| FillHandleOptions` | `true` (`{ mode: "auto", direction: "xy" }`; needs `cellSelection: true` and `rangeSelection`) |
+| `fillHandle` | `boolean \| FillHandleOptions` | `true` (`{ mode: "auto", direction: "xy", lists: [] }`; `lists` are app sequences that cycle like a spreadsheet's custom lists; needs `cellSelection: true` and `rangeSelection`) |
 | `fillOperation` | `(params: FillOperationParams) => FillOperationResult \| void` | Decide each filled cell's value: `{ value }`, `{ skipCell: true }`, or nothing for the grid's own; see [Editing → Fill handle](../examples/editing.mdx#fill-handle) |
 | `columnSelection` | `boolean` | `true` |
 | `headerKeyboardNavigation` | `boolean` | `true` (`false` makes header sort/menu/selection mouse-only) |

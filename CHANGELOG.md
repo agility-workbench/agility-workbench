@@ -18,8 +18,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   40`; `1, 2, 6` → `8, 10.5, 13`), a lone date steps a day and a run of dates keeps its
   interval (`YYYY-MM-DD` text too, staying text), text ending in a number counts up (`Item 1` → `Item 2`; `Item 1, Item 3` → `Item
   5`, zero padding kept), weekday and month names cycle in order, long or short, in the casing
-  typed (`Nov, Dec` → `Jan`; English names plus the browser language's), and everything else
-  repeats. Holding Ctrl/Cmd when the drag ends flips the choice: a lone number counts up, a
+  typed (`Nov, Dec` → `Jan`; English names plus the browser language's), quarters wrap (`Q4` →
+  `Q1`), application sequences given as `fillHandle: { lists: [["Low", "Medium", "High"]] }` cycle
+  the same way (a spreadsheet's custom lists, tried before the built-in names and the counter), and
+  everything else repeats. Holding Ctrl/Cmd when the drag ends flips the choice: a lone number counts up, a
   series repeats instead. `fillHandle: { mode: "copy" }` turns the
   series off; `direction: "y"` or `"x"` restricts the handle to rows or columns.
 - **`Ctrl/Cmd+D` fills down and `Ctrl/Cmd+R` fills right**, copying the selection's first row

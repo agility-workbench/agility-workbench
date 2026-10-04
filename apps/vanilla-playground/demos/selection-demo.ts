@@ -260,7 +260,7 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
-  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips)"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
   ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
   [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
@@ -398,6 +398,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
       field("Header keyboard nav", checkbox(true, checked =>
         api.updateGridOptions({ headerKeyboardNavigation: checked }))),
       // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+      // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
       field("Fill handle", select(
         [
           { value: "auto", label: "auto — series where possible" },
@@ -407,7 +408,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
         "auto",
         value => {
           api.updateGridOptions({
-            fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" },
+            fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto", lists: [TITLES] },
           });
           refreshCanFill();
         },
@@ -511,6 +512,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     quickFilter: true,
     rowSelection: true,
     selectAllRowsOnHeaderClick: true,
+    fillHandle: { lists: [TITLES] },
     fillOperation: params => (fillRules === "app" ? appFillOperation(params) : undefined),
   });
 

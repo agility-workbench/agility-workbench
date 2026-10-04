@@ -715,7 +715,7 @@ left — one direction per drag — and the cells it passes show a dashed outlin
 them as one undo step, after which the selection covers source and result together. Lines of two
 or more numbers continue their trend, dates step by their interval (a lone date by one day; so does
 `YYYY-MM-DD` text), text ending in a number counts up (`Item 1` → `Item 2`), weekday and month names cycle (`Nov, Dec` →
-`Jan`), and everything else repeats; holding Ctrl/Cmd at release flips series and copy, and right after
+`Jan`), quarters wrap (`Q4` → `Q1`), the app's own `lists` cycle the same way, and everything else repeats; holding Ctrl/Cmd at release flips series and copy, and right after
 a fill the body menu on the filled cells offers "Copy cells instead" / "Fill series instead". Double-clicking the
 handle fills down to the end of the data beside the selection — the neighbouring column's unbroken
 run of values, left side first, a group row ending it — as spreadsheets do. `Ctrl/Cmd+D` and
@@ -727,6 +727,7 @@ from a toolbar, with `api.canFillDown()` / `api.canFillRight()` for the buttons'
 fillHandle: true                 // default (needs cellSelection: true and rangeSelection)
 fillHandle: { mode: "copy" }     // never a series
 fillHandle: { direction: "y" }   // rows only; "x" for columns only
+fillHandle: { lists: [["Low", "Medium", "High"]] }  // app sequences that cycle (custom lists)
 fillHandle: false
 ```
 

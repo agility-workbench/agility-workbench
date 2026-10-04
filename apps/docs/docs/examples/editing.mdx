@@ -251,7 +251,14 @@ filling vertically, a row when horizontally):
   must match across the cells, and zero padding is kept (`v08` → `v09`, `v10`).
 - Weekday and month names cycle in order, long or short, keeping the casing you
   typed: `Monday` → `Tuesday`, `Nov, Dec` → `Jan`, `Feb`, `MON` → `TUE`. English
-  names are always recognised, plus those of the browser's language.
+  names are always recognised, plus those of the browser's language. Quarters
+  cycle too: `Q3` → `Q4`, `Q1` (`Qtr1` and `Quarter 1` likewise).
+- Your own sequences cycle the same way through `fillHandle: { lists }`, like a
+  spreadsheet's custom lists: with `lists: [["Low", "Medium", "High"]]`, `Low` →
+  `Medium`, `High`, `Low`, and `low` → `medium` (an entry spelled as listed takes
+  the list's spellings, so `VP` stays `VP`). Your lists are tried before the
+  built-in names and the counter, so one can replace the weekday order or make
+  `Item 1` cycle.
 - Everything else — plain text, booleans, a lone number, text that is only a
   number or a date with a time, a mixed line — repeats.
 - Hold **Ctrl/Cmd** when you release to flip the choice: a lone number counts up
