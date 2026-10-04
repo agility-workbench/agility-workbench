@@ -708,6 +708,38 @@ Only the fields you pass change. A mode set this way reports `source: "options"`
 `keyboardNavigationModeChanged`, distinguishing configuration from the imperative
 `setKeyboardNavigationMode` (`"api"`) and the shortcut itself (`"shortcut"`).
 
+## Fill handle
+
+The cell selection carries a small square on its bottom-right corner. Drag it down, up, right, or
+left — one direction per drag — and the cells it passes show a dashed outline; release to write
+them as one undo step, after which the selection covers source and result together. Lines of two
+or more numbers continue their trend, dates step by their interval (a lone date by one day; so does
+`YYYY-MM-DD` text), text ending in a number counts up (`Item 1` → `Item 2`), weekday and month names cycle (`Nov, Dec` →
+`Jan`), quarters wrap (`Q4` → `Q1`), the app's own `lists` cycle the same way, and everything else repeats; holding Ctrl/Cmd at release flips series and copy, and right after
+a fill the body menu on the filled cells offers "Copy cells instead" / "Fill series instead". Double-clicking the
+handle fills down to the end of the data beside the selection — the neighbouring column's unbroken
+run of values, left side first, a group row ending it — as spreadsheets do. `Ctrl/Cmd+D` and
+`Ctrl/Cmd+R` fill the selection down / right from its first row / column as a copy, and the body
+menu offers the same as "Fill down" / "Fill right"; `api.fillDown()` / `api.fillRight()` run them
+from a toolbar, with `api.canFillDown()` / `api.canFillRight()` for the buttons' enabled state.
+
+```ts
+fillHandle: true                 // default (needs cellSelection: true and rangeSelection)
+fillHandle: { mode: "copy" }     // never a series
+fillHandle: { direction: "y" }   // rows only; "x" for columns only
+fillHandle: { lists: [["Low", "Medium", "High"]] }  // app sequences that cycle (custom lists)
+fillHandle: false
+```
+
+Within a column (or into a column of the same `type`) values move as stored; into a differently
+typed column the displayed text goes through that column's parser — its `valueParser`, or the
+built-in one for its type — as a paste would, so a name dragged over a number column is refused.
+`onBeforeCellCommit` runs per cell and `cellValueChanged` reports `source: "fill"`. For series the
+grid cannot know, `fillOperation` is called per target cell with the line's values, the cell's pattern
+index, and the grid's own value; return `{ value }`, `{ skipCell: true }`, or nothing to keep the
+grid's. The handle shows
+only while the selection covers an editable column, and not on a selection reaching a pinned band.
+
 ## Keyboard bindings
 
 Bindings live in a table rather than in nested `if`s, resolved by *scope*: an open cell editor and a
@@ -747,7 +779,8 @@ has nothing to mean.
 The body cursor keeps the spreadsheet conventions: arrows move, `Ctrl/Cmd+Arrow` jumps a block,
 `Shift` extends a range, `Home`/`End` reach the row edge (`+Ctrl/Cmd` a grid corner), `PageUp`/
 `PageDown` move a viewport, `F2`/`Enter` edit, `Shift+F2` opens the cell's action frame, printable
-characters start an edit, and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
+characters start an edit, `Ctrl/Cmd+D` / `Ctrl/Cmd+R` fill the selection down / right (see
+[Fill handle](#fill-handle)), and `Ctrl/Cmd`+`A`/`C`/`X`/`V`/`Z`/`Y` do what they do everywhere.
 `Alt+Arrow` is deliberately *not* claimed, so the browser keeps its back/forward gesture.
 
 Whole-grid chords are last in that resolution order: `Ctrl/Cmd+F` opens the [quick

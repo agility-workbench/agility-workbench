@@ -77,7 +77,7 @@ describe("declarative on* callbacks", () => {
       rowId: "1", colId: "name", colInstanceId: name, value: "x", oldValue: "alice", source: "paste",
     });
     expect(onCellValueChanged.mock.calls[1][0]).toEqual({
-      rowId: "2", colId: "qty", colInstanceId: qty, value: "9", oldValue: 7, source: "paste",
+      rowId: "2", colId: "qty", colInstanceId: qty, value: 9, oldValue: 7, source: "paste",
     });
 
     // Undo reports the write back to the old value; redo the write forward again.
@@ -85,13 +85,13 @@ describe("declarative on* callbacks", () => {
     const undoCalls = onCellValueChanged.mock.calls.slice(2, 4).map(call => call[0]);
     expect(undoCalls).toEqual(expect.arrayContaining([
       { rowId: "1", colId: "name", colInstanceId: name, value: "alice", oldValue: "x", source: "undo" },
-      { rowId: "2", colId: "qty", colInstanceId: qty, value: 7, oldValue: "9", source: "undo" },
+      { rowId: "2", colId: "qty", colInstanceId: qty, value: 7, oldValue: 9, source: "undo" },
     ]));
     core.dispatch({ type: "redo" });
     const redoCalls = onCellValueChanged.mock.calls.slice(4, 6).map(call => call[0]);
     expect(redoCalls).toEqual(expect.arrayContaining([
       { rowId: "1", colId: "name", colInstanceId: name, value: "x", oldValue: "alice", source: "redo" },
-      { rowId: "2", colId: "qty", colInstanceId: qty, value: "9", oldValue: 7, source: "redo" },
+      { rowId: "2", colId: "qty", colInstanceId: qty, value: 9, oldValue: 7, source: "redo" },
     ]));
   });
 

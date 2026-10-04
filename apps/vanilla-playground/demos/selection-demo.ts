@@ -3,6 +3,8 @@ import {
   createGrid,
   formatChord,
   type ColDef,
+  type FillOperationParams,
+  type FillOperationResult,
   type ICellEditor,
   type ICellEditorParams,
   type SelectionSnapshot,
@@ -32,6 +34,9 @@ import { formatDate, mulberry32, picker } from "../helpers";
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -60,6 +65,34 @@ const LAST_NAMES = [
 const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support", "Legal"];
 const TITLES = ["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"];
 const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Series the grid cannot know, for the `fillOperation` demo: "Joined On" steps by business days
+// (weekends skipped) and "Department" cycles through the company's list; every other column keeps
+// the grid's own value. The grid's `lineMode` is honoured for the dates, so Ctrl/Cmd still copies.
+function appFillOperation(params: FillOperationParams): FillOperationResult | undefined {
+  const { colId, values, index, lineMode } = params;
+  if (colId === "joinedOn") {
+    const last = values[values.length - 1];
+    if (lineMode !== "series" || !(last instanceof Date)) return undefined;
+    return { value: addBusinessDays(last, index - (values.length - 1)) };
+  }
+  if (colId === "department") {
+    const at = DEPARTMENTS.indexOf(String(values[0]));
+    if (at < 0) return undefined;
+    const n = DEPARTMENTS.length;
+    return { value: DEPARTMENTS[(((at + index) % n) + n) % n] };
+  }
+  return undefined;
+}
+
+function addBusinessDays(from: Date, steps: number): Date {
+  const date = new Date(from);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return date;
+}
 
 function buildRows(count: number): EmployeeRow[] {
   const rand = mulberry32(42);
@@ -227,6 +260,9 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
+  ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -255,6 +291,8 @@ function describeSelection(sel: SelectionSnapshot | null): string {
 
 export function mountSelectionDemo(container: HTMLElement): () => void {
   let rowCount = 120;
+  // Which fill rules apply: the grid's own, or the page's `appFillOperation`.
+  let fillRules: "grid" | "app" = "grid";
   let active: { viewIdx?: number; colIdx?: number } | null = null;
   let selection: SelectionSnapshot | null = null;
   let headerAt: number | null = null;
@@ -328,6 +366,18 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     refreshAppShortcuts();
   }
 
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and right after the
+  // switches below apply (updateGridOptions is synchronous).
+  const fillDownBtn = btn("Fill down (API)", () => api.fillDown());
+  const fillRightBtn = btn("Fill right (API)", () => api.fillRight());
+  fillDownBtn.disabled = true;
+  fillRightBtn.disabled = true;
+  function refreshCanFill(): void {
+    fillDownBtn.disabled = !api.canFillDown();
+    fillRightBtn.disabled = !api.canFillRight();
+  }
+
   container.appendChild(demoRoot(
     toolbarRow(
       field("Rows", select([100, 120, 500, 1000], rowCount, value => {
@@ -347,12 +397,43 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
       )),
       field("Header keyboard nav", checkbox(true, checked =>
         api.updateGridOptions({ headerKeyboardNavigation: checked }))),
+      // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+      // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
+      field("Fill handle", select(
+        [
+          { value: "auto", label: "auto — series where possible" },
+          { value: "copy", label: "copy — always repeat" },
+          { value: "off", label: "off" },
+        ],
+        "auto",
+        value => {
+          api.updateGridOptions({
+            fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto", lists: [TITLES] },
+          });
+          refreshCanFill();
+        },
+      )),
+      // `fillOperation` is a callback, not a runtime option: the one passed at creation stays, and
+      // reads this page state on every call, so the switch applies to the next fill.
+      field("Fill rules", select(
+        [
+          { value: "grid", label: "grid — built-in series" },
+          { value: "app", label: "app — business days, department cycle" },
+        ],
+        "grid",
+        value => {
+          fillRules = value === "app" ? "app" : "grid";
+          refreshCanFill();
+        },
+      )),
       h("div", { style: { display: "flex", gap: "8px" } },
         btn("Select all (API)", () => api.selectAll()),
         btn("Clear", () => api.clearSelection("all")),
         btn("Go bottom-right (API)", () => api.navigateToCorner("bottomRight")),
         btn("Move 10 rows up", () => api.navigate("up", { jump: "page", pageRows: 10 })),
         btn("Move 10 rows down", () => api.navigate("down", { jump: "page", pageRows: 10 })),
+        fillDownBtn,
+        fillRightBtn,
       ),
     ),
     h("div", { style: { display: "flex", gap: "12px", flex: "1", minHeight: "0" } },
@@ -431,12 +512,16 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     quickFilter: true,
     rowSelection: true,
     selectAllRowsOnHeaderClick: true,
+    fillHandle: { lists: [TITLES] },
+    fillOperation: params => (fillRules === "app" ? appFillOperation(params) : undefined),
   });
 
   const offSelection = api.on("selectionChanged", ev => {
     selection = ev.snapshot;
     renderReadout();
+    refreshCanFill();
   });
+  const offCells = api.on("cellsChanged", () => refreshCanFill());
   const offFocus = api.on("focusChanged", ev => {
     active = { viewIdx: ev.viewIdx, colIdx: ev.colIdx };
     renderReadout();
@@ -450,6 +535,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   selection = api.getSelection();
   renderReadout();
   refreshAppShortcuts();
+  refreshCanFill();
 
   function renderReadout(): void {
     summary.textContent = describeSelection(selection);
@@ -476,6 +562,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     offSelection();
     offFocus();
     offHeaderFocus();
+    offCells();
     approveOff?.();
     searchOff?.();
     api.destroy();

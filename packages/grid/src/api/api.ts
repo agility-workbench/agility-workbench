@@ -71,6 +71,14 @@ export interface GridApiRowPresentationController {
   refreshRowPresentation: () => void;
 }
 
+/** Fill hooks provided by the renderer once it's attached (it owns the fill handle). */
+export interface GridApiFillController {
+  canFillDown: () => boolean;
+  canFillRight: () => boolean;
+  fillDown: () => number;
+  fillRight: () => number;
+}
+
 /** Scroll hooks provided by the renderer once it's attached (it owns the scrollers). */
 export interface GridApiScrollController {
   ensureRowVisible: (viewIdx: number, rowPinned?: RowPinnedPosition, position?: RowScrollPosition) => void;
@@ -96,6 +104,7 @@ export class GridAPI implements IGridAPI {
   private _clipboard?: ClipboardRenderer;
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
+  private _fill: GridApiFillController | null = null;
   private _rowPresentation: GridApiRowPresentationController | null = null;
   private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
@@ -118,6 +127,11 @@ export class GridAPI implements IGridAPI {
 
   setRowPresentationController(controller: GridApiRowPresentationController): void {
     this._rowPresentation = controller;
+  }
+
+  /** Wire the fill handle. Called by the renderer on attach; before that the fills warn and do nothing. */
+  setFillController(controller: GridApiFillController): void {
+    this._fill = controller;
   }
 
   /** Wire the scrollers. Called by the renderer on attach; before that these are no-ops. */
@@ -986,6 +1000,32 @@ export class GridAPI implements IGridAPI {
 
   paste(): Promise<void> {
     return this.clipboard().paste();
+  }
+
+  // ---------------- Fill ----------------
+  fillDown(): number {
+    if (!this._fill) {
+      console.warn("fillDown called before the grid was rendered; ignoring.");
+      return 0;
+    }
+    return this._fill.fillDown();
+  }
+
+  fillRight(): number {
+    if (!this._fill) {
+      console.warn("fillRight called before the grid was rendered; ignoring.");
+      return 0;
+    }
+    return this._fill.fillRight();
+  }
+
+  // State probes a toolbar reads on every selection change: silently false before render.
+  canFillDown(): boolean {
+    return this._fill?.canFillDown() ?? false;
+  }
+
+  canFillRight(): boolean {
+    return this._fill?.canFillRight() ?? false;
   }
 
   // ---------------- Undo / redo ----------------

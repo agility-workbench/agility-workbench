@@ -153,12 +153,13 @@ export type GridEventHeaderFocusChangedParams = {
 };
 
 export type GridEventEditingChangedParams = {
-  // "rejected" = an editor commit was vetoed by `onBeforeCellCommit`: the editor closes and the
-  // cell keeps its old value (no write, no undo entry, no cellValueChanged).
+  // "rejected" = an editor commit was refused — by `onBeforeCellCommit`, or by the column's parser
+  // (its valueParser, or the built-in one for its type: "abc" into a number column): the editor
+  // closes and the cell keeps its old value (no write, no undo entry, no cellValueChanged).
   state: "started" | "stopped" | "cancelled" | "committed" | "rejected";
   /** Normalized on emit: public colId + colInstanceId. */
   cell?: CellRef;
-  // committed value (for committed), or the vetoed proposed value (for rejected)
+  // committed value (for committed); for rejected, the vetoed parsed value, or the refused text
   value?: unknown;
   // the cell's value before the commit (committed / rejected)
   oldValue?: unknown;
@@ -167,8 +168,11 @@ export type GridEventEditingChangedParams = {
   charPress?: string;
 };
 
-/** What wrote the cell: an editor commit / `setCellValue`, a clipboard batch, or history. */
-export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "undo" | "redo";
+/**
+ * What wrote the cell: an editor commit / `setCellValue`, a clipboard batch, a fill (the fill
+ * handle or `Ctrl/Cmd+D` / `Ctrl/Cmd+R`), or history.
+ */
+export type CellValueChangeSource = "edit" | "paste" | "cut" | "clear" | "fill" | "undo" | "redo";
 
 /**
  * A cell's stored value changed. Covers every write path — editor commits, `setCellValue`,

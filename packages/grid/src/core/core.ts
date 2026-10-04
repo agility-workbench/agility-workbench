@@ -360,6 +360,7 @@ export class GridCore implements IGridCore {
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,
+      fillOperation: options.fillOperation,
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
@@ -388,6 +389,7 @@ export class GridCore implements IGridCore {
         : "left",
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
+      fillHandle: options.fillHandle ?? true,
       columnSelection: options.columnSelection ?? true,
       headerKeyboardNavigation: options.headerKeyboardNavigation ?? true,
       showColumnButtonsOnHover: isTrue(options.showColumnButtonsOnHover),
@@ -3534,6 +3536,12 @@ export class GridCore implements IGridCore {
         const proposed = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
+        // The column refused the text (its valueParser, or the built-in parser for its type): the
+        // same outcome as a hook veto, reported with the text that was refused.
+        if (proposed === REJECT) {
+          this.emit("editingChanged", { state: "rejected", cell, value: action.value, oldValue });
+          break;
+        }
         const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, "edit");
         if (!hooked) {
           // Vetoed: the editor still tears down (and the cell repaints with its old value), but
@@ -3588,8 +3596,9 @@ export class GridCore implements IGridCore {
         const recorded: CellEdit[] = [];
         const source: CellCommitSource = action.reason === "cut" ? "cut"
           : action.reason === "clear" ? "clear"
-            : action.reason === "api" ? "edit"
-              : "paste";
+            : action.reason === "fill" ? "fill"
+              : action.reason === "api" ? "edit"
+                : "paste";
         for (const edit of action.edits) {
           const col = this.resolveCellColumn(edit.cell);
           const row = this.resolveCellRow(edit.cell);
@@ -3599,7 +3608,9 @@ export class GridCore implements IGridCore {
           const proposed = edit.parsed
             ? edit.value
             : col.parseValue(String(edit.value ?? ""), row, oldValue);
-          // Vetoed cells drop out of the batch: not written, not recorded, no event.
+          // Text the column refused, and vetoed cells, drop out of the batch: not written, not
+          // recorded, no event. The rest of the block keeps its alignment.
+          if (proposed === REJECT) continue;
           const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
           if (!hooked) continue;
           // Storage space, before the write (see editCommit). Unchanged cells drop out of
@@ -3620,8 +3631,9 @@ export class GridCore implements IGridCore {
         if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
           const label = action.reason === "cut" ? "cut"
             : action.reason === "clear" ? "clear"
-              : action.reason === "api" ? "api"
-                : "paste";
+              : action.reason === "fill" ? "fill"
+                : action.reason === "api" ? "api"
+                  : "paste";
           recordedBatch = this.recordHistory({ label, edits: recorded });
         }
         if (changedRowIds.size > 0) {

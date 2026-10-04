@@ -45,8 +45,10 @@ export interface CellValueChangedParams {
 }
 
 /**
- * Sentinel returned from {@link GridOptions.onBeforeCellCommit} to veto a write: the cell keeps its
- * old value, nothing enters undo history, and no `cellValueChanged` fires.
+ * Sentinel returned from {@link GridOptions.onBeforeCellCommit} — or from a column's `valueParser` —
+ * to veto a write: the cell keeps its old value, nothing enters undo history, and no
+ * `cellValueChanged` fires. The built-in parsers a column without a `valueParser` uses return it
+ * for text its type cannot hold (`"abc"` into a number column).
  */
 export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commit");
 
@@ -445,6 +447,100 @@ export type EditTrigger = "doubleClick" | "singleClick" | "none";
  * - `"text"`: native browser text selection, like a plain HTML table.
  */
 export type CellSelectionMode = boolean | "text";
+
+/**
+ * How the fill handle derives the values it writes.
+ * - `"auto"` (default): a line of numbers or dates extends its series — two or more source cells
+ *   continue their linear trend, a single date steps one day — and everything else repeats the
+ *   source. Holding Ctrl/Cmd when the drag ends flips the choice (a single number then counts up
+ *   by one; a series repeats instead).
+ * - `"copy"`: always repeat the source block; the modifier has no effect.
+ */
+export type FillHandleMode = "auto" | "copy";
+
+/** Which way the fill handle can be dragged: rows and columns, rows only, or columns only. */
+export type FillHandleDirection = "xy" | "y" | "x";
+
+export interface FillHandleOptions {
+  /** See {@link FillHandleMode}. Defaults to `"auto"`. */
+  mode?: FillHandleMode;
+  /** Defaults to `"xy"`. `Ctrl/Cmd+D` needs `"y"` or `"xy"`; `Ctrl/Cmd+R` needs `"x"` or `"xy"`. */
+  direction?: FillHandleDirection;
+  /**
+   * Application sequences a fill cycles through, as a spreadsheet's custom lists: a cell whose text
+   * is an entry (matched whole, ignoring case and surrounding spaces) continues along its list and
+   * wraps at the end. An entry spelled as listed is followed by the list's own spellings
+   * (`Associate` → `VP`); one typed in another casing carries that casing — with `[["Low",
+   * "Medium", "High"]]`, `low` is followed by `medium`, `high`, `low`. Two or more selected cells must sit on the same list and
+   * their step is kept (`Low, High` → `Medium`). These lists are tried before the built-in ones
+   * (weekday and month names, quarters) and before the text counter, so a list can replace a
+   * built-in order or make `Item 1` cycle instead of count. Lists with fewer than two entries are
+   * ignored. Defaults to none.
+   */
+  lists?: readonly (readonly string[])[];
+}
+
+/** The one direction a fill runs in. A fill never runs two ways at once. */
+export type FillAxis = "down" | "up" | "right" | "left";
+
+/** How one line of a fill (a column when filling vertically, a row when horizontally) is derived. */
+export type FillLineMode = "copy" | "series";
+
+/** What started a fill: a handle drag, a double-click on the handle, or a command — `Ctrl/Cmd+D`,
+ * `Ctrl/Cmd+R`, the body menu's fill items, and a menu redo of the last fill. */
+export type FillTrigger = "drag" | "doubleClick" | "command";
+
+/** What {@link GridOptions.fillOperation} learns about one target cell before the fill writes it. */
+export interface FillOperationParams {
+  /** The line's source values in pattern order — the column's selected cells when filling
+   * vertically, the row's when horizontally. */
+  values: readonly unknown[];
+  /**
+   * The target cell's position in the pattern: `0..values.length - 1` are the source cells, so the
+   * first cell past the source is `values.length`; filling up or left counts down from `-1`.
+   */
+  index: number;
+  direction: FillAxis;
+  /** Whether the grid would repeat the pattern or step it for this line. */
+  lineMode: FillLineMode;
+  /**
+   * The value the grid would write on its own — the copy or the next step of the series — before
+   * any crossing into another column type. Return nothing to keep it.
+   */
+  defaultValue: unknown;
+  /** The target cell's current value. */
+  oldValue: unknown;
+  rowId: string;
+  colId: string;
+  colInstanceId: string;
+  node: IRowNode;
+  trigger: FillTrigger;
+}
+
+/**
+ * What {@link GridOptions.fillOperation} returns for one cell: `{ skipCell: true }` leaves the cell
+ * untouched (it keeps its place in the pattern), `{ value }` writes that value as the cell's stored
+ * value, and nothing at all — `undefined`, `null`, or an object without `value` — keeps the grid's
+ * own. `skipCell` wins when both are present.
+ */
+export type FillOperationResult =
+  | { skipCell: true; value?: undefined }
+  | { value: unknown; skipCell?: false | null };
+
+export interface ResolvedFillHandleOptions {
+  mode: FillHandleMode;
+  direction: FillHandleDirection;
+  lists: readonly (readonly string[])[];
+}
+
+/** `null` when the handle is off; otherwise the options with defaults filled in. */
+export function resolveFillHandleOptions(
+  value: boolean | FillHandleOptions | undefined,
+): ResolvedFillHandleOptions | null {
+  if (value === false) return null;
+  const opts = typeof value === "object" && value !== null ? value : {};
+  return { mode: opts.mode ?? "auto", direction: opts.direction ?? "xy", lists: opts.lists ?? [] };
+}
 
 /** A configurable control in the pagination footer. The array order is the visual/tab order. */
 export type PaginationControl =
@@ -1055,6 +1151,21 @@ export interface GridOptions {
    */
   onBeforeCellCommit?: (params: BeforeCellCommitParams) => unknown;
   /**
+   * Decide what a fill writes into each target cell, for series the grid cannot know — fiscal
+   * periods, business days, ordered enumerations, codes with rules, values derived from the row.
+   * Called once per target cell on every fill path (handle drag, double-click, `Ctrl/Cmd+D` /
+   * `Ctrl/Cmd+R`, the body menu's fill items and redo) with the line's source values, the cell's
+   * position in the pattern, and the value the grid would write on its own. Return:
+   *   - nothing (`undefined`, `null`, or an object without `value`) to keep the grid's value, which
+   *     still crosses column types and runs the target's parser as a plain fill would;
+   *   - `{ value }` to write that value as the target cell's stored value — it does not run the
+   *     column parser, but still passes `onBeforeCellCommit` and the no-op check; `null` is the blank;
+   *   - `{ skipCell: true }` to leave the cell untouched; it keeps its place in the pattern.
+   * Also consulted when the grid checks whether a fill would write anything (to show or hide the
+   * body menu's fill items), so keep it free of side effects.
+   */
+  fillOperation?: (params: FillOperationParams) => FillOperationResult | null | undefined | void;
+  /**
    * Called when a cell edit is committed with a new value. Convenience wrapper over the
    * `editingChanged` event (state "committed").
    */
@@ -1158,6 +1269,26 @@ export interface GridOptions {
    * ignored); plain click and arrow navigation still work. Requires `cellSelection`. Defaults to true.
    */
   rangeSelection?: boolean;
+  /**
+   * The spreadsheet fill handle: a small square on the bottom-right corner of the cell selection
+   * that drags to copy the selection into the cells below, above, left, or right of it — one
+   * direction per drag, decided by where the pointer goes. While dragging, the cells about to be
+   * written show a dashed outline; releasing writes them as one undoable step (`cellValueChanged`
+   * reports `source: "fill"`) and extends the selection over the result. `Ctrl/Cmd+D` fills the
+   * selection down from its first row and `Ctrl/Cmd+R` fills it right from its first column
+   * (a single cell takes the value above or to its left), always by copying.
+   *
+   * Values are written as stored, without re-parsing, when the target column has the same `type`
+   * as the column they came from — always the case when filling down or up. Into a column of a
+   * different type the value's text goes through that column's `valueParser`, exactly as a paste
+   * would. `onBeforeCellCommit` runs for every cell; non-editable cells, group rows, and rows not
+   * yet loaded are skipped and keep their place in the pattern.
+   *
+   * Shown only on body rows (a selection that reaches into a pinned band has no handle) and only
+   * while the selection covers at least one editable column; requires `cellSelection: true`.
+   * `true` (default) is `{ mode: "auto", direction: "xy" }`; see {@link FillHandleOptions}.
+   */
+  fillHandle?: boolean | FillHandleOptions;
   /**
    * When true, clicking a column header selects that column (Ctrl/Cmd+click toggles). When false,
    * header clicks no longer select the column; sorting (Shift+click / sort affordances), the column
@@ -1635,6 +1766,7 @@ export interface InternalGridOptions extends GridOptions {
   rowSelectionCheckboxColumnPinned: "left" | "right" | null;
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
+  fillHandle: boolean | FillHandleOptions;
   columnSelection: boolean;
   headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
@@ -1711,6 +1843,7 @@ export const RUNTIME_OPTION_KEYS = [
   "highlightActiveCell",
   "cellSelection",
   "rangeSelection",
+  "fillHandle",
   "columnSelection",
   "headerKeyboardNavigation",
   "showColumnButtonsOnHover",

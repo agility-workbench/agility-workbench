@@ -129,6 +129,7 @@ export class AwbGrid implements OnDestroy {
   readonly isRowSelectable = input<GridOptions["isRowSelectable"]>();
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
+  readonly fillHandle = input<GridOptions["fillHandle"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
   readonly headerKeyboardNavigation = input<GridOptions["headerKeyboardNavigation"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
@@ -141,6 +142,7 @@ export class AwbGrid implements OnDestroy {
   // Value-returning pre-commit hook (A5). An input rather than an output because outputs cannot
   // return the veto/transform result to the grid.
   readonly onBeforeCellCommit = input<GridOptions["onBeforeCellCommit"]>();
+  readonly fillOperation = input<GridOptions["fillOperation"]>();
   readonly readOnlyEdit = input<GridOptions["readOnlyEdit"]>();
   readonly pinnedRowsEditable = input<GridOptions["pinnedRowsEditable"]>();
   readonly suppressKeyboardEdit = input<GridOptions["suppressKeyboardEdit"]>();
@@ -287,6 +289,10 @@ export class AwbGrid implements OnDestroy {
         const hook = this.onBeforeCellCommit();
         return hook ? this.zone.run(() => hook(params)) : undefined;
       };
+      options.fillOperation = (params) => {
+        const operation = this.fillOperation();
+        return operation ? this.zone.run(() => operation(params)) : undefined;
+      };
 
       // createGrid applies columnDefs and rowData right after init, in the same synchronous
       // sequence this component used to perform by hand (init → columnDefs → rowData). The sync
@@ -428,6 +434,7 @@ export class AwbGrid implements OnDestroy {
         highlightActiveCell: this.highlightActiveCell() ?? false,
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,
+        fillHandle: this.fillHandle() ?? true,
         columnSelection: this.columnSelection() ?? true,
         headerKeyboardNavigation: this.headerKeyboardNavigation() ?? true,
         showColumnButtonsOnHover: this.showColumnButtonsOnHover() ?? false,

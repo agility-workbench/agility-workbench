@@ -38,6 +38,24 @@ const columnDefs: ColDef[] = [
 ];
 ```
 
+Without a `valueParser`, text is parsed by the column's `type` — and this
+applies to every path that carries text, not just the editors: paste, the fill
+handle, Delete/Backspace, and a string given to `setCellValue`.
+
+- **number / currency**: whatever `Number()` accepts; blank is `null`.
+- **date**: ISO 8601 text (`2026-01-02`, optionally with a time), stored in
+  the shape the cell already holds — a `Date` stays a `Date`, ISO text stays
+  text, an epoch number stays a number.
+- **boolean**: `true`/`false`, `yes`/`no`, `y`/`n`, `1`/`0`; blank is `null`.
+- **string**: verbatim.
+
+Text the type cannot hold — `"abc"` into a number column — is **refused**: the
+cell keeps its value, nothing enters undo history, and no `cellValueChanged`
+fires, exactly as if `onBeforeCellCommit` had vetoed it. An editor commit
+reports it as `editingChanged` with `state: "rejected"`; in a paste or fill the
+cell is simply skipped and the rest of the block keeps its alignment. A custom
+`valueParser` can refuse the same way by returning the exported `REJECT`.
+
 A formatter/parser pair round-trips a display format through editing:
 
 ```ts
@@ -177,7 +195,7 @@ stored value **actually changes**: committing the value a cell already holds
 emits nothing (equality is SameValueZero plus `Date`s compared by instant —
 the same rule is exported as `valuesAreSame`). `value`/`oldValue` are the
 stored (parsed) forms, and `source` says what wrote the cell (`"edit"`,
-`"paste"`, `"cut"`, `"clear"`, `"undo"`, `"redo"`), so diff consumers (dirty
+`"paste"`, `"cut"`, `"clear"`, `"fill"`, `"undo"`, `"redo"`), so diff consumers (dirty
 tracking, server sync, analytics) need no shadow copy of the data. Two
 exceptions: under `readOnlyEdit` the grid writes nothing and cannot compare,
 so it fires for every *accepted* write (the value it reports is what the grid
@@ -194,8 +212,10 @@ commits as `state: "rejected"`. `colId` in these payloads is the public
 ## Clipboard and history
 
 Copy serializes the selection as TSV. Cut clears editable destinations, paste
-applies each destination parser, and Delete/Backspace clears contents. A pasted
-block tiles across a larger selected range when its dimensions divide evenly.
+runs each destination's parser — its `valueParser`, or the built-in one for its
+type — skipping cells that refuse the text, and Delete/Backspace clears
+contents (typed columns clear to `null`). A pasted block tiles across a larger
+selected range when its dimensions divide evenly.
 
 Every edit, paste, cut, or batch clear that changes at least one stored value
 is one undo step — a batch's entry holds only the cells that actually changed,
@@ -209,6 +229,114 @@ it instead of polling. `reason` is `"commit"`, `"undo"`, `"redo"`, or `"clear"`.
 Replacing `rowData` clears history (its entries reference rows by id) and
 reports `reason: "clear"`. `getHistoryState()` reads the same snapshot on demand,
 for the toolbar's first render.
+
+### Fill handle
+
+The selection carries a small square on its bottom-right corner. Drag it down,
+up, right, or left — one direction per drag, the one the pointer travels further
+along — and the cells it passes show a dashed outline; release to write them as
+one undo step. The selection then covers source and result together, with the
+active cell still on a cell you chose.
+
+What gets written follows the spreadsheet rules, decided per line (a column when
+filling vertically, a row when horizontally):
+
+- Two or more numbers continue their linear trend: `10, 20` → `30, 40`, and
+  `1, 2, 6` → `8, 10.5, 13`.
+- A lone date steps one calendar day; a run of dates keeps its interval, across
+  month ends and DST changes. Date text in the `YYYY-MM-DD` shape does the same
+  and stays text.
+- Text ending in a number counts up: `Item 1` → `Item 2`, `Item 3`; `Item 1,
+  Item 3` → `Item 5`, `Item 7`. The last run of digits is the counter, the rest
+  must match across the cells, and zero padding is kept (`v08` → `v09`, `v10`).
+- Weekday and month names cycle in order, long or short, keeping the casing you
+  typed: `Monday` → `Tuesday`, `Nov, Dec` → `Jan`, `Feb`, `MON` → `TUE`. English
+  names are always recognised, plus those of the browser's language. Quarters
+  cycle too: `Q3` → `Q4`, `Q1` (`Qtr1` and `Quarter 1` likewise).
+- Your own sequences cycle the same way through `fillHandle: { lists }`, like a
+  spreadsheet's custom lists: with `lists: [["Low", "Medium", "High"]]`, `Low` →
+  `Medium`, `High`, `Low`, and `low` → `medium` (an entry spelled as listed takes
+  the list's spellings, so `VP` stays `VP`). Your lists are tried before the
+  built-in names and the counter, so one can replace the weekday order or make
+  `Item 1` cycle.
+- Everything else — plain text, booleans, a lone number, text that is only a
+  number or a date with a time, a mixed line — repeats.
+- Hold **Ctrl/Cmd** when you release to flip the choice: a lone number counts up
+  by one, and a series — numbers, dates, or text patterns — repeats instead.
+
+`Ctrl/Cmd+D` fills the selection down from its first row and `Ctrl/Cmd+R` fills
+it right from its first column; a single cell takes the value above or to its
+left. Both are copies, never series, and leave the selection where it is. The
+body context menu offers the same two commands as **Fill down** and **Fill
+right** whenever they would write something, and `api.fillDown()` /
+`api.fillRight()` run them from outside the grid; `api.canFillDown()` /
+`api.canFillRight()` answer the menu's "would write something" test, for a
+toolbar button's enabled state (re-read them on `selectionChanged` and
+`cellsChanged`).
+
+Right after a drag or double-click fill, the context menu on any cell the fill
+covered offers the other choice: **Copy cells instead** where the fill stepped a
+series, or **Fill series instead** where a line that could step was copied (a
+lone number, for instance). Each redo is its own undo step and leaves the
+selection where it is; the offer lasts until another write, or any change to
+the rows or columns under the fill (a sort, filter, or column move), retires it.
+
+Double-click the handle to fill the selection down to the end of the data
+beside it, the way a spreadsheet completes a column. The column to the left of
+the selection is the guide — the one to its right when the left is blank in the
+row just below — and the fill runs through the guide's unbroken run of non-blank
+rows. A group row ends the run, so a fill inside one group stays there. Copy or
+series is decided as for a drag, and Ctrl/Cmd flips it the same way.
+
+```ts
+fillHandle: true                           // default: series where possible, any direction
+fillHandle: { mode: "copy" }               // always repeat; Ctrl/Cmd does nothing
+fillHandle: { direction: "y" }             // rows only (Ctrl/Cmd+R is left to the browser)
+fillHandle: false
+```
+
+Filling down or up stays inside one column, so values move as stored and the
+`valueParser` never runs. Filling across columns, a value reaches a column of
+the same `type` as stored too; into a differently typed column its displayed
+text goes through that column's parser, exactly as a paste would — so a name
+dragged over a number column is refused and the numbers stay. Every cell
+still passes `onBeforeCellCommit`, and `cellValueChanged` reports
+`source: "fill"`. Non-editable cells, group rows, rows not yet loaded, and
+refused cells are skipped without disturbing the pattern.
+
+Series the grid cannot know — fiscal periods, business days, ordered
+enumerations, codes with rules, values derived from the row — belong to
+`fillOperation`. It is called once per target cell on every fill path (drag,
+double-click, `Ctrl/Cmd+D` / `Ctrl/Cmd+R`, the menu items and redo) with the
+line's source values, the cell's position in the pattern, and the value the
+grid would write on its own. Return `{ value }` to write that value as the
+cell's stored value, `{ skipCell: true }` to leave the cell untouched while it
+keeps its place in the pattern, or nothing to keep the grid's value:
+
+```ts
+// Dates in the "due" column step by business days; everything else is the grid's own.
+fillOperation: ({ colId, values, index, lineMode }) => {
+  if (colId !== "due" || lineMode !== "series") return;        // keep the grid's value
+  const last = values[values.length - 1] as Date;
+  const steps = index - (values.length - 1);                   // 1 for the first cell past the source
+  const date = new Date(last);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));           // negative when filling upward
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return { value: date };
+},
+```
+
+A returned value does not run the column's parser — the callback already knows
+the target column — but still passes `onBeforeCellCommit` and the no-op check;
+`null` is the blank. The grid also consults the callback when deciding whether
+a fill would write anything (to show or hide the menu's fill items), so keep it
+free of side effects.
+
+The handle needs `cellSelection: true` and `rangeSelection`, appears only while
+the selection covers at least one editable column, and never on a selection
+that reaches into a pinned band.
 
 ### Programmatic writes and history
 

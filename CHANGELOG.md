@@ -3,6 +3,82 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.4.0 — 2026-10-04
+
+### Fill handle
+
+- **The cell selection grows a spreadsheet fill handle.** A small square on the bottom-right
+  corner of the selection drags to copy the selected cells into the rows below or above, or the
+  columns to the right or left — one direction per drag, the one the pointer travels further
+  along. While dragging, the cells about to be written show a dashed outline; releasing writes
+  them as one undoable step and extends the selection over the result, with the active cell
+  still on a cell the user chose. Non-editable cells, group rows, and rows not yet loaded are
+  skipped and keep their place in the pattern.
+- **Series, not just copies.** Two or more numbers continue their linear trend (`10, 20` → `30,
+  40`; `1, 2, 6` → `8, 10.5, 13`), a lone date steps a day and a run of dates keeps its
+  interval (`YYYY-MM-DD` text too, staying text), text ending in a number counts up (`Item 1` →
+  `Item 2`; `Item 1, Item 3` → `Item 5`, zero padding kept), weekday and month names cycle in
+  order, long or short, in the casing typed (`Nov, Dec` → `Jan`; English names plus the browser
+  language's), quarters wrap (`Q4` → `Q1`), application sequences given as `fillHandle: { lists:
+  [["Low", "Medium", "High"]] }` cycle the same way (a spreadsheet's custom lists, tried before
+  the built-in names and the counter; an entry spelled as listed takes the list's spellings), and
+  everything else repeats. Holding Ctrl/Cmd when the drag ends flips the choice: a lone number
+  counts up, a series repeats instead. `fillHandle: { mode: "copy" }` turns the series off;
+  `direction: "y"` or `"x"` restricts the handle to rows or columns.
+- **`Ctrl/Cmd+D` fills down and `Ctrl/Cmd+R` fills right**, copying the selection's first row
+  or column across it (a single cell takes the value above or to its left), always as a copy
+  and without moving the selection. The body menu offers the same two commands as "Fill down"
+  and "Fill right" whenever they would write something, with the chords beside them.
+  `api.fillDown()` / `api.fillRight()` run the same fills from outside the grid and return the
+  number of cells written; `api.canFillDown()` / `api.canFillRight()` report whether they have
+  anything to write, for a toolbar button's enabled state.
+- **"Copy cells instead" / "Fill series instead" after a fill.** Right after a drag or
+  double-click fill, the body menu on any cell the fill covered offers the other choice, as a
+  spreadsheet's Auto Fill Options do: copies where the fill stepped a series, a series where a
+  line that could step was copied. Each redo is its own undo step and keeps the selection; the
+  offer lasts until another write, or any change to the rows or columns under the fill, retires
+  it.
+- **Double-click the handle to fill down to the end of the adjacent data.** The column to the
+  left of the selection guides the fill (the one to its right when the left is blank in the row
+  just below), which runs through the guide's unbroken run of non-blank rows; a group row or a
+  row not yet loaded ends it. Copy or series is decided as for a drag, Ctrl/Cmd flipping it.
+- **Values move as stored** when the target column shares the source column's `type` — always
+  the case filling down or up — so parsers never see them; into a differently typed column the
+  value's displayed text goes through that column's `valueParser`, as a paste would.
+  `onBeforeCellCommit` runs for every cell, and `cellValueChanged` reports `source: "fill"`
+  (`CellValueChangeSource` and `CellCommitSource` gain the member; the `cellsCommit` action
+  gains `reason: "fill"`).
+- **New option `fillOperation`** for series the grid cannot know. Called once per target cell on
+  every fill path with the line's source values, the cell's position in the pattern, the grid's
+  own value, the target node and column, and what triggered the fill; return `{ value }` to write
+  a value as stored, `{ skipCell: true }` to leave the cell untouched in place, or nothing to keep
+  the grid's value. Bridged by both bindings like `onBeforeCellCommit`. New exports
+  `FillOperationParams`, `FillOperationResult`, `FillAxis`, `FillLineMode`, `FillTrigger`.
+- **New option `fillHandle`** (default `true`, requires `cellSelection: true` and
+  `rangeSelection`), live-reconciled in both bindings; new exports `FillHandleOptions`,
+  `FillHandleMode`, `FillHandleDirection`. The handle only appears while the selection covers an
+  editable column and never on a selection reaching into a pinned band. New theme variable
+  `--pte-fill-preview-bg-color`.
+
+### Typed columns parse text by type
+
+- **A column without a `valueParser` now parses text by its `type`** instead of storing it
+  verbatim: numbers and currency through `Number()`, dates from ISO 8601 text in the shape the
+  cell already holds, booleans from `true`/`false`/`yes`/`no`/`1`/`0`, strings as before; blank
+  is `null`. This applies to every write that carries text — an editor committing raw text, paste,
+  the fill handle, Delete/Backspace, and a string given to `setCellValue` — so a number column
+  can no longer end up holding `"abc"` after a paste, and the fill handle refuses a name dragged
+  over numbers.
+- **Refused text is a per-cell veto.** Text the type cannot hold is handled exactly like an
+  `onBeforeCellCommit` rejection: the cell keeps its value, nothing enters undo history, no
+  `cellValueChanged` fires. An editor commit reports `editingChanged` with `state: "rejected"`
+  and the refused text as `value`; in a batch the cell is skipped and the rest keeps its
+  alignment. A custom `valueParser` may return the exported `REJECT` to refuse the same way.
+- **Behaviour changes to know about:** Delete/Backspace on a parser-less number, date, or
+  boolean cell now stores `null` rather than `""`; `setCellValue(cell, "42")` on a parser-less
+  number column now stores the number `42` rather than the string; and pasting text a column
+  cannot parse now leaves the cell untouched instead of writing the text.
+
 ## 1.3.0 — 2026-10-01
 
 ### Server-side tree data

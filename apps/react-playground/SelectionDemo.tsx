@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
 import type { ReactCellEditorHandle, ReactColDef } from "@react-grid";
@@ -6,6 +6,7 @@ import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
 import type { ICellEditorParams } from "@grid";
+import type { FillOperationParams, FillOperationResult } from "@grid";
 import { formatChord, ValueFormatterParams, ValueParserParams } from "@grid";
 import { formatDate } from "./helpers";
 
@@ -67,6 +68,9 @@ const StarRatingEditor = forwardRef<ReactCellEditorHandle, ICellEditorParams>(
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -95,6 +99,34 @@ const LAST_NAMES = [
 const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support", "Legal"];
 const TITLES = ["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"];
 const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Series the grid cannot know, for the `fillOperation` demo: "Joined On" steps by business days
+// (weekends skipped) and "Department" cycles through the company's list; every other column keeps
+// the grid's own value. The grid's `lineMode` is honoured for the dates, so Ctrl/Cmd still copies.
+function appFillOperation(params: FillOperationParams): FillOperationResult | undefined {
+  const { colId, values, index, lineMode } = params;
+  if (colId === "joinedOn") {
+    const last = values[values.length - 1];
+    if (lineMode !== "series" || !(last instanceof Date)) return undefined;
+    return { value: addBusinessDays(last, index - (values.length - 1)) };
+  }
+  if (colId === "department") {
+    const at = DEPARTMENTS.indexOf(String(values[0]));
+    if (at < 0) return undefined;
+    const n = DEPARTMENTS.length;
+    return { value: DEPARTMENTS[(((at + index) % n) + n) % n] };
+  }
+  return undefined;
+}
+
+function addBusinessDays(from: Date, steps: number): Date {
+  const date = new Date(from);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return date;
+}
 
 // Deterministic PRNG so the demo data is stable across reloads (no Math.random in the grid path).
 function mulberry32(seed: number) {
@@ -168,6 +200,9 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
+  ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -205,6 +240,21 @@ export function SelectionDemo() {
   // wrapper reconciles them live — no grid rebuild.
   const [cellSelection, setCellSelection] = useState<boolean | "text">(true);
   const [headerKeyboardNav, setHeaderKeyboardNav] = useState(true);
+  // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+  // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
+  const [fillHandle, setFillHandle] = useState<"auto" | "copy" | "off">("auto");
+  // `fillOperation` is a callback, bridged through a ref like onBeforeCellCommit: swapping the
+  // function (or passing none) applies to the next fill without a grid rebuild.
+  const [fillRules, setFillRules] = useState<"grid" | "app">("grid");
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and after the two
+  // switches above change (the wrapper applies the new option in its own effect, which runs first).
+  const [canFill, setCanFill] = useState({ down: false, right: false });
+  const refreshCanFill = useCallback(() => {
+    const api = apiRef.current;
+    setCanFill({ down: api?.canFillDown() ?? false, right: api?.canFillRight() ?? false });
+  }, []);
+  useEffect(() => { refreshCanFill(); }, [fillHandle, fillRules, refreshCanFill]);
   const [headerAt, setHeaderAt] = useState<number | null>(null);
   // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
   // read back from api.getKeyboardShortcuts(), and what fired last.
@@ -303,7 +353,12 @@ export function SelectionDemo() {
   const handleReady = (api: IGridAPI) => {
     apiRef.current = api;
     setSelection(api.getSelection());
-    api.on("selectionChanged", (ev) => setSelection(ev.snapshot));
+    api.on("selectionChanged", (ev) => {
+      setSelection(ev.snapshot);
+      refreshCanFill();
+    });
+    api.on("cellsChanged", refreshCanFill);
+    refreshCanFill();
     api.on("focusChanged", (ev) => setActive({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
     // The header cursor is a separate position from the body's (they are mutually exclusive).
     api.on("headerFocusChanged", (ev) => setHeaderAt(ev.colIdx ?? null));
@@ -338,12 +393,37 @@ export function SelectionDemo() {
           />
           Header keyboard nav
         </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="fill-handle" style={{ fontSize: 13 }}>Fill handle</label>
+          <select
+            id="fill-handle"
+            value={fillHandle}
+            onChange={(e) => setFillHandle(e.target.value as "auto" | "copy" | "off")}
+          >
+            <option value="auto">auto — series where possible</option>
+            <option value="copy">copy — always repeat</option>
+            <option value="off">off</option>
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label htmlFor="fill-rules" style={{ fontSize: 13 }}>Fill rules</label>
+          <select
+            id="fill-rules"
+            value={fillRules}
+            onChange={(e) => setFillRules(e.target.value === "app" ? "app" : "grid")}
+          >
+            <option value="grid">grid — built-in series</option>
+            <option value="app">app — business days, department cycle</option>
+          </select>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" type="button" onClick={() => apiRef.current?.selectAll()}>Select all (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.clearSelection("all")}>Clear</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigateToCorner("bottomRight")}>Go bottom-right (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigate("up", { jump: "page", pageRows: 10 })}>Move 10 rows up</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigate("down", { jump: "page", pageRows: 10 })}>Move 10 rows down</button>
+          <button className="btn" type="button" disabled={!canFill.down} onClick={() => apiRef.current?.fillDown()}>Fill down (API)</button>
+          <button className="btn" type="button" disabled={!canFill.right} onClick={() => apiRef.current?.fillRight()}>Fill right (API)</button>
         </div>
       </div>
 
@@ -361,6 +441,8 @@ export function SelectionDemo() {
             selectAllRowsOnHeaderClick
             cellSelection={cellSelection}
             headerKeyboardNavigation={headerKeyboardNav}
+            fillHandle={fillHandle === "off" ? false : { mode: fillHandle, lists: [TITLES] }}
+            fillOperation={fillRules === "app" ? appFillOperation : undefined}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />

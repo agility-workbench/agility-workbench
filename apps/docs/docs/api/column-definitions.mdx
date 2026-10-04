@@ -16,7 +16,7 @@ types widen component slots to accept their native component classes.
 | `type` | String, number, date, boolean, or currency behavior |
 | `valueGetter` | Compute the raw value |
 | `valueFormatter` / `formatterOptions` | Format display and export |
-| `valueParser` | Convert committed text |
+| `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
 
 ## Layout and capability
 

@@ -333,7 +333,9 @@ export type GridActionCellsCommit = {
   // Per-edit `parsed` mirrors editCommit's flag: when true the value is already the final typed
   // form and the column's valueParser is skipped. Clipboard edits are raw text and leave it unset.
   edits: { cell: CellRef; value: unknown; parsed?: boolean }[];
-  reason?: "paste" | "cut" | "clear" | "api";
+  // "fill" is the fill handle (and Ctrl/Cmd+D / Ctrl/Cmd+R): a copy or series of the selection's
+  // own values, so it reports and undoes under its own name.
+  reason?: "paste" | "cut" | "clear" | "fill" | "api";
 };
 
 // ActionFrame actions — open/close the persistent frame + form popover on a body cell. Only one

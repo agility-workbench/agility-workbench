@@ -82,6 +82,7 @@ import { planOcclusionEscape } from "./quickFilter/findOcclusion";
 import type { OcclusionAxis } from "./quickFilter/findOcclusion";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
+import { FillHandleController } from "./fill/fillHandleController";
 import { serializeNodesToTSV, serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
@@ -151,6 +152,7 @@ export class GridRenderer {
   _findHighlightRenderer: FindHighlightRenderer;
   _cellEditRenderer: CellEditRenderer;
   _clipboardRenderer: ClipboardRenderer;
+  _fillHandle: FillHandleController;
   rowHeight: number = 43;
   height?: number;
 
@@ -343,11 +345,36 @@ export class GridRenderer {
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
     });
+    this._fillHandle = new FillHandleController({
+      core: this.core,
+      root: this.root,
+      leafColumns: () => this._leafColumns,
+      refreshSelection: () => this._selectionRenderer.refreshSelectionStyles(),
+      announce: (message) => this._announcer.announce(message),
+    });
+    // Expose the keyboard fills on the public API (api.fillDown / fillRight / canFillDown /
+    // canFillRight). Probed structurally to avoid a renderer→api import cycle, matching the
+    // exporter hook below.
+    const apiWithFill = this.api as unknown as {
+      setFillController?: (c: {
+        canFillDown: () => boolean;
+        canFillRight: () => boolean;
+        fillDown: () => number;
+        fillRight: () => number;
+      }) => void;
+    };
+    apiWithFill.setFillController?.({
+      canFillDown: () => this._fillHandle.canFillDown(),
+      canFillRight: () => this._fillHandle.canFillRight(),
+      fillDown: () => this._fillHandle.fillDown(),
+      fillRight: () => this._fillHandle.fillRight(),
+    });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
       root: this.root,
       activeDescendant: this._activeDescendant,
       clipboard: () => this._clipboardRenderer,
+      fill: () => this._fillHandle,
       rowPool: () => this._rowPool,
       startIndex: () => this._startIndex,
       leafColumns: () => this._leafColumns,
@@ -418,6 +445,12 @@ export class GridRenderer {
           cutSelection: () => this._clipboardRenderer.cut(),
           pasteSelection: () => void this._clipboardRenderer.paste(),
           hasEditableCells: () => this._clipboardRenderer.hasEditableCells(),
+          canFillDown: () => this._fillHandle.canFillDown(),
+          canFillRight: () => this._fillHandle.canFillRight(),
+          fillDown: () => this._fillHandle.fillDown(),
+          fillRight: () => this._fillHandle.fillRight(),
+          fillAlternatives: (ctx) => this._fillHandle.fillAlternatives(ctx),
+          refill: (mode) => this._fillHandle.refill(mode),
         },
         {
           // Deferred: _pinnedRowsRenderer is constructed after the menu wiring; menu clicks run
@@ -684,7 +717,7 @@ export class GridRenderer {
       onCellMouseMove: (e) => this._selectionRenderer.onCellMouseMove(e),
       onColumnResizeMouseUp: () => this._columnInteractionRenderer.onColumnResizeMouseUp(),
       onColumnDragMouseUp: () => this._columnInteractionRenderer.onColumnDragMouseUp(),
-      onCellMouseUp: () => this._selectionRenderer.onCellMouseUp(),
+      onCellMouseUp: (e) => this._selectionRenderer.onCellMouseUp(e),
       shouldSuppressClick: () => this._columnInteractionRenderer.consumeSuppressClick(),
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
       onKeyDown: (e) => this._onKeyDown(e),
@@ -1163,7 +1196,13 @@ export class GridRenderer {
       || previous.getRowPresentation !== options.getRowPresentation;
     if (rowPaintChanged) this.refreshRowPresentation();
 
-    if (previous.highlightActiveCell !== options.highlightActiveCell) {
+    // The fill handle's grip is painted with the selection, and a gesture in flight under a
+    // configuration that no longer allows it is abandoned rather than completed.
+    const fillChanged = previous.fillHandle !== options.fillHandle
+      || previous.rangeSelection !== options.rangeSelection
+      || previous.cellSelection !== options.cellSelection;
+    if (fillChanged) this._fillHandle.cancelDrag();
+    if (previous.highlightActiveCell !== options.highlightActiveCell || fillChanged) {
       this._selectionRenderer.refreshSelectionStyles();
     }
     if (previous.bodyContextMenu !== options.bodyContextMenu && options.bodyContextMenu === false) {
@@ -1596,6 +1635,7 @@ export class GridRenderer {
     for (const dispose of this._pivotHintDisposers) dispose();
     this._pivotHintDisposers = [];
     this._interactionEventBinder.destroy();
+    this._fillHandle.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
@@ -1755,6 +1795,8 @@ export class GridRenderer {
     const cell = cells?.[lookup.localIndex];
     if (!cell) return;
     this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx);
+    // renderCell replaces the cell's children; the handle lives among them.
+    this._fillHandle.restoreHandle();
   }
 
   _onCellsChanged(params: GridEventCellsChangedParams) {
@@ -1827,6 +1869,7 @@ export class GridRenderer {
       }
 
     }
+    this._fillHandle.restoreHandle();
   }
 
   _ensureCellVisible(

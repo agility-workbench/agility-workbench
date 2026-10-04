@@ -22,6 +22,23 @@ export interface BodyMenuClipboardTarget {
   pasteSelection: (opts: { ctx: BodyMenuContext }) => void;
   /** Whether the current selection contains at least one editable cell (gates Cut / Paste). */
   hasEditableCells: () => boolean;
+  /**
+   * The fill handle's keyboard commands as menu items (`Ctrl/Cmd+D`, `Ctrl/Cmd+R`). Each `can…`
+   * says whether the command would write anything from the current selection — the item is
+   * omitted otherwise. Absent entirely when the host has no fill handle.
+   */
+  canFillDown?: () => boolean;
+  canFillRight?: () => boolean;
+  fillDown?: () => void;
+  fillRight?: () => void;
+  /**
+   * The ways the last fill-handle gesture could be redone from the clicked cell — `"copy"` to
+   * repeat the source where the fill stepped a series, `"series"` to step where it copied — and
+   * the redo itself. Offered only while the fill's result still stands and the click is on a cell
+   * it covered. Absent without a fill handle.
+   */
+  fillAlternatives?: (ctx: BodyMenuContext) => Array<"copy" | "series">;
+  refill?: (mode: "copy" | "series") => void;
 }
 
 interface BodyMenuServiceParams {
@@ -50,6 +67,21 @@ export class BodyMenuService {
     items.push({ id: "copyWithHeaders", label: "Copy with Headers", left: "icon-copy", command: "body.copyWithHeaders" });
     if (canEdit) {
       items.push({ id: "paste", label: "Paste", left: "icon-paste", command: "body.paste" });
+      // Fill down / right are copies of the selection's own first row / column — edit operations
+      // like Paste, so they sit with it, and only when they would write something.
+      if (this.params.clipboard.canFillDown?.()) {
+        items.push({ id: "fillDown", label: "Fill down", command: "body.fillDown" });
+      }
+      if (this.params.clipboard.canFillRight?.()) {
+        items.push({ id: "fillRight", label: "Fill right", command: "body.fillRight" });
+      }
+      // Right after a fill, the spreadsheet's "Copy Cells" / "Fill Series" choice, as items on the
+      // cells the fill covered.
+      for (const mode of this.params.clipboard.fillAlternatives?.(ctx) ?? []) {
+        items.push(mode === "copy"
+          ? { id: "fillAsCopy", label: "Copy cells instead", command: "body.fillAsCopy" }
+          : { id: "fillAsSeries", label: "Fill series instead", command: "body.fillAsSeries" });
+      }
     }
 
     const opts = this.params.core.getOptions();
@@ -318,6 +350,14 @@ export class BodyMenuService {
         return this.params.clipboard.cutSelection({ ctx });
       case "body.paste":
         return this.params.clipboard.pasteSelection({ ctx });
+      case "body.fillDown":
+        return this.params.clipboard.fillDown?.();
+      case "body.fillRight":
+        return this.params.clipboard.fillRight?.();
+      case "body.fillAsCopy":
+        return this.params.clipboard.refill?.("copy");
+      case "body.fillAsSeries":
+        return this.params.clipboard.refill?.("series");
       case "body.export.csv":
         return this.params.exporter.exportCSV({ scope });
       case "body.export.excel":

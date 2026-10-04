@@ -53,6 +53,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onQuickFilterFindChangedRef = useRef(props.onQuickFilterFindChanged);
     const onHistoryChangedRef = useRef(props.onHistoryChanged);
     const onBeforeCellCommitRef = useRef(props.onBeforeCellCommit);
+    const fillOperationRef = useRef(props.fillOperation);
 
     onGridReadyRef.current = props.onGridReady;
     getColumnMenuItemsRef.current = props.getColumnMenuItems;
@@ -66,6 +67,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onQuickFilterFindChangedRef.current = props.onQuickFilterFindChanged;
     onHistoryChangedRef.current = props.onHistoryChanged;
     onBeforeCellCommitRef.current = props.onBeforeCellCommit;
+    fillOperationRef.current = props.fillOperation;
 
     // Create, attach, announce, and destroy the lifecycle-sensitive grid resources
     // from the layout effect so React render stays pure and StrictMode can replay it safely.
@@ -86,6 +88,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onHistoryChanged = (ev) => onHistoryChangedRef.current?.(ev);
       // Value-returning hook: an absent callback returns undefined, which core reads as "accept".
       options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);
+      // Same shape: an absent callback returns undefined, which the fill reads as "the grid's value".
+      options.fillOperation = (params) => fillOperationRef.current?.(params);
 
       // columnDefs / rowData are deliberately NOT passed to createGrid: the two mount effects below
       // apply them in this same commit (init → columnDefs → rowData, the order createGrid itself
@@ -284,6 +288,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         highlightActiveCell: props.highlightActiveCell ?? false,
         cellSelection: props.cellSelection ?? true,
         rangeSelection: props.rangeSelection ?? true,
+        fillHandle: props.fillHandle ?? true,
         columnSelection: props.columnSelection ?? true,
         headerKeyboardNavigation: props.headerKeyboardNavigation ?? true,
         showColumnButtonsOnHover: props.showColumnButtonsOnHover ?? false,
@@ -313,6 +318,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.highlightActiveCell,
       props.cellSelection,
       props.rangeSelection,
+      props.fillHandle,
       props.columnSelection,
       props.headerKeyboardNavigation,
       props.showColumnButtonsOnHover,

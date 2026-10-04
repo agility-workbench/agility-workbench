@@ -11,7 +11,7 @@ export interface CellEdit {
 export interface HistoryEntry {
   edits: CellEdit[];
   /** How the step was produced. Informational — every label undoes identically. */
-  label: "edit" | "paste" | "cut" | "clear" | "api" | "group";
+  label: "edit" | "paste" | "cut" | "clear" | "fill" | "api" | "group";
 }
 
 /** Snapshot of the undo/redo stacks, for toolbar enablement and depth read-outs. */

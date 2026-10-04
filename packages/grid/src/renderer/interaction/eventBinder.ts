@@ -17,7 +17,7 @@ interface GridInteractionEventBinderParams {
   onCellMouseMove: (e: MouseEvent) => void;
   onColumnResizeMouseUp: () => void;
   onColumnDragMouseUp: () => void;
-  onCellMouseUp: () => void;
+  onCellMouseUp: (e: MouseEvent) => void;
   shouldSuppressClick: () => boolean;
   onClick: (e: MouseEvent) => void;
   onKeyDown: (e: KeyboardEvent) => void;
@@ -67,10 +67,10 @@ export class GridInteractionEventBinder {
     this.params.onCellMouseMove(e);
   };
 
-  private handleDocumentMouseUp = () => {
+  private handleDocumentMouseUp = (e: MouseEvent) => {
     this.params.onColumnResizeMouseUp();
     this.params.onColumnDragMouseUp();
-    this.params.onCellMouseUp();
+    this.params.onCellMouseUp(e);
   };
 
   private handleDocumentClick = (e: MouseEvent) => {

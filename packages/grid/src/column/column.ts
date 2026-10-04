@@ -1,4 +1,5 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams, ValueParserParams } from "./formatters";
+import { parseTextByType } from "./parsers";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { HeaderComponent } from "../renderer/header/headerComponent";
@@ -353,13 +354,15 @@ export class Column {
     return String(value);
   }
 
-  // Convert the raw text typed into a cell editor into the value to store. Uses the column's
-  // valueParser when provided; otherwise the text is stored verbatim.
+  // Convert text headed for a cell — typed into an editor, pasted, filled, or handed to the API as
+  // a string — into the value to store. The column's valueParser when it has one; otherwise the
+  // built-in parser for its type (`column/parsers.ts`), so a number column never holds `"abc"`.
+  // Either may return REJECT, which the commit paths treat as a veto of that one cell.
   parseValue(text: string, row: IRowNode, oldValue: any): any {
     if (this.valueParser) {
       return this.valueParser({ value: text, oldValue, row, col: this });
     }
-    return text;
+    return parseTextByType(this.type, text, oldValue);
   }
 
   /** Whether this column inherits one field from `getRowPresentation`. */

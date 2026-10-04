@@ -1,8 +1,11 @@
-import { Component, ElementRef, computed, signal, viewChild } from "@angular/core";
+import { Component, ElementRef, Injector, afterNextRender, computed, inject, signal, viewChild } from "@angular/core";
 import {
   AwbGrid,
   ColumnType,
   formatChord,
+  type FillHandleOptions,
+  type FillOperationParams,
+  type FillOperationResult,
   type GridEventSelectionChangedParams,
   type ICellEditorNgComp,
   type ICellEditorParams,
@@ -109,6 +112,9 @@ export class StarRatingEditorComponent implements ICellEditorNgComp {
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -137,6 +143,34 @@ const LAST_NAMES = [
 const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "Finance", "Operations", "Support", "Legal"];
 const TITLES = ["Analyst", "Associate", "Manager", "Senior", "Lead", "Director", "VP"];
 const CITIES = ["New York", "Chicago", "Seattle", "Austin", "Denver", "Miami", "Boston", "Portland"];
+
+// Series the grid cannot know, for the `fillOperation` demo: "Joined On" steps by business days
+// (weekends skipped) and "Department" cycles through the company's list; every other column keeps
+// the grid's own value. The grid's `lineMode` is honoured for the dates, so Ctrl/Cmd still copies.
+function appFillOperation(params: FillOperationParams): FillOperationResult | undefined {
+  const { colId, values, index, lineMode } = params;
+  if (colId === "joinedOn") {
+    const last = values[values.length - 1];
+    if (lineMode !== "series" || !(last instanceof Date)) return undefined;
+    return { value: addBusinessDays(last, index - (values.length - 1)) };
+  }
+  if (colId === "department") {
+    const at = DEPARTMENTS.indexOf(String(values[0]));
+    if (at < 0) return undefined;
+    const n = DEPARTMENTS.length;
+    return { value: DEPARTMENTS[(((at + index) % n) + n) % n] };
+  }
+  return undefined;
+}
+
+function addBusinessDays(from: Date, steps: number): Date {
+  const date = new Date(from);
+  for (let left = Math.abs(steps); left > 0;) {
+    date.setDate(date.getDate() + Math.sign(steps));
+    if (date.getDay() !== 0 && date.getDay() !== 6) left--;
+  }
+  return date;
+}
 
 // Deterministic PRNG so the demo data is stable across reloads (no Math.random in the grid path).
 function mulberry32(seed: number) {
@@ -210,6 +244,9 @@ const SHORTCUTS: Array<[string, string]> = [
   [`${fmt("home")} / ${fmt("end")}`, "Jump to first / last column"],
   [`${fmt("mod+home")} / ${fmt("mod+end")}`, "Jump to top-left / bottom-right"],
   [fmt("mod+a"), "Select all"],
+  ["Drag the ■ corner", "Fill: repeat, or extend a number/date/text series (Ctrl/Cmd flips); Title cycles its ladder"],
+  ["Double-click the ■ corner", "Fill down to the end of the data beside the selection"],
+  [`${fmt("mod+d")} / ${fmt("mod+r")}`, "Fill the selection down / right"],
   [`${fmt("arrowup")} from the top row`, "Move into the column header"],
   [`${fmt("space")} / ${fmt("enter")} in the header`, "Select column / sort"],
 ];
@@ -266,12 +303,29 @@ function describeSelection(sel: SelectionSnapshot | null): string {
         />
         Header keyboard nav
       </label>
+      <div class="sel-row-count">
+        <label for="fill-handle" style="font-size: 13px">Fill handle</label>
+        <select id="fill-handle" (change)="setFillHandle($event)">
+          <option value="auto" selected>auto — series where possible</option>
+          <option value="copy">copy — always repeat</option>
+          <option value="off">off</option>
+        </select>
+      </div>
+      <div class="sel-row-count">
+        <label for="fill-rules" style="font-size: 13px">Fill rules</label>
+        <select id="fill-rules" (change)="setFillRules($event)">
+          <option value="grid" selected>grid — built-in series</option>
+          <option value="app">app — business days, department cycle</option>
+        </select>
+      </div>
       <div style="display: flex; gap: 8px">
         <button class="btn" type="button" (click)="api?.selectAll()">Select all (API)</button>
         <button class="btn" type="button" (click)="api?.clearSelection('all')">Clear</button>
         <button class="btn" type="button" (click)="api?.navigateToCorner('bottomRight')">Go bottom-right (API)</button>
         <button class="btn" type="button" (click)="api?.navigate('up', { jump: 'page', pageRows: 10 })">Move 10 rows up</button>
         <button class="btn" type="button" (click)="api?.navigate('down', { jump: 'page', pageRows: 10 })">Move 10 rows down</button>
+        <button class="btn" type="button" [disabled]="!canFill().down" (click)="api?.fillDown()">Fill down (API)</button>
+        <button class="btn" type="button" [disabled]="!canFill().right" (click)="api?.fillRight()">Fill right (API)</button>
       </div>
     </div>
 
@@ -289,6 +343,8 @@ function describeSelection(sel: SelectionSnapshot | null): string {
           [selectAllRowsOnHeaderClick]="true"
           [cellSelection]="cellSelection()"
           [headerKeyboardNavigation]="headerKeyboardNav()"
+          [fillHandle]="fillHandle()"
+          [fillOperation]="fillRules() === 'app' ? appFill : undefined"
           (gridReady)="onReady($event)"
         />
       </div>
@@ -390,6 +446,18 @@ export class SelectionDemoComponent {
   // wrapper reconciles them live — no grid rebuild.
   readonly cellSelection = signal<boolean | "text">(true);
   readonly headerKeyboardNav = signal(true);
+  // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
+  // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
+  readonly fillHandle = signal<boolean | FillHandleOptions>({ lists: [TITLES] });
+  // `fillOperation` is a callback input, read through a signal by the wrapper: swapping the
+  // function (or passing none) applies to the next fill without a grid rebuild.
+  readonly fillRules = signal<"grid" | "app">("grid");
+  readonly appFill = appFillOperation;
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and after the two
+  // switches above have reached the grid (their inputs land during the next change detection).
+  readonly canFill = signal({ down: false, right: false });
+  private readonly injector = inject(Injector);
   readonly headerAt = signal<number | null>(null);
   // App shortcuts (api.registerShortcut): held disposers, the rows read back from
   // api.getKeyboardShortcuts() so the panel shows the router's truth, and what fired last.
@@ -444,7 +512,12 @@ export class SelectionDemoComponent {
   onReady(api: IGridAPI): void {
     this.api = api;
     this.selection.set(api.getSelection());
-    api.on("selectionChanged", (ev) => this.selection.set(ev.snapshot));
+    api.on("selectionChanged", (ev) => {
+      this.selection.set(ev.snapshot);
+      this.refreshCanFill();
+    });
+    api.on("cellsChanged", () => this.refreshCanFill());
+    this.refreshCanFill();
     api.on("focusChanged", (ev) => this.active.set({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
     // The header cursor is a separate position from the body's (they are mutually exclusive).
     api.on("headerFocusChanged", (ev) => this.headerAt.set(ev.colIdx ?? null));
@@ -457,6 +530,21 @@ export class SelectionDemoComponent {
   setCellSelection(ev: Event): void {
     const value = (ev.target as HTMLSelectElement).value;
     this.cellSelection.set(value === "text" ? "text" : value === "true");
+  }
+
+  setFillHandle(ev: Event): void {
+    const value = (ev.target as HTMLSelectElement).value;
+    this.fillHandle.set(value === "off" ? false : { mode: value === "copy" ? "copy" : "auto", lists: [TITLES] });
+    afterNextRender(() => this.refreshCanFill(), { injector: this.injector });
+  }
+
+  setFillRules(ev: Event): void {
+    this.fillRules.set((ev.target as HTMLSelectElement).value === "app" ? "app" : "grid");
+    afterNextRender(() => this.refreshCanFill(), { injector: this.injector });
+  }
+
+  private refreshCanFill(): void {
+    this.canFill.set({ down: this.api?.canFillDown() ?? false, right: this.api?.canFillRight() ?? false });
   }
 
   private refreshAppShortcuts(): void {
