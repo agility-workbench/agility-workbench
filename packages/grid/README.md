@@ -720,7 +720,8 @@ a fill the body menu on the filled cells offers "Copy cells instead" / "Fill ser
 handle fills down to the end of the data beside the selection — the neighbouring column's unbroken
 run of values, left side first, a group row ending it — as spreadsheets do. `Ctrl/Cmd+D` and
 `Ctrl/Cmd+R` fill the selection down / right from its first row / column as a copy, and the body
-menu offers the same as "Fill down" / "Fill right".
+menu offers the same as "Fill down" / "Fill right"; `api.fillDown()` / `api.fillRight()` run them
+from a toolbar, with `api.canFillDown()` / `api.canFillRight()` for the buttons' enabled state.
 
 ```ts
 fillHandle: true                 // default (needs cellSelection: true and rangeSelection)

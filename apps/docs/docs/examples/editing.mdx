@@ -261,7 +261,11 @@ filling vertically, a row when horizontally):
 it right from its first column; a single cell takes the value above or to its
 left. Both are copies, never series, and leave the selection where it is. The
 body context menu offers the same two commands as **Fill down** and **Fill
-right** whenever they would write something.
+right** whenever they would write something, and `api.fillDown()` /
+`api.fillRight()` run them from outside the grid; `api.canFillDown()` /
+`api.canFillRight()` answer the menu's "would write something" test, for a
+toolbar button's enabled state (re-read them on `selectionChanged` and
+`cellsChanged`).
 
 Right after a drag or double-click fill, the context menu on any cell the fill
 covered offers the other choice: **Copy cells instead** where the fill stepped a

@@ -61,6 +61,10 @@ describe("AwbGrid fill handle", () => {
     api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, mode: "start" });
     api.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 1, mode: "extend" });
     expect(gridEl.querySelector(".pte-fill-handle")!.parentElement).toBe(cell(gridEl, 1, 1));
+    // The same api the host received carries the toolbar surface (fill right would copy the text
+    // name column into the number column, which refuses it — so only fill down has work).
+    expect(api.canFillDown()).toBe(true);
+    expect(api.canFillRight()).toBe(false);
 
     dragHandle(gridEl, 3, 1);
     expect(host.rows.map(r => r.qty)).toEqual([1, 2, 3, 4].map((_, i) => i + 1));

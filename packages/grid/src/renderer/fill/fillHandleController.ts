@@ -321,21 +321,22 @@ export class FillHandleController {
   }
 
   /**
-   * `Ctrl/Cmd+D`: copy the selection's first row into the rows below it; a single row takes the
-   * row above. Always a copy, never a series, and the selection stays where it is.
+   * `Ctrl/Cmd+D` and `api.fillDown()`: copy the selection's first row into the rows below it; a
+   * single row takes the row above. Always a copy, never a series, and the selection stays where
+   * it is. Returns the number of cells written (what the fill announces), 0 when nothing applied.
    */
-  fillDown(): void {
+  fillDown(): number {
     const plan = this.planFillDown();
-    if (!plan) return;
-    this.write(plan.source, plan.target, "copy", false, null, "command");
+    if (!plan) return 0;
+    return this.write(plan.source, plan.target, "copy", false, null, "command");
   }
 
-  /** `Ctrl/Cmd+R`: copy the selection's first column into the columns to its right; a single
-   * column takes the column to its left. */
-  fillRight(): void {
+  /** `Ctrl/Cmd+R` and `api.fillRight()`: copy the selection's first column into the columns to
+   * its right; a single column takes the column to its left. Returns as {@link fillDown}. */
+  fillRight(): number {
     const plan = this.planFillRight();
-    if (!plan) return;
-    this.write(plan.source, plan.target, "copy", false, null, "command");
+    if (!plan) return 0;
+    return this.write(plan.source, plan.target, "copy", false, null, "command");
   }
 
   private planFillDown(): { source: FillRect; target: FillTarget } | null {

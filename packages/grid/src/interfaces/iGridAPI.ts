@@ -578,6 +578,30 @@ export interface IGridAPI {
   /** Paste the clipboard's first cell into the active cell (runs the column's valueParser). */
   paste(): Promise<void>;
 
+  /* ----- Fill ----- */
+  /**
+   * Copy the selection's first row into the rows below it — what `Ctrl/Cmd+D` does. A single
+   * selected row takes the row above it instead. Always a copy, never a series; the selection
+   * stays where it is. One undo step. Returns the number of editable cells the fill wrote to (the
+   * count it announces) — 0 when the fill handle is off, nothing is selected, the selection is on
+   * pinned rows, or no cell could take a value.
+   */
+  fillDown(): number;
+  /**
+   * Copy the selection's first column into the columns to its right — what `Ctrl/Cmd+R` does. A
+   * single selected column takes the column to its left instead. Otherwise as {@link fillDown}.
+   */
+  fillRight(): number;
+  /**
+   * Whether {@link fillDown} has at least one cell to write — the test behind the body menu's
+   * "Fill down", for a toolbar button's enabled state. Depends on the selection, the cell values,
+   * and the fill options: re-read it on `selectionChanged` and `cellsChanged`. Runs
+   * `fillOperation` without writing, so that callback must be pure.
+   */
+  canFillDown(): boolean;
+  /** Whether {@link fillRight} has at least one cell to write; see {@link canFillDown}. */
+  canFillRight(): boolean;
+
   /* ----- Undo / redo ----- */
   /** Undo the last cell-edit step (single edit, paste, or cut). */
   undo(): void;

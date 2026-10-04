@@ -31,6 +31,12 @@ body {
   background-color: var(--pte-btn-hover-bg-color, #0056b3);
 }
 
+.btn:disabled {
+  background-color: var(--pte-btn-bg-color, #007bff);
+  opacity: 0.45;
+  cursor: default;
+}
+
 .indexed-insert-demo {
   display: flex;
   height: 100%;

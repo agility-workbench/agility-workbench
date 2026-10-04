@@ -26,6 +26,9 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   or column across it (a single cell takes the value above or to its left), always as a copy
   and without moving the selection. The body menu offers the same two commands as "Fill down"
   and "Fill right" whenever they would write something, with the chords beside them.
+  `api.fillDown()` / `api.fillRight()` run the same fills from outside the grid and return the
+  number of cells written; `api.canFillDown()` / `api.canFillRight()` report whether they have
+  anything to write, for a toolbar button's enabled state.
 - **"Copy cells instead" / "Fill series instead" after a fill.** Right after a drag or
   double-click fill, the body menu on any cell the fill covered offers the other choice, as a
   spreadsheet's Auto Fill Options do: copies where the fill stepped a series, a series where a

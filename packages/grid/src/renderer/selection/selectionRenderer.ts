@@ -553,7 +553,8 @@ export class SelectionRenderer {
         label: "Fill down",
         command: "body.fillDown",
         when: () => this.params.fill().options()?.direction !== "x" && this.params.fill().isEnabled(),
-        run: () => this.params.fill().fillDown(),
+        // The controller reports a count for the API; a binding's run() answers boolean | void.
+        run: () => { this.params.fill().fillDown(); },
       },
       {
         id: "fillRight",
@@ -562,7 +563,7 @@ export class SelectionRenderer {
         label: "Fill right",
         command: "body.fillRight",
         when: () => this.params.fill().options()?.direction !== "y" && this.params.fill().isEnabled(),
-        run: () => this.params.fill().fillRight(),
+        run: () => { this.params.fill().fillRight(); },
       },
       {
         id: "undo",

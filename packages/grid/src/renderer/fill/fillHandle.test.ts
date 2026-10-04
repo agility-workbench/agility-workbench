@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { GridAPI } from "../../api/api";
 import { GridCore } from "../../core/core";
 import { ColumnType } from "../../interfaces/column";
 import type { ColDef } from "../../interfaces/column";
@@ -10,7 +11,8 @@ import { initDomRenderer } from "../dom";
 
 /**
  * The fill handle end to end: where the grip appears, what a drag previews and writes, how the
- * modifier flips copy and series, and the keyboard forms (Ctrl/Cmd+D, Ctrl/Cmd+R).
+ * modifier flips copy and series, the keyboard forms (Ctrl/Cmd+D, Ctrl/Cmd+R), and their API
+ * surface (api.fillDown / fillRight / canFillDown / canFillRight).
  *
  * Leaf indices (no row numbers): name=0, qty=1, when=2, note=3, locked=4.
  */
@@ -677,5 +679,97 @@ describe("Ctrl/Cmd+D and Ctrl/Cmd+R", () => {
     const rows = api.getKeyboardShortcuts();
     expect(rows.find(row => row.id === "fillDown")).toMatchObject({ scope: "bodyCursor", command: "body.fillDown" });
     expect(rows.find(row => row.id === "fillRight")).toMatchObject({ scope: "bodyCursor", command: "body.fillRight" });
+  });
+});
+
+describe("api.fillDown / fillRight / canFillDown / canFillRight", () => {
+  it("fills down from the selection's first row as Ctrl/Cmd+D does and reports the count", () => {
+    const { core, api, column } = mountGrid();
+    expect(api.canFillDown()).toBe(false);
+    // A single top row has nothing above it to take.
+    select(core, 0, 1);
+    expect(api.canFillDown()).toBe(false);
+    expect(api.fillDown()).toBe(0);
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+
+    select(core, 0, 1, 3, 1);
+    expect(api.canFillDown()).toBe(true);
+    expect(api.fillDown()).toBe(3);
+    expect(column("qty")).toEqual([10, 10, 10, 10, 50, 60]);
+    // A copy, one undo step, and the selection stays put.
+    expect(api.getHistoryState().undoDepth).toBe(1);
+    expect(api.getSelection().range).toMatchObject({ rowStart: 0, rowEnd: 3, colStart: 1, colEnd: 1 });
+  });
+
+  it("fills right from the selection's first column, a single column taking the one to its left", () => {
+    // Two text columns so every crossing is a plain copy: name=0, note=1.
+    const { core, api, column } = mountGrid({}, [columnDefs[0], columnDefs[3]]);
+    select(core, 1, 1);
+    expect(api.canFillRight()).toBe(true);
+    expect(api.fillRight()).toBe(1);
+    expect(column("note")).toEqual(["na", "B", "nc", "nd", "ne", "nf"]);
+
+    select(core, 2, 0, 3, 1);
+    expect(api.fillRight()).toBe(2);
+    expect(column("note")).toEqual(["na", "B", "C", "D", "ne", "nf"]);
+    expect(column("name")).toEqual(["A", "B", "C", "D", "E", "F"]);
+
+    // Nothing to the left of the first column.
+    select(core, 0, 0);
+    expect(api.canFillRight()).toBe(false);
+    expect(api.fillRight()).toBe(0);
+  });
+
+  it("follows the fill handle option: off, or a direction that excludes the axis", () => {
+    const off = mountGrid({ fillHandle: false });
+    select(off.core, 0, 1, 2, 1);
+    expect(off.api.canFillDown()).toBe(false);
+    expect(off.api.fillDown()).toBe(0);
+    expect(off.column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+
+    const sideways = mountGrid({ fillHandle: { direction: "x" } }, [columnDefs[0], columnDefs[3]]);
+    select(sideways.core, 0, 1, 2, 1);
+    expect(sideways.api.canFillDown()).toBe(false);
+    expect(sideways.api.canFillRight()).toBe(true);
+    expect(sideways.api.fillRight()).toBe(3);
+    expect(sideways.column("note")).toEqual(["A", "B", "C", "nd", "ne", "nf"]);
+  });
+
+  it("runs fillOperation with trigger \"command\", and a skip of every cell empties canFill*", () => {
+    const seen: FillOperationParams[] = [];
+    let skipAll = false;
+    const fillOperation = (params: FillOperationParams): FillOperationResult | undefined => {
+      seen.push(params);
+      return skipAll ? { skipCell: true } : undefined;
+    };
+    const { core, api, column } = mountGrid({ fillOperation });
+    select(core, 0, 1, 2, 1);
+    expect(api.canFillDown()).toBe(true);
+    seen.length = 0;
+    expect(api.fillDown()).toBe(2);
+    expect(seen.map(p => p.trigger)).toEqual(["command", "command"]);
+    expect(seen.map(p => p.direction)).toEqual(["down", "down"]);
+    expect(column("qty")).toEqual([10, 10, 10, 40, 50, 60]);
+
+    skipAll = true;
+    select(core, 3, 1, 5, 1);
+    expect(api.canFillDown()).toBe(false);
+    expect(api.fillDown()).toBe(0);
+    expect(column("qty")).toEqual([10, 10, 10, 40, 50, 60]);
+  });
+
+  it("before the grid is rendered the probes are false and the fills warn and write nothing", () => {
+    const core = new GridCore(measurer, { rowIdKey: "id" });
+    const api = new GridAPI(core);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(api.canFillDown()).toBe(false);
+    expect(api.canFillRight()).toBe(false);
+    expect(api.fillDown()).toBe(0);
+    expect(api.fillRight()).toBe(0);
+    expect(warn.mock.calls.map(c => c[0])).toEqual([
+      "fillDown called before the grid was rendered; ignoring.",
+      "fillRight called before the grid was rendered; ignoring.",
+    ]);
+    warn.mockRestore();
   });
 });

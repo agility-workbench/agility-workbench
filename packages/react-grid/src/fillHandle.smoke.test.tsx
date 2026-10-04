@@ -89,10 +89,13 @@ describe("React Grid fill handle", () => {
     api.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, mode: "start" });
     api.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 1, mode: "extend" });
     expect(container.querySelector(".pte-fill-handle")).toBeNull();
+    // The API fills follow the same option: nothing to do while the handle is off.
+    expect(api.canFillDown()).toBe(false);
 
     await render({ mode: "copy" });
     const handle = container.querySelector<HTMLElement>(".pte-fill-handle")!;
     expect(handle.parentElement).toBe(cell(container, 1, 1));
+    expect(api.canFillDown()).toBe(true);
 
     // Copy mode: 1, 2 repeats as 1, 2 rather than continuing to 3, 4.
     handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));

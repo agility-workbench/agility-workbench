@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, signal, viewChild } from "@angular/core";
+import { Component, ElementRef, Injector, afterNextRender, computed, inject, signal, viewChild } from "@angular/core";
 import {
   AwbGrid,
   ColumnType,
@@ -112,6 +112,9 @@ export class StarRatingEditorComponent implements ICellEditorNgComp {
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -321,6 +324,8 @@ function describeSelection(sel: SelectionSnapshot | null): string {
         <button class="btn" type="button" (click)="api?.navigateToCorner('bottomRight')">Go bottom-right (API)</button>
         <button class="btn" type="button" (click)="api?.navigate('up', { jump: 'page', pageRows: 10 })">Move 10 rows up</button>
         <button class="btn" type="button" (click)="api?.navigate('down', { jump: 'page', pageRows: 10 })">Move 10 rows down</button>
+        <button class="btn" type="button" [disabled]="!canFill().down" (click)="api?.fillDown()">Fill down (API)</button>
+        <button class="btn" type="button" [disabled]="!canFill().right" (click)="api?.fillRight()">Fill right (API)</button>
       </div>
     </div>
 
@@ -447,6 +452,11 @@ export class SelectionDemoComponent {
   // function (or passing none) applies to the next fill without a grid rebuild.
   readonly fillRules = signal<"grid" | "app">("grid");
   readonly appFill = appFillOperation;
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and after the two
+  // switches above have reached the grid (their inputs land during the next change detection).
+  readonly canFill = signal({ down: false, right: false });
+  private readonly injector = inject(Injector);
   readonly headerAt = signal<number | null>(null);
   // App shortcuts (api.registerShortcut): held disposers, the rows read back from
   // api.getKeyboardShortcuts() so the panel shows the router's truth, and what fired last.
@@ -501,7 +511,12 @@ export class SelectionDemoComponent {
   onReady(api: IGridAPI): void {
     this.api = api;
     this.selection.set(api.getSelection());
-    api.on("selectionChanged", (ev) => this.selection.set(ev.snapshot));
+    api.on("selectionChanged", (ev) => {
+      this.selection.set(ev.snapshot);
+      this.refreshCanFill();
+    });
+    api.on("cellsChanged", () => this.refreshCanFill());
+    this.refreshCanFill();
     api.on("focusChanged", (ev) => this.active.set({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
     // The header cursor is a separate position from the body's (they are mutually exclusive).
     api.on("headerFocusChanged", (ev) => this.headerAt.set(ev.colIdx ?? null));
@@ -519,10 +534,16 @@ export class SelectionDemoComponent {
   setFillHandle(ev: Event): void {
     const value = (ev.target as HTMLSelectElement).value;
     this.fillHandle.set(value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" });
+    afterNextRender(() => this.refreshCanFill(), { injector: this.injector });
   }
 
   setFillRules(ev: Event): void {
     this.fillRules.set((ev.target as HTMLSelectElement).value === "app" ? "app" : "grid");
+    afterNextRender(() => this.refreshCanFill(), { injector: this.injector });
+  }
+
+  private refreshCanFill(): void {
+    this.canFill.set({ down: this.api?.canFillDown() ?? false, right: this.api?.canFillRight() ?? false });
   }
 
   private refreshAppShortcuts(): void {

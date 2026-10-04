@@ -34,6 +34,9 @@ import { formatDate, mulberry32, picker } from "../helpers";
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -363,6 +366,18 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     refreshAppShortcuts();
   }
 
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and right after the
+  // switches below apply (updateGridOptions is synchronous).
+  const fillDownBtn = btn("Fill down (API)", () => api.fillDown());
+  const fillRightBtn = btn("Fill right (API)", () => api.fillRight());
+  fillDownBtn.disabled = true;
+  fillRightBtn.disabled = true;
+  function refreshCanFill(): void {
+    fillDownBtn.disabled = !api.canFillDown();
+    fillRightBtn.disabled = !api.canFillRight();
+  }
+
   container.appendChild(demoRoot(
     toolbarRow(
       field("Rows", select([100, 120, 500, 1000], rowCount, value => {
@@ -390,9 +405,12 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
           { value: "off", label: "off" },
         ],
         "auto",
-        value => api.updateGridOptions({
-          fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" },
-        }),
+        value => {
+          api.updateGridOptions({
+            fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto" },
+          });
+          refreshCanFill();
+        },
       )),
       // `fillOperation` is a callback, not a runtime option: the one passed at creation stays, and
       // reads this page state on every call, so the switch applies to the next fill.
@@ -402,7 +420,10 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
           { value: "app", label: "app — business days, department cycle" },
         ],
         "grid",
-        value => { fillRules = value === "app" ? "app" : "grid"; },
+        value => {
+          fillRules = value === "app" ? "app" : "grid";
+          refreshCanFill();
+        },
       )),
       h("div", { style: { display: "flex", gap: "8px" } },
         btn("Select all (API)", () => api.selectAll()),
@@ -410,6 +431,8 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
         btn("Go bottom-right (API)", () => api.navigateToCorner("bottomRight")),
         btn("Move 10 rows up", () => api.navigate("up", { jump: "page", pageRows: 10 })),
         btn("Move 10 rows down", () => api.navigate("down", { jump: "page", pageRows: 10 })),
+        fillDownBtn,
+        fillRightBtn,
       ),
     ),
     h("div", { style: { display: "flex", gap: "12px", flex: "1", minHeight: "0" } },
@@ -494,7 +517,9 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   const offSelection = api.on("selectionChanged", ev => {
     selection = ev.snapshot;
     renderReadout();
+    refreshCanFill();
   });
+  const offCells = api.on("cellsChanged", () => refreshCanFill());
   const offFocus = api.on("focusChanged", ev => {
     active = { viewIdx: ev.viewIdx, colIdx: ev.colIdx };
     renderReadout();
@@ -508,6 +533,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   selection = api.getSelection();
   renderReadout();
   refreshAppShortcuts();
+  refreshCanFill();
 
   function renderReadout(): void {
     summary.textContent = describeSelection(selection);
@@ -534,6 +560,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     offSelection();
     offFocus();
     offHeaderFocus();
+    offCells();
     approveOff?.();
     searchOff?.();
     api.destroy();

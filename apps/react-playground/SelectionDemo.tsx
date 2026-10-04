@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Grid } from "@react-grid";
 import type { ReactCellEditorHandle, ReactColDef } from "@react-grid";
@@ -68,6 +68,9 @@ const StarRatingEditor = forwardRef<ReactCellEditorHandle, ICellEditorParams>(
  * built-in claims, and an `override: true` takeover of Ctrl+F, which beats the built-in quick
  * filter while registered and hands the chord back on dispose. The panel lists the live app
  * bindings straight from `api.getKeyboardShortcuts()`.
+ *
+ * "Fill down (API)" / "Fill right (API)" call `api.fillDown` / `api.fillRight`; their enabled state
+ * is `api.canFillDown` / `api.canFillRight`, re-read on `selectionChanged` and `cellsChanged`.
  */
 
 type EmployeeRow = {
@@ -242,6 +245,15 @@ export function SelectionDemo() {
   // `fillOperation` is a callback, bridged through a ref like onBeforeCellCommit: swapping the
   // function (or passing none) applies to the next fill without a grid rebuild.
   const [fillRules, setFillRules] = useState<"grid" | "app">("grid");
+  // Button state for the API fills. canFillDown/canFillRight depend on the selection, the cell
+  // values, and the fill options, so they are re-read on the grid's events and after the two
+  // switches above change (the wrapper applies the new option in its own effect, which runs first).
+  const [canFill, setCanFill] = useState({ down: false, right: false });
+  const refreshCanFill = useCallback(() => {
+    const api = apiRef.current;
+    setCanFill({ down: api?.canFillDown() ?? false, right: api?.canFillRight() ?? false });
+  }, []);
+  useEffect(() => { refreshCanFill(); }, [fillHandle, fillRules, refreshCanFill]);
   const [headerAt, setHeaderAt] = useState<number | null>(null);
   // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
   // read back from api.getKeyboardShortcuts(), and what fired last.
@@ -340,7 +352,12 @@ export function SelectionDemo() {
   const handleReady = (api: IGridAPI) => {
     apiRef.current = api;
     setSelection(api.getSelection());
-    api.on("selectionChanged", (ev) => setSelection(ev.snapshot));
+    api.on("selectionChanged", (ev) => {
+      setSelection(ev.snapshot);
+      refreshCanFill();
+    });
+    api.on("cellsChanged", refreshCanFill);
+    refreshCanFill();
     api.on("focusChanged", (ev) => setActive({ viewIdx: ev.viewIdx, colIdx: ev.colIdx }));
     // The header cursor is a separate position from the body's (they are mutually exclusive).
     api.on("headerFocusChanged", (ev) => setHeaderAt(ev.colIdx ?? null));
@@ -404,6 +421,8 @@ export function SelectionDemo() {
           <button className="btn" type="button" onClick={() => apiRef.current?.navigateToCorner("bottomRight")}>Go bottom-right (API)</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigate("up", { jump: "page", pageRows: 10 })}>Move 10 rows up</button>
           <button className="btn" type="button" onClick={() => apiRef.current?.navigate("down", { jump: "page", pageRows: 10 })}>Move 10 rows down</button>
+          <button className="btn" type="button" disabled={!canFill.down} onClick={() => apiRef.current?.fillDown()}>Fill down (API)</button>
+          <button className="btn" type="button" disabled={!canFill.right} onClick={() => apiRef.current?.fillRight()}>Fill right (API)</button>
         </div>
       </div>
 

@@ -352,6 +352,23 @@ export class GridRenderer {
       refreshSelection: () => this._selectionRenderer.refreshSelectionStyles(),
       announce: (message) => this._announcer.announce(message),
     });
+    // Expose the keyboard fills on the public API (api.fillDown / fillRight / canFillDown /
+    // canFillRight). Probed structurally to avoid a renderer→api import cycle, matching the
+    // exporter hook below.
+    const apiWithFill = this.api as unknown as {
+      setFillController?: (c: {
+        canFillDown: () => boolean;
+        canFillRight: () => boolean;
+        fillDown: () => number;
+        fillRight: () => number;
+      }) => void;
+    };
+    apiWithFill.setFillController?.({
+      canFillDown: () => this._fillHandle.canFillDown(),
+      canFillRight: () => this._fillHandle.canFillRight(),
+      fillDown: () => this._fillHandle.fillDown(),
+      fillRight: () => this._fillHandle.fillRight(),
+    });
     this._selectionRenderer = new SelectionRenderer({
       core: this.core,
       root: this.root,
