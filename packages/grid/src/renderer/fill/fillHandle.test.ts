@@ -41,7 +41,8 @@ function rows() {
     name: String.fromCharCode(65 + i),
     qty: (i + 1) * 10,
     when: new Date(2026, 0, i + 1),
-    note: `n${i}`,
+    // Letters, not digits: `n1` would be a text counter and count up instead of repeating.
+    note: `n${"abcdef"[i]}`,
     locked: `L${i}`,
   }));
 }
@@ -229,6 +230,22 @@ describe("dragging the handle", () => {
     expect(column("when").slice(0, 4)).toEqual(Array(4).fill(new Date(2026, 0, 1)));
   });
 
+  it("counts text patterns up and cycles weekday names, copying them with the modifier", () => {
+    const { core, api, root, column } = mountGrid();
+    api.setRowData(rows().map((r, i) => ({ ...r, name: i === 0 ? "Item 1" : r.name, note: ["Mon", "Wed"][i] ?? r.note })));
+    select(core, 0, 0); // "Item 1"
+    drag(root, 3, 0);
+    expect(column("name")).toEqual(["Item 1", "Item 2", "Item 3", "Item 4", "E", "F"]);
+
+    select(core, 0, 3, 1, 3); // Mon, Wed
+    drag(root, 4, 3);
+    expect(column("note")).toEqual(["Mon", "Wed", "Fri", "Sun", "Tue", "nf"]);
+
+    select(core, 0, 0);
+    drag(root, 2, 0, { ctrlKey: true });
+    expect(column("name")).toEqual(["Item 1", "Item 1", "Item 1", "Item 4", "E", "F"]);
+  });
+
   it("fills upward by continuing the pattern backward", () => {
     const { core, root, column } = mountGrid();
     select(core, 3, 0, 4, 0); // D, E
@@ -249,24 +266,27 @@ describe("dragging the handle", () => {
     expect(api.getHistoryState().undoDepth).toBe(1);
 
     core.setRowData(rows());
-    select(core, 1, 3); // note n1
+    select(core, 1, 3); // note nb
     drag(root, 1, 0); // ← when, qty, name
-    expect(data("r1").name).toBe("n1");
+    expect(data("r1").name).toBe("nb");
     expect(data("r1").qty).toBe(20);
     expect(data("r1").when).toEqual(new Date(2026, 0, 2));
     expect(range(core)).toEqual([1, 1, 0, 3]);
     expect(core.getActiveCell()).toMatchObject({ row: 1, colIdx: 3 });
 
     // A date reaches a string column as its displayed text, and a string that IS a date reaches a
-    // date column as a Date — the cell's stored shape. (Ctrl/Cmd: a lone date would otherwise step
-    // a day, sideways as much as downward.)
+    // date column as a Date — the cell's stored shape. (Ctrl/Cmd: a lone date, or lone date text,
+    // would otherwise step a day, sideways as much as downward.)
     core.setRowData(rows().map(r => ({ ...r, note: "2026-05-06" })));
     select(core, 2, 2); // when Jan 3
     drag(root, 2, 3, { ctrlKey: true });
     expect(data("r2").note).toBe("2026-01-03");
     select(core, 3, 3); // note "2026-05-06"
-    drag(root, 3, 2);
+    drag(root, 3, 2, { ctrlKey: true });
     expect(data("r3").when).toEqual(new Date(2026, 4, 6));
+    select(core, 4, 3); // the same text, stepping: leftward is the day before
+    drag(root, 4, 2);
+    expect(data("r4").when).toEqual(new Date(2026, 4, 5));
   });
 
   it("writes nothing, and records nothing, when every target refuses the text", () => {
@@ -290,7 +310,7 @@ describe("dragging the handle", () => {
     select(core, 0, 3, 0, 4); // note + locked (a non-editable column)
     drag(root, 2, 4);
     // r2 is still the locked row; the locked column is never written at all.
-    expect(column("note")).toEqual(["n0", "n0", "n2", "n3", "n4", "n5"]);
+    expect(column("note")).toEqual(["na", "na", "nc", "nd", "ne", "nf"]);
     expect(column("locked")).toEqual(["L0", "L1", "L2", "L3", "L4", "L5"]);
   });
 
@@ -409,7 +429,7 @@ describe("double-click on the handle", () => {
     api.setRowData(sparse());
     select(core, 0, 3); // note; `when` is blank in r1, so `locked` (filled, read-only) guides
     dblclick(root);
-    expect(column("note")).toEqual(["n0", "n0", "n0", "n0", "n0", "n0"]);
+    expect(column("note")).toEqual(["na", "na", "na", "na", "na", "na"]);
   });
 
   it("does nothing with no data beside the selection, or from the last row", async () => {

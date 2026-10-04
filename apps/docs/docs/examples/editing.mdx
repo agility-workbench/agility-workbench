@@ -244,10 +244,18 @@ filling vertically, a row when horizontally):
 - Two or more numbers continue their linear trend: `10, 20` → `30, 40`, and
   `1, 2, 6` → `8, 10.5, 13`.
 - A lone date steps one calendar day; a run of dates keeps its interval, across
-  month ends and DST changes.
-- Everything else — text, booleans, a lone number, a mixed line — repeats.
+  month ends and DST changes. Date text in the `YYYY-MM-DD` shape does the same
+  and stays text.
+- Text ending in a number counts up: `Item 1` → `Item 2`, `Item 3`; `Item 1,
+  Item 3` → `Item 5`, `Item 7`. The last run of digits is the counter, the rest
+  must match across the cells, and zero padding is kept (`v08` → `v09`, `v10`).
+- Weekday and month names cycle in order, long or short, keeping the casing you
+  typed: `Monday` → `Tuesday`, `Nov, Dec` → `Jan`, `Feb`, `MON` → `TUE`. English
+  names are always recognised, plus those of the browser's language.
+- Everything else — plain text, booleans, a lone number, text that is only a
+  number or a date with a time, a mixed line — repeats.
 - Hold **Ctrl/Cmd** when you release to flip the choice: a lone number counts up
-  by one, and a series repeats instead.
+  by one, and a series — numbers, dates, or text patterns — repeats instead.
 
 `Ctrl/Cmd+D` fills the selection down from its first row and `Ctrl/Cmd+R` fills
 it right from its first column; a single cell takes the value above or to its

@@ -713,8 +713,9 @@ Only the fields you pass change. A mode set this way reports `source: "options"`
 The cell selection carries a small square on its bottom-right corner. Drag it down, up, right, or
 left — one direction per drag — and the cells it passes show a dashed outline; release to write
 them as one undo step, after which the selection covers source and result together. Lines of two
-or more numbers continue their trend, dates step by their interval (a lone date by one day), and
-everything else repeats; holding Ctrl/Cmd at release flips series and copy. Double-clicking the
+or more numbers continue their trend, dates step by their interval (a lone date by one day; so does
+`YYYY-MM-DD` text), text ending in a number counts up (`Item 1` → `Item 2`), weekday and month names cycle (`Nov, Dec` →
+`Jan`), and everything else repeats; holding Ctrl/Cmd at release flips series and copy. Double-clicking the
 handle fills down to the end of the data beside the selection — the neighbouring column's unbroken
 run of values, left side first, a group row ending it — as spreadsheets do. `Ctrl/Cmd+D` and
 `Ctrl/Cmd+R` fill the selection down / right from its first row / column as a copy, and the body

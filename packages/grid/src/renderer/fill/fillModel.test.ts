@@ -7,6 +7,7 @@ import {
   resolveLineMode,
   seriesAt,
   seriesKind,
+  textSeries,
   unionRect,
 } from "./fillModel";
 
@@ -174,5 +175,77 @@ describe("adjacentBlockEnd", () => {
     expect(adjacentBlockEnd(src, [], 10, hasData)).toBeNull();
     expect(adjacentBlockEnd({ ...src, rowEnd: 7 }, [1, 3], 10, hasData)).toBeNull();
     expect(adjacentBlockEnd({ ...src, rowEnd: 9 }, [1, 3], 10, hasData)).toBeNull();
+  });
+});
+
+
+describe("textSeries", () => {
+  it("reads a counter from the last run of digits, keeping prefix, suffix, and width", () => {
+    expect(textSeries(["Item 1"])).toEqual({ kind: "counter", prefix: "Item ", suffix: "", width: 1, numbers: [1] });
+    expect(textSeries(["Week 1 of 09"])).toEqual({ kind: "counter", prefix: "Week 1 of ", suffix: "", width: 2, numbers: [9] });
+    expect(textSeries(["Q1 (draft)", "Q2 (draft)"]))
+      .toMatchObject({ kind: "counter", prefix: "Q", suffix: " (draft)", numbers: [1, 2] });
+  });
+
+  it("needs one shape across the line, and text that is only a number is not a counter", () => {
+    expect(textSeries(["Item 1", "Part 2"])).toBeNull();
+    expect(textSeries(["Item 1", "Item 2 (old)"])).toBeNull();
+    expect(textSeries(["12"])).toBeNull();
+    expect(textSeries(["-5", "-6"])).toBeNull();
+    expect(textSeries(["alpha"])).toBeNull();
+    expect(textSeries(["Item 1", 2])).toBeNull();
+    expect(textSeries([])).toBeNull();
+    expect(textSeries(["2026-05-06 09:30"])).toBeNull();
+  });
+
+  it("reads YYYY-MM-DD text as dates", () => {
+    expect(textSeries(["2026-05-06"])).toEqual({ kind: "isoDate", dates: [new Date(2026, 4, 6)] });
+    expect(textSeries(["2026-05-06", "2026-02-30"])).toBeNull();
+  });
+
+  it("recognises weekday and month names, long or short, in any casing, unwrapping the cycle", () => {
+    expect(textSeries(["Monday"])).toMatchObject({ kind: "cycle", indices: [1] });
+    expect(textSeries(["sat", "SUN"])).toMatchObject({ kind: "cycle", indices: [6, 7] });
+    expect(textSeries(["January", "March"])).toMatchObject({ kind: "cycle", indices: [0, 2] });
+    expect(textSeries(["Jan", "February"])).toBeNull();
+    expect(seriesKind(["Mon", "Tue"])).toBe("text");
+  });
+});
+
+describe("seriesAt with text", () => {
+  const series = (values: unknown[], ...indices: number[]) => indices.map(i => seriesAt(values, i));
+
+  it("counts a lone counter up by one, pads to its width, and continues backward", () => {
+    expect(series(["Item 1"], 1, 2, 3)).toEqual(["Item 2", "Item 3", "Item 4"]);
+    expect(series(["File 08"], 1, 2)).toEqual(["File 09", "File 10"]);
+    expect(series(["Item 1"], -1, -2)).toEqual(["Item 0", "Item -1"]);
+  });
+
+  it("follows the step of two or more counters", () => {
+    expect(series(["Item 1", "Item 3"], 2, 3)).toEqual(["Item 5", "Item 7"]);
+    expect(series(["v10", "v20", "v30"], 3)).toEqual(["v40"]);
+  });
+
+  it("steps YYYY-MM-DD text by the day, across month ends, and keeps it text", () => {
+    expect(series(["2026-05-31"], 1, 2)).toEqual(["2026-06-01", "2026-06-02"]);
+    expect(series(["2026-01-01", "2026-01-08"], 2, -1)).toEqual(["2026-01-15", "2025-12-25"]);
+  });
+
+  it("cycles weekdays and months, wrapping, in the first value's casing and form", () => {
+    expect(series(["Saturday"], 1, 2)).toEqual(["Sunday", "Monday"]);
+    expect(series(["Nov", "Dec"], 2, 3)).toEqual(["Jan", "Feb"]);
+    expect(series(["MON"], 1)).toEqual(["TUE"]);
+    expect(series(["monday", "wednesday"], 2, 3)).toEqual(["friday", "sunday"]);
+    expect(series(["Fri", "Sat", "Sun", "Mon"], 4)).toEqual(["Tue"]);
+    expect(series(["May"], 1)).toEqual(["June"]);
+  });
+
+  it("makes a lone text pattern a series, like a date, unless flipped", () => {
+    expect(resolveLineMode(["Item 1"], "auto", false)).toBe("series");
+    expect(resolveLineMode(["Item 1"], "auto", true)).toBe("copy");
+    expect(resolveLineMode(["Tue"], "auto", false)).toBe("series");
+    expect(resolveLineMode(["alpha"], "auto", false)).toBe("copy");
+    expect(resolveLineMode(["alpha"], "auto", true)).toBe("copy");
+    expect(resolveLineMode(["Item 1"], "copy", false)).toBe("copy");
   });
 });
