@@ -12,6 +12,10 @@ export—without adding runtime dependencies to the core package.
 > Stable release: the public API follows [semantic versioning](https://semver.org/).
 > Breaking changes only land in major releases.
 
+What each version added is in [CHANGELOG.md](CHANGELOG.md), published as the
+documentation site's [changelog](https://agilityworkbench.dev/docs/changelog)
+and repeated as the notes of every GitHub release.
+
 ## Highlights
 
 - Virtualized rows and pinned left, center, and right column sections
@@ -176,8 +180,8 @@ instead of recreating a full playground screen. The pages live in
 
 The deployable documentation site lives in [`apps/docs`](apps/docs). It pairs 20
 interactive React examples with switchable React, Angular, and framework-neutral
-code, plus getting-started guides, an accessibility page, limitations, and a
-manually maintained API reference.
+code, plus getting-started guides, an accessibility page, limitations, the changelog,
+and a manually maintained API reference.
 
 ## Developing locally
 

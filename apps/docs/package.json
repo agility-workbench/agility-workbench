@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prestart": "node ../../scripts/changelog.mjs sync-docs",
     "start": "docusaurus start",
+    "prebuild": "node ../../scripts/changelog.mjs sync-docs",
     "build": "docusaurus build",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",

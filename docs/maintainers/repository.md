@@ -50,11 +50,14 @@ agility-workbench/                 ← private workspace root
 ├── vite.vanilla.config.ts         vanilla-playground dev server (core only; port 5182)
 ├── vitest.config.ts               test discovery + aliases (grid + react-grid)
 ├── vercel.json                    docs-site deploy config (root-workspace build, path-scoped ignore rule)
-├── CHANGELOG.md                   one entry per release; all three packages version together (§6)
+├── CHANGELOG.md                   one entry per release; all three packages version together (§6). The
+│                                  docs site renders it and release.yml posts each entry as the GitHub Release
 ├── .github/workflows/
 │   ├── ci.yml                     non-publishing gates + the npm-tarballs artifact a release uses
 │   └── release.yml                publishes those tarballs on a v* tag via OIDC (§6, §7)
 ├── scripts/
+│   ├── changelog.mjs              `sync-docs` writes apps/docs/docs/changelog.md from CHANGELOG.md (the docs
+│   │                              prestart/prebuild hook); `section <version>` prints one entry for release.yml (§6)
 │   ├── check-export-parity.mjs    release gate: built .d.ts/.d.cts vs ESM/CJS runtime exports (§6)
 │   └── check-pack-contents.mjs    release gate: exact packed-file allowlist per package (§6)
 ├── ci/
@@ -262,7 +265,7 @@ one, bump its toolchain, verify locally), add the major to the `consumer-angular
 | `npm run test:angular` | Runs the Angular binding's suite via its own vitest config (`packages/angular-grid/vitest.config.mts`) — Angular components in tests are compiled by `@analogjs/vite-plugin-angular`, so they can't join the root suite's include list. |
 | `npm run check:exports` | Release gate: asserts every value export in the built `.d.ts`/`.d.cts` exists in the ESM/CJS runtime (and vice versa) for core and React. Requires a prior `npm run build`. |
 | `npm run pack:packages` | `build` → `check:exports` → `npm pack` all three into `artifacts/npm`, with Angular correctly targeting `packages/angular-grid/dist`. |
-| `npm run docs:build` | Builds grid + react, then the Docusaurus site in `apps/docs`. |
+| `npm run docs:build` | Builds grid + react, then the Docusaurus site in `apps/docs`. The site's `prebuild`/`prestart` hooks first regenerate `apps/docs/docs/changelog.md` (gitignored) from the root `CHANGELOG.md` via `scripts/changelog.mjs sync-docs`, so the site's Changelog page is never edited by hand. |
 | `npm run dev` | Starts the React demo at `http://localhost:5176`. |
 | `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
@@ -319,6 +322,13 @@ the successful `ci.yml` run for the tagged commit, downloads that run's `npm-tar
 checks every tarball's `version` against the tag, then publishes core → react → angular with
 `--provenance`, and reads each version back off the registry. So the release is exactly the
 artifact CI already gated.
+
+A second job, `github-release`, runs once publishing succeeds. It extracts the tagged version's
+entry from `CHANGELOG.md` (`node scripts/changelog.mjs section <version>`) and creates the GitHub
+Release on the tag with that entry as its notes, followed by links to the docs-site changelog
+anchor and the three npm pages; a re-run updates the existing release instead of failing. No
+entry for the version fails this job — after npm has published, so nothing is lost — and the
+run stays red until the entry lands on `main` and the job is re-run.
 
 Auth is npm **Trusted Publishing** (OIDC) — no npm token exists anywhere. That needs one-time
 setup, and until it is done a tag push will fail at the publish step:
@@ -382,7 +392,10 @@ CI run means no tarballs to release from.
 - [ ] Versions bumped (core before dependents, if coupled).
 - [ ] Both bindings' dependency ranges on the core match the version being released.
 - [ ] `CHANGELOG.md` has an entry for the version, and the READMEs describe what it adds — the
-      package READMEs ship *inside* the tarballs, so a stale one is published for good.
+      package READMEs ship *inside* the tarballs, so a stale one is published for good. The
+      entry's heading must read `## X.Y.Z — YYYY-MM-DD` (em dash): `scripts/changelog.mjs` keys
+      the docs page's anchors, its "last updated" date, and the GitHub Release notes off that
+      shape, and the `github-release` job fails without it.
 - [ ] Trusted publishing configured for all three packages (once, ever) — or, for a manual
       publish, logged in to npm with access to the `@agility-workbench` scope.
 - [ ] The tagged commit is on `main` with a **green CI run**, then push the tag
@@ -398,7 +411,8 @@ because it landed — kept here so the shape of the release story stays in one p
 - ~~**Publishing automation**~~ — **DONE**: `.github/workflows/release.yml` publishes on a
   `v*` tag push. It locates the green `ci.yml` run for the tagged commit, downloads that run's
   `npm-tarballs` artifact — never rebuilds — verifies each tarball's version against the tag,
-  and runs `npm publish --provenance` core-first. Auth is npm **Trusted Publishing** (OIDC,
+  and runs `npm publish --provenance` core-first, then (`github-release` job) posts the
+  version's `CHANGELOG.md` entry as the GitHub Release. Auth is npm **Trusted Publishing** (OIDC,
   `id-token: write`, no stored token); the one-time npmjs.com + GitHub-environment setup steps
   are in §6 ("Automated publish") and the workflow's header comment. Non-publishing CI is unchanged
   (`.github/workflows/ci.yml`: locked install, builds, typecheck, all tests, docs and
@@ -410,8 +424,9 @@ because it landed — kept here so the shape of the release story stays in one p
   the deploy to the `homepage` (`https://agilityworkbench.dev`): `npm ci` install,
   `npm run docs:build` (which builds grid + react-grid first, because the live demos import the
   packages), output at `apps/docs/build`, and an `ignoreCommand` that skips the build unless
-  `apps/docs`, either published package's `src`/`package.json`, the lockfile, or `vercel.json`
-  changed. What is *not* in the repo is any check that the deploy succeeded — the docs build is
+  `apps/docs`, either published package's `src`/`package.json`, the lockfile, `vercel.json`,
+  `CHANGELOG.md`, or `scripts/changelog.mjs` changed (the last two because the site's Changelog
+  page is generated from them). What is *not* in the repo is any check that the deploy succeeded — the docs build is
   covered by CI (`npm run docs:build`), the deployment is not.
 - **Alias cleanup** — optionally remove the dev-only `@grid`/`@react-grid` aliases (§4) by
   converting core/test imports to relative or package-name specifiers.

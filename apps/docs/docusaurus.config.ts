@@ -11,7 +11,9 @@ const config: Config = {
   organizationName: "agility-workbench",
   projectName: "agility-workbench",
   onBrokenLinks: "throw",
-  markdown: { mermaid: false },
+  // `.mdx` pages stay MDX. The generated `docs/changelog.md` is plain CommonMark copied from the
+  // root CHANGELOG.md, so a `<Tag>` or `{` in release prose must not break the build.
+  markdown: { mermaid: false, format: "detect" },
   // Vercel Web Analytics beacon: the /_vercel/insights/ path is rewritten by the
   // Vercel deployment itself (404s harmlessly in local dev), and the dashboard's
   // Analytics toggle must be on for data to collect.
@@ -64,6 +66,7 @@ const config: Config = {
         { to: "/docs/examples/columns", label: "Examples", position: "left" },
         { to: "/docs/showcase", label: "Showcase", position: "left" },
         { to: "/docs/api/grid-options", label: "API", position: "left" },
+        { to: "/docs/changelog", label: "Changelog", position: "right" },
         { href: "https://github.com/agility-workbench/agility-workbench", label: "GitHub", position: "right" },
       ],
     },
@@ -90,6 +93,7 @@ const config: Config = {
         {
           title: "Project",
           items: [
+            { label: "Changelog", to: "/docs/changelog" },
             { label: "GitHub", href: "https://github.com/agility-workbench/agility-workbench" },
             { label: "Issues", href: "https://github.com/agility-workbench/agility-workbench/issues" },
           ],

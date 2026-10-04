@@ -4,5 +4,5 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run docs:build",
   "outputDirectory": "apps/docs/build",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/docs packages/grid/src packages/grid/package.json packages/react-grid/src packages/react-grid/package.json package-lock.json vercel.json"
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/docs packages/grid/src packages/grid/package.json packages/react-grid/src packages/react-grid/package.json package-lock.json vercel.json CHANGELOG.md scripts/changelog.mjs"
 }

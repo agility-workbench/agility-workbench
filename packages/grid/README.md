@@ -15,6 +15,9 @@ workspaces.
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
   per grid instance.
 
+What each release added is on the documentation site's
+[changelog](https://agilityworkbench.dev/docs/changelog).
+
 ## Installation
 
 ```bash

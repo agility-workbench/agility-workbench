@@ -5,6 +5,9 @@ a high-performance data grid. Provides the standalone `<awb-grid>` component and
 full core API, so you can import everything you need from one place. Supports Angular 20.3
 through 22 (zone-based and zoneless applications) on Node 20.19+.
 
+What each release added is on the documentation site's
+[changelog](https://agilityworkbench.dev/docs/changelog).
+
 ## Installation
 
 ```bash

@@ -1,8 +1,12 @@
 # Publishing workflow — the counterpart to ci.yml's non-publishing gates.
 #
-# Trigger: pushing a v* tag whose commit has a GREEN ci.yml run on it. The job
-# downloads that run's `npm-tarballs` artifact and publishes those exact files —
-# it never rebuilds (docs/maintainers/repository.md §7).
+# Trigger: pushing a v* tag whose commit has a GREEN ci.yml run on it. The
+# `publish` job downloads that run's `npm-tarballs` artifact and publishes
+# those exact files — it never rebuilds (docs/maintainers/repository.md §7).
+# The `github-release` job then posts the version's CHANGELOG.md entry as the
+# GitHub Release on the tag (`node scripts/changelog.mjs section <version>`);
+# a missing entry fails that job, after npm has published, until the entry
+# lands and the run is retried.
 #
 # Auth: npm Trusted Publishing (OIDC). Each package on npmjs.com names this
 # repository + workflow file as its trusted publisher, so no npm token exists
@@ -103,3 +107,56 @@ jobs:
           for p in grid react-grid angular-grid; do
             npm view "@agility-workbench/$p@$tag_version" version
           done
+
+  # Release notes live in CHANGELOG.md (docs/maintainers/repository.md §6). Once npm has the
+  # tarballs, post the tagged version's entry as the GitHub Release on the tag, so people who
+  # watch releases get the same notes the docs site publishes. Re-running the workflow updates
+  # the existing release instead of failing on it.
+  github-release:
+    name: Post the CHANGELOG entry as the GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create or edit the release on the tag; nothing else
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Fails (and so marks the release red, after npm has published) when CHANGELOG.md has no
+      # `## <version> — <date>` entry: add the entry on main, then re-run this job.
+      - name: Extract this version's CHANGELOG entry
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          anchor="v$(printf '%s' "$version" | sed -E 's/[^0-9A-Za-z]+/-/g')"
+          notes="$RUNNER_TEMP/release-notes.md"
+          # On its own line so a missing entry (exit 1) fails the step before any footer is written.
+          node scripts/changelog.mjs section "$version" > "$notes"
+          {
+            printf '\n---\n\n'
+            printf 'Full changelog: https://agilityworkbench.dev/docs/changelog#%s\n\n' "$anchor"
+            printf 'npm: [core](https://www.npmjs.com/package/@agility-workbench/grid/v/%s) · ' "$version"
+            printf '[React](https://www.npmjs.com/package/@agility-workbench/react-grid/v/%s) · ' "$version"
+            printf '[Angular](https://www.npmjs.com/package/@agility-workbench/angular-grid/v/%s)\n' "$version"
+          } >> "$notes"
+          echo "--- release notes ---"
+          cat "$notes"
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          prerelease=""
+          case "$version" in *-*) prerelease="--prerelease" ;; esac
+          notes="$RUNNER_TEMP/release-notes.md"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" --notes-file "$notes" $prerelease
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" --notes-file "$notes" --verify-tag $prerelease
+          fi

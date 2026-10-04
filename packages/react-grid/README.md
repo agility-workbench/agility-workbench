@@ -4,6 +4,9 @@ React bindings for [`@agility-workbench/grid`](https://www.npmjs.com/package/@ag
 a high-performance data grid. Provides a `<Grid />` component and re-exports the full
 core API, so you can import everything you need from one place.
 
+What each release added is on the documentation site's
+[changelog](https://agilityworkbench.dev/docs/changelog).
+
 ## Installation
 
 ```bash
