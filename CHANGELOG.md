@@ -35,6 +35,25 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   editable column and never on a selection reaching into a pinned band. New theme variable
   `--pte-fill-preview-bg-color`.
 
+### Typed columns parse text by type
+
+- **A column without a `valueParser` now parses text by its `type`** instead of storing it
+  verbatim: numbers and currency through `Number()`, dates from ISO 8601 text in the shape the
+  cell already holds, booleans from `true`/`false`/`yes`/`no`/`1`/`0`, strings as before; blank
+  is `null`. This applies to every write that carries text — an editor committing raw text, paste,
+  the fill handle, Delete/Backspace, and a string given to `setCellValue` — so a number column
+  can no longer end up holding `"abc"` after a paste, and the fill handle refuses a name dragged
+  over numbers.
+- **Refused text is a per-cell veto.** Text the type cannot hold is handled exactly like an
+  `onBeforeCellCommit` rejection: the cell keeps its value, nothing enters undo history, no
+  `cellValueChanged` fires. An editor commit reports `editingChanged` with `state: "rejected"`
+  and the refused text as `value`; in a batch the cell is skipped and the rest keeps its
+  alignment. A custom `valueParser` may return the exported `REJECT` to refuse the same way.
+- **Behaviour changes to know about:** Delete/Backspace on a parser-less number, date, or
+  boolean cell now stores `null` rather than `""`; `setCellValue(cell, "42")` on a parser-less
+  number column now stores the number `42` rather than the string; and pasting text a column
+  cannot parse now leaves the cell untouched instead of writing the text.
+
 ## 1.3.0 — 2026-10-01
 
 ### Server-side tree data

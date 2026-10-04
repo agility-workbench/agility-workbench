@@ -222,9 +222,11 @@ if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { positio
 | `withoutUndoHistory(fn)` | Apply the writes in `fn` without recording them |
 
 A programmatic write states its own type: a **string** `value` runs through the
-column's `valueParser` (like typed input), anything else is stored as the final
-value. So `setCellValue(cell, 99)` stores the number `99` even with no parser
-configured, while `setCellValue(cell, "99")` gives the parser its say.
+column's `valueParser` (like typed input) — or, with none configured, the
+built-in parser for the column's `type` — and anything else is stored as the
+final value. So `setCellValue(cell, 99)` stores the number `99`,
+`setCellValue(cell, "99")` stores `99` on a number column too, and
+`setCellValue(cell, "abc")` on a number column is refused and writes nothing.
 
 ## Floating UI and pinned rows
 

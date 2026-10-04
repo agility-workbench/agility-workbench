@@ -726,7 +726,8 @@ fillHandle: false
 ```
 
 Within a column (or into a column of the same `type`) values move as stored; into a differently
-typed column the displayed text goes through that column's `valueParser`, as a paste would.
+typed column the displayed text goes through that column's parser — its `valueParser`, or the
+built-in one for its type — as a paste would, so a name dragged over a number column is refused.
 `onBeforeCellCommit` runs per cell and `cellValueChanged` reports `source: "fill"`. The handle shows
 only while the selection covers an editable column, and not on a selection reaching a pinned band.
 

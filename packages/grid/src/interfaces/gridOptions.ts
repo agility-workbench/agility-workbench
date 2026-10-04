@@ -45,8 +45,10 @@ export interface CellValueChangedParams {
 }
 
 /**
- * Sentinel returned from {@link GridOptions.onBeforeCellCommit} to veto a write: the cell keeps its
- * old value, nothing enters undo history, and no `cellValueChanged` fires.
+ * Sentinel returned from {@link GridOptions.onBeforeCellCommit} — or from a column's `valueParser` —
+ * to veto a write: the cell keeps its old value, nothing enters undo history, and no
+ * `cellValueChanged` fires. The built-in parsers a column without a `valueParser` uses return it
+ * for text its type cannot hold (`"abc"` into a number column).
  */
 export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commit");
 

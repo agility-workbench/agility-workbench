@@ -514,9 +514,10 @@ export interface IGridAPI {
    * records nothing).
    *
    * A **string** `value` is treated as user-style input and passed through the column's
-   * `valueParser`; any other type is taken as the final stored value. So `setCellValue(cell, 99)`
-   * stores the number 99 even on a column with no parser, while `setCellValue(cell, "99")` gives the
-   * parser its say.
+   * `valueParser` — or, when it has none, the built-in parser for its `type` — and any other type
+   * is taken as the final stored value. So `setCellValue(cell, 99)` stores the number 99,
+   * `setCellValue(cell, "99")` stores 99 on a number column too, and `setCellValue(cell, "abc")`
+   * on a number column is refused and writes nothing.
    */
   setCellValue(cell: CellRef, value: unknown): void;
 

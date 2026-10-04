@@ -38,6 +38,24 @@ const columnDefs: ColDef[] = [
 ];
 ```
 
+Without a `valueParser`, text is parsed by the column's `type` — and this
+applies to every path that carries text, not just the editors: paste, the fill
+handle, Delete/Backspace, and a string given to `setCellValue`.
+
+- **number / currency**: whatever `Number()` accepts; blank is `null`.
+- **date**: ISO 8601 text (`2026-01-02`, optionally with a time), stored in
+  the shape the cell already holds — a `Date` stays a `Date`, ISO text stays
+  text, an epoch number stays a number.
+- **boolean**: `true`/`false`, `yes`/`no`, `y`/`n`, `1`/`0`; blank is `null`.
+- **string**: verbatim.
+
+Text the type cannot hold — `"abc"` into a number column — is **refused**: the
+cell keeps its value, nothing enters undo history, and no `cellValueChanged`
+fires, exactly as if `onBeforeCellCommit` had vetoed it. An editor commit
+reports it as `editingChanged` with `state: "rejected"`; in a paste or fill the
+cell is simply skipped and the rest of the block keeps its alignment. A custom
+`valueParser` can refuse the same way by returning the exported `REJECT`.
+
 A formatter/parser pair round-trips a display format through editing:
 
 ```ts
@@ -194,8 +212,10 @@ commits as `state: "rejected"`. `colId` in these payloads is the public
 ## Clipboard and history
 
 Copy serializes the selection as TSV. Cut clears editable destinations, paste
-applies each destination parser, and Delete/Backspace clears contents. A pasted
-block tiles across a larger selected range when its dimensions divide evenly.
+runs each destination's parser — its `valueParser`, or the built-in one for its
+type — skipping cells that refuse the text, and Delete/Backspace clears
+contents (typed columns clear to `null`). A pasted block tiles across a larger
+selected range when its dimensions divide evenly.
 
 Every edit, paste, cut, or batch clear that changes at least one stored value
 is one undo step — a batch's entry holds only the cells that actually changed,
@@ -245,10 +265,11 @@ fillHandle: false
 Filling down or up stays inside one column, so values move as stored and the
 `valueParser` never runs. Filling across columns, a value reaches a column of
 the same `type` as stored too; into a differently typed column its displayed
-text goes through that column's parser, exactly as a paste would. Every cell
+text goes through that column's parser, exactly as a paste would — so a name
+dragged over a number column is refused and the numbers stay. Every cell
 still passes `onBeforeCellCommit`, and `cellValueChanged` reports
-`source: "fill"`. Non-editable cells, group rows, and rows not yet loaded are
-skipped without disturbing the pattern.
+`source: "fill"`. Non-editable cells, group rows, rows not yet loaded, and
+refused cells are skipped without disturbing the pattern.
 
 The handle needs `cellSelection: true` and `rangeSelection`, appears only while
 the selection covers at least one editable column, and never on a selection

@@ -406,3 +406,42 @@ describe("ClipboardRenderer in pivot mode", () => {
     expect(lines).toContain("30\t");
   });
 });
+
+describe("built-in parsing on paste and clear", () => {
+  // A number column WITHOUT a valueParser: the built-in parser for its type decides.
+  function makeTypedGrid() {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData([
+      { id: "1", name: "alice", count: 3 },
+      { id: "2", name: "bob", count: 7 },
+    ]);
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name", editable: true },
+      { colId: "count", key: "count", label: "Count", type: ColumnType.NUMBER, editable: true },
+    ]);
+    return core;
+  }
+
+  it("stores pasted numeric text as a number and refuses text that is not one", async () => {
+    const core = makeTypedGrid();
+    const { clip, reads } = makeClip(core);
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+    reads.value = "carol\t42\ndave\tmany";
+    await clip.paste();
+    expect(data(core, "1")).toMatchObject({ name: "carol", count: 42 });
+    // Row 2's count slot refused "many" and kept 7; the name beside it still landed.
+    expect(data(core, "2")).toMatchObject({ name: "dave", count: 7 });
+  });
+
+  it("clears a number cell to null, not to an empty string", () => {
+    const core = makeTypedGrid();
+    const { clip } = makeClip(core);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 1, mode: "extend" });
+    clip.clearContents();
+    expect(data(core, "1").name).toBe("");
+    expect(data(core, "1").count).toBeNull();
+  });
+});
+

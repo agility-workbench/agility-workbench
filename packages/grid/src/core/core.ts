@@ -3535,6 +3535,12 @@ export class GridCore implements IGridCore {
         const proposed = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
+        // The column refused the text (its valueParser, or the built-in parser for its type): the
+        // same outcome as a hook veto, reported with the text that was refused.
+        if (proposed === REJECT) {
+          this.emit("editingChanged", { state: "rejected", cell, value: action.value, oldValue });
+          break;
+        }
         const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, "edit");
         if (!hooked) {
           // Vetoed: the editor still tears down (and the cell repaints with its old value), but
@@ -3601,7 +3607,9 @@ export class GridCore implements IGridCore {
           const proposed = edit.parsed
             ? edit.value
             : col.parseValue(String(edit.value ?? ""), row, oldValue);
-          // Vetoed cells drop out of the batch: not written, not recorded, no event.
+          // Text the column refused, and vetoed cells, drop out of the batch: not written, not
+          // recorded, no event. The rest of the block keeps its alignment.
+          if (proposed === REJECT) continue;
           const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
           if (!hooked) continue;
           // Storage space, before the write (see editCommit). Unchanged cells drop out of

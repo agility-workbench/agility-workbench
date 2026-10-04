@@ -1,4 +1,5 @@
 import { canonicalKey, matchesAnyChord } from "../../interaction/keyChord";
+import { isoFromLocal, toLocalDate } from "../../../column/parsers";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
 
 const INPUT_CLASS = "pte-cell-editor-input";
@@ -18,29 +19,6 @@ function toDateInputValue(value: any): string {
 // Read a parsed (stored-form) value as a local calendar date. ISO yyyy-mm-dd strings are built
 // from their parts — new Date("yyyy-mm-dd") means UTC midnight, which is yesterday in negative
 // offsets — everything else goes through the Date constructor.
-function toLocalDate(value: unknown): Date | null {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
-  }
-  if (typeof value === "number") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value === "string") {
-    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  return null;
-}
-
-function isoFromLocal(d: Date): string {
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
 /**
  * Date editor. Two modes, decided by whether the column has a valueParser:
  *  - Without one (default): the native <input type="date"> calendar. getValue() returns the ISO

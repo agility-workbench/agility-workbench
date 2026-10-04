@@ -1,6 +1,8 @@
 import { Column } from "../../column/column";
+import { parseTextByType } from "../../column/parsers";
 import { ColumnType } from "../../interfaces/column";
 import {
+  REJECT,
   resolveFillHandleOptions,
   type FillHandleMode,
   type ResolvedFillHandleOptions,
@@ -348,7 +350,8 @@ export class FillHandleController {
           const node = nodeAt(r);
           if (!node || !col.isCellEditable(node, core.resolveRowPresentation(node, r))) continue;
           const value = fillValueAt(values, r - source.rowStart, lineMode);
-          edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...writeForm(value, col, col, node) });
+          const edit = writeForm(value, col, col, node);
+          if (edit) edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...edit });
         }
       }
       return edits;
@@ -371,7 +374,8 @@ export class FillHandleController {
         const value = fillValueAt(values, index, lineMode);
         const n = sourceCols.length;
         const from = lineMode === "copy" ? sourceCols[((index % n) + n) % n] : sourceCols[0];
-        edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...writeForm(value, from, col, node) });
+        const edit = writeForm(value, from, col, node);
+        if (edit) edits.push({ cell: { rowId: node.id, colId: col.instanceID }, ...edit });
       });
     }
     return edits;
@@ -444,16 +448,21 @@ function columnsIn(leaves: Column[], colStart: number, colEnd: number): Column[]
 }
 
 /**
- * How a value reaches its target column. Between columns of one `type` — always the case filling
- * down or up — the stored value moves as it is, parser untouched. Into a differently typed column
- * the value's text goes through that column's parser, exactly as a paste would, except that a
- * computed number or date already in the target's own kind is stored directly.
+ * How a value reaches its target column, or null when it cannot. Between columns of one `type` —
+ * always the case filling down or up — the stored value moves as it is, parser untouched. Into a
+ * differently typed column the value's text goes through that column's parser, exactly as a paste
+ * would, except that a computed number or date already in the target's own kind is stored
+ * directly. Text the target's built-in parser would refuse ("abc" into a number column) is
+ * dropped here rather than in the commit, so the fill reports only cells it can write; a custom
+ * `valueParser` is left to the commit path, which skips its refusals the same way.
  */
-function writeForm(value: unknown, from: Column, to: Column, row: IRowNode): { value: unknown; parsed: boolean } {
+function writeForm(value: unknown, from: Column, to: Column, row: IRowNode): { value: unknown; parsed: boolean } | null {
   if (from.type === to.type) return { value, parsed: true };
   if (typeof value === "number" && to.isNumericType()) return { value, parsed: true };
   if (value instanceof Date && to.type === ColumnType.DATE) return { value, parsed: true };
-  return { value: from.formatValue(value, row), parsed: false };
+  const text = from.formatValue(value, row);
+  if (!to.valueParser && parseTextByType(to.type, text, to.getValue(row)) === REJECT) return null;
+  return { value: text, parsed: false };
 }
 
 function sameTarget(a: FillTarget | null, b: FillTarget | null): boolean {

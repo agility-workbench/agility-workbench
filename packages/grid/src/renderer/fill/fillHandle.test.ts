@@ -238,22 +238,44 @@ describe("dragging the handle", () => {
     expect(core.getActiveCell()).toMatchObject({ row: 4, colIdx: 0 });
   });
 
-  it("fills to the right and left across columns, re-parsing into a differently typed column", () => {
-    const { core, root, data } = mountGrid();
+  it("fills across columns through the target's parser, refusing text its type cannot hold", () => {
+    const { core, api, root, data } = mountGrid();
     select(core, 0, 1); // qty 10 (number)
     drag(root, 0, 3); // → when (date), note (string)
-    // The date column has no parser, so the text "10" is stored verbatim; the string column too.
-    expect(data("r0").when).toBe("10");
+    // "10" is not a date, so the date column keeps its value; the string column takes the text.
+    expect(data("r0").when).toEqual(new Date(2026, 0, 1));
     expect(data("r0").note).toBe("10");
     expect(range(core)).toEqual([0, 0, 1, 3]);
+    expect(api.getHistoryState().undoDepth).toBe(1);
 
     core.setRowData(rows());
     select(core, 1, 3); // note n1
     drag(root, 1, 0); // ← when, qty, name
     expect(data("r1").name).toBe("n1");
-    expect(data("r1").qty).toBe("n1");
+    expect(data("r1").qty).toBe(20);
+    expect(data("r1").when).toEqual(new Date(2026, 0, 2));
     expect(range(core)).toEqual([1, 1, 0, 3]);
     expect(core.getActiveCell()).toMatchObject({ row: 1, colIdx: 3 });
+
+    // A date reaches a string column as its displayed text, and a string that IS a date reaches a
+    // date column as a Date — the cell's stored shape. (Ctrl/Cmd: a lone date would otherwise step
+    // a day, sideways as much as downward.)
+    core.setRowData(rows().map(r => ({ ...r, note: "2026-05-06" })));
+    select(core, 2, 2); // when Jan 3
+    drag(root, 2, 3, { ctrlKey: true });
+    expect(data("r2").note).toBe("2026-01-03");
+    select(core, 3, 3); // note "2026-05-06"
+    drag(root, 3, 2);
+    expect(data("r3").when).toEqual(new Date(2026, 4, 6));
+  });
+
+  it("writes nothing, and records nothing, when every target refuses the text", () => {
+    const { core, api, root, column } = mountGrid();
+    select(core, 0, 0, 2, 0); // names A, B, C
+    drag(root, 2, 1); // → qty
+    expect(column("qty")).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(api.getHistoryState().undoDepth).toBe(0);
+    expect(range(core)).toEqual([0, 2, 0, 1]);
   });
 
   it("skips non-editable cells and locked rows while keeping the pattern aligned", () => {
@@ -360,10 +382,15 @@ describe("Ctrl/Cmd+D and Ctrl/Cmd+R", () => {
 
   it("fills right from the first column; a single cell takes the column to its left", () => {
     const { core, root, data } = mountGrid();
+    select(core, 0, 2, 0, 3); // when, note
+    expect(press(root, "r", { ctrlKey: true })).toBe(true);
+    expect(data("r0").note).toBe("2026-01-01");
+    expect(range(core)).toEqual([0, 0, 2, 3]);
+
+    // A name is not a number: the number column refuses it and keeps its value.
     select(core, 0, 0, 0, 1); // name, qty
     expect(press(root, "r", { ctrlKey: true })).toBe(true);
-    expect(data("r0").qty).toBe("A");
-    expect(range(core)).toEqual([0, 0, 0, 1]);
+    expect(data("r0").qty).toBe(10);
 
     select(core, 1, 3); // note
     press(root, "r", { ctrlKey: true });

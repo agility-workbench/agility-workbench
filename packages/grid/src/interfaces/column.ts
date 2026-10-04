@@ -163,8 +163,12 @@ export interface ColDef {
   valueFormatter?: (params: ValueFormatterParams) => string;
   // When true, cells in this column can be edited (e.g. via double-click). Defaults to false.
   editable?: boolean;
-  // Converts the raw string the user typed into the stored cell value. When omitted, the
-  // typed text is stored verbatim.
+  // Converts text headed for a cell — typed, pasted, filled, or a string given to setCellValue —
+  // into the stored value. Return the exported `REJECT` to refuse the text (the cell keeps its
+  // value). When omitted, the built-in parser for the column's `type` runs: numbers and currency
+  // through Number(), dates from ISO 8601 text in the cell's stored shape, booleans from
+  // true/false/yes/no/1/0, and strings verbatim; blank is null, and text the type cannot hold is
+  // refused.
   valueParser?: (params: ValueParserParams) => any;
   // The editor used when a cell in this column is edited. A built-in alias ("text" | "number" |
   // "date" | "boolean" | "select" | "textarea"), a custom editor class, or a factory function.

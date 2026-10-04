@@ -69,8 +69,8 @@ describe("GridCore undo/redo", () => {
     });
     expect(val(core, "1", "name")).toBe("x");
     expect(val(core, "2", "name")).toBe("y");
-    // No valueParser on qty → cellsCommit stores the raw text.
-    expect(val(core, "1", "qty")).toBe("99");
+    // No valueParser on qty → the built-in number parser stores a number, not the raw text.
+    expect(val(core, "1", "qty")).toBe(99);
 
     core.dispatch({ type: "undo" }); // one step reverts the whole batch
     expect(val(core, "1", "name")).toBe("alice");

@@ -194,10 +194,10 @@ describe("setCellValues", () => {
     const { core, api } = makeGrid();
     api.setCellValues([
       { cell: cell(core, "1", "qty"), value: 99 },    // typed → stored as a number
-      { cell: cell(core, "2", "qty"), value: "42" },  // string → parser's call (none here: raw text)
+      { cell: cell(core, "2", "qty"), value: "42" },  // string → parser's call (the built-in number parser here)
     ]);
     expect(val(core, "1", "qty")).toBe(99);
-    expect(val(core, "2", "qty")).toBe("42");
+    expect(val(core, "2", "qty")).toBe(42);
 
     // The undo entry holds the same typed forms, so a round-trip does not retype the cell.
     api.undo();
