@@ -49,6 +49,7 @@
   --pte-icon-submenu: url(icons/submenu.svg);
   --pte-icon-group-collapsed: url(icons/right-chevron.svg);
   --pte-icon-group-expanded: url(icons/down-chevron.svg);
+  --pte-icon-group-mixed: url(icons/minus.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
   --pte-icon-pivot: url(icons/pivot.svg);
@@ -4925,6 +4926,12 @@
 
 .icon-group-expanded {
   mask-image: var(--pte-icon-group-expanded);
+  background-color: var(--pte-icon-color);
+}
+
+/* The set filter tree's root when only some groups are open — the dash of an indeterminate checkbox. */
+.icon-group-mixed {
+  mask-image: var(--pte-icon-group-mixed);
   background-color: var(--pte-icon-color);
 }
 

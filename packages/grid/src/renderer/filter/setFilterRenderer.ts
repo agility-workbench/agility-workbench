@@ -1,6 +1,6 @@
 import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "../../filter/types";
-import { allGroupsExpanded, hasSetFilterGroups, visibleSetOptions } from "../../filter/setFilterTree";
+import { GroupExpansion, groupExpansion, hasSetFilterGroups, visibleSetOptions } from "../../filter/setFilterTree";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
 import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
@@ -173,21 +173,28 @@ export class SetFilterRenderer implements IFilterRenderer {
     rows[to].focus();
   }
 
-  /** Tree pattern: Right opens a closed group, or steps into an open one (its first child is the next row). */
+  /**
+   * Tree pattern: Right opens a closed group, or steps into an open one (its first child is the
+   * next row). On the root, "some" counts as closed: Right opens the rest.
+   */
   private treeArrowRight(rows: NodeListOf<HTMLLabelElement>, currentIndex: number): void {
     const row = rows[currentIndex];
-    const expanded = row.getAttribute("aria-expanded");
-    if (expanded === "false") {
+    const expansion = row.dataset.expansion as GroupExpansion | undefined;
+    if (expansion === "none" || expansion === "some") {
       this.controller.setSetGroupExpanded(0, Number(row.dataset.idx), true);
-    } else if (expanded === "true" && currentIndex + 1 < rows.length) {
+    } else if (expansion === "all" && currentIndex + 1 < rows.length) {
       this.focusOption(rows, currentIndex, currentIndex + 1);
     }
   }
 
-  /** Tree pattern: Left closes an open group, or moves from any other row to its parent. */
+  /**
+   * Tree pattern: Left closes an open group, or moves from any other row to its parent. On the
+   * root, "some" counts as open: Left closes the rest.
+   */
   private treeArrowLeft(rows: NodeListOf<HTMLLabelElement>, currentIndex: number): void {
     const row = rows[currentIndex];
-    if (row.getAttribute("aria-expanded") === "true") {
+    const expansion = row.dataset.expansion as GroupExpansion | undefined;
+    if (expansion === "all" || expansion === "some") {
       this.controller.setSetGroupExpanded(0, Number(row.dataset.idx), false);
       return;
     }
@@ -218,7 +225,8 @@ export class SetFilterRenderer implements IFilterRenderer {
 
     const rows = document.createDocumentFragment();
     let rowToFocus: HTMLLabelElement | null = null;
-    const allExpanded = this.treeRows && allGroupsExpanded(options);
+    // While a mini filter is typed every surviving group is held open, so paint that state.
+    const rootExpansion: GroupExpansion = !this.treeRows ? "all" : miniFilterActive ? "all" : groupExpansion(options);
     for (const i of visibleSetOptions(options, miniFilterActive)) {
       const option = options[i];
       const component = this.getOptionComponent(option);
@@ -226,7 +234,7 @@ export class SetFilterRenderer implements IFilterRenderer {
       row.tabIndex = -1; // make label focusable for keyboard navigation
       row.dataset.idx = String(i);
       const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
-      if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, allExpanded, selected, indeterminate);
+      if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, rootExpansion, selected, indeterminate);
 
       const checkbox = createElement("input");
       checkbox.tabIndex = -1; // exclude checkbox from tab order, we will handle focus on the label
@@ -276,15 +284,16 @@ export class SetFilterRenderer implements IFilterRenderer {
 
   /**
    * Tree rows: indent by level, carry the tree ARIA (level, expanded, checked — mirroring what is
-   * painted), and lead with a chevron on groups and on select_all (the root, whose chevron opens or
-   * closes every group) or a spacer on everything else so labels align.
+   * painted), and lead with a chevron on groups and on select_all (the root, whose chevron reports
+   * how much of the tree is open and opens or closes every group) or a spacer on everything else so
+   * labels align.
    */
   private decorateTreeRow(
     row: HTMLLabelElement,
     option: SetFilterOption,
     idx: number,
     miniFilterActive: boolean,
-    allExpanded: boolean,
+    rootExpansion: GroupExpansion,
     selected: boolean,
     indeterminate: boolean,
   ): void {
@@ -299,10 +308,10 @@ export class SetFilterRenderer implements IFilterRenderer {
     if (option.type === "group") {
       row.classList.add("pte-set-filter-option-group");
       // While a mini filter is typed every surviving group is held open, so paint that state.
-      this.appendExpander(row, idx, miniFilterActive || !!option.expanded);
+      this.appendExpander(row, idx, miniFilterActive || !!option.expanded ? "all" : "none");
     } else if (option.type === "select_all") {
       row.classList.add("pte-set-filter-option-root");
-      this.appendExpander(row, idx, miniFilterActive || allExpanded);
+      this.appendExpander(row, idx, rootExpansion);
     } else {
       const spacer = createElement("span", "pte-set-filter-expander-spacer");
       spacer.setAttribute("aria-hidden", "true");
@@ -310,20 +319,28 @@ export class SetFilterRenderer implements IFilterRenderer {
     }
   }
 
-  private appendExpander(row: HTMLLabelElement, idx: number, expanded: boolean): void {
-    row.setAttribute("aria-expanded", String(expanded));
+  /**
+   * A group's chevron is open or closed; the root's can also be "some" — painted as a dash, like the
+   * indeterminate checkbox beside it, read by AT as expanded (the groups it directly holds are all
+   * in view), and treated by a click and by Right as closed (they open the rest) and by Left as
+   * open (it closes the rest).
+   */
+  private appendExpander(row: HTMLLabelElement, idx: number, expansion: GroupExpansion): void {
+    row.dataset.expansion = expansion;
+    row.setAttribute("aria-expanded", String(expansion !== "none"));
     const expander = createElement("span", "pte-set-filter-expander");
     // Mouse-only and unnamed, like the grid's group chevron: the row itself carries aria-expanded,
     // and the keyboard opens and closes it with Left/Right.
     expander.setAttribute("aria-hidden", "true");
-    const icon = createElement("span", "pte-set-filter-expander-icon " + (expanded ? "icon-group-expanded" : "icon-group-collapsed"));
+    const iconClass = expansion === "all" ? "icon-group-expanded" : expansion === "some" ? "icon-group-mixed" : "icon-group-collapsed";
+    const icon = createElement("span", "pte-set-filter-expander-icon " + iconClass);
     expander.appendChild(icon);
     expander.addEventListener("click", (e) => {
       // The chevron sits inside the row's <label>: cancelling the click keeps the label from
       // toggling the checkbox, so opening a group never changes what is checked.
       e.preventDefault();
       e.stopPropagation();
-      this.controller.setSetGroupExpanded(0, idx, !expanded);
+      this.controller.setSetGroupExpanded(0, idx, expansion !== "all");
     });
     row.appendChild(expander);
   }

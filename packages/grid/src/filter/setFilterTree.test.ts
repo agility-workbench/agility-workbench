@@ -8,9 +8,9 @@ import { describe, expect, it } from "vitest";
 import { FilterType } from "../interfaces/filter";
 import { addSetOptionCounts, buildSetOptions, isValueChecked, valueOptions } from "./setFilterCore";
 import {
-  allGroupsExpanded,
   applySetMiniFilter,
   buildSetFilterTree,
+  groupExpansion,
   setAllGroupsExpanded,
   dateSegmentFormatter,
   dateTreePath,
@@ -131,17 +131,19 @@ describe("buildSetFilterTree", () => {
     expect(expandedLabels(-1)).toEqual(["Fruit", "Berry", "Citrus", "Veg", "Root"]);
   });
 
-  it("reports and sets expansion across every group, for the root's chevron", () => {
+  it("reports expansion as all, none, or some, and sets it across every group, for the root's chevron", () => {
     const options = tree(FRUIT, { defaultExpanded: 1 });
-    expect(allGroupsExpanded(options)).toBe(false);
+    expect(groupExpansion(options)).toBe("some");
     setAllGroupsExpanded(options, true);
-    expect(allGroupsExpanded(options)).toBe(true);
+    expect(groupExpansion(options)).toBe("all");
     expect(labelsAt(options, visibleSetOptions(options))).toHaveLength(options.length);
     setAllGroupsExpanded(options, false);
-    expect(allGroupsExpanded(options)).toBe(false);
+    expect(groupExpansion(options)).toBe("none");
     expect(labelsAt(options, visibleSetOptions(options))).toEqual(["(Select All)", "Fruit", "Veg"]);
-    // A universe without groups is trivially all-expanded.
-    expect(allGroupsExpanded(buildSetOptions(["a"]))).toBe(true);
+    options.find(o => o.label === "Root")!.expanded = true;
+    expect(groupExpansion(options)).toBe("some");
+    // A universe without groups is trivially all open.
+    expect(groupExpansion(buildSetOptions(["a"]))).toBe("all");
   });
 
   it("reports whether the layout produced any groups", () => {

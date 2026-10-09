@@ -212,8 +212,10 @@ Filter API below, and a server-side data source are unchanged. Use `keyCreator`
 to merge values that should be one leaf — a date column holding times, keyed by
 its calendar day.
 
-The Select All row is the tree's root: its chevron opens every group when any
-is closed and closes them all otherwise.
+The Select All row is the tree's root: its chevron shows whether every group
+is open, none is, or only some are (a dash, like the indeterminate checkbox
+beside it), and opens every
+group when any is closed or closes them all once all are open.
 
 Keyboard: Up/Down walk the visible rows, Right opens a group or steps into it,
 Left closes it or moves to its parent, Home/End jump to the first and last row,

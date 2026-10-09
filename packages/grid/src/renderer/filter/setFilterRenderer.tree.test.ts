@@ -184,17 +184,37 @@ describe("SetFilterRenderer tree layout", () => {
     keydown(renderer, "ArrowRight");
     expect(setSetGroupExpanded).toHaveBeenLastCalledWith(0, 0, true);
 
-    // Leaves have no spacer-only rows at the root besides Select All; once every group is open the
-    // root reads expanded, Right steps into the tree, and Left closes everything.
+    // With only some groups open the root paints the mixed glyph, reads expanded to AT, and both a
+    // click and Right open the rest while Left closes everything.
+    options.find(o => o.label === "Veg")!.expanded = true;
+    renderer.renderState(runtimeState(options));
+    let root = rowsOf(renderer)[0];
+    expect(root.dataset.expansion).toBe("some");
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+    const mixedIcon = root.querySelector(".pte-set-filter-expander-icon")!;
+    expect(mixedIcon.classList.contains("icon-group-mixed")).toBe(true);
+    expect(mixedIcon.classList.contains("icon-group-collapsed")).toBe(false);
+    root.querySelector<HTMLElement>(".pte-set-filter-expander")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(setSetGroupExpanded).toHaveBeenLastCalledWith(0, 0, true);
+    root.focus();
+    keydown(renderer, "ArrowRight");
+    expect(setSetGroupExpanded).toHaveBeenLastCalledWith(0, 0, true);
+    keydown(renderer, "ArrowLeft");
+    expect(setSetGroupExpanded).toHaveBeenLastCalledWith(0, 0, false);
+
+    // Once every group is open the root reads all, Right steps into the tree, and Left closes everything.
     for (const o of options) if (o.type === "group") o.expanded = true;
     renderer.renderState(runtimeState(options));
     const rows = rowsOf(renderer);
-    expect(rows[0].getAttribute("aria-expanded")).toBe("true");
-    expect(rows[0].querySelector(".pte-set-filter-expander-icon")!.classList.contains("icon-group-expanded")).toBe(true);
-    rows[0].focus();
+    root = rows[0];
+    expect(root.dataset.expansion).toBe("all");
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+    expect(root.querySelector(".pte-set-filter-expander-icon")!.classList.contains("icon-group-expanded")).toBe(true);
+    expect(root.querySelector(".icon-group-mixed")).toBeNull();
+    root.focus();
     keydown(renderer, "ArrowRight");
     expect(document.activeElement).toBe(rows[1]);
-    rows[0].focus();
+    root.focus();
     keydown(renderer, "ArrowLeft");
     expect(setSetGroupExpanded).toHaveBeenLastCalledWith(0, 0, false);
     renderer.destroy();

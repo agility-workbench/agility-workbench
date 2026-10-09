@@ -17,7 +17,9 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   typed. `treeDefaultExpanded` sets how many levels start open (0, the default, none; -1 all).
   Groups are never stored: the filter model holds leaf values exactly as before, so saved filter
   state, the Set Filter API, and a server-side data source see no change. The Select All row is
-  the root: its chevron opens every group, or closes them all once they are open. Keyboard: Right
+  the root: its chevron shows whether every group is open, none is, or only some are (a dash, like
+  the indeterminate checkbox beside it), and opens every group when any is closed or closes them
+  all once all are open. The dash is the new `group-mixed` icon, overridable like the others. Keyboard: Right
   opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and

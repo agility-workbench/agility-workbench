@@ -155,12 +155,24 @@ export function hasSetFilterGroups(options: SetFilterOptions[]): boolean {
   return options.some(o => o.type === "group");
 }
 
+/** How much of the tree is open: the state the root's chevron paints. */
+export type GroupExpansion = "all" | "none" | "some";
+
 /**
  * The select_all row doubles as the tree's root: its chevron reports whether every group is open,
- * and toggling it opens or closes them all.
+ * none is, or only some are, and toggling it opens or closes them all. A universe without groups
+ * is trivially all open.
  */
-export function allGroupsExpanded(options: SetFilterOptions[]): boolean {
-  return options.every(o => o.type !== "group" || !!o.expanded);
+export function groupExpansion(options: SetFilterOptions[]): GroupExpansion {
+  let open = 0;
+  let closed = 0;
+  for (const o of options) {
+    if (o.type !== "group") continue;
+    if (o.expanded) open++;
+    else closed++;
+  }
+  if (closed === 0) return "all";
+  return open === 0 ? "none" : "some";
 }
 
 export function setAllGroupsExpanded(options: SetFilterOptions[], expanded: boolean): void {
