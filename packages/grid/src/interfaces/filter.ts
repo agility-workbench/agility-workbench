@@ -166,9 +166,10 @@ export interface FilterParams {
   valueFormatter?: (params: ValueFormatterParams) => string;
   /**
    * Orders the set filter's values in place of the built-in order (labels, or in the tree layout
-   * segments when they are numbers or dates). Applies to the universe read from the rows and to the
-   * siblings at every level of the tree layout; a static or async `filterValues` list keeps the
-   * order it was given. Each side carries the raw `value` (absent on a tree group) and the `label`
+   * segments when they are numbers or dates). Applies to the universe read from the rows and, in
+   * the tree layout, to the siblings at every level of it; a static or async `filterValues` list
+   * keeps the order it was given in either layout (tree siblings in the order their values are
+   * listed) and is not passed through it. Each side carries the raw `value` (absent on a tree group) and the `label`
    * the menu shows, plus `segment`, `level`, and `path` in the tree layout. Never called with a
    * blank: `(Blanks)` stays pinned above the values, and Select All above that.
    */

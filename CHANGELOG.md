@@ -14,7 +14,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   Checking a group checks every leaf beneath it and a partly checked group shows as mixed, with
   value counts summed per group. The mini filter matches a row by its own label or an ancestor's,
   so typing a year keeps the whole year, and holds every matching group open for as long as it is
-  typed. `treeDefaultExpanded` sets how many levels start open (0, the default, none; -1 all).
+  typed. Siblings sort by segment or label when the values come from the rows; a static or async
+  `filterValues` list keeps the order it was given, siblings in the order their values are listed,
+  as in the flat layout. `treeDefaultExpanded` sets how many levels start open (0, the default,
+  none; -1 all).
   Groups are never stored: the filter model holds leaf values exactly as before, so saved filter
   state, the Set Filter API, and a server-side data source see no change. The Select All row is
   the root: its chevron shows whether every group is open, none is, or only some are (a dash, like

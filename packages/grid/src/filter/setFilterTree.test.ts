@@ -4,7 +4,7 @@
  * ordering, count roll-up, expansion defaults, the mini filter's ancestor/descendant rule, and the
  * group toggle's effect on the def — all against `setFilterCore`'s own universe builder.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FilterDef, FilterType } from "../interfaces/filter";
 import { addSetOptionCounts, buildSetOptions, isValueChecked, valueOptions } from "./setFilterCore";
 import {
@@ -127,6 +127,15 @@ describe("buildSetFilterTree", () => {
     expect(group).toEqual({ label: "Veg", value: undefined, level: 0, path: ["Veg"], segment: "Veg" });
     const leaf = seen.find(s => s.label === "Cold")!;
     expect(leaf).toEqual({ label: "Cold", value: "Fruit/Cold", level: 1, path: ["Fruit", "Cold"], segment: "Cold" });
+  });
+
+  it("keeps siblings in first-appearance order per level, comparator unconsulted, when asked to keep the order", () => {
+    const compare = vi.fn(() => 0);
+    const options = tree(["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Pome/Apple", "Fruit/Citrus/Lemon", "Loose"], { keepOrder: true, compare });
+    expect(shape(options)).toEqual([
+      "(Select All)", "+Veg", "  +Root", "    Carrot", "+Fruit", "  +Citrus", "    Orange", "    Lemon", "  +Pome", "    Apple", "Loose",
+    ]);
+    expect(compare).not.toHaveBeenCalled();
   });
 
   it("hands the formatter the level and the path above", () => {

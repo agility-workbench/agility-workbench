@@ -89,11 +89,19 @@ describe("ColumnFilterMenuService tree layout", () => {
     expect(spec.tree!.formatSegment(3, 1, [2024])).toBe("mars");
   });
 
-  it("wires the comparator to the spec and to the tree spec", () => {
+  it("wires the comparator to the spec and to the tree spec for values read from the rows; a static or async list keeps its order in the tree too", () => {
     const comparator = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label);
     const { spec } = buildSpec({ colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { comparator } });
     expect(spec.compare).toBe(comparator);
     expect(spec.tree!.compare).toBe(comparator);
+    expect(spec.tree!.keepOrder).toBe(false);
+
+    const listed = buildSpec({ colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { comparator, filterValues: [{ value: "b" }, { value: "a" }] } });
+    expect(listed.spec.tree!.keepOrder).toBe(true);
+    expect(listed.spec.tree!.compare).toBeUndefined();
+    const loaded = buildSpec({ colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { comparator, filterValues: ({ success }) => success(["b", "a"]) } });
+    expect(loaded.spec.tree!.keepOrder).toBe(true);
+    expect(loaded.spec.tree!.compare).toBeUndefined();
 
     const flat = buildSpec({ colId: "item", key: "item", label: "Item", filter: "set", filterParams: { comparator } });
     expect(flat.spec.compare).toBe(comparator);

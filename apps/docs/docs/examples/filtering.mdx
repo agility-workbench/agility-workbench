@@ -135,9 +135,10 @@ const prioritySet = {
 
 It sees each side's raw `value` and the `label` the menu shows, applies to the
 universe read from the rows (a static or async `filterValues` list keeps the
-order it was given), and is never handed a blank: `(Blanks)` stays pinned above
-the values. In the tree layout it orders the siblings at every level and also
-receives `segment`, `level`, and `path`; a group has no `value`. Filter models and Set Filter API methods
+order it was given, in either layout), and is never handed a blank: `(Blanks)`
+stays pinned above the values. In the tree layout it orders the siblings at
+every level and also receives `segment`, `level`, and `path`; a group has no
+`value`. Filter models and Set Filter API methods
 continue to use the raw values. Set `filterParams.showValueCounts: true` to show the number of loaded
 leaf rows for each value. Counts cover the complete client-side row model; with
 the server-side row model they are necessarily limited to rows currently loaded
@@ -216,7 +217,9 @@ its ordinary label. `treePathFormatter(segment, level, parentPath)` names each
 segment — the built-in date path names its months in the column's formatter
 locale, and an application path shows `String(segment)` unless it formats.
 Siblings sort by their segment when both are numbers or dates, and by label
-otherwise.
+otherwise, when the values come from the rows; a static or async `filterValues`
+list keeps the order it was given, as in the flat layout, so siblings appear in
+the order their values are listed.
 
 Quarters and weeks are a path getter away. The getter receives the raw cell
 value — a `Date` on a column holding dates; parse ISO text first on a text

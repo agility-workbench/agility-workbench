@@ -52,7 +52,7 @@ export class ColumnFilterMenuService {
         ? value => valueFormatter({ value, col: ctx.targetCol })
         : undefined,
       compare: isSetFilter ? filterParams.comparator : undefined,
-      tree: filterType === "tree" ? this.buildTreeSpec(ctx.targetCol, filterParams) : undefined,
+      tree: filterType === "tree" ? this.buildTreeSpec(ctx.targetCol, filterParams, filterValueSource?.kind === "fromRows") : undefined,
     };
   }
 
@@ -61,7 +61,12 @@ export class ColumnFilterMenuService {
    * plain `String(segment)` labels unless it also formats; the built-in date path (Date values, or
    * a date column's text) names its months in the column's formatter locale.
    */
-  private buildTreeSpec(column: Column, params: FilterParams): SetFilterTreeSpec {
+  /**
+   * The tree layout's spec. Sibling order follows the value source the way the flat layout's does:
+   * values read from the rows are sorted (built-in rule or the application's comparator); a static
+   * or async list keeps the order it was given, and the comparator is not consulted for it.
+   */
+  private buildTreeSpec(column: Column, params: FilterParams, fromRows: boolean): SetFilterTreeSpec {
     const isDateColumn = column.type === ColumnType.DATE;
     const pathOf = params.treePathGetter
       ?? dateTreePath(value => (isDateColumn ? parseDateInput(value) : null));
@@ -71,7 +76,8 @@ export class ColumnFilterMenuService {
       pathOf,
       formatSegment,
       defaultExpanded: params.treeDefaultExpanded ?? 0,
-      compare: params.comparator,
+      compare: fromRows ? params.comparator : undefined,
+      keepOrder: !fromRows,
       rememberExpansion: params.treeRememberExpansion !== false,
     };
   }

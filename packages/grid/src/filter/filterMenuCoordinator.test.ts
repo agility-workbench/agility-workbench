@@ -18,6 +18,16 @@ function makeGrid() {
   core.setColumnDefsFromProps([
     { colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { treePathGetter: (v: string) => v.split("/") } },
     { colId: "fixed", key: "fixed", label: "Fixed", filter: "tree", filterParams: { treePathGetter: (v: string) => v.split("/"), treeRememberExpansion: false } },
+    // A static list: the menu lists siblings in the order given, not sorted, and ignores the comparator.
+    {
+      colId: "listed", key: "item", label: "Listed", filter: "tree",
+      filterParams: {
+        treePathGetter: (v: string) => v.split("/"),
+        treeDefaultExpanded: -1,
+        filterValues: ["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Citrus/Lemon"].map(value => ({ value })),
+        comparator: (a: any, b: any) => a.label.localeCompare(b.label),
+      },
+    },
   ]);
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test" });
   core.setRowData([
@@ -90,6 +100,13 @@ describe("FilterMenuCoordinator remembers tree expansion per column", () => {
 
     menu = open("item");
     expect(menu.labels()).toEqual(["(Select All)", "Fruit", "Veg"]);
+    menu.close();
+  });
+
+  it("lists a static list's siblings in the order given", () => {
+    const { open } = makeGrid();
+    const menu = open("listed");
+    expect(menu.labels()).toEqual(["(Select All)", "Veg", "Root", "Carrot", "Fruit", "Citrus", "Orange", "Lemon"]);
     menu.close();
   });
 });

@@ -44,6 +44,13 @@ export interface SetFilterTreeSpec {
   defaultExpanded: number;
   /** Orders siblings at every level in place of the built-in rule; sees segment, level, path, and a leaf's value. */
   compare?: SetFilterComparator;
+  /**
+   * Keep siblings in the order their values arrived — first appearance, per level — instead of
+   * sorting them, and leave `compare` unconsulted. Set for a static or async `filterValues` list,
+   * which keeps the order it was given, as in the flat layout; the universe read from the rows is
+   * sorted.
+   */
+  keepOrder?: boolean;
   /** Whether the controller reads and writes the column's remembered expansion (`FilterControllerHooks.treeExpansion`). Default true. */
   rememberExpansion?: boolean;
 }
@@ -147,9 +154,11 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
   const out: SetFilterOptions[] = options.filter(o => o.type === "select_all" || o.type === "blanks");
   const flatten = (node: GroupNode, parentKey: string | undefined): number => {
     const compare = spec.compare;
-    node.items.sort(compare
-      ? (a, b) => compare(comparable(a, node.level), comparable(b, node.level))
-      : compareSiblings);
+    if (!spec.keepOrder) {
+      node.items.sort(compare
+        ? (a, b) => compare(comparable(a, node.level), comparable(b, node.level))
+        : compareSiblings);
+    }
     let count = 0;
     for (const item of node.items) {
       if (item.kind === "leaf") {

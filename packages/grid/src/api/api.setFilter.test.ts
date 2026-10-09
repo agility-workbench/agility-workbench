@@ -40,6 +40,24 @@ function makeGrid(rows: Record<string, unknown>[]) {
       filter: "tree",
       filterParams: { treePathGetter: (value: any) => String(value).split("/"), showValueCounts: true },
     },
+    // The same tree over a static list and over an async source: both keep the order given.
+    {
+      colId: "itemList", key: "item", label: "Item",
+      filter: "tree",
+      filterParams: {
+        treePathGetter: (value: any) => String(value).split("/"),
+        filterValues: ["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Citrus/Lemon"].map(value => ({ value })),
+        comparator: (a: any, b: any) => a.label.localeCompare(b.label),
+      },
+    },
+    {
+      colId: "itemAsync", key: "item", label: "Item",
+      filter: "tree",
+      filterParams: {
+        treePathGetter: (value: any) => String(value).split("/"),
+        filterValues: ({ success }) => success(["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Citrus/Lemon"]),
+      },
+    },
   ]);
   core.dispatch({
     type: "themeFontSet",
@@ -236,6 +254,17 @@ describe("IGridAPI set-filter tree helpers (groups by path)", () => {
         ],
       },
     ]);
+  });
+
+  it("a static or async list keeps the order it was given in the tree, siblings included, with the comparator unconsulted", async () => {
+    const { api } = makeGrid(ROWS);
+    const labels = (nodes: Array<{ label: string; children?: any[] }>, depth = 0): string[] =>
+      nodes.flatMap(n => [`${"  ".repeat(depth)}${n.label}`, ...labels(n.children ?? [], depth + 1)]);
+    const given = ["Veg", "  Root", "    Carrot", "Fruit", "  Citrus", "    Orange", "    Lemon"];
+    expect(labels((await api.getSetFilterTree("itemList"))!)).toEqual(given);
+    expect(labels((await api.getSetFilterTree("itemAsync"))!)).toEqual(given);
+    // Read from the rows, the same values sort: Fruit before Veg, Lemon before Orange (and the blank row pins first).
+    expect(labels((await api.getSetFilterTree("item"))!)).toEqual(["(Blanks)", "Fruit", "  Citrus", "    Lemon", "    Orange", "Veg", "  Root", "    Carrot"]);
   });
 
   it("returns null, with a warning, for a column without the tree layout", async () => {
