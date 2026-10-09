@@ -689,6 +689,7 @@ export class GridAPI implements IGridAPI {
         (row) => spec.column.getValue(row),
         spec.valueKey ?? defaultValueKey,
         spec.valueLabel ?? ((x: any) => String(x)),
+        spec.compare,
       ));
     }
     return new Promise((resolve, reject) => {

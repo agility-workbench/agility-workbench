@@ -21,7 +21,16 @@
  */
 import { FilterDef, FilterType } from "../interfaces/filter";
 import { SetFilterOptions } from "./types";
-import { checkedKeySet, defaultValueKey, defFromCheckedKeys, isValueChecked, isValueOption, ValueKeyFn } from "./setFilterCore";
+import {
+  checkedKeySet,
+  defaultValueKey,
+  defFromCheckedKeys,
+  isValueChecked,
+  isValueOption,
+  SetFilterComparable,
+  SetFilterComparator,
+  ValueKeyFn,
+} from "./setFilterCore";
 
 export interface SetFilterTreeSpec {
   /**
@@ -33,6 +42,8 @@ export interface SetFilterTreeSpec {
   formatSegment: (segment: any, level: number, parentPath: any[]) => string;
   /** Mirrors `groupDefaultExpanded`: 0 = all collapsed, N = first N levels open, -1 = all open. */
   defaultExpanded: number;
+  /** Orders siblings at every level in place of the built-in rule; sees segment, level, path, and a leaf's value. */
+  compare?: SetFilterComparator;
 }
 
 /** Group keys live in their own namespace, beside the "v:" value keys and the synthetic rows. */
@@ -127,9 +138,16 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
     });
   }
 
+  const comparable = (item: TreeItem, parentLevel: number): SetFilterComparable => item.kind === "group"
+    ? { label: item.label, segment: item.segment, level: item.level, path: item.path }
+    : { value: item.option.raw, label: item.label, segment: item.segment, level: parentLevel + 1, path: item.path };
+
   const out: SetFilterOptions[] = options.filter(o => o.type === "select_all" || o.type === "blanks");
   const flatten = (node: GroupNode, parentKey: string | undefined): number => {
-    node.items.sort(compareSiblings);
+    const compare = spec.compare;
+    node.items.sort(compare
+      ? (a, b) => compare(comparable(a, node.level), comparable(b, node.level))
+      : compareSiblings);
     let count = 0;
     for (const item of node.items) {
       if (item.kind === "leaf") {

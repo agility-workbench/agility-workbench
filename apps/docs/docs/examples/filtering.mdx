@@ -121,7 +121,23 @@ const regionSet = {
 client-side comparison; without one, values are identified the same way on
 both sides — text folded unless `caseSensitive`, a `Date` by its instant, an
 object by its content. `valueFormatter` controls labels, mini-filter matching,
-accessible names, and value ordering. Filter models and Set Filter API methods
+accessible names, and value ordering. `comparator` replaces that ordering:
+
+```ts
+const rank = { Low: 0, Medium: 1, High: 2 };
+const prioritySet = {
+  key: "priority",
+  label: "Priority",
+  filter: "set",
+  filterParams: { comparator: (a, b) => rank[a.label] - rank[b.label] },
+} satisfies ColDef;
+```
+
+It sees each side's raw `value` and the `label` the menu shows, applies to the
+universe read from the rows (a static or async `filterValues` list keeps the
+order it was given), and is never handed a blank: `(Blanks)` stays pinned above
+the values. In the tree layout it orders the siblings at every level and also
+receives `segment`, `level`, and `path`; a group has no `value`. Filter models and Set Filter API methods
 continue to use the raw values. Set `filterParams.showValueCounts: true` to show the number of loaded
 leaf rows for each value. Counts cover the complete client-side row model; with
 the server-side row model they are necessarily limited to rows currently loaded

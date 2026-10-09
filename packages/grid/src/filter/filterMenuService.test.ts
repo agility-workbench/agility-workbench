@@ -89,6 +89,17 @@ describe("ColumnFilterMenuService tree layout", () => {
     expect(spec.tree!.formatSegment(3, 1, [2024])).toBe("mars");
   });
 
+  it("wires the comparator to the spec and to the tree spec", () => {
+    const comparator = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label);
+    const { spec } = buildSpec({ colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { comparator } });
+    expect(spec.compare).toBe(comparator);
+    expect(spec.tree!.compare).toBe(comparator);
+
+    const flat = buildSpec({ colId: "item", key: "item", label: "Item", filter: "set", filterParams: { comparator } });
+    expect(flat.spec.compare).toBe(comparator);
+    expect(buildSpec({ colId: "item", key: "item", label: "Item", filter: "text", filterParams: { comparator } }).spec.compare).toBeUndefined();
+  });
+
   it("wires the application's path getter, formatter, and default depth", () => {
     const treePathGetter = (value: any) => String(value).split("/");
     const treePathFormatter = (segment: any, level: number) => `${level}:${segment}`;

@@ -30,7 +30,12 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   state (`"mixed"` for a partly checked group) — and `api.checkSetFilterPath` /
   `api.uncheckSetFilterPath` show or hide every leaf under a group (or one leaf by its full path):
   `uncheckSetFilterPath("opened", [2024, 1])` hides January 2024. The filter model stays leaf-only,
-  so saved state and the server-side contract are unchanged; off a tree column they warn and no-op. Keyboard: Right
+  so saved state and the server-side contract are unchanged; off a tree column they warn and no-op.
+- **`filterParams.comparator` orders a set filter's values.** It sees each side's raw value and
+  label (and in the tree layout the segment, level, and path, ordering the siblings at every
+  level), replaces the built-in label order for the universe read from the rows, never receives a
+  blank, and is honoured by `getSetFilterValues`. Static and async value lists keep the order they
+  were given. Keyboard: Right
   opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and

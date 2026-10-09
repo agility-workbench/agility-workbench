@@ -112,6 +112,22 @@ describe("buildSetFilterTree", () => {
     expect(shape(options)).toEqual(["(Select All)", "+2023", "  M12", "+2024", "  M9", "  M10"]);
   });
 
+  it("orders siblings at every level with the application's comparator, groups without a value", () => {
+    const rank: Record<string, number> = { Hot: 0, Warm: 1, Cold: 2, Veg: 0, Fruit: 1 };
+    const seen: { label: string; value: unknown; level: number | undefined; path: unknown[] | undefined; segment: unknown }[] = [];
+    const options = tree(["Fruit/Cold", "Veg/Warm", "Fruit/Hot", "Veg/Hot", "Fruit/Warm"], {
+      compare: (a, b) => {
+        for (const side of [a, b]) seen.push({ label: side.label, value: side.value, level: side.level, path: side.path, segment: side.segment });
+        return (rank[a.label] ?? 9) - (rank[b.label] ?? 9);
+      },
+    });
+    expect(shape(options)).toEqual(["(Select All)", "+Veg", "  Hot", "  Warm", "+Fruit", "  Hot", "  Warm", "  Cold"]);
+    const group = seen.find(s => s.label === "Veg")!;
+    expect(group).toEqual({ label: "Veg", value: undefined, level: 0, path: ["Veg"], segment: "Veg" });
+    const leaf = seen.find(s => s.label === "Cold")!;
+    expect(leaf).toEqual({ label: "Cold", value: "Fruit/Cold", level: 1, path: ["Fruit", "Cold"], segment: "Cold" });
+  });
+
   it("hands the formatter the level and the path above", () => {
     const calls: [any, number, any[]][] = [];
     tree(["a/b/c"], { formatSegment: (segment, level, parents) => { calls.push([segment, level, parents]); return String(segment); } });

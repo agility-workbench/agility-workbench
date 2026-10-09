@@ -207,7 +207,7 @@ export type {
 import type { FilterModel as FilterModelClass } from "./interfaces/filter";
 export type FilterModel = FilterModelClass;
 export type { FilterValueAsyncSource, FilterValueAsyncSourceParams } from "./filter/types";
-export type { SetFilterSelection } from "./filter/setFilterCore";
+export type { SetFilterComparable, SetFilterComparator, SetFilterSelection } from "./filter/setFilterCore";
 export type { SetFilterTreeNode } from "./filter/setFilterTree";
 export type {
   ISetFilterComponent,

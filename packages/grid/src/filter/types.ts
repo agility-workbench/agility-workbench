@@ -10,6 +10,7 @@ import {
 import { Column } from "../column/column";
 import { ColDef } from "../interfaces";
 import type { SetFilterTreeSpec, SetOptionState } from "./setFilterTree";
+import type { SetFilterComparator } from "./setFilterCore";
 
 export type FilterKind = "text" | "number" | "date" | "set" | "boolean";
 
@@ -74,6 +75,8 @@ export interface FilterPanelSpec {
   // set-filter helpers
   valueKey?: (value: any) => string;
   valueLabel?: (value: any) => string;
+  /** The application's ordering of values (and tree siblings); the built-in order when absent. */
+  compare?: SetFilterComparator;
   /** Present for `filter: "tree"`: how values are placed and labelled in the tree layout. */
   tree?: SetFilterTreeSpec;
 }

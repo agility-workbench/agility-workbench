@@ -51,6 +51,7 @@ export class ColumnFilterMenuService {
       valueLabel: isSetFilter && valueFormatter
         ? value => valueFormatter({ value, col: ctx.targetCol })
         : undefined,
+      compare: isSetFilter ? filterParams.comparator : undefined,
       tree: filterType === "tree" ? this.buildTreeSpec(ctx.targetCol, filterParams) : undefined,
     };
   }
@@ -66,7 +67,7 @@ export class ColumnFilterMenuService {
       ?? dateTreePath(value => (isDateColumn ? parseDateInput(value) : null));
     const formatSegment = params.treePathFormatter
       ?? (params.treePathGetter ? defaultSegmentFormatter : dateSegmentFormatter(this.formatterLocale(column)));
-    return { pathOf, formatSegment, defaultExpanded: params.treeDefaultExpanded ?? 0 };
+    return { pathOf, formatSegment, defaultExpanded: params.treeDefaultExpanded ?? 0, compare: params.comparator };
   }
 
   private formatterLocale(column: Column): string | undefined {

@@ -460,6 +460,7 @@ export class FilterController implements IFilterController {
       (row: IRowNode) => this.spec.column.getValue(row),
       this.spec.valueKey ?? defaultValueKey,
       this.spec.valueLabel ?? ((x: any) => String(x)),
+      this.spec.compare,
     );
   }
 

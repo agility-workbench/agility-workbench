@@ -306,3 +306,18 @@ describe("IGridAPI set-filter tree helpers (groups by path)", () => {
     expect((await api.getSetFilterState("when"))!.unchecked).toEqual(["2024-01-15", "2024-01-28"]);
   });
 });
+
+describe("IGridAPI set-filter helpers honour the column comparator", () => {
+  it("getSetFilterValues returns the from-rows universe in the comparator's order", async () => {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    const rank: Record<string, number> = { Low: 0, Medium: 1, High: 2 };
+    core.setColumnDefsFromProps([{
+      colId: "priority", key: "priority", label: "Priority", filter: "set",
+      filterParams: { comparator: (a, b) => rank[a.label] - rank[b.label] },
+    }]);
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test" });
+    core.setRowData([{ id: "1", priority: "High" }, { id: "2", priority: "Low" }, { id: "3", priority: null }, { id: "4", priority: "Medium" }]);
+    const api = new GridAPI(core);
+    expect(await api.getSetFilterValues("priority")).toEqual([null, "Low", "Medium", "High"]);
+  });
+});

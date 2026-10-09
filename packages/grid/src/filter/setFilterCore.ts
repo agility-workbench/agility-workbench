@@ -51,6 +51,22 @@ const VALUE_KEY_PREFIX = "v:";
 export type ValueKeyFn = (value: any) => string;
 export type ValueLabelFn = (value: any) => string;
 
+/** One side of a set-filter ordering comparison (`FilterParams.comparator`). */
+export interface SetFilterComparable {
+  /** The raw value; absent on a tree-layout group, which stands for many. */
+  value?: unknown;
+  /** The label the menu shows: the formatted value, or the tree segment's label. */
+  label: string;
+  /** Tree layout: the row's own path segment. */
+  segment?: unknown;
+  /** Tree layout: depth, 0 at the root. */
+  level?: number;
+  /** Tree layout: the path from the root to this row. */
+  path?: unknown[];
+}
+
+export type SetFilterComparator = (a: SetFilterComparable, b: SetFilterComparable) => number;
+
 export function defaultValueKey(v: any): string {
   if (v == null) return "";
   if (typeof v === "object") return JSON.stringify(v);
@@ -159,36 +175,39 @@ export function addSetOptionCounts(
     : option);
 }
 
-/** Complete distinct column-value universe across rows, deduped by key and sorted by label. */
+/**
+ * Complete distinct column-value universe across rows, deduped by key and sorted by label — or by
+ * the application's `compare`, which sees the raw value and its label and is never handed a blank.
+ */
 export function computeUniqueValues(
   forEachRow: (callback: (row: any, idx: number) => void) => void,
   getValue: (row: any) => any,
   keyFn: ValueKeyFn = defaultValueKey,
   labelFn: ValueLabelFn = defaultValueLabel,
+  compare?: SetFilterComparator,
 ): any[] {
   const seen = new Set<string>();
-  // Keys are carried alongside their value rather than recomputed in the comparator: sorting would
-  // otherwise call the application's keyCreator O(n log n) times to answer a question already
-  // answered once per row.
-  const out: { value: any; isBlank: boolean }[] = [];
+  // Keys and labels are computed once per distinct value rather than in the comparator: sorting
+  // would otherwise call the application's keyCreator and formatter O(n log n) times to answer a
+  // question already answered once per row. Blanks get the empty label rather than being handed to
+  // the formatter; their position here is unobservable anyway, as `buildSetOptions` splices the
+  // blanks row to the top.
+  const out: { value: any; isBlank: boolean; label: string }[] = [];
 
   forEachRow((row, _idx) => {
     const value = getValue(row);
     const { key, isBlank } = resolveValueKey(value, keyFn);
     if (!seen.has(key)) {
       seen.add(key);
-      out.push({ value, isBlank });
+      out.push({ value, isBlank, label: isBlank ? "" : labelFn(value) });
     }
   });
 
-  // Blanks sort as the empty label rather than being handed to the application's formatter. Their
-  // position here is unobservable anyway: `buildSetOptions` splices the blanks row to the top.
-  const label = (entry: { value: any; isBlank: boolean }) =>
-    entry.isBlank ? "" : labelFn(entry.value);
   out.sort((a, b) => {
-    const la = label(a);
-    const lb = label(b);
-    return la < lb ? -1 : la > lb ? 1 : 0;
+    // Blanks first, and never through the application's comparator: the bucket is the grid's.
+    if (a.isBlank || b.isBlank) return a.isBlank === b.isBlank ? 0 : a.isBlank ? -1 : 1;
+    if (compare) return compare({ value: a.value, label: a.label }, { value: b.value, label: b.label });
+    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
   });
 
   return out.map(entry => entry.value);

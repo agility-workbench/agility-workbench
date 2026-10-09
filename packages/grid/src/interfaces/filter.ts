@@ -1,3 +1,4 @@
+import type { SetFilterComparator } from "../filter/setFilterCore";
 import { FilterValueAsyncSource } from "../filter/types";
 import { Column } from "../column/column";
 import type { ValueFormatterParams } from "../column/formatters";
@@ -163,6 +164,15 @@ export interface FilterParams {
    * shows an em dash for an empty cell.
    */
   valueFormatter?: (params: ValueFormatterParams) => string;
+  /**
+   * Orders the set filter's values in place of the built-in order (labels, or in the tree layout
+   * segments when they are numbers or dates). Applies to the universe read from the rows and to the
+   * siblings at every level of the tree layout; a static or async `filterValues` list keeps the
+   * order it was given. Each side carries the raw `value` (absent on a tree group) and the `label`
+   * the menu shows, plus `segment`, `level`, and `path` in the tree layout. Never called with a
+   * blank: `(Blanks)` stays pinned above the values, and Select All above that.
+   */
+  comparator?: SetFilterComparator;
   /**
    * Shows the number of loaded leaf rows represented by each set-filter value.
    * Counts cover every row in CSRM and only rows currently loaded in SSRM.
