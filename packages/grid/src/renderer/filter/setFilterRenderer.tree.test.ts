@@ -31,11 +31,13 @@ function runtimeState(options: SetFilterOptions[], extra: Partial<FilterRuntimeS
 function setup(tree: SetFilterTreeSpec | undefined = TREE) {
   const toggleSetValue = vi.fn();
   const setSetGroupExpanded = vi.fn();
+  // States are aligned with the options the renderer was last given: groups read mixed, the rest checked.
+  let lastOptions: SetFilterOptions[] = [];
   const controller = {
     filterOptions: vi.fn(),
     applyMiniFilter: vi.fn(),
-    getSetOptionState: vi.fn((_cond: number, type: string) =>
-      type === "group" ? { selected: false, indeterminate: true } : { selected: true, indeterminate: false }),
+    getSetOptionStates: vi.fn(() => lastOptions.map(o =>
+      o.type === "group" ? { selected: false, indeterminate: true } : { selected: true, indeterminate: false })),
     toggleSetValue,
     setSetGroupExpanded,
   } as any;
@@ -45,6 +47,11 @@ function setup(tree: SetFilterTreeSpec | undefined = TREE) {
     tree,
   } as unknown as FilterPanelSpec;
   const renderer = new SetFilterRenderer(controller, spec, {} as IGridAPI);
+  const renderState = renderer.renderState.bind(renderer);
+  renderer.renderState = (state: FilterRuntimeState) => {
+    lastOptions = state.ui["c1"]?.options ?? [];
+    renderState(state);
+  };
   document.body.appendChild(renderer.getUi());
   return { renderer, toggleSetValue, setSetGroupExpanded };
 }

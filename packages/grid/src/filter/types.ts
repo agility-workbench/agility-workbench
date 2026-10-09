@@ -9,7 +9,7 @@ import {
 } from "../interfaces/filter";
 import { Column } from "../column/column";
 import { ColDef } from "../interfaces";
-import type { SetFilterTreeSpec } from "./setFilterTree";
+import type { SetFilterTreeSpec, SetOptionState } from "./setFilterTree";
 
 export type FilterKind = "text" | "number" | "date" | "set" | "boolean";
 
@@ -147,6 +147,8 @@ export interface IFilterController {
 
   // convenience for set-filter selection: store selected raw keys/values as values array
   toggleSetValue(condIndex: number, optionIdx: number, selected: boolean): void;
+  /** Checkbox state of every option of the condition, aligned with its option list; computed once per call. */
+  getSetOptionStates(condIndex: number): SetOptionState[];
   /**
    * Tree layout: open or close a group row; on the select_all row, every group. Presentation only —
    * the draft is untouched.

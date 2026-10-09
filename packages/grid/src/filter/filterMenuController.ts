@@ -24,7 +24,7 @@ import {
   toggleOption,
   valueOptions,
 } from "./setFilterCore";
-import { applySetMiniFilter, buildSetFilterTree, groupCheckState, setAllGroupsExpanded, toggleGroup } from "./setFilterTree";
+import { applySetMiniFilter, buildSetFilterTree, setAllGroupsExpanded, SetOptionState, setOptionStates, toggleGroup } from "./setFilterTree";
 
 export class FilterController implements IFilterController {
   private spec: FilterPanelSpec;
@@ -201,45 +201,37 @@ export class FilterController implements IFilterController {
     this.emit();
   }
 
-  getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): { selected: boolean, indeterminate: boolean } {
-    let selected = false, indeterminate = false;
+  /**
+   * The checkbox state of every option, aligned with the condition's option list — one pass per
+   * render (see `setOptionStates`). With an active mini filter, select_all describes only the
+   * visible options.
+   */
+  getSetOptionStates(condIndex: number): SetOptionState[] {
     const id = this.getCondId(condIndex);
-    if (!id) return { selected, indeterminate };
-
+    if (!id) return [];
     const d = this.state.draft[id];
     if (!d.type) d.type = this.spec.defaultOp ?? FilterType.NOT_IN;
-
     const ui = this.state.ui[id];
-    if (!ui || !ui.options) return { selected, indeterminate };
-
+    if (!ui || !ui.options) return [];
     const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const def = draftToDef(d);
+    return setOptionStates(draftToDef(d), ui.options, keyFn, (ui.miniFilter || "").length > 0);
+  }
 
-    if (type === "select_all") {
-      // With an active mini-filter, select-all describes only the visible options.
-      const scope = (ui.miniFilter || "").length > 0
-        ? valueOptions(ui.options).filter(o => !o.hidden)
-        : valueOptions(ui.options);
-      const checkedCount = scope.filter(o => isValueChecked(def, o, keyFn)).length;
-      selected = checkedCount === scope.length;
-      indeterminate = checkedCount > 0 && checkedCount < scope.length;
-      return { selected, indeterminate };
-    }
-
-    if (type === "group") {
-      // A group's raw is its key; its state is its leaves', over the ones the mini filter shows.
-      const idx = ui.options.findIndex(o => o.type === "group" && o.key === value);
-      return idx < 0 ? { selected, indeterminate } : groupCheckState(def, ui.options, idx, keyFn);
-    }
-
+  /** One option's state, looked up by what identifies it: its type and, for a value or group, its raw. */
+  getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): SetOptionState {
+    const none: SetOptionState = { selected: false, indeterminate: false };
+    const id = this.getCondId(condIndex);
+    const options = id ? this.state.ui[id]?.options : undefined;
+    if (!options) return none;
+    const keyFn = this.spec.valueKey ?? defaultValueKey;
     // `resolveValueKey`, not the bare keyFn: option keys are namespaced and blanks-aware, and that
-    // resolution is the only thing entitled to turn a value into a key.
-    const option = type === "blanks"
-      ? ui.options.find(o => o.type === "blanks")
-      : ui.options.find(o => o.type === "value" && o.key === resolveValueKey(value, keyFn).key);
-    if (!option) return { selected, indeterminate };
-    selected = isValueChecked(def, option, keyFn);
-    return { selected, indeterminate };
+    // resolution is the only thing entitled to turn a value into a key. A group's raw is its key.
+    const idx = type === "select_all" ? options.findIndex(o => o.type === "select_all")
+      : type === "blanks" ? options.findIndex(o => o.type === "blanks")
+      : type === "group" ? options.findIndex(o => o.type === "group" && o.key === value)
+      : options.findIndex(o => o.type === "value" && o.key === resolveValueKey(value, keyFn).key);
+    if (idx < 0) return none;
+    return this.getSetOptionStates(condIndex)[idx] ?? none;
   }
 
   filterOptions(condIndex: number, filter: string): void {

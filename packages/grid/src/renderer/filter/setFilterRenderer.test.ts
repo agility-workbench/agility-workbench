@@ -53,7 +53,8 @@ function setup() {
   const controller = {
     filterOptions: vi.fn(),
     applyMiniFilter: vi.fn(),
-    getSetOptionState: vi.fn(() => ({ selected: true, indeterminate: false })),
+    // Every option reads checked; sized generously since the rendered list varies per test.
+    getSetOptionStates: vi.fn(() => Array.from({ length: 8 }, () => ({ selected: true, indeterminate: false }))),
     toggleSetValue,
   } as any;
   const spec = {

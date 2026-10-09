@@ -5,7 +5,7 @@
  * group toggle's effect on the def — all against `setFilterCore`'s own universe builder.
  */
 import { describe, expect, it } from "vitest";
-import { FilterType } from "../interfaces/filter";
+import { FilterDef, FilterType } from "../interfaces/filter";
 import { addSetOptionCounts, buildSetOptions, isValueChecked, valueOptions } from "./setFilterCore";
 import {
   applySetMiniFilter,
@@ -20,6 +20,7 @@ import {
   hasSetFilterGroups,
   parentIndex,
   SetFilterTreeSpec,
+  setOptionStates,
   subtreeEnd,
   toggleGroup,
   visibleSetOptions,
@@ -258,6 +259,61 @@ describe("applySetMiniFilter in the tree layout", () => {
     const options = buildSetOptions(["apple", "banana", "cherry"]);
     applySetMiniFilter(options, "an");
     expect(visibleLabels(options)).toEqual(["(Select All)", "banana"]);
+  });
+});
+
+describe("setOptionStates", () => {
+  const byLabel = (options: SetFilterOptions[], states: ReturnType<typeof setOptionStates>) =>
+    Object.fromEntries(options.map((o, i) => [o.label, `${states[i].selected ? "on" : "off"}${states[i].indeterminate ? "/mixed" : ""}`]));
+
+  it("answers every row from one checked set, groups and select_all tallied from their leaves", () => {
+    const options = tree(FRUIT);
+    const lemon = options.find(o => o.label === "Lemon")!;
+    expect(byLabel(options, setOptionStates(null, options))).toEqual({
+      "(Select All)": "on", Fruit: "on", Berry: "on", Blueberry: "on", Citrus: "on", Lemon: "on", Orange: "on", Veg: "on", Root: "on", Carrot: "on",
+    });
+    expect(byLabel(options, setOptionStates({ type: FilterType.NOT_IN, values: [lemon.raw] }, options))).toEqual({
+      "(Select All)": "off/mixed", Fruit: "off/mixed", Berry: "on", Blueberry: "on", Citrus: "off/mixed", Lemon: "off", Orange: "on", Veg: "on", Root: "on", Carrot: "on",
+    });
+    expect(byLabel(options, setOptionStates({ type: FilterType.IN, values: [] }, options))["Fruit"]).toBe("off");
+  });
+
+  it("agrees with the per-option rules on every index, under every representation", () => {
+    const options = tree(FRUIT);
+    const raws = valueOptions(options).map(o => o.raw);
+    const defs: (Pick<FilterDef, "type" | "values"> | null)[] = [
+      null,
+      { type: FilterType.IN, values: [] },
+      { type: FilterType.IN, values: [raws[0], raws[2]] },
+      { type: FilterType.NOT_IN, values: [raws[1]] },
+      { type: FilterType.NOT_IN, values: raws },
+    ];
+    for (const def of defs) {
+      const states = setOptionStates(def, options);
+      options.forEach((o, i) => {
+        if (o.type === "group") expect(states[i]).toEqual(groupCheckState(def, options, i));
+        else if (o.type !== "select_all") expect(states[i]).toEqual({ selected: isValueChecked(def, o), indeterminate: false });
+      });
+    }
+  });
+
+  it("leaves the mini filter hides count for nothing, and select_all follows the visible scope only while typed", () => {
+    const options = tree(FRUIT);
+    const orange = options.find(o => o.label === "Orange")!;
+    applySetMiniFilter(options, "lem");
+    // Orange is hidden: Citrus is wholly checked within what it shows, even though Orange is unchecked.
+    const def = { type: FilterType.NOT_IN, values: [orange.raw] };
+    expect(byLabel(options, setOptionStates(def, options, undefined, true))["Citrus"]).toBe("on");
+    expect(byLabel(options, setOptionStates(def, options, undefined, true))["(Select All)"]).toBe("on");
+    // Without the mini-filter flag, select_all still describes every leaf.
+    expect(byLabel(options, setOptionStates(def, options, undefined, false))["(Select All)"]).toBe("off/mixed");
+  });
+
+  it("is the flat rule for a flat universe, select_all over an empty scope reading checked", () => {
+    const options = buildSetOptions(["a", "b", null]);
+    const states = setOptionStates({ type: FilterType.NOT_IN, values: [null] }, options);
+    expect(byLabel(options, states)).toEqual({ "(Select All)": "off/mixed", "(Blanks)": "off", a: "on", b: "on" });
+    expect(setOptionStates(null, buildSetOptions([]))[0]).toEqual({ selected: true, indeterminate: false });
   });
 });
 

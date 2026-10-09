@@ -227,13 +227,15 @@ export class SetFilterRenderer implements IFilterRenderer {
     let rowToFocus: HTMLLabelElement | null = null;
     // While a mini filter is typed every surviving group is held open, so paint that state.
     const rootExpansion: GroupExpansion = !this.treeRows ? "all" : miniFilterActive ? "all" : groupExpansion(options);
+    // Every row's state in one pass, rather than one query per row that rescans the list.
+    const states = this.controller.getSetOptionStates(0);
     for (const i of visibleSetOptions(options, miniFilterActive)) {
       const option = options[i];
       const component = this.getOptionComponent(option);
       const row = createElement("label", "pte-set-filter-option");
       row.tabIndex = -1; // make label focusable for keyboard navigation
       row.dataset.idx = String(i);
-      const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
+      const { selected, indeterminate } = states[i] ?? { selected: false, indeterminate: false };
       if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, rootExpansion, selected, indeterminate);
 
       const checkbox = createElement("input");

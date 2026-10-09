@@ -213,19 +213,82 @@ export function groupLeafOptions(options: SetFilterOptions[], groupIdx: number):
   return out;
 }
 
+export interface SetOptionState {
+  selected: boolean;
+  indeterminate: boolean;
+}
+
+/**
+ * The checkbox state of EVERY option, aligned with `options`, in one pass: the checked key set is
+ * built once, each leaf answers from it, each group tallies the leaves beneath it that the mini
+ * filter shows, and select_all tallies every leaf — or only the shown ones while a mini filter is
+ * typed. A render asks for this once instead of once per row, which kept rescanning the option
+ * list and the stored values for every row painted.
+ *
+ * Group and select_all rules, unchanged: all tallied leaves checked → checked (a group with none
+ * is unchecked; select_all over an empty scope is checked), some → indeterminate.
+ */
+export function setOptionStates(
+  def: Pick<FilterDef, "type" | "values"> | null,
+  options: SetFilterOptions[],
+  keyFn: ValueKeyFn = defaultValueKey,
+  miniFilterActive = false,
+): SetOptionState[] {
+  const checked = checkedKeySet(def, options, keyFn);
+  const states: SetOptionState[] = new Array(options.length);
+  const tri = (checkedCount: number, total: number, emptyIsChecked: boolean): SetOptionState => ({
+    selected: total === 0 ? emptyIsChecked : checkedCount === total,
+    indeterminate: checkedCount > 0 && checkedCount < total,
+  });
+
+  // Groups whose subtree is being walked, outermost first, each with its running tally.
+  const open: { idx: number; level: number; checked: number; total: number }[] = [];
+  const close = () => {
+    const frame = open.pop()!;
+    states[frame.idx] = tri(frame.checked, frame.total, false);
+  };
+  let selectAllIdx = -1;
+  let allChecked = 0;
+  let allTotal = 0;
+
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i];
+    const level = o.level ?? 0;
+    while (open.length > 0 && open[open.length - 1].level >= level) close();
+    if (o.type === "select_all") {
+      selectAllIdx = i;
+      continue;
+    }
+    if (o.type === "group") {
+      open.push({ idx: i, level, checked: 0, total: 0 });
+      continue;
+    }
+    const isChecked = checked.has(o.key);
+    states[i] = { selected: isChecked, indeterminate: false };
+    if (!o.hidden) {
+      for (const frame of open) {
+        frame.total++;
+        if (isChecked) frame.checked++;
+      }
+    }
+    if (!miniFilterActive || !o.hidden) {
+      allTotal++;
+      if (isChecked) allChecked++;
+    }
+  }
+  while (open.length > 0) close();
+  if (selectAllIdx >= 0) states[selectAllIdx] = tri(allChecked, allTotal, true);
+  return states;
+}
+
 /** A group's checkbox state: all leaves checked, none, or some (indeterminate). */
 export function groupCheckState(
   def: Pick<FilterDef, "type" | "values"> | null,
   options: SetFilterOptions[],
   groupIdx: number,
   keyFn: ValueKeyFn = defaultValueKey,
-): { selected: boolean; indeterminate: boolean } {
-  const leaves = groupLeafOptions(options, groupIdx);
-  const checked = leaves.filter(o => isValueChecked(def, o, keyFn)).length;
-  return {
-    selected: leaves.length > 0 && checked === leaves.length,
-    indeterminate: checked > 0 && checked < leaves.length,
-  };
+): SetOptionState {
+  return setOptionStates(def, options, keyFn)[groupIdx];
 }
 
 /** Check or uncheck every leaf under a group, in the same representation rules as a single toggle. */
