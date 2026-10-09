@@ -118,7 +118,9 @@ const regionSet = {
 ```
 
 `keyCreator` is used for option deduplication, selection, API lookup, and
-client-side comparison; `valueFormatter` controls labels, mini-filter matching,
+client-side comparison; without one, values are identified the same way on
+both sides — text folded unless `caseSensitive`, a `Date` by its instant, an
+object by its content. `valueFormatter` controls labels, mini-filter matching,
 accessible names, and value ordering. Filter models and Set Filter API methods
 continue to use the raw values. Set `filterParams.showValueCounts: true` to show the number of loaded
 leaf rows for each value. Counts cover the complete client-side row model; with

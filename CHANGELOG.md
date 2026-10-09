@@ -25,6 +25,15 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and
   checked state.
 
+### Set filter
+
+- **Set filters match `Date` cells by instant and objects by content.** Without a `keyCreator`,
+  the row filter compared raw cells by reference, so a column holding `Date` objects deduped them
+  into one menu option but unchecking it hid only the rows holding that exact instance; the same
+  applied to object values. The row side now keys values exactly as the menu's universe does: a
+  Date by its instant, an object by its content, and a persisted `"5"` finds the numeric 5 the
+  rows hold. Text still folds case unless `caseSensitive`, and blanks remain one bucket.
+
 ## 1.4.0 — 2026-10-04
 
 ### Fill handle

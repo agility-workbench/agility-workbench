@@ -3,6 +3,7 @@ import { IRowNode } from "../interfaces/iRowNode";
 import { FilterItem, FilterMatcherFn, FilterParams, FilterType, valuesNeededFor } from "../interfaces/filter";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { isBlankValue } from "../misc";
+import { defaultValueKey } from "../filter/setFilterCore";
 
 export interface QuickFilterSpec {
   // The raw search text as typed by the user (may contain leading/trailing/inner whitespace).
@@ -121,6 +122,8 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
     params: ResolvedFilterParams;
     matcher?: FilterMatcherFn;
     filterFunction?: NonNullable<FilterParams["filterFunction"]>;
+    /** in/notIn: the model's values as membership keys (`setMembershipKey`), null for the blanks bucket. */
+    setKeys?: Set<string | null>;
   };
 
   const active: ActiveFilter[] = [];
@@ -170,9 +173,10 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
         active.push({
           col: filter.col,
           type: f.type,
-          v: values.map(value => setFilterKey(value, params)),
+          v: values,
           rawValues: values,
           params,
+          setKeys: new Set(values.map(value => setMembershipKey(value, params))),
         });
       } else if (f.type === "contains" || f.type === "notContains" || f.type === "startsWith" || f.type === "endsWith" || !filter.col.isComputableType()) {
         active.push({
@@ -272,20 +276,10 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           if (!(Number(comparableCell) <= Number(f.v))) ok = false;
           break;
         case "in":
-          if (!Array.isArray(f.v) || !setValuesInclude(
-            f.v,
-            f.params.keyCreator ? setFilterKey(cell, f.params) : comparableCell,
-            f.rawValues,
-            cell,
-          )) ok = false;
+          if (!f.setKeys?.has(setMembershipKey(cell, f.params))) ok = false;
           break;
         case "notIn":
-          if (Array.isArray(f.v) && setValuesInclude(
-            f.v,
-            f.params.keyCreator ? setFilterKey(cell, f.params) : comparableCell,
-            f.rawValues,
-            cell,
-          )) ok = false;
+          if (f.setKeys?.has(setMembershipKey(cell, f.params))) ok = false;
           break;
         case "isBlank":
           if (cell != null && cell !== "") ok = false;
@@ -318,31 +312,27 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
 }
 
 /**
- * The comparison key for one side of a set-filter (in/notIn) test, mirroring `resolveValueKey` in
- * `filter/setFilterCore.ts` — the two must agree, or a value would sit in the (Blanks) row of the
- * menu while its rows filtered as something else.
+ * The identity of a value in a set filter (in/notIn), the same on both sides of the test and the
+ * same rule the menu's universe dedupes by (`resolveValueKey` in `filter/setFilterCore.ts`). The two
+ * must agree, or a value would be one option in the menu while its rows filtered as several —
+ * which is exactly what used to happen to `Date` cells: deduped by instant in the menu, compared by
+ * reference here, so unchecking a date hid only the rows holding that very instance.
  *
- * A blank raw never reaches the application's `keyCreator`: the grid owns that bucket, and a
- * keyCreator written for real values has no reason to survive `null`. An empty key is blank too,
- * which is how an application widens the bucket. Both cases collapse to `null` — the form the menu
- * and the API store the bucket as — so the blanks row matches through the ordinary
- * `values.includes(cell)` path. `setValuesInclude`'s raw fallback still covers the no-keyCreator
- * case, where a blank's normalized operand is not necessarily null.
+ *  - A blank raw is the grid's `(Blanks)` bucket, `null`, and never reaches `keyCreator`; an empty
+ *    key is blank too, which is how an application widens the bucket.
+ *  - With a `keyCreator`, the key decides.
+ *  - Without one, the operand is normalized as every built-in comparison is (`textFormatter`, then
+ *    trim and case per the params) and keyed with `defaultValueKey`: a Date by its instant, an
+ *    object by its content, and a persisted `"5"` finds the numeric 5 the rows hold — the menu
+ *    already treats those as one option.
  */
-function setFilterKey(value: any, params: ResolvedFilterParams): any {
+function setMembershipKey(value: any, params: ResolvedFilterParams): string | null {
   if (isBlankValue(value)) return null;
-  if (!params.keyCreator) return normalizeFilterOperand(value, params);
-  const key = params.keyCreator(value);
-  return isBlankValue(key) ? null : key;
-}
-
-// Membership test for set-filter (in/notIn) value lists. A null entry represents the "(Blanks)"
-// bucket and matches every blank cell (null, undefined, or empty string) — the set-filter menu and
-// API store the bucket as null, while rows may hold any of the three.
-function setValuesInclude(values: any[], cell: any, rawValues: any[], rawCell: any): boolean {
-  if (values.includes(cell)) return true;
-  const cellIsBlank = rawCell == null || rawCell === "";
-  return cellIsBlank && rawValues.includes(null);
+  if (params.keyCreator) {
+    const key = params.keyCreator(value);
+    return isBlankValue(key) ? null : String(key);
+  }
+  return defaultValueKey(normalizeFilterOperand(value, params));
 }
 
 type ResolvedFilterParams = {
