@@ -310,31 +310,34 @@ describe("SetFilterRenderer tree layout", () => {
     renderer.destroy();
   });
 
-  it("a tree column whose values have no paths renders the flat list: no roles, no spacers, Left/Right jump", () => {
+  it("a tree column whose values have no paths renders the flat list: a group, no tree roles, no spacers, Left/Right jump, focus on the checkbox", () => {
     const { renderer } = setup({ ...TREE, pathOf: () => null });
     renderer.renderState(runtimeState(buildSetFilterTree(buildSetOptions(["b", "a"]), { ...TREE, pathOf: () => null })));
     const list = renderer.getUi().querySelector(".pte-set-filter-options")!;
-    expect(list.getAttribute("role")).toBeNull();
+    expect(list.getAttribute("role")).toBe("group");
     expect(labelsOf(renderer)).toEqual(["(Select All)", "a", "b"]);
     const rows = rowsOf(renderer);
     expect(rows[0].getAttribute("role")).toBeNull();
     expect(rows[0].querySelector(".pte-set-filter-expander-spacer")).toBeNull();
+    expect(rows[0].querySelector("input")!.getAttribute("aria-hidden")).toBeNull();
 
-    rows[1].focus();
+    // Flat layout: the native checkbox is the focus target, not the row.
+    rows[1].querySelector("input")!.focus();
     keydown(renderer, "ArrowRight");
-    expect(document.activeElement).toBe(rows[2]);
+    expect(document.activeElement).toBe(rows[2].querySelector("input"));
     keydown(renderer, "ArrowLeft");
-    expect(document.activeElement).toBe(rows[0]);
+    expect(document.activeElement).toBe(rows[0].querySelector("input"));
     renderer.destroy();
   });
 
-  it("the flat layout is untouched: no tree spec means no roles even with hidden rows", () => {
+  it("the flat layout carries no tree roles: no tree spec means a plain group even with hidden rows", () => {
     const { renderer } = setup(undefined);
     const options = buildSetOptions(["apple", "banana"]);
     options[2].hidden = true;
     renderer.renderState(runtimeState(options, { miniFilter: "app" }));
     expect(labelsOf(renderer)).toEqual(["(Select All)", "apple"]);
-    expect(renderer.getUi().querySelector(".pte-set-filter-options")!.getAttribute("role")).toBeNull();
+    expect(renderer.getUi().querySelector(".pte-set-filter-options")!.getAttribute("role")).toBe("group");
+    expect(rowsOf(renderer).every(row => row.getAttribute("role") === null)).toBe(true);
     renderer.destroy();
   });
 });

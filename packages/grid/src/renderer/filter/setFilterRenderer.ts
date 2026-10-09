@@ -28,12 +28,17 @@ interface ValueComponentRecord {
  * chevron before each group, and exposes them as a `tree` of `treeitem`s: Select All is the root
  * and every other row sits beneath it, each with its level, its position among its siblings, its
  * checked state, and (groups) whether it is open; the native checkbox inside a tree row is hidden
- * from AT since the row itself is the checkable item. The tree's rows are the controller's own
- * pre-order option list filtered by `visibleSetOptions`, so a row's `data-idx` is the index the
- * controller addresses — the same index a flat row's toggle has always sent.
+ * from AT since the row itself is the checkable item. In the flat layout the list is a labelled
+ * `group` and focus sits on each row's native checkbox — a named, checkable control everywhere —
+ * rather than on the `<label>` around it, which has no role and no name. The tree's rows are the
+ * controller's own pre-order option list filtered by `visibleSetOptions`, so a row's `data-idx` is
+ * the index the controller addresses — the same index a flat row's toggle has always sent.
  */
 export class SetFilterRenderer implements IFilterRenderer {
+  private static instances = 0;
   private root: HTMLElement;
+  /** Prefix for the ids `aria-describedby` points at; unique per renderer so grids on one page do not collide. */
+  private readonly idPrefix = `pte-set-filter-${++SetFilterRenderer.instances}`;
   private loader!: Overlay;
   private conditionContainer!: HTMLElement;
   private miniFilterInput!: HTMLInputElement;
@@ -131,8 +136,11 @@ export class SetFilterRenderer implements IFilterRenderer {
       const focusableOptions = this.conditionContainer.querySelectorAll<HTMLLabelElement>("label.pte-set-filter-option");
       if (focusableOptions.length === 0) return;
 
-      const activeElement = document.activeElement as HTMLElement;
-      let currentIndex = Array.from(focusableOptions).findIndex(opt => opt === activeElement);
+      // The current row is the focused one: the row itself in the tree, else the row whose
+      // checkbox holds focus — where a mouse click lands it too.
+      const activeElement = document.activeElement as HTMLElement | null;
+      const activeRow = activeElement?.closest<HTMLLabelElement>("label.pte-set-filter-option") ?? null;
+      let currentIndex = activeRow ? Array.from(focusableOptions).indexOf(activeRow) : -1;
       if (currentIndex === -1) {
         // Forward Tab only: Shift+Tab is the user leaving backwards, and capturing it here used to
         // drag focus onto the first option instead.
@@ -167,6 +175,8 @@ export class SetFilterRenderer implements IFilterRenderer {
         if (this.treeRows) this.treeArrowRight(focusableOptions, currentIndex);
         else this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
       } else if (matchesAnyChord(e, ["space", "enter"])) {
+        // Flat layout: focus is on the native checkbox, and Space toggles it natively.
+        if (activeElement instanceof HTMLInputElement && matchesChord(e, "space")) return;
         e.preventDefault();
         focusableOptions[currentIndex].click();
       }
@@ -176,7 +186,17 @@ export class SetFilterRenderer implements IFilterRenderer {
   private focusOption(rows: NodeListOf<HTMLLabelElement>, from: number, to: number): void {
     if (from >= 0) rows[from].classList.remove("focused");
     rows[to].classList.add("focused");
-    rows[to].focus();
+    this.focusTarget(rows[to]).focus();
+  }
+
+  /**
+   * What takes focus for a row. In the tree it is the row, the treeitem. In the flat layout it is
+   * the native checkbox: the `<label>` around it has no role and no name, so focus parked there
+   * read as nothing, and a mouse click put focus on the checkbox anyway, where the arrow keys then
+   * found no current row.
+   */
+  private focusTarget(row: HTMLLabelElement): HTMLElement {
+    return this.treeRows ? row : row.querySelector("input") ?? row;
   }
 
   /**
@@ -222,13 +242,9 @@ export class SetFilterRenderer implements IFilterRenderer {
     // A tree column whose values produced no groups is a flat list: no chevrons, no tree roles.
     this.treeRows = !!this.spec.tree && hasSetFilterGroups(options);
     this.miniFilterActive = miniFilterActive;
-    if (this.treeRows) {
-      this.conditionContainer.setAttribute("role", "tree");
-      this.conditionContainer.setAttribute("aria-label", "Filter values");
-    } else {
-      this.conditionContainer.removeAttribute("role");
-      this.conditionContainer.removeAttribute("aria-label");
-    }
+    // The flat list is a labelled group of checkboxes; the tree is a tree.
+    this.conditionContainer.setAttribute("role", this.treeRows ? "tree" : "group");
+    this.conditionContainer.setAttribute("aria-label", "Filter values");
 
     const rows = document.createDocumentFragment();
     let rowToFocus: HTMLLabelElement | null = null;
@@ -290,6 +306,13 @@ export class SetFilterRenderer implements IFilterRenderer {
           const unit = createElement("span", "pte-sr-only");
           unit.textContent = option.count === 1 ? " row" : " rows";
           label.appendChild(unit);
+          if (!this.treeRows) {
+            // The flat checkbox's name is the value's label by contract (`valueFormatter`); the
+            // count reaches a reader as its description.
+            count.id = `${this.idPrefix}-count-${i}`;
+            unit.id = `${this.idPrefix}-unit-${i}`;
+            checkbox.setAttribute("aria-describedby", `${count.id} ${unit.id}`);
+          }
         }
       }
       row.appendChild(label);
@@ -303,7 +326,7 @@ export class SetFilterRenderer implements IFilterRenderer {
     }
     this.destroyStaleValueComponents(liveComponentKeys);
     this.conditionContainer.replaceChildren(rows);
-    rowToFocus?.focus();
+    if (rowToFocus) this.focusTarget(rowToFocus).focus();
   }
 
   /**

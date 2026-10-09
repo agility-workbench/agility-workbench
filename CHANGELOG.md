@@ -54,6 +54,12 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 
 ### Set filter
 
+- **The flat set filter focuses its checkboxes.** Keyboard focus in the value list now lands on
+  each row's native checkbox — a named, checkable control — rather than on the label around it,
+  which assistive technology read as nothing. The list is a labelled group, a value count is the
+  checkbox's description ("3 rows"), and the arrow keys work right after a mouse click, which used
+  to leave focus on the checkbox where the list's keys did not see it. Space toggles the checkbox
+  natively; Enter still toggles the row.
 - **Set filters match `Date` cells by instant and objects by content.** Without a `keyCreator`,
   the row filter compared raw cells by reference, so a column holding `Date` objects deduped them
   into one menu option but unchecking it hid only the rows holding that exact instance; the same

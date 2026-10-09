@@ -81,7 +81,9 @@ ancestors.
   carries `aria-level`, `aria-posinset` / `aria-setsize` among the siblings in
   view, `aria-checked` (`mixed` for a partly checked group), and
   `aria-expanded` on groups. The row is the checkable item; the native checkbox
-  inside it is hidden from assistive technology.
+  inside it is hidden from assistive technology. In the flat layout the list is
+  a labelled `group` and focus moves to each row's native checkbox, named by
+  the value's label with its count as the description.
 - Per-row additions through
   [row presentation](./examples/rendering.mdx#row-presentation):
   `accessibility: { description, busy }` attaches an accessible description
