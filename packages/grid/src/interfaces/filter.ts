@@ -3,6 +3,7 @@ import { Column } from "../column/column";
 import type { ValueFormatterParams } from "../column/formatters";
 import { IRowNode } from "./iRowNode";
 import type {
+  SetFilterGroupComponent,
   SetFilterSpecialValueComponent,
   SetFilterValueComponent,
 } from "../renderer/filter/setFilterValueComponent";
@@ -179,6 +180,14 @@ export interface FilterParams {
   blanksComponent?: SetFilterSpecialValueComponent;
   /** Extra params merged into the Blanks component params. */
   blanksComponentParams?: any;
+  /**
+   * Tree layout: replaces the text span of a group row; the grid keeps the chevron and the
+   * checkbox. Receives the label, the summed count, the level, the path, the segment, and whether
+   * the group is open (refreshed when that changes).
+   */
+  groupComponent?: SetFilterGroupComponent;
+  /** Extra params merged into the group component params. */
+  groupComponentParams?: any;
   /**
    * Tree layout (`filter: "tree"`): the path of a value in the tree, root first and the leaf last —
    * `["Fruit", "Citrus", "Orange"]` lists Orange under Fruit › Citrus. Every segment but the last

@@ -6,6 +6,7 @@ import {
   type FilterParams,
   type FilterValueAsyncSource,
   type FilterValueAsyncSourceParams,
+  type SetFilterGroupComponentParams,
   type SetFilterSpecialValueComponentParams,
   type SetFilterValueComponentParams,
 } from "@grid";
@@ -118,6 +119,19 @@ function blanksFilterValue({ count }: SetFilterSpecialValueComponentParams): HTM
   );
 }
 
+// Tree-layout group rows: the grid keeps the chevron and checkbox; this owns the label text.
+function productGroupLabel({ label, count, level, expanded }: SetFilterGroupComponentParams): HTMLElement {
+  return h("span", {
+    style: { display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" },
+  },
+    h("span", { text: label, style: { fontWeight: level === 0 ? "700" : "600" } }),
+    h("small", {
+      text: count === undefined ? (expanded ? "open" : "closed") : `${count} ${count === 1 ? "item" : "items"}`,
+      style: { opacity: "0.7" },
+    }),
+  );
+}
+
 const COLUMNS: ColDef[] = [
   {
     colId: "account",
@@ -179,7 +193,11 @@ const COLUMNS: ColDef[] = [
     width: 200,
     // Tree layout along an application path: Hardware › Laptops › Pro 14.
     filter: "tree",
-    filterParams: { treePathGetter: (value: string) => value.split("/") },
+    filterParams: {
+      treePathGetter: (value: string) => value.split("/"),
+      showValueCounts: true,
+      groupComponent: productGroupLabel,
+    },
   },
 ];
 
@@ -202,7 +220,7 @@ export function mountSetFilterComponentsDemo(container: HTMLElement): () => void
         + " custom filter function. Region uses object keys, formatted labels, and custom value"
         + " components; Owner loads its counted set values asynchronously. Opened and Product use the"
         + " tree layout: a date column groups by year and month on its own, and Product groups along"
-        + " the path its treePathGetter returns."),
+        + " the path its treePathGetter returns, with a custom group label."),
     ),
     host,
   ));

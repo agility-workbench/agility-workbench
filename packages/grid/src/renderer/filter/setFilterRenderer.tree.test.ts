@@ -227,6 +227,40 @@ describe("SetFilterRenderer tree layout", () => {
     renderer.destroy();
   });
 
+  it("a groupComponent owns a group's label text while the grid keeps the chevron and checkbox", () => {
+    const seen: any[] = [];
+    const { renderer, setSetGroupExpanded } = setup();
+    (renderer as any).spec.params.groupComponent = (params: any) => {
+      seen.push(params);
+      return `${params.label} [${params.level}:${params.path.join(">")}:${params.segment}:${params.expanded ? "open" : "closed"}:${params.count ?? "-"}:${params.tag}]`;
+    };
+    (renderer as any).spec.params.groupComponentParams = { tag: "extra" };
+    (renderer as any).spec.params.valueComponent = () => "leaf";
+
+    const options = treeOptions(FRUIT);
+    options.find(o => o.label === "Fruit")!.expanded = true;
+    options.find(o => o.label === "Citrus")!.count = 2;
+    renderer.renderState(runtimeState(options));
+    const rows = rowsOf(renderer);
+    const labelOf = (row: HTMLElement) => row.querySelector(".pte-set-filter-option-label")!.textContent;
+    expect(labelOf(rows[1])).toBe("Fruit [0:Fruit:Fruit:open:-:extra]");
+    expect(labelOf(rows[2])).toBe("Citrus [1:Fruit>Citrus:Citrus:closed:2:extra]");
+    expect(rows[1].querySelector(".pte-set-filter-expander")).not.toBeNull();
+    expect(rows[1].querySelector<HTMLInputElement>("input")!.indeterminate).toBe(true);
+    // Select All keeps its built-in label: it is not a group.
+    expect(labelOf(rows[0])).toBe("(Select All)");
+    expect(seen[0].colDef).toBe((renderer as any).spec.column);
+
+    // Opening Citrus refreshes its component with the new state rather than recreating it.
+    seen.length = 0;
+    options.find(o => o.label === "Citrus")!.expanded = true;
+    renderer.renderState(runtimeState(options));
+    expect(labelOf(rowsOf(renderer)[2])).toBe("Citrus [1:Fruit>Citrus:Citrus:open:2:extra]");
+    expect(rowsOf(renderer)[3].querySelector(".pte-set-filter-option-label")!.textContent).toBe("leaf");
+    expect(setSetGroupExpanded).not.toHaveBeenCalled();
+    renderer.destroy();
+  });
+
   it("re-renders with focus on the row the controller selected", () => {
     const { renderer } = setup();
     const options = treeOptions(FRUIT);

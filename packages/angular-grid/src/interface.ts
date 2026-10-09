@@ -10,6 +10,8 @@ import type {
   ICellEditorParams,
   TooltipComponent,
   TooltipComponentParams,
+  SetFilterGroupComponent,
+  SetFilterGroupComponentParams,
   SetFilterSpecialValueComponent,
   SetFilterSpecialValueComponentParams,
   SetFilterValueComponent,
@@ -50,6 +52,12 @@ export interface ISetFilterValueNgComp<P extends SetFilterValueComponentParams =
   awbRefresh?(params: P): boolean;
 }
 
+/** Angular component contract for a tree-layout group row's label. */
+export interface ISetFilterGroupNgComp<P extends SetFilterGroupComponentParams = SetFilterGroupComponentParams> {
+  awbInit(params: P): void;
+  awbRefresh?(params: P): boolean;
+}
+
 /** Angular component contract for the dedicated Select All and Blanks labels. */
 export interface ISetFilterSpecialValueNgComp<
   P extends SetFilterSpecialValueComponentParams = SetFilterSpecialValueComponentParams,
@@ -81,11 +89,12 @@ export type NgComponent = Type<unknown>;
 
 export type NgFilterParams = Omit<
   FilterParams,
-  "valueComponent" | "selectAllComponent" | "blanksComponent"
+  "valueComponent" | "selectAllComponent" | "blanksComponent" | "groupComponent"
 > & {
   valueComponent?: SetFilterValueComponent | NgComponent;
   selectAllComponent?: SetFilterSpecialValueComponent | NgComponent;
   blanksComponent?: SetFilterSpecialValueComponent | NgComponent;
+  groupComponent?: SetFilterGroupComponent | NgComponent;
 };
 
 export type NgRowTooltipPresentation = Omit<RowTooltipPresentation, "component"> & {

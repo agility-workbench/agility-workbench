@@ -112,6 +112,8 @@ export interface SetFilterOptions {
   parentKey?: string;
   /** Tree layout, groups only: whether the rows beneath render. */
   expanded?: boolean;
+  /** Tree layout: the path segments from the root to this row, a leaf's including its own. */
+  path?: any[];
 }
 
 export interface FilterRuntimeState {

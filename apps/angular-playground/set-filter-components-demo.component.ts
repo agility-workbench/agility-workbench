@@ -7,6 +7,7 @@ import {
   type FilterValueAsyncSource,
   type FilterValueAsyncSourceParams,
   type NgColDef,
+  type SetFilterGroupComponentParams,
   type SetFilterSpecialValueComponentParams,
   type SetFilterValueComponentParams,
 } from "@agility-workbench/angular-grid";
@@ -124,6 +125,30 @@ class BlanksFilterValueComponent {
   readonly params = input.required<SetFilterSpecialValueComponentParams>();
 }
 
+// Tree-layout group rows: the grid keeps the chevron and checkbox; this owns the label text.
+@Component({
+  selector: "product-group-label",
+  standalone: true,
+  template: `
+    <span class="group">
+      <span [style.font-weight]="params().level === 0 ? 700 : 600">{{ params().label }}</span>
+      <small>{{ suffix() }}</small>
+    </span>
+  `,
+  styles: [`
+    :host { display: block; width: 100% }
+    .group { display: flex; align-items: center; justify-content: space-between; width: 100% }
+    small { opacity: 0.7 }
+  `],
+})
+class ProductGroupLabelComponent {
+  readonly params = input.required<SetFilterGroupComponentParams>();
+  suffix(): string {
+    const { count, expanded } = this.params();
+    return count === undefined ? (expanded ? "open" : "closed") : `${count} ${count === 1 ? "item" : "items"}`;
+  }
+}
+
 @Component({
   selector: "set-filter-components-demo",
   standalone: true,
@@ -137,7 +162,7 @@ class BlanksFilterValueComponent {
         custom filter function. Region uses object keys, formatted labels, and custom Angular value
         components; Owner loads its counted set values asynchronously. Opened and Product use the
         tree layout: a date column groups by year and month on its own, and Product groups along
-        the path its <code>treePathGetter</code> returns.
+        the path its <code>treePathGetter</code> returns, with a custom group label.
       </p>
     </div>
     <div class="grid-host">
@@ -226,7 +251,11 @@ export class SetFilterComponentsDemoComponent {
       width: 200,
       // Tree layout along an application path: Hardware › Laptops › Pro 14.
       filter: "tree",
-      filterParams: { treePathGetter: (value: string) => value.split("/") },
+      filterParams: {
+        treePathGetter: (value: string) => value.split("/"),
+        showValueCounts: true,
+        groupComponent: ProductGroupLabelComponent,
+      },
     },
   ];
 }

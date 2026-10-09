@@ -12,6 +12,7 @@ import {
 import type {
   SetFilterComponent,
   SetFilterComponentRuntime,
+  SetFilterGroupComponentParams,
   SetFilterSpecialValueComponentParams,
   SetFilterValueComponentParams,
 } from "./setFilterValueComponent";
@@ -36,6 +37,8 @@ export class SetFilterRenderer implements IFilterRenderer {
   private valueComponents = new Map<string, ValueComponentRecord>();
   /** Whether the current rows are laid out as a tree (groups present), which turns on tree keys. */
   private treeRows = false;
+  /** Whether a mini filter is typed for the rows being painted: every group is then held open. */
+  private miniFilterActive = false;
 
   constructor(
     private controller: FilterController,
@@ -215,6 +218,7 @@ export class SetFilterRenderer implements IFilterRenderer {
 
     // A tree column whose values produced no groups is a flat list: no chevrons, no tree roles.
     this.treeRows = !!this.spec.tree && hasSetFilterGroups(options);
+    this.miniFilterActive = miniFilterActive;
     if (this.treeRows) {
       this.conditionContainer.setAttribute("role", "tree");
       this.conditionContainer.setAttribute("aria-label", "Filter values");
@@ -352,8 +356,7 @@ export class SetFilterRenderer implements IFilterRenderer {
       case "value": return this.spec.params.valueComponent;
       case "select_all": return this.spec.params.selectAllComponent;
       case "blanks": return this.spec.params.blanksComponent;
-      // A group is the grid's row, labelled by the tree's segment formatter.
-      case "group": return undefined;
+      case "group": return this.spec.params.groupComponent;
     }
   }
 
@@ -367,6 +370,19 @@ export class SetFilterRenderer implements IFilterRenderer {
           api: this.api,
           ...(this.spec.params.valueComponentParams ?? {}),
         } satisfies SetFilterValueComponentParams
+      : option.type === "group"
+      ? {
+          label: option.label,
+          count: option.count,
+          level: option.level ?? 0,
+          path: option.path ?? [],
+          segment: option.path?.[option.path.length - 1],
+          // The painted state: a typed mini filter holds every group open.
+          expanded: this.miniFilterActive || !!option.expanded,
+          colDef: this.spec.column,
+          api: this.api,
+          ...(this.spec.params.groupComponentParams ?? {}),
+        } satisfies SetFilterGroupComponentParams
       : {
           label: option.label,
           count: option.count,

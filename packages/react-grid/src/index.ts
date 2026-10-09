@@ -16,6 +16,7 @@ export type {
   ReactRowPresentation,
   ReactGetRowPresentation,
   ReactFilterParams,
+  ReactSetFilterGroupComponent,
   ReactSetFilterSpecialValueComponent,
   ReactSetFilterValueComponent,
 } from "./cellRenderer";

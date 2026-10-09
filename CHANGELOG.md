@@ -21,7 +21,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   the indeterminate checkbox beside it), and opens every group when any is closed or closes them
   all once all are open. The dash is the new `group-mixed` icon, overridable like the others.
   Every row's checkbox state is computed in one pass per repaint, in both layouts, instead of one
-  rescan of the list and the stored values per row. Keyboard: Right
+  rescan of the list and the stored values per row. `filterParams.groupComponent` replaces a group
+  row's label the way `valueComponent` does for a value (label, summed count, level, path, segment,
+  and whether the group is open, refreshed on toggle), with React and Angular components accepted
+  by the wrappers like the other set-filter components. Keyboard: Right
   opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and

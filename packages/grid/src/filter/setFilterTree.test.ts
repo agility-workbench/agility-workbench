@@ -82,6 +82,14 @@ describe("buildSetFilterTree", () => {
     expect(seen).toEqual(["Fruit/Apple"]);
   });
 
+  it("stamps the path on groups and leaves, for group components and path lookups", () => {
+    const options = tree(["Fruit/Citrus/Orange", "loose"], { pathOf: v => (v === "loose" ? null : slashPath(v)) });
+    expect(options.find(o => o.label === "Citrus")!.path).toEqual(["Fruit", "Citrus"]);
+    expect(options.find(o => o.label === "Orange")!.path).toEqual(["Fruit", "Citrus", "Orange"]);
+    expect(options.find(o => o.label === "loose")!.path).toBeUndefined();
+    expect(options[0].path).toBeUndefined();
+  });
+
   it("stamps level and parentKey so rows can find their group", () => {
     const options = tree(FRUIT);
     const citrus = options.findIndex(o => o.label === "Citrus");

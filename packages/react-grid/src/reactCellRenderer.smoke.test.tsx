@@ -21,6 +21,7 @@ import type {
   IGridAPI,
   TooltipComponentParams,
   ISetFilterComponent,
+  SetFilterGroupComponentParams,
   SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
 
@@ -184,6 +185,34 @@ describe("adaptCellRenderer", () => {
 
     const defaults = adaptReactDefaultColDef({ filterParams: { valueComponent: FilterValue } });
     expect(defaults?.filterParams?.valueComponent).toBe(col.filterParams?.valueComponent);
+  });
+
+  it("adapts a React groupComponent for the tree layout like the other set-filter components", async () => {
+    function GroupLabel(props: SetFilterGroupComponentParams) {
+      return <span className="group-label">{props.label}/{props.level}/{props.path.join(">")}/{props.expanded ? "open" : "closed"}</span>;
+    }
+
+    const [col] = adaptReactColumnDefs([{
+      colId: "product",
+      key: "product",
+      label: "Product",
+      filter: "tree",
+      filterParams: { treePathGetter: (value: string) => value.split("/"), groupComponent: GroupLabel },
+    }])!;
+    expect(col.filterParams?.groupComponent).not.toBe(GroupLabel);
+    expect(col.filterParams?.treePathGetter).toBeDefined();
+
+    const Component = col.filterParams!.groupComponent as unknown as new () => ISetFilterComponent<SetFilterGroupComponentParams>;
+    const instance = new Component();
+    await act(async () => {
+      instance.init({ label: "Laptops", level: 1, path: ["Hardware", "Laptops"], segment: "Laptops", expanded: false, colDef: {} as any, api: {} as IGridAPI });
+    });
+    expect(instance.getGui().querySelector(".group-label")?.textContent).toBe("Laptops/1/Hardware>Laptops/closed");
+    await act(async () => {
+      instance.refresh({ label: "Laptops", level: 1, path: ["Hardware", "Laptops"], segment: "Laptops", expanded: true, colDef: {} as any, api: {} as IGridAPI });
+    });
+    expect(instance.getGui().querySelector(".group-label")?.textContent).toBe("Laptops/1/Hardware>Laptops/open");
+    await act(async () => { instance.destroy(); });
   });
 });
 

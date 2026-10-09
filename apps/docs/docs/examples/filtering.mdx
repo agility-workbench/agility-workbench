@@ -208,6 +208,24 @@ year's months and days, and it holds every matching group open for as long as
 the text is there. `treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
 (the default) opens nothing, `N` opens the first N levels, `-1` opens all.
 
+`groupComponent` replaces a group row's text the way `valueComponent` does for
+a value, while the grid keeps the chevron and the checkbox. It receives the
+label, the summed `count`, the `level`, the `path`, the group's own `segment`,
+and `expanded`, and is refreshed when the group opens or closes:
+
+```tsx
+const productColumn: ReactColDef = {
+  key: "product",
+  label: "Product",
+  filter: "tree",
+  filterParams: {
+    treePathGetter: value => value.split("/"),
+    showValueCounts: true,
+    groupComponent: ({ label, count }) => <span>{label} <small>{count} items</small></span>,
+  },
+};
+```
+
 Groups are a presentation of the same universe, never values: the filter model
 holds leaf values exactly as in the flat layout, so saved filter state, the Set
 Filter API below, and a server-side data source are unchanged. Use `keyCreator`

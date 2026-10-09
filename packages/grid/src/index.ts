@@ -213,6 +213,8 @@ export type {
   SetFilterComponent,
   SetFilterComponentClass,
   SetFilterComponentFn,
+  SetFilterGroupComponent,
+  SetFilterGroupComponentParams,
   SetFilterSpecialValueComponent,
   SetFilterSpecialValueComponentParams,
   SetFilterValueComponent,

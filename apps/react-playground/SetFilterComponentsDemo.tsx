@@ -8,6 +8,7 @@ import {
   type FilterValueAsyncSource,
   type FilterValueAsyncSourceParams,
   type ReactColDef,
+  type SetFilterGroupComponentParams,
   type SetFilterSpecialValueComponentParams,
   type SetFilterValueComponentParams,
 } from "@react-grid";
@@ -111,6 +112,18 @@ function BlanksFilterValue({ count }: SetFilterSpecialValueComponentParams) {
   );
 }
 
+// Tree-layout group rows: the grid keeps the chevron and checkbox; this owns the label text.
+function ProductGroupLabel({ label, count, level, expanded }: SetFilterGroupComponentParams) {
+  return (
+    <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+      <span style={{ fontWeight: level === 0 ? 700 : 600 }}>{label}</span>
+      <small style={{ opacity: 0.7 }}>
+        {count === undefined ? (expanded ? "open" : "closed") : `${count} ${count === 1 ? "item" : "items"}`}
+      </small>
+    </span>
+  );
+}
+
 export function SetFilterComponentsDemo() {
   const columnDefs = useMemo<ReactColDef[]>(() => [
     {
@@ -170,7 +183,11 @@ export function SetFilterComponentsDemo() {
       width: 200,
       // Tree layout along an application path: Hardware › Laptops › Pro 14.
       filter: "tree",
-      filterParams: { treePathGetter: (value: string) => value.split("/") },
+      filterParams: {
+        treePathGetter: (value: string) => value.split("/"),
+        showValueCounts: true,
+        groupComponent: ProductGroupLabel,
+      },
     },
   ], []);
 
@@ -191,7 +208,7 @@ export function SetFilterComponentsDemo() {
           custom filter function. Region uses object keys, formatted labels, and custom React value
           components; Owner loads its counted set values asynchronously. Opened and Product use the
           tree layout: a date column groups by year and month on its own, and Product groups along
-          the path its <code>treePathGetter</code> returns.
+          the path its <code>treePathGetter</code> returns, with a custom group label.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

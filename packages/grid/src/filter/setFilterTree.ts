@@ -71,6 +71,8 @@ interface LeafNode {
   kind: "leaf";
   segment: any;
   label: string;
+  /** The value's full path, or undefined for a value placed at the root without one. */
+  path?: any[];
   option: SetFilterOptions;
 }
 
@@ -115,6 +117,7 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
       segment: last >= 0 ? path[last] : undefined,
       // A value without a path keeps the label the flat layout gave it.
       label: last >= 0 ? spec.formatSegment(path[last], last, path.slice(0, last)) : option.label,
+      path: last >= 0 ? path : undefined,
       option,
     });
   }
@@ -125,7 +128,7 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
     let count = 0;
     for (const item of node.items) {
       if (item.kind === "leaf") {
-        out.push({ ...item.option, label: item.label, level: node.level + 1, parentKey });
+        out.push({ ...item.option, label: item.label, level: node.level + 1, parentKey, path: item.path });
         count += item.option.count ?? 0;
         continue;
       }
@@ -138,6 +141,7 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
         level: item.level,
         parentKey,
         expanded: spec.defaultExpanded === -1 || item.level < spec.defaultExpanded,
+        path: item.path,
       };
       out.push(row);
       const subtotal = flatten(item, item.key);
