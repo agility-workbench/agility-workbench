@@ -10,8 +10,8 @@ workspaces.
 - **Angular binding** — using Angular 20.3+? Install [`@agility-workbench/angular-grid`](https://www.npmjs.com/package/@agility-workbench/angular-grid),
   which provides the standalone `<awb-grid>` component on top of this core.
 - **Virtualized** rendering, client-side and server-side row models, row grouping, tree data,
-  aggregation, client-side pivot mode, spreadsheet-style sheet tabs, quick filter, editing, and
-  CSV / Excel export (zero-dependency `.xlsx` writer).
+  aggregation, client-side pivot mode, spreadsheet-style sheet tabs, quick filter, set filters
+  with a tree layout, editing, and CSV / Excel export (zero-dependency `.xlsx` writer).
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
   per grid instance.
 
@@ -193,6 +193,46 @@ creation time, `api.registerMenuAdapter(menus)` / `api.registerBodyMenuAdapter(m
 on a mounted grid (pass `null` to remove it); the change applies to the next menu open.
 
 </details>
+
+## Set filter
+
+`filter: "set"` lists a column's distinct values as checkboxes. The values come from the loaded
+rows, from a static list of the values themselves (`filterValues: ["Open", "Pending", "Closed"]`,
+kept in that order), or from a loader (`filterValues: ({ success }) => success(values)`).
+`keyCreator` gives object values an identity, `valueFormatter` their label, `comparator` their
+order, `showValueCounts` a count per value, and `valueComponent` / `selectAllComponent` /
+`blanksComponent` replace the text of a row while the grid keeps the checkbox. Blanks are one row
+the grid owns; `keyCreator` and the formatter never see them.
+
+`filter: "tree"` is the same filter with its values laid out as a collapsible tree. A date column
+groups by year and month with the day as the leaf on its own; any other column groups along the
+path `treePathGetter` returns for each value, root first:
+
+```ts
+const productColumn: ColDef = {
+  key: "product",
+  label: "Product",
+  filter: "tree",
+  filterParams: {
+    treePathGetter: value => value.split("/"), // "Hardware/Laptops/Pro 14"
+    treePathFormatter: (segment, level) => String(segment),
+    treeDefaultExpanded: 1, // 0 none (default), N levels, -1 all
+    showValueCounts: true, // summed per group
+    groupComponent: ({ label, count }) => `${label} (${count})`,
+  },
+};
+```
+
+Checking a group checks every leaf beneath it and a partly checked group shows as mixed; the mini
+filter keeps a row by its own label or an ancestor's and holds matching groups open while typed;
+the groups a user opens are remembered for the grid's lifetime (`treeRememberExpansion: false`
+opts out). Select All is the tree's root: its chevron opens or closes every group. Groups are
+never stored — the filter model holds leaf values exactly as in the flat layout, so saved state,
+the Set Filter API, and a server-side data source are unchanged. `api.getSetFilterTree(colId)`
+returns the tree as the menu shows it, and `api.checkSetFilterPath` / `api.uncheckSetFilterPath`
+address a group or a leaf by its path. The list is exposed to assistive technology as a `tree`
+of `treeitem`s with level, position, checked, and expanded state; Up/Down walk the rows, Right
+opens a group or steps in, Left closes it or moves to its parent, Space toggles the checkbox.
 
 ## Quick filter
 
