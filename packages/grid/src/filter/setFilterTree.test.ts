@@ -15,11 +15,14 @@ import {
   dateSegmentFormatter,
   dateTreePath,
   defaultSegmentFormatter,
+  findSetFilterPath,
   groupCheckState,
   groupLeafOptions,
   hasSetFilterGroups,
   parentIndex,
+  pathKey,
   SetFilterTreeSpec,
+  setFilterTreeNodes,
   setOptionStates,
   subtreeEnd,
   toggleGroup,
@@ -322,6 +325,41 @@ describe("setOptionStates", () => {
     const states = setOptionStates({ type: FilterType.NOT_IN, values: [null] }, options);
     expect(byLabel(options, states)).toEqual({ "(Select All)": "off/mixed", "(Blanks)": "off", a: "on", b: "on" });
     expect(setOptionStates(null, buildSetOptions([]))[0]).toEqual({ selected: true, indeterminate: false });
+  });
+});
+
+describe("paths and tree nodes for the API", () => {
+  it("finds the group a path names, else the leaf whose full path it is, else nothing", () => {
+    const options = tree([...FRUIT, "Fruit"]); // "Fruit" is also a root leaf — the group wins
+    expect(options[findSetFilterPath(options, ["Fruit"])].type).toBe("group");
+    expect(options[findSetFilterPath(options, ["Fruit", "Citrus", "Lemon"])].raw).toBe("Fruit/Citrus/Lemon");
+    expect(findSetFilterPath(options, ["Fruit", "Pome"])).toBe(-1);
+    expect(findSetFilterPath(options, [])).toBe(-1);
+  });
+
+  it("compares segments by type and value", () => {
+    const options = tree([[2024, 1, 15]], { pathOf: v => v });
+    expect(findSetFilterPath(options, [2024, 1])).toBeGreaterThan(0);
+    expect(findSetFilterPath(options, ["2024", "1"])).toBe(-1);
+    expect(pathKey([2024, 1])).not.toBe(pathKey(["2024", "1"]));
+    expect(pathKey([new Date(0)])).toBe(pathKey([new Date(0)]));
+  });
+
+  it("nests the pre-order list into nodes with the states folded in, select_all left out", () => {
+    const options = tree(["Fruit/Citrus/Orange", "Veg/Carrot", null]);
+    const orange = options.find(o => o.label === "Orange")!;
+    const nodes = setFilterTreeNodes(options, setOptionStates({ type: FilterType.NOT_IN, values: [orange.raw] }, options));
+    expect(nodes).toEqual([
+      { path: [], label: "(Blanks)", checked: true, value: null },
+      { path: ["Fruit"], label: "Fruit", checked: false, children: [
+        { path: ["Fruit", "Citrus"], label: "Citrus", checked: false, children: [
+          { path: ["Fruit", "Citrus", "Orange"], label: "Orange", checked: false, value: "Fruit/Citrus/Orange" },
+        ] },
+      ] },
+      { path: ["Veg"], label: "Veg", checked: true, children: [
+        { path: ["Veg", "Carrot"], label: "Carrot", checked: true, value: "Veg/Carrot" },
+      ] },
+    ]);
   });
 });
 

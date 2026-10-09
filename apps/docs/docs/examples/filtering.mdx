@@ -337,6 +337,22 @@ An explicit `mode` passed to `setSetFilterValues` is pinned on the filter:
 subsequent menu or helper toggles keep that representation instead of
 optimizing storage to the shorter list.
 
+A tree-layout column adds helpers that address its groups by path:
+
+```ts
+await api.getSetFilterTree("opened");                 // [{ path: [2024], label: "2024", checked: "mixed", children: [...] }, ...]
+await api.uncheckSetFilterPath("opened", [2024, 1]);  // hide January 2024 — every day under it
+await api.checkSetFilterPath("opened", [2024]);       // show all of 2024 again
+```
+
+A path names a group, or one leaf by its full path. Segments compare by type
+and value as the tree built them, so the built-in date path takes numbers.
+Each node carries its label, its count when `showValueCounts` is on, and
+`checked` (`"mixed"` for a partly checked group); leaves carry their `value`,
+the blanks bucket as a root leaf with `value: null`. The filter model stays
+leaf-only, so these are the same `in`/`notIn` defs as the value helpers
+produce. Off a tree column they warn and return `null` or do nothing.
+
 ## Quick filter
 
 ```ts

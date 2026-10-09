@@ -45,8 +45,13 @@ function segmentKey(segment: any): string {
   return typeof segment + ":" + String(segment);
 }
 
+/** Identity of a path: segments compare by type and value, as the tree built them. */
+export function pathKey(path: any[]): string {
+  return path.map(segmentKey).join(SEGMENT_SEPARATOR);
+}
+
 function groupKey(path: any[]): string {
-  return GROUP_KEY_PREFIX + path.map(segmentKey).join(SEGMENT_SEPARATOR);
+  return GROUP_KEY_PREFIX + pathKey(path);
 }
 
 /** Siblings sort by their segment when both are numbers or dates, else by label — as the flat list does. */
@@ -152,6 +157,63 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
   };
   flatten(root, undefined);
   return out;
+}
+
+/**
+ * Index of the row a path names: the group with that path, else the leaf whose full path it is
+ * (a ragged tree can hold both — the group wins, since the path means "all of it"); -1 if none.
+ * Values placed at the root without a path are not addressable this way — use their value.
+ */
+export function findSetFilterPath(options: SetFilterOptions[], path: any[]): number {
+  const key = pathKey(path);
+  let leaf = -1;
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i];
+    if (!o.path || pathKey(o.path) !== key) continue;
+    if (o.type === "group") return i;
+    if (leaf < 0) leaf = i;
+  }
+  return leaf;
+}
+
+/** One node of the value tree as the API reports it (`IGridAPI.getSetFilterTree`). */
+export interface SetFilterTreeNode {
+  /** Path segments from the root to this node; empty for the blanks bucket and for a root value without a path. */
+  path: unknown[];
+  /** The label the menu shows. */
+  label: string;
+  /** Loaded-row count when `showValueCounts` is on; a group's is its leaves' sum. */
+  count?: number;
+  /** Whether the leaf is checked (visible), or every leaf beneath the group is; "mixed" for a partly checked group. */
+  checked: boolean | "mixed";
+  /** Group: the nodes beneath it. Absent on a leaf. */
+  children?: SetFilterTreeNode[];
+  /** Leaf: the raw value (null for the blanks bucket). Absent on a group. */
+  value?: unknown;
+}
+
+/** Nest the pre-order option list into tree nodes, with each row's state folded in; select_all is not a node. */
+export function setFilterTreeNodes(options: SetFilterOptions[], states: SetOptionState[]): SetFilterTreeNode[] {
+  const roots: SetFilterTreeNode[] = [];
+  const open: { node: SetFilterTreeNode; level: number }[] = [];
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i];
+    if (o.type === "select_all") continue;
+    const level = o.level ?? 0;
+    while (open.length > 0 && open[open.length - 1].level >= level) open.pop();
+    const state = states[i];
+    const node: SetFilterTreeNode = {
+      path: o.path ? [...o.path] : [],
+      label: o.label,
+      checked: state.indeterminate ? "mixed" : state.selected,
+    };
+    if (o.count !== undefined) node.count = o.count;
+    if (o.type === "group") node.children = [];
+    else node.value = o.raw;
+    (open.length > 0 ? open[open.length - 1].node.children! : roots).push(node);
+    if (o.type === "group") open.push({ node, level });
+  }
+  return roots;
 }
 
 /** Whether the universe has any group rows (a tree column whose values have no paths renders flat). */

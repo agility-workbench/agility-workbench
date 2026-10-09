@@ -23,6 +23,7 @@ import { ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
 import { SetFilterMode } from "./filter";
 import { SetFilterSelection } from "../filter/setFilterCore";
+import { SetFilterTreeNode } from "../filter/setFilterTree";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
 import type { Column } from "../column/column";
@@ -366,6 +367,21 @@ export interface IGridAPI {
    * representation instead of optimizing it to the shorter list.
    */
   setSetFilterValues(colId: string, values: unknown[], opts?: { mode?: SetFilterMode }): Promise<void>;
+  /**
+   * Tree layout (`filter: "tree"`): the value tree as the menu shows it — groups with `children`,
+   * leaves with their `value`, each with its label, count (when `showValueCounts` is on) and
+   * checked state ("mixed" for a partly checked group) — or null for a column without the tree
+   * layout. The blanks bucket is a root leaf with `value: null` and an empty path.
+   */
+  getSetFilterTree(colId: string): Promise<SetFilterTreeNode[] | null>;
+  /**
+   * Tree layout: check (show) every leaf under the group a path names, or the one leaf whose full
+   * path it is. Segments compare by type and value as the tree built them — the built-in date path
+   * uses numbers, `[2024, 1]` for January 2024. No-op when already checked; warns on an unknown path.
+   */
+  checkSetFilterPath(colId: string, path: unknown[]): Promise<void>;
+  /** Tree layout: uncheck (hide) every leaf under the group a path names, or the leaf it names. */
+  uncheckSetFilterPath(colId: string, path: unknown[]): Promise<void>;
 
   /** Current tree-data keyboard navigation mode. Non-tree grids always report "grid". */
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;

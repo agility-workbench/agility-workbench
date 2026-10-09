@@ -24,7 +24,13 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   rescan of the list and the stored values per row. `filterParams.groupComponent` replaces a group
   row's label the way `valueComponent` does for a value (label, summed count, level, path, segment,
   and whether the group is open, refreshed on toggle), with React and Angular components accepted
-  by the wrappers like the other set-filter components. Keyboard: Right
+  by the wrappers like the other set-filter components.
+- **Groups by path from the API.** `api.getSetFilterTree(colId)` returns the value tree as the menu
+  shows it — groups with children, leaves with their value, each with label, count, and checked
+  state (`"mixed"` for a partly checked group) — and `api.checkSetFilterPath` /
+  `api.uncheckSetFilterPath` show or hide every leaf under a group (or one leaf by its full path):
+  `uncheckSetFilterPath("opened", [2024, 1])` hides January 2024. The filter model stays leaf-only,
+  so saved state and the server-side contract are unchanged; off a tree column they warn and no-op. Keyboard: Right
   opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and
