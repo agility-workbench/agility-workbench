@@ -218,6 +218,53 @@ locale, and an application path shows `String(segment)` unless it formats.
 Siblings sort by their segment when both are numbers or dates, and by label
 otherwise.
 
+Quarters and weeks are a path getter away. The getter receives the raw cell
+value — a `Date` on a column holding dates; parse ISO text first on a text
+column — and the leaf can be the date itself, formatted by level:
+
+```ts
+const openedColumn = {
+  key: "opened",
+  label: "Opened",
+  type: ColumnType.DATE,
+  filter: "tree",
+  filterParams: {
+    // 2024 › Q1 › 15 Jan: the year, the quarter, then the date itself as the leaf
+    treePathGetter: (d: Date) => [d.getFullYear(), Math.floor(d.getMonth() / 3) + 1, d],
+    treePathFormatter: (segment, level) =>
+      level === 1 ? `Q${segment}`
+      : level === 2 ? segment.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      : String(segment),
+    treeDefaultExpanded: 1, // years open, quarters closed
+  },
+} satisfies ColDef;
+```
+
+Weeks need the ISO week-year rather than the calendar year, since the first
+days of January can belong to the last week of the year before:
+
+```ts
+/** ISO 8601 week: the year the week belongs to and its number, weeks starting Monday. */
+function isoWeek(d: Date): [year: number, week: number] {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); // the week's Thursday names the year
+  const week = Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  return [t.getUTCFullYear(), week];
+}
+
+const filterParams: FilterParams = {
+  // 2024 › Week 3 › 15 Jan
+  treePathGetter: (d: Date) => [...isoWeek(d), d],
+  treePathFormatter: (segment, level) =>
+    level === 1 ? `Week ${segment}`
+    : level === 2 ? segment.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : String(segment),
+};
+```
+
+Quarters and weeks are numbers and the leaves are dates, so every level sorts
+in calendar order; the leaf's day and month follow the browser's locale.
+
 Checking a group checks every leaf beneath it, a partly checked group shows as
 mixed, and `showValueCounts` sums the leaves per group. The mini filter keeps a
 row when its own label or an ancestor's matches, so typing a year keeps that
