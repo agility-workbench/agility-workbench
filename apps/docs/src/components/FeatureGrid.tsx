@@ -34,6 +34,7 @@ type Order = {
   revenue: number;
   margin: number;
   owner: string;
+  orderDate?: string;
   comment?: string;
   parentId?: string | null;
 };
@@ -57,6 +58,7 @@ const rows: Order[] = Array.from({ length: 42 }, (_, index) => {
     revenue,
     margin: Math.round(revenue * (.17 + (index % 5) * .025)),
     owner: owners[index % owners.length],
+    orderDate: `${2023 + Math.floor(index / 24)}-${String(1 + (index % 12)).padStart(2, "0")}-${String(1 + ((index * 5) % 28)).padStart(2, "0")}`,
     comment: index % 7 === 0 ? "Escalated by the account team." : "",
   };
 });
@@ -346,7 +348,11 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       featureProps = { rowModelType: "serverSide", serverSideDataSource: source };
       break;
     case "filtering":
-      columnDefs = baseColumns.map((column) => ({ ...column, filter: column.colId === "status" ? "set" : true }));
+      columnDefs = [
+        ...baseColumns.map((column) => ({ ...column, filter: column.colId === "status" ? "set" : true })),
+        // Tree layout: a date column's set filter groups by year › month, with the days as leaves.
+        { colId: "orderDate", key: "orderDate", label: "Ordered", width: 130, type: ColumnType.DATE, filter: "tree", filterParams: { treeDefaultExpanded: 1 } },
+      ];
       // The search box is floating rather than toolbar-hosted here (the `quickFilter` knobs), so
       // the find behavior can be tried as documented: Ctrl/Cmd+F opens it, and stepping matches
       // moves the box off the ones it covers.

@@ -31,6 +31,28 @@ export interface SetFilterSpecialValueComponentParams {
   [key: string]: any;
 }
 
+/** Params supplied to the component that replaces a tree-layout group row's text label. */
+export interface SetFilterGroupComponentParams {
+  /** The text used by the built-in label, mini-filter matching, and checkbox accessible name. */
+  label: string;
+  /** Sum of the leaf counts beneath the group when `showValueCounts` is enabled. */
+  count?: number;
+  /** Depth of the group, 0 at the root. */
+  level: number;
+  /** The path segments from the root down to and including this group. */
+  path: any[];
+  /** The group's own segment — the last entry of `path`. */
+  segment: any;
+  /** Whether the group is open; the component is refreshed when that changes. */
+  expanded: boolean;
+  /** The runtime column that owns the set filter. */
+  colDef: Column;
+  /** The grid API. */
+  api: IGridAPI;
+  /** Extra params from `filterParams.groupComponentParams`. */
+  [key: string]: any;
+}
+
 type SetFilterComponentResult = string | number | boolean | null | undefined | HTMLElement;
 
 export type SetFilterComponentFn<P extends object> = (params: P) => SetFilterComponentResult;
@@ -50,6 +72,7 @@ export type SetFilterComponent<P extends object> = SetFilterComponentFn<P> | Set
 
 export type SetFilterValueComponent = SetFilterComponent<SetFilterValueComponentParams>;
 export type SetFilterSpecialValueComponent = SetFilterComponent<SetFilterSpecialValueComponentParams>;
+export type SetFilterGroupComponent = SetFilterComponent<SetFilterGroupComponentParams>;
 
 export function isClassSetFilterComponent<P extends object>(
   component: SetFilterComponent<P>,

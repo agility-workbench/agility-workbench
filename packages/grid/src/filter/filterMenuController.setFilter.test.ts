@@ -34,6 +34,7 @@ function makeController(
     showValueCounts?: boolean;
     valueKey?: (value: any) => string;
     valueLabel?: (value: any) => string;
+    compare?: FilterPanelSpec["compare"];
   } = {},
 ) {
   const column = opts.column ?? makeColumn();
@@ -50,6 +51,7 @@ function makeController(
     defaultOp: FilterType.NOT_IN,
     valueKey: opts.valueKey,
     valueLabel: opts.valueLabel,
+    compare: opts.compare,
   };
   const applied: (FilterItem | null)[] = [];
   let state!: FilterRuntimeState;
@@ -142,6 +144,24 @@ describe("set-filter universe building", () => {
     ctrl.filterOptions(0, "europe");
     ctrl.applyMiniFilter(0);
     expect(lastApplied()!.filters[0].values).toEqual([apac]);
+  });
+
+  it("orders the from-rows universe with the application's comparator, blanks pinned first and never compared", () => {
+    const rank: Record<string, number> = { Low: 0, Medium: 1, High: 2 };
+    const seen: unknown[] = [];
+    const { options } = makeController([], null, {
+      source: { kind: "fromRows" },
+      rows: [{ fruit: "High" }, { fruit: null }, { fruit: "Low" }, { fruit: "Medium" }, { fruit: "" }],
+      compare: (a, b) => { seen.push(a.value, b.value); return rank[a.label] - rank[b.label]; },
+    });
+    expect(options().map(o => o.label)).toEqual(["(Select All)", "(Blanks)", "Low", "Medium", "High"]);
+    expect(seen).not.toContain(null);
+    expect(seen).not.toContain("");
+  });
+
+  it("a static list keeps the order it was given, comparator or not", () => {
+    const { options } = makeController(["High", "Low"], null, { compare: (a, b) => a.label.localeCompare(b.label) });
+    expect(options().map(o => o.label)).toEqual(["(Select All)", "High", "Low"]);
   });
 
   it("async source: loading flag until the callback resolves", async () => {

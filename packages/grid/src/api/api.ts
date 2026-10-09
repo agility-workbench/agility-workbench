@@ -38,6 +38,7 @@ import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
 import {
   computeUniqueValues,
+  addSetOptionCounts,
   buildSetOptions,
   defaultValueKey,
   defFromCheckedKeys,
@@ -49,6 +50,15 @@ import {
   ValueKeyFn,
   valueOptions,
 } from "../filter/setFilterCore";
+import {
+  buildSetFilterTree,
+  findSetFilterPath,
+  groupCheckState,
+  SetFilterTreeNode,
+  setFilterTreeNodes,
+  setOptionStates,
+  toggleGroup,
+} from "../filter/setFilterTree";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 import { GridHistoryState } from "../core/historyModel";
@@ -559,6 +569,51 @@ export class GridAPI implements IGridAPI {
     this.applySetDef(session.col, defFromCheckedKeys(checked, session.options, { mode }));
   }
 
+  async getSetFilterTree(colId: string): Promise<SetFilterTreeNode[] | null> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return null;
+    if (!session.tree) {
+      console.warn(`Set filter on "${colId}": the column has no tree layout (filter: "tree"); there is no value tree to return.`);
+      return null;
+    }
+    const def = this.currentSetDef(session.col);
+    return setFilterTreeNodes(session.tree, setOptionStates(def, session.tree, session.keyFn));
+  }
+
+  checkSetFilterPath(colId: string, path: unknown[]): Promise<void> {
+    return this.toggleSetFilterPath(colId, path, true);
+  }
+
+  uncheckSetFilterPath(colId: string, path: unknown[]): Promise<void> {
+    return this.toggleSetFilterPath(colId, path, false);
+  }
+
+  /** A path names a group (every leaf beneath it) or one leaf; the toggle goes through the menu's own functions. */
+  private async toggleSetFilterPath(colId: string, path: unknown[], checked: boolean): Promise<void> {
+    const session = await this.loadSetFilterSession(colId);
+    if (!session) return;
+    if (!session.tree) {
+      console.warn(`Set filter on "${colId}": the column has no tree layout (filter: "tree"); address its values with checkSetFilterValue/uncheckSetFilterValue.`);
+      return;
+    }
+    const idx = findSetFilterPath(session.tree, path);
+    if (idx < 0) {
+      console.warn(`Set filter on "${colId}": path ${JSON.stringify(path)} is not in the value tree; ignoring it.`);
+      return;
+    }
+    const option = session.tree[idx];
+    const def = this.currentSetDef(session.col);
+    if (option.type === "group") {
+      // Already in the requested state — skip the dispatch (which resets the page and selection).
+      const state = groupCheckState(def, session.tree, idx, session.keyFn);
+      if (checked ? state.selected : !state.selected && !state.indeterminate) return;
+      this.applySetDef(session.col, toggleGroup(def, session.tree, idx, checked, session.keyFn));
+      return;
+    }
+    if (isValueChecked(def, option, session.keyFn) === checked) return;
+    this.applySetDef(session.col, toggleOption(def, option, checked, session.tree, session.keyFn));
+  }
+
   private async toggleSetFilterValue(colId: string, value: unknown, checked: boolean): Promise<void> {
     const session = await this.loadSetFilterSession(colId);
     if (!session) return;
@@ -594,10 +649,14 @@ export class GridAPI implements IGridAPI {
     });
   }
 
-  /** Build the column's set-filter universe headlessly (same spec + sources the menu uses). */
+  /**
+   * Build the column's set-filter universe headlessly (same spec + sources the menu uses). `options`
+   * is the flat universe every value helper works on; `tree` is the same universe regrouped for a
+   * tree column (counts attached when the column shows them), which the path helpers work on.
+   */
   private async loadSetFilterSession(
     colId: string,
-  ): Promise<{ col: Column; options: SetFilterOptions[]; keyFn: ValueKeyFn } | null> {
+  ): Promise<{ col: Column; options: SetFilterOptions[]; keyFn: ValueKeyFn; tree?: SetFilterOptions[] } | null> {
     const col = this.resolveColumn(colId);
     if (!col) {
       console.warn(`Set filter: unknown column "${colId}".`);
@@ -611,7 +670,12 @@ export class GridAPI implements IGridAPI {
     }
     const keyFn = spec.valueKey ?? defaultValueKey;
     const values = await this.loadSetFilterSourceValues(spec);
-    return { col, options: buildSetOptions(values, keyFn, spec.valueLabel), keyFn };
+    const options = buildSetOptions(values, keyFn, spec.valueLabel);
+    if (!spec.tree) return { col, options, keyFn };
+    const counted = spec.params.showValueCounts
+      ? addSetOptionCounts(options, (callback) => this.core.getRowModel().forEachNode(callback), (row) => spec.column.getValue(row), keyFn)
+      : options;
+    return { col, options, keyFn, tree: buildSetFilterTree(counted, spec.tree) };
   }
 
   private loadSetFilterSourceValues(spec: FilterPanelSpec): Promise<any[]> {
@@ -625,6 +689,7 @@ export class GridAPI implements IGridAPI {
         (row) => spec.column.getValue(row),
         spec.valueKey ?? defaultValueKey,
         spec.valueLabel ?? ((x: any) => String(x)),
+        spec.compare,
       ));
     }
     return new Promise((resolve, reject) => {

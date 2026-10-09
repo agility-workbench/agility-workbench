@@ -3,6 +3,78 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.5.0 — 2026-10-09
+
+### Set filter tree layout
+
+- **`filter: "tree"` lays a set filter's values out as a collapsible tree.** A date column groups
+  its values by year and month with the day as the leaf, on its own; any other column groups along
+  the path `filterParams.treePathGetter` returns for each value (`["Hardware", "Laptops", "Pro
+  14"]` lists the laptop under Hardware › Laptops), with `treePathFormatter` naming each segment.
+  Checking a group checks every leaf beneath it and a partly checked group shows as mixed, with
+  value counts summed per group. The mini filter matches a row by its own label or an ancestor's,
+  so typing a year keeps the whole year, and holds every matching group open for as long as it is
+  typed. Siblings sort by segment or label when the values come from the rows; a static or async
+  `filterValues` list keeps the order it was given, siblings in the order their values are listed,
+  as in the flat layout. `treeDefaultExpanded` sets how many levels start open (0, the default,
+  none; -1 all).
+  Groups are never stored: the filter model holds leaf values exactly as before, so saved filter
+  state, the Set Filter API, and a server-side data source see no change. The Select All row is
+  the root: its chevron shows whether every group is open, none is, or only some are (a dash, like
+  the indeterminate checkbox beside it), and opens every group when any is closed or closes them
+  all once all are open. The dash is the new `group-mixed` icon, overridable like the others.
+  Every row's checkbox state is computed in one pass per repaint, in both layouts, instead of one
+  rescan of the list and the stored values per row. `filterParams.groupComponent` replaces a group
+  row's label the way `valueComponent` does for a value (label, summed count, level, path, segment,
+  and whether the group is open, refreshed on toggle), with React and Angular components accepted
+  by the wrappers like the other set-filter components.
+- **Groups by path from the API.** `api.getSetFilterTree(colId)` returns the value tree as the menu
+  shows it — groups with children, leaves with their value, each with label, count, and checked
+  state (`"mixed"` for a partly checked group) — and `api.checkSetFilterPath` /
+  `api.uncheckSetFilterPath` show or hide every leaf under a group (or one leaf by its full path):
+  `uncheckSetFilterPath("opened", [2024, 1])` hides January 2024. The filter model stays leaf-only,
+  so saved state and the server-side contract are unchanged; off a tree column they warn and no-op.
+- **`filterParams.comparator` orders a set filter's values.** It sees each side's raw value and
+  label (and in the tree layout the segment, level, and path, ordering the siblings at every
+  level), replaces the built-in label order for the universe read from the rows, never receives a
+  blank, and is honoured by `getSetFilterValues`. Static and async value lists keep the order they
+  were given.
+- **The tree remembers what was opened.** A tree-layout filter reopens with the groups the user
+  opened or closed last time, for as long as the grid lives and through filter changes; a group
+  not seen before starts at `treeDefaultExpanded`. `treeRememberExpansion: false` reopens at the
+  default depth every time. Keyboard: Right
+  opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
+  group), Home and End jump to the first and last row (in the flat list too, where Left and Right
+  keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and
+  checked state.
+- **The tree reads as a tree to assistive technology.** Select All is the root and every other row
+  sits beneath it, each `treeitem` carrying its level, its position among the siblings in view
+  (`aria-posinset` / `aria-setsize`), its checked state, and, for a group, whether it is open; the
+  native checkbox inside a tree row is hidden from AT, since the row itself is the checkable item
+  (exposed, its label was folded into the row's name — "Fruit Fruit 3" — and it read as a second
+  checked control in every row). Left on a row at the top of the tree now moves to Select All, its
+  parent. A value count in either layout reads as "3 rows" rather than a bare number.
+
+### Set filter
+
+- **A static `filterValues` list takes the values themselves.** `["Open", "Pending", "Closed"]`
+  now lists those three values, as the rows and an async source's `success` already did; before,
+  a static list had to wrap each entry as `{ value }`, and a list of bare values silently read as
+  a single `(Blanks)` row. The wrapped form still works: a plain object literal with a `value` key
+  is unwrapped, so a column whose cell objects have their own `value` field lists them wrapped.
+- **The flat set filter focuses its checkboxes.** Keyboard focus in the value list now lands on
+  each row's native checkbox — a named, checkable control — rather than on the label around it,
+  which assistive technology read as nothing. The list is a labelled group, a value count is the
+  checkbox's description ("3 rows"), and the arrow keys work right after a mouse click, which used
+  to leave focus on the checkbox where the list's keys did not see it. Space toggles the checkbox
+  natively; Enter still toggles the row.
+- **Set filters match `Date` cells by instant and objects by content.** Without a `keyCreator`,
+  the row filter compared raw cells by reference, so a column holding `Date` objects deduped them
+  into one menu option but unchecking it hid only the rows holding that exact instance; the same
+  applied to object values. The row side now keys values exactly as the menu's universe does: a
+  Date by its instant, an object by its content, and a persisted `"5"` finds the numeric 5 the
+  rows hold. Text still folds case unless `caseSensitive`, and blanks remain one bucket.
+
 ## 1.4.0 — 2026-10-04
 
 ### Fill handle

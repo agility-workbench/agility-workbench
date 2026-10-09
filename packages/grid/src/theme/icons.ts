@@ -11,6 +11,7 @@ export type GridIconName =
   | "submenu"
   | "group-collapsed"
   | "group-expanded"
+  | "group-mixed"
   | "check"
   | "group"
   | "pivot"

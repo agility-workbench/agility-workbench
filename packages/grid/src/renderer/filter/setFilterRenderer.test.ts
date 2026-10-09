@@ -53,7 +53,8 @@ function setup() {
   const controller = {
     filterOptions: vi.fn(),
     applyMiniFilter: vi.fn(),
-    getSetOptionState: vi.fn(() => ({ selected: true, indeterminate: false })),
+    // Every option reads checked; sized generously since the rendered list varies per test.
+    getSetOptionStates: vi.fn(() => Array.from({ length: 8 }, () => ({ selected: true, indeterminate: false }))),
     toggleSetValue,
   } as any;
   const spec = {
@@ -113,9 +114,17 @@ describe("SetFilterRenderer value components", () => {
 
     (renderer as any).spec.params.valueComponent = undefined;
     renderer.renderState(runtimeState(counted));
-    const count = renderer.getUi().querySelector(".pte-set-filter-option-count");
-    expect(count?.textContent).toBe("3");
-    expect(count?.parentElement?.textContent).toBe("EMEA3");
+    const count = renderer.getUi().querySelector(".pte-set-filter-option-count")!;
+    expect(count.textContent).toBe("3");
+    // The unit after the count is screen-reader-only text, and both describe the checkbox:
+    // its name stays the value's label, its description reads "3 rows".
+    expect(count.parentElement?.textContent).toBe("EMEA3 rows");
+    const unit = count.nextElementSibling!;
+    expect(unit.className).toBe("pte-sr-only");
+    expect(count.id).toMatch(/^pte-set-filter-\d+-count-2$/);
+    const checkbox = count.closest("label")!.querySelector("input")!;
+    expect(checkbox.getAttribute("aria-label")).toBe("EMEA");
+    expect(checkbox.getAttribute("aria-describedby")).toBe(`${count.id} ${unit.id}`);
     renderer.destroy();
   });
 
@@ -131,12 +140,49 @@ describe("SetFilterRenderer value components", () => {
 });
 
 describe("SetFilterRenderer option-list keyboard", () => {
+  it("the flat list is a labelled group whose rows focus their checkbox; arrows continue from a clicked row, Enter clicks the row, Space is the checkbox's own", () => {
+    const { renderer } = setup();
+    renderer.renderState(runtimeState(options()));
+    const ui = renderer.getUi();
+    document.body.appendChild(ui);
+    const list = ui.querySelector(".pte-set-filter-options")!;
+    expect(list.getAttribute("role")).toBe("group");
+    expect(list.getAttribute("aria-label")).toBe("Filter values");
+    const rows = Array.from(ui.querySelectorAll<HTMLLabelElement>("label.pte-set-filter-option"));
+    const key = (init: Partial<KeyboardEventInit>) => {
+      const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      ui.dispatchEvent(e);
+      return e;
+    };
+
+    // A mouse click leaves focus on the checkbox; the arrows start from that row.
+    rows[1].querySelector("input")!.focus();
+    key({ key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[2].querySelector("input"));
+    expect(rows[2].classList.contains("focused")).toBe(true);
+    expect(rows[1].classList.contains("focused")).toBe(false);
+
+    // Enter toggles through the row, a label click; Space is left to the checkbox itself.
+    const clicked = vi.fn();
+    rows[2].addEventListener("click", clicked);
+    expect(key({ key: "Enter" }).defaultPrevented).toBe(true);
+    expect(clicked).toHaveBeenCalled();
+    clicked.mockClear();
+    expect(key({ key: " " }).defaultPrevented).toBe(false);
+    expect(clicked).not.toHaveBeenCalled();
+
+    renderer.destroy();
+    ui.remove();
+  });
+
   it("claims Tab to enter the option list but leaves Shift+Tab to move focus out", () => {
     const { renderer } = setup();
     renderer.renderState(runtimeState(options()));
     const ui = renderer.getUi();
     document.body.appendChild(ui);
-    const firstOption = ui.querySelector<HTMLElement>("label.pte-set-filter-option")!;
+    const firstRow = ui.querySelector<HTMLElement>("label.pte-set-filter-option")!;
+    // Flat layout: focus goes to the row's native checkbox, a named control; the row is outlined.
+    const firstOption = firstRow.querySelector("input")!;
 
     const key = (init: Partial<KeyboardEventInit>) => ui.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
@@ -149,6 +195,7 @@ describe("SetFilterRenderer option-list keyboard", () => {
 
     key({ key: "Tab" });
     expect(document.activeElement).toBe(firstOption);
+    expect(firstRow.classList.contains("focused")).toBe(true);
 
     // A modified arrow is not a list gesture either.
     key({ key: "ArrowDown", ctrlKey: true });

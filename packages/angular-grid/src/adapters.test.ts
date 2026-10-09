@@ -13,6 +13,7 @@ import type {
   ICellEditorParams,
   ICellRenderer,
   ISetFilterComponent,
+  SetFilterGroupComponentParams,
   SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
@@ -59,6 +60,14 @@ class InvalidRenderer {}
 })
 class SignalSetFilterValue {
   readonly params = input<SetFilterValueComponentParams & { suffix?: string }>();
+}
+
+@Component({
+  standalone: true,
+  template: `<span class="set-filter-group">{{ params()?.label }}/{{ params()?.level }}/{{ params()?.expanded ? "open" : "closed" }}</span>`,
+})
+class SignalSetFilterGroup {
+  readonly params = input<SetFilterGroupComponentParams>();
 }
 
 @Component({ standalone: true, template: `<input class="ng-editor" [value]="value" />` })
@@ -226,5 +235,27 @@ describe("NgAdapters", () => {
 
     const defaults = service.adaptDefaultColDef({ filterParams: { valueComponent: SignalSetFilterValue } });
     expect(defaults?.filterParams?.valueComponent).toBe(col.filterParams?.valueComponent);
+  });
+
+  it("adapts an Angular groupComponent for the tree layout like the other set-filter components", () => {
+    const service = adapters();
+    const col = service.adaptColDef({
+      colId: "product",
+      key: "product",
+      label: "Product",
+      filter: "tree",
+      filterParams: { treePathGetter: (value: string) => value.split("/"), groupComponent: SignalSetFilterGroup },
+    });
+    expect(col.filterParams?.groupComponent).not.toBe(SignalSetFilterGroup);
+    expect(col.filterParams?.treePathGetter).toBeDefined();
+
+    const Component = col.filterParams!.groupComponent as unknown as new () => ISetFilterComponent<SetFilterGroupComponentParams>;
+    const instance = new Component();
+    const params = { label: "Laptops", level: 1, path: ["Hardware", "Laptops"], segment: "Laptops", expanded: false, colDef: {} as any, api: {} as any };
+    instance.init(params);
+    expect(instance.getGui().querySelector(".set-filter-group")?.textContent).toBe("Laptops/1/closed");
+    instance.refresh({ ...params, expanded: true });
+    expect(instance.getGui().querySelector(".set-filter-group")?.textContent).toBe("Laptops/1/open");
+    instance.destroy();
   });
 });

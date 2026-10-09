@@ -24,6 +24,7 @@ import {
   toggleOption,
   valueOptions,
 } from "./setFilterCore";
+import { applySetMiniFilter, buildSetFilterTree, setAllGroupsExpanded, SetOptionState, setOptionStates, toggleGroup } from "./setFilterTree";
 
 export class FilterController implements IFilterController {
   private spec: FilterPanelSpec;
@@ -168,7 +169,9 @@ export class FilterController implements IFilterController {
     const def = draftToDef(d);
     const next = option.type === "select_all"
       ? setAllChecked(selected, ui.options ?? [], def?.mode)
-      : toggleOption(def, option, selected, ui.options ?? [], keyFn);
+      : option.type === "group"
+        ? toggleGroup(def, ui.options ?? [], optionIdx, selected, keyFn)
+        : toggleOption(def, option, selected, ui.options ?? [], keyFn);
     applyDefToDraft(next, d);
 
     this.normalizeAfterEdit({ reason: "setValueToggle" });
@@ -178,39 +181,62 @@ export class FilterController implements IFilterController {
     this.maybeCommit("ui");
   }
 
-  getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): { selected: boolean, indeterminate: boolean } {
-    let selected = false, indeterminate = false;
+  setSetGroupExpanded(condIndex: number, optionIdx: number, expanded: boolean): void {
+    if (this.disposed) return;
     const id = this.getCondId(condIndex);
-    if (!id) return { selected, indeterminate };
+    if (!id) return;
+    const ui = this.state.ui[id];
+    const option = ui?.options?.[optionIdx];
+    if (!option) return;
+    const memory = this.treeExpansionMemory();
+    if (option.type === "select_all") {
+      // The root: opening or closing it opens or closes every group.
+      setAllGroupsExpanded(ui.options!, expanded);
+      if (memory) {
+        for (const o of ui.options!) if (o.type === "group") memory.set(o.key, expanded);
+      }
+    } else if (option.type === "group") {
+      option.expanded = expanded;
+      memory?.set(option.key, expanded);
+    } else {
+      return;
+    }
+    // Keep focus on the row that was toggled through the re-render, as a value toggle does.
+    ui.selectedIdx = optionIdx;
+    this.emit();
+  }
 
+  /**
+   * The checkbox state of every option, aligned with the condition's option list — one pass per
+   * render (see `setOptionStates`). With an active mini filter, select_all describes only the
+   * visible options.
+   */
+  getSetOptionStates(condIndex: number): SetOptionState[] {
+    const id = this.getCondId(condIndex);
+    if (!id) return [];
     const d = this.state.draft[id];
     if (!d.type) d.type = this.spec.defaultOp ?? FilterType.NOT_IN;
-
     const ui = this.state.ui[id];
-    if (!ui || !ui.options) return { selected, indeterminate };
-
+    if (!ui || !ui.options) return [];
     const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const def = draftToDef(d);
+    return setOptionStates(draftToDef(d), ui.options, keyFn, (ui.miniFilter || "").length > 0);
+  }
 
-    if (type === "select_all") {
-      // With an active mini-filter, select-all describes only the visible options.
-      const scope = (ui.miniFilter || "").length > 0
-        ? valueOptions(ui.options).filter(o => !o.hidden)
-        : valueOptions(ui.options);
-      const checkedCount = scope.filter(o => isValueChecked(def, o, keyFn)).length;
-      selected = checkedCount === scope.length;
-      indeterminate = checkedCount > 0 && checkedCount < scope.length;
-      return { selected, indeterminate };
-    }
-
+  /** One option's state, looked up by what identifies it: its type and, for a value or group, its raw. */
+  getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): SetOptionState {
+    const none: SetOptionState = { selected: false, indeterminate: false };
+    const id = this.getCondId(condIndex);
+    const options = id ? this.state.ui[id]?.options : undefined;
+    if (!options) return none;
+    const keyFn = this.spec.valueKey ?? defaultValueKey;
     // `resolveValueKey`, not the bare keyFn: option keys are namespaced and blanks-aware, and that
-    // resolution is the only thing entitled to turn a value into a key.
-    const option = type === "blanks"
-      ? ui.options.find(o => o.type === "blanks")
-      : ui.options.find(o => o.type === "value" && o.key === resolveValueKey(value, keyFn).key);
-    if (!option) return { selected, indeterminate };
-    selected = isValueChecked(def, option, keyFn);
-    return { selected, indeterminate };
+    // resolution is the only thing entitled to turn a value into a key. A group's raw is its key.
+    const idx = type === "select_all" ? options.findIndex(o => o.type === "select_all")
+      : type === "blanks" ? options.findIndex(o => o.type === "blanks")
+      : type === "group" ? options.findIndex(o => o.type === "group" && o.key === value)
+      : options.findIndex(o => o.type === "value" && o.key === resolveValueKey(value, keyFn).key);
+    if (idx < 0) return none;
+    return this.getSetOptionStates(condIndex)[idx] ?? none;
   }
 
   filterOptions(condIndex: number, filter: string): void {
@@ -221,10 +247,7 @@ export class FilterController implements IFilterController {
     const ui = this.state.ui[id];
     if (!ui.options) return;
 
-    const filterLc = filter.toLowerCase();
-    for (const o of ui.options) {
-      o.hidden = o.type !== "select_all" && !o.label.toLowerCase().includes(filterLc);
-    }
+    applySetMiniFilter(ui.options, filter);
 
     // Check exactly the matching options: the visible set becomes the checked set.
     const d = this.state.draft[id];
@@ -442,19 +465,40 @@ export class FilterController implements IFilterController {
       (row: IRowNode) => this.spec.column.getValue(row),
       this.spec.valueKey ?? defaultValueKey,
       this.spec.valueLabel ?? ((x: any) => String(x)),
+      this.spec.compare,
     );
   }
 
   private mapToOptions(values: any[]): SetFilterOptions[] {
     const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const options = buildSetOptions(values, keyFn, this.spec.valueLabel);
-    if (!this.spec.params.showValueCounts) return options;
-    return addSetOptionCounts(
-      options,
-      (callback) => this.hooks.getAllRows(callback),
-      (row: IRowNode) => this.spec.column.getValue(row),
-      keyFn,
-    );
+    let options = buildSetOptions(values, keyFn, this.spec.valueLabel);
+    if (this.spec.params.showValueCounts) {
+      options = addSetOptionCounts(
+        options,
+        (callback) => this.hooks.getAllRows(callback),
+        (row: IRowNode) => this.spec.column.getValue(row),
+        keyFn,
+      );
+    }
+    // Counts first, so the groups the tree adds can carry their leaves' sums.
+    if (!this.spec.tree) return options;
+    const treeOptions = buildSetFilterTree(options, this.spec.tree);
+    // A group the user opened or closed before reopens as it was left; one never seen keeps the
+    // default depth the tree builder gave it.
+    const memory = this.treeExpansionMemory();
+    if (memory) {
+      for (const o of treeOptions) {
+        if (o.type !== "group") continue;
+        const remembered = memory.get(o.key);
+        if (remembered !== undefined) o.expanded = remembered;
+      }
+    }
+    return treeOptions;
+  }
+
+  /** The column's expansion memory, unless the column opted out of remembering. */
+  private treeExpansionMemory(): Map<string, boolean> | undefined {
+    return this.spec.tree?.rememberExpansion === false ? undefined : this.hooks.treeExpansion;
   }
 
   // --------------------------

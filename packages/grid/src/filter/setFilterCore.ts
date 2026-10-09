@@ -51,6 +51,22 @@ const VALUE_KEY_PREFIX = "v:";
 export type ValueKeyFn = (value: any) => string;
 export type ValueLabelFn = (value: any) => string;
 
+/** One side of a set-filter ordering comparison (`FilterParams.comparator`). */
+export interface SetFilterComparable {
+  /** The raw value; absent on a tree-layout group, which stands for many. */
+  value?: unknown;
+  /** The label the menu shows: the formatted value, or the tree segment's label. */
+  label: string;
+  /** Tree layout: the row's own path segment. */
+  segment?: unknown;
+  /** Tree layout: depth, 0 at the root. */
+  level?: number;
+  /** Tree layout: the path from the root to this row. */
+  path?: unknown[];
+}
+
+export type SetFilterComparator = (a: SetFilterComparable, b: SetFilterComparable) => number;
+
 export function defaultValueKey(v: any): string {
   if (v == null) return "";
   if (typeof v === "object") return JSON.stringify(v);
@@ -92,13 +108,37 @@ export function resolveValueKey(value: any, keyFn: ValueKeyFn = defaultValueKey)
     : { key: VALUE_KEY_PREFIX + key, isBlank: false };
 }
 
+/**
+ * Whether an option stands for stored values: a value row or the blanks bucket. The synthetic
+ * select_all row and the tree layout's group rows (see `setFilterTree.ts`) are never stored —
+ * each is a shorthand for the leaves beneath it.
+ */
+export function isValueOption(option: SetFilterOptions): boolean {
+  return option.type === "value" || option.type === "blanks";
+}
+
 /** Resolve any input (possibly differently typed, e.g. "5" for a numeric universe) to its option. */
 export function resolveOption(options: SetFilterOptions[], input: any, keyFn: ValueKeyFn = defaultValueKey): SetFilterOptions | undefined {
   const { key } = resolveValueKey(input, keyFn);
-  return options.find(o => o.type !== "select_all" && o.key === key);
+  return options.find(o => isValueOption(o) && o.key === key);
 }
 
 /** Build the option universe from a value list: select_all, then blanks (if any), then values. */
+/**
+ * One entry of a static `filterValues` list, as the value it stands for. Entries are the values
+ * themselves — strings, numbers, Dates, or the objects a keyed column holds — exactly as the rows
+ * and an async source's `success` deliver them. The older form wraps each value as `{ value }`;
+ * a plain object literal carrying a `value` key is unwrapped so those lists keep working, and a
+ * column whose cell objects have their own `value` field wraps them that way on purpose. Class
+ * instances, Dates, and arrays are never unwrapped.
+ */
+export function staticSetValue(entry: unknown): unknown {
+  if (entry === null || typeof entry !== "object") return entry;
+  const proto = Object.getPrototypeOf(entry);
+  if (proto !== Object.prototype && proto !== null) return entry;
+  return Object.prototype.hasOwnProperty.call(entry, "value") ? (entry as { value: unknown }).value : entry;
+}
+
 export function buildSetOptions(values: any[], keyFn: ValueKeyFn = defaultValueKey, labelFn: ValueLabelFn = defaultValueLabel): SetFilterOptions[] {
   const options: SetFilterOptions[] = [
     { type: "select_all", key: SELECT_ALL_KEY, label: "(Select All)", raw: SELECT_ALL_KEY, hidden: false },
@@ -145,49 +185,52 @@ export function addSetOptionCounts(
     counts.set(key, (counts.get(key) ?? 0) + 1);
   });
 
-  return options.map(option => option.type === "select_all"
-    ? option
-    : { ...option, count: counts.get(option.key) ?? 0 });
+  return options.map(option => isValueOption(option)
+    ? { ...option, count: counts.get(option.key) ?? 0 }
+    : option);
 }
 
-/** Complete distinct column-value universe across rows, deduped by key and sorted by label. */
+/**
+ * Complete distinct column-value universe across rows, deduped by key and sorted by label — or by
+ * the application's `compare`, which sees the raw value and its label and is never handed a blank.
+ */
 export function computeUniqueValues(
   forEachRow: (callback: (row: any, idx: number) => void) => void,
   getValue: (row: any) => any,
   keyFn: ValueKeyFn = defaultValueKey,
   labelFn: ValueLabelFn = defaultValueLabel,
+  compare?: SetFilterComparator,
 ): any[] {
   const seen = new Set<string>();
-  // Keys are carried alongside their value rather than recomputed in the comparator: sorting would
-  // otherwise call the application's keyCreator O(n log n) times to answer a question already
-  // answered once per row.
-  const out: { value: any; isBlank: boolean }[] = [];
+  // Keys and labels are computed once per distinct value rather than in the comparator: sorting
+  // would otherwise call the application's keyCreator and formatter O(n log n) times to answer a
+  // question already answered once per row. Blanks get the empty label rather than being handed to
+  // the formatter; their position here is unobservable anyway, as `buildSetOptions` splices the
+  // blanks row to the top.
+  const out: { value: any; isBlank: boolean; label: string }[] = [];
 
   forEachRow((row, _idx) => {
     const value = getValue(row);
     const { key, isBlank } = resolveValueKey(value, keyFn);
     if (!seen.has(key)) {
       seen.add(key);
-      out.push({ value, isBlank });
+      out.push({ value, isBlank, label: isBlank ? "" : labelFn(value) });
     }
   });
 
-  // Blanks sort as the empty label rather than being handed to the application's formatter. Their
-  // position here is unobservable anyway: `buildSetOptions` splices the blanks row to the top.
-  const label = (entry: { value: any; isBlank: boolean }) =>
-    entry.isBlank ? "" : labelFn(entry.value);
   out.sort((a, b) => {
-    const la = label(a);
-    const lb = label(b);
-    return la < lb ? -1 : la > lb ? 1 : 0;
+    // Blanks first, and never through the application's comparator: the bucket is the grid's.
+    if (a.isBlank || b.isBlank) return a.isBlank === b.isBlank ? 0 : a.isBlank ? -1 : 1;
+    if (compare) return compare({ value: a.value, label: a.label }, { value: b.value, label: b.label });
+    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
   });
 
   return out.map(entry => entry.value);
 }
 
-/** The selectable options — everything except the synthetic select_all row. */
+/** The selectable options — value rows and the blanks bucket; never select_all or a group. */
 export function valueOptions(options: SetFilterOptions[]): SetFilterOptions[] {
-  return options.filter(o => o.type !== "select_all");
+  return options.filter(isValueOption);
 }
 
 /** The canonical selection: the set of CHECKED option keys. No filter (null) = all checked. */

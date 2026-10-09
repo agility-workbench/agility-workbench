@@ -9,6 +9,7 @@ export type {
   ITooltipNgComp,
   IActionFrameNgComp,
   ICellEditorNgComp,
+  ISetFilterGroupNgComp,
   ISetFilterSpecialValueNgComp,
   ISetFilterValueNgComp,
   NgComponent,

@@ -31,7 +31,35 @@ function makeGrid(rows: Record<string, unknown>[]) {
       filter: "set",
       filterParams: { filterValues: ({ success }) => success(["Ava", "Liam"]) },
     },
+    // A static list of the values themselves, in the order to show them.
+    { colId: "status", key: "status", label: "Status", filter: "set", filterParams: { filterValues: ["Open", "Pending", "Closed"] } },
     { colId: "name", key: "name", label: "Name" }, // text filter — not a set column
+    {
+      colId: "item",
+      key: "item",
+      label: "Item",
+      // Tree layout: the API sees the same leaf universe the flat layout would have.
+      filter: "tree",
+      filterParams: { treePathGetter: (value: any) => String(value).split("/"), showValueCounts: true },
+    },
+    // The same tree over a static list and over an async source: both keep the order given.
+    {
+      colId: "itemList", key: "item", label: "Item",
+      filter: "tree",
+      filterParams: {
+        treePathGetter: (value: any) => String(value).split("/"),
+        filterValues: ["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Citrus/Lemon"].map(value => ({ value })),
+        comparator: (a: any, b: any) => a.label.localeCompare(b.label),
+      },
+    },
+    {
+      colId: "itemAsync", key: "item", label: "Item",
+      filter: "tree",
+      filterParams: {
+        treePathGetter: (value: any) => String(value).split("/"),
+        filterValues: ({ success }) => success(["Veg/Root/Carrot", "Fruit/Citrus/Orange", "Fruit/Citrus/Lemon"]),
+      },
+    },
   ]);
   core.dispatch({
     type: "themeFontSet",
@@ -44,10 +72,10 @@ function makeGrid(rows: Record<string, unknown>[]) {
 }
 
 const ROWS: Record<string, unknown>[] = [
-  { id: "1", region: "APAC", qty: 1, name: "a" },
-  { id: "2", region: "EMEA", qty: 2, name: "b" },
-  { id: "3", region: "EMEA", qty: 2, name: "c" },
-  { id: "4", region: null, qty: 3, name: "d" },
+  { id: "1", region: "APAC", qty: 1, name: "a", item: "Fruit/Citrus/Orange" },
+  { id: "2", region: "EMEA", qty: 2, name: "b", item: "Veg/Root/Carrot" },
+  { id: "3", region: "EMEA", qty: 2, name: "c", item: "Fruit/Citrus/Lemon" },
+  { id: "4", region: null, qty: 3, name: "d", item: null },
 ];
 
 function viewIds(core: GridCore): string[] {
@@ -64,6 +92,7 @@ describe("IGridAPI set-filter helpers", () => {
     expect(await api.getSetFilterValues("region")).toEqual([null, "APAC", "EMEA"]);
     expect(await api.getSetFilterValues("qty")).toEqual([1, 2, 3]);
     expect(await api.getSetFilterValues("owner")).toEqual(["Ava", "Liam"]);
+    expect(await api.getSetFilterValues("status")).toEqual(["Open", "Pending", "Closed"]);
   });
 
   it("uncheck hides the value's rows; state reports intent, not storage", async () => {
@@ -186,5 +215,141 @@ describe("IGridAPI set-filter helpers", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("IGridAPI set-filter helpers on a tree-layout column", () => {
+  it("the universe is the leaves — groups are a menu presentation, never values", async () => {
+    const { api } = makeGrid(ROWS);
+    expect(await api.getSetFilterValues("item")).toEqual([null, "Fruit/Citrus/Lemon", "Fruit/Citrus/Orange", "Veg/Root/Carrot"]);
+  });
+
+  it("unchecking a leaf hides its rows exactly as on a flat set column", async () => {
+    const { core, api } = makeGrid(ROWS);
+    await api.uncheckSetFilterValue("item", "Fruit/Citrus/Orange");
+    expect(viewIds(core)).toEqual(["2", "3", "4"]);
+    expect((await api.getSetFilterState("item"))!.unchecked).toEqual(["Fruit/Citrus/Orange"]);
+    await api.checkSetFilterValue("item", "Fruit/Citrus/Orange");
+    expect(viewIds(core)).toEqual(["1", "2", "3", "4"]);
+  });
+});
+
+describe("IGridAPI set-filter tree helpers (groups by path)", () => {
+  it("getSetFilterTree nests groups and leaves with labels, counts, values, and checked state", async () => {
+    const { api } = makeGrid(ROWS);
+    expect(await api.getSetFilterTree("item")).toEqual([
+      { path: [], label: "(Blanks)", count: 1, checked: true, value: null },
+      {
+        path: ["Fruit"], label: "Fruit", count: 2, checked: true, children: [
+          {
+            path: ["Fruit", "Citrus"], label: "Citrus", count: 2, checked: true, children: [
+              { path: ["Fruit", "Citrus", "Lemon"], label: "Lemon", count: 1, checked: true, value: "Fruit/Citrus/Lemon" },
+              { path: ["Fruit", "Citrus", "Orange"], label: "Orange", count: 1, checked: true, value: "Fruit/Citrus/Orange" },
+            ],
+          },
+        ],
+      },
+      {
+        path: ["Veg"], label: "Veg", count: 1, checked: true, children: [
+          { path: ["Veg", "Root"], label: "Root", count: 1, checked: true, children: [
+            { path: ["Veg", "Root", "Carrot"], label: "Carrot", count: 1, checked: true, value: "Veg/Root/Carrot" },
+          ] },
+        ],
+      },
+    ]);
+  });
+
+  it("a static or async list keeps the order it was given in the tree, siblings included, with the comparator unconsulted", async () => {
+    const { api } = makeGrid(ROWS);
+    const labels = (nodes: Array<{ label: string; children?: any[] }>, depth = 0): string[] =>
+      nodes.flatMap(n => [`${"  ".repeat(depth)}${n.label}`, ...labels(n.children ?? [], depth + 1)]);
+    const given = ["Veg", "  Root", "    Carrot", "Fruit", "  Citrus", "    Orange", "    Lemon"];
+    expect(labels((await api.getSetFilterTree("itemList"))!)).toEqual(given);
+    expect(labels((await api.getSetFilterTree("itemAsync"))!)).toEqual(given);
+    // Read from the rows, the same values sort: Fruit before Veg, Lemon before Orange (and the blank row pins first).
+    expect(labels((await api.getSetFilterTree("item"))!)).toEqual(["(Blanks)", "Fruit", "  Citrus", "    Lemon", "    Orange", "Veg", "  Root", "    Carrot"]);
+  });
+
+  it("returns null, with a warning, for a column without the tree layout", async () => {
+    const { api } = makeGrid(ROWS);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await api.getSetFilterTree("region")).toBeNull();
+    await api.uncheckSetFilterPath("region", ["EMEA"]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(await api.getSetFilterState("region")).toBeNull();
+    warn.mockRestore();
+  });
+
+  it("uncheckSetFilterPath hides every leaf under the group; the tree reports the mixed ancestors", async () => {
+    const { core, api } = makeGrid(ROWS);
+    await api.uncheckSetFilterPath("item", ["Fruit", "Citrus"]);
+    expect(viewIds(core)).toEqual(["2", "4"]);
+    expect((await api.getSetFilterState("item"))!.unchecked).toEqual(["Fruit/Citrus/Lemon", "Fruit/Citrus/Orange"]);
+    const tree = (await api.getSetFilterTree("item"))!;
+    expect(tree[1].checked).toBe(false); // Fruit: every leaf beneath is unchecked
+    expect(tree[2].checked).toBe(true);
+
+    await api.checkSetFilterPath("item", ["Fruit", "Citrus", "Lemon"]); // a leaf by its full path
+    expect(viewIds(core)).toEqual(["2", "3", "4"]);
+    expect((await api.getSetFilterTree("item"))![1].checked).toBe("mixed");
+
+    await api.checkSetFilterPath("item", ["Fruit"]); // the whole group again
+    expect(viewIds(core)).toEqual(["1", "2", "3", "4"]);
+    expect(await api.getSetFilterState("item")).toBeNull();
+  });
+
+  it("keeps a pinned include mode and skips redundant or unknown paths without dispatching", async () => {
+    const { core, api } = makeGrid(ROWS);
+    await api.setSetFilterValues("item", ["Veg/Root/Carrot"], { mode: "include" });
+    await api.checkSetFilterPath("item", ["Fruit", "Citrus"]);
+    // The def lists the checked leaves in the tree's own order.
+    expect(api.getFilterModel()[0].filters[0]).toEqual({
+      type: FilterType.IN,
+      values: ["Fruit/Citrus/Lemon", "Fruit/Citrus/Orange", "Veg/Root/Carrot"],
+      mode: "include",
+    });
+
+    let filterEvents = 0;
+    core.on("columnsChanged", ev => { if (ev.reason === "filter") filterEvents++; });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await api.checkSetFilterPath("item", ["Fruit"]); // already checked
+    await api.uncheckSetFilterPath("item", ["Nope"]); // not in the tree
+    await api.uncheckSetFilterPath("item", ["Fruit", "Citrus", "Lime"]); // not a leaf either
+    expect(filterEvents).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it("the date tree is addressed with the numbers its path is built from", async () => {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.setColumnDefsFromProps([{ colId: "when", key: "when", label: "When", type: ColumnType.DATE, filter: "tree" }]);
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test" });
+    core.setRowData([
+      { id: "a", when: "2024-01-15" }, { id: "b", when: "2024-01-28" }, { id: "c", when: "2024-03-09" }, { id: "d", when: "2023-12-20" },
+    ]);
+    const api = new GridAPI(core);
+    const tree = (await api.getSetFilterTree("when"))!;
+    expect(tree.map(n => [n.label, n.path, n.children!.map(c => c.label)])).toEqual([
+      ["2023", [2023], ["December"]],
+      ["2024", [2024], ["January", "March"]],
+    ]);
+    await api.uncheckSetFilterPath("when", [2024, 1]);
+    expect(viewIds(core)).toEqual(["c", "d"]);
+    expect((await api.getSetFilterState("when"))!.unchecked).toEqual(["2024-01-15", "2024-01-28"]);
+  });
+});
+
+describe("IGridAPI set-filter helpers honour the column comparator", () => {
+  it("getSetFilterValues returns the from-rows universe in the comparator's order", async () => {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    const rank: Record<string, number> = { Low: 0, Medium: 1, High: 2 };
+    core.setColumnDefsFromProps([{
+      colId: "priority", key: "priority", label: "Priority", filter: "set",
+      filterParams: { comparator: (a, b) => rank[a.label] - rank[b.label] },
+    }]);
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test" });
+    core.setRowData([{ id: "1", priority: "High" }, { id: "2", priority: "Low" }, { id: "3", priority: null }, { id: "4", priority: "Medium" }]);
+    const api = new GridAPI(core);
+    expect(await api.getSetFilterValues("priority")).toEqual([null, "Low", "Medium", "High"]);
   });
 });

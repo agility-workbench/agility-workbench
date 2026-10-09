@@ -86,7 +86,7 @@ const staticSet = {
   label: "Status",
   filter: "set",
   filterParams: {
-    filterValues: [{ value: "Open" }, { value: "Pending" }, { value: "Closed" }],
+    filterValues: ["Open", "Pending", "Closed"],
   },
 } satisfies ColDef;
 
@@ -101,6 +101,12 @@ const asyncSet = {
   },
 } satisfies ColDef;
 ```
+
+A static list holds the values themselves — strings, numbers, Dates, or the
+objects a keyed column holds — in the order they should appear, which a static
+or async list keeps in both layouts. An entry written as `{ value: "Open" }`
+(the older form) is unwrapped, so existing lists keep working; a column whose
+cell objects have their own `value` field lists them wrapped that way.
 
 Set filters can keep complex raw values while defining their identity and
 display separately:
@@ -118,8 +124,27 @@ const regionSet = {
 ```
 
 `keyCreator` is used for option deduplication, selection, API lookup, and
-client-side comparison; `valueFormatter` controls labels, mini-filter matching,
-accessible names, and value ordering. Filter models and Set Filter API methods
+client-side comparison; without one, values are identified the same way on
+both sides — text folded unless `caseSensitive`, a `Date` by its instant, an
+object by its content. `valueFormatter` controls labels, mini-filter matching,
+accessible names, and value ordering. `comparator` replaces that ordering:
+
+```ts
+const rank = { Low: 0, Medium: 1, High: 2 };
+const prioritySet = {
+  key: "priority",
+  label: "Priority",
+  filter: "set",
+  filterParams: { comparator: (a, b) => rank[a.label] - rank[b.label] },
+} satisfies ColDef;
+```
+
+It sees each side's raw `value` and the `label` the menu shows, applies to the
+universe read from the rows (a static or async `filterValues` list keeps the
+order it was given, in either layout), and is never handed a blank: `(Blanks)`
+stays pinned above the values. In the tree layout it orders the siblings at
+every level and also receives `segment`, `level`, and `path`; a group has no
+`value`. Filter models and Set Filter API methods
 continue to use the raw values. Set `filterParams.showValueCounts: true` to show the number of loaded
 leaf rows for each value. Counts cover the complete client-side row model; with
 the server-side row model they are necessarily limited to rows currently loaded
@@ -145,7 +170,8 @@ const regionColumn: ReactColDef = {
 
 Omitting a component uses the built-in text. Once configured, a component that
 renders no content leaves that label slot intentionally empty. Mini-filtering
-and accessible checkbox names continue to use the underlying text labels. A
+and accessible checkbox names continue to use the underlying text labels, and
+a built-in count is the checkbox's accessible description ("3 rows"). A
 regular value component receives the loaded-row count as `count`; the Blanks
 component receives it too when that option exists.
 
@@ -163,6 +189,141 @@ the application knows which of its shapes are empty.
 The *column's* `valueFormatter` still sees blanks when rendering cells, which is
 how a blank cell shows an em dash. On the server-side row model the bucket travels
 as `null`, so the server applies its own blank rule and cannot see `keyCreator`.
+
+### Tree layout
+
+`filter: "tree"` is the set filter with its values laid out as a collapsible
+tree. A date column needs nothing else: its values group by year and month,
+with the day as the leaf. Any other column groups along the path
+`treePathGetter` returns for each value, root first and the leaf last:
+
+```ts
+const openedColumn = {
+  key: "opened",
+  label: "Opened",
+  type: ColumnType.DATE,
+  filter: "tree",
+  filterParams: { treeDefaultExpanded: 1 }, // years open, months closed
+} satisfies ColDef;
+
+const productColumn = {
+  key: "product",
+  label: "Product",
+  filter: "tree",
+  filterParams: {
+    // "Hardware/Laptops/Pro 14" → Hardware › Laptops › Pro 14
+    treePathGetter: value => value.split("/"),
+  },
+} satisfies ColDef;
+```
+
+Every segment but the last becomes a group; values that share a prefix share
+those groups, and a value whose path is `null` or empty sits at the root with
+its ordinary label. `treePathFormatter(segment, level, parentPath)` names each
+segment — the built-in date path names its months in the column's formatter
+locale, and an application path shows `String(segment)` unless it formats.
+Siblings sort by their segment when both are numbers or dates, and by label
+otherwise, when the values come from the rows; a static or async `filterValues`
+list keeps the order it was given, as in the flat layout, so siblings appear in
+the order their values are listed.
+
+Quarters and weeks are a path getter away. The getter receives the raw cell
+value — a `Date` on a column holding dates; parse ISO text first on a text
+column — and the leaf can be the date itself, formatted by level:
+
+```ts
+const openedColumn = {
+  key: "opened",
+  label: "Opened",
+  type: ColumnType.DATE,
+  filter: "tree",
+  filterParams: {
+    // 2024 › Q1 › 15 Jan: the year, the quarter, then the date itself as the leaf
+    treePathGetter: (d: Date) => [d.getFullYear(), Math.floor(d.getMonth() / 3) + 1, d],
+    treePathFormatter: (segment, level) =>
+      level === 1 ? `Q${segment}`
+      : level === 2 ? segment.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      : String(segment),
+    treeDefaultExpanded: 1, // years open, quarters closed
+  },
+} satisfies ColDef;
+```
+
+Weeks need the ISO week-year rather than the calendar year, since the first
+days of January can belong to the last week of the year before:
+
+```ts
+/** ISO 8601 week: the year the week belongs to and its number, weeks starting Monday. */
+function isoWeek(d: Date): [year: number, week: number] {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); // the week's Thursday names the year
+  const week = Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  return [t.getUTCFullYear(), week];
+}
+
+const filterParams: FilterParams = {
+  // 2024 › Week 3 › 15 Jan
+  treePathGetter: (d: Date) => [...isoWeek(d), d],
+  treePathFormatter: (segment, level) =>
+    level === 1 ? `Week ${segment}`
+    : level === 2 ? segment.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : String(segment),
+};
+```
+
+Quarters and weeks are numbers and the leaves are dates, so every level sorts
+in calendar order; the leaf's day and month follow the browser's locale.
+
+Checking a group checks every leaf beneath it, a partly checked group shows as
+mixed, and `showValueCounts` sums the leaves per group. The mini filter keeps a
+row when its own label or an ancestor's matches, so typing a year keeps that
+year's months and days, and it holds every matching group open for as long as
+the text is there. `treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
+(the default) opens nothing, `N` opens the first N levels, `-1` opens all. The
+groups a user opens or closes are remembered for as long as the grid lives, so
+the filter reopens as it was left (a group not seen before starts at the
+default depth); `treeRememberExpansion: false` reopens at the default depth
+every time.
+
+`groupComponent` replaces a group row's text the way `valueComponent` does for
+a value, while the grid keeps the chevron and the checkbox. It receives the
+label, the summed `count`, the `level`, the `path`, the group's own `segment`,
+and `expanded`, and is refreshed when the group opens or closes:
+
+```tsx
+const productColumn: ReactColDef = {
+  key: "product",
+  label: "Product",
+  filter: "tree",
+  filterParams: {
+    treePathGetter: value => value.split("/"),
+    showValueCounts: true,
+    groupComponent: ({ label, count }) => <span>{label} <small>{count} items</small></span>,
+  },
+};
+```
+
+Groups are a presentation of the same universe, never values: the filter model
+holds leaf values exactly as in the flat layout, so saved filter state, the Set
+Filter API below, and a server-side data source are unchanged. Use `keyCreator`
+to merge values that should be one leaf — a date column holding times, keyed by
+its calendar day.
+
+The Select All row is the tree's root: its chevron shows whether every group
+is open, none is, or only some are (a dash, like the indeterminate checkbox
+beside it), and opens every
+group when any is closed or closes them all once all are open.
+
+Keyboard: Up/Down walk the visible rows, Right opens a group or steps into it,
+Left closes it or moves to its parent (Select All, for a row at the top of the
+tree), Home/End jump to the first and last row, and Space toggles the row's
+checkbox. On Select All, Right and Left open and close every group.
+
+Assistive technology sees a `tree` of `treeitem`s. Select All is the root and
+every other row sits beneath it, each announced with its level, its position
+among the siblings in view, whether it is open, and its checked state (mixed
+for a partly checked group); a value count reads as "3 rows". The row is the
+checkable item, so the checkbox inside it is not exposed on its own.
 
 ## Custom matcher
 
@@ -258,6 +419,22 @@ values that **arrive after filtering** (new rows, edited cells):
 An explicit `mode` passed to `setSetFilterValues` is pinned on the filter:
 subsequent menu or helper toggles keep that representation instead of
 optimizing storage to the shorter list.
+
+A tree-layout column adds helpers that address its groups by path:
+
+```ts
+await api.getSetFilterTree("opened");                 // [{ path: [2024], label: "2024", checked: "mixed", children: [...] }, ...]
+await api.uncheckSetFilterPath("opened", [2024, 1]);  // hide January 2024 — every day under it
+await api.checkSetFilterPath("opened", [2024]);       // show all of 2024 again
+```
+
+A path names a group, or one leaf by its full path. Segments compare by type
+and value as the tree built them, so the built-in date path takes numbers.
+Each node carries its label, its count when `showValueCounts` is on, and
+`checked` (`"mixed"` for a partly checked group); leaves carry their `value`,
+the blanks bucket as a root leaf with `value: null`. The filter model stays
+leaf-only, so these are the same `in`/`notIn` defs as the value helpers
+produce. Off a tree column they warn and return `null` or do nothing.
 
 ## Quick filter
 

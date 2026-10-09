@@ -18,6 +18,8 @@ import type {
   SetFilterComponentClass,
   SetFilterSpecialValueComponent,
   SetFilterSpecialValueComponentParams,
+  SetFilterGroupComponent,
+  SetFilterGroupComponentParams,
   SetFilterValueComponent,
   SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
@@ -75,13 +77,18 @@ export type ReactSetFilterSpecialValueComponent =
   | React.ComponentType<SetFilterSpecialValueComponentParams>
   | React.ExoticComponent<SetFilterSpecialValueComponentParams>;
 
+export type ReactSetFilterGroupComponent =
+  | React.ComponentType<SetFilterGroupComponentParams>
+  | React.ExoticComponent<SetFilterGroupComponentParams>;
+
 export type ReactFilterParams = Omit<
   FilterParams,
-  "valueComponent" | "selectAllComponent" | "blanksComponent"
+  "valueComponent" | "selectAllComponent" | "blanksComponent" | "groupComponent"
 > & {
   valueComponent?: SetFilterValueComponent | ReactSetFilterValueComponent;
   selectAllComponent?: SetFilterSpecialValueComponent | ReactSetFilterSpecialValueComponent;
   blanksComponent?: SetFilterSpecialValueComponent | ReactSetFilterSpecialValueComponent;
+  groupComponent?: SetFilterGroupComponent | ReactSetFilterGroupComponent;
 };
 
 export type ReactColDef = Omit<
@@ -371,6 +378,7 @@ function adaptReactFilterParams(filterParams: ReactFilterParams | undefined): Fi
     valueComponent: adaptSetFilterComponent(filterParams.valueComponent),
     selectAllComponent: adaptSetFilterComponent(filterParams.selectAllComponent),
     blanksComponent: adaptSetFilterComponent(filterParams.blanksComponent),
+    groupComponent: adaptSetFilterComponent(filterParams.groupComponent),
   };
 }
 

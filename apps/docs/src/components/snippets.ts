@@ -171,6 +171,7 @@ await api.refreshServerSideData({ purge: false });`,
   { key: "customer", label: "Customer", filter: "text" },
   { key: "status", label: "Status", filter: "set" },
   { key: "revenue", label: "Revenue", filter: "number" },
+  { key: "orderDate", label: "Ordered", type: ColumnType.DATE, filter: "tree" }, // year › month › day
 ];
 
 <Grid
@@ -184,6 +185,7 @@ await api.refreshServerSideData({ purge: false });`,
   { key: "customer", label: "Customer", filter: "text" },
   { key: "status", label: "Status", filter: "set" },
   { key: "revenue", label: "Revenue", filter: "number" },
+  { key: "orderDate", label: "Ordered", type: ColumnType.DATE, filter: "tree" }, // year › month › day
 ];
 
 <awb-grid
@@ -198,6 +200,7 @@ await api.refreshServerSideData({ purge: false });`,
     { key: "customer", label: "Customer", filter: "text" },
     { key: "status", label: "Status", filter: "set" },
     { key: "revenue", label: "Revenue", filter: "number" },
+    { key: "orderDate", label: "Ordered", type: ColumnType.DATE, filter: "tree" }, // year › month › day
   ],
   {{options}}
 });

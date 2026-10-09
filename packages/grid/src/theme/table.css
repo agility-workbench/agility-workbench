@@ -49,6 +49,7 @@
   --pte-icon-submenu: url(icons/submenu.svg);
   --pte-icon-group-collapsed: url(icons/right-chevron.svg);
   --pte-icon-group-expanded: url(icons/down-chevron.svg);
+  --pte-icon-group-mixed: url(icons/minus.svg);
   --pte-icon-check: url(icons/check.svg);
   --pte-icon-group: url(icons/group.svg);
   --pte-icon-pivot: url(icons/pivot.svg);
@@ -2218,7 +2219,8 @@
    announcer below is a *visible* toast and is deliberately not part of this rule. */
 .pte-column-panel-announcer,
 .pte-grid-sr-announcer,
-.pte-quick-filter-find-count-sr {
+.pte-quick-filter-find-count-sr,
+.pte-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -4677,6 +4679,11 @@
   min-width: 0;
 }
 
+/* The count's screen-reader-only unit ("rows") is a child of the slot too; keep it off-screen. */
+.pte-set-filter-option-label > .pte-sr-only {
+  width: 1px;
+}
+
 .pte-set-filter-option-label-text {
   width: auto;
   flex: 1 1 auto;
@@ -4736,6 +4743,43 @@
 
 .pte-set-filter-option.focused {
   border: 1px solid var(--pte-select-border-color);
+}
+
+/* Tree layout (filter: "tree"): rows indent by level; a chevron leads each group and a spacer of the
+   same width leads every other row, so the checkboxes of siblings line up. */
+.pte-set-filter-option-tree {
+  padding-left: calc(4px + var(--pte-set-filter-level, 0) * 16px);
+}
+
+.pte-set-filter-expander,
+.pte-set-filter-expander-spacer {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.pte-set-filter-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pte-set-filter-expander:hover {
+  background-color: var(--pte-menu-btn-hover-bg);
+}
+
+.pte-set-filter-expander-icon {
+  width: 14px;
+  height: 14px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+.pte-set-filter-option-group .pte-set-filter-option-label-text {
+  font-weight: 600;
 }
 
 .pte-filter-condition-row {
@@ -4888,6 +4932,12 @@
 
 .icon-group-expanded {
   mask-image: var(--pte-icon-group-expanded);
+  background-color: var(--pte-icon-color);
+}
+
+/* The set filter tree's root when only some groups are open — the dash of an indeterminate checkbox. */
+.icon-group-mixed {
+  mask-image: var(--pte-icon-group-mixed);
   background-color: var(--pte-icon-color);
 }
 

@@ -427,6 +427,7 @@ export class NgAdapters {
       valueComponent: this.adaptSetFilterComponent(filterParams.valueComponent),
       selectAllComponent: this.adaptSetFilterComponent(filterParams.selectAllComponent),
       blanksComponent: this.adaptSetFilterComponent(filterParams.blanksComponent),
+      groupComponent: this.adaptSetFilterComponent(filterParams.groupComponent),
     };
   }
 
