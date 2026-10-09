@@ -3,10 +3,16 @@
 # Trigger: pushing a v* tag whose commit has a GREEN ci.yml run on it. The
 # `publish` job downloads that run's `npm-tarballs` artifact and publishes
 # those exact files — it never rebuilds (docs/maintainers/repository.md §7).
-# The `github-release` job then posts the version's CHANGELOG.md entry as the
-# GitHub Release on the tag (`node scripts/changelog.mjs section <version>`);
-# a missing entry fails that job, after npm has published, until the entry
-# lands and the run is retried.
+# Two jobs follow it independently: `github-release` posts the version's
+# CHANGELOG.md entry as the GitHub Release on the tag (`node
+# scripts/changelog.mjs section <version>`; a missing entry fails that job,
+# after npm has published, until the entry lands and the run is retried), and
+# `verify` waits for the registry to show every version. npm holds a fresh
+# publish in a validation window for several minutes, during which `npm view`
+# 404s — so the check polls rather than asks once, and it is not in the path
+# of the release notes. `publish` skips a version the registry already has and
+# treats npm's "cannot publish over" refusal as already published, so
+# "Re-run failed jobs" is safe at any point.
 #
 # Auth: npm Trusted Publishing (OIDC). Each package on npmjs.com names this
 # repository + workflow file as its trusted publisher, so no npm token exists
@@ -95,23 +101,72 @@ jobs:
 
       # Core first: both bindings depend on it by semver range
       # (docs/maintainers/repository.md "Release order & version coupling").
+      # Idempotent, so a re-run of this job after a later failure never fails
+      # here: a version the registry already shows is skipped, and when npm
+      # refuses the duplicate (the version exists but is still inside the
+      # validation window, where `npm view` cannot see it) that counts as
+      # published too. Any other publish error still fails the job.
       - name: Publish core, then bindings
         run: |
-          npm publish artifacts/npm/agility-workbench-grid-*.tgz --provenance
-          npm publish artifacts/npm/agility-workbench-react-grid-*.tgz --provenance
-          npm publish artifacts/npm/agility-workbench-angular-grid-*.tgz --provenance
+          field() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d)[process.argv[1]]))' "$1"; }
+          publish_one() {
+            local tarball="$1" name version log="$RUNNER_TEMP/publish.log"
+            name=$(tar -xzOf "$tarball" package/package.json | field name)
+            version=$(tar -xzOf "$tarball" package/package.json | field version)
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "::notice::$name@$version is already on the registry — skipping."
+              return 0
+            fi
+            if npm publish "$tarball" --provenance >"$log" 2>&1; then
+              cat "$log"
+              return 0
+            fi
+            cat "$log"
+            if grep -qi "cannot publish over\|previously published" "$log"; then
+              echo "::notice::$name@$version was already published (npm refused the duplicate) — continuing."
+              return 0
+            fi
+            echo "::error::Publishing $name@$version failed."
+            return 1
+          }
+          publish_one artifacts/npm/agility-workbench-grid-*.tgz
+          publish_one artifacts/npm/agility-workbench-react-grid-*.tgz
+          publish_one artifacts/npm/agility-workbench-angular-grid-*.tgz
 
-      - name: Verify on the registry
+  # npm holds a new version in a validation window for several minutes after publish; `npm view`
+  # 404s until it clears. So this waits, on its own, and is not in the release notes' path: a slow
+  # window can only redden this job, while a version that never appears still fails loudly.
+  verify:
+    name: Verify the versions on the registry
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Wait for npm to show every version
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
+          deadline=$(( $(date +%s) + 20 * 60 ))
           for p in grid react-grid angular-grid; do
-            npm view "@agility-workbench/$p@$tag_version" version
+            until npm view "@agility-workbench/$p@$tag_version" version >/dev/null 2>&1; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::@agility-workbench/$p@$tag_version is still not visible on the registry after 20 minutes."
+                exit 1
+              fi
+              echo "@agility-workbench/$p@$tag_version is not visible yet (npm validation window) — retrying in 30s"
+              sleep 30
+            done
+            echo "@agility-workbench/$p@$tag_version is on the registry"
           done
 
   # Release notes live in CHANGELOG.md (docs/maintainers/repository.md §6). Once npm has the
   # tarballs, post the tagged version's entry as the GitHub Release on the tag, so people who
   # watch releases get the same notes the docs site publishes. Re-running the workflow updates
-  # the existing release instead of failing on it.
+  # the existing release instead of failing on it. Needs only `publish`, deliberately not
+  # `verify`: the notes go out once the tarballs are accepted, however long npm takes to show them.
   github-release:
     name: Post the CHANGELOG entry as the GitHub Release
     needs: publish

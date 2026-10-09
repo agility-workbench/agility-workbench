@@ -320,15 +320,22 @@ symbol, bump and publish the core, then bump that binding's dependency range to 
 `.github/workflows/release.yml` publishes on a pushed `v*` tag. It does **not** build: it finds
 the successful `ci.yml` run for the tagged commit, downloads that run's `npm-tarballs` artifact,
 checks every tarball's `version` against the tag, then publishes core → react → angular with
-`--provenance`, and reads each version back off the registry. So the release is exactly the
-artifact CI already gated.
+`--provenance`. So the release is exactly the artifact CI already gated. Publishing is
+idempotent: a version the registry already shows is skipped, and npm's refusal to publish over
+an existing version counts as published, so "Re-run failed jobs" is safe at any point.
 
-A second job, `github-release`, runs once publishing succeeds. It extracts the tagged version's
-entry from `CHANGELOG.md` (`node scripts/changelog.mjs section <version>`) and creates the GitHub
+Two jobs follow `publish` independently. `github-release` extracts the tagged version's entry
+from `CHANGELOG.md` (`node scripts/changelog.mjs section <version>`) and creates the GitHub
 Release on the tag with that entry as its notes, followed by links to the docs-site changelog
 anchor and the three npm pages; a re-run updates the existing release instead of failing. No
 entry for the version fails this job — after npm has published, so nothing is lost — and the
-run stays red until the entry lands on `main` and the job is re-run.
+run stays red until the entry lands on `main` and the job is re-run. `verify` waits for the
+registry to show every version: npm holds a fresh publish in a **validation window** of several
+minutes, during which `npm view` 404s, so it polls every 30 seconds for up to 20 minutes rather
+than asking once. It is deliberately not in the release notes' path — a slow window can only
+redden `verify`, while a version that never appears still fails loudly. (The 1.5.0 release hit
+this: the check used to run once, inside `publish`, so its 404 failed the job and skipped the
+release notes, which were then posted by hand.)
 
 Auth is npm **Trusted Publishing** (OIDC) — no npm token exists anywhere. That needs one-time
 setup, and until it is done a tag push will fail at the publish step:
