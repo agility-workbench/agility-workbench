@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Column } from "../column/column";
+import { ColumnType } from "../interfaces/column";
 import type { IGridCore } from "../interfaces";
 import type { ColDef } from "../interfaces/column";
 import { ColumnFilterMenuService } from "./filterMenuService";
@@ -52,5 +53,59 @@ describe("ColumnFilterMenuService set-filter values", () => {
     });
 
     expect(spec.valueLabel!("APAC")).toBe("Cell APAC");
+  });
+});
+
+describe("ColumnFilterMenuService tree layout", () => {
+  it("a plain set filter builds no tree spec", () => {
+    const { spec } = buildSpec({ colId: "region", key: "region", label: "Region", filter: "set" });
+    expect(spec.kind).toBe("set");
+    expect(spec.tree).toBeUndefined();
+  });
+
+  it("filter: \"tree\" is the set filter with a tree spec; a date column gets the year › month › day path", () => {
+    const { spec } = buildSpec({ colId: "due", key: "due", label: "Due", type: ColumnType.DATE, filter: "tree" });
+    expect(spec.kind).toBe("set");
+    expect(spec.conditionTemplate.valueInputType).toBe("tree");
+    expect(spec.tree!.defaultExpanded).toBe(0);
+    expect(spec.tree!.pathOf("2024-03-09")).toEqual([2024, 3, 9]);
+    expect(spec.tree!.pathOf(new Date(2023, 11, 31))).toEqual([2023, 12, 31]);
+    expect(spec.tree!.pathOf("not a date")).toBeNull();
+    expect(spec.tree!.formatSegment(3, 1, [2024])).toBe("March");
+    expect(spec.tree!.formatSegment(9, 2, [2024, 3])).toBe("9");
+  });
+
+  it("a non-date tree column only paths Date values by default, leaving text at the root", () => {
+    const { spec } = buildSpec({ colId: "code", key: "code", label: "Code", filter: "tree" });
+    expect(spec.tree!.pathOf("20240309")).toBeNull();
+    expect(spec.tree!.pathOf(new Date(2024, 2, 9))).toEqual([2024, 3, 9]);
+  });
+
+  it("names months in the column's formatter locale", () => {
+    const { spec } = buildSpec({
+      colId: "due", key: "due", label: "Due", type: ColumnType.DATE, filter: "tree",
+      formatterOptions: { locale: "fr-FR" },
+    });
+    expect(spec.tree!.formatSegment(3, 1, [2024])).toBe("mars");
+  });
+
+  it("wires the application's path getter, formatter, and default depth", () => {
+    const treePathGetter = (value: any) => String(value).split("/");
+    const treePathFormatter = (segment: any, level: number) => `${level}:${segment}`;
+    const { spec } = buildSpec({
+      colId: "item", key: "item", label: "Item", filter: "tree",
+      filterParams: { treePathGetter, treePathFormatter, treeDefaultExpanded: -1 },
+    });
+    expect(spec.tree!.pathOf).toBe(treePathGetter);
+    expect(spec.tree!.formatSegment).toBe(treePathFormatter);
+    expect(spec.tree!.defaultExpanded).toBe(-1);
+  });
+
+  it("an application path getter without a formatter labels segments as text, even on a date column", () => {
+    const { spec } = buildSpec({
+      colId: "due", key: "due", label: "Due", type: ColumnType.DATE, filter: "tree",
+      filterParams: { treePathGetter: () => ["q1", 3] },
+    });
+    expect(spec.tree!.formatSegment(3, 1, ["q1"])).toBe("3");
   });
 });

@@ -3,6 +3,26 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Set filter tree layout
+
+- **`filter: "tree"` lays a set filter's values out as a collapsible tree.** A date column groups
+  its values by year and month with the day as the leaf, on its own; any other column groups along
+  the path `filterParams.treePathGetter` returns for each value (`["Hardware", "Laptops", "Pro
+  14"]` lists the laptop under Hardware › Laptops), with `treePathFormatter` naming each segment.
+  Checking a group checks every leaf beneath it and a partly checked group shows as mixed, with
+  value counts summed per group. The mini filter matches a row by its own label or an ancestor's,
+  so typing a year keeps the whole year, and holds every matching group open for as long as it is
+  typed. `treeDefaultExpanded` sets how many levels start open (0, the default, none; -1 all).
+  Groups are never stored: the filter model holds leaf values exactly as before, so saved filter
+  state, the Set Filter API, and a server-side data source see no change. The Select All row is
+  the root: its chevron opens every group, or closes them all once they are open. Keyboard: Right
+  opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
+  group), Home and End jump to the first and last row (in the flat list too, where Left and Right
+  keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and
+  checked state.
+
 ## 1.4.0 — 2026-10-04
 
 ### Fill handle

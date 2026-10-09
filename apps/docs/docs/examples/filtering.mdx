@@ -164,6 +164,62 @@ The *column's* `valueFormatter` still sees blanks when rendering cells, which is
 how a blank cell shows an em dash. On the server-side row model the bucket travels
 as `null`, so the server applies its own blank rule and cannot see `keyCreator`.
 
+### Tree layout
+
+`filter: "tree"` is the set filter with its values laid out as a collapsible
+tree. A date column needs nothing else: its values group by year and month,
+with the day as the leaf. Any other column groups along the path
+`treePathGetter` returns for each value, root first and the leaf last:
+
+```ts
+const openedColumn = {
+  key: "opened",
+  label: "Opened",
+  type: ColumnType.DATE,
+  filter: "tree",
+  filterParams: { treeDefaultExpanded: 1 }, // years open, months closed
+} satisfies ColDef;
+
+const productColumn = {
+  key: "product",
+  label: "Product",
+  filter: "tree",
+  filterParams: {
+    // "Hardware/Laptops/Pro 14" → Hardware › Laptops › Pro 14
+    treePathGetter: value => value.split("/"),
+  },
+} satisfies ColDef;
+```
+
+Every segment but the last becomes a group; values that share a prefix share
+those groups, and a value whose path is `null` or empty sits at the root with
+its ordinary label. `treePathFormatter(segment, level, parentPath)` names each
+segment — the built-in date path names its months in the column's formatter
+locale, and an application path shows `String(segment)` unless it formats.
+Siblings sort by their segment when both are numbers or dates, and by label
+otherwise.
+
+Checking a group checks every leaf beneath it, a partly checked group shows as
+mixed, and `showValueCounts` sums the leaves per group. The mini filter keeps a
+row when its own label or an ancestor's matches, so typing a year keeps that
+year's months and days, and it holds every matching group open for as long as
+the text is there. `treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
+(the default) opens nothing, `N` opens the first N levels, `-1` opens all.
+
+Groups are a presentation of the same universe, never values: the filter model
+holds leaf values exactly as in the flat layout, so saved filter state, the Set
+Filter API below, and a server-side data source are unchanged. Use `keyCreator`
+to merge values that should be one leaf — a date column holding times, keyed by
+its calendar day.
+
+The Select All row is the tree's root: its chevron opens every group when any
+is closed and closes them all otherwise.
+
+Keyboard: Up/Down walk the visible rows, Right opens a group or steps into it,
+Left closes it or moves to its parent, Home/End jump to the first and last row,
+and Space toggles the row's checkbox. On Select All, Right and Left open and
+close every group.
+
 ## Custom matcher
 
 A function supplied as `filter` becomes the row matcher while the standard

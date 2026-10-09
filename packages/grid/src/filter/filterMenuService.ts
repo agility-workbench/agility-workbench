@@ -3,7 +3,14 @@ import { FilterInputType, FilterOption, FilterParams, FilterType } from "../inte
 import { ColumnFilterContext } from "./context";
 import { ColumnType } from "../interfaces/column";
 import { Column } from "../column/column";
+import { parseDateInput } from "../column/formatters";
 import { FilterPanelSpec, FilterValueSource, getFilterKindForFilterType } from "./types";
+import {
+  dateSegmentFormatter,
+  dateTreePath,
+  defaultSegmentFormatter,
+  SetFilterTreeSpec,
+} from "./setFilterTree";
 
 export class ColumnFilterMenuService {
   constructor(private core: IGridCore) { }
@@ -44,7 +51,29 @@ export class ColumnFilterMenuService {
       valueLabel: isSetFilter && valueFormatter
         ? value => valueFormatter({ value, col: ctx.targetCol })
         : undefined,
+      tree: filterType === "tree" ? this.buildTreeSpec(ctx.targetCol, filterParams) : undefined,
     };
+  }
+
+  /**
+   * How a tree-layout column places and labels its values. An application path getter comes with
+   * plain `String(segment)` labels unless it also formats; the built-in date path (Date values, or
+   * a date column's text) names its months in the column's formatter locale.
+   */
+  private buildTreeSpec(column: Column, params: FilterParams): SetFilterTreeSpec {
+    const isDateColumn = column.type === ColumnType.DATE;
+    const pathOf = params.treePathGetter
+      ?? dateTreePath(value => (isDateColumn ? parseDateInput(value) : null));
+    const formatSegment = params.treePathFormatter
+      ?? (params.treePathGetter ? defaultSegmentFormatter : dateSegmentFormatter(this.formatterLocale(column)));
+    return { pathOf, formatSegment, defaultExpanded: params.treeDefaultExpanded ?? 0 };
+  }
+
+  private formatterLocale(column: Column): string | undefined {
+    const opts = typeof column.formatterOptions === "function"
+      ? column.formatterOptions({ col: column })
+      : column.formatterOptions;
+    return opts?.locale;
   }
 
   private getFilterParams(column: Column): FilterParams {

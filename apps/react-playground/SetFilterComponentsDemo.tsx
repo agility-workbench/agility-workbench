@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import {
+  ColumnType,
   FilterType,
   Grid,
   type FilterParams,
@@ -16,6 +17,8 @@ type AccountRow = {
   account: string;
   region: Region | null;
   owner: string;
+  opened: string;
+  product: string;
 };
 
 type Region = { code: string; name: string };
@@ -66,14 +69,14 @@ const loadOwnerValues: FilterValueAsyncSource = async (
 };
 
 const rows: AccountRow[] = [
-  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava" },
-  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam" },
-  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia" },
-  { id: "A-104", account: "Initech", region: null, owner: "Noah" },
-  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma" },
-  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan" },
-  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia" },
-  { id: "A-108", account: "Wonka", region: null, owner: "Lucas" },
+  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava", opened: "2024-01-15", product: "Hardware/Laptops/Pro 14" },
+  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam", opened: "2024-01-28", product: "Software/Suites/Office" },
+  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia", opened: "2024-03-09", product: "Hardware/Laptops/Air 13" },
+  { id: "A-104", account: "Initech", region: null, owner: "Noah", opened: "2023-11-02", product: "Hardware/Phones/Model X" },
+  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma", opened: "2023-12-20", product: "Software/Suites/Design" },
+  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan", opened: "2024-03-21", product: "Services/Support/Premium" },
+  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia", opened: "2024-06-05", product: "Software/Tools/CLI" },
+  { id: "A-108", account: "Wonka", region: null, owner: "Lucas", opened: "2023-11-19", product: "Services/Training/Onsite" },
 ];
 
 function RegionFilterValue({ value, valueFormatted, showCode, count }: SetFilterValueComponentParams) {
@@ -150,6 +153,25 @@ export function SetFilterComponentsDemo() {
       filter: "set",
       filterParams: { showValueCounts: true, filterValues: loadOwnerValues },
     },
+    {
+      colId: "opened",
+      key: "opened",
+      label: "Opened",
+      width: 130,
+      type: ColumnType.DATE,
+      // Tree layout: a date column groups its values by year › month on its own, days as leaves.
+      filter: "tree",
+      filterParams: { showValueCounts: true, treeDefaultExpanded: 1 },
+    },
+    {
+      colId: "product",
+      key: "product",
+      label: "Product",
+      width: 200,
+      // Tree layout along an application path: Hardware › Laptops › Pro 14.
+      filter: "tree",
+      filterParams: { treePathGetter: (value: string) => value.split("/") },
+    },
   ], []);
 
   return (
@@ -167,7 +189,9 @@ export function SetFilterComponentsDemo() {
           Enter <code> cafe </code> in the Account filter and click Apply: the filter commits and its
           popover closes. This also demonstrates trimming, case folding, accent normalization, and a
           custom filter function. Region uses object keys, formatted labels, and custom React value
-          components; Owner loads its counted set values asynchronously.
+          components; Owner loads its counted set values asynchronously. Opened and Product use the
+          tree layout: a date column groups by year and month on its own, and Product groups along
+          the path its <code>treePathGetter</code> returns.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

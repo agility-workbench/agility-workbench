@@ -180,6 +180,33 @@ export interface FilterParams {
   /** Extra params merged into the Blanks component params. */
   blanksComponentParams?: any;
   /**
+   * Tree layout (`filter: "tree"`): the path of a value in the tree, root first and the leaf last —
+   * `["Fruit", "Citrus", "Orange"]` lists Orange under Fruit › Citrus. Every segment but the last
+   * becomes a collapsible group; values sharing a prefix share those groups. Return null or an empty
+   * array to place a value at the root with its ordinary label.
+   *
+   * Without it, a `Date` value (or a date column's parseable text) is placed under its year and
+   * month with the day as the leaf, and anything else sits at the root. Never called with a blank:
+   * `(Blanks)` keeps its own row above the tree.
+   *
+   * Groups are never stored. Checking one checks the leaves beneath it, and the filter model holds
+   * the leaf values exactly as in the flat layout, so the Set Filter API and a server-side data
+   * source see no difference.
+   */
+  treePathGetter?: (value: any) => any[] | null | undefined;
+  /**
+   * Tree layout: formats one path segment for display, mini-filter matching, and accessible names.
+   * `level` is 0 at the root and `parentPath` holds the segments above. Defaults to the month's
+   * name at level 1 of the built-in date path, else `String(segment)`.
+   */
+  treePathFormatter?: (segment: any, level: number, parentPath: any[]) => string;
+  /**
+   * Tree layout: depth to which groups start open each time the filter opens. 0 (default) leaves
+   * every group collapsed; N opens the first N levels; -1 opens all. A typed mini filter opens every
+   * group with a match for as long as it is typed.
+   */
+  treeDefaultExpanded?: number;
+  /**
    * Transforms cell and filter operands before comparison. Runs before built-in normalization and
    * before either custom matcher. Built-in blank operators still inspect the raw cell value.
    */
@@ -192,6 +219,7 @@ export interface FilterParams {
   filterFunction?: (type: FilterType, filterValues: any[], cellValue: any, caseSensitive?: boolean, trimValues?: boolean) => boolean;
 }
 
+/** `"tree"` is the set filter with its values laid out as a collapsible tree (`FilterParams.treePathGetter`). */
 export type FilterInputType = "text" | "number" | "date" | "boolean" | "dropdown" | "set" | "tree" | "none";
 
 export function valuesNeededFor(op: FilterType): number {

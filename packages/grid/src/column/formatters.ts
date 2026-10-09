@@ -61,7 +61,8 @@ const buildDate = (year: number, month: number, day: number): Date | null => {
   return date;
 };
 
-const parseDateInput = (value: Date | string | number): Date | null => {
+/** The date column's own reading of a cell value: Date, epoch number, or any of the text forms below. */
+export const parseDateInput = (value: Date | string | number): Date | null => {
   if (value instanceof Date) {
     return isValidDate(value) ? value : null;
   }

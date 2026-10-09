@@ -1,5 +1,6 @@
 import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "../../filter/types";
+import { allGroupsExpanded, hasSetFilterGroups, visibleSetOptions } from "../../filter/setFilterTree";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
 import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
@@ -20,12 +21,21 @@ interface ValueComponentRecord {
   runtime: SetFilterComponentRuntime<any>;
 }
 
+/**
+ * The set filter's value list. In the flat layout it is a list of labelled checkboxes; a tree
+ * column (`spec.tree`) whose values produced groups renders the same rows indented by level, with a
+ * chevron before each group, and exposes them as a `tree` of `treeitem`s. The tree's rows are the
+ * controller's own pre-order option list filtered by `visibleSetOptions`, so a row's `data-idx` is
+ * the index the controller addresses — the same index a flat row's toggle has always sent.
+ */
 export class SetFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;
   private loader!: Overlay;
   private conditionContainer!: HTMLElement;
   private miniFilterInput!: HTMLInputElement;
   private valueComponents = new Map<string, ValueComponentRecord>();
+  /** Whether the current rows are laid out as a tree (groups present), which turns on tree keys. */
+  private treeRows = false;
 
   constructor(
     private controller: FilterController,
@@ -76,7 +86,7 @@ export class SetFilterRenderer implements IFilterRenderer {
       if (this.loader) this.loader.hide();
     }
     if (uiState.options) {
-      this.createOptionRows(uiState.options, uiState.selectedIdx);
+      this.createOptionRows(uiState.options, uiState.selectedIdx, (uiState.miniFilter ?? "").length > 0);
     }
   }
 
@@ -122,8 +132,7 @@ export class SetFilterRenderer implements IFilterRenderer {
         // drag focus onto the first option instead.
         if (matchesChord(e, "tab")) {
           // if focus is not on an option, start from the first one
-          focusableOptions[0].classList.add("focused");
-          focusableOptions[0].focus();
+          this.focusOption(focusableOptions, -1, 0);
           e.preventDefault();
         }
         return;
@@ -133,26 +142,24 @@ export class SetFilterRenderer implements IFilterRenderer {
       // platform meaning instead of walking the option list.
       if (matchesChord(e, "arrowdown")) {
         e.preventDefault();
-        focusableOptions[currentIndex].classList.remove("focused");
-        const nextIndex = (currentIndex + 1) % focusableOptions.length;
-        focusableOptions[nextIndex].classList.add("focused");
-        focusableOptions[nextIndex].focus();
+        this.focusOption(focusableOptions, currentIndex, (currentIndex + 1) % focusableOptions.length);
       } else if (matchesChord(e, "arrowup")) {
         e.preventDefault();
-        focusableOptions[currentIndex].classList.remove("focused");
-        const prevIndex = (currentIndex - 1 + focusableOptions.length) % focusableOptions.length;
-        focusableOptions[prevIndex].classList.add("focused");
-        focusableOptions[prevIndex].focus();
+        this.focusOption(focusableOptions, currentIndex, (currentIndex - 1 + focusableOptions.length) % focusableOptions.length);
+      } else if (matchesChord(e, "home")) {
+        e.preventDefault();
+        this.focusOption(focusableOptions, currentIndex, 0);
+      } else if (matchesChord(e, "end")) {
+        e.preventDefault();
+        this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
       } else if (matchesChord(e, "arrowleft")) {
         e.preventDefault();
-        focusableOptions[currentIndex].classList.remove("focused");
-        focusableOptions[0].classList.add("focused");
-        focusableOptions[0].focus();
+        if (this.treeRows) this.treeArrowLeft(focusableOptions, currentIndex);
+        else this.focusOption(focusableOptions, currentIndex, 0);
       } else if (matchesChord(e, "arrowright")) {
         e.preventDefault();
-        focusableOptions[currentIndex].classList.remove("focused");
-        focusableOptions[focusableOptions.length - 1].classList.add("focused");
-        focusableOptions[focusableOptions.length - 1].focus();
+        if (this.treeRows) this.treeArrowRight(focusableOptions, currentIndex);
+        else this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
       } else if (matchesAnyChord(e, ["space", "enter"])) {
         e.preventDefault();
         focusableOptions[currentIndex].click();
@@ -160,17 +167,67 @@ export class SetFilterRenderer implements IFilterRenderer {
     });
   }
 
-  private createOptionRows(options: SetFilterOption[], selectedIdx?: number) {
+  private focusOption(rows: NodeListOf<HTMLLabelElement>, from: number, to: number): void {
+    if (from >= 0) rows[from].classList.remove("focused");
+    rows[to].classList.add("focused");
+    rows[to].focus();
+  }
+
+  /** Tree pattern: Right opens a closed group, or steps into an open one (its first child is the next row). */
+  private treeArrowRight(rows: NodeListOf<HTMLLabelElement>, currentIndex: number): void {
+    const row = rows[currentIndex];
+    const expanded = row.getAttribute("aria-expanded");
+    if (expanded === "false") {
+      this.controller.setSetGroupExpanded(0, Number(row.dataset.idx), true);
+    } else if (expanded === "true" && currentIndex + 1 < rows.length) {
+      this.focusOption(rows, currentIndex, currentIndex + 1);
+    }
+  }
+
+  /** Tree pattern: Left closes an open group, or moves from any other row to its parent. */
+  private treeArrowLeft(rows: NodeListOf<HTMLLabelElement>, currentIndex: number): void {
+    const row = rows[currentIndex];
+    if (row.getAttribute("aria-expanded") === "true") {
+      this.controller.setSetGroupExpanded(0, Number(row.dataset.idx), false);
+      return;
+    }
+    const level = Number(row.dataset.level ?? 0);
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      if (Number(rows[i].dataset.level ?? 0) < level) {
+        this.focusOption(rows, currentIndex, i);
+        return;
+      }
+    }
+  }
+
+  private createOptionRows(options: SetFilterOption[], selectedIdx?: number, miniFilterActive = false) {
     const liveComponentKeys = new Set<string>();
+    for (const option of options) {
+      if (this.getOptionComponent(option)) liveComponentKeys.add(option.key);
+    }
+
+    // A tree column whose values produced no groups is a flat list: no chevrons, no tree roles.
+    this.treeRows = !!this.spec.tree && hasSetFilterGroups(options);
+    if (this.treeRows) {
+      this.conditionContainer.setAttribute("role", "tree");
+      this.conditionContainer.setAttribute("aria-label", "Filter values");
+    } else {
+      this.conditionContainer.removeAttribute("role");
+      this.conditionContainer.removeAttribute("aria-label");
+    }
+
     const rows = document.createDocumentFragment();
     let rowToFocus: HTMLLabelElement | null = null;
-    for (let i = 0; i < options.length; i++) {
+    const allExpanded = this.treeRows && allGroupsExpanded(options);
+    for (const i of visibleSetOptions(options, miniFilterActive)) {
       const option = options[i];
       const component = this.getOptionComponent(option);
-      if (component) liveComponentKeys.add(option.key);
-      if (option.hidden) continue;
       const row = createElement("label", "pte-set-filter-option");
       row.tabIndex = -1; // make label focusable for keyboard navigation
+      row.dataset.idx = String(i);
+      const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
+      if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, allExpanded, selected, indeterminate);
+
       const checkbox = createElement("input");
       checkbox.tabIndex = -1; // exclude checkbox from tab order, we will handle focus on the label
       checkbox.name = `pte-set-filter-option-checkbox-${option.key}`;
@@ -182,7 +239,6 @@ export class SetFilterRenderer implements IFilterRenderer {
       } else {
         checkbox.setAttribute("aria-label", option.label);
       }
-      const { selected, indeterminate } = this.controller.getSetOptionState(0, option.type, option.raw);
       checkbox.checked = selected;
       checkbox.indeterminate = indeterminate;
       checkbox.addEventListener("change", () => {
@@ -218,11 +274,67 @@ export class SetFilterRenderer implements IFilterRenderer {
     rowToFocus?.focus();
   }
 
+  /**
+   * Tree rows: indent by level, carry the tree ARIA (level, expanded, checked — mirroring what is
+   * painted), and lead with a chevron on groups and on select_all (the root, whose chevron opens or
+   * closes every group) or a spacer on everything else so labels align.
+   */
+  private decorateTreeRow(
+    row: HTMLLabelElement,
+    option: SetFilterOption,
+    idx: number,
+    miniFilterActive: boolean,
+    allExpanded: boolean,
+    selected: boolean,
+    indeterminate: boolean,
+  ): void {
+    const level = option.level ?? 0;
+    row.classList.add("pte-set-filter-option-tree");
+    row.style.setProperty("--pte-set-filter-level", String(level));
+    row.dataset.level = String(level);
+    row.setAttribute("role", "treeitem");
+    row.setAttribute("aria-level", String(level + 1));
+    row.setAttribute("aria-checked", indeterminate ? "mixed" : String(selected));
+
+    if (option.type === "group") {
+      row.classList.add("pte-set-filter-option-group");
+      // While a mini filter is typed every surviving group is held open, so paint that state.
+      this.appendExpander(row, idx, miniFilterActive || !!option.expanded);
+    } else if (option.type === "select_all") {
+      row.classList.add("pte-set-filter-option-root");
+      this.appendExpander(row, idx, miniFilterActive || allExpanded);
+    } else {
+      const spacer = createElement("span", "pte-set-filter-expander-spacer");
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
+    }
+  }
+
+  private appendExpander(row: HTMLLabelElement, idx: number, expanded: boolean): void {
+    row.setAttribute("aria-expanded", String(expanded));
+    const expander = createElement("span", "pte-set-filter-expander");
+    // Mouse-only and unnamed, like the grid's group chevron: the row itself carries aria-expanded,
+    // and the keyboard opens and closes it with Left/Right.
+    expander.setAttribute("aria-hidden", "true");
+    const icon = createElement("span", "pte-set-filter-expander-icon " + (expanded ? "icon-group-expanded" : "icon-group-collapsed"));
+    expander.appendChild(icon);
+    expander.addEventListener("click", (e) => {
+      // The chevron sits inside the row's <label>: cancelling the click keeps the label from
+      // toggling the checkbox, so opening a group never changes what is checked.
+      e.preventDefault();
+      e.stopPropagation();
+      this.controller.setSetGroupExpanded(0, idx, !expanded);
+    });
+    row.appendChild(expander);
+  }
+
   private getOptionComponent(option: SetFilterOption): SetFilterComponent<any> | undefined {
     switch (option.type) {
       case "value": return this.spec.params.valueComponent;
       case "select_all": return this.spec.params.selectAllComponent;
       case "blanks": return this.spec.params.blanksComponent;
+      // A group is the grid's row, labelled by the tree's segment formatter.
+      case "group": return undefined;
     }
   }
 

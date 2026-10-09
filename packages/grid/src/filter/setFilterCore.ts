@@ -92,10 +92,19 @@ export function resolveValueKey(value: any, keyFn: ValueKeyFn = defaultValueKey)
     : { key: VALUE_KEY_PREFIX + key, isBlank: false };
 }
 
+/**
+ * Whether an option stands for stored values: a value row or the blanks bucket. The synthetic
+ * select_all row and the tree layout's group rows (see `setFilterTree.ts`) are never stored —
+ * each is a shorthand for the leaves beneath it.
+ */
+export function isValueOption(option: SetFilterOptions): boolean {
+  return option.type === "value" || option.type === "blanks";
+}
+
 /** Resolve any input (possibly differently typed, e.g. "5" for a numeric universe) to its option. */
 export function resolveOption(options: SetFilterOptions[], input: any, keyFn: ValueKeyFn = defaultValueKey): SetFilterOptions | undefined {
   const { key } = resolveValueKey(input, keyFn);
-  return options.find(o => o.type !== "select_all" && o.key === key);
+  return options.find(o => isValueOption(o) && o.key === key);
 }
 
 /** Build the option universe from a value list: select_all, then blanks (if any), then values. */
@@ -145,9 +154,9 @@ export function addSetOptionCounts(
     counts.set(key, (counts.get(key) ?? 0) + 1);
   });
 
-  return options.map(option => option.type === "select_all"
-    ? option
-    : { ...option, count: counts.get(option.key) ?? 0 });
+  return options.map(option => isValueOption(option)
+    ? { ...option, count: counts.get(option.key) ?? 0 }
+    : option);
 }
 
 /** Complete distinct column-value universe across rows, deduped by key and sorted by label. */
@@ -185,9 +194,9 @@ export function computeUniqueValues(
   return out.map(entry => entry.value);
 }
 
-/** The selectable options — everything except the synthetic select_all row. */
+/** The selectable options — value rows and the blanks bucket; never select_all or a group. */
 export function valueOptions(options: SetFilterOptions[]): SetFilterOptions[] {
-  return options.filter(o => o.type !== "select_all");
+  return options.filter(isValueOption);
 }
 
 /** The canonical selection: the set of CHECKED option keys. No filter (null) = all checked. */

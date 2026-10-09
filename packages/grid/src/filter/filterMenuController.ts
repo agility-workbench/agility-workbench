@@ -24,6 +24,7 @@ import {
   toggleOption,
   valueOptions,
 } from "./setFilterCore";
+import { applySetMiniFilter, buildSetFilterTree, groupCheckState, setAllGroupsExpanded, toggleGroup } from "./setFilterTree";
 
 export class FilterController implements IFilterController {
   private spec: FilterPanelSpec;
@@ -168,7 +169,9 @@ export class FilterController implements IFilterController {
     const def = draftToDef(d);
     const next = option.type === "select_all"
       ? setAllChecked(selected, ui.options ?? [], def?.mode)
-      : toggleOption(def, option, selected, ui.options ?? [], keyFn);
+      : option.type === "group"
+        ? toggleGroup(def, ui.options ?? [], optionIdx, selected, keyFn)
+        : toggleOption(def, option, selected, ui.options ?? [], keyFn);
     applyDefToDraft(next, d);
 
     this.normalizeAfterEdit({ reason: "setValueToggle" });
@@ -176,6 +179,26 @@ export class FilterController implements IFilterController {
     this.emit();
     // set filter does NOT use debounce
     this.maybeCommit("ui");
+  }
+
+  setSetGroupExpanded(condIndex: number, optionIdx: number, expanded: boolean): void {
+    if (this.disposed) return;
+    const id = this.getCondId(condIndex);
+    if (!id) return;
+    const ui = this.state.ui[id];
+    const option = ui?.options?.[optionIdx];
+    if (!option) return;
+    if (option.type === "select_all") {
+      // The root: opening or closing it opens or closes every group.
+      setAllGroupsExpanded(ui.options!, expanded);
+    } else if (option.type === "group") {
+      option.expanded = expanded;
+    } else {
+      return;
+    }
+    // Keep focus on the row that was toggled through the re-render, as a value toggle does.
+    ui.selectedIdx = optionIdx;
+    this.emit();
   }
 
   getSetOptionState(condIndex: number, type: SetFilterOptionType, value: any): { selected: boolean, indeterminate: boolean } {
@@ -203,6 +226,12 @@ export class FilterController implements IFilterController {
       return { selected, indeterminate };
     }
 
+    if (type === "group") {
+      // A group's raw is its key; its state is its leaves', over the ones the mini filter shows.
+      const idx = ui.options.findIndex(o => o.type === "group" && o.key === value);
+      return idx < 0 ? { selected, indeterminate } : groupCheckState(def, ui.options, idx, keyFn);
+    }
+
     // `resolveValueKey`, not the bare keyFn: option keys are namespaced and blanks-aware, and that
     // resolution is the only thing entitled to turn a value into a key.
     const option = type === "blanks"
@@ -221,10 +250,7 @@ export class FilterController implements IFilterController {
     const ui = this.state.ui[id];
     if (!ui.options) return;
 
-    const filterLc = filter.toLowerCase();
-    for (const o of ui.options) {
-      o.hidden = o.type !== "select_all" && !o.label.toLowerCase().includes(filterLc);
-    }
+    applySetMiniFilter(ui.options, filter);
 
     // Check exactly the matching options: the visible set becomes the checked set.
     const d = this.state.draft[id];
@@ -447,14 +473,17 @@ export class FilterController implements IFilterController {
 
   private mapToOptions(values: any[]): SetFilterOptions[] {
     const keyFn = this.spec.valueKey ?? defaultValueKey;
-    const options = buildSetOptions(values, keyFn, this.spec.valueLabel);
-    if (!this.spec.params.showValueCounts) return options;
-    return addSetOptionCounts(
-      options,
-      (callback) => this.hooks.getAllRows(callback),
-      (row: IRowNode) => this.spec.column.getValue(row),
-      keyFn,
-    );
+    let options = buildSetOptions(values, keyFn, this.spec.valueLabel);
+    if (this.spec.params.showValueCounts) {
+      options = addSetOptionCounts(
+        options,
+        (callback) => this.hooks.getAllRows(callback),
+        (row: IRowNode) => this.spec.column.getValue(row),
+        keyFn,
+      );
+    }
+    // Counts first, so the groups the tree adds can carry their leaves' sums.
+    return this.spec.tree ? buildSetFilterTree(options, this.spec.tree) : options;
   }
 
   // --------------------------

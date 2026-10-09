@@ -32,6 +32,14 @@ function makeGrid(rows: Record<string, unknown>[]) {
       filterParams: { filterValues: ({ success }) => success(["Ava", "Liam"]) },
     },
     { colId: "name", key: "name", label: "Name" }, // text filter — not a set column
+    {
+      colId: "item",
+      key: "item",
+      label: "Item",
+      // Tree layout: the API sees the same leaf universe the flat layout would have.
+      filter: "tree",
+      filterParams: { treePathGetter: (value: any) => String(value).split("/") },
+    },
   ]);
   core.dispatch({
     type: "themeFontSet",
@@ -44,10 +52,10 @@ function makeGrid(rows: Record<string, unknown>[]) {
 }
 
 const ROWS: Record<string, unknown>[] = [
-  { id: "1", region: "APAC", qty: 1, name: "a" },
-  { id: "2", region: "EMEA", qty: 2, name: "b" },
-  { id: "3", region: "EMEA", qty: 2, name: "c" },
-  { id: "4", region: null, qty: 3, name: "d" },
+  { id: "1", region: "APAC", qty: 1, name: "a", item: "Fruit/Citrus/Orange" },
+  { id: "2", region: "EMEA", qty: 2, name: "b", item: "Veg/Root/Carrot" },
+  { id: "3", region: "EMEA", qty: 2, name: "c", item: "Fruit/Citrus/Lemon" },
+  { id: "4", region: null, qty: 3, name: "d", item: null },
 ];
 
 function viewIds(core: GridCore): string[] {
@@ -186,5 +194,21 @@ describe("IGridAPI set-filter helpers", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("IGridAPI set-filter helpers on a tree-layout column", () => {
+  it("the universe is the leaves — groups are a menu presentation, never values", async () => {
+    const { api } = makeGrid(ROWS);
+    expect(await api.getSetFilterValues("item")).toEqual([null, "Fruit/Citrus/Lemon", "Fruit/Citrus/Orange", "Veg/Root/Carrot"]);
+  });
+
+  it("unchecking a leaf hides its rows exactly as on a flat set column", async () => {
+    const { core, api } = makeGrid(ROWS);
+    await api.uncheckSetFilterValue("item", "Fruit/Citrus/Orange");
+    expect(viewIds(core)).toEqual(["2", "3", "4"]);
+    expect((await api.getSetFilterState("item"))!.unchecked).toEqual(["Fruit/Citrus/Orange"]);
+    await api.checkSetFilterValue("item", "Fruit/Citrus/Orange");
+    expect(viewIds(core)).toEqual(["1", "2", "3", "4"]);
   });
 });
