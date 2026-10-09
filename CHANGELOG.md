@@ -35,7 +35,11 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   label (and in the tree layout the segment, level, and path, ordering the siblings at every
   level), replaces the built-in label order for the universe read from the rows, never receives a
   blank, and is honoured by `getSetFilterValues`. Static and async value lists keep the order they
-  were given. Keyboard: Right
+  were given.
+- **The tree remembers what was opened.** A tree-layout filter reopens with the groups the user
+  opened or closed last time, for as long as the grid lives and through filter changes; a group
+  not seen before starts at `treeDefaultExpanded`. `treeRememberExpansion: false` reopens at the
+  default depth every time. Keyboard: Right
   opens a group or steps into it, Left closes it or moves to its parent (on Select All, every
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and

@@ -222,7 +222,11 @@ mixed, and `showValueCounts` sums the leaves per group. The mini filter keeps a
 row when its own label or an ancestor's matches, so typing a year keeps that
 year's months and days, and it holds every matching group open for as long as
 the text is there. `treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
-(the default) opens nothing, `N` opens the first N levels, `-1` opens all.
+(the default) opens nothing, `N` opens the first N levels, `-1` opens all. The
+groups a user opens or closes are remembered for as long as the grid lives, so
+the filter reopens as it was left (a group not seen before starts at the
+default depth); `treeRememberExpansion: false` reopens at the default depth
+every time.
 
 `groupComponent` replaces a group row's text the way `valueComponent` does for
 a value, while the grid keeps the chevron and the checkbox. It receives the

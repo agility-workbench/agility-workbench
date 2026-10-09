@@ -28,6 +28,7 @@ function makeController(
     rows?: Record<string, unknown>[];
     showValueCounts?: boolean;
     tree?: Partial<SetFilterTreeSpec>;
+    treeExpansion?: Map<string, boolean>;
   } = {},
 ) {
   const column = opts.column ?? makeColumn();
@@ -50,6 +51,7 @@ function makeController(
     applyModel: (_col, m) =>
       applied.push(m ? { ...m, filters: m.filters.map(f => ({ ...f, values: [...f.values] })) } : null),
     getAllRows: (cb) => (opts.rows ?? []).forEach((data, i) => cb({ data } as unknown as IRowNode, i)),
+    treeExpansion: opts.treeExpansion,
   });
   ctrl.subscribe(s => { state = s; });
 
@@ -203,6 +205,58 @@ describe("expansion", () => {
     expect(options().filter(o => o.type === "group").map(o => [o.label, o.expanded])).toEqual([
       ["Fruit", true], ["Citrus", false], ["Veg", true], ["Root", false],
     ]);
+  });
+});
+
+describe("remembered expansion", () => {
+  const groupsOf = (options: () => ReturnType<typeof makeController>["options"] extends () => infer R ? R : never) =>
+    options().filter(o => o.type === "group").map(o => [o.label, o.expanded]);
+
+  it("writes every toggle to the column's memory and reads it back over the default depth on the next open", () => {
+    const memory = new Map<string, boolean>();
+    const first = makeController(FRUIT, null, { treeExpansion: memory });
+    first.ctrl.setSetGroupExpanded(0, first.idxOf("Fruit"), true);
+    first.ctrl.setSetGroupExpanded(0, first.idxOf("Citrus"), true);
+    first.ctrl.setSetGroupExpanded(0, first.idxOf("Citrus"), false);
+    expect([...memory.values()]).toEqual([true, false]);
+
+    // A new controller — the menu reopened — with the same memory and a default depth that would
+    // open everything: the remembered groups win, the unseen ones take the default.
+    const second = makeController(FRUIT, null, { treeExpansion: memory, tree: { defaultExpanded: -1 } });
+    expect(groupsOf(second.options)).toEqual([["Fruit", true], ["Citrus", false], ["Veg", true], ["Root", true]]);
+  });
+
+  it("the root's open-all and close-all are remembered for every group", () => {
+    const memory = new Map<string, boolean>();
+    const first = makeController(FRUIT, null, { treeExpansion: memory });
+    first.ctrl.setSetGroupExpanded(0, first.idxOf("(Select All)"), true);
+    expect([...memory.values()]).toEqual([true, true, true, true]);
+    const second = makeController(FRUIT, null, { treeExpansion: memory });
+    expect(groupsOf(second.options).every(([, open]) => open === true)).toBe(true);
+  });
+
+  it("survives a clear of the filter, which reloads the universe", () => {
+    const memory = new Map<string, boolean>();
+    const { ctrl, idxOf, options, toggle } = makeController(FRUIT, null, { treeExpansion: memory });
+    ctrl.setSetGroupExpanded(0, idxOf("Veg"), true);
+    toggle("Carrot", false);
+    ctrl.clearAll();
+    expect(options().find(o => o.label === "Veg")!.expanded).toBe(true);
+  });
+
+  it("neither reads nor writes the memory when the column opted out", () => {
+    const memory = new Map<string, boolean>([["g:string:Fruit", true]]);
+    const { ctrl, idxOf, options } = makeController(FRUIT, null, { treeExpansion: memory, tree: { rememberExpansion: false } });
+    expect(options().find(o => o.label === "Fruit")!.expanded).toBe(false);
+    ctrl.setSetGroupExpanded(0, idxOf("Veg"), true);
+    expect(memory.size).toBe(1);
+  });
+
+  it("without a memory, each controller starts at the default depth", () => {
+    const first = makeController(FRUIT);
+    first.ctrl.setSetGroupExpanded(0, first.idxOf("Fruit"), true);
+    const second = makeController(FRUIT);
+    expect(second.options().find(o => o.label === "Fruit")!.expanded).toBe(false);
   });
 });
 

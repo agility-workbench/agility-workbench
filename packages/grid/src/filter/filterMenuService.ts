@@ -67,7 +67,13 @@ export class ColumnFilterMenuService {
       ?? dateTreePath(value => (isDateColumn ? parseDateInput(value) : null));
     const formatSegment = params.treePathFormatter
       ?? (params.treePathGetter ? defaultSegmentFormatter : dateSegmentFormatter(this.formatterLocale(column)));
-    return { pathOf, formatSegment, defaultExpanded: params.treeDefaultExpanded ?? 0, compare: params.comparator };
+    return {
+      pathOf,
+      formatSegment,
+      defaultExpanded: params.treeDefaultExpanded ?? 0,
+      compare: params.comparator,
+      rememberExpansion: params.treeRememberExpansion !== false,
+    };
   }
 
   private formatterLocale(column: Column): string | undefined {

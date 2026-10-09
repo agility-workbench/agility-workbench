@@ -226,6 +226,12 @@ export interface FilterParams {
    */
   treeDefaultExpanded?: number;
   /**
+   * Tree layout: whether the groups a user opens or closes are remembered for as long as the grid
+   * lives, so the filter reopens as it was left; a group not seen before starts at
+   * `treeDefaultExpanded`. Defaults to true. `false` reopens at the default depth every time.
+   */
+  treeRememberExpansion?: boolean;
+  /**
    * Transforms cell and filter operands before comparison. Runs before built-in normalization and
    * before either custom matcher. Built-in blank operators still inspect the raw cell value.
    */

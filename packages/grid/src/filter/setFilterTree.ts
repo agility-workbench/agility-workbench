@@ -44,6 +44,8 @@ export interface SetFilterTreeSpec {
   defaultExpanded: number;
   /** Orders siblings at every level in place of the built-in rule; sees segment, level, path, and a leaf's value. */
   compare?: SetFilterComparator;
+  /** Whether the controller reads and writes the column's remembered expansion (`FilterControllerHooks.treeExpansion`). Default true. */
+  rememberExpansion?: boolean;
 }
 
 /** Group keys live in their own namespace, beside the "v:" value keys and the synthetic rows. */

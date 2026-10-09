@@ -188,11 +188,16 @@ export class FilterController implements IFilterController {
     const ui = this.state.ui[id];
     const option = ui?.options?.[optionIdx];
     if (!option) return;
+    const memory = this.treeExpansionMemory();
     if (option.type === "select_all") {
       // The root: opening or closing it opens or closes every group.
       setAllGroupsExpanded(ui.options!, expanded);
+      if (memory) {
+        for (const o of ui.options!) if (o.type === "group") memory.set(o.key, expanded);
+      }
     } else if (option.type === "group") {
       option.expanded = expanded;
+      memory?.set(option.key, expanded);
     } else {
       return;
     }
@@ -476,7 +481,24 @@ export class FilterController implements IFilterController {
       );
     }
     // Counts first, so the groups the tree adds can carry their leaves' sums.
-    return this.spec.tree ? buildSetFilterTree(options, this.spec.tree) : options;
+    if (!this.spec.tree) return options;
+    const treeOptions = buildSetFilterTree(options, this.spec.tree);
+    // A group the user opened or closed before reopens as it was left; one never seen keeps the
+    // default depth the tree builder gave it.
+    const memory = this.treeExpansionMemory();
+    if (memory) {
+      for (const o of treeOptions) {
+        if (o.type !== "group") continue;
+        const remembered = memory.get(o.key);
+        if (remembered !== undefined) o.expanded = remembered;
+      }
+    }
+    return treeOptions;
+  }
+
+  /** The column's expansion memory, unless the column opted out of remembering. */
+  private treeExpansionMemory(): Map<string, boolean> | undefined {
+    return this.spec.tree?.rememberExpansion === false ? undefined : this.hooks.treeExpansion;
   }
 
   // --------------------------

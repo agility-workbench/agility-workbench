@@ -95,6 +95,14 @@ export interface FilterControllerHooks {
 
   // for set filter fromRows
   getAllRows: (callback: (node: IRowNode, idx: number) => void) => void;
+
+  /**
+   * Tree layout: the column's remembered expansion (group key → open?), shared across the menu's
+   * opens for the grid's lifetime. The controller reads it when the universe loads — a remembered
+   * group wins over `treeDefaultExpanded` — and writes every toggle back, the root's all / none
+   * included. Absent, or with `treeRememberExpansion: false`, the default depth applies each time.
+   */
+  treeExpansion?: Map<string, boolean>;
 }
 
 /** `group` exists only in the tree layout: a synthetic row standing for the leaves beneath it. */
