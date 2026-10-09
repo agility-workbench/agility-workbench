@@ -1,6 +1,6 @@
 import { FilterController } from "../../filter/filterMenuController";
 import { FilterPanelSpec, FilterRuntimeState, SetFilterOptions as SetFilterOption } from "../../filter/types";
-import { GroupExpansion, groupExpansion, hasSetFilterGroups, visibleSetOptions } from "../../filter/setFilterTree";
+import { GroupExpansion, groupExpansion, hasSetFilterGroups, SiblingPosition, siblingPositions, visibleSetOptions } from "../../filter/setFilterTree";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { createElement, div } from "../element";
 import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
@@ -25,9 +25,12 @@ interface ValueComponentRecord {
 /**
  * The set filter's value list. In the flat layout it is a list of labelled checkboxes; a tree
  * column (`spec.tree`) whose values produced groups renders the same rows indented by level, with a
- * chevron before each group, and exposes them as a `tree` of `treeitem`s. The tree's rows are the
- * controller's own pre-order option list filtered by `visibleSetOptions`, so a row's `data-idx` is
- * the index the controller addresses — the same index a flat row's toggle has always sent.
+ * chevron before each group, and exposes them as a `tree` of `treeitem`s: Select All is the root
+ * and every other row sits beneath it, each with its level, its position among its siblings, its
+ * checked state, and (groups) whether it is open; the native checkbox inside a tree row is hidden
+ * from AT since the row itself is the checkable item. The tree's rows are the controller's own
+ * pre-order option list filtered by `visibleSetOptions`, so a row's `data-idx` is the index the
+ * controller addresses — the same index a flat row's toggle has always sent.
  */
 export class SetFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;
@@ -191,8 +194,8 @@ export class SetFilterRenderer implements IFilterRenderer {
   }
 
   /**
-   * Tree pattern: Left closes an open group, or moves from any other row to its parent. On the
-   * root, "some" counts as open: Left closes the rest.
+   * Tree pattern: Left closes an open group, or moves from any other row to its parent — Select
+   * All for a row at the top of the tree. On the root, "some" counts as open: Left closes the rest.
    */
   private treeArrowLeft(rows: NodeListOf<HTMLLabelElement>, currentIndex: number): void {
     const row = rows[currentIndex];
@@ -233,14 +236,17 @@ export class SetFilterRenderer implements IFilterRenderer {
     const rootExpansion: GroupExpansion = !this.treeRows ? "all" : miniFilterActive ? "all" : groupExpansion(options);
     // Every row's state in one pass, rather than one query per row that rescans the list.
     const states = this.controller.getSetOptionStates(0);
-    for (const i of visibleSetOptions(options, miniFilterActive)) {
+    const visible = visibleSetOptions(options, miniFilterActive);
+    const positions = this.treeRows ? siblingPositions(options, visible) : [];
+    for (let v = 0; v < visible.length; v++) {
+      const i = visible[v];
       const option = options[i];
       const component = this.getOptionComponent(option);
       const row = createElement("label", "pte-set-filter-option");
       row.tabIndex = -1; // make label focusable for keyboard navigation
       row.dataset.idx = String(i);
       const { selected, indeterminate } = states[i] ?? { selected: false, indeterminate: false };
-      if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, rootExpansion, selected, indeterminate);
+      if (this.treeRows) this.decorateTreeRow(row, option, i, miniFilterActive, rootExpansion, selected, indeterminate, positions[v]);
 
       const checkbox = createElement("input");
       checkbox.tabIndex = -1; // exclude checkbox from tab order, we will handle focus on the label
@@ -255,6 +261,14 @@ export class SetFilterRenderer implements IFilterRenderer {
       }
       checkbox.checked = selected;
       checkbox.indeterminate = indeterminate;
+      if (this.treeRows) {
+        // The row is the treeitem and carries aria-checked, so its native checkbox is hidden from
+        // AT: exposed, its label folded into the row's name ("Fruit Fruit 3") and it read as a
+        // second checked control inside every row. A label click still lands browser focus on
+        // its control — now a hidden element — so focus is handed straight back to the row.
+        checkbox.setAttribute("aria-hidden", "true");
+        checkbox.addEventListener("focus", () => row.focus());
+      }
       checkbox.addEventListener("change", () => {
         this.controller.toggleSetValue(0, i, checkbox.checked);
       });
@@ -272,6 +286,10 @@ export class SetFilterRenderer implements IFilterRenderer {
           const count = createElement("span", "pte-set-filter-option-count");
           count.textContent = String(option.count);
           label.appendChild(count);
+          // A sighted user reads the muted number as a count; a reader hears "3 rows", not "3".
+          const unit = createElement("span", "pte-sr-only");
+          unit.textContent = option.count === 1 ? " row" : " rows";
+          label.appendChild(unit);
         }
       }
       row.appendChild(label);
@@ -289,10 +307,16 @@ export class SetFilterRenderer implements IFilterRenderer {
   }
 
   /**
-   * Tree rows: indent by level, carry the tree ARIA (level, expanded, checked — mirroring what is
-   * painted), and lead with a chevron on groups and on select_all (the root, whose chevron reports
-   * how much of the tree is open and opens or closes every group) or a spacer on everything else so
-   * labels align.
+   * Tree rows: indent by level, carry the tree ARIA (level, position among siblings, expanded,
+   * checked — mirroring what is painted), and lead with a chevron on groups and on select_all (the
+   * root, whose chevron reports how much of the tree is open and opens or closes every group) or a
+   * spacer on everything else so labels align.
+   *
+   * Select All is the tree's single root as AT sees it: a level-0 group is its child, one level
+   * deeper, which is what its chevron (opens everything beneath) and its mixed checkbox (some of
+   * what is beneath is checked) already say. `data-level` holds that depth, which is what Left
+   * walks to find a parent; the indent keeps the visual level, so root groups line up with
+   * Select All as in the flat layout.
    */
   private decorateTreeRow(
     row: HTMLLabelElement,
@@ -302,13 +326,17 @@ export class SetFilterRenderer implements IFilterRenderer {
     rootExpansion: GroupExpansion,
     selected: boolean,
     indeterminate: boolean,
+    position: SiblingPosition,
   ): void {
     const level = option.level ?? 0;
+    const depth = option.type === "select_all" ? 0 : level + 1;
     row.classList.add("pte-set-filter-option-tree");
     row.style.setProperty("--pte-set-filter-level", String(level));
-    row.dataset.level = String(level);
+    row.dataset.level = String(depth);
     row.setAttribute("role", "treeitem");
-    row.setAttribute("aria-level", String(level + 1));
+    row.setAttribute("aria-level", String(depth + 1));
+    row.setAttribute("aria-posinset", String(position.pos));
+    row.setAttribute("aria-setsize", String(position.size));
     row.setAttribute("aria-checked", indeterminate ? "mixed" : String(selected));
 
     if (option.type === "group") {

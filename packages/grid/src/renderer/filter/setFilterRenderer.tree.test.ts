@@ -81,6 +81,8 @@ describe("SetFilterRenderer tree layout", () => {
     const [selectAll, fruit] = rowsOf(renderer);
     expect(selectAll.getAttribute("role")).toBe("treeitem");
     expect(selectAll.getAttribute("aria-level")).toBe("1");
+    expect(selectAll.getAttribute("aria-posinset")).toBe("1");
+    expect(selectAll.getAttribute("aria-setsize")).toBe("1");
     expect(selectAll.getAttribute("aria-checked")).toBe("true");
     // Select All is the root: its chevron stands for every group, closed while any group is.
     expect(selectAll.classList.contains("pte-set-filter-option-root")).toBe(true);
@@ -90,6 +92,12 @@ describe("SetFilterRenderer tree layout", () => {
     expect(fruit.classList.contains("pte-set-filter-option-group")).toBe(true);
     expect(fruit.getAttribute("aria-expanded")).toBe("false");
     expect(fruit.getAttribute("aria-checked")).toBe("mixed");
+    // Fruit and Veg are Select All's children as AT sees them: one level down, 1 and 2 of 2.
+    expect(fruit.getAttribute("aria-level")).toBe("2");
+    expect(fruit.getAttribute("aria-posinset")).toBe("1");
+    expect(fruit.getAttribute("aria-setsize")).toBe("2");
+    expect(rowsOf(renderer)[2].getAttribute("aria-posinset")).toBe("2");
+    expect(rowsOf(renderer)[2].getAttribute("aria-setsize")).toBe("2");
     expect(fruit.querySelector(".pte-set-filter-expander-icon")!.classList.contains("icon-group-collapsed")).toBe(true);
     expect(fruit.querySelector<HTMLInputElement>("input")!.indeterminate).toBe(true);
     expect(fruit.style.getPropertyValue("--pte-set-filter-level")).toBe("0");
@@ -103,13 +111,45 @@ describe("SetFilterRenderer tree layout", () => {
     renderer.renderState(runtimeState(options));
     expect(labelsOf(renderer)).toEqual(["(Select All)", "Fruit", "Citrus", "Veg"]);
     const citrus = rowsOf(renderer)[2];
-    expect(citrus.getAttribute("aria-level")).toBe("2");
+    // Visual level 1 (indented once); AT level 3, under Fruit under Select All.
+    expect(citrus.getAttribute("aria-level")).toBe("3");
+    expect(citrus.getAttribute("aria-posinset")).toBe("1");
+    expect(citrus.getAttribute("aria-setsize")).toBe("1");
     expect(citrus.style.getPropertyValue("--pte-set-filter-level")).toBe("1");
     expect(citrus.dataset.idx).toBe(String(options.findIndex(o => o.label === "Citrus")));
 
     renderer.renderState(runtimeState(options, { miniFilter: "x" }));
     expect(labelsOf(renderer)).toEqual(["(Select All)", "Fruit", "Citrus", "Lemon", "Orange", "Veg", "Root", "Carrot"]);
-    expect(rowsOf(renderer)[5].getAttribute("aria-expanded")).toBe("true");
+    const miniRows = rowsOf(renderer);
+    expect(miniRows[5].getAttribute("aria-expanded")).toBe("true");
+    // Positions count the rows in view: Lemon and Orange are 1 and 2 of 2 under Citrus, Carrot 1 of 1.
+    const position = (row: HTMLElement) => `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`;
+    expect(miniRows[3].getAttribute("aria-level")).toBe("4");
+    expect([miniRows[3], miniRows[4], miniRows[7]].map(position)).toEqual(["1/2", "2/2", "1/1"]);
+    renderer.destroy();
+  });
+
+  it("the row is the checkable treeitem: the native checkbox is hidden from AT and hands focus back, Left from a top row reaches Select All, counts read with a unit", () => {
+    const { renderer } = setup();
+    // Fruit sums to 4 (Orange 2 + Lemon 2); Veg holds Carrot alone, 1.
+    const counted = buildSetOptions(FRUIT).map(o => o.type === "value" ? { ...o, count: o.raw === "Veg/Root/Carrot" ? 1 : 2 } : o);
+    renderer.renderState(runtimeState(buildSetFilterTree(counted, TREE)));
+    const rows = rowsOf(renderer);
+    const checkbox = rows[1].querySelector<HTMLInputElement>("input")!;
+    expect(checkbox.getAttribute("aria-hidden")).toBe("true");
+    // A label click lands browser focus on the (hidden) checkbox; the row takes it back.
+    checkbox.focus();
+    expect(document.activeElement).toBe(rows[1]);
+
+    rows[2].focus(); // Veg: closed, at the top of the tree, so its parent is Select All
+    keydown(renderer, "ArrowLeft");
+    expect(document.activeElement).toBe(rows[0]);
+    expect(rows[0].classList.contains("focused")).toBe(true);
+
+    expect(rows[1].querySelector(".pte-set-filter-option-count")!.textContent).toBe("4");
+    expect(rows[1].querySelector(".pte-sr-only")!.textContent).toBe(" rows");
+    expect(rows[2].querySelector(".pte-sr-only")!.textContent).toBe(" row");
+    expect(rows[0].querySelector(".pte-sr-only")).toBeNull();
     renderer.destroy();
   });
 

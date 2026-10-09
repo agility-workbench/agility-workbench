@@ -24,6 +24,7 @@ import {
   SetFilterTreeSpec,
   setFilterTreeNodes,
   setOptionStates,
+  siblingPositions,
   subtreeEnd,
   toggleGroup,
   visibleSetOptions,
@@ -244,6 +245,38 @@ describe("visibleSetOptions", () => {
     const options = buildSetOptions(["b", "a", null]);
     options[2].hidden = true;
     expect(labelsAt(options, visibleSetOptions(options))).toEqual(["(Select All)", "(Blanks)", "a"]);
+  });
+});
+
+describe("siblingPositions", () => {
+  const LOOSE = ["Fruit/Citrus/Orange", "Fruit/Citrus/Lemon", "Veg/Root/Carrot", "Loose"];
+  const positions = (options: SetFilterOptions[], visible: number[]) =>
+    siblingPositions(options, visible).map((p, i) => `${options[visible[i]].label} ${p.pos}/${p.size}`);
+
+  it("counts select_all as the single root and the rows at the top of the tree as its children", () => {
+    const options = tree(LOOSE, { defaultExpanded: -1 });
+    expect(positions(options, visibleSetOptions(options))).toEqual([
+      "(Select All) 1/1",
+      "Fruit 1/3", "Citrus 1/1", "Lemon 1/2", "Orange 2/2",
+      "Loose 2/3",
+      "Veg 3/3", "Root 1/1", "Carrot 1/1",
+    ]);
+  });
+
+  it("counts only the rows in view: closed groups hide their children, the mini filter hides rows", () => {
+    const options = tree(LOOSE);
+    expect(positions(options, visibleSetOptions(options))).toEqual(["(Select All) 1/1", "Fruit 1/3", "Loose 2/3", "Veg 3/3"]);
+    setAllGroupsExpanded(options, true);
+    options.find(o => o.label === "Orange")!.hidden = true;
+    options.find(o => o.label === "Loose")!.hidden = true;
+    expect(positions(options, visibleSetOptions(options))).toEqual([
+      "(Select All) 1/1", "Fruit 1/2", "Citrus 1/1", "Lemon 1/1", "Veg 2/2", "Root 1/1", "Carrot 1/1",
+    ]);
+  });
+
+  it("is one flat set under select_all for a flat universe", () => {
+    const options = buildSetOptions(["b", "a"]); // a static list keeps its order
+    expect(positions(options, visibleSetOptions(options))).toEqual(["(Select All) 1/1", "b 1/2", "a 2/2"]);
   });
 });
 

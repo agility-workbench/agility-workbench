@@ -2219,7 +2219,8 @@
    announcer below is a *visible* toast and is deliberately not part of this rule. */
 .pte-column-panel-announcer,
 .pte-grid-sr-announcer,
-.pte-quick-filter-find-count-sr {
+.pte-quick-filter-find-count-sr,
+.pte-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -4676,6 +4677,11 @@
 .pte-set-filter-option-label > * {
   width: 100%;
   min-width: 0;
+}
+
+/* The count's screen-reader-only unit ("rows") is a child of the slot too; keep it off-screen. */
+.pte-set-filter-option-label > .pte-sr-only {
+  width: 1px;
 }
 
 .pte-set-filter-option-label-text {

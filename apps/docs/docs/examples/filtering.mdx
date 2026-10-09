@@ -258,9 +258,15 @@ beside it), and opens every
 group when any is closed or closes them all once all are open.
 
 Keyboard: Up/Down walk the visible rows, Right opens a group or steps into it,
-Left closes it or moves to its parent, Home/End jump to the first and last row,
-and Space toggles the row's checkbox. On Select All, Right and Left open and
-close every group.
+Left closes it or moves to its parent (Select All, for a row at the top of the
+tree), Home/End jump to the first and last row, and Space toggles the row's
+checkbox. On Select All, Right and Left open and close every group.
+
+Assistive technology sees a `tree` of `treeitem`s. Select All is the root and
+every other row sits beneath it, each announced with its level, its position
+among the siblings in view, whether it is open, and its checked state (mixed
+for a partly checked group); a value count reads as "3 rows". The row is the
+checkable item, so the checkbox inside it is not exposed on its own.
 
 ## Custom matcher
 

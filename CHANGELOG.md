@@ -44,6 +44,13 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   group), Home and End jump to the first and last row (in the flat list too, where Left and Right
   keep doing that); the list is exposed as a tree of treeitems carrying level, expanded, and
   checked state.
+- **The tree reads as a tree to assistive technology.** Select All is the root and every other row
+  sits beneath it, each `treeitem` carrying its level, its position among the siblings in view
+  (`aria-posinset` / `aria-setsize`), its checked state, and, for a group, whether it is open; the
+  native checkbox inside a tree row is hidden from AT, since the row itself is the checkable item
+  (exposed, its label was folded into the row's name — "Fruit Fruit 3" — and it read as a second
+  checked control in every row). Left on a row at the top of the tree now moves to Select All, its
+  parent. A value count in either layout reads as "3 rows" rather than a bare number.
 
 ### Set filter
 

@@ -116,7 +116,9 @@ describe("SetFilterRenderer value components", () => {
     renderer.renderState(runtimeState(counted));
     const count = renderer.getUi().querySelector(".pte-set-filter-option-count");
     expect(count?.textContent).toBe("3");
-    expect(count?.parentElement?.textContent).toBe("EMEA3");
+    // The unit after the count is screen-reader-only text.
+    expect(count?.parentElement?.textContent).toBe("EMEA3 rows");
+    expect(count?.nextElementSibling?.className).toBe("pte-sr-only");
     renderer.destroy();
   });
 

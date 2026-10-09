@@ -451,6 +451,35 @@ export function visibleSetOptions(options: SetFilterOptions[], expandAll = false
   return out;
 }
 
+/** A row's place among its visible siblings, for `aria-posinset` / `aria-setsize`. */
+export interface SiblingPosition {
+  pos: number;
+  size: number;
+}
+
+/**
+ * Position and sibling count of each of the `visible` rows (as `visibleSetOptions` lists them), in
+ * that order. Siblings share a parent group; the rows at the top of the tree — blanks, the root
+ * groups, root leaves — are the children of select_all, the single row at the root. Only visible
+ * rows count: a row the mini filter hides is not in the set a user can reach.
+ */
+export function siblingPositions(options: SetFilterOptions[], visible: number[]): SiblingPosition[] {
+  const ROOT = "\u0000root";
+  const parentOf = (o: SetFilterOptions) => (o.type === "select_all" ? ROOT : o.parentKey ?? "");
+  const sizes = new Map<string, number>();
+  for (const i of visible) {
+    const parent = parentOf(options[i]);
+    sizes.set(parent, (sizes.get(parent) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  return visible.map(i => {
+    const parent = parentOf(options[i]);
+    const pos = (seen.get(parent) ?? 0) + 1;
+    seen.set(parent, pos);
+    return { pos, size: sizes.get(parent)! };
+  });
+}
+
 const MONTH_NAMES = new Map<string, string[]>();
 
 function monthNames(locale: string): string[] {
