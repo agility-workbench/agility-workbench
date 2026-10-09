@@ -56,6 +56,24 @@ describe("ColumnFilterMenuService set-filter values", () => {
   });
 });
 
+describe("ColumnFilterMenuService static value lists", () => {
+  it("takes the values themselves, unwraps the older { value } form, and leaves keyed objects, Dates, and class instances alone", () => {
+    class Money { constructor(public value: number) {} }
+    const date = new Date(2024, 0, 15);
+    const region = { code: "AMER", name: "Americas" };
+    const money = new Money(5);
+    const { spec } = buildSpec({
+      colId: "mixed", key: "mixed", label: "Mixed", filter: "set",
+      filterParams: { filterValues: ["Open", 3, true, date, region, money, { value: "wrapped" }, { value: null }, null] },
+    });
+    expect(spec.conditionTemplate.valueSource).toEqual({
+      kind: "static",
+      values: ["Open", 3, true, date, region, money, "wrapped", null, null],
+    });
+    expect((spec.conditionTemplate.valueSource as any).values[5]).toBe(money);
+  });
+});
+
 describe("ColumnFilterMenuService tree layout", () => {
   it("a plain set filter builds no tree spec", () => {
     const { spec } = buildSpec({ colId: "region", key: "region", label: "Region", filter: "set" });

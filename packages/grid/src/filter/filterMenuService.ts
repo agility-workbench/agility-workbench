@@ -1,4 +1,5 @@
 import { IGridCore } from "../interfaces";
+import { staticSetValue } from "./setFilterCore";
 import { FilterInputType, FilterOption, FilterParams, FilterType } from "../interfaces/filter";
 import { ColumnFilterContext } from "./context";
 import { ColumnType } from "../interfaces/column";
@@ -25,7 +26,7 @@ export class ColumnFilterMenuService {
     if (valueSource === "fromRows") {
       filterValueSource = { kind: "fromRows" };
     } else if (Array.isArray(valueSource)) {
-      filterValueSource = { kind: "static", values: valueSource.map(o => o.value) };
+      filterValueSource = { kind: "static", values: valueSource.map(staticSetValue) };
     } else if (typeof valueSource === "function") {
       filterValueSource = { kind: "async", load: valueSource };
     }

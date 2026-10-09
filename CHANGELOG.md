@@ -57,6 +57,11 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 
 ### Set filter
 
+- **A static `filterValues` list takes the values themselves.** `["Open", "Pending", "Closed"]`
+  now lists those three values, as the rows and an async source's `success` already did; before,
+  a static list had to wrap each entry as `{ value }`, and a list of bare values silently read as
+  a single `(Blanks)` row. The wrapped form still works: a plain object literal with a `value` key
+  is unwrapped, so a column whose cell objects have their own `value` field lists them wrapped.
 - **The flat set filter focuses its checkboxes.** Keyboard focus in the value list now lands on
   each row's native checkbox — a named, checkable control — rather than on the label around it,
   which assistive technology read as nothing. The list is a labelled group, a value count is the

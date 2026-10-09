@@ -86,7 +86,7 @@ const staticSet = {
   label: "Status",
   filter: "set",
   filterParams: {
-    filterValues: [{ value: "Open" }, { value: "Pending" }, { value: "Closed" }],
+    filterValues: ["Open", "Pending", "Closed"],
   },
 } satisfies ColDef;
 
@@ -101,6 +101,12 @@ const asyncSet = {
   },
 } satisfies ColDef;
 ```
+
+A static list holds the values themselves — strings, numbers, Dates, or the
+objects a keyed column holds — in the order they should appear, which a static
+or async list keeps in both layouts. An entry written as `{ value: "Open" }`
+(the older form) is unwrapped, so existing lists keep working; a column whose
+cell objects have their own `value` field lists them wrapped that way.
 
 Set filters can keep complex raw values while defining their identity and
 display separately:

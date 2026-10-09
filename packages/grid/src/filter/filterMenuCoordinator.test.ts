@@ -18,6 +18,8 @@ function makeGrid() {
   core.setColumnDefsFromProps([
     { colId: "item", key: "item", label: "Item", filter: "tree", filterParams: { treePathGetter: (v: string) => v.split("/") } },
     { colId: "fixed", key: "fixed", label: "Fixed", filter: "tree", filterParams: { treePathGetter: (v: string) => v.split("/"), treeRememberExpansion: false } },
+    // A flat static list of the values themselves.
+    { colId: "status", key: "status", label: "Status", filter: "set", filterParams: { filterValues: ["Open", "Pending", "Closed"] } },
     // A static list: the menu lists siblings in the order given, not sorted, and ignores the comparator.
     {
       colId: "listed", key: "item", label: "Listed", filter: "tree",
@@ -31,8 +33,8 @@ function makeGrid() {
   ]);
   core.dispatch({ type: "themeFontSet", headerFont: "12px sans-serif", cellFont: "12px sans-serif", reason: "test" });
   core.setRowData([
-    { id: "1", item: "Fruit/Citrus/Orange", fixed: "A/B" },
-    { id: "2", item: "Veg/Root/Carrot", fixed: "A/C" },
+    { id: "1", item: "Fruit/Citrus/Orange", fixed: "A/B", status: "Open" },
+    { id: "2", item: "Veg/Root/Carrot", fixed: "A/C", status: "Closed" },
   ]);
   const api = new GridAPI(core);
   const coordinator = new FilterMenuCoordinator(core, new ColumnFilterMenuService(core), api);
@@ -107,6 +109,18 @@ describe("FilterMenuCoordinator remembers tree expansion per column", () => {
     const { open } = makeGrid();
     const menu = open("listed");
     expect(menu.labels()).toEqual(["(Select All)", "Veg", "Root", "Carrot", "Fruit", "Citrus", "Orange", "Lemon"]);
+    menu.close();
+  });
+
+  it("a flat static list of bare values is the menu's universe, in order, and filters the rows", async () => {
+    const { core, open } = makeGrid();
+    const menu = open("status");
+    expect(menu.labels()).toEqual(["(Select All)", "Open", "Pending", "Closed"]);
+    const openCheckbox = menu.rows()[1].querySelector<HTMLInputElement>("input")!;
+    openCheckbox.checked = false;
+    openCheckbox.dispatchEvent(new Event("change"));
+    await new Promise(r => setTimeout(r, 20));
+    expect(core.getRowModel().getViewCount()).toBe(1);
     menu.close();
   });
 });

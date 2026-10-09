@@ -134,7 +134,15 @@ export interface FilterParams {
   filterOptions?: FilterOption[];
   maxNumConditions?: number;
   initialFilterItemsCount?: number;
-  filterValues?: any[] | FilterValueAsyncSource; // for set filter; if not specified, will be derived from rows
+  /**
+   * Set filter: where the values come from. Omitted, they are read from the rows. A function loads
+   * them (`success(values)`), see `FilterValueAsyncSource`. An array lists them: the values
+   * themselves — strings, numbers, Dates, or the objects a `keyCreator` column holds — in the order
+   * they should appear, which a static or async list keeps in both layouts. An entry written as
+   * `{ value }` (the older form) is unwrapped, so a column whose cell objects have their own
+   * `value` field lists them wrapped that way.
+   */
+  filterValues?: any[] | FilterValueAsyncSource;
   /**
    * Creates the stable identity used to deduplicate and compare regular set-filter values. The raw
    * values are still stored in filter models and returned by the Set Filter API.

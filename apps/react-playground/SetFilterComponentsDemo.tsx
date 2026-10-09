@@ -20,6 +20,7 @@ type AccountRow = {
   owner: string;
   opened: string;
   product: string;
+  stage: string;
 };
 
 type Region = { code: string; name: string };
@@ -70,14 +71,14 @@ const loadOwnerValues: FilterValueAsyncSource = async (
 };
 
 const rows: AccountRow[] = [
-  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava", opened: "2024-01-15", product: "Hardware/Laptops/Pro 14" },
-  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam", opened: "2024-01-28", product: "Software/Suites/Office" },
-  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia", opened: "2024-03-09", product: "Hardware/Laptops/Air 13" },
-  { id: "A-104", account: "Initech", region: null, owner: "Noah", opened: "2023-11-02", product: "Hardware/Phones/Model X" },
-  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma", opened: "2023-12-20", product: "Software/Suites/Design" },
-  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan", opened: "2024-03-21", product: "Services/Support/Premium" },
-  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia", opened: "2024-06-05", product: "Software/Tools/CLI" },
-  { id: "A-108", account: "Wonka", region: null, owner: "Lucas", opened: "2023-11-19", product: "Services/Training/Onsite" },
+  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava", opened: "2024-01-15", product: "Hardware/Laptops/Pro 14", stage: "Live" },
+  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam", opened: "2024-01-28", product: "Software/Suites/Office", stage: "Trial" },
+  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia", opened: "2024-03-09", product: "Hardware/Laptops/Air 13", stage: "Live" },
+  { id: "A-104", account: "Initech", region: null, owner: "Noah", opened: "2023-11-02", product: "Hardware/Phones/Model X", stage: "Lead" },
+  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma", opened: "2023-12-20", product: "Software/Suites/Design", stage: "Live" },
+  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan", opened: "2024-03-21", product: "Services/Support/Premium", stage: "Trial" },
+  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia", opened: "2024-06-05", product: "Software/Tools/CLI", stage: "Lead" },
+  { id: "A-108", account: "Wonka", region: null, owner: "Lucas", opened: "2023-11-19", product: "Services/Training/Onsite", stage: "Live" },
 ];
 
 function RegionFilterValue({ value, valueFormatted, showCode, count }: SetFilterValueComponentParams) {
@@ -189,6 +190,15 @@ export function SetFilterComponentsDemo() {
         groupComponent: ProductGroupLabel,
       },
     },
+    {
+      colId: "stage",
+      key: "stage",
+      label: "Stage",
+      width: 110,
+      // A static list of the values themselves, in the order to show them (Lead › Trial › Live).
+      filter: "set",
+      filterParams: { filterValues: ["Lead", "Trial", "Live"] },
+    },
   ], []);
 
   return (
@@ -209,6 +219,7 @@ export function SetFilterComponentsDemo() {
           components; Owner loads its counted set values asynchronously. Opened and Product use the
           tree layout: a date column groups by year and month on its own, and Product groups along
           the path its <code>treePathGetter</code> returns, with a custom group label.
+          Stage lists its filter values as a static array, in the order to show them.
         </p>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

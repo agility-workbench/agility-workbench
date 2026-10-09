@@ -124,6 +124,21 @@ export function resolveOption(options: SetFilterOptions[], input: any, keyFn: Va
 }
 
 /** Build the option universe from a value list: select_all, then blanks (if any), then values. */
+/**
+ * One entry of a static `filterValues` list, as the value it stands for. Entries are the values
+ * themselves — strings, numbers, Dates, or the objects a keyed column holds — exactly as the rows
+ * and an async source's `success` deliver them. The older form wraps each value as `{ value }`;
+ * a plain object literal carrying a `value` key is unwrapped so those lists keep working, and a
+ * column whose cell objects have their own `value` field wraps them that way on purpose. Class
+ * instances, Dates, and arrays are never unwrapped.
+ */
+export function staticSetValue(entry: unknown): unknown {
+  if (entry === null || typeof entry !== "object") return entry;
+  const proto = Object.getPrototypeOf(entry);
+  if (proto !== Object.prototype && proto !== null) return entry;
+  return Object.prototype.hasOwnProperty.call(entry, "value") ? (entry as { value: unknown }).value : entry;
+}
+
 export function buildSetOptions(values: any[], keyFn: ValueKeyFn = defaultValueKey, labelFn: ValueLabelFn = defaultValueLabel): SetFilterOptions[] {
   const options: SetFilterOptions[] = [
     { type: "select_all", key: SELECT_ALL_KEY, label: "(Select All)", raw: SELECT_ALL_KEY, hidden: false },
