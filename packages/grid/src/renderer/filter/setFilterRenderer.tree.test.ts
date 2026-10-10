@@ -28,7 +28,8 @@ function runtimeState(options: SetFilterOptions[], extra: Partial<FilterRuntimeS
   };
 }
 
-function setup(tree: SetFilterTreeSpec | undefined = TREE) {
+function setup(tree: SetFilterTreeSpec | undefined = TREE, params: Record<string, unknown> = {}) {
+
   const toggleSetValue = vi.fn();
   const setSetGroupExpanded = vi.fn();
   // States are aligned with the options the renderer was last given: groups read mixed, the rest checked.
@@ -43,9 +44,10 @@ function setup(tree: SetFilterTreeSpec | undefined = TREE) {
   } as any;
   const spec = {
     column: { colId: "item", label: "Item" },
-    params: {},
+    params,
     tree,
   } as unknown as FilterPanelSpec;
+
   const renderer = new SetFilterRenderer(controller, spec, {} as IGridAPI);
   const renderState = renderer.renderState.bind(renderer);
   renderer.renderState = (state: FilterRuntimeState) => {
@@ -330,7 +332,27 @@ describe("SetFilterRenderer tree layout", () => {
     renderer.destroy();
   });
 
+  it("the mini filter's placeholder, its accessible name too, shows an example of the formatted value a leaf also matches on, unless the application names it", () => {
+    const inputOf = (r: SetFilterRenderer) => r.getUi().querySelector<HTMLInputElement>("input.pte-set-filter-input")!;
+    const { renderer } = setup();
+    expect(inputOf(renderer).placeholder).toBe("Type to filter values");
+    renderer.renderState(runtimeState(treeOptions(FRUIT)));
+    // The first leaf in tree order, Fruit › Citrus › Lemon, carries its whole path as its formatted value.
+    expect(inputOf(renderer).placeholder).toBe("Type to filter values, e.g. Fruit/Citrus/Lemon");
+    expect(inputOf(renderer).getAttribute("aria-label")).toBe("Type to filter values, e.g. Fruit/Citrus/Lemon");
+
+    const named = setup(TREE, { miniFilterPlaceholder: "Search dates (yyyy-mm-dd)" });
+    named.renderer.renderState(runtimeState(treeOptions(FRUIT)));
+    expect(inputOf(named.renderer).placeholder).toBe("Search dates (yyyy-mm-dd)");
+    expect(inputOf(named.renderer).getAttribute("aria-label")).toBe("Search dates (yyyy-mm-dd)");
+
+    const flat = setup(undefined);
+    flat.renderer.renderState(runtimeState(buildSetOptions(["apple", "banana"])));
+    expect(inputOf(flat.renderer).placeholder).toBe("Type to filter values");
+  });
+
   it("the flat layout carries no tree roles: no tree spec means a plain group even with hidden rows", () => {
+
     const { renderer } = setup(undefined);
     const options = buildSetOptions(["apple", "banana"]);
     options[2].hidden = true;

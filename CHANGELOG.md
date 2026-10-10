@@ -3,7 +3,21 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Set filter
+
+- **The tree layout's mini filter finds a leaf by its formatted value.** A leaf matches on the text
+  the flat layout would have shown it with — a date as the column prints it, `2026-01-12` by
+  default (`formatterOptions.format`, or `filterParams.valueFormatter` for the filter alone) —
+  beside its own segment label and its ancestors' labels, so typing a date narrows the tree to the
+  day although the row only reads "12". Because that text is not on screen, the box's default
+  placeholder shows an example from the first value ("Type to filter values, e.g. 2026-01-12").
+  `filterParams.miniFilterPlaceholder` replaces the placeholder, which is also the box's accessible
+  name, in either layout.
+
 ## 1.5.0 — 2026-10-09
+
 
 ### Set filter tree layout
 

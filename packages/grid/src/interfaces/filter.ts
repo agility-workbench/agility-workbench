@@ -165,7 +165,10 @@ export interface FilterParams {
   /**
    * Formats regular set-filter values for display, sorting, mini-filter matching, accessible names,
    * and `SetFilterValueComponentParams.valueFormatted`. Falls back to the column valueFormatter.
+   * In the tree layout a leaf shows its path segment instead, but the mini filter still matches it
+   * on this text, so a date is found by typing it the way the column prints it (`2026-01-12`).
    *
+
    * Never called with a blank value, nor with one `keyCreator` called blank: `(Blanks)` is the
    * grid's row, labeled by the grid (or by `blanksComponent`). Note that the *column's*
    * `valueFormatter` is still called with blanks when rendering cells — that is how an application
@@ -187,6 +190,14 @@ export interface FilterParams {
    * Counts cover every row in CSRM and only rows currently loaded in SSRM.
    */
   showValueCounts?: boolean;
+  /**
+   * Placeholder of the box above the values, which is also its accessible name. Defaults to
+   * `Type to filter values`; in the tree layout the default goes on to show an example of the
+   * formatted text a leaf also matches on (`, e.g. 2026-01-12`), taken from the first value that
+   * has one, since that text is not on screen.
+   */
+  miniFilterPlaceholder?: string;
+
   /** Replaces the text span for regular set-filter values; the grid continues to own the checkbox. */
   valueComponent?: SetFilterValueComponent;
   /** Extra params merged into regular set-filter value component params. */
@@ -223,10 +234,12 @@ export interface FilterParams {
    */
   treePathGetter?: (value: any) => any[] | null | undefined;
   /**
-   * Tree layout: formats one path segment for display, mini-filter matching, and accessible names.
-   * `level` is 0 at the root and `parentPath` holds the segments above. Defaults to the month's
-   * name at level 1 of the built-in date path, else `String(segment)`.
+   * Tree layout: formats one path segment for display, mini-filter matching, and accessible names
+   * (a leaf also matches on its formatted value — see `valueFormatter`). `level` is 0 at the root
+   * and `parentPath` holds the segments above. Defaults to the month's name at level 1 of the
+   * built-in date path, else `String(segment)`.
    */
+
   treePathFormatter?: (segment: any, level: number, parentPath: any[]) => string;
   /**
    * Tree layout: depth to which groups start open each time the filter opens. 0 (default) leaves

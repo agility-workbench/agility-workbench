@@ -79,7 +79,34 @@ describe("buildSetFilterTree", () => {
     expect(options[1].parentKey).toBeUndefined();
   });
 
+  it("keeps a pathed leaf's formatted value for the mini filter, and not a root leaf's or a group's", () => {
+    const options = tree(["Fruit/Citrus/Orange", "loose"], { pathOf: v => (v === "loose" ? null : slashPath(v)) });
+    const byLabel = (label: string) => options.find(o => o.label === label)!;
+    expect(byLabel("Orange").matchText).toBe("Fruit/Citrus/Orange");
+    expect(byLabel("Citrus")).not.toHaveProperty("matchText");
+    expect(byLabel("loose")).not.toHaveProperty("matchText");
+  });
+
+  it("withholds the formatted value when it repeats the label or is an object's default String()", () => {
+    const sameLabel = tree(["Orange"], { pathOf: v => ["Fruit", v] });
+    expect(sameLabel.find(o => o.label === "Orange")).not.toHaveProperty("matchText");
+
+    const objects = [{ cat: "Fruit", name: "Orange" }];
+    const objectSpec = spec({ pathOf: v => [v.cat, v.name] });
+    const unformatted = buildSetFilterTree(buildSetOptions(objects), objectSpec);
+    expect(unformatted.find(o => o.label === "Orange")).not.toHaveProperty("matchText");
+    const formatted = buildSetFilterTree(buildSetOptions(objects, undefined, v => `${v.name} (${v.cat})`), objectSpec);
+    expect(formatted.find(o => o.label === "Orange")!.matchText).toBe("Orange (Fruit)");
+
+    const date = new Date(2024, 0, 15);
+    const dateSpec = spec({ pathOf: dateTreePath(() => null), formatSegment: dateSegmentFormatter("en-US") });
+    expect(buildSetFilterTree(buildSetOptions([date]), dateSpec).find(o => o.label === "15")).not.toHaveProperty("matchText");
+    const printed = buildSetFilterTree(buildSetOptions([date], undefined, () => "2024-01-15"), dateSpec);
+    expect(printed.find(o => o.label === "15")!.matchText).toBe("2024-01-15");
+  });
+
   it("keeps the blanks row above the tree and never asks for its path", () => {
+
     const seen: any[] = [];
     const options = tree(["Fruit/Apple", null, ""], { pathOf: v => { seen.push(v); return slashPath(v); } });
     expect(shape(options)).toEqual(["(Select All)", "(Blanks)", "+Fruit", "  Apple"]);
@@ -324,9 +351,28 @@ describe("applySetMiniFilter in the tree layout", () => {
     expect(visibleLabels(options)).toEqual(["(Select All)", "(Blanks)"]);
   });
 
+  it("matches a leaf on its formatted value, so a date typed as the column prints it narrows to the day", () => {
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dates = [new Date(2024, 0, 15), new Date(2023, 11, 3), new Date(2024, 0, 2), new Date(2024, 8, 30)];
+    const options = buildSetFilterTree(
+      buildSetOptions(dates, undefined, iso),
+      spec({ pathOf: dateTreePath(() => null), formatSegment: dateSegmentFormatter("en-US") }),
+    );
+    applySetMiniFilter(options, "2024-01");
+    expect(visibleLabels(options)).toEqual(["(Select All)", "2024", "January", "2", "15"]);
+    applySetMiniFilter(options, "2024-01-1");
+    expect(visibleLabels(options)).toEqual(["(Select All)", "2024", "January", "15"]);
+    applySetMiniFilter(options, "2024-01-15");
+    expect(visibleLabels(options)).toEqual(["(Select All)", "2024", "January", "15"]);
+    // The segment label and the ancestor rule still apply beside it.
+    applySetMiniFilter(options, "sept");
+    expect(visibleLabels(options)).toEqual(["(Select All)", "2024", "September", "30"]);
+  });
+
   it("is the flat rule for a flat universe", () => {
     const options = buildSetOptions(["apple", "banana", "cherry"]);
     applySetMiniFilter(options, "an");
+
     expect(visibleLabels(options)).toEqual(["(Select All)", "banana"]);
   });
 });

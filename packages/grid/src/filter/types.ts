@@ -125,7 +125,14 @@ export interface SetFilterOptions {
   expanded?: boolean;
   /** Tree layout: the path segments from the root to this row, a leaf's including its own. */
   path?: any[];
+  /**
+   * Tree layout, leaves with a path: the value's formatted text — the label the flat layout gave
+   * it, a date as the column prints it — which the mini filter matches beside the segment label.
+   * Absent when it would only repeat the label, or when it is an object's default `String()` text.
+   */
+  matchText?: string;
 }
+
 
 export interface FilterRuntimeState {
   join: "and" | "or";

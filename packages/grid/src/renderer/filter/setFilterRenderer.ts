@@ -97,8 +97,10 @@ export class SetFilterRenderer implements IFilterRenderer {
       if (this.loader) this.loader.hide();
     }
     if (uiState.options) {
+      this.setMiniFilterPlaceholder(uiState.options);
       this.createOptionRows(uiState.options, uiState.selectedIdx, (uiState.miniFilter ?? "").length > 0);
     }
+
   }
 
   private createFilter() {
@@ -109,11 +111,11 @@ export class SetFilterRenderer implements IFilterRenderer {
   private createMiniFilter() {
     const filterContainer = div("pte-set-filter-mini");
     this.miniFilterInput = createElement("input", "pte-filter-input");
-    this.miniFilterInput.setAttribute("aria-label", "Type to filter values");
     this.miniFilterInput.name = "pte-set-filter-mini-input";
     this.miniFilterInput.type = "text";
     this.miniFilterInput.className = "pte-filter-input pte-set-filter-input";
-    this.miniFilterInput.placeholder = "Type to filter values";
+    this.setMiniFilterPlaceholder(undefined);
+
     this.miniFilterInput.addEventListener("input", () => {
       this.controller.filterOptions(0, this.miniFilterInput.value);
     });
@@ -124,6 +126,26 @@ export class SetFilterRenderer implements IFilterRenderer {
     filterContainer.appendChild(this.miniFilterInput);
     this.root.appendChild(filterContainer);
   }
+
+  /**
+   * The box's placeholder, which is also its accessible name: the application's text, else the
+   * built-in prompt — in the tree layout followed by an example of the formatted value a leaf also
+   * matches on (`e.g. 2026-01-12`), taken from the first leaf that carries one, because that text
+   * is not on screen and the format would otherwise be a guess. Re-resolved on every paint so an
+   * async universe gets its example once the values arrive.
+   */
+  private setMiniFilterPlaceholder(options: SetFilterOption[] | undefined): void {
+    let text = this.spec.params.miniFilterPlaceholder;
+    if (text === undefined) {
+      text = "Type to filter values";
+      const example = options?.find(o => o.type === "value" && o.matchText !== undefined)?.matchText;
+      if (example !== undefined) text += `, e.g. ${example}`;
+    }
+    if (this.miniFilterInput.placeholder === text) return;
+    this.miniFilterInput.placeholder = text;
+    this.miniFilterInput.setAttribute("aria-label", text);
+  }
+
 
   private createConditionContainer() {
     const container = div("pte-filter-condition-container pte-set-filter-condition-container");
