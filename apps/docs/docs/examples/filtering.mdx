@@ -278,7 +278,15 @@ Checking a group checks every leaf beneath it, a partly checked group shows as
 mixed, and `showValueCounts` sums the leaves per group. The mini filter keeps a
 row when its own label or an ancestor's matches, so typing a year keeps that
 year's months and days, and it holds every matching group open for as long as
-the text is there. `treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
+the text is there. A leaf also matches on its formatted value, the text the
+flat layout would have shown: a date column prints `2026-01-12` by default
+(`formatterOptions.format` changes that, or `filterParams.valueFormatter` for
+the filter alone), so typing the date narrows the tree to the day although the
+row only reads "12". Because that text is not on screen, the box's placeholder
+shows an example taken from the first value, "Type to filter values, e.g.
+2026-01-12"; `miniFilterPlaceholder` replaces the placeholder in either layout.
+`treeDefaultExpanded` mirrors `groupDefaultExpanded`: `0`
+
 (the default) opens nothing, `N` opens the first N levels, `-1` opens all. The
 groups a user opens or closes are remembered for as long as the grid lives, so
 the filter reopens as it was left (a group not seen before starts at the

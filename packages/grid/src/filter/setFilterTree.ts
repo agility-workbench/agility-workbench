@@ -10,8 +10,9 @@
  * Set Filter API see exactly what they see for a flat set filter.
  *
  * Two flags on each option drive what is on screen, and they are independent:
- *  - `hidden` — the mini filter's verdict (a leaf matches by its own label or an ancestor's; a group
- *    stays while any descendant leaf does);
+ *  - `hidden` — the mini filter's verdict (a leaf matches by its own label, by its formatted value,
+ *    or by an ancestor's label; a group stays while any descendant leaf does);
+
  *  - `expanded` — the user's expansion state on a group, defaulted from `treeDefaultExpanded`.
  * `visibleSetOptions` combines them. While a mini filter is typed, every surviving group renders
  * expanded so the matches are in view; clearing it restores the user's expansion state untouched.
@@ -96,6 +97,9 @@ interface LeafNode {
   kind: "leaf";
   segment: any;
   label: string;
+  /** The formatted value the mini filter also matches, when it says more than the label. */
+  matchText?: string;
+
   /** The value's full path, or undefined for a value placed at the root without one. */
   path?: any[];
   option: SetFilterOptions;
@@ -104,7 +108,23 @@ interface LeafNode {
 type TreeItem = GroupNode | LeafNode;
 
 /**
+ * The text the mini filter matches a pathed leaf on beside its segment label: the value's formatted
+ * text, which is the label the flat layout gave it — a date as the column's formatter prints it, so
+ * typing `2026-01-12` finds the day under 2026 › January although the row only reads "12". Withheld
+ * when it would repeat the label, and for an object the default `String()` labelled: nobody types
+ * `[object Object]` or a Date's `toString()`.
+ */
+function leafMatchText(option: SetFilterOptions, label: string): string | undefined {
+  const formatted = option.label;
+  if (formatted === label) return undefined;
+  const raw = option.raw;
+  if (raw !== null && typeof raw === "object" && formatted === String(raw)) return undefined;
+  return formatted;
+}
+
+/**
  * Regroup a flat universe (select_all, blanks?, values) into the tree layout. Returns a new array:
+
  * the synthetic rows first, then the tree in pre-order with `level`/`parentKey` on every row and
  * `expanded` on each group. Counts, when the leaves carry them, roll up into their groups.
  */
@@ -137,14 +157,17 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
       parent = group;
     }
     const last = path.length - 1;
+    // A value without a path keeps the label the flat layout gave it.
+    const label = last >= 0 ? spec.formatSegment(path[last], last, path.slice(0, last)) : option.label;
     parent.items.push({
       kind: "leaf",
       segment: last >= 0 ? path[last] : undefined,
-      // A value without a path keeps the label the flat layout gave it.
-      label: last >= 0 ? spec.formatSegment(path[last], last, path.slice(0, last)) : option.label,
+      label,
+      matchText: last >= 0 ? leafMatchText(option, label) : undefined,
       path: last >= 0 ? path : undefined,
       option,
     });
+
   }
 
   const comparable = (item: TreeItem, parentLevel: number): SetFilterComparable => item.kind === "group"
@@ -162,7 +185,15 @@ export function buildSetFilterTree(options: SetFilterOptions[], spec: SetFilterT
     let count = 0;
     for (const item of node.items) {
       if (item.kind === "leaf") {
-        out.push({ ...item.option, label: item.label, level: node.level + 1, parentKey, path: item.path });
+        out.push({
+          ...item.option,
+          label: item.label,
+          ...(item.matchText !== undefined ? { matchText: item.matchText } : {}),
+          level: node.level + 1,
+          parentKey,
+          path: item.path,
+        });
+
         count += item.option.count ?? 0;
         continue;
       }
@@ -406,11 +437,14 @@ export function toggleGroup(
 }
 
 /**
- * Apply the mini filter: sets `hidden` on every option. A leaf stays visible when its own label or
- * any ancestor group's label contains the text, so typing a year keeps the whole year in view; a
- * group stays visible while any of its leaves does. With no groups this is the flat rule — a row is
+ * Apply the mini filter: sets `hidden` on every option. A leaf stays visible when its own label, its
+ * formatted value (`matchText`, the text the flat layout would have shown — `2026-01-12` for a day
+ * under 2026 › January), or any ancestor group's label contains the text, so typing a year keeps
+ * the whole year in view and typing a date the way the column prints it narrows to the day; a group
+ * stays visible while any of its leaves does. With no groups this is the flat rule — a row is
  * hidden unless its label matches — and select_all is never hidden.
  */
+
 export function applySetMiniFilter(options: SetFilterOptions[], filter: string): void {
   const filterLc = filter.toLowerCase();
   // Enclosing groups of the row being visited, innermost last, each with its own match verdict.
@@ -426,7 +460,10 @@ export function applySetMiniFilter(options: SetFilterOptions[], filter: string):
     while (ancestors.length > level) {
       if (ancestors.pop()!.matches) matchingAncestors--;
     }
-    const selfMatch = filterLc.length === 0 || o.label.toLowerCase().includes(filterLc);
+    const selfMatch = filterLc.length === 0
+      || o.label.toLowerCase().includes(filterLc)
+      || (o.matchText !== undefined && o.matchText.toLowerCase().includes(filterLc));
+
     if (o.type === "group") {
       // Provisionally hidden; the first visible leaf beneath reveals it (and its ancestors).
       o.hidden = true;

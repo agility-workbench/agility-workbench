@@ -224,7 +224,10 @@ const productColumn: ColDef = {
 ```
 
 Checking a group checks every leaf beneath it and a partly checked group shows as mixed; the mini
-filter keeps a row by its own label or an ancestor's and holds matching groups open while typed;
+filter keeps a row by its own label, its formatted value (a date as the column prints it, so typing
+`2026-01-12` finds the day — the placeholder shows an example), or an ancestor's label, and holds
+matching groups open while typed (`miniFilterPlaceholder` replaces the placeholder in either layout);
+
 the groups a user opens are remembered for the grid's lifetime (`treeRememberExpansion: false`
 opts out). Select All is the tree's root: its chevron opens or closes every group. Groups are
 never stored — the filter model holds leaf values exactly as in the flat layout, so saved state,
