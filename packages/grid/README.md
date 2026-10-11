@@ -724,6 +724,12 @@ sortable by default — and `groupColumnDef` layers a normal column definition (
 buckets at every grouping level. Its identity and grouping-machinery fields (`colId`, `key`,
 `children`, `groupable`, `aggregatable`, `filter`) are grid-owned and cannot be overridden.
 
+A group row's label ends in its row count (`EMEA (12)`); `groupChildCount` decides what that
+parenthesised value is — on screen, on copy, and in both exports alike. `false` shows no count; a
+function decides per group from `{ node, rowCount, aggregates, data }` (`aggregates` is the group's
+aggregate values by colId, `data` the raw group row on the server-side row model) and returns a
+number, a string (`"12.5 FTE"`), or `null` for no count. It is live through `updateGridOptions`.
+
 Tree data has two keyboard-navigation modes:
 
 ```ts
