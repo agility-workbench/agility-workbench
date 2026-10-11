@@ -418,6 +418,13 @@ export class GridAPI implements IGridAPI {
     return this.core.getRowModel().getGroupNodes();
   }
 
+  getRowNode(rowId: GridId): IRowNode | undefined {
+    // Application-pinned rows never enter the row model; the band holds them.
+    return this.core.getRowModel().getRowNode(rowId)
+      ?? this.core.getDisplayedPinnedRowRef(rowId)?.node
+      ?? undefined;
+  }
+
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
     return this.core.refreshServerSideData(options);
   }

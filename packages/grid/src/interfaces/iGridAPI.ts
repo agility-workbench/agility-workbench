@@ -416,6 +416,19 @@ export interface IGridAPI {
    */
   getGroupNodes(): IRowNode[];
 
+  /**
+   * The row model's node for `rowId`: a data row, a client-side group or tree node (its id is the
+   * one `getGroupNodes()` and `rowGroupOpened` report), or an application-pinned band row. Server-
+   * side, a loaded leaf or group row. `undefined` for an id the grid does not hold — including a
+   * group id from before a regroup, which mints new group nodes.
+   *
+   * ```ts
+   * const node = api.getRowNode("region:EMEA");
+   * if (node?.isGroup) console.log(node.groupKey, node.level, node.children?.length);
+   * ```
+   */
+  getRowNode(rowId: GridId): IRowNode | undefined;
+
   /* ----- Pivot ----- */
   /**
    * Turn pivot mode on or off. On: rows display as the row-group tree (leaf rows never show) and
