@@ -185,6 +185,13 @@ export interface IGridCore {
   setGroupSortMode(groupSortMode: GroupSortMode): void;
   /** Change whether group rows can be selected without rebuilding the grid instance. */
   setGroupRowsSelectable(groupRowsSelectable: boolean): void;
+  /** Change what group rows show as their count (`groupChildCount`); repaints the group rows. */
+  setGroupChildCount(groupChildCount: GridOptions["groupChildCount"]): void;
+  /**
+   * The label a group row shows: its key, then the count `groupChildCount` resolves for it. The
+   * one owner for every surface that writes a group row. `rowCount` overrides the node's own.
+   */
+  getGroupRowLabel(node: IRowNode, rowCount?: number): string;
   /** Swap the per-row selection gate; prunes selected rows the new predicate disables. */
   setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void;
   /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */

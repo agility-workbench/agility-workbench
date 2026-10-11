@@ -233,7 +233,7 @@ export class ExportRenderer {
    */
   private commonExportConfig(options: ExportOptions): Pick<
     ExportConfig,
-    "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths"
+    "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths" | "groupLabel"
   > {
     return {
       columnIds: options.columnIds,
@@ -241,6 +241,9 @@ export class ExportRenderer {
       processCellForExcel: options.processCellForExcel,
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
+      // Group header labels come from the grid's own resolver so the sheet shows the count the
+      // screen shows (the `groupChildCount` option), whatever shape the export takes.
+      groupLabel: (node, rowCount) => this.params.core.getGroupRowLabel(node, rowCount),
     };
   }
 
@@ -325,7 +328,7 @@ export class ExportRenderer {
       resolvers.isFullWidthRow = (rowData) => this.params.core.isFullWidthNode(nodeFor(rowData));
       resolvers.fullWidthText = (rowData) => {
         const node = nodeFor(rowData);
-        if (node.isGroup) return `${node.groupKey ?? ""} (${node.childCount ?? 0})`;
+        if (node.isGroup) return this.params.core.getGroupRowLabel(node);
         return "";
       };
     }

@@ -29,7 +29,7 @@ import { ColId, ColumnState, GridId, GridSnapshot, IGridCore, RowData } from "..
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
-import { IRowNode, isExpandableNode } from "../interfaces/iRowNode";
+import { groupRowLabel, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
 import {
   GridEventHandler,
   GridEventMap,
@@ -404,6 +404,7 @@ export class GridCore implements IGridCore {
       pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       getGroupChildCount: options.getGroupChildCount,
+      groupChildCount: options.groupChildCount ?? true, // true (row count) | false | getter
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
         ?? "More rows may exist on the server; the total updates as they load",
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
@@ -2401,6 +2402,64 @@ export class GridCore implements IGridCore {
       if (id) ids.push(id);
     }
     return ids;
+  }
+
+  /**
+   * The label a group row shows — its key, then the count the `groupChildCount` option resolves
+   * for it. The one owner for every surface that writes a group row (cell renderer, sticky bands,
+   * clipboard, both exporters), so none can disagree with another or with the screen. `rowCount`
+   * overrides the node's own for a caller that counted itself (the grouped Excel export of a
+   * pruned selection walks the leaves it is about to write).
+   */
+  getGroupRowLabel(node: IRowNode, rowCount: number | undefined = node.childCount): string {
+    // `null`, not undefined: the helper's count parameter defaults to the node's own row count,
+    // which would turn "no count" back into the badge this option just removed.
+    return groupRowLabel(node, this.resolveGroupChildCount(node, rowCount) ?? null);
+  }
+
+  /** Change what group rows show as their count; repaints the visible group rows. */
+  setGroupChildCount(groupChildCount: GridOptions["groupChildCount"]): void {
+    const next = groupChildCount ?? true;
+    if (this.options.groupChildCount === next) return;
+    this.options.groupChildCount = next;
+    // Rebind visible rows so group cells repaint with the new count. The sticky bands follow on
+    // their own: a group's label is part of their signature. Nothing about the row tree changed.
+    this.emit("rowsChanged", {
+      reason: "refresh",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
+  }
+
+  private resolveGroupChildCount(
+    node: IRowNode,
+    rowCount: number | undefined,
+  ): number | string | null | undefined {
+    const policy = this.options.groupChildCount;
+    if (policy === false) return null;
+    if (typeof policy !== "function") return rowCount;
+    return policy({
+      node,
+      // Only a server-side group row has a data row of its own (the listing's GROUP BY row). A
+      // client-side group's `data` is a synthetic placeholder that must not leak to the caller.
+      data: this.rowModel.getType() === "serverSide" ? node.data : undefined,
+      rowCount,
+      aggregates: this.groupAggregatesByColId(node),
+    });
+  }
+
+  // A group row's stamped aggregates are keyed by column instance id, which a client cannot
+  // address; re-key them by colId for the `groupChildCount` callback.
+  private groupAggregatesByColId(node: IRowNode): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    const values = node.aggregateValues;
+    if (!values) return out;
+    for (const instanceID of Object.keys(values)) {
+      const col = this.columnModel.resolve(instanceID);
+      if (col) out[col.colId || col.key] = values[instanceID];
+    }
+    return out;
   }
 
   // Whether a row node renders as a full-width row: its content spans the whole body width instead

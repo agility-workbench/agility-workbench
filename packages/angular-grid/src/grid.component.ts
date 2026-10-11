@@ -168,6 +168,7 @@ export class AwbGrid implements OnDestroy {
   readonly groupRowsSelectable = input<GridOptions["groupRowsSelectable"]>();
   readonly groupRowsSticky = input<GridOptions["groupRowsSticky"]>();
   readonly getGroupChildCount = input<GridOptions["getGroupChildCount"]>();
+  readonly groupChildCount = input<GridOptions["groupChildCount"]>();
   readonly treeData = input<GridOptions["treeData"]>();
 
   // --- pinned rows ---
@@ -368,6 +369,11 @@ export class AwbGrid implements OnDestroy {
     this.syncEffect(() => {
       const v = this.groupRowsSelectable();
       return () => api.updateGridOptions({ groupRowsSelectable: v });
+    });
+
+    this.syncEffect(() => {
+      const v = this.groupChildCount();
+      return () => api.updateGridOptions({ groupChildCount: v });
     });
 
     this.syncEffect(() => {

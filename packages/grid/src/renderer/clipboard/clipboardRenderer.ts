@@ -38,14 +38,14 @@ export class ClipboardRenderer {
   copy(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    const tsv = serializeNodesToTSV(block.cols, block.nodes, false);
+    const tsv = serializeNodesToTSV(block.cols, block.nodes, false, node => this.params.core.getGroupRowLabel(node));
     void this.write(tsv);
   }
 
   cut(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    const tsv = serializeNodesToTSV(block.cols, block.nodes, false);
+    const tsv = serializeNodesToTSV(block.cols, block.nodes, false, node => this.params.core.getGroupRowLabel(node));
     void this.write(tsv);
 
     // Clear the copied cells (cut = copy + clear).

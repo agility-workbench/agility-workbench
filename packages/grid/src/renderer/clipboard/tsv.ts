@@ -1,4 +1,4 @@
-import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
+import { IRowNode } from "../../interfaces/iRowNode";
 import { Column } from "../../column/column";
 import { IRowModel } from "../../interfaces/iRowModel";
 
@@ -12,21 +12,27 @@ export function escapeTSV(value: unknown): string {
   return s;
 }
 
+/** The label a group row copies with: the grid passes `GridCore.getGroupRowLabel`. */
+export type GroupLabelResolver = (node: IRowNode) => string;
+
 /**
  * Serialize a rectangular block of the grid (given columns × row nodes) to TSV. Accepts any row
- * nodes — body rows and pinned band rows serialize identically.
+ * nodes — body rows and pinned band rows serialize identically. `groupLabel` writes a group row's
+ * label cell; it is a parameter rather than a default so a copy can never drift from the screen's
+ * count policy (`groupChildCount`) by forgetting it.
  */
 export function serializeNodesToTSV(
   cols: Column[],
   nodes: IRowNode[],
   includeHeaders: boolean,
+  groupLabel: GroupLabelResolver,
 ): string {
   const lines: string[] = [];
   if (includeHeaders) {
     lines.push(cols.map(c => escapeTSV(c.label ?? c.key ?? "")).join("\t"));
   }
   for (const node of nodes) {
-    const cells = cols.map(col => escapeTSV(cellText(col, node)));
+    const cells = cols.map(col => escapeTSV(cellText(col, node, groupLabel)));
     lines.push(cells.join("\t"));
   }
   return lines.join("\n");
@@ -34,13 +40,13 @@ export function serializeNodesToTSV(
 
 // One cell's copy text. Group rows (pivot rows, groupRowsSelectable copies) have no underlying
 // data row: value cells read the node's stamped aggregate and the group-label column reads the
-// node's key — the same conventions the cell renderer paints and the exporter writes.
-function cellText(col: Column, node: IRowNode): string {
+// label the grid resolves — the same conventions the cell renderer paints and the exporter writes.
+function cellText(col: Column, node: IRowNode, groupLabel: GroupLabelResolver): string {
   if (node.isGroup) {
     const agg = node.aggregateValues?.[col.instanceID];
     if (agg != null && agg !== "") return col.formatValue(agg, node);
     if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level) {
-      return groupRowLabel(node);
+      return groupLabel(node);
     }
     return "";
   }
@@ -56,11 +62,12 @@ export function serializeRowsToTSV(
   cols: Column[],
   viewIdxs: number[],
   includeHeaders: boolean,
+  groupLabel: GroupLabelResolver,
 ): string {
   const nodes = viewIdxs
     .map(viewIdx => rowModel.getRowNodeAtViewIndex(viewIdx))
     .filter((node): node is NonNullable<typeof node> => node != null);
-  return serializeNodesToTSV(cols, nodes, includeHeaders);
+  return serializeNodesToTSV(cols, nodes, includeHeaders, groupLabel);
 }
 
 /**

@@ -3,6 +3,20 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.7.0 — 2026-10-11
+
+
+### Row grouping
+
+- **`groupChildCount` decides what a group row shows after its label.** `true` (the default) is the
+  row count as before, `false` shows no count on any group, and a function decides per group — a
+  number, a string such as `12.5 FTE`, or `null` for no count — from the group node, the default
+  count, the group's aggregates by colId, and (server-side row model) the raw group row. One
+  resolver feeds the group cells, the sticky group rows, the clipboard, and the CSV and Excel
+  exports, so they always agree; the groupRows-mode export no longer writes `(0)` for a group
+  whose count is unknown. Live in both wrappers and through `updateGridOptions`. New types:
+  `GroupChildCountParams`, `GroupChildCountGetter`.
+
 ## 1.6.0 — 2026-10-10
 
 

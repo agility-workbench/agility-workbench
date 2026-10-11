@@ -75,6 +75,37 @@ api.dispatch({
 });
 ```
 
+## Group counts
+
+A group row's label ends in its row count: `EMEA (12)`. `groupChildCount` decides
+what that parenthesised value is — on screen, on copy, and in both exports, which
+always agree. `true` (the default) is the row count; `false` shows no count on any
+group:
+
+```ts
+const options = {
+  groupChildCount: false,
+} satisfies GridOptions;
+```
+
+A function decides per group. It receives the group `node`, the default `rowCount`,
+the group's `aggregates` by colId (the columns with an aggregate assigned), and, on
+the server-side row model, the raw group row as `data`. Return a number or a string
+to write inside the parentheses, or `null` to show no count for that group — a
+headcount total instead of a row count, say:
+
+```ts
+const options = {
+  groupChildCount: ({ aggregates, rowCount }) =>
+    aggregates.headcount != null ? `${aggregates.headcount} FTE` : rowCount,
+} satisfies GridOptions;
+
+api.setAggregates([{ colId: "headcount", type: AggregateType.SUM }]);
+```
+
+Tree rows never show a count. `groupChildCount` is a live prop/input in both
+wrappers, and `api.updateGridOptions({ groupChildCount })` changes it in place.
+
 ## Server-side grouping and aggregation
 
 Server-side grouping requests one parent listing at a time and sends aggregate

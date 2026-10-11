@@ -79,6 +79,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "serverSideBlockSize", props.serverSideBlockSize);
   setIfDefined(options, "rowModelType", props.rowModelType);
   setIfDefined(options, "getGroupChildCount", props.getGroupChildCount);
+  setIfDefined(options, "groupChildCount", props.groupChildCount);
   setIfDefined(options, "paginationUnknownTotalTooltip", props.paginationUnknownTotalTooltip);
   setIfDefined(options, "undoLimit", props.undoLimit);
   setIfDefined(options, "editTrigger", props.editTrigger);

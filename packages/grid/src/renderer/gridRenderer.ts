@@ -2081,7 +2081,7 @@ export class GridRenderer {
         if (node) nodes.push(node);
       }
       pushPinned("bottom", r.pinnedBottom);
-      return serializeNodesToTSV(cols, nodes, includeHeaders);
+      return serializeNodesToTSV(cols, nodes, includeHeaders, node => this.core.getGroupRowLabel(node));
     } else if (ctx.selection.rowIds.length > 0) {
       const rowIdSet = new Set(ctx.selection.rowIds);
       const viewIdxs: number[] = [];
@@ -2105,7 +2105,9 @@ export class GridRenderer {
   }
 
   private serializeRowsToTSV(cols: import("../column/column").Column[], viewIdxs: number[], includeHeaders: boolean): string {
-    return serializeRowsToTSV(this.core.getRowModel(), cols, viewIdxs, includeHeaders);
+    return serializeRowsToTSV(
+      this.core.getRowModel(), cols, viewIdxs, includeHeaders, node => this.core.getGroupRowLabel(node),
+    );
   }
 
 }

@@ -97,7 +97,7 @@ describe("serializeNodesToTSV group rows", () => {
 
   it("copies the count a group row has", () => {
     const node = groupNode({ groupKey: "EMEA", childCount: 2 });
-    expect(serializeNodesToTSV([autoGroupCol()], [node], false)).toBe("EMEA (2)");
+    expect(serializeNodesToTSV([autoGroupCol()], [node], false, n => groupRowLabel(n))).toBe("EMEA (2)");
   });
 
   it("copies what the screen shows when the count is unknown, not \"(0)\"", () => {
@@ -105,7 +105,7 @@ describe("serializeNodesToTSV group rows", () => {
     // a copy that invented "(0)" would put a number in the user's clipboard that the grid never
     // displayed and the data never claimed.
     const node = groupNode({ groupKey: "EMEA" });
-    const copied = serializeNodesToTSV([autoGroupCol()], [node], false);
+    const copied = serializeNodesToTSV([autoGroupCol()], [node], false, n => groupRowLabel(n));
     expect(copied).toBe("EMEA");
     expect(copied).toBe(groupRowLabel(node));
   });

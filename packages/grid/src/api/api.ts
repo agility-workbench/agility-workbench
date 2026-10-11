@@ -274,6 +274,7 @@ export class GridAPI implements IGridAPI {
     if (has("groupRowsSelectable")) {
       this.core.setGroupRowsSelectable(options.groupRowsSelectable ?? false);
     }
+    if (has("groupChildCount")) this.core.setGroupChildCount(options.groupChildCount);
     if (has("isRowSelectable")) this.core.setIsRowSelectable(options.isRowSelectable);
 
     // Caller-owned schema, same as `createGrid({ columnDefs })`.

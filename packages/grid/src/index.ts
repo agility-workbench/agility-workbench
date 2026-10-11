@@ -134,6 +134,8 @@ export type {
   PaginationPageSelection,
   ResolvedPaginationControlsOptions,
   BodyContextMenuGetter,
+  GroupChildCountGetter,
+  GroupChildCountParams,
   RowInsertionMenuOptions,
   RowInsertionMenuParams,
   QuickFilterOptions,

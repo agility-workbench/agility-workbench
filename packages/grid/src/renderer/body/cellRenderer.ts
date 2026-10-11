@@ -37,7 +37,7 @@ export class BodyCellRenderer {
       this.clearFullWidthRenderer(cellRendererMap);
       cell.classList.add("pte-group-cell");
       if (row.isGroup) {
-        renderGroupCell(cell, row);
+        renderGroupCell(cell, row, this.api.getCore().getGroupRowLabel(row));
       } else {
         cell.style.paddingLeft = "";
         cell.replaceChildren();
@@ -274,7 +274,7 @@ export class BodyCellRenderer {
         this.renderGroupAggregateOrBlank(cell, row, col);
         return;
       }
-      renderGroupCell(cell, row);
+      renderGroupCell(cell, row, this.api.getCore().getGroupRowLabel(row));
       return;
     }
 

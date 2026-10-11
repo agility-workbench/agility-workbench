@@ -109,6 +109,14 @@ export interface ExportConfig {
    * empty. Only consulted for rows {@link isFullWidthRow} marks full-width.
    */
   fullWidthText?: (rowData: any) => string;
+  /**
+   * The label a group header row is written with (key + count). The grid supplies its own
+   * resolver (`GridCore.getGroupRowLabel`), which honors the `groupChildCount` option, so the sheet
+   * says what the screen and the clipboard say. `rowCount` is the count the caller established for
+   * the row when it differs from the node's own (a pruned selection's leaf count). A bare config
+   * falls back to the node's own key and row count.
+   */
+  groupLabel?: (node: IRowNode, rowCount?: number) => string;
   /** Public, Excel-only customization hook forwarded by ExportRenderer. */
   processCellForExcel?: ExcelExportCellProcessor;
   /**
@@ -336,7 +344,11 @@ const buildHeaderMatrix = (layout: HeaderLayout, columnCount: number): string[][
   return matrix;
 };
 
-const getValueBundle = (row: any, col: Column): ValueBundle => {
+/** A group header's label: the grid's resolver when it supplied one, else the node's own. */
+const groupLabelFor = (config: Pick<ExportConfig, "groupLabel">, node: IRowNode, rowCount?: number): string =>
+  config.groupLabel ? config.groupLabel(node, rowCount) : groupRowLabel(node, rowCount);
+
+const getValueBundle = (row: any, col: Column, config: Pick<ExportConfig, "groupLabel">): ValueBundle => {
   const rowNode = row && typeof row === "object" && ("data" in row || (row as IRowNode).isGroup === true)
     ? row as IRowNode
     : { data: row } as IRowNode;
@@ -350,7 +362,7 @@ const getValueBundle = (row: any, col: Column): ValueBundle => {
       return { raw, formatted: col.formatValue(raw, rowNode) };
     }
     if (col.isAutoGroupColumn()) {
-      const label = groupRowLabel(rowNode);
+      const label = groupLabelFor(config, rowNode);
       return { raw: label, formatted: `${"  ".repeat(Math.max(0, rowNode.level ?? 0))}${label}` };
     }
   }
@@ -507,7 +519,7 @@ const emitDataRowCells = (
   if (!config.getCellColSpan) {
     return {
       cells: columns.map((col, colIdx) => {
-        const current = getValueBundle(rowData, col);
+        const current = getValueBundle(rowData, col, config);
         const bundle = valueOverride?.(col, colIdx, current) ?? current;
         return exportDataCell(rowData, col, bundle, bodyStyles[colIdx], config, rowIndex, rowType);
       }),
@@ -526,7 +538,7 @@ const emitDataRowCells = (
       continue;
     }
     const col = columns[colIdx];
-    const current = getValueBundle(rowData, col);
+    const current = getValueBundle(rowData, col, config);
     const bundle = valueOverride?.(col, colIdx, current) ?? current;
     cells.push(exportDataCell(rowData, col, bundle, bodyStyles[colIdx], config, rowIndex, rowType));
     if (span > 1) spanMerges.push({ colStart: colIdx, span });
@@ -582,7 +594,7 @@ export const buildCSV = (config: ExportConfig): string => {
       : null;
     const values = columns.map((col, colIdx) => {
       if (spans && spans[colIdx] === 0) return ""; // covered by an earlier span
-      const { formatted } = getValueBundle(row, col);
+      const { formatted } = getValueBundle(row, col, config);
       return escapeCSVValue(formatted ?? "");
     });
     csvRows.push(values);
@@ -879,7 +891,7 @@ const buildGroupedBody = (
     // This walk holds the leaves it is about to write, so the count is known even when the node
     // does not carry one — except for a server-side group, whose leaves below are only the fetched
     // ones: it shows the server's count, or none.
-    const label = groupRowLabel(node, config.serverSide ? node.childCount : node.childCount ?? groupLeaves.length);
+    const label = groupLabelFor(config, node, config.serverSide ? node.childCount : node.childCount ?? groupLeaves.length);
     headerCells[labelColIdx] = { value: { kind: "string", value: label }, style: { bold: true } };
 
     // Children render at the next outline level; hidden if this group is collapsed (or an ancestor
