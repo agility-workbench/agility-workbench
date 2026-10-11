@@ -71,6 +71,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "serverSideBlockSize", grid.serverSideBlockSize());
   setIfDefined(options, "rowModelType", grid.rowModelType());
   setIfDefined(options, "getGroupChildCount", grid.getGroupChildCount());
+  setIfDefined(options, "groupChildCount", grid.groupChildCount());
   setIfDefined(options, "paginationUnknownTotalTooltip", grid.paginationUnknownTotalTooltip());
   setIfDefined(options, "undoLimit", grid.undoLimit());
   setIfDefined(options, "editTrigger", grid.editTrigger());

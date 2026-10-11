@@ -203,6 +203,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     }, [props.groupRowsSelectable]);
 
     useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ groupChildCount: props.groupChildCount });
+    }, [props.groupChildCount]);
+
+    useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ pivotColumnMoveMode: props.pivotColumnMoveMode });
     }, [props.pivotColumnMoveMode]);
 

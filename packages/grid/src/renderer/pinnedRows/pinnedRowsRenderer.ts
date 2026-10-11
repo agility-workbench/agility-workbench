@@ -801,6 +801,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private signature(rows: IRowNode[]): string {
     return rows.map(node =>
       `${node.id}:${node.isExpanded ? 1 : 0}:${node.childCount ?? ""}:${node.level}:${node.rowPinned ?? ""}`
+      // A group's label is part of its identity here: `groupChildCount` can derive the count from
+      // aggregates, which move without the row count moving — a stuck header keyed on the count
+      // alone would keep showing yesterday's number.
+      + (node.isGroup ? `:${this.params.core.getGroupRowLabel(node)}` : "")
     ).join("|");
   }
 

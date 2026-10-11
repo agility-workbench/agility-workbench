@@ -191,6 +191,7 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       { id: "groupDefaultExpanded", label: "Expanded by default", kind: "select", options: [{ value: "0", label: "Collapsed" }, { value: "1", label: "First level" }, { value: "-1", label: "All levels" }], default: "1", structural: true },
       { id: "groupRowsSticky", label: "Sticky group rows", kind: "toggle", default: true },
       { id: "groupRowsSelectable", label: "Group rows selectable", kind: "toggle", default: false },
+      { id: "groupChildCount", label: "Group counts", kind: "toggle", default: true },
       { id: "groupSortMode", label: "Sort within groups", kind: "select", options: [{ value: "local", label: "local (per group)" }, { value: "hierarchy" }, { value: "global" }], default: "local" },
     ],
     toProps: (v) => ({
@@ -198,6 +199,7 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       groupDefaultExpanded: num(v.groupDefaultExpanded),
       ...onOff(v.groupRowsSticky, "groupRowsSticky"),
       ...onOff(v.groupRowsSelectable, "groupRowsSelectable"),
+      ...(bool(v.groupChildCount) ? {} : { groupChildCount: false }),
       ...(v.groupSortMode !== "local" ? { groupSortMode: str(v.groupSortMode) } : {}),
       toolbar: { grouping: true },
     }),

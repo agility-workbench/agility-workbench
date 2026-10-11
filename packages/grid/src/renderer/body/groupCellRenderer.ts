@@ -1,16 +1,17 @@
-import { groupRowLabel, IRowNode, isExpandableNode } from "../../interfaces/iRowNode";
+import { IRowNode, isExpandableNode } from "../../interfaces/iRowNode";
 
 // Horizontal indent applied per grouping level, in pixels.
 export const INDENT_PER_LEVEL = 20;
 
 // Paint a group cell's contents into `cell`: a clickable expand/collapse chevron, an indent that
-// reflects the group's depth, and the group label with its child count. The chevron carries the
-// `pte-group-toggle` class + `data-group-id` so the interaction layer can resolve which group to
-// toggle on click without this module depending on the core.
+// reflects the group's depth, and the group label. `labelText` is the core's `getGroupRowLabel`
+// (key + the count the `groupChildCount` option resolves), handed in so this module stays free of
+// the core and the label is resolved by its one owner. The chevron carries the `pte-group-toggle`
+// class + `data-group-id` so the interaction layer can resolve which group to toggle on click.
 //
 // The DOM is rebuilt each call (cheap: three elements) rather than diffed — the body row pool
 // recycles cells across unrelated rows, so a stable structure can't be assumed.
-export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
+export function renderGroupCell(cell: HTMLDivElement, row: IRowNode, labelText: string): void {
   cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
 
   const parts: HTMLElement[] = [];
@@ -42,7 +43,7 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode): void {
 
   const label = document.createElement("span");
   label.className = "pte-group-label";
-  label.textContent = groupRowLabel(row);
+  label.textContent = labelText;
   parts.push(label);
 
   cell.replaceChildren(...parts);

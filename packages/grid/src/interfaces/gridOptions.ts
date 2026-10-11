@@ -175,6 +175,35 @@ export type GetRowPresentation = (
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
+/** What a `groupChildCount` function is handed for one group row. */
+export interface GroupChildCountParams {
+  /** The group row: `level`, `groupKey`, `groupValue`, `isExpanded` say where it sits. */
+  node: IRowNode;
+  /**
+   * Server-side row model: the raw group row the data source returned (a `COUNT(*)` or any other
+   * field of the GROUP BY result is read off it). Client-side row model: undefined — a client-side
+   * group row is synthesized and has no data row of its own.
+   */
+  data: any;
+  /**
+   * The count the grid would show by default: the group's leaf-descendant row count on the
+   * client-side row model, `getGroupChildCount`'s result on the server-side one, or undefined when
+   * no count is known.
+   */
+  rowCount: number | undefined;
+  /**
+   * This group's aggregate values by colId — one entry per column with an aggregate assigned that
+   * has a value for this group (a server-side group row carries only what the server stamped).
+   */
+  aggregates: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Returns what a group row shows in the parentheses after its label, or null/undefined to show
+ * no count for that group. A number or a string ("12.5 FTE") is written as given.
+ */
+export type GroupChildCountGetter = (params: GroupChildCountParams) => number | string | null | undefined;
+
 /**
  * Customizes the column menu opened for *several* selected columns at once, where the built-in
  * items act on the whole set and no single column's `ColDef.columnMenu` governs it.
@@ -1387,6 +1416,15 @@ export interface GridOptions {
    */
   getGroupChildCount?: (row: any) => number | null | undefined;
   /**
+   * The count a group row shows in parentheses after its label — on screen, on copy, and in both
+   * exports, which always agree. Defaults to true: the group's row count (the "(N)" badge). `false`
+   * shows no count anywhere. A function decides per group: whatever it returns is written inside
+   * the parentheses (a number, or a string such as "12.5 FTE" — a headcount rather than a row
+   * count, say), and null/undefined leaves that group's count out. Tree rows never show a count.
+   * Live: `updateGridOptions({ groupChildCount })` repaints the group rows.
+   */
+  groupChildCount?: boolean | GroupChildCountGetter;
+  /**
    * Tooltip shown on the pagination page selector while the total row count is provisional — when
    * a server-side listing has not reported `totalRows` and its end has not been reached yet, the
    * page count renders with a "+" suffix (e.g. "3 of 12+") and carries this tooltip. Defaults to
@@ -1779,6 +1817,7 @@ export interface InternalGridOptions extends GridOptions {
   pageSizes: number[];
   serverSideBlockSize: number;
   getGroupChildCount?: (row: any) => number | null | undefined;
+  groupChildCount: boolean | GroupChildCountGetter;
   paginationUnknownTotalTooltip: string;
   autosizeColumnsOnDataChange: boolean;
   clearSelectionOnBodyClick: boolean;
@@ -1895,6 +1934,7 @@ export const WIDGET_OPTION_KEYS = [
   "groupDisplayType",
   "groupSortMode",
   "groupRowsSelectable",
+  "groupChildCount",
   "pivotColumnMoveMode",
   "isRowSelectable",
   "serverSideDataSource",

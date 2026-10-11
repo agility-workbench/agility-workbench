@@ -53,13 +53,16 @@ export interface IRowNode<Row = any> {
  * does not supply a child count has no count, and claiming it has zero children states something
  * false about the data on screen.
  *
- * `childCount` overrides the node's own for a caller that computed the count itself (the grouped
- * Excel export walks the leaves it is about to write).
+ * `count` is the text inside the parentheses — a number or a string — and overrides the node's own
+ * row count. Null and an empty string mean "no count"; undefined is the parameter's default and
+ * falls back to the node's own row count (so pass null, never undefined, to suppress the count).
+ * This helper is the format alone: callers that honor the grid's `groupChildCount` option go
+ * through `GridCore.getGroupRowLabel`, which resolves that option and hands the result here.
  */
-export function groupRowLabel(node: IRowNode, childCount = node.childCount): string {
+export function groupRowLabel(node: IRowNode, count: number | string | null | undefined = node.childCount): string {
   const text = node.treeKey
     ?? (node.groupValue == null || node.groupValue === "" ? node.groupKey ?? "" : String(node.groupValue));
-  return childCount != null ? `${text} (${childCount})` : text;
+  return count != null && count !== "" ? `${text} (${count})` : text;
 }
 
 /** The fields {@link isExpandableNode} reads. ARIA stamping hands it a narrower row shape. */
