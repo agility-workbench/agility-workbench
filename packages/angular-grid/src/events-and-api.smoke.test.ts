@@ -2,9 +2,11 @@ import { Component } from "@angular/core";
 import { describe, expect, it, vi } from "vitest";
 import type {
   GridEventCellClickedParams,
+  GridEventCellDoubleClickedParams,
   GridEventFilterChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
+  GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
   IGridAPI,
   SortChangedParams,
@@ -29,6 +31,8 @@ type Row = { symbol: string; price: number };
       (gridReady)="api = $event"
       (cellClicked)="onCellClicked($event)"
       (rowClicked)="onRowClicked($event)"
+      (cellDoubleClicked)="onCellDoubleClicked($event)"
+      (rowDoubleClicked)="onRowDoubleClicked($event)"
       (selectionChanged)="onSelectionChanged($event)"
       (sortChanged)="onSortChanged($event)"
       (filterChanged)="onFilterChanged($event)"
@@ -48,6 +52,8 @@ class EventsHost {
   ];
   onCellClicked = vi.fn<(event: GridEventCellClickedParams) => void>();
   onRowClicked = vi.fn<(event: GridEventRowClickedParams) => void>();
+  onCellDoubleClicked = vi.fn<(event: GridEventCellDoubleClickedParams) => void>();
+  onRowDoubleClicked = vi.fn<(event: GridEventRowDoubleClickedParams) => void>();
   onSelectionChanged = vi.fn<(event: GridEventSelectionChangedParams) => void>();
   onSortChanged = vi.fn<(event: SortChangedParams) => void>();
   onFilterChanged = vi.fn<(event: GridEventFilterChangedParams) => void>();
@@ -70,6 +76,20 @@ describe("AwbGrid outputs and imperative API", () => {
     });
     expect(host.onCellClicked).toHaveBeenCalledTimes(1);
     expect(host.onCellClicked.mock.calls[0][0]).toMatchObject({ rowId: "AAA", value: 100 });
+  });
+
+  it("emits cellDoubleClicked and rowDoubleClicked with the correct cell identity", async () => {
+    const { gridEl, host } = await mountGridHost(EventsHost);
+    const priceCell = Array.from(gridEl.querySelectorAll<HTMLElement>(".pte-cell"))
+      .find((cell) => cell.textContent === "100")!;
+    expect(priceCell).toBeTruthy();
+    priceCell.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+
+    expect(host.onRowDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(host.onRowDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "AAA", viewIdx: 0, isGroup: false });
+    expect(host.onCellDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(host.onCellDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "AAA", value: 100 });
+    expect(host.onCellClicked).not.toHaveBeenCalled();
   });
 
   it("bridges selection and sort events through Angular outputs", async () => {

@@ -25,10 +25,12 @@ import type {
   ColDef,
   ColumnMenuContext,
   GridEventCellClickedParams,
+  GridEventCellDoubleClickedParams,
   GridEventFilterChangedParams,
   GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
+  GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
   SortChangedParams,
 } from "@agility-workbench/grid";
@@ -238,6 +240,8 @@ export class AwbGrid implements OnDestroy {
   readonly gridReady = output<IGridAPI>();
   readonly cellClicked = output<GridEventCellClickedParams>();
   readonly rowClicked = output<GridEventRowClickedParams>();
+  readonly cellDoubleClicked = output<GridEventCellDoubleClickedParams>();
+  readonly rowDoubleClicked = output<GridEventRowDoubleClickedParams>();
   readonly cellValueChanged = output<CellValueChangedParams>();
   readonly selectionChanged = output<GridEventSelectionChangedParams>();
   readonly sortChanged = output<SortChangedParams>();
@@ -277,6 +281,8 @@ export class AwbGrid implements OnDestroy {
       // (re-entering the zone so listeners see a consistent change-detection world).
       options.onCellClicked = (ev) => this.zone.run(() => this.cellClicked.emit(ev));
       options.onRowClicked = (ev) => this.zone.run(() => this.rowClicked.emit(ev));
+      options.onCellDoubleClicked = (ev) => this.zone.run(() => this.cellDoubleClicked.emit(ev));
+      options.onRowDoubleClicked = (ev) => this.zone.run(() => this.rowDoubleClicked.emit(ev));
       options.onCellValueChanged = (ev) => this.zone.run(() => this.cellValueChanged.emit(ev));
       options.onSelectionChanged = (ev) => this.zone.run(() => this.selectionChanged.emit(ev));
       options.onSortChanged = (ev) => this.zone.run(() => this.sortChanged.emit(ev));

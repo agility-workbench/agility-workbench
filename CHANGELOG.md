@@ -48,6 +48,14 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   gains `isGroup`. On a group row, `cellClicked`'s `value` is no longer `undefined`: it is the
   column's aggregate, or the group label on the group's label column — the same rule a copy of
   that cell follows.
+- **Double-click is an event.** New `rowDoubleClicked` / `cellDoubleClicked` events, with
+  `onRowDoubleClicked` / `onCellDoubleClicked` options, `onRowDoubleClicked` /
+  `onCellDoubleClicked` React props and `(rowDoubleClicked)` / `(cellDoubleClicked)` Angular
+  outputs. Payloads match the click pair (`GridEventRowDoubleClickedParams` /
+  `GridEventCellDoubleClickedParams`), group rows included. Neither fires when the grid consumed
+  the gesture — the double-click opened the editor, or ran the fill handle's fill-to-adjacent-block
+  — otherwise both fire regardless of `cellSelection` / `editTrigger`, so read-only grids get them
+  too. `cellDoubleClicked` skips the row-number and checkbox cells, as `cellClicked` does.
 
 ## 1.7.0 — 2026-10-11
 

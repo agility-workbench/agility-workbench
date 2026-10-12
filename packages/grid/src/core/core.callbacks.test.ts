@@ -1,6 +1,7 @@
 /**
  * The declarative on* GridOptions callbacks bridge to the underlying core events:
  *  - onCellClicked / onRowClicked  → cellClicked / rowClicked
+ *  - onCellDoubleClicked / onRowDoubleClicked → cellDoubleClicked / rowDoubleClicked
  *  - onSelectionChanged            → selectionChanged
  *  - onCellValueChanged            → cellValueChanged (every write path that changes the stored
  *                                    value; colId = public colId)
@@ -160,6 +161,20 @@ describe("declarative on* callbacks", () => {
     expect(onRowClicked).toHaveBeenCalledTimes(1);
     expect(onCellClicked).toHaveBeenCalledTimes(1);
     expect(onCellClicked.mock.calls[0][0]).toMatchObject({ rowId: "1", value: "alice" });
+  });
+
+  it("onCellDoubleClicked / onRowDoubleClicked forward the corresponding events", () => {
+    const onCellDoubleClicked = vi.fn();
+    const onRowDoubleClicked = vi.fn();
+    const onCellClicked = vi.fn();
+    const core = makeGrid({ onCellDoubleClicked, onRowDoubleClicked, onCellClicked });
+    const fakeEvent = {} as MouseEvent;
+    core.emit("rowDoubleClicked", { rowId: "1", viewIdx: 0, data: { id: "1" }, isGroup: false, event: fakeEvent });
+    core.emit("cellDoubleClicked", { rowId: "1", colId: colId(core, "name"), viewIdx: 0, colIdx: 0, data: { id: "1" }, value: "alice", event: fakeEvent });
+    expect(onRowDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(onCellDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(onCellDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "1", value: "alice" });
+    expect(onCellClicked).not.toHaveBeenCalled();
   });
 
   it("does not wire callbacks that were not provided (no throw, no calls)", () => {

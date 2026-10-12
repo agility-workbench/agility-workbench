@@ -27,6 +27,8 @@ export type GridEventName =
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
+  | "cellDoubleClicked"
+  | "rowDoubleClicked"
   | "tooltipShow"
   | "tooltipHide"
   | "actionFrameChanged"
@@ -301,6 +303,13 @@ export type GridEventRowClickedParams = {
   event: MouseEvent;
 };
 
+/** Same shape as the click payload; `event` is the `dblclick` event. Named separately so the two
+ * can diverge without breaking either. */
+export type GridEventCellDoubleClickedParams = GridEventCellClickedParams;
+
+/** Same shape as the click payload; `event` is the `dblclick` event. */
+export type GridEventRowDoubleClickedParams = GridEventRowClickedParams;
+
 export type GridEventTooltipParams = {
   /** Where the tooltip is anchored. */
   location: "body" | "header" | "ui";
@@ -385,6 +394,8 @@ export interface GridEventMap {
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;
+  cellDoubleClicked: GridEventCellDoubleClickedParams;
+  rowDoubleClicked: GridEventRowDoubleClickedParams;
   tooltipShow: GridEventTooltipParams;
   tooltipHide: GridEventTooltipParams;
   actionFrameChanged: GridEventActionFrameParams;

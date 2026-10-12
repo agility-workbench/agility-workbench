@@ -46,6 +46,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const bodyContextMenuRef = useRef(props.bodyContextMenu);
     const onCellClickedRef = useRef(props.onCellClicked);
     const onRowClickedRef = useRef(props.onRowClicked);
+    const onCellDoubleClickedRef = useRef(props.onCellDoubleClicked);
+    const onRowDoubleClickedRef = useRef(props.onRowDoubleClicked);
     const onCellValueChangedRef = useRef(props.onCellValueChanged);
     const onSelectionChangedRef = useRef(props.onSelectionChanged);
     const onSortChangedRef = useRef(props.onSortChanged);
@@ -60,6 +62,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     bodyContextMenuRef.current = props.bodyContextMenu;
     onCellClickedRef.current = props.onCellClicked;
     onRowClickedRef.current = props.onRowClicked;
+    onCellDoubleClickedRef.current = props.onCellDoubleClicked;
+    onRowDoubleClickedRef.current = props.onRowDoubleClicked;
     onCellValueChangedRef.current = props.onCellValueChanged;
     onSelectionChangedRef.current = props.onSelectionChanged;
     onSortChangedRef.current = props.onSortChanged;
@@ -80,6 +84,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // callback supplied by the parent.
       options.onCellClicked = (ev) => onCellClickedRef.current?.(ev);
       options.onRowClicked = (ev) => onRowClickedRef.current?.(ev);
+      options.onCellDoubleClicked = (ev) => onCellDoubleClickedRef.current?.(ev);
+      options.onRowDoubleClicked = (ev) => onRowDoubleClickedRef.current?.(ev);
       options.onCellValueChanged = (ev) => onCellValueChangedRef.current?.(ev);
       options.onSelectionChanged = (ev) => onSelectionChangedRef.current?.(ev);
       options.onSortChanged = (ev) => onSortChangedRef.current?.(ev);

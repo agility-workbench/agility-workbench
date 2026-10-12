@@ -105,6 +105,8 @@ const column: ReactColDef = {
 <Grid
   onCellClicked={(event) => console.log(event.rowId, event.colId)}
   onRowClicked={(event) => console.log(event.rowId)}
+  onCellDoubleClicked={(event) => console.log(event.rowId, event.colId)}
+  onRowDoubleClicked={(event) => console.log(event.rowId)}
   onCellValueChanged={(event) => saveChange(event)}
   onSelectionChanged={(event) => console.log(event.snapshot)}
   onSortChanged={(event) => console.log(event.changedColIds)}

@@ -13,10 +13,12 @@ import type { ColDef, DefaultColDef } from "./column";
 import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
+  GridEventCellDoubleClickedParams,
   GridEventFilterChangedParams,
   GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
+  GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions, SheetsOptions } from "./gridView";
@@ -1174,6 +1176,21 @@ export interface GridOptions {
    * the `rowClicked` event. The payload includes the row's `node`.
    */
   onRowClicked?: (params: GridEventRowClickedParams) => void;
+  /**
+   * Called when a body cell is double-clicked (left button). Convenience wrapper over the
+   * `cellDoubleClicked` event; the payload matches `onCellClicked`. Neither `cellDoubleClicked` nor
+   * `rowDoubleClicked` fires when the double-click opened the editor or ran the fill handle;
+   * otherwise both fire regardless of `cellSelection` / `editTrigger`. Not fired for the row-number
+   * or checkbox cells (same as `cellClicked`).
+   */
+  onCellDoubleClicked?: (params: GridEventCellDoubleClickedParams) => void;
+  /**
+   * Called when a body row is double-clicked (left button), including group rows. Convenience
+   * wrapper over the `rowDoubleClicked` event; the payload matches `onRowClicked`. Not fired when
+   * the double-click opened the editor or ran the fill handle; otherwise fires regardless of
+   * `cellSelection` / `editTrigger`.
+   */
+  onRowDoubleClicked?: (params: GridEventRowDoubleClickedParams) => void;
   /**
    * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
    * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's

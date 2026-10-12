@@ -2,6 +2,7 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
+import type { GridEventCellClickedParams, GridEventRowClickedParams } from "../../events/events";
 import { ActiveDescendantTracker, setAriaSelected } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
 import type { FillHandleController } from "../fill/fillHandleController";
@@ -816,23 +817,41 @@ export class SelectionRenderer {
     this.params.core.dispatch({ type: "selectionClear", what: "all" });
   }
 
+  /**
+   * Body double-click → the fill handle's fill-to-adjacent-block, or (editTrigger "doubleClick") an
+   * inline edit; when neither consumed the gesture, emit rowDoubleClicked and, on a real data cell,
+   * cellDoubleClicked. The target is resolved before any cellSelection gate so read-only grids still
+   * get the events.
+   */
   onCellDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
-    if (this.params.core.options.cellSelection !== true) return;
+    const cellSelection = this.params.core.options.cellSelection === true;
     // A double-click on the fill handle fills down to the end of the data beside the selection; it
     // is not a request to edit the corner cell.
-    if (this.params.fill().isHandleTarget(e.target)) {
+    if (cellSelection && this.params.fill().isHandleTarget(e.target)) {
       e.preventDefault();
       this.params.fill().fillToAdjacentBlock(e);
       return;
     }
-    if (this.params.core.options.editTrigger !== "doubleClick") return;
-    const location = this.getCellLocation(e.target);
-    if (!location) return;
-    const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
-    if (!cell) return;
-    e.preventDefault();
-    this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
+    const target = this.resolveClickTarget(e);
+    if (cellSelection && this.params.core.options.editTrigger === "doubleClick") {
+      const location = this.getCellLocation(e.target);
+      const cell = location && this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
+      if (cell) {
+        e.preventDefault();
+        this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
+        // The core alone decides per-cell editability, so "did the editor open here" is the test
+        // for whether the gesture was consumed. The emitted ref carries the public colId, the
+        // dispatched one the instance id.
+        const editing = this.params.core.getEditingCell();
+        const col = this.params.leafColumns()[location.colIdx];
+        if (editing && editing.rowId === cell.rowId && editing.colId === col?.colId) return;
+      }
+    }
+    if (!target) return;
+    const { cell, ...row } = target;
+    this.params.core.emit("rowDoubleClicked", { ...row, event: e });
+    if (cell) this.params.core.emit("cellDoubleClicked", { ...row, ...cell, event: e });
   }
 
   // Resolve a view-index/leaf-index cell position to a stable { rowId, colId } reference.
@@ -890,10 +909,21 @@ export class SelectionRenderer {
    */
   onCellClick(e: MouseEvent) {
     if (e.button !== 0) return;
+    const target = this.resolveClickTarget(e);
+    if (!target) return;
+    const { cell, ...row } = target;
+    this.params.core.emit("rowClicked", { ...row, event: e });
+    if (cell) this.params.core.emit("cellClicked", { ...row, ...cell, event: e });
+  }
+
+  // The row (and, when the pointer is on a real data cell, the cell) a click or double-click landed
+  // on, shaped as the event payload minus `event`. `cell` is absent for the row-number / checkbox
+  // utility cells.
+  private resolveClickTarget(e: MouseEvent): ClickTarget | null {
     const rowEl = (e.target as HTMLElement | null)?.closest(".pte-row") as HTMLDivElement | null;
-    if (!rowEl || !this.params.root.contains(rowEl)) return;
+    if (!rowEl || !this.params.root.contains(rowEl)) return null;
     const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
-    if (!Number.isFinite(viewIdx)) return;
+    if (!Number.isFinite(viewIdx)) return null;
     const rowPinned = rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
       ? rowEl.dataset.rowPinned
       : undefined;
@@ -901,30 +931,30 @@ export class SelectionRenderer {
       ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)
       : null;
     const rowId = pinnedNode?.id ?? this.params.core.getRowIdAtViewIndex(viewIdx);
-    if (!rowId) return;
+    if (!rowId) return null;
     const rowNode = pinnedNode ?? this.params.core.getRowModel().getRowNode(rowId);
     const isGroup = !!rowNode?.isGroup;
+    const target: ClickTarget = { rowId, viewIdx, data: rowNode?.data, isGroup, node: rowNode };
 
-    this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, node: rowNode, event: e });
-
-    // cellClicked only for a real data cell (not the row-number / checkbox utility cells).
     const cell = (e.target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
-    if (!cell || cell.classList.contains("pte-row-number-cell") || cell.classList.contains("pte-checkbox-cell")) return;
+    if (!cell || cell.classList.contains("pte-row-number-cell") || cell.classList.contains("pte-checkbox-cell")) {
+      return target;
+    }
     const colIdx = Number(cell.dataset.colIdx);
-    if (!Number.isFinite(colIdx)) return;
+    if (!Number.isFinite(colIdx)) return target;
     const col = this.params.leafColumns()[colIdx];
-    if (!col) return;
-    // A group row has no data row: its cell value follows the group cell rule (aggregate, or the
-    // label on the group's label column), the same one a copy of the cell uses.
+    if (!col) return target;
     const value = !rowNode
       ? undefined
       : isGroup ? this.params.core.getGroupCellValue(col, rowNode).value : col.getValue(rowNode);
-    this.params.core.emit("cellClicked", {
-      rowId, colId: col.colId, colInstanceId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value,
-      node: rowNode, isGroup, event: e,
-    });
+    target.cell = { colId: col.colId, colInstanceId: col.instanceID, colIdx, value };
+    return target;
   }
 }
+
+type ClickTarget = Omit<GridEventRowClickedParams, "event"> & {
+  cell?: Pick<GridEventCellClickedParams, "colId" | "colInstanceId" | "colIdx" | "value">;
+};
 
 // A KeyboardEvent.key that represents a single printable character (letters, digits, punctuation,
 // space). Named keys like "Enter", "Tab", "ArrowUp" are multi-character, so length === 1 excludes

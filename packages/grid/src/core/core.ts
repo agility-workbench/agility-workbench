@@ -286,6 +286,8 @@ export class GridCore implements IGridCore {
     const o = this.options;
     this.on("cellClicked", (ev) => o.onCellClicked?.(ev));
     this.on("rowClicked", (ev) => o.onRowClicked?.(ev));
+    this.on("cellDoubleClicked", (ev) => o.onCellDoubleClicked?.(ev));
+    this.on("rowDoubleClicked", (ev) => o.onRowDoubleClicked?.(ev));
     this.on("selectionChanged", (ev) => o.onSelectionChanged?.(ev));
     this.on("cellValueChanged", (ev) => {
       o.onCellValueChanged?.({
@@ -360,6 +362,8 @@ export class GridCore implements IGridCore {
       getRowPresentation: options.getRowPresentation,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
+      onCellDoubleClicked: options.onCellDoubleClicked,
+      onRowDoubleClicked: options.onRowDoubleClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,
       fillOperation: options.fillOperation,
       onCellValueChanged: options.onCellValueChanged,
