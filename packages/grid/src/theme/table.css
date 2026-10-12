@@ -1041,6 +1041,9 @@
   min-width: 104px;
   max-width: 180px;
   min-height: 34px;
+  /* A direct child of the bar, which centres its items: stretch, so the divider and the hover
+     background run the bar's full height like the regions beside it. */
+  align-self: stretch;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
