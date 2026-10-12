@@ -5,6 +5,11 @@ interface GridInteractionEventBinderParams {
   headerWrapper: HTMLDivElement;
   body: HTMLDivElement;
   pinnedRowContainers?: HTMLDivElement[];
+  /**
+   * The sticky group-row overlay. Only the context menu is bound on it: right-click on a docked
+   * mirror opens the same body menu as its body row, and the opener resolves the mirror to that row.
+   */
+  stickyRowContainer?: HTMLDivElement;
   onHeaderMouseDown: (e: MouseEvent) => void;
   onHeaderContextMenu: (e: MouseEvent) => void;
   onHeaderDoubleClick: (e: MouseEvent) => void;
@@ -105,6 +110,7 @@ export class GridInteractionEventBinder {
       container.addEventListener("dblclick", this.handleCellDoubleClick);
       container.addEventListener("contextmenu", this.handleBodyContextMenu);
     }
+    this.params.stickyRowContainer?.addEventListener("contextmenu", this.handleBodyContextMenu);
     document.addEventListener("mousemove", this.handleDocumentMouseMove);
     document.addEventListener("mouseup", this.handleDocumentMouseUp);
     this.params.root.addEventListener("click", this.handleDocumentClick);
@@ -126,6 +132,7 @@ export class GridInteractionEventBinder {
       container.removeEventListener("dblclick", this.handleCellDoubleClick);
       container.removeEventListener("contextmenu", this.handleBodyContextMenu);
     }
+    this.params.stickyRowContainer?.removeEventListener("contextmenu", this.handleBodyContextMenu);
     this.params.root.removeEventListener("focus", this.handleRootFocus);
     document.removeEventListener("mousemove", this.handleDocumentMouseMove);
     document.removeEventListener("mouseup", this.handleDocumentMouseUp);

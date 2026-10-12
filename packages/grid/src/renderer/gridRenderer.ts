@@ -706,6 +706,7 @@ export class GridRenderer {
       headerWrapper: headerRefs.wrapper,
       body: bodyWrapper.body,
       pinnedRowContainers: this._pinnedRowsRenderer.getInteractionRoots(),
+      stickyRowContainer: this._pinnedRowsRenderer.getStickyRoot(),
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),

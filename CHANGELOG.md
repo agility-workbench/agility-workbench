@@ -24,6 +24,23 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   docks keeps its border and popover on the sticky copy the user sees, instead of on the body row
   hidden underneath it.
 
+### Body context menu
+
+- **Group rows in `groupDisplayType: "groupRows"` open the grid's body menu.** Right-click on a
+  full-width group row — in the body, or docked as a sticky group row — previously fell through to
+  the browser's native menu; it now opens the grid menu (and runs a `bodyContextMenu` getter) as
+  group cells in the other display modes already did. Its `colId` is the nominal column, the first
+  column after the row-number and checkbox columns. `bodyContextMenu: false` still lets the native
+  menu through.
+- **The menu context tells group rows from leaves.** `BodyMenuContext` gains `node` (the clicked
+  row; for an app-pinned band row, the displayed pinned node), `isGroup`, `isFullWidth` (the row is
+  drawn as one spanning cell, so `colId` is the nominal column) and `groupDisplayType` (the current
+  option value).
+- **No edit items on a group-only selection.** Cut, Paste, Fill down / right and the fill redo
+  items are withheld when the selection holds only group rows, even over editable columns: a group
+  cell's label and aggregates are never a write target. Copy, Copy with Headers, Export and Pin row
+  are unchanged.
+
 ### Events
 
 - **Click payloads carry the row's node.** `cellClicked` / `onCellClicked` and `rowClicked` /

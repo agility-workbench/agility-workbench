@@ -172,6 +172,12 @@ export type GetRowPresentation = (
  * the grid built for it; returns the items to actually show. Return `[]` to show no menu for this
  * context (the grid still owns the gesture — the browser's native menu stays suppressed). To let
  * the native browser menu through instead, set `bodyContextMenu` to `false`.
+ *
+ * Group rows open the menu in every `groupDisplayType`, including a docked sticky group row. The
+ * context tells them apart: `ctx.node` is the clicked row, `ctx.isGroup` marks a group row,
+ * `ctx.isFullWidth` a row drawn as one spanning cell (a `"groupRows"` group row, whose `colId` is
+ * then the first column after the row-number / checkbox columns), and `ctx.groupDisplayType` is
+ * the current display mode.
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
@@ -1349,7 +1355,9 @@ export interface GridOptions {
    * - `false`: the grid does not open a menu and does not intercept the event, so the browser's
    *   native context menu appears.
    * - a function: called with the menu context and the default items; return the items to show
-   *   (return `[]` to show nothing while still suppressing the native menu).
+   *   (return `[]` to show nothing while still suppressing the native menu). The context's `node`,
+   *   `isGroup`, `isFullWidth` and `groupDisplayType` tell a group row (which opens the menu in
+   *   every display mode) from a leaf row.
    */
   bodyContextMenu?: boolean | BodyContextMenuGetter;
   /**

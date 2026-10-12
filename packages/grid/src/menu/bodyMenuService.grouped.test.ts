@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import { GridCore } from "../core/core";
 import { BodyMenuService } from "./bodyMenuService";
 import { BodyMenuContext } from "./bodyContext";
+import type { IRowNode } from "../interfaces/iRowNode";
 import { MenuItem } from "../interfaces/menuItem";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
@@ -79,6 +80,10 @@ function ctxWith(sel: Partial<BodyMenuContext["selection"]>): BodyMenuContext {
     trigger: "bodyContextMenu",
     rowId: "x",
     colId: "salary",
+    node: { id: "x" } as IRowNode,
+    isGroup: false,
+    isFullWidth: false,
+    groupDisplayType: "singleColumn",
     viewIdx: 0,
     selection: { rowIds: [], colIds: [], range: null, ...sel },
   };

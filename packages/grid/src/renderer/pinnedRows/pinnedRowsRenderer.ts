@@ -129,8 +129,16 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   getInteractionRoots(): HTMLDivElement[] {
-    // The sticky overlay lives inside the body frame, so body-level listeners already cover it.
     return [this.top.root, this.bottom.root];
+  }
+
+  /**
+   * The sticky overlay. It sits in the body frame beside the body scroller, not inside it, so no
+   * body-level listener sees an event on a docked mirror; callers that want a gesture on mirrors
+   * to behave as on the body row bind it here as well.
+   */
+  getStickyRoot(): HTMLDivElement {
+    return this.sticky.root;
   }
 
   setPinnedTopRowData(rows: any[]): void {

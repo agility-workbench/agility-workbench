@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import { GridCore } from "../core/core";
 import { BodyMenuService, BodyMenuClipboardTarget } from "./bodyMenuService";
 import { BodyMenuContext } from "./bodyContext";
+import type { IRowNode } from "../interfaces/iRowNode";
 import { MenuItem } from "../interfaces/menuItem";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
@@ -51,6 +52,10 @@ const ctx: BodyMenuContext = {
   trigger: "bodyContextMenu",
   rowId: "1",
   colId: "name",
+  node: { id: "1" } as IRowNode,
+  isGroup: false,
+  isFullWidth: false,
+  groupDisplayType: "singleColumn",
   viewIdx: 0,
   selection: { rowIds: [], colIds: [], range: null },
 };

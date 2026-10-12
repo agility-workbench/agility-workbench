@@ -131,5 +131,7 @@ For other events, subscribe with `api.on(eventName, handler)`.
 />
 ```
 
-React nodes are accepted in menu `left` and `right` slots.
+React nodes are accepted in menu `left` and `right` slots. The getters also receive
+`ctx`; for the body menu, `ctx.isGroup`, `ctx.isFullWidth` and `ctx.groupDisplayType`
+tell a right-clicked group row from a leaf row.
 

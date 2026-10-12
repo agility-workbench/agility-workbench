@@ -114,7 +114,11 @@ only known once it is opening, after the grid has claimed the gesture, so openin
 from inside a multi-selection shows no menu at all rather than the browser's.
 
 `bodyContextMenu` does the same for right-clicks in the grid body, and accepts `false`
-to let the browser's native menu through.
+to let the browser's native menu through. Group rows open it too, in every
+`groupDisplayType`: `ctx.isGroup` tells a group row from a leaf, `ctx.node` is the row
+itself, and `ctx.isFullWidth` marks a `"groupRows"` group row drawn as one spanning cell,
+whose `ctx.colId` is the first column after the row-number and checkbox columns.
+`ctx.groupDisplayType` says which mode the grid is in.
 
 ## Menu adapters
 

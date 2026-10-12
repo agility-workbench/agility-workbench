@@ -67,7 +67,9 @@ export class ClipboardRenderer {
   /**
    * Whether the current selection contains at least one editable cell. Used to gate edit-oriented
    * actions (cut / paste) in the body context menu so they only appear when they could do something.
-   * Mirrors the editability rule used by buildClearEdits / paste (col.isCellEditable per row).
+   * Mirrors the editability rule used by buildClearEdits / paste (col.isCellEditable per row), which
+   * refuses group rows: their cells show a label and aggregates, not a value a write could land in,
+   * so a selection made only of group rows offers no edit items.
    */
   hasEditableCells(): boolean {
     const block = this.resolveSelectionBlock();
