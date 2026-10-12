@@ -9,7 +9,7 @@ import type { Column } from "../column/column";
 import type { IRowNode } from "./iRowNode";
 import type { CellRenderer } from "../renderer/renderer";
 import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
-import type { ColDef, DefaultColDef } from "./column";
+import type { ColDef, DefaultColDef, GroupValueGetterParams } from "./column";
 import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
@@ -184,26 +184,14 @@ export type GetRowPresentation = (
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
 /** What a `groupChildCount` function is handed for one group row. */
-export interface GroupChildCountParams {
-  /** The group row: `level`, `groupKey`, `groupValue`, `isExpanded` say where it sits. */
-  node: IRowNode;
-  /**
-   * Server-side row model: the raw group row the data source returned (a `COUNT(*)` or any other
-   * field of the GROUP BY result is read off it). Client-side row model: undefined — a client-side
-   * group row is synthesized and has no data row of its own.
-   */
-  data: any;
+// Extends the `groupValueGetter` params so the two group-row callbacks cannot drift apart.
+export interface GroupChildCountParams extends GroupValueGetterParams {
   /**
    * The count the grid would show by default: the group's leaf-descendant row count on the
    * client-side row model, `getGroupChildCount`'s result on the server-side one, or undefined when
    * no count is known.
    */
   rowCount: number | undefined;
-  /**
-   * This group's aggregate values by colId — one entry per column with an aggregate assigned that
-   * has a value for this group (a server-side group row carries only what the server stamped).
-   */
-  aggregates: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -1678,9 +1666,11 @@ export interface GridOptions {
   isFullWidthRow?: (node: IRowNode) => boolean;
   /**
    * Renderer for a full-width row's content. Receives the standard {@link CellRendererParams} (with
-   * the row node's data). When omitted, a group full-width row falls back to the default
-   * chevron + label; a non-group full-width row renders empty. Only consulted for rows that
-   * {@link isFullWidthRow} (or the `groupRows` display type) marks as full-width.
+   * the row node's data), plus `node`, the row node, and `isGroup`: true on a full-width group row
+   * (`groupRows` display), false on a row {@link isFullWidthRow} marks. When omitted, a group
+   * full-width row falls back to the default chevron + label; a non-group full-width row renders
+   * empty. Only consulted for rows that {@link isFullWidthRow} (or the `groupRows` display type)
+   * marks as full-width.
    */
   fullWidthCellRenderer?: CellRenderer;
   /**

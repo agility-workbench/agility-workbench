@@ -87,7 +87,9 @@ function getCityMeta(city: string) {
  * server-side data source — those columns go straight to the core without passing through the
  * Angular component adapter, so only core renderer shapes work on that path.
  */
-function LocationCellRenderer(params: CellRendererParams): HTMLElement | null {
+function LocationCellRenderer(params: CellRendererParams): HTMLElement | string | null {
+  // A group row holds the column's aggregate, if any: plain text, never styled as a city badge.
+  if (params.isGroup) return params.valueFormatted ?? null;
   const city = String(params.valueFormatted ?? params.value ?? "");
   if (!city) return null;
 

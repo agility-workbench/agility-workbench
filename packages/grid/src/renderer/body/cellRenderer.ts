@@ -3,7 +3,9 @@ import { CellClassParams } from "../../interfaces/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { INDENT_PER_LEVEL, renderGroupCell, renderTreeCell } from "./groupCellRenderer";
-import { CellRefreshReason, createRendererRuntime, getCellRendererParams, RendererRecord } from "../renderer";
+import {
+  CellRefreshReason, CellRenderer, CellRendererParams, createRendererRuntime, getCellRendererParams, RendererRecord,
+} from "../renderer";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import { inheritRowPresentation, mergeClassValues, mergeStyleValues } from "./rowPresentation";
@@ -150,17 +152,35 @@ export class BodyCellRenderer {
 
     // Conditional per-column class/style. Applied for data cells below; cleared here on the group /
     // row-number branches so a recycled cell never keeps a prior data cell's dynamic styling.
-    // Group rows: the auto-group column renders the chevron + indented label + count; other data
-    // columns render this group's aggregate total (if any) and everything else is blank. Any
-    // per-column custom renderer instance is torn down so a group row never reuses a leaf renderer.
+    // Group rows: label columns (auto-group, tree, and every level-tagged column of
+    // multipleColumns) render the chevron + indented label at their own level and text elsewhere;
+    // other columns run their cellRenderer with the group cell value, or show that value as text
+    // when they have none. Label columns and renderer-less columns tear down any pooled custom
+    // renderer instance so a group row never keeps a leaf renderer's DOM.
     if (row.isGroup) {
-      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
-      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
-      if (rec) {
-        rec.runtime.destroy();
-        cellRendererMap.delete(col.instanceID);
+      const renderer = col.cellRenderer;
+      // Label columns never run a renderer on a group row: an app renderer written for the leaf
+      // value cannot be expected to keep the chevron, indent and label the row depends on.
+      const isLabelColumn = col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel != null;
+      if (isLabelColumn || !renderer) {
+        cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+        const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+        if (rec) {
+          rec.runtime.destroy();
+          cellRendererMap.delete(col.instanceID);
+        }
+        this.renderGroupRowCell(cell, row, col);
+        return;
       }
-      this.renderGroupRowCell(cell, row, col);
+      // pte-group-cell only sets flex layout; the row carries the group weight, so it stays on
+      // whether or not a renderer paints the cell.
+      cell.classList.add("pte-group-cell");
+      cell.style.paddingLeft = "";
+      const { value, formatted } = this.api.getCore().getGroupCellValue(col, row);
+      const params = getCellRendererParams(
+        value, formatted, row, viewIndex, col, cell, this.api, refreshReason, rowPresentation,
+      );
+      this.mountRenderer(cell, col, renderer, params, cellRendererMap);
       return;
     }
 
@@ -197,22 +217,35 @@ export class BodyCellRenderer {
       return;
     }
 
+    this.mountRenderer(cell, col, renderer, rendererParams, cellRendererMap);
+  }
+
+  // Create, refresh or rebuild a column's pooled custom renderer instance. Shared by leaf and group
+  // rows so a slot recycled between them follows one lifecycle: the same instance is refreshed
+  // across the transition, and `refresh` returning false rebuilds it.
+  private mountRenderer(
+    cell: HTMLDivElement,
+    col: Column,
+    renderer: CellRenderer,
+    params: CellRendererParams,
+    cellRendererMap: Map<string, RendererRecord>,
+  ) {
     cell.classList.add(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
 
     const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
     if (!rec || rec.renderer !== renderer) {
       rec?.runtime.destroy();
-      const runtime = createRendererRuntime(renderer, rendererParams);
+      const runtime = createRendererRuntime(renderer, params);
       cell.replaceChildren(runtime.gui);
       cellRendererMap.set(col.instanceID, { renderer, runtime });
       return;
     }
 
-    const ok = rec.runtime.refresh(rendererParams);
+    const ok = rec.runtime.refresh(params);
     if (ok === false) {
       rec.runtime.destroy();
 
-      const runtime = createRendererRuntime(renderer, rendererParams);
+      const runtime = createRendererRuntime(renderer, params);
 
       cell.replaceChildren(runtime.gui);
       rec.runtime = runtime;
@@ -289,7 +322,10 @@ export class BodyCellRenderer {
   //  - "singleColumn": the synthesized auto-group column renders chevron + indented label + count.
   //  - "multipleColumns": each real grouped column (tagged with groupLevel) renders the label for
   //    its own level; other levels stay blank so each grouped field owns one column.
-  //  - any other data column → this group's aggregate total for that column, if computed.
+  //  - any other data column with a cellRenderer → never reaches here; renderCell runs the renderer
+  //    with the group cell value instead.
+  //  - any other data column → the group cell value as text: this group's aggregate total for that
+  //    column if computed, else the column's groupValueGetter result.
   // Note: "groupRows" mode never reaches here — those group rows render as full-width rows and skip
   // per-column cell rendering entirely (see BodyWindowRenderer.applyFullWidthLayout).
   private renderGroupRowCell(cell: HTMLDivElement, row: IRowNode, col: Column) {
@@ -310,13 +346,14 @@ export class BodyCellRenderer {
     this.renderGroupAggregateOrBlank(cell, row, col);
   }
 
-  // A group row's non-label cell: show the per-group aggregate total for this column if one was
-  // computed, otherwise leave it blank.
+  // A group row's non-label cell: the formatted group cell value (the aggregate, else the column's
+  // groupValueGetter result), otherwise blank. Read through the core's rule rather than the node's
+  // aggregates so the screen cannot disagree with the clipboard or the click payloads.
   private renderGroupAggregateOrBlank(cell: HTMLDivElement, row: IRowNode, col: Column) {
     cell.style.paddingLeft = "";
-    const agg = row.aggregateValues?.[col.instanceID];
-    if (agg != null && agg !== "") {
-      cell.textContent = col.formatValue(agg, row);
+    const text = this.api.getCore().getGroupCellValue(col, row).formatted;
+    if (text) {
+      cell.textContent = text;
     } else {
       cell.replaceChildren();
     }

@@ -195,10 +195,15 @@ export interface IGridCore {
   getGroupRowLabel(node: IRowNode, rowCount?: number): string;
   /**
    * What a group row's cell holds for `col`: its aggregate for that column, else the group label
-   * on the group's label column, else nothing. Precondition: `node.isGroup` (a leaf gets the
-   * empty result).
+   * on the group's label column, else its `groupValueGetter` result, else nothing. Precondition:
+   * `node.isGroup` (a leaf gets the empty result).
    */
   getGroupCellValue(col: Column, node: IRowNode): GroupCellValue;
+  /**
+   * The raw value a cell holds, leaf or group: a leaf's `getValue`, a group row's group cell
+   * value. The one place that chooses between the two rules.
+   */
+  getNodeCellValue(col: Column, node: IRowNode): unknown;
   /** Swap the per-row selection gate; prunes selected rows the new predicate disables. */
   setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void;
   /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */

@@ -1,9 +1,11 @@
 import { Component, OnDestroy, ViewEncapsulation, signal } from "@angular/core";
 import {
+  AggregateType,
   AwbGrid,
   ChangeFlashCellRenderer,
   SparklineRenderer,
   type CellRendererParams,
+  type ColumnAggregate,
   type IGridAPI,
   type NgColDef,
   type SparklineParams,
@@ -92,7 +94,9 @@ function logoColor(symbol: string): string {
   return LOGO_COLORS[hash % LOGO_COLORS.length];
 }
 
-function SymbolCellRenderer({ value }: CellRendererParams): HTMLElement {
+function SymbolCellRenderer({ value, valueFormatted, isGroup }: CellRendererParams): HTMLElement | string | null {
+  // A group row holds the column's aggregate, if any: plain text, never a logo chip.
+  if (isGroup) return valueFormatted ?? null;
   const symbol = String(value ?? "");
   const root = document.createElement("span");
   root.className = "market-symbol";
@@ -107,6 +111,21 @@ function SymbolCellRenderer({ value }: CellRendererParams): HTMLElement {
   ticker.textContent = symbol;
   root.append(logo, ticker);
   return root;
+}
+
+// Grouping by sector puts the cell renderers on group rows: each sector row shows its average
+// quotes through ChangeFlashCellRenderer (flashing as the averages move) while the Symbol column,
+// which has no aggregate, falls back to plain text.
+const SECTOR_AGGREGATES: ColumnAggregate[] = [
+  ...["price", "bid", "ask", "change", "changePct"].map(colId => ({ colId, type: AggregateType.AVG })),
+  { colId: "volume", type: AggregateType.SUM },
+  { colId: "trades", type: AggregateType.SUM },
+];
+
+function setSectorGrouping(api: IGridAPI, grouped: boolean): void {
+  api.setRowGroupColumns(grouped ? ["sector"] : []);
+  api.setAggregates(grouped ? SECTOR_AGGREGATES : []);
+  if (grouped) api.setAllGroupsExpanded(true);
 }
 
 const sparklineParams: SparklineParams = {
@@ -152,6 +171,9 @@ const sparklineParams: SparklineParams = {
           </select>
         </label>
         <button class="btn" type="button" (click)="api?.flushAsyncTransactions()">Flush now</button>
+        <button class="btn" type="button" (click)="toggleGrouped()">
+          {{ grouped() ? "Ungroup" : "Group by sector" }}
+        </button>
         <code>applyTransactionAsync · asyncTransactionWaitMs=32</code>
       </div>
 
@@ -220,6 +242,7 @@ export class HighFrequencyDemoComponent implements OnDestroy {
   readonly initialRows = buildRows();
   readonly streaming = signal(true);
   readonly rate = signal(1_200);
+  readonly grouped = signal(false);
   readonly stats = signal({ submitted: 0, settled: 0, pending: 0 });
   api: IGridAPI | null = null;
   readonly tooltipOptions = { showDelay: 0, hideDelay: 50 } as const;
@@ -291,6 +314,11 @@ export class HighFrequencyDemoComponent implements OnDestroy {
 
   onReady(api: IGridAPI): void {
     this.api = api;
+  }
+
+  toggleGrouped(): void {
+    if (this.api) setSectorGrouping(this.api, !this.grouped());
+    this.grouped.update(value => !value);
   }
 
   toggleStreaming(): void {

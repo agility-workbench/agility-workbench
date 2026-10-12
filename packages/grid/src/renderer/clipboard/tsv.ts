@@ -1,7 +1,7 @@
 import { IRowNode } from "../../interfaces/iRowNode";
 import { Column } from "../../column/column";
 import { IRowModel } from "../../interfaces/iRowModel";
-import { groupCellValue } from "../../core/groupCellValue";
+import type { GroupCellValue } from "../../core/groupCellValue";
 
 /** Escape a single TSV field: quote it when it contains tab, newline or quote characters. */
 export function escapeTSV(value: unknown): string {
@@ -13,27 +13,27 @@ export function escapeTSV(value: unknown): string {
   return s;
 }
 
-/** The label a group row copies with: the grid passes `GridCore.getGroupRowLabel`. */
-export type GroupLabelResolver = (node: IRowNode) => string;
+/** What a group row's cell copies as: the grid passes `GridCore.getGroupCellValue`. */
+export type GroupCellValueResolver = (col: Column, node: IRowNode) => GroupCellValue;
 
 /**
  * Serialize a rectangular block of the grid (given columns × row nodes) to TSV. Accepts any row
- * nodes — body rows and pinned band rows serialize identically. `groupLabel` writes a group row's
- * label cell; it is a parameter rather than a default so a copy can never drift from the screen's
- * count policy (`groupChildCount`) by forgetting it.
+ * nodes — body rows and pinned band rows serialize identically. `groupValue` writes a group row's
+ * cells; it is a parameter rather than a default so a copy can never drift from the core's group
+ * cell value rule (the count policy, `groupValueGetter`) by forgetting it.
  */
 export function serializeNodesToTSV(
   cols: Column[],
   nodes: IRowNode[],
   includeHeaders: boolean,
-  groupLabel: GroupLabelResolver,
+  groupValue: GroupCellValueResolver,
 ): string {
   const lines: string[] = [];
   if (includeHeaders) {
     lines.push(cols.map(c => escapeTSV(c.label ?? c.key ?? "")).join("\t"));
   }
   for (const node of nodes) {
-    const cells = cols.map(col => escapeTSV(cellText(col, node, groupLabel)));
+    const cells = cols.map(col => escapeTSV(cellText(col, node, groupValue)));
     lines.push(cells.join("\t"));
   }
   return lines.join("\n");
@@ -41,8 +41,8 @@ export function serializeNodesToTSV(
 
 // One cell's copy text. Group rows (pivot rows, groupRowsSelectable copies) have no underlying
 // data row; they follow the group cell convention the cell renderer paints and the exporter writes.
-function cellText(col: Column, node: IRowNode, groupLabel: GroupLabelResolver): string {
-  if (node.isGroup) return groupCellValue(col, node, groupLabel).formatted;
+function cellText(col: Column, node: IRowNode, groupValue: GroupCellValueResolver): string {
+  if (node.isGroup) return groupValue(col, node).formatted;
   return col.formatValue(col.getValue(node), node);
 }
 
@@ -55,12 +55,12 @@ export function serializeRowsToTSV(
   cols: Column[],
   viewIdxs: number[],
   includeHeaders: boolean,
-  groupLabel: GroupLabelResolver,
+  groupValue: GroupCellValueResolver,
 ): string {
   const nodes = viewIdxs
     .map(viewIdx => rowModel.getRowNodeAtViewIndex(viewIdx))
     .filter((node): node is NonNullable<typeof node> => node != null);
-  return serializeNodesToTSV(cols, nodes, includeHeaders, groupLabel);
+  return serializeNodesToTSV(cols, nodes, includeHeaders, groupValue);
 }
 
 /**

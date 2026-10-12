@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
+import { AggregateType } from "../interfaces/aggregate";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { IRowNode } from "../interfaces/iRowNode";
 import { SparklineRenderer, SparklineParams } from "../cellRenderers/sparklineRenderer";
 
 const measurer: ITextMeasurer = { measure: text => text.length * 7 };
 
-function makeCore(columns: Parameters<GridCore["setColumnDefsFromProps"]>[0]) {
+function makeCore(
+  columns: Parameters<GridCore["setColumnDefsFromProps"]>[0],
+  rows: Record<string, unknown>[] = [{ id: "1", a: 10, b: 20, c: 30 }],
+) {
   const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
   core.dispatch({
     type: "themeFontSet",
@@ -15,7 +19,7 @@ function makeCore(columns: Parameters<GridCore["setColumnDefsFromProps"]>[0]) {
     cellFont: "12px sans",
     reason: "test",
   });
-  core.setRowData([{ id: "1", a: 10, b: 20, c: 30 }]);
+  core.setRowData(rows);
   core.setColumnDefsFromProps(columns);
   return core;
 }
@@ -162,5 +166,45 @@ describe("menu-created sparkline columns", () => {
       colDef: trend,
       api: {} as any,
     })).toContain("€");
+  });
+});
+
+describe("menu-created sparkline columns on group rows", () => {
+  function groupedCore() {
+    const core = makeCore(
+      [
+        { colId: "g", key: "g", label: "G", type: ColumnType.STRING },
+        { colId: "a", key: "a", label: "A", type: ColumnType.NUMBER },
+        { colId: "b", key: "b", label: "B", type: ColumnType.NUMBER },
+        { colId: "c", key: "c", label: "C", type: ColumnType.NUMBER },
+      ],
+      [
+        { id: "1", g: "x", a: 10, b: 20, c: 30 },
+        { id: "2", g: "x", a: 1, b: 2, c: 3 },
+        { id: "3", g: "x", a: 100, b: 200, c: 300 },
+      ],
+    );
+    const id = (colId: string) => core.getColumnModel().getByColId(colId)!.instanceID;
+    core.setAggregateModel([
+      { key: id("a"), type: AggregateType.SUM },
+      { key: id("c"), type: AggregateType.SUM },
+    ]);
+    core.dispatch({ type: "rowGroupSet", colIds: ["g"] });
+    const groupNode = core.getRowModel().getGroupNodes().find(n => n.groupKey === "x")!;
+    return { core, id, groupNode };
+  }
+
+  it("draws the selected columns' group aggregates on a group row", () => {
+    const { core, id, groupNode } = groupedCore();
+    const trend = addSparkline(core, id("c"), [id("c"), id("a")]);
+    expect(core.getGroupCellValue(trend, groupNode).value).toEqual([["C", 333], ["A", 111]]);
+    // The leaf series is untouched.
+    expect(trend.getValue(row(core))).toEqual([["C", 30], ["A", 10]]);
+  });
+
+  it("gives a selected column without an aggregate an undefined point", () => {
+    const { core, id, groupNode } = groupedCore();
+    const trend = addSparkline(core, id("c"), [id("c"), id("b"), id("a")]);
+    expect(core.getGroupCellValue(trend, groupNode).value).toEqual([["C", 333], ["B", undefined], ["A", 111]]);
   });
 });

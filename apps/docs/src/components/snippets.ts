@@ -513,7 +513,8 @@ api.setRowPinned(groupNodeId, "bottom"); // pin a generated row
 api.setRowPinned(groupNodeId, null);`,
   },
   rendering: {
-    react: String.raw`function StatusBadge({ value }: CellRendererParams) {
+    react: String.raw`function StatusBadge({ value, valueFormatted, isGroup }: CellRendererParams) {
+  if (isGroup) return valueFormatted ?? null; // a group row: its aggregate as text, or nothing
   return <span className={"status status-" + String(value).toLowerCase()}>{String(value)}</span>;
 }
 
@@ -555,7 +556,8 @@ columns: NgColDef[] = [
     {
       key: "status",
       label: "Status",
-      cellRenderer: ({ value }) => {
+      cellRenderer: ({ value, valueFormatted, isGroup }) => {
+        if (isGroup) return valueFormatted; // a group row: its aggregate as text, or nothing
         const badge = document.createElement("span");
         badge.className = "status status-" + String(value).toLowerCase();
         badge.textContent = String(value);

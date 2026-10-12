@@ -35,7 +35,8 @@ sections stay synchronized without additional configuration.
 const column = {
   key: "status",
   label: "Status",
-  cellRenderer: ({ value }) => {
+  cellRenderer: ({ value, valueFormatted, isGroup }) => {
+    if (isGroup) return valueFormatted; // a group row: the aggregate as text, or nothing
     const badge = document.createElement("span");
     badge.className = `status status-${String(value).toLowerCase()}`;
     badge.textContent = String(value);
@@ -77,6 +78,55 @@ Grid-wide flash defaults are available as `cellFlashDuration` and
 supported visuals are line, area, and bar. The
 [Sparklines page](/docs/examples/sparklines) covers series shapes, tooltips,
 theming, and the built-in column generator in full.
+
+## Group rows
+
+When rows are grouped with `groupDisplayType: "singleColumn"` or
+`"multipleColumns"`, a column's `cellRenderer` runs on group rows as well as on
+leaves. A group row has no data of its own, so its params describe the group:
+
+- `isGroup` is `true` on a group row and `false` on a leaf; `node` is the row
+  node either way.
+- `value` is the group cell value: the column's aggregate when one is assigned,
+  else its `groupValueGetter` result, else `undefined`. `valueFormatted` is that
+  value through the column's `valueFormatter` (an empty string when there is no
+  value).
+- `data` is the group node. Its own `data` is a placeholder on the client-side
+  row model and the raw group row the data source returned on the server-side
+  one.
+
+The label columns — the auto-group column, the tree column, and every grouped
+column of `multipleColumns` display — never run a renderer on a group row. They
+keep the chevron, indent, and label the row depends on, which a renderer written
+for the leaf value could not be expected to reproduce; on leaves they run their
+renderer as usual. In `groupDisplayType: "groupRows"` a group row is one
+full-width cell painted by `fullWidthCellRenderer` (whose params carry
+`isGroup` and `node` too), so per-column renderers do not run there.
+
+A renderer instance is pooled per cell slot and follows one lifecycle across
+leaf and group rows: as a slot scrolls from a leaf to a group, the same
+instance's `refresh` receives the group params. Return `false` from `refresh` to
+have the grid destroy it and build a new one instead.
+
+A renderer written for leaves should check `isGroup` first. Returning
+`valueFormatted` shows exactly what the cell showed before renderers ran on
+group rows — the aggregate as text, or nothing:
+
+```ts
+const column = {
+  key: "status",
+  label: "Status",
+  cellRenderer: (params) => {
+    if (params.isGroup) return params.valueFormatted; // the aggregate, or nothing
+    return renderStatusBadge(params.value);
+  },
+} satisfies ColDef;
+```
+
+A renderer that should paint group rows too — a bar, a coloured total — reads
+`value` there like on a leaf. The
+[grouping page](./grouping.mdx#group-row-cells) covers the group cell
+value rule and `groupValueGetter`.
 
 ## Row presentation
 

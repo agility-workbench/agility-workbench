@@ -5,6 +5,33 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 
 ## 1.9.0 — 2026-10-12
 
+### Rendering
+
+- **Cell renderers paint group rows.** This is a behaviour change: in `singleColumn` and
+  `multipleColumns` display a column's `cellRenderer` now runs on group rows too, where it used to
+  be skipped for plain text. Its params carry `isGroup: true`, the group `node`, and the group cell
+  value as `value` / `valueFormatted` (the column's aggregate, else its `groupValueGetter` result,
+  else `undefined` and `""`); leaf params now carry `isGroup: false` and `node` as well, and so do
+  full-width renderers. Label columns (the auto-group column, the tree column, and every
+  level-tagged column of `multipleColumns`) never run a renderer on a group row and keep the
+  chevron and label; `groupRows` display is unchanged. One pooled instance is refreshed as its slot
+  moves between leaf and group rows; return `false` from `refresh` to have it rebuilt instead. A
+  renderer written for leaves should check `params.isGroup`; one that prints `valueFormatted`
+  shows what the cell showed before. The sparkline renderer draws nothing, without a warning, on a
+  group row that has no value.
+
+### Grouping
+
+- **A column can say what it holds on a group row.** The new `ColDef.groupValueGetter` receives
+  `{ node, data, aggregates }` — the group node, its aggregates by colId, and (server-side row
+  model only) the group's raw data row — and returns the column's value on that group. It is the
+  third step of the group cell value rule: the column's aggregate wins, then the group label on the
+  group's label column, then the getter, else the cell is empty. It never runs on a leaf, a
+  column's `valueGetter` still never runs on a group row, and it inherits through `defaultColDef`.
+  The one rule feeds the group row's cell text (formatted by the column's `valueFormatter`), the
+  clipboard, and the click, double-click and ActionFrame payloads alike. A sparkline column built
+  from the column menu uses it: on a group row its series is the selected columns' aggregates, so
+  a sparkline over summed columns draws the group's sums on group rows.
 
 ### Saved views
 
@@ -21,6 +48,14 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   aggregates re-derived). Groups not named keep their state, unknown ids and leaves are skipped,
   and a call that changes nothing rebuilds nothing. Backed by a new `columnGroupStateSet` core
   action.
+
+### API
+
+- **`api.getCellValue(cell)`.** Reads the raw value a cell holds: on a leaf, the column's value
+  (its `valueGetter`, else the data field); on a group row, the group cell value (aggregate, label,
+  `groupValueGetter` result). The row resolves like `getRowNode`, application-pinned band rows
+  included, and the column by colId, instance id or key. A row or column the grid does not hold
+  reads as `undefined`. The read-side counterpart of `setCellValue`.
 
 ### Fixes
 

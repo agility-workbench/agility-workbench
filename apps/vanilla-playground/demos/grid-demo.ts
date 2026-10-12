@@ -90,7 +90,9 @@ function getCityMeta(city: string) {
   };
 }
 
-function locationCellRenderer(params: CellRendererParams): HTMLElement | null {
+function locationCellRenderer(params: CellRendererParams): HTMLElement | string | null {
+  // A group row holds the column's aggregate, if any: plain text, never styled as a city badge.
+  if (params.isGroup) return params.valueFormatted ?? null;
   const city = String(params.valueFormatted ?? params.value ?? "");
   if (!city) return null;
 

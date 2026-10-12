@@ -425,6 +425,13 @@ export class GridAPI implements IGridAPI {
       ?? undefined;
   }
 
+  getCellValue(cell: CellRef): unknown {
+    const node = this.getRowNode(cell.rowId);
+    const col = this.resolveColumn(cell.colId);
+    if (!node || !col) return undefined;
+    return this.core.getNodeCellValue(col, node);
+  }
+
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
     return this.core.refreshServerSideData(options);
   }

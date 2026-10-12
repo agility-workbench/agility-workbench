@@ -107,6 +107,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
+| `getCellValue(cell)` | The raw value at `{ rowId, colId }`; the read-side counterpart of `setCellValue`: a leaf's column value (`valueGetter`, else the data field), a group row's group cell value (aggregate, label, `groupValueGetter`); rows resolve like `getRowNode`; `undefined` for an unknown row or column |
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
 | `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; off restores the pre-pivot state exactly, on reinstates the last pivot) |

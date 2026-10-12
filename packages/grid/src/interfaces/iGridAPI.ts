@@ -445,6 +445,22 @@ export interface IGridAPI {
    */
   getRowNode(rowId: GridId): IRowNode | undefined;
 
+  /**
+   * The raw value a cell holds — unformatted. On a leaf row, the column's value for that row (its
+   * `valueGetter`, else the data field). On a group row, the group cell value: the aggregate for
+   * that column, else the group label on the group's label column, else the column's
+   * `groupValueGetter` result, else `undefined`. The row resolves like `getRowNode` (application-
+   * pinned band rows included) and the column like the other column APIs (public colId, instance
+   * id or key). `undefined` for a row or column the grid does not hold. Mirrors `setCellValue`.
+   *
+   * ```ts
+   * // In a cell renderer: read a sibling column's value on the same row — on a group row, its
+   * // aggregate.
+   * const revenue = params.api.getCellValue({ rowId: params.rowId, colId: "revenue" });
+   * ```
+   */
+  getCellValue(cell: CellRef): unknown;
+
   /* ----- Pivot ----- */
   /**
    * Turn pivot mode on or off. On: rows display as the row-group tree (leaf rows never show) and
