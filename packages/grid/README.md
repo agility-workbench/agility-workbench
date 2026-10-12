@@ -413,10 +413,13 @@ const options = {
 };
 ```
 
-Views capture column layout, row grouping, multi-sort, column filters, quick-filter text, and group
-expansion. `api.captureViewState()` and `api.applyViewState(state)` expose the same serializable
-state workflow programmatically. Applying a view restores columns exactly by default; pass
-`{ columns: "merge" }` to retain columns added after capture.
+Views capture column layout, column-group expanders (which groups are open or closed), row
+grouping, multi-sort, column filters, quick-filter text, and group expansion.
+`api.captureViewState()` and `api.applyViewState(state)` expose the same serializable state
+workflow programmatically. Applying a view restores columns exactly by default; pass
+`{ columns: "merge" }` to retain columns added after capture. A column group is matched by its
+`colId`, so give groups an explicit one for their expander state to survive a reload; a view saved
+before expanders were captured leaves every group as it is.
 
 ## Column panel
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GridAPI } from "./api";
 import { GridCore } from "../core/core";
+import { AggregateType } from "../interfaces/aggregate";
 import { FilterType } from "../interfaces/filter";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 
@@ -176,5 +177,158 @@ describe("GridAPI saved view state", () => {
     core.dispatch({ type: "columnVisibility", colIds: [notesId], hidden: false });
     api.applyViewState(state, { columns: "merge" });
     expect(api.getColumnState().find(column => column.colId === "notes")?.hidden).toBe(false);
+  });
+
+  // Two expander-controlled groups (an unset + "open" child mix shows the expander and hides the
+  // "open" child while closed): Money starts closed, Geo starts open via openByDefault.
+  function makeGroupedGrid() {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name" },
+      {
+        colId: "money",
+        label: "Money",
+        children: [
+          { colId: "revenue", key: "revenue", label: "Revenue" },
+          { colId: "margin", key: "margin", label: "Margin", columnGroupShow: "open" },
+        ],
+      },
+      {
+        colId: "geo",
+        label: "Geo",
+        openByDefault: true,
+        children: [
+          { colId: "region", key: "region", label: "Region" },
+          { colId: "country", key: "country", label: "Country", columnGroupShow: "open" },
+        ],
+      },
+    ]);
+    core.dispatch({
+      type: "themeFontSet",
+      headerFont: "12px sans-serif",
+      cellFont: "12px sans-serif",
+      reason: "test",
+    });
+    core.setRowData([
+      { id: "1", name: "A", revenue: 20, margin: 5, region: "APAC", country: "India" },
+      { id: "2", name: "B", revenue: 10, margin: 2, region: "EMEA", country: "France" },
+    ]);
+    const leaves = () => core.getColumnModel().getCenterLeaves().map(col => col.colId);
+    const toggle = (colId: string) => core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId });
+    return { core, api: new GridAPI(core), leaves, toggle };
+  }
+
+  it("round-trips column-group expanders and leaves them alone for captures without the field", () => {
+    const { core, api, leaves, toggle } = makeGroupedGrid();
+    expect(leaves()).toEqual(["name", "revenue", "region", "country"]);
+
+    toggle("money");
+    toggle("geo");
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region"]);
+
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(captured.columnGroupState).toEqual([
+      { colId: "money", open: true },
+      { colId: "geo", open: false },
+    ]);
+
+    toggle("money");
+    toggle("geo");
+    expect(leaves()).toEqual(["name", "revenue", "region", "country"]);
+    api.applyViewState(captured);
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region"]);
+    expect(core.getColumnModel().getColumnGroupState()).toEqual(captured.columnGroupState);
+
+    // A capture saved before the field existed leaves every group as it is.
+    const { columnGroupState: _dropped, ...legacy } = captured;
+    toggle("money");
+    expect(leaves()).toEqual(["name", "revenue", "region"]);
+    api.applyViewState(legacy);
+    expect(leaves()).toEqual(["name", "revenue", "region"]);
+
+    // Groups the list does not name keep their state; ids that resolve to no group, or to a leaf,
+    // are ignored.
+    api.applyViewState({
+      ...captured,
+      columnGroupState: [{ colId: "geo", open: true }, { colId: "nope", open: true }, { colId: "name", open: true }],
+    });
+    expect(leaves()).toEqual(["name", "revenue", "region", "country"]);
+  });
+
+  it("restores captured widths over the autosize that opening a group triggers", () => {
+    const { core, api, leaves, toggle } = makeGroupedGrid();
+    toggle("money");
+    const marginId = core.getColumnModel().getByColId("margin")!.instanceID;
+    core.dispatch({ type: "columnResize", colId: marginId, widthPx: 333 });
+    const captured = api.captureViewState();
+
+    toggle("money");
+    expect(leaves()).not.toContain("margin");
+    api.applyViewState(captured);
+    expect(leaves()).toContain("margin");
+    expect(api.getColumnState().find(column => column.colId === "margin")?.widthPx).toBe(333);
+  });
+
+  it("reads and sets column-group expanders through the public API", () => {
+    const { core, api, leaves, toggle } = makeGroupedGrid();
+    expect(api.getColumnGroupState()).toEqual([
+      { colId: "money", open: false },
+      { colId: "geo", open: true },
+    ]);
+
+    api.setColumnGroupState([{ colId: "money", open: true }]);
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region", "country"]);
+    // The header expander and the API read the same state.
+    toggle("geo");
+    expect(api.getColumnGroupState()).toEqual([
+      { colId: "money", open: true },
+      { colId: "geo", open: false },
+    ]);
+    // Unknown ids and leaves are skipped; a group not named keeps its state.
+    api.setColumnGroupState([{ colId: "nope", open: true }, { colId: "name", open: true }, { colId: "geo", open: true }]);
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region", "country"]);
+    expect(core.getColumnModel().getByColId("money")!.groupExpandState).toBe("open");
+  });
+
+  it("sets many groups in one dispatch and is silent when nothing changes", () => {
+    const { core, leaves } = makeGroupedGrid();
+    const changes: string[][] = [];
+    core.on("columnsChanged", ev => changes.push(ev.changedColIds ?? []));
+
+    core.dispatch({ type: "columnGroupStateSet", groups: [{ colId: "money", open: true }, { colId: "geo", open: false }] });
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region"]);
+    expect(changes).toEqual([["money", "geo"]]);
+
+    // Already in the requested state: no rebuild, no event.
+    core.dispatch({ type: "columnGroupStateSet", groups: [{ colId: "money", open: true }, { colId: "nope", open: false }] });
+    expect(changes).toHaveLength(1);
+  });
+
+  it("captures and restores the source groups while pivoted", () => {
+    const { core, api, leaves, toggle } = makeGroupedGrid();
+    toggle("money");
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+    core.dispatch({ type: "pivotColumnsSet", colIds: ["region"] });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    expect(core.getPivotMode()).toBe(true);
+
+    // The generated pivot header is derived data: the capture still describes the user's groups.
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(captured.columnGroupState).toEqual([
+      { colId: "money", open: true },
+      { colId: "geo", open: true },
+    ]);
+
+    core.dispatch({ type: "pivotModeSet", on: false });
+    toggle("money");
+    toggle("geo");
+    expect(leaves()).toEqual(["name", "revenue", "region"]);
+
+    // Restoring the pivoted view re-enters pivot mode; leaving it again lands on the restored
+    // expander state, not the one the mode was entered with.
+    api.applyViewState(captured);
+    expect(core.getPivotMode()).toBe(true);
+    core.dispatch({ type: "pivotModeSet", on: false });
+    expect(leaves()).toEqual(["name", "revenue", "margin", "region", "country"]);
   });
 });

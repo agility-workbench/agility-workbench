@@ -71,6 +71,8 @@ which run before the adapter.
 | `setColumnDefs(defs)` | Replace column definitions (claims caller ownership of the schema — see below) |
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
+| `getColumnGroupState()` | Read every column group's expander state (open/closed) by colId, nested groups included |
+| `setColumnGroupState(groups)` | Open or close column groups by colId in one rebuild — what the header expander does; groups not named keep their state |
 | `getColumnModel()` | Read runtime columns and sections |
 | `refreshServerSideData(options?)` | Soft-refresh or purge the server cache, or one subtree of it — `groupKeys` for a group path, `rowId` for a server-tree row |
 | `refreshRowPresentation()` | Re-evaluate row presentation for rendered body, pinned, and sticky rows after external state changes |
@@ -112,7 +114,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `setPivotColumnOrder(order)` / `getPivotColumnOrder()` | Replace/read the manual arrangement of the generated pivot columns (leaf order by generated colId; null = canonical). Role edits reset it |
-| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
+| `captureViewState()` | Capture columns, column-group expanders, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
 | `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |

@@ -29,7 +29,7 @@ import {
 } from "../interfaces/gridOptions";
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { GridViewColumnGroupState, GridViewFilterState, GridViewState } from "../interfaces/gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
@@ -449,6 +449,14 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "columnStateSet", state, defaultState: opts?.defaultState });
   }
 
+  getColumnGroupState(): GridViewColumnGroupState[] {
+    return this.core.getColumnModel().getColumnGroupState();
+  }
+
+  setColumnGroupState(groups: GridViewColumnGroupState[]): void {
+    this.dispatch({ type: "columnGroupStateSet", groups });
+  }
+
   getColumnModel(): IColumnModel {
     return this.core.getColumnModel();
   }
@@ -814,6 +822,9 @@ export class GridAPI implements IGridAPI {
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
+      // Column-group expanders by the group's colId — the source groups while pivoted, like
+      // `columns`.
+      columnGroupState: this.getColumnGroupState(),
       rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
       // Aggregates serialize by public colId (the model keys them by instanceID, which does not
       // survive a reload); entries on columns that no longer resolve are dropped.
@@ -860,6 +871,12 @@ export class GridAPI implements IGridAPI {
     }
 
     this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
+    // Expanders BEFORE the column state: opening a group sizes the leaves it reveals to content
+    // (as the header toggle does), and the captured widths below must win over that. Old captures
+    // without the field leave every group as it is, like every absent field.
+    if (state.columnGroupState) {
+      this.dispatch({ type: "columnGroupStateSet", groups: state.columnGroupState });
+    }
     this.applyColumnState(
       state.columns ?? [],
       opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },

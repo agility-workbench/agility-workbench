@@ -883,6 +883,29 @@ export class GridCore implements IGridCore {
     this.columnModel.updateParentColumnWidth(column);
   }
 
+  // What a column group's expander change entails beyond the column model's rebuild, shared by
+  // the header toggle and the batch `columnGroupStateSet`: the leaves the change reveals are sized
+  // to content and given comparators, aggregates are re-derived over the new leaf set, and the
+  // selection cannot survive a change to the displayed column set.
+  private afterColumnGroupExpansionChange(groups: Column[]): void {
+    const allRows: IRowNode[] = [];
+    this.rowModel.forEachNode((node: IRowNode) => {
+      allRows.push(node);
+    });
+    for (const col of groups) this.autosizeColumn(col.instanceID);
+    this.columnModel.identifyComparatorsFor(groups, allRows);
+    if (this.aggregates.length > 0) {
+      this.applyAggregateRequest("aggregateModel", "columns");
+    }
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", {
+      reason: "state",
+      changedColIds: groups.map(col => col.colId),
+      changedColInstanceIds: groups.map(col => col.instanceID),
+    });
+    this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+  }
+
   private autosizeColumn(colID: string): string[] {
     const col = this.columnModel.resolve(colID);
     if (!col) return [];
@@ -3469,22 +3492,18 @@ export class GridCore implements IGridCore {
             break;
           case "toggleGroupExpand":
             if (this.columnModel.toggleGroupExpansion(col.instanceID)) {
-              this.autosizeColumn(col.instanceID);
-              const allRows: IRowNode[] = [];
-              this.rowModel.forEachNode((node: IRowNode) => {
-                allRows.push(node);
-              });
-              this.columnModel.identifyComparatorsFor([col], allRows);
-              if (this.aggregates.length > 0) {
-                this.applyAggregateRequest("aggregateModel", "columns");
-              }
-              this.clearSelectionForColumnChange();
-              this.emit("columnsChanged", { reason: "state", changedColIds: [col.colId], changedColInstanceIds: [col.instanceID] });
-              this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+              this.afterColumnGroupExpansionChange([col]);
             }
             break;
         }
         break;
+      case "columnGroupStateSet": {
+        const changed = this.columnModel.setColumnGroupState(action.groups)
+          .map(id => this.columnModel.resolve(id))
+          .filter((col): col is Column => col != null);
+        if (changed.length > 0) this.afterColumnGroupExpansionChange(changed);
+        break;
+      }
       case "headerFocusSet":
         this.setHeaderFocus(action.colIdx, action.reason ?? "api");
         break;

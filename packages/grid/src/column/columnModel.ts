@@ -3,6 +3,7 @@ import { Column } from "./column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { IRowNode } from "../interfaces/iRowNode";
 import { IColumnModel } from "../interfaces/iColumnModel";
+import { GridViewColumnGroupState } from "../interfaces/gridView";
 import { ColumnState } from "../interfaces/iGridCore";
 import { InternalGridOptions } from "../interfaces/gridOptions";
 import { isNullOrUndefined } from "../misc";
@@ -1646,6 +1647,50 @@ export class ColumnModel implements IColumnModel {
     const ancestors = this.getAncestors(colId);
     this.updateParentColumnWidth(ancestors[0]);
     return true;
+  }
+
+  /**
+   * Every column group's expander state — any non-internal column with children, nested ones
+   * included — in pre-order. Captured for every group, not only the ones showing an expander: the
+   * expander comes and goes with the children's visibility, the state does not. Like
+   * `getColumnState`, while pivot display is active this describes the STASHED source groups; the
+   * generated pivot groups are derived data.
+   */
+  getColumnGroupState(): GridViewColumnGroupState[] {
+    const state: GridViewColumnGroupState[] = [];
+    this.walkColumns((col) => {
+      if (col.isInternal() || col.children.length === 0) return;
+      state.push({ colId: col.colId, open: col.groupExpandState === "open" });
+    }, this.pivotDisplayActive ? this.pivotSourceStash : this.columns);
+    return state;
+  }
+
+  /**
+   * The batch form of `toggleGroupExpansion`: set the named groups' expander state, then rebuild
+   * once. Unknown ids, leaves and internal columns are ignored, and a group already in the
+   * requested state is not counted as changed; groups absent from the list keep their state.
+   * Returns the instanceIDs of the groups whose state changed — empty means nothing was rebuilt.
+   *
+   * While pivot display is active the ids resolve to the stashed source groups (the lookups keep
+   * them addressable), which nothing displays until the mode exits: the state is recorded on the
+   * instances, and the exit's rebuild lays the source tree out with it.
+   */
+  setColumnGroupState(groups: GridViewColumnGroupState[]): string[] {
+    const changed: Column[] = [];
+    for (const entry of groups) {
+      const col = this.resolve(entry.colId);
+      if (!col || col.isInternal() || col.children.length === 0) continue;
+      const next = entry.open ? "open" : "closed";
+      if (col.groupExpandState === next) continue;
+      col.groupExpandState = next;
+      changed.push(col);
+    }
+    if (changed.length === 0) return [];
+    if (!this.pivotDisplayActive) {
+      this.updateColumns(this.columns);
+      for (const col of changed) this.updateParentColumnWidth(this.getAncestors(col.instanceID)[0] ?? col);
+    }
+    return changed.map(col => col.instanceID);
   }
 
   /**

@@ -65,3 +65,5 @@ defaults.
 
 A definition with `children` is a column group. `openByDefault` sets its initial
 state; child leaves use `columnGroupShow` to appear only while open or closed.
+Give a group an explicit `colId`: `api.setColumnGroupState` addresses groups by
+it, and saved views restore their open/closed state by it.

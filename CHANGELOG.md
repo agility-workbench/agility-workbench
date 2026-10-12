@@ -3,6 +3,25 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+
+### Saved views
+
+- **Views remember column-group expanders.** `captureViewState()` records every column group's
+  open/closed state as `columnGroupState` (by the group's `colId`, nested groups included, the
+  user's own groups while pivoted), and `applyViewState()` restores it — before the column layout,
+  so captured widths win over the autosize that opening a group triggers. A view saved before this
+  field existed leaves every group as it is, as does a group the list does not name. Give groups
+  an explicit `colId` for the state to survive a reload: a group without one is identified by its
+  position in the definitions.
+- **`api.getColumnGroupState()` / `api.setColumnGroupState(groups)`.** Read or set column-group
+  expanders programmatically, by the group's `colId`: the setter is what the header expander does,
+  for many groups in one rebuild and with the same follow-ups (revealed leaves sized to content,
+  aggregates re-derived). Groups not named keep their state, unknown ids and leaves are skipped,
+  and a call that changes nothing rebuilds nothing. Backed by a new `columnGroupStateSet` core
+  action.
+
 ## 1.8.0 — 2026-10-12
 
 

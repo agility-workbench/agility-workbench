@@ -1,5 +1,6 @@
 import { Column } from "../column/column";
 import { ColumnSection } from "./column";
+import { GridViewColumnGroupState } from "./gridView";
 import { ColumnState } from "./iGridCore";
 
 export interface IColumnModel {
@@ -43,6 +44,17 @@ export interface IColumnModel {
   /** Pre-order walk of the displayed column tree, or of `roots` when another tree is given. */
   walkColumns(callback: (col: Column) => void, roots?: Column[]): void;
   toggleGroupExpansion(colId: string): boolean;
+  /**
+   * Every column group's expander state (nested groups included), in pre-order; the stashed source
+   * groups while pivot display is active, as `getColumnState` describes the source columns.
+   */
+  getColumnGroupState(): GridViewColumnGroupState[];
+  /**
+   * The batch form of `toggleGroupExpansion`: set the named groups' expander state in one rebuild.
+   * Unknown ids, leaves and internal columns are ignored; groups absent from the list keep their
+   * state. Returns the instanceIDs of the groups whose state changed.
+   */
+  setColumnGroupState(groups: GridViewColumnGroupState[]): string[];
   setRowGroupColumns(
     groupColumns: Column[],
     mode: "singleColumn" | "multipleColumns" | "groupRows",

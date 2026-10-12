@@ -17,7 +17,7 @@ import {
   TreeDataKeyboardNavigationOptions,
   UpdatableGridOptions,
 } from "./gridOptions";
-import { GridViewFilterState, GridViewState } from "./gridView";
+import { GridViewColumnGroupState, GridViewFilterState, GridViewState } from "./gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "./find";
 import { ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
@@ -233,6 +233,22 @@ export interface IGridAPI {
    * columns added since it was captured).
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
+
+  /**
+   * Every column group's expander state (open or closed) by the group's colId — nested groups
+   * included, in header order. While pivoted this describes the user's own groups, as
+   * `getColumnState` describes the source columns.
+   */
+  getColumnGroupState(): GridViewColumnGroupState[];
+
+  /**
+   * Open or close column groups by colId, in one rebuild — what the header expander does, with the
+   * same follow-ups (the leaves a group reveals are sized to content). Groups absent from the list
+   * keep their state; unknown colIds and leaves are skipped, and a group already in the requested
+   * state is left alone, so a call that changes nothing rebuilds nothing. A single group is a
+   * one-element list.
+   */
+  setColumnGroupState(groups: GridViewColumnGroupState[]): void;
 
   /** Read-only access to the column model (columns, leaves, lookups). */
   getColumnModel(): IColumnModel;

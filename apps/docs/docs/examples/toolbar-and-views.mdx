@@ -91,9 +91,12 @@ const options = {
 ```
 
 The application owns persistence; the grid supplies picker and CRUD behavior. A
-view contains column layout, grouping, sorting, filters, quick-filter text, and
-group expansion. (The live demo above persists its views to `localStorage` —
-shape the grid, save a view, and reload the page.)
+view contains column layout, column-group expanders (which groups are open or
+closed), grouping, sorting, filters, quick-filter text, and group expansion. A
+column group is matched by its `colId`, so give groups an explicit one for their
+expander state to survive a reload. (The live demo above persists its views to
+`localStorage` — shape the grid, open or close a group, save a view, and reload
+the page.)
 
 ## Capture and apply view state directly
 
