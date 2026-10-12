@@ -1158,12 +1158,14 @@ export interface GridOptions {
   getRowPresentation?: GetRowPresentation;
   /**
    * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
-   * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell.
+   * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell. The
+   * payload includes the row's `node` and `isGroup`; on a group row `value` is the column's
+   * aggregate, or the group label on the group's label column.
    */
   onCellClicked?: (params: GridEventCellClickedParams) => void;
   /**
    * Called when a body row is clicked (left button), including group rows. Convenience wrapper over
-   * the `rowClicked` event.
+   * the `rowClicked` event. The payload includes the row's `node`.
    */
   onRowClicked?: (params: GridEventRowClickedParams) => void;
   /**

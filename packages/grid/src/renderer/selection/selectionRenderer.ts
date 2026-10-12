@@ -904,7 +904,7 @@ export class SelectionRenderer {
     const rowNode = pinnedNode ?? this.params.core.getRowModel().getRowNode(rowId);
     const isGroup = !!rowNode?.isGroup;
 
-    this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, event: e });
+    this.params.core.emit("rowClicked", { rowId, viewIdx, data: rowNode?.data, isGroup, node: rowNode, event: e });
 
     // cellClicked only for a real data cell (not the row-number / checkbox utility cells).
     const cell = (e.target as HTMLElement | null)?.closest(".pte-cell") as HTMLDivElement | null;
@@ -913,9 +913,14 @@ export class SelectionRenderer {
     if (!Number.isFinite(colIdx)) return;
     const col = this.params.leafColumns()[colIdx];
     if (!col) return;
-    const value = rowNode && !isGroup ? col.getValue(rowNode) : undefined;
+    // A group row has no data row: its cell value follows the group cell rule (aggregate, or the
+    // label on the group's label column), the same one a copy of the cell uses.
+    const value = !rowNode
+      ? undefined
+      : isGroup ? this.params.core.getGroupCellValue(col, rowNode).value : col.getValue(rowNode);
     this.params.core.emit("cellClicked", {
-      rowId, colId: col.colId, colInstanceId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value, event: e,
+      rowId, colId: col.colId, colInstanceId: col.instanceID, viewIdx, colIdx, data: rowNode?.data, value,
+      node: rowNode, isGroup, event: e,
     });
   }
 }

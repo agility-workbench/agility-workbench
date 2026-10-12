@@ -3,6 +3,17 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+
+### Events
+
+- **Click payloads carry the row's node.** `cellClicked` / `onCellClicked` and `rowClicked` /
+  `onRowClicked` now include `node` (absent only when the row is not loaded), and `cellClicked`
+  gains `isGroup`. On a group row, `cellClicked`'s `value` is no longer `undefined`: it is the
+  column's aggregate, or the group label on the group's label column — the same rule a copy of
+  that cell follows.
+
 ## 1.7.0 — 2026-10-11
 
 

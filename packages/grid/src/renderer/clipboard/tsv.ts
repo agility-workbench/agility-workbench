@@ -1,6 +1,7 @@
 import { IRowNode } from "../../interfaces/iRowNode";
 import { Column } from "../../column/column";
 import { IRowModel } from "../../interfaces/iRowModel";
+import { groupCellValue } from "../../core/groupCellValue";
 
 /** Escape a single TSV field: quote it when it contains tab, newline or quote characters. */
 export function escapeTSV(value: unknown): string {
@@ -39,17 +40,9 @@ export function serializeNodesToTSV(
 }
 
 // One cell's copy text. Group rows (pivot rows, groupRowsSelectable copies) have no underlying
-// data row: value cells read the node's stamped aggregate and the group-label column reads the
-// label the grid resolves — the same conventions the cell renderer paints and the exporter writes.
+// data row; they follow the group cell convention the cell renderer paints and the exporter writes.
 function cellText(col: Column, node: IRowNode, groupLabel: GroupLabelResolver): string {
-  if (node.isGroup) {
-    const agg = node.aggregateValues?.[col.instanceID];
-    if (agg != null && agg !== "") return col.formatValue(agg, node);
-    if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level) {
-      return groupLabel(node);
-    }
-    return "";
-  }
+  if (node.isGroup) return groupCellValue(col, node, groupLabel).formatted;
   return col.formatValue(col.getValue(node), node);
 }
 

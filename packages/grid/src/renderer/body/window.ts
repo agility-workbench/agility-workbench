@@ -193,13 +193,16 @@ export class BodyWindowRenderer {
       slot.fullWidthCellEl.style.display = "flex";
       slot.fullWidthCellEl.style.width = `${width}px`;
       // A group full-width row is cell-selectable (gated by groupRowsSelectable) exactly like the
-      // old sticky-label cell was: stamp the host with the first selectable leaf index so a click
+      // old sticky-label cell was: stamp the host with its nominal column so a click, menu or frame
       // resolves to a real cell location. A non-group full-width row stays non-cell-selectable, so
-      // it carries no colIdx (getCellLocation returns null on the NaN path).
-      if (row.isGroup) {
-        slot.fullWidthCellEl.dataset.colIdx = String(this.params.core.getColumnModel().getLeadingLeaves().length);
+      // it carries neither stamp (getCellLocation returns null on the NaN path).
+      const nominal = row.isGroup ? this.nominalColumnStamp() : null;
+      if (nominal) {
+        slot.fullWidthCellEl.dataset.colIdx = String(nominal.colIdx);
+        slot.fullWidthCellEl.dataset.colId = nominal.colId;
       } else {
         delete slot.fullWidthCellEl.dataset.colIdx;
+        delete slot.fullWidthCellEl.dataset.colId;
       }
       // The host is now the row's only visible cell: it spans the full ARIA column range.
       slot.fullWidthCellEl.setAttribute("aria-colindex", "1");
@@ -217,12 +220,21 @@ export class BodyWindowRenderer {
     slot.rowEl.classList.remove("pte-full-width-row");
     slot.fullWidthCellEl.style.display = "none";
     delete slot.fullWidthCellEl.dataset.colIdx;
+    delete slot.fullWidthCellEl.dataset.colId;
     slot.fullWidthCellEl.removeAttribute("aria-colindex");
     slot.fullWidthCellEl.removeAttribute("aria-colspan");
     this.params.clearFullWidthCell(slot);
     for (const cell of slot.cellEls) cell.style.display = "";
     slot.rowEl.style.width = `${this.centerTotalWidth()}px`;
     // Section-row display is restored by showSlot/hideSlot on the next patch; nothing to do here.
+  }
+
+  // The full-width group host's column identity: the nominal leaf's instance id and global index.
+  private nominalColumnStamp(): { colId: string; colIdx: number } | null {
+    const model = this.params.core.getColumnModel();
+    const nominal = model.getFullWidthNominalLeaf();
+    const meta = nominal ? model.leafColumnLookup.get(nominal.instanceID) : undefined;
+    return nominal && meta ? { colId: nominal.instanceID, colIdx: meta.globalIndex } : null;
   }
 
   // Sum of the non-hidden center leaf columns' computed widths — the correct center row width to

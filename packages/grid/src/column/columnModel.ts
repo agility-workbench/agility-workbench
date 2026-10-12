@@ -478,6 +478,15 @@ export class ColumnModel implements IColumnModel {
     return this.leadingLeaves;
   }
 
+  /**
+   * The leaf a full-width group row's single host cell stands in for: selection, clicks, menus
+   * and the ActionFrame all key off it. It is the first non-leading leaf (the first left-pinned
+   * leaf when there is one, else the first center leaf); null when there is none.
+   */
+  getFullWidthNominalLeaf(): Column | null {
+    return this.leaves[this.leadingLeaves.length] ?? null;
+  }
+
   getLeftLeaves(): Column[] {
     return this.leftLeaves;
   }

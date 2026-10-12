@@ -272,6 +272,7 @@ export type {
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
 export type { IRowNode } from "./interfaces/iRowNode";
+export type { GroupCellValue } from "./core/groupCellValue";
 
 export type {
   IServerSideAggregationParams,

@@ -30,6 +30,7 @@ import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
 import { groupRowLabel, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
+import { groupCellValue, GroupCellValue } from "./groupCellValue";
 import {
   GridEventHandler,
   GridEventMap,
@@ -2415,6 +2416,16 @@ export class GridCore implements IGridCore {
     // `null`, not undefined: the helper's count parameter defaults to the node's own row count,
     // which would turn "no count" back into the badge this option just removed.
     return groupRowLabel(node, this.resolveGroupChildCount(node, rowCount) ?? null);
+  }
+
+  /**
+   * What a group row's cell holds for `col`: the aggregate stamped on the node for that column,
+   * else the group label when `col` is the group's label column, else nothing. Precondition:
+   * `node.isGroup`; a leaf gets the empty result. The one rule click payloads, menus and the
+   * ActionFrame read, shared with the clipboard serializer via `groupCellValue`.
+   */
+  getGroupCellValue(col: Column, node: IRowNode): GroupCellValue {
+    return groupCellValue(col, node, n => this.getGroupRowLabel(n));
   }
 
   /** Change what group rows show as their count; repaints the visible group rows. */
