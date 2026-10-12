@@ -31,6 +31,7 @@ export class BodyCellRenderer {
   ) {
     applyDynamicClasses(cell, rowPresentation?.cellClass ?? null);
     applyDynamicStyles(cell, rowPresentation?.cellStyle ?? null);
+    this.applyFullWidthIndicator(cell, row, viewIndex, rowPresentation);
     const renderer = this.api.getCore().getOptions().fullWidthCellRenderer;
 
     if (!renderer) {
@@ -75,12 +76,28 @@ export class BodyCellRenderer {
     }
   }
 
+  // A full-width group host is the nominal column's one cell in that row (it is where that column's
+  // frame opens), so it carries that column's indicator. Other full-width rows host no frame.
+  private applyFullWidthIndicator(
+    cell: HTMLDivElement,
+    row: IRowNode,
+    viewIndex: number,
+    rowPresentation?: RowPresentation,
+  ) {
+    const nominal = row.isGroup ? this.api.getCore().getColumnModel().getFullWidthNominalLeaf() : null;
+    const marked = !!nominal
+      && nominal.actionFrameIndicator != null
+      && nominal.actionFrameIndicator !== false
+      && this.hasActionFrameContent(nominal, row, this.cellClassParams(row, nominal, viewIndex, rowPresentation));
+    cell.classList.toggle("pte-action-frame-indicator", marked);
+  }
+
   // Tear down a slot's full-width renderer instance and clear its host cell. Called when the slot
   // leaves full-width layout (public, invoked by the window renderer's reset path) and before
   // falling back to the default group/blank content.
   clearFullWidthCell(cell: HTMLDivElement, cellRendererMap: Map<string, RendererRecord>) {
     this.clearFullWidthRenderer(cellRendererMap);
-    cell.classList.remove("pte-group-cell");
+    cell.classList.remove("pte-group-cell", "pte-action-frame-indicator");
     cell.style.paddingLeft = "";
     cell.replaceChildren();
   }
@@ -202,9 +219,9 @@ export class BodyCellRenderer {
     }
   }
 
-  // Apply the column's cellClass / cellStyle / ActionFrame indicator to a data cell. For group rows
-  // (or when none is configured) it clears any previously-applied dynamic class/style/indicator so
-  // recycled cells stay clean.
+  // Apply the column's cellClass / cellStyle / ActionFrame indicator to a data cell. Column
+  // class/style skip group rows (cleared so recycled cells stay clean); the indicator is a pure
+  // function of row + column, so recycling re-evaluates it.
   private applyCellStyling(
     cell: HTMLDivElement,
     row: IRowNode,
@@ -220,14 +237,7 @@ export class BodyCellRenderer {
     // rows. Resolve it only when a column callback actually needs CellClassParams; row defaults do
     // not depend on the cell value.
     let params: CellClassParams | undefined;
-    const getParams = (): CellClassParams => params ??= {
-      value: col.getValue(row),
-      data: row.data,
-      rowId: row.id,
-      rowIndex: viewIndex,
-      colDef: col.col,
-      rowPresentation,
-    };
+    const getParams = (): CellClassParams => params ??= this.cellClassParams(row, col, viewIndex, rowPresentation);
     const columnClass = !row.isGroup && hasClass
       ? (typeof col.cellClass === "function" ? col.cellClass(getParams()) : col.cellClass)
       : null;
@@ -238,13 +248,32 @@ export class BodyCellRenderer {
     const rowStyle = inheritRowPresentation(col, "cellStyle") ? rowPresentation?.cellStyle : null;
     applyDynamicClasses(cell, mergeClassValues(rowClass, columnClass));
     applyDynamicStyles(cell, mergeStyleValues(rowStyle, columnStyle));
-    if (row.isGroup) {
-      if (hasIndicator) cell.classList.remove("pte-action-frame-indicator");
-      return;
-    }
+    // Group rows evaluate the indicator like leaves: a group cell can host a frame, so it can be
+    // marked as holding content.
     if (hasIndicator) {
       cell.classList.toggle("pte-action-frame-indicator", this.hasActionFrameContent(col, row, getParams()));
     }
+  }
+
+  // A group row has no data row; its cell's value is the core's group value rule, which also keeps
+  // generated group/tree columns' value getters (leaf-only) from ever seeing a group node.
+  private cellClassParams(
+    row: IRowNode,
+    col: Column,
+    viewIndex: number,
+    rowPresentation?: RowPresentation,
+  ): CellClassParams {
+    const isGroup = !!row.isGroup;
+    return {
+      value: isGroup ? this.api.getCore().getGroupCellValue(col, row).value : col.getValue(row),
+      data: row.data,
+      rowId: row.id,
+      rowIndex: viewIndex,
+      colDef: col.col,
+      rowPresentation,
+      node: row,
+      isGroup,
+    };
   }
 
   // Resolve the column's actionFrameIndicator (true | field name | predicate) for one cell.

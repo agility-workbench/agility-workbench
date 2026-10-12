@@ -2,6 +2,8 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { GridCore } from "./core";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
 import { GridEventActionFrameParams, GridEventEditingChangedParams } from "../events/events";
+import { ColumnType } from "../interfaces/column";
+import { AggregateType } from "../interfaces/aggregate";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -92,5 +94,89 @@ describe("GridCore ActionFrame", () => {
     expect(core.getActionFrameCell()).toEqual(emittedCell(core, "1", "name"));
     expect(editEvents.at(-1)?.state).toBe("cancelled");
     expect(frameEvents).toEqual([{ state: "opened", cell: emittedCell(core, "1", "name") }]);
+  });
+});
+
+describe("GridCore ActionFrame on group rows", () => {
+  const ROWS = [
+    { id: "1", region: "EMEA", name: "alice", revenue: 10 },
+    { id: "2", region: "EMEA", name: "bob", revenue: 20 },
+    { id: "3", region: "APAC", name: "carol", revenue: 5 },
+  ];
+
+  function makeGrouped(options: object = {}) {
+    const core = new GridCore(measurer, {
+      rowIdKey: "id",
+      rowModelType: "clientSide",
+      defaultColDef: { actionFrameComponent: Form },
+      ...options,
+    } as any);
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData(ROWS.map(r => ({ ...r })));
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name" },
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "revenue", key: "revenue", label: "Revenue", type: ColumnType.NUMBER },
+    ]);
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    return core;
+  }
+
+  function firstGroup(core: GridCore) {
+    const node = core.getRowModel().getRowNodeAtViewIndex(0)!;
+    expect(node.isGroup).toBe(true);
+    return node;
+  }
+
+  it("opens on a group row when groupRowsSelectable is on", () => {
+    const core = makeGrouped({ groupRowsSelectable: true });
+    const group = firstGroup(core);
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: group.id, colId: colId(core, "revenue") } });
+    expect(core.getActionFrameCell()).toEqual(emittedCell(core, group.id, "revenue"));
+  });
+
+  it("refuses a group row when groupRowsSelectable is off", () => {
+    const core = makeGrouped();
+    const group = firstGroup(core);
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: group.id, colId: colId(core, "revenue") } });
+    expect(core.getActionFrameCell()).toBeNull();
+  });
+
+  it("opens on a pivot group row without groupRowsSelectable", () => {
+    const core = makeGrouped();
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }],
+    });
+    core.dispatch({ type: "pivotModeSet", on: true });
+    const group = firstGroup(core);
+    const col = core.getColumnModel().getLeaves().find(c => c.actionFrameComponent)!;
+    expect(col).toBeTruthy();
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: group.id, colId: col.instanceID } });
+    expect(core.getActionFrameCell()?.rowId).toBe(group.id);
+    expect(core.getActionFrameCell()?.colInstanceId).toBe(col.instanceID);
+  });
+
+  it("in groupRows mode opens only on the nominal column", () => {
+    const core = makeGrouped({ groupRowsSelectable: true, groupDisplayType: "groupRows" });
+    const group = firstGroup(core);
+    const nominal = core.getColumnModel().getFullWidthNominalLeaf()!;
+    const other = core.getColumnModel().getLeaves().find(c => c !== nominal && c.actionFrameComponent)!;
+    expect(other).toBeTruthy();
+
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: group.id, colId: other.instanceID } });
+    expect(core.getActionFrameCell()).toBeNull();
+
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: group.id, colId: nominal.instanceID } });
+    expect(core.getActionFrameCell()?.colInstanceId).toBe(nominal.instanceID);
+  });
+
+  it("still opens on a manually pinned body row", () => {
+    const core = makeGrid();
+    const pinned = core.getRowModel().getRowNode("1")!;
+    core.setDisplayedPinnedRows([pinned], []);
+    expect(core.isBodyRowPinned("1")).toBe(true);
+    core.dispatch({ type: "actionFrameOpen", cell: { rowId: "1", colId: colId(core, "name") } });
+    expect(core.getActionFrameCell()).toEqual(emittedCell(core, "1", "name"));
   });
 });

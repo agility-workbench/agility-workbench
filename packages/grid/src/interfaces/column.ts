@@ -48,6 +48,12 @@ export interface CellClassParams {
   colDef: ColDef;
   /** Resolved defaults and metadata for this row, when `getRowPresentation` is configured. */
   rowPresentation?: import("./gridOptions").RowPresentation;
+  /** The row node. Set for body cells (`cellClass`, `cellStyle`, `actionFrameIndicator`); absent
+   * where the grid evaluates a callback against a row it has no node for (exports). */
+  node?: import("./iRowNode").IRowNode;
+  /** True on a group row. Only `actionFrameIndicator` is evaluated on group rows, where `value`
+   * is the group cell's value (its aggregate, or the label on the group's label column). */
+  isGroup?: boolean;
 }
 
 /** Extra CSS class(es) for a cell: a static value or a function of the cell context. */
@@ -124,6 +130,12 @@ export interface ColDef {
    * the popover attached to a framed cell (à la a Google Sheets comment). See
    * {@link ActionFrameComponent}. A grid-wide default can be supplied via
    * `defaultColDef.actionFrameComponent`.
+   *
+   * Group rows host frames too, wherever the cell cursor can land on them: with
+   * `groupRowsSelectable`, or in pivot mode. The component receives `isGroup` and `node`, and
+   * `value` is the group cell's value (its aggregate, or the label on the group's label column). In
+   * `groupDisplayType: "groupRows"` a group row has a single full-width cell standing in for the
+   * nominal column (the first non-leading leaf), so only that column's frame opens there.
    */
   actionFrameComponent?: ActionFrameComponent;
   /** Extra params merged into {@link ActionFrameComponentParams} for this column's ActionFrame. */
@@ -131,7 +143,8 @@ export interface ColDef {
   /**
    * Built-in trigger that opens this column's ActionFrame. `"click"` opens on a single cell click;
    * `"none"` (default) disables the built-in trigger (the API and the Shift+F2 keyboard shortcut
-   * still work).
+   * still work). Clicking a cell-selectable group row's cell triggers like a leaf cell; in
+   * `"groupRows"` mode the full-width cell triggers the nominal column's frame.
    */
   actionFrameTrigger?: "click" | "none";
   /**
@@ -149,6 +162,10 @@ export interface ColDef {
    *   - a predicate — mark when it returns true for the cell.
    * Recomputed as cells scroll into view (recycle-safe). This is a grid-drawn convenience; a custom
    * `cellRenderer` can still draw any indicator instead.
+   *
+   * Group rows are evaluated too: the predicate gets `isGroup`, `node` and the group cell's value,
+   * while a field name reads the group's (synthetic) data and so never marks a client-side group.
+   * In `"groupRows"` mode the full-width cell carries the nominal column's indicator.
    */
   actionFrameIndicator?: boolean | string | ((params: CellClassParams) => boolean);
   /**

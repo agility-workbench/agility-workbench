@@ -46,6 +46,42 @@ class ActionFrameHost {
   ];
 }
 
+@Component({
+  standalone: true,
+  template: `<div class="angular-group-frame">group:{{ params()?.isGroup }}</div>`,
+})
+class GroupFrame {
+  static lastParams: ActionFrameComponentParams | undefined;
+  readonly params = input<ActionFrameComponentParams>();
+  ngOnInit(): void { GroupFrame.lastParams = this.params(); }
+}
+
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <awb-grid
+      style="height: 600px"
+      [rowData]="rows"
+      [columnDefs]="cols"
+      [groupRowsSelectable]="true"
+      rowIdKey="id"
+      (gridReady)="api = $event"
+    />
+  `,
+})
+class GroupActionFrameHost {
+  api: IGridAPI | null = null;
+  rows = [
+    { id: "1", team: "Core", comment: "hello" },
+    { id: "2", team: "Core", comment: "world" },
+  ];
+  cols: NgColDef[] = [
+    { colId: "team", key: "team", label: "Team" },
+    { colId: "comment", key: "comment", label: "Comment", actionFrameComponent: GroupFrame },
+  ];
+}
+
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function commentCell(gridEl: HTMLElement, row = 0): HTMLElement {
@@ -141,5 +177,25 @@ describe("AwbGrid ActionFrame integration", () => {
 
     expect(commentCell(gridEl, 0).classList).toContain("pte-action-frame-indicator");
     expect(commentCell(gridEl, 1).classList).not.toContain("pte-action-frame-indicator");
+  });
+
+  it("opens on a group row with groupRowsSelectable and hands the component the node", async () => {
+    GroupFrame.lastParams = undefined;
+    const { gridEl, host } = await mountGridHost(GroupActionFrameHost);
+    const api = host.api!;
+    api.setRowGroupColumns(["team"]);
+    await tick();
+    const group = api.getCore().getRowModel().getRowNodeAtViewIndex(0)!;
+    expect(group.isGroup).toBe(true);
+    const colId = api.getColumnModel().getByColId("comment")!.instanceID;
+    api.openActionFrame({ rowId: group.id, colId });
+    await tick();
+
+    expect(gridEl.querySelector(".pte-action-frame-popover")).toBeTruthy();
+    expect(gridEl.querySelector(".angular-group-frame")?.textContent).toContain("group:true");
+    // Read through a widening cast: the reset above narrows the static to `undefined`.
+    const seen = GroupFrame.lastParams as ActionFrameComponentParams | undefined;
+    expect(seen?.isGroup).toBe(true);
+    expect(seen?.node).toBe(group);
   });
 });

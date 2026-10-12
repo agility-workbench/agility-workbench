@@ -49,7 +49,10 @@ Each component slot has a companion params field where applicable.
 
 `cellClass` and `cellStyle` accept static values or callbacks. `colSpan` returns
 the number of adjacent columns occupied for each row. `actionFrameIndicator`
-marks cells with attached content.
+marks cells with attached content. Group rows are evaluated too (a predicate receives `isGroup`
+and `node`), and in `groupDisplayType: "groupRows"` the full-width row carries the indicator of its
+nominal column, the first non-leading leaf; frames open on group rows when `groupRowsSelectable` is
+on or in pivot mode.
 
 `inheritRowPresentation` controls whether the column receives `cellClass`,
 `cellStyle`, `tooltip`, and the row editability gate from `getRowPresentation`.

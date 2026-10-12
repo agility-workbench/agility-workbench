@@ -66,6 +66,10 @@ interface PinnedRowsRendererParams {
   forwardWheel?: (deltaX: number, deltaY: number) => void;
   /** Paints quick-filter find highlights on one cell (see FindHighlightRenderer.applyToCell). */
   findHighlights: () => FindHighlightRenderer;
+  /** The sticky overlay's rows were rebuilt from scratch. Per-cell decorations owned elsewhere
+   * (the ActionFrame border) must re-stamp: the scroll tick re-stamps after this render anyway,
+   * but forced rebuilds (row presentation, pin changes, colSpan repaints) happen outside it. */
+  onStickyRebuilt?: () => void;
 }
 
 /**
@@ -230,6 +234,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.refreshFindHighlights();
       this.updateLayout();
     }
+    if (stickyChanged) this.params.onStickyRebuilt?.();
 
     this.topCount = top.length;
     this.bottomCount = bottom.length;

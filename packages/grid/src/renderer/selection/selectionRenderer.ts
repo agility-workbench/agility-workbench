@@ -482,7 +482,8 @@ export class SelectionRenderer {
       })),
 
       // Shift+F2 — open the ActionFrame on the focused cell (Excel/Sheets "edit comment"
-      // convention). Core no-ops on a group row / when the column has no ActionFrame component.
+      // convention). Core no-ops when the column has no ActionFrame component; a group row only
+      // takes the cursor when it can also host a frame, so the two gates agree.
       {
         id: "openActionFrame",
         chord: "shift+f2",

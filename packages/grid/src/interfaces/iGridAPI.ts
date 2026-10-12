@@ -579,7 +579,10 @@ export interface IGridAPI {
 
   /* ----- ActionFrame ----- */
   /** Open the persistent ActionFrame (frame + form popover) on a body cell. Closes any open editor
-   * or previously-open frame (only one at a time). No-op on a group row / missing cell. */
+   * or previously-open frame (only one at a time). No-op on a missing cell, on a group row that is
+   * not cell-selectable (`groupRowsSelectable` off and not in pivot mode), and on a full-width
+   * group row (`groupDisplayType: "groupRows"`) for any column but the nominal one — the first
+   * non-leading leaf, which that row's single cell stands in for. */
   openActionFrame(cell: CellRef): void;
   /** Close any open ActionFrame. */
   closeActionFrame(): void;

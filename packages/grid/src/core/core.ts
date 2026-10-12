@@ -2364,6 +2364,19 @@ export class GridCore implements IGridCore {
     return this.options.groupRowsSelectable || this.pivotMode;
   }
 
+  // Whether a cell of `row` can carry an ActionFrame. Group rows follow isNodeSelectable's group
+  // clause, so a frame opens exactly where the cell cursor can land; it is not reused wholesale
+  // because it also refuses manually pinned body rows, which keep their frames. A full-width group
+  // row has one cell, the host standing in for the nominal column, so no other column has a cell
+  // there to frame.
+  private canHostActionFrame(row: IRowNode, col: Column): boolean {
+    if (row.isGroup && !(this.options.groupRowsSelectable || this.pivotMode)) return false;
+    if (this.isFullWidthNode(row)) {
+      return this.columnModel.getFullWidthNominalLeaf()?.instanceID === col.instanceID;
+    }
+    return true;
+  }
+
   // Whether a row can be ROW-selected (checked). Narrower than isNodeSelectable, which also decides
   // navigation stops: an app-disabled row (isRowSelectable → false) stays a live cursor target but
   // cannot join the row selection through any route, and pivot rows are cursor targets without
@@ -3565,7 +3578,7 @@ export class GridCore implements IGridCore {
       case "actionFrameOpen": {
         const col = this.resolveCellColumn(action.cell);
         const row = this.rowModel.getRowNode(action.cell.rowId);
-        if (!col || !row || row.isGroup) break;
+        if (!col || !row || !this.canHostActionFrame(row, col)) break;
         // No frame to show if the column has no form component (a `defaultColDef` value, if any,
         // has already been merged onto the column).
         if (!col.actionFrameComponent) break;

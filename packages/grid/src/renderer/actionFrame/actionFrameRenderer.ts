@@ -14,7 +14,8 @@ import {
 export interface ActionFrameRendererParams {
   core: GridCore;
   api: IGridAPI;
-  /** The body element (live cells are queried under it; click trigger resolves here). */
+  /** The body element (live cells are queried under it and under the sticky overlay beside it;
+   * click trigger resolves here). */
   body: HTMLElement;
   /** The grid root — focus is returned here on close. */
   root: HTMLElement;
@@ -113,7 +114,7 @@ export class ActionFrameRenderer {
     if (!comp) return;
 
     const rowNode = this.params.core.getRowModel().getRowNode(cell.rowId);
-    if (!rowNode || rowNode.isGroup) return;
+    if (!rowNode) return;
 
     const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
     const colIdx = this.colIdxFor(cell.colInstanceId ?? cell.colId);
@@ -122,11 +123,23 @@ export class ActionFrameRenderer {
     // Scroll the cell into the pool so the initial anchor rect resolves.
     this.params.ensureCellVisible(viewIdx, colIdx);
 
-    const value = col.getValue(rowNode);
+    const isGroup = !!rowNode.isGroup;
+    // A group row has no data row to read the column from; its cell holds what the core's group
+    // value rule says, the same thing a copy of the cell would carry.
+    let value: unknown;
+    let valueFormatted: unknown;
+    if (isGroup) {
+      ({ value, formatted: valueFormatted } = this.params.core.getGroupCellValue(col, rowNode));
+    } else {
+      value = col.getValue(rowNode);
+      valueFormatted = col.formatValue(value, rowNode);
+    }
     const params: ActionFrameComponentParams = {
       value,
-      valueFormatted: col.formatValue(value, rowNode),
+      valueFormatted,
       data: rowNode.data,
+      node: rowNode,
+      isGroup,
       rowId: cell.rowId,
       rowIndex: viewIdx,
       colDef: col,
@@ -192,7 +205,11 @@ export class ActionFrameRenderer {
   }
 
   private clearFrame() {
-    this.params.body.querySelectorAll(".pte-action-frame").forEach((c) => {
+    const stale = [
+      ...this.params.body.querySelectorAll<HTMLElement>(".pte-action-frame"),
+      ...(this.stickyOverlay()?.querySelectorAll<HTMLElement>(".pte-action-frame") ?? []),
+    ];
+    stale.forEach((c) => {
       c.classList.remove("pte-action-frame");
       c.removeAttribute("aria-haspopup");
       c.removeAttribute("aria-expanded");
@@ -231,16 +248,40 @@ export class ActionFrameRenderer {
     return this.params.leafColumns().findIndex((c) => c.instanceID === col.instanceID);
   }
 
+  // The sticky overlay is a sibling of the body inside the body frame, not a descendant of it.
+  // Scoped to the frame's direct children so a grid nested in a cell renderer can't answer.
+  private stickyOverlay(): HTMLElement | null {
+    return this.params.body.parentElement?.querySelector<HTMLElement>(":scope > .pte-sticky-rows") ?? null;
+  }
+
+  /** The element the user sees for `cell`: a docked group row's sticky mirror when there is one
+   * (it covers its pooled body row, so a border or popover anchored underneath would be hidden),
+   * else the pooled body cell. */
   private getCellEl(cell: CellRef): HTMLElement | null {
-    const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
-    if (viewIdx == null || viewIdx < 0) return null;
     const colIdx = this.colIdxFor(cell.colInstanceId ?? cell.colId);
     if (colIdx < 0) return null;
+    // A full-width row's pooled per-column cells stay in the DOM, hidden, with their own colIdx
+    // stamps — the nominal column's among them. Its visible cell is the host, so match only that.
+    const fullWidth = this.params.core.isFullWidthNode(this.params.core.getRowModel().getRowNode(cell.rowId));
+    const cellSelector = `${fullWidth ? ".pte-full-width-cell" : ".pte-cell"}[data-col-idx="${colIdx}"]`;
+    // Mirrors are matched by row id: they stamp the node's own viewIndex, which is not the same
+    // coordinate as the body's page-relative index once a grouped view paginates. The stack is a
+    // handful of rows, so a scan beats escaping an arbitrary id into a selector.
+    const sticky = this.stickyOverlay();
+    if (sticky && sticky.style.display !== "none") {
+      for (const rowEl of sticky.querySelectorAll<HTMLElement>(".pte-row.pte-sticky-row")) {
+        if (rowEl.dataset.rowId !== cell.rowId) continue;
+        const cellEl = rowEl.querySelector<HTMLElement>(cellSelector);
+        if (cellEl) return cellEl;
+      }
+    }
+    const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
+    if (viewIdx == null || viewIdx < 0) return null;
     // A row slot renders up to four section rows (leading/left/center/right) sharing one
     // view-idx; the cell lives in exactly one of them.
     const rowEls = this.params.body.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
     for (let i = 0; i < rowEls.length; i++) {
-      const cellEl = rowEls[i].querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
+      const cellEl = rowEls[i].querySelector<HTMLElement>(cellSelector);
       if (cellEl) return cellEl;
     }
     return null;

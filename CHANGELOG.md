@@ -6,6 +6,24 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 ## Unreleased
 
 
+### ActionFrame
+
+- **Group rows host ActionFrames.** A frame opens on a group row wherever the cell cursor can land
+  on it — with `groupRowsSelectable`, or in pivot mode — by click trigger, Shift+F2 or
+  `api.openActionFrame`; elsewhere a group row stays a no-op, as before. Manually pinned body rows
+  are unaffected. In `groupDisplayType: "groupRows"` a group row has one full-width cell, which
+  stands in for the nominal column (the first non-leading leaf): only that column's frame opens
+  there, and any other column is a no-op.
+- **Component params gain `node` and `isGroup`.** On a group row `value` / `valueFormatted` are the
+  group cell's value — its aggregate, or the group label on the group's label column — the same
+  rule a copy of the cell follows.
+- **`actionFrameIndicator` marks group cells.** Group rows are evaluated like leaves; predicates
+  receive `isGroup`, `node` and the group cell's value. The full-width group cell in `"groupRows"`
+  mode carries the nominal column's indicator.
+- **The frame follows a docked sticky group row.** With `groupRowsSticky`, a framed group row that
+  docks keeps its border and popover on the sticky copy the user sees, instead of on the body row
+  hidden underneath it.
+
 ### Events
 
 - **Click payloads carry the row's node.** `cellClicked` / `onCellClicked` and `rowClicked` /
