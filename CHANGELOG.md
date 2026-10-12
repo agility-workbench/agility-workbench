@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.9.0 — 2026-10-12
 
 
 ### Saved views
@@ -21,6 +21,16 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   aggregates re-derived). Groups not named keep their state, unknown ids and leaves are skipped,
   and a call that changes nothing rebuilds nothing. Backed by a new `columnGroupStateSet` core
   action.
+
+### Fixes
+
+- **"Add group" and "Add sort" no longer run into the section divider.** The toolbar's two add
+  buttons had padding on the left only, so "Add group" ended flush against the sort section's
+  border and a hovered "Add sort" showed a highlight cut off at its last letter. Both now carry the
+  same 8px on each side as the bar's other controls.
+- **The Views button fills the toolbar's height.** With saved views on, the button sat at its 34px
+  minimum inside the 42px bar, so its divider and hover highlight stopped short of the bar's edges.
+  It now stretches like the Export and Columns buttons beside it.
 
 ## 1.8.0 — 2026-10-12
 
