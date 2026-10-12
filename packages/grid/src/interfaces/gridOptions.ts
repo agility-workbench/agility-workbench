@@ -13,10 +13,12 @@ import type { ColDef, DefaultColDef } from "./column";
 import type {
   CellValueChangeSource,
   GridEventCellClickedParams,
+  GridEventCellDoubleClickedParams,
   GridEventFilterChangedParams,
   GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
+  GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions, SheetsOptions } from "./gridView";
@@ -172,6 +174,12 @@ export type GetRowPresentation = (
  * the grid built for it; returns the items to actually show. Return `[]` to show no menu for this
  * context (the grid still owns the gesture — the browser's native menu stays suppressed). To let
  * the native browser menu through instead, set `bodyContextMenu` to `false`.
+ *
+ * Group rows open the menu in every `groupDisplayType`, including a docked sticky group row. The
+ * context tells them apart: `ctx.node` is the clicked row, `ctx.isGroup` marks a group row,
+ * `ctx.isFullWidth` a row drawn as one spanning cell (a `"groupRows"` group row, whose `colId` is
+ * then the first column after the row-number / checkbox columns), and `ctx.groupDisplayType` is
+ * the current display mode.
  */
 export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: MenuItem[] }) => MenuItem[];
 
@@ -1158,14 +1166,31 @@ export interface GridOptions {
   getRowPresentation?: GetRowPresentation;
   /**
    * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
-   * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell.
+   * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell. The
+   * payload includes the row's `node` and `isGroup`; on a group row `value` is the column's
+   * aggregate, or the group label on the group's label column.
    */
   onCellClicked?: (params: GridEventCellClickedParams) => void;
   /**
    * Called when a body row is clicked (left button), including group rows. Convenience wrapper over
-   * the `rowClicked` event.
+   * the `rowClicked` event. The payload includes the row's `node`.
    */
   onRowClicked?: (params: GridEventRowClickedParams) => void;
+  /**
+   * Called when a body cell is double-clicked (left button). Convenience wrapper over the
+   * `cellDoubleClicked` event; the payload matches `onCellClicked`. Neither `cellDoubleClicked` nor
+   * `rowDoubleClicked` fires when the double-click opened the editor or ran the fill handle;
+   * otherwise both fire regardless of `cellSelection` / `editTrigger`. Not fired for the row-number
+   * or checkbox cells (same as `cellClicked`).
+   */
+  onCellDoubleClicked?: (params: GridEventCellDoubleClickedParams) => void;
+  /**
+   * Called when a body row is double-clicked (left button), including group rows. Convenience
+   * wrapper over the `rowDoubleClicked` event; the payload matches `onRowClicked`. Not fired when
+   * the double-click opened the editor or ran the fill handle; otherwise fires regardless of
+   * `cellSelection` / `editTrigger`.
+   */
+  onRowDoubleClicked?: (params: GridEventRowDoubleClickedParams) => void;
   /**
    * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
    * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's
@@ -1347,7 +1372,9 @@ export interface GridOptions {
    * - `false`: the grid does not open a menu and does not intercept the event, so the browser's
    *   native context menu appears.
    * - a function: called with the menu context and the default items; return the items to show
-   *   (return `[]` to show nothing while still suppressing the native menu).
+   *   (return `[]` to show nothing while still suppressing the native menu). The context's `node`,
+   *   `isGroup`, `isFullWidth` and `groupDisplayType` tell a group row (which opens the menu in
+   *   every display mode) from a leaf row.
    */
   bodyContextMenu?: boolean | BodyContextMenuGetter;
   /**

@@ -232,12 +232,14 @@ export type {
   CellValueChangeSource,
   GridEventAggregateChangedParams,
   GridEventCellClickedParams,
+  GridEventCellDoubleClickedParams,
   GridEventCellValueChangedParams,
   GridEventFilterChangedParams,
   GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   HistoryChangeReason,
   GridEventRowClickedParams,
+  GridEventRowDoubleClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
   GridEventColumnsChangedParams,
@@ -272,6 +274,7 @@ export type {
   ServerSideRefreshOptions,
 } from "./interfaces/iRowModel";
 export type { IRowNode } from "./interfaces/iRowNode";
+export type { GroupCellValue } from "./core/groupCellValue";
 
 export type {
   IServerSideAggregationParams,

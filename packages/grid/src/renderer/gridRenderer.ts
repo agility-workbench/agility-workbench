@@ -530,6 +530,7 @@ export class GridRenderer {
         bodyWrapper.body.scrollTop += deltaY;
         if (deltaX) bodyWrapper.centerSpacer.scrollLeft += deltaX;
       },
+      onStickyRebuilt: () => this._actionFrameRenderer?.onWindowUpdate(),
     });
     const apiWithPinnedRows = this.api as unknown as {
       setPinnedRowsController?: (controller: {
@@ -705,6 +706,7 @@ export class GridRenderer {
       headerWrapper: headerRefs.wrapper,
       body: bodyWrapper.body,
       pinnedRowContainers: this._pinnedRowsRenderer.getInteractionRoots(),
+      stickyRowContainer: this._pinnedRowsRenderer.getStickyRoot(),
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
@@ -804,7 +806,8 @@ export class GridRenderer {
           bodyWrapper.centerSpacer.scrollLeft,
           bodyWrapper.rightSpacer.scrollLeft,
         );
-        // Keep a persistent ActionFrame pinned to its (possibly recycled) cell across scroll.
+        // Keep a persistent ActionFrame pinned to its (possibly recycled) cell across scroll. Runs
+        // after the sticky render above, so a mirror rebuilt this frame is the one re-stamped.
         this._actionFrameRenderer.onWindowUpdate();
       },
     });

@@ -247,4 +247,48 @@ describe("ActionFrame", () => {
     expect(row1Comment?.classList.contains("pte-action-frame-indicator")).toBe(false);
     await unmountTestRoot(root);
   });
+
+  it("opens on a group row with groupRowsSelectable and hands the component the node", async () => {
+    const seen: ActionFrameComponentParams[] = [];
+    const GroupForm = (p: ActionFrameComponentParams) => {
+      seen.push(p);
+      return React.createElement("div", { className: "af-group-form" }, `group:${String(p.isGroup)}`);
+    };
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={DATA.map(row => ({ ...row, team: "Core" }))}
+          columnDefs={[
+            { colId: "team", key: "team", label: "Team" },
+            { colId: "comment", key: "comment", label: "Comment", actionFrameComponent: GroupForm },
+          ]}
+          rowIdKey="id"
+          groupRowsSelectable
+        />,
+      );
+    });
+    const api = apiRef.current!;
+    await act(async () => {
+      api.setRowGroupColumns(["team"]);
+      await tick();
+    });
+    const group = api.getCore().getRowModel().getRowNodeAtViewIndex(0)!;
+    expect(group.isGroup).toBe(true);
+    const colId = api.getColumnModel().getByColId("comment")!.instanceID;
+    await act(async () => {
+      api.openActionFrame({ rowId: group.id, colId });
+      await tick();
+    });
+    expect(popover(container)).not.toBeNull();
+    expect(container.querySelector(".af-group-form")?.textContent).toBe("group:true");
+    expect(seen.at(-1)?.isGroup).toBe(true);
+    expect(seen.at(-1)?.node).toBe(group);
+    await unmountTestRoot(root);
+  });
 });

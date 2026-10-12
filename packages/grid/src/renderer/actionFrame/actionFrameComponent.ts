@@ -1,5 +1,6 @@
 import { Column } from "../../column/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
+import { IRowNode } from "../../interfaces/iRowNode";
 
 /**
  * An ActionFrame component renders the client-owned form body inside the popover attached to a
@@ -10,12 +11,18 @@ import { IGridAPI } from "../../interfaces/iGridAPI";
  * re-invoked to refresh, a class form gets `init/getGui/refresh/destroy`.
  */
 export interface ActionFrameComponentParams {
-  /** Raw cell value. */
+  /** Raw cell value. On a group row: the column's aggregate, else the group label on the group's
+   * label column, else `undefined` (the rule a copy of the cell follows). */
   value: any;
   /** Formatted display value. */
   valueFormatted?: any;
-  /** The full row data object. */
+  /** The full row data object. A client-side group row has no data row of its own; branch on
+   * `isGroup` and read `node` instead. */
   data: any;
+  /** The row node the frame belongs to (group or leaf). */
+  node: IRowNode;
+  /** True when the frame is on a group row. */
+  isGroup: boolean;
   /** Row id. */
   rowId: string;
   /** Row view index. */

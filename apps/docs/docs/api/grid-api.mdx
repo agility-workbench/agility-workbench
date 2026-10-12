@@ -104,6 +104,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
+| `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
 | `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; off restores the pre-pivot state exactly, on reinstates the last pivot) |
@@ -283,10 +284,19 @@ commit that doesn't change the stored value, anything under `readOnlyEdit`,
 and a whole `withUndoGroup` scope fires once on exit. The declarative option
 callback is `onHistoryChanged`.
 
+`rowDoubleClicked` and `cellDoubleClicked` are the double-click counterparts of
+`rowClicked` and `cellClicked`, with the same payloads (`node`, `isGroup`, and a
+group cell's aggregate or label as `value`). Neither fires when the double-click
+opened the editor or ran the fill handle; otherwise both fire regardless of
+`cellSelection` / `editTrigger`. Like `cellClicked`, `cellDoubleClicked` skips
+the row-number and checkbox cells. The declarative option callbacks are
+`onRowDoubleClicked` and `onCellDoubleClicked`.
+
 ### Column identity in payloads and inputs
 
 Every `colId` field carried by event payloads (`cellsChanged`, `cellValueChanged`,
 `editingChanged`, `columnsChanged`, `columnWidthsChanged`, `cellClicked`,
+`cellDoubleClicked`,
 `filterChanged`, tooltip
 and focus events, `onCellValueChanged`, `onSortChanged`, selection `rangeCells`, …)
 holds the **public `ColDef.colId`** — the id you defined. The column's internal

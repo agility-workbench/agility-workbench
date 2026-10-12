@@ -1,6 +1,7 @@
 import { GridCore } from "../core/core";
 import { BodyMenuCoordinator } from "../menu/bodyMenuCoordinator";
 import { BodyMenuContext, BodyMenuSelectionSnapshot } from "../menu/bodyContext";
+import type { IRowNode } from "../interfaces/iRowNode";
 import { MenuRenderer } from "./menuRenderer";
 
 interface BodyMenuOpenerParams {
@@ -23,9 +24,6 @@ export class BodyMenuOpener {
     const rowEl = cell.closest(".pte-row") as HTMLDivElement | null;
     if (!rowEl) return;
 
-    // App-pinned band rows carry a band-local data-view-idx plus a rowPinned marker; resolve their
-    // rowId from the band, not the body view. (Sticky mirrors carry the real body view index and no
-    // marker, so they take the body path.)
     const rowPinned = rowEl.dataset.rowPinned === "top" || rowEl.dataset.rowPinned === "bottom"
       ? rowEl.dataset.rowPinned
       : undefined;
@@ -56,15 +54,14 @@ export class BodyMenuOpener {
     // grid still owns the gesture in that case and shows nothing.)
     if (this.params.core.options.bodyContextMenu === false) return;
 
-    const viewIdx = Number(rowEl.getAttribute("data-view-idx"));
     const colIdx = Number(cell.dataset.colIdx);
     const colId = cell.dataset.colId ?? null;
-    if (!Number.isFinite(viewIdx) || !Number.isFinite(colIdx) || !colId) return;
+    if (!Number.isFinite(colIdx) || !colId) return;
 
-    const rowId = rowPinned
-      ? this.params.core.getDisplayedPinnedRow(rowPinned, viewIdx)?.id ?? null
-      : this.params.core.getRowIdAtViewIndex(viewIdx);
-    if (!rowId) return;
+    const resolved = this.resolveRow(rowEl, rowPinned);
+    if (!resolved) return;
+    const { viewIdx, node } = resolved;
+    const rowId = node.id;
 
     e.preventDefault();
 
@@ -97,6 +94,7 @@ export class BodyMenuOpener {
     this.open({
       rowId,
       colId,
+      node,
       viewIdx,
       rowPinned,
       clientX: e.clientX,
@@ -104,11 +102,40 @@ export class BodyMenuOpener {
     });
   }
 
-  private open(args: { rowId: string; colId: string; viewIdx: number; rowPinned?: "top" | "bottom"; clientX: number; clientY: number; anchorEl?: HTMLElement }) {
+  // The clicked row's node and the view index the core addresses it by. App-pinned band rows carry a
+  // band-local data-view-idx plus a rowPinned marker, so they resolve from the band. A sticky mirror
+  // stamps the node's own viewIndex, which is not page-relative once a grouped view paginates, so it
+  // resolves by its row id instead (an ancestor docked over a later page is not on the page, so it
+  // resolves to nothing rather than to whichever row holds its index there); every other body row's
+  // data-view-idx is the page slot.
+  private resolveRow(rowEl: HTMLElement, rowPinned: "top" | "bottom" | undefined): { viewIdx: number; node: IRowNode } | null {
+    const core = this.params.core;
+    if (rowPinned) {
+      const viewIdx = Number(rowEl.dataset.viewIdx);
+      const node = Number.isFinite(viewIdx) ? core.getDisplayedPinnedRow(rowPinned, viewIdx) : null;
+      return node ? { viewIdx, node } : null;
+    }
+    if (rowEl.classList.contains("pte-sticky-row")) {
+      const rowId = rowEl.dataset.rowId;
+      const viewIdx = rowId != null ? core.getViewIndexForRowId(rowId) : null;
+      const node = viewIdx != null ? core.getRowModel().getRowNodeAtViewIndex(viewIdx) : null;
+      return node ? { viewIdx: viewIdx!, node } : null;
+    }
+    const viewIdx = Number(rowEl.dataset.viewIdx);
+    const node = Number.isFinite(viewIdx) ? core.getRowModel().getRowNodeAtViewIndex(viewIdx) : null;
+    return node ? { viewIdx, node } : null;
+  }
+
+  private open(args: { rowId: string; colId: string; node: IRowNode; viewIdx: number; rowPinned?: "top" | "bottom"; clientX: number; clientY: number; anchorEl?: HTMLElement }) {
+    const core = this.params.core;
     const ctx: BodyMenuContext = {
       trigger: "bodyContextMenu",
       rowId: args.rowId,
       colId: args.colId,
+      node: args.node,
+      isGroup: !!args.node.isGroup,
+      isFullWidth: core.isFullWidthNode(args.node),
+      groupDisplayType: core.options.groupDisplayType,
       viewIdx: args.viewIdx,
       rowPinned: args.rowPinned,
       selection: this.snapshotSelection(),

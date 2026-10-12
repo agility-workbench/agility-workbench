@@ -42,6 +42,10 @@ function click(el: HTMLElement) {
   el.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
 }
 
+function dblclick(el: HTMLElement) {
+  el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
+}
+
 describe("onCellClicked / onRowClicked (DOM click path)", () => {
   it("fires both with the right row/cell identity", async () => {
     const onCellClicked = vi.fn();
@@ -63,6 +67,23 @@ describe("onCellClicked / onRowClicked (DOM click path)", () => {
     const { container, root } = await mount({ onRowClicked, cellSelection: "text" });
     await act(async () => { click(dataCell(container, 0, 0)); });
     expect(onRowClicked).toHaveBeenCalledTimes(1);
+    await unmountTestRoot(root);
+  });
+});
+
+describe("onCellDoubleClicked / onRowDoubleClicked (DOM dblclick path)", () => {
+  it("fires both with the right row/cell identity", async () => {
+    const onCellDoubleClicked = vi.fn();
+    const onRowDoubleClicked = vi.fn();
+    // Columns are not editable, so the double-click opens no editor and is not consumed.
+    const { container, root } = await mount({ onCellDoubleClicked, onRowDoubleClicked });
+
+    await act(async () => { dblclick(dataCell(container, 1, 1)); });
+
+    expect(onRowDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(onRowDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "2", viewIdx: 1, isGroup: false });
+    expect(onCellDoubleClicked).toHaveBeenCalledTimes(1);
+    expect(onCellDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "2", colId: "name", value: "BBB" });
     await unmountTestRoot(root);
   });
 });

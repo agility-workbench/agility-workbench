@@ -66,6 +66,10 @@ interface PinnedRowsRendererParams {
   forwardWheel?: (deltaX: number, deltaY: number) => void;
   /** Paints quick-filter find highlights on one cell (see FindHighlightRenderer.applyToCell). */
   findHighlights: () => FindHighlightRenderer;
+  /** The sticky overlay's rows were rebuilt from scratch. Per-cell decorations owned elsewhere
+   * (the ActionFrame border) must re-stamp: the scroll tick re-stamps after this render anyway,
+   * but forced rebuilds (row presentation, pin changes, colSpan repaints) happen outside it. */
+  onStickyRebuilt?: () => void;
 }
 
 /**
@@ -125,8 +129,16 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   getInteractionRoots(): HTMLDivElement[] {
-    // The sticky overlay lives inside the body frame, so body-level listeners already cover it.
     return [this.top.root, this.bottom.root];
+  }
+
+  /**
+   * The sticky overlay. It sits in the body frame beside the body scroller, not inside it, so no
+   * body-level listener sees an event on a docked mirror; callers that want a gesture on mirrors
+   * to behave as on the body row bind it here as well.
+   */
+  getStickyRoot(): HTMLDivElement {
+    return this.sticky.root;
   }
 
   setPinnedTopRowData(rows: any[]): void {
@@ -230,6 +242,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.refreshFindHighlights();
       this.updateLayout();
     }
+    if (stickyChanged) this.params.onStickyRebuilt?.();
 
     this.topCount = top.length;
     this.bottomCount = bottom.length;
@@ -878,7 +891,14 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       && this.params.core.options.groupDisplayType === "groupRows") {
       const cell = document.createElement("div");
       cell.className = "pte-cell pte-full-width-cell pte-group-cell";
-      cell.dataset.colIdx = String(model.getLeadingLeaves().length);
+      // Same column identity as the body pool's host, so a docked header resolves clicks, menus
+      // and frames to the cell its body row would.
+      const nominal = model.getFullWidthNominalLeaf();
+      const nominalMeta = nominal ? model.leafColumnLookup.get(nominal.instanceID) : undefined;
+      if (nominal && nominalMeta) {
+        cell.dataset.colIdx = String(nominalMeta.globalIndex);
+        cell.dataset.colId = nominal.instanceID;
+      }
       cell.style.display = "flex";
       cell.style.width = `${this.columnsWidth(model.getCenterLeaves())}px`;
       stampGridCellAria(cell);

@@ -3,6 +3,68 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.8.0 — 2026-10-12
+
+
+### ActionFrame
+
+- **Group rows host ActionFrames.** A frame opens on a group row wherever the cell cursor can land
+  on it — with `groupRowsSelectable`, or in pivot mode — by click trigger, Shift+F2 or
+  `api.openActionFrame`; elsewhere a group row stays a no-op, as before. Manually pinned body rows
+  are unaffected. In `groupDisplayType: "groupRows"` a group row has one full-width cell, which
+  stands in for the nominal column (the first non-leading leaf): only that column's frame opens
+  there, and any other column is a no-op.
+- **Component params gain `node` and `isGroup`.** On a group row `value` / `valueFormatted` are the
+  group cell's value — its aggregate, or the group label on the group's label column — the same
+  rule a copy of the cell follows.
+- **`actionFrameIndicator` marks group cells.** Group rows are evaluated like leaves; predicates
+  receive `isGroup`, `node` and the group cell's value. The full-width group cell in `"groupRows"`
+  mode carries the nominal column's indicator.
+- **The frame follows a docked sticky group row.** With `groupRowsSticky`, a framed group row that
+  docks keeps its border and popover on the sticky copy the user sees, instead of on the body row
+  hidden underneath it.
+
+### Body context menu
+
+- **Group rows in `groupDisplayType: "groupRows"` open the grid's body menu.** Right-click on a
+  full-width group row — in the body, or docked as a sticky group row — previously fell through to
+  the browser's native menu; it now opens the grid menu (and runs a `bodyContextMenu` getter) as
+  group cells in the other display modes already did. Its `colId` is the nominal column, the first
+  column after the row-number and checkbox columns. `bodyContextMenu: false` still lets the native
+  menu through.
+- **The menu context tells group rows from leaves.** `BodyMenuContext` gains `node` (the clicked
+  row; for an app-pinned band row, the displayed pinned node), `isGroup`, `isFullWidth` (the row is
+  drawn as one spanning cell, so `colId` is the nominal column) and `groupDisplayType` (the current
+  option value).
+- **No edit items on a group-only selection.** Cut, Paste, Fill down / right and the fill redo
+  items are withheld when the selection holds only group rows, even over editable columns: a group
+  cell's label and aggregates are never a write target. Copy, Copy with Headers, Export and Pin row
+  are unchanged.
+
+### Events
+
+- **Click payloads carry the row's node.** `cellClicked` / `onCellClicked` and `rowClicked` /
+  `onRowClicked` now include `node` (absent only when the row is not loaded), and `cellClicked`
+  gains `isGroup`. On a group row, `cellClicked`'s `value` is no longer `undefined`: it is the
+  column's aggregate, or the group label on the group's label column — the same rule a copy of
+  that cell follows.
+- **Double-click is an event.** New `rowDoubleClicked` / `cellDoubleClicked` events, with
+  `onRowDoubleClicked` / `onCellDoubleClicked` options, `onRowDoubleClicked` /
+  `onCellDoubleClicked` React props and `(rowDoubleClicked)` / `(cellDoubleClicked)` Angular
+  outputs. Payloads match the click pair (`GridEventRowDoubleClickedParams` /
+  `GridEventCellDoubleClickedParams`), group rows included. Neither fires when the grid consumed
+  the gesture — the double-click opened the editor, or ran the fill handle's fill-to-adjacent-block
+  — otherwise both fire regardless of `cellSelection` / `editTrigger`, so read-only grids get them
+  too. `cellDoubleClicked` skips the row-number and checkbox cells, as `cellClicked` does.
+
+### API
+
+- **`api.getRowNode(rowId)` returns a row's node.** A data row, a client-side group or tree node
+  (the id `getGroupNodes()` and `rowGroupOpened` report), or an application-pinned band row;
+  server-side, a loaded leaf or group row. `undefined` for an id the grid does not hold —
+  including a group id from before a regroup, which mints new group nodes. The same node now
+  rides in the click and double-click payloads and in the body-menu context.
+
 ## 1.7.0 — 2026-10-11
 
 

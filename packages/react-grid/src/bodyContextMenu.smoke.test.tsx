@@ -117,4 +117,52 @@ describe("bodyContextMenu", () => {
     expect(menuOpen(container)).toBe(false);
     await unmountTestRoot(root);
   });
+
+  it("hands the getter a group row's node, isGroup and isFullWidth on a groupRows group row", async () => {
+    const seen: BodyMenuContext[] = [];
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const apiRef = React.createRef<IGridAPI | null>();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <Grid
+          apiRef={apiRef}
+          data={[
+            { id: 1, team: "Core", name: "AAA" },
+            { id: 2, team: "Core", name: "BBB" },
+          ]}
+          columnDefs={[
+            { colId: "team", key: "team", label: "Team" },
+            { colId: "name", key: "name", label: "Name" },
+          ]}
+          rowIdKey="id"
+          groupDisplayType="groupRows"
+          bodyContextMenu={({ ctx, items }) => {
+            seen.push(ctx);
+            return items;
+          }}
+        />,
+      );
+    });
+    await act(async () => {
+      apiRef.current!.setRowGroupColumns(["team"]);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    const host = container.querySelector<HTMLElement>(".pte-row[data-view-idx='0'] .pte-full-width-cell")!;
+    expect(host).not.toBeNull();
+
+    const ev = await act(async () => rightClick(host));
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].isGroup).toBe(true);
+    expect(seen[0].isFullWidth).toBe(true);
+    expect(seen[0].groupDisplayType).toBe("groupRows");
+    expect(seen[0].node.id).toBe(seen[0].rowId);
+    expect(seen[0].colId).toBe(apiRef.current!.getColumnModel().getByColId("team")!.instanceID);
+    expect(menuOpen(container)).toBe(true);
+    await unmountTestRoot(root);
+  });
 });

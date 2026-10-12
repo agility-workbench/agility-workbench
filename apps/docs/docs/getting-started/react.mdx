@@ -105,6 +105,8 @@ const column: ReactColDef = {
 <Grid
   onCellClicked={(event) => console.log(event.rowId, event.colId)}
   onRowClicked={(event) => console.log(event.rowId)}
+  onCellDoubleClicked={(event) => console.log(event.rowId, event.colId)}
+  onRowDoubleClicked={(event) => console.log(event.rowId)}
   onCellValueChanged={(event) => saveChange(event)}
   onSelectionChanged={(event) => console.log(event.snapshot)}
   onSortChanged={(event) => console.log(event.changedColIds)}
@@ -131,5 +133,7 @@ For other events, subscribe with `api.on(eventName, handler)`.
 />
 ```
 
-React nodes are accepted in menu `left` and `right` slots.
+React nodes are accepted in menu `left` and `right` slots. The getters also receive
+`ctx`; for the body menu, `ctx.isGroup`, `ctx.isFullWidth` and `ctx.groupDisplayType`
+tell a right-clicked group row from a leaf row.
 

@@ -30,6 +30,7 @@ import { IServerSideDataSource } from "./serverSide";
 import { ColDef } from "./column";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
+import type { GroupCellValue } from "../core/groupCellValue";
 
 export type GridId = string;
 export type ColId = string;
@@ -192,6 +193,12 @@ export interface IGridCore {
    * one owner for every surface that writes a group row. `rowCount` overrides the node's own.
    */
   getGroupRowLabel(node: IRowNode, rowCount?: number): string;
+  /**
+   * What a group row's cell holds for `col`: its aggregate for that column, else the group label
+   * on the group's label column, else nothing. Precondition: `node.isGroup` (a leaf gets the
+   * empty result).
+   */
+  getGroupCellValue(col: Column, node: IRowNode): GroupCellValue;
   /** Swap the per-row selection gate; prunes selected rows the new predicate disables. */
   setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void;
   /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */

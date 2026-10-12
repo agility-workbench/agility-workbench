@@ -30,6 +30,7 @@ import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
 import { groupRowLabel, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
+import { groupCellValue, GroupCellValue } from "./groupCellValue";
 import {
   GridEventHandler,
   GridEventMap,
@@ -285,6 +286,8 @@ export class GridCore implements IGridCore {
     const o = this.options;
     this.on("cellClicked", (ev) => o.onCellClicked?.(ev));
     this.on("rowClicked", (ev) => o.onRowClicked?.(ev));
+    this.on("cellDoubleClicked", (ev) => o.onCellDoubleClicked?.(ev));
+    this.on("rowDoubleClicked", (ev) => o.onRowDoubleClicked?.(ev));
     this.on("selectionChanged", (ev) => o.onSelectionChanged?.(ev));
     this.on("cellValueChanged", (ev) => {
       o.onCellValueChanged?.({
@@ -359,6 +362,8 @@ export class GridCore implements IGridCore {
       getRowPresentation: options.getRowPresentation,
       onCellClicked: options.onCellClicked,
       onRowClicked: options.onRowClicked,
+      onCellDoubleClicked: options.onCellDoubleClicked,
+      onRowDoubleClicked: options.onRowDoubleClicked,
       onBeforeCellCommit: options.onBeforeCellCommit,
       fillOperation: options.fillOperation,
       onCellValueChanged: options.onCellValueChanged,
@@ -2363,6 +2368,19 @@ export class GridCore implements IGridCore {
     return this.options.groupRowsSelectable || this.pivotMode;
   }
 
+  // Whether a cell of `row` can carry an ActionFrame. Group rows follow isNodeSelectable's group
+  // clause, so a frame opens exactly where the cell cursor can land; it is not reused wholesale
+  // because it also refuses manually pinned body rows, which keep their frames. A full-width group
+  // row has one cell, the host standing in for the nominal column, so no other column has a cell
+  // there to frame.
+  private canHostActionFrame(row: IRowNode, col: Column): boolean {
+    if (row.isGroup && !(this.options.groupRowsSelectable || this.pivotMode)) return false;
+    if (this.isFullWidthNode(row)) {
+      return this.columnModel.getFullWidthNominalLeaf()?.instanceID === col.instanceID;
+    }
+    return true;
+  }
+
   // Whether a row can be ROW-selected (checked). Narrower than isNodeSelectable, which also decides
   // navigation stops: an app-disabled row (isRowSelectable → false) stays a live cursor target but
   // cannot join the row selection through any route, and pivot rows are cursor targets without
@@ -2415,6 +2433,16 @@ export class GridCore implements IGridCore {
     // `null`, not undefined: the helper's count parameter defaults to the node's own row count,
     // which would turn "no count" back into the badge this option just removed.
     return groupRowLabel(node, this.resolveGroupChildCount(node, rowCount) ?? null);
+  }
+
+  /**
+   * What a group row's cell holds for `col`: the aggregate stamped on the node for that column,
+   * else the group label when `col` is the group's label column, else nothing. Precondition:
+   * `node.isGroup`; a leaf gets the empty result. The one rule click payloads, menus and the
+   * ActionFrame read, shared with the clipboard serializer via `groupCellValue`.
+   */
+  getGroupCellValue(col: Column, node: IRowNode): GroupCellValue {
+    return groupCellValue(col, node, n => this.getGroupRowLabel(n));
   }
 
   /** Change what group rows show as their count; repaints the visible group rows. */
@@ -3554,7 +3582,7 @@ export class GridCore implements IGridCore {
       case "actionFrameOpen": {
         const col = this.resolveCellColumn(action.cell);
         const row = this.rowModel.getRowNode(action.cell.rowId);
-        if (!col || !row || row.isGroup) break;
+        if (!col || !row || !this.canHostActionFrame(row, col)) break;
         // No frame to show if the column has no form component (a `defaultColDef` value, if any,
         // has already been merged onto the column).
         if (!col.actionFrameComponent) break;

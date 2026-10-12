@@ -20,6 +20,11 @@ export interface IColumnModel {
   getCenterColumns(): Column[];
   getRightColumns(): Column[];
   getLeadingLeaves(): Column[];
+  /**
+   * The leaf a full-width group row's single host cell stands in for (selection, clicks, menus,
+   * ActionFrame all key off it): the first non-leading leaf; null when there is none.
+   */
+  getFullWidthNominalLeaf(): Column | null;
   getLeftLeaves(): Column[];
   getCenterLeaves(): Column[];
   getRightLeaves(): Column[];

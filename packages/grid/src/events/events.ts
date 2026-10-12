@@ -2,6 +2,7 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { GridHistoryState } from "../core/historyModel";
 import { RowDataChangeReason } from "@grid/interfaces/iRowModel";
 import { ColId, GridId } from "../interfaces/iGridCore";
+import type { IRowNode } from "../interfaces/iRowNode";
 import { QuickFilterFindState } from "../interfaces/find";
 import { CellRef, SelectionSnapshot } from "../interfaces/selection";
 import { TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
@@ -26,6 +27,8 @@ export type GridEventName =
   | "paginationChanged"
   | "cellClicked"
   | "rowClicked"
+  | "cellDoubleClicked"
+  | "rowDoubleClicked"
   | "tooltipShow"
   | "tooltipHide"
   | "actionFrameChanged"
@@ -273,8 +276,15 @@ export type GridEventCellClickedParams = {
   colIdx: number;
   /** The clicked row's underlying data object. */
   data: unknown;
-  /** The clicked cell's raw value. */
+  /**
+   * The clicked cell's raw value. On a group row there is no data row: this is the column's
+   * aggregate, else the group label on the group's label column, else undefined.
+   */
   value: unknown;
+  /** The clicked row's node; absent only when the row is not loaded. */
+  node?: IRowNode;
+  /** Whether the clicked row is a group (summary) row. */
+  isGroup: boolean;
   /** The originating DOM click event. */
   event: MouseEvent;
 };
@@ -287,9 +297,18 @@ export type GridEventRowClickedParams = {
   data: unknown;
   /** Whether the clicked row is a group (summary) row. */
   isGroup: boolean;
+  /** The clicked row's node; absent only when the row is not loaded. */
+  node?: IRowNode;
   /** The originating DOM click event. */
   event: MouseEvent;
 };
+
+/** Same shape as the click payload; `event` is the `dblclick` event. Named separately so the two
+ * can diverge without breaking either. */
+export type GridEventCellDoubleClickedParams = GridEventCellClickedParams;
+
+/** Same shape as the click payload; `event` is the `dblclick` event. */
+export type GridEventRowDoubleClickedParams = GridEventRowClickedParams;
 
 export type GridEventTooltipParams = {
   /** Where the tooltip is anchored. */
@@ -375,6 +394,8 @@ export interface GridEventMap {
   paginationChanged: GridEventPaginationChangedParams;
   cellClicked: GridEventCellClickedParams;
   rowClicked: GridEventRowClickedParams;
+  cellDoubleClicked: GridEventCellDoubleClickedParams;
+  rowDoubleClicked: GridEventRowDoubleClickedParams;
   tooltipShow: GridEventTooltipParams;
   tooltipHide: GridEventTooltipParams;
   actionFrameChanged: GridEventActionFrameParams;

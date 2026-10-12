@@ -53,6 +53,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "getRowPresentation", adaptReactGetRowPresentation(props.getRowPresentation));
   setIfDefined(options, "onCellClicked", props.onCellClicked);
   setIfDefined(options, "onRowClicked", props.onRowClicked);
+  setIfDefined(options, "onCellDoubleClicked", props.onCellDoubleClicked);
+  setIfDefined(options, "onRowDoubleClicked", props.onRowDoubleClicked);
   setIfDefined(options, "onCellValueChanged", props.onCellValueChanged);
   setIfDefined(options, "onSelectionChanged", props.onSelectionChanged);
   setIfDefined(options, "onSortChanged", props.onSortChanged);
