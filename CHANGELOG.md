@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.8.0 — 2026-10-12
 
 
 ### ActionFrame
@@ -56,6 +56,14 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   the gesture — the double-click opened the editor, or ran the fill handle's fill-to-adjacent-block
   — otherwise both fire regardless of `cellSelection` / `editTrigger`, so read-only grids get them
   too. `cellDoubleClicked` skips the row-number and checkbox cells, as `cellClicked` does.
+
+### API
+
+- **`api.getRowNode(rowId)` returns a row's node.** A data row, a client-side group or tree node
+  (the id `getGroupNodes()` and `rowGroupOpened` report), or an application-pinned band row;
+  server-side, a loaded leaf or group row. `undefined` for an id the grid does not hold —
+  including a group id from before a regroup, which mints new group nodes. The same node now
+  rides in the click and double-click payloads and in the body-menu context.
 
 ## 1.7.0 — 2026-10-11
 

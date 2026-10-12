@@ -63,6 +63,11 @@ The container must have an explicit height. Beyond `columnDefs` and `rowData`, t
 argument accepts every [`GridOptions`](#entry-points) field, and everything after creation
 happens through the returned `api`.
 
+Pointer gestures come back as events, by `api.on(...)` or the matching `on…` option: `cellClicked` /
+`rowClicked` and `cellDoubleClicked` / `rowDoubleClicked`, each carrying the row's `node` and
+`isGroup`. The double-click pair stays silent when the gesture opened an editor or ran the fill
+handle, and fires regardless of `cellSelection` otherwise.
+
 ## Customizing menus
 
 Menu items are configuration, not plumbing — you do not need adapters or a manual lifecycle for
@@ -148,7 +153,9 @@ the grid has claimed the gesture — so opening one from inside a multi-selectio
 all rather than the browser's.
 
 **Body context menu** — `bodyContextMenu` does the same for right-clicks in the grid body, and
-takes `false` to let the browser's native menu through:
+takes `false` to let the browser's native menu through. It opens on group rows in every
+`groupDisplayType`, a full-width `"groupRows"` row included; `ctx.node`, `ctx.isGroup`,
+`ctx.isFullWidth` and `ctx.groupDisplayType` tell a group row from a leaf:
 
 ```ts
 createGrid(host, {
@@ -729,6 +736,15 @@ parenthesised value is — on screen, on copy, and in both exports alike. `false
 function decides per group from `{ node, rowCount, aggregates, data }` (`aggregates` is the group's
 aggregate values by colId, `data` the raw group row on the server-side row model) and returns a
 number, a string (`"12.5 FTE"`), or `null` for no count. It is live through `updateGridOptions`.
+
+Group rows take the same interactions as leaf rows wherever the cell cursor can land on them
+(`groupRowsSelectable`, or pivot mode): a column's ActionFrame opens on a group cell by its click
+trigger, `Shift+F2` or `api.openActionFrame`, and `actionFrameIndicator` marks group cells; the
+component receives `node`, `isGroup` and the group cell's value (its aggregate, or the label on
+the group's label column). Under `groupDisplayType: "groupRows"` a group row has one full-width
+cell standing in for the first column after the row-number and checkbox columns, so only that
+column's frame opens there. `api.getRowNode(rowId)` returns the node behind any row id, group
+ids included.
 
 Tree data has two keyboard-navigation modes:
 
