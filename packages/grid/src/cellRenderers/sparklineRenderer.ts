@@ -117,7 +117,11 @@ export class SparklineRenderer implements ICellRenderer {
     } = (this.params.colDef.cellRendererParams || {}) as SparklineParams;
     const series = this.params.value;
     if (!Array.isArray(series)) {
-      if (!this.warnedInvalidValue) {
+      // A group row without a group value (no aggregate, no groupValueGetter) is the normal case,
+      // not a misconfigured valueGetter, so it draws nothing quietly. A non-array value on a group
+      // row is still worth hearing about.
+      const quiet = this.params.isGroup && series == null;
+      if (!quiet && !this.warnedInvalidValue) {
         this.warnedInvalidValue = true;
         console.warn(
           `SparklineRenderer: expected the valueGetter for column "${this.params.colDef.colId}" to return number[] or [x, number][]; nothing to draw.`,

@@ -56,6 +56,23 @@ export interface CellClassParams {
   isGroup?: boolean;
 }
 
+/** Context passed to `ColDef.groupValueGetter` for one group row. */
+export interface GroupValueGetterParams {
+  /** The group row: `level`, `groupKey`, `groupValue`, `isExpanded` say where it sits. */
+  node: import("./iRowNode").IRowNode;
+  /**
+   * Server-side row model: the raw group row the data source returned (a `COUNT(*)` or any other
+   * field of the GROUP BY result is read off it). Client-side row model: undefined — a client-side
+   * group row is synthesized and has no data row of its own.
+   */
+  data: any;
+  /**
+   * This group's aggregate values by colId — one entry per column with an aggregate assigned that
+   * has a value for this group (a server-side group row carries only what the server stamped).
+   */
+  aggregates: Readonly<Record<string, unknown>>;
+}
+
 /** Extra CSS class(es) for a cell: a static value or a function of the cell context. */
 export type CellClass =
   | string
@@ -177,6 +194,14 @@ export interface ColDef {
   maxWidth?: number; // maximum width (resizable)
   depth?: number;   // for hierarchical columns
   valueGetter?: (row: any) => any;
+  /**
+   * The value this column holds on a GROUP row when no aggregate is assigned to it. Receives the
+   * group node, its aggregates by colId, and (server-side row model only) the group's raw data
+   * row. Runs after the aggregate and group-label steps of the group cell value rule and before
+   * the empty fallback; it never runs on a leaf row and `valueGetter` never runs on a group row.
+   * One rule feeds cell renderers, the clipboard and the click/ActionFrame payloads alike.
+   */
+  groupValueGetter?: (params: GroupValueGetterParams) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
   // When true, cells in this column can be edited (e.g. via double-click). Defaults to false.
   editable?: boolean;

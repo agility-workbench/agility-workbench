@@ -3,6 +3,7 @@ import { escapeTSV, firstCellFromTSV, parseTSV, serializeNodesToTSV } from "./ts
 import { Column } from "../../column/column";
 import { ColumnType } from "../../interfaces/column";
 import { groupRowLabel, IRowNode } from "../../interfaces/iRowNode";
+import { groupCellValue } from "../../core/groupCellValue";
 
 describe("escapeTSV", () => {
   it("returns empty string for null/undefined", () => {
@@ -90,6 +91,12 @@ describe("serializeNodesToTSV group rows", () => {
     );
     return col;
   };
+  // The pure rule with the default label and client-side getter params: what the grid passes,
+  // minus the core.
+  const groupValue = (col: Column, node: IRowNode) => groupCellValue(col, node, {
+    groupLabel: n => groupRowLabel(n),
+    groupValueParams: n => ({ node: n, data: undefined, aggregates: {} }),
+  });
   const groupNode = (over: Partial<IRowNode>): IRowNode => ({
     id: "g", data: {}, viewIndex: 0, selected: false, type: "group",
     isGroup: true, level: 0, isExpanded: false, ...over,
@@ -97,7 +104,7 @@ describe("serializeNodesToTSV group rows", () => {
 
   it("copies the count a group row has", () => {
     const node = groupNode({ groupKey: "EMEA", childCount: 2 });
-    expect(serializeNodesToTSV([autoGroupCol()], [node], false, n => groupRowLabel(n))).toBe("EMEA (2)");
+    expect(serializeNodesToTSV([autoGroupCol()], [node], false, groupValue)).toBe("EMEA (2)");
   });
 
   it("copies what the screen shows when the count is unknown, not \"(0)\"", () => {
@@ -105,8 +112,18 @@ describe("serializeNodesToTSV group rows", () => {
     // a copy that invented "(0)" would put a number in the user's clipboard that the grid never
     // displayed and the data never claimed.
     const node = groupNode({ groupKey: "EMEA" });
-    const copied = serializeNodesToTSV([autoGroupCol()], [node], false, n => groupRowLabel(n));
+    const copied = serializeNodesToTSV([autoGroupCol()], [node], false, groupValue);
     expect(copied).toBe("EMEA");
     expect(copied).toBe(groupRowLabel(node));
+  });
+
+  it("copies a column's formatted groupValueGetter value on a group row", () => {
+    const col = new Column({
+      colId: "target", key: "target", label: "Target", type: ColumnType.NUMBER,
+      groupValueGetter: ({ node }) => (node.groupKey === "EMEA" ? 1200 : 0),
+      valueFormatter: ({ value }) => `$${value}`,
+    }, "target");
+    const node = groupNode({ groupKey: "EMEA", childCount: 2 });
+    expect(serializeNodesToTSV([autoGroupCol(), col], [node], false, groupValue)).toBe("EMEA (2)\t$1200");
   });
 });

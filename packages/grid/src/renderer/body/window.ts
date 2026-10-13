@@ -28,6 +28,8 @@ interface BodyWindowRendererParams {
   renderCell: (cell: HTMLDivElement, row: IRowNode, col: Column, cellRendererMap: Map<string, RendererRecord>, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   renderFullWidthCell: (slot: RowPoolDef, row: IRowNode, viewIndex: number, rowNumber: number, rowPresentation?: RowPresentation) => void;
   clearFullWidthCell: (slot: RowPoolDef) => void;
+  /** Destroy the slot's per-column renderer instances and empty its (now hidden) per-column cells. */
+  releaseCellRenderers: (slot: RowPoolDef) => void;
   /** Per-slot cell state that is painted, not rendered: selection classes and find highlights. */
   applyCellStateToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
 }
@@ -183,6 +185,12 @@ export class BodyWindowRenderer {
   // all of that so a recycled slot returns to normal per-column rendering with the correct width.
   private applyFullWidthLayout(slot: RowPoolDef, row: IRowNode | null) {
     if (row) {
+      // Only on the transition into full-width layout: the hidden cells below the host would
+      // otherwise keep the previous leaf's renderer instances alive. A slot already full-width
+      // holds none (and its host instance is refreshed, not released).
+      if (!slot.rowEl.classList.contains("pte-full-width-row")) {
+        this.params.releaseCellRenderers(slot);
+      }
       slot.rowEl.classList.add("pte-full-width-row");
       // A groupRows heading describes the rendered columns, so do not stretch its background into
       // empty body space when the columns are narrower than the viewport. Other full-width rows

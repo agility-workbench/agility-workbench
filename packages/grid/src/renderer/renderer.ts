@@ -36,10 +36,18 @@ export interface CellRendererParams {
   /** Why the renderer is being (re)invoked. Defaults to "data". */
   refreshReason?: CellRefreshReason;
   /**
-   * The full row node. Populated for a full-width row's renderer (which has no owning column) so it
-   * can read group metadata / level; omitted on the ordinary per-column cell path.
+   * The full row node, populated on every path: per-column leaf and group cells, and full-width
+   * rows (which have no owning column), so a renderer can read group metadata / level.
    */
   node?: any;
+  /**
+   * True on a group row (row grouping, pivot, server-side groups), false on a leaf. On a group row
+   * `value` is the group cell value (the column's aggregate, or its `groupValueGetter` result) and
+   * `data` is the group node, whose own `data` is a placeholder client-side. A pooled renderer
+   * instance is refreshed across leaf ↔ group transitions; return `false` from `refresh` to have it
+   * rebuilt instead.
+   */
+  isGroup?: boolean;
   /** Resolved row defaults and metadata, when `getRowPresentation` is configured. */
   rowPresentation?: import("../interfaces/gridOptions").RowPresentation;
 }
@@ -166,6 +174,8 @@ export function getCellRendererParams(
     eCell: eCell,
     registerTooltipTarget: registerRendererTooltipTarget,
     refreshReason: refreshReason,
+    node: row,
+    isGroup: !!row?.isGroup,
     rowPresentation,
   };
 }

@@ -56,6 +56,54 @@ api.dispatch({
 });
 ```
 
+## Group-row cells
+
+A group row has no data row of its own, so each of its cells holds the first
+of these that applies:
+
+1. the column's aggregate for this group, when one is assigned;
+2. the group label, on the group's label column (the auto-group column, the
+   tree column, or the grouped column for this level in `multipleColumns`);
+3. the column's `groupValueGetter` result, when it defines one;
+4. nothing.
+
+The same rule feeds the cell text (through the column's `valueFormatter`),
+copy, the click and double-click payloads, ActionFrame params, and the group
+header rows of an Excel export.
+`groupValueGetter` gives a column without an aggregate something to show on a
+group row. It receives the group `node`, the group's `aggregates` by colId,
+and, on the server-side row model, the raw group row as `data`; it never runs on
+a leaf, and a column's `valueGetter` never runs on a group row. A margin column
+derived from two summed columns:
+
+```ts
+const margin = {
+  colId: "margin",
+  label: "Margin",
+  valueGetter: (row) => (row.revenue - row.cost) / row.revenue,
+  groupValueGetter: ({ aggregates }) => {
+    const revenue = aggregates.revenue as number | undefined;
+    const cost = aggregates.cost as number | undefined;
+    return revenue && cost != null ? (revenue - cost) / revenue : undefined;
+  },
+  valueFormatter: ({ value }) => value == null ? "" : `${(value * 100).toFixed(1)}%`,
+} satisfies ColDef;
+
+api.setAggregates([
+  { colId: "revenue", type: AggregateType.SUM },
+  { colId: "cost", type: AggregateType.SUM },
+]);
+```
+
+`groupValueGetter` inherits through `defaultColDef` like `valueGetter`. A
+column's `cellRenderer` runs on group rows too, with this value as `value` and
+`isGroup: true` — see [rendering group rows](./rendering.mdx#group-rows).
+
+`api.getCellValue({ rowId, colId })` reads the raw value of any cell by the same
+rule: a leaf's column value (its `valueGetter`, else the data field), or a group
+row's group cell value. It returns `undefined` for a row or column the grid does
+not hold.
+
 ## Aggregates
 
 Available functions are count, distinct count, sum, average, min, max, and

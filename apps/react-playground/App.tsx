@@ -85,6 +85,8 @@ function getCityMeta(city: string) {
 }
 
 function LocationCellRenderer(params: CellRendererParams) {
+  // A group row holds the column's aggregate, if any: plain text, never styled as a city badge.
+  if (params.isGroup) return params.valueFormatted ?? null;
   const city = String(params.valueFormatted ?? params.value ?? "");
   if (!city) return null;
 

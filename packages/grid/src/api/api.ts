@@ -425,6 +425,13 @@ export class GridAPI implements IGridAPI {
       ?? undefined;
   }
 
+  getCellValue(cell: CellRef): unknown {
+    const node = this.getRowNode(cell.rowId);
+    const col = this.resolveCellColumn(cell);
+    if (!node || !col) return undefined;
+    return this.core.getNodeCellValue(col, node);
+  }
+
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
     return this.core.refreshServerSideData(options);
   }
@@ -721,6 +728,15 @@ export class GridAPI implements IGridAPI {
   private resolveColumn(colId: string): Column | undefined {
     const model = this.core.getColumnModel();
     return model.getByColId(colId) ?? model.getById(colId) ?? model.getByKey(colId);
+  }
+
+  // Mirrors the core's emit-side convention (public colId plus instance id, the instance id
+  // winning) so a ref the grid emitted reads back whole, and reaches the auto-group column by the
+  // colId its refs carry: internal columns are kept out of the public colId index.
+  private resolveCellColumn(cell: CellRef): Column | undefined {
+    const model = this.core.getColumnModel();
+    const byInstance = cell.colInstanceId ? model.getById(cell.colInstanceId) : undefined;
+    return byInstance ?? this.resolveColumn(cell.colId) ?? model.getAutoGroupColumnByColId(cell.colId);
   }
 
   /** Convert serializable per-column filter state into core FilterItems; unknown colIds drop out. */
