@@ -413,10 +413,13 @@ const options = {
 };
 ```
 
-Views capture column layout, row grouping, multi-sort, column filters, quick-filter text, and group
-expansion. `api.captureViewState()` and `api.applyViewState(state)` expose the same serializable
-state workflow programmatically. Applying a view restores columns exactly by default; pass
-`{ columns: "merge" }` to retain columns added after capture.
+Views capture column layout, column-group expanders (which groups are open or closed), row
+grouping, multi-sort, column filters, quick-filter text, and group expansion.
+`api.captureViewState()` and `api.applyViewState(state)` expose the same serializable state
+workflow programmatically. Applying a view restores columns exactly by default; pass
+`{ columns: "merge" }` to retain columns added after capture. A column group is matched by its
+`colId`, so give groups an explicit one for their expander state to survive a reload; a view saved
+before expanders were captured leaves every group as it is.
 
 ## Column panel
 
@@ -569,6 +572,25 @@ The renderer accepts `number[]` (array indexes become X values) and `[x, number]
 grid's tooltip layer; each line/area point owns a full-height nearest-X hover band, so the pointer
 does not need to hit the marker exactly. Grid-level tooltip options such as delays, positioning,
 and disabling tooltips continue to apply.
+
+On group rows (`singleColumn` / `multipleColumns` display) a sparkline column's `valueGetter` does
+not run; the cell draws the column's group value instead. A sparkline built from the column menu
+already has one: its series is the selected columns' aggregates, so assign aggregates to those
+columns and each group row plots the group's totals. An application-defined series column adds a
+`groupValueGetter` that builds the series from the group's aggregates by colId; without one the
+group cell stays blank, without a warning:
+
+```ts
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun"];
+
+const trendColumn = {
+  colId: "trend",
+  label: "Trend",
+  valueGetter: (row) => MONTHS.map((month) => [month, row.data[month]]),
+  groupValueGetter: ({ aggregates }) => MONTHS.map((month) => [month, aggregates[month]]),
+  cellRenderer: SparklineRenderer,
+};
+```
 
 ## Pinned and sticky rows
 
@@ -737,14 +759,25 @@ function decides per group from `{ node, rowCount, aggregates, data }` (`aggrega
 aggregate values by colId, `data` the raw group row on the server-side row model) and returns a
 number, a string (`"12.5 FTE"`), or `null` for no count. It is live through `updateGridOptions`.
 
+A column's `cellRenderer` runs on group rows too in `singleColumn` and `multipleColumns` display.
+Its params carry `isGroup: true`, the group `node`, and the group cell value as `value` /
+`valueFormatted` — the column's aggregate, else its `groupValueGetter` result, else nothing — so a
+renderer written for leaves starts with `if (params.isGroup) return params.valueFormatted;`. Label
+columns (the auto-group column, the tree column, and the grouped columns of `multipleColumns`)
+never run a renderer on a group row and keep the chevron and label; `groupRows` display paints
+group rows with `fullWidthCellRenderer` only. `ColDef.groupValueGetter` receives
+`{ node, data, aggregates }` and says what a column without an aggregate holds on a group row; it
+feeds the cell, copy, the click and ActionFrame payloads, and Excel export group headers alike.
+`api.getCellValue(cell)` reads the raw value of any cell, leaf or group, by the same rule.
+
 Group rows take the same interactions as leaf rows wherever the cell cursor can land on them
 (`groupRowsSelectable`, or pivot mode): a column's ActionFrame opens on a group cell by its click
 trigger, `Shift+F2` or `api.openActionFrame`, and `actionFrameIndicator` marks group cells; the
-component receives `node`, `isGroup` and the group cell's value (its aggregate, or the label on
-the group's label column). Under `groupDisplayType: "groupRows"` a group row has one full-width
-cell standing in for the first column after the row-number and checkbox columns, so only that
-column's frame opens there. `api.getRowNode(rowId)` returns the node behind any row id, group
-ids included.
+component receives `node`, `isGroup` and the group cell's value (its aggregate, the label on the
+group's label column, or its `groupValueGetter` result). Under `groupDisplayType: "groupRows"` a
+group row has one full-width cell standing in for the first column after the row-number and
+checkbox columns, so only that column's frame opens there. `api.getRowNode(rowId)` returns the
+node behind any row id, group ids included.
 
 Tree data has two keyboard-navigation modes:
 

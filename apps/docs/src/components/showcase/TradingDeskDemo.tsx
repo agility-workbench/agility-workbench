@@ -93,7 +93,9 @@ const signClass = ({ value }: CellClassArgs) =>
 const flashBySign = (_previous: unknown, next: unknown) =>
   typeof next === "number" && next > 0 ? "up" : typeof next === "number" && next < 0 ? "down" : "neutral";
 
-function SymbolCell({ value }: CellRendererParams) {
+function SymbolCell({ value, valueFormatted, isGroup }: CellRendererParams) {
+  // A group row holds the column's aggregate, if any: plain text, never a logo chip.
+  if (isGroup) return valueFormatted ?? null;
   const symbol = String(value ?? "");
   const hash = [...symbol].reduce((total, character) => total + character.charCodeAt(0), 0);
   return (

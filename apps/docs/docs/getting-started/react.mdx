@@ -38,7 +38,8 @@ support React Strict Mode effect replay.
 ## React components in grid slots
 
 ```tsx
-function StatusBadge({ value }: CellRendererParams) {
+function StatusBadge({ value, valueFormatted, isGroup }: CellRendererParams) {
+  if (isGroup) return <>{valueFormatted}</>; // a group row: its aggregate as text, or nothing
   return <span className={`badge badge-${value}`}>{String(value)}</span>;
 }
 

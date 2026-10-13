@@ -71,6 +71,8 @@ which run before the adapter.
 | `setColumnDefs(defs)` | Replace column definitions (claims caller ownership of the schema — see below) |
 | `getColumnState()` | Capture width, order, pinning, and visibility |
 | `applyColumnState(state, options?)` | Merge or exactly restore state |
+| `getColumnGroupState()` | Read every column group's expander state (open/closed) by colId, nested groups included |
+| `setColumnGroupState(groups)` | Open or close column groups by colId in one rebuild — what the header expander does; groups not named keep their state |
 | `getColumnModel()` | Read runtime columns and sections |
 | `refreshServerSideData(options?)` | Soft-refresh or purge the server cache, or one subtree of it — `groupKeys` for a group path, `rowId` for a server-tree row |
 | `refreshRowPresentation()` | Re-evaluate row presentation for rendered body, pinned, and sticky rows after external state changes |
@@ -105,6 +107,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
+| `getCellValue(cell)` | The raw value at `{ rowId, colId }`; the read-side counterpart of `setCellValue`: a leaf's column value (`valueGetter`, else the data field), a group row's group cell value (aggregate, label, `groupValueGetter`); rows resolve like `getRowNode`; `undefined` for an unknown row or column |
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
 | `setPivotMode(on)` / `getPivotMode()` | Toggle pivot mode (client-side; off restores the pre-pivot state exactly, on reinstates the last pivot) |
@@ -112,7 +115,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `setPivotColumnOrder(order)` / `getPivotColumnOrder()` | Replace/read the manual arrangement of the generated pivot columns (leaf order by generated colId; null = canonical). Role edits reset it |
-| `captureViewState()` | Capture columns, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
+| `captureViewState()` | Capture columns, column-group expanders, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
 | `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |

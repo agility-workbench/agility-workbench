@@ -24,6 +24,7 @@ import type {
   SetFilterGroupComponentParams,
   SetFilterValueComponentParams,
 } from "@agility-workbench/grid";
+import { AggregateType, ColumnType } from "@agility-workbench/grid";
 
 beforeAll(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -117,6 +118,49 @@ describe("React cell renderers in a live grid", () => {
     expect(apiRef.current).toBe(api);
     // The new row rendered through the React cell-renderer adapter.
     expect(cellTexts(container)).toEqual(["AAA:custom", "BBB:custom", "CCC:custom", "DDD:custom"]);
+    await unmountTestRoot(root);
+  });
+});
+
+describe("React cell renderers on group rows", () => {
+  it("renders a column's component on a group row with isGroup and the aggregate", async () => {
+    const seen: CellRendererParams[] = [];
+    function TotalCell(props: CellRendererParams) {
+      seen.push(props);
+      return <i className="react-total">{props.isGroup ? "group" : "leaf"}:{String(props.value)}</i>;
+    }
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const cols: ReactColDef[] = [
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "total", key: "total", label: "Total", type: ColumnType.NUMBER, cellRenderer: TotalCell },
+    ];
+    const rows = [
+      { id: 1, region: "AMER", total: 1 },
+      { id: 2, region: "AMER", total: 2 },
+      { id: 3, region: "EMEA", total: 4 },
+    ];
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <Grid
+          rowData={rows}
+          columnDefs={cols}
+          rowIdKey="id"
+          onGridReady={(api) => {
+            api.setAggregates([{ colId: "total", type: AggregateType.SUM }]);
+            api.setRowGroupColumns(["region"]);
+          }}
+        />,
+      );
+    });
+
+    const texts = Array.from(container.querySelectorAll(".react-total"), (el) => el.textContent);
+    expect(texts).toContain("group:3");
+    const groupProps = seen.find(p => p.isGroup && p.value === 3)!;
+    expect(groupProps).toBeTruthy();
+    expect(groupProps.node?.isGroup).toBe(true);
     await unmountTestRoot(root);
   });
 });

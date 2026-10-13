@@ -113,6 +113,13 @@ column wins if it declares one explicitly, otherwise the first selected column
 that does, otherwise the target column's datatype default. Generated columns are
 resizable, movable, and hideable, but not sortable, filterable, or groupable.
 
+On a group row the generated column draws the group's values of the selected
+columns — their aggregates. Assign an aggregate to each source column (the
+column menu's aggregate picker, `api.setAggregates`, or an `aggregateModelSet`
+action) and a sparkline over summed months draws each group's monthly sums. A
+source column without an aggregate contributes no point, so a group with no
+aggregates draws nothing.
+
 ## Columns that hold a series
 
 A sparkline column has no scalar value, so the operations that compare values do
@@ -133,6 +140,28 @@ const column = {
 Export writes the cell's formatted text, which for a series is not meaningful —
 keep the underlying numeric columns in the grid (hidden if need be) when the
 export matters, or mark the sparkline column `exportable: false`.
+
+An app-defined sparkline column draws on group rows only when it says what its
+series is there. Its `valueGetter` never runs on a group row; give it a
+`groupValueGetter` that builds the series from the group's `aggregates`, keyed by
+colId:
+
+```ts
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun"];
+
+const column = {
+  colId: "trend",
+  label: "Trend",
+  valueGetter: (node) => MONTHS.map((month) => [month, node.data[month]]),
+  groupValueGetter: ({ aggregates }) => MONTHS.map((month) => [month, aggregates[month]]),
+  cellRenderer: SparklineRenderer,
+} satisfies ColDef;
+
+api.setAggregates(MONTHS.map((colId) => ({ colId, type: AggregateType.SUM })));
+```
+
+Without a `groupValueGetter` the group row's cell is blank, and the renderer
+stays silent there — a group row without a value is not a misconfiguration.
 
 ## Cost
 

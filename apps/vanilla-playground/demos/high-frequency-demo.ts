@@ -1,9 +1,12 @@
 import {
+  AggregateType,
   ChangeFlashCellRenderer,
   SparklineRenderer,
   createGrid,
   type CellRendererParams,
   type ColDef,
+  type ColumnAggregate,
+  type IGridAPI,
   type SparklineParams,
   type SparklineTooltipValueFormatterParams,
 } from "@grid";
@@ -92,7 +95,9 @@ function logoColor(symbol: string): string {
   return LOGO_COLORS[hash % LOGO_COLORS.length];
 }
 
-function symbolCellRenderer({ value }: CellRendererParams): HTMLElement {
+function symbolCellRenderer({ value, valueFormatted, isGroup }: CellRendererParams): HTMLElement | string | null {
+  // A group row holds the column's aggregate, if any: plain text, never a logo chip.
+  if (isGroup) return valueFormatted ?? null;
   const symbol = String(value ?? "");
   return h("span", { class: "market-symbol" },
     h("span", {
@@ -103,6 +108,21 @@ function symbolCellRenderer({ value }: CellRendererParams): HTMLElement {
     }),
     h("strong", { text: symbol }),
   );
+}
+
+// Grouping by sector puts the cell renderers on group rows: each sector row shows its average
+// quotes through ChangeFlashCellRenderer (flashing as the averages move) while the Symbol column,
+// which has no aggregate, falls back to plain text.
+const SECTOR_AGGREGATES: ColumnAggregate[] = [
+  ...["price", "bid", "ask", "change", "changePct"].map(colId => ({ colId, type: AggregateType.AVG })),
+  { colId: "volume", type: AggregateType.SUM },
+  { colId: "trades", type: AggregateType.SUM },
+];
+
+function setSectorGrouping(api: IGridAPI, grouped: boolean): void {
+  api.setRowGroupColumns(grouped ? ["sector"] : []);
+  api.setAggregates(grouped ? SECTOR_AGGREGATES : []);
+  if (grouped) api.setAllGroupsExpanded(true);
 }
 
 const sparklineParams: SparklineParams = {
@@ -168,6 +188,7 @@ export function mountHighFrequencyDemo(container: HTMLElement): () => void {
 
   let streaming = true;
   let rate = 1_200;
+  let grouped = false;
   let submitted = 0;
   let settled = 0;
   let pending = 0;
@@ -180,6 +201,11 @@ export function mountHighFrequencyDemo(container: HTMLElement): () => void {
     streaming = !streaming;
     feedButton.textContent = streaming ? "Pause feed" : "Resume feed";
     restartFeed();
+  });
+  const groupButton = btn("Group by sector", () => {
+    grouped = !grouped;
+    groupButton.textContent = grouped ? "Ungroup" : "Group by sector";
+    setSectorGrouping(api, grouped);
   });
 
   container.appendChild(h("section", { class: "high-frequency-demo" },
@@ -209,6 +235,7 @@ export function mountHighFrequencyDemo(container: HTMLElement): () => void {
         },
       )),
       btn("Flush now", () => api.flushAsyncTransactions()),
+      groupButton,
       h("code", { text: "applyTransactionAsync · asyncTransactionWaitMs=32" }),
     ),
     host,

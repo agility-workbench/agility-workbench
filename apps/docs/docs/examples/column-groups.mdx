@@ -20,6 +20,7 @@ and leaf columns keep their ordinary pinning, filtering, sizing, and state.
 ```ts
 const columnDefs: ColDef[] = [
   {
+    colId: "customer",
     label: "Customer",
     openByDefault: true,
     children: [
@@ -48,6 +49,17 @@ than one level.
 hidden when the group state changes. A group renders its expander only when its
 children mix `columnGroupShow` values — a group whose children all toggle
 together has nothing to expand.
+
+The same state is readable and settable programmatically, by the group's
+`colId`: `api.getColumnGroupState()` lists every group as `{ colId, open }`, and
+`api.setColumnGroupState(groups)` opens or closes the groups it names in one
+rebuild, leaving the rest alone. Saved views capture and restore it, so give
+groups an explicit `colId` for that state to survive a reload.
+
+```ts
+api.setColumnGroupState([{ colId: "customer", open: false }]);
+api.getColumnGroupState(); // [{ colId: "customer", open: false }, ...]
+```
 
 Groups also appear as collapsible branches in the column panel. Searching a
 group name reveals its descendants, while reordering remains constrained to a

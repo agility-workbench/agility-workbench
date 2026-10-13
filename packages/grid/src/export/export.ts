@@ -8,6 +8,7 @@ import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
 import { resolveColSpan } from "../renderer/body/colSpan";
+import type { GroupCellValue } from "../core/groupCellValue";
 import type {
   ExcelExportCellProcessor,
   ExcelExportCellStyle,
@@ -117,6 +118,13 @@ export interface ExportConfig {
    * falls back to the node's own key and row count.
    */
   groupLabel?: (node: IRowNode, rowCount?: number) => string;
+  /**
+   * The grid's group cell value rule (`GridCore.getGroupCellValue`): what a group row's cell holds
+   * for a column. A grouped export writes it into a group header's cells that carry no label and
+   * no subtotal, so a column's `groupValueGetter` value reaches the sheet as it reaches the screen
+   * and the clipboard. A bare config leaves those cells empty.
+   */
+  groupCellValue?: (col: Column, node: IRowNode) => GroupCellValue;
   /** Public, Excel-only customization hook forwarded by ExportRenderer. */
   processCellForExcel?: ExcelExportCellProcessor;
   /**
@@ -869,6 +877,22 @@ const buildGroupedBody = (
     void level;
   };
 
+  // A group header's cells that hold neither the label nor a subtotal: a column with a
+  // `groupValueGetter` writes the group cell value the grid shows there, typed as its leaf cells
+  // are. Aggregated columns keep their subtotal (the rule's aggregate step wins on screen too).
+  const writeGroupValueCells = (node: IRowNode, labelColIdx: number, headerCells: SheetCell[]) => {
+    if (!config.groupCellValue) return;
+    columns.forEach((col, colIdx) => {
+      if (colIdx === labelColIdx || opByCol.has(col.instanceID) || !col.groupValueGetter) return;
+      const { value, formatted } = config.groupCellValue!(col, node);
+      if (formatted === "") return;
+      headerCells[colIdx] = {
+        value: toCellValue({ raw: value, formatted }, col),
+        style: { bold: true, numFmt: resolveNumberFormat(col) },
+      };
+    });
+  };
+
   // Recursively emit a group node and its subtree. `ancestorCollapsed` hides rows whose ancestor
   // group is collapsed. Returns after appending the header row and all descendants.
   const emitGroup = (node: IRowNode, outlineLevel: number, ancestorCollapsed: boolean) => {
@@ -924,6 +948,7 @@ const buildGroupedBody = (
         const value = node.aggregateValues?.[col.instanceID];
         if (value != null) headerCells[colIdx] = staticAggregateCell(col, value);
       });
+      writeGroupValueCells(node, labelColIdx, headerCells);
       return;
     }
 
@@ -938,6 +963,7 @@ const buildGroupedBody = (
         headerCells[colIdx] = aggregateCell(col, colIdx, op, computed, firstChildRow, lastChildRow, true);
       });
     }
+    writeGroupValueCells(node, labelColIdx, headerCells);
   };
 
   for (const root of groupRoots) emitGroup(root, 1, false);

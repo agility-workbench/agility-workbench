@@ -17,7 +17,7 @@ import {
   TreeDataKeyboardNavigationOptions,
   UpdatableGridOptions,
 } from "./gridOptions";
-import { GridViewFilterState, GridViewState } from "./gridView";
+import { GridViewColumnGroupState, GridViewFilterState, GridViewState } from "./gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "./find";
 import { ColumnAggregate } from "./aggregate";
 import { PivotResultColumnDescriptor } from "./pivot";
@@ -234,6 +234,22 @@ export interface IGridAPI {
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
 
+  /**
+   * Every column group's expander state (open or closed) by the group's colId — nested groups
+   * included, in header order. While pivoted this describes the user's own groups, as
+   * `getColumnState` describes the source columns.
+   */
+  getColumnGroupState(): GridViewColumnGroupState[];
+
+  /**
+   * Open or close column groups by colId, in one rebuild — what the header expander does, with the
+   * same follow-ups (the leaves a group reveals are sized to content). Groups absent from the list
+   * keep their state; unknown colIds and leaves are skipped, and a group already in the requested
+   * state is left alone, so a call that changes nothing rebuilds nothing. A single group is a
+   * one-element list.
+   */
+  setColumnGroupState(groups: GridViewColumnGroupState[]): void;
+
   /** Read-only access to the column model (columns, leaves, lookups). */
   getColumnModel(): IColumnModel;
 
@@ -428,6 +444,24 @@ export interface IGridAPI {
    * ```
    */
   getRowNode(rowId: GridId): IRowNode | undefined;
+
+  /**
+   * The raw value a cell holds — unformatted. On a leaf row, the column's value for that row (its
+   * `valueGetter`, else the data field). On a group row, the group cell value: the aggregate for
+   * that column, else the group label on the group's label column, else the column's
+   * `groupValueGetter` result, else `undefined`. The row resolves like `getRowNode` (application-
+   * pinned band rows included). The column resolves by the instance id an emitted ref carries,
+   * else by public colId, instance id or key, else the auto-group column by its colId; so a
+   * `cellClicked` payload's ref reads back directly. `undefined` for a row or column the grid does
+   * not hold. Mirrors `setCellValue`.
+   *
+   * ```ts
+   * // In a cell renderer: read a sibling column's value on the same row — on a group row, its
+   * // aggregate.
+   * const revenue = params.api.getCellValue({ rowId: params.rowId, colId: "revenue" });
+   * ```
+   */
+  getCellValue(cell: CellRef): unknown;
 
   /* ----- Pivot ----- */
   /**

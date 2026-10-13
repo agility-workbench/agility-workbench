@@ -79,7 +79,9 @@ const statusColors: Record<string, string> = {
   Blocked: "#d1495b",
 };
 
-function StatusBadge({ value }: CellRendererParams) {
+function StatusBadge({ value, valueFormatted, isGroup }: CellRendererParams) {
+  // A group row holds the column's aggregate, if any; a badge coloured from it would mislead.
+  if (isGroup) return valueFormatted ?? null;
   const color = statusColors[String(value)] ?? "#64748b";
   return (
     <span

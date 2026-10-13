@@ -29,7 +29,7 @@ import {
 } from "../interfaces/gridOptions";
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import { GridViewColumnGroupState, GridViewFilterState, GridViewState } from "../interfaces/gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
@@ -425,6 +425,13 @@ export class GridAPI implements IGridAPI {
       ?? undefined;
   }
 
+  getCellValue(cell: CellRef): unknown {
+    const node = this.getRowNode(cell.rowId);
+    const col = this.resolveCellColumn(cell);
+    if (!node || !col) return undefined;
+    return this.core.getNodeCellValue(col, node);
+  }
+
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean> {
     return this.core.refreshServerSideData(options);
   }
@@ -447,6 +454,14 @@ export class GridAPI implements IGridAPI {
 
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
     this.dispatch({ type: "columnStateSet", state, defaultState: opts?.defaultState });
+  }
+
+  getColumnGroupState(): GridViewColumnGroupState[] {
+    return this.core.getColumnModel().getColumnGroupState();
+  }
+
+  setColumnGroupState(groups: GridViewColumnGroupState[]): void {
+    this.dispatch({ type: "columnGroupStateSet", groups });
   }
 
   getColumnModel(): IColumnModel {
@@ -715,6 +730,15 @@ export class GridAPI implements IGridAPI {
     return model.getByColId(colId) ?? model.getById(colId) ?? model.getByKey(colId);
   }
 
+  // Mirrors the core's emit-side convention (public colId plus instance id, the instance id
+  // winning) so a ref the grid emitted reads back whole, and reaches the auto-group column by the
+  // colId its refs carry: internal columns are kept out of the public colId index.
+  private resolveCellColumn(cell: CellRef): Column | undefined {
+    const model = this.core.getColumnModel();
+    const byInstance = cell.colInstanceId ? model.getById(cell.colInstanceId) : undefined;
+    return byInstance ?? this.resolveColumn(cell.colId) ?? model.getAutoGroupColumnByColId(cell.colId);
+  }
+
   /** Convert serializable per-column filter state into core FilterItems; unknown colIds drop out. */
   private toFilterItems(states: GridViewFilterState[]): FilterItem[] {
     return states.flatMap(item => {
@@ -814,6 +838,9 @@ export class GridAPI implements IGridAPI {
     return {
       version: 1,
       columns: this.getColumnState().map(state => ({ ...state })),
+      // Column-group expanders by the group's colId — the source groups while pivoted, like
+      // `columns`.
+      columnGroupState: this.getColumnGroupState(),
       rowGroupColumns: this.core.getRowGroupColumns().map(col => col.colId),
       // Aggregates serialize by public colId (the model keys them by instanceID, which does not
       // survive a reload); entries on columns that no longer resolve are dropped.
@@ -860,6 +887,12 @@ export class GridAPI implements IGridAPI {
     }
 
     this.dispatch({ type: "rowGroupSet", colIds: state.rowGroupColumns ?? [] });
+    // Expanders BEFORE the column state: opening a group sizes the leaves it reveals to content
+    // (as the header toggle does), and the captured widths below must win over that. Old captures
+    // without the field leave every group as it is, like every absent field.
+    if (state.columnGroupState) {
+      this.dispatch({ type: "columnGroupStateSet", groups: state.columnGroupState });
+    }
     this.applyColumnState(
       state.columns ?? [],
       opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },

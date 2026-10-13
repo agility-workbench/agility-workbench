@@ -1,9 +1,10 @@
-import { Component } from "@angular/core";
+import { Component, input } from "@angular/core";
 import { describe, expect, it } from "vitest";
+import { AggregateType, ColumnType } from "@agility-workbench/grid";
 import type { CellRendererParams, IGridAPI } from "@agility-workbench/grid";
 import { AwbGrid } from "./grid.component";
 import type { ICellRendererNgComp, NgColDef } from "./interface";
-import { mountGridHost } from "./test-utils";
+import { mountGridHost, syncGridInputs } from "./test-utils";
 
 const refreshReasons: Array<string | undefined> = [];
 
@@ -71,5 +72,61 @@ describe("AwbGrid renderer refresh", () => {
 
     expect(refreshReasons.length).toBeGreaterThan(0);
     expect(refreshReasons.every((reason) => reason === "resize")).toBe(true);
+  });
+});
+
+@Component({
+  standalone: true,
+  template: `<span class="group-aware-renderer">{{ params()?.isGroup ? "group" : "leaf" }}:{{ params()?.value }}</span>`,
+})
+class GroupAwareRenderer {
+  readonly params = input<CellRendererParams>();
+}
+
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <awb-grid
+      style="height: 600px"
+      [rowData]="rows"
+      [columnDefs]="cols"
+      rowIdKey="id"
+      (gridReady)="onReady($event)"
+    />
+  `,
+})
+class GroupRendererHost {
+  api: IGridAPI | null = null;
+  rows = [
+    { id: "1", region: "AMER", sales: 1 },
+    { id: "2", region: "AMER", sales: 2 },
+    { id: "3", region: "EMEA", sales: 4 },
+  ];
+  cols: NgColDef[] = [
+    { colId: "region", key: "region", label: "Region" },
+    {
+      colId: "sales",
+      key: "sales",
+      label: "Sales",
+      type: ColumnType.NUMBER,
+      cellRenderer: GroupAwareRenderer,
+    },
+  ];
+  onReady(api: IGridAPI) {
+    this.api = api;
+    api.setAggregates([{ colId: "sales", type: AggregateType.SUM }]);
+    api.setRowGroupColumns(["region"]);
+  }
+}
+
+describe("AwbGrid renderers on group rows", () => {
+  it("renders a column's component on a group row with isGroup and the aggregate", async () => {
+    const { fixture, gridEl } = await mountGridHost(GroupRendererHost);
+    await syncGridInputs(fixture);
+    // The template reads isGroup and value straight off the forwarded params.
+    const texts = Array.from(gridEl.querySelectorAll(".group-aware-renderer"), (el) => el.textContent);
+    expect(texts).toContain("group:3");
+    expect(texts).toContain("group:4");
   });
 });

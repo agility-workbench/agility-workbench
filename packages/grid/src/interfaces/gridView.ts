@@ -24,6 +24,12 @@ export interface GridViewPaginationState {
   pageSize: number;
 }
 
+/** One column group's expander state (open or closed), keyed by the group's colId. */
+export interface GridViewColumnGroupState {
+  colId: string;
+  open: boolean;
+}
+
 /** One aggregate-model entry in serializable form (keyed by public colId, not instanceID). */
 export interface GridViewAggregateState {
   colId: string;
@@ -59,6 +65,14 @@ export interface GridPivotStateLayers {
 export interface GridViewState {
   version: 1;
   columns: ColumnState[];
+  /** Every column group's expander state (open or closed), by the group's colId — nested groups
+   * included, and the user's own groups while pivoted (the generated pivot groups are derived
+   * data, like `columns`). Absent in states saved before this field existed; applyViewState leaves
+   * every group untouched when it's missing (same rule as `pagination`), and so are groups the
+   * list does not name. A group is matched by its colId: give groups an explicit `colId` for the
+   * state to survive a reload — a group without one is identified by its position in the
+   * definitions, which moves when columns are added before it. */
+  columnGroupState?: GridViewColumnGroupState[];
   rowGroupColumns: string[];
   sortModel: GridViewSortState[];
   filterModel: GridViewFilterState[];

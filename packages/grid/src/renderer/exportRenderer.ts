@@ -234,6 +234,7 @@ export class ExportRenderer {
   private commonExportConfig(options: ExportOptions): Pick<
     ExportConfig,
     "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths" | "groupLabel"
+    | "groupCellValue"
   > {
     return {
       columnIds: options.columnIds,
@@ -244,6 +245,8 @@ export class ExportRenderer {
       // Group header labels come from the grid's own resolver so the sheet shows the count the
       // screen shows (the `groupChildCount` option), whatever shape the export takes.
       groupLabel: (node, rowCount) => this.params.core.getGroupRowLabel(node, rowCount),
+      // Likewise the group cell value rule, for the header cells a `groupValueGetter` fills.
+      groupCellValue: (col, node) => this.params.core.getGroupCellValue(col, node),
     };
   }
 

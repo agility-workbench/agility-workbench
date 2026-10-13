@@ -97,3 +97,40 @@ describe("SparklineRenderer performance", () => {
     expect(registrations.every(registration => registration.cleanup.mock.calls.length === 1)).toBe(true);
   });
 });
+
+describe("SparklineRenderer missing values", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function params(extra: Partial<CellRendererParams>): CellRendererParams {
+    return {
+      value: undefined,
+      colDef: { colId: "trend", cellRendererParams: {} },
+      registerTooltipTarget: () => () => {},
+      refreshReason: "data",
+      ...extra,
+    } as unknown as CellRendererParams;
+  }
+
+  it("draws nothing and stays quiet on a group row without a group value", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new SparklineRenderer();
+    renderer.init(params({ isGroup: true }));
+    expect(renderer.getGui().querySelector("svg")!.childElementCount).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+    renderer.destroy();
+  });
+
+  it("still warns once for a leaf whose value is not a series", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new SparklineRenderer();
+    renderer.init(params({ isGroup: false }));
+    renderer.refresh(params({ isGroup: false }));
+    expect(renderer.getGui().querySelector("svg")!.childElementCount).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    renderer.destroy();
+  });
+});

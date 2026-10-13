@@ -15,6 +15,7 @@ types widen component slots to accept their native component classes.
 | `colId` / `key` / `label` | Identity, data field, and display name |
 | `type` | String, number, date, boolean, or currency behavior |
 | `valueGetter` | Compute the raw value |
+| `groupValueGetter` | The value on a group row when the column has no aggregate: receives `{ node, data, aggregates }` (`data` server-side only); never runs on a leaf |
 | `valueFormatter` / `formatterOptions` | Format display and export |
 | `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
 
@@ -37,7 +38,7 @@ and a custom `comparator`. `filter` selects a built-in panel or custom matcher;
 
 | Field | Content |
 | --- | --- |
-| `cellRenderer` / `cellEditor` | Cell presentation and editing |
+| `cellRenderer` / `cellEditor` | Cell presentation and editing; the renderer runs on group rows too (`isGroup: true`, `value` = the group cell value), except on label columns |
 | `headerComponent` | Header content while retaining controls |
 | `headerCellComponent` | Entire header cell except resize handle |
 | `tooltipComponent` / `headerTooltip` | Body and header floating content |
@@ -65,3 +66,5 @@ defaults.
 
 A definition with `children` is a column group. `openByDefault` sets its initial
 state; child leaves use `columnGroupShow` to appear only while open or closed.
+Give a group an explicit `colId`: `api.setColumnGroupState` addresses groups by
+it, and saved views restore their open/closed state by it.

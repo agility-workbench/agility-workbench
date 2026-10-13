@@ -1,6 +1,7 @@
 import { AggregateModel } from "@grid/interfaces";
 import { ColDef } from "../interfaces/column";
 import { FilterItem } from "../interfaces/filter";
+import { GridViewColumnGroupState } from "../interfaces/gridView";
 import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
@@ -200,6 +201,15 @@ export type GridActionGroupSetExpanded = {
   type: "groupSetExpanded";
   expanded: boolean;
   groupIds?: string[];
+};
+
+// Open or close COLUMN groups (the header expander) in one rebuild — the batch form of
+// `headerAction: "toggleGroupExpand"`, with the same follow-ups (revealed leaves sized to content,
+// aggregates re-derived). Groups absent from the list keep their state; ids that resolve to no
+// group are ignored, and nothing is rebuilt when no group changes.
+export type GridActionColumnGroupStateSet = {
+  type: "columnGroupStateSet";
+  groups: GridViewColumnGroupState[];
 };
 
 export type GridActionKeyboardNavigationModeSet = {
@@ -432,4 +442,5 @@ export type GridAction =
   | GridActionRedo
   | GridActionKeyboardNavigate
   | GridActionNavigateCorner
-  | GridActionSelectAll;
+  | GridActionSelectAll
+  | GridActionColumnGroupStateSet;

@@ -190,7 +190,7 @@ export type { InjectGridStylesOptions } from "./theme/inject";
 
 export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
-export type { ColDef, ColumnMenuItemsGetter, DefaultColDef } from "./interfaces/column";
+export type { ColDef, ColumnMenuItemsGetter, DefaultColDef, GroupValueGetterParams } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type { AggregateModel, AggregateScope, ColumnAggregate } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";

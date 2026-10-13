@@ -8,7 +8,7 @@ import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameCompone
 import type { TooltipColumnOptions, ActionFrameOptions, RowPresentation } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
-import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType } from "../interfaces/column";
+import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType, GroupValueGetterParams } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
@@ -39,6 +39,7 @@ export class Column {
   // explicit "fit to content" autosize. Undefined until the user actually drags a resize handle.
   resizedWidth?: number;
   valueGetter?: (row: any) => any;
+  groupValueGetter?: (params: GroupValueGetterParams) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
   valueParser?: (params: ValueParserParams) => any;
   cellEditor?: CellEditor;
@@ -164,6 +165,7 @@ export class Column {
     this.maxWidth = col.maxWidth;
     this.depth = col.depth || 0;
     this.valueGetter = col.valueGetter;
+    this.groupValueGetter = col.groupValueGetter;
     this.valueFormatter = col.valueFormatter ? col.valueFormatter : getFormatterByType(col.type || ColumnType.STRING) || undefined;
     this.valueParser = col.valueParser;
     this.cellEditor = col.cellEditor;

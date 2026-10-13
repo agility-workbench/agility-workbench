@@ -9,6 +9,7 @@ export type { IGridCore } from "./iGridCore";
 export type {
   GridPivotLayerState,
   GridPivotStateLayers,
+  GridViewColumnGroupState,
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewSortState,

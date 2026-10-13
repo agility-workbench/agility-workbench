@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  AggregateType,
   ChangeFlashCellRenderer,
   SparklineRenderer,
   type CellRendererParams,
+  type ColumnAggregate,
   type IGridAPI,
   type SparklineParams,
   type SparklineTooltipValueFormatterParams,
@@ -92,7 +94,9 @@ function logoColor(symbol: string): string {
   return LOGO_COLORS[hash % LOGO_COLORS.length];
 }
 
-function SymbolCellRenderer({ value }: CellRendererParams) {
+function SymbolCellRenderer({ value, valueFormatted, isGroup }: CellRendererParams) {
+  // A group row holds the column's aggregate, if any: plain text, never a logo chip.
+  if (isGroup) return valueFormatted ?? null;
   const symbol = String(value ?? "");
   return (
     <span className="market-symbol">
@@ -102,6 +106,21 @@ function SymbolCellRenderer({ value }: CellRendererParams) {
       <strong>{symbol}</strong>
     </span>
   );
+}
+
+// Grouping by sector puts the cell renderers on group rows: each sector row shows its average
+// quotes through ChangeFlashCellRenderer (flashing as the averages move) while the Symbol column,
+// which has no aggregate, falls back to plain text.
+const SECTOR_AGGREGATES: ColumnAggregate[] = [
+  ...["price", "bid", "ask", "change", "changePct"].map(colId => ({ colId, type: AggregateType.AVG })),
+  { colId: "volume", type: AggregateType.SUM },
+  { colId: "trades", type: AggregateType.SUM },
+];
+
+function setSectorGrouping(api: IGridAPI, grouped: boolean): void {
+  api.setRowGroupColumns(grouped ? ["sector"] : []);
+  api.setAggregates(grouped ? SECTOR_AGGREGATES : []);
+  if (grouped) api.setAllGroupsExpanded(true);
 }
 
 const sparklineParams: SparklineParams = {
@@ -120,6 +139,7 @@ export default function HighFrequencyDemo() {
   const pendingRef = useRef(0);
   const [streaming, setStreaming] = useState(true);
   const [rate, setRate] = useState(1_200);
+  const [grouped, setGrouped] = useState(false);
   const [stats, setStats] = useState({ submitted: 0, settled: 0, pending: 0 });
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -212,6 +232,11 @@ export default function HighFrequencyDemo() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  const toggleGrouped = () => {
+    if (apiRef.current) setSectorGrouping(apiRef.current, !grouped);
+    setGrouped(value => !value);
+  };
+
   const toggleStreaming = () => {
     if (streaming) apiRef.current?.flushAsyncTransactions();
     setStreaming(value => !value);
@@ -249,6 +274,9 @@ export default function HighFrequencyDemo() {
         </label>
         <button className="btn" type="button" onClick={() => apiRef.current?.flushAsyncTransactions()}>
           Flush now
+        </button>
+        <button className="btn" type="button" onClick={toggleGrouped}>
+          {grouped ? "Ungroup" : "Group by sector"}
         </button>
         <code>applyTransactionAsync · asyncTransactionWaitMs=32</code>
       </div>

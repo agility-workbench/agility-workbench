@@ -40,7 +40,7 @@ import {
   Unsubscribe,
 } from "../events/events";
 import { isTrue, validatePageSizes, valuesAreSame } from "../misc";
-import { ColDef } from "../interfaces/column";
+import { ColDef, GroupValueGetterParams } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
 import { IColumnModel } from "../interfaces/iColumnModel";
@@ -881,6 +881,29 @@ export class GridCore implements IGridCore {
       this.columnModel.computeColumnWidth(child, this.measureCtx, this.textMeasureParams, allRows);
     }
     this.columnModel.updateParentColumnWidth(column);
+  }
+
+  // What a column group's expander change entails beyond the column model's rebuild, shared by
+  // the header toggle and the batch `columnGroupStateSet`: the leaves the change reveals are sized
+  // to content and given comparators, aggregates are re-derived over the new leaf set, and the
+  // selection cannot survive a change to the displayed column set.
+  private afterColumnGroupExpansionChange(groups: Column[]): void {
+    const allRows: IRowNode[] = [];
+    this.rowModel.forEachNode((node: IRowNode) => {
+      allRows.push(node);
+    });
+    for (const col of groups) this.autosizeColumn(col.instanceID);
+    this.columnModel.identifyComparatorsFor(groups, allRows);
+    if (this.aggregates.length > 0) {
+      this.applyAggregateRequest("aggregateModel", "columns");
+    }
+    this.clearSelectionForColumnChange();
+    this.emit("columnsChanged", {
+      reason: "state",
+      changedColIds: groups.map(col => col.colId),
+      changedColInstanceIds: groups.map(col => col.instanceID),
+    });
+    this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
   private autosizeColumn(colID: string): string[] {
@@ -2437,12 +2460,27 @@ export class GridCore implements IGridCore {
 
   /**
    * What a group row's cell holds for `col`: the aggregate stamped on the node for that column,
-   * else the group label when `col` is the group's label column, else nothing. Precondition:
-   * `node.isGroup`; a leaf gets the empty result. The one rule click payloads, menus and the
-   * ActionFrame read, shared with the clipboard serializer via `groupCellValue`.
+   * else the group label when `col` is the group's label column, else the column's
+   * `groupValueGetter` result, else nothing. Precondition: `node.isGroup`; a leaf gets the empty
+   * result. The one rule click payloads, menus, the ActionFrame, the body cell and the clipboard
+   * read (the clipboard through this method, the rule itself in `groupCellValue`).
    */
   getGroupCellValue(col: Column, node: IRowNode): GroupCellValue {
-    return groupCellValue(col, node, n => this.getGroupRowLabel(n));
+    return groupCellValue(col, node, {
+      groupLabel: n => this.getGroupRowLabel(n),
+      groupValueParams: n => this.groupValueGetterParams(n),
+    });
+  }
+
+  /**
+   * The raw value a cell holds, leaf or group: a leaf's `getValue` (its `valueGetter` or data
+   * field), a group row's group cell value. The one place that chooses between the two rules, so
+   * the API and renderers cannot pick differently for the same cell. Distinct from the older
+   * `getCellValue(rowId, colId)`, which addresses a row-model row by column key and reads only the
+   * leaf rule.
+   */
+  getNodeCellValue(col: Column, node: IRowNode): unknown {
+    return node.isGroup ? this.getGroupCellValue(col, node).value : col.getValue(node);
   }
 
   /** Change what group rows show as their count; repaints the visible group rows. */
@@ -2467,18 +2505,23 @@ export class GridCore implements IGridCore {
     const policy = this.options.groupChildCount;
     if (policy === false) return null;
     if (typeof policy !== "function") return rowCount;
-    return policy({
+    return policy({ ...this.groupValueGetterParams(node), rowCount });
+  }
+
+  // The params both group-row callbacks (`groupChildCount`, `groupValueGetter`) receive, built in
+  // one place so the two cannot disagree about `data` or `aggregates`.
+  private groupValueGetterParams(node: IRowNode): GroupValueGetterParams {
+    return {
       node,
       // Only a server-side group row has a data row of its own (the listing's GROUP BY row). A
       // client-side group's `data` is a synthetic placeholder that must not leak to the caller.
       data: this.rowModel.getType() === "serverSide" ? node.data : undefined,
-      rowCount,
       aggregates: this.groupAggregatesByColId(node),
-    });
+    };
   }
 
   // A group row's stamped aggregates are keyed by column instance id, which a client cannot
-  // address; re-key them by colId for the `groupChildCount` callback.
+  // address; re-key them by colId for the group-row callbacks.
   private groupAggregatesByColId(node: IRowNode): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     const values = node.aggregateValues;
@@ -3388,6 +3431,11 @@ export class GridCore implements IGridCore {
           hideable: true,
           valueGetter: row =>
             selectedColumns.map(col => [col.label, col.getValue(row)] as const),
+          // A group row's series is the selected columns' group values (their aggregates), so a
+          // sparkline over summed columns draws the group's sums; a column without an aggregate
+          // gives an undefined point the renderer drops.
+          groupValueGetter: ({ node }) =>
+            selectedColumns.map(col => [col.label, this.getGroupCellValue(col, node).value] as const),
           cellRenderer: SparklineRenderer,
           cellRendererParams: {
             type: action.sparklineType,
@@ -3469,22 +3517,18 @@ export class GridCore implements IGridCore {
             break;
           case "toggleGroupExpand":
             if (this.columnModel.toggleGroupExpansion(col.instanceID)) {
-              this.autosizeColumn(col.instanceID);
-              const allRows: IRowNode[] = [];
-              this.rowModel.forEachNode((node: IRowNode) => {
-                allRows.push(node);
-              });
-              this.columnModel.identifyComparatorsFor([col], allRows);
-              if (this.aggregates.length > 0) {
-                this.applyAggregateRequest("aggregateModel", "columns");
-              }
-              this.clearSelectionForColumnChange();
-              this.emit("columnsChanged", { reason: "state", changedColIds: [col.colId], changedColInstanceIds: [col.instanceID] });
-              this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+              this.afterColumnGroupExpansionChange([col]);
             }
             break;
         }
         break;
+      case "columnGroupStateSet": {
+        const changed = this.columnModel.setColumnGroupState(action.groups)
+          .map(id => this.columnModel.resolve(id))
+          .filter((col): col is Column => col != null);
+        if (changed.length > 0) this.afterColumnGroupExpansionChange(changed);
+        break;
+      }
       case "headerFocusSet":
         this.setHeaderFocus(action.colIdx, action.reason ?? "api");
         break;

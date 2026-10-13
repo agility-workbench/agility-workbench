@@ -161,7 +161,7 @@ describe("groupChildCount — one owner for every surface", () => {
     const core = makeGrid({ groupChildCount: (p: GroupChildCountParams) => `${p.rowCount} rows` });
     core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
     const groupCol = core.getColumnModel().getAutoGroupColumns()[0];
-    const tsv = serializeNodesToTSV([groupCol], groupNodes(core), false, n => core.getGroupRowLabel(n));
+    const tsv = serializeNodesToTSV([groupCol], groupNodes(core), false, (c, n) => core.getGroupCellValue(c, n));
     expect(tsv.split("\n").sort()).toEqual(["APAC (3 rows)", "EMEA (2 rows)"]);
   });
 
