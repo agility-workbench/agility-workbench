@@ -29,9 +29,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   group's label column, then the getter, else the cell is empty. It never runs on a leaf, a
   column's `valueGetter` still never runs on a group row, and it inherits through `defaultColDef`.
   The one rule feeds the group row's cell text (formatted by the column's `valueFormatter`), the
-  clipboard, and the click, double-click and ActionFrame payloads alike. A sparkline column built
-  from the column menu uses it: on a group row its series is the selected columns' aggregates, so
-  a sparkline over summed columns draws the group's sums on group rows.
+  clipboard, the click, double-click and ActionFrame payloads, and the Excel export's group header
+  rows alike. A sparkline column built from the column menu uses it: on a group row its series is
+  the selected columns' aggregates, so a sparkline over summed columns draws the group's sums on
+  group rows.
 
 ### Saved views
 

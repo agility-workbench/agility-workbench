@@ -767,8 +767,8 @@ columns (the auto-group column, the tree column, and the grouped columns of `mul
 never run a renderer on a group row and keep the chevron and label; `groupRows` display paints
 group rows with `fullWidthCellRenderer` only. `ColDef.groupValueGetter` receives
 `{ node, data, aggregates }` and says what a column without an aggregate holds on a group row; it
-feeds the cell, copy, and the click and ActionFrame payloads alike. `api.getCellValue(cell)` reads
-the raw value of any cell, leaf or group, by the same rule.
+feeds the cell, copy, the click and ActionFrame payloads, and Excel export group headers alike.
+`api.getCellValue(cell)` reads the raw value of any cell, leaf or group, by the same rule.
 
 Group rows take the same interactions as leaf rows wherever the cell cursor can land on them
 (`groupRowsSelectable`, or pivot mode): a column's ActionFrame opens on a group cell by its click

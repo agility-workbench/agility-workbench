@@ -68,7 +68,8 @@ of these that applies:
 4. nothing.
 
 The same rule feeds the cell text (through the column's `valueFormatter`),
-copy, the click and double-click payloads, and ActionFrame params.
+copy, the click and double-click payloads, ActionFrame params, and the group
+header rows of an Excel export.
 `groupValueGetter` gives a column without an aggregate something to show on a
 group row. It receives the group `node`, the group's `aggregates` by colId,
 and, on the server-side row model, the raw group row as `data`; it never runs on
