@@ -271,15 +271,21 @@ export function buildTreeData<Row extends object>(
   };
   fullRoots.forEach(root => decorate(root, 0));
 
-  // Global sorting already computed the desired data-row order. Ordering siblings by the earliest
-  // sorted descendant applies that order locally while also giving synthetic path nodes a rank.
+  // Global sorting already computed the desired data-row order; siblings take it locally, each by
+  // its OWN rank, so a parent's position never depends on its children (a parent "Z" with a child
+  // "A" still sorts after a sibling "B" ascending). A node with no rank of its own — a synthetic
+  // path ancestor (no row data to compare), or a real ancestor the filters dropped that stays only
+  // to reach a matching descendant (the rank covers filtered rows only) — takes the earliest rank
+  // among its children, so it sits where its first visible child would.
   const rankCache = new Map<string, number>();
   const rank = (node: IRowNode<Row>): number => {
     const cached = rankCache.get(node.id);
     if (cached != null) return cached;
-    const own = node.isGroup ? Number.MAX_SAFE_INTEGER : (sortRank.get(node.id) ?? Number.MAX_SAFE_INTEGER);
-    let best = own;
-    for (const child of node.children ?? []) best = Math.min(best, rank(child));
+    let best = node.isGroup ? undefined : sortRank.get(node.id);
+    if (best == null) {
+      best = Number.MAX_SAFE_INTEGER;
+      for (const child of node.children ?? []) best = Math.min(best, rank(child));
+    }
     rankCache.set(node.id, best);
     return best;
   };

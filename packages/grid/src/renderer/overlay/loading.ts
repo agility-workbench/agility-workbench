@@ -1,3 +1,6 @@
+/** The loading label shown when `loadingMessage` is not set. */
+export const DEFAULT_LOADING_MESSAGE = "Loading data...";
+
 export function createLoadingOverlay(): HTMLDivElement {
   const overlay = document.createElement("div");
   overlay.className = "pte-loading-overlay hidden";
@@ -7,7 +10,7 @@ export function createLoadingOverlay(): HTMLDivElement {
 
   const label = document.createElement("div");
   label.className = "pte-loading-label";
-  label.textContent = "Loading data...";
+  label.textContent = DEFAULT_LOADING_MESSAGE;
 
   overlay.appendChild(spinner);
   overlay.appendChild(label);
@@ -18,13 +21,12 @@ export function createLoadingOverlay(): HTMLDivElement {
 export class LoadingOverlayRenderer {
   private isLoading = false;
   private overlay: HTMLDivElement;
+  private label: HTMLDivElement;
 
   constructor(root: HTMLElement, message?: string) {
     this.overlay = createLoadingOverlay();
-    if (message != null) {
-      const label = this.overlay.querySelector(".pte-loading-label") as HTMLDivElement | null;
-      if (label) label.textContent = message;
-    }
+    this.label = this.overlay.querySelector(".pte-loading-label") as HTMLDivElement;
+    if (message != null) this.setMessage(message);
     root.appendChild(this.overlay);
   }
 
@@ -35,6 +37,11 @@ export class LoadingOverlayRenderer {
 
   getLoading() {
     return this.isLoading;
+  }
+
+  /** Replace the label (the `loadingMessage` option changed on a mounted grid). */
+  setMessage(message: string) {
+    this.label.textContent = message;
   }
 
   update() {

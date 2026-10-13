@@ -1,6 +1,6 @@
 import { Column } from "../../column/column";
 import { IGridCore } from "../../interfaces/iGridCore";
-import { CellRef } from "../../interfaces/selection";
+import { CellRef, SelectionRange } from "../../interfaces/selection";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { parseTSV, serializeNodesToTSV } from "./tsv";
 
@@ -9,6 +9,22 @@ interface ClipboardRendererParams {
   // Clipboard IO seams — default to the platform clipboard, overridable for tests / headless.
   writeText?: (text: string) => Promise<void>;
   readText?: () => Promise<string>;
+}
+
+/** A selection to copy in place of the live one — the body menu passes the one it opened with. */
+export interface ClipboardSelection {
+  range: SelectionRange | null;
+  rowIds: Iterable<string>;
+  colIds: Iterable<string>;
+}
+
+export interface ClipboardCopyOptions {
+  /** Prepend one line of column labels. */
+  withHeaders?: boolean;
+  /** Copy this selection instead of the core's current one. */
+  selection?: ClipboardSelection;
+  /** What to copy when the selection is empty: one cell, e.g. the cell a menu was opened on. */
+  fallbackCell?: { colId: string; node: IRowNode };
 }
 
 // The rectangular block resolved from the current selection, in the terms the TSV serializer
@@ -35,18 +51,31 @@ interface SelectionBlock {
 export class ClipboardRenderer {
   constructor(private params: ClipboardRendererParams) { }
 
-  copy(): void {
-    const block = this.resolveSelectionBlock();
-    if (!block) return;
-    const tsv = serializeNodesToTSV(block.cols, block.nodes, false, (col, node) => this.params.core.getGroupCellValue(col, node));
-    void this.write(tsv);
+  /**
+   * Copy the selection as TSV. The single copy path: Ctrl/Cmd+C, `api.copySelection()` and the
+   * body menu's Copy / Copy with headers all land here, so they share one block rule.
+   */
+  copy(options: ClipboardCopyOptions = {}): void {
+    const tsv = this.buildCopyText(options);
+    if (tsv) void this.write(tsv);
+  }
+
+  /**
+   * The TSV {@link copy} writes, or "" when there is nothing to copy. Group rows drop out of a
+   * selection that also holds leaf rows (unless `groupRowsSelectable`); a selection made only of
+   * group rows copies them — what was asked for — as does a fallback cell on a group row.
+   */
+  buildCopyText(options: ClipboardCopyOptions = {}): string {
+    const block = this.resolveSelectionBlock(options.selection)
+      ?? this.resolveSelectionBlock(options.selection, true)
+      ?? this.fallbackBlock(options.fallbackCell);
+    return block ? this.serialize(block, options.withHeaders === true) : "";
   }
 
   cut(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    const tsv = serializeNodesToTSV(block.cols, block.nodes, false, (col, node) => this.params.core.getGroupCellValue(col, node));
-    void this.write(tsv);
+    void this.write(this.serialize(block, false));
 
     // Clear the copied cells (cut = copy + clear).
     const edits = this.buildClearEdits(block);
@@ -181,27 +210,46 @@ export class ClipboardRenderer {
   }
 
   // ---------------- Selection → block resolution ----------------
-  private resolveSelectionBlock(): SelectionBlock | null {
+  private serialize(block: SelectionBlock, withHeaders: boolean): string {
+    return serializeNodesToTSV(block.cols, block.nodes, withHeaders, (col, node) => this.params.core.getGroupCellValue(col, node));
+  }
+
+  // One cell, when its column is copyable (visible, not a utility column). Copy-only: it carries
+  // no writable view indexes.
+  private fallbackBlock(cell: ClipboardCopyOptions["fallbackCell"]): SelectionBlock | null {
+    if (!cell) return null;
+    const col = this.copyableLeaves().find(c => c.instanceID === cell.colId);
+    return col ? { cols: [col], viewIdxs: [], nodes: [cell.node] } : null;
+  }
+
+  // The visible leaves a copy may include. While pivoted the displayed data columns are the
+  // generated pivot columns (internal by design) plus the auto-group column — admit them so pivot
+  // ranges copy; other internal columns (row numbers, checkboxes) stay excluded.
+  private copyableLeaves(): Column[] {
     const core = this.params.core;
-    const leaves = core.getColumnModel().getLeaves();
-    // While pivoted the displayed data columns are the generated pivot columns (internal by
-    // design) plus the auto-group column — admit them so pivot ranges copy; other internal
-    // columns (row numbers, checkboxes) stay excluded.
     const pivoted = core.getPivotMode();
     const copyable = (c: Column) =>
       pivoted ? c.isPivotResultColumn() || c.isAutoGroupColumn() || !c.isInternal() : !c.isInternal();
-    const visibleLeaves = leaves.filter(c => copyable(c) && !c.hidden);
+    return core.getColumnModel().getLeaves().filter(c => copyable(c) && !c.hidden);
+  }
+
+  // `admitGroupRows` lifts the group-row filter (see buildCopyText); cut and clear never pass it.
+  private resolveSelectionBlock(selection?: ClipboardSelection, admitGroupRows = false): SelectionBlock | null {
+    const core = this.params.core;
+    const leaves = core.getColumnModel().getLeaves();
+    const pivoted = core.getPivotMode();
+    const visibleLeaves = this.copyableLeaves();
     const rowModel = core.getRowModel();
 
-    const range = core.getSelectionRange();
+    const range = selection ? selection.range : core.getSelectionRange();
     if (range) {
       const cols = visibleLeaves.filter(c => {
         const globalIdx = leaves.indexOf(c);
         return globalIdx >= range.colStart && globalIdx <= range.colEnd;
       });
-      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(range.rowStart, range.rowEnd));
+      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(range.rowStart, range.rowEnd), admitGroupRows);
       // Copy in unified row order: pinned top segment, body rows, pinned bottom segment.
-      const groupRowsSelectable = core.getOptions().groupRowsSelectable || pivoted;
+      const groupRowsSelectable = core.getOptions().groupRowsSelectable || pivoted || admitGroupRows;
       const pinnedNodes = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
         if (!segment) return [] as IRowNode[];
         const nodes: IRowNode[] = [];
@@ -222,23 +270,23 @@ export class ClipboardRenderer {
       return cols.length && nodes.length ? { cols, viewIdxs, nodes } : null;
     }
 
-    const selectedRowIds = core.getSelectedRowIds();
+    const selectedRowIds = new Set(selection ? selection.rowIds : core.getSelectedRowIds());
     if (selectedRowIds.size > 0) {
       const viewIdxs: number[] = [];
       for (let i = 0; i < rowModel.getViewCount(); i++) {
         const id = core.getRowIdAtViewIndex(i);
         if (id && selectedRowIds.has(id)) viewIdxs.push(i);
       }
-      const copyable = this.filterCopyableRows(viewIdxs);
+      const copyable = this.filterCopyableRows(viewIdxs, admitGroupRows);
       return copyable.length
         ? { cols: visibleLeaves, viewIdxs: copyable, nodes: this.nodesForViewIdxs(copyable) }
         : null;
     }
 
-    const selectedColIds = core.getSelectedColumnIds();
+    const selectedColIds = new Set(selection ? selection.colIds : core.getSelectedColumnIds());
     if (selectedColIds.size > 0) {
       const cols = visibleLeaves.filter(c => selectedColIds.has(c.instanceID));
-      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(0, rowModel.getViewCount() - 1));
+      const viewIdxs = this.filterCopyableRows(rangeToViewIdxs(0, rowModel.getViewCount() - 1), admitGroupRows);
       return cols.length && viewIdxs.length
         ? { cols, viewIdxs, nodes: this.nodesForViewIdxs(viewIdxs) }
         : null;
@@ -257,9 +305,9 @@ export class ClipboardRenderer {
   // Drop group (summary) rows from a copy/cut set unless groupRowsSelectable is enabled. Group
   // cells hold labels/aggregate totals rather than real values, so including them in TSV output is
   // usually noise; the option lets callers opt into copying them.
-  private filterCopyableRows(viewIdxs: number[]): number[] {
+  private filterCopyableRows(viewIdxs: number[], admitGroupRows = false): number[] {
     // Pivot rows are the data: always copyable while pivoted.
-    if (this.params.core.getOptions().groupRowsSelectable || this.params.core.getPivotMode()) return viewIdxs;
+    if (admitGroupRows || this.params.core.getOptions().groupRowsSelectable || this.params.core.getPivotMode()) return viewIdxs;
     const rowModel = this.params.core.getRowModel();
     return viewIdxs.filter(i => !rowModel.getRowNodeAtViewIndex(i)?.isGroup);
   }

@@ -37,6 +37,8 @@ interface BodyWindowRendererParams {
 export class BodyWindowRenderer {
   /** Start index of the currently painted window; null until the first patch. */
   private lastStartIndex: number | null = null;
+  /** The core's row-request failure count when the pending-range keys were last reconciled. */
+  private seenRequestFailures = 0;
 
   constructor(private params: BodyWindowRendererParams) { }
 
@@ -70,6 +72,14 @@ export class BodyWindowRenderer {
   private requestMissingServerSideRows(startIndex: number, endIndex: number, total: number) {
     const rowModel = this.params.core.getRowModel();
     if (rowModel.getType() !== "serverSide" || endIndex <= startIndex) return;
+
+    // A failed request emits no rowsChanged, so its key would stay pending forever. Any failure
+    // releases every key: a block that is in fact still in flight is deduped by the row model.
+    const failures = this.params.core.getRowRequestFailureCount();
+    if (failures !== this.seenRequestFailures) {
+      this.seenRequestFailures = failures;
+      this.params.serverSidePendingRangeKeys.clear();
+    }
 
     let firstMissingRow = -1;
     for (let i = startIndex; i < endIndex; i++) {

@@ -4,6 +4,7 @@ import {
   AggregateType,
   ColumnType,
   type BodyMenuContext,
+  type Column,
   type ColumnMenuContext,
   type GridOptions,
   type IGridAPI,
@@ -11,7 +12,7 @@ import {
 import { AwbGrid } from "./grid.component";
 import type { NgColDef } from "./interface";
 import type { NgMenuItem } from "./menu";
-import { mountGridHost } from "./test-utils";
+import { mountGridHost, syncGridInputs } from "./test-utils";
 
 @Component({
   standalone: true,
@@ -28,6 +29,7 @@ import { mountGridHost } from "./test-utils";
       [rowInsertionMenu]="rowInsertionMenu"
       [bodyContextMenu]="bodyMenu"
       [getColumnMenuItems]="columnItems"
+      [multiColumnMenu]="multiColumnItems"
       [tooltip]="{ showDelay: 0, hideDelay: 0 }"
       (gridReady)="api = $event"
     />
@@ -46,6 +48,10 @@ class MenusHost {
   cellSelection = true;
   rowInsertionMenu: GridOptions["rowInsertionMenu"] = undefined;
   columnItems: ((p: { ctx: ColumnMenuContext; items: NgMenuItem[] }) => NgMenuItem[]) | undefined;
+  multiColumnItems:
+    | false
+    | ((p: { ctx: ColumnMenuContext; columns: Column[]; items: NgMenuItem[] }) => NgMenuItem[])
+    | undefined;
 }
 
 function firstCell(gridEl: HTMLElement): HTMLElement {
@@ -164,6 +170,49 @@ describe("AwbGrid menu integration", () => {
 
     expect(labels(gridEl)).toContain("Templated item");
     expect(gridEl.querySelector(".angular-menu-icon")?.textContent).toBe("NG");
+  });
+
+  /** Select both columns and open the menu from the Name column's ⋮ button. */
+  function openMultiColumnMenu(gridEl: HTMLElement, api: IGridAPI): void {
+    api.selectColumn("name");
+    api.selectColumn("sales", "toggle");
+    header(gridEl, api, "name").querySelector<HTMLButtonElement>(".pte-hcell-menu-menuBtn")!.click();
+  }
+
+  it("forwards a multiColumnMenu getter and renders its TemplateRef slots", async () => {
+    const getter = vi.fn();
+    const { gridEl, host } = await mountGridHost(MenusHost, 600, (instance) => {
+      instance.multiColumnItems = (params) => {
+        getter(params.columns.map(c => c.colId));
+        return [...params.items, { id: "bulk", label: "Bulk audit", left: instance.menuIcon() }];
+      };
+    });
+    openMultiColumnMenu(gridEl, host.api!);
+
+    expect(getter).toHaveBeenCalledTimes(1);
+    expect([...getter.mock.calls[0][0]].sort()).toEqual(["name", "sales"]);
+    expect(labels(gridEl)).toContain("Bulk audit");
+    expect(gridEl.querySelector(".angular-menu-icon")?.textContent).toBe("NG");
+  });
+
+  it("calls the current multiColumnMenu input after it changes", async () => {
+    const { gridEl, host, fixture } = await mountGridHost(MenusHost, 600, (instance) => {
+      instance.multiColumnItems = ({ items }) => [...items, { id: "first", label: "First" }];
+    });
+    host.multiColumnItems = ({ items }) => [...items, { id: "second", label: "Second" }];
+    await syncGridInputs(fixture);
+    openMultiColumnMenu(gridEl, host.api!);
+
+    expect(labels(gridEl)).toContain("Second");
+    expect(labels(gridEl)).not.toContain("First");
+  });
+
+  it("opens no multi-column menu when multiColumnMenu is false", async () => {
+    const { gridEl, host } = await mountGridHost(MenusHost, 600, (instance) => {
+      instance.multiColumnItems = false;
+    });
+    openMultiColumnMenu(gridEl, host.api!);
+    expect(gridEl.querySelector(".pte-menu")).toBeNull();
   });
 
   it("changes and clears aggregate functions through the aggregate-row menu", async () => {

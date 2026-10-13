@@ -4,6 +4,7 @@ import { ColumnType } from "../interfaces/column";
 import type { IGridCore } from "../interfaces";
 import type { ColDef } from "../interfaces/column";
 import { ColumnFilterMenuService } from "./filterMenuService";
+import { FilterType } from "../interfaces/filter";
 
 function buildSpec(colDef: ColDef) {
   const core = { getOptions: () => ({ filterDebounceMs: 100 }) } as unknown as IGridCore;
@@ -144,5 +145,33 @@ describe("ColumnFilterMenuService tree layout", () => {
       filterParams: { treePathGetter: () => ["q1", 3] },
     });
     expect(spec.tree!.formatSegment(3, 1, ["q1"])).toBe("3");
+  });
+});
+
+describe("ColumnFilterMenuService default operators", () => {
+  const ops = (colDef: ColDef) => buildSpec(colDef).spec.params.filterOptions!.map(o => o.value);
+  const BLANKS = ["isBlank", "isNotBlank"];
+
+  it.each([
+    ["text", { key: "s", label: "S", type: ColumnType.STRING } as ColDef],
+    ["number", { key: "n", label: "N", type: ColumnType.NUMBER } as ColDef],
+    ["date", { key: "d", label: "D", type: ColumnType.DATE } as ColDef],
+    ["boolean", { key: "b", label: "B", type: ColumnType.BOOLEAN } as ColDef],
+    ["filter: \"number\"", { key: "n", label: "N", filter: "number" } as ColDef],
+    ["filter: \"date\"", { key: "d", label: "D", filter: "date" } as ColDef],
+    ["filter: \"boolean\"", { key: "b", label: "B", filter: "boolean" } as ColDef],
+  ])("offers the blank checks last for %s", (_label, colDef) => {
+    expect(ops(colDef).slice(-2)).toEqual(BLANKS);
+  });
+
+  it("follows an explicit filter kind over the column type", () => {
+    expect(ops({ key: "d", label: "D", type: ColumnType.STRING, filter: "date" })).toContain("inRange");
+    expect(ops({ key: "b", label: "B", type: ColumnType.STRING, filter: "boolean" })).toEqual(["eq", "neq", ...BLANKS]);
+    expect(ops({ key: "n", label: "N", type: ColumnType.NUMBER, filter: "text" })).toContain("contains");
+  });
+
+  it("lets filterParams.filterOptions replace the defaults", () => {
+    expect(ops({ key: "s", label: "S", filterParams: { filterOptions: [{ value: FilterType.EQ, label: "Is" }] } }))
+      .toEqual(["eq"]);
   });
 });

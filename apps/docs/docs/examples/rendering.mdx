@@ -25,6 +25,9 @@ const options = {
 } satisfies GridOptions;
 ```
 
+`rowHeight` is fixed when the grid is created. Without it the theme's
+`rowHeight` param applies (see [Theming](./theming.mdx)), and otherwise 43px.
+
 Virtualization is automatic: the renderer maintains a small reusable row pool
 and slides it over the current viewport. Left, center, and right column
 sections stay synchronized without additional configuration.
@@ -210,3 +213,7 @@ api.dispatch({ type: "overlayShow", overlayType: "none" });
 
 The no-rows overlay appears automatically for an empty model and distinguishes
 an empty data set from a filtered-out result.
+
+Both messages are live: `api.updateGridOptions({ loadingMessage, noRowsMessage })`
+relabels the overlays on a mounted grid (passing `undefined` restores the
+default).

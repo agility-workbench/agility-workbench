@@ -73,7 +73,11 @@ export interface GridThemeParams {
   fontSize?: string | number;
   /** Header font weight (e.g. 500 or "600"). */
   headerFontWeight?: string | number;
-  /** Data row height. A number is treated as pixels. */
+  /**
+   * Data row height, in pixels (a number, or a `"42px"` string). Read when the grid is created and
+   * applied like the `rowHeight` grid option; an explicit `rowHeight` grid option wins. Swapping the
+   * theme on a mounted grid does not resize its rows — row height is fixed at creation.
+   */
   rowHeight?: string | number;
   /** Left/right cell padding. A number is treated as pixels. */
   cellHorizontalPadding?: string | number;
@@ -400,6 +404,35 @@ function mergeParams(base: GridThemeParams, overrides: GridThemeParams): GridThe
     vars: { ...base.vars, ...overrides.vars },
     icons: { ...base.icons, ...overrides.icons },
   };
+}
+
+/** Row heights already warned about, so a theme resolved per grid cannot spam the console. */
+const warnedRowHeights = new Set<string>();
+
+/**
+ * The data-row height, in pixels, a theme asks for — or `undefined` when it does not set one.
+ *
+ * Row layout is JS-driven (virtualization needs the number, not a CSS length), so the theme's
+ * `rowHeight` param cannot work as a CSS variable alone: the grid reads it here when it is created
+ * and feeds it to the same path as the `rowHeight` grid option, which wins when both are set. It is
+ * read off the resolved variables, so a `vars: { "--pte-row-height": … }` override counts too, with
+ * the usual precedence. Only pixel lengths can drive the layout: a number, `"42"` or `"42px"`. Any
+ * other value (`"3em"`, `calc(…)`) is ignored with one warning.
+ */
+export function resolveThemeRowHeightPx(theme: GridTheme | undefined): number | undefined {
+  const raw = theme?.toCssVars()["--pte-row-height"];
+  if (raw == null) return undefined;
+  const match = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*$/i.exec(raw);
+  const px = match ? Number(match[1]) : NaN;
+  if (Number.isFinite(px) && px > 0) return px;
+  if (!warnedRowHeights.has(raw)) {
+    warnedRowHeights.add(raw);
+    console.warn(
+      `theme: rowHeight "${raw}" is not a positive pixel length, so it cannot size the rows; `
+      + "ignoring. Use a number of pixels (or set the `rowHeight` grid option).",
+    );
+  }
+  return undefined;
 }
 
 /** Create a theme from raw params. Prefer the exported presets + `withParams`. */

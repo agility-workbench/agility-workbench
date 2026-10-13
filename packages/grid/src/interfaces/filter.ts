@@ -141,6 +141,9 @@ export interface FilterParams {
    * they should appear, which a static or async list keeps in both layouts. An entry written as
    * `{ value }` (the older form) is unwrapped, so a column whose cell objects have their own
    * `value` field lists them wrapped that way.
+   *
+   * `filter: "dropdown"` reads a static array of this list as the choices of its select (Equal /
+   * Not equal); without one it shows a text box.
    */
   filterValues?: any[] | FilterValueAsyncSource;
   /**
@@ -266,7 +269,11 @@ export interface FilterParams {
   filterFunction?: (type: FilterType, filterValues: any[], cellValue: any, caseSensitive?: boolean, trimValues?: boolean) => boolean;
 }
 
-/** `"tree"` is the set filter with its values laid out as a collapsible tree (`FilterParams.treePathGetter`). */
+/**
+ * `"tree"` is the set filter with its values laid out as a collapsible tree (`FilterParams.treePathGetter`).
+ * `"boolean"` shows an Any / True / False select; `"dropdown"` a select of a static
+ * `FilterParams.filterValues` list.
+ */
 export type FilterInputType = "text" | "number" | "date" | "boolean" | "dropdown" | "set" | "tree" | "none";
 
 export function valuesNeededFor(op: FilterType): number {
@@ -274,7 +281,8 @@ export function valuesNeededFor(op: FilterType): number {
     case FilterType.IS_BLANK:
     case FilterType.IS_NOT_BLANK:
       return 0;
-    case "inRange":
+    case FilterType.IN_RANGE:
+    case FilterType.NOT_IN_RANGE:
       return 2;
     case FilterType.IN:
     case FilterType.NOT_IN:

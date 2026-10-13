@@ -54,6 +54,32 @@ The callback receives the items the grid built and returns the items to show.
 In React and Angular, menu items may also carry framework content in their
 `left`/`right` slots.
 
+## Multi-column menu
+
+When several columns are selected, the column menu acts on the whole set and no
+single column's `columnMenu` applies. Customize it with the grid-level
+`multiColumnMenu` (an option, a React prop, and an Angular input):
+
+```ts
+const options = {
+  columnSelection: true,
+  multiColumnMenu: ({ columns, items }) => [
+    ...items,
+    { isSeparator: true },
+    {
+      id: "audit-columns",
+      label: `Audit ${columns.length} columns`,
+      onClick: () => auditColumns(columns.map((column) => column.colId)),
+    },
+  ],
+} satisfies GridOptions;
+```
+
+`columns` lists the target column first, then the rest of the selection. Return
+`[]` for no menu, or set `multiColumnMenu: false` to disable multi-column menus
+outright. In React and Angular the latest function is called on each open;
+`false` is read when the grid is created.
+
 ## Body context menu
 
 ```ts

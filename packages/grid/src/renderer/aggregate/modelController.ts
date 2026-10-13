@@ -1,6 +1,7 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { AggregateScope, AggregateType } from "../../interfaces/aggregate";
+import { aggregateTypeByKey } from "../../aggregate/calculator";
 
 type AggregateModelControllerParams = {
   core: GridCore;
@@ -77,7 +78,8 @@ export class AggregateModelController {
   }
 
   getAggregateMap(): Map<string, AggregateType> {
-    return new Map(this.params.core.getAggregateModel().map(a => [a.key, a.type]));
+    // The footer shows one type per column — the same pick group rows make (the last registered).
+    return aggregateTypeByKey(this.params.core.getAggregateModel());
   }
 
   getAggregateRows(): any[] {

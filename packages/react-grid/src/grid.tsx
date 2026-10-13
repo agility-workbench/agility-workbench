@@ -44,6 +44,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onGridReadyRef = useRef(props.onGridReady);
     const getColumnMenuItemsRef = useRef(props.getColumnMenuItems);
     const bodyContextMenuRef = useRef(props.bodyContextMenu);
+    const multiColumnMenuRef = useRef(props.multiColumnMenu);
     const onCellClickedRef = useRef(props.onCellClicked);
     const onRowClickedRef = useRef(props.onRowClicked);
     const onCellDoubleClickedRef = useRef(props.onCellDoubleClicked);
@@ -60,6 +61,7 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onGridReadyRef.current = props.onGridReady;
     getColumnMenuItemsRef.current = props.getColumnMenuItems;
     bodyContextMenuRef.current = props.bodyContextMenu;
+    multiColumnMenuRef.current = props.multiColumnMenu;
     onCellClickedRef.current = props.onCellClicked;
     onRowClickedRef.current = props.onRowClicked;
     onCellDoubleClickedRef.current = props.onCellDoubleClicked;
@@ -96,6 +98,17 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);
       // Same shape: an absent callback returns undefined, which the fill reads as "the grid's value".
       options.fillOperation = (params) => fillOperationRef.current?.(params);
+      // `false` at mount is core's hard veto (no adapter runs) and stays as forwarded. Otherwise a
+      // stable bridge reads the latest prop: a function customizes, omitted keeps the built-ins, and
+      // a later `false` yields no items.
+      if (props.multiColumnMenu !== false) {
+        options.multiColumnMenu = (params) => {
+          const opt = multiColumnMenuRef.current;
+          if (opt === false) return [];
+          if (typeof opt !== "function") return params.items;
+          return opt(params as Parameters<typeof opt>[0]) as typeof params.items;
+        };
+      }
 
       // columnDefs / rowData are deliberately NOT passed to createGrid: the two mount effects below
       // apply them in this same commit (init → columnDefs → rowData, the order createGrid itself
@@ -315,6 +328,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         moveAfterEdit: props.moveAfterEdit ?? true,
         commitOnBlur: props.commitOnBlur ?? true,
         asyncTransactionWaitMs: props.asyncTransactionWaitMs ?? 16,
+        loadingMessage: props.loadingMessage,
+        noRowsMessage: props.noRowsMessage,
       });
     }, [
       props.rowHover,
@@ -343,6 +358,8 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       props.moveAfterEdit,
       props.commitOnBlur,
       props.asyncTransactionWaitMs,
+      props.loadingMessage,
+      props.noRowsMessage,
     ]);
 
     useLayoutEffect(() => {

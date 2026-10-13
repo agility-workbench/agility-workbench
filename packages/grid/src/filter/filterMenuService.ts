@@ -13,6 +13,12 @@ import {
   SetFilterTreeSpec,
 } from "./setFilterTree";
 
+/** Offered last by every built-in operator list (set filters aside). */
+const BLANK_OPS: FilterOption[] = [
+  { value: FilterType.IS_BLANK, label: "Is blank" },
+  { value: FilterType.IS_NOT_BLANK, label: "Is not blank" },
+];
+
 export class ColumnFilterMenuService {
   constructor(private core: IGridCore) { }
 
@@ -93,7 +99,9 @@ export class ColumnFilterMenuService {
   private getFilterParams(column: Column): FilterParams {
     const filterParams = this.mergeFilterParams(
       this.getDefaultFilterParams(column),
-      column.filterParams || this.getFilterParamsByColType(column)
+      // The defaults already follow the column type when `filter` names no kind; reading the type
+      // again here would let it override an explicit `filter: "boolean"` / `"date"` / `"number"`.
+      column.filterParams ?? {}
     );
     return filterParams;
   }
@@ -110,7 +118,9 @@ export class ColumnFilterMenuService {
       case "date":
         return { filterOptions: this.getFilterOpsForType(true) };
       case "boolean":
-        return { filterOptions: this.getFilterOpsForType(true) };
+        return { filterOptions: this.getBooleanFilterOps() };
+      case "dropdown":
+        return { filterOptions: this.getDropdownFilterOps() };
       case "set":
       case "tree":
         return { filterOptions: [{value: FilterType.NOT_IN, label: "Not in"}] };
@@ -134,7 +144,7 @@ export class ColumnFilterMenuService {
       case ColumnType.DATE:
         return { filterOptions: this.getFilterOpsForType(column.isComputableType()) };
       case ColumnType.BOOLEAN:
-        return { filterOptions: this.getFilterOpsForType(column.isComputableType()) };
+        return { filterOptions: this.getBooleanFilterOps() };
       default:
         return { filterOptions: this.getFilterOpsForType(column.isComputableType()), debounceMs };
     }
@@ -151,6 +161,7 @@ export class ColumnFilterMenuService {
         { value: FilterType.LTE, label: "Less than or equal" },
         { value: FilterType.IN_RANGE, label: "Between" },
         { value: FilterType.NOT_IN_RANGE, label: "Not between" },
+        ...BLANK_OPS,
       ];
     }
     // string
@@ -161,7 +172,22 @@ export class ColumnFilterMenuService {
       { value: FilterType.NEQ, label: "Not equal" },
       { value: FilterType.STARTS_WITH, label: "Starts with" },
       { value: FilterType.ENDS_WITH, label: "Ends with" },
+      ...BLANK_OPS,
     ];
+  }
+
+  /** A true / false choice: equality only, plus the blank checks. */
+  private getBooleanFilterOps(): FilterOption[] {
+    return [
+      { value: FilterType.EQ, label: "Equal" },
+      { value: FilterType.NEQ, label: "Not equal" },
+      ...BLANK_OPS,
+    ];
+  }
+
+  /** A pick from `filterParams.filterValues`: equality only, plus the blank checks. */
+  private getDropdownFilterOps(): FilterOption[] {
+    return this.getBooleanFilterOps();
   }
 
   private getFilterInputType(column: Column): FilterInputType {

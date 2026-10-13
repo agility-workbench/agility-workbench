@@ -1066,6 +1066,9 @@ export interface GridOptions {
   headerHeight?: number;
   leafHeaderHeight?: number;
   parentHeaderHeight?: number;
+  /** Height of every body row in px. Fixed at creation. When omitted, a theme's `rowHeight`
+   * param (`themeLight.withParams({ rowHeight: 42 })`) applies; otherwise 43. An explicit value
+   * here always wins over the theme. */
   rowHeight?: number;
   /**
    * Application-owned rows rendered in a frozen band immediately below the header. These rows are
@@ -1914,6 +1917,8 @@ export const RUNTIME_OPTION_KEYS = [
   "moveAfterEdit",
   "commitOnBlur",
   "asyncTransactionWaitMs",
+  "loadingMessage",
+  "noRowsMessage",
 ] as const;
 
 /**

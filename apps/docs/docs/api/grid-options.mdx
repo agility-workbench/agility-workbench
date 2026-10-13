@@ -14,12 +14,12 @@ inputs. Optional fields use documented defaults when omitted.
 | Option | Type | Purpose |
 | --- | --- | --- |
 | `columnDefs` | `ColDef[]` | Column and column-group definitions |
-| `rowIdKey` | `string` | Field containing a stable row ID |
-| `getRowId` | `(row) => string` | Derive a stable row ID |
+| `rowIdKey` | `string` | Field containing a stable row ID. Required in practice on the server-side model: without it (or `getRowId`) ids change on every block refetch, and the grid warns once |
+| `getRowId` | `(row) => string` | Derive a stable row ID (takes precedence over `rowIdKey`). The server-side model needs one of the two |
 | `rowDataMode` | `auto \| reset \| diff` | Whether a replacement `rowData` array is diffed into the grid (keeping history and page) or re-ingested. Default `auto` |
 | `asyncTransactionWaitMs` | `number` | Batch window for `applyTransactionAsync`; defaults to 16 ms. `0` flushes on the next macrotask |
 | `rowModelType` | `clientSide \| serverSide` | Select the row model |
-| `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract |
+| `serverSideDataSource` | `IServerSideDataSource` | Lazy data-source contract. A failed block emits `error` and is requested again on the next demand for it (no automatic retry); pair with `rowIdKey`/`getRowId` |
 | `serverSideBlockSize` | `number` | Requested block size |
 | `serverSideAggregationSource` | `IServerSideDataSource["getAggregates"]` | Whole-dataset footer totals; optional when the data source implements `getAggregates`, and wins over it when both exist |
 
@@ -30,13 +30,13 @@ React and Angular expose `rowData` through their bindings; core integrations use
 
 | Option | Type | Default |
 | --- | --- | --- |
-| `rowHeight` | `number` | Theme/default row height |
+| `rowHeight` | `number` | The theme's `rowHeight` param, else 43. Fixed at creation; an explicit value wins over the theme |
 | `headerHeight` | `number` | Theme/default header height |
 | `overscanRowCount` | `number` | Viewport-derived default |
 | `rowNumbers` | `boolean` | `false` |
 | `defaultColDef` | `DefaultColDef` | `{}` |
-| `minResizeWidth` | `number` | `75` |
-| `maxColumnWidth` | `number` | `420` |
+| `minResizeWidth` | `number` | `75`. Smallest width a resize drag reaches; also the floor for content autosize |
+| `maxColumnWidth` | `number` | `420`. Cap for content autosize (a declared `width`, a column's own `maxWidth`, or a user resize may exceed it) |
 | `columnPanel` | `boolean \| ColumnPanelOptions` | `false` |
 
 ## Interaction
@@ -56,6 +56,7 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `clearSelectionOnBodyClick` | `boolean` | `true` |
 | `highlightActiveCell` | `boolean` | `false` |
 | `bodyContextMenu` | `boolean \| getter` | `true` |
+| `multiColumnMenu` | `false \| ({ ctx, columns, items }) => MenuItem[]` | Not set (built-in items for a multi-column selection); a getter customizes them, `false` disables the menu. Also a React prop and an Angular input |
 | `rowInsertionMenu` | `RowInsertionMenuOptions` | Not set; opt-in Insert submenu on client-side row numbers |
 
 `RowSelectionOptions` accepts `mode: "single" | "multiple"` (default
@@ -227,8 +228,8 @@ hosted in the [toolbar](#narrow-bars) is laid out by the bar instead.
 | `sheets` | `SheetsOptions` | Spreadsheet-style footer tabs (Data + pivot sheets over one row model); application-owned list |
 | `suppressStyleInjection` | `boolean` | Use imported CSS instead |
 | `styleNonce` | `string` | CSP nonce for injected styles |
-| `loadingMessage` | `string` | Loading overlay copy |
-| `noRowsMessage` | `string` | Empty-data copy |
+| `loadingMessage` | `string` | Loading overlay copy (default "Loading data..."; updatable at runtime) |
+| `noRowsMessage` | `string` | Empty-data copy (default "No rows to show"; updatable at runtime) |
 | `pivotNoValuesMessage` | `string` | Copy of the header hint shown while pivot mode has no aggregates |
 | `pivotEmptyMessage` | `string` | Copy of the empty state shown while pivot mode has no roles configured at all |
 

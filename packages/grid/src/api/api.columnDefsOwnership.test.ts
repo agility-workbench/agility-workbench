@@ -148,6 +148,8 @@ describe("column schema ownership", () => {
     const api = createGrid(host, {
       rowIdKey: "id",
       rowData: [{ id: 1, name: longName }],
+      // Lift the default 420px autosize cap so the measured cell width is observable.
+      maxColumnWidth: 2000,
     });
     api.setColumnDefs([{ colId: "name", key: "name", label: "Name", type: ColumnType.STRING }]);
 

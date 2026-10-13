@@ -737,6 +737,14 @@ through the `error` event (`code: "row_model_error"`) instead of entering the st
 `details` is a `ServerSideDataError` (`reason`, `rowId`, `parentId`, `path`, `row`), and
 `isServerSideDataError(ev.details)` tells it apart from a data source's own `error()`.
 
+These rules hold on every server-side grid, tree or not. A failed block (the data source calls
+`error()`, rejects, or throws) emits that `error` event and stays unloaded; it is requested again the
+next time it is needed (scrolling over the gap) or by `refreshServerSideData`, never retried on its
+own. Set `rowIdKey` or `getRowId`: without one, ids are generated per row object and change on every
+block refetch (the grid warns once on the first load). Undo/redo history is cleared whenever the
+loaded rows are discarded — a purge refresh, or the reload a sort, filter, or grouping change
+triggers; a soft refresh keeps it.
+
 Real rows remain data-bearing and editable even when they own children. Duplicate ids, duplicate
 paths, and relationship cycles throw descriptive errors. A missing parent-id reference is rendered
 as a root with a console diagnostic. In nested-children mode, transaction additions may add root
@@ -1010,7 +1018,8 @@ const myTheme = themeLight.withParams({
 ### Semantic params + escape hatch
 
 High-level params (`accentColor`, `borderColor`, `spacing`, `rowHeight`, …) each fan out to
-several low-level variables. For anything not covered, set any grid CSS variable directly via
+several low-level variables. `rowHeight` also sizes the rows (in pixels): it is read when the grid
+is created, and an explicit `rowHeight` grid option wins over it. For anything not covered, set any grid CSS variable directly via
 `vars` — these are typed and autocompleted:
 
 ```ts

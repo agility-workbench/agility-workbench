@@ -23,6 +23,7 @@ import type {
   BodyMenuContext,
   CellValueChangedParams,
   ColDef,
+  Column,
   ColumnMenuContext,
   GridEventCellClickedParams,
   GridEventCellDoubleClickedParams,
@@ -234,6 +235,21 @@ export class AwbGrid implements OnDestroy {
    */
   readonly bodyContextMenu = input<
     boolean | ((p: { ctx: BodyMenuContext; items: NgMenuItem[] }) => NgMenuItem[]) | undefined
+  >();
+  /**
+   * Customizes the column menu opened for several selected columns at once (see the core
+   * `multiColumnMenu`):
+   * - omitted (default): the grid's built-in multi-column items.
+   * - a function: called with the built-in items and the columns they act on (target first);
+   *   return the items to show (slots may be `TemplateRef`s), or `[]` for no menu. The current
+   *   input value is read on every open. `getColumnMenuItems` still runs afterwards.
+   * - `false` at creation: no multi-column menu, and `getColumnMenuItems` does not run for one
+   *   either. Switching to `false` later behaves like a function returning `[]`.
+   */
+  readonly multiColumnMenu = input<
+    | false
+    | ((p: { ctx: ColumnMenuContext; columns: Column[]; items: NgMenuItem[] }) => NgMenuItem[])
+    | undefined
   >();
 
   // --- outputs ---
@@ -463,6 +479,8 @@ export class AwbGrid implements OnDestroy {
         moveAfterEdit: this.moveAfterEdit() ?? true,
         commitOnBlur: this.commitOnBlur() ?? true,
         asyncTransactionWaitMs: this.asyncTransactionWaitMs() ?? 16,
+        loadingMessage: this.loadingMessage(),
+        noRowsMessage: this.noRowsMessage(),
       };
       return () => api.updateGridOptions(opts);
     });

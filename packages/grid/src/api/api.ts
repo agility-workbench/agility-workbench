@@ -1,4 +1,4 @@
-import { GridEventMap } from "../events/events";
+import { GridEventMap, GridEventPaginationChangedParams } from "../events/events";
 import { ColDef } from "../interfaces/column";
 import {
   ExportParams,
@@ -416,6 +416,10 @@ export class GridAPI implements IGridAPI {
 
   getGroupNodes(): IRowNode[] {
     return this.core.getRowModel().getGroupNodes();
+  }
+
+  getPaginationInfo(): GridEventPaginationChangedParams {
+    return this.core.getPaginationInfo();
   }
 
   getRowNode(rowId: GridId): IRowNode | undefined {

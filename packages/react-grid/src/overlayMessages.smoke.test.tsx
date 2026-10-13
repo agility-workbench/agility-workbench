@@ -29,6 +29,30 @@ async function mount(props: Record<string, unknown>, data: unknown[] = []) {
 }
 
 describe("overlay message options", () => {
+  it("updates loadingMessage and noRowsMessage after mount", async () => {
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const render = (props: Record<string, unknown>) =>
+      act(async () => {
+        root.render(<Grid data={[]} columnDefs={COLS} rowIdKey="id" {...props} />);
+      });
+
+    await render({ noRowsMessage: "Nothing yet" });
+    expect(container.querySelector(".pte-norows-label")?.textContent).toBe("Nothing yet");
+    await render({ noRowsMessage: "Still nothing" });
+    expect(container.querySelector(".pte-norows-label")?.textContent).toBe("Still nothing");
+
+    await render({ loading: true, loadingMessage: "Fetching…" });
+    expect(container.querySelector(".pte-loading-label")?.textContent).toBe("Fetching…");
+    await render({ loading: true, loadingMessage: "Almost there…" });
+    expect(container.querySelector(".pte-loading-label")?.textContent).toBe("Almost there…");
+
+    await unmountTestRoot(root);
+    container.remove();
+  });
+
   it("uses a custom loadingMessage in the loading overlay", async () => {
     const { container, root } = await mount({ loading: true, loadingMessage: "Fetching rows…" });
     const label = container.querySelector(".pte-loading-label");

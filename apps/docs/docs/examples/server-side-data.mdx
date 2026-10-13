@@ -40,10 +40,28 @@ const serverSideDataSource: IServerSideDataSource = {
 
 const options = {
   rowModelType: "serverSide",
+  rowIdKey: "id",
   serverSideBlockSize: 100,
   serverSideDataSource,
 } satisfies GridOptions;
 ```
+
+### Row identity
+
+Give a server-side grid a stable row id: `rowIdKey` (a field holding the
+server's key) or `getRowId(row)`. Without one, each row object gets a generated
+id, and every block refetch (scrolling back after a purge, a refresh, a sort or
+filter change) hands back new objects with new ids — selection, refresh-in-place
+and undo history then cannot follow the row. The grid logs a one-time
+`console.warn` on the first load when neither option is set.
+
+### Failed requests
+
+When `getRows` calls `error(…)`, rejects, or throws, the grid emits an `error`
+event (`code: "row_model_error"`, the failure in `details`), hides the loading
+overlay, and leaves the block's rows unloaded. It does not retry on its own: the
+block is requested again the next time it is needed — scrolling over the gap —
+or by `api.refreshServerSideData()`.
 
 ## Server-provided schema
 
@@ -172,6 +190,11 @@ below it; the two are mutually exclusive. Expansion state survives either way.
 The call resolves `false` when the named subtree is not one the store holds (an
 unknown group path, or a row that has never been expanded, so nothing below it
 is loaded).
+
+Undo/redo history is cleared (one `historyChanged` with `reason: "clear"`)
+whenever the loaded rows are discarded: a `{ purge: true }` refresh and any
+reload a sort, filter, or grouping change triggers. A soft refresh refetches the
+edited rows in place and keeps the history.
 
 For server-side pagination with expensive counts, pair an open-ended listing
 with a hint:

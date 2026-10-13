@@ -82,8 +82,8 @@ describe("ColumnModel.addColumnDef", () => {
 
   it("rolls child leaf widths up into a group header (gap #2)", () => {
     const model = makeModel();
-    // No measure context: children keep their explicit widths (computeColumnWidth
-    // would otherwise re-measure and ignore col.width for non-renderer columns).
+    // Children keep their declared widths (a declared width is honoured by the
+    // implicit sizing pass; only an explicit fit-to-content re-measures it).
     const id = model.addColumnDef({
       colId: "grp",
       label: "Group",

@@ -1,4 +1,4 @@
-import { FormatterOptions, FormatterOptionsParams, getFormatterByType, ValueFormatterParams, ValueParserParams } from "./formatters";
+import { FormatterOptions, FormatterOptionsParams, getFormatterByType, resolveFormatterOptions, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { parseTextByType } from "./parsers";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
@@ -364,7 +364,12 @@ export class Column {
     if (this.valueParser) {
       return this.valueParser({ value: text, oldValue, row, col: this });
     }
-    return parseTextByType(this.type, text, oldValue);
+    // The column's formatter options and display let the built-in parser read back what the
+    // column itself shows ("$1,234.00", "31/01/2026"), so the grid's own copy pastes back.
+    return parseTextByType(this.type, text, oldValue, {
+      options: resolveFormatterOptions(this, row),
+      format: (value) => this.formatValue(value, row),
+    });
   }
 
   /** Whether this column inherits one field from `getRowPresentation`. */

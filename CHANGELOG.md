@@ -3,6 +3,108 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+Bug-fix round from the 2026-10-13 feature-set gap analysis (`docs/feature-gap-findings.md`,
+section A): shipped, documented behaviour that did not work. Every fix carries a regression test.
+
+### Filtering
+
+- **Conditions joined with OR now keep rows that match either condition.** The client-side row
+  model ignored a column filter's `join` and ANDed everything; the UI toggle and the docs already
+  promised OR. Different columns are still ANDed, and the join survives view-state round trips.
+- **Between and Not between hold two values.** Every value input wrote the first operand, so the
+  upper bound overwrote the lower one; Not between also rendered one input and never excluded
+  anything. Each input now writes its own bound and both operators take two.
+- **Date column filters match.** Operands and cells (`yyyy-mm-dd` text, `Date`, epoch, ISO) are
+  compared by local calendar day: Equal is the same day, Between runs from the start of the first
+  day through the end of the second, Greater than starts after the end of the day. They were
+  compared with `Number()`, which is `NaN` for the date input's text.
+- **Boolean filters are a True / False / Any choice** with Equal and Not equal, matching `true`,
+  `1`, "yes"-style values. They rendered a text box offering numeric or text operators.
+  `filter: "dropdown"` now shows a select of its static `filterValues`.
+- **Is blank and Is not blank are offered by default** on text, number, date and boolean filters,
+  as the docs said. An explicit `filter` kind now decides the operators even when the column type
+  differs (`filter: "date"` on a string column offered text operators).
+
+### Columns and sorting
+
+- **A column's declared `width` is kept.** Content autosize on data load replaced it; now only
+  columns without a width are measured, a user resize always wins, and expanding or collapsing a
+  column group keeps the revealed leaves' declared and resized widths. Content autosize respects
+  `minResizeWidth`, `maxColumnWidth` and the column's own `minWidth`/`maxWidth`; header
+  double-click and `columnAutosize` still fit to content.
+- **`filter: false` no longer turns off sorting.** A loose comparison treated `false` as the empty
+  string that once meant "no comparator", so those columns silently dropped their sort.
+- **`columnWidthsChanged` carries `final`.** It is `false` for each move of a resize drag and
+  `true` for the settling event (and for autosize and refits), so an app can persist column state
+  once per resize instead of per pixel.
+
+### Editing and clipboard
+
+- **The date editor opens on the cell's own calendar date in every time zone** (it showed the day
+  before east of UTC) and saving keeps the column's value type: `Date` columns stay `Date`s and
+  epoch columns stay numbers instead of turning into ISO text.
+- **Pasting what the grid copied works.** Currency columns parse their own formatted text
+  ("$1,234.00", "-1.234,56 €", parentheses negatives), number columns with a
+  `formatterOptions.locale` parse that locale's separators, and date columns parse their
+  `formatterOptions.format` (e.g. "31/01/2026") as well as ISO. Copy wrote formatted text that the
+  built-in parsers then rejected.
+- **The body menu's Copy and Copy with Headers copy exactly what Ctrl/Cmd+C copies.** Both paths
+  share one serializer. A selection made only of group rows now copies their labels and totals
+  (from the menu or the keyboard) instead of nothing.
+
+### Grouping, tree data and aggregation
+
+- **Tree-data siblings sort by their own values at every level.** A parent's position no longer
+  depends on its children (a parent "Z" with a child "A" sorted before "B").
+- **Aggregates ignore blank cells.** Sum, average, median, min and max of a group with nothing
+  numeric are empty instead of 0, and `count` counts non-blank values, as the Excel export's
+  `COUNTA` already did.
+- **Several aggregate types on one column: the last one registered shows** on group rows and in
+  the footer. This was already the behaviour; it is now one documented, tested rule.
+
+### Server-side row model
+
+- **A block whose request failed is requested again the next time it is needed** (scrolling back
+  over it, or a refresh) instead of staying blank until a refresh. The `error` event is unchanged
+  and there is no automatic retry.
+- **Undo history is cleared when loaded rows are discarded** (a purge refresh, or a sort, filter or
+  grouping reload) with `historyChanged` reason `"clear"`, so an undo cannot write stale values
+  into fresh server rows. A soft refresh keeps it.
+- **A one-time warning when no row id strategy is set.** Without `rowIdKey` or `getRowId` a
+  server-side grid's row ids change on every block refetch, which silently breaks id-keyed
+  selection, refresh-in-place and history.
+
+### Export
+
+- **CSV cells cannot run as formulas.** Text starting with `=`, `+`, `-`, `@`, tab or carriage
+  return is prefixed with a single quote; numbers are untouched. Header labels are now CSV-quoted
+  too. Excel strings were already written as inline strings and are unaffected.
+
+### Theming and overlays
+
+- **The theme `rowHeight` param sets the row height.** It mapped to a CSS variable nothing read.
+  It is resolved when the grid is created; an explicit `rowHeight` grid option wins.
+- **`loadingMessage` and `noRowsMessage` are live** through `updateGridOptions` and the React and
+  Angular props/inputs, including a no-rows overlay that is already showing.
+- **The no-rows overlay returns when loading ends on an empty grid.** Turning the loading overlay
+  on hid it, and nothing re-evaluated the empty state when loading was turned off.
+- **The stylesheet no longer claims RTL support,** and an unused filter overlay that every grid
+  attached to `document.body` with document-wide listeners is removed.
+
+### Wrappers and API
+
+- **`multiColumnMenu` reaches the grid from React and Angular.** React accepted the prop and
+  dropped it; Angular had no input. Both forward it, call the latest function on each open, and
+  accept framework slots in the items.
+- **`ChangeFlashCellRenderer` keeps previous values per grid.** A static map shared by every grid
+  on the page made grids with the same row ids flash against each other and never released
+  memory; removed rows are pruned and a destroyed grid releases everything.
+- **`api.getPaginationInfo()`** returns the current pagination state, the same object
+  `paginationChanged` carries. The docs already referred to it; it was only on the core.
+- `headerAction.action` is typed as a union instead of `string`; dead no-op branches are gone.
+
 ## 1.9.0 — 2026-10-12
 
 ### Rendering

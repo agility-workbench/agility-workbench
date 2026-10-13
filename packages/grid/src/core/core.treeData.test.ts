@@ -110,6 +110,35 @@ describe("GridCore tree data", () => {
     expect(core.getRowModel().getRowNode("a")?.parentId).toBe("root");
   });
 
+  describe("sibling sort uses each row's own value, never its descendants'", () => {
+    const rows = [
+      { id: "z", parentId: null, name: "Z" },
+      { id: "z-a", parentId: "z", name: "A" },
+      { id: "z-a-y", parentId: "z-a", name: "Y" },
+      { id: "z-a-c", parentId: "z-a", name: "C" },
+      { id: "b", parentId: null, name: "B" },
+      { id: "b-x", parentId: "b", name: "X" },
+      { id: "b-d", parentId: "b", name: "D" },
+    ];
+    const build = (dir: "asc" | "desc") => createTree(
+      { mode: "parent", getParentId: (row: any) => row.parentId, getLabel: (row: any) => row.name },
+      rows.map(row => ({ ...row })),
+      { groupDefaultExpanded: -1, initialSort: [{ colId: "name", dir }] },
+    );
+
+    it("ascending puts parent B before parent Z even though Z has a child A", () => {
+      expect(view(build("asc")).map(node => node.id)).toEqual([
+        "b", "b-d", "b-x", "z", "z-a", "z-a-c", "z-a-y",
+      ]);
+    });
+
+    it("descending puts Z first and sorts children and grandchildren under their own parents", () => {
+      expect(view(build("desc")).map(node => node.id)).toEqual([
+        "z", "z-a", "z-a-y", "z-a-c", "b", "b-x", "b-d",
+      ]);
+    });
+  });
+
   it("flattens nested-children input while keeping every row addressable by id", () => {
     const roots = [{
       id: "root",

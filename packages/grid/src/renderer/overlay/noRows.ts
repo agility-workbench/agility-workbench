@@ -1,13 +1,16 @@
 // Empty-state overlay shown when the view has zero rows (no data, or every row filtered out).
 // Distinct from the loading spinner: the loading overlay covers "we're fetching", this covers
 // "there is nothing to show". The two are mutually exclusive — loading suppresses this one.
+/** The empty-state label shown when `noRowsMessage` is not set. */
+export const DEFAULT_NO_ROWS_MESSAGE = "No rows to show";
+
 export function createNoRowsOverlay(): HTMLDivElement {
   const overlay = document.createElement("div");
   overlay.className = "pte-norows-overlay hidden";
 
   const label = document.createElement("div");
   label.className = "pte-norows-label";
-  label.textContent = "No rows to show";
+  label.textContent = DEFAULT_NO_ROWS_MESSAGE;
 
   overlay.appendChild(label);
   return overlay;

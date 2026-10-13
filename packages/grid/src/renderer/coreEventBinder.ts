@@ -49,7 +49,14 @@ export class GridRendererCoreEventBinder {
         // separately from the actual row count in rowsChanged, so a load-in-progress hides the
         // empty overlay until the data arrives.
         this.params.setLoading(ev.overlayType === "loading");
-        if (ev.overlayType === "loading") this.params.setEmpty(false);
+        if (ev.overlayType === "loading") {
+          this.params.setEmpty(false);
+        } else {
+          // Loading ended (or the app cleared the overlay): the empty state the load suppressed
+          // has to come back when the model still holds nothing, since no rowsChanged follows a
+          // load that delivered no rows (or an app-driven `loading` flag that was never a load).
+          this.params.setEmpty(this.params.core.getRowModel().getViewCount() === 0);
+        }
       }),
       this.params.core.on("modelUpdated", () => {
         this.params.buildPaginationControls();
