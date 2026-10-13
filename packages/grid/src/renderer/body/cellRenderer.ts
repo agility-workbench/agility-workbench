@@ -30,6 +30,7 @@ export class BodyCellRenderer {
     viewIndex: number = row.viewIndex,
     rowNumber: number = viewIndex + 1,
     rowPresentation?: RowPresentation,
+    refreshReason: CellRefreshReason = "data",
   ) {
     applyDynamicClasses(cell, rowPresentation?.cellClass ?? null);
     applyDynamicStyles(cell, rowPresentation?.cellStyle ?? null);
@@ -54,7 +55,7 @@ export class BodyCellRenderer {
     // colDef stub so renderers that read colDef.cellRendererParams (e.g. the React adapter) stay safe.
     const colDefStub = { cellRendererParams: undefined } as unknown as Column;
     const rendererParams = {
-      ...getCellRendererParams(row.data, row.data, row, viewIndex, colDefStub, cell, this.api, "data", rowPresentation),
+      ...getCellRendererParams(row.data, row.data, row, viewIndex, colDefStub, cell, this.api, refreshReason, rowPresentation),
       data: row.data,
       node: row,
     };
@@ -102,6 +103,25 @@ export class BodyCellRenderer {
     cell.classList.remove("pte-group-cell", "pte-action-frame-indicator");
     cell.style.paddingLeft = "";
     cell.replaceChildren();
+  }
+
+  // Tear down every per-column renderer instance a slot holds and empty the given cells. Called
+  // when a slot switches into full-width layout: the per-column cells are only hidden under the
+  // host, so without this they would keep the previous leaf's live instances (mounted framework
+  // components, timers, tooltip targets) and DOM until the slot is reused for a normal row. The
+  // full-width host's own instance is left alone; the checkbox cell's decorative box is pool-built
+  // once and never repainted, so it is kept.
+  releaseColumnRenderers(cells: HTMLDivElement[], cellRendererMap: Map<string, RendererRecord>) {
+    for (const [key, rec] of cellRendererMap) {
+      if (key === BodyCellRenderer.FULL_WIDTH_RENDERER_KEY) continue;
+      rec.runtime.destroy();
+      cellRendererMap.delete(key);
+    }
+    for (const cell of cells) {
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+      if (cell.classList.contains("pte-checkbox-cell")) continue;
+      cell.replaceChildren();
+    }
   }
 
   private clearFullWidthRenderer(cellRendererMap: Map<string, RendererRecord>) {

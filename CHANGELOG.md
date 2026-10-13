@@ -66,6 +66,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 - **The Views button fills the toolbar's height.** With saved views on, the button sat at its 34px
   minimum inside the 42px bar, so its divider and hover highlight stopped short of the bar's edges.
   It now stretches like the Export and Columns buttons beside it.
+- **Full-width rows no longer keep hidden leaf renderers alive.** A slot showing a `groupRows`
+  group row (or an `isFullWidthRow` row) tears down the per-column renderer instances it held for
+  its previous leaf, and data or resize refreshes repaint the full-width host instead of the
+  hidden cells beneath it.
 
 ## 1.8.0 — 2026-10-12
 

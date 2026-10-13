@@ -834,6 +834,10 @@ export class GridRenderer {
           slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation,
         ),
       clearFullWidthCell: (slot) => this._bodyCellRenderer.clearFullWidthCell(slot.fullWidthCellEl, slot.cellRendererInstances),
+      releaseCellRenderers: (slot) => this._bodyCellRenderer.releaseColumnRenderers(
+        [...(slot.leadingCellEls ?? []), ...slot.leftCellEls, ...slot.cellEls, ...slot.rightCellEls],
+        slot.cellRendererInstances,
+      ),
       applyCellStateToSlot: (slot, viewIndex) => {
         this._selectionRenderer.applySelectionToSlot(slot, viewIndex);
         this._findHighlightRenderer.applyToSlot(slot, viewIndex);
@@ -1792,6 +1796,8 @@ export class GridRenderer {
     if (!slot) return;
     const row = this.core.getRowModel().getRowNode(rowId);
     if (!col || !row) return;
+    // A full-width row's per-column cells are hidden under its host; there is no cell to paint.
+    if (this.core.isFullWidthNode(row)) return;
     const cells = lookup.section === "left" ? slot.leftCellEls
       : lookup.section === "right" ? slot.rightCellEls
         : slot.cellEls;
@@ -1854,6 +1860,16 @@ export class GridRenderer {
       const rowNumber = this.core.getRowNumberForViewIndex(viewIdx);
       // Resolve once per row so every refreshed cell observes the same presentation snapshot.
       const rowPresentation = this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);
+
+      // A full-width row paints only its host; painting the hidden per-column cells beneath it would
+      // mount renderer instances nobody sees. Repaint the host so its renderer still observes data
+      // and resize refreshes.
+      if (this.core.isFullWidthNode(row)) {
+        this._bodyCellRenderer.renderFullWidthCell(
+          slot.fullWidthCellEl, row, slot.cellRendererInstances, viewIdx, rowNumber, rowPresentation, reason,
+        );
+        continue;
+      }
 
       for (const section of sections) {
         const cells = section.cells(slot);
