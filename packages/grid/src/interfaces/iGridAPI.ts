@@ -450,8 +450,10 @@ export interface IGridAPI {
    * `valueGetter`, else the data field). On a group row, the group cell value: the aggregate for
    * that column, else the group label on the group's label column, else the column's
    * `groupValueGetter` result, else `undefined`. The row resolves like `getRowNode` (application-
-   * pinned band rows included) and the column like the other column APIs (public colId, instance
-   * id or key). `undefined` for a row or column the grid does not hold. Mirrors `setCellValue`.
+   * pinned band rows included). The column resolves by the instance id an emitted ref carries,
+   * else by public colId, instance id or key, else the auto-group column by its colId; so a
+   * `cellClicked` payload's ref reads back directly. `undefined` for a row or column the grid does
+   * not hold. Mirrors `setCellValue`.
    *
    * ```ts
    * // In a cell renderer: read a sibling column's value on the same row — on a group row, its

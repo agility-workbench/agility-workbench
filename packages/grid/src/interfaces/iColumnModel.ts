@@ -36,6 +36,12 @@ export interface IColumnModel {
   getPivotResultRoots(): Column[];
   /** The live generated pivot leaf with this generated colId (see ColumnModel implementation). */
   getPivotResultLeaf(colId: string): Column | undefined;
+  /**
+   * The auto-group column with this public colId, if one is in the layout. Internal columns are
+   * kept out of the colId index, and the auto-group instance id is a fresh UUID per grid, so its
+   * colId is the only durable handle on it.
+   */
+  getAutoGroupColumnByColId(colId: string): Column | undefined;
   readonly maxHeaderDepth: number;
   readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;

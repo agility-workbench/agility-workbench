@@ -54,8 +54,9 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 - **`api.getCellValue(cell)`.** Reads the raw value a cell holds: on a leaf, the column's value
   (its `valueGetter`, else the data field); on a group row, the group cell value (aggregate, label,
   `groupValueGetter` result). The row resolves like `getRowNode`, application-pinned band rows
-  included, and the column by colId, instance id or key. A row or column the grid does not hold
-  reads as `undefined`. The read-side counterpart of `setCellValue`.
+  included, and the column by colId, instance id or key, the auto-group column by its colId, with
+  an emitted ref's instance id winning, so a click payload's cell ref reads back. A row or column
+  the grid does not hold reads as `undefined`. The read-side counterpart of `setCellValue`.
 
 ### Fixes
 
