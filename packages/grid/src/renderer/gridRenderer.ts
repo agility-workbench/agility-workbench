@@ -1,3 +1,4 @@
+import type { HeaderHeightOptions } from "../core/headerGeometry";
 import { AggregateType } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
@@ -152,8 +153,6 @@ export class GridRenderer {
   _fillHandle: FillHandleController;
   rowHeight: number = 43;
   height?: number;
-
-  _maxDepth: number = 1;
 
   _measureCtx: CanvasRenderingContext2D | null;
   _columnWidths: Map<string, {
@@ -494,7 +493,6 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       api: this.api,
-      rowHeight: () => this.rowHeight,
       getBodyFrame: () => this._bodyViewportRenderer.getRefs().bodyFrame,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       openColumnMenu: (colID, anchorEl) => this._columnMenuOpener.openColumnMenu("columnMenuButton", colID, { anchorEl }),
@@ -587,6 +585,7 @@ export class GridRenderer {
       togglePagination: (enabled) => this.togglePagination(enabled),
       setPaginationControls: (options) => this.setPaginationControls(options),
       setTheme: (theme) => this.setTheme(theme),
+      setHeaderHeights: (heights) => this.setHeaderHeights(heights),
       setIcons: (icons) => this.setIcons(icons),
       setRuntimeOptions: (options) => this.setRuntimeOptions(options),
       setServerSideDataSource: (dataSource) => this.setServerSideDataSource(dataSource),
@@ -670,8 +669,7 @@ export class GridRenderer {
     this._columnInteractionRenderer = new ColumnInteractionRenderer({
       core: this.core,
       root: this.root,
-      rowHeight: () => this.rowHeight,
-      maxDepth: () => this._maxDepth,
+      headerHeight: () => this._headerRenderer.getGeometry().total,
       headerWrapper: headerRefs.wrapper,
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
@@ -1611,6 +1609,18 @@ export class GridRenderer {
     this.setThemeVars(theme);
     const icons = { ...theme?.getIcons(), ...this.core.getOptions().icons };
     if (Object.keys(icons).length > 0) this.setIcons(icons);
+  }
+
+  /**
+   * Apply changed header heights (presence-based, see `GridCore.setHeaderHeights`): re-lay the
+   * header out, re-fit the body frame under it, and re-measure the row pool for the body's new
+   * height. A no-op when the resolved heights did not change.
+   */
+  setHeaderHeights(heights: HeaderHeightOptions) {
+    if (!this.core.setHeaderHeights(heights)) return;
+    this._buildHeaderDOM("headerHeight");
+    this._columnLayoutRenderer.updateColumnWidths();
+    this._maybeUpdatePoolSize();
   }
 
   setServerSideDataSource(dataSource?: IServerSideDataSource) {

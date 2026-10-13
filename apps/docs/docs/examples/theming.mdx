@@ -36,10 +36,13 @@ const theme = themeLight.withParams({
 const options = { theme } satisfies GridOptions;
 ```
 
-`rowHeight` is the one layout param: rows are sized in JavaScript, so the grid
-reads the theme's value when it is created and uses it as the row height. It
-takes pixels (`42` or `"42px"`); an explicit `rowHeight` grid option wins over
-it, and swapping the theme on a mounted grid does not resize the rows.
+`rowHeight` and `headerHeight` are the two layout params: rows and header
+levels are sized in JavaScript, so the grid reads the theme's values when it is
+created and uses them as the row height and the header-level height. They take
+pixels (`42` or `"42px"`); an explicit `rowHeight` / `headerHeight` grid option
+wins over them (and `leafHeaderHeight` / `parentHeaderHeight` fall back to the
+resolved header height). Swapping the theme on a mounted grid resizes neither
+the rows nor the header.
 
 One parameter *derives* rather than fans out: `findMatchColor` turns a single
 color into the quick filter's three find-highlight variables — the tint on every

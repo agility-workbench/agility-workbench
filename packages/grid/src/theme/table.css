@@ -8,6 +8,10 @@
   /* --pte-row-height: 43px;  Not a live variable: rows are sized in JS (virtualization needs the
      number). The theme's `rowHeight` param emits it and the grid reads that value at creation
      (resolveThemeRowHeightPx); it stays declared here, commented, so it remains in PteVarName. */
+  /* --pte-header-height: 43px;  Not a live variable either: the header is laid out in JS. The
+     theme's `headerHeight` param emits it and the grid reads it at creation
+     (resolveThemeHeaderHeightPx). The header's laid-out height is --pte-rendered-header-height,
+     which the header renderer writes; themes do not set that one. */
   --pte-row-border-size: 1px;
   --pte-font-family: Roboto, sans-serif;
   --pte-font-size: 14px;

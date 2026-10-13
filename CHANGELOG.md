@@ -82,6 +82,26 @@ section A): shipped, documented behaviour that did not work. Every fix carries a
   return is prefixed with a single quote; numbers are untouched. Header labels are now CSV-quoted
   too. Excel strings were already written as inline strings and are unaffected.
 
+### Header heights
+
+- **Header cells now line up with the header at any header height.** The header wrapper was
+  sized from `headerHeight` while its cells were sized from the body `rowHeight`, so any custom
+  value left either an empty band under the cells or clipped them. The header is now sized from
+  `headerHeight`, `leafHeaderHeight` and `parentHeaderHeight` alone (one geometry helper,
+  `core/headerGeometry.ts`): each parent level is `parentHeaderHeight` tall, the leaf level
+  `leafHeaderHeight`, and both default to `headerHeight`. The two level options did nothing before.
+  A group shallower than the header now fits too (its label takes the spare level).
+- **All three header heights are updatable at runtime** through `updateGridOptions` and the React
+  and Angular props/inputs; the header rebuilds and the body re-fits.
+- **The theme's `headerHeight` param sets the default header height** when the grid is created,
+  with the same precedence as the theme `rowHeight` param: an explicit grid option wins, then the
+  theme, then 43, and changing the theme later resizes neither. It used to write the renderer's
+  own `--pte-rendered-header-height` variable (and `themeDark` pinned it to 43px), so it never sized
+  the header and a theme swap could shrink the column-panel trigger button on a multi-level header.
+  The param now maps to `--pte-header-height`.
+- `rowHeight` alone no longer changes header cells; before, it only grew them inside a header that
+  then clipped them.
+
 ### Theming and overlays
 
 - **The theme `rowHeight` param sets the row height.** It mapped to a CSS variable nothing read.

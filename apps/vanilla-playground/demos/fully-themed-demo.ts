@@ -55,7 +55,11 @@ function makeTheme(rowHeight: number): GridTheme {
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
     fontSize: 13,
     headerFontWeight: 750,
+    // Both heights are read once at creation: `rowHeight` feeds the virtualization geometry, and
+    // `headerHeight` seeds the `headerHeight` grid option (an explicit option wins, and that option
+    // is live — see the Header height control).
     rowHeight,
+    headerHeight: 56,
     cellHorizontalPadding: 16,
     iconColor: "#a5b4fc",
     scrollbarThumbColor: "#52659d",
@@ -126,6 +130,8 @@ const COLUMNS: ColDef[] = [
 
 export function mountFullyThemedDemo(container: HTMLElement): () => void {
   let rowHeight = 58;
+  // undefined = no grid option, so the theme's `headerHeight` param applies.
+  let headerHeight: number | undefined;
   let api: IGridAPI;
 
   const host = h("div", { style: { width: "100%", height: "100%" } });
@@ -137,19 +143,36 @@ export function mountFullyThemedDemo(container: HTMLElement): () => void {
         h("h2", { text: "Mission Control" }),
         h("p", {
           text: "Every grid surface is themed per instance: chrome, menus, selection, typography,"
-            + " scrollbars, spacing, and two-pixel row dividers.",
+            + " scrollbars, spacing, and two-pixel row dividers. Row and header heights come from the"
+            + " theme too: rowHeight is read when the grid is created (the density switch rebuilds it),"
+            + " and headerHeight seeds the header, which the Header height control overrides live"
+            + " through the grid option; Theme hands it back.",
         }),
       ),
-      h("label", { class: "full-theme-density" },
-        "Row height",
-        select(
-          [
-            { value: 44, label: "Compact · 44px" },
-            { value: 58, label: "Comfortable · 58px" },
-            { value: 72, label: "Oversized · 72px" },
-          ],
-          rowHeight,
-          value => setRowHeight(Number(value)),
+      h("div", { class: "full-theme-controls" },
+        h("label", { class: "full-theme-density" },
+          "Row height",
+          select(
+            [
+              { value: 44, label: "Compact · 44px" },
+              { value: 58, label: "Comfortable · 58px" },
+              { value: 72, label: "Oversized · 72px" },
+            ],
+            rowHeight,
+            value => setRowHeight(Number(value)),
+          ),
+        ),
+        h("label", { class: "full-theme-density" },
+          "Header height",
+          select(
+            [
+              { value: "", label: "Theme · 56px" },
+              { value: 40, label: "Compact · 40px" },
+              { value: 72, label: "Tall · 72px" },
+            ],
+            headerHeight ?? "",
+            value => setHeaderHeight(value === "" ? undefined : Number(value)),
+          ),
         ),
       ),
     ),
@@ -159,16 +182,18 @@ export function mountFullyThemedDemo(container: HTMLElement): () => void {
   build();
 
   /**
-   * `rowHeight` is fixed at construction (it feeds the virtualization geometry), so changing the
-   * density rebuilds the instance — the React demo does the same thing with `key={rowHeight}`.
+   * `rowHeight` is fixed at construction (it feeds the virtualization geometry) and comes from the
+   * theme here, so changing the density rebuilds the instance — the React demo does the same thing
+   * with `key={rowHeight}`. The header height is live: the theme seeds it, and the control sets the
+   * `headerHeight` option through `updateGridOptions` without a rebuild (`undefined` hands it back
+   * to the theme).
    */
   function build(): void {
     api = createGrid(host, {
       rowData: ROWS,
       columnDefs: COLUMNS,
       rowIdKey: "id",
-      rowHeight,
-      headerHeight: 56,
+      headerHeight,
       theme: makeTheme(rowHeight),
       rowNumbers: true,
       rowHover: true,
@@ -192,6 +217,12 @@ export function mountFullyThemedDemo(container: HTMLElement): () => void {
     api.destroy();
     host.replaceChildren();
     build();
+  }
+
+  function setHeaderHeight(next: number | undefined): void {
+    if (next === headerHeight) return;
+    headerHeight = next;
+    api.updateGridOptions({ headerHeight });
   }
 
   return () => api.destroy();

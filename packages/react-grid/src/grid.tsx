@@ -225,6 +225,16 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ groupChildCount: props.groupChildCount });
     }, [props.groupChildCount]);
 
+    // Header heights resolve against each other (an unset level height follows headerHeight), so
+    // all three are restated together; an undefined prop falls back. Unchanged heights are a no-op.
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({
+        headerHeight: props.headerHeight,
+        leafHeaderHeight: props.leafHeaderHeight,
+        parentHeaderHeight: props.parentHeaderHeight,
+      });
+    }, [props.headerHeight, props.leafHeaderHeight, props.parentHeaderHeight]);
+
     useLayoutEffect(() => {
       instanceRef.current?.api.updateGridOptions({ pivotColumnMoveMode: props.pivotColumnMoveMode });
     }, [props.pivotColumnMoveMode]);

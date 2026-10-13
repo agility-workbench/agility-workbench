@@ -26,7 +26,7 @@ function setup() {
   document.body.appendChild(header);
   const div = () => document.createElement("div");
   const renderer = new ColumnInteractionRenderer({
-    core, root: div(), rowHeight: () => 30, maxDepth: () => 1, headerWrapper: div(),
+    core, root: div(), headerHeight: () => 30, headerWrapper: div(),
     leftHeader: div(), centerHeader: div(), rightHeader: div(), body: div(),
     leftSpacer: div(), centerSpacer: div(), rightSpacer: div(), leafColumnLookup: () => new Map(),
   });

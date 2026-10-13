@@ -173,7 +173,11 @@ export interface GridThemeParams {
   columnPanelWidth?: string | number;
   /** Width of the collapsed column panel trigger area. */
   columnPanelGutterWidth?: string | number;
-  /** Height of the column header row. */
+  /**
+   * Height of each header level, in pixels (a number, `"48"` or `"48px"`). Read once when the grid
+   * is created, like `rowHeight`: it seeds the `headerHeight` grid option, which wins when both are
+   * set, and swapping the theme on a mounted grid does not resize the header.
+   */
   headerHeight?: string | number;
   /** Duration of cell flash highlight fade animation. */
   cellFlashFadeDuration?: string;
@@ -276,7 +280,7 @@ const FANOUT: Record<string, Fanout> = {
   paginationFooterHeight: { vars: ["--pte-pagination-footer-height"] },
   columnPanelWidth: { vars: ["--pte-column-panel-width"] },
   columnPanelGutterWidth: { vars: ["--pte-column-panel-gutter-width"] },
-  headerHeight: { vars: ["--pte-rendered-header-height"] },
+  headerHeight: { vars: ["--pte-header-height"], px: true },
   cellFlashFadeDuration: { vars: ["--pte-cell-flash-fade-duration"] },
   rootBorderRadius: { vars: ["--pte-root-border-radius"], px: true },
   rootBorderWidth: { vars: ["--pte-root-border-width"], px: true },
@@ -406,8 +410,35 @@ function mergeParams(base: GridThemeParams, overrides: GridThemeParams): GridThe
   };
 }
 
-/** Row heights already warned about, so a theme resolved per grid cannot spam the console. */
-const warnedRowHeights = new Set<string>();
+/** Layout lengths already warned about (per param), so a theme resolved per grid cannot spam. */
+const warnedLayoutLengths = new Set<string>();
+
+/**
+ * Read a JS-driven layout length off a theme's resolved variables: a positive pixel length (a
+ * number, `"42"` or `"42px"`), or `undefined` when the theme does not set one. Any other value
+ * (`"3em"`, `calc(…)`) is ignored with one warning per distinct value.
+ */
+function resolveThemeLayoutPx(
+  theme: GridTheme | undefined,
+  varName: PteVarName,
+  param: "rowHeight" | "headerHeight",
+  what: string,
+): number | undefined {
+  const raw = theme?.toCssVars()[varName];
+  if (raw == null) return undefined;
+  const match = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*$/i.exec(raw);
+  const px = match ? Number(match[1]) : NaN;
+  if (Number.isFinite(px) && px > 0) return px;
+  const key = `${param}:${raw}`;
+  if (!warnedLayoutLengths.has(key)) {
+    warnedLayoutLengths.add(key);
+    console.warn(
+      `theme: ${param} "${raw}" is not a positive pixel length, so it cannot size ${what}; `
+      + `ignoring. Use a number of pixels (or set the \`${param}\` grid option).`,
+    );
+  }
+  return undefined;
+}
 
 /**
  * The data-row height, in pixels, a theme asks for — or `undefined` when it does not set one.
@@ -420,19 +451,20 @@ const warnedRowHeights = new Set<string>();
  * other value (`"3em"`, `calc(…)`) is ignored with one warning.
  */
 export function resolveThemeRowHeightPx(theme: GridTheme | undefined): number | undefined {
-  const raw = theme?.toCssVars()["--pte-row-height"];
-  if (raw == null) return undefined;
-  const match = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*$/i.exec(raw);
-  const px = match ? Number(match[1]) : NaN;
-  if (Number.isFinite(px) && px > 0) return px;
-  if (!warnedRowHeights.has(raw)) {
-    warnedRowHeights.add(raw);
-    console.warn(
-      `theme: rowHeight "${raw}" is not a positive pixel length, so it cannot size the rows; `
-      + "ignoring. Use a number of pixels (or set the `rowHeight` grid option).",
-    );
-  }
-  return undefined;
+  return resolveThemeLayoutPx(theme, "--pte-row-height", "rowHeight", "the rows");
+}
+
+/**
+ * The header-level height, in pixels, a theme asks for — or `undefined` when it does not set one.
+ *
+ * The header is laid out in JS (one height per level), so, exactly like {@link
+ * resolveThemeRowHeightPx}, the grid reads the theme's `headerHeight` param (or a `vars: {
+ * "--pte-header-height": … }` override) once at creation and feeds it to the same path as the
+ * `headerHeight` grid option, which wins when both are set. The leaf/parent level options fall
+ * back to the result. Non-pixel values are ignored with one warning.
+ */
+export function resolveThemeHeaderHeightPx(theme: GridTheme | undefined): number | undefined {
+  return resolveThemeLayoutPx(theme, "--pte-header-height", "headerHeight", "the header");
 }
 
 /** Create a theme from raw params. Prefer the exported presets + `withParams`. */
@@ -534,7 +566,6 @@ export const themeDark: GridTheme = createTheme({
     "--pte-pagination-footer-height": "49px",
     "--pte-column-panel-width": "304px",
     "--pte-column-panel-gutter-width": "36px",
-    "--pte-rendered-header-height": "43px",
     "--pte-cell-flash-fade-duration": "1000ms",
     "--pte-root-border-radius": "8px",
     "--pte-root-border-width": "1px",

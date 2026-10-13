@@ -32,11 +32,11 @@ This is what the React and Angular bindings do when a prop changes, so a
 framework-neutral host reaches the same behavior without recreating the grid.
 `UpdatableGridOptions` lists what can change: visual and interaction options,
 toolbar / quick filter / tooltip / column panel / saved views, pagination and its
-controls, row selection, theme and icons, pinned-row bands, row-group
-presentation, the server-side data source, and `columnDefs`.
+controls, row selection, theme and icons, the header heights, pinned-row bands,
+row-group presentation, the server-side data source, and `columnDefs`.
 
 Options that seed structure are fixed at creation and are rejected with a
-warning: `rowHeight` and the header heights (virtualization geometry),
+warning: `rowHeight` (virtualization geometry),
 `rowNumbers` and `rowModelType` (which columns and row model exist), and
 `getRowId` / `rowIdKey` (row identity). Changing one of those means creating a
 new grid.

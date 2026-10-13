@@ -50,6 +50,12 @@ and a custom `comparator`. `filter` selects a built-in panel or custom matcher
 
 Each component slot has a companion params field where applicable.
 
+A header component is as tall as the header level it sits on: `leafHeaderHeight`
+for a leaf column, `parentHeaderHeight` for each group level (both default to
+`headerHeight`, 43px), plus any extra levels the cell spans. Taller content is
+clipped, so a component that needs more room needs a taller option, not CSS on
+the component. The header does not size itself to its content.
+
 ## Conditional presentation
 
 `cellClass` and `cellStyle` accept static values or callbacks. `colSpan` returns

@@ -398,6 +398,17 @@ export class AwbGrid implements OnDestroy {
       return () => api.updateGridOptions({ groupChildCount: v });
     });
 
+    // Header heights resolve against each other (an unset level height follows headerHeight), so
+    // all three are restated together; an undefined input falls back. Unchanged heights are a no-op.
+    this.syncEffect(() => {
+      const opts = {
+        headerHeight: this.headerHeight(),
+        leafHeaderHeight: this.leafHeaderHeight(),
+        parentHeaderHeight: this.parentHeaderHeight(),
+      };
+      return () => api.updateGridOptions(opts);
+    });
+
     this.syncEffect(() => {
       const v = this.pivotColumnMoveMode();
       return () => api.updateGridOptions({ pivotColumnMoveMode: v });

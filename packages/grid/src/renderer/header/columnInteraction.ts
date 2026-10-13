@@ -101,8 +101,9 @@ export function computePivotMeasureReorder(
 interface ColumnInteractionRendererParams {
   core: GridCore;
   root: HTMLDivElement;
-  rowHeight: () => number;
-  maxDepth: () => number;
+  /** The header's laid-out height from the header-height options (the drop indicator's fallback
+   * when the wrapper cannot be measured). */
+  headerHeight: () => number;
   headerWrapper: HTMLDivElement;
   leftHeader: HTMLDivElement;
   centerHeader: HTMLDivElement;
@@ -452,7 +453,7 @@ export class ColumnInteractionRenderer {
     if (this.dragAllowsDrop && !this.dragIndicatorEl && this.dragHeaderContainer) {
       const indicator = document.createElement("div");
       indicator.className = "pte-column-drop-indicator";
-      indicator.style.height = `${this.params.headerWrapper.getBoundingClientRect().height || this.params.rowHeight() * this.params.maxDepth()}px`;
+      indicator.style.height = `${this.params.headerWrapper.getBoundingClientRect().height || this.params.headerHeight()}px`;
       this.dragHeaderContainer.appendChild(indicator);
       this.dragIndicatorEl = indicator;
     }

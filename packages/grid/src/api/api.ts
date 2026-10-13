@@ -250,6 +250,16 @@ export class GridAPI implements IGridAPI {
     if (has("theme")) config.setTheme(options.theme);
     if (has("icons")) config.setIcons(options.icons);
 
+    // The three header heights resolve against each other (an unset level height follows
+    // headerHeight), so they go over as one presence-based patch.
+    if (has("headerHeight") || has("leafHeaderHeight") || has("parentHeaderHeight")) {
+      const heights: Parameters<GridApiConfigController["setHeaderHeights"]>[0] = {};
+      if (has("headerHeight")) heights.headerHeight = options.headerHeight;
+      if (has("leafHeaderHeight")) heights.leafHeaderHeight = options.leafHeaderHeight;
+      if (has("parentHeaderHeight")) heights.parentHeaderHeight = options.parentHeaderHeight;
+      config.setHeaderHeights(heights);
+    }
+
     // The pinned bands share one renderer call, and its own contract is already presence-based.
     if (
       has("pinnedTopRowData") || has("pinnedBottomRowData")

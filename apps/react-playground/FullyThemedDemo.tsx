@@ -56,7 +56,11 @@ function makeTheme(rowHeight: number): GridTheme {
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
     fontSize: 13,
     headerFontWeight: 750,
+    // Both heights are read once at creation: `rowHeight` feeds the virtualization geometry, and
+    // `headerHeight` seeds the `headerHeight` grid option (an explicit option wins, and that option
+    // is live — see the Header height control).
     rowHeight,
+    headerHeight: 56,
     cellHorizontalPadding: 16,
     iconColor: "#a5b4fc",
     scrollbarThumbColor: "#52659d",
@@ -97,6 +101,8 @@ function makeTheme(rowHeight: number): GridTheme {
 
 export function FullyThemedDemo() {
   const [rowHeight, setRowHeight] = useState(58);
+  // undefined = no grid option, so the theme's `headerHeight` param applies.
+  const [headerHeight, setHeaderHeight] = useState<number | undefined>(undefined);
   const theme = useMemo(() => makeTheme(rowHeight), [rowHeight]);
 
   const columns = useMemo<ReactColDef[]>(() => [
@@ -133,16 +139,29 @@ export function FullyThemedDemo() {
         <div>
           <span className="full-theme-kicker">CUSTOM THEME / REACT</span>
           <h2>Mission Control</h2>
-          <p>Every grid surface is themed per instance: chrome, menus, selection, typography, scrollbars, spacing, and two-pixel row dividers.</p>
+          <p>Every grid surface is themed per instance: chrome, menus, selection, typography, scrollbars, spacing, and two-pixel row dividers. Row and header heights come from the theme too: <code>rowHeight</code> is read when the grid is created (the density switch rebuilds it), and <code>headerHeight</code> seeds the header, which the Header height control overrides live through the grid option; Theme hands it back.</p>
         </div>
-        <label className="full-theme-density">
-          Row height
-          <select value={rowHeight} onChange={(event) => setRowHeight(Number(event.target.value))}>
-            <option value={44}>Compact · 44px</option>
-            <option value={58}>Comfortable · 58px</option>
-            <option value={72}>Oversized · 72px</option>
-          </select>
-        </label>
+        <div className="full-theme-controls">
+          <label className="full-theme-density">
+            Row height
+            <select value={rowHeight} onChange={(event) => setRowHeight(Number(event.target.value))}>
+              <option value={44}>Compact · 44px</option>
+              <option value={58}>Comfortable · 58px</option>
+              <option value={72}>Oversized · 72px</option>
+            </select>
+          </label>
+          <label className="full-theme-density">
+            Header height
+            <select
+              value={headerHeight ?? ""}
+              onChange={(event) => setHeaderHeight(event.target.value === "" ? undefined : Number(event.target.value))}
+            >
+              <option value="">Theme · 56px</option>
+              <option value={40}>Compact · 40px</option>
+              <option value={72}>Tall · 72px</option>
+            </select>
+          </label>
+        </div>
       </header>
 
       <div className="full-theme-grid-shell">
@@ -151,8 +170,7 @@ export function FullyThemedDemo() {
           rowData={ROWS}
           columnDefs={columns}
           rowIdKey="id"
-          rowHeight={rowHeight}
-          headerHeight={56}
+          headerHeight={headerHeight}
           theme={theme}
           rowNumbers
           rowHover

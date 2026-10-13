@@ -132,6 +132,9 @@ export interface GridApiConfigController {
   togglePagination: (enabled: boolean) => void;
   setPaginationControls: (options: GridOptions["paginationControls"]) => void;
   setTheme: (theme: GridOptions["theme"]) => void;
+  setHeaderHeights: (
+    heights: Partial<Pick<GridOptions, "headerHeight" | "leafHeaderHeight" | "parentHeaderHeight">>,
+  ) => void;
   setIcons: (icons: GridOptions["icons"]) => void;
   setRuntimeOptions: (options: RuntimeGridOptions) => void;
   setServerSideDataSource: (dataSource: GridOptions["serverSideDataSource"]) => void;

@@ -1,3 +1,4 @@
+import { HeaderHeightOptions, resolveHeaderHeights } from "./headerGeometry";
 import { FilterItem, FilterModel } from "../interfaces/filter";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
@@ -53,7 +54,7 @@ import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfac
 import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
-import { resolveThemeRowHeightPx } from "../theme/theme";
+import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
 
 interface AppliedRowTransaction {
   result: RowTransactionResult;
@@ -246,8 +247,21 @@ export class GridCore implements IGridCore {
   // Server-side store generation the edit history was last reconciled against.
   private seenServerSideStoreGeneration = 0;
 
+  // The header heights as the application last stated them, so a later update of one of them can
+  // re-resolve the others' fallbacks (an unset leaf height follows a changed headerHeight).
+  private explicitHeaderHeights: HeaderHeightOptions = {};
+  // The theme's `headerHeight` param, read once at creation (like the theme's rowHeight): it stays
+  // the fallback for `headerHeight`, and a later theme swap does not resize the header.
+  private themeHeaderHeight: number | undefined;
+
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
+    this.themeHeaderHeight = resolveThemeHeaderHeightPx(options.theme);
     this.options = this.initializeGridOptions(options);
+    this.explicitHeaderHeights = {
+      headerHeight: options.headerHeight,
+      leafHeaderHeight: options.leafHeaderHeight,
+      parentHeaderHeight: options.parentHeaderHeight,
+    };
     this.keyboardNavigationMode = this.options.treeData?.keyboardNavigationMode ?? "grid";
     this.history = new HistoryModel(this.options.undoLimit);
     this.id = crypto.randomUUID();
@@ -343,9 +357,7 @@ export class GridCore implements IGridCore {
       );
     }
     return {
-      headerHeight: options.headerHeight ?? 43,
-      leafHeaderHeight: options.leafHeaderHeight ?? 43,
-      parentHeaderHeight: options.parentHeaderHeight ?? 43,
+      ...resolveHeaderHeights(options, this.themeHeaderHeight),
       rowHeight: options.rowHeight ?? resolveThemeRowHeightPx(options.theme) ?? 43,
       pinnedTopRowData: options.pinnedTopRowData ?? [],
       pinnedBottomRowData: options.pinnedBottomRowData ?? [],
@@ -2516,6 +2528,28 @@ export class GridCore implements IGridCore {
     return node.isGroup ? this.getGroupCellValue(col, node).value : col.getValue(node);
   }
 
+  /**
+   * Change the header heights. Presence-based: a supplied key (even `undefined`, which falls back
+   * to the default) replaces that option; omitted keys keep their stated value. Returns whether
+   * any resolved height changed — the renderer re-lays the header out only then.
+   */
+  setHeaderHeights(heights: HeaderHeightOptions): boolean {
+    const explicit = { ...this.explicitHeaderHeights };
+    for (const key of ["headerHeight", "leafHeaderHeight", "parentHeaderHeight"] as const) {
+      if (Object.prototype.hasOwnProperty.call(heights, key)) explicit[key] = heights[key];
+    }
+    this.explicitHeaderHeights = explicit;
+    const next = resolveHeaderHeights(explicit, this.themeHeaderHeight);
+    const o = this.options;
+    if (
+      o.headerHeight === next.headerHeight
+      && o.leafHeaderHeight === next.leafHeaderHeight
+      && o.parentHeaderHeight === next.parentHeaderHeight
+    ) return false;
+    Object.assign(o, next);
+    return true;
+  }
+
   /** Change what group rows show as their count; repaints the visible group rows. */
   setGroupChildCount(groupChildCount: GridOptions["groupChildCount"]): void {
     const next = groupChildCount ?? true;
@@ -3371,7 +3405,9 @@ export class GridCore implements IGridCore {
       case "themeFontSet":
         this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
         let themeFontChangedColIds: string[] = [];
-        if (action.reason !== "visibility" && action.reason !== "pin") {
+        // A header-height change re-lays the header out with the same fonts and columns, so the
+        // widths a re-autosize would compute are the ones already in place.
+        if (action.reason !== "visibility" && action.reason !== "pin" && action.reason !== "headerHeight") {
           themeFontChangedColIds = this.autosizeColumns(false);
         }
         this.emit("columnWidthsChanged", this.widthsChangedPayload(themeFontChangedColIds));
