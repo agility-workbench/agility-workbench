@@ -139,7 +139,10 @@ export class MenuRenderer {
 
     menuOverlay.style.left = `${left}px`;
     menuOverlay.style.top = `${top}px`;
-    menuOverlay.style.visibility = "visible";
+    // "inherit", not "visible": the overlay lives inside the grid root, and a host that hides an
+    // ancestor of the grid must hide an open menu with it (see the inherited-property reset in
+    // table.css).
+    menuOverlay.style.visibility = "inherit";
 
     // this.root.appendChild(menuOverlay);
     if (level === 0) {
@@ -305,7 +308,7 @@ export class MenuRenderer {
 
     overlay.style.left = `${left}px`;
     overlay.style.top = `${top}px`;
-    overlay.style.visibility = "visible";
+    overlay.style.visibility = "inherit"; // see openMenu: never "visible"
   }
 
   private getMenuBounds() {

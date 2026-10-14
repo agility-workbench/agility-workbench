@@ -262,7 +262,14 @@
  * Each value below IS the property's initial value, so on a host that sets nothing this rule
  * changes nothing. `direction` is deliberately absent, so the host's value still inherits — but the
  * grid does NOT support right-to-left layout: positioning, scrolling and keyboard navigation are
- * all physical left/right, so under an inherited `direction: rtl` only text alignment flips. */
+ * all physical left/right, so under an inherited `direction: rtl` only text alignment flips.
+ *
+ * `visibility` is deliberately absent too. A host that hides an ancestor — a tab panel, a collapsed
+ * container, a print stylesheet's hidden region — means to hide the grid with it, and a `visible`
+ * here would paint the grid straight through that hide: CSS 2.1 §11.2 lets a descendant that says
+ * `visible` re-show itself under a hidden parent, and the host cannot fight it from the ancestor
+ * for the reason above (importance does not inherit). The same rule applies to every reveal rule
+ * inside the grid: they say `inherit`, never `visible`, so no element pops through on its own. */
 .pte-root,
 .pte-menu {
   scrollbar-width: auto;
@@ -274,7 +281,6 @@
   text-transform: none;
   white-space: normal;
   font-style: normal;
-  visibility: visible;
   cursor: auto;
 }
 
@@ -2256,7 +2262,7 @@
 
 .pte-grid-announcer.is-visible {
   opacity: 1;
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
   transform: translate(-50%, -50%);
   transition-delay: 0s;
 }
@@ -3979,7 +3985,7 @@
 /* The keyboard cursor is a painted class, not DOM focus (the grid keeps focus on its root), so
    `:focus-within` never fires for it — see .pte-hcell-active below. */
 .pte-hcell-active .pte-hcell-sort.pte-sort-none {
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
 }
 
 /* Multi-column sort priority badge. */
@@ -4061,7 +4067,7 @@
 .pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-active .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
 }
 
 .pte-hcell-menu-flyout {

@@ -7,6 +7,15 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 
 ### Fixes
 
+- **A host that hides an ancestor of the grid now hides the grid.** The grid root pinned
+  `visibility: visible` as part of its inherited-property reset, and CSS lets a descendant that
+  says `visible` paint itself through a hidden parent, so a grid inside a hidden tab panel, a
+  collapsed container or a print stylesheet's hidden region stayed on screen, and nothing the host
+  put on the ancestor could stop it (importance does not inherit). The root no longer declares
+  `visibility`, and every reveal rule inside the grid (the announcer, the resting sort icon, the
+  hover column buttons, an open menu, a tooltip or action frame) says `inherit` instead of
+  `visible`, so no element shows through on its own. A host rule that targets `.pte-root`
+  directly to work around this keeps working and is no longer needed.
 - **Pinned columns now clamp in the header, aggregate row and horizontal scrollbar exactly as
   they do in the body.** When a grid with left and right pinned columns was narrowed, the body's
   pinned sections shrank to 35% of the grid but the header, aggregate row and scrollbar lanes kept
