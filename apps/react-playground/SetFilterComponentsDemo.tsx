@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import {
   ColumnType,
@@ -7,6 +7,7 @@ import {
   type FilterParams,
   type FilterValueAsyncSource,
   type FilterValueAsyncSourceParams,
+  type IGridAPI,
   type ReactColDef,
   type SetFilterGroupComponentParams,
   type SetFilterSpecialValueComponentParams,
@@ -21,6 +22,7 @@ type AccountRow = {
   opened: string;
   product: string;
   stage: string;
+  arr: number;
 };
 
 type Region = { code: string; name: string };
@@ -70,15 +72,47 @@ const loadOwnerValues: FilterValueAsyncSource = async (
   if (!signal.aborted) success(OWNERS);
 };
 
+// Filter models the buttons apply through `api.setFilterModel`: several conditions on one column,
+// joined with AND or OR. The same models can be built by hand in the Account or ARR filter popover.
+const FILTER_PRESETS = {
+  accountOr: [{
+    colId: "account",
+    join: "or",
+    filters: [
+      { type: FilterType.STARTS_WITH, values: ["W"] },
+      { type: FilterType.CONTAINS, values: ["Indust"] },
+    ],
+  }],
+  arrOr: [{
+    colId: "arr",
+    join: "or",
+    filters: [
+      { type: FilterType.LT, values: [20000] },
+      { type: FilterType.GT, values: [80000] },
+    ],
+  }],
+  arrAnd: [{
+    colId: "arr",
+    join: "and",
+    filters: [
+      { type: FilterType.IN_RANGE, values: [10000, 90000] },
+      { type: FilterType.NOT_IN_RANGE, values: [40000, 60000] },
+    ],
+  }],
+  none: [],
+} satisfies Record<string, Parameters<IGridAPI["setFilterModel"]>[0]>;
+
+type FilterPreset = keyof typeof FILTER_PRESETS;
+
 const rows: AccountRow[] = [
-  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava", opened: "2024-01-15", product: "Hardware/Laptops/Pro 14", stage: "Live" },
-  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam", opened: "2024-01-28", product: "Software/Suites/Office", stage: "Trial" },
-  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia", opened: "2024-03-09", product: "Hardware/Laptops/Air 13", stage: "Live" },
-  { id: "A-104", account: "Initech", region: null, owner: "Noah", opened: "2023-11-02", product: "Hardware/Phones/Model X", stage: "Lead" },
-  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma", opened: "2023-12-20", product: "Software/Suites/Design", stage: "Live" },
-  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan", opened: "2024-03-21", product: "Services/Support/Premium", stage: "Trial" },
-  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia", opened: "2024-06-05", product: "Software/Tools/CLI", stage: "Lead" },
-  { id: "A-108", account: "Wonka", region: null, owner: "Lucas", opened: "2023-11-19", product: "Services/Training/Onsite", stage: "Live" },
+  { id: "A-101", account: "Northwind", region: { code: "AMER", name: "Americas" }, owner: "Ava", opened: "2024-01-15", product: "Hardware/Laptops/Pro 14", stage: "Live", arr: 48000 },
+  { id: "A-102", account: "Café Contoso", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Liam", opened: "2024-01-28", product: "Software/Suites/Office", stage: "Trial", arr: 12500 },
+  { id: "A-103", account: "Globex", region: { code: "APAC", name: "Asia Pacific" }, owner: "Mia", opened: "2024-03-09", product: "Hardware/Laptops/Air 13", stage: "Live", arr: 96000 },
+  { id: "A-104", account: "Initech", region: null, owner: "Noah", opened: "2023-11-02", product: "Hardware/Phones/Model X", stage: "Lead", arr: 7800 },
+  { id: "A-105", account: "Umbrella", region: { code: "EMEA", name: "Europe, Middle East & Africa" }, owner: "Emma", opened: "2023-12-20", product: "Software/Suites/Design", stage: "Live", arr: 64000 },
+  { id: "A-106", account: "Stark Industries", region: { code: "AMER", name: "Americas" }, owner: "Ethan", opened: "2024-03-21", product: "Services/Support/Premium", stage: "Trial", arr: 150000 },
+  { id: "A-107", account: "Wayne Enterprises", region: { code: "APAC", name: "Asia Pacific" }, owner: "Sofia", opened: "2024-06-05", product: "Software/Tools/CLI", stage: "Lead", arr: 23000 },
+  { id: "A-108", account: "Wonka", region: null, owner: "Lucas", opened: "2023-11-19", product: "Services/Training/Onsite", stage: "Live", arr: 31000 },
 ];
 
 function RegionFilterValue({ value, valueFormatted, showCode, count }: SetFilterValueComponentParams) {
@@ -126,6 +160,9 @@ function ProductGroupLabel({ label, count, level, expanded }: SetFilterGroupComp
 }
 
 export function SetFilterComponentsDemo() {
+  const apiRef = useRef<IGridAPI | null>(null);
+  const applyPreset = (preset: FilterPreset) => apiRef.current?.setFilterModel(FILTER_PRESETS[preset]);
+
   const columnDefs = useMemo<ReactColDef[]>(() => [
     {
       colId: "account",
@@ -136,11 +173,23 @@ export function SetFilterComponentsDemo() {
       filterParams: {
         buttons: ["apply", "clear"],
         closeOnApply: true,
+        // Up to three conditions, joined with the popover's AND / OR toggle.
+        maxNumConditions: 3,
         caseSensitive: false,
         trimValues: true,
         textFormatter: formatAccountFilterText,
         filterFunction: matchAccount,
       },
+    },
+    {
+      colId: "arr",
+      key: "arr",
+      label: "ARR",
+      width: 120,
+      type: ColumnType.CURRENCY,
+      // A condition filter: up to three conditions (Between, Not between, …) joined with AND or OR.
+      filter: "number",
+      filterParams: { maxNumConditions: 3 },
     },
     {
       colId: "region",
@@ -220,13 +269,23 @@ export function SetFilterComponentsDemo() {
           tree layout: a date column groups by year and month on its own, and Product groups along
           the path its <code>treePathGetter</code> returns, with a custom group label.
           Stage lists its filter values as a static array, in the order to show them.
+          The Account and ARR filters take up to three conditions joined with AND or OR: open either
+          popover to add a condition and flip the join, or apply the same models through{" "}
+          <code>api.setFilterModel</code> with the buttons below.
         </p>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" onClick={() => applyPreset("accountOr")}>Account starts with W OR contains "Indust"</button>
+        <button type="button" onClick={() => applyPreset("arrOr")}>ARR below 20k OR above 80k</button>
+        <button type="button" onClick={() => applyPreset("arrAnd")}>ARR 10k–90k AND not 40k–60k</button>
+        <button type="button" onClick={() => applyPreset("none")}>Clear filters</button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <Grid
           rowData={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
+          onGridReady={api => { apiRef.current = api; }}
           style={{ width: "100%", height: "100%" }}
         />
       </div>

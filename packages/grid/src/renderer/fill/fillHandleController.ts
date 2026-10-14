@@ -1,5 +1,4 @@
 import { Column } from "../../column/column";
-import { parseTextByType } from "../../column/parsers";
 import { ColumnType } from "../../interfaces/column";
 import {
   REJECT,
@@ -693,7 +692,7 @@ function writeForm(value: unknown, from: Column, to: Column, row: IRowNode): { v
   if (typeof value === "number" && to.isNumericType()) return { value, parsed: true };
   if (value instanceof Date && to.type === ColumnType.DATE) return { value, parsed: true };
   const text = from.formatValue(value, row);
-  if (!to.valueParser && parseTextByType(to.type, text, to.getValue(row)) === REJECT) return null;
+  if (!to.valueParser && to.parseValue(text, row, to.getValue(row)) === REJECT) return null;
   return { value: text, parsed: false };
 }
 

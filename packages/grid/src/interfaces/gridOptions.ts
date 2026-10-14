@@ -1063,9 +1063,29 @@ export function resolveBarResponsiveMode(mode: BarResponsiveMode | undefined): B
 }
 
 export interface GridOptions {
+  /**
+   * Height in px of every header level, unless `leafHeaderHeight` / `parentHeaderHeight` sets that
+   * level. When omitted, a theme's `headerHeight` param applies (read at creation only: swapping the
+   * theme later does not resize the header); otherwise 43. An explicit value here always wins over
+   * the theme. The body `rowHeight` plays no part in the header. Header cells, custom header
+   * components included, are exactly as tall as their levels; taller content is clipped. Updatable
+   * at runtime through `updateGridOptions`.
+   */
   headerHeight?: number;
+  /**
+   * Height in px of the leaf level: the bottom header row, holding the leaf column labels.
+   * Defaults to `headerHeight` and wins over it. Updatable at runtime.
+   */
   leafHeaderHeight?: number;
+  /**
+   * Height in px of each column-group level above the leaf level. A header `levels` deep is
+   * `(levels - 1) * parentHeaderHeight + leafHeaderHeight` tall. Defaults to `headerHeight` and wins
+   * over it. Updatable at runtime.
+   */
   parentHeaderHeight?: number;
+  /** Height of every body row in px. Fixed at creation. When omitted, a theme's `rowHeight`
+   * param (`themeLight.withParams({ rowHeight: 42 })`) applies; otherwise 43. An explicit value
+   * here always wins over the theme. */
   rowHeight?: number;
   /**
    * Application-owned rows rendered in a frozen band immediately below the header. These rows are
@@ -1914,6 +1934,8 @@ export const RUNTIME_OPTION_KEYS = [
   "moveAfterEdit",
   "commitOnBlur",
   "asyncTransactionWaitMs",
+  "loadingMessage",
+  "noRowsMessage",
 ] as const;
 
 /**
@@ -1944,6 +1966,9 @@ export const WIDGET_OPTION_KEYS = [
   "rowSelection",
   "theme",
   "icons",
+  "headerHeight",
+  "leafHeaderHeight",
+  "parentHeaderHeight",
   "pinnedTopRowData",
   "pinnedBottomRowData",
   "isRowPinned",
@@ -1970,7 +1995,7 @@ export const UPDATABLE_OPTION_KEYS = [
  *
  * Everything here is a presentation or behavior option the grid can swap in place. Options absent
  * from this type are fixed at construction because they seed structure the grid builds once
- * (`rowHeight` and the header heights feed virtualization geometry, `rowNumbers` and `rowModelType`
+ * (`rowHeight` feeds virtualization geometry, `rowNumbers` and `rowModelType`
  * decide which columns and row model exist, `getRowId` / `rowIdKey` define row identity). Changing
  * one of those means creating a new grid.
  */

@@ -101,8 +101,9 @@ export function computePivotMeasureReorder(
 interface ColumnInteractionRendererParams {
   core: GridCore;
   root: HTMLDivElement;
-  rowHeight: () => number;
-  maxDepth: () => number;
+  /** The header's laid-out height from the header-height options (the drop indicator's fallback
+   * when the wrapper cannot be measured). */
+  headerHeight: () => number;
   headerWrapper: HTMLDivElement;
   leftHeader: HTMLDivElement;
   centerHeader: HTMLDivElement;
@@ -159,6 +160,8 @@ export class ColumnInteractionRenderer {
       this.resizingColumn = col.instanceID;
       this.resizeStartX = e.clientX;
       this.resizeStartWidth = headerRect.width;
+      // Each move's width event is intermediate (final: false) until the mouseup settles it.
+      this.params.core.beginColumnResizeDrag();
       this.suppressHeaderClick = true;
       document.body.style.cursor = "col-resize";
       e.preventDefault();
@@ -188,6 +191,8 @@ export class ColumnInteractionRenderer {
   onColumnResizeMouseUp() {
     if (this.resizingColumn === "") return;
     this.resizingColumn = "";
+    // The trailing columnWidthsChanged with final: true (when the drag changed a width).
+    this.params.core.endColumnResizeDrag();
     this.resizeStartX = 0;
     this.resizeStartWidth = 0;
     document.body.style.cursor = "";
@@ -448,7 +453,7 @@ export class ColumnInteractionRenderer {
     if (this.dragAllowsDrop && !this.dragIndicatorEl && this.dragHeaderContainer) {
       const indicator = document.createElement("div");
       indicator.className = "pte-column-drop-indicator";
-      indicator.style.height = `${this.params.headerWrapper.getBoundingClientRect().height || this.params.rowHeight() * this.params.maxDepth()}px`;
+      indicator.style.height = `${this.params.headerWrapper.getBoundingClientRect().height || this.params.headerHeight()}px`;
       this.dragHeaderContainer.appendChild(indicator);
       this.dragIndicatorEl = indicator;
     }

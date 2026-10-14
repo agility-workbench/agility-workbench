@@ -127,6 +127,21 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   // running a user callback twice (once in core, once in the adapter).
   if (grid.bodyContextMenu() === false) options.bodyContextMenu = false;
 
+  // The multi-column getter runs in core, before the column-menu adapter (which then renders any
+  // TemplateRef slots it returned). `false` at creation is core's hard veto (no adapter runs) and is
+  // forwarded as-is; otherwise a stable bridge reads the input signal on every open, so the latest
+  // function is called (omitted keeps the built-ins, a later `false` yields no items).
+  if (grid.multiColumnMenu() === false) {
+    options.multiColumnMenu = false;
+  } else {
+    options.multiColumnMenu = (params) => {
+      const opt = grid.multiColumnMenu();
+      if (opt === false) return [];
+      if (typeof opt !== "function") return params.items;
+      return opt(params as Parameters<typeof opt>[0]) as typeof params.items;
+    };
+  }
+
   if (grid.rowModelType() === "serverSide") {
     setIfDefined(options, "serverSideDataSource", grid.serverSideDataSource());
     setIfDefined(options, "serverSideAggregationSource", grid.serverSideAggregationSource());

@@ -32,11 +32,11 @@ This is what the React and Angular bindings do when a prop changes, so a
 framework-neutral host reaches the same behavior without recreating the grid.
 `UpdatableGridOptions` lists what can change: visual and interaction options,
 toolbar / quick filter / tooltip / column panel / saved views, pagination and its
-controls, row selection, theme and icons, pinned-row bands, row-group
-presentation, the server-side data source, and `columnDefs`.
+controls, row selection, theme and icons, the header heights, pinned-row bands,
+row-group presentation, the server-side data source, and `columnDefs`.
 
 Options that seed structure are fixed at creation and are rejected with a
-warning: `rowHeight` and the header heights (virtualization geometry),
+warning: `rowHeight` (virtualization geometry),
 `rowNumbers` and `rowModelType` (which columns and row model exist), and
 `getRowId` / `rowIdKey` (row identity). Changing one of those means creating a
 new grid.
@@ -107,6 +107,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
+| `getPaginationInfo()` | Current pagination state, the same object `paginationChanged` carries: `{ paginationEnabled, pageIndex, pageSize, totalRowCount, totalPageCount, totalRowCountKnown, pageSizes }` (`pageIndex` is 0-based); counts are over the filtered view, and `totalRowCountKnown` is `false` while a server-side total is still provisional |
 | `getCellValue(cell)` | The raw value at `{ rowId, colId }`; the read-side counterpart of `setCellValue`: a leaf's column value (`valueGetter`, else the data field), a group row's group cell value (aggregate, label, `groupValueGetter`); rows resolve like `getRowNode`; `undefined` for an unknown row or column |
 | `setRowGroupColumns(colIds)` / `getRowGroupColumns()` | Replace/read the row-grouping columns by colId (level order; empty array clears) |
 | `setAggregates(aggregates)` / `getAggregates()` | Replace/read the aggregate assignments as `{ colId, type }` entries (footer totals, group totals, pivot measures; entry order sets generated pivot column order) |
@@ -264,7 +265,7 @@ any columnDefs update that drops an active filter (`source: "columns"`) — no
 need to subscribe to both `columnsChanged {reason:"filter"}` and
 `modelUpdated {reason:"filter"}` (both still fire for back-compat). On the
 client-side row model the handler runs after the view is re-derived, so row
-counts and `getPaginationInfo()` read post-filter state. The declarative
+counts and [`api.getPaginationInfo()`](#view-and-grouping) read post-filter state. The declarative
 `onFilterChanged` option callback wraps it.
 
 `quickFilterFindChanged` is the find behavior's counterpart to `filterChanged`:
@@ -294,6 +295,19 @@ opened the editor or ran the fill handle; otherwise both fire regardless of
 `cellSelection` / `editTrigger`. Like `cellClicked`, `cellDoubleClicked` skips
 the row-number and checkbox cells. The declarative option callbacks are
 `onRowDoubleClicked` and `onCellDoubleClicked`.
+
+`columnWidthsChanged` carries `changedColIds` (empty means every visible column)
+and a `final` flag. Dragging a resize handle emits one event per pointer move with
+`final: false`, so layout can follow live, then one trailing event with
+`final: true` naming every column the drag resized. A double-click autosize and
+every width change that is not a drag in progress are `final: true` from the
+start. Persist column state only on the final event:
+
+```ts
+api.on("columnWidthsChanged", (ev) => {
+  if (ev.final) saveColumnState(api.getColumnState());
+});
+```
 
 ### Column identity in payloads and inputs
 

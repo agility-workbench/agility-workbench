@@ -4,26 +4,26 @@ import { ICellEditor, ICellEditorParams } from "../cellEditor";
 
 const INPUT_CLASS = "pte-cell-editor-input";
 
-/** Coerce a stored cell value (Date | string | number) to the yyyy-mm-dd string an <input type=date> wants. */
-function toDateInputValue(value: any): string {
+/**
+ * Coerce a stored cell value (Date | epoch number | date text) to the yyyy-mm-dd an
+ * <input type=date> wants: the LOCAL calendar date, the one the cell displays. (`toISOString` is
+ * UTC — a local-midnight Date would show the day before east of Greenwich.)
+ */
+function toDateInputValue(value: unknown): string {
   if (value == null || value === "") return "";
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
-  }
-  const s = String(value);
-  // Already an ISO-ish date? take the yyyy-mm-dd prefix if valid.
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  const d = toLocalDate(value);
+  return d ? isoFromLocal(d) : "";
 }
 
-// Read a parsed (stored-form) value as a local calendar date. ISO yyyy-mm-dd strings are built
-// from their parts — new Date("yyyy-mm-dd") means UTC midnight, which is yesterday in negative
-// offsets — everything else goes through the Date constructor.
 /**
  * Date editor. Two modes, decided by whether the column has a valueParser:
- *  - Without one (default): the native <input type="date"> calendar. getValue() returns the ISO
- *    yyyy-mm-dd string, or null when blank, and isParsed = true (stored directly). editorParams
- *    `min`/`max` (yyyy-mm-dd strings) map onto the input's own bounds.
+ *  - Without one (default): the native <input type="date"> calendar, seeded with the cell's local
+ *    calendar date. getValue() returns the input's yyyy-mm-dd text ("" when blank) with
+ *    isParsed = false, so the commit runs it through the column's built-in parse-by-type, which
+ *    keeps the stored shape: a Date column stays Date-valued, an epoch column numeric, an ISO-text
+ *    column text (blank commits null). editorParams `min`/`max` (yyyy-mm-dd strings) map onto the
+ *    input's own bounds. A type-to-edit keystroke opens the calendar on the cell's date: a native
+ *    date input cannot hold a partial date.
  *  - With one: typed-format entry — a text input seeded from the column's formatted display value
  *    (you edit what the cell displays, e.g. "12/25/2026"), and getValue() returns the raw string
  *    with isParsed = false so the commit path round-trips it through the parser (blank included —
@@ -63,13 +63,13 @@ export class DateCellEditor implements ICellEditor {
   }
 
   getValue(): unknown {
-    if (this.hasParser()) return this.input.value;
-    const v = this.input.value;
-    return v === "" ? null : v;
+    return this.input.value;
   }
 
+  // Never pre-parsed: in both modes the column parses the text — its valueParser in typed mode,
+  // the built-in date parser (which preserves the stored shape) in native mode.
   isParsed(): boolean {
-    return !this.hasParser();
+    return false;
   }
 
   focus(): void {

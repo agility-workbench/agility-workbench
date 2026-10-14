@@ -3,6 +3,7 @@ import { FilterPanelSpec, FilterRuntimeState } from "../../filter/types";
 import { button, createElement, div } from "../element";
 import { FilterDef, FilterType, valuesNeededFor } from "../../interfaces/filter";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
+import { staticSetValue } from "../../filter/setFilterCore";
 
 export class BasicFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;
@@ -115,7 +116,7 @@ export class BasicFilterRenderer implements IFilterRenderer {
     row.appendChild(this.createFilterTypeSelect(idx, suffix, filter.type));
     const needed = valuesNeededFor(filter.type);
     for (let i = 0; i < needed; i++) {
-      row.appendChild(this.createFilterValueInput(idx, suffix, filter.values[i]));
+      row.appendChild(this.createFilterValueInput(idx, suffix, i, filter.values[i]));
     }
     this.conditionContainer.appendChild(row);
     this.conditionsMap.set(suffix, row);
@@ -141,12 +142,22 @@ export class BasicFilterRenderer implements IFilterRenderer {
     return typeSelect;
   }
 
-  private createFilterValueInput(idx: number, suffix: string, value: any): HTMLElement {
+  /**
+   * The value control for one operand of a condition: `valueIdx` is the operand's position (0, or 1
+   * for the upper bound of Between / Not between). A boolean filter, and a dropdown filter with a
+   * static `filterValues` list, get a select whose empty first choice ("Any") leaves the condition
+   * unset; every other kind gets a text, number, or date input.
+   */
+  private createFilterValueInput(idx: number, suffix: string, valueIdx: number, value: any): HTMLElement {
+    const choices = this.valueChoices();
+    if (choices) return this.createFilterValueSelect(idx, suffix, valueIdx, value, choices);
+
     const wrap = div("pte-filter-input-wrap");
 
     const input = createElement("input", "pte-filter-input");
     input.name = `filter-value-${suffix}`;
-    input.type = this.spec.kind;
+    input.setAttribute("data-filter-value", String(valueIdx));
+    input.type = this.spec.kind === "number" || this.spec.kind === "date" ? this.spec.kind : "text";
     input.value = value ?? "";
 
     const clearBtn = button("pte-filter-input-clear");
@@ -158,13 +169,13 @@ export class BasicFilterRenderer implements IFilterRenderer {
     const syncClear = () => wrap.classList.toggle("pte-filter-input-clear-visible", input.value !== "");
 
     input.addEventListener("input", () => {
-      this.controller.setValue(idx, 0, input.value);
+      this.controller.setValue(idx, valueIdx, input.value);
       syncClear();
     });
 
     clearBtn.addEventListener("click", () => {
       input.value = "";
-      this.controller.setValue(idx, 0, "");
+      this.controller.setValue(idx, valueIdx, "");
       syncClear();
       input.focus();
     });
@@ -173,6 +184,48 @@ export class BasicFilterRenderer implements IFilterRenderer {
     wrap.appendChild(input);
     wrap.appendChild(clearBtn);
     return wrap;
+  }
+
+  /** The fixed choices of a select-style filter, or null for a free-entry input. */
+  private valueChoices(): { value: string; label: string }[] | null {
+    if (this.spec.kind === "boolean") {
+      return [
+        { value: "true", label: "True" },
+        { value: "false", label: "False" },
+      ];
+    }
+    const values = this.spec.params.filterValues;
+    if (this.spec.conditionTemplate?.valueInputType === "dropdown" && Array.isArray(values)) {
+      return values.map(entry => {
+        const value = staticSetValue(entry);
+        const text = value == null ? "" : String(value);
+        return { value: text, label: text };
+      });
+    }
+    return null;
+  }
+
+  private createFilterValueSelect(
+    idx: number,
+    suffix: string,
+    valueIdx: number,
+    value: any,
+    choices: { value: string; label: string }[],
+  ): HTMLElement {
+    const select = document.createElement("select");
+    select.className = "pte-select pte-filter-select pte-filter-value-select";
+    select.name = `filter-value-${suffix}`;
+    select.setAttribute("data-filter-value", String(valueIdx));
+    select.setAttribute("aria-label", "Filter value");
+    for (const choice of [{ value: "", label: "Any" }, ...choices]) {
+      const opt = document.createElement("option");
+      opt.value = choice.value;
+      opt.textContent = choice.label;
+      select.appendChild(opt);
+    }
+    select.value = value == null ? "" : String(value);
+    select.addEventListener("change", () => this.controller.setValue(idx, valueIdx, select.value));
+    return select;
   }
 
   private updateFilterRow(idx: number, suffix: string, filter: FilterDef) {
@@ -184,13 +237,13 @@ export class BasicFilterRenderer implements IFilterRenderer {
     }
 
     const needed = valuesNeededFor(filter.type);
-    const existingInputs = row.querySelectorAll(`input[name^="filter-value-${suffix}"]`);
+    const existingInputs = row.querySelectorAll(`[name="filter-value-${suffix}"]`);
     for (let i = 0; i < needed; i++) {
-      const input = existingInputs[i] as HTMLInputElement | undefined;
+      const input = existingInputs[i] as HTMLInputElement | HTMLSelectElement | undefined;
       if (!input) {
-        row.appendChild(this.createFilterValueInput(idx, suffix, filter.values[i]));
+        row.appendChild(this.createFilterValueInput(idx, suffix, i, filter.values[i]));
       } else {
-        const next = filter.values[i] ?? "";
+        const next = filter.values[i] == null ? "" : String(filter.values[i]);
         if (input.value !== next) {
           input.value = next;
         }

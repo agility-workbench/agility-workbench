@@ -307,8 +307,7 @@ packages/grid/src/
 │   │   ├── columnLayout.ts    Apply column widths to header/body/h-scroll sections
 │   │   └── pinnedSectionLayout.ts Pin/unpin section visibility
 │   │
-│   ├── overlay/               Loading, no-rows & filter overlays
-│   │   ├── filter.ts          Filter overlay (not yet used for full-screen)
+│   ├── overlay/               Loading & no-rows overlays
 │   │   ├── loading.ts         Loading overlay (spinner)
 │   │   └── noRows.ts          No-rows / empty-state overlay (filter/search-aware message)
 │   │

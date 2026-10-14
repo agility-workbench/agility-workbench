@@ -541,6 +541,13 @@ body {
   color: #f1f5ff;
 }
 
+.full-theme-controls {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
 .full-theme-grid-shell {
   flex: 1;
   min-height: 0;
@@ -561,6 +568,7 @@ body {
 @media (max-width: 760px) {
   .full-theme-demo { padding: 12px; }
   .full-theme-hero { align-items: stretch; flex-direction: column; gap: 10px; }
+  .full-theme-controls { flex-direction: column; gap: 10px; }
   .full-theme-density { justify-content: space-between; }
 }
 

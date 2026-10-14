@@ -4,6 +4,9 @@ import { FilterItem, FilterMatcherFn, FilterParams, FilterType, valuesNeededFor 
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { isBlankValue } from "../misc";
 import { defaultValueKey } from "../filter/setFilterCore";
+import { ColumnType } from "../interfaces/column";
+import { parseDateInput } from "../column/formatters";
+import { parseBooleanText, parseIsoDate } from "../column/parsers";
 
 export interface QuickFilterSpec {
   // The raw search text as typed by the user (may contain leading/trailing/inner whitespace).
@@ -109,29 +112,44 @@ export function performQuickFilter(
   return out;
 }
 
+type ActiveFilter = {
+  col: Column;
+  type: FilterType;
+  v: any;
+  rawValues: any[];
+  params: ResolvedFilterParams;
+  matcher?: FilterMatcherFn;
+  filterFunction?: NonNullable<FilterParams["filterFunction"]>;
+  /** in/notIn: the model's values as membership keys (`setMembershipKey`), null for the blanks bucket. */
+  setKeys?: Set<string | null>;
+  /** Date columns: the operands as local calendar days, `[start, end]` instants (NaN when unparseable). */
+  days?: DayBounds[];
+  /** Boolean columns, eq/neq: the operand as a boolean, null when it is not one. */
+  bool?: boolean | null;
+};
+
+/** One column's conditions and the join between them. */
+type ActiveGroup = { join: "and" | "or"; conditions: ActiveFilter[] };
+
+type DayBounds = { start: number; end: number };
+
+/**
+ * Keep the rows (by index) that pass every column's filter. A column passes when all of its
+ * conditions match (`join: "and"`, the default) or any one does (`join: "or"`); columns are always
+ * ANDed with each other.
+ */
 export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[] {
   const n = rows.length;
   const out = new Array(n);
   let outLen = 0;
 
-  type ActiveFilter = {
-    col: Column;
-    type: FilterType;
-    v: any;
-    rawValues: any[];
-    params: ResolvedFilterParams;
-    matcher?: FilterMatcherFn;
-    filterFunction?: NonNullable<FilterParams["filterFunction"]>;
-    /** in/notIn: the model's values as membership keys (`setMembershipKey`), null for the blanks bucket. */
-    setKeys?: Set<string | null>;
-  };
-
-  const active: ActiveFilter[] = [];
+  const groups: ActiveGroup[] = [];
   for (const filter of filters) {
     // `false` is an explicit opt-out. Usually this also prevents the menu from creating a model,
     // but honour it here as well for models supplied through the API or restored from state.
     if (filter.col.filter === false) continue;
 
+    const active: ActiveFilter[] = [];
     const params = resolveFilterParams(filter.col.filterParams);
     const filterFunction = filter.col.filterParams?.filterFunction;
     const matcher = typeof filter.col.filter === "function" ? (filter.col.filter as FilterMatcherFn) : undefined;
@@ -153,162 +171,226 @@ export function performFilter(filters: FilterItem[], rows: IRowNode[]): number[]
           matcher: filterFunction ? undefined : matcher,
         });
       }
-      continue;
-    }
-
-    // Pre-normalize filter values
-    for (const f of filter.filters) {
-      const rawValues = toValuesArray(f.values);
-      const valuesNeeded = valuesNeededFor(f.type);
-      if (valuesNeeded === 0) {
-        active.push({
-          col: filter.col,
-          type: f.type,
-          v: null,
-          rawValues,
-          params,
-        });
-      } else if (f.type === "in" || f.type === "notIn") {
-        const values = Array.isArray(rawValues[0]) ? rawValues[0] : rawValues; // allow both in([1,2,3]) and in(1,2,3) for set filters
-        active.push({
-          col: filter.col,
-          type: f.type,
-          v: values,
-          rawValues: values,
-          params,
-          setKeys: new Set(values.map(value => setMembershipKey(value, params))),
-        });
-      } else if (f.type === "contains" || f.type === "notContains" || f.type === "startsWith" || f.type === "endsWith" || !filter.col.isComputableType()) {
-        active.push({
-          col: filter.col,
-          type: f.type,
-          v: normalizeTextFilterOperand(rawValues[0], params),
-          rawValues,
-          params,
-        });
-      } else {
-        const v = valuesNeeded === 1
-          ? normalizeFilterOperand(rawValues[0], params)
-          : rawValues.map(value => normalizeFilterOperand(value, params));
-        active.push({
-          col: filter.col,
-          type: f.type,
-          v: v,
-          rawValues,
-          params,
-        });
+    } else {
+      const dateColumn = isDateFilterColumn(filter.col);
+      const booleanColumn = isBooleanFilterColumn(filter.col);
+      // Pre-normalize filter values
+      for (const f of filter.filters) {
+        const rawValues = toValuesArray(f.values);
+        const valuesNeeded = valuesNeededFor(f.type);
+        if (valuesNeeded === 0) {
+          active.push({ col: filter.col, type: f.type, v: null, rawValues, params });
+        } else if (f.type === "in" || f.type === "notIn") {
+          const values = Array.isArray(rawValues[0]) ? rawValues[0] : rawValues; // allow both in([1,2,3]) and in(1,2,3) for set filters
+          active.push({
+            col: filter.col,
+            type: f.type,
+            v: values,
+            rawValues: values,
+            params,
+            setKeys: new Set(values.map(value => setMembershipKey(value, params))),
+          });
+        } else if (dateColumn && DATE_OPS.has(f.type)) {
+          active.push({
+            col: filter.col,
+            type: f.type,
+            v: rawValues,
+            rawValues,
+            params,
+            days: rawValues.slice(0, valuesNeeded).map(value => dayBounds(formatOperand(value, params.textFormatter))),
+          });
+        } else if (booleanColumn && (f.type === "eq" || f.type === "neq")) {
+          active.push({
+            col: filter.col,
+            type: f.type,
+            v: rawValues[0],
+            rawValues,
+            params,
+            bool: toBoolean(formatOperand(rawValues[0], params.textFormatter)),
+          });
+        } else if (f.type === "contains" || f.type === "notContains" || f.type === "startsWith" || f.type === "endsWith" || !filter.col.isComputableType()) {
+          active.push({
+            col: filter.col,
+            type: f.type,
+            v: normalizeTextFilterOperand(rawValues[0], params),
+            rawValues,
+            params,
+          });
+        } else {
+          const v = valuesNeeded === 1
+            ? normalizeFilterOperand(rawValues[0], params)
+            : rawValues.map(value => normalizeFilterOperand(value, params));
+          active.push({ col: filter.col, type: f.type, v, rawValues, params });
+        }
       }
     }
+    if (active.length > 0) groups.push({ join: filter.join === "or" ? "or" : "and", conditions: active });
   }
 
-  if (active.length === 0) {
+  if (groups.length === 0) {
     for (let i = 0; i < n; i++) out[outLen++] = i;
     out.length = outLen;
     return out;
   }
 
   for (let i = 0; i < n; i++) {
+    const node = rows[i];
     let ok = true;
-
-    for (let j = 0; j < active.length; j++) {
-      const f = active[j];
-      const cell = f.col.getValue(rows[i]);
-
-      if (f.filterFunction) {
-        const formattedCell = formatOperand(cell, f.params.textFormatter);
-        if (!f.filterFunction(f.type, f.v, formattedCell, f.params.caseSensitive, f.params.trimValues)) {
-          ok = false;
-          break;
+    for (let g = 0; g < groups.length && ok; g++) {
+      const { join, conditions } = groups[g];
+      if (join === "or") {
+        let any = false;
+        for (let j = 0; j < conditions.length; j++) {
+          if (conditionMatches(conditions[j], node)) {
+            any = true;
+            break;
+          }
         }
-        continue;
+        ok = any;
+      } else {
+        for (let j = 0; j < conditions.length; j++) {
+          if (!conditionMatches(conditions[j], node)) {
+            ok = false;
+            break;
+          }
+        }
       }
-
-      // Custom matcher: delegate the keep/drop decision to the column's filter function. Without
-      // textFormatter this preserves the existing raw-value contract.
-      if (f.matcher) {
-        const formattedCell = formatOperand(cell, f.params.textFormatter);
-        if (!f.matcher(formattedCell, rows[i], f.v, f.type)) {
-          ok = false;
-          break;
-        }
-        continue;
-      }
-
-      const usesRawBlankSemantics = f.type === FilterType.IS_BLANK || f.type === FilterType.IS_NOT_BLANK;
-      const comparableCell = usesRawBlankSemantics ? cell : normalizeCellOperand(cell, f.params);
-      const strVal = comparableCell == null ? "" : String(comparableCell);
-
-      switch (f.type) {
-        case "contains": {
-          if (!strVal.includes(f.v)) ok = false;
-          break;
-        }
-        case "notContains": {
-          if (strVal.includes(f.v)) ok = false;
-          break;
-        }
-        case "startsWith": {
-          if (!strVal.startsWith(f.v)) ok = false;
-          break;
-        }
-        case "endsWith": {
-          if (!strVal.endsWith(f.v)) ok = false;
-          break;
-        }
-        case "eq":
-          // Numeric columns compare coerced, formatter-processed operands; string columns compare
-          // the normalized text prepared above.
-          if (f.col.isComputableType() ? Number(comparableCell) !== Number(f.v) : strVal !== f.v) ok = false;
-          break;
-        case "neq":
-          if (f.col.isComputableType() ? Number(comparableCell) === Number(f.v) : strVal === f.v) ok = false;
-          break;
-        case "gt":
-          if (!(Number(comparableCell) > Number(f.v))) ok = false;
-          break;
-        case "gte":
-          if (!(Number(comparableCell) >= Number(f.v))) ok = false;
-          break;
-        case "lt":
-          if (!(Number(comparableCell) < Number(f.v))) ok = false;
-          break;
-        case "lte":
-          if (!(Number(comparableCell) <= Number(f.v))) ok = false;
-          break;
-        case "in":
-          if (!f.setKeys?.has(setMembershipKey(cell, f.params))) ok = false;
-          break;
-        case "notIn":
-          if (f.setKeys?.has(setMembershipKey(cell, f.params))) ok = false;
-          break;
-        case "isBlank":
-          if (cell != null && cell !== "") ok = false;
-          break;
-        case "isNotBlank":
-          if (cell == null || cell === "") ok = false;
-          break;
-        case "inRange": {
-          const v = Number(comparableCell);
-          if (v < Number(f.v[0]) || v > Number(f.v[1])) ok = false;
-          break;
-        }
-        case "notInRange": {
-          const v = Number(comparableCell);
-          if (v >= Number(f.v[0]) && v <= Number(f.v[1])) ok = false;
-          break;
-        }
-        default:
-          ok = false;
-      }
-
-      if (!ok) break;
     }
-
     if (ok) out[outLen++] = i;
-  };
+  }
 
   out.length = outLen;
   return out;
+}
+
+function conditionMatches(f: ActiveFilter, node: IRowNode): boolean {
+  const cell = f.col.getValue(node);
+
+  if (f.filterFunction) {
+    const formattedCell = formatOperand(cell, f.params.textFormatter);
+    return !!f.filterFunction(f.type, f.v, formattedCell, f.params.caseSensitive, f.params.trimValues);
+  }
+
+  // Custom matcher: delegate the keep/drop decision to the column's filter function. Without
+  // textFormatter this preserves the existing raw-value contract.
+  if (f.matcher) {
+    const formattedCell = formatOperand(cell, f.params.textFormatter);
+    return !!f.matcher(formattedCell, node, f.v, f.type);
+  }
+
+  if (f.days) return dateMatches(f.type, f.days, toInstant(formatOperand(cell, f.params.textFormatter)));
+
+  if (f.bool !== undefined) {
+    const value = toBoolean(formatOperand(cell, f.params.textFormatter));
+    const equal = f.bool !== null && value === f.bool;
+    return f.type === "eq" ? equal : !equal;
+  }
+
+  const usesRawBlankSemantics = f.type === FilterType.IS_BLANK || f.type === FilterType.IS_NOT_BLANK;
+  const comparableCell = usesRawBlankSemantics ? cell : normalizeCellOperand(cell, f.params);
+  const strVal = comparableCell == null ? "" : String(comparableCell);
+
+  switch (f.type) {
+    case "contains": return strVal.includes(f.v);
+    case "notContains": return !strVal.includes(f.v);
+    case "startsWith": return strVal.startsWith(f.v);
+    case "endsWith": return strVal.endsWith(f.v);
+    case "eq":
+      // Numeric columns compare coerced, formatter-processed operands; string columns compare
+      // the normalized text prepared above.
+      return f.col.isComputableType() ? Number(comparableCell) === Number(f.v) : strVal === f.v;
+    case "neq":
+      return f.col.isComputableType() ? Number(comparableCell) !== Number(f.v) : strVal !== f.v;
+    case "gt": return Number(comparableCell) > Number(f.v);
+    case "gte": return Number(comparableCell) >= Number(f.v);
+    case "lt": return Number(comparableCell) < Number(f.v);
+    case "lte": return Number(comparableCell) <= Number(f.v);
+    case "in": return !!f.setKeys?.has(setMembershipKey(cell, f.params));
+    case "notIn": return !f.setKeys?.has(setMembershipKey(cell, f.params));
+    case "isBlank": return cell == null || cell === "";
+    case "isNotBlank": return !(cell == null || cell === "");
+    case "inRange": {
+      const v = Number(comparableCell);
+      return !(v < Number(f.v[0]) || v > Number(f.v[1]));
+    }
+    case "notInRange": {
+      const v = Number(comparableCell);
+      return !(v >= Number(f.v[0]) && v <= Number(f.v[1]));
+    }
+    default:
+      return false;
+  }
+}
+
+const DATE_OPS = new Set<string>(["eq", "neq", "gt", "gte", "lt", "lte", "inRange", "notInRange"]);
+
+/** A DATE-typed column, or one whose filter is declared `"date"`: operands are calendar days. */
+function isDateFilterColumn(col: Column): boolean {
+  return col.type === ColumnType.DATE || col.filter === "date";
+}
+
+/** A BOOLEAN-typed column, or one whose filter is declared `"boolean"`. */
+function isBooleanFilterColumn(col: Column): boolean {
+  return col.type === ColumnType.BOOLEAN || col.filter === "boolean";
+}
+
+/**
+ * A date operand or cell — `Date`, epoch number, or text — as an instant. ISO text without a zone
+ * (`2026-01-12`, what the date input sends) is read in local time, as the date column reads it.
+ */
+function toInstant(value: any): number {
+  if (value == null || value === "") return NaN;
+  if (typeof value === "string") {
+    const iso = parseIsoDate(value.trim());
+    if (iso) return iso.getTime();
+  }
+  if (value instanceof Date || typeof value === "number" || typeof value === "string") {
+    return parseDateInput(value)?.getTime() ?? NaN;
+  }
+  return NaN;
+}
+
+/** The local calendar day an operand falls on, as its first and last millisecond. */
+function dayBounds(value: any): DayBounds {
+  const t = toInstant(value);
+  if (Number.isNaN(t)) return { start: NaN, end: NaN };
+  const d = new Date(t);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - 1;
+  return { start, end };
+}
+
+/**
+ * Day-level date comparison. `eq` is "on that day", `gt` "after it", `gte` "on or after it", `lt`
+ * "before it", `lte` "on or before it", `inRange` from the start of the first day through the end
+ * of the second (both ends inclusive). A cell or operand that is not a date fails the positive
+ * operators and so passes their complements (`neq`, `notInRange`).
+ */
+function dateMatches(type: FilterType, days: DayBounds[], cell: number): boolean {
+  const a = days[0];
+  switch (type) {
+    case "eq": return cell >= a.start && cell <= a.end;
+    case "neq": return !(cell >= a.start && cell <= a.end);
+    case "gt": return cell > a.end;
+    case "gte": return cell >= a.start;
+    case "lt": return cell < a.start;
+    case "lte": return cell <= a.end;
+    case "inRange": return cell >= a.start && cell <= (days[1]?.end ?? NaN);
+    case "notInRange": return !(cell >= a.start && cell <= (days[1]?.end ?? NaN));
+    default: return false;
+  }
+}
+
+/**
+ * A boolean operand or cell: `true`/`false`; `1`/`0`; text `true`/`false`, `yes`/`no`, `y`/`n`,
+ * `1`/`0` (any case). Anything else, blanks included, is not a boolean (null).
+ */
+function toBoolean(value: any): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+  if (typeof value !== "string") return null;
+  const parsed = parseBooleanText(value);
+  return typeof parsed === "boolean" ? parsed : null;
 }
 
 /**

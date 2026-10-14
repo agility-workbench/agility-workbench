@@ -29,6 +29,14 @@ sorting, saved expansion, sticky ancestors, selection, editing, and export. A
 generated hierarchy column can be configured through `treeData.columnDef` in
 every mode.
 
+Sorting is per level: siblings order by their own cell values under the active
+sort, and each row's children sort among themselves beneath it. A parent's
+position never depends on its children — ascending, a parent `Z` with a child
+`A` still follows a sibling `B`. A row with no values of its own to compare (a
+`path` ancestor the grid synthesized, or a real ancestor the filters dropped
+that stays only to reach a matching descendant) sits where its first child
+would.
+
 A mode belongs to exactly one row model. Pairing a client-side mode with
 `rowModelType: "serverSide"` — or `mode: "server"` with the client-side model —
 logs a warning and drops the option rather than half-applying it.

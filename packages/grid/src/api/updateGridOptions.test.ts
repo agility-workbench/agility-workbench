@@ -190,6 +190,25 @@ describe("api.updateGridOptions", () => {
     api.destroy();
   });
 
+  it("applies the header heights as one presence-based patch, without a warning", () => {
+    const api = mount({ parentHeaderHeight: 30 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    api.updateGridOptions({ headerHeight: 50, zebraRows: true });
+
+    expect(api.getCore().getOptions()).toMatchObject({
+      headerHeight: 50,
+      leafHeaderHeight: 50,
+      parentHeaderHeight: 30,
+      zebraRows: true,
+    });
+    expect(host.querySelector<HTMLElement>(".pte-header-wrapper")!.style.height).toBe("50px");
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+    api.destroy();
+  });
+
   it("warns and does nothing when the grid has not been rendered yet", () => {
     const core = new GridCore(new CanvasMeasurer(), {});
     const api = new GridAPI(core);

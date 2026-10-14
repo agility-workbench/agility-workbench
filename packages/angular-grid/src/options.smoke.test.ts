@@ -76,8 +76,8 @@ class OptionsHost {
       [rowData]="[]"
       [columnDefs]="cols"
       [loading]="loading"
-      loadingMessage="Fetching rows…"
-      noRowsMessage="Nothing to see"
+      [loadingMessage]="loadingMessage"
+      [noRowsMessage]="noRowsMessage"
       pivotNoValuesMessage="Pick a measure to begin"
       (gridReady)="api = $event"
     />
@@ -86,6 +86,8 @@ class OptionsHost {
 class OverlayHost {
   api: IGridAPI | null = null;
   loading = true;
+  loadingMessage = "Fetching rows…";
+  noRowsMessage = "Nothing to see";
   cols: NgColDef[] = [{ colId: "id", key: "id", label: "ID" }];
 }
 
@@ -116,11 +118,75 @@ class LiveRowSelectionHost {
   cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
 }
 
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <awb-grid
+      style="height: 600px"
+      [rowData]="rows"
+      [columnDefs]="cols"
+      rowIdKey="id"
+      [rowHeight]="50"
+      [headerHeight]="headerHeight"
+      [leafHeaderHeight]="leafHeaderHeight"
+      [parentHeaderHeight]="30"
+      (gridReady)="api = $event"
+    />
+  `,
+})
+class HeaderHeightsHost {
+  api: IGridAPI | null = null;
+  headerHeight: number | undefined = undefined;
+  leafHeaderHeight: number | undefined = 60;
+  rows = [{ id: 1, a: 1 }];
+  cols: NgColDef[] = [
+    { colId: "grp", label: "Group", children: [{ colId: "a", key: "a", label: "A" }] },
+    { colId: "id", key: "id", label: "ID" },
+  ];
+}
+
 function row(gridEl: HTMLElement, index: number): HTMLElement {
   return gridEl.querySelector<HTMLElement>(`.pte-row[data-view-idx='${index}']`)!;
 }
 
 describe("AwbGrid visual and runtime options", () => {
+  it("updates loadingMessage after creation", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(OverlayHost);
+    expect(gridEl.querySelector(".pte-loading-label")?.textContent).toBe("Fetching rows…");
+
+    host.loadingMessage = "Almost there…";
+    await syncGridInputs(fixture);
+    expect(gridEl.querySelector(".pte-loading-label")?.textContent).toBe("Almost there…");
+  });
+
+  it("updates noRowsMessage on a no-rows overlay already showing", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(OverlayHost, 600, (instance) => {
+      instance.loading = false;
+    });
+    const overlay = gridEl.querySelector(".pte-norows-overlay")!;
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(overlay.textContent).toBe("Nothing to see");
+
+    host.noRowsMessage = "Still nothing";
+    await syncGridInputs(fixture);
+    expect(overlay.textContent).toBe("Still nothing");
+  });
+
+  it("sizes the header from the header heights and follows input changes", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(HeaderHeightsHost);
+    const wrapper = () => gridEl.querySelector<HTMLElement>(".pte-header-wrapper")!;
+    const leafCell = () => gridEl.querySelector<HTMLElement>(".pte-hcell-children .pte-hcell")!;
+    expect(wrapper().style.height).toBe("90px");
+    expect(leafCell().style.height).toBe("60px");
+
+    host.leafHeaderHeight = undefined;
+    host.headerHeight = 40;
+    await syncGridInputs(fixture);
+    expect(wrapper().style.height).toBe("70px");
+    expect(leafCell().style.height).toBe("40px");
+  });
+
   it("updates the async transaction batch window without recreating the API", async () => {
     const { fixture, host } = await mountGridHost(OptionsHost);
     const api = host.api!;

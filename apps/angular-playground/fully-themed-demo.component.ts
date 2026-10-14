@@ -60,7 +60,11 @@ function makeTheme(rowHeight: number): GridTheme {
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
     fontSize: 13,
     headerFontWeight: 750,
+    // Both heights are read once at creation: `rowHeight` feeds the virtualization geometry, and
+    // `headerHeight` seeds the `headerHeight` grid option (an explicit option wins, and that option
+    // is live — see the Header height control).
     rowHeight,
+    headerHeight: 56,
     cellHorizontalPadding: 16,
     iconColor: "#a5b4fc",
     scrollbarThumbColor: "#52659d",
@@ -109,16 +113,26 @@ function makeTheme(rowHeight: number): GridTheme {
         <div>
           <span class="full-theme-kicker">CUSTOM THEME / ANGULAR</span>
           <h2>Mission Control</h2>
-          <p>Every grid surface is themed per instance: chrome, menus, selection, typography, scrollbars, spacing, and two-pixel row dividers.</p>
+          <p>Every grid surface is themed per instance: chrome, menus, selection, typography, scrollbars, spacing, and two-pixel row dividers. Row and header heights come from the theme too: <code>rowHeight</code> is read when the grid is created (the density switch rebuilds it), and <code>headerHeight</code> seeds the header, which the Header height control overrides live through the grid option; Theme hands it back.</p>
         </div>
-        <label class="full-theme-density">
-          Row height
-          <select [value]="rowHeight()" (change)="setRowHeight($event)">
-            <option value="44">Compact · 44px</option>
-            <option value="58">Comfortable · 58px</option>
-            <option value="72">Oversized · 72px</option>
-          </select>
-        </label>
+        <div class="full-theme-controls">
+          <label class="full-theme-density">
+            Row height
+            <select [value]="rowHeight()" (change)="setRowHeight($event)">
+              <option value="44">Compact · 44px</option>
+              <option value="58">Comfortable · 58px</option>
+              <option value="72">Oversized · 72px</option>
+            </select>
+          </label>
+          <label class="full-theme-density">
+            Header height
+            <select [value]="headerHeight() ?? ''" (change)="setHeaderHeight($event)">
+              <option value="">Theme · 56px</option>
+              <option value="40">Compact · 40px</option>
+              <option value="72">Tall · 72px</option>
+            </select>
+          </label>
+        </div>
       </header>
 
       <div class="full-theme-grid-shell">
@@ -127,8 +141,7 @@ function makeTheme(rowHeight: number): GridTheme {
             [rowData]="rows"
             [columnDefs]="columns"
             rowIdKey="id"
-            [rowHeight]="height"
-            [headerHeight]="56"
+            [headerHeight]="headerHeight()"
             [theme]="theme()"
             [rowNumbers]="true"
             [rowHover]="true"
@@ -163,6 +176,7 @@ function makeTheme(rowHeight: number): GridTheme {
     .full-theme-kicker { color: #67e8f9; font-size: 10px; font-weight: 800; letter-spacing: .18em }
     .full-theme-density { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; color: #a5b4fc; font-size: 12px; font-weight: 700 }
     .full-theme-density select { border: 1px solid #52659d; border-radius: 9px; padding: 8px 11px; background: #0b1228; color: #f1f5ff }
+    .full-theme-controls { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 16px }
     .full-theme-grid-shell { flex: 1; min-height: 0; filter: drop-shadow(0 18px 34px rgba(0, 0, 0, .5)) }
     .full-theme-grid-shell ::ng-deep .pte-root { border-width: 2px; border-radius: 14px }
     .full-theme-grid-shell ::ng-deep .pte-pinned-row .pte-cell { background: #15234a; color: #fef3c7; font-weight: 750 }
@@ -177,6 +191,8 @@ export class FullyThemedDemoComponent {
   readonly rows = ROWS;
   readonly pinnedRows = [PINNED_ROW];
   readonly rowHeight = signal(58);
+  /** undefined = no grid option, so the theme's `headerHeight` param applies. */
+  readonly headerHeight = signal<number | undefined>(undefined);
   readonly activeRowHeights = computed(() => [this.rowHeight()]);
   readonly theme = computed(() => makeTheme(this.rowHeight()));
 
@@ -210,5 +226,10 @@ export class FullyThemedDemoComponent {
 
   setRowHeight(event: Event): void {
     this.rowHeight.set(Number((event.target as HTMLSelectElement).value));
+  }
+
+  setHeaderHeight(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.headerHeight.set(value === "" ? undefined : Number(value));
   }
 }

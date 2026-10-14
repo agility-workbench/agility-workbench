@@ -12,17 +12,56 @@ export interface ChangeFlashParams {
 const DEFAULT_FLASH_MS = 500;
 const DEFAULT_FADE_MS = 1000;
 
-export class ChangeFlashCellRenderer implements ICellRenderer {
-  private static prevByRow = new Map<string, Map<string, any>>();
+/** Sweep rows that left the model once the map outgrows this (then twice its post-sweep size). */
+const MIN_PRUNE_THRESHOLD = 256;
 
+/**
+ * Last-seen values for one grid, by row id then column. Keyed by row id rather than by renderer
+ * instance because body slots are pooled by view index: when a sort or transaction moves a row to
+ * another slot, that slot's renderer must still compare against the row's own previous value.
+ */
+interface FlashGridState {
+  rows: Map<string, Map<string, unknown>>;
+  /** Live renderer instances for this grid; the state is released when the last one is destroyed. */
+  liveRenderers: number;
+  pruneAt: number;
+}
+
+/**
+ * One state per grid, keyed by the grid's API object (renderers without one key on themselves), so
+ * two grids with overlapping row ids never compare against each other's values, and a grid that is
+ * dropped takes its state with it.
+ */
+const stateByGrid = new WeakMap<object, FlashGridState>();
+
+/** Test-only: how many rows the renderer currently remembers values for in `api`'s grid. */
+export function changeFlashTrackedRowCount(api: object): number {
+  return stateByGrid.get(api)?.rows.size ?? 0;
+}
+
+export class ChangeFlashCellRenderer implements ICellRenderer {
   private eGui!: HTMLSpanElement;
   private flashTimer: number | null = null;
   private fadeTimer: number | null = null;
   private currentDirClass: string | null = null;
 
+  private gridKey: object = this;
+  private state: FlashGridState | null = null;
+  /** What this instance last painted. Preferred over the shared map when it painted the same cell,
+   * so two instances showing one cell (a sticky group mirror and its body row) each flash. */
+  private lastCell: { rowId: string; colKey: string; value: unknown } | null = null;
+
   init(params: CellRendererParams) {
     this.eGui = document.createElement("span");
     this.eGui.className = "pte-cell-flash";
+    this.gridKey = params.api ?? this;
+    let state = stateByGrid.get(this.gridKey);
+    if (!state) {
+      state = { rows: new Map(), liveRenderers: 0, pruneAt: MIN_PRUNE_THRESHOLD };
+      stateByGrid.set(this.gridKey, state);
+    }
+    state.liveRenderers++;
+    this.state = state;
     this.paint(params, false);
   }
 
@@ -37,20 +76,32 @@ export class ChangeFlashCellRenderer implements ICellRenderer {
 
   destroy(): void {
     this.clearTimers();
+    const state = this.state;
+    this.state = null;
+    this.lastCell = null;
+    if (!state) return;
+    // Every renderer of the grid is gone (the grid was destroyed, or the column left): nothing can
+    // flash against the remembered values any more, so drop them rather than wait for GC of the API.
+    if (--state.liveRenderers <= 0 && stateByGrid.get(this.gridKey) === state) {
+      stateByGrid.delete(this.gridKey);
+    }
   }
 
   private paint(p: CellRendererParams, allowFlash: boolean) {
     const rowKey = p.rowId;
     const colKey = p.colDef.colId || p.colDef.instanceID;
+    const rows = this.state?.rows ?? new Map<string, Map<string, unknown>>();
 
-    let row = ChangeFlashCellRenderer.prevByRow.get(rowKey);
+    let row = rows.get(rowKey);
     if (!row) {
       row = new Map();
-      ChangeFlashCellRenderer.prevByRow.set(rowKey, row);
+      rows.set(rowKey, row);
     }
 
-    const hadPrev = row.has(colKey);
-    const prev = row.get(colKey);
+    const own = this.lastCell;
+    const ownCell = own != null && own.rowId === rowKey && own.colKey === colKey;
+    const hadPrev = ownCell || row.has(colKey);
+    const prev = ownCell ? own.value : row.get(colKey);
     const next = p.value;
 
     this.eGui.textContent = p.valueFormatted ?? (next == null ? "" : String(next));
@@ -62,6 +113,18 @@ export class ChangeFlashCellRenderer implements ICellRenderer {
     }
 
     row.set(colKey, next);
+    this.lastCell = { rowId: rowKey, colKey, value: next };
+    this.pruneRemovedRows(p);
+  }
+
+  /** Forget rows the grid no longer holds, amortized: only once the map doubles since the last sweep. */
+  private pruneRemovedRows(p: CellRendererParams) {
+    const state = this.state;
+    if (!state || state.rows.size <= state.pruneAt || typeof p.api?.getRowNode !== "function") return;
+    for (const rowId of state.rows.keys()) {
+      if (p.api.getRowNode(rowId) == null) state.rows.delete(rowId);
+    }
+    state.pruneAt = Math.max(MIN_PRUNE_THRESHOLD, state.rows.size * 2);
   }
 
   private pickDirection(prev: any, next: any, p: CellRendererParams): FlashDirection {

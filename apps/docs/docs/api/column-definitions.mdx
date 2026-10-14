@@ -22,6 +22,9 @@ types widen component slots to accept their native component classes.
 ## Layout and capability
 
 `width`, `minWidth`, `maxWidth`, `pinned`, and `hidden` describe initial layout.
+A declared `width` is kept on data load (content autosize applies only to
+columns without one) and is clamped by the column's `minWidth` / `maxWidth`;
+a user resize or an explicit fit-to-content replaces it.
 `sortable`, `resizable`, `movable`, `hideable`, `groupable`, `aggregatable`,
 `pivotable`, `exportable`, and `editable` govern user capabilities.
 `pivotComparator` orders a pivoted column's distinct values across the
@@ -31,7 +34,8 @@ management drawer.
 ## Sort and filter
 
 Columns may define `sort`, `sortIndex`, `sortingOrder`, `sortIconVisibility`,
-and a custom `comparator`. `filter` selects a built-in panel or custom matcher;
+and a custom `comparator`. `filter` selects a built-in panel or custom matcher
+(`filter: false` removes filtering only; use `sortable: false` to stop sorting);
 `filterParams` configures operators, inputs, values, debounce, and buttons.
 
 ## Components
@@ -45,6 +49,12 @@ and a custom `comparator`. `filter` selects a built-in panel or custom matcher;
 | `actionFrameComponent` | Persistent cell-attached form content |
 
 Each component slot has a companion params field where applicable.
+
+A header component is as tall as the header level it sits on: `leafHeaderHeight`
+for a leaf column, `parentHeaderHeight` for each group level (both default to
+`headerHeight`, 43px), plus any extra levels the cell spans. Taller content is
+clipped, so a component that needs more room needs a taller option, not CSS on
+the component. The header does not size itself to its content.
 
 ## Conditional presentation
 

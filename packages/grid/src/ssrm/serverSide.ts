@@ -102,6 +102,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   // Number of in-flight block fetches; the loading overlay shows on 0→1 and hides on →0 so
   // concurrent fetches can't strand or flicker it.
   private loadingDepth = 0;
+  private warnedNoRowId = false;
 
   private readonly blockSize: number;
   private getId: (row: Row) => string;
@@ -397,6 +398,16 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       return;
     }
     this.ensureViewRange(params);
+  }
+
+  /**
+   * Bumped whenever loaded listings are discarded wholesale (a structural reload — init, refresh,
+   * sort, filter, grouping — or a purge refresh). The core clears edit history when it moves: the
+   * rows those edits were recorded against are gone. A soft refresh refetches in place and does
+   * not move it.
+   */
+  getStoreGeneration(): number {
+    return this.storeGeneration;
   }
 
   setAggregateScope(scope: AggregateScope): void {
@@ -748,6 +759,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       if (!missing) return;
     }
 
+    this.warnIfNoRowIdStrategy();
     const generation = this.storeGeneration;
     listing.inFlight.add(blockStart);
     if (++this.loadingDepth === 1) {
@@ -830,6 +842,21 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         if (settled) this.listener.onLoadingEnd(this.latestRequestId);
       }
     })();
+  }
+
+  /**
+   * Without `getRowId`/`rowIdKey` a row's id is minted per object, and every block refetch hands
+   * back new objects — so ids change under selection, refresh-in-place and undo history. The
+   * fallback stays (a read-only grid can live with it); the first load says so, once per grid.
+   */
+  private warnIfNoRowIdStrategy(): void {
+    if (this.warnedNoRowId || this.opts.getRowId || this.opts.rowIdKey) return;
+    this.warnedNoRowId = true;
+    console.warn(
+      "Server-side row model without getRowId or rowIdKey: row ids are regenerated on every block "
+      + "refetch, so selection, refresh-in-place and undo history cannot follow rows. Set rowIdKey "
+      + "or getRowId to a stable server key.",
+    );
   }
 
   private isGroupLevel(listing: ChildListing<Row>): boolean {

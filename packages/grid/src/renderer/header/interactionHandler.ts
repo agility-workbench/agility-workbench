@@ -473,7 +473,7 @@ export class HeaderInteractionHandler {
     const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
-      this.params.core.dispatch({ type: "headerAction", action: (isFilter ? "filter" : "menu") + "Click", colId: header.id });
+      this.params.core.dispatch({ type: "headerAction", action: isFilter ? "filterClick" : "menuClick", colId: header.id });
       if (!isFilter) {
         // Same reconciliation as a header right-click: the button must not open a menu about
         // columns the user did not click while their selection sits elsewhere.

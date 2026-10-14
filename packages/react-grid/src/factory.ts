@@ -17,7 +17,8 @@ function setIfDefined<K extends keyof GridOptions>(
 /**
  * Snapshot the props into core GridOptions. Explicit `false`/`0` values are forwarded (only
  * null/undefined fall back to core defaults). Mirrors the Angular wrapper's `getGridOptions`.
- * The six `on*` event callbacks are bridged by the component (stable-ref closures), not here.
+ * The component replaces the `on*` event callbacks, `onBeforeCellCommit`, `fillOperation`, and a
+ * function-valued `multiColumnMenu` with stable-ref bridges, so the latest prop is always called.
  */
 export function getGridOptions(props: GridProps): GridOptions {
   const options: GridOptions = {};
@@ -132,6 +133,12 @@ export function getGridOptions(props: GridProps): GridOptions {
   // body-menu adapter apply the function arm (so React-node slots are handled). This avoids running
   // a user callback twice (once in core, once in the adapter).
   if (props.bodyContextMenu === false) options.bodyContextMenu = false;
+
+  // Unlike bodyContextMenu, the multi-column getter runs in core (before the column-menu adapter,
+  // which then normalizes any React-node slots it returned), so it is forwarded as-is.
+  if (props.multiColumnMenu != null) {
+    options.multiColumnMenu = props.multiColumnMenu as GridOptions["multiColumnMenu"];
+  }
 
   if (props.rowModelType === "serverSide") {
     setIfDefined(options, "serverSideDataSource", props.serverSideDataSource);

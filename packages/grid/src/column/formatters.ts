@@ -36,6 +36,11 @@ function getOptsFromCol(params: ValueFormatterParams): FormatterOptions {
   return opts;
 }
 
+/** A column's `formatterOptions` for one row, the function form resolved — what its formatter reads. */
+export function resolveFormatterOptions(col: Column, row?: IRowNode): FormatterOptions {
+  return getOptsFromCol({ value: undefined, col, row });
+}
+
 export function currencyFormatter(params: ValueFormatterParams): string {
   const opts = params.col ? getOptsFromCol(params) : {};
   return params.value != null ? params.value.toLocaleString(opts.locale || "en-US", {

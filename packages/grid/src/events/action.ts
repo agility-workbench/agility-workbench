@@ -237,10 +237,15 @@ export type GridActionSelectionClear = {
   what?: "all" | "range" | "rows" | "columns";
 };
 
+/** What a header interaction asks the core to do. `filterClick`, `menuClick` and `click` change
+ * no core state (the renderer opens the filter or menu itself); they are dispatched so listeners
+ * see them. */
+export type HeaderActionKind = "toggleSort" | "toggleGroupExpand" | "filterClick" | "menuClick" | "click";
+
 export type GridActionHeaderAction = {
   type: "headerAction";
   colId: string;
-  action: string;
+  action: HeaderActionKind;
   // For action "toggleSort": add the column to a multi-column sort instead of replacing it.
   additive?: boolean;
 };

@@ -1,3 +1,4 @@
+import type { HeaderHeightOptions } from "../core/headerGeometry";
 import { AggregateType } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
@@ -65,9 +66,8 @@ import { AppShortcutRegistry } from "./interaction/shortcutPolicy";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
-import { FilterOverlayRenderer } from "./overlay/filter";
-import { LoadingOverlayRenderer } from "./overlay/loading";
-import { NoRowsOverlayRenderer } from "./overlay/noRows";
+import { DEFAULT_LOADING_MESSAGE, LoadingOverlayRenderer } from "./overlay/loading";
+import { DEFAULT_NO_ROWS_MESSAGE, NoRowsOverlayRenderer } from "./overlay/noRows";
 import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterRestoreState } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterOptions } from "../interfaces/gridOptions";
@@ -83,7 +83,6 @@ import type { OcclusionAxis } from "./quickFilter/findOcclusion";
 import { CellEditRenderer } from "./editing/cellEditRenderer";
 import { ClipboardRenderer } from "./clipboard/clipboardRenderer";
 import { FillHandleController } from "./fill/fillHandleController";
-import { serializeNodesToTSV, serializeRowsToTSV } from "./clipboard/tsv";
 import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
 import { GridToolbarRenderer } from "./toolbar/gridToolbarRenderer";
@@ -132,7 +131,6 @@ export class GridRenderer {
   _columnLayoutRenderer: ColumnLayoutRenderer;
   _pinnedSectionLayoutRenderer: PinnedSectionLayoutRenderer;
   _interactionEventBinder: GridInteractionEventBinder;
-  _filterOverlayRenderer: FilterOverlayRenderer;
   _loadingOverlayRenderer: LoadingOverlayRenderer;
   _noRowsOverlayRenderer: NoRowsOverlayRenderer;
   _quickFilterWidget?: QuickFilterWidget;
@@ -155,8 +153,6 @@ export class GridRenderer {
   _fillHandle: FillHandleController;
   rowHeight: number = 43;
   height?: number;
-
-  _maxDepth: number = 1;
 
   _measureCtx: CanvasRenderingContext2D | null;
   _columnWidths: Map<string, {
@@ -441,7 +437,13 @@ export class GridRenderer {
           exportExcel: (opts) => this._exportRenderer.exportExcel(opts),
         },
         {
-          copySelection: ({ includeHeaders, ctx }) => this._copySelectionToClipboard({ includeHeaders, ctx }),
+          // The menu copies through the same builder as Ctrl/Cmd+C, with the selection it opened on
+          // and the clicked cell as the fallback when nothing is selected.
+          copySelection: ({ includeHeaders, ctx }) => this._clipboardRenderer.copy({
+            withHeaders: includeHeaders,
+            selection: ctx.selection,
+            fallbackCell: { colId: ctx.colId, node: ctx.node },
+          }),
           cutSelection: () => this._clipboardRenderer.cut(),
           pasteSelection: () => void this._clipboardRenderer.paste(),
           hasEditableCells: () => this._clipboardRenderer.hasEditableCells(),
@@ -491,7 +493,6 @@ export class GridRenderer {
       core: this.core,
       root: this.root,
       api: this.api,
-      rowHeight: () => this.rowHeight,
       getBodyFrame: () => this._bodyViewportRenderer.getRefs().bodyFrame,
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       openColumnMenu: (colID, anchorEl) => this._columnMenuOpener.openColumnMenu("columnMenuButton", colID, { anchorEl }),
@@ -584,6 +585,7 @@ export class GridRenderer {
       togglePagination: (enabled) => this.togglePagination(enabled),
       setPaginationControls: (options) => this.setPaginationControls(options),
       setTheme: (theme) => this.setTheme(theme),
+      setHeaderHeights: (heights) => this.setHeaderHeights(heights),
       setIcons: (icons) => this.setIcons(icons),
       setRuntimeOptions: (options) => this.setRuntimeOptions(options),
       setServerSideDataSource: (dataSource) => this.setServerSideDataSource(dataSource),
@@ -667,8 +669,7 @@ export class GridRenderer {
     this._columnInteractionRenderer = new ColumnInteractionRenderer({
       core: this.core,
       root: this.root,
-      rowHeight: () => this.rowHeight,
-      maxDepth: () => this._maxDepth,
+      headerHeight: () => this._headerRenderer.getGeometry().total,
       headerWrapper: headerRefs.wrapper,
       leftHeader: headerRefs.left,
       centerHeader: headerRefs.center,
@@ -880,11 +881,6 @@ export class GridRenderer {
     this._rightLeafOrder = [];
 
     // Overlays
-    this._filterOverlayRenderer = new FilterOverlayRenderer();
-    this._filterOverlayRenderer.bind();
-    // The filter overlay portals to document.body, outside the root subtree, so it
-    // must receive theme variables directly.
-    this._themeRenderer.registerTarget(this._filterOverlayRenderer.overlay);
     this._loadingOverlayRenderer = new LoadingOverlayRenderer(this.root, this.core.options.loadingMessage);
     this._noRowsOverlayRenderer = new NoRowsOverlayRenderer(this.root);
 
@@ -986,9 +982,6 @@ export class GridRenderer {
     // this._bodyViewportRenderer.recomputeView();
     // this._columnLayoutRenderer.updateColumnWidths();
     // this._bodyWindowRenderer.update(true, undefined);
-    // if (this.rowModel.getType() === "serverSide" && this.rowModel.isValid()) {
-    //   this._filterUpdateHandler.fetchServerSideRows("init");
-    // }
     this._coreEventBinder.bind();
   }
 
@@ -1172,7 +1165,22 @@ export class GridRenderer {
   /** Apply the non-structural grid options that the React wrapper supports declaratively at runtime. */
   setRuntimeOptions(options: RuntimeGridOptions) {
     const previous = { ...this.core.options };
+    // An overlay message passed as undefined means "back to the default", as it does at creation.
+    options = {
+      ...options,
+      loadingMessage: options.loadingMessage ?? DEFAULT_LOADING_MESSAGE,
+      noRowsMessage: options.noRowsMessage ?? DEFAULT_NO_ROWS_MESSAGE,
+    };
     this.core.setRuntimeOptions(options);
+
+    if (previous.loadingMessage !== options.loadingMessage) {
+      this._loadingOverlayRenderer.setMessage(options.loadingMessage);
+    }
+    // The empty-state text is chosen per empty report; re-run it so a grid already showing the
+    // overlay picks up the new wording now rather than on its next data change.
+    if (previous.noRowsMessage !== options.noRowsMessage && this._noRowsOverlayRenderer.getEmpty()) {
+      this.setEmpty(true);
+    }
 
     if (previous.rowHover !== options.rowHover) {
       if (options.rowHover) this._bodyRowHoverRenderer.bind();
@@ -1603,6 +1611,18 @@ export class GridRenderer {
     if (Object.keys(icons).length > 0) this.setIcons(icons);
   }
 
+  /**
+   * Apply changed header heights (presence-based, see `GridCore.setHeaderHeights`): re-lay the
+   * header out, re-fit the body frame under it, and re-measure the row pool for the body's new
+   * height. A no-op when the resolved heights did not change.
+   */
+  setHeaderHeights(heights: HeaderHeightOptions) {
+    if (!this.core.setHeaderHeights(heights)) return;
+    this._buildHeaderDOM("headerHeight");
+    this._columnLayoutRenderer.updateColumnWidths();
+    this._maybeUpdatePoolSize();
+  }
+
   setServerSideDataSource(dataSource?: IServerSideDataSource) {
     this._serverSideController.setDataSource(dataSource);
   }
@@ -1632,7 +1652,6 @@ export class GridRenderer {
     this._coreEventBinder.destroy();
     this._cellEditRenderer.destroy();
     this._menuRenderer.close(0);
-    this._filterOverlayRenderer.destroy();
     this._quickFilterWidget?.destroy();
     this._quickFilterFloatingHost.remove();
     this._columnPanelRenderer.destroy();
@@ -2045,88 +2064,6 @@ export class GridRenderer {
       slot.cellRendererInstances.clear();
     }
     this._rowPool = [];
-  }
-
-  private _copySelectionToClipboard({ includeHeaders, ctx }: {
-    includeHeaders: boolean;
-    ctx: import("../menu/bodyContext").BodyMenuContext;
-  }) {
-    const tsv = this._buildClipboardTSV(includeHeaders, ctx);
-    if (!tsv) return;
-
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(tsv).catch(err => {
-        console.error("Failed to write to clipboard", err);
-      });
-      return;
-    }
-
-    const ta = document.createElement("textarea");
-    ta.value = tsv;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); } catch (err) { console.error("Failed to copy to clipboard", err); }
-    document.body.removeChild(ta);
-  }
-
-  private _buildClipboardTSV(includeHeaders: boolean, ctx: import("../menu/bodyContext").BodyMenuContext): string {
-    const columnModel = this.core.getColumnModel();
-    const allLeaves = columnModel.getLeaves().filter(c => !c.isInternal() && !c.hidden);
-    const rowModel = this.core.getRowModel();
-
-    let cols = allLeaves;
-    let viewIdxRange: { start: number; end: number };
-
-    if (ctx.selection.range) {
-      const r = ctx.selection.range;
-      cols = allLeaves.filter((_, idx) => {
-        const globalIdx = columnModel.getLeaves().indexOf(allLeaves[idx]);
-        return globalIdx >= r.colStart && globalIdx <= r.colEnd;
-      });
-      // Serialize in unified row order: pinned top segment, body rows, pinned bottom segment.
-      const nodes: import("../interfaces/iRowNode").IRowNode[] = [];
-      const pushPinned = (position: "top" | "bottom", segment?: { start: number; end: number }) => {
-        if (!segment) return;
-        for (let i = segment.start; i <= segment.end; i++) {
-          const node = this.core.getDisplayedPinnedRow(position, i);
-          if (node) nodes.push(node);
-        }
-      };
-      pushPinned("top", r.pinnedTop);
-      for (let i = r.rowStart; i <= r.rowEnd; i++) {
-        const node = rowModel.getRowNodeAtViewIndex(i);
-        if (node) nodes.push(node);
-      }
-      pushPinned("bottom", r.pinnedBottom);
-      return serializeNodesToTSV(cols, nodes, includeHeaders, (col, node) => this.core.getGroupCellValue(col, node));
-    } else if (ctx.selection.rowIds.length > 0) {
-      const rowIdSet = new Set(ctx.selection.rowIds);
-      const viewIdxs: number[] = [];
-      for (let i = 0; i < rowModel.getViewCount(); i++) {
-        const id = this.core.getRowIdAtViewIndex(i);
-        if (id && rowIdSet.has(id)) viewIdxs.push(i);
-      }
-      if (viewIdxs.length === 0) return "";
-      return this.serializeRowsToTSV(cols, viewIdxs, includeHeaders);
-    } else if (ctx.selection.colIds.length > 0) {
-      cols = allLeaves.filter(c => ctx.selection.colIds.includes(c.instanceID));
-      viewIdxRange = { start: 0, end: rowModel.getViewCount() - 1 };
-    } else {
-      cols = allLeaves.filter(c => c.instanceID === ctx.colId);
-      viewIdxRange = { start: ctx.viewIdx, end: ctx.viewIdx };
-    }
-
-    const viewIdxs: number[] = [];
-    for (let i = viewIdxRange.start; i <= viewIdxRange.end; i++) viewIdxs.push(i);
-    return this.serializeRowsToTSV(cols, viewIdxs, includeHeaders);
-  }
-
-  private serializeRowsToTSV(cols: import("../column/column").Column[], viewIdxs: number[], includeHeaders: boolean): string {
-    return serializeRowsToTSV(
-      this.core.getRowModel(), cols, viewIdxs, includeHeaders, (col, node) => this.core.getGroupCellValue(col, node),
-    );
   }
 
 }

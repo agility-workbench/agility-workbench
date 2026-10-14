@@ -239,7 +239,7 @@ export class ColumnModel implements IColumnModel {
     // Content-based width requires a measurement context.
     if (measureCtx && params) {
       for (const leaf of newLeaves) {
-        this.computeColumnWidth(leaf, measureCtx, params, rows);
+        this.computeColumnWidth(leaf, measureCtx, params, rows, { honourDeclaredWidth: true });
       }
     }
 
@@ -1106,7 +1106,7 @@ export class ColumnModel implements IColumnModel {
 
   computeColumnWidths(measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
     for (const col of this.leaves) {
-      this.computeColumnWidth(col, measureCtx, params, rows);
+      this.computeColumnWidth(col, measureCtx, params, rows, { honourDeclaredWidth: true });
     }
     this.computeBaselineWidths(measureCtx, params);
     const walk = (columns: Column[]) => {
@@ -1131,7 +1131,24 @@ export class ColumnModel implements IColumnModel {
     return measureCtx.measure(col.label, params?.headerFont ?? "500 14px Arial") + 120;
   }
 
-  computeColumnWidth(col: Column, measureCtx: ITextMeasurer, params: TextMeasureParams, rows: IRowNode[]): void {
+  /**
+   * Sizes one leaf column.
+   *
+   * Precedence: a user resize (`resizedWidth`) always wins. Otherwise, on an implicit pass (data
+   * load, `autosizeColumnsOnDataChange`, grouping, an added column: `honourDeclaredWidth: true`) a
+   * declared `ColDef.width` is the column's width, clamped only by the column's own
+   * `minWidth`/`maxWidth`; only columns without a declared width are measured. An explicit
+   * fit-to-content (header double-click / `columnAutosize`, the default here) measures content even
+   * when a width is declared. Measured widths are floored by `minResizeWidth` and capped by
+   * `maxColumnWidth`, with the column's own `minWidth`/`maxWidth` taking precedence.
+   */
+  computeColumnWidth(
+    col: Column,
+    measureCtx: ITextMeasurer,
+    params: TextMeasureParams,
+    rows: IRowNode[],
+    opts?: { honourDeclaredWidth?: boolean },
+  ): void {
     // A user-set width wins over content measurement so hand-sized columns don't snap back on the
     // implicit recomputes triggered by column-state actions. Explicit "fit to content" clears this.
     if (col.resizedWidth != null) {
@@ -1144,16 +1161,19 @@ export class ColumnModel implements IColumnModel {
       return;
     }
 
+    const declared = col.width != null && Number.isFinite(col.width) && col.width > 0 ? col.width : undefined;
+    if (declared != null && opts?.honourDeclaredWidth) {
+      col.computedWidth = this.clampToColumnBounds(col, declared);
+      return;
+    }
+
     if (col.cellRenderer) {
-      col.computedWidth = col.width || 200;
+      // Rendered content can't be measured: keep the declared width, else a 200px default.
+      col.computedWidth = declared != null ? this.clampToColumnBounds(col, declared) : this.clampAutoWidth(col, 200);
       return;
     }
 
     let maxWidth = this.getColumnContentWidth(col, measureCtx, params);
-    if (col.maxWidth && maxWidth > col.maxWidth) {
-      maxWidth = col.maxWidth;
-      return;
-    }
 
     let longestText = "";
     let longestRow: IRowNode | undefined;
@@ -1164,18 +1184,34 @@ export class ColumnModel implements IColumnModel {
         longestRow = rows[i];
       }
     }
-    if (longestText.length === 0 || !longestRow) {
-      col.computedWidth = col.minWidth ? Math.max(maxWidth, col.minWidth) : maxWidth;
-      return;
+    if (longestText.length > 0 && longestRow) {
+      longestText = col.formatValue(this.cellValueForWidth(col, longestRow), longestRow);
+      const longestWidth = this.measureText(longestText, measureCtx, params?.cellFont ?? "14px Arial");
+      if (longestWidth > maxWidth) {
+        maxWidth = longestWidth;
+      }
     }
 
-    longestText = col.formatValue(this.cellValueForWidth(col, longestRow), longestRow);
-    const longestWidth = this.measureText(longestText, measureCtx, params?.cellFont ?? "14px Arial");
-    if (longestWidth > maxWidth) {
-      maxWidth = longestWidth;
-    }
+    col.computedWidth = this.clampAutoWidth(col, maxWidth);
+  }
 
-    col.computedWidth = col.maxWidth ? Math.min(maxWidth, col.maxWidth) : maxWidth;
+  // Bounds for a declared width: only the column's own minWidth/maxWidth apply (the grid-wide
+  // minResizeWidth/maxColumnWidth limit auto-sizing, not an explicit width).
+  private clampToColumnBounds(col: Column, width: number): number {
+    let w = width;
+    if (col.minWidth != null && Number.isFinite(col.minWidth)) w = Math.max(w, col.minWidth);
+    if (col.maxWidth != null && Number.isFinite(col.maxWidth)) w = Math.min(w, col.maxWidth);
+    return w;
+  }
+
+  // Bounds for a content-measured width: floored by minResizeWidth (or the column's larger
+  // minWidth), capped by maxColumnWidth unless the column declares its own maxWidth. The column's
+  // maxWidth wins over the floor when the two conflict. Mirrors the bounds the resize path uses.
+  private clampAutoWidth(col: Column, width: number): number {
+    const gridMin = this.options.minResizeWidth;
+    const lo = Math.max(gridMin, col.minWidth != null && Number.isFinite(col.minWidth) ? col.minWidth : gridMin);
+    const hi = col.maxWidth != null && Number.isFinite(col.maxWidth) ? col.maxWidth : this.options.maxColumnWidth;
+    return Math.min(Math.max(width, lo), hi);
   }
 
   // The value a cell in this column would display for width measurement. Group rows show their
@@ -1232,9 +1268,11 @@ export class ColumnModel implements IColumnModel {
         userCmp(column.getValue(nodeA), column.getValue(nodeB), nodeA, nodeB);
       return;
     }
-    if (column.filter == "") {
-      return;
-    } else if (rows.length == 0) {
+    // Grid-synthesized columns (row number, checkbox, auto-group, pivot results) never get a
+    // leaf-value comparator: auto-group and pivot-result sorts order group buckets in the grouping
+    // stage (csrm/rowGroup.ts), where a value-from-node comparator would ignore the bucket values.
+    // A column's `filter` setting has no bearing on sorting (`filter: false` used to skip this).
+    if (column.isInternal() || rows.length == 0) {
       column.comparator = null;
       return;
     }

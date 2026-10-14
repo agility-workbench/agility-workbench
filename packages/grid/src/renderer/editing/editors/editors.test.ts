@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { Column } from "../../../column/column";
+import { GridCore } from "../../../core/core";
 import { ColumnType } from "../../../interfaces/column";
 import { IRowNode } from "../../../interfaces/iRowNode";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
@@ -64,11 +65,11 @@ describe("built-in editors", () => {
     expect(e.getValue()).toBeNull();
   });
 
-  it("DateCellEditor seeds yyyy-mm-dd and returns it (parsed)", () => {
+  it("DateCellEditor seeds yyyy-mm-dd and returns it for the column to parse", () => {
     const e = mount(new DateCellEditor(), { value: "2026-07-07", col: col({ type: ColumnType.DATE }) });
     expect((e.getGui() as HTMLInputElement).value).toBe("2026-07-07");
     expect(e.getValue()).toBe("2026-07-07");
-    expect(e.isParsed?.()).toBe(true);
+    expect(e.isParsed?.()).toBe(false);
   });
 
   it("BooleanCellEditor returns a boolean (parsed)", () => {
@@ -262,7 +263,7 @@ describe("DateCellEditor (typed-format parser mode)", () => {
   it("stays a native date input without a valueParser", () => {
     const e = mount(new DateCellEditor(), { value: "2026-07-07", col: col({ type: ColumnType.DATE }) });
     expect((e.getGui() as HTMLInputElement).type).toBe("date");
-    expect(e.isParsed?.()).toBe(true);
+    expect(e.isParsed?.()).toBe(false);
   });
 
   it("with a valueParser: seeds the formatted value and returns the raw string unparsed", () => {
@@ -310,5 +311,49 @@ describe("DateCellEditor (typed-format parser mode)", () => {
   it("seeds charPress verbatim (edit-on-typing)", () => {
     const e = mount(new DateCellEditor(), { value: "2026-07-07", col: usDateCol(), charPress: "1" });
     expect((e.getGui() as HTMLInputElement).value).toBe("1");
+  });
+});
+
+// Finding A9: the native input shows the cell's LOCAL calendar date (toISOString is UTC — the day
+// before east of Greenwich), and a commit keeps the column's stored shape. Assertions use local
+// getters, so they hold in any TZ; run with TZ=Asia/Kolkata and TZ=America/Los_Angeles to see it.
+describe("DateCellEditor (native mode) local dates and stored shape", () => {
+  const localIso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  it("seeds a local-midnight Date and an epoch number with their local calendar date", () => {
+    const date = new Date(2026, 0, 31);
+    const fromDate = mount(new DateCellEditor(), { value: date, col: col({ type: ColumnType.DATE }) });
+    expect((fromDate.getGui() as HTMLInputElement).value).toBe(localIso(date));
+    expect((fromDate.getGui() as HTMLInputElement).value).toBe("2026-01-31");
+    const fromEpoch = mount(new DateCellEditor(), { value: date.getTime(), col: col({ type: ColumnType.DATE }) });
+    expect((fromEpoch.getGui() as HTMLInputElement).value).toBe("2026-01-31");
+  });
+
+  function commitThroughGrid(stored: unknown, typed: string): unknown {
+    const core = new GridCore({ measure: (t: string) => t.length * 7 }, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.setRowData([{ id: "1", d: stored }]);
+    core.setColumnDefsFromProps([{ colId: "d", key: "d", label: "D", type: ColumnType.DATE, editable: true }]);
+    const column = core.getColumnModel().getLeaves().find(c => c.key === "d")!;
+    const node = core.getRowModel().getRowNode("1")!;
+    const editor = mount(new DateCellEditor(), { value: stored, col: column, row: node });
+    (editor.getGui() as HTMLInputElement).value = typed;
+    const cell = { rowId: "1", colId: column.instanceID };
+    core.dispatch({ type: "editStart", cell });
+    core.dispatch({ type: "editCommit", cell, value: editor.getValue(), parsed: editor.isParsed?.() ?? false });
+    return core.getRowModel().getRowNode("1")!.data.d;
+  }
+
+  it("a Date-valued column stays Date-valued after a commit", () => {
+    expect(commitThroughGrid(new Date(2026, 0, 31), "2026-02-14")).toEqual(new Date(2026, 1, 14));
+  });
+
+  it("an epoch column stays numeric, and ISO text stays text", () => {
+    expect(commitThroughGrid(new Date(2026, 0, 31).getTime(), "2026-02-14")).toBe(new Date(2026, 1, 14).getTime());
+    expect(commitThroughGrid("2026-01-31", "2026-02-14")).toBe("2026-02-14");
+  });
+
+  it("a cleared input commits null", () => {
+    expect(commitThroughGrid(new Date(2026, 0, 31), "")).toBeNull();
   });
 });

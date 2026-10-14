@@ -123,6 +123,18 @@ api.dispatch({
 });
 ```
 
+Blank cells (`null`, `undefined`, or `""`) take no part in an aggregate. `count`
+is the number of non-blank values — what the Excel export's `COUNTA` formula
+counts — and `distinct count` the number of distinct ones; a group's row count is
+the separate count after its label (see below). When a group has nothing to
+aggregate (no rows, or only blank or non-numeric cells), sum, average, median,
+min, and max are `null` and the cell is empty rather than `0`.
+
+The aggregate model can hold several types for one column (`api.setAggregates`
+accepts them, and pivot mode turns each into its own column). Outside pivot a
+group row cell and the footer cell show one: the **last** type registered for the
+column, in both places.
+
 ## Group counts
 
 A group row's label ends in its row count: `EMEA (12)`. `groupChildCount` decides

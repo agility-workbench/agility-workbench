@@ -3,6 +3,7 @@ import { GridCore } from "../../core/core";
 import type { SortIconVisibility } from "../../interfaces/gridOptions";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { SortDir } from "../../interfaces/sort";
+import { HeaderGeometry, headerGeometry } from "../../core/headerGeometry";
 import { isFalse } from "../../misc";
 import { createElement } from "../element";
 import {
@@ -17,7 +18,6 @@ interface HeaderRendererParams {
   core: GridCore;
   root: HTMLElement;
   api: IGridAPI;
-  rowHeight: () => number;
   /** The body's outer frame — the element that owns the body's height budget. Sizing the scroller
    * inside it instead would subtract the header twice, since the frame is already header-less. */
   getBodyFrame: () => HTMLDivElement;
@@ -64,18 +64,14 @@ export class HeaderRenderer {
       right: rightHeader,
     } = this.elements;
     const bodyFrame = this.params.getBodyFrame();
-    const headerHeight = core.options.headerHeight * core.getColumnModel().maxHeaderDepth;
+    const levelCount = core.getColumnModel().maxHeaderDepth;
+    const geometry = this.getGeometry();
+    const headerHeight = geometry.total;
     this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
-    headerWrapper.style.height = `${headerHeight}px`;
-    headerWrapper.style.minHeight = `${headerHeight}px`;
-    leadingHeader.style.height = `${headerHeight}px`;
-    leadingHeader.style.minHeight = `${headerHeight}px`;
-    leftHeader.style.height = `${headerHeight}px`;
-    leftHeader.style.minHeight = `${headerHeight}px`;
-    centerHeader.style.height = `${headerHeight}px`;
-    centerHeader.style.minHeight = `${headerHeight}px`;
-    rightHeader.style.height = `${headerHeight}px`;
-    rightHeader.style.minHeight = `${headerHeight}px`;
+    for (const el of [headerWrapper, leadingHeader, leftHeader, centerHeader, rightHeader]) {
+      el.style.height = `${headerHeight}px`;
+      el.style.minHeight = `${headerHeight}px`;
+    }
     bodyFrame.style.height = `calc(100% - ${headerHeight}px)`;
     bodyFrame.style.maxHeight = `calc(100% - ${headerHeight}px)`;
     // Tear down any custom header components from the previous build before wiping their DOM, so
@@ -89,22 +85,22 @@ export class HeaderRenderer {
     rightHeader.innerHTML = "";
     for (const col of core.getColumnModel().getLeadingColumns()) {
       if (!col.hidden) {
-        leadingHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
+        leadingHeader.appendChild(this.buildHeaderCell(col, levelCount, geometry));
       }
     }
     for (const col of core.getColumnModel().getLeftColumns()) {
       if (!col.hidden) {
-        leftHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
+        leftHeader.appendChild(this.buildHeaderCell(col, levelCount, geometry));
       }
     }
     for (const col of core.getColumnModel().getCenterColumns()) {
       if (!col.hidden) {
-        centerHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
+        centerHeader.appendChild(this.buildHeaderCell(col, levelCount, geometry));
       }
     }
     for (const col of core.getColumnModel().getRightColumns()) {
       if (!col.hidden) {
-        rightHeader.appendChild(this.buildHeaderCell(col, core.getColumnModel().maxHeaderDepth));
+        rightHeader.appendChild(this.buildHeaderCell(col, levelCount, geometry));
       }
     }
     this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
@@ -158,7 +154,17 @@ export class HeaderRenderer {
     else centerHeader.removeAttribute("aria-owns");
   }
 
-  buildHeaderCell(col: Column, maxDepth: number): HTMLDivElement {
+  /**
+   * The header's level heights, from the header-height options and the current column depth. The
+   * one source for the wrapper, the sections, the body frame and every header cell.
+   */
+  getGeometry(): HeaderGeometry {
+    const { options } = this.params.core;
+    return headerGeometry(this.params.core.getColumnModel().maxHeaderDepth, options);
+  }
+
+  /** `levelsBelow`: how many header levels this cell spans, from its own level to the leaf level. */
+  buildHeaderCell(col: Column, levelsBelow: number, geometry: HeaderGeometry): HTMLDivElement {
     const header = document.createElement("div");
     header.className = "pte-hcell";
     const isRowNumberColumn = col.isLeadingUtilityColumn();
@@ -170,9 +176,9 @@ export class HeaderRenderer {
     if (col.children.length === 0) {
       header.classList.add("pte-hcell-leaf");
     }
-    const contentHeight = maxDepth / col.depth!;
-    header.style.height = `${this.params.rowHeight() * maxDepth}px`;
-    maxDepth--;
+    const heights = geometry.cellHeights(col.depth || 1, levelsBelow);
+    header.style.height = `${heights.cell}px`;
+    const childLevels = heights.childLevels;
     header.id = col.instanceID;
     const headerWrapper = document.createElement("div");
     headerWrapper.className = "pte-hcell-wrapper";
@@ -188,7 +194,7 @@ export class HeaderRenderer {
     const custom = isRowNumberColumn ? null : this.resolveHeaderComponent(col);
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
-    headerContainer.style.height = `${this.params.rowHeight() * contentHeight}px`;
+    headerContainer.style.height = `${heights.container}px`;
     if (col.isComputableType()) {
       headerContainer.classList.add("pte-hcell-computable");
     }
@@ -201,7 +207,7 @@ export class HeaderRenderer {
       const runtime = createHeaderComponentRuntime(custom.comp, this.buildComponentParams(col, header, 2));
       headerContainer.appendChild(runtime.gui);
       this.components.set(col.instanceID, { runtime, level: 2 });
-      this.appendHeaderChildren(col, header, maxDepth);
+      this.appendHeaderChildren(col, header, childLevels, geometry);
       if (col.children.length === 0) header.style.width = `${col.computedWidth}px`;
       return header;
     }
@@ -218,7 +224,7 @@ export class HeaderRenderer {
       const runtime = createHeaderComponentRuntime(custom.comp, this.buildComponentParams(col, header, 1));
       headerContent.appendChild(runtime.gui);
       this.components.set(col.instanceID, { runtime, level: 1 });
-      this.appendHeaderChildren(col, header, maxDepth);
+      this.appendHeaderChildren(col, header, childLevels, geometry);
       if (col.children.length === 0) header.style.width = `${col.computedWidth}px`;
       if (!isRowNumberColumn) {
         headerContainer.appendChild(this.getHeaderMenuElement(col));
@@ -238,7 +244,7 @@ export class HeaderRenderer {
       headerContent.appendChild(this.selectAllCheckboxEl);
       this.refreshSelectAllCheckbox();
     }
-    this.appendHeaderChildren(col, header, maxDepth);
+    this.appendHeaderChildren(col, header, childLevels, geometry);
     if (col.children.length === 0) {
       header.style.width = `${col.computedWidth}px`;
     }
@@ -279,13 +285,13 @@ export class HeaderRenderer {
   }
 
   /** Build the nested group-header row (recursing into visible children). No-op for leaf columns. */
-  private appendHeaderChildren(col: Column, header: HTMLDivElement, maxDepth: number) {
+  private appendHeaderChildren(col: Column, header: HTMLDivElement, levelsBelow: number, geometry: HeaderGeometry) {
     if (col.children.length === 0) return;
     const children = document.createElement("div");
     children.className = "pte-hcell-children";
     header.appendChild(children);
     for (const child of col.getVisibleChildren()) {
-      children.append(this.buildHeaderCell(child, maxDepth));
+      children.append(this.buildHeaderCell(child, levelsBelow, geometry));
     }
   }
 

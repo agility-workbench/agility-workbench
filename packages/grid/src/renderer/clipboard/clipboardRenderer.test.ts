@@ -356,6 +356,15 @@ describe("ClipboardRenderer with row grouping", () => {
     // Group header row is included → 3 lines (the header cell is blank in the region column).
     expect(writes[0]?.split("\n").length).toBe(3);
   });
+
+  it("the body menu's copy (a selection snapshot) skips group rows like the keyboard copy", () => {
+    const core = makeGroupedGrid();
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: REGION_COL, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: REGION_COL, mode: "extend" });
+    const { clip } = makeClip(core);
+    const snapshot = { range: { ...core.getSelectionRange()! }, rowIds: [], colIds: [] };
+    expect(clip.buildCopyText({ withHeaders: true, selection: snapshot })).toBe("Region\nEMEA\nEMEA");
+  });
 });
 
 describe("ClipboardRenderer in pivot mode", () => {
@@ -445,3 +454,98 @@ describe("built-in parsing on paste and clear", () => {
   });
 });
 
+
+// Finding A24: the body menu's Copy / Copy with headers runs through ClipboardRenderer.copy, the
+// same builder as Ctrl/Cmd+C, with the menu's selection snapshot and clicked cell.
+describe("ClipboardRenderer copy options (the body menu's path)", () => {
+  it("prepends the column labels with withHeaders", () => {
+    const core = makeGrid();
+    const { clip, writes } = makeClip(core);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 1, mode: "extend" });
+    clip.copy({ withHeaders: true });
+    expect(writes).toEqual(["Name\tQty\nalice\t3\nbob\t7"]);
+  });
+
+  it("copies a passed selection snapshot instead of the live one", () => {
+    const core = makeGrid();
+    const { clip, writes } = makeClip(core);
+    const qty = core.getColumnModel().getLeaves()[1].instanceID;
+    clip.copy({ withHeaders: true, selection: { range: null, rowIds: [], colIds: [qty] } });
+    expect(writes).toEqual(["Qty\n3\n7"]);
+  });
+
+  it("falls back to the given cell when the selection is empty, and only then", () => {
+    const core = makeGrid();
+    const { clip } = makeClip(core);
+    const locked = core.getColumnModel().getLeaves()[2].instanceID;
+    const node = core.getRowModel().getRowNode("2")!;
+    const empty = { range: null, rowIds: [], colIds: [] };
+    expect(clip.buildCopyText({ selection: empty, fallbackCell: { colId: locked, node } })).toBe("L2");
+    expect(clip.buildCopyText({ selection: { ...empty, rowIds: ["1"] }, fallbackCell: { colId: locked, node } }))
+      .toBe("alice\t3\tL1");
+  });
+});
+
+// Finding A10: what copy writes is the cell's formatted text; paste must read it back.
+describe("copy then paste of formatted values", () => {
+  function makeFormattedGrid() {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData([
+      { id: "1", price: 1234.5, euro: -1234.56, due: new Date(2026, 0, 31) },
+      { id: "2", price: 0, euro: 0, due: new Date(2026, 5, 1) },
+    ]);
+    core.setColumnDefsFromProps([
+      { colId: "price", key: "price", label: "Price", type: ColumnType.CURRENCY, editable: true },
+      {
+        colId: "euro", key: "euro", label: "Euro", type: ColumnType.CURRENCY, editable: true,
+        formatterOptions: { locale: "de-DE", currency: "EUR" },
+      },
+      {
+        colId: "due", key: "due", label: "Due", type: ColumnType.DATE, editable: true,
+        formatterOptions: { format: "dd/MM/yyyy" },
+      },
+    ]);
+    return core;
+  }
+
+  it("a row of currency and dd/MM/yyyy cells pastes back onto another row unchanged", async () => {
+    const core = makeFormattedGrid();
+    const { clip, writes, reads } = makeClip(core);
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 0, mode: "start" });
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: 2, mode: "extend" });
+    clip.copy();
+    expect(writes[0]).toMatch(/^\$1,234\.50\t-1\.234,56\s€\t31\/01\/2026$/);
+
+    reads.value = writes[0];
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 1, colIdx: 0, mode: "start" });
+    await clip.paste();
+    expect(data(core, "2")).toMatchObject({ price: 1234.5, euro: -1234.56, due: new Date(2026, 0, 31) });
+  });
+});
+
+describe("copying a selection made only of group rows", () => {
+  it("copies the group row (the menu offers Copy there; Ctrl/Cmd+C agrees)", () => {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide", groupDefaultExpanded: -1 });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData([{ id: "1", region: "EMEA", n: 2 }, { id: "2", region: "EMEA", n: 5 }]);
+    core.setColumnDefsFromProps([
+      { colId: "region", key: "region", label: "Region" },
+      { colId: "n", key: "n", label: "N", type: ColumnType.NUMBER },
+    ]);
+    const n = core.getColumnModel().getByColId("n")!;
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: n.instanceID, type: AggregateType.SUM }] });
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    const nIdx = core.getColumnModel().getLeaves().indexOf(n);
+    const { clip } = makeClip(core);
+    // The group row's N cell alone: before, Ctrl/Cmd+C copied nothing here.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 0, colIdx: nIdx, mode: "start" });
+    expect(clip.buildCopyText()).toBe("7");
+    const snapshot = { range: { ...core.getSelectionRange()! }, rowIds: [], colIds: [] };
+    expect(clip.buildCopyText({ selection: snapshot })).toBe("7");
+    // Mixed with leaf rows, the group row still drops out.
+    core.dispatch({ type: "rangeSelectSet", viewIdx: 2, colIdx: nIdx, mode: "extend" });
+    expect(clip.buildCopyText()).toBe("2\n5");
+  });
+});

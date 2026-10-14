@@ -86,6 +86,13 @@ export type GridEventColumnWidthsChangedParams = {
   changedColIds: ColId[];
   /** Internal instance ids, parallel to `changedColIds` (unique; renderer-facing). */
   changedColInstanceIds: string[];
+  /**
+   * `false` while a user is still dragging a column's resize handle (one event per pointer move,
+   * so layout can follow live); `true` for the change that settles — the trailing event when the
+   * drag ends (carrying every column the drag resized), a double-click autosize, and every
+   * width change that is not a drag in progress. Persist column state when this is `true`.
+   */
+  final: boolean;
 };
 
 export type GridEventRowsChangedParams = {

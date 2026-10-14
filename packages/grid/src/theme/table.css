@@ -5,7 +5,13 @@
 :root,
 :host,
 .pte-theme-light {
-  /* --pte-row-height: 43px; */
+  /* --pte-row-height: 43px;  Not a live variable: rows are sized in JS (virtualization needs the
+     number). The theme's `rowHeight` param emits it and the grid reads that value at creation
+     (resolveThemeRowHeightPx); it stays declared here, commented, so it remains in PteVarName. */
+  /* --pte-header-height: 43px;  Not a live variable either: the header is laid out in JS. The
+     theme's `headerHeight` param emits it and the grid reads it at creation
+     (resolveThemeHeaderHeightPx). The header's laid-out height is --pte-rendered-header-height,
+     which the header renderer writes; themes do not set that one. */
   --pte-row-border-size: 1px;
   --pte-font-family: Roboto, sans-serif;
   --pte-font-size: 14px;
@@ -254,11 +260,11 @@
  * armor layer involved.
  *
  * Each value below IS the property's initial value, so on a host that sets nothing this rule
- * changes nothing. `direction` is deliberately absent: the grid supports RTL and must keep
- * inheriting it. */
+ * changes nothing. `direction` is deliberately absent, so the host's value still inherits — but the
+ * grid does NOT support right-to-left layout: positioning, scrolling and keyboard navigation are
+ * all physical left/right, so under an inherited `direction: rtl` only text alignment flips. */
 .pte-root,
-.pte-menu,
-.pte-filter {
+.pte-menu {
   scrollbar-width: auto;
   line-height: normal;
   letter-spacing: normal;
@@ -308,9 +314,7 @@
   .pte-root::-webkit-scrollbar,
   .pte-root *::-webkit-scrollbar,
   .pte-menu::-webkit-scrollbar,
-  .pte-menu *::-webkit-scrollbar,
-  .pte-filter::-webkit-scrollbar,
-  .pte-filter *::-webkit-scrollbar {
+  .pte-menu *::-webkit-scrollbar {
     width: var(--pte-scrollbar-size);
     height: var(--pte-scrollbar-size);
   }
@@ -318,18 +322,14 @@
   .pte-root::-webkit-scrollbar-track,
   .pte-root *::-webkit-scrollbar-track,
   .pte-menu::-webkit-scrollbar-track,
-  .pte-menu *::-webkit-scrollbar-track,
-  .pte-filter::-webkit-scrollbar-track,
-  .pte-filter *::-webkit-scrollbar-track {
+  .pte-menu *::-webkit-scrollbar-track {
     background: var(--pte-scrollbar-track-color);
   }
 
   .pte-root::-webkit-scrollbar-thumb,
   .pte-root *::-webkit-scrollbar-thumb,
   .pte-menu::-webkit-scrollbar-thumb,
-  .pte-menu *::-webkit-scrollbar-thumb,
-  .pte-filter::-webkit-scrollbar-thumb,
-  .pte-filter *::-webkit-scrollbar-thumb {
+  .pte-menu *::-webkit-scrollbar-thumb {
     background: var(--pte-scrollbar-thumb-color);
     border-radius: var(--pte-scrollbar-radius);
     border: 2px solid var(--pte-scrollbar-track-color);
@@ -338,9 +338,7 @@
   .pte-root::-webkit-scrollbar-thumb:hover,
   .pte-root *::-webkit-scrollbar-thumb:hover,
   .pte-menu::-webkit-scrollbar-thumb:hover,
-  .pte-menu *::-webkit-scrollbar-thumb:hover,
-  .pte-filter::-webkit-scrollbar-thumb:hover,
-  .pte-filter *::-webkit-scrollbar-thumb:hover {
+  .pte-menu *::-webkit-scrollbar-thumb:hover {
     background: var(--pte-scrollbar-thumb-hover-color);
   }
 }
@@ -434,9 +432,7 @@
   .pte-root,
   .pte-root *,
   .pte-menu,
-  .pte-menu *,
-  .pte-filter,
-  .pte-filter * {
+  .pte-menu * {
     scrollbar-color: var(--pte-scrollbar-thumb-color) var(--pte-scrollbar-track-color) !important;
   }
 
@@ -536,10 +532,7 @@
 .pte-root [tabindex]:not([tabindex="-1"]):not(.pte-root):focus-visible,
 .pte-menu button:focus-visible:not(.pte-menu-item),
 .pte-menu select:focus-visible,
-.pte-menu input:focus-visible,
-.pte-filter button:focus-visible,
-.pte-filter select:focus-visible,
-.pte-filter input:focus-visible {
+.pte-menu input:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--pte-focus-ring-color);
   border-radius: 3px;

@@ -574,6 +574,24 @@ const escapeCSVValue = (value: string): string => {
   return value;
 };
 
+// CSV formula-injection guard (OWASP "CSV Injection"): a spreadsheet opening the file evaluates a
+// text cell that starts with one of these as a formula. Prefixing a single quote makes it literal
+// text. Numbers are exempt (see `isNumericCSVCell`), so `-5` stays a number.
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+const neutralizeFormula = (text: string): string => (FORMULA_TRIGGER.test(text) ? `'${text}` : text);
+
+// A cell written as a number rather than text: a numeric raw value, or a numeric-coercible raw in a
+// number/currency column (the same cells the Excel export writes as numeric cells).
+const isNumericCSVCell = (raw: any, col: Column): boolean => {
+  if (typeof raw === "number" || typeof raw === "bigint") return true;
+  if (col.type !== ColumnType.NUMBER && col.type !== ColumnType.CURRENCY) return false;
+  return typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw));
+};
+
+/** CSV text for a text cell (header, group label, string value): formula-guarded, then quoted. */
+const csvText = (text: string): string => escapeCSVValue(neutralizeFormula(text));
+
 /** Build the CSV text for a config, without downloading. Returns "" when there are no columns. */
 export const buildCSV = (config: ExportConfig): string => {
   const columns = resolveColumns(config);
@@ -583,7 +601,8 @@ export const buildCSV = (config: ExportConfig): string => {
   const csvRows: string[][] = [];
   if (includeHeaders) {
     const headerLayout = buildHeaderLayout(columns, config.columnTree);
-    csvRows.push(...buildHeaderMatrix(headerLayout, columns.length));
+    // Header labels can be data-derived (pivot keys), so they get the same quoting + formula guard.
+    csvRows.push(...buildHeaderMatrix(headerLayout, columns.length).map(r => r.map(csvText)));
   }
 
   const emitRow = (row: any, rowIndex: number) => {
@@ -592,7 +611,7 @@ export const buildCSV = (config: ExportConfig): string => {
     // column and blanks the columns it covers.
     if (config.isFullWidthRow?.(row)) {
       const text = config.fullWidthText?.(row) ?? "";
-      const values = columns.map((_, colIdx) => (colIdx === 0 ? escapeCSVValue(text) : ""));
+      const values = columns.map((_, colIdx) => (colIdx === 0 ? csvText(text) : ""));
       csvRows.push(values);
       return;
     }
@@ -602,8 +621,9 @@ export const buildCSV = (config: ExportConfig): string => {
       : null;
     const values = columns.map((col, colIdx) => {
       if (spans && spans[colIdx] === 0) return ""; // covered by an earlier span
-      const { formatted } = getValueBundle(row, col, config);
-      return escapeCSVValue(formatted ?? "");
+      const { raw, formatted } = getValueBundle(row, col, config);
+      const text = formatted ?? "";
+      return isNumericCSVCell(raw, col) ? escapeCSVValue(text) : csvText(text);
     });
     csvRows.push(values);
   };
@@ -682,7 +702,7 @@ const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null 
     case AggregateType.MAX:
       return isNumeric ? "MAX" : null;
     case AggregateType.COUNT:
-      return "COUNTA"; // counts non-empty cells, matching the grid's row count
+      return "COUNTA"; // counts non-blank cells, matching the grid's `count` aggregate (blanks are ignored)
     case AggregateType.DISTINCT_COUNT:
       return null; // no single portable Excel function
     default:

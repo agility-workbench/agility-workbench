@@ -1,3 +1,4 @@
+import { HeaderHeightOptions, resolveHeaderHeights } from "./headerGeometry";
 import { FilterItem, FilterModel } from "../interfaces/filter";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { Column } from "../column/column";
@@ -53,6 +54,7 @@ import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfac
 import { GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
+import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
 
 interface AppliedRowTransaction {
   result: RowTransactionResult;
@@ -151,6 +153,8 @@ export class GridCore implements IGridCore {
 
   private rowModel: IRowModel;
   private requestIdCounter: number = 0;
+  // Columns a resize-handle drag in progress has resized (null when no drag): see beginColumnResizeDrag.
+  private columnResizeDragChanged: Set<string> | null = null;
   private firstRefreshSeen: boolean = false;
   private pendingRowTransactions: AppliedRowTransaction | null = null;
   private pendingRowTransactionCalls: PendingRowTransactionCall[] = [];
@@ -238,9 +242,26 @@ export class GridCore implements IGridCore {
   // "skip" discards them. Null outside a scope. Nested scopes inherit the outermost mode.
   private historyScopeMode: "group" | "skip" | null = null;
   private historyScopeEdits: CellEdit[] = [];
+  // Failed row-model requests so far; see getRowRequestFailureCount.
+  private rowRequestFailureCount = 0;
+  // Server-side store generation the edit history was last reconciled against.
+  private seenServerSideStoreGeneration = 0;
+
+  // The header heights as the application last stated them, so a later update of one of them can
+  // re-resolve the others' fallbacks (an unset leaf height follows a changed headerHeight).
+  private explicitHeaderHeights: HeaderHeightOptions = {};
+  // The theme's `headerHeight` param, read once at creation (like the theme's rowHeight): it stays
+  // the fallback for `headerHeight`, and a later theme swap does not resize the header.
+  private themeHeaderHeight: number | undefined;
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
+    this.themeHeaderHeight = resolveThemeHeaderHeightPx(options.theme);
     this.options = this.initializeGridOptions(options);
+    this.explicitHeaderHeights = {
+      headerHeight: options.headerHeight,
+      leafHeaderHeight: options.leafHeaderHeight,
+      parentHeaderHeight: options.parentHeaderHeight,
+    };
     this.keyboardNavigationMode = this.options.treeData?.keyboardNavigationMode ?? "grid";
     this.history = new HistoryModel(this.options.undoLimit);
     this.id = crypto.randomUUID();
@@ -336,10 +357,8 @@ export class GridCore implements IGridCore {
       );
     }
     return {
-      headerHeight: options.headerHeight ?? 43,
-      leafHeaderHeight: options.leafHeaderHeight ?? 43,
-      parentHeaderHeight: options.parentHeaderHeight ?? 43,
-      rowHeight: options.rowHeight ?? 43,
+      ...resolveHeaderHeights(options, this.themeHeaderHeight),
+      rowHeight: options.rowHeight ?? resolveThemeRowHeightPx(options.theme) ?? 43,
       pinnedTopRowData: options.pinnedTopRowData ?? [],
       pinnedBottomRowData: options.pinnedBottomRowData ?? [],
       getRowId: options.getRowId,
@@ -892,7 +911,14 @@ export class GridCore implements IGridCore {
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
     });
-    for (const col of groups) this.autosizeColumn(col.instanceID);
+    // An implicit sizing pass, not a fit-to-content: declared and user-resized widths are kept and
+    // only leaves without either are measured (clamped), then group widths roll up.
+    for (const col of groups) {
+      for (const leaf of col.getVisibleLeaves()) {
+        this.columnModel.computeColumnWidth(leaf, this.measureCtx, this.textMeasureParams, allRows, { honourDeclaredWidth: true });
+      }
+    }
+    this.columnModel.updateParentColumnWidthsForAll();
     this.columnModel.identifyComparatorsFor(groups, allRows);
     if (this.aggregates.length > 0) {
       this.applyAggregateRequest("aggregateModel", "columns");
@@ -993,6 +1019,21 @@ export class GridCore implements IGridCore {
     // restores, colDef replacements that re-resolve roles). A no-op unless the split flipped.
     this.syncPivotConfigured();
     this.rowModel.applyRequest(createRequest());
+    this.clearHistoryOnServerSideStoreReset();
+  }
+
+  /**
+   * The server-side model replaces its rows wholesale on a structural reload or a purge refresh;
+   * edits recorded against the discarded rows would undo into fresh server rows, so the history
+   * goes with them (one `historyChanged {reason:"clear"}`, as on a full setRowData). A soft refresh
+   * keeps the store generation and the history.
+   */
+  private clearHistoryOnServerSideStoreReset(): void {
+    if (!(this.rowModel instanceof ServerSideRowModel)) return;
+    const generation = this.rowModel.getStoreGeneration();
+    if (generation === this.seenServerSideStoreGeneration) return;
+    this.seenServerSideStoreGeneration = generation;
+    if (this.history.clear()) this.emitHistoryChanged("clear");
   }
 
   setRowModel(rowModel: IRowModel) {
@@ -1022,6 +1063,7 @@ export class GridCore implements IGridCore {
       // exist, so discard the edit history.
       if (this.history.clear()) this.emitHistoryChanged("clear");
       this.rowModel.setRows(rows);
+      this.clearHistoryOnServerSideStoreReset();
       this.pruneRemovedRowSelection();
       // Resolve comparators now that data exists, BEFORE the refresh below applies any active sort
       // (e.g. an initial sort seeded when columns were set — before any rows were present). Otherwise
@@ -2306,7 +2348,10 @@ export class GridCore implements IGridCore {
       console.warn("refreshServerSideData has no effect on the 'clientSide' row model.");
       return false;
     }
-    return this.rowModel.refreshServerSideData(options, this.requestIdCounter++);
+    const result = this.rowModel.refreshServerSideData(options, this.requestIdCounter++);
+    // A purge drops the rows synchronously, before the returned promise settles.
+    this.clearHistoryOnServerSideStoreReset();
+    return result;
   }
 
   setServerSideAggregationSource(callback: IServerSideDataSource["getAggregates"] | null) {
@@ -2481,6 +2526,28 @@ export class GridCore implements IGridCore {
    */
   getNodeCellValue(col: Column, node: IRowNode): unknown {
     return node.isGroup ? this.getGroupCellValue(col, node).value : col.getValue(node);
+  }
+
+  /**
+   * Change the header heights. Presence-based: a supplied key (even `undefined`, which falls back
+   * to the default) replaces that option; omitted keys keep their stated value. Returns whether
+   * any resolved height changed — the renderer re-lays the header out only then.
+   */
+  setHeaderHeights(heights: HeaderHeightOptions): boolean {
+    const explicit = { ...this.explicitHeaderHeights };
+    for (const key of ["headerHeight", "leafHeaderHeight", "parentHeaderHeight"] as const) {
+      if (Object.prototype.hasOwnProperty.call(heights, key)) explicit[key] = heights[key];
+    }
+    this.explicitHeaderHeights = explicit;
+    const next = resolveHeaderHeights(explicit, this.themeHeaderHeight);
+    const o = this.options;
+    if (
+      o.headerHeight === next.headerHeight
+      && o.leafHeaderHeight === next.leafHeaderHeight
+      && o.parentHeaderHeight === next.parentHeaderHeight
+    ) return false;
+    Object.assign(o, next);
+    return true;
   }
 
   /** Change what group rows show as their count; repaints the visible group rows. */
@@ -3004,9 +3071,27 @@ export class GridCore implements IGridCore {
   }
 
   // columnWidthsChanged payload from instance ids (empty stays empty = "all visible columns").
-  private widthsChangedPayload(instanceIds: string[]): GridEventMap["columnWidthsChanged"] {
+  // `final` is false only for the intermediate moves of a resize-handle drag.
+  private widthsChangedPayload(instanceIds: string[], final = true): GridEventMap["columnWidthsChanged"] {
     const pair = this.eventColIds(instanceIds.map(id => this.columnModel.getById(id)));
-    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds };
+    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds, final };
+  }
+
+  /**
+   * Renderer hook for a resize-handle drag: between begin and end, each `columnResize` emits
+   * `columnWidthsChanged` with `final: false`; end emits one trailing `final: true` event naming
+   * every column the drag resized (none when the drag never changed a width).
+   */
+  beginColumnResizeDrag(): void {
+    this.columnResizeDragChanged = new Set();
+  }
+
+  endColumnResizeDrag(): void {
+    const changed = this.columnResizeDragChanged;
+    this.columnResizeDragChanged = null;
+    if (changed && changed.size > 0) {
+      this.emit("columnWidthsChanged", this.widthsChangedPayload([...changed], true));
+    }
   }
 
   // columnsChanged payload fields from instance ids.
@@ -3320,7 +3405,9 @@ export class GridCore implements IGridCore {
       case "themeFontSet":
         this.textMeasureParams = { headerFont: action.headerFont, cellFont: action.cellFont };
         let themeFontChangedColIds: string[] = [];
-        if (action.reason !== "visibility" && action.reason !== "pin") {
+        // A header-height change re-lays the header out with the same fonts and columns, so the
+        // widths a re-autosize would compute are the ones already in place.
+        if (action.reason !== "visibility" && action.reason !== "pin" && action.reason !== "headerHeight") {
           themeFontChangedColIds = this.autosizeColumns(false);
         }
         this.emit("columnWidthsChanged", this.widthsChangedPayload(themeFontChangedColIds));
@@ -3345,7 +3432,9 @@ export class GridCore implements IGridCore {
       case "columnResize":
         const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
         if (resizedColIds.length > 0) {
-          this.emit("columnWidthsChanged", this.widthsChangedPayload(resizedColIds));
+          const dragChanged = this.columnResizeDragChanged;
+          if (dragChanged) resizedColIds.forEach(id => dragChanged.add(id));
+          this.emit("columnWidthsChanged", this.widthsChangedPayload(resizedColIds, dragChanged == null));
         }
         break;
       case "sortModelSet":
@@ -3503,17 +3592,10 @@ export class GridCore implements IGridCore {
         // col.sortable); only the row-number column stays inert.
         if (!col || col.isRowNumberColumn()) return;
         switch (action.action) {
+          // filterClick / menuClick / click change no core state: the renderer opens the filter
+          // or menu itself.
           case "toggleSort":
             this.toggleSort(col, action.additive ?? false);
-            break;
-          case "filterClick":
-          case "menuClick":
-            // Clear column selection on header action clicks to avoid confusion with shift+click multi-selection
-            // this._clearColumnSelection();
-            // Based on the action, render filter/menu UI (handled in renderer via events)
-            break;
-          case "click":
-            // this._toggleColumnSelection(col.instanceID);
             break;
           case "toggleGroupExpand":
             if (this.columnModel.toggleGroupExpansion(col.instanceID)) {
@@ -4169,6 +4251,16 @@ export class GridCore implements IGridCore {
     return resolution;
   }
 
+  /**
+   * How many row-model requests have failed (`onError`) on this grid. The renderer compares it
+   * against the value it last saw to drop its server-side pending-range keys after a failure, so a
+   * failed block is requested again the next time it is needed (scrolling over the gap) instead of
+   * staying "pending" until a refresh. Never triggers a retry by itself.
+   */
+  getRowRequestFailureCount(): number {
+    return this.rowRequestFailureCount;
+  }
+
   onLoadingEnd(id: number) {
     if (this.requestIdCounter - id > 1) {
       // This means a newer request has already been made, so we can ignore this loading end.
@@ -4178,6 +4270,9 @@ export class GridCore implements IGridCore {
   }
 
   onError(id: number, err: unknown) {
+    // Counted before the staleness check: whatever the renderer marked as pending for this request
+    // is no longer in flight either way, and must be requestable again on the next demand.
+    this.rowRequestFailureCount++;
     if (this.requestIdCounter - id > 1) {
       return;
     }

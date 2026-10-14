@@ -1,4 +1,9 @@
-import { GridEventMap, GridEventName, Unsubscribe } from "../events/events";
+import {
+  GridEventMap,
+  GridEventName,
+  GridEventPaginationChangedParams,
+  Unsubscribe,
+} from "../events/events";
 import { ColumnState, GridId, IGridCore, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
@@ -127,6 +132,9 @@ export interface GridApiConfigController {
   togglePagination: (enabled: boolean) => void;
   setPaginationControls: (options: GridOptions["paginationControls"]) => void;
   setTheme: (theme: GridOptions["theme"]) => void;
+  setHeaderHeights: (
+    heights: Partial<Pick<GridOptions, "headerHeight" | "leafHeaderHeight" | "parentHeaderHeight">>,
+  ) => void;
   setIcons: (icons: GridOptions["icons"]) => void;
   setRuntimeOptions: (options: RuntimeGridOptions) => void;
   setServerSideDataSource: (dataSource: GridOptions["serverSideDataSource"]) => void;
@@ -434,8 +442,8 @@ export interface IGridAPI {
 
   /**
    * The row model's node for `rowId`: a data row, a client-side group or tree node (its id is the
-   * one `getGroupNodes()` and `rowGroupOpened` report), or an application-pinned band row. Server-
-   * side, a loaded leaf or group row. `undefined` for an id the grid does not hold — including a
+   * one `getGroupNodes()` reports), or an application-pinned band row. Server-side, a loaded leaf
+   * or group row. `undefined` for an id the grid does not hold — including a
    * group id from before a regroup, which mints new group nodes.
    *
    * ```ts
@@ -583,6 +591,21 @@ export interface IGridAPI {
    * on a number column is refused and writes nothing.
    */
   setCellValue(cell: CellRef, value: unknown): void;
+
+  /* ----- Pagination ----- */
+  /**
+   * The current pagination state — the same object the `paginationChanged` event carries:
+   * `{ paginationEnabled, pageIndex (0-based), pageSize, totalRowCount, totalPageCount,
+   * totalRowCountKnown, pageSizes }`. Counts are over the filtered view; `totalRowCountKnown` is
+   * false while a server-side total is still provisional. Also valid with pagination off
+   * (`paginationEnabled: false`).
+   *
+   * ```ts
+   * const { pageIndex, totalPageCount } = api.getPaginationInfo();
+   * label.textContent = `Page ${pageIndex + 1} of ${totalPageCount}`;
+   * ```
+   */
+  getPaginationInfo(): GridEventPaginationChangedParams;
 
   /* ----- Scrolling ----- */
   /**

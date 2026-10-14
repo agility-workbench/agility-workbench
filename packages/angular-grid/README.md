@@ -111,8 +111,8 @@ const columnDefs: NgColDef[] = [{ key: "name", label: "Name", cellRenderer: Bold
 ```
 
 Cell editors implement `ICellEditorNgComp` (`getValue()` plus optional `focus`, `isParsed`,
-`isCancelBeforeStart`). Menu items returned from `getColumnMenuItems` / `bodyContextMenu` may use
-`TemplateRef`s for their `left`/`right` slots (`NgMenuItem`).
+`isCancelBeforeStart`). Menu items returned from `getColumnMenuItems` / `bodyContextMenu` /
+`multiColumnMenu` may use `TemplateRef`s for their `left`/`right` slots (`NgMenuItem`).
 
 ## License
 

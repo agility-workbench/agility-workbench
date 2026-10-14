@@ -18,7 +18,8 @@ interfaces. Quick filter searches across visible columns.
 ## Column filters
 
 Set `filter: true` to infer the UI from `ColumnType`, or choose `"text"`,
-`"number"`, `"date"`, `"boolean"`, `"set"`, or `"tree"`. `filterParams`
+`"number"`, `"date"`, `"boolean"`, `"dropdown"`, `"set"`, or `"tree"`. A named
+kind wins over the column type. `filterParams`
 controls operators, debounce, buttons, case handling, and the number of AND/OR
 conditions.
 
@@ -52,8 +53,11 @@ const column = {
 ```
 
 When more than one condition is enabled, the filter UI lets the user join them
-with AND or OR. `trimValues` trims only filter operands, not cell values;
-`closeOnApply` needs an Apply button to have any effect.
+with AND or OR: AND keeps a row that matches every condition, OR one that
+matches any. The join (`FilterItem.join`, `"and"` when absent) applies between
+one column's conditions; filters on different columns are always ANDed.
+`trimValues` trims only filter operands, not cell values; `closeOnApply` needs
+an Apply button to have any effect.
 
 Restrict which operators a column offers:
 
@@ -72,8 +76,37 @@ const column = {
 } satisfies ColDef;
 ```
 
-The built-in operators also include contains, starts/ends with, equality,
-inequality, blank checks, inclusion, and negated forms.
+Without `filterOptions`, each kind offers these operators, in this order:
+
+| Kind | Operators |
+| --- | --- |
+| `text` (and `filter: true` on a string column) | Contains, Excludes, Equal, Not equal, Starts with, Ends with, Is blank, Is not blank |
+| `number`, `date` | Equal, Not equal, Greater than, Greater than or equal, Less than, Less than or equal, Between, Not between, Is blank, Is not blank |
+| `boolean`, `dropdown` | Equal, Not equal, Is blank, Is not blank |
+| `set`, `tree` | the value checklist |
+
+Blank means `null`, `undefined`, or `""`. Between and Not between take two
+inputs, and Between includes both ends.
+
+**Dates** compare by calendar day in the browser's time zone. The operands are
+the date input's `yyyy-mm-dd` text, or a `Date`, epoch number, or ISO text
+through the API; cells may hold any of the same. Equal means "on that day",
+Greater than "after it", Greater than or equal "on or after it", Less than
+"before it", Less than or equal "on or before it", and Between runs from the
+start of the first day through the end of the second. A cell that is not a date
+fails every comparison except Not equal and Not between. This applies to
+`ColumnType.DATE` columns and to any column with `filter: "date"`; on the
+server-side row model the request carries the operands exactly as entered.
+
+**Booleans** get an Any / True / False choice. `true`, `1`, and the text `true`,
+`yes`, `y`, or `1` (any case) count as true; `false`, `0`, `false`, `no`, `n`,
+and `0` as false; anything else is neither, so it fails Equal and passes Not
+equal.
+
+**Dropdown** (`filter: "dropdown"`) picks one value from a static
+`filterParams.filterValues` list (`["Open", "Closed"]`, or `{ value }`
+entries) and matches it with Equal or Not equal. Without a static list it
+falls back to a text box; use `filter: "set"` for values read from the rows.
 
 ## Set-filter values
 
@@ -630,7 +663,14 @@ per effective filter change, whatever the path:
 - `source: "columns"` — a columnDefs update dropped an active filter.
 
 On the client-side row model the handler runs after the view is re-derived, so
-row counts and `getPaginationInfo()` already reflect the new filter.
+row counts and `api.getPaginationInfo()` already reflect the new filter:
+
+```ts
+api.on("filterChanged", () => {
+  const { totalRowCount, pageIndex, totalPageCount } = api.getPaginationInfo();
+  status.textContent = `${totalRowCount} rows — page ${pageIndex + 1} of ${totalPageCount}`;
+});
+```
 
 By default a filter change keeps the user's current page, clamping to the last
 page when the result shrinks past it; list `"filter"` / `"quickFilter"` in

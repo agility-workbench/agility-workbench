@@ -629,7 +629,7 @@ export class FilterController implements IFilterController {
     }
 
     // range: empty only if both empty
-    if (op === ("inRange" as FilterType)) {
+    if (op === FilterType.IN_RANGE || op === FilterType.NOT_IN_RANGE) {
       const a = values?.[0];
       const b = values?.[1];
       return isEmptyScalar(a) && isEmptyScalar(b);
@@ -651,11 +651,12 @@ export class FilterController implements IFilterController {
       return Array.isArray(values); // allow empty for set filters, meaning "matches nothing" or "matches everything" respectively; but must be an array
     }
 
-    if (op === ("inRange" as FilterType)) {
+    if (op === FilterType.IN_RANGE || op === FilterType.NOT_IN_RANGE) {
       const a = values?.[0];
       const b = values?.[1];
-      // valid only if both non-empty
-      return !isEmptyScalar(a) && !isEmptyScalar(b);
+      // valid only if both non-empty (and, on a number filter, both numbers)
+      if (isEmptyScalar(a) || isEmptyScalar(b)) return false;
+      return this.spec.kind !== "number" || (Number.isFinite(Number(a)) && Number.isFinite(Number(b)));
     }
 
     // single

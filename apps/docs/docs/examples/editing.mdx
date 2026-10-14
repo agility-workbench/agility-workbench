@@ -42,14 +42,24 @@ Without a `valueParser`, text is parsed by the column's `type` — and this
 applies to every path that carries text, not just the editors: paste, the fill
 handle, Delete/Backspace, and a string given to `setCellValue`.
 
-- **number / currency**: whatever `Number()` accepts; blank is `null`.
-- **date**: ISO 8601 text (`2026-01-02`, optionally with a time), stored in
-  the shape the cell already holds — a `Date` stays a `Date`, ISO text stays
-  text, an epoch number stays a number.
+- **number / currency**: whatever `Number()` accepts, plus the column's own
+  display form: a currency column reads its formatter's output (`$1,234.00`,
+  `-1.234,56 €` under `formatterOptions: { locale: "de-DE", currency: "EUR" }`,
+  accounting parentheses for negatives), and a number column that sets
+  `formatterOptions.locale` reads that locale's grouping and decimal separators
+  — so under `de-DE`, `1.234,5` is 1234.5 and `1,234` is 1.234, never 1234.
+  Separators come from the locale, and grouping must sit where the locale puts
+  it. Blank is `null`.
+- **date**: ISO 8601 text (`2026-01-02`, optionally with a time), or text in
+  the column's display format (`formatterOptions.format`, e.g. `DD/MM/YYYY` or
+  `MMM D, YYYY`), stored in the shape the cell already holds — a `Date` stays a
+  `Date`, ISO text stays text, an epoch number stays a number. Other orders are
+  refused: `01/31/2026` is not a date in a `DD/MM/YYYY` column.
 - **boolean**: `true`/`false`, `yes`/`no`, `y`/`n`, `1`/`0`; blank is `null`.
 - **string**: verbatim.
 
-Text the type cannot hold — `"abc"` into a number column — is **refused**: the
+So copying a cell and pasting it into a column of the same type and format
+writes the same value back. Text the type cannot hold — `"abc"` into a number column — is **refused**: the
 cell keeps its value, nothing enters undo history, and no `cellValueChanged`
 fires, exactly as if `onBeforeCellCommit` had vetoed it. An editor commit
 reports it as `editingChanged` with `state: "rejected"`; in a paste or fill the
@@ -86,9 +96,11 @@ a decimal keypad via `inputmode`.
 
 ### Date editor
 
-The `date` editor is the native `<input type="date">` calendar by default
-(`min`/`max` bound it; commits are ISO `yyyy-mm-dd` strings, `null` when
-blank). **With a `valueParser`** it switches to typed-format entry, the same
+The `date` editor is the native `<input type="date">` calendar by default,
+opened on the cell's local calendar date (`min`/`max` bound it). It commits
+through the column's built-in date parsing, so the stored shape survives the
+edit — a `Date` column keeps `Date`s, an epoch column numbers, an ISO-text
+column `yyyy-mm-dd` text — and a cleared input commits `null`. **With a `valueParser`** it switches to typed-format entry, the same
 mechanism as the number editor: a text input seeded with the column's
 *formatted* display value that commits the raw string through your parser — so
 a `MM/DD/YYYY` formatter/parser pair lets users type `12/25/2026` directly.
@@ -211,7 +223,11 @@ commits as `state: "rejected"`. `colId` in these payloads is the public
 
 ## Clipboard and history
 
-Copy serializes the selection as TSV. Cut clears editable destinations, paste
+Copy serializes the selection as TSV, each cell as it is displayed (its
+formatted text); Ctrl/Cmd+C, `api.copySelection()` and the body menu's Copy /
+Copy with Headers share one serializer. Group rows drop out of a selection that
+also holds leaf rows unless `groupRowsSelectable` is on; a selection of group
+rows alone copies them. Cut clears editable destinations, paste
 runs each destination's parser — its `valueParser`, or the built-in one for its
 type — skipping cells that refuse the text, and Delete/Backspace clears
 contents (typed columns clear to `null`). A pasted block tiles across a larger

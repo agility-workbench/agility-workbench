@@ -83,6 +83,19 @@ selected-column scopes are ignored — and the default filename becomes
 `grid-pivot.csv` / `grid-pivot.xlsx`. Turn pivot mode off to export the source
 rows instead.
 
+## Formula injection
+
+A spreadsheet that opens a CSV evaluates any text cell starting with `=`, `+`,
+`-`, `@`, a tab or a carriage return as a formula. The CSV export therefore
+writes such text with a leading single quote (`=1+1` becomes `'=1+1`), in body
+cells, group and full-width labels, and header labels. Cells written as numbers
+(a numeric value, or a numeric value in a `NUMBER` / `CURRENCY` column) are left
+as they are, so `-5` stays `-5`. The guard is always on.
+
+The Excel export needs no guard: text is written as string cells, which Excel
+never evaluates. The only formula cells are the aggregate and subtotal formulas
+the exporter writes itself.
+
 ## Get bytes without downloading
 
 ```ts

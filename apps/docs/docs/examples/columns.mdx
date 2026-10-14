@@ -95,8 +95,19 @@ const options = {
 api.dispatch({ type: "columnAutosize", colId: "name" });
 ```
 
-Set `autosizeColumnsOnDataChange: true` to recompute content widths after each
-data refresh. Enable a leading row-number column with `rowNumbers: true`.
+A declared `width` is the column's width: the grid does not resize it to fit
+the data, only clamps it to the column's own `minWidth` / `maxWidth`. A column
+without a `width` is sized to its header and content on the first data load,
+floored at `minResizeWidth` and capped at `maxColumnWidth` (a column's own
+`minWidth` / `maxWidth` take precedence over those two). Once a user drags a
+column edge, that width wins until an explicit fit-to-content: double-clicking
+the resize handle or dispatching `columnAutosize` measures content even for a
+column with a declared `width`.
+
+Set `autosizeColumnsOnDataChange: true` (the default for the server-side row
+model) to recompute content widths after each data refresh; declared and
+user-resized widths are kept. Enable a leading row-number column with
+`rowNumbers: true`.
 
 ## Cell spanning
 
