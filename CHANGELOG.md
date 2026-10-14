@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.10.0 — 2026-10-14
 
 Bug-fix round from the 2026-10-13 feature-set gap analysis (`docs/feature-gap-findings.md`,
 section A): shipped, documented behaviour that did not work. Every fix carries a regression test.
