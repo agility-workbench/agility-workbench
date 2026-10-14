@@ -3,6 +3,22 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Fixes
+
+- **Pinned columns now clamp in the header, aggregate row and horizontal scrollbar exactly as
+  they do in the body.** When a grid with left and right pinned columns was narrowed, the body's
+  pinned sections shrank to 35% of the grid but the header, aggregate row and scrollbar lanes kept
+  their full width: the centre header started further right than the centre rows, the right header
+  could overlap the left one, and a clamped pinned section could not be scrolled sideways in the
+  header. The header sections carried an inline `min-width` (which beats the resize clamp's
+  `max-width`) and could shrink in the centre header's favour. Every pinned box now has the same
+  width-only sizing, `flex: 0 0 auto`, and the same live cap reapplied on every resize; the right
+  header's cap allows for the vertical-scrollbar gutter, and the centre header and scrollbar lane
+  take whatever space is left. Header, rows, aggregate row and scrollbar line up at every width
+  and scroll together.
+
 ## 1.10.0 — 2026-10-14
 
 Bug-fix round from the 2026-10-13 feature-set gap analysis (`docs/feature-gap-findings.md`,

@@ -2313,8 +2313,13 @@
   border-right: 1px solid var(--pte-frame-border-color);
 }
 
+/* Pinned header sections are sized like the body spacers beneath them: inline `width`, no grow and
+   no shrink, clamped only by the `max-width` the pinned-section layout reapplies on every resize.
+   Left at the default `flex: 0 1 auto` they shrank in favour of the centre header's huge flex-basis
+   and stopped lining up with the body. */
 .pte-header-left {
   display: flex;
+  flex: 0 0 auto;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
@@ -2336,11 +2341,14 @@
   scrollbar-width: none;
   padding-right: 0;
   flex: 1 1 auto;
+  /* Like .pte-spacer: take whatever the pinned sections leave, never push them. */
+  min-width: 0;
   position: relative;
 }
 
 .pte-header-right {
   display: flex;
+  flex: 0 0 auto;
   box-shadow: -2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
@@ -3666,8 +3674,11 @@
   z-index: 1;
 }
 
+/* The centre lane takes what the pinned lanes leave, exactly like .pte-spacer and .pte-header, so it
+   follows their live clamp instead of a width computed once at layout time. */
 .pte-scroller-horizontal-container {
   flex: 1 1 auto;
+  min-width: 0;
   height: var(--pte-scrollbar-lane);
   z-index: 1;
   width: 100%;

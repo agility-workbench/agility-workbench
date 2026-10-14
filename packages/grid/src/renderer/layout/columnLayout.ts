@@ -131,8 +131,10 @@ export class ColumnLayoutRenderer {
     this.params.leadingHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.aggregateLeading.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.aggregateLeading.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.params.hScrollLeadingParent.style.width = `${maxWidth}px`;
-    this.params.hScrollLeadingParent.style.minWidth = `${maxWidth}px`;
+    // Border pixel included, like the header and body boxes above, so the lanes after it start where
+    // the sections after it start.
+    this.params.hScrollLeadingParent.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
+    this.params.hScrollLeadingParent.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
     this.params.hScrollLeadingParent.style.display = maxWidth > 0 ? "block" : "none";
 
     if (maxWidth > 0) {
@@ -167,33 +169,26 @@ export class ColumnLayoutRenderer {
     }
     this.params.leftViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateLeftCells(), this.params.core.getColumnModel().getLeftLeaves(), colIDs);
-    this.params.hScrollerLeft.style.width = `${maxWidth}px`;
+    // Every pinned-left box — header, aggregate section, scrollbar lane — mirrors the body spacer:
+    // the content width plus its 1px border as an inline `width`, and never a `min-width`. The 35%
+    // clamp is a `max-width` that PinnedSectionLayoutRenderer reapplies on every root resize, and a
+    // `min-width` would outrank it, leaving the header at full width while the body clamped.
+    const sectionWidth = maxWidth > 0 ? maxWidth + 1 : 0;
+    this.params.hScrollerLeft.style.width = `${sectionWidth}px`;
     this.params.hScrollLeftParent.style.display = maxWidth > 0 ? "block" : "none";
-    this.params.leftHeader.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.params.leftHeader.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.params.aggregateLeft.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    this.params.aggregateLeft.style.minWidth = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
-    const totalWidth = maxWidth;
+    this.params.leftHeader.style.width = `${sectionWidth}px`;
+    this.params.aggregateLeft.style.width = `${sectionWidth}px`;
+    this.params.hScrollLeftParent.style.width = `${sectionWidth}px`;
     if (maxWidth > 0) {
       this.params.leftSpacer.classList.add("visible");
       this.params.leftHeader.classList.add("visible");
-      if (maxWidth > this.params.root.clientWidth * 0.35) {
-        maxWidth = this.params.root.clientWidth * 0.35;
-        this.params.leftHeader.style.width = `${maxWidth}px`;
-        this.params.leftHeader.style.minWidth = `${maxWidth}px`;
-        this.params.aggregateLeft.style.width = `${maxWidth}px`;
-        this.params.aggregateLeft.style.minWidth = `${maxWidth}px`;
-      }
       this.params.aggregateLeft.style.display = "block";
     } else {
       this.params.leftSpacer.classList.remove("visible");
       this.params.leftHeader.classList.remove("visible");
       this.params.aggregateLeft.style.display = "none";
     }
-    this.params.hScrollLeftParent.style.width = `${maxWidth}px`;
-    this.params.hScrollLeftParent.style.minWidth = `${maxWidth}px`;
-    this.params.hScrollParent.style.width = `calc(100% - ${this.params.hScrollLeadingParent.clientWidth + maxWidth}px)`;
-    return totalWidth;
+    return maxWidth;
   }
 
   applyCenterColumnWidths(colIDs: string[] = []): number {
@@ -254,37 +249,27 @@ export class ColumnLayoutRenderer {
     }
     this.params.rightViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateRightCells(), this.params.core.getColumnModel().getRightLeaves(), colIDs);
-    this.params.hScrollerRight.style.width = `${maxWidth}px`;
+    // Same contract as the left side: inline `width` only, clamped live by the resize observer's
+    // `max-width`. The header's extra vertical-scrollbar lane is added in
+    // applyVerticalScrollbarCompensation, and its max-width carries the same lane on top of the cap.
+    const sectionWidth = maxWidth > 0 ? maxWidth + 1 : 0;
+    this.params.hScrollerRight.style.width = `${sectionWidth}px`;
     this.params.hScrollRightParent.style.display = maxWidth > 0 ? "block" : "none";
-    const totalWidth = maxWidth;
+    this.params.hScrollRightParent.style.width = `${sectionWidth}px`;
+    this.params.aggregateRight.style.width = `${sectionWidth}px`;
+    this.rightSectionWidth = maxWidth;
     if (maxWidth > 0) {
       this.params.rightSpacer.classList.add("visible");
       this.params.rightHeader.classList.add("visible");
-      if (maxWidth > this.params.root.clientWidth * 0.35) {
-        maxWidth = this.params.root.clientWidth * 0.35;
-      }
-      this.params.hScrollRightParent.style.width = `${maxWidth}px`;
-      this.params.hScrollRightParent.style.minWidth = `${maxWidth}px`;
-      this.rightSectionWidth = maxWidth;
-      this.params.aggregateRight.style.width = `${maxWidth + 1}px`;
-      this.params.aggregateRight.style.minWidth = `${maxWidth + 1}px`;
       this.params.aggregateRight.style.display = "block";
-      maxWidth += this.params.hScrollLeadingParent.clientWidth + this.params.hScrollLeftParent.clientWidth;
-      this.params.hScrollParent.style.width = `calc(100% - ${maxWidth}px)`;
     } else {
       this.params.rightSpacer.classList.remove("visible");
-      this.rightSectionWidth = 0;
       this.params.rightHeader.style.width = "0px";
-      this.params.rightHeader.style.minWidth = "0px";
       this.params.rightHeader.classList.remove("visible");
-      this.params.hScrollRightParent.style.width = "0px";
-      this.params.hScrollRightParent.style.minWidth = "0px";
-      this.params.aggregateRight.style.width = "0px";
-      this.params.aggregateRight.style.minWidth = "0px";
       this.params.aggregateRight.style.display = "none";
     }
     this.applyVerticalScrollbarCompensation();
-    return totalWidth;
+    return maxWidth;
   }
 
   updateColumnWidths(colIDs: string[] = []) {
@@ -360,10 +345,10 @@ export class ColumnLayoutRenderer {
 
     if (hasRightSection) {
       // The extra pixel covers the pinned section's border; the remaining width is the live
-      // vertical-scrollbar lane, when present.
+      // vertical-scrollbar lane, when present. No min-width: the resize observer's max-width (the
+      // cap plus this same lane) has to be able to clamp it, exactly as it clamps the body.
       const headerWidth = this.rightSectionWidth + gutterWidth + 1;
       this.params.rightHeader.style.width = `${headerWidth}px`;
-      this.params.rightHeader.style.minWidth = `${headerWidth}px`;
     }
   }
 
