@@ -3309,8 +3309,9 @@
   /* The zero-height floating host sits immediately after the header. The widget overrides
      `top`/`left`/`right` inline from its resolved position options on each open. */
   top: 6px;
-  /* Clear the vertical scrollbar gutter so the widget never sits over the scrollbar thumb. */
-  right: calc(var(--pte-scrollbar-size, 10px) + 8px);
+  /* Clear the body's measured vertical-scrollbar lane (0 when it does not scroll or scrollbars
+     overlay) so the widget never sits over the scrollbar thumb. */
+  right: calc(var(--pte-scrollbar-gutter-active, 0px) + 8px);
   z-index: 30;
   display: none;
   flex-direction: column;

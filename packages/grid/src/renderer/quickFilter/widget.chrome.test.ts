@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createGrid } from "../../createGrid";
 import { IGridAPI } from "../../interfaces/iGridAPI";
+import { GRID_STYLES } from "../../theme/styles.generated";
 
 beforeAll(() => {
   (HTMLCanvasElement.prototype as any).getContext = () => ({
@@ -188,5 +189,40 @@ describe("quick-filter match counter", () => {
     expect(wrapper().classList.contains("pte-quick-filter-finding")).toBe(false);
     api.setQuickFilter("acme", { behavior: "find" });
     expect(wrapper().classList.contains("pte-quick-filter-finding")).toBe(true);
+  });
+});
+
+describe("quick-filter floating position", () => {
+  // The right inset clears the body's MEASURED scrollbar lane (--pte-scrollbar-gutter-active: 0
+  // when nothing scrolls or scrollbars overlay), not --pte-scrollbar-size, which is only the themed
+  // webkit thumb size and has no layout meaning. happy-dom's parser drops a calc() holding a
+  // custom property, so the written value is captured at the setter instead of read back.
+  it("insets from the right edge by the measured scrollbar lane plus offsetX", () => {
+    const proto = Object.getPrototypeOf(document.createElement("div").style);
+    const desc = Object.getOwnPropertyDescriptor(proto, "right")!;
+    const written: string[] = [];
+    Object.defineProperty(proto, "right", {
+      ...desc,
+      set(value: string) {
+        written.push(value);
+        desc.set!.call(this, value);
+      },
+    });
+    try {
+      remount({ mode: "always", debounceMs: 0, position: { anchor: "right", offsetX: 12 } });
+    } finally {
+      Object.defineProperty(proto, "right", desc);
+    }
+    expect(written).toContain("calc(var(--pte-scrollbar-gutter-active, 0px) + 12px)");
+    expect(written.some(v => v.includes("--pte-scrollbar-size"))).toBe(false);
+  });
+
+  it("uses the measured scrollbar lane in the stylesheet's base rule too", () => {
+    // Read from the generated source text: the parsed CSSOM rule has lost the calc() (see above).
+    // The base rule is the one whose whole selector is `.pte-quick-filter` at a line start.
+    const css = GRID_STYLES.replace(/\/\*[\s\S]*?\*\//g, "");
+    const body = /(?:^|\n)\.pte-quick-filter \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    const right = /(?:^|;)\s*right:\s*([^;]+);/.exec(body)?.[1]?.trim();
+    expect(right).toBe("calc(var(--pte-scrollbar-gutter-active, 0px) + 8px)");
   });
 });

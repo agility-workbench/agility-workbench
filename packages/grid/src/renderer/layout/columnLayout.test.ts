@@ -44,6 +44,7 @@ function createColumnLayout(rightWidth = 0, bodyScroller?: HTMLElement) {
     rightViewport: element(),
     leadingSpacer: element(),
     leftSpacer: element(),
+    centerSpacer: element(),
     rightSpacer: element(),
     leadingHeader: element(),
     leftHeader: element(),

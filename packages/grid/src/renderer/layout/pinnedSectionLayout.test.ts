@@ -135,4 +135,45 @@ describe("pinned section clamp", () => {
       globalThis.ResizeObserver = OriginalObserver;
     }
   });
+
+  it("caps against the root's content width when the root carries padding-right (column panel)", () => {
+    const div = () => document.createElement("div");
+    const root = div();
+    document.body.appendChild(root); // computed padding needs a connected element
+    Object.defineProperty(root, "clientWidth", { configurable: true, get: () => 1000 });
+    let observerCallback: (() => void) | undefined;
+    const observed: Element[] = [];
+    const OriginalObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb: () => void) { observerCallback = cb; }
+      observe(el: Element) { observed.push(el); }
+      disconnect() {}
+    } as any;
+    try {
+      const body = div();
+      const p = {
+        root, body,
+        leftHeader: div(), rightHeader: div(),
+        hScrollLeftParent: div(), hScrollRightParent: div(),
+        leftSpacer: div(), rightSpacer: div(),
+        aggregateLeft: div(), aggregateRight: div(),
+      };
+      const layout = new PinnedSectionLayoutRenderer(p);
+      layout.bind();
+      expect(observed).toEqual([root, body]);
+      expect(p.leftSpacer.style.maxWidth).toBe("350px");
+
+      // The open column panel docks as root padding: 1000 - 200 leaves 800 of grid, cap 280.
+      root.style.paddingRight = "200px";
+      observerCallback?.();
+      for (const el of [p.leftHeader, p.leftSpacer, p.aggregateLeft, p.hScrollLeftParent,
+        p.rightSpacer, p.aggregateRight, p.hScrollRightParent]) {
+        expect(el.style.maxWidth).toBe("280px");
+      }
+      expect(p.rightHeader.style.maxWidth).toBe("calc(280px + var(--pte-scrollbar-gutter-active, 0px))");
+      layout.destroy();
+    } finally {
+      globalThis.ResizeObserver = OriginalObserver;
+    }
+  });
 });

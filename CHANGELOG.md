@@ -28,6 +28,55 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   take whatever space is left. Header, rows, aggregate row and scrollbar line up at every width
   and scroll together.
 
+- **The grid now re-lays itself out when its body resizes, not only when its columns change.**
+  The only resize path re-applied the pinned-column clamp and the vertical extent; everything
+  else was computed once at creation or on a column change. A grid that grew taller kept the row
+  pool it was created with and showed blank rows at the bottom once scrolled; a toolbar, sheet
+  strip or pagination footer appearing inside a fixed-height host changed the body without any
+  of this running. The root and the body are now both observed, and one pass runs in order: the
+  clamp, the horizontal scrollbar strip and body budget, the vertical scrollbar compensation, the
+  row pool size, full-width row widths, the pinned-row bands and the position of an open
+  ActionFrame. The pass writes nothing when nothing changed, so it cannot feed back on itself.
+- **The horizontal scrollbar strip appears exactly when columns overflow, and stays decided
+  across resizes.** The strip's own lanes were measured to decide whether it was needed, and
+  those measure 0 while the strip is hidden, so every column change flipped it: a header-height
+  change left an empty strip under columns that fit, and a column-resize drag toggled it (and
+  the body height with it) on every mouse move. Narrowing the grid never showed it, so columns
+  that no longer fit could only be reached with a wheel. The decision now compares each
+  section's columns with its body section, the only box that is always laid out, and runs on
+  every resize.
+- **Pinned columns stay level with full-width rows and group headings.** A full-width row (an
+  `isFullWidthRow` row, or a group heading with `groupDisplayType: "groupRows"`) hid its pinned
+  and row-number fragments with `display: none`, which took them out of the flow, so every pinned
+  row below sat one row too high: the pinned cells beside a data row belonged to the row after
+  it, and a group heading had its first child's pinned values beside it. The fragments now keep
+  their place and height as blank rows (class `pte-full-width-fragment`, hidden from assistive
+  technology), and a user full-width row's width follows the centre section through resizes
+  instead of the width measured when the row was first painted.
+- **Pinned-row bands keep their 30% cap when the grid changes height.** The cap was computed
+  only when a band's rows changed, so a grid made shorter kept tall bands and squeezed the body
+  out, a grid made taller kept small scrolling bands, and a grid created while hidden had no cap
+  at all until a data or column event. The band heights are now laid out on every resize, and a
+  band that changes height tells the body so the row pool follows.
+- **The pinned-column clamp and the scrollbar strip measure the grid's content width.** Both
+  used the root's `clientWidth`, which includes the padding the root carries for the column
+  panel's rail (36px) or the open panel (304px); with the panel open, pinned sections could take
+  over half of the visible body, and the bands clamped against a different width than the header
+  and body. All of them now clamp against the root's content box.
+- **Grids mounted inside a shadow root keep their header in sync.** Header cells were looked up
+  with `document.getElementById`, which cannot see into a shadow tree, so inside one a column
+  resize left the header at its old width over the resized body, the sort icon and `aria-sort`
+  never updated, the header keyboard cursor was not painted, the filter-active indicator stayed
+  off, the Alt+ArrowDown menu had no anchor, header tooltips found no target and column drags
+  under a group header had no drop anchor. Every lookup is now scoped to the grid's own header.
+- **The floating quick filter sits inside the scrollbar lane.** Its inset used the themed
+  scrollbar thumb size (10px, a styling value) instead of the measured gutter, so it overlapped a
+  15px scrollbar by 5px and sat 10px too far in when the body had no scrollbar or the platform
+  overlays scrollbars. It now uses the live gutter the grid measures.
+- **An open ActionFrame follows horizontal scrolling and resizes.** Its popover was repositioned
+  only on vertical body scroll, so scrolling sideways or resizing the grid left it floating away
+  from its cell.
+
 ### Tooling
 
 - **A real-browser layout probe: `npm run probe:layout`.** The test suites run under happy-dom,

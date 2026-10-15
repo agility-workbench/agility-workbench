@@ -1,4 +1,5 @@
 import { GridCore } from "../../core/core";
+import { PINNED_SECTION_CAP_RATIO, rootContentWidth } from "../layout/pinnedSectionLayout";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import { isExpandableNode, type IRowNode } from "../../interfaces/iRowNode";
 import type { RowPinnedPosition } from "../../interfaces/gridOptions";
@@ -109,6 +110,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private bottomCount = 0;
   private bodyPartitionSignature = "";
   private bodyHasVerticalScrollbar = false;
+  /** Rows currently rendered in each application-pinned band, for re-laying its height on resize. */
+  private readonly bandRowCounts = new Map<BandElements, number>();
   // Application-pinned rows only change through API/option/model events (which force-render), so
   // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
   private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
@@ -274,8 +277,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     // the grid and scroll horizontally in sync beyond that. The +1 covers the section's 1px border
     // (border-box), matching the headers and aggregates. In non-layout test/SSR environments
     // clientWidth is 0; leave the sections unclamped there.
-    const rootWidth = this.params.root.clientWidth;
-    const cap = rootWidth > 0 ? rootWidth * 0.35 : Infinity;
+    // The same cap as the header, body and aggregate sections (pinnedSectionLayout): a share of the
+    // root's CONTENT width, so a column-panel rail or open panel does not offset the bands.
+    const rootWidth = rootContentWidth(this.params.root);
+    const cap = rootWidth > 0 ? rootWidth * PINNED_SECTION_CAP_RATIO : Infinity;
     const sectionWidth = (contentWidth: number, clamped: boolean) =>
       contentWidth > 0 ? Math.min(contentWidth + 1, clamped ? cap : Infinity) : 0;
 
@@ -291,6 +296,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       band.left.style.display = leftWidth > 0 ? "block" : "none";
       band.right.style.display = rightWidth > 0 ? "block" : "none";
     }
+
+    // Band heights depend on the root's height (the 30% cap), which this layout pass is the one
+    // place to observe: re-lay both bands and hand a changed height to the body like a row-count
+    // change does. `render` lays the bands itself first, so its own call here finds nothing changed.
+    let heightChanged = false;
+    for (const band of [this.top, this.bottom]) {
+      // A band never rendered has no height to correct (and the body is not wired up yet).
+      if (!this.bandRowCounts.has(band)) continue;
+      if (this.layoutBandHeight(band)) heightChanged = true;
+    }
+    if (heightChanged) this.params.onHeightChanged();
   }
 
   refreshSelectionStyles(): void {
@@ -829,30 +845,48 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     band.centerHost.replaceChildren();
     band.rightHost.replaceChildren();
     band.root.style.display = rows.length > 0 ? "flex" : "none";
+    this.bandRowCounts.set(band, rows.length);
+    this.layoutBandHeight(band);
+
+    rows.forEach(({ node, position }, rowIndex) => {
+      this.renderRow(band, node, position, rowIndex);
+    });
+  }
+
+  /**
+   * Sizes an application-pinned band from its current row count: the content height, capped at 30%
+   * of the grid so enough body stays visible (the band then scrolls on its own), plus the scrollable
+   * / own-lane state and the vertical scroller's content height. Runs on every band render and on
+   * every layout pass, because the cap depends on the root's height, which changes without the
+   * band's content changing (a resize, or a grid created hidden). Returns whether the band's
+   * visible height changed.
+   */
+  private layoutBandHeight(band: BandElements): boolean {
+    const rowCount = this.bandRowCounts.get(band) ?? 0;
     const rowHeight = this.params.rowHeight();
-    const contentHeight = rows.length * rowHeight;
+    const contentHeight = rowCount * rowHeight;
     const gridHeight = this.params.root.clientHeight;
     // Keep enough central body visible even when an application pins many rows. Top and bottom
-    // each get at most 30% of the grid and then scroll independently. In non-layout test/SSR-like
-    // environments clientHeight may be zero; leave the band uncapped there.
+    // each get at most 30% of the grid and then scroll independently. While the root has no height
+    // (created hidden, or a non-layout test/SSR-like environment) leave the band uncapped; the next
+    // layout pass after the root gains a height applies the cap.
     const maxHeight = gridHeight > 0
       ? Math.max(rowHeight, Math.floor(gridHeight * 0.3))
       : contentHeight;
     const viewportHeight = Math.min(contentHeight, maxHeight);
     const overflows = contentHeight > viewportHeight;
-    band.root.style.height = `${viewportHeight}px`;
+    const previous = band.root.style.height;
+    const height = `${viewportHeight}px`;
+    band.root.style.height = height;
     for (const section of [band.leading, band.left, band.center, band.right, band.vertical]) {
-      section.style.height = `${viewportHeight}px`;
+      section.style.height = height;
     }
     band.verticalScroller.style.height = `${contentHeight}px`;
     band.vertical.classList.toggle("scrollable", overflows);
     this.updateVerticalScrollbarLane(band);
     band.vertical.style.pointerEvents = overflows ? "auto" : "none";
     if (!overflows) this.syncBandVertical(band, band.vertical, 0);
-
-    rows.forEach(({ node, position }, rowIndex) => {
-      this.renderRow(band, node, position, rowIndex);
-    });
+    return previous !== height;
   }
 
   private updateVerticalScrollbarLane(band: BandElements): void {
@@ -906,6 +940,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       cell.setAttribute("aria-colspan", String(model.leafColumnLookup.size));
       center.appendChild(cell);
       center.classList.add("pte-full-width-row");
+      // The pinned/leading fragments stay in place, blank and at full row height, exactly like the
+      // body pool's (they are never hidden: the band's rows lay out in flow). Same themeable class.
+      for (const fragment of [leading, left, right]) fragment.classList.add("pte-full-width-fragment");
       this.params.bodyCellRenderer.renderFullWidthCell(
         cell, row, rendererMap, row.viewIndex, 0, rowPresentation,
       );

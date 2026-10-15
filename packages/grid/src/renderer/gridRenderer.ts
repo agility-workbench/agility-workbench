@@ -741,6 +741,7 @@ export class GridRenderer {
       rightViewport: bodyWrapper.rightViewport,
       leadingSpacer: bodyWrapper.leadingSpacer,
       leftSpacer: bodyWrapper.leftSpacer,
+      centerSpacer: bodyWrapper.centerSpacer,
       rightSpacer: bodyWrapper.rightSpacer,
       leadingHeader: headerRefs.leading,
       leftHeader: headerRefs.left,
@@ -765,6 +766,10 @@ export class GridRenderer {
       aggregateRightCells: () => this._aggregateRightCells,
       updateVerticalScrollLayout: () => this._bodyViewportRenderer.recomputeView(),
       updatePinnedRowsLayout: () => this._pinnedRowsRenderer.updateLayout(),
+      afterColumnWidths: () => {
+        this._bodyWindowRenderer?.refreshFullWidthWidths();
+        this._actionFrameRenderer?.onWindowUpdate();
+      },
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
@@ -776,9 +781,22 @@ export class GridRenderer {
       rightSpacer: bodyWrapper.rightSpacer,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
+      // Observed next to the root: toolbar, sheet tabs and pagination resize the body inside a
+      // fixed root, and every step below depends on the body's size, not the root's.
+      body: bodyWrapper.body,
+      // The grid's ONE resize path, after the clamp. Order matters: the strip decides the body's
+      // height, which decides the vertical scrollbar (recomputeView) and the pool; full-width rows
+      // and bands size from the sections the steps before them settled; the ActionFrame follows
+      // its cell last. Every step writes nothing when its inputs are unchanged, so the observer's
+      // re-entry after the strip toggles settles in one pass.
       onResize: () => {
+        this._columnLayoutRenderer.updateScrollStrip();
         this._bodyViewportRenderer.recomputeView();
+        // Before the core's first viewportChanged there is no pool to resize; that event sizes it.
+        if (this._poolSize > 0) this._maybeUpdatePoolSize();
+        this._bodyWindowRenderer?.refreshFullWidthWidths();
         this._pinnedRowsRenderer.updateLayout();
+        this._actionFrameRenderer?.onWindowUpdate();
       },
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
@@ -798,6 +816,8 @@ export class GridRenderer {
       aggregateRight: aggregateRefs.right,
       onHorizontalSync: (left, center, right) => {
         this._pinnedRowsRenderer.syncHorizontal(left, center, right);
+        // The ActionFrame popover is position: fixed; horizontal scroll moves its cell under it.
+        this._actionFrameRenderer?.onWindowUpdate();
       },
       onWindowUpdate: (scrollSrc) => {
         this._bodyWindowRenderer.update(false, scrollSrc);

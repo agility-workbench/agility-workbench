@@ -1,6 +1,7 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { RowPoolDef } from "../types";
+import { rootContentWidth } from "./pinnedSectionLayout";
 
 interface ColumnLayoutRendererParams {
   core: GridCore;
@@ -13,6 +14,9 @@ interface ColumnLayoutRendererParams {
   rightViewport: HTMLDivElement;
   leadingSpacer: HTMLDivElement;
   leftSpacer: HTMLDivElement;
+  /** The centre body section. With the left and right spacers, the boxes the scrollbar strip's
+   * lanes scroll: a section needs its lane exactly when its content outgrows one of these. */
+  centerSpacer: HTMLDivElement;
   rightSpacer: HTMLDivElement;
   leadingHeader: HTMLDivElement;
   leftHeader: HTMLDivElement;
@@ -37,6 +41,9 @@ interface ColumnLayoutRendererParams {
   aggregateRightCells: () => HTMLDivElement[];
   updateVerticalScrollLayout?: () => void;
   updatePinnedRowsLayout?: () => void;
+  /** Last step of a width pass, for what sizes itself from the sections just laid out: the user
+   * full-width rows (centre viewport wide) and the ActionFrame popover over a moved cell. */
+  afterColumnWidths?: () => void;
   /** The body scroller — the element that actually owns the vertical scrollbar being compensated
    * for. Read directly rather than modelled, so the compensation cannot disagree with the scrollbar
    * it is compensating for. */
@@ -94,9 +101,20 @@ export function measureVerticalScrollbarGutter(host?: HTMLElement): number {
   return gutter;
 }
 
+/** Write an inline style only when it differs, so a layout pass with unchanged inputs writes
+ * nothing — the resize path runs from a ResizeObserver, and a pass that rewrites what it reads
+ * is how a ResizeObserver loop starts. */
+function setStyle(el: HTMLElement, prop: "display" | "height" | "paddingRight" | "width", value: string): void {
+  if (el.style[prop] !== value) el.style[prop] = value;
+}
+
 export class ColumnLayoutRenderer {
   private hasVerticalScrollbar = false;
   private rightSectionWidth = 0;
+  /** Content width of each section as the last width pass laid it out, so the scrollbar strip can
+   * be re-decided on a resize without walking the row pool again. */
+  private sectionContentWidths = { leading: 0, left: 0, center: 0, right: 0 };
+  private bodyFrameHeight: string | null = null;
 
   constructor(private params: ColumnLayoutRendererParams) {}
 
@@ -123,6 +141,7 @@ export class ColumnLayoutRenderer {
       maxWidth = Math.max(maxWidth, totalWidth);
     }
 
+    this.sectionContentWidths.leading = maxWidth;
     this.params.leadingViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateLeadingCells(), this.params.core.getColumnModel().getLeadingLeaves(), colIDs);
     this.params.leadingSpacer.style.width = `${maxWidth > 0 ? maxWidth + 1 : 0}px`;
@@ -167,6 +186,7 @@ export class ColumnLayoutRenderer {
       if (slot.leftRowEl) slot.leftRowEl.style.width = `${totalWidth}px`;
       maxWidth = Math.max(maxWidth, totalWidth);
     }
+    this.sectionContentWidths.left = maxWidth;
     this.params.leftViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateLeftCells(), this.params.core.getColumnModel().getLeftLeaves(), colIDs);
     // Every pinned-left box — header, aggregate section, scrollbar lane — mirrors the body spacer:
@@ -216,6 +236,7 @@ export class ColumnLayoutRenderer {
       }
       maxWidth = Math.max(maxWidth, totalWidth);
     }
+    this.sectionContentWidths.center = maxWidth;
     this.params.hScroller.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateCenterCells(), this.params.core.getColumnModel().getCenterLeaves(), colIDs);
     if (maxWidth == 0) {
@@ -247,6 +268,7 @@ export class ColumnLayoutRenderer {
       if (slot.rightRowEl) slot.rightRowEl.style.width = `${totalWidth}px`;
       maxWidth = Math.max(maxWidth, totalWidth);
     }
+    this.sectionContentWidths.right = maxWidth;
     this.params.rightViewport.style.width = `${maxWidth}px`;
     this.applyAggregateColumnWidths(this.params.aggregateRightCells(), this.params.core.getColumnModel().getRightLeaves(), colIDs);
     // Same contract as the left side: inline `width` only, clamped live by the resize observer's
@@ -273,37 +295,69 @@ export class ColumnLayoutRenderer {
   }
 
   updateColumnWidths(colIDs: string[] = []) {
-    const leadingWidth = this.applyLeadingColumnWidths(colIDs);
-    const leftWidth = this.applyLeftColumnWidths(colIDs);
-    const centerWidth = this.applyCenterColumnWidths(colIDs);
-    const rightWidth = this.applyRightColumnWidths(colIDs);
-    const totalWidth = leadingWidth + leftWidth + centerWidth + rightWidth;
+    this.applyLeadingColumnWidths(colIDs);
+    this.applyLeftColumnWidths(colIDs);
+    this.applyCenterColumnWidths(colIDs);
+    this.applyRightColumnWidths(colIDs);
 
-    const allColIDs: Column[] = [];
-    this.params.core.getColumnModel().walkColumns(c => c.isVisible() && allColIDs.push(c));
-    allColIDs.forEach(col => {
-      const hcell = document.getElementById(col.instanceID);
-      if (!hcell) return;
-      hcell.style.width = `${col.computedWidth}px`;
+    // Header cells are looked up inside the header, never through `document`: in a shadow-root
+    // mount `document.getElementById` cannot see the grid, and the header would keep its build-time
+    // widths over a resized body.
+    const headerCells = new Map<string, HTMLElement>();
+    this.params.headerWrapper.querySelectorAll<HTMLElement>(".pte-hcell").forEach(el => {
+      if (el.id && !headerCells.has(el.id)) headerCells.set(el.id, el);
+    });
+    this.params.core.getColumnModel().walkColumns(col => {
+      if (!col.isVisible()) return;
+      const hcell = headerCells.get(col.instanceID);
+      if (hcell) hcell.style.width = `${col.computedWidth}px`;
     });
 
-    const needsSectionScroll =
-      leftWidth > this.params.hScrollLeftParent.clientWidth
-      || centerWidth > this.params.hScrollParent.clientWidth
-      || rightWidth > this.params.hScrollRightParent.clientWidth;
-    if (totalWidth > this.params.root.clientWidth || needsSectionScroll) {
-      this.params.hScrollContainer.style.display = "flex";
-    } else {
-      this.params.hScrollContainer.style.display = "none";
+    this.updateScrollStrip();
+    this.params.updateVerticalScrollLayout?.();
+    this.params.updatePinnedRowsLayout?.();
+    this.params.afterColumnWidths?.();
+  }
+
+  /**
+   * Decide whether the horizontal scrollbar strip shows, and give the body frame what the header
+   * and the strip leave over. Runs after every width pass AND on every root/body resize (the
+   * grid's resize path), because both inputs change without the columns changing: a narrower root
+   * makes the centre overflow, an open column panel takes width as root padding.
+   *
+   * The decision reads only boxes whose size does not depend on the strip's own display: each
+   * section's content width against the body section that scrolls it (the body is always laid out),
+   * and the total against the root's content box. Reading the strip's own lanes made the answer
+   * flip on every call, since a hidden strip's lanes measure 0.
+   *
+   * Idempotent: with unchanged inputs it writes nothing, so a ResizeObserver re-entry after the
+   * strip toggles (which changes the body height) settles in one pass.
+   */
+  updateScrollStrip(): void {
+    const { leading, left, center, right } = this.sectionContentWidths;
+    const root = this.params.root;
+    // An unlaid-out root (detached, or a display:none ancestor) measures 0 everywhere; deciding
+    // from that would just be noise. The observer re-runs this when the grid is revealed.
+    if (root.clientWidth > 0) {
+      const totalWidth = leading + left + center + right;
+      const needsSectionScroll =
+        left > this.params.leftSpacer.clientWidth
+        || center > this.params.centerSpacer.clientWidth
+        || right > this.params.rightSpacer.clientWidth;
+      const show = totalWidth > rootContentWidth(root) || needsSectionScroll;
+      setStyle(this.params.hScrollContainer, "display", show ? "flex" : "none");
     }
 
     const headerHeight = this.params.headerWrapper.getBoundingClientRect().height;
-    const hScrollHeight = this.params.hScrollContainer.getBoundingClientRect().height;
-    const chromeHeight = headerHeight
-      + (this.params.hScrollContainer.style.display === "flex" ? hScrollHeight : 0);
-    this.params.bodyFrame.style.height = `calc(100% - ${chromeHeight}px)`;
-    this.params.updateVerticalScrollLayout?.();
-    this.params.updatePinnedRowsLayout?.();
+    const stripShown = this.params.hScrollContainer.style.display === "flex";
+    const hScrollHeight = stripShown ? this.params.hScrollContainer.getBoundingClientRect().height : 0;
+    // Compared against the last string written, not the serialized value: a fractional header
+    // height would never round-trip through the browser's calc() serialization.
+    const frameHeight = `calc(100% - ${headerHeight + hScrollHeight}px)`;
+    if (frameHeight !== this.bodyFrameHeight || !this.params.bodyFrame.style.height) {
+      this.bodyFrameHeight = frameHeight;
+      this.params.bodyFrame.style.height = frameHeight;
+    }
   }
 
   /**
@@ -336,19 +390,24 @@ export class ColumnLayoutRenderer {
     // cannot disagree. A lane width hardcoded in CSS is only ever right on the platform it was
     // written against: it reserves real estate that overlay scrollbars never claim, leaving the
     // header aligned to one edge and the rows to another.
-    this.params.root.style.setProperty("--pte-scrollbar-gutter", `${gutter}px`);
-    this.params.root.style.setProperty("--pte-scrollbar-gutter-active", `${gutterWidth}px`);
+    const rootStyle = this.params.root.style;
+    if (rootStyle.getPropertyValue("--pte-scrollbar-gutter") !== `${gutter}px`) {
+      rootStyle.setProperty("--pte-scrollbar-gutter", `${gutter}px`);
+    }
+    if (rootStyle.getPropertyValue("--pte-scrollbar-gutter-active") !== `${gutterWidth}px`) {
+      rootStyle.setProperty("--pte-scrollbar-gutter-active", `${gutterWidth}px`);
+    }
 
-    this.params.centerHeader.style.paddingRight = `${hasRightSection ? 0 : gutterWidth}px`;
-    this.params.rightHeader.style.paddingRight = `${hasRightSection ? gutterWidth : 0}px`;
-    this.params.hScrollContainer.style.paddingRight = `${gutterWidth}px`;
+    setStyle(this.params.centerHeader, "paddingRight", `${hasRightSection ? 0 : gutterWidth}px`);
+    setStyle(this.params.rightHeader, "paddingRight", `${hasRightSection ? gutterWidth : 0}px`);
+    setStyle(this.params.hScrollContainer, "paddingRight", `${gutterWidth}px`);
 
     if (hasRightSection) {
       // The extra pixel covers the pinned section's border; the remaining width is the live
       // vertical-scrollbar lane, when present. No min-width: the resize observer's max-width (the
       // cap plus this same lane) has to be able to clamp it, exactly as it clamps the body.
       const headerWidth = this.rightSectionWidth + gutterWidth + 1;
-      this.params.rightHeader.style.width = `${headerWidth}px`;
+      setStyle(this.params.rightHeader, "width", `${headerWidth}px`);
     }
   }
 
