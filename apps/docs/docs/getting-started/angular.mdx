@@ -72,8 +72,47 @@ export class OwnerTooltip implements ITooltipNgComp {
 ```
 
 ActionFrame components follow the same pattern with `IActionFrameNgComp`.
-Angular header components are not adapted; headers use the core DOM component
-contract.
+Angular components also work in `defaultColDef`, `groupColumnDef`, and
+`pivotResultColumnDef` for every component slot.
+
+## Angular header components
+
+`headerComponent` (the header content: label, sort icon, expander) and
+`headerCellComponent` (the whole header cell except its resize handle) accept
+Angular components. Params arrive through `awbInit(params)` or a `params`
+input; when the header's sort or filter state changes, `awbRefresh(params)`
+runs (return `false` to have the grid re-create the component), or the
+`params` input is set again. The component is destroyed when the header is
+rebuilt or the grid is destroyed.
+
+```ts
+@Component({
+  standalone: true,
+  template: `<button type="button" (click)="params?.progressSort()">{{ label }}</button>`,
+})
+export class SortableHeader implements IHeaderNgComp {
+  params: HeaderComponentParams | null = null;
+  label = "";
+
+  awbInit(params: HeaderComponentParams): void {
+    this.awbRefresh(params);
+  }
+
+  awbRefresh(params: HeaderComponentParams): boolean {
+    this.params = params;
+    this.label = `${params.displayName} ${params.sort.direction ?? ""}`;
+    return true;
+  }
+}
+
+const columns: NgColDef[] = [
+  { key: "name", label: "Name", headerComponent: SortableHeader },
+  { key: "status", label: "Status", headerCellComponent: SortableHeader },
+];
+```
+
+Core header components (a class with `init`/`getGui`/`refresh`/`destroy`, or
+a function returning an element or string) pass through unchanged.
 
 ## Angular cell editor
 
@@ -99,6 +138,39 @@ export class TextEditor implements ICellEditorNgComp {
   }
 }
 ```
+
+## Live and creation-only inputs
+
+Most inputs are live: changing one reconfigures the mounted grid in place. A
+few are read only when the grid is created, and changing one of those later
+has no effect. In development mode (`isDevMode()`) the grid logs one warning
+per input when that happens:
+
+```text
+[agility-workbench] <awb-grid> input "rowHeight" changed after the grid was created. It is read only at creation, so the change is ignored. Re-create the grid to apply it (for example, render it under an @if or a keyed @for so Angular destroys and creates a new <awb-grid>).
+```
+
+To apply a creation-only change, re-create the component, for example by
+keying it in a single-item `@for`:
+
+```html
+@for (height of [rowHeight]; track height) {
+  <awb-grid [rowHeight]="height" [rowData]="rows" [columnDefs]="columns" />
+}
+```
+
+Objects and functions that are re-created with the same contents do not count
+as changes.
+
+| | Inputs |
+| --- | --- |
+| **Live** | `rowData`, `columnDefs`, `loading`; `rowHover`, `columnHover`, `zebraRows`, `getRowClass`, `getRowStyle`, `getRowPresentation`, `ariaLabel`, `ariaLabelledBy`, `highlightActiveCell`, `cellSelection`, `rangeSelection`, `fillHandle`, `columnSelection`, `headerKeyboardNavigation`, `showColumnButtonsOnHover`, `bodyContextMenu`, `editTrigger`, `readOnlyEdit`, `pinnedRowsEditable`, `rowPinningMenu`, `rowInsertionMenu`, `suppressKeyboardEdit`, `suppressTypeToEdit`, `moveAfterEdit`, `commitOnBlur`, `asyncTransactionWaitMs`, `loadingMessage`, `noRowsMessage`; `toolbar`, `quickFilter`, `tooltip`, `columnPanel`, `savedViews`, `sheets`, `pagination`, `paginationControls`, `rowSelection`, `isRowSelectable`, `theme`, `icons`, `headerHeight`, `leafHeaderHeight`, `parentHeaderHeight`, `pinnedTopRowData`, `pinnedBottomRowData`, `isRowPinned`, `groupRowsSticky`, `groupDisplayType`, `groupSortMode`, `groupRowsSelectable`, `groupChildCount`, `pivotColumnMoveMode`, `serverSideDataSource`, `serverSideAggregationSource`; `pivotMode`, `pivotColumns`; `treeData.keyboardNavigationMode`, `treeData.enableKeyboardNavigationModeSwitch` |
+| **Live (current value is read on each call)** | `onBeforeCellCommit`, `fillOperation`, `getColumnMenuItems`, `multiColumnMenu` (except `false` at creation, which removes the multi-column menu for the grid's lifetime). Outputs are always live |
+| **Creation-only** | `rowHeight`, `getRowId`, `rowIdKey`, `rowDataMode`, `rowModelType`, `serverSideBlockSize`, `overscanRowCount`, `minResizeWidth`, `maxColumnWidth`, `allowExportAsCSV`, `allowExportAsExcel`, `rowNumbers`, `selectAllRowsOnHeaderClick`, `selectAllScope`, `selectionPersistence`, `clearSelectionOnBodyClick`, `resetPageOn`, `pageSize`, `pageSizes`, `paginationUnknownTotalTooltip`, `getGroupChildCount`, `autosizeColumnsOnDataChange`, `undoLimit`, `initialSort`, `showSortPriority`, `reevaluateOnEdit`, `groupColumnDef`, `groupDefaultExpanded`, `pivotResultColumnDef`, `maxPivotColumns`, `treeData` (all other members), `isFullWidthRow`, `fullWidthCellRenderer`, `defaultColDef`, `pivotNoValuesMessage`, `pivotEmptyMessage`, `filterDebounceMs`, `cellFlashDuration`, `cellFadeDuration`, `suppressStyleInjection`, `styleNonce` |
+
+The creation-only list is the core's `CREATION_ONLY_OPTION_KEYS`, minus the
+inputs the binding bridges. The [React binding](./react.mdx#live-and-creation-only-props)
+splits its props the same way.
 
 ## Outputs and API access
 

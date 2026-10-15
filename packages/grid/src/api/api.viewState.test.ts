@@ -332,3 +332,125 @@ describe("GridAPI saved view state", () => {
     expect(leaves()).toEqual(["name", "revenue", "margin", "region", "country"]);
   });
 });
+
+describe("GridAPI saved view state: aggregate scope, runtime pins, quick-filter settings", () => {
+  /** An in-memory stand-in for the renderer's pin controller (the renderer owns the real map). */
+  function fakePins() {
+    const overrides = new Map<string, "top" | "bottom" | null>();
+    return {
+      overrides,
+      controller: {
+        setPinnedTopRowData: () => {},
+        setPinnedBottomRowData: () => {},
+        setRowPinned: (rowId: string | number, position: "top" | "bottom" | null) => {
+          if (position) overrides.set(String(rowId), position);
+          else overrides.delete(String(rowId));
+        },
+        getRowPinnedOverrides: () => Array.from(overrides, ([rowId, position]) => ({ rowId, position })),
+        setRowPinnedOverrides: (list: Array<{ rowId: string; position: "top" | "bottom" | null }>) => {
+          overrides.clear();
+          for (const pin of list) overrides.set(pin.rowId, pin.position);
+        },
+      },
+    };
+  }
+
+  function makePinnedGrid() {
+    const grid = makeGrid();
+    const pins = fakePins();
+    grid.api.setPinnedRowsController(pins.controller);
+    return { ...grid, pins };
+  }
+
+  it("captures and restores the live aggregate scope on a fresh grid", () => {
+    const { core, api } = makePinnedGrid();
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+    core.setAggregateScope("all");
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(captured.aggregateScope).toBe("all");
+
+    // Restoring the aggregate model alone would turn the footer on at page scope.
+    const fresh = makePinnedGrid();
+    fresh.api.applyViewState(captured);
+    expect(fresh.core.getAggregateScope()).toBe("all");
+
+    // A scope of "none" with aggregates configured survives too (the footer is hidden, not cleared).
+    core.setAggregateScope("none");
+    const hidden = api.captureViewState();
+    const fresh2 = makePinnedGrid();
+    fresh2.api.applyViewState(hidden);
+    expect(fresh2.core.getAggregateScope()).toBe("none");
+    expect(fresh2.core.getAggregateModel()).toHaveLength(1);
+  });
+
+  it("captures and restores runtime row pins on a fresh grid", () => {
+    const { api } = makePinnedGrid();
+    api.setRowPinned("1", "top");
+    api.setRowPinned("2", "bottom");
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(captured.rowPinning).toEqual([
+      { rowId: "1", position: "top" },
+      { rowId: "2", position: "bottom" },
+    ]);
+
+    const fresh = makePinnedGrid();
+    fresh.api.setRowPinned("2", "top");
+    fresh.api.applyViewState(captured);
+    expect(Array.from(fresh.pins.overrides)).toEqual([["1", "top"], ["2", "bottom"]]);
+
+    // An empty list is a view with no pins: it clears.
+    fresh.api.applyViewState({ ...captured, rowPinning: [] });
+    expect(fresh.pins.overrides.size).toBe(0);
+  });
+
+  it("captures and restores the quick filter's match mode, case sensitivity and behavior", () => {
+    const { core, api } = makePinnedGrid();
+    api.setQuickFilter("ind", { matchMode: "wholeCell", caseSensitive: true, behavior: "find" });
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+    expect(captured.quickFilterText).toBe("ind");
+    expect(captured.quickFilterSettings).toEqual({ matchMode: "wholeCell", caseSensitive: true, behavior: "find" });
+
+    const fresh = makePinnedGrid();
+    fresh.api.applyViewState(captured);
+    expect(fresh.core.getQuickFilterText()).toBe("ind");
+    expect(fresh.core.getQuickFilterMatchSettings()).toEqual({ matchMode: "wholeCell", caseSensitive: true });
+    expect(fresh.core.getQuickFilterBehavior()).toBe("find");
+    expect(core.getQuickFilterBehavior()).toBe("find");
+  });
+
+  it("apply then capture yields the same object", () => {
+    const { core, api } = makePinnedGrid();
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+    core.setAggregateScope("all");
+    api.setRowPinned("2", "top");
+    api.setQuickFilter("a", { matchMode: "substring", caseSensitive: false, behavior: "filter" });
+    const captured = JSON.parse(JSON.stringify(api.captureViewState()));
+
+    const fresh = makePinnedGrid();
+    fresh.api.applyViewState(captured);
+    expect(JSON.parse(JSON.stringify(fresh.api.captureViewState()))).toEqual(captured);
+    // And applying it again onto itself changes nothing.
+    fresh.api.applyViewState(captured);
+    expect(JSON.parse(JSON.stringify(fresh.api.captureViewState()))).toEqual(captured);
+  });
+
+  it("an old view without the new fields leaves scope, pins and match settings alone", () => {
+    const { core, api, pins } = makePinnedGrid();
+    const old = api.captureViewState() as any;
+    delete old.aggregateScope;
+    delete old.rowPinning;
+    delete old.quickFilterSettings;
+    old.quickFilterText = "a";
+
+    core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
+    core.setAggregateScope("all");
+    api.setRowPinned("1", "bottom");
+    api.setQuickFilter("", { matchMode: "wholeCell", caseSensitive: true, behavior: "filter" });
+
+    api.applyViewState(old);
+    expect(core.getAggregateScope()).toBe("all");
+    expect(Array.from(pins.overrides)).toEqual([["1", "bottom"]]);
+    expect(core.getQuickFilterText()).toBe("a");
+    expect(core.getQuickFilterMatchSettings()).toEqual({ matchMode: "wholeCell", caseSensitive: true });
+  });
+});

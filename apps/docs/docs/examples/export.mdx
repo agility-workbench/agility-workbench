@@ -22,6 +22,14 @@ headers, cell spans, full-width row merges, pinned panes, typed number/date/
 currency values, and application-pinned rows. Aggregate footers become live
 formulas when an equivalent Excel function exists.
 
+Date cells are written on the local calendar, the day the cell shows. CSV
+writes a date column's formatted text (its `format`, `YYYY-MM-DD` by default);
+when the column's formatter leaves the value unchanged, CSV falls back to the
+local `YYYY-MM-DD`, adding a zone-less local `THH:mm:ss` only when the value has
+a time of day. It never writes a UTC timestamp, which would move a local-midnight
+date to the previous day east of Greenwich. Excel receives a real date, and
+date-only text such as `"2026-03-01"` is read as that local day.
+
 Grouped export supports a tree with outline levels and per-group subtotals, or
 a flat leaf mode with full group paths. Selection export prunes the group tree
 to relevant rows.

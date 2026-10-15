@@ -21,6 +21,7 @@ import {
   GroupDisplayType,
   GroupSortMode,
   QuickFilterBehavior,
+  QuickFilterMatchMode,
   RowPinnedPosition,
   RowPresentation,
   RuntimeGridOptions,
@@ -149,6 +150,8 @@ export interface IGridCore {
   getQuickFilterText(): string;
   /** Whether the quick filter narrows the rows ("filter") or highlights matching cells ("find"). */
   getQuickFilterBehavior(): QuickFilterBehavior;
+  /** The quick filter's live match settings (the option's defaults until changed at runtime). */
+  getQuickFilterMatchSettings(): { matchMode: QuickFilterMatchMode; caseSensitive: boolean };
   /** The find behavior's live state — match count, active match. @see QuickFilterFindState */
   getFindState(): QuickFilterFindState;
   getAggregateModel(): AggregateModel[];

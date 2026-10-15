@@ -107,6 +107,10 @@ function insertStyleEl(
  * - **Shadow root** — adopted via CSSOM. There is no competing author CSS
  *   inside a shadow tree, so cascade position does not matter, and CSSOM is
  *   exempt from CSP.
+ *   Layers the grid portals out of its root (the column drag ghost, tooltips and
+ *   ActionFrame popovers under `escapeRootClip`) are mounted in this same shadow
+ *   root rather than `document.body` (renderer/floating/portal.ts), so this one
+ *   delivery styles them too and nothing is ever injected into the page.
  * - **Document** — a `<style>` element placed first in `<head>`, so the
  *   consumer's own stylesheets keep winning at equal specificity. This costs
  *   CSP compatibility, hence {@link InjectGridStylesOptions.nonce}.

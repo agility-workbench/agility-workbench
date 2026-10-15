@@ -6,6 +6,7 @@ import {
   ReactColDef,
   ReactDefaultColDef,
   ReactGetRowPresentation,
+  ReactPartialColDef,
 } from "./cellRenderer";
 import { MenuItem } from "./menu";
 
@@ -20,6 +21,8 @@ export interface GridProps extends Omit<
   | "fullWidthCellRenderer"
   | "defaultColDef"
   | "getRowPresentation"
+  | "groupColumnDef"
+  | "pivotResultColumnDef"
 > {
   /** Optional className/style for the host div */
   className?: string;
@@ -82,6 +85,16 @@ export interface GridProps extends Omit<
    * be React components; they are adapted exactly as they would be on a real column def.
    */
   defaultColDef?: ReactDefaultColDef;
+  /**
+   * The auto-group column's definition (see core `groupColumnDef`), React-aware like `defaultColDef`:
+   * component fields (cellRenderer, tooltipComponent, headerComponent, …) may be React components.
+   */
+  groupColumnDef?: ReactPartialColDef;
+  /**
+   * Layered over every pivot result column (see core `pivotResultColumnDef`), React-aware like
+   * `defaultColDef`.
+   */
+  pivotResultColumnDef?: ReactPartialColDef;
   /** React-aware row presentation callback; row tooltip components may be React components. */
   getRowPresentation?: ReactGetRowPresentation;
 }

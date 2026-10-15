@@ -103,46 +103,32 @@ export interface GridThemeParams {
   /**
    * ActionFrame popover background.
    *
-   * Like every `actionFramePopover*` param, this has **no effect** when the column runs with
-   * `actionFrameOptions.escapeRootClip: true` — see {@link GridThemeParams.actionFramePopoverWidth}.
+   * Like every `actionFramePopover*` and `tooltip*` param, this also applies when the popover runs
+   * with `actionFrameOptions.escapeRootClip: true` — see {@link GridThemeParams.actionFramePopoverWidth}.
    */
   actionFramePopoverBackgroundColor?: string;
-  /** ActionFrame popover text color. No effect under `escapeRootClip` — see
-   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  /** ActionFrame popover text color. */
   actionFramePopoverTextColor?: string;
-  /** ActionFrame popover border color. No effect under `escapeRootClip` — see
-   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  /** ActionFrame popover border color. */
   actionFramePopoverBorderColor?: string;
-  /** ActionFrame popover shadow. No effect under `escapeRootClip` — see
-   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  /** ActionFrame popover shadow. */
   actionFramePopoverShadow?: string;
-  /** ActionFrame popover border radius. No effect under `escapeRootClip` — see
-   * {@link GridThemeParams.actionFramePopoverWidth}. */
+  /** ActionFrame popover border radius. */
   actionFramePopoverRadius?: string | number;
   /**
    * ActionFrame popover width.
    *
-   * **Not applied when the popover escapes the root clip.** Theme params are delivered as inline
-   * `--pte-*` custom properties on the grid root, so they only reach elements inside that subtree.
-   * With `actionFrameOptions.escapeRootClip: true` the popover is mounted in `document.body`, where
-   * it inherits `--pte-action-frame-popover-width` from the stylesheet's `:root` block instead and
-   * renders at the built-in default (300px). The same applies to every other
-   * `actionFramePopover*` param.
-   *
-   * To size an escaped popover, either drop `escapeRootClip`, or set the variable at document scope
-   * (which affects all grids on the page):
-   * ```css
-   * :root { --pte-action-frame-popover-width: 420px; }
-   * ```
+   * Theme params are delivered as inline `--pte-*` custom properties on the grid root. Layers that
+   * are portaled out of the root — a popover or tooltip under `escapeRootClip`, and the column drag
+   * ghost — get the same inline properties mirrored onto them while they are mounted (kept in sync
+   * across `setTheme`), so every theme param applies to them exactly as inside the root. Under a
+   * shadow-root mount they are portaled into the grid's own shadow root rather than
+   * `document.body`, so the grid's stylesheet reaches them too.
    */
   actionFramePopoverWidth?: string | number;
   /**
-   * Tooltip background color.
-   *
-   * Tooltips portal to `document.body` when `tooltipOptions.escapeRootClip` is on, so the whole
-   * `tooltip*` family is subject to the same limitation described on
-   * {@link GridThemeParams.actionFramePopoverWidth}: those tooltips fall back to the stylesheet
-   * defaults rather than the theme's values.
+   * Tooltip background color. Applies to tooltips portaled under `tooltipOptions.escapeRootClip`
+   * too — see {@link GridThemeParams.actionFramePopoverWidth}.
    */
   tooltipBackgroundColor?: string;
   /** Tooltip text color. */
@@ -263,23 +249,23 @@ const FANOUT: Record<string, Fanout> = {
   actionFramePopoverTextColor: { vars: ["--pte-action-frame-popover-text-color"] },
   actionFramePopoverBorderColor: { vars: ["--pte-action-frame-popover-border-color"] },
   actionFramePopoverShadow: { vars: ["--pte-action-frame-popover-shadow"] },
-  actionFramePopoverRadius: { vars: ["--pte-action-frame-popover-radius"] },
-  actionFramePopoverWidth: { vars: ["--pte-action-frame-popover-width"] },
+  actionFramePopoverRadius: { vars: ["--pte-action-frame-popover-radius"], px: true },
+  actionFramePopoverWidth: { vars: ["--pte-action-frame-popover-width"], px: true },
   tooltipBackgroundColor: { vars: ["--pte-tooltip-bg"] },
   tooltipTextColor: { vars: ["--pte-tooltip-text-color"] },
   tooltipBorderColor: { vars: ["--pte-tooltip-border-color"] },
-  tooltipRadius: { vars: ["--pte-tooltip-radius"] },
+  tooltipRadius: { vars: ["--pte-tooltip-radius"], px: true },
   tooltipShadow: { vars: ["--pte-tooltip-shadow"] },
-  tooltipMaxWidth: { vars: ["--pte-tooltip-max-width"] },
-  scrollbarRadius: { vars: ["--pte-scrollbar-radius"] },
-  scrollbarSize: { vars: ["--pte-scrollbar-size"] },
-  scrollbarGutter: { vars: ["--pte-scrollbar-gutter"] },
-  scrollbarGutterActive: { vars: ["--pte-scrollbar-gutter-active"] },
-  scrollbarLaneMin: { vars: ["--pte-scrollbar-lane-min"] },
-  rowBorderSize: { vars: ["--pte-row-border-size"] },
-  paginationFooterHeight: { vars: ["--pte-pagination-footer-height"] },
-  columnPanelWidth: { vars: ["--pte-column-panel-width"] },
-  columnPanelGutterWidth: { vars: ["--pte-column-panel-gutter-width"] },
+  tooltipMaxWidth: { vars: ["--pte-tooltip-max-width"], px: true },
+  scrollbarRadius: { vars: ["--pte-scrollbar-radius"], px: true },
+  scrollbarSize: { vars: ["--pte-scrollbar-size"], px: true },
+  scrollbarGutter: { vars: ["--pte-scrollbar-gutter"], px: true },
+  scrollbarGutterActive: { vars: ["--pte-scrollbar-gutter-active"], px: true },
+  scrollbarLaneMin: { vars: ["--pte-scrollbar-lane-min"], px: true },
+  rowBorderSize: { vars: ["--pte-row-border-size"], px: true },
+  paginationFooterHeight: { vars: ["--pte-pagination-footer-height"], px: true },
+  columnPanelWidth: { vars: ["--pte-column-panel-width"], px: true },
+  columnPanelGutterWidth: { vars: ["--pte-column-panel-gutter-width"], px: true },
   headerHeight: { vars: ["--pte-header-height"], px: true },
   cellFlashFadeDuration: { vars: ["--pte-cell-flash-fade-duration"] },
   rootBorderRadius: { vars: ["--pte-root-border-radius"], px: true },
@@ -400,12 +386,33 @@ function resolveVars(params: GridThemeParams): Record<string, string> {
   return out;
 }
 
+/** The atomic variables a semantic param writes — the fan-out table plus the three derived cases. */
+function varsSetByParam(key: string): readonly PteVarName[] {
+  if (key === "spacing") return [...FANOUT.cellHorizontalPadding.vars, ...FANOUT.cellVerticalPadding.vars];
+  if (key === "findMatchColor") {
+    return ["--pte-find-match-bg-color", "--pte-find-match-active-bg-color", "--pte-find-match-active-border-color"];
+  }
+  if (key === "borderLessGrid") return ["--pte-frame-border-color"];
+  return FANOUT[key as keyof typeof FANOUT]?.vars ?? [];
+}
+
+/**
+ * Later wins. A semantic param in `overrides` beats the base theme's raw `vars` for the variables
+ * it fans out to, so `themeDark.withParams({ accentColor })` changes the accent even though
+ * themeDark sets every value through `vars` — the documented usage. `overrides.vars` still wins
+ * over everything, and `vars`/`icons` merge key-wise so a partial override never wipes the base.
+ */
 function mergeParams(base: GridThemeParams, overrides: GridThemeParams): GridThemeParams {
+  const vars: NonNullable<GridThemeParams["vars"]> = { ...base.vars };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key === "vars" || key === "icons" || value == null) continue;
+    for (const name of varsSetByParam(key)) delete vars[name];
+  }
+  Object.assign(vars, overrides.vars);
   return {
     ...base,
     ...overrides,
-    // `vars` and `icons` are merged key-wise so partial overrides don't wipe the base.
-    vars: { ...base.vars, ...overrides.vars },
+    vars,
     icons: { ...base.icons, ...overrides.icons },
   };
 }

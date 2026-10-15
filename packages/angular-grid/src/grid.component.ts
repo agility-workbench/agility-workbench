@@ -11,6 +11,8 @@ import {
   effect,
   inject,
   input,
+  isDevMode,
+  isSignal,
   output,
   untracked,
 } from "@angular/core";
@@ -36,12 +38,19 @@ import type {
   SortChangedParams,
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
+import {
+  CREATION_ONLY_INPUT_CANDIDATES,
+  UNCOMPARABLE,
+  creationOnlyWarning,
+  inputFingerprint,
+} from "./creation-only";
 import { getGridOptions } from "./factory";
 import type {
   NgColDef,
   NgComponent,
   NgDefaultColDef,
   NgGetRowPresentation,
+  NgPartialColDef,
 } from "./interface";
 import type { NgMenuItem } from "./menu";
 import { NgBodyMenuAdapter, NgMenuAdapter } from "./menuAdapters";
@@ -97,7 +106,7 @@ export class AwbGrid implements OnDestroy {
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
   readonly pivotMode = input<GridOptions["pivotMode"]>();
   readonly pivotColumns = input<GridOptions["pivotColumns"]>();
-  readonly pivotResultColumnDef = input<GridOptions["pivotResultColumnDef"]>();
+  readonly pivotResultColumnDef = input<NgPartialColDef | undefined>();
   readonly maxPivotColumns = input<GridOptions["maxPivotColumns"]>();
   readonly pivotColumnMoveMode = input<GridOptions["pivotColumnMoveMode"]>();
   readonly autosizeColumnsOnDataChange = input<GridOptions["autosizeColumnsOnDataChange"]>();
@@ -165,7 +174,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- grouping / tree ---
   readonly groupDisplayType = input<GridOptions["groupDisplayType"]>();
-  readonly groupColumnDef = input<GridOptions["groupColumnDef"]>();
+  readonly groupColumnDef = input<NgPartialColDef | undefined>();
   readonly groupDefaultExpanded = input<GridOptions["groupDefaultExpanded"]>();
   readonly groupSortMode = input<GridOptions["groupSortMode"]>();
   readonly groupRowsSelectable = input<GridOptions["groupRowsSelectable"]>();
@@ -344,6 +353,7 @@ export class AwbGrid implements OnDestroy {
     });
 
     this.instance = instance;
+    if (isDevMode()) this.startCreationOnlyWarnings();
     this.startSyncEffects(instance);
     this.gridReady.emit(instance.api);
   }
@@ -561,6 +571,42 @@ export class AwbGrid implements OnDestroy {
       const icons = this.icons();
       return () => api.updateGridOptions({ theme, icons: { ...theme?.getIcons(), ...icons } });
     });
+  }
+
+  /**
+   * Development only. Creation-only inputs are read once, by createGrid; a later change to one is
+   * ignored. Instead of letting that change vanish silently, warn once per input (per grid
+   * instance), comparing against the value the grid was created with. The input list is core's
+   * creation-only key list, intersected with the inputs this component declares.
+   */
+  private startCreationOnlyWarnings(): void {
+    const self = this as unknown as Record<string, unknown>;
+    const inputs = CREATION_ONLY_INPUT_CANDIDATES.flatMap((key) => {
+      const candidate = self[key];
+      return isSignal(candidate) ? [{ key, read: candidate as () => unknown }] : [];
+    });
+    const created = new Map(
+      inputs.map(({ key, read }) => {
+        const value = untracked(read);
+        return [key, { value, fingerprint: inputFingerprint(key, value) }] as const;
+      }),
+    );
+    const warned = new Set<string>();
+    effect(
+      () => {
+        for (const { key, read } of inputs) {
+          const value = read();
+          if (warned.has(key)) continue;
+          const initial = created.get(key)!;
+          if (Object.is(value, initial.value)) continue;
+          const fingerprint = inputFingerprint(key, value);
+          if (fingerprint !== UNCOMPARABLE && fingerprint === initial.fingerprint) continue;
+          warned.add(key);
+          console.warn(creationOnlyWarning(key));
+        }
+      },
+      { injector: this.injector },
+    );
   }
 
   /**

@@ -4,6 +4,7 @@ import {
   adaptCellRenderer,
   adaptReactDefaultColDef,
   adaptReactGetRowPresentation,
+  adaptReactPartialColumnDef,
 } from "./cellRenderer";
 
 function setIfDefined<K extends keyof GridOptions>(
@@ -37,7 +38,6 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);
   setIfDefined(options, "pivotMode", props.pivotMode);
   setIfDefined(options, "pivotColumns", props.pivotColumns);
-  setIfDefined(options, "pivotResultColumnDef", props.pivotResultColumnDef);
   setIfDefined(options, "maxPivotColumns", props.maxPivotColumns);
   setIfDefined(options, "pivotColumnMoveMode", props.pivotColumnMoveMode);
   setIfDefined(options, "autosizeColumnsOnDataChange", props.autosizeColumnsOnDataChange);
@@ -98,7 +98,6 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "commitOnBlur", props.commitOnBlur);
   setIfDefined(options, "reevaluateOnEdit", props.reevaluateOnEdit);
   setIfDefined(options, "groupDisplayType", props.groupDisplayType);
-  setIfDefined(options, "groupColumnDef", props.groupColumnDef);
   setIfDefined(options, "groupDefaultExpanded", props.groupDefaultExpanded);
   setIfDefined(options, "groupSortMode", props.groupSortMode);
   setIfDefined(options, "treeData", props.treeData);
@@ -127,6 +126,13 @@ export function getGridOptions(props: GridProps): GridOptions {
     options.fullWidthCellRenderer = adaptCellRenderer(props.fullWidthCellRenderer);
   }
   if (props.defaultColDef != null) options.defaultColDef = adaptReactDefaultColDef(props.defaultColDef);
+  // The partial defs the grid layers over its synthesized columns carry component fields too.
+  if (props.groupColumnDef != null) {
+    options.groupColumnDef = adaptReactPartialColumnDef(props.groupColumnDef);
+  }
+  if (props.pivotResultColumnDef != null) {
+    options.pivotResultColumnDef = adaptReactPartialColumnDef(props.pivotResultColumnDef);
+  }
 
   // Forward only the boolean intent to core: false disables the menu (native menu shows); everything
   // else (true / omitted / a function) leaves core at its "show menu" default and lets the React

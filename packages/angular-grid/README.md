@@ -77,6 +77,13 @@ are not overwritten), `[pivotColumnMoveMode]` is live, `[pivotResultColumnDef]` 
 `[sheets]` renders the footer tab strip with the same app-owned persistence contract as
 `[savedViews]`. See the core README for what pivot mode and sheets do.
 
+Most inputs are live. The ones the grid reads only at creation (`rowHeight`, `getRowId`,
+`rowIdKey`, `rowModelType`, `defaultColDef`, `groupColumnDef`, `pivotResultColumnDef`,
+`initialSort`, … — the core's `CREATION_ONLY_OPTION_KEYS`, minus the bridged inputs) ignore later
+changes; in development mode (`isDevMode()`) the grid logs one `console.warn` naming the input when
+that happens. Re-create the `<awb-grid>` (for example under an `@if`, or a keyed `@for`) to apply
+such a change. The Angular page of the documentation site has the full live-vs-creation table.
+
 ## Styling
 
 Nothing to do — the grid delivers its own stylesheet when it attaches, once per document, and
@@ -91,8 +98,11 @@ copies do not fight in the cascade.
 ## Angular components in the grid
 
 Column definitions accept Angular component classes wherever the core accepts a class component —
-`cellRenderer`, `cellEditor`, `tooltipComponent`, `headerTooltip`, and `actionFrameComponent`.
-A component receives its params either through an input named `params` or by implementing
+`cellRenderer`, `cellEditor`, `tooltipComponent`, `headerTooltip`, `actionFrameComponent`, the
+set-filter components in `filterParams`, and the header components `headerComponent` (header
+content) and `headerCellComponent` (the whole header cell; contract `IHeaderNgComp`). The same slots
+are adapted in `[defaultColDef]`, `[groupColumnDef]`, and `[pivotResultColumnDef]`. A component
+receives its params either through an input named `params` or by implementing
 `awbInit(params)` (plus optional `awbRefresh(params)`):
 
 ```ts

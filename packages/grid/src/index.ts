@@ -87,6 +87,12 @@ export type { ColumnMenuContext } from "./menu";
 export { isFalse, isTrue, valuesAreSame } from "./misc";
 
 export { REJECT } from "./interfaces/gridOptions";
+export {
+  CREATION_ONLY_OPTION_KEYS,
+  MODEL_STATE_OPTION_KEYS,
+  UPDATABLE_OPTION_KEYS,
+  isCreationOnlyGridOption,
+} from "./interfaces/gridOptions";
 export type {
   GridOptions,
   // Accepted by `api.updateGridOptions`; `RuntimeGridOptions` is the slice it applies as a unit.
@@ -163,6 +169,8 @@ export type {
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewPaginationState,
+  GridViewQuickFilterSettings,
+  GridViewRowPinnedState,
   GridViewSortState,
   GridViewState,
   SavedGridView,
@@ -284,6 +292,7 @@ export type {
   IServerSideFilter,
   IServerSideGetRowsParams,
   IServerSideGroupKey,
+  IServerSideQuickFilter,
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,

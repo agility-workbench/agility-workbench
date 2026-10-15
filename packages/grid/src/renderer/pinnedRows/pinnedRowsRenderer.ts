@@ -71,6 +71,10 @@ interface PinnedRowsRendererParams {
    * (the ActionFrame border) must re-stamp: the scroll tick re-stamps after this render anyway,
    * but forced rebuilds (row presentation, pin changes, colSpan repaints) happen outside it. */
   onStickyRebuilt?: () => void;
+  /** An application-pinned band was rebuilt (rows added, removed or re-rendered). The owner of the
+   * grid's ARIA row numbering re-derives `aria-rowcount` and re-stamps the band rows' indexes
+   * through {@link PinnedRowsRenderer.stampAriaRowIndexes}. */
+  onBandsRendered?: () => void;
 }
 
 /**
@@ -115,6 +119,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   // Application-pinned rows only change through API/option/model events (which force-render), so
   // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
   private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
+  /** Row id of the docked mirror a pointer gesture is landing on, for the rest of that event's task
+   * (see isDockedUnderPointer). */
+  private pointerMirrorRowId: string | null = null;
+  private pointerMirrorTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private params: PinnedRowsRendererParams) {
     this.top = this.createBand("top");
@@ -129,16 +137,51 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       event.preventDefault();
       this.params.forwardWheel(event.deltaX, event.deltaY);
     }, { passive: false });
+    // Captured ahead of the body handlers the gesture is routed to (see getInteractionRoots).
+    for (const type of ["mousedown", "click", "dblclick", "contextmenu"]) {
+      this.sticky.root.addEventListener(type, this.notePointerOnMirror, true);
+    }
   }
 
-  getInteractionRoots(): HTMLDivElement[] {
-    return [this.top.root, this.bottom.root];
+  private notePointerOnMirror = (event: Event) => {
+    const rowEl = (event.target as HTMLElement | null)?.closest?.<HTMLElement>(".pte-sticky-row");
+    this.pointerMirrorRowId = rowEl?.dataset.rowId ?? null;
+    // Everything the gesture triggers runs synchronously inside this event's dispatch; the next
+    // task is past it.
+    if (this.pointerMirrorTimer == null) {
+      this.pointerMirrorTimer = setTimeout(() => {
+        this.pointerMirrorTimer = null;
+        this.pointerMirrorRowId = null;
+      }, 0);
+    }
+  };
+
+  /**
+   * Whether a pointer gesture in progress landed on the docked mirror of the body row at `viewIdx`.
+   * Such a row is in view — the mirror IS the row the user sees — so scroll-into-view for the
+   * focus, frame or menu the gesture opens must leave the body where it is; its body copy sits
+   * above the viewport, and scrolling to it would yank the group back to its start under the
+   * pointer. Keyboard moves onto a docked row never set this and keep scrolling to the row.
+   */
+  isDockedUnderPointer(viewIdx: number): boolean {
+    return this.pointerMirrorRowId != null
+      && this.params.core.getRowIdAtViewIndex(viewIdx) === this.pointerMirrorRowId;
   }
 
   /**
-   * The sticky overlay. It sits in the body frame beside the body scroller, not inside it, so no
-   * body-level listener sees an event on a docked mirror; callers that want a gesture on mirrors
-   * to behave as on the body row bind it here as well.
+   * Every element whose rows take the body's pointer gestures (mousedown, click, dblclick, context
+   * menu): both application-pinned bands and the sticky overlay. The overlay sits in the body frame
+   * beside the body scroller, not inside it, so no body-level listener sees an event on a docked
+   * mirror; mirrors stamp their body row's view index and no rowPinned tag, so the body handlers
+   * resolve a gesture on one exactly as on the row it covers.
+   */
+  getInteractionRoots(): HTMLDivElement[] {
+    return [this.top.root, this.bottom.root, this.sticky.root];
+  }
+
+  /**
+   * The sticky overlay, for listeners beyond the gestures above (hover tooltips): a docked mirror
+   * covers its body row, so the pointer only ever reaches the mirror.
    */
   getStickyRoot(): HTMLDivElement {
     return this.sticky.root;
@@ -158,6 +201,23 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     if (position || this.params.core.options.isRowPinned) this.manualPinned.set(rowId, position);
     else this.manualPinned.delete(rowId);
     if (!position) this.unpinDescendants(rowId);
+    this.render(this.lastScrollTop, true);
+  }
+
+  /** The runtime pin overrides (setRowPinned / the row-pinning menu), for saved views. A null
+   * position is an explicit unpin that overrides the isRowPinned callback. */
+  getRowPinnedOverrides(): Array<{ rowId: string; position: RowPinnedPosition | null }> {
+    return Array.from(this.manualPinned, ([rowId, position]) => ({ rowId, position }));
+  }
+
+  /** Replace every runtime pin override at once (a saved view's restore). Null entries are only
+   * meaningful against an isRowPinned callback, exactly as in setRowPinned. */
+  setRowPinnedOverrides(overrides: ReadonlyArray<{ rowId: string; position: RowPinnedPosition | null }>): void {
+    this.manualPinned.clear();
+    const callback = this.params.core.options.isRowPinned;
+    for (const { rowId, position } of overrides) {
+      if (position || callback) this.manualPinned.set(rowId, position);
+    }
     this.render(this.lastScrollTop, true);
   }
 
@@ -246,6 +306,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.updateLayout();
     }
     if (stickyChanged) this.params.onStickyRebuilt?.();
+    if (bandsChanged) this.params.onBandsRendered?.();
 
     this.topCount = top.length;
     this.bottomCount = bottom.length;
@@ -459,6 +520,44 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     cell.classList.toggle("pte-active-cell", state.active);
   }
 
+  /**
+   * Stamp `aria-rowindex` on the application-pinned band rows. The grid numbers the header 1 and
+   * body rows by their absolute display number (2..N+1), and a body row's number must not shift
+   * when rows are pinned, so:
+   * - a model row pinned out of the body (isRowPinned / setRowPinned) keeps the index of its body
+   *   slot — it is still one of the N view rows, and the body leaves its number unused;
+   * - a data row (pinnedTopRowData / pinnedBottomRowData) is numbered after the last body row, top
+   *   band first, then bottom.
+   * `first` is the index after the last body row, or null while the body's total is unknown
+   * (server-side estimate), when no row here has an honest index and none is stamped. Returns the
+   * next free index after the data rows (`first` when there are none), or null.
+   */
+  stampAriaRowIndexes(first: number | null): number | null {
+    const core = this.params.core;
+    let next = first;
+    for (const { band, position } of [
+      { band: this.top, position: "top" as const },
+      { band: this.bottom, position: "bottom" as const },
+    ]) {
+      const rows = Array.from(band.centerHost.children) as HTMLElement[];
+      rows.forEach((row, rowIndex) => {
+        if (next == null) {
+          row.removeAttribute("aria-rowindex");
+          return;
+        }
+        const node = core.getDisplayedPinnedRow(position, rowIndex);
+        const bodyViewIdx = node && node.viewIndex >= 0 ? core.getViewIndexForRowId(node.id) : null;
+        if (bodyViewIdx != null) {
+          row.setAttribute("aria-rowindex", String(core.getRowNumberForViewIndex(bodyViewIdx) + 1));
+        } else {
+          row.setAttribute("aria-rowindex", String(next));
+          next++;
+        }
+      });
+    }
+    return next;
+  }
+
   /** The rendered cell element of a band row (any section), e.g. for mounting a cell editor. */
   findCellElement(position: RowPinnedPosition, rowIndex: number, colIdx: number): HTMLDivElement | null {
     const band = position === "top" ? this.top : this.bottom;
@@ -480,6 +579,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   destroy(): void {
+    if (this.pointerMirrorTimer != null) clearTimeout(this.pointerMirrorTimer);
+    this.pointerMirrorTimer = null;
+    this.pointerMirrorRowId = null;
     this.destroyRendererMaps(this.topRendererMaps);
     this.destroyRendererMaps(this.bottomRendererMaps);
     this.destroyRendererMaps(this.stickyRendererMaps);
@@ -666,10 +768,15 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       const chain = edgeRow ? this.parentChainOf(edgeRow) : this.ancestorChainAt(edgeIndex);
       const anchor = chain[depth];
       if (!anchor) break;
-      const natural = this.compactTop(anchor.viewIndex, rowHeight) - scrollTop;
+      // The anchor's slot in the PAGE's view space, which is where `edgeIndex` and the body live:
+      // `anchor.viewIndex` is dataset-wide on client-side grouped/tree views, and an anchor whose
+      // header sat on an earlier page is negative here (above the page, so it docks).
+      const anchorIndex = core.getPageViewIndex(anchor);
+      if (anchorIndex == null) break;
+      const natural = this.compactTop(anchorIndex, rowHeight) - scrollTop;
       if (natural > bottom) break; // header still below the stack in the body — nothing deeper sticks
-      const lastDescendant = this.lastDescendantIndex(anchor, depth, total);
-      if (lastDescendant <= anchor.viewIndex) break; // collapsed/childless: scrolls away naturally
+      const lastDescendant = this.lastDescendantIndex(anchor, anchorIndex, depth, total);
+      if (lastDescendant <= anchorIndex) break; // collapsed/childless: scrolls away naturally
       const blockEnd = this.compactTop(lastDescendant, rowHeight) + rowHeight - scrollTop;
       const top = Math.min(bottom, blockEnd - rowHeight);
       if (top + rowHeight <= 0) break;
@@ -763,15 +870,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
    * server-side model answers from its flattened spans (its rows may not be loaded, which would
    * derail a row scan); otherwise a parent's visible block is contiguous, so the membership
    * predicate is binary-searchable. */
-  private lastDescendantIndex(anchor: IRowNode, depth: number, total: number): number {
+  private lastDescendantIndex(anchor: IRowNode, anchorIndex: number, depth: number, total: number): number {
     const model = this.params.core.getRowModel();
     const spanEnd = model.getSubtreeEndViewIndex?.(anchor.id);
     if (spanEnd != null) {
-      return Math.min(Math.max(spanEnd, anchor.viewIndex), total - 1);
+      return Math.min(Math.max(spanEnd, anchorIndex), total - 1);
     }
-    let low = anchor.viewIndex + 1;
+    // `anchorIndex` is page-relative and negative for a header on an earlier page; the block is
+    // contiguous, so searching from the page's first slot keeps the predicate monotone.
+    let low = Math.max(anchorIndex + 1, 0);
     let high = total - 1;
-    let result = anchor.viewIndex;
+    let result = anchorIndex;
     while (low <= high) {
       const middle = (low + high) >>> 1;
       const node = model.getRowNodeAtViewIndex(middle);
@@ -958,8 +1067,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   }
 
   // ARIA: band rows are stitched like body pool rows — center fragment is THE row,
-  // owning every section's cells in visual order. Band rows carry no aria-rowindex: they sit
-  // outside the view sequence and show a blank row number by design. Bands are rebuilt from
+  // owning every section's cells in visual order. Their aria-rowindex comes after the body's (see
+  // stampAriaRowIndexes, driven by the grid's row-count refresh after each band render); the
+  // sticky overlay's rows get none, the whole overlay being aria-hidden. Bands are rebuilt from
   // scratch on each render, so creation-time stamping stays correct.
   private stitchBandRowAria(
     band: BandElements,
@@ -1014,10 +1124,14 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       element.dataset.rowPinned = pinned;
       element.dataset.viewIdx = String(rowIndex);
     } else {
-      // Sticky mirrors are the live body row: interactions resolve against its real view index,
-      // and the zebra stripe matches so docking never changes a single pixel of the row.
+      // Sticky mirrors are the live body row: interactions resolve against the view index its body
+      // copy carries, and the zebra stripe matches so docking never changes a single pixel of the
+      // row. The body's index is the rendered page's coordinate, which `node.viewIndex` is not once
+      // a grouped view paginates; a row off the page has no body copy and so no index — gestures
+      // on it resolve to nothing rather than to whichever row holds that slot.
       element.classList.add("pte-sticky-row");
-      element.dataset.viewIdx = String(row.viewIndex);
+      const bodyViewIdx = this.params.core.getViewIndexForRowId(row.id);
+      if (bodyViewIdx != null) element.dataset.viewIdx = String(bodyViewIdx);
       if (this.params.core.options.zebraRows && row.viewIndex % 2 === 1) {
         element.classList.add("pte-row-alt");
       }

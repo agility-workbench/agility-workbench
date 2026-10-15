@@ -4,6 +4,7 @@ import { IGridAPI } from "../../interfaces/iGridAPI";
 import { CellRef } from "../../interfaces/selection";
 import { GridEventActionFrameParams, GridEventCellClickedParams, Unsubscribe } from "../../events/events";
 import { FloatingAnchor } from "../floating/floatingAnchor";
+import { findLiveCellElement, stickyOverlayOf } from "../pinnedRows/liveCellElement";
 import { resolveActionFrameOptions } from "../../interfaces/gridOptions";
 import {
   ActionFrameComponentParams,
@@ -207,7 +208,7 @@ export class ActionFrameRenderer {
   private clearFrame() {
     const stale = [
       ...this.params.body.querySelectorAll<HTMLElement>(".pte-action-frame"),
-      ...(this.stickyOverlay()?.querySelectorAll<HTMLElement>(".pte-action-frame") ?? []),
+      ...(stickyOverlayOf(this.params.body)?.querySelectorAll<HTMLElement>(".pte-action-frame") ?? []),
     ];
     stale.forEach((c) => {
       c.classList.remove("pte-action-frame");
@@ -248,43 +249,11 @@ export class ActionFrameRenderer {
     return this.params.leafColumns().findIndex((c) => c.instanceID === col.instanceID);
   }
 
-  // The sticky overlay is a sibling of the body inside the body frame, not a descendant of it.
-  // Scoped to the frame's direct children so a grid nested in a cell renderer can't answer.
-  private stickyOverlay(): HTMLElement | null {
-    return this.params.body.parentElement?.querySelector<HTMLElement>(":scope > .pte-sticky-rows") ?? null;
-  }
-
-  /** The element the user sees for `cell`: a docked group row's sticky mirror when there is one
-   * (it covers its pooled body row, so a border or popover anchored underneath would be hidden),
-   * else the pooled body cell. */
+  /** The element the user sees for `cell` — a docked group row's sticky mirror, else the pooled
+   * body cell (see findLiveCellElement). */
   private getCellEl(cell: CellRef): HTMLElement | null {
     const colIdx = this.colIdxFor(cell.colInstanceId ?? cell.colId);
-    if (colIdx < 0) return null;
-    // A full-width row's pooled per-column cells stay in the DOM, hidden, with their own colIdx
-    // stamps — the nominal column's among them. Its visible cell is the host, so match only that.
-    const fullWidth = this.params.core.isFullWidthNode(this.params.core.getRowModel().getRowNode(cell.rowId));
-    const cellSelector = `${fullWidth ? ".pte-full-width-cell" : ".pte-cell"}[data-col-idx="${colIdx}"]`;
-    // Mirrors are matched by row id: they stamp the node's own viewIndex, which is not the same
-    // coordinate as the body's page-relative index once a grouped view paginates. The stack is a
-    // handful of rows, so a scan beats escaping an arbitrary id into a selector.
-    const sticky = this.stickyOverlay();
-    if (sticky && sticky.style.display !== "none") {
-      for (const rowEl of sticky.querySelectorAll<HTMLElement>(".pte-row.pte-sticky-row")) {
-        if (rowEl.dataset.rowId !== cell.rowId) continue;
-        const cellEl = rowEl.querySelector<HTMLElement>(cellSelector);
-        if (cellEl) return cellEl;
-      }
-    }
-    const viewIdx = this.params.core.getViewIndexForRowId(cell.rowId);
-    if (viewIdx == null || viewIdx < 0) return null;
-    // A row slot renders up to four section rows (leading/left/center/right) sharing one
-    // view-idx; the cell lives in exactly one of them.
-    const rowEls = this.params.body.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
-    for (let i = 0; i < rowEls.length; i++) {
-      const cellEl = rowEls[i].querySelector<HTMLElement>(cellSelector);
-      if (cellEl) return cellEl;
-    }
-    return null;
+    return findLiveCellElement(this.params.core, this.params.body, cell.rowId, colIdx);
   }
 
   private getCellRect(cell: CellRef): DOMRect | null {

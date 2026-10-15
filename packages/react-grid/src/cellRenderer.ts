@@ -42,6 +42,13 @@ import type {
   ActionFrameComponentParams,
   IActionFrameComponent,
 } from "@agility-workbench/grid";
+import { isClassHeaderComponent } from "@agility-workbench/grid";
+import type {
+  HeaderComponent,
+  HeaderComponentClass,
+  HeaderComponentParams,
+  IHeaderComponent,
+} from "@agility-workbench/grid";
 import type { CellEditor } from "@agility-workbench/grid";
 import { adaptCellEditor, ReactCellEditor } from "./cellEditor";
 
@@ -69,6 +76,15 @@ export type ReactActionFrameComponent =
   | React.ComponentType<ActionFrameComponentParams>
   | React.ExoticComponent<ActionFrameComponentParams>;
 
+/**
+ * A React component for a column header slot (`headerComponent` = content only, `headerCellComponent`
+ * = whole cell). It receives the core {@link HeaderComponentParams} as props and re-renders whenever
+ * the grid refreshes the header (sort / filter state changes).
+ */
+export type ReactHeaderComponent =
+  | React.ComponentType<HeaderComponentParams>
+  | React.ExoticComponent<HeaderComponentParams>;
+
 export type ReactSetFilterValueComponent =
   | React.ComponentType<SetFilterValueComponentParams>
   | React.ExoticComponent<SetFilterValueComponentParams>;
@@ -93,7 +109,15 @@ export type ReactFilterParams = Omit<
 
 export type ReactColDef = Omit<
   ColDef,
-  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent" | "filterParams"
+  | "cellRenderer"
+  | "cellEditor"
+  | "children"
+  | "tooltipComponent"
+  | "headerTooltip"
+  | "actionFrameComponent"
+  | "filterParams"
+  | "headerComponent"
+  | "headerCellComponent"
 > & {
   cellRenderer?: CellRenderer | ReactCellRenderer;
   cellEditor?: CellEditor | ReactCellEditor;
@@ -101,6 +125,8 @@ export type ReactColDef = Omit<
   headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
   actionFrameComponent?: ActionFrameComponent | ReactActionFrameComponent;
   filterParams?: ReactFilterParams;
+  headerComponent?: HeaderComponent | ReactHeaderComponent;
+  headerCellComponent?: HeaderComponent | ReactHeaderComponent;
   children?: ReactColDef[];
 };
 
@@ -111,10 +137,18 @@ export type ReactColDef = Omit<
  */
 export type ReactDefaultColDef = Omit<ReactColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
 
+/**
+ * React-aware shape of the partial column defs the grid layers over a synthesized column
+ * (`groupColumnDef`, `pivotResultColumnDef`): a `Partial<ReactColDef>`, so component fields may be
+ * React components.
+ */
+export type ReactPartialColDef = Partial<Omit<ReactColDef, "children">>;
+
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
 const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();
 const reactActionFrameCache = new WeakMap<object, ActionFrameComponentClass>();
 const reactSetFilterComponentCache = new WeakMap<object, SetFilterComponentClass<any>>();
+const reactHeaderComponentCache = new WeakMap<object, HeaderComponentClass>();
 
 function isObjectRenderer(renderer: unknown): renderer is object {
   return (typeof renderer === "function" || typeof renderer === "object") && renderer !== null;
@@ -317,6 +351,105 @@ export function adaptActionFrame(
   return adapted;
 }
 
+/**
+ * Mounts a DOM node a header function returned (the core contract's function form) inside React's
+ * tree, so a pre-existing DOM-returning header function keeps working through the React binding.
+ */
+function DomHeaderSlot({ node }: { node: HTMLElement }): React.ReactElement {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  React.useLayoutEffect(() => {
+    const host = ref.current;
+    if (host && host.firstChild !== node) host.replaceChildren(node);
+  }, [node]);
+  return React.createElement("span", { ref, style: { display: "contents" } });
+}
+
+/**
+ * The element a header adapter renders. A plain function is invoked as a component from inside a
+ * host component (its hooks belong to that host and run in a stable order), which lets the adapter
+ * accept both a React function component and the core contract's DOM function form
+ * (`(params) => HTMLElement | string`), the only form this slot took before React components were
+ * adapted. Class components and exotic components (memo, forwardRef, lazy) render normally.
+ */
+function headerElementFactory(
+  Comp: ReactHeaderComponent,
+): (params: HeaderComponentParams) => React.ReactElement {
+  const isPlainFunction =
+    typeof Comp === "function" &&
+    !(Comp as { prototype?: { isReactComponent?: unknown } }).prototype?.isReactComponent;
+  if (!isPlainFunction) return (params) => React.createElement(Comp, params);
+
+  const render = Comp as (props: HeaderComponentParams) => unknown;
+  function ReactHeaderHost(params: HeaderComponentParams): React.ReactNode {
+    const out = render(params);
+    if (out instanceof HTMLElement) return React.createElement(DomHeaderSlot, { node: out });
+    return out as React.ReactNode;
+  }
+  return (params) => React.createElement(ReactHeaderHost, params);
+}
+
+function createReactHeaderComponentClass(Comp: ReactHeaderComponent): HeaderComponentClass {
+  const element = headerElementFactory(Comp);
+  return class ReactHeaderComponentAdapter implements IHeaderComponent {
+    private el = document.createElement("div");
+    private root: ManagedReactRoot | null = null;
+
+    init(params: HeaderComponentParams): void {
+      // Same box the core gives its function form, so a React header lays out like a native one.
+      this.el.className = "pte-hcell-custom-root";
+      this.el.style.display = "flex";
+      this.el.style.alignItems = "center";
+      this.el.style.width = "100%";
+      this.el.style.height = "100%";
+      this.el.style.overflow = "hidden";
+      // One root for the life of this header cell; refresh re-renders into it so component state
+      // survives sort/filter changes. The header is rebuilt (destroy + init) on structural changes.
+      this.root = new ManagedReactRoot(this.el);
+      this.render(params);
+    }
+
+    getGui(): HTMLElement {
+      return this.el;
+    }
+
+    refresh(params: HeaderComponentParams): boolean {
+      this.render(params);
+      return true;
+    }
+
+    destroy(): void {
+      this.root?.destroy();
+      this.root = null;
+    }
+
+    private render(params: HeaderComponentParams): void {
+      this.root?.render(element(params));
+    }
+  };
+}
+
+/**
+ * Adapt a `headerComponent` / `headerCellComponent`. A core class component (`init`/`getGui`) passes
+ * through untouched; anything else callable is mounted in a React root (see
+ * {@link headerElementFactory} for how a DOM-returning function is still honored).
+ */
+export function adaptHeaderComponent(
+  comp: HeaderComponent | ReactHeaderComponent | undefined,
+): HeaderComponent | undefined {
+  if (!comp) return undefined;
+  if (typeof comp === "function" && isClassHeaderComponent(comp as HeaderComponent)) {
+    return comp as HeaderComponent;
+  }
+  if (!isObjectRenderer(comp)) return comp as HeaderComponent;
+
+  const cached = reactHeaderComponentCache.get(comp);
+  if (cached) return cached;
+
+  const adapted = createReactHeaderComponentClass(comp as ReactHeaderComponent);
+  reactHeaderComponentCache.set(comp, adapted);
+  return adapted;
+}
+
 function createReactSetFilterComponentClass<P extends object>(
   Component: React.ComponentType<P> | React.ExoticComponent<P>,
 ): SetFilterComponentClass<P> {
@@ -395,6 +528,8 @@ export function adaptReactColDef(colDef: ReactColDef): ColDef {
     headerTooltip: adaptHeaderTooltip(colDef.headerTooltip),
     actionFrameComponent: adaptActionFrame(colDef.actionFrameComponent),
     filterParams: adaptReactFilterParams(colDef.filterParams),
+    headerComponent: adaptHeaderComponent(colDef.headerComponent),
+    headerCellComponent: adaptHeaderComponent(colDef.headerCellComponent),
     children: colDef.children ? adaptReactColumnDefs(colDef.children) ?? undefined : undefined,
   };
 }
@@ -405,20 +540,37 @@ export function adaptReactColumnDefs(columnDefs?: ReactColDef[] | null): ColDef[
 }
 
 /**
- * Adapt a grid-level `defaultColDef`: same per-field component adaptation as a real column def, but
- * only the fields actually present are adapted (it is a `Partial<ColDef>`), so an omitted field
- * stays omitted rather than being forced to `undefined`.
+ * Adapt a partial column def (the grid-level `defaultColDef`, `groupColumnDef`,
+ * `pivotResultColumnDef`): same per-field component adaptation as a real column def, but only the
+ * fields actually present are adapted, so an omitted field stays omitted rather than being forced to
+ * `undefined` (the core layers these partials with object spread, where an explicit `undefined`
+ * would clobber the layer beneath).
  */
+function adaptReactPartialColDef<T extends object>(def: ReactPartialColDef): T {
+  const next = { ...def } as Record<string, unknown>;
+  if ("cellRenderer" in def) next.cellRenderer = adaptCellRenderer(def.cellRenderer);
+  if ("cellEditor" in def) next.cellEditor = adaptCellEditor(def.cellEditor);
+  if ("tooltipComponent" in def) next.tooltipComponent = adaptTooltip(def.tooltipComponent);
+  if ("headerTooltip" in def) next.headerTooltip = adaptHeaderTooltip(def.headerTooltip);
+  if ("actionFrameComponent" in def) next.actionFrameComponent = adaptActionFrame(def.actionFrameComponent);
+  if ("filterParams" in def) next.filterParams = adaptReactFilterParams(def.filterParams);
+  if ("headerComponent" in def) next.headerComponent = adaptHeaderComponent(def.headerComponent);
+  if ("headerCellComponent" in def) next.headerCellComponent = adaptHeaderComponent(def.headerCellComponent);
+  return next as T;
+}
+
+/** Adapt a grid-level `defaultColDef` (see {@link adaptReactPartialColDef}). */
 export function adaptReactDefaultColDef(
   defaultColDef?: ReactDefaultColDef | null,
 ): DefaultColDef | undefined {
   if (defaultColDef == null) return undefined;
-  const next = { ...defaultColDef } as unknown as DefaultColDef;
-  if ("cellRenderer" in defaultColDef) next.cellRenderer = adaptCellRenderer(defaultColDef.cellRenderer);
-  if ("cellEditor" in defaultColDef) next.cellEditor = adaptCellEditor(defaultColDef.cellEditor);
-  if ("tooltipComponent" in defaultColDef) next.tooltipComponent = adaptTooltip(defaultColDef.tooltipComponent);
-  if ("headerTooltip" in defaultColDef) next.headerTooltip = adaptHeaderTooltip(defaultColDef.headerTooltip);
-  if ("actionFrameComponent" in defaultColDef) next.actionFrameComponent = adaptActionFrame(defaultColDef.actionFrameComponent);
-  if ("filterParams" in defaultColDef) next.filterParams = adaptReactFilterParams(defaultColDef.filterParams);
-  return next;
+  return adaptReactPartialColDef<DefaultColDef>(defaultColDef);
+}
+
+/** Adapt `groupColumnDef` / `pivotResultColumnDef` (see {@link adaptReactPartialColDef}). */
+export function adaptReactPartialColumnDef(
+  def?: ReactPartialColDef | null,
+): Partial<ColDef> | undefined {
+  if (def == null) return undefined;
+  return adaptReactPartialColDef<Partial<ColDef>>(def);
 }

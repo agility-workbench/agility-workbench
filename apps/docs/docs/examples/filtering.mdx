@@ -513,8 +513,13 @@ job of a column filter's `isBlank`. It is not the same comparison as a column
 `eq` filter either: that normalizes the **raw** value through `textFormatter` /
 `trimValues`, while the quick filter compares what is rendered.
 
-Quick filtering is client-side. Server-side applications receive structured
-column filters in each data-source request.
+On the client-side row model the grid applies the quick filter itself. On the
+server-side row model the server does: each `getRows` (and `getAggregates`)
+request carries the search as `request.quickFilter` — `{ text, mode,
+caseSensitive }`, absent while the box is empty — next to the structured column
+`filters`, and a change of text, mode or case refetches from the first block, as
+a column-filter change does. See
+[the request contract](./server-side-data.mdx#quick-filter).
 
 ### The floating widget
 
@@ -599,7 +604,11 @@ Finding needs data-row cells to highlight, so it is unavailable on the
 server-side row model and while the pivot layout is displayed (every displayed
 row there is a group row). In both cases `getFindState().available` is false and
 the search falls back to filtering rather than going inert — the widget's toggle
-disables itself and says why.
+disables itself and says why. On the server-side row model that means the text
+is sent to the server as `request.quickFilter` and narrows the rows; the grid
+deliberately does not "find" over the blocks it happens to have loaded, since a
+count and next/previous over a partial dataset would be wrong. Asking for
+`behavior: "find"` there logs one `console.warn`.
 
 Keyboard: `Enter` steps to the next match, `Shift+Enter` to the previous, both
 wrapping at the ends. Focus stays in the search box, so the cell cursor and the
@@ -656,10 +665,10 @@ per effective filter change, whatever the path:
 
 - `source: "filter"` — a column-filter model change (menu, API, dispatch), with
   the affected public `changedColIds`;
-- `source: "quickFilter"` — a quick-filter change (`changedColIds` is empty;
-  client-side row model only, since the quick filter is a no-op on the
-  server-side model). A *finding* quick filter (`behavior: "find"`) changes no
-  rows and so fires `quickFilterFindChanged` instead;
+- `source: "quickFilter"` — a quick-filter change (`changedColIds` is empty).
+  On the server-side model it fires when the refetch is requested, not when the
+  rows arrive. A *finding* quick filter (`behavior: "find"`) changes no rows and
+  so fires `quickFilterFindChanged` instead;
 - `source: "columns"` — a columnDefs update dropped an active filter.
 
 On the client-side row model the handler runs after the view is re-derived, so

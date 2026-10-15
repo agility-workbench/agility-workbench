@@ -110,6 +110,25 @@ activeSheetId, onChange, onActiveSheetChange }}` renders the footer tab strip wi
 app-owned persistence contract as `savedViews`. See the core README for what pivot mode and
 sheets do.
 
+### Live and creation-only props
+
+Most props are live. The ones the grid reads only at creation (`rowHeight`, `getRowId`,
+`rowIdKey`, `rowModelType`, `defaultColDef`, `groupColumnDef`, `pivotResultColumnDef`,
+`initialSort`, … — the core's `CREATION_ONLY_OPTION_KEYS`, minus the bridged callbacks) ignore
+later changes; in development builds the grid logs one `console.warn` naming the prop when that
+happens. Remount the grid (change its React `key`) to apply such a change. The React page of the
+documentation site has the full live-vs-creation table.
+
+### React components in the grid
+
+`ReactColDef` component slots accept React components: `cellRenderer`, `cellEditor`,
+`tooltipComponent`, `headerTooltip`, `actionFrameComponent`, the set-filter components in
+`filterParams`, and the header components `headerComponent` (header content) and
+`headerCellComponent` (the whole header cell). Header components receive `HeaderComponentParams`
+as props and re-render on sort/filter changes. The same slots are adapted in `defaultColDef`,
+`groupColumnDef`, and `pivotResultColumnDef`. Core class components (and a header function
+returning an `HTMLElement`) pass through unchanged.
+
 ## Styling
 
 Nothing to do — the grid delivers its own stylesheet when it attaches, once per

@@ -24,6 +24,7 @@ import {
   RENDERER_TOOLTIP_TARGET_UPDATED,
 } from "./rendererTooltipTarget";
 import { inheritRowPresentation, resolveRowPresentation } from "../body/rowPresentation";
+import { findLiveCellElement } from "../pinnedRows/liveCellElement";
 
 export interface BodyTooltipRendererParams {
   core: GridCore;
@@ -32,6 +33,9 @@ export interface BodyTooltipRendererParams {
   root: HTMLElement;
   /** The body element pointer events are delegated from and live cells are queried under. */
   body: HTMLElement;
+  /** The sticky group-row overlay beside the body. A docked mirror covers its body row, so the
+   * pointer only ever reaches the mirror: its cells tooltip exactly as the body row's would. */
+  stickyRows?: HTMLElement;
   /** The header wrapper element, for header-cell tooltips. */
   headerWrapper: HTMLElement;
   /** The shared floating layer (tooltips sit below the menu band). */
@@ -107,6 +111,8 @@ export class BodyTooltipRenderer {
     this.bound = true;
     this.params.body.addEventListener("mouseover", this.handleMouseOver);
     this.params.body.addEventListener("mouseout", this.handleMouseOut);
+    this.params.stickyRows?.addEventListener("mouseover", this.handleMouseOver);
+    this.params.stickyRows?.addEventListener("mouseout", this.handleMouseOut);
     this.params.root.addEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.addEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.addEventListener("mouseout", this.handleMouseOut);
@@ -127,6 +133,8 @@ export class BodyTooltipRenderer {
     this.bound = false;
     this.params.body.removeEventListener("mouseover", this.handleMouseOver);
     this.params.body.removeEventListener("mouseout", this.handleMouseOut);
+    this.params.stickyRows?.removeEventListener("mouseover", this.handleMouseOver);
+    this.params.stickyRows?.removeEventListener("mouseout", this.handleMouseOut);
     this.params.root.removeEventListener("mousemove", this.handleMouseMove);
     this.params.headerWrapper.removeEventListener("mouseover", this.handleMouseOver);
     this.params.headerWrapper.removeEventListener("mouseout", this.handleMouseOut);
@@ -690,9 +698,9 @@ export class BodyTooltipRenderer {
       return { kind: "header", colId: hcell.id, clientX, clientY };
     }
 
-    // Body cell?
+    // Body cell? A sticky mirror's cell counts: the mirror stamps its body row's view index.
     const cell = el.closest?.(".pte-cell") as HTMLElement | null;
-    if (!cell || !this.params.body.contains(cell)) return null;
+    if (!cell || !this.isBodyCellHost(cell)) return null;
     if (cell.classList.contains("pte-row-number-cell")) return null;
     if (cell.classList.contains("pte-checkbox-cell")) return null;
     const rowEl = cell.closest(".pte-row") as HTMLElement | null;
@@ -714,7 +722,7 @@ export class BodyTooltipRenderer {
 
   private locateUi(target: EventTarget | null, clientX: number, clientY: number): TooltipTarget | null {
     const el = target as HTMLElement | null;
-    if (!el || this.params.body.contains(el) || this.params.headerWrapper.contains(el)) return null;
+    if (!el || this.isBodyCellHost(el) || this.params.headerWrapper.contains(el)) return null;
     const rendererTarget = findRendererTooltipTarget(el, this.params.root);
     return rendererTarget ? { kind: "ui", rendererTarget, clientX, clientY } : null;
   }
@@ -765,16 +773,18 @@ export class BodyTooltipRenderer {
     return target.rendererTarget as HTMLElement;
   }
 
-  /** Find the live (recycled) cell element for a location, or null if scrolled out. A row slot
-   * renders up to four section rows (leading/left/center/right) sharing one view-idx; the cell
-   * lives in exactly one of them. */
+  /** Under the body or the sticky overlay — the two places a body row's cells are rendered. */
+  private isBodyCellHost(el: Element): boolean {
+    return this.params.body.contains(el) || !!this.params.stickyRows?.contains(el);
+  }
+
+  /** Find the live cell element for a location, or null if scrolled out: a docked group row's
+   * sticky mirror (which covers its body copy), else the pooled body cell; the host for a
+   * full-width row. */
   private getCellEl(viewIdx: number, colIdx: number): HTMLElement | null {
-    const rowEls = this.params.body.querySelectorAll<HTMLElement>(`.pte-row[data-view-idx="${viewIdx}"]`);
-    for (let i = 0; i < rowEls.length; i++) {
-      const cell = rowEls[i].querySelector<HTMLElement>(`.pte-cell[data-col-idx="${colIdx}"]`);
-      if (cell) return cell;
-    }
-    return null;
+    const rowId = this.params.core.getRowIdAtViewIndex(viewIdx);
+    if (rowId == null) return null;
+    return findLiveCellElement(this.params.core, this.params.body, String(rowId), colIdx);
   }
 
   private getCellRect(viewIdx: number, colIdx: number): DOMRect | null {

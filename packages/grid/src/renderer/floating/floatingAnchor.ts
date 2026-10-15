@@ -1,4 +1,5 @@
 import { div } from "../element";
+import { portalOutOfRoot } from "./portal";
 
 /**
  * FloatingAnchor — the shared geometry + mount layer for grid overlays that pin to a cell or the
@@ -31,8 +32,10 @@ export interface FloatingShowOptions {
   /** Extra class(es) placed on the overlay root (e.g. "pte-tooltip"). */
   className?: string;
   /**
-   * Mount into `document.body` instead of the grid root. Escape hatch for content that would clip
-   * against `.pte-root { overflow:hidden }` near the grid edge. Default false (mount in root).
+   * Mount outside the grid root — in `document.body`, or in the grid's shadow root when the grid is
+   * mounted inside one (see `portal.ts`). Escape hatch for content that would clip against
+   * `.pte-root { overflow:hidden }` near the grid edge. The portaled layer still carries the grid's
+   * theme (the root's inline `--pte-*` values are mirrored onto it). Default false (mount in root).
    */
   escapeRootClip?: boolean;
   /** Draw a small arrow pointing at the anchor. Anchored mode only. Default false. */
@@ -54,6 +57,8 @@ export class FloatingAnchor {
   private arrowEl: HTMLDivElement | null = null;
   private current: FloatingShowOptions | null = null;
   private mountedInBody = false;
+  /** Stops mirroring the root's theme onto a portaled overlay; null while mounted in the root. */
+  private unlinkPortal: (() => void) | null = null;
   private readonly resizeObserver: ResizeObserver | null;
 
   /**
@@ -132,9 +137,11 @@ export class FloatingAnchor {
   /** Remove the floating element from the DOM and drop all state. Idempotent. */
   hide(): void {
     if (this.overlay) this.resizeObserver?.unobserve(this.overlay);
-    if (this.overlay && this.overlay.parentElement) {
-      this.overlay.parentElement.removeChild(this.overlay);
-    }
+    this.unlinkPortal?.();
+    this.unlinkPortal = null;
+    // remove(), not parentElement.removeChild: a portaled overlay may sit directly under a
+    // ShadowRoot, which is its parentNode but not a parentElement.
+    this.overlay?.remove();
     this.overlay = null;
     this.arrowEl = null;
     this.current = null;
@@ -168,7 +175,8 @@ export class FloatingAnchor {
       overlay.style.position = "fixed";
       overlay.style.zIndex = String(this.zIndex);
       overlay.style.visibility = "hidden";
-      (wantBody ? document.body : this.root).appendChild(overlay);
+      if (wantBody) this.unlinkPortal = portalOutOfRoot(this.root, overlay);
+      else this.root.appendChild(overlay);
       this.overlay = overlay;
       this.mountedInBody = wantBody;
     }
@@ -247,9 +255,9 @@ export class FloatingAnchor {
     if (placedSide) overlay.dataset.placement = placedSide;
     else delete overlay.dataset.placement;
     // "inherit", not "visible": a host that hides an ancestor of the grid must hide the overlay
-    // with it. Mounted in the grid root this reads the root; mounted in document.body (the
-    // `escapeRootClip` escape hatch) it reads body, which is the normal behaviour of any
-    // body-mounted popup.
+    // with it. Mounted in the grid root this reads the root; portaled (the `escapeRootClip` escape
+    // hatch) it reads body — or the shadow host, under a shadow-root mount — which is the normal
+    // behaviour of any portaled popup.
     overlay.style.visibility = "inherit";
   }
 

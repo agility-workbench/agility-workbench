@@ -1,4 +1,5 @@
 import { findHeaderCell } from "./headerCellLookup";
+import { portalOutOfRoot } from "../floating/portal";
 import { AggregateModel } from "../../interfaces/aggregate";
 import { parsePivotLeafColId } from "../../interfaces/pivot";
 import { ColumnSection } from "../../interfaces/column";
@@ -128,6 +129,8 @@ export class ColumnInteractionRenderer {
   private dragLastX = 0;
   private dragTargetIndex = -1;
   private dragGhostEl: HTMLDivElement | null = null;
+  /** Stops mirroring the root's theme onto the portaled drag ghost. */
+  private unlinkDragGhost: (() => void) | null = null;
   private dragIndicatorEl: HTMLDivElement | null = null;
   private dragHeaderEl: HTMLDivElement | null = null;
   private dragHeaderContainer: HTMLDivElement | null = null;
@@ -444,7 +447,10 @@ export class ColumnInteractionRenderer {
         ghost.style.width = `${rect.width}px`;
         ghost.style.height = `${rect.height}px`;
       }
-      document.body.appendChild(ghost);
+      // Portaled out of the root (it follows the pointer across the page) but styled as if inside
+      // it: into the grid's shadow root under a shadow mount, and carrying the grid's theme
+      // variables either way — see floating/portal.ts.
+      this.unlinkDragGhost = portalOutOfRoot(this.params.root, ghost);
       const contentRect = ghostContent.getBoundingClientRect();
       ghost.style.width = `${contentRect.width}px`;
       ghost.style.height = `${contentRect.height}px`;
@@ -625,6 +631,8 @@ export class ColumnInteractionRenderer {
 
   private teardownColumnDrag() {
     const ghost = this.dragGhostEl;
+    this.unlinkDragGhost?.();
+    this.unlinkDragGhost = null;
     if (ghost) {
       this.animateDragGhostReturn(ghost, this.dragHeaderEl);
       this.dragGhostEl = null;

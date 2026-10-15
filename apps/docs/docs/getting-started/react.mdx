@@ -63,9 +63,37 @@ const columns: ReactColDef[] = [
 ];
 ```
 
-React components also work in `defaultColDef` for cell renderers, editors,
-tooltips, header tooltips, and ActionFrames. Custom header content uses the
-core DOM component contract.
+React components also work in `defaultColDef`, `groupColumnDef`, and
+`pivotResultColumnDef` for cell renderers, editors, tooltips, header tooltips,
+ActionFrames, and header components.
+
+## React header components
+
+`headerComponent` (the header content: label, sort icon, expander) and
+`headerCellComponent` (the whole header cell except its resize handle) accept
+React components. Each receives the core `HeaderComponentParams` as props and
+re-renders, keeping its state, whenever the header's sort or filter state
+changes. The grid unmounts it when the header is rebuilt or the grid is
+destroyed.
+
+```tsx
+function SortableHeader({ displayName, sort, progressSort }: HeaderComponentParams) {
+  return (
+    <button type="button" onClick={() => progressSort()}>
+      {displayName} {sort.direction === "asc" ? "▲" : sort.direction === "desc" ? "▼" : ""}
+    </button>
+  );
+}
+
+const columns: ReactColDef[] = [
+  { key: "name", label: "Name", headerComponent: SortableHeader },
+  { key: "status", label: "Status", headerCellComponent: SortableHeader },
+];
+```
+
+The core forms still work: a class with `init`/`getGui`/`refresh`/`destroy`
+passes through untouched, and a function that returns an `HTMLElement` (the
+core function form) is mounted as that element.
 
 ## React cell editor
 
@@ -99,6 +127,38 @@ const column: ReactColDef = {
   cellEditor: UppercaseEditor,
 };
 ```
+
+## Live and creation-only props
+
+Most props are live: changing one reconfigures the mounted grid in place. A
+few are read only when the grid is created, and changing one of those later
+has no effect. In development builds (`process.env.NODE_ENV !== "production"`)
+the grid logs one warning per prop when that happens:
+
+```text
+[agility-workbench] <Grid> prop "rowHeight" changed after the grid was created. It is read only at creation, so the change is ignored. Remount the grid to apply it (for example, change the <Grid>'s React key).
+```
+
+To apply a creation-only change, remount the grid by changing its `key`:
+
+```tsx
+<Grid key={`grid-${rowHeight}`} rowHeight={rowHeight} rowData={rows} columnDefs={columns} />
+```
+
+Inline objects and arrow functions that are re-created on every render with
+the same contents do not count as changes.
+
+| | Props |
+| --- | --- |
+| **Live** | `rowData`, `data`, `columnDefs`, `loading`; `rowHover`, `columnHover`, `zebraRows`, `getRowClass`, `getRowStyle`, `getRowPresentation`, `ariaLabel`, `ariaLabelledBy`, `highlightActiveCell`, `cellSelection`, `rangeSelection`, `fillHandle`, `columnSelection`, `headerKeyboardNavigation`, `showColumnButtonsOnHover`, `bodyContextMenu`, `editTrigger`, `readOnlyEdit`, `pinnedRowsEditable`, `rowPinningMenu`, `rowInsertionMenu`, `suppressKeyboardEdit`, `suppressTypeToEdit`, `moveAfterEdit`, `commitOnBlur`, `asyncTransactionWaitMs`, `loadingMessage`, `noRowsMessage`; `toolbar`, `quickFilter`, `tooltip`, `columnPanel`, `savedViews`, `sheets`, `pagination`, `paginationControls`, `rowSelection`, `isRowSelectable`, `theme`, `icons`, `headerHeight`, `leafHeaderHeight`, `parentHeaderHeight`, `pinnedTopRowData`, `pinnedBottomRowData`, `isRowPinned`, `groupRowsSticky`, `groupDisplayType`, `groupSortMode`, `groupRowsSelectable`, `groupChildCount`, `pivotColumnMoveMode`, `serverSideDataSource`, `serverSideAggregationSource`; `pivotMode`, `pivotColumns`; `treeData.keyboardNavigationMode`, `treeData.enableKeyboardNavigationModeSwitch` |
+| **Live (latest callback is called)** | `onGridReady`, `on*` event callbacks, `onBeforeCellCommit`, `fillOperation`, `getColumnMenuItems`, `multiColumnMenu` (except `false` at mount, which removes the multi-column menu for the grid's lifetime), `apiRef`, `className`, `style` |
+| **Creation-only** | `rowHeight`, `getRowId`, `rowIdKey`, `rowDataMode`, `rowModelType`, `serverSideBlockSize`, `overscanRowCount`, `minResizeWidth`, `maxColumnWidth`, `allowExportAsCSV`, `allowExportAsExcel`, `rowNumbers`, `selectAllRowsOnHeaderClick`, `selectAllScope`, `selectionPersistence`, `clearSelectionOnBodyClick`, `resetPageOn`, `pageSize`, `pageSizes`, `paginationUnknownTotalTooltip`, `getGroupChildCount`, `autosizeColumnsOnDataChange`, `undoLimit`, `initialSort`, `showSortPriority`, `reevaluateOnEdit`, `groupColumnDef`, `groupDefaultExpanded`, `pivotResultColumnDef`, `maxPivotColumns`, `treeData` (all other members), `isFullWidthRow`, `fullWidthCellRenderer`, `defaultColDef`, `pivotNoValuesMessage`, `pivotEmptyMessage`, `filterDebounceMs`, `cellFlashDuration`, `cellFadeDuration`, `suppressStyleInjection`, `styleNonce` |
+
+The creation-only list is the core's `CREATION_ONLY_OPTION_KEYS` (every
+option outside `UPDATABLE_OPTION_KEYS` and the `pivotMode`/`pivotColumns`
+model state), minus the callbacks the binding bridges. The
+[Angular binding](./angular.mdx#live-and-creation-only-inputs) splits its
+inputs the same way.
 
 ## Event callback props
 

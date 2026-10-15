@@ -13,6 +13,7 @@ import {
   IServerSideDataSource,
   IServerSideFilter,
   IServerSideGroupKey,
+  IServerSideQuickFilter,
   IServerSideRequest,
   IServerSideResult,
   IServerSideSort,
@@ -777,6 +778,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       // Tree mode only, and only below the root: the key stays off the root request entirely so
       // "children of nothing" reads as absent rather than as an empty parent.
       ...(listing.treeParent ? { treeParent: listing.treeParent } : {}),
+      ...this.serializeQuickFilter((this.lastRequestParams ?? params).quickFilter),
     };
 
     void (async () => {
@@ -1108,6 +1110,21 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return Array.from(filtersByKey.values());
   }
 
+  /** `{ quickFilter }` while a search is active, `{}` otherwise — the key stays off the request
+   * entirely when the box is empty, so "no search" never reads as a search for nothing. */
+  private serializeQuickFilter(
+    quickFilter: IRowModelRequestParams["quickFilter"] | undefined,
+  ): { quickFilter?: IServerSideQuickFilter } {
+    if (!quickFilter || quickFilter.text.trim() === "") return {};
+    return {
+      quickFilter: {
+        text: quickFilter.text,
+        mode: quickFilter.matchMode,
+        caseSensitive: quickFilter.caseSensitive,
+      },
+    };
+  }
+
   private serializeSorts(sortModel: IRowModelRequestParams["sortModel"] | undefined): IServerSideSort[] {
     if (!sortModel) return [];
     const sortsByKey = new Map<string, IServerSideSort>();
@@ -1212,6 +1229,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
             aggregates,
             aggregateScope: "all",
             filters: this.createAggregationFilters(),
+            ...this.serializeQuickFilter(params?.quickFilter),
             sorts: params ? this.serializeSorts(params.sortModel) : [],
             startRow: undefined,
             endRow: undefined,

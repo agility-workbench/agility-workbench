@@ -7,6 +7,12 @@ import { ReactBodyMenuAdapter } from "./BodyMenuAdapter";
 import { ReactMenuAdapter } from "./MenuAdapter";
 import { adaptReactColumnDefs } from "./cellRenderer";
 import { adaptReactGetRowPresentation } from "./cellRenderer";
+import {
+  type CreationSnapshot,
+  isDevelopment,
+  snapshotCreationOnlyProps,
+  warnOnCreationOnlyChanges,
+} from "./creationOnlyProps";
 
 type GridInstance = {
   api: IGridAPI;
@@ -14,6 +20,9 @@ type GridInstance = {
   /** The server-side data source createGrid was handed (identity only), so the data-source effect
    * can tell a changed prop from the one the grid already bootstrapped from. */
   appliedServerSideDataSource: unknown;
+  /** Development only: the creation-only props this instance was created with, and the props
+   * already warned about (each warns once per instance). */
+  creationOnly: { snapshot: CreationSnapshot; warned: Set<string> } | null;
 };
 
 function assignRef<T>(ref: React.ForwardedRef<T> | undefined, value: T | null): void {
@@ -132,6 +141,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
         api,
         destroyed: false,
         appliedServerSideDataSource: options.serverSideDataSource,
+        creationOnly: isDevelopment()
+          ? { snapshot: snapshotCreationOnlyProps(props), warned: new Set() }
+          : null,
       };
       instanceRef.current = instance;
 
@@ -206,6 +218,15 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Creation-only props are read once, by createGrid above; a later change to one is ignored. In
+    // development, say so (once per prop) instead of letting the change vanish silently. Runs after
+    // every render: the comparison is against the creation snapshot, not the previous render.
+    useLayoutEffect(() => {
+      const creationOnly = instanceRef.current?.creationOnly;
+      if (!creationOnly) return;
+      warnOnCreationOnlyChanges(props, creationOnly.snapshot, creationOnly.warned);
+    });
 
     // groupDisplayType changes the synthesized grouping columns and whether group nodes render as
     // full-width rows. Reconcile it explicitly so declarative prop changes do not require a key/remount.

@@ -101,6 +101,31 @@ import { areGridStylesInjected, injectGridStyles } from "@agility-workbench/grid
 injectGridStyles(document, { nonce: cspNonce });
 ```
 
+## Popups outside the grid root
+
+Menus, the column panel and default (in-root) tooltips and ActionFrame
+popovers live inside the grid root, so the theme reaches them by ordinary
+inheritance. A few layers must leave the root: the column drag ghost (it
+follows the pointer across the page), and tooltips and ActionFrame popovers
+with `escapeRootClip: true`. Those are styled exactly as if they were inside
+the root:
+
+- **Theme.** The grid's inline `--pte-*` variables — from `themeDark`,
+  `createTheme({...})` params, `withParams`, raw `vars` and icon overrides
+  alike — are mirrored onto the portaled element while it is mounted, and kept
+  in sync when the theme changes.
+- **Shadow DOM.** A grid mounted inside a shadow root has its stylesheet
+  delivered into that shadow root, not the page. Its portaled layers therefore
+  mount in the same shadow root rather than `document.body`, so they are styled
+  and nothing grid-related leaks into the page.
+
+One trade-off under a shadow root: the layer is `position: fixed` inside the
+shadow tree, so it escapes every `overflow` clip (the grid root's and the
+host's included) but not a `transform`, `filter` or `contain` on the shadow
+host or one of its ancestors — those make the ancestor the containing block —
+and its `z-index` stacks within the host's stacking context. Avoid transforms
+on the host if you rely on `escapeRootClip`.
+
 Import `@agility-workbench/grid/styles.css` and set `suppressStyleInjection`
 only when your build pipeline needs to own CSS delivery — opting out avoids two
 copies of the stylesheet competing in the cascade:

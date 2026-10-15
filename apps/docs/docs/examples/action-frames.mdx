@@ -59,33 +59,25 @@ React and Angular bindings accept framework components in the same
 
 ## Theming and `escapeRootClip`
 
-`escapeRootClip: true` mounts the popover in `document.body` so it is not
-clipped by the grid's own overflow near the grid edge. The cost is theming: a
-theme's values are applied as inline `--pte-*` custom properties on the grid
-root, and a body-mounted popover is outside that subtree, so **the
-`actionFramePopover*` theme params do not apply to it** —
-`actionFramePopoverWidth`, `actionFramePopoverBackgroundColor`,
-`actionFramePopoverRadius`, `actionFramePopoverShadow`, and friends are all
-ignored, and the popover renders with the stylesheet defaults (300px wide,
-light surface).
+`escapeRootClip: true` mounts the popover outside the grid root so it is not
+clipped by the grid's own overflow near the grid edge — in `document.body`, or
+in the grid's own shadow root when the grid is mounted inside one.
 
-Either keep the popover inside the root:
+The popover is still themed like the grid it belongs to: the theme's inline
+`--pte-*` values are mirrored from the grid root onto the popover while it is
+open, and follow a theme change. `actionFramePopoverWidth`,
+`actionFramePopoverBackgroundColor`, `actionFramePopoverRadius`,
+`actionFramePopoverShadow` and the rest apply either way, as does a dark theme.
 
 ```ts
-actionFrameOptions: { placement: "right", offset: 10 }, // escapeRootClip off
+const options = {
+  theme: themeDark.withParams({ actionFramePopoverWidth: "420px" }),
+  defaultColDef: { actionFrameOptions: { escapeRootClip: true } },
+} satisfies GridOptions;
 ```
 
-or set the variables at document scope, which applies to every grid on the
-page:
-
-```css
-:root {
-  --pte-action-frame-popover-width: 420px;
-}
-```
-
-[Tooltips](./tooltips.mdx) behave the same way under
-`tooltipOptions.escapeRootClip`.
+[Tooltips](./tooltips.mdx) under `tooltipOptions.escapeRootClip` work the same
+way. See [Popups outside the grid root](./theming.mdx#popups-outside-the-grid-root).
 
 ## Programmatic control
 

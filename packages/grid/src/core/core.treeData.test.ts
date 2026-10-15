@@ -388,15 +388,8 @@ describe("GridCore tree data", () => {
     ]);
   });
 
-  it("rejects duplicate paths and nested object cycles", () => {
-    expect(() => createTree(
-      { mode: "path", getPath: (row: any) => row.path },
-      [
-        { id: "a", path: ["same"] },
-        { id: "b", path: ["same"] },
-      ],
-    )).toThrow(/duplicate path/);
-
+  // Duplicate ids and paths warn instead of throwing: csrm/treeData.duplicates.test.ts.
+  it("rejects nested object cycles", () => {
     const cyclic: any = { id: "cycle", name: "Cycle", children: [] };
     cyclic.children.push(cyclic);
     expect(() => createTree(

@@ -3,6 +3,108 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Fixes
+
+- **Ctrl+V / Cmd+V pastes through the browser's `paste` event, so paste works without clipboard
+  permission.** Paste only ever read the clipboard through `navigator.clipboard.readText()`,
+  which Firefox does not grant without a flag, insecure contexts never grant, and users can deny;
+  when it failed the error was only logged and nothing happened. The keyboard shortcut now lets
+  the browser deliver the `paste` event to the focused grid and reads `text/plain` from it, through
+  the same pipeline `api.paste()` uses, so the selection, editors and read-only cells behave
+  identically. The event is ignored while a cell editor or any input inside the grid has focus and
+  when the target is outside the grid, and the default is prevented only when cells were written.
+  `api.paste()` and the body menu's Paste still need `readText()`; when it is refused they warn
+  once, naming the reason and the shortcut that works instead.
+- **CSV and Excel exports write the local calendar day.** When a date column's formatted text
+  equalled the raw value (date-only text like `2026-03-01`, or a formatter that returns the
+  value unchanged) the CSV wrote `toISOString()`, which shifts the day in positive UTC offsets, and
+  the Excel export read date-only text as UTC midnight, which lands a day early west of
+  Greenwich. Both now read date-only and zone-less text as local time and write the local
+  `YYYY-MM-DD`; a value with a time of day keeps it as zone-less local `YYYY-MM-DDTHH:mm:ss`; a
+  column with a format still writes its formatted text.
+- **Duplicate ids and paths in client-side tree data warn instead of throwing.** Tree data with
+  a repeated row id or a repeated path took the whole grid down with an exception. The first row
+  now keeps its id and the later ones are dropped (their own children, in nested-children mode,
+  still land under the kept row); a repeated path keeps the first row as the owner and shows each
+  later row as a childless leaf beside it, so no data disappears. One warning per data set names
+  the ids or paths and counts, and it does not repeat on sort, filter or expand rebuilds. Parent
+  cycles still throw, as they are not duplicates.
+- **The quick filter works under the server-side row model.** It was silently destroyed there:
+  the widget was not mounted, `setQuickFilter` was a no-op, nothing reached the server and
+  nothing warned. The server-side rows request (and the whole-dataset aggregation request) now
+  carries an optional `quickFilter: { text, mode, caseSensitive }`, omitted when the text is
+  empty; a text or mode change purges the store and refetches once, exactly like a filter-model
+  change; the widget mounts in both the toolbar and floating presentations. Find mode (match
+  counting and next/previous) needs the rows, so under the server-side model it falls back to
+  filtering with one warning and `getFindState().available` reports false. A match mode set
+  through `setQuickFilter` or a restored view is no longer reverted by the next keystroke.
+- **Saved views restore the aggregate scope, runtime row pins and the quick filter's match
+  settings.** The view state carried only the quick-filter text, so a restored view lost the
+  footer's None / Current page / Entire dataset choice, rows pinned at runtime through
+  `setRowPinned` or the row-pinning menu, and the match mode, case sensitivity and behaviour.
+  `GridViewState` gains optional `aggregateScope`, `rowPinning` and `quickFilterSettings`; views
+  saved before this still apply and leave those three alone; applying then capturing yields the
+  same object.
+- **Sticky group rows dock correctly on pages after the first.** The client-side model stamps
+  view indexes over the whole grouped list while the body and the sticky overlay work in
+  page-relative slots, so on page 2 of a grouped, paginated view the ancestor headers compared as
+  below the overlay and nothing docked. The overlay now resolves a header's position in the
+  current page's space.
+- **A docked (sticky) group row behaves like its body row.** The sticky overlay that keeps
+  ancestor group rows in view received only wheel and context-menu events, so on a docked header
+  a click-trigger ActionFrame did not open, double-click events did not fire, no tooltip showed,
+  and clicking it scrolled the body back to the start of the group. The overlay now routes
+  pointer gestures to the body row's handlers with the mirrored row's identity: click, double
+  click, hover tooltips, the ActionFrame (which anchors to the mirror cell and keeps its border
+  through repaints), the expander chevron and the context menu all work on the mirror, and the
+  body no longer jumps. Keyboard behaviour is unchanged.
+- **Pinned-row bands and the aggregate row have ARIA row positions.** Rows in the top and
+  bottom bands and the aggregate row carried no `aria-rowindex` and were outside
+  `aria-rowcount`, so a screen reader placed them nowhere. They now follow the last body row
+  (top band, then bottom band, then the aggregate row while shown), a model row pinned into a
+  band keeps its body index, `aria-rowcount` counts them all, and while the server-side total is
+  unknown the count stays `-1`. The sticky overlay stays hidden from assistive technology.
+- **React and Angular warn when a creation-only prop or input changes after mount.** Both
+  bindings silently ignored later changes to options the grid reads only at creation (`rowHeight`,
+  `defaultColDef`, `pageSize`, `getRowId`, `rowNumbers` and the rest), so a prop that "did
+  nothing" gave no hint why. In development each binding now warns once per prop, naming it and
+  the remount recipe (a new React `key`; an `@if` or keyed `@for` in Angular). The list is derived
+  from core's option classification (new exports `CREATION_ONLY_OPTION_KEYS`,
+  `MODEL_STATE_OPTION_KEYS`, `UPDATABLE_OPTION_KEYS`, `isCreationOnlyGridOption`), so it cannot
+  drift, and the docs for each binding carry a live-versus-creation table.
+- **Framework header components, and framework components inside `groupColumnDef` and
+  `pivotResultColumnDef`.** The two partial column defs passed through the bindings unadapted, so
+  a React or Angular `cellRenderer` or tooltip placed there broke; `headerComponent` and
+  `headerCellComponent` could not be framework components at all although the README promised
+  custom headers. Both bindings now adapt the partial defs field by field (new types
+  `ReactPartialColDef`, `NgPartialColDef`) and accept framework header components at both levels,
+  including through `defaultColDef`: React mounts one root per header cell and re-renders on
+  refresh (`ReactHeaderComponent`); Angular mounts through its component factory with `awbInit` /
+  `awbRefresh` (`IHeaderNgComp`); both unmount on header rebuild and on destroy. The core
+  function and class forms keep working.
+- **Tooltips, ActionFrame popovers and the column drag ghost keep the grid's theme when they leave
+  the root.** Layers mounted with `escapeRootClip`, and the ghost that follows a column drag, were
+  appended to `document.body`, outside the element that carries the grid's theme variables, so a
+  dark grid showed light popups and a theme's `tooltip*` / `actionFramePopover*` params did not
+  reach them; under a shadow-root mount they also left the stylesheet behind and rendered
+  unstyled. Each portaled layer now carries a live copy of the root's theme variables (kept in
+  sync through theme changes) and, when the grid lives in a shadow root, mounts inside that shadow
+  root so the grid's stylesheet styles it. Menus and the column panel never left the root and are
+  unchanged.
+- **Numeric theme lengths get their unit.** `createTheme({ tooltipMaxWidth: 240 })` and the other
+  length params that accept a number (`actionFramePopoverWidth`, `actionFramePopoverRadius`,
+  `tooltipRadius`, the scrollbar sizes, `rowBorderSize`, `paginationFooterHeight`, the column
+  panel widths) emitted a bare `240`, which is not a CSS length, so the browser ignored the
+  variable. They now emit `240px`, as `rowHeight`, `fontSize` and the paddings already did;
+  strings pass through untouched.
+- **`themeDark.withParams({ … })` now applies the params.** The dark theme sets every value
+  through raw `vars`, and raw vars won over semantic params, so the documented
+  `themeDark.withParams({ accentColor })` left the dark values in place. A param given in
+  `withParams` now replaces the variables it fans out to; `vars` passed in the same call still win,
+  and partial overrides still keep the rest of the base.
+
 ## 1.10.1 — 2026-10-15
 
 ### Fixes

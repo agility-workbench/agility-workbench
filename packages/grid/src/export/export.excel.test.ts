@@ -95,6 +95,21 @@ describe("hand-rolled xlsx writer", () => {
     expect(dateCell.getUTCDate()).toBe(15);
   });
 
+  it("reads date-only text as a LOCAL date, so the serial lands on the displayed day", async () => {
+    // `new Date("2024-05-15")` is UTC midnight — the 14th on a local clock west of Greenwich, and
+    // the serial is built from local components. Read like the cell and CSV read it instead.
+    const config: ExportConfig = {
+      columns: [col({ key: "when", label: "When", type: ColumnType.DATE })],
+      rows: [{ when: "2024-05-15" }],
+    };
+    await exportExcel(config, "test.xlsx");
+    const ws = await readBack(captured!);
+    const dateCell = ws.getCell("A2").value as Date;
+    expect(dateCell).toBeInstanceOf(Date);
+    expect([dateCell.getUTCFullYear(), dateCell.getUTCMonth(), dateCell.getUTCDate()]).toEqual([2024, 4, 15]);
+    expect(dateCell.getUTCHours()).toBe(0);
+  });
+
   it("applies number formats for currency and date columns", async () => {
     const columns = [
       col({ key: "price", label: "Price", type: ColumnType.CURRENCY }),

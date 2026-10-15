@@ -50,8 +50,9 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
   row.appendChild(closeButton);
 
   // ARIA: wrapper machinery is presentational; the builder stitches the center
-  // aggregate row as THE row owning every section's cells. Like band rows, the aggregate row
-  // carries no aria-rowindex (it is a summary footer outside the view sequence).
+  // aggregate row as THE row owning every section's cells. Its aria-rowindex is stamped by the
+  // grid's row-count refresh while it is shown: after the body and the pinned bands (see
+  // GridRenderer._refreshAriaCounts).
   markPresentational(row, leading, left, center, right);
 
   return {
