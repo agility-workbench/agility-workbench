@@ -514,8 +514,9 @@ export class QuickFilterWidget {
       this.wrapper.style.left = `${offsetX}px`;
       this.wrapper.style.right = "auto";
     } else {
-      // Add the scrollbar gutter so the widget never sits over the vertical scrollbar thumb.
-      this.wrapper.style.right = `calc(var(--pte-scrollbar-size, 10px) + ${offsetX}px)`;
+      // Clear the body's measured vertical-scrollbar lane (0 when the body does not scroll or the
+      // platform overlays its scrollbars) so the widget sits just inside it, never over the thumb.
+      this.wrapper.style.right = `calc(var(--pte-scrollbar-gutter-active, 0px) + ${offsetX}px)`;
       this.wrapper.style.left = "auto";
     }
   }

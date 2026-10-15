@@ -188,8 +188,35 @@ export class BodyWindowRenderer {
     }
   }
 
+  /** Marks the pinned/leading fragments of a slot in full-width layout (a blank, themeable band). */
+  static readonly FULL_WIDTH_FRAGMENT_CLASS = "pte-full-width-fragment";
+
+  /**
+   * Re-applies the width of every slot currently in full-width layout: a groupRows heading takes the
+   * centre columns' total width, a user full-width row the centre section's current client width.
+   * Called by the column-layout and resize paths; the width is otherwise read only when a slot is
+   * patched, so it went stale on every resize, and at mount it was read before the pinned sections
+   * were laid out (gap findings A3.7 / A3.13). Writes widths only; nothing is re-rendered.
+   */
+  refreshFullWidthWidths(): void {
+    let groupWidth: number | null = null;
+    let userWidth: number | null = null;
+    for (const slot of this.params.rowPool()) {
+      if (!slot.rowEl.classList.contains("pte-full-width-row")) continue;
+      let width: number;
+      if (slot.rowEl.classList.contains("pte-group-row")) {
+        width = groupWidth ??= this.centerTotalWidth();
+      } else {
+        width = userWidth ??= this.params.centerSpacer.clientWidth;
+      }
+      const px = `${width}px`;
+      if (slot.rowEl.style.width !== px) slot.rowEl.style.width = px;
+      if (slot.fullWidthCellEl.style.width !== px) slot.fullWidthCellEl.style.width = px;
+    }
+  }
+
   // Switch a slot between full-width and normal layout. Passing a non-null `row` (a full-width node)
-  // hides the three pinned section rows and every center data cell, shows the sticky full-width
+  // blanks the three pinned section rows, hides every center data cell, shows the sticky full-width
   // host, and tags the center row. Group rows are constrained to the center columns' total width;
   // user-defined full-width rows continue to span the visible center body. Passing `null` reverses
   // all of that so a recycled slot returns to normal per-column rendering with the correct width.
@@ -225,9 +252,16 @@ export class BodyWindowRenderer {
       // The host is now the row's only visible cell: it spans the full ARIA column range.
       slot.fullWidthCellEl.setAttribute("aria-colindex", "1");
       slot.fullWidthCellEl.setAttribute("aria-colspan", String(this.params.core.getColumnModel().leafColumnLookup.size));
-      // Hide the pinned/leading section rows so no pinned cells bleed through under the host.
-      for (const el of [slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
-        if (el) el.style.display = "none";
+      // The pinned/leading fragments keep their place and height: the sections lay their rows out
+      // in flow, so removing a fragment would lift every pinned row below it by one row (A3.13).
+      // Their cells are hidden instead, so no pinned value bleeds through beside the host, and the
+      // blank fragment is hidden from AT (the host already spans the whole ARIA column range).
+      const rowHeight = `${this.params.rowHeight()}px`;
+      for (const [el, cells] of this.pinnedFragments(slot)) {
+        el.classList.add(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);
+        el.setAttribute("aria-hidden", "true");
+        el.style.height = rowHeight;
+        for (const cell of cells) cell.style.display = "none";
       }
       return;
     }
@@ -243,8 +277,22 @@ export class BodyWindowRenderer {
     slot.fullWidthCellEl.removeAttribute("aria-colspan");
     this.params.clearFullWidthCell(slot);
     for (const cell of slot.cellEls) cell.style.display = "";
+    for (const [el, cells] of this.pinnedFragments(slot)) {
+      el.classList.remove(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);
+      el.removeAttribute("aria-hidden");
+      // patchSection re-hides any colSpan-covered cell on the next patch.
+      for (const cell of cells) cell.style.display = "";
+    }
     slot.rowEl.style.width = `${this.centerTotalWidth()}px`;
-    // Section-row display is restored by showSlot/hideSlot on the next patch; nothing to do here.
+    // Section-row display is owned by showSlot/hideSlot; full-width layout never changes it.
+  }
+
+  private pinnedFragments(slot: RowPoolDef): Array<[HTMLDivElement, HTMLDivElement[]]> {
+    const fragments: Array<[HTMLDivElement, HTMLDivElement[]]> = [];
+    if (slot.leadingRowEl) fragments.push([slot.leadingRowEl, slot.leadingCellEls ?? []]);
+    if (slot.leftRowEl) fragments.push([slot.leftRowEl, slot.leftCellEls]);
+    if (slot.rightRowEl) fragments.push([slot.rightRowEl, slot.rightCellEls]);
+    return fragments;
   }
 
   // The full-width group host's column identity: the nominal leaf's instance id and global index.

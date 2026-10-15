@@ -246,7 +246,11 @@ export class FloatingAnchor {
     overlay.style.top = `${top}px`;
     if (placedSide) overlay.dataset.placement = placedSide;
     else delete overlay.dataset.placement;
-    overlay.style.visibility = "visible";
+    // "inherit", not "visible": a host that hides an ancestor of the grid must hide the overlay
+    // with it. Mounted in the grid root this reads the root; mounted in document.body (the
+    // `escapeRootClip` escape hatch) it reads body, which is the normal behaviour of any
+    // body-mounted popup.
+    overlay.style.visibility = "inherit";
   }
 
   /** Compute the top-left for an anchored placement. Preferred placements try their opposite side

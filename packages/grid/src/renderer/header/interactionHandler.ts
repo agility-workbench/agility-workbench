@@ -1,3 +1,4 @@
+import { findHeaderCell } from "./headerCellLookup";
 import { GridCore } from "../../core/core";
 import type { Column } from "../../column/column";
 import { DEFAULT_SORTING_ORDER, nextSortDir, type SortDir } from "../../interfaces/sort";
@@ -316,7 +317,7 @@ export class HeaderInteractionHandler {
     const col = core.getHeaderFocusColumn();
     // Consumed either way: the chord belongs to the header even when this cell has no menu.
     if (!col || col.isRowNumberColumn()) return;
-    const headerEl = document.getElementById(col.instanceID) ?? undefined;
+    const headerEl = findHeaderCell(this.params.root, col.instanceID) ?? undefined;
     if (filter) {
       const anchor = headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-filterBtn") ?? headerEl;
       if (!anchor) return;

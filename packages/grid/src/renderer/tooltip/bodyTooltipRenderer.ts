@@ -1,3 +1,4 @@
+import { findHeaderCell } from "../header/headerCellLookup";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { IGridAPI } from "../../interfaces/iGridAPI";
@@ -727,7 +728,7 @@ export class BodyTooltipRenderer {
       return this.getCellRect(target.viewIdx, target.colIdx);
     }
     if (target.kind === "header") {
-      const hcell = document.getElementById(target.colId);
+      const hcell = findHeaderCell(this.params.headerWrapper, target.colId);
       return hcell ? hcell.getBoundingClientRect() : null;
     }
     if (!target.rendererTarget.isConnected) return null;
@@ -760,7 +761,7 @@ export class BodyTooltipRenderer {
   /** The element a tooltip target hangs off, for aria-describedby. */
   private anchorElFor(target: TooltipTarget): HTMLElement | null {
     if (target.kind === "body") return this.getCellEl(target.viewIdx, target.colIdx);
-    if (target.kind === "header") return document.getElementById(target.colId);
+    if (target.kind === "header") return findHeaderCell(this.params.headerWrapper, target.colId);
     return target.rendererTarget as HTMLElement;
   }
 

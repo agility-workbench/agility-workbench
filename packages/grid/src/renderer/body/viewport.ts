@@ -22,10 +22,17 @@ export class BodyViewportRenderer {
 
   recomputeView() {
     const verticalSize = this.params.core.getRowModel().getViewCount() * this.params.rowHeight();
-    this.elements.leadingSpacer.style.height = `${verticalSize}px`;
-    this.elements.leftSpacer.style.height = `${verticalSize}px`;
-    this.elements.centerSpacer.style.height = `${verticalSize}px`;
-    this.elements.rightSpacer.style.height = `${verticalSize}px`;
+    const height = `${verticalSize}px`;
+    // Written only on change: this runs on every root/body resize, and the resize path must write
+    // nothing when its inputs are unchanged.
+    for (const spacer of [
+      this.elements.leadingSpacer,
+      this.elements.leftSpacer,
+      this.elements.centerSpacer,
+      this.elements.rightSpacer,
+    ]) {
+      if (spacer.style.height !== height) spacer.style.height = height;
+    }
     // The body owns the scrollbar now, so its presence follows directly from whether the sections
     // outgrow it. The gutter it consumes is measured rather than assumed — see columnLayout.
     const hasVerticalScrollbar = verticalSize > this.elements.body.clientHeight;

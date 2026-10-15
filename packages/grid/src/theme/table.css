@@ -262,7 +262,14 @@
  * Each value below IS the property's initial value, so on a host that sets nothing this rule
  * changes nothing. `direction` is deliberately absent, so the host's value still inherits — but the
  * grid does NOT support right-to-left layout: positioning, scrolling and keyboard navigation are
- * all physical left/right, so under an inherited `direction: rtl` only text alignment flips. */
+ * all physical left/right, so under an inherited `direction: rtl` only text alignment flips.
+ *
+ * `visibility` is deliberately absent too. A host that hides an ancestor — a tab panel, a collapsed
+ * container, a print stylesheet's hidden region — means to hide the grid with it, and a `visible`
+ * here would paint the grid straight through that hide: CSS 2.1 §11.2 lets a descendant that says
+ * `visible` re-show itself under a hidden parent, and the host cannot fight it from the ancestor
+ * for the reason above (importance does not inherit). The same rule applies to every reveal rule
+ * inside the grid: they say `inherit`, never `visible`, so no element pops through on its own. */
 .pte-root,
 .pte-menu {
   scrollbar-width: auto;
@@ -274,7 +281,6 @@
   text-transform: none;
   white-space: normal;
   font-style: normal;
-  visibility: visible;
   cursor: auto;
 }
 
@@ -2256,7 +2262,7 @@
 
 .pte-grid-announcer.is-visible {
   opacity: 1;
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
   transform: translate(-50%, -50%);
   transition-delay: 0s;
 }
@@ -2313,8 +2319,13 @@
   border-right: 1px solid var(--pte-frame-border-color);
 }
 
+/* Pinned header sections are sized like the body spacers beneath them: inline `width`, no grow and
+   no shrink, clamped only by the `max-width` the pinned-section layout reapplies on every resize.
+   Left at the default `flex: 0 1 auto` they shrank in favour of the centre header's huge flex-basis
+   and stopped lining up with the body. */
 .pte-header-left {
   display: flex;
+  flex: 0 0 auto;
   box-shadow: 2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
@@ -2336,11 +2347,14 @@
   scrollbar-width: none;
   padding-right: 0;
   flex: 1 1 auto;
+  /* Like .pte-spacer: take whatever the pinned sections leave, never push them. */
+  min-width: 0;
   position: relative;
 }
 
 .pte-header-right {
   display: flex;
+  flex: 0 0 auto;
   box-shadow: -2px 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
@@ -3295,8 +3309,9 @@
   /* The zero-height floating host sits immediately after the header. The widget overrides
      `top`/`left`/`right` inline from its resolved position options on each open. */
   top: 6px;
-  /* Clear the vertical scrollbar gutter so the widget never sits over the scrollbar thumb. */
-  right: calc(var(--pte-scrollbar-size, 10px) + 8px);
+  /* Clear the body's measured vertical-scrollbar lane (0 when it does not scroll or scrollbars
+     overlay) so the widget never sits over the scrollbar thumb. */
+  right: calc(var(--pte-scrollbar-gutter-active, 0px) + 8px);
   z-index: 30;
   display: none;
   flex-direction: column;
@@ -3666,8 +3681,11 @@
   z-index: 1;
 }
 
+/* The centre lane takes what the pinned lanes leave, exactly like .pte-spacer and .pte-header, so it
+   follows their live clamp instead of a width computed once at layout time. */
 .pte-scroller-horizontal-container {
   flex: 1 1 auto;
+  min-width: 0;
   height: var(--pte-scrollbar-lane);
   z-index: 1;
   width: 100%;
@@ -3968,7 +3986,7 @@
 /* The keyboard cursor is a painted class, not DOM focus (the grid keeps focus on its root), so
    `:focus-within` never fires for it — see .pte-hcell-active below. */
 .pte-hcell-active .pte-hcell-sort.pte-sort-none {
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
 }
 
 /* Multi-column sort priority badge. */
@@ -4050,7 +4068,7 @@
 .pte-column-buttons-on-hover .pte-hcell:focus-within .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-active .pte-hcell-menu-btn,
 .pte-column-buttons-on-hover .pte-hcell-menu-btn.pte-hcell-menu-filter-active {
-  visibility: visible;
+  visibility: inherit; /* not `visible`: a hidden host ancestor must hide this too */
 }
 
 .pte-hcell-menu-flyout {

@@ -12,6 +12,7 @@ import {
   HeaderComponentRuntime,
   createHeaderComponentRuntime,
 } from "./headerComponent";
+import { findHeaderCell } from "./headerCellLookup";
 import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
 
 interface HeaderRendererParams {
@@ -45,6 +46,11 @@ export class HeaderRenderer {
 
   getRefs() {
     return this.elements;
+  }
+
+  /** This grid's header cell for a column instanceID (shadow-root safe; see findHeaderCell). */
+  getHeaderCell(instanceID: string): HTMLElement | null {
+    return findHeaderCell(this.elements.wrapper, instanceID);
   }
 
   destroy(): void {
@@ -363,7 +369,7 @@ export class HeaderRenderer {
    */
   private updateSortIcon(col: Column, sortEl?: HTMLElement | null) {
     if (!sortEl) {
-      const hcell = document.getElementById(col.instanceID);
+      const hcell = this.getHeaderCell(col.instanceID);
       sortEl = hcell?.querySelector(".pte-hcell-sort") as HTMLElement | null;
     }
     if (!sortEl) return;
@@ -391,7 +397,7 @@ export class HeaderRenderer {
    * rather than nothing, which is what tells AT the column is sortable at all.
    */
   private updateSortAria(col: Column, hcell?: HTMLElement | null) {
-    const el = hcell ?? document.getElementById(col.instanceID);
+    const el = hcell ?? this.getHeaderCell(col.instanceID);
     if (!el) return;
     if (!col.sortable || col.children.length > 0 || col.isRowNumberColumn()) {
       el.removeAttribute("aria-sort");
@@ -412,7 +418,7 @@ export class HeaderRenderer {
     const target = colIdx == null
       ? null
       : this.params.core.getColumnModel().getLeaves()[colIdx] ?? null;
-    const targetEl = target ? document.getElementById(target.instanceID) : null;
+    const targetEl = target ? this.getHeaderCell(target.instanceID) : null;
     if (this.activeHeaderEl === targetEl) return targetEl;
     this.activeHeaderEl?.classList.remove("pte-hcell-active");
     this.activeHeaderEl = targetEl;
@@ -461,7 +467,7 @@ export class HeaderRenderer {
   setFilterIndicators() {
     const filters = this.params.core.getFilterModel().items;
     for (const col of this.params.core.getColumnModel().getLeaves()) {
-      const hcell = document.getElementById(col.instanceID);
+      const hcell = this.getHeaderCell(col.instanceID);
       if (!hcell) continue;
       const menuBtn = hcell.querySelector(".pte-hcell-menu-filterBtn");
       if (!menuBtn) continue;
@@ -478,7 +484,7 @@ export class HeaderRenderer {
   private refreshHeaderComponents() {
     for (const [instanceID, mounted] of this.components) {
       const col = this.params.core.getColumnModel().getById(instanceID);
-      const header = document.getElementById(instanceID);
+      const header = this.getHeaderCell(instanceID);
       if (!col || !header) continue;
       const params = this.buildComponentParams(col, header, mounted.level);
       const updated = mounted.runtime.refresh(params);

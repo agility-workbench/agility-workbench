@@ -1,3 +1,4 @@
+import { findHeaderCell } from "./headerCellLookup";
 import { AggregateModel } from "../../interfaces/aggregate";
 import { parsePivotLeafColId } from "../../interfaces/pivot";
 import { ColumnSection } from "../../interfaces/column";
@@ -568,7 +569,7 @@ export class ColumnInteractionRenderer {
       if (col.children.length > 0) {
         const leaves = col.getLeaves();
         leaves.filter(c => this.isDropAnchor(c)).forEach(leaf => {
-          output.push({ col: leaf, el: document.getElementById(leaf.instanceID) as HTMLDivElement });
+          output.push({ col: leaf, el: findHeaderCell(this.params.headerWrapper, leaf.instanceID) as HTMLDivElement });
         });
         continue;
       } else if (this.isDropAnchor(col)) {
