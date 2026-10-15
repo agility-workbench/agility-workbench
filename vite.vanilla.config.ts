@@ -25,5 +25,12 @@ export default defineConfig({
   build: {
     outDir: "dist-demo",
     emptyOutDir: true,
+    // Two entries: the demo pages and the layout-matrix harness that `npm run probe:layout` drives.
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, "apps/vanilla-playground/index.html"),
+        layoutMatrix: path.resolve(__dirname, "apps/vanilla-playground/layout-matrix.html"),
+      },
+    },
   },
 });

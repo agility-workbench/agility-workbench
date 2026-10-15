@@ -268,12 +268,46 @@ one, bump its toolchain, verify locally), add the major to the `consumer-angular
 | `npm run docs:build` | Builds grid + react, then the Docusaurus site in `apps/docs`. The site's `prebuild`/`prestart` hooks first regenerate `apps/docs/docs/changelog.md` (gitignored) from the root `CHANGELOG.md` via `scripts/changelog.mjs sync-docs`, so the site's Changelog page is never edited by hand. |
 | `npm run dev` | Starts the React demo at `http://localhost:5176`. |
 | `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
+| `npm run dev:vanilla` | Starts the framework-free demo at `http://localhost:5182` (vite.vanilla.config.ts). The same server serves `/layout-matrix.html`, the layout-probe harness. |
+| `npm run probe:layout` | Real-browser layout gate (see below): mounts grids in headless Chrome, resizes them through a width/height ladder and a set of runtime transitions, and asserts the layout invariants in `scripts/layout-probe/invariants.js` after every step; then smoke-checks every vanilla playground page at three widths. Exits 1 on any violation. |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
 The root scripts are deliberately explicit (`build:grid`/`build:react`/`build:angular`,
 `typecheck:react`/`typecheck:angular`/`typecheck:react-playground`) rather than relying on
 unspecified `--workspaces` traversal order, because both bindings' typechecks consume grid's
 **generated** declarations.
+
+### The layout probe (`npm run probe:layout`)
+
+The Vitest suites run under happy-dom, which has no layout engine, so nothing in `npm test` can see
+a header drifting off its body columns or a scrollbar strip that never appears. The layout probe
+is the check for that class of bug. It runs real grids in a real browser:
+
+- `scripts/layout-probe/run.mjs` starts the vanilla dev server (or reuses one with
+  `--url=http://localhost:5182`), launches Chrome over the DevTools protocol (no Playwright
+  dependency: `$CHROME_BIN`, else Playwright's cached `chrome-headless-shell`, else a system
+  Chrome), and opens `apps/vanilla-playground/layout-matrix.html`.
+- `scripts/layout-probe/matrix.mjs` lists the cases: a config per case for the harness page
+  (pins, groups, row numbers, checkboxes, aggregates, pagination, pinned rows, grouping, sticky
+  group rows, full-width rows, themes, explicit heights, toolbar) plus the transition sequences to
+  run on it (scroll to the far right then resize, pin/unpin, hide/show, collapse/expand groups,
+  swap themes, change the header height, mount hidden then reveal, scroll the body, resize the
+  window instead of the host).
+- `scripts/layout-probe/invariants.js` is the browser-side contract: header, aggregate row,
+  scrollbar lanes and pinned-row bands sit exactly over the body sections; every column's cells
+  start where its header cell starts and are as wide; row fragments are level across sections;
+  header cells fit the wrapper; group headers are as wide as their leaves; the parallel scrollers
+  agree on `scrollLeft`; the vertical-scrollbar gutter is reserved exactly where the body shows
+  one; bands are contiguous and fill their containers; the root's vertical stack is contiguous;
+  the horizontal strip shows exactly when a section overflows; no pinned side exceeds 35%;
+  full-width rows span the viewport. The harness page imports the same file, so a person can open
+  it, pick a config, drag the frame's corner and read the violations live.
+
+Useful flags: `--only=<regex>` (case names, `--list` prints them), `--skip-smoke`,
+`--skip-matrix`, `--json=<path>` for the full report, `--verbose` for a line per step,
+`--overlay-scrollbars` (Chromium's overlay scrollbars, gutter 0) and `--dpr=2`. Run it before a
+release alongside the other gates; it is the only automated check of what a person sees when a
+grid is resized.
 
 ## 6. Publishing to npm
 

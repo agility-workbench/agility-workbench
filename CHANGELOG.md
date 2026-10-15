@@ -28,6 +28,25 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   take whatever space is left. Header, rows, aggregate row and scrollbar line up at every width
   and scroll together.
 
+### Tooling
+
+- **A real-browser layout probe: `npm run probe:layout`.** The test suites run under happy-dom,
+  which has no layout engine, so the two recent layout defects (header cells cut off by a fixed
+  wrapper, pinned header sections not clamping with the body) could only be found by a person
+  resizing a grid. The probe does that automatically: `scripts/layout-probe/run.mjs` drives
+  headless Chrome over the DevTools protocol, mounts grids from a case matrix on the new vanilla
+  harness page `apps/vanilla-playground/layout-matrix.html` (pins, column groups, row numbers,
+  checkboxes, aggregates, pagination, pinned rows, grouping, sticky and full-width rows, themes,
+  explicit heights, toolbar), walks each through a width and height ladder and runtime
+  transitions (scroll, pin, hide, collapse, theme swap, header-height change, hidden mount, window
+  resize), and asserts the invariants in `scripts/layout-probe/invariants.js` after every step
+  (sections, cells and rows aligned across header, body, aggregate row, scrollbar lanes and pinned
+  bands; scrollers in sync; scrollbar gutter reserved exactly where the body shows one; the
+  horizontal strip shown exactly when something overflows; the 35% pinned clamp; contiguous
+  vertical stack). It then smoke-checks every vanilla playground page at three widths. The
+  harness page imports the same invariants, so a person can open it, pick a config, drag the
+  frame's corner and read the violations live. See `docs/maintainers/repository.md`.
+
 ## 1.10.0 — 2026-10-14
 
 Bug-fix round from the 2026-10-13 feature-set gap analysis (`docs/feature-gap-findings.md`,
