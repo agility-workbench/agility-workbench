@@ -31,7 +31,7 @@ type NavDir = "up" | "down" | "left" | "right";
 
 /**
  * Pure-view selection renderer. Holds NO selection state — it reads the core's selection
- * (getSelectionRange / getSelectedColumnIds / getSelectedRowIds) on the render hot path and
+ * (getSelectionRange / getSelectedColumnIds / isRowSelected) on the render hot path and
  * repaints when the core emits selectionChanged / focusChanged. User input is translated to
  * actions and dispatched to the core, which owns all selection logic.
  */
@@ -46,7 +46,6 @@ export class SelectionRenderer {
     const fill = this.params.fill();
     fill.beginSlotPaint();
     const range = this.params.core.getSelectionRange();
-    const selectedRowIDs = this.params.core.getSelectedRowIds();
     const selectedColumnIDs = this.params.core.getSelectedColumnIds();
     // The focused cell drives two independent things: the optional visual outline
     // (highlightActiveCell, off by default) and aria-activedescendant, which must track focus
@@ -81,9 +80,9 @@ export class SelectionRenderer {
     const subtreeState = viewIndex != null
       ? this.params.core.getRowSelectionStateAtViewIndex(viewIndex)
       : null;
-    const rowSelected = this.isViewIndexRowSelected(viewIndex, selectedRowIDs);
-    const prevRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex - 1 : null, selectedRowIDs);
-    const nextRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex + 1 : null, selectedRowIDs);
+    const rowSelected = this.isViewIndexRowSelected(viewIndex);
+    const prevRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex - 1 : null);
+    const nextRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex + 1 : null);
 
     const apply = (cells: HTMLDivElement[] | undefined) => {
       if (!cells) return;
@@ -244,11 +243,13 @@ export class SelectionRenderer {
 
   // Whether the row at `viewIndex` paints as row-selected. A group row is never stored in the
   // selection, so under groupSelectsChildren it reads as selected exactly when its whole subtree is.
-  private isViewIndexRowSelected(viewIndex: number | null, selectedRowIDs: Set<string>): boolean {
+  // Asked per row rather than read from the id set: under a server-side select-all the set would
+  // have to be rebuilt from every loaded row, and a row that loads later must paint selected too.
+  private isViewIndexRowSelected(viewIndex: number | null): boolean {
     if (viewIndex == null || viewIndex < 0) return false;
     const core = this.params.core;
     const id = core.getRowIdAtViewIndex(viewIndex);
-    if (!!id && selectedRowIDs.has(id)) return true;
+    if (!!id && core.isRowSelected(id)) return true;
     return !!core.getRowModel().getRowNodeAtViewIndex(viewIndex)?.isGroup
       && core.getRowSelectionStateAtViewIndex(viewIndex) === "all";
   }
@@ -835,7 +836,7 @@ export class SelectionRenderer {
     if (!this.params.core.options.clearSelectionOnBodyClick) return;
     if (
       this.params.core.options.rowSelectionCheckboxes
-      && this.params.core.getSelectedRowIds().size > 0
+      && this.params.core.hasRowSelection()
     ) return;
     this.params.core.dispatch({ type: "selectionClear", what: "all" });
   }

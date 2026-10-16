@@ -65,8 +65,8 @@ which run before the adapter.
 | `setRowData(rows)` | Replace client-side rows |
 | `forEachNodeAfterFilter(callback)` | Visit rows that pass filtering, before client-side sorting |
 | `forEachNodeAfterFilterAndSort(callback)` | Visit rows that pass filtering in final sorted order |
-| `applyTransaction(tx)` | Add, optionally insert at source-order `addIndex`, update, or remove client-side rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted) |
-| `applyTransactionAsync(tx)` | Mutate client-side rows immediately and defer model derivation/rendering into a shared batch; resolves after the flush with this call's counts |
+| `applyTransaction(tx)` | Add, optionally insert at source-order `addIndex`, update, or remove rows; returns `{ added, updated, removed }` counts of what was actually applied (unknown row IDs are skipped and not counted). Server-side, it mirrors a change already made on the server into the loaded rows, with additions placed by `route` (see [Transactions](../examples/server-side-data.mdx#transactions)) |
+| `applyTransactionAsync(tx)` | Mutate rows immediately and defer model derivation/rendering into a shared batch; resolves after the flush with this call's counts |
 | `flushAsyncTransactions()` | Immediately finalize pending asynchronous transactions |
 | `setColumnDefs(defs)` | Replace column definitions (claims caller ownership of the schema — see below) |
 | `getColumnState()` | Capture width, order, pinning, visibility, and sort (`sort` / `sortIndex`, `null` when unsorted) |
@@ -227,6 +227,10 @@ selection programmatically by stable row id (`"set"` | `"add"` | `"remove"`).
 whole filtered set by default (`selectAllScope` option), and
 `getKeyboardNavigationMode()` reports the live tree-data navigation mode
 (non-tree grids always report `"grid"`).
+
+| Method | Purpose |
+| --- | --- |
+| `getRowSelectionState()` / `setRowSelectionState(state)` | Read or replace the row selection as `{ selectAll, toggledRowIds }` — on the server-side row model a select-all is "every row of the current query except `toggledRowIds`", the form to hand the server for a bulk operation ([server-side select-all](../examples/selection.mdx#server-side-select-all)) |
 
 ## Keyboard shortcuts
 

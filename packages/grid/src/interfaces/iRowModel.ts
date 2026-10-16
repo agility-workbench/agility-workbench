@@ -26,16 +26,47 @@ export interface ServerSideRefreshOptions {
 }
 export type RowDataChangeReason = "init" | "refresh" | "filter" | "quickFilter" | "sort" | "pagination" | "page" | "viewport" | "aggregateScope" | "aggregateModel" | "transaction" | "group" | "pivot";
 
+/**
+ * An incremental change to the rows: removals first, then in-place updates, then additions.
+ *
+ * On the server-side row model a transaction MIRRORS a change the application has already made on
+ * the server — the grid tells the server nothing, and every later block fetch must agree with what
+ * the transaction did. Only loaded rows can be updated or removed there (other ids are skipped and
+ * not counted), and additions go into one loaded listing named by `route`.
+ */
 export interface RowTransaction<Row = any> {
   add?: Row[];
   /**
-   * Zero-based position in the underlying client-side row order at which new rows are inserted.
-   * Omitted values append. The index is evaluated after removals in the same transaction; derived
-   * sorting, filtering, grouping, and pagination may place the rows elsewhere in the displayed view.
+   * Zero-based position at which new rows are inserted. Omitted values append. The index is
+   * evaluated after removals in the same transaction.
+   *
+   * Client-side: a position in the underlying row order; derived sorting, filtering, grouping, and
+   * pagination may place the rows elsewhere in the displayed view.
+   *
+   * Server-side: a child index within the listing `route` names, in the server's own order. The
+   * rows that follow shift down by the number added. A listing whose end is not yet known (no
+   * `totalRows`, end not reached) cannot place an append or an index past its loaded frontier;
+   * such an addition is skipped and not counted.
    */
   addIndex?: number;
   update?: { rowId: string; row: Row }[];
   remove?: string[];
+  /**
+   * Server-side row model only; ignored by the client-side model. Which listing `add` inserts
+   * into. Omitted or empty = the root listing (the top-level group rows while grouping, the tree
+   * roots in tree mode, the rows themselves otherwise).
+   *
+   * - Grouped data: the group values from the top level down to the parent group, as the rows
+   *   carry them (or as their display keys — each entry goes through the grouping's blank and
+   *   stringify rule). A path shorter than the grouping adds group rows at that level; a full path
+   *   adds leaf rows.
+   * - Tree data (`treeData: { mode: "server" }`): the parent row ids from the root down; the last
+   *   entry names the parent whose children listing receives the rows.
+   *
+   * The listing must be loaded — an expanded (or cached) parent. Otherwise the additions are
+   * skipped and not counted; the server returns them when the parent is next expanded.
+   */
+  route?: any[];
 }
 
 export interface RowTransactionResult {
@@ -113,7 +144,8 @@ export interface IRowModel<Row = any> {
 
   // Incremental add / update / remove of rows without a full data replacement. Node identity is
   // preserved for updated rows so renderers (e.g. change-flash) can detect deltas. Returns counts
-  // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards.
+  // of rows actually applied. The caller (core) is responsible for re-deriving the view afterwards
+  // (a "transaction" request), which the server-side model answers without purging its store.
   // `order`, when given, is the full set of row ids in the order the nodes should end up in and
   // takes precedence over `tx.addIndex`; it is used when the caller supplied a whole ordered array.
   applyTransaction(tx: RowTransaction, order?: string[]): RowTransactionResult;

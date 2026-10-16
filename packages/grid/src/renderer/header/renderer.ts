@@ -447,7 +447,8 @@ export class HeaderRenderer {
     if (!box) return;
     const core = this.params.core;
     const all = core.areAllRowsSelected();
-    const some = !all && core.getSelectedRowIds().size > 0;
+    // "some" in either mode: explicit rows selected, or a server-side select-all with exclusions.
+    const some = !all && core.hasRowSelection();
     box.classList.toggle("selected", all);
     box.classList.toggle("pte-checkbox-indeterminate", some);
     const hcell = box.closest(".pte-hcell");

@@ -7,7 +7,7 @@ import {
 import { ColumnState, GridId, IGridCore, RowData } from "./iGridCore";
 import { ColDef } from "./column";
 import { GridAction } from "../events/action";
-import { CellRef, SelectionSnapshot } from "./selection";
+import { CellRef, RowSelectionState, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
 import { IRowNode } from "./iRowNode";
 import type { IBodyMenuAdapter } from "./iBodyMenuAdapter";
@@ -405,12 +405,22 @@ export interface IGridAPI {
    */
   setRowPinned(rowId: GridId, position: RowPinnedPosition | null): void;
 
-  /** Apply a transaction to the row data (client-side row model only). Returns what was actually
-   * applied; all-zero counts on the server-side row model or when nothing matched. */
+  /**
+   * Apply a transaction (removals, then updates, then additions) to the row data. Returns what was
+   * actually applied; ids that match nothing are skipped and not counted.
+   *
+   * Server-side row model: the transaction mirrors a change the application has ALREADY made on
+   * the server into the loaded rows, without a refetch — the grid tells the server nothing, and
+   * later block fetches must agree with the result. Only loaded rows can be updated or removed;
+   * additions go into the loaded listing `tx.route` names (root when omitted) at `tx.addIndex`.
+   * Group-row aggregates are the server's and are not recomputed. Block fetches still in flight
+   * for a listing whose indices shifted are discarded and re-requested.
+   */
   applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult;
   /**
-   * Mutate client-side rows immediately, then defer filter/sort/group/aggregate derivation and
-   * rendering so nearby calls share one pass. Resolves after that pass with this call's own counts.
+   * Mutate rows immediately, then defer filter/sort/group/aggregate derivation and rendering so
+   * nearby calls share one pass. Resolves after that pass with this call's own counts. Works on
+   * both row models, with the server-side contract of {@link applyTransaction}.
    */
   applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult>;
   /** Immediately finalize any pending asynchronous transactions. No-op when none are pending. */
@@ -656,28 +666,57 @@ export interface IGridAPI {
   clearSelection(what?: "all" | "range" | "rows" | "columns"): void;
   /** Read the current selection snapshot. */
   getSelection(): SelectionSnapshot;
-  /** Underlying data objects of the currently-selected rows. */
+  /**
+   * Underlying data objects of the currently-selected rows. Under a server-side select-all these
+   * are the LOADED selected rows only — use `getRowSelectionState()` for the whole selection.
+   */
   getSelectedRows(): unknown[];
   /**
    * Currently-selected row nodes (unloaded / no-longer-present rows are omitted). Group rows are
    * never included, even fully selected ones under `groupSelectsChildren` — the selection holds
    * data rows only, so this always matches `getSelectedRows()` and `getSelection().selectedRowIds`.
+   * Under a server-side select-all: the loaded selected rows only.
    */
   getSelectedNodes(): IRowNode[];
   /** Select every selectable data row in the select-all scope — the whole filtered set by
    * default, or the current page under `selectAllScope: "page"`. Skips group rows (under
-   * `groupSelectsChildren` a group on the page contributes its leaves, collapsed ones included). */
+   * `groupSelectsChildren` a group on the page contributes its leaves, collapsed ones included).
+   * On the server-side row model the filtered scope selects every row the server's current query
+   * returns, loaded or not — a select-all state with no exclusions (see `getRowSelectionState`). */
   selectAllRows(): void;
-  /** Clear the row selection. */
+  /** Clear the row selection (ends a server-side select-all too). */
   deselectAllRows(): void;
-  /** Whether every selectable data row in the select-all scope is currently selected. */
+  /**
+   * Whether every selectable data row in the select-all scope is currently selected. Under a
+   * server-side select-all: true while nothing is excluded.
+   */
   areAllRowsSelected(): boolean;
   /**
    * Programmatic row selection by stable row id — for an external selection owner driving the
    * grid. "set" (default) replaces the selection; "add"/"remove" adjust it. Unknown or
-   * non-selectable ids are dropped (client-side row model). Emits selectionChanged reason "api".
+   * non-selectable ids are dropped (client-side row model); the server-side model keeps ids of
+   * rows it has not loaded. Under a server-side select-all "add" takes ids out of the exclusions,
+   * "remove" excludes them, and "set" ends select-all with exactly these ids selected. Emits
+   * selectionChanged reason "api".
    */
   selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
+  /**
+   * The row selection as a select-all flag plus the rows toggled away from it — the form a
+   * server-side bulk operation needs. `{ selectAll: true, toggledRowIds }` means every row of the
+   * server's current query (its filter and quick filter) EXCEPT `toggledRowIds`; `selectAll:
+   * false` means exactly `toggledRowIds`. Only the server-side row model reports `selectAll:
+   * true` (after `selectAllRows()` / the header checkbox in the default filtered scope); the
+   * client-side model always reports its explicit ids. Returns a copy.
+   */
+  getRowSelectionState(): RowSelectionState;
+  /**
+   * Replace the row selection with a `{ selectAll, toggledRowIds }` state — e.g. one saved from
+   * `getRowSelectionState()`. On the server-side model (filtered scope, multiple selection)
+   * `selectAll: true` is kept as a select-all; elsewhere it resolves at once to the select-all
+   * scope's selectable rows minus `toggledRowIds`. Ids of loaded rows `isRowSelectable` refuses
+   * are dropped. Emits selectionChanged reason "api".
+   */
+  setRowSelectionState(state: RowSelectionState): void;
 
   /* ----- Editing ----- */
   /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */

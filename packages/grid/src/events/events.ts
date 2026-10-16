@@ -143,9 +143,15 @@ export type GridEventCellsChangedParams = {
 };
 
 export type GridEventSelectionChangedParams = {
-  // full current selection snapshot (see snapshot.kind for the active selection kind)
+  // full current selection snapshot (see snapshot.kind for the active selection kind). Under a
+  // server-side select-all it carries `selectAll: true` + `toggledRowIds` (the exclusions), and
+  // `selectedRowIds` lists the loaded selected rows only.
   snapshot: SelectionSnapshot;
-  /** Row-id membership changes since the previous selectionChanged event. */
+  /**
+   * Row-id membership changes since the previous selectionChanged event. Under a server-side
+   * select-all these compare LOADED selected rows; rows that load later while select-all is on
+   * paint selected without a selectionChanged of their own.
+   */
   delta: {
     added: GridId[];
     removed: GridId[];

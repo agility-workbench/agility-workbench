@@ -20,7 +20,7 @@ import { ColumnState, GridId, IGridCore, RowData } from "../interfaces/iGridCore
 import { IColumnModel } from "../interfaces/iColumnModel";
 import { IBodyMenuAdapter } from "../interfaces/iBodyMenuAdapter";
 import { IMenuAdapter } from "../interfaces/iMenuAdapter";
-import { CellRef, SelectionSnapshot } from "../interfaces/selection";
+import { CellRef, RowSelectionState, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
   QuickFilterBehavior,
@@ -1527,6 +1527,14 @@ export class GridAPI implements IGridAPI {
 
   selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
     this.core.dispatch({ type: "rowSelectByIds", rowIds, mode });
+  }
+
+  getRowSelectionState(): RowSelectionState {
+    return this.core.getRowSelectionState();
+  }
+
+  setRowSelectionState(state: RowSelectionState): void {
+    this.core.setRowSelectionState(state);
   }
 
   // ---------------- Editing ----------------

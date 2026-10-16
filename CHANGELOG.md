@@ -102,8 +102,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   least recently used blocks are evicted after each block arrives and fetched again when scrolled
   back to; row counts, the pager total, expansion and the selection are kept. Blocks in or one
   block either side of the viewport, blocks still loading, and blocks holding an expanded group
-  row or tree parent are never evicted, so the cache can briefly hold more than the limit. Unset
-  (the default) keeps every block until a purge, as before.
+  row or tree parent are never evicted, so the cache can briefly hold more than the limit. Blocks the
+  grid is still loading for the current window are never evicted either, so a limit smaller than the
+  first page lets the cache go over the limit until that page has loaded, instead of evicting and
+  refetching the same blocks forever. Unset (the default) keeps every block until a purge, as before.
 - **Grouped grids can show a footer (subtotal) row per group and a grand-total row.**
   `groupTotalRow: "top" | "bottom"` repeats an expanded group's aggregates under a "Total <group>"
   label, directly under its header or after its last row; `grandTotalRow` adds one row of totals
@@ -112,6 +114,25 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   the per-column totals become visible), count toward pagination and `aria-rowindex`, and carry
   `pte-row-footer` / `pte-row-grand-total`; they are never selected, edited, docked or exported.
   Client-side row grouping only; live through `updateGridOptions` and in both bindings.
+- **Transactions now work on the server-side row model.** `applyTransaction` and
+  `applyTransactionAsync` mirror a change the app has already made on the server into the loaded
+  rows, with no refetch: updates replace data on the same node, removals close the gap and lower
+  the count and pager total, and additions go into the listing a new `RowTransaction.route` names
+  (group values, or tree parent ids) at `addIndex`. Unloaded rows are skipped and not counted, a
+  block fetched before an add or remove is discarded and requested again, and undo history is kept.
+  Group aggregates stay server-stamped and are not recomputed.
+- **Select-all on the server-side row model now selects every row, not just the loaded ones.**
+  `selectAllRows()` and the header checkbox store `{ selectAll: true, toggledRowIds: [] }`,
+  un-checking rows adds them to `toggledRowIds`, and rows that load later paint selected. The new
+  `api.getRowSelectionState()` / `api.setRowSelectionState()` hand that state to the server for
+  bulk operations (`RowSelectionState` is exported). This changes behaviour for server-side grids
+  in multiple mode with the default `selectAllScope: "filtered"`: `getSelectedRows()` and
+  `getSelection().selectedRowIds` still return loaded rows but now include rows loaded after the
+  select-all, `areAllRowsSelected()` stays true until a row is excluded, a filter or quick-filter
+  change ends the select-all even under `selectionPersistence: "keep"`, exports with
+  `scope: "selection"` and copying warn once that they use the loaded rows, and `selectRowsById`
+  drops loaded rows that `isRowSelectable` refuses. `selectAllScope: "page"`, single mode and the
+  client-side model are unchanged.
 
 ### Fixes
 

@@ -173,7 +173,8 @@ export class ExportRenderer {
       selectionRange = { ...this.params.selectionRange()! };
     } else if (scope === "selection" && this.params.core.getSelectedRowIds().size > 0) {
       // Row-id selection persists across pages, so honor the FULL filtered/sorted set — not just
-      // the current page's view.
+      // the current page's view. A server-side select-all can only export its loaded rows.
+      this.params.core.warnLoadedOnlySelection("export");
       const selectedRowIds = this.params.core.getSelectedRowIds();
       this.params.core.getRowModel().forEachNodeAfterFilterAndSort((node) => {
         if (node && !node.isGroup && selectedRowIds.has(node.id)) rows.push(node.data);
@@ -434,6 +435,7 @@ export class ExportRenderer {
     // An explicit row selection spans all columns, so the group heading column remains in scope.
     const selectedRowIds = this.params.core.getSelectedRowIds();
     if (scope === "selection" && selectedRowIds.size > 0) {
+      this.params.core.warnLoadedOnlySelection("export");
       return { nodeIds: new Set(selectedRowIds), columnIds: undefined, includeGroupColumn: true };
     }
 
@@ -475,7 +477,7 @@ export class ExportRenderer {
     if (range && (range.rowEnd >= range.rowStart || range.pinnedTop || range.pinnedBottom)) {
       return "selection";
     }
-    if (this.params.core.getSelectedRowIds().size > 0) return "selection";
+    if (this.params.core.hasRowSelection()) return "selection";
     if (this.params.selectedColumnIDs().size > 0) return "selectedColumns";
     return "all";
   }
