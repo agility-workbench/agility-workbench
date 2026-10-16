@@ -29,7 +29,7 @@ const options = {
   ],
 } satisfies GridOptions;
 
-api.dispatch({ type: "rowGroupSet", colIds: ["region", "country"] });
+api.setRowGroupColumns(["region", "country"]);
 api.setAllGroupsExpanded(true);
 ```
 
@@ -111,16 +111,10 @@ median. The footer scope can be none, current page, or all rows. Grouped
 client-side rows also receive per-group aggregate values.
 
 ```ts
-const revenue = api.getColumnModel().getByColId("revenue")!;
-const orders = api.getColumnModel().getByColId("orders")!;
-
-api.dispatch({
-  type: "aggregateModelSet",
-  aggregateModels: [
-    { key: revenue.instanceID, type: AggregateType.SUM },
-    { key: orders.instanceID, type: AggregateType.COUNT },
-  ],
-});
+api.setAggregates([
+  { colId: "revenue", type: AggregateType.SUM },
+  { colId: "orders", type: AggregateType.COUNT },
+]);
 ```
 
 Blank cells (`null`, `undefined`, or `""`) take no part in an aggregate. `count`

@@ -84,6 +84,14 @@ changes; in development mode (`isDevMode()`) the grid logs one `console.warn` na
 that happens. Re-create the `<awb-grid>` (for example under an `@if`, or a keyed `@for`) to apply
 such a change. The Angular page of the documentation site has the full live-vs-creation table.
 
+Outputs: `(gridReady)`, `(cellClicked)`, `(rowClicked)`, `(cellDoubleClicked)`,
+`(rowDoubleClicked)`, `(cellValueChanged)`, `(selectionChanged)`, `(sortChanged)`,
+`(filterChanged)`, `(quickFilterFindChanged)`, `(historyChanged)`, `(columnsChanged)`,
+`(paginationChanged)` and `(gridError)` (the core `error` event — not `(error)`, which Angular
+would also bind as a native DOM listener on the host). `(columnsChanged)` and `(sortChanged)`
+carry `source: "user" | "api"`; persist column state on `"user"` so restoring it never echoes
+back. Anything else: `api.on(eventName, handler)`.
+
 ## Styling
 
 Nothing to do — the grid delivers its own stylesheet when it attaches, once per document, and

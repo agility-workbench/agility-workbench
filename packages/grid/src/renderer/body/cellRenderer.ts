@@ -8,6 +8,7 @@ import {
 } from "../renderer";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import type { RowPresentation } from "../../interfaces/gridOptions";
+import { BooleanCellRenderer } from "../../cellRenderers/booleanRenderer";
 import { inheritRowPresentation, mergeClassValues, mergeStyleValues } from "./rowPresentation";
 
 export class BodyCellRenderer {
@@ -222,7 +223,10 @@ export class BodyCellRenderer {
 
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
-    const renderer = col.cellRenderer;
+    // A boolean column without a renderer of its own draws the built-in checkbox. Leaf rows only:
+    // the group branch above keeps reading `col.cellRenderer`, so a group row's aggregate stays text.
+    const renderer = col.cellRenderer
+      ?? (col.usesDefaultCheckboxRenderer() ? BooleanCellRenderer : undefined);
     const rendererParams = getCellRendererParams(
       rawValue, displayValue, row, viewIndex, col, cell, this.api, refreshReason, rowPresentation,
     );

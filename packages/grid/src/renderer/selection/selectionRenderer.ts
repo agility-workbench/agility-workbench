@@ -1,4 +1,5 @@
 import { Column } from "../../column/column";
+import { isBooleanToggleTarget } from "../../cellRenderers/booleanRenderer";
 import { GridCore } from "../../core/core";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
@@ -803,7 +804,8 @@ export class SelectionRenderer {
 
     // Single-click editing: the same click that selects the cell also opens the editor. Core no-ops
     // for non-editable columns / group rows, so this is safe to always dispatch when enabled.
-    if (this.params.core.options.editTrigger === "singleClick") {
+    // An editable boolean checkbox toggles on its own click; opening the editor would replace it.
+    if (this.params.core.options.editTrigger === "singleClick" && !isBooleanToggleTarget(e.target)) {
       const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
       if (cell) this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
     }

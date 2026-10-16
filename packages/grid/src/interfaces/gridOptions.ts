@@ -12,7 +12,11 @@ import type { TooltipComponent } from "../renderer/tooltip/tooltipComponent";
 import type { ColDef, DefaultColDef, GroupValueGetterParams } from "./column";
 import type {
   CellValueChangeSource,
+  ColumnChangeSource,
   GridEventCellClickedParams,
+  GridEventColumnsChangedParams,
+  GridEventErrorParams,
+  GridEventPaginationChangedParams,
   GridEventCellDoubleClickedParams,
   GridEventFilterChangedParams,
   GridEventQuickFilterFindChangedParams,
@@ -86,6 +90,11 @@ export interface SortChangedParams {
   changedColIds?: string[];
   /** Internal instance ids of those columns. */
   changedColInstanceIds?: string[];
+  /**
+   * `"user"` for a sort made through the grid's UI (header click or keyboard, column menu, toolbar
+   * sort panel); `"api"` for `setSortModel`, view restores and `columnDefs` changes.
+   */
+  source: ColumnChangeSource;
 }
 
 /** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */
@@ -1247,6 +1256,34 @@ export interface GridOptions {
    */
   onSortChanged?: (params: SortChangedParams) => void;
   /**
+   * Called whenever the column layout or column-level model changes — definitions, state restores,
+   * pinning, visibility, order, sort, filter, grouping, pivot, added columns (`params.reason` says
+   * which). Convenience wrapper over the `columnsChanged` event. `params.source` is `"user"` for a
+   * gesture made through the grid's UI (header drag, click or keyboard; column menu; column panel;
+   * toolbar) and `"api"` for everything else — `IGridAPI` calls, saved-view and column-state
+   * restores, `columnDefs` updates — so persisting column state only on `"user"` changes saves what
+   * the user did without echoing the application's own restores. Width changes are not reported
+   * here; they arrive on the `columnWidthsChanged` event, which carries the same `source`.
+   */
+  onColumnsChanged?: (params: GridEventColumnsChangedParams) => void;
+  /**
+   * Called when pagination may have changed — page index, page size, total row or page count,
+   * whether the total is known, or pagination being turned on or off. Convenience wrapper over the
+   * `paginationChanged` event; the payload is `api.getPaginationInfo()`. It also fires after
+   * operations that leave every field as it was (a re-sort, a regroup), so compare with the
+   * previous payload when only real changes matter.
+   */
+  onPaginationChanged?: (params: GridEventPaginationChangedParams) => void;
+  /**
+   * Called when a row-model request fails — the server-side data source rejected it, or the grid
+   * refused what it returned (`params.code` is `"row_model_error"`; `params.details` holds what
+   * failed). Convenience wrapper over the `error` event. This is an additional notification, not a
+   * handler: the grid's own handling is unchanged (the loading overlay comes down and the failed
+   * block stays requestable, so the next scroll there or `refreshServerSideData` retries it).
+   * Failures of requests a newer one has superseded are not reported.
+   */
+  onError?: (params: GridEventErrorParams) => void;
+  /**
    * Called when the effective row filter changes — column-filter model edits, quick-filter
    * changes, and columnDefs updates that drop an active filter. Convenience wrapper over the
    * canonical `filterChanged` event.
@@ -2039,7 +2076,8 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   getRowClass: true, getRowStyle: true, getRowPresentation: true, onCellClicked: true,
   onRowClicked: true, onCellDoubleClicked: true, onRowDoubleClicked: true,
   onBeforeCellCommit: true, fillOperation: true, onCellValueChanged: true,
-  onSelectionChanged: true, onSortChanged: true, onFilterChanged: true,
+  onSelectionChanged: true, onSortChanged: true, onColumnsChanged: true,
+  onPaginationChanged: true, onError: true, onFilterChanged: true,
   onQuickFilterFindChanged: true, onHistoryChanged: true, ariaLabel: true, ariaLabelledBy: true,
   highlightActiveCell: true, rowSelection: true, isRowSelectable: true, cellSelection: true,
   rangeSelection: true, fillHandle: true, columnSelection: true, headerKeyboardNavigation: true,

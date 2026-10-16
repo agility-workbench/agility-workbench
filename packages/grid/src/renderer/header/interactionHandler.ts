@@ -205,7 +205,7 @@ export class HeaderInteractionHandler {
           // A leaf carrying the group expander toggles it and never sorts. Parent (group) header
           // cells are not reachable by this cursor at all.
           if (col.showExpander) {
-            core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: col.instanceID });
+            core.dispatch({ type: "headerAction", source: "user", action: "toggleGroupExpand", colId: col.instanceID });
             return;
           }
           if (!col.sortable) return;
@@ -215,6 +215,7 @@ export class HeaderInteractionHandler {
           }
           core.dispatch({
             type: "headerAction",
+            source: "user",
             action: "toggleSort",
             colId: col.instanceID,
             additive: hasMod(e),
@@ -260,7 +261,7 @@ export class HeaderInteractionHandler {
         && (col.instanceID === target.instanceID || selected.has(col.instanceID)));
     if (cols.length <= 1) {
       core.dispatch({
-        type: "headerAction", action: "toggleSort", colId: target.instanceID, additive: false,
+        type: "headerAction", source: "user", action: "toggleSort", colId: target.instanceID, additive: false,
       });
       return;
     }
@@ -278,6 +279,7 @@ export class HeaderInteractionHandler {
     );
     core.dispatch({
       type: "sortModelSet",
+      source: "user",
       sortItems: cols.map(col => ({ key: col.instanceID, dir })),
     });
   }
@@ -321,11 +323,11 @@ export class HeaderInteractionHandler {
     if (filter) {
       const anchor = headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-filterBtn") ?? headerEl;
       if (!anchor) return;
-      core.dispatch({ type: "headerAction", action: "filterClick", colId: col.instanceID });
+      core.dispatch({ type: "headerAction", source: "user", action: "filterClick", colId: col.instanceID });
       this.params.openColumnFilter(col.instanceID, anchor);
       return;
     }
-    core.dispatch({ type: "headerAction", action: "menuClick", colId: col.instanceID });
+    core.dispatch({ type: "headerAction", source: "user", action: "menuClick", colId: col.instanceID });
     this.params.openColumnMenu("columnMenuButton", col.instanceID, {
       anchorEl: headerEl?.querySelector<HTMLElement>(".pte-hcell-menu-menuBtn") ?? headerEl,
     });
@@ -441,7 +443,7 @@ export class HeaderInteractionHandler {
     }
     const headerExpand = (e.target as HTMLElement)?.closest(".pte-hcell-expander");
     if (headerExpand) {
-      return this.params.core.dispatch({ type: "headerAction", action: "toggleGroupExpand", colId: header.id });
+      return this.params.core.dispatch({ type: "headerAction", source: "user", action: "toggleGroupExpand", colId: header.id });
     }
     // The sort icon lives inside .pte-hcell-content, so it must be checked before the content branch
     // below. A plain click replaces the sort with this column; Ctrl/Cmd *or* Shift makes it additive.
@@ -453,7 +455,7 @@ export class HeaderInteractionHandler {
       const col = this.params.core.getColumnModel().getById(header.id);
       if (!col || !col.sortable) return;
       const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-      return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive });
+      return this.params.core.dispatch({ type: "headerAction", source: "user", action: "toggleSort", colId: header.id, additive });
     }
     const headerContent = (e.target as HTMLElement)?.closest(".pte-hcell-content");
     if (headerContent) {
@@ -461,7 +463,7 @@ export class HeaderInteractionHandler {
       if (!col || col.isRowNumberColumn()) return;
       if (e.shiftKey) {
         // Backward-compatible power-user shortcut: Shift+click on the header body sorts additively.
-        return this.params.core.dispatch({ type: "headerAction", action: "toggleSort", colId: header.id, additive: true });
+        return this.params.core.dispatch({ type: "headerAction", source: "user", action: "toggleSort", colId: header.id, additive: true });
       }
       // Column selection is opt-out: when disabled, a header click still counts as a header action
       // (e.g. for sort affordances) but does not select the column.
@@ -469,12 +471,12 @@ export class HeaderInteractionHandler {
         const additive = e.ctrlKey || e.metaKey;
         this.params.toggleColumnSelection(header.id, additive ? "toggle" : "replace");
       }
-      return this.params.core.dispatch({ type: "headerAction", action: "click", colId: header.id });
+      return this.params.core.dispatch({ type: "headerAction", source: "user", action: "click", colId: header.id });
     }
     const btn: HTMLDivElement | null = (e.target as HTMLElement)?.closest(".pte-hcell-menu-btn");
     if (btn) {
       const isFilter = btn.classList.contains("pte-hcell-menu-filterBtn");
-      this.params.core.dispatch({ type: "headerAction", action: isFilter ? "filterClick" : "menuClick", colId: header.id });
+      this.params.core.dispatch({ type: "headerAction", source: "user", action: isFilter ? "filterClick" : "menuClick", colId: header.id });
       if (!isFilter) {
         // Same reconciliation as a header right-click: the button must not open a menu about
         // columns the user did not click while their selection sits elsewhere.

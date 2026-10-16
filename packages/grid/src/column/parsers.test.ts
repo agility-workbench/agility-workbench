@@ -180,3 +180,80 @@ describe("parseFormattedDate", () => {
     expect(parseFormattedDate("2026/01/31", "DD/MM/YYYY")).toBeNull();
   });
 });
+
+// The NUMBER column's built-in formatter (grouping, decimals, percent, unit, compact) writes text
+// the built-in parser must read back, in the column's locale (finding #57).
+describe("number formatter options round-trip through the built-in parser", () => {
+  const node = { data: {} } as IRowNode;
+  const make = (formatterOptions: ColDef["formatterOptions"]) =>
+    new Column({ colId: "c", key: "c", label: "C", editable: true, type: ColumnType.NUMBER, formatterOptions } as ColDef);
+  const roundTrip = (col: Column, value: unknown) => col.parseValue(col.formatValue(value, node), node, value);
+
+  it.each(["en-US", "de-DE", "fr-FR"])("grouping + 2 decimals in %s", locale => {
+    const col = make({ locale, fractionDigits: 2 });
+    for (const v of [0, 5, 1234.5, -1234.56, 1234567.89, 0.01]) expect(roundTrip(col, v)).toBe(v);
+  });
+
+  it("grouping + decimals: the locale's separators, plain text still lands", () => {
+    const en = make({ useGrouping: true });
+    expect(en.parseValue("1,234.5", node, 0)).toBe(1234.5);
+    expect(en.parseValue("1234.5", node, 0)).toBe(1234.5);
+    expect(en.parseValue("1,23", node, 0)).toBe(REJECT);
+    expect(en.parseValue("abc", node, 0)).toBe(REJECT);
+    const de = make({ locale: "de-DE", fractionDigits: 1 });
+    expect(de.parseValue("1.234,5", node, 0)).toBe(1234.5);
+    expect(de.parseValue("1234.5", node, 0)).toBe(1234.5);
+  });
+
+  it.each(["en-US", "de-DE"])("percent in %s: the sign scales, a bare number is the fraction", locale => {
+    const col = make({ locale, style: "percent" });
+    for (const v of [0, 0.125, -0.5, 0.143, 12.345]) expect(roundTrip(col, v)).toBe(v);
+    expect(col.parseValue(locale === "en-US" ? "12.5%" : "12,5 %", node, 0)).toBe(0.125);
+    // Scaled in decimal text, so no float crumbs: 0.143, not 0.14300000000000002.
+    expect(col.parseValue(locale === "en-US" ? "14.3%" : "14,3 %", node, 0)).toBe(0.143);
+    expect(col.parseValue("0.125", node, 0)).toBe(0.125);
+    expect(col.parseValue("5%%", node, 0)).toBe(REJECT);
+    expect(col.parseValue("%", node, 0)).toBe(REJECT);
+  });
+
+  it("percent text is refused by a column that is not a percent column", () => {
+    expect(make({ fractionDigits: 2 }).parseValue("12%", node, 0)).toBe(REJECT);
+  });
+
+  it.each(["en-US", "de-DE"])("unit in %s: any spelling of the column's own unit", locale => {
+    const col = make({ locale, unit: "kilogram", fractionDigits: 1 });
+    for (const v of [0, 12, 1234.5, -3.5]) expect(roundTrip(col, v)).toBe(v);
+    expect(col.parseValue("12 kg", node, 0)).toBe(12);
+    expect(col.parseValue("12kg", node, 0)).toBe(12);
+    expect(col.parseValue("12", node, 0)).toBe(12);
+    expect(col.parseValue("12 lb", node, 0)).toBe(REJECT);
+    expect(col.parseValue("12 kg kg", node, 0)).toBe(REJECT);
+    expect(make({ unit: "kilogram", unitDisplay: "long" }).parseValue("2 kilograms", node, 0)).toBe(2);
+  });
+
+  it("compact notation reads its suffixes back as powers of ten", () => {
+    const en = make({ notation: "compact" });
+    expect(en.parseValue("1.2K", node, 0)).toBe(1200);
+    expect(en.parseValue("3.4M", node, 0)).toBe(3_400_000);
+    expect(en.parseValue("1.1M", node, 0)).toBe(1_100_000);
+    expect(en.parseValue("5 thousand", node, 0)).toBe(5000);
+    expect(roundTrip(en, 1_200_000)).toBe(1_200_000);
+    const de = make({ locale: "de-DE", notation: "compact" });
+    expect(de.parseValue("1,2 Mio.", node, 0)).toBe(1_200_000);
+  });
+
+  it("reads per-row options from a formatterOptions function", () => {
+    const col = make(({ row }) => (row?.data?.pct ? { style: "percent" } : { locale: "de-DE", fractionDigits: 2 }));
+    const pctRow = { data: { pct: true } } as IRowNode;
+    const deRow = { data: { pct: false } } as IRowNode;
+    expect(col.parseValue("25%", pctRow, 0)).toBe(0.25);
+    expect(col.parseValue("1.234,50", deRow, 0)).toBe(1234.5);
+    expect(col.parseValue("25%", deRow, 0)).toBe(REJECT);
+  });
+
+  it("parseLocaleNumber takes the shape directly", () => {
+    expect(parseLocaleNumber("12,5 %", "de-DE", undefined, { style: "percent" })).toBe(0.125);
+    expect(parseLocaleNumber("12 kg", "en-US", undefined, { style: "unit", unit: "kilogram" })).toBe(12);
+    expect(parseLocaleNumber("$1.2K", "en-US", "USD", { style: "currency", notation: "compact" })).toBe(1200);
+  });
+});

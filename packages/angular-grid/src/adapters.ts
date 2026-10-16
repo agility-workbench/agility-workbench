@@ -15,6 +15,7 @@ import type {
   CellEditor,
   CellEditorClass,
   CellRenderer,
+  CellRendererAlias,
   CellRendererClass,
   CellRendererParams,
   ColDef,
@@ -151,7 +152,15 @@ export class NgAdapters {
 
   // --- cell renderers -------------------------------------------------------------------------
 
-  adaptCellRenderer(renderer: CellRenderer | NgComponent | undefined): CellRenderer | undefined {
+  // Overloads: a plain renderer input (the full-width renderer, which has no alias) adapts to a
+  // plain renderer, so callers assigning into `CellRenderer`-typed option fields stay typed.
+  adaptCellRenderer(renderer: CellRenderer | NgComponent | undefined): CellRenderer | undefined;
+  adaptCellRenderer(
+    renderer: CellRenderer | CellRendererAlias | NgComponent | undefined,
+  ): CellRenderer | CellRendererAlias | undefined;
+  adaptCellRenderer(
+    renderer: CellRenderer | CellRendererAlias | NgComponent | undefined,
+  ): CellRenderer | CellRendererAlias | undefined {
     if (!renderer) return undefined;
     if (typeof renderer === "function" && isClassRenderer(renderer as CellRenderer)) {
       return renderer as CellRenderer;

@@ -4,6 +4,7 @@ import type {
   ActionFrameComponentParams,
   CellEditor,
   CellRenderer,
+  CellRendererAlias,
   CellRendererParams,
   ColDef,
   FilterParams,
@@ -140,7 +141,7 @@ export type NgColDef = Omit<
   | "headerComponent"
   | "headerCellComponent"
 > & {
-  cellRenderer?: CellRenderer | NgComponent;
+  cellRenderer?: CellRenderer | CellRendererAlias | NgComponent;
   cellEditor?: CellEditor | NgComponent;
   tooltipComponent?: TooltipComponent | NgComponent;
   headerTooltip?: string | TooltipComponent | NgComponent;

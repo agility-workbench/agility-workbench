@@ -73,12 +73,24 @@ export type GridEventViewportChangedParams = {
   lastRowIndex: number; // displayed index (inclusive)
 };
 
+/**
+ * Who caused a column change. `"user"` is a gesture made through the grid's own UI — a header
+ * click, drag or resize, a column-menu or column-panel item, a toolbar control, a header keyboard
+ * shortcut. `"api"` is everything else: `IGridAPI` calls, saved-view and column-state restores,
+ * `columnDefs` / option updates, server-sent schemas, and the grid's own follow-up adjustments.
+ * Persist column state on `"user"` changes to save what the user did without echoing the
+ * application's own restores back into storage.
+ */
+export type ColumnChangeSource = "user" | "api";
+
 export type GridEventColumnsChangedParams = {
   reason: "defs" | "state" | "pin" | "visibility" | "order" | "sort" | "filter" | "group" | "pivot" | "add";
   /** Public ColDef colIds of the affected columns. */
   changedColIds?: ColId[];
   /** Internal instance ids of the affected columns (unique; renderer-facing). */
   changedColInstanceIds?: string[];
+  /** Whether a UI gesture (`"user"`) or anything else (`"api"`) made the change. */
+  source: ColumnChangeSource;
 };
 
 export type GridEventColumnWidthsChangedParams = {
@@ -93,10 +105,17 @@ export type GridEventColumnWidthsChangedParams = {
    * width change that is not a drag in progress. Persist column state when this is `true`.
    */
   final: boolean;
+  /**
+   * As on `columnsChanged`: `"user"` when a UI gesture caused the change — a resize-handle drag, a
+   * header double-click autosize, or the re-fit that follows a grouping change made in the UI;
+   * `"api"` otherwise (API calls, state restores, autosize after data or font changes).
+   */
+  source: ColumnChangeSource;
 };
 
 export type GridEventRowsChangedParams = {
-  reason: "rowData" | "transaction" | "group" | "viewport" | "add" | RowDataChangeReason;
+  // "state" / "pin" / "visibility" / "order": the column change of that name re-laid every row out.
+  reason: "rowData" | "transaction" | "group" | "viewport" | "add" | "state" | "pin" | "visibility" | "order" | RowDataChangeReason;
   // displayed indices impacted (optional optimization)
   firstRowIndex?: number;
   lastRowIndex?: number;

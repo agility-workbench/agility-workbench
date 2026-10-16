@@ -87,6 +87,8 @@ import { ServerSideController } from "./serverSideController";
 import { ColumnPanelRenderer } from "./columnPanel/columnPanelRenderer";
 import { GridToolbarRenderer } from "./toolbar/gridToolbarRenderer";
 import { PinnedRowsRenderer } from "./pinnedRows/pinnedRowsRenderer";
+import { findLiveCellElement } from "./pinnedRows/liveCellElement";
+import { CellFlasher } from "./body/cellFlash";
 
 export class GridRenderer {
   _menuRenderer: MenuRenderer;
@@ -194,6 +196,7 @@ export class GridRenderer {
   _poolSize: number = 0;
   _startIndex: number = 0;
   _rowPool: RowPoolDef[];
+  private readonly _cellFlasher = new CellFlasher();
   private _serverSidePendingRangeKeys: Set<string> = new Set();
 
   private get rowModel() {
@@ -550,6 +553,30 @@ export class GridRenderer {
     };
     apiWithRowPresentation.setRowPresentationController?.({
       refreshRowPresentation: () => this.refreshRowPresentation(),
+    });
+    // Expose repaints and the rendered window on the public API (api.refreshCells / redrawRows /
+    // flashCells / getFirstDisplayedRowIndex / sizeColumnsToFit). Probed structurally to avoid a
+    // renderer→api import cycle, matching the exporter hook above.
+    const apiWithRender = this.api as unknown as {
+      setRenderController?: (controller: {
+        refreshCells: (params: { rowIds?: Set<string>; colInstanceIds?: Set<string>; rebuild: boolean }) => void;
+        redrawRows: (rowIds?: Set<string>) => void;
+        flashCells: (params: {
+          rowIds?: Set<string>;
+          colInstanceIds?: Set<string>;
+          flashMs: number;
+          fadeMs: number;
+        }) => void;
+        getRenderedRange: () => { first: number; last: number } | null;
+        getCenterViewportWidth: () => number;
+      }) => void;
+    };
+    apiWithRender.setRenderController?.({
+      refreshCells: ({ rowIds, colInstanceIds, rebuild }) => this.refreshRenderedCells(rowIds, colInstanceIds, rebuild),
+      redrawRows: (rowIds) => this.refreshRenderedCells(rowIds, undefined, true),
+      flashCells: (params) => this.flashRenderedCells(params),
+      getRenderedRange: () => this.getRenderedRange(),
+      getCenterViewportWidth: () => this._bodyViewportRenderer.getRefs().centerSpacer.clientWidth,
     });
     // Expose scrolling on the public API (api.ensureRowVisible / ensureColumnVisible /
     // ensureCellVisible): the core resolves a row id to a view slot, the renderer owns the scrollers.
@@ -1250,6 +1277,69 @@ export class GridRenderer {
     }
   }
 
+  /**
+   * `api.refreshCells` / `api.redrawRows`: repaint the rendered cells of the given rows (undefined =
+   * every rendered row) and columns (undefined = every column, by visible-leaf instance id). With
+   * `rebuild` each affected custom renderer instance is destroyed first, so it is created afresh
+   * instead of refreshed. The frozen bands and sticky mirrors are small and rebuilt whole, so they
+   * are re-rendered when any targeted row could be in one (a band row, or a group row a sticky
+   * mirror may be showing) — always when no rows are named.
+   */
+  refreshRenderedCells(rowIds: Set<string> | undefined, colInstanceIds: Set<string> | undefined, rebuild: boolean) {
+    this._bodyTooltipRenderer.hideNow();
+    this._refreshCellsForColumns(colInstanceIds ? [...colInstanceIds] : [], "data", { rowIds, rebuild });
+    const rowModel = this.core.getRowModel();
+    const touchesBands = !rowIds || [...rowIds].some(id =>
+      this.core.getDisplayedPinnedRowRef(id) != null || rowModel.getRowNode(id)?.isGroup === true);
+    if (touchesBands) this._pinnedRowsRenderer.render(undefined, true);
+  }
+
+  /** The page-relative view-index range of the body's rendered window (overscan included). */
+  getRenderedRange(): { first: number; last: number } | null {
+    if (!this._rowPool || this._rowPool.length === 0) return null;
+    const total = this.core.getRowModel().getViewCount();
+    const first = this._startIndex;
+    const last = Math.min(total, first + this._rowPool.length) - 1;
+    return last >= first ? { first, last } : null;
+  }
+
+  /**
+   * `api.flashCells`: highlight the live element of each targeted cell — a band row's cell in its
+   * band, a docked group row's sticky mirror, else the pooled body cell (a full-width row only
+   * through its host, which carries the nominal column). Cells not rendered are skipped.
+   */
+  flashRenderedCells(params: {
+    rowIds?: Set<string>;
+    colInstanceIds?: Set<string>;
+    flashMs: number;
+    fadeMs: number;
+  }) {
+    const model = this.core.getColumnModel();
+    const colIdxs: number[] = [];
+    for (const col of model.getLeaves()) {
+      if (col.isLeadingUtilityColumn()) continue;
+      if (params.colInstanceIds && !params.colInstanceIds.has(col.instanceID)) continue;
+      const meta = model.leafColumnLookup.get(col.instanceID);
+      if (meta) colIdxs.push(meta.globalIndex);
+    }
+    if (colIdxs.length === 0) return;
+    const rowIds = params.rowIds ? [...params.rowIds] : this.api.getRenderedNodes().map(node => String(node.id));
+    const body = this._bodyViewportRenderer.getRefs().body;
+    const flashed = new Set<HTMLElement>();
+    for (const rowId of rowIds) {
+      const band = this.core.getDisplayedPinnedRowRef(rowId);
+      for (const colIdx of colIdxs) {
+        const el = band
+          ? this._pinnedRowsRenderer.findCellElement(band.position, band.rowIndex, colIdx)
+          : findLiveCellElement(this.core, body, rowId, colIdx);
+        // A full-width host answers for every column of its row; flash it once.
+        if (!el || flashed.has(el)) continue;
+        flashed.add(el);
+        this._cellFlasher.flash(el, params.flashMs, params.fadeMs);
+      }
+    }
+  }
+
   /** Repaint visible body rows and rebuild pinned/sticky bands from fresh row defaults. */
   refreshRowPresentation() {
     this._bodyTooltipRenderer.hideNow();
@@ -1687,6 +1777,7 @@ export class GridRenderer {
     this._pivotHintDisposers = [];
     this._interactionEventBinder.destroy();
     this._fillHandle.destroy();
+    this._cellFlasher.destroy();
     this._clipboardRenderer.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
@@ -1880,10 +1971,33 @@ export class GridRenderer {
   //
   // An empty `changedColIds` means "all columns" (matching the columnWidthsChanged convention), so
   // fall back to re-rendering every visible cell in that case.
-  _refreshCellsForColumns(changedColIds: string[], reason: CellRefreshReason) {
+  //
+  // `opts` serves api.refreshCells / redrawRows: `rowIds` limits the repaint to those rows, and
+  // `rebuild` destroys each affected custom renderer instance first so it is created anew.
+  _refreshCellsForColumns(
+    changedColIds: string[],
+    reason: CellRefreshReason,
+    opts?: { rowIds?: Set<string>; rebuild?: boolean },
+  ) {
     const changed = changedColIds.length > 0 ? new Set(changedColIds) : null;
     const columnModel = this.core.getColumnModel();
     const rowModel = this.core.getRowModel();
+    const rowIds = opts?.rowIds;
+
+    if (opts?.rebuild) {
+      for (let i = 0; i < this._rowPool.length; i++) {
+        const row = rowModel.getRowNodeAtViewIndex(this._startIndex + i);
+        if (!row || (rowIds && !rowIds.has(String(row.id)))) continue;
+        const instances = this._rowPool[i].cellRendererInstances;
+        // A full-width row's only instance is its host's; a normal row keys instances by column.
+        const fullWidth = this.core.isFullWidthNode(row);
+        for (const [key, rec] of instances) {
+          if (!fullWidth && changed && !changed.has(key)) continue;
+          rec.runtime.destroy();
+          instances.delete(key);
+        }
+      }
+    }
 
     // colSpan geometry is resolved per-row in patchCells and depends on column widths and cell
     // values — a targeted single-cell repaint can't recompute it. When any column spans, fall back
@@ -1904,6 +2018,10 @@ export class GridRenderer {
       const slot = this._rowPool[i];
       const row = rowModel.getRowNodeAtViewIndex(viewIdx);
       if (!row) continue;
+      if (rowIds && !rowIds.has(String(row.id))) continue;
+      // A row mirrored into a frozen band has a hidden body slot; the band repaints it (an API
+      // repaint re-renders the bands itself).
+      if (opts && this.core.isBodyRowPinned(row.id)) continue;
       const rowNumber = this.core.getRowNumberForViewIndex(viewIdx);
       // Resolve once per row so every refreshed cell observes the same presentation snapshot.
       const rowPresentation = this._bodyWindowRenderer.refreshRowStyling(slot, row, viewIdx);

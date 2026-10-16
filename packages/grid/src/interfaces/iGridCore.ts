@@ -1,10 +1,11 @@
 import {
   GridEventHandler,
+  GridEventMap,
   GridEventName,
   GridEventPaginationChangedParams,
   Unsubscribe,
 } from "../events/events";
-import { SortModel } from "./sort";
+import { SortDir, SortModel } from "./sort";
 import { FilterModel } from "./filter";
 import { IRowModel, RowDataChangeReason, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { IColumnModel } from "./iColumnModel";
@@ -45,6 +46,18 @@ export interface ColumnState {
   hidden?: boolean;
   order?: number; // leaf order
   selected?: boolean; // for column selection (e.g. for menu)
+  /**
+   * The column's sort direction; `null` when it is not sorted. `api.getColumnState()` always
+   * reports it. On `api.applyColumnState()` an entry applies it only when the field is present:
+   * a direction sorts the column, `null` clears its sort, and an absent field leaves it alone.
+   */
+  sort?: SortDir | null;
+  /**
+   * The column's position in the multi-column sort — its index in `api.getSortModel()`, 0 sorting
+   * first — or `null` when it is not sorted. On apply it places the entries that set a `sort`;
+   * entries without one are appended after the rest of the model, in array order.
+   */
+  sortIndex?: number | null;
 }
 
 /* ---------- Read-only view of derived state for renderer ---------- */
@@ -103,6 +116,13 @@ export interface IGridCore {
   /** Subscribe to core events. */
   on<E extends GridEventName>(event: E, handler: GridEventHandler<E>): Unsubscribe;
 
+  /**
+   * Deliver an event to its subscribers. State changes go through `dispatch`, whose handlers emit
+   * their own events; this is for the API's batch operations that drive a model directly (sizing
+   * several columns at once) and must announce the result as ONE event rather than one per column.
+   */
+  emit<E extends GridEventName>(eventType: E, args: GridEventMap[E]): void;
+
   /** Read-only snapshot (useful to renderer to initialize). */
   getSnapshot(): GridSnapshot;
 
@@ -132,6 +152,19 @@ export interface IGridCore {
    * scroll — the renderer pairs this with the scroll half for `api.ensureRowVisible`.
    */
   revealRow(rowId: GridId): { viewIndex: number; rowPinned?: RowPinnedPosition } | null;
+
+  /**
+   * Fit every visible column to its content (header and cell values, group aggregates included).
+   * Keeps user-resized widths and, unless `identifyComparators` is false, re-derives each column's
+   * comparator from the data. Emits nothing; returns the instance ids whose width changed.
+   */
+  autosizeColumns(identifyComparators?: boolean): string[];
+  /**
+   * Fit one column (a group: each of its visible leaves) to its content, dropping any user-resized
+   * width first. Resolves `colId` tolerantly (instance id, colId, key). Emits nothing; returns the
+   * instance ids of the leaves it sized (empty for an unknown column).
+   */
+  autosizeColumn(colId: string): string[];
 
   /** Returns cell value (raw). */
   getCellValue(rowId: GridId, colId: ColId): unknown;

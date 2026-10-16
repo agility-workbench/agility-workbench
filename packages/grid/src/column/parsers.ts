@@ -1,6 +1,6 @@
 import { ColumnType } from "../interfaces/column";
 import { REJECT } from "../interfaces/gridOptions";
-import type { FormatterOptions } from "./formatters";
+import { resolveNumberFormatOptions, type FormatterOptions } from "./formatters";
 
 /**
  * What a built-in parser knows about the column it parses for, so it can read back what the
@@ -46,11 +46,16 @@ export function parseTextByType(type: ColumnType, text: string, oldValue: unknow
  * decimal separators (`Intl.NumberFormat#formatToParts`, never a hard-coded `,`/`.`), a leading
  * minus or accounting parentheses, and — for a currency column — the column's currency symbol or
  * code. The locale form applies to a currency column (locale defaulting to `en-US` and currency to
- * `USD`, as its formatter does) and to a number column that sets `formatterOptions.locale`. Grouping
- * must sit where the locale puts it, so `"1,234"` is 1234 in `en-US`, 1.234 in `de-DE`, and never
- * both. When the two readings disagree (`"1.234"` in `de-DE`), the one the column's formatter
- * renders as exactly that text wins; failing that, the locale reading. Blank is `null`; anything
- * else (NaN, ±Infinity) is refused.
+ * `USD`, as its formatter does) and to a number column that sets `formatterOptions.locale` or any
+ * number option (locale then defaulting to `en-US`, as its formatter's does). Grouping must sit
+ * where the locale puts it, so `"1,234"` is 1234 in `en-US`, 1.234 in `de-DE`, and never both.
+ *
+ * The column's number shape reads back too: a percent column takes `"12.5%"` as 0.125 (bare
+ * `"0.125"` stays 0.125 — the stored fraction, which is what the editor seeds), a unit column
+ * takes `"12 kg"` / `"12 kilograms"` as 12 (only its own unit), and compact notation takes
+ * `"1.2K"` as 1200. When the two readings disagree (`"1.234"` in `de-DE`), the one the column's
+ * formatter renders as exactly that text wins; failing that, the locale reading. Blank is `null`;
+ * anything else (NaN, ±Infinity) is refused.
  */
 export function parseNumberText(
   text: string,
@@ -62,11 +67,12 @@ export function parseNumberText(
   const n = Number(trimmed);
   const plain = Number.isFinite(n) ? n : null;
   const isCurrency = type === ColumnType.CURRENCY;
+  const shape = resolveNumberFormatOptions(type, ctx.options);
   // A currency column always has a locale form (its formatter's); a number column only when it
-  // names a `locale` — its default display is plain `String(value)`.
-  const locale = ctx.options?.locale || (isCurrency ? "en-US" : undefined);
+  // names a `locale` or a number option — otherwise its display is plain `String(value)`.
+  const locale = ctx.options?.locale || (shape ? "en-US" : undefined);
   const localized = locale
-    ? parseLocaleNumber(trimmed, locale, isCurrency ? ctx.options?.currency || "USD" : undefined)
+    ? parseLocaleNumber(trimmed, locale, isCurrency ? ctx.options?.currency || "USD" : undefined, shape ?? undefined)
     : null;
   if (localized == null) return plain ?? REJECT;
   if (plain == null || plain === localized) return localized;
@@ -126,13 +132,93 @@ function numberSymbols(locale: string, currency?: string): NumberSymbols | null 
   return symbols;
 }
 
+interface ShapeMarks {
+  /** Percent signs, when the shape is a percent: each strips once and scales by 10^-2. */
+  percent: string[];
+  /** The unit's spellings (short, long, narrow; singular and plural), longest first. */
+  units: string[];
+  /** Compact suffixes ("K", "Mio.", "thousand") with the power of ten each stands for. */
+  compact: Array<[mark: string, exponent: number]>;
+}
+
+const NO_MARKS: ShapeMarks = { percent: [], units: [], compact: [] };
+const marksCache = new Map<string, ShapeMarks>();
+
+const longestFirst = (marks: Iterable<string>) =>
+  [...new Set(marks)].filter(Boolean).sort((a, b) => b.length - a.length);
+
+// The non-numeric marks a number shape writes (percent sign, unit, compact suffix), read off the
+// locale's own formatToParts so nothing is hard-coded.
+function shapeMarks(locale: string, shape: Intl.NumberFormatOptions): ShapeMarks {
+  const percent = shape.style === "percent";
+  const unit = shape.style === "unit" ? shape.unit : undefined;
+  const compact = shape.notation === "compact";
+  if (!percent && !unit && !compact) return NO_MARKS;
+  const key = `${locale}|${percent}|${unit ?? ""}|${compact}`;
+  let marks = marksCache.get(key);
+  if (marks) return marks;
+  const partsOf = (options: Intl.NumberFormatOptions, values: number[], type: string): string[] => {
+    try {
+      const nf = new Intl.NumberFormat(locale, options);
+      return values.flatMap(v => nf.formatToParts(v).filter(p => p.type === type).map(p => p.value.trim()));
+    } catch {
+      return [];
+    }
+  };
+  const compactMarks: Array<[string, number]> = [];
+  if (compact) {
+    for (const compactDisplay of ["short", "long"] as const) {
+      const nf = new Intl.NumberFormat(locale, { notation: "compact", compactDisplay, useGrouping: false });
+      for (let exp = 3; exp <= 15; exp++) {
+        const parts = nf.formatToParts(10 ** exp);
+        const mark = parts.find(p => p.type === "compact")?.value.trim();
+        const integer = parts.filter(p => p.type === "integer").map(p => p.value).join("");
+        // 10^4 in en-US is "10K": the mark stands for 10^(exp - extra integer digits).
+        if (mark && /^\d+$/.test(integer) && !compactMarks.some(([m]) => m === mark)) {
+          compactMarks.push([mark, exp - (integer.length - 1)]);
+        }
+      }
+    }
+    compactMarks.sort((a, b) => b[0].length - a[0].length);
+  }
+  marks = {
+    percent: percent ? longestFirst(["%", ...partsOf({ style: "percent" }, [0.5], "percentSign")]) : [],
+    // Plural rules differ by locale (one / few / many), so sample values that land in each.
+    units: unit
+      ? longestFirst((["short", "long", "narrow"] as const).flatMap(unitDisplay =>
+        partsOf({ style: "unit", unit, unitDisplay }, [0, 1, 2, 5, 1.5, 21], "unit")))
+      : [],
+    compact: compactMarks,
+  };
+  marksCache.set(key, marks);
+  return marks;
+}
+
+// Remove the first of `marks` found in `s`; null when one appears twice (`"5%%"`).
+function stripOnce(s: string, marks: string[]): { rest: string; mark?: string } | null {
+  for (const mark of marks) {
+    const at = s.indexOf(mark);
+    if (at < 0) continue;
+    const rest = s.slice(0, at) + s.slice(at + mark.length);
+    return rest.includes(mark) ? null : { rest, mark };
+  }
+  return { rest: s };
+}
+
 /**
- * Read `text` as `locale` formats a number (a currency amount when `currency` is given). Returns
- * null when the text is not in that form. Exported for tests.
+ * Read `text` as `locale` formats a number (a currency amount when `currency` is given; with
+ * `shape`, also its percent sign, unit or compact suffix — see `resolveNumberFormatOptions`).
+ * Returns null when the text is not in that form. Exported for tests.
  */
-export function parseLocaleNumber(text: string, locale: string, currency?: string): number | null {
+export function parseLocaleNumber(
+  text: string,
+  locale: string,
+  currency?: string,
+  shape: Intl.NumberFormatOptions = {},
+): number | null {
   const sym = numberSymbols(locale, currency);
   if (!sym) return null;
+  const marks = shapeMarks(locale, shape);
   let s = text.trim();
   let negative = false;
   if (s.startsWith("(") && s.endsWith(")")) {
@@ -140,6 +226,20 @@ export function parseLocaleNumber(text: string, locale: string, currency?: strin
     s = s.slice(1, -1);
   }
   for (const mark of sym.currency) s = s.split(mark).join("");
+  // Shape marks go before separators are read: "Mio." carries de-DE's group separator.
+  let exponent = 0;
+  for (const [list, scale] of [[marks.percent, -2], [marks.units, 0]] as const) {
+    const stripped = stripOnce(s, list);
+    if (!stripped) return null;
+    if (stripped.mark) exponent += scale;
+    s = stripped.rest;
+  }
+  if (marks.compact.length) {
+    const stripped = stripOnce(s, marks.compact.map(([mark]) => mark));
+    if (!stripped) return null;
+    if (stripped.mark) exponent += marks.compact.find(([mark]) => mark === stripped.mark)![1];
+    s = stripped.rest;
+  }
   // Group separators can be spaces (fr-FR's narrow no-break space); spacing carries no meaning.
   const groupIsSpace = /^[\s\u00a0\u202f]$/.test(sym.group);
   // Bidi marks (Arabic, Hebrew locales) carry no value either.
@@ -158,8 +258,9 @@ export function parseLocaleNumber(text: string, locale: string, currency?: strin
   let digits: string;
   if (sym.group && !groupIsSpace && intPart.includes(sym.group)) {
     const groups = intPart.split(sym.group);
-    // First group 1-3 digits, inner groups 2-3 (en-IN groups by two), last group exactly 3.
-    const ok = /^\d{1,3}$/.test(groups[0])
+    // First group 1-3 digits and never a leading zero (no locale writes "0.125" for 125, so in
+    // de-DE that text is the plain fraction), inner groups 2-3 (en-IN groups by two), last exactly 3.
+    const ok = /^[1-9]\d{0,2}$/.test(groups[0])
       && groups.slice(1, -1).every(g => /^\d{2,3}$/.test(g))
       && /^\d{3}$/.test(groups[groups.length - 1]);
     if (!ok) return null;
@@ -169,7 +270,8 @@ export function parseLocaleNumber(text: string, locale: string, currency?: strin
     digits = intPart;
   }
   if (digits === "" && fracPart === "") return null;
-  const n = Number(`${digits || "0"}${fracPart ? `.${fracPart}` : ""}`);
+  // Scale in decimal text, not by multiplying: "14.3%" must be 0.143, not 0.14300000000000002.
+  const n = Number(`${digits || "0"}${fracPart ? `.${fracPart}` : ""}e${exponent}`);
   if (!Number.isFinite(n)) return null;
   return negative ? -n : n;
 }

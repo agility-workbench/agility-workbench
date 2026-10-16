@@ -34,6 +34,14 @@ export enum ColumnType {
 
 export type ColumnSection = "left" | "center" | "right";
 
+/**
+ * Built-in renderer names `ColDef.cellRenderer` accepts besides a renderer function or class.
+ *
+ * - `"text"` — plain formatted text, opting a column out of its type's default renderer (a
+ *   `ColumnType.BOOLEAN` column otherwise draws `BooleanCellRenderer`'s checkbox).
+ */
+export type CellRendererAlias = "text";
+
 /** Context passed to the per-column cell styling callbacks (`cellClass` / `cellStyle`). */
 export interface CellClassParams {
   /** The raw cell value (from valueGetter / row data). */
@@ -220,7 +228,14 @@ export interface ColDef {
   // Config passed to the editor (e.g. { values } for the select editor).
   cellEditorParams?: any;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
-  cellRenderer?: CellRenderer;
+  /**
+   * What a data cell in this column shows: a renderer function, a renderer class, or a built-in
+   * name (`CellRendererAlias`). When omitted, a `ColumnType.BOOLEAN` column draws a checkbox
+   * (`BooleanCellRenderer`) and every other type shows the formatted value as text; set `"text"`
+   * to keep a boolean column as text. The renderer changes only what the cell shows: export, the
+   * clipboard, tooltips and quick-filter matching still read the formatted value.
+   */
+  cellRenderer?: CellRenderer | CellRendererAlias;
   cellRendererParams?: any;
   /**
    * Extra CSS class(es) applied to every data cell in this column. A static class/array, or a

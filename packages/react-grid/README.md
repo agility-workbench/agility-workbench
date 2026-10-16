@@ -119,6 +119,17 @@ later changes; in development builds the grid logs one `console.warn` naming the
 happens. Remount the grid (change its React `key`) to apply such a change. The React page of the
 documentation site has the full live-vs-creation table.
 
+### Event props
+
+Each core event with a declarative callback is a prop, and the latest one passed is always the
+one called: `onCellClicked`, `onRowClicked`, `onCellDoubleClicked`, `onRowDoubleClicked`,
+`onCellValueChanged`, `onSelectionChanged`, `onSortChanged`, `onFilterChanged`,
+`onQuickFilterFindChanged`, `onHistoryChanged`, `onColumnsChanged`, `onPaginationChanged` and
+`onError`. `onColumnsChanged` (and `onSortChanged`) carry `source: "user" | "api"` — persist
+column state on `"user"` so restoring it never echoes back. `onError` reports failed row-model
+requests; the grid handles them the same way with or without it. Anything else:
+`api.on(eventName, handler)`.
+
 ### React components in the grid
 
 `ReactColDef` component slots accept React components: `cellRenderer`, `cellEditor`,

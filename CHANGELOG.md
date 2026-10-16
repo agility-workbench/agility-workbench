@@ -3,6 +3,96 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Features
+
+- **Sorting has a typed API: `api.getSortModel()` and `api.setSortModel(items)`, by colId.** The
+  sort model reads and writes as `{ colId, dir }` entries in priority order, with no more
+  `dispatch({ type: "sortModelSet" })` and no instance ids. `setSortModel` replaces the model (`[]`
+  clears), skips unknown and non-sortable columns, does nothing for an unchanged model and
+  otherwise behaves exactly like a header-click sort. Column state carries sort too:
+  `getColumnState()` reports `sort` and `sortIndex`, and `applyColumnState()` applies them (`null`
+  clears one column, `defaultState: { sort: null }` clears the rest). `SortDir` and
+  `SortModelItem` are exported.
+- **Pagination can be driven from the API: `setPagination`, `goToPage`, `nextPage`,
+  `previousPage`, `firstPage`, `lastPage` and `setPageSize`.** `setPagination({ enabled?,
+  pageIndex?, pageSize? })` merges over the current state, clamps the page to the known range and
+  accepts a page past a provisional server-side total (the grid snaps back once the count pins).
+  A no-op change emits nothing; otherwise `paginationChanged` fires once.
+- **Columns can be sized from the API: `autoSizeColumns`, `autoSizeAllColumns`,
+  `setColumnWidth`, `setColumnWidths` and `sizeColumnsToFit`.** Each call is one
+  `columnWidthsChanged` (`final: true`) for the whole batch. Set widths behave like a resize drag
+  (clamped to the column's bounds, kept across autosizes), and `sizeColumnsToFit` scales the
+  visible unpinned columns to fill the centre viewport exactly, leaving pinned, non-resizable and
+  utility columns alone.
+- **New row and repaint accessors: `forEachNode`, `forEachLeafNode`, `getDisplayedRowCount`,
+  `getDisplayedRowAtIndex`, `getFirstDisplayedRowIndex`, `getLastDisplayedRowIndex`,
+  `getRenderedNodes`, `refreshCells`, `redrawRows` and `flashCells`.** Indexes are page-relative,
+  like `selectRow`. `refreshCells` re-runs getters, formatters, styles and renderers for rendered
+  cells after outside state changes (`force` rebuilds the renderers), `redrawRows` rebuilds whole
+  rows, and `flashCells` highlights cells with the change-flash renderer's existing classes and
+  theme variables.
+- **`onColumnsChanged` reports every column change and says whether the user or your code made
+  it.** `columnsChanged`, `columnWidthsChanged` and `onSortChanged` now carry
+  `source: "user" | "api"`: `"user"` for header clicks, drags, resizes and keyboard, column-menu,
+  column-panel, filter-popup and toolbar gestures; `"api"` for API calls, view and column-state
+  restores and `columnDefs` updates. Persist column state on `"user"` and a restore never echoes
+  back into storage. React `onColumnsChanged` prop, Angular `(columnsChanged)` output;
+  `ColumnChangeSource` is exported.
+- **`onPaginationChanged` binds pagination UI without polling.** A declarative callback for the
+  `paginationChanged` event, with `getPaginationInfo()` as its payload. It can fire with nothing
+  changed after a re-sort or regroup, so compare with the previous payload. React
+  `onPaginationChanged` prop, Angular `(paginationChanged)` output.
+- **`onError` surfaces failed server-side requests.** A declarative callback for the `error` event
+  (`code: "row_model_error"`, the failure in `details`). The grid's own handling is unchanged: the
+  overlay comes down and the block is requested again when next needed. React `onError` prop;
+  Angular `(gridError)` output, because an `(error)` binding would also catch DOM `error` events on
+  the host element.
+- **CSV export takes a separator, a line ending, a byte order mark, cell and header processors
+  and extra content.** `ExportParams` gains the CSV-only `columnSeparator` (`";"`, `"\t"`),
+  `lineEnding` (`"\r\n"` for RFC 4180), `includeBom` (so Excel reads UTF-8), `suppressQuotes`,
+  `processCellForCsv` (the `processCellForExcel` params, returning replacement text),
+  `processHeaderForCsv`, and `prependContent` / `appendContent` (a verbatim string or rows). A
+  field holding the separator is quoted and the formula guard holds for any separator; the
+  defaults write the same bytes as before.
+- **Number columns format with `Intl.NumberFormat`: thousands grouping, fixed decimals, percent,
+  units and compact notation.** New `formatterOptions` (`style: "decimal" | "percent" | "unit"`,
+  `fractionDigits` / `minimumFractionDigits` / `maximumFractionDigits`, `useGrouping`, `unit`,
+  `unitDisplay`, `notation`) drive a built-in NUMBER formatter. Percent follows Intl, so `0.125`
+  shows `12.5%`. A column that sets none of them still shows `String(value)`;
+  `{ style: "decimal" }` is the smallest opt-in. Currency columns accept the fraction-digit,
+  grouping and notation options too, and an invalid currency code now warns instead of throwing.
+  The built-in parser reads the same shape back in the column's locale (`"1.234,5"`, `"12.5%"`
+  as `0.125`, `"12 kg"`, `"1.2K"`), so copy, paste and fill round-trip. Excel export carries the
+  format across: a NUMBER column's static `formatterOptions` become the cell's number format
+  (`#,##0.00`, `0`, `#,##0.0%`, `#,##0.0" kg"`) while the cell keeps its raw number, so the workbook
+  shows what the grid shows and still sums; the decimal count follows the data when the column
+  leaves it open (counts export as `#,##0`, prices as `#,##0.00`), compact notation and
+  function-valued options stay General, and a column `format` still wins. `FormatterOptions` and
+  `NumberFormatStyle` are exported.
+- **Boolean columns show a checkbox.** A `ColumnType.BOOLEAN` column with no `cellRenderer` of its
+  own now draws a ticked, empty or indeterminate (blank) box instead of "true"/"false". On an
+  editable cell a click on the box toggles the value through the normal commit path
+  (`onBeforeCellCommit`, `cellValueChanged`, undo) and never opens the editor, not even with
+  `editTrigger: "singleClick"`; a click elsewhere in the cell still does, and Enter/F2 still open
+  the boolean editor. The box carries `role="checkbox"` and `aria-checked`, export and the
+  clipboard keep the formatted text, find skips the column, and `cellRenderer: "text"` keeps a
+  column as text. `BooleanCellRenderer` is exported for use on other columns.
+
+### Fixes
+
+- **Typing formatted or invalid text into a number cell no longer clears it.** Without a
+  `valueParser`, the number editor read its text with `Number()`, so `"1,234.5"`, `"12.5%"` or a
+  typo committed `null`. It now reads the text with the column's built-in parser, as paste, fill
+  and `setCellValue` already do: locale grouping, percent (stored as the fraction), units and
+  currency marks commit as numbers, clamped to the editor's `min`/`max`. Text the column cannot
+  hold is rejected (`editingChanged { state: "rejected" }`), and the cell keeps its value.
+- **Autosizing one column by its colId no longer throws.** `dispatch({ type: "columnAutosize",
+  colId })` resolved the column by its public id but looked its ancestors up by instance id, so
+  the lookup came back empty and the width update dereferenced `undefined`. The ancestor lookup
+  now uses the resolved column; `api.autoSizeColumns` is the typed way to do this.
+
 ## 1.11.0 — 2026-10-16
 
 ### Fixes

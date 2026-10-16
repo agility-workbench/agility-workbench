@@ -61,6 +61,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onCellValueChangedRef = useRef(props.onCellValueChanged);
     const onSelectionChangedRef = useRef(props.onSelectionChanged);
     const onSortChangedRef = useRef(props.onSortChanged);
+    const onColumnsChangedRef = useRef(props.onColumnsChanged);
+    const onPaginationChangedRef = useRef(props.onPaginationChanged);
+    const onErrorRef = useRef(props.onError);
     const onFilterChangedRef = useRef(props.onFilterChanged);
     const onQuickFilterFindChangedRef = useRef(props.onQuickFilterFindChanged);
     const onHistoryChangedRef = useRef(props.onHistoryChanged);
@@ -78,6 +81,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onCellValueChangedRef.current = props.onCellValueChanged;
     onSelectionChangedRef.current = props.onSelectionChanged;
     onSortChangedRef.current = props.onSortChanged;
+    onColumnsChangedRef.current = props.onColumnsChanged;
+    onPaginationChangedRef.current = props.onPaginationChanged;
+    onErrorRef.current = props.onError;
     onFilterChangedRef.current = props.onFilterChanged;
     onQuickFilterFindChangedRef.current = props.onQuickFilterFindChanged;
     onHistoryChangedRef.current = props.onHistoryChanged;
@@ -100,6 +106,9 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onCellValueChanged = (ev) => onCellValueChangedRef.current?.(ev);
       options.onSelectionChanged = (ev) => onSelectionChangedRef.current?.(ev);
       options.onSortChanged = (ev) => onSortChangedRef.current?.(ev);
+      options.onColumnsChanged = (ev) => onColumnsChangedRef.current?.(ev);
+      options.onPaginationChanged = (ev) => onPaginationChangedRef.current?.(ev);
+      options.onError = (ev) => onErrorRef.current?.(ev);
       options.onFilterChanged = (ev) => onFilterChangedRef.current?.(ev);
       options.onQuickFilterFindChanged = (ev) => onQuickFilterFindChangedRef.current?.(ev);
       options.onHistoryChanged = (ev) => onHistoryChangedRef.current?.(ev);

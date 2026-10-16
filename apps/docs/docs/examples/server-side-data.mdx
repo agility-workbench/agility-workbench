@@ -93,6 +93,19 @@ overlay, and leaves the block's rows unloaded. It does not retry on its own: the
 block is requested again the next time it is needed — scrolling over the gap —
 or by `api.refreshServerSideData()`.
 
+To surface the failure, pass `onError` (React: the `onError` prop; Angular: the
+`(gridError)` output) or subscribe with `api.on("error", …)`. Either is an extra
+notification: the handling above happens whether or not anything listens. A failure
+of a request a newer one has already superseded is not reported.
+
+```ts
+const grid = createGrid(el, {
+  rowModelType: "serverSide",
+  serverSideDataSource,
+  onError: (event) => showToast(`Could not load rows: ${event.message}`),
+});
+```
+
 ## Server-provided schema
 
 ```ts

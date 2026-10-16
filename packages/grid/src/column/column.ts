@@ -46,8 +46,13 @@ export class Column {
   cellEditorParams?: any;
   editable: boolean = false;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
+  // The column's own renderer; a `"text"` alias is normalized away (see textRendererRequested).
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
+  // True when the definition asked for plain text (`cellRenderer: "text"`), which suppresses the
+  // type's default renderer. Kept apart from `cellRenderer` so every reader of that field still
+  // sees "no custom renderer" and measures/paints the cell as text.
+  private textRendererRequested = false;
   // Custom header components (see ColDef.headerComponent / headerCellComponent). Undefined = use the
   // grid default or the built-in header.
   headerComponent?: HeaderComponent;
@@ -172,7 +177,8 @@ export class Column {
     this.cellEditorParams = col.cellEditorParams;
     this.editable = isTrue(col.editable);
     this.formatterOptions = col.formatterOptions;
-    this.cellRenderer = col.cellRenderer;
+    this.textRendererRequested = col.cellRenderer === "text";
+    this.cellRenderer = typeof col.cellRenderer === "string" ? undefined : col.cellRenderer;
     this.cellRendererParams = col.cellRendererParams;
     this.headerComponent = col.headerComponent;
     this.headerCellComponent = col.headerCellComponent;
@@ -380,6 +386,19 @@ export class Column {
     if (setting === false) return false;
     if (setting == null || setting === true) return true;
     return setting[field] !== false;
+  }
+
+  /**
+   * Whether this column's data cells draw the built-in checkbox (`BooleanCellRenderer`) because it
+   * is a `ColumnType.BOOLEAN` column with no renderer of its own and no `cellRenderer: "text"`.
+   * Such a cell shows no text, which is why the quick-filter find skips these columns.
+   */
+  usesDefaultCheckboxRenderer(): boolean {
+    return this.type === ColumnType.BOOLEAN
+      && this.cellRenderer == null
+      && !this.textRendererRequested
+      && !this.isInternal()
+      && !this.isTreeColumn();
   }
 
   // Whether a cell in this column may be edited. Internal columns (e.g. row numbers) are never

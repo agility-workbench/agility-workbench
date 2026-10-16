@@ -349,7 +349,7 @@ export class HeaderRenderer {
       sort: this.getColumnSortState(col),
       filterActive,
       progressSort: (additive?: boolean) =>
-        core.dispatch({ type: "headerAction", action: "toggleSort", colId: col.instanceID, additive: !!additive }),
+        core.dispatch({ type: "headerAction", source: "user", action: "toggleSort", colId: col.instanceID, additive: !!additive }),
       showColumnMenu: (anchorEl: HTMLElement) => this.params.openColumnMenu(col.instanceID, anchorEl),
       showFilterMenu: (anchorEl: HTMLElement) => this.params.openColumnFilter(col.instanceID, anchorEl),
       selectColumn: (mode: "replace" | "toggle" = "replace") =>

@@ -257,17 +257,20 @@ export class ColumnMenuService {
       case "sort.setMany":
         return this.core.dispatch({
           type: "sortModelSet",
+          source: "user",
           sortItems: item.payload.colIDs.map((colId: string) => ({ key: colId, dir: item.payload.dir })),
         });
       case "column.hideMany":
         return this.core.dispatch({
           type: "columnVisibility",
+          source: "user",
           colIds: item.payload.colIDs,
           hidden: true,
         });
       case "column.pinMany":
         return this.core.dispatch({
           type: "columnPin",
+          source: "user",
           colIds: item.payload.colIDs,
           pinned: item.payload.pinned,
         });
@@ -277,6 +280,7 @@ export class ColumnMenuService {
       case "aggregate.setMany":
         return this.core.dispatch({
           type: "aggregateModelSet",
+          source: "user",
           aggregateModels: this.getAggregateModelFor(
             item.payload.colIDs,
             item.payload.agg,
@@ -286,6 +290,7 @@ export class ColumnMenuService {
       case "columns.newSparklineCol":
         return this.core.dispatch({
           type: "addSparklineColumn",
+          source: "user",
           targetColId: ctx.targetColId,
           colIds: item.payload.colIDs,
           sparklineType: item.payload.type,
@@ -293,19 +298,20 @@ export class ColumnMenuService {
       case "group.setMany":
         return this.core.dispatch({
           type: "rowGroupSet",
+          source: "user",
           colIds: item.payload.colIDs,
         });
       case "pivot.setMany":
         // Columns first (a state-only write while the mode is off), then the mode — entering
         // pivot derives once, with the new columns already in place.
-        this.core.dispatch({ type: "pivotColumnsSet", colIds: item.payload.colIDs });
-        if (item.payload.enable) this.core.dispatch({ type: "pivotModeSet", on: true });
+        this.core.dispatch({ type: "pivotColumnsSet", source: "user", colIds: item.payload.colIDs });
+        if (item.payload.enable) this.core.dispatch({ type: "pivotModeSet", source: "user", on: true });
         return;
       case "pivot.exit":
         // Exit only — the mode itself stashes the pivot configuration so turning it back on
         // reinstates it. Clearing the pivot columns here would make this path differ from the
         // toolbar and the API, and would derive the whole model twice.
-        return this.core.dispatch({ type: "pivotModeSet", on: false });
+        return this.core.dispatch({ type: "pivotModeSet", source: "user", on: false });
       case "export.csv":
         return this.exporter?.exportColumnCSV(item.payload.colIDs);
       case "export.excel":

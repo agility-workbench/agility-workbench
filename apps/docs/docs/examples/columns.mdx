@@ -91,8 +91,19 @@ const options = {
   ],
 } satisfies GridOptions;
 
-// Fit one column to its rendered content.
-api.dispatch({ type: "columnAutosize", colId: "name" });
+// Fit columns to their rendered content (one columnWidthsChanged for the batch).
+api.autoSizeColumns(["name", "notes"]);
+api.autoSizeAllColumns();
+
+// Set widths in pixels, as a resize-handle drag would.
+api.setColumnWidth("name", 180);
+api.setColumnWidths([
+  { colId: "name", widthPx: 180 },
+  { colId: "notes", widthPx: 320 },
+]);
+
+// Stretch or shrink the unpinned columns to fill the centre viewport.
+api.sizeColumnsToFit();
 ```
 
 A declared `width` is the column's width: the grid does not resize it to fit
@@ -101,8 +112,21 @@ without a `width` is sized to its header and content on the first data load,
 floored at `minResizeWidth` and capped at `maxColumnWidth` (a column's own
 `minWidth` / `maxWidth` take precedence over those two). Once a user drags a
 column edge, that width wins until an explicit fit-to-content: double-clicking
-the resize handle or dispatching `columnAutosize` measures content even for a
-column with a declared `width`.
+the resize handle or calling `autoSizeColumns` / `autoSizeAllColumns` measures
+content even for a column with a declared `width`. Widths set with
+`setColumnWidth(s)` behave like a drag: clamped to the column's bounds and kept
+across later autosizes.
+
+`sizeColumnsToFit()` fits the **centre** section only: the visible unpinned
+columns are scaled together, keeping their relative widths, so they exactly
+fill the centre viewport. Pinned sections keep their widths (they are
+width-clamped and never scroll), as do `resizable: false` columns and the
+row-number and checkbox columns. Each fitted column stays within its
+`minWidth` / `maxWidth` (falling back to `minResizeWidth` / `maxColumnWidth`),
+so when those bounds cannot reach the viewport the fit falls short or
+overflows. The new widths count as user widths and arrive as one
+`columnWidthsChanged`. Call it after the grid is laid out — before that it does
+nothing.
 
 Set `autosizeColumnsOnDataChange: true` (the default for the server-side row
 model) to recompute content widths after each data refresh; declared and
@@ -166,6 +190,9 @@ api.applyColumnState(savedState);
 // Exact restore: hide columns absent from the saved state.
 api.applyColumnState(savedState, { defaultState: { hidden: true } });
 ```
+
+Column state carries each column's sort too (`sort`, `null` when unsorted, and
+`sortIndex`); see [Sorting](./sorting.mdx#set-or-toggle-sorting-through-the-api).
 
 ## Add or replace definitions at runtime
 

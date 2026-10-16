@@ -415,20 +415,12 @@ normalization on the server.
 
 `getFilterModel()` / `setFilterModel(filters)` / `addFilterModel(filter)` /
 `removeFilterModel(colId)` read and write all column filters as serializable
-`{ colId, filters, join }` items addressed by the public `ColDef.colId`. The
-dispatch form addresses runtime columns directly:
+`{ colId, filters, join }` items addressed by the public `ColDef.colId`:
 
 ```ts
-const amount = api.getColumnModel().getByColId("amount")!;
-
-api.dispatch({
-  type: "filterModelSet",
-  filterModel: [{
-    col: amount,
-    key: "amount",
-    filters: [{ type: FilterType.GTE, values: [100] }],
-  }],
-});
+api.setFilterModel([
+  { colId: "amount", filters: [{ type: FilterType.GTE, values: [100] }] },
+]);
 ```
 
 ## Set filter by intent

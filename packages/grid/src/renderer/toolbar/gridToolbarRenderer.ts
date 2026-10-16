@@ -165,7 +165,7 @@ export class GridToolbarRenderer {
     pivotIcon.setAttribute("aria-hidden", "true");
     this.pivotButton.append(pivotIcon, span("pte-grid-toolbar-pivot-label", "Pivot"));
     this.pivotButton.addEventListener("click", () => {
-      this.params.core.dispatch({ type: "pivotModeSet", on: !this.params.core.getPivotMode() });
+      this.params.core.dispatch({ type: "pivotModeSet", source: "user", on: !this.params.core.getPivotMode() });
     });
     this.pivotTooltipDisposer = registerRendererTooltipTarget(
       this.pivotButton,
@@ -1078,7 +1078,7 @@ export class GridToolbarRenderer {
       clear.type = "button";
       clear.setAttribute("aria-label", "Clear row grouping");
       clear.addEventListener("click", () => {
-        this.params.core.dispatch({ type: "rowGroupSet", colIds: [] });
+        this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds: [] });
       });
       this.groupChipTooltipDisposers.push(registerRendererTooltipTarget(
         clear,
@@ -1439,6 +1439,7 @@ export class GridToolbarRenderer {
   private setSortDirection(colId: string, dir: SortDir): void {
     this.params.core.dispatch({
       type: "sortModelSet",
+      source: "user",
       sortItems: [{ key: colId, dir }],
     });
   }
@@ -1446,6 +1447,7 @@ export class GridToolbarRenderer {
   private removeSort(colId: string): void {
     this.params.core.dispatch({
       type: "sortModelSet",
+      source: "user",
       sortItems: [{ key: colId, dir: null }],
     });
   }
@@ -1500,14 +1502,14 @@ export class GridToolbarRenderer {
     if (colIds.includes(col.instanceID)) return;
     const insertAt = index == null ? colIds.length : Math.max(0, Math.min(index, colIds.length));
     colIds.splice(insertAt, 0, col.instanceID);
-    this.params.core.dispatch({ type: "rowGroupSet", colIds });
+    this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds });
   }
 
   private removeGroup(colId: string): void {
     const colIds = this.params.core.getRowGroupColumns()
       .map(col => col.instanceID)
       .filter(id => id !== colId);
-    this.params.core.dispatch({ type: "rowGroupSet", colIds });
+    this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds });
   }
 
   private moveGroup(colId: string, offset: -1 | 1): void {
@@ -1516,7 +1518,7 @@ export class GridToolbarRenderer {
     const to = from + offset;
     if (from < 0 || to < 0 || to >= colIds.length) return;
     [colIds[from], colIds[to]] = [colIds[to], colIds[from]];
-    this.params.core.dispatch({ type: "rowGroupSet", colIds });
+    this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds });
     this.focusGroupChip(colId);
   }
 
@@ -1527,7 +1529,7 @@ export class GridToolbarRenderer {
     const [moved] = colIds.splice(from, 1);
     const insertAt = Math.max(0, Math.min(index > from ? index - 1 : index, colIds.length));
     colIds.splice(insertAt, 0, moved);
-    this.params.core.dispatch({ type: "rowGroupSet", colIds });
+    this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds });
     this.focusGroupChip(colId);
   }
 
@@ -1637,6 +1639,7 @@ export class GridToolbarRenderer {
       case "toolbar.pivot.toggle":
         this.params.core.dispatch({
           type: "pivotModeSet",
+          source: "user",
           on: !this.params.core.getPivotMode(),
         });
         return;

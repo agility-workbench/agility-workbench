@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { Column } from "../../../column/column";
 import { GridCore } from "../../../core/core";
 import { ColumnType } from "../../../interfaces/column";
+import { REJECT } from "../../../interfaces/gridOptions";
+import type { GridEventCellValueChangedParams, GridEventEditingChangedParams } from "../../../events/events";
+import type { ITextMeasurer } from "../../../interfaces/iTextMeasure";
 import { IRowNode } from "../../../interfaces/iRowNode";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
 import { createEditorForColumn } from "../resolveEditor";
@@ -188,7 +191,12 @@ describe("NumberCellEditor (text-based numeric input)", () => {
     input.value = "-3";
     expect(e.getValue()).toBe(0);
     input.value = "abc";
-    expect(e.getValue()).toBeNull(); // invalid text still commits null, as before
+    // Refused text goes back raw for the commit path to reject, never as a null that clears.
+    expect(e.getValue()).toBe("abc");
+    expect(e.isParsed?.()).toBe(false);
+    input.value = "1e3";
+    expect(e.getValue()).toBe(10);
+    expect(e.isParsed?.()).toBe(true);
   });
 
   it("steps with ArrowUp/ArrowDown, clamped and quantized to the step precision", () => {
@@ -355,5 +363,100 @@ describe("DateCellEditor (native mode) local dates and stored shape", () => {
 
   it("a cleared input commits null", () => {
     expect(commitThroughGrid(new Date(2026, 0, 31), "")).toBeNull();
+  });
+});
+
+// Without a valueParser the editor reads its text with the column's built-in parser, so what the
+// number formatter writes (grouping, percent, unit) commits as a number, and refused text keeps
+// the cell's value instead of clearing it (finding #57 follow-up).
+describe("NumberCellEditor commits through the built-in parser", () => {
+  const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
+
+  function grid(formatterOptions: any, extra: any = {}) {
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "clientSide" });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setRowData([{ id: "1", v: 0.125 }]);
+    core.setColumnDefsFromProps([
+      { colId: "v", key: "v", label: "V", type: ColumnType.NUMBER, editable: true, formatterOptions, ...extra },
+    ]);
+    const column = core.getColumnModel().getByColId("v")!;
+    const node = core.getRowModel().getRowNode("1")!;
+    const changes: GridEventCellValueChangedParams[] = [];
+    const editing: GridEventEditingChangedParams[] = [];
+    core.on("cellValueChanged", ev => changes.push(ev));
+    core.on("editingChanged", ev => editing.push(ev));
+    // Type `text` into a fresh editor and commit it the way cellEditRenderer does.
+    const type = (text: string, editorParams?: any) => {
+      const e = mount(new NumberCellEditor(), { value: column.getValue(node), col: column, row: node, editorParams });
+      const seed = (e.getGui() as HTMLInputElement).value;
+      (e.getGui() as HTMLInputElement).value = text;
+      const value = e.getValue();
+      core.dispatch({ type: "editCommit", cell: { rowId: "1", colId: column.instanceID }, value, parsed: e.isParsed?.() ?? false });
+      return seed;
+    };
+    return { type, value: () => (node.data as any).v, changes, editing };
+  }
+
+  it("stores grouped text as a number", () => {
+    const g = grid({ fractionDigits: 2 });
+    g.type("1,234.5");
+    expect(g.value()).toBe(1234.5);
+    const de = grid({ locale: "de-DE", useGrouping: true });
+    de.type("1.234,5");
+    expect(de.value()).toBe(1234.5);
+  });
+
+  it("stores percent text as the fraction; the seed (the bare fraction) commits unchanged", () => {
+    const g = grid({ style: "percent" });
+    expect(g.type("0.125")).toBe("0.125");
+    expect(g.value()).toBe(0.125);
+    expect(g.changes).toHaveLength(0); // no-op write
+    g.type("12.5%");
+    expect(g.value()).toBe(0.125);
+    g.type("40%");
+    expect(g.value()).toBe(0.4);
+  });
+
+  it("a unit column takes its unit or a bare number; its seed commits unchanged", () => {
+    const g = grid({ unit: "kilogram" });
+    g.type("12 kg");
+    expect(g.value()).toBe(12);
+    expect(g.type("13")).toBe("12");
+    expect(g.value()).toBe(13);
+  });
+
+  it("garbage keeps the cell's value: rejected, no cellValueChanged", () => {
+    for (const opts of [undefined, { style: "percent" }]) {
+      const g = grid(opts);
+      g.type("abc");
+      expect(g.value()).toBe(0.125);
+      expect(g.changes).toHaveLength(0);
+      expect(g.editing.at(-1)).toMatchObject({ state: "rejected", value: "abc", oldValue: 0.125 });
+    }
+  });
+
+  it("blank still clears to null", () => {
+    const g = grid({ style: "percent" });
+    g.type("  ");
+    expect(g.value()).toBeNull();
+  });
+
+  it("min/max still clamp the parsed number", () => {
+    const g = grid({ fractionDigits: 2 });
+    g.type("1,234.5", { min: 0, max: 100 });
+    expect(g.value()).toBe(100);
+    g.type("-5", { min: 0, max: 100 });
+    expect(g.value()).toBe(0);
+  });
+
+  it("an explicit valueParser still wins", () => {
+    const g = grid({ style: "percent" }, {
+      valueParser: ({ value }: any) => (value === "half" ? 0.5 : REJECT),
+    });
+    g.type("half");
+    expect(g.value()).toBe(0.5);
+    g.type("12.5%");
+    expect(g.value()).toBe(0.5);
+    expect(g.editing.at(-1)).toMatchObject({ state: "rejected" });
   });
 });

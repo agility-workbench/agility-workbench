@@ -1,6 +1,6 @@
 import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
-import { Column } from "./column";
+import type { Column } from "./column";
 
 export interface ValueFormatterParams {
   value: any;
@@ -17,10 +17,128 @@ export interface ValueParserParams {
   col?: Column;
 }
 
+/**
+ * Options the built-in formatters (and the built-in parsers, which read the same text back) take
+ * from `ColDef.formatterOptions`. `locale` applies to every type; `format` is the date column's;
+ * `currency` the currency column's; the rest shape numbers through `Intl.NumberFormat`.
+ *
+ * A NUMBER column displays `String(value)` until it sets one of the number options below
+ * (`style`, `fractionDigits`, `minimumFractionDigits`, `maximumFractionDigits`, `useGrouping`,
+ * `unit`, `unitDisplay`, `notation`) — `locale` alone does not switch formatting on, so existing
+ * grids keep their display. `{ style: "decimal" }` is the minimal opt-in (locale grouping, up to
+ * three decimals). A CURRENCY column always formats, and honours the fraction-digit, grouping and
+ * notation options on top of `currency`.
+ */
 export interface FormatterOptions {
+  /** ISO 4217 code for a currency column. Default `"USD"`. */
   currency?: string;
+  /** BCP 47 locale for separators, month names and symbols. Default `"en-US"`. */
   locale?: string;
+  /** A date column's display pattern (`YYYY-MM-DD` tokens). Default `"YYYY-MM-DD"`. */
   format?: string;
+  /**
+   * How a NUMBER column shows its value. `"percent"` treats the value as a fraction, as
+   * `Intl.NumberFormat` does: `0.125` displays `12.5%`. `"unit"` appends {@link unit}. Default
+   * `"decimal"` once any number option is set (`"unit"` when only `unit` is).
+   */
+  style?: NumberFormatStyle;
+  /** Shorthand for both {@link minimumFractionDigits} and {@link maximumFractionDigits}. */
+  fractionDigits?: number;
+  /** Decimals always shown (zero-padded). Default 0 (2 for currency). Overrides `fractionDigits`. */
+  minimumFractionDigits?: number;
+  /**
+   * Decimals at most (rounded). Default 3 for decimal, percent and unit (Intl's percent default
+   * of 0 would show `0.125` as `13%`), 2 for currency. Overrides `fractionDigits`.
+   */
+  maximumFractionDigits?: number;
+  /** Locale thousands grouping (`1,234` / `1.234`). Default true. */
+  useGrouping?: boolean;
+  /** An `Intl` unit identifier for `style: "unit"`: `"kilogram"`, `"kilometer-per-hour"`, `"percent"`… */
+  unit?: string;
+  /** How {@link unit} is written: `"short"` (`12 kg`, default), `"long"` (`12 kilograms`), `"narrow"` (`12kg`). */
+  unitDisplay?: "short" | "long" | "narrow";
+  /** `"compact"` abbreviates magnitudes (`1.2K`, `3.4M`); display only, it rounds. Default `"standard"`. */
+  notation?: "standard" | "compact";
+}
+
+/** `FormatterOptions.style`: the `Intl.NumberFormat` styles a NUMBER column can take. */
+export type NumberFormatStyle = "decimal" | "percent" | "unit";
+
+// The options that switch a NUMBER column from String(value) to Intl formatting.
+const NUMBER_OPTION_KEYS = [
+  "style", "fractionDigits", "minimumFractionDigits", "maximumFractionDigits",
+  "useGrouping", "unit", "unitDisplay", "notation",
+] as const;
+
+/**
+ * The `Intl.NumberFormat` options a NUMBER or CURRENCY column formats with, built from its
+ * resolved `formatterOptions` (locale excluded). Null for a NUMBER column that sets none of the
+ * number options — it displays `String(value)` — and for any other type. The built-in parser reads
+ * percent signs, units and compact suffixes back from the same object, so display and parse
+ * cannot drift.
+ */
+export function resolveNumberFormatOptions(
+  type: ColumnType | undefined,
+  opts: FormatterOptions = {},
+): Intl.NumberFormatOptions | null {
+  const isCurrency = type === ColumnType.CURRENCY;
+  if (!isCurrency && type !== ColumnType.NUMBER) return null;
+  if (!isCurrency && !NUMBER_OPTION_KEYS.some(key => opts[key] !== undefined)) return null;
+  const out: Intl.NumberFormatOptions = isCurrency
+    ? { style: "currency", currency: opts.currency || "USD" }
+    : { style: opts.style ?? (opts.unit !== undefined ? "unit" : "decimal") };
+  if (out.style === "unit") {
+    out.unit = opts.unit;
+    if (opts.unitDisplay) out.unitDisplay = opts.unitDisplay;
+  }
+  const min = opts.minimumFractionDigits ?? opts.fractionDigits;
+  let max = opts.maximumFractionDigits ?? opts.fractionDigits;
+  // Intl's percent default rounds to whole percents; match the decimal default instead. Compact
+  // notation keeps its own (significant-digit) rounding.
+  if (min === undefined && max === undefined && out.style === "percent" && opts.notation !== "compact") {
+    max = 3;
+  }
+  if (min !== undefined) out.minimumFractionDigits = min;
+  if (max !== undefined) out.maximumFractionDigits = max;
+  if (opts.useGrouping !== undefined) out.useGrouping = opts.useGrouping;
+  if (opts.notation) out.notation = opts.notation;
+  return out;
+}
+
+const numberFormatCache = new Map<string, Intl.NumberFormat | null>();
+
+// One Intl.NumberFormat per distinct (locale, options): formatters run per rendered cell, and
+// constructing a NumberFormat is far costlier than formatting with one. Null when Intl refuses the
+// options (unknown unit, min > max digits) — warned once, and the caller falls back.
+function getNumberFormat(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat | null {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  if (numberFormatCache.has(key)) return numberFormatCache.get(key)!;
+  let nf: Intl.NumberFormat | null = null;
+  try {
+    nf = new Intl.NumberFormat(locale, options);
+  } catch (err) {
+    console.warn(`[grid] formatterOptions rejected by Intl.NumberFormat (${locale}, ${JSON.stringify(options)}): ${(err as Error).message}; showing the raw value.`);
+  }
+  numberFormatCache.set(key, nf);
+  return nf;
+}
+
+const isNumeric = (value: unknown): value is number | bigint =>
+  typeof value === "number" || typeof value === "bigint";
+
+/**
+ * The NUMBER column's default formatter: `Intl.NumberFormat` driven by the column's number
+ * options (see {@link FormatterOptions}), or `String(value)` when it sets none. Null and undefined
+ * are `""`; a non-number value (text in a number column) is shown as-is.
+ */
+export function numberFormatter(params: ValueFormatterParams): string {
+  const { value } = params;
+  if (value == null) return "";
+  if (!params.col || !isNumeric(value)) return String(value);
+  const opts = getOptsFromCol(params);
+  const options = resolveNumberFormatOptions(ColumnType.NUMBER, opts);
+  const nf = options ? getNumberFormat(opts.locale || "en-US", options) : null;
+  return nf ? nf.format(value) : String(value);
 }
 
 export interface FormatterOptionsParams {
@@ -41,12 +159,21 @@ export function resolveFormatterOptions(col: Column, row?: IRowNode): FormatterO
   return getOptsFromCol({ value: undefined, col, row });
 }
 
+/**
+ * The CURRENCY column's default formatter: `currency` (default USD) in `locale` (default en-US),
+ * plus any fraction-digit, grouping or notation options the column sets.
+ */
 export function currencyFormatter(params: ValueFormatterParams): string {
+  const { value } = params;
+  if (value == null) return "";
   const opts = params.col ? getOptsFromCol(params) : {};
-  return params.value != null ? params.value.toLocaleString(opts.locale || "en-US", {
-    style: "currency",
-    currency: opts.currency || "USD",
-  }) : '';
+  const locale = opts.locale || "en-US";
+  if (isNumeric(value)) {
+    const nf = getNumberFormat(locale, resolveNumberFormatOptions(ColumnType.CURRENCY, opts)!);
+    return nf ? nf.format(value) : String(value);
+  }
+  // Text and other non-numbers keep their own toLocaleString, as before.
+  return value.toLocaleString(locale, { style: "currency", currency: opts.currency || "USD" });
 }
 
 const DATE_FORMAT_DEFAULT = "YYYY-MM-DD";
@@ -186,6 +313,8 @@ export function dateFormatter(params: ValueFormatterParams): string {
 
 export function getFormatterByType(type: ColumnType): ((params: ValueFormatterParams) => string) | null {
   switch (type) {
+    case "number":
+      return numberFormatter;
     case "currency":
       return currencyFormatter;
     case "date":

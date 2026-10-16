@@ -5,12 +5,26 @@ export type {
   ExcelExportCellResult,
   ExcelExportCellStyle,
   ExcelExportRowType,
+  CsvExportRowType,
+  CsvExportCellParams,
+  CsvExportCellProcessor,
+  CsvExportHeaderParams,
+  CsvExportHeaderProcessor,
+  CsvExtraContent,
   ExportParams,
   ExportScope,
   IGridAPI,
   NavDir,
   RowScrollPosition,
+  // Inputs and results of the typed sort / pagination / sizing / repaint methods.
+  ColumnWidthItem,
+  FlashCellsParams,
+  PaginationUpdate,
+  RedrawRowsParams,
+  RefreshCellsParams,
+  SortModelItem,
 } from "./interfaces/iGridAPI";
+export type { SortDir } from "./interfaces/sort";
 // The shape `api.getColumnState()` returns and `applyColumnState` accepts.
 export type { ColumnState } from "./interfaces/iGridCore";
 export type {
@@ -198,7 +212,9 @@ export type { InjectGridStylesOptions } from "./theme/inject";
 
 export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
-export type { ColDef, ColumnMenuItemsGetter, DefaultColDef, GroupValueGetterParams } from "./interfaces/column";
+export type {
+  CellRendererAlias, ColDef, ColumnMenuItemsGetter, DefaultColDef, GroupValueGetterParams,
+} from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type { AggregateModel, AggregateScope, ColumnAggregate } from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";
@@ -250,6 +266,7 @@ export type {
   GridEventRowDoubleClickedParams,
   GridEventCellsChangedParams,
   GridEventColumnWidthsChangedParams,
+  ColumnChangeSource,
   GridEventColumnsChangedParams,
   GridEventEditingChangedParams,
   GridEventErrorParams,
@@ -304,7 +321,9 @@ export { ServerSideDataError, isServerSideDataError } from "./ssrm/serverSideDat
 export type { ServerSideDataErrorReason } from "./ssrm/serverSideDataError";
 
 export type {
+  FormatterOptions,
   FormatterOptionsParams,
+  NumberFormatStyle,
   ValueFormatterParams,
   ValueParserParams,
 } from "./column/formatters";
@@ -323,6 +342,7 @@ export type {
 } from "./renderer/editing/cellEditor";
 
 export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
+export { BooleanCellRenderer } from "./cellRenderers/booleanRenderer";
 export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
 
 // Keyboard chords: the display formatter for menu accelerators and shortcut references, and the

@@ -10,22 +10,33 @@ import { columnName } from "./xlsx/xml";
 import { resolveColSpan } from "../renderer/body/colSpan";
 import { isoFromLocal, parseIsoDate, toLocalDate } from "../column/parsers";
 import type { GroupCellValue } from "../core/groupCellValue";
+import { resolveNumberFormatOptions } from "../column/formatters";
 import type {
+  CsvExportCellProcessor,
+  CsvExportHeaderProcessor,
+  CsvExportRowType,
+  CsvExtraContent,
   ExcelExportCellProcessor,
   ExcelExportCellStyle,
   ExcelExportRowType,
-} from "../interfaces/iGridAPI";
+  ExportParams,
+} from "../interfaces/exportParams";
 
 export type ExportScope = "all" | "selection" | "selectedColumns";
 
-export interface ExportOptions {
-  scope?: ExportScope;
-  fileName?: string;
-  columnIds?: string[];
-  includeHeaders?: boolean;
-  /** For a grouped export: "tree" (headers + subtotals, default) or "leaves" (flat leaf rows). */
-  groupMode?: "tree" | "leaves";
-  processCellForExcel?: ExcelExportCellProcessor;
+/** The caller's export options: exactly the public {@link ExportParams}. */
+export type ExportOptions = ExportParams;
+
+/** The CSV-only output options, passed through from {@link ExportParams} unchanged. */
+export interface CsvWriteOptions {
+  columnSeparator?: string;
+  lineEnding?: "\n" | "\r\n";
+  includeBom?: boolean;
+  suppressQuotes?: boolean;
+  processCellForCsv?: CsvExportCellProcessor;
+  processHeaderForCsv?: CsvExportHeaderProcessor;
+  prependContent?: CsvExtraContent;
+  appendContent?: CsvExtraContent;
 }
 
 export interface ExportSelectionRange {
@@ -35,7 +46,7 @@ export interface ExportSelectionRange {
   colEnd: number;
 }
 
-export interface ExportConfig {
+export interface ExportConfig extends CsvWriteOptions {
   rows: any[];
   columns: Column[];
   /**
@@ -174,6 +185,158 @@ const isDateLikeFormat = (fmt?: string): boolean => {
   return /[dmyhs]/i.test(fmt);
 };
 
+// Quote literal text for an Excel number format. A `"` cannot sit inside a quoted run, so it is
+// written as an escaped `\"` between runs.
+const quoteNumFmtText = (text: string): string =>
+  text.split('"').map(part => (part ? `"${part}"` : "")).join('\\"');
+
+const NUMBER_PARTS = new Set(["integer", "group", "decimal", "fraction", "minusSign", "plusSign"]);
+
+/**
+ * What a NUMBER column's built-in formatter implies for its Excel number format, worked out once
+ * per options object: the text before and after the decimals, and the decimal range Intl allows.
+ */
+interface NumberFmtSpec {
+  /** Unit prefix + integer part (`#,##0` or `0`). */
+  head: string;
+  /** `%` and/or the unit suffix. */
+  tail: string;
+  minDecimals: number;
+  maxDecimals: number;
+  percent: boolean;
+}
+
+// Keyed by the column's (static) formatterOptions object: building an Intl.NumberFormat per cell
+// would dominate a large export, and the options object only changes when the column def does.
+const numberFmtSpecCache = new WeakMap<object, NumberFmtSpec | null>();
+
+/**
+ * The format spec a NUMBER column's built-in formatter implies, so the workbook shows what the
+ * cell shows while keeping the raw number as the cell value. Null (Excel's General) when the
+ * column sets no number options, sets them per row (a function — one format per column can't
+ * speak for every row), uses compact notation (Excel has no `1.2K` format), or Intl rejects them.
+ */
+const numberFmtSpec = (col: Column): NumberFmtSpec | null => {
+  const opts = col.formatterOptions;
+  if (!opts || typeof opts === "function") return null;
+  if (numberFmtSpecCache.has(opts)) return numberFmtSpecCache.get(opts)!;
+  const spec = computeNumberFmtSpec(opts);
+  numberFmtSpecCache.set(opts, spec);
+  return spec;
+};
+
+const computeNumberFmtSpec = (opts: NonNullable<Column["formatterOptions"]> & object): NumberFmtSpec | null => {
+  if (typeof opts === "function") return null;
+  const options = resolveNumberFormatOptions(ColumnType.NUMBER, opts);
+  if (!options || options.notation === "compact") return null;
+  let nf: Intl.NumberFormat;
+  try {
+    nf = new Intl.NumberFormat(opts.locale || "en-US", options);
+  } catch {
+    return null; // the formatter shows String(value) for options Intl refuses
+  }
+  // Read the digits Intl actually applies, so its defaults (0..3 decimals) count too.
+  const resolved = nf.resolvedOptions();
+  const minDecimals = resolved.minimumFractionDigits ?? 0;
+  const maxDecimals = Math.max(minDecimals, resolved.maximumFractionDigits ?? minDecimals);
+  // Excel codes are locale-neutral: `,` and `.` stand for the reader's own separators.
+  const integer = (resolved.useGrouping as unknown) === false ? "0" : "#,##0";
+  const percent = options.style === "percent";
+  let prefix = "";
+  let suffix = percent ? "%" : ""; // Excel multiplies by 100 for `%`, as Intl's percent does
+  if (options.style === "unit") {
+    // The unit text exactly as Intl writes it for this locale and unitDisplay (spacing included),
+    // on either side of the number.
+    const parts = nf.formatToParts(12);
+    const first = parts.findIndex(p => NUMBER_PARTS.has(p.type));
+    let last = -1;
+    parts.forEach((p, i) => { if (NUMBER_PARTS.has(p.type)) last = i; });
+    if (first >= 0) {
+      const text = (from: number, to: number) => parts.slice(from, to).map(p => p.value).join("");
+      const before = text(0, first);
+      const after = text(last + 1, parts.length);
+      prefix = before ? quoteNumFmtText(before) : "";
+      suffix = after ? quoteNumFmtText(after) : "";
+    }
+  }
+  return { head: prefix + integer, tail: suffix, minDecimals, maxDecimals, percent };
+};
+
+const fixedNumFmt = (spec: NumberFmtSpec, decimals: number): string =>
+  spec.head + (decimals > 0 ? "." + "0".repeat(decimals) : "") + spec.tail;
+
+// A column whose decimal count Intl leaves open (min < max) can't use Excel's optional `#`
+// digits: `0.###` writes a bare trailing `.` on whole numbers (`12.`). Its cells instead carry
+// this placeholder while the sheet is built, and `settleOpenDecimalFormats` replaces it with a
+// fixed count once every value the column writes is known.
+// The mark carries the column's id (so two columns with equal options settle apart) and its spec
+// (so no state outlives the export).
+const OPEN_DECIMALS_MARK = "\u0000awb-open-decimals:";
+
+const readOpenDecimalsMark = (mark: string): NumberFmtSpec =>
+  JSON.parse(mark.slice(OPEN_DECIMALS_MARK.length, mark.lastIndexOf("\u0000")));
+
+const numFmtFromFormatterOptions = (col: Column): string | undefined => {
+  const spec = numberFmtSpec(col);
+  if (!spec) return undefined;
+  if (spec.minDecimals === spec.maxDecimals) return fixedNumFmt(spec, spec.minDecimals);
+  // JSON escapes a NUL inside its strings, so the last raw NUL always ends the spec.
+  return `${OPEN_DECIMALS_MARK}${JSON.stringify(spec)}\u0000${col.instanceID}`;
+};
+
+/**
+ * Decimal digits a number needs in its shortest round-trip form (`String(v)`), read from the text
+ * rather than by float arithmetic: `0.07 * 100` is `7.000000000000001`, but `"0.07"` has two
+ * decimals, so as a percent it needs none. Exponent forms count too (`1.5e-7` → 8, `1e21` → 0).
+ * `shift` moves the decimal point right first (2 for a percent's display units).
+ */
+const decimalsNeeded = (value: number, shift: number): number => {
+  const [mantissa, exponent = "0"] = String(Math.abs(value)).toLowerCase().split("e");
+  const fraction = mantissa.split(".")[1] ?? "";
+  return Math.max(0, fraction.length - Number(exponent) - shift);
+};
+
+/**
+ * Replace every open-decimals placeholder with a fixed format: the most decimals any number
+ * written under it needs (in display units), clamped to the column's [min, max] — so integer
+ * counts get `#,##0`, prices `#,##0.00`, and 0.125 / 0.13 as a percent `0.0%`. A column with no
+ * finite numbers gets its minimum. Scanning the finished sheet covers every path at once (flat,
+ * grouped, tree, pinned, subtotals, footer, processCellForExcel results) and leaves a processor's
+ * own numFmt alone, since only cells still carrying the placeholder are touched.
+ */
+const settleOpenDecimalFormats = (sheetRows: SheetCell[][]): void => {
+  const needed = new Map<string, number>();
+  const specs = new Map<string, NumberFmtSpec>();
+  const specFor = (mark: string): NumberFmtSpec => {
+    let spec = specs.get(mark);
+    if (!spec) specs.set(mark, (spec = readOpenDecimalsMark(mark)));
+    return spec;
+  };
+  const marked: SheetCell[] = [];
+  for (const row of sheetRows) {
+    for (const cell of row) {
+      const mark = cell.style?.numFmt;
+      if (!mark?.startsWith(OPEN_DECIMALS_MARK)) continue;
+      marked.push(cell);
+      const spec = specFor(mark);
+      const v = cell.value;
+      const num = v.kind === "number" ? v.value : v.kind === "formula" ? v.cached : undefined;
+      const have = needed.get(mark) ?? spec.minDecimals;
+      if (typeof num === "number" && Number.isFinite(num)) {
+        needed.set(mark, Math.max(have, decimalsNeeded(num, spec.percent ? 2 : 0)));
+      } else {
+        needed.set(mark, have);
+      }
+    }
+  }
+  for (const cell of marked) {
+    const mark = cell.style!.numFmt!;
+    const spec = specFor(mark);
+    const decimals = Math.min(spec.maxDecimals, needed.get(mark) ?? spec.minDecimals);
+    cell.style = { ...cell.style, numFmt: fixedNumFmt(spec, decimals) };
+  }
+};
+
 const resolveNumberFormat = (col: Column): string | undefined => {
   if (col.type === ColumnType.CURRENCY) {
     // Always prefer a currency-friendly format; ignore date-like formats that might slip in.
@@ -186,7 +349,7 @@ const resolveNumberFormat = (col: Column): string | undefined => {
     if (col.format && !isDateLikeFormat(col.format)) {
       return col.format;
     }
-    return undefined;
+    return numFmtFromFormatterOptions(col);
   }
   if (col.type === ColumnType.DATE) {
     return col.format || DEFAULT_DATE_FORMAT;
@@ -591,13 +754,10 @@ const spanMergesToRanges = (
     toCol: m.colStart + m.span,
   }));
 
-const escapeCSVValue = (value: string): string => {
-  const needsQuote = /[",\n\r]/.test(value);
-  if (needsQuote) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-};
+// Text that can never be read as a formula: a plain decimal number. Free text the app supplies
+// (a processor's result, prepended/appended rows) is exempt from the guard only in this form, so
+// `-5` stays a number while `-5+A1` is neutralized.
+const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 // CSV formula-injection guard (OWASP "CSV Injection"): a spreadsheet opening the file evaluates a
 // text cell that starts with one of these as a formula. Prefixing a single quote makes it literal
@@ -614,51 +774,138 @@ const isNumericCSVCell = (raw: any, col: Column): boolean => {
   return typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw));
 };
 
-/** CSV text for a text cell (header, group label, string value): formula-guarded, then quoted. */
-const csvText = (text: string): string => escapeCSVValue(neutralizeFormula(text));
+/**
+ * The field writer for one CSV export, closed over its separator and quoting choice. A field is
+ * quoted when it contains a quote, a line break or the separator — whatever the separator is — so
+ * a `;` export quotes `a;b` exactly as the default quotes `a,b`.
+ */
+const csvFieldWriter = (separator: string, suppressQuotes: boolean) => {
+  const escape = (value: string): string => {
+    if (suppressQuotes) return value;
+    const needsQuote = /["\n\r]/.test(value) || value.includes(separator);
+    return needsQuote ? `"${value.replace(/"/g, '""')}"` : value;
+  };
+  return {
+    /** A numeric cell: quoted if needed, never formula-guarded. */
+    number: escape,
+    /** A text cell (header, group label, string value): formula-guarded, then quoted. */
+    text: (text: string): string => escape(neutralizeFormula(text)),
+    /** App-supplied text: guarded unless it is a plain number, then quoted. */
+    free: (text: string): string => escape(PLAIN_NUMBER.test(text) ? text : neutralizeFormula(text)),
+  };
+};
+
+/**
+ * Header rows for CSV: the same matrix the default layout writes (a label at its first column,
+ * blanks under the span), run through `processHeaderForCsv` with the column (or column group) each
+ * label belongs to.
+ */
+const buildCsvHeaderMatrix = (
+  layout: HeaderLayout,
+  columnCount: number,
+  processHeader: CsvExportHeaderProcessor | undefined,
+): string[][] => {
+  const matrix = buildHeaderMatrix(layout, columnCount);
+  if (!processHeader) return matrix;
+  layout.cells.forEach((rowCells, rowIdx) => {
+    rowCells.forEach(cell => {
+      const column = layout.paths[cell.colStart]?.[rowIdx];
+      if (!column) return;
+      const label = cell.label ?? "";
+      const out = processHeader({ column, label });
+      if (typeof out === "string") matrix[rowIdx][cell.colStart] = out;
+    });
+  });
+  return matrix;
+};
 
 /** Build the CSV text for a config, without downloading. Returns "" when there are no columns. */
 export const buildCSV = (config: ExportConfig): string => {
   const columns = resolveColumns(config);
   const rows = resolveRows(config, columns.length);
   const includeHeaders = config.includeHeaders !== false;
+  const separator = config.columnSeparator || ",";
+  const lineEnding = config.lineEnding === "\r\n" ? "\r\n" : "\n";
+  const field = csvFieldWriter(separator, config.suppressQuotes === true);
+  const processCell = config.processCellForCsv;
 
-  const csvRows: string[][] = [];
+  // Each entry is one finished line; prepended/appended strings are lines as given.
+  const lines: string[] = [];
+  const pushRow = (cells: string[]) => lines.push(cells.join(separator));
+  const pushExtra = (content: CsvExtraContent | undefined) => {
+    if (typeof content === "string") {
+      if (content !== "") lines.push(content);
+    } else if (Array.isArray(content)) {
+      for (const row of content) pushRow((row ?? []).map(cell => field.free(String(cell ?? ""))));
+    }
+  };
+
+  pushExtra(config.prependContent);
+
   if (includeHeaders) {
     const headerLayout = buildHeaderLayout(columns, config.columnTree);
     // Header labels can be data-derived (pivot keys), so they get the same quoting + formula guard.
-    csvRows.push(...buildHeaderMatrix(headerLayout, columns.length).map(r => r.map(csvText)));
+    buildCsvHeaderMatrix(headerLayout, columns.length, config.processHeaderForCsv)
+      .forEach(r => pushRow(r.map(field.text)));
   }
 
-  const emitRow = (row: any, rowIndex: number) => {
+  // One data cell: the grid's text, or the processor's replacement (guarded unless numeric).
+  const dataCell = (
+    row: any,
+    col: Column,
+    bundle: ValueBundle,
+    numeric: boolean,
+    rowIndex: number,
+    rowType: CsvExportRowType,
+  ): string => {
+    const text = bundle.formatted ?? "";
+    if (processCell) {
+      const out = processCell({
+        value: bundle.raw,
+        formattedValue: text,
+        data: row,
+        rowIndex,
+        rowType,
+        column: col,
+      });
+      if (typeof out === "string") return field.free(out);
+    }
+    return numeric ? field.number(text) : field.text(text);
+  };
+
+  const emitRow = (rowType: CsvExportRowType) => (row: any, rowIndex: number) => {
     // CSV has no merged-cell concept, so mirror the grid's *visible* content: a full-width row puts
     // its text in the first column and blanks the rest; a colSpan puts the value in the spanning
     // column and blanks the columns it covers.
     if (config.isFullWidthRow?.(row)) {
       const text = config.fullWidthText?.(row) ?? "";
-      const values = columns.map((_, colIdx) => (colIdx === 0 ? csvText(text) : ""));
-      csvRows.push(values);
+      pushRow(columns.map((col, colIdx) =>
+        colIdx === 0
+          ? dataCell(row, col, { raw: text, formatted: text }, false, rowIndex, rowType)
+          : ""));
       return;
     }
 
     const spans = config.getCellColSpan
       ? resolveRowSpans(row, columns, config.getCellColSpan, rowIndex)
       : null;
-    const values = columns.map((col, colIdx) => {
+    pushRow(columns.map((col, colIdx) => {
       if (spans && spans[colIdx] === 0) return ""; // covered by an earlier span
-      const { raw, formatted } = getValueBundle(row, col, config);
-      const text = formatted ?? "";
-      return isNumericCSVCell(raw, col) ? escapeCSVValue(text) : csvText(text);
-    });
-    csvRows.push(values);
+      const bundle = getValueBundle(row, col, config);
+      return dataCell(row, col, bundle, isNumericCSVCell(bundle.raw, col), rowIndex, rowType);
+    }));
   };
 
   // Pinned band rows frame the body, mirroring the on-screen top band → body → bottom band order.
-  (config.pinnedTopRows ?? []).forEach(emitRow);
-  rows.forEach(emitRow);
-  (config.pinnedBottomRows ?? []).forEach(emitRow);
+  // `rowIndex` restarts per segment, as it does for the Excel processor.
+  (config.pinnedTopRows ?? []).forEach(emitRow("pinnedTop"));
+  rows.forEach(emitRow("body"));
+  (config.pinnedBottomRows ?? []).forEach(emitRow("pinnedBottom"));
 
-  return csvRows.map(r => r.join(",")).join("\n");
+  pushExtra(config.appendContent);
+
+  // The mark is part of the text, so getDataAsCsv and the download hold the same characters.
+  return (config.includeBom ? "\uFEFF" : "") + lines.join(lineEnding);
 };
 
 export const exportCSV = (config: ExportConfig, fileName = "grid-export.csv") => {
@@ -1306,6 +1553,8 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
     }
 
     const leftPinnedCount = columns.filter(col => col.pinned === "left").length;
+
+    settleOpenDecimalFormats(sheetRows);
 
     const bytes = await writeXlsx({
       sheets: [

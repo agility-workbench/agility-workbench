@@ -10,6 +10,7 @@ type Row = {
   id: string;
   team: string;
   owner: string;
+  active?: boolean;
   pipeline: number;
   closed: number;
 };
@@ -18,6 +19,7 @@ const ROWS: Row[] = Array.from({ length: 80 }, (_, index) => ({
   id: `deal-${index + 1}`,
   team: ["Enterprise", "Commercial", "Growth"][index % 3],
   owner: ["Ava", "Liam", "Mia", "Noah", "Emma"][index % 5],
+  active: index % 4 !== 0,
   pipeline: 25_000 + ((index * 7_919) % 180_000),
   closed: 8_000 + ((index * 3_571) % 95_000),
 }));
@@ -66,6 +68,11 @@ export class PinnedRowsDemoComponent {
   readonly columns: NgColDef[] = [
     { colId: "team", key: "team", label: "Team", width: 150, pinned: "left" },
     { colId: "owner", key: "owner", label: "Owner", width: 140, editable: true },
+    // Built-in checkbox (default for BOOLEAN); editable, so a click on the box toggles it.
+    {
+      colId: "active", key: "active", label: "Active", width: 110, type: ColumnType.BOOLEAN,
+      editable: true, valueFormatter: ({ value }) => (value == null ? "" : value ? "Yes" : "No"),
+    },
     {
       colId: "pipeline",
       key: "pipeline",
