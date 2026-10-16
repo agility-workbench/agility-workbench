@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.12.0 — 2026-10-16
 
 ### Features
 
@@ -92,6 +92,14 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   colId })` resolved the column by its public id but looked its ancestors up by instance id, so
   the lookup came back empty and the width update dereferenced `undefined`. The ancestor lookup
   now uses the resolved column; `api.autoSizeColumns` is the typed way to do this.
+
+### Tooling
+
+- **The layout probe's smoke pass survives a page reload.** A Vite dependency re-optimisation (or a
+  stylesheet regeneration) reloading a playground page under an in-flight check aborted the whole
+  run with "Inspected target navigated or closed". The smoke pass now retries that page up to three
+  times, as the matrix pass already did, and reports any other failure as a `harness-error` for
+  that page instead of exiting.
 
 ## 1.11.0 — 2026-10-16
 
