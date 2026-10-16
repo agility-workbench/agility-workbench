@@ -8,13 +8,14 @@ import { CanvasMeasurer, initDomRenderer } from "./renderer";
 
 /**
  * Everything `createGrid` accepts: the core's `GridOptions`, plus the two pieces of grid
- * content the framework bindings expose as props rather than options.
+ * content the framework bindings expose as props rather than options. `TData` is the row type
+ * (default `any`), as on `GridOptions<TData>`.
  */
-export interface CreateGridOptions extends GridOptions {
+export interface CreateGridOptions<TData = any> extends GridOptions<TData> {
   /** Column definitions. Omit to let the grid infer a schema from `rowData`. */
-  columnDefs?: ColDef[];
+  columnDefs?: ColDef<TData>[];
   /** Initial rows. Equivalent to calling `api.setRowData(rows)` after creation. */
-  rowData?: unknown[];
+  rowData?: NoInfer<TData>[];
   /**
    * Column-menu adapter, for menu items a framework renders and must later unmount. Omit to get the
    * grid's built-in items. Equivalent to `api.registerMenuAdapter(adapter)` right after creation —
@@ -45,6 +46,10 @@ export interface CreateGridOptions extends GridOptions {
  *
  * The container must have an explicit height, exactly as with the framework bindings.
  *
+ * Pass the row type to get typed callbacks and a typed API — `createGrid<Trade>(el, { … })`
+ * returns an `IGridAPI<Trade>`. It is also picked up from `columnDefs` typed as `ColDef<Trade>[]`,
+ * never from `rowData`, so leaving it out keeps every row type `any`, as before.
+ *
  * The returned `api.destroy()` tears down the entire instance, unlike the bare `GridAPI`
  * returned by `initDomRenderer`, whose `destroy` does not detach the renderer.
  *
@@ -53,7 +58,10 @@ export interface CreateGridOptions extends GridOptions {
  * `bodyMenuAdapter` here, or install them later with `api.registerMenuAdapter` /
  * `api.registerBodyMenuAdapter`.
  */
-export function createGrid(container: HTMLElement, options: CreateGridOptions = {}): IGridAPI {
+export function createGrid<TData = any>(
+  container: HTMLElement,
+  options: CreateGridOptions<TData> = {},
+): IGridAPI<TData> {
   if (container == null) {
     throw new Error("createGrid: a container element is required.");
   }
@@ -96,6 +104,11 @@ export function createGrid(container: HTMLElement, options: CreateGridOptions = 
   api.destroy = () => {
     if (destroyed) return;
     destroyed = true;
+    // The api's own destroy goes first so `api.isDestroyed()` is already true for anything the
+    // teardown below calls back into (a cell renderer's destroy, an adapter's cleanup).
+    try {
+      destroyApi();
+    } catch { /* keep tearing down */ }
     try {
       renderer.detach();
     } catch { /* keep tearing down */ }
@@ -105,10 +118,8 @@ export function createGrid(container: HTMLElement, options: CreateGridOptions = 
     try {
       core.destroy();
     } catch { /* keep tearing down */ }
-    try {
-      destroyApi();
-    } catch { /* keep tearing down */ }
   };
 
-  return api;
+  // The row type is a compile-time view: the runtime API is the same object for every `TData`.
+  return api as IGridAPI as IGridAPI<TData>;
 }

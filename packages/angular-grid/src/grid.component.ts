@@ -14,6 +14,7 @@ import {
   isDevMode,
   isSignal,
   output,
+  type OutputEmitterRef,
   untracked,
 } from "@angular/core";
 import {
@@ -38,6 +39,26 @@ import type {
   GridEventRowClickedParams,
   GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
+  GridEventActionFrameParams,
+  GridEventAggregateChangedParams,
+  GridEventBodyScrollParams,
+  GridEventCellsChangedParams,
+  GridEventColumnGroupOpenedParams,
+  GridEventColumnWidthsChangedParams,
+  GridEventEditingChangedParams,
+  GridEventFirstDataRenderedParams,
+  GridEventFocusChangedParams,
+  GridEventHeaderFocusChangedParams,
+  GridEventKeyboardNavigationModeChangedParams,
+  GridEventModelUpdatedParams,
+  GridEventOverlayShowParams,
+  GridEventPivotChangedParams,
+  GridEventPivotColumnLimitReachedParams,
+  GridEventRowDataUpdatedParams,
+  GridEventRowGroupOpenedParams,
+  GridEventRowsChangedParams,
+  GridEventTooltipParams,
+  GridEventViewportChangedParams,
   SortChangedParams,
 } from "@agility-workbench/grid";
 import { NgAdapters } from "./adapters";
@@ -84,6 +105,10 @@ function destroyInstance(instance: GridInstance): void {
  *
  * The grid is created outside the Angular zone so its internal scroll/pointer listeners never
  * trigger app-wide change detection; outputs re-enter the zone when they emit.
+ *
+ * `TData` is the row type (default `any`). Angular infers it in templates from a `[columnDefs]`
+ * binding typed `NgColDef<Trade>[]` (never from `[rowData]`, so an empty array cannot pin it);
+ * it then types the row-carrying inputs, the click outputs, `gridReady` and `api`.
  */
 @Component({
   selector: "awb-grid",
@@ -93,11 +118,11 @@ function destroyInstance(instance: GridInstance): void {
   styles: [":host { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; }"],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AwbGrid implements OnDestroy {
+export class AwbGrid<TData = any> implements OnDestroy {
   // --- data ---
-  readonly rowData = input<unknown[] | undefined>();
-  readonly columnDefs = input<NgColDef[] | ColDef[] | null | undefined>();
-  readonly defaultColDef = input<NgDefaultColDef | undefined>();
+  readonly rowData = input<NoInfer<TData>[] | undefined>();
+  readonly columnDefs = input<NgColDef<TData>[] | ColDef<TData>[] | null | undefined>();
+  readonly defaultColDef = input<NgDefaultColDef<TData> | undefined>();
 
   // --- layout / sizing ---
   readonly headerHeight = input<GridOptions["headerHeight"]>();
@@ -109,13 +134,13 @@ export class AwbGrid implements OnDestroy {
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
   readonly pivotMode = input<GridOptions["pivotMode"]>();
   readonly pivotColumns = input<GridOptions["pivotColumns"]>();
-  readonly pivotResultColumnDef = input<NgPartialColDef | undefined>();
+  readonly pivotResultColumnDef = input<NgPartialColDef<TData> | undefined>();
   readonly maxPivotColumns = input<GridOptions["maxPivotColumns"]>();
   readonly pivotColumnMoveMode = input<GridOptions["pivotColumnMoveMode"]>();
   readonly autosizeColumnsOnDataChange = input<GridOptions["autosizeColumnsOnDataChange"]>();
 
   // --- row identity ---
-  readonly getRowId = input<GridOptions["getRowId"]>();
+  readonly getRowId = input<GridOptions<TData>["getRowId"]>();
   readonly rowIdKey = input<GridOptions["rowIdKey"]>();
   readonly rowDataMode = input<GridOptions["rowDataMode"]>();
   readonly asyncTransactionWaitMs = input<GridOptions["asyncTransactionWaitMs"]>();
@@ -124,9 +149,9 @@ export class AwbGrid implements OnDestroy {
   readonly rowHover = input<GridOptions["rowHover"]>();
   readonly columnHover = input<GridOptions["columnHover"]>();
   readonly zebraRows = input<GridOptions["zebraRows"]>();
-  readonly getRowClass = input<GridOptions["getRowClass"]>();
-  readonly getRowStyle = input<GridOptions["getRowStyle"]>();
-  readonly getRowPresentation = input<NgGetRowPresentation>();
+  readonly getRowClass = input<GridOptions<TData>["getRowClass"]>();
+  readonly getRowStyle = input<GridOptions<TData>["getRowStyle"]>();
+  readonly getRowPresentation = input<NgGetRowPresentation<TData>>();
   readonly ariaLabel = input<GridOptions["ariaLabel"]>();
   readonly ariaLabelledBy = input<GridOptions["ariaLabelledBy"]>();
   readonly highlightActiveCell = input<GridOptions["highlightActiveCell"]>();
@@ -141,7 +166,7 @@ export class AwbGrid implements OnDestroy {
 
   // --- selection ---
   readonly rowSelection = input<GridOptions["rowSelection"]>();
-  readonly isRowSelectable = input<GridOptions["isRowSelectable"]>();
+  readonly isRowSelectable = input<GridOptions<TData>["isRowSelectable"]>();
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly fillHandle = input<GridOptions["fillHandle"]>();
@@ -156,8 +181,8 @@ export class AwbGrid implements OnDestroy {
   readonly editTrigger = input<GridOptions["editTrigger"]>();
   // Value-returning pre-commit hook (A5). An input rather than an output because outputs cannot
   // return the veto/transform result to the grid.
-  readonly onBeforeCellCommit = input<GridOptions["onBeforeCellCommit"]>();
-  readonly fillOperation = input<GridOptions["fillOperation"]>();
+  readonly onBeforeCellCommit = input<GridOptions<TData>["onBeforeCellCommit"]>();
+  readonly fillOperation = input<GridOptions<TData>["fillOperation"]>();
   readonly readOnlyEdit = input<GridOptions["readOnlyEdit"]>();
   readonly pinnedRowsEditable = input<GridOptions["pinnedRowsEditable"]>();
   readonly suppressKeyboardEdit = input<GridOptions["suppressKeyboardEdit"]>();
@@ -177,30 +202,30 @@ export class AwbGrid implements OnDestroy {
 
   // --- grouping / tree ---
   readonly groupDisplayType = input<GridOptions["groupDisplayType"]>();
-  readonly groupColumnDef = input<NgPartialColDef | undefined>();
+  readonly groupColumnDef = input<NgPartialColDef<TData> | undefined>();
   readonly groupDefaultExpanded = input<GridOptions["groupDefaultExpanded"]>();
   readonly groupSortMode = input<GridOptions["groupSortMode"]>();
   readonly groupRowsSelectable = input<GridOptions["groupRowsSelectable"]>();
   readonly groupSelectsChildren = input<GridOptions["groupSelectsChildren"]>();
-  readonly aggFuncs = input<GridOptions["aggFuncs"]>();
+  readonly aggFuncs = input<GridOptions<TData>["aggFuncs"]>();
   readonly groupRowsSticky = input<GridOptions["groupRowsSticky"]>();
   readonly getGroupChildCount = input<GridOptions["getGroupChildCount"]>();
-  readonly groupChildCount = input<GridOptions["groupChildCount"]>();
+  readonly groupChildCount = input<GridOptions<TData>["groupChildCount"]>();
   readonly groupTotalRow = input<GridOptions["groupTotalRow"]>();
   readonly grandTotalRow = input<GridOptions["grandTotalRow"]>();
-  readonly groupTotalRowLabel = input<GridOptions["groupTotalRowLabel"]>();
-  readonly treeData = input<GridOptions["treeData"]>();
+  readonly groupTotalRowLabel = input<GridOptions<TData>["groupTotalRowLabel"]>();
+  readonly treeData = input<GridOptions<TData>["treeData"]>();
 
   // --- pinned rows ---
-  readonly pinnedTopRowData = input<GridOptions["pinnedTopRowData"]>();
-  readonly pinnedBottomRowData = input<GridOptions["pinnedBottomRowData"]>();
-  readonly isRowPinned = input<GridOptions["isRowPinned"]>();
+  readonly pinnedTopRowData = input<GridOptions<TData>["pinnedTopRowData"]>();
+  readonly pinnedBottomRowData = input<GridOptions<TData>["pinnedBottomRowData"]>();
+  readonly isRowPinned = input<GridOptions<TData>["isRowPinned"]>();
   readonly rowPinningMenu = input<GridOptions["rowPinningMenu"]>();
-  readonly rowInsertionMenu = input<GridOptions["rowInsertionMenu"]>();
+  readonly rowInsertionMenu = input<GridOptions<TData>["rowInsertionMenu"]>();
 
   // --- full-width rows ---
-  readonly isFullWidthRow = input<GridOptions["isFullWidthRow"]>();
-  readonly fullWidthCellRenderer = input<GridOptions["fullWidthCellRenderer"] | NgComponent>();
+  readonly isFullWidthRow = input<GridOptions<TData>["isFullWidthRow"]>();
+  readonly fullWidthCellRenderer = input<GridOptions<TData>["fullWidthCellRenderer"] | NgComponent>();
 
   // --- pagination ---
   readonly pagination = input<GridOptions["pagination"]>();
@@ -277,11 +302,11 @@ export class AwbGrid implements OnDestroy {
   >();
 
   // --- outputs ---
-  readonly gridReady = output<IGridAPI>();
-  readonly cellClicked = output<GridEventCellClickedParams>();
-  readonly rowClicked = output<GridEventRowClickedParams>();
-  readonly cellDoubleClicked = output<GridEventCellDoubleClickedParams>();
-  readonly rowDoubleClicked = output<GridEventRowDoubleClickedParams>();
+  readonly gridReady = output<IGridAPI<TData>>();
+  readonly cellClicked = output<GridEventCellClickedParams<TData>>();
+  readonly rowClicked = output<GridEventRowClickedParams<TData>>();
+  readonly cellDoubleClicked = output<GridEventCellDoubleClickedParams<TData>>();
+  readonly rowDoubleClicked = output<GridEventRowDoubleClickedParams<TData>>();
   readonly cellValueChanged = output<CellValueChangedParams>();
   readonly selectionChanged = output<GridEventSelectionChangedParams>();
   readonly sortChanged = output<SortChangedParams>();
@@ -298,6 +323,29 @@ export class AwbGrid implements OnDestroy {
   readonly filterChanged = output<GridEventFilterChangedParams>();
   readonly quickFilterFindChanged = output<GridEventQuickFilterFindChangedParams>();
   readonly historyChanged = output<GridEventHistoryChangedParams>();
+  // One output per remaining core event, named like the event (none of these names is a native DOM
+  // event, so unlike `gridError` none needs renaming to keep host DOM events out).
+  readonly columnWidthsChanged = output<GridEventColumnWidthsChangedParams>();
+  readonly editingChanged = output<GridEventEditingChangedParams>();
+  readonly focusChanged = output<GridEventFocusChangedParams>();
+  readonly headerFocusChanged = output<GridEventHeaderFocusChangedParams>();
+  readonly rowsChanged = output<GridEventRowsChangedParams>();
+  readonly pivotChanged = output<GridEventPivotChangedParams>();
+  readonly pivotColumnLimitReached = output<GridEventPivotColumnLimitReachedParams>();
+  readonly modelUpdated = output<GridEventModelUpdatedParams>();
+  readonly viewportChanged = output<GridEventViewportChangedParams>();
+  readonly cellsChanged = output<GridEventCellsChangedParams>();
+  readonly aggregateChanged = output<GridEventAggregateChangedParams>();
+  readonly overlayShow = output<GridEventOverlayShowParams>();
+  readonly tooltipShow = output<GridEventTooltipParams>();
+  readonly tooltipHide = output<GridEventTooltipParams>();
+  readonly actionFrameChanged = output<GridEventActionFrameParams>();
+  readonly keyboardNavigationModeChanged = output<GridEventKeyboardNavigationModeChangedParams>();
+  readonly rowGroupOpened = output<GridEventRowGroupOpenedParams>();
+  readonly columnGroupOpened = output<GridEventColumnGroupOpenedParams>();
+  readonly firstDataRendered = output<GridEventFirstDataRenderedParams>();
+  readonly rowDataUpdated = output<GridEventRowDataUpdatedParams>();
+  readonly bodyScroll = output<GridEventBodyScrollParams>();
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly zone = inject(NgZone);
@@ -308,7 +356,7 @@ export class AwbGrid implements OnDestroy {
   private instance: GridInstance | null = null;
 
   /** The imperative grid API; available from `gridReady` onward (null before first render). */
-  get api(): IGridAPI | null {
+  get api(): IGridAPI<TData> | null {
     return this.instance?.api ?? null;
   }
 
@@ -322,6 +370,19 @@ export class AwbGrid implements OnDestroy {
     const instance = this.instance;
     this.instance = null;
     if (instance) destroyInstance(instance);
+  }
+
+  /**
+   * Emit through `ref` inside the zone, but only when something is bound to it: the grid runs
+   * outside Angular so scrolling and repaints do not trigger change detection, and re-entering the
+   * zone for an output nobody listens to would undo that. Reads the emitter's listener list, which
+   * Angular keeps private; if that shape ever changes the check fails open and every emit enters
+   * the zone, as the original outputs do.
+   */
+  private emitObserved<T>(ref: OutputEmitterRef<T>, ev: T): void {
+    const listeners = (ref as unknown as { listeners?: unknown[] | null }).listeners;
+    if (listeners === null || (Array.isArray(listeners) && listeners.length === 0)) return;
+    this.zone.run(() => ref.emit(ev));
   }
 
   private create(): void {
@@ -343,6 +404,31 @@ export class AwbGrid implements OnDestroy {
       options.onQuickFilterFindChanged = (ev) =>
         this.zone.run(() => this.quickFilterFindChanged.emit(ev));
       options.onHistoryChanged = (ev) => this.zone.run(() => this.historyChanged.emit(ev));
+      // The rest go through emitObserved: several fire per scroll tick, drag move or repaint, and
+      // entering the zone runs application-wide change detection even when nothing listens.
+      options.onColumnWidthsChanged = (ev) => this.emitObserved(this.columnWidthsChanged, ev);
+      options.onEditingChanged = (ev) => this.emitObserved(this.editingChanged, ev);
+      options.onFocusChanged = (ev) => this.emitObserved(this.focusChanged, ev);
+      options.onHeaderFocusChanged = (ev) => this.emitObserved(this.headerFocusChanged, ev);
+      options.onRowsChanged = (ev) => this.emitObserved(this.rowsChanged, ev);
+      options.onPivotChanged = (ev) => this.emitObserved(this.pivotChanged, ev);
+      options.onPivotColumnLimitReached = (ev) =>
+        this.emitObserved(this.pivotColumnLimitReached, ev);
+      options.onModelUpdated = (ev) => this.emitObserved(this.modelUpdated, ev);
+      options.onViewportChanged = (ev) => this.emitObserved(this.viewportChanged, ev);
+      options.onCellsChanged = (ev) => this.emitObserved(this.cellsChanged, ev);
+      options.onAggregateChanged = (ev) => this.emitObserved(this.aggregateChanged, ev);
+      options.onOverlayShow = (ev) => this.emitObserved(this.overlayShow, ev);
+      options.onTooltipShow = (ev) => this.emitObserved(this.tooltipShow, ev);
+      options.onTooltipHide = (ev) => this.emitObserved(this.tooltipHide, ev);
+      options.onActionFrameChanged = (ev) => this.emitObserved(this.actionFrameChanged, ev);
+      options.onKeyboardNavigationModeChanged = (ev) =>
+        this.emitObserved(this.keyboardNavigationModeChanged, ev);
+      options.onRowGroupOpened = (ev) => this.emitObserved(this.rowGroupOpened, ev);
+      options.onColumnGroupOpened = (ev) => this.emitObserved(this.columnGroupOpened, ev);
+      options.onFirstDataRendered = (ev) => this.emitObserved(this.firstDataRendered, ev);
+      options.onRowDataUpdated = (ev) => this.emitObserved(this.rowDataUpdated, ev);
+      options.onBodyScroll = (ev) => this.emitObserved(this.bodyScroll, ev);
       // Value-returning hook, read through the signal so it stays reactive to input changes.
       // zone.run propagates the return value, so veto/transform results reach the grid.
       options.onBeforeCellCommit = (params) => {

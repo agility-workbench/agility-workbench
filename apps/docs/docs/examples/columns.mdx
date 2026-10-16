@@ -25,7 +25,7 @@ framework bindings.
 | `colId` | Explicit public identity for state and API calls |
 | `label` | Visible header label |
 | `type` | Selects default comparison, formatting, filtering, and editing behavior |
-| `valueGetter` | Computes a value instead of reading `key` |
+| `valueGetter` | Computes a value instead of reading `key`; receives the row node (`node.data` is the row) |
 | `valueFormatter` / `valueParser` | Converts values for display and committed edits |
 
 Users can resize and reorder enabled columns directly. Initial pinning and
@@ -58,7 +58,7 @@ const columnDefs: ColDef[] = [
 const column = {
   colId: "total",
   label: "Total",
-  valueGetter: (row) => row.quantity * row.unitPrice,
+  valueGetter: (node) => node.data.quantity * node.data.unitPrice,
   valueFormatter: ({ value }) => `$${Number(value).toFixed(2)}`,
   editable: true,
   valueParser: ({ value }) => Number(value),
@@ -272,10 +272,16 @@ Column state carries each column's sort too (`sort`, `null` when unsorted, and
 ```ts
 api.setColumnDefs([...baseColumns, { key: "margin", label: "Margin" }]);
 
-api.dispatch({
-  type: "addSparklineColumn",
-  targetColId: "revenue",
+api.addSparklineColumn({
   colIds: ["jan", "feb", "mar"],
   sparklineType: "line",
+  targetColId: "revenue",
 });
 ```
+
+`api.getColumnDefs()` returns the definitions as the grid holds them now, with the
+current widths, pinning, visibility, sort and aggregates written in, so
+`api.setColumnDefs(api.getColumnDefs())` changes nothing. Edit the result and set it
+back to add or change one column without rebuilding the list by hand. For a single
+column's live object, `api.getColumn(colId)`; for every leaf in display order,
+`api.getColumns()`.

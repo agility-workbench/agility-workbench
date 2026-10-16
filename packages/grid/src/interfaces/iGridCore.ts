@@ -102,6 +102,9 @@ export interface IGridCore {
 
   getOptions(): Readonly<GridOptions>;
 
+  /** The creation options exactly as supplied (before defaults and normalization). */
+  getSuppliedOptions(): Readonly<GridOptions>;
+
   /** One of the grid's user-visible strings, localized (see `resolveLocaleText` for precedence). */
   getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string;
 

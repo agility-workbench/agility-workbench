@@ -725,7 +725,7 @@ export class SelectionRenderer {
         ?? rowEl?.getAttribute("data-group-id");
       if (groupId) {
         e.preventDefault();
-        this.params.core.dispatch({ type: "groupToggleExpand", groupId });
+        this.params.core.dispatch({ type: "groupToggleExpand", groupId, source: "user" });
         // The chevron consumes mousedown so it does not start a drag/range gesture. For tree data,
         // still make its hierarchy cell the active keyboard target after the synchronous reflow;
         // otherwise the subsequent mode-toggle / hierarchy keys are sent outside the grid or act

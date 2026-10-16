@@ -14,8 +14,12 @@ import { MenuItem } from "./menu";
 // MenuItems (slots may be React nodes); `fullWidthCellRenderer` is redeclared to also accept a React component; `defaultColDef`
 // is redeclared as a React-aware `ReactDefaultColDef` (it may carry React components). All are omitted
 // from the inherited core GridOptions.
-export interface GridProps extends Omit<
-  GridOptions,
+// `TData` is the row type (default `any`), as on the core `GridOptions<TData>`: it types
+// `columnDefs`, the callbacks that receive a row, `apiRef` and `onGridReady`. It is never inferred
+// from `rowData` / `data` (an empty `[]` would otherwise pin it to `never`); pass it as
+// `<Grid<Trade> …>` or let typed `columnDefs` (`ReactColDef<Trade>[]`) supply it.
+export interface GridProps<TData = any> extends Omit<
+  GridOptions<TData>,
   | "bodyContextMenu"
   | "multiColumnMenu"
   | "fullWidthCellRenderer"
@@ -29,19 +33,19 @@ export interface GridProps extends Omit<
   style?: React.CSSProperties;
 
   /** Optional initial data/columns; wrapper will forward after init and on change */
-  data?: unknown[];
+  data?: NoInfer<TData>[];
   /** Public row-data prop. Takes precedence over `data` when both are provided. */
-  rowData?: unknown[];
-  columnDefs?: ReactColDef[] | ColDef[] | null;
+  rowData?: NoInfer<TData>[];
+  columnDefs?: ReactColDef<TData>[] | ColDef<TData>[] | null;
 
   /** Expose API (AG Grid style) */
-  apiRef?: React.Ref<IGridAPI | null>;
+  apiRef?: React.Ref<IGridAPI<TData> | null>;
   /**
    * Called once per grid instance, in the mounting commit (synchronously, before paint), with the
    * `columnDefs` and row data already applied — so colId- and rowId-addressed API calls made here
    * resolve. Prop-driven option syncing still runs after it.
    */
-  onGridReady?: (api: IGridAPI) => void;
+  onGridReady?: (api: IGridAPI<TData>) => void;
 
   /* If true, shows loading overlay */
   loading?: boolean;
@@ -77,24 +81,24 @@ export interface GridProps extends Omit<
    * Renderer for a full-width row's content (see the core `fullWidthCellRenderer`). May be a plain
    * core CellRenderer or a React component; a React component is adapted like `colDef.cellRenderer`.
    */
-  fullWidthCellRenderer?: GridOptions["fullWidthCellRenderer"] | ReactCellRenderer;
+  fullWidthCellRenderer?: GridOptions<TData>["fullWidthCellRenderer"] | ReactCellRenderer<TData>;
 
   /**
    * Default column definition merged under every column (see core `defaultColDef`). A React-aware
    * `ReactColDef`, so component fields (cellRenderer, tooltipComponent, actionFrameComponent, …) may
    * be React components; they are adapted exactly as they would be on a real column def.
    */
-  defaultColDef?: ReactDefaultColDef;
+  defaultColDef?: ReactDefaultColDef<TData>;
   /**
    * The auto-group column's definition (see core `groupColumnDef`), React-aware like `defaultColDef`:
    * component fields (cellRenderer, tooltipComponent, headerComponent, …) may be React components.
    */
-  groupColumnDef?: ReactPartialColDef;
+  groupColumnDef?: ReactPartialColDef<TData>;
   /**
    * Layered over every pivot result column (see core `pivotResultColumnDef`), React-aware like
    * `defaultColDef`.
    */
-  pivotResultColumnDef?: ReactPartialColDef;
+  pivotResultColumnDef?: ReactPartialColDef<TData>;
   /** React-aware row presentation callback; row tooltip components may be React components. */
-  getRowPresentation?: ReactGetRowPresentation;
+  getRowPresentation?: ReactGetRowPresentation<TData>;
 }

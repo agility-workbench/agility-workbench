@@ -490,6 +490,15 @@ export class ColumnModel implements IColumnModel {
     return this.columns;
   }
 
+  getSourceColumns(): Column[] {
+    // The stash is the user's tree while pivoted; otherwise the section lists, whose concatenation
+    // is display order (the leading section holds only the utility columns).
+    const roots = this.pivotDisplayActive
+      ? this.pivotSourceStash
+      : [...this.leftColumns, ...this.centerColumns, ...this.rightColumns];
+    return roots.filter(col => !col.isInternal());
+  }
+
   getLeaves(): Column[] {
     return this.leaves;
   }

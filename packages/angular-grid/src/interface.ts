@@ -118,8 +118,8 @@ export type NgRowPresentation = Omit<RowPresentation, "tooltip"> & {
   tooltip?: NgRowTooltipPresentation | false | null;
 };
 
-export type NgGetRowPresentation = (
-  params: RowPresentationParams,
+export type NgGetRowPresentation<TData = any> = (
+  params: RowPresentationParams<TData>,
 ) => NgRowPresentation | null | undefined;
 
 /**
@@ -128,9 +128,13 @@ export type NgGetRowPresentation = (
  * headerCellComponent, and the set-filter components in filterParams) may also be an
  * Angular component class. Angular components are wrapped in core adapter classes; core renderer
  * classes and string aliases pass through unchanged.
+ *
+ * `TData` is the row type (default `any`), exactly as on `ColDef<TData>`. Angular component
+ * classes stay untyped slots (`Type<unknown>`); type a component's params through its contract,
+ * e.g. `ITooltipNgComp<TooltipComponentParams<Trade>>`.
  */
-export type NgColDef = Omit<
-  ColDef,
+export type NgColDef<TData = any> = Omit<
+  ColDef<TData>,
   | "cellRenderer"
   | "cellEditor"
   | "children"
@@ -141,15 +145,15 @@ export type NgColDef = Omit<
   | "headerComponent"
   | "headerCellComponent"
 > & {
-  cellRenderer?: CellRenderer | CellRendererAlias | NgComponent;
-  cellEditor?: CellEditor | NgComponent;
-  tooltipComponent?: TooltipComponent | NgComponent;
+  cellRenderer?: CellRenderer<TData> | CellRendererAlias | NgComponent;
+  cellEditor?: CellEditor<TData> | NgComponent;
+  tooltipComponent?: TooltipComponent<TData> | NgComponent;
   headerTooltip?: string | TooltipComponent | NgComponent;
-  actionFrameComponent?: ActionFrameComponent | NgComponent;
+  actionFrameComponent?: ActionFrameComponent<TData> | NgComponent;
   filterParams?: NgFilterParams;
   headerComponent?: HeaderComponent | NgComponent;
   headerCellComponent?: HeaderComponent | NgComponent;
-  children?: NgColDef[];
+  children?: NgColDef<TData>[];
 };
 
 /**
@@ -157,11 +161,11 @@ export type NgColDef = Omit<
  * identity/structure fields that never inherit (see `NON_DEFAULTABLE_COLDEF_KEYS`). Mirrors core
  * `DefaultColDef`, but its component fields may be Angular components.
  */
-export type NgDefaultColDef = Omit<NgColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
+export type NgDefaultColDef<TData = any> = Omit<NgColDef<TData>, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
 
 /**
  * Angular-aware shape of the partial column defs the grid layers over a synthesized column
  * (`groupColumnDef`, `pivotResultColumnDef`): a `Partial<NgColDef>`, so component fields may be
  * Angular components.
  */
-export type NgPartialColDef = Partial<Omit<NgColDef, "children">>;
+export type NgPartialColDef<TData = any> = Partial<Omit<NgColDef<TData>, "children">>;

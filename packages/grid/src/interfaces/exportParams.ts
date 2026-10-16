@@ -25,13 +25,15 @@ export interface ExcelExportCellStyle {
   };
 }
 
-/** Context supplied for each real data cell written to an Excel workbook. */
-export interface ExcelExportCellParams {
+/** Context supplied for each real data cell written to an Excel workbook. `TData` is the row
+ * type (default `any`). */
+export interface ExcelExportCellParams<TData = any> {
   /** Raw value resolved from the column before export customization. */
   value: unknown;
   /** Value after the column's value formatter, before export customization. */
   formattedValue: string;
-  data: unknown;
+  /** The row's data object. */
+  data: TData;
   /** Zero-based index within the row segment identified by `rowType`. */
   rowIndex: number;
   rowType: ExcelExportRowType;
@@ -46,8 +48,8 @@ export interface ExcelExportCellResult {
   style?: ExcelExportCellStyle;
 }
 
-export type ExcelExportCellProcessor = (
-  params: ExcelExportCellParams,
+export type ExcelExportCellProcessor<TData = any> = (
+  params: ExcelExportCellParams<TData>,
 ) => ExcelExportCellResult | undefined;
 
 /** The data-row segment currently being written to a CSV file (the same segments as Excel). */
@@ -57,13 +59,13 @@ export type CsvExportRowType = ExcelExportRowType;
  * Context supplied for each real data cell written to a CSV file: the same shape the Excel
  * processor receives, so one helper can serve both formats.
  */
-export type CsvExportCellParams = ExcelExportCellParams;
+export type CsvExportCellParams<TData = any> = ExcelExportCellParams<TData>;
 
 /**
  * Replaces a CSV data cell's text. Return the text to write, or `undefined` to keep the grid's
  * formatted text. See {@link ExportParams.processCellForCsv}.
  */
-export type CsvExportCellProcessor = (params: CsvExportCellParams) => string | undefined;
+export type CsvExportCellProcessor<TData = any> = (params: CsvExportCellParams<TData>) => string | undefined;
 
 /** Context supplied for each header label written to a CSV file. */
 export interface CsvExportHeaderParams {
@@ -87,7 +89,7 @@ export type CsvExportHeaderProcessor = (params: CsvExportHeaderParams) => string
 export type CsvExtraContent = string | string[][];
 
 /** Options for a programmatic CSV/Excel export (all optional). */
-export interface ExportParams {
+export interface ExportParams<TData = any> {
   /** "all" (default) exports the full view; "selection" a cell range; "selectedColumns" the picked columns. */
   scope?: ExportScope;
   /** Output filename. Auto-derived (e.g. "grid-all.xlsx") when omitted; the extension is enforced. */
@@ -103,7 +105,7 @@ export interface ExportParams {
    * values plus number format, bold, and alignment. Applies to body and pinned rows; synthetic
    * group headers/subtotals and CSV output are unchanged.
    */
-  processCellForExcel?: ExcelExportCellProcessor;
+  processCellForExcel?: ExcelExportCellProcessor<TData>;
   /**
    * CSV only (Excel ignores it). The text placed between fields. Defaults to `","`; `"\t"` (tab
    * separated values) and `";"` (what Excel expects in locales whose decimal mark is a comma) are
@@ -138,7 +140,7 @@ export interface ExportParams {
    * result is quoted as needed and formula-guarded (a leading `=`, `+`, `-`, `@`, tab or CR gets a
    * `'` prefix) unless it is a plain number such as `-5` or `1.5e3`.
    */
-  processCellForCsv?: CsvExportCellProcessor;
+  processCellForCsv?: CsvExportCellProcessor<TData>;
   /**
    * CSV only (Excel ignores it). Replace a header label: return the text to write, or `undefined`
    * to keep the grid's label. Called for every label on every header row, so on a grouped header

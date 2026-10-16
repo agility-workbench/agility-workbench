@@ -1,6 +1,7 @@
 import { GridEventMap, GridEventPaginationChangedParams } from "../events/events";
 import { ColDef } from "../interfaces/column";
 import {
+  AddSparklineColumnParams,
   ColumnWidthItem,
   ExportParams,
   FlashCellsParams,
@@ -11,6 +12,7 @@ import {
   PaginationUpdate,
   RedrawRowsParams,
   RefreshCellsParams,
+  GridScrollPosition,
   RowScrollPosition,
   SortModelItem,
 } from "../interfaces/iGridAPI";
@@ -23,6 +25,7 @@ import { IMenuAdapter } from "../interfaces/iMenuAdapter";
 import { CellRef, RowSelectionState, SelectionSnapshot } from "../interfaces/selection";
 import { IRowNode } from "../interfaces/iRowNode";
 import {
+  GridOptions,
   QuickFilterBehavior,
   QuickFilterMatchMode,
   RowPinnedPosition,
@@ -128,6 +131,7 @@ export interface GridApiFillController {
 export interface GridApiScrollController {
   ensureRowVisible: (viewIdx: number, rowPinned?: RowPinnedPosition, position?: RowScrollPosition) => void;
   ensureColumnVisible: (colIdx: number) => void;
+  scrollTo: (position: GridScrollPosition) => void;
 }
 
 export interface GridApiPinnedRowsController {
@@ -162,6 +166,10 @@ export class GridAPI implements IGridAPI {
   private _menuAdapters: GridApiMenuAdapterController | null = null;
   private _shortcuts: GridApiShortcutController | null = null;
   private filterMenuService?: ColumnFilterMenuService;
+  private _destroyed = false;
+  // Options as last passed to updateGridOptions (presence-based: a key passed as `undefined` is
+  // recorded as reset), layered over the creation options by getGridOption.
+  private readonly _optionUpdates = new Map<string, unknown>();
 
   constructor(private core: IGridCore) {}
 
@@ -347,6 +355,11 @@ export class GridAPI implements IGridAPI {
     // Caller-owned schema, same as `createGrid({ columnDefs })`.
     if (has("columnDefs")) this.core.setColumnDefsFromProps(options.columnDefs);
 
+    // For getGridOption: every accepted key, as passed (`columnDefs` is not a GridOptions key).
+    for (const key of UPDATABLE_OPTION_KEYS) {
+      if (key !== "columnDefs" && has(key)) this._optionUpdates.set(key, supplied[key]);
+    }
+
     const runtimeKeys = RUNTIME_OPTION_KEYS.filter(key => has(key));
     if (runtimeKeys.length > 0) {
       const current = this.core.getOptions() as Record<string, unknown>;
@@ -365,6 +378,14 @@ export class GridAPI implements IGridAPI {
         + `${unknown.join(", ")}. Create a new grid to change these.`,
       );
     }
+  }
+
+  getGridOption<K extends keyof GridOptions>(key: K): GridOptions[K] {
+    // Model state seeded by an option reads live (MODEL_STATE_OPTION_KEYS).
+    if (key === "pivotMode") return this.getPivotMode() as GridOptions[K];
+    if (key === "pivotColumns") return this.getPivotColumns() as GridOptions[K];
+    if (this._optionUpdates.has(key)) return this._optionUpdates.get(key) as GridOptions[K];
+    return this.core.getSuppliedOptions()[key];
   }
 
   // ---------------- Scrolling ----------------
@@ -403,6 +424,19 @@ export class GridAPI implements IGridAPI {
     const rowVisible = this.ensureRowVisible(cell.rowId, opts);
     const colVisible = this.ensureColumnVisible(cell.colInstanceId ?? cell.colId);
     return rowVisible && colVisible;
+  }
+
+  scrollTo(position: GridScrollPosition): void {
+    if (!this._scroll) {
+      console.warn("scrollTo called before the grid was rendered; ignoring.");
+      return;
+    }
+    const finite = (value: number | undefined) =>
+      typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    const topPx = finite(position?.topPx);
+    const leftPx = finite(position?.leftPx);
+    if (topPx == null && leftPx == null) return;
+    this._scroll.scrollTo({ topPx, leftPx });
   }
 
   /** Index of a column among the visible leaves (what the renderer indexes cells by); -1 if it
@@ -935,6 +969,29 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "columnsMove", source: "api", colIds: [...colIds], toIndex });
   }
 
+  addSparklineColumn(params: AddSparklineColumnParams): string | null {
+    const colIds = [...(params?.colIds ?? [])];
+    const model = this.core.getColumnModel();
+    // The core's own resolution: it adds nothing when no id names a leaf, and the api has to know
+    // that to report null.
+    const resolvesLeaf = colIds.some(id => {
+      const col = model.getById(id) ?? model.getByColId(id) ?? model.getByKey(id);
+      return col != null && col.children.length === 0;
+    });
+    if (!resolvesLeaf) return null;
+    const colId = params.colId || `sparkline_${crypto.randomUUID()}`;
+    this.dispatch({
+      type: "addSparklineColumn",
+      source: "api",
+      colIds,
+      sparklineType: params.sparklineType,
+      // An unresolvable target falls back to the first selected column in the core.
+      targetColId: params.targetColId ?? colIds[0],
+      newColId: colId,
+    });
+    return colId;
+  }
+
   // One columnWidthsChanged for a batch, the payload the core's own width events carry. An empty
   // id list would read as "every visible column", so a batch that changed nothing emits nothing.
   private emitWidthsChanged(instanceIds: Set<string>): void {
@@ -961,6 +1018,59 @@ export class GridAPI implements IGridAPI {
 
   getColumnModel(): IColumnModel {
     return this.core.getColumnModel();
+  }
+
+  getColumn(colId: string): Column | undefined {
+    const col = this.core.getColumnModel().resolve(colId);
+    return col && !col.isInternal() ? col : undefined;
+  }
+
+  getColumns(): Column[] {
+    return this.core.getColumnModel().getSourceColumns()
+      .flatMap(col => col.getLeaves())
+      .filter(col => !col.isInternal());
+  }
+
+  getColumnDefs(): ColDef[] {
+    const sorts = new Map<string, { dir: SortModelItem["dir"]; index: number }>();
+    this.getSortModel().forEach((item, index) => {
+      if (!sorts.has(item.colId)) sorts.set(item.colId, { dir: item.dir, index });
+    });
+    const aggregates = new Map<string, AggregateKind>();
+    for (const item of this.getAggregates()) {
+      if (!aggregates.has(item.colId)) aggregates.set(item.colId, item.type);
+    }
+    const defaultHidden = this.core.getOptions().defaultColDef?.hidden === true;
+    const toDef = (col: Column, topLevel: boolean): ColDef => {
+      const def: ColDef = { ...col.explicitColDef, colId: col.colId };
+      delete def.children;
+      if (topLevel) {
+        if (col.pinned) def.pinned = col.pinned;
+        else delete def.pinned;
+      }
+      if (col.hidden) def.hidden = true;
+      // Shown, but a definition without `hidden` would inherit defaultColDef's: spell it out.
+      else if (defaultHidden) def.hidden = false;
+      else delete def.hidden;
+      if (col.children.length > 0) {
+        if (col.showExpander) def.openByDefault = col.groupExpandState === "open";
+        def.children = col.children.filter(child => !child.isInternal()).map(child => toDef(child, false));
+        return def;
+      }
+      def.width = col.computedWidth;
+      const sort = sorts.get(col.colId);
+      if (sort) {
+        def.sort = sort.dir;
+        def.sortIndex = sort.index;
+      } else {
+        delete def.sort;
+        delete def.sortIndex;
+      }
+      const aggregate = aggregates.get(col.colId);
+      if (aggregate !== undefined) def.aggFunc = aggregate;
+      return def;
+    };
+    return this.core.getColumnModel().getSourceColumns().map(col => toDef(col, true));
   }
 
   applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
@@ -1531,8 +1641,41 @@ export class GridAPI implements IGridAPI {
   }
 
   // ---------------- Selection ----------------
-  setFocusedCell(viewIdx: number, colIdx: number): void {
-    this.core.dispatch({ type: "focusSet", viewIdx, colIdx, reason: "api" });
+  setFocusedCell(cell: CellRef): void;
+  setFocusedCell(viewIdx: number, colIdx: number): void;
+  setFocusedCell(cellOrViewIdx: CellRef | number, colIdx?: number): void {
+    if (typeof cellOrViewIdx === "number") {
+      this.core.dispatch({ type: "focusSet", viewIdx: cellOrViewIdx, colIdx: colIdx!, reason: "api" });
+      return;
+    }
+    const cell = cellOrViewIdx;
+    if (!cell) return;
+    const leafIdx = this.leafColumnIndex(cell.colInstanceId ?? cell.colId);
+    if (leafIdx < 0) return;
+    if (cell.rowPinned) {
+      const ref = this.core.getDisplayedPinnedRowRef(cell.rowId);
+      if (!ref || ref.position !== cell.rowPinned) return;
+      this.core.dispatch({
+        type: "focusSet", viewIdx: ref.rowIndex, colIdx: leafIdx, rowPinned: ref.position, reason: "api",
+      });
+      return;
+    }
+    const viewIdx = this.core.getViewIndexForRowId(cell.rowId);
+    if (viewIdx == null || viewIdx < 0) return;
+    this.core.dispatch({ type: "focusSet", viewIdx, colIdx: leafIdx, reason: "api" });
+  }
+
+  getFocusedCell(): CellRef | null {
+    const active = this.core.getActiveCell();
+    if (!active) return null;
+    const rowId = active.rowPinned
+      ? this.core.getDisplayedPinnedRow(active.rowPinned, active.row)?.id
+      : this.core.getRowIdAtViewIndex(active.row);
+    const col = this.core.getColumnModel().getLeaves()[active.colIdx];
+    if (rowId == null || !col) return null;
+    const cell: CellRef = { rowId: String(rowId), colId: col.colId, colInstanceId: col.instanceID };
+    if (active.rowPinned) cell.rowPinned = active.rowPinned;
+    return cell;
   }
 
   selectRange(viewIdx: number, colIdx: number): void {
@@ -1753,7 +1896,13 @@ export class GridAPI implements IGridAPI {
   }
 
   destroy(): void {
-    // Cleanup if necessary
+    // createGrid shadows this with the whole teardown and calls it first; on a bare api it only
+    // marks the api destroyed.
+    this._destroyed = true;
+  }
+
+  isDestroyed(): boolean {
+    return this._destroyed;
   }
 }
 

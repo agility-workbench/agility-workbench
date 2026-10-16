@@ -240,6 +240,37 @@ Each `on*` option is a convenience over one core event — passing it is the sam
 | `onColumnsChanged` | `columnsChanged` | Columns change: definitions, state restores, pin, visibility, order, sort, filter, grouping, pivot (`reason` says which) |
 | `onPaginationChanged` | `paginationChanged` | Page, page size or totals may have changed; the payload is `api.getPaginationInfo()` |
 | `onError` | `error` | A row-model request fails (`code: "row_model_error"`) |
+| `onRowGroupOpened` | `rowGroupOpened` | Row groups or tree nodes expand or collapse: one call per gesture or API call, after the rebuild, with the changed `groupIds`, the new `expanded` state and `source` |
+| `onColumnGroupOpened` | `columnGroupOpened` | Column groups open or close (header expander, `setColumnGroupState`): one call per direction, with `source` |
+| `onFirstDataRendered` | `firstDataRendered` | Once per grid, after the first paint that shows a row (later for a grid created empty) |
+| `onRowDataUpdated` | `rowDataUpdated` | The row data changes: `reason` is `"rowData"`, `"transaction"` or `"serverSide"` (a block load or purge) |
+| `onBodyScroll` | `bodyScroll` | Every body scroll tick, with `scrollTopPx`, `scrollLeftPx` and `direction` |
+| `onColumnWidthsChanged` | `columnWidthsChanged` | Column widths change; `final` is false during a resize drag, `source` as on `onColumnsChanged` |
+| `onEditingChanged` | `editingChanged` | A cell editor starts, commits, is rejected, cancelled or stops |
+| `onFocusChanged` | `focusChanged` | The body cursor (focused cell) moves or clears |
+| `onHeaderFocusChanged` | `headerFocusChanged` | The header keyboard cursor moves, enters or leaves the header |
+| `onRowsChanged` | `rowsChanged` | The displayed rows are re-laid out (data, grouping, expansion, a page or block) |
+| `onCellsChanged` | `cellsChanged` | Cells need repainting: values, formats, styles, an edit commit or a refresh |
+| `onModelUpdated` | `modelUpdated` | The row model re-derived its view (`reason` says why) |
+| `onAggregateChanged` | `aggregateChanged` | Aggregate values, model or scope change |
+| `onPivotChanged` | `pivotChanged` | Pivot mode toggles or the pivot columns change |
+| `onPivotColumnLimitReached` | `pivotColumnLimitReached` | Generated pivot columns start or stop being truncated by `maxPivotColumns` |
+| `onOverlayShow` | `overlayShow` | The loading or no-rows overlay is shown or taken down |
+| `onTooltipShow` / `onTooltipHide` | `tooltipShow` / `tooltipHide` | A body, header or grid-UI tooltip opens or closes |
+| `onActionFrameChanged` | `actionFrameChanged` | A cell's ActionFrame opens or closes |
+| `onKeyboardNavigationModeChanged` | `keyboardNavigationModeChanged` | The tree-data keyboard navigation mode switches |
+| `onViewportChanged` | `viewportChanged` | The grid initialises (emitted once; follow scrolling with `onBodyScroll`) |
+
+Every event in the `GridEventMap` has an option here, a React `<Grid>` prop of the same name,
+and an `<awb-grid>` output named like the event (`(rowGroupOpened)`, `(bodyScroll)`, …) — the
+one exception is `error`, whose output is `(gridError)`. Like the other callbacks they are read
+at creation; the framework bindings bridge them, so a changed prop or a re-bound output is live.
+
+`rowGroupOpened` reports `source: "user"` for the group chevron and the tree-data keyboard
+shortcuts and `"api"` for `setAllGroupsExpanded` / `setGroupExpanded`, view restores and the
+grid's own reveals (a find match, a row scrolled to by id). Only the rows whose state changed
+are listed, and a call that changes nothing fires nothing. `rowDataUpdated` does not fire for
+sorting, filtering, grouping or expansion — those move rows without changing the data.
 
 `onPaginationChanged` also fires after operations that leave every field as it was (a
 re-sort, a regroup), so compare with the previous payload when only real changes matter.

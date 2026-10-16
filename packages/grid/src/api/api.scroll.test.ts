@@ -48,6 +48,7 @@ function makeGrid(options: Partial<GridOptions> = {}, rowCount = 50) {
   const controller: GridApiScrollController = {
     ensureRowVisible: (viewIdx, rowPinned, position) => rows.push({ viewIdx, rowPinned, position }),
     ensureColumnVisible: (colIdx) => cols.push(colIdx),
+    scrollTo: () => undefined,
   };
   api.setScrollController(controller);
   return { core, api, rows, cols };

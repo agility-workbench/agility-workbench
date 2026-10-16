@@ -15,6 +15,9 @@ interface GridScrollSyncRendererParams {
   aggregateRight: HTMLDivElement;
   onWindowUpdate: (scrollSrc: HTMLDivElement) => void;
   onHorizontalSync?: (left: number, center: number, right: number) => void;
+  /** Synchronously on every vertical body scroll and after every horizontal re-sync, ahead of the
+   * frame-batched window update. The callee dedupes ticks that moved nothing. */
+  onScroll?: () => void;
 }
 
 export class GridScrollSyncRenderer {
@@ -26,6 +29,7 @@ export class GridScrollSyncRenderer {
     // One vertical scroll container means nothing to synchronise: the browser has already moved
     // every section by the time this fires. All that is left to do is repaint the virtual window.
     this.params.body.addEventListener("scroll", () => {
+      this.params.onScroll?.();
       this.scheduleWindowUpdate(this.params.body);
     });
 
@@ -106,5 +110,6 @@ export class GridScrollSyncRenderer {
       this.params.centerSpacer.scrollLeft,
       this.params.rightSpacer.scrollLeft,
     );
+    this.params.onScroll?.();
   }
 }

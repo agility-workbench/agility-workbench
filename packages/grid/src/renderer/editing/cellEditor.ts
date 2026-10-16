@@ -1,10 +1,11 @@
 import { Column } from "../../column/column";
 import { IRowNode } from "../../interfaces/iRowNode";
 
-export interface ICellEditorParams {
+// `TData` is the row type (default `any`); `row` is the edited row's node (data on `row.data`).
+export interface ICellEditorParams<TData = any> {
   // Current (pre-edit) stored value of the cell.
   value: any;
-  row: IRowNode;
+  row: IRowNode<TData>;
   col: Column;
   // Column-level editor config (colDef.cellEditorParams).
   editorParams?: any;
@@ -27,9 +28,9 @@ export interface ICellEditorParams {
  * A cell editor mounted over a cell while editing. Mirrors ICellRenderer: created on edit start,
  * mounted via getGui(), committed by reading getValue(), destroyed on stop.
  */
-export interface ICellEditor {
+export interface ICellEditor<TData = any> {
   /** Called once when the editor is created. */
-  init(params: ICellEditorParams): void;
+  init(params: ICellEditorParams<TData>): void;
   /** Root element to mount into the cell. */
   getGui(): HTMLElement;
   /** The value to commit. */
@@ -47,8 +48,8 @@ export interface ICellEditor {
   destroy?(): void;
 }
 
-export type ICellEditorFn = (params: ICellEditorParams) => ICellEditor;
-export type CellEditorClass = new () => ICellEditor;
+export type ICellEditorFn<TData = any> = (params: ICellEditorParams<TData>) => ICellEditor<TData>;
+export type CellEditorClass<TData = any> = new () => ICellEditor<TData>;
 
 /** An option in the select editor. A bare value is treated as both value and label. */
 export type SelectEditorOption = { value: any; label?: string } | string | number | boolean;
@@ -79,4 +80,4 @@ export interface SelectCellEditorParams {
 
 // A built-in editor selected by string alias, a custom class, or a factory function.
 export type CellEditorAlias = "text" | "number" | "date" | "boolean" | "select" | "textarea";
-export type CellEditor = CellEditorAlias | CellEditorClass | ICellEditorFn;
+export type CellEditor<TData = any> = CellEditorAlias | CellEditorClass<TData> | ICellEditorFn<TData>;

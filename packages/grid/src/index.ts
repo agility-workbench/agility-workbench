@@ -23,6 +23,9 @@ export type {
   RedrawRowsParams,
   RefreshCellsParams,
   SortModelItem,
+  // Inputs of api.scrollTo / api.addSparklineColumn.
+  GridScrollPosition,
+  AddSparklineColumnParams,
 } from "./interfaces/iGridAPI";
 export type { SortDir, SortItemUpdate } from "./interfaces/sort";
 // The column model behind `api.getColumnModel()`.
@@ -43,7 +46,9 @@ export type {
 import type { Column as ColumnClass } from "./column/column";
 export type Column = ColumnClass;
 export type { GridAction } from "./events/action";
+/** Integration seam (createGrid / initDomRenderer plumbing), outside the semver contract: use `createGrid` and `IGridAPI`. */
 export { GridCore } from "./core/core";
+/** Integration seam (createGrid / initDomRenderer plumbing), outside the semver contract: use `createGrid` and `IGridAPI`. */
 export { GridRenderer } from "./renderer/gridRenderer";
 export { SparklineRenderer } from "./cellRenderers/sparklineRenderer";
 export type {
@@ -53,6 +58,7 @@ export type {
   SparklineTooltipValueFormatterParams,
   SparklineXValue,
 } from "./cellRenderers/sparklineRenderer";
+/** Integration seam (createGrid / initDomRenderer plumbing), outside the semver contract: use `createGrid` and `IGridAPI`. */
 export { CanvasMeasurer, initDomRenderer } from "./renderer";
 export { createGrid } from "./createGrid";
 export type { CreateGridOptions } from "./createGrid";
@@ -292,6 +298,12 @@ export type {
   GridEventActionFrameParams,
   GridEventKeyboardNavigationModeChangedParams,
   GridEventViewportChangedParams,
+  GridEventRowGroupOpenedParams,
+  GridEventColumnGroupOpenedParams,
+  GridEventFirstDataRenderedParams,
+  GridEventRowDataUpdatedParams,
+  RowDataUpdatedReason,
+  GridEventBodyScrollParams,
   Unsubscribe,
 } from "./events/events";
 
@@ -323,6 +335,7 @@ export type {
   IServerSideTreeParent,
 } from "./interfaces/serverSide";
 
+/** Integration seam (the core's server-side row model), outside the semver contract: configure it through `serverSideDataSource` and `IGridAPI`. */
 export { ServerSideRowModel } from "./ssrm/serverSide";
 export { ServerSideDataError, isServerSideDataError } from "./ssrm/serverSideDataError";
 export type { ServerSideDataErrorReason } from "./ssrm/serverSideDataError";

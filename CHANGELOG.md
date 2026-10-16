@@ -35,6 +35,41 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still works:
   a locked column pinned left leads the left section. On a group child it locks within the group;
   on a group it locks the whole group.
+- **Every grid event now has an `on*` option, a React prop and an Angular output.** Sixteen events
+  that were reachable only through `api.on` — `columnWidthsChanged`, `editingChanged`,
+  `focusChanged`, `headerFocusChanged`, `rowsChanged`, `cellsChanged`, `modelUpdated`,
+  `viewportChanged`, `aggregateChanged`, `pivotChanged`, `pivotColumnLimitReached`, `overlayShow`,
+  `tooltipShow`, `tooltipHide`, `actionFrameChanged` and `keyboardNavigationModeChanged` — gain a
+  `GridOptions` callback (`onFocusChanged`, …), a `<Grid>` prop that stays live across re-renders
+  and an `<awb-grid>` output of the event's name. The new outputs enter Angular's zone only while
+  something is bound to them, so an unused high-frequency output costs no change detection.
+- **New events: `rowGroupOpened`, `columnGroupOpened`, `firstDataRendered`, `rowDataUpdated` and
+  `bodyScroll`.** `rowGroupOpened` fires once per chevron click, keyboard command or API call with
+  only the groups whose state changed and a `"user"` / `"api"` source; `columnGroupOpened` does the
+  same for column groups, once per direction. `firstDataRendered` fires once per grid after the
+  first paint that shows a row. `rowDataUpdated` reports `setRowData`, transactions and server-side
+  block loads through its `reason`. `bodyScroll` reports every body scroll tick with both offsets
+  and which one moved. Each has an `on*` option, a React prop and an Angular output.
+- **Read the grid back through typed methods: `getColumnDefs`, `getColumn` / `getColumns`,
+  `getGridOption`, `getFocusedCell` and `isDestroyed`.** `getColumnDefs()` returns the definitions
+  with the current widths, pinning, visibility, sort, aggregates and group state written in, so
+  `setColumnDefs(getColumnDefs())` changes nothing; `getGridOption(key)` reads an option as last
+  supplied; `getFocusedCell()` pairs with a new `setFocusedCell(cell)` overload that reaches pinned
+  rows; `isDestroyed()` is true from the start of the teardown.
+- **`api.scrollTo({ topPx, leftPx })` and `api.addSparklineColumn(...)` replace the last raw
+  `dispatch` calls.** The `scrollSet` action was never handled by the core, so scrolling to an
+  offset had no working door; `addSparklineColumn` returns the new column's colId. The
+  renderer-internal actions stay untyped, and `dispatch`'s documentation says which they are.
+- **Column definitions, grid options, the grid API and their callbacks take the row type:
+  `ColDef<Trade>`, `GridOptions<Trade>`, `IGridAPI<Trade>`, `createGrid<Trade>`, `<Grid<Trade>>`
+  and `NgColDef<Trade>` / `AwbGrid<Trade>`.** The parameter defaults to `any`, so existing code
+  compiles unchanged. Once supplied it types `valueGetter` (which receives the row node,
+  `IRowNode<Trade>`), the cell class, style, tooltip, ActionFrame, editor and renderer params, the
+  row callbacks (`getRowId`, `getRowClass`, `isRowSelectable`, `isRowPinned`, …), the click events
+  and the rows the API returns (`getSelectedRows(): Trade[]`). The type comes from an explicit
+  argument or from typed `columnDefs`, never from `rowData`, so `rowData={[]}` cannot narrow a grid
+  to `never`; the published types use `NoInfer` and need TypeScript 5.4 or later. A cell
+  renderer's `data` stays `any`, because it is the row node on column cells.
 - **Groups can be expanded or collapsed by id with `api.setGroupExpanded(groupIds, expanded)`.**
   One rebuild for the whole list, where `dispatch({ type: "groupToggleExpand" })` cost one per
   node; unknown ids are ignored and nothing happens when every named node is already in that

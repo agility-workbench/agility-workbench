@@ -19,14 +19,14 @@ import type {
  * operators don't cover. Only runs for filters the user has applied via the menu — a column with no
  * active filter is not filtered.
  */
-export type FilterMatcherFn = (
+export type FilterMatcherFn<TData = any> = (
   val: any,
-  node: IRowNode,
+  node: IRowNode<TData>,
   filterValues: any[],
   filterType: FilterType,
 ) => boolean;
 
-export type Filter = boolean | string | FilterMatcherFn;
+export type Filter<TData = any> = boolean | string | FilterMatcherFn<TData>;
 
 export enum FilterType {
   CONTAINS = "contains",
@@ -47,7 +47,7 @@ export enum FilterType {
   NOT_IN = "notIn",
 }
 
-export type ComparatorFn = (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => number;
+export type ComparatorFn<TData = any> = (a: any, b: any, nodeA: IRowNode<TData>, nodeB: IRowNode<TData>) => number;
 
 /**
  * Explicit set-filter intent. When present on an in/notIn FilterDef, the stored representation

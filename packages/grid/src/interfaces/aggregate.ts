@@ -73,7 +73,7 @@ export function aggregateTypeLabel(type: AggregateKind, t: LocaleTextResolver = 
 export type AggregateScope = "none" | "page" | "all";
 
 /** What a custom aggregate function receives: the column's values over the rows it covers. */
-export interface AggregateFunctionParams {
+export interface AggregateFunctionParams<TData = any> {
   /**
    * The raw cell values (what the column's `valueGetter`/`key` reads, before formatting) in display
    * order, blanks (`null`, `undefined`, `""`) INCLUDED — unlike the built-ins, which skip blanks, a
@@ -85,7 +85,7 @@ export interface AggregateFunctionParams {
    * computed over its leaf descendants, never over child aggregates). In an export the nodes are
    * minimal and may carry only `data`.
    */
-  rows: IRowNode[];
+  rows: IRowNode<TData>[];
   /** The public colId of the aggregated column. */
   colId: string;
 }
@@ -97,7 +97,7 @@ export interface AggregateFunctionParams {
  * `null`/`undefined` for "nothing to show" (an empty cell). A function that throws yields an empty
  * cell too (the error is logged), so one bad group cannot break the whole repaint.
  */
-export type AggregateFunction = (params: AggregateFunctionParams) => unknown;
+export type AggregateFunction<TData = any> = (params: AggregateFunctionParams<TData>) => unknown;
 
 export interface AggregateModel {
   key: string;

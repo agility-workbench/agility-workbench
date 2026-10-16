@@ -35,7 +35,12 @@ export type GridEventName =
   | "keyboardNavigationModeChanged"
   | "pivotChanged"
   | "pivotColumnLimitReached"
-  | "error";
+  | "error"
+  | "rowGroupOpened"
+  | "columnGroupOpened"
+  | "firstDataRendered"
+  | "rowDataUpdated"
+  | "bodyScroll";
 
 export type Unsubscribe = () => void;
 
@@ -296,7 +301,8 @@ export type GridEventPaginationChangedParams = {
   pageSizes: number[];
 };
 
-export type GridEventCellClickedParams = {
+/** `TData` is the row type (default `any`); it types `data` and `node`. */
+export type GridEventCellClickedParams<TData = any> = {
   rowId: GridId;
   /** Public ColDef colId of the clicked column. */
   colId: ColId;
@@ -306,41 +312,42 @@ export type GridEventCellClickedParams = {
   viewIdx: number;
   /** Global leaf-column index of the clicked cell. */
   colIdx: number;
-  /** The clicked row's underlying data object. */
-  data: unknown;
+  /** The clicked row's underlying data object (a placeholder on a client-side group row). */
+  data: TData;
   /**
    * The clicked cell's raw value. On a group row there is no data row: this is the column's
    * aggregate, else the group label on the group's label column, else undefined.
    */
   value: unknown;
   /** The clicked row's node; absent only when the row is not loaded. */
-  node?: IRowNode;
+  node?: IRowNode<TData>;
   /** Whether the clicked row is a group (summary) row. */
   isGroup: boolean;
   /** The originating DOM click event. */
   event: MouseEvent;
 };
 
-export type GridEventRowClickedParams = {
+/** `TData` is the row type (default `any`); it types `data` and `node`. */
+export type GridEventRowClickedParams<TData = any> = {
   rowId: GridId;
   /** View index of the clicked row. */
   viewIdx: number;
-  /** The clicked row's underlying data object. */
-  data: unknown;
+  /** The clicked row's underlying data object (a placeholder on a client-side group row). */
+  data: TData;
   /** Whether the clicked row is a group (summary) row. */
   isGroup: boolean;
   /** The clicked row's node; absent only when the row is not loaded. */
-  node?: IRowNode;
+  node?: IRowNode<TData>;
   /** The originating DOM click event. */
   event: MouseEvent;
 };
 
 /** Same shape as the click payload; `event` is the `dblclick` event. Named separately so the two
  * can diverge without breaking either. */
-export type GridEventCellDoubleClickedParams = GridEventCellClickedParams;
+export type GridEventCellDoubleClickedParams<TData = any> = GridEventCellClickedParams<TData>;
 
 /** Same shape as the click payload; `event` is the `dblclick` event. */
-export type GridEventRowDoubleClickedParams = GridEventRowClickedParams;
+export type GridEventRowDoubleClickedParams<TData = any> = GridEventRowClickedParams<TData>;
 
 export type GridEventTooltipParams = {
   /** Where the tooltip is anchored. */
@@ -406,7 +413,111 @@ export type GridEventErrorParams = {
   details?: unknown;
 };
 
-export interface GridEventMap {
+/**
+ * Row groups or tree nodes were expanded or collapsed. One event per user gesture or API call,
+ * after the view has been re-flattened (so `api.getDisplayedRowCount()` read in a handler is the
+ * new count), listing only the nodes whose state actually changed — a call that changes nothing
+ * emits nothing. `api.setAllGroupsExpanded(true)` over a hundred groups is one event with up to a
+ * hundred ids.
+ */
+export type GridEventRowGroupOpenedParams = {
+  /** Ids of the group / tree-parent rows whose expanded state changed. Never empty. */
+  groupIds: string[];
+  /** The state those rows are now in: `true` expanded, `false` collapsed. */
+  expanded: boolean;
+  /**
+   * `"user"` for the group chevron (on a body or sticky group row) and the tree-data keyboard
+   * shortcuts; `"api"` for `api.setAllGroupsExpanded` / `api.setGroupExpanded`, dispatched
+   * `groupToggleExpand` / `groupSetExpanded` actions without a `source`, saved-view restores, and
+   * the grid's own follow-ups (revealing a quick-filter find match or a row scrolled to by id).
+   */
+  source: "user" | "api";
+};
+
+/**
+ * Column groups were opened or closed — the header expander, or `api.setColumnGroupState` /
+ * `columnGroupStateSet` (saved-view restores included). Emitted after the header has been rebuilt,
+ * once per direction: a state restore that opens two groups and closes one emits one
+ * `expanded: true` event and one `expanded: false` event. Groups already in the requested state are
+ * not listed, and a call that changes nothing emits nothing.
+ */
+export type GridEventColumnGroupOpenedParams = {
+  /** Public colIds of the column groups whose open state changed. Never empty. */
+  groupIds: ColId[];
+  /** The state those groups are now in: `true` open, `false` closed. */
+  expanded: boolean;
+  /** `"user"` for the header expander (click or keyboard), `"api"` for everything else. */
+  source: ColumnChangeSource;
+};
+
+/**
+ * The body painted its first row. Fires exactly once per grid instance, after the first paint
+ * that shows at least one loaded row (a data row or a group row): never for a grid that stays
+ * empty, and later — when the rows arrive — for one created without data or waiting on a
+ * server-side block.
+ */
+export type GridEventFirstDataRenderedParams = {
+  /** Rows in the view at that moment, across all pages (`getPaginationInfo().totalRowCount`). */
+  rowCount: number;
+};
+
+/**
+ * What replaced or changed the row set: `"rowData"` a `setRowData` / `rowData` update (diffed or
+ * replaced), `"transaction"` an `applyTransaction` or a flushed `applyTransactionAsync` batch,
+ * `"serverSide"` a server-side block landing (first load, scroll, refresh, re-query) or a purging
+ * `refreshServerSideData`. Named like {@link GridEventModelUpdatedParams.reason}.
+ */
+export type RowDataUpdatedReason = "rowData" | "transaction" | "serverSide";
+
+/**
+ * The row data changed: a new `rowData`, a transaction, or a server-side load. Emitted after the
+ * view has been re-derived, so counts read in a handler are current. Sorting, filtering, grouping
+ * and expansion move rows without changing the data and do not fire it; a transaction that
+ * changes nothing does not fire it either.
+ */
+export type GridEventRowDataUpdatedParams = {
+  reason: RowDataUpdatedReason;
+  /** Rows in the view after the change, across all pages (`getPaginationInfo().totalRowCount`). */
+  rowCount: number;
+};
+
+/**
+ * The body scrolled. Fires on every scroll tick that moved the body — synchronously from the
+ * browser's scroll event, ahead of the animation-frame repaint of the row window (rows read in a
+ * handler may still be the previous window's). The header, the scrollbar strip and the body's
+ * centre section mirror one another's horizontal position; one movement of any of them is one
+ * event, and a tick that moves neither offset emits nothing.
+ */
+export type GridEventBodyScrollParams = {
+  /** Vertical scroll offset of the body. */
+  scrollTopPx: number;
+  /** Horizontal scroll offset of the centre (unpinned) section. */
+  scrollLeftPx: number;
+  /** Which offset moved since the previous `bodyScroll`. */
+  direction: "vertical" | "horizontal" | "both";
+};
+
+/**
+ * Every grid event and its payload, for `api.on(name, handler)`. Each event is also reachable
+ * declaratively: a `GridOptions` callback named `on` + the capitalised event name
+ * (`rowGroupOpened` → `onRowGroupOpened`), the React `<Grid>` prop of the same name, and the
+ * Angular `<awb-grid>` output named like the event — except `error`, whose output is `gridError`
+ * (an `(error)` binding would also catch native DOM `error` events on the host element).
+ *
+ * `TData` is the row type (default `any`): it types `data` / `node` on the click payloads, so
+ * `IGridAPI<TData>.on("cellClicked", …)` hands the handler typed rows.
+ *
+ * The lifecycle and structure events added with the bridges:
+ * - `rowGroupOpened` — row groups / tree nodes expanded or collapsed; one event per call, after the
+ *   rebuild, listing only the nodes that changed, with a user-vs-API `source`.
+ * - `columnGroupOpened` — column groups opened or closed (header expander, `setColumnGroupState`);
+ *   one event per direction.
+ * - `firstDataRendered` — once per grid, after the first paint that shows a row.
+ * - `rowDataUpdated` — `setRowData`, a transaction, or a server-side block load / purge.
+ * - `bodyScroll` — every body scroll tick, with the offsets and which of them moved. Follow
+ *   scrolling with it: `viewportChanged` is emitted once, when the grid initialises.
+ */
+export interface GridEventMap<TData = any> {
   overlayShow: GridEventOverlayShowParams;
   modelUpdated: GridEventModelUpdatedParams;
   viewportChanged: GridEventViewportChangedParams;
@@ -424,10 +535,10 @@ export interface GridEventMap {
   filterChanged: GridEventFilterChangedParams;
   quickFilterFindChanged: GridEventQuickFilterFindChangedParams;
   paginationChanged: GridEventPaginationChangedParams;
-  cellClicked: GridEventCellClickedParams;
-  rowClicked: GridEventRowClickedParams;
-  cellDoubleClicked: GridEventCellDoubleClickedParams;
-  rowDoubleClicked: GridEventRowDoubleClickedParams;
+  cellClicked: GridEventCellClickedParams<TData>;
+  rowClicked: GridEventRowClickedParams<TData>;
+  cellDoubleClicked: GridEventCellDoubleClickedParams<TData>;
+  rowDoubleClicked: GridEventRowDoubleClickedParams<TData>;
   tooltipShow: GridEventTooltipParams;
   tooltipHide: GridEventTooltipParams;
   actionFrameChanged: GridEventActionFrameParams;
@@ -435,6 +546,16 @@ export interface GridEventMap {
   pivotChanged: GridEventPivotChangedParams;
   pivotColumnLimitReached: GridEventPivotColumnLimitReachedParams;
   error: GridEventErrorParams;
+  /** Row groups / tree nodes expanded or collapsed — one event per call, changed ids only. */
+  rowGroupOpened: GridEventRowGroupOpenedParams;
+  /** Column groups opened or closed via the header expander or `setColumnGroupState`. */
+  columnGroupOpened: GridEventColumnGroupOpenedParams;
+  /** Once per grid, after the first paint that shows a row. */
+  firstDataRendered: GridEventFirstDataRenderedParams;
+  /** The row data changed: `setRowData`, a transaction, or a server-side load. */
+  rowDataUpdated: GridEventRowDataUpdatedParams;
+  /** Every body scroll tick, with the offsets and which of them moved. */
+  bodyScroll: GridEventBodyScrollParams;
 }
 
 export type GridEventHandler<E extends GridEventName> = (ev: GridEventMap[E]) => void;

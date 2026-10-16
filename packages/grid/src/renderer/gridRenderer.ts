@@ -97,6 +97,8 @@ export class GridRenderer {
   _exportRenderer: ExportRenderer;
   _columnMenuOpener: ColumnMenuOpener;
   _bodyMenuOpener: BodyMenuOpener | null = null;
+  /** The body offsets the last `bodyScroll` reported, to drop echo ticks that moved nothing. */
+  private _lastBodyScroll = { top: 0, left: 0 };
   _filterUpdateHandler: FilterUpdateHandler;
   _aggregateCalculator: AggregateCalculator;
   _aggregateModelController: AggregateModelController;
@@ -601,12 +603,14 @@ export class GridRenderer {
           position?: RowScrollPosition,
         ) => void;
         ensureColumnVisible: (colIdx: number) => void;
+        scrollTo: (position: { topPx?: number; leftPx?: number }) => void;
       }) => void;
     };
     apiWithScroll.setScrollController?.({
       ensureRowVisible: (viewIdx, rowPinned, position) =>
         this.ensureRowVisible(viewIdx, rowPinned, position),
       ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
+      scrollTo: (position) => this.scrollTo(position),
     });
     // Expose live reconfiguration on the public API (api.updateGridOptions). The api routes each
     // option to its owner; this hands it the renderer-owned half. Probed structurally to avoid a
@@ -868,6 +872,23 @@ export class GridRenderer {
         this._pinnedRowsRenderer.syncHorizontal(left, center, right);
         // The ActionFrame popover is position: fixed; horizontal scroll moves its cell under it.
         this._actionFrameRenderer?.onWindowUpdate();
+      },
+      // The body's vertical scroll and the centre section's horizontal offset, reported once per
+      // movement: the header, scrollbar strip and centre section echo each other's scrollLeft, so
+      // a tick that moved neither offset is one of those echoes and is dropped.
+      onScroll: () => {
+        const top = bodyWrapper.body.scrollTop;
+        const left = bodyWrapper.centerSpacer.scrollLeft;
+        const last = this._lastBodyScroll;
+        const vertical = top !== last.top;
+        const horizontal = left !== last.left;
+        if (!vertical && !horizontal) return;
+        this._lastBodyScroll = { top, left };
+        this.core.emit("bodyScroll", {
+          scrollTopPx: top,
+          scrollLeftPx: left,
+          direction: vertical && horizontal ? "both" : vertical ? "vertical" : "horizontal",
+        });
       },
       onWindowUpdate: (scrollSrc) => {
         this._bodyWindowRenderer.update(false, scrollSrc);
@@ -2133,6 +2154,17 @@ export class GridRenderer {
     // overlay, so it caps every placement — in a viewport too short to honor the request, docking
     // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
     refs.body.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
+  }
+
+  /**
+   * Set the body's scroll offsets (`api.scrollTo`). The vertical one is the body scroller's, the
+   * horizontal one the centre section's; the browser clamps each to its range, and the scroll
+   * listeners that follow a user scroll (header sync, row-window repaint) take it from there.
+   */
+  scrollTo(position: { topPx?: number; leftPx?: number }) {
+    const refs = this._bodyViewportRenderer.getRefs();
+    if (position.topPx != null) refs.body.scrollTop = Math.max(0, position.topPx);
+    if (position.leftPx != null) refs.centerSpacer.scrollLeft = Math.max(0, position.leftPx);
   }
 
   /**

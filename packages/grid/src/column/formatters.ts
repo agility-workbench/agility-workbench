@@ -2,18 +2,20 @@ import { ColumnType } from "../interfaces/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import type { Column } from "./column";
 
-export interface ValueFormatterParams {
+export interface ValueFormatterParams<TData = any> {
   value: any;
-  row?: IRowNode;
+  /** The row node the value belongs to (read the row off `row.data`). */
+  row?: IRowNode<TData>;
   col?: Column;
 }
 
-export interface ValueParserParams {
+export interface ValueParserParams<TData = any> {
   // The raw text the user typed into the cell editor.
   value: string;
   // The current (pre-edit) stored value of the cell.
   oldValue: any;
-  row?: IRowNode;
+  // The row node being written (read the row off `row.data`).
+  row?: IRowNode<TData>;
   col?: Column;
 }
 

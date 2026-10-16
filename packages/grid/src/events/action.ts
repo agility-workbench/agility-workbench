@@ -28,6 +28,7 @@ export type GridActionViewportResize = {
   heightPx: number;
 };
 
+/** Not handled by the core (dispatching it does nothing): scroll with `api.scrollTo`. */
 export type GridActionScrollSet = {
   type: "scrollSet";
   topPx: number;
@@ -232,6 +233,9 @@ export type GridActionGroupToggleExpand = {
   type: "groupToggleExpand";
   groupId: string;
   expanded?: boolean;
+  /** Who made the change, stamped on the `rowGroupOpened` event; omitted = `"api"`. The group
+   * chevron dispatches `"user"`. */
+  source?: "user" | "api";
 };
 
 // Expand or collapse many group nodes in one pass — one view rebuild and one repaint, regardless
@@ -240,6 +244,8 @@ export type GridActionGroupSetExpanded = {
   type: "groupSetExpanded";
   expanded: boolean;
   groupIds?: string[];
+  /** Who made the change, stamped on the `rowGroupOpened` event; omitted = `"api"`. */
+  source?: "user" | "api";
 };
 
 // Open or close COLUMN groups (the header expander) in one rebuild — the batch form of
