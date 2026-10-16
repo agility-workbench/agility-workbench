@@ -1,6 +1,6 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
-import { AggregateScope, AggregateType } from "../../interfaces/aggregate";
+import { AggregateKind, AggregateScope } from "../../interfaces/aggregate";
 import { aggregateTypeByKey } from "../../aggregate/calculator";
 
 type AggregateModelControllerParams = {
@@ -15,7 +15,7 @@ type AggregateModelControllerParams = {
 export class AggregateModelController {
   constructor(private params: AggregateModelControllerParams) {}
 
-  aggregate(colID: string, aggType?: AggregateType) {
+  aggregate(colID: string, aggType?: AggregateKind) {
     const aggregates = this.getAggregateMap();
     const prevSize = aggregates.size;
     if (!aggType) {
@@ -31,7 +31,7 @@ export class AggregateModelController {
     this.params.renderAggregateRow();
   }
 
-  aggregateSelectedColumns(aggType: AggregateType) {
+  aggregateSelectedColumns(aggType: AggregateKind) {
     const aggregates = this.getAggregateMap();
     const prevSize = aggregates.size;
     const selectedCols = Array.from(this.params.selectedColumnIDs());
@@ -71,13 +71,14 @@ export class AggregateModelController {
     return;
   }
 
-  getAggregateOpForColumn(col: Column): AggregateType {
+  /** The function a column's footer cell shows: its model entry, else its default (the core's rule). */
+  getAggregateOpForColumn(col: Column): AggregateKind {
     const explicit = this.getAggregateMap().get(col.instanceID);
     if (explicit != null) return explicit;
-    return col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT;
+    return this.params.core.getDefaultAggregateType(col);
   }
 
-  getAggregateMap(): Map<string, AggregateType> {
+  getAggregateMap(): Map<string, AggregateKind> {
     // The footer shows one type per column — the same pick group rows make (the last registered).
     return aggregateTypeByKey(this.params.core.getAggregateModel());
   }
@@ -96,7 +97,7 @@ export class AggregateModelController {
     return rows;
   }
 
-  private setAggregateMap(aggregates: Map<string, AggregateType>) {
+  private setAggregateMap(aggregates: Map<string, AggregateKind>) {
     this.params.core.setAggregateModel(Array.from(aggregates.entries()).map(([key, type]) => ({ key, type })));
   }
 }

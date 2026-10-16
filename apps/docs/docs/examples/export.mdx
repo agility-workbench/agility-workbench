@@ -110,6 +110,11 @@ api.exportDataAsExcel({ groupMode: "leaves" }); // flat leaves with group paths
 
 CSV and Excel include application-pinned top and bottom rows around the body.
 
+[Group footer rows](./grouping.mdx#group-footers) (`groupTotalRow`,
+`grandTotalRow`) are not exported as rows: the tree-mode Excel export already
+writes a `SUBTOTAL` per group (and, while aggregates show, a grand-total footer), so the file is the same
+with or without them, and CSV writes leaf rows only.
+
 ## Pivot export
 
 While [pivot mode](./pivot.mdx) is on, the same commands export the pivot table

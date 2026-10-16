@@ -68,6 +68,11 @@
   --pte-icon-max-string: url(icons/sort-desc-letters.svg);
   --pte-icon-max-number: url(icons/sort-desc-numbers.svg);
   --pte-icon-median: url(icons/median.svg);
+  --pte-icon-first: url(icons/agg-first.svg);
+  --pte-icon-last: url(icons/agg-last.svg);
+  /* One icon for every custom aggregate function (GridOptions.aggFuncs): a name is app text, not
+     a class token, so custom names never get per-name icons. */
+  --pte-icon-agg-custom: url(icons/agg-custom.svg);
   /* Four-arrows "this is being moved": the header drag ghost. NOT a handle — nothing wears
      it at rest — so the column panel's grab affordance is `--pte-icon-grip` instead. */
   --pte-icon-drag: url(icons/drag.svg);
@@ -4242,6 +4247,22 @@
   font-weight: 600;
 }
 
+/* Group footer (subtotal) rows and the grand-total row (groupTotalRow / grandTotalRow). They keep
+   the group-row weight; a rule along the top separates the totals from the rows they sum, drawn as
+   an inset shadow so the row height and the cells' selection borders are untouched. The grand
+   total takes the stronger frame colour. Footers are never selectable, so their checkbox is hidden. */
+.pte-row.pte-row-footer {
+  box-shadow: inset 0 1px 0 var(--pte-border-color);
+}
+
+.pte-row.pte-row-grand-total {
+  box-shadow: inset 0 1px 0 var(--pte-frame-border-color);
+}
+
+.pte-row.pte-row-footer .pte-checkbox-cell .pte-checkbox {
+  visibility: hidden;
+}
+
 .pte-cell.pte-group-cell {
   display: flex;
   align-items: center;
@@ -5022,6 +5043,21 @@
 
 .icon-median {
   mask-image: var(--pte-icon-median);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-first {
+  mask-image: var(--pte-icon-first);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-last {
+  mask-image: var(--pte-icon-last);
+  background-color: var(--pte-icon-color);
+}
+
+.icon-agg-custom {
+  mask-image: var(--pte-icon-agg-custom);
   background-color: var(--pte-icon-color);
 }
 

@@ -36,6 +36,17 @@ api.setAllGroupsExpanded(true);
 Use `groupRowsSelectable: true` when generated group rows should participate in
 selection, navigation, and copying.
 
+**Selecting a group.** With row selection checkboxes on, a group row's checkbox is inert by
+default. Set `groupSelectsChildren: true` and it selects the whole group: every selectable leaf
+under it, including collapsed and nested ones, and clears them all again once all are selected.
+The group's checkbox shows the group's state — ticked when all its rows are selected, a dash when
+only some are — and a fully selected group row paints as selected. Group rows themselves are
+never stored in the selection, so `getSelectedRows()` and select-all still return data rows.
+Filtered-out rows and rows `isRowSelectable` refuses are skipped. This is separate from
+`groupRowsSelectable`, which makes group rows targets of the cell cursor, ranges and the
+clipboard; the two combine. See [Selection](./selection.mdx) for ranges, paging and the
+server-side model.
+
 ## Display and expansion
 
 `groupDisplayType` accepts `singleColumn`, `multipleColumns`, or `groupRows`.
@@ -106,8 +117,9 @@ not hold.
 
 ## Aggregates
 
-Available functions are count, distinct count, sum, average, min, max, and
-median. The footer scope can be none, current page, or all rows. Grouped
+Available functions are count, distinct count, sum, average, min, max, median,
+first, and last — plus any [custom function](#custom-aggregate-functions) the
+grid registers. The footer scope can be none, current page, or all rows. Grouped
 client-side rows also receive per-group aggregate values.
 
 ```ts
@@ -128,6 +140,86 @@ The aggregate model can hold several types for one column (`api.setAggregates`
 accepts them, and pivot mode turns each into its own column). Outside pivot a
 group row cell and the footer cell show one: the **last** type registered for the
 column, in both places.
+
+`first` and `last` are the first and last non-blank value in display order —
+after sorting, so sorting the grid changes them. They keep the source value as
+is (a date stays a date) and, having no Excel equivalent, are exported as static
+values; the other built-ins export as live `SUM`/`AVERAGE`/… formulas.
+
+### A column's own function
+
+`aggFunc` on a column definition names its aggregate function. The column is
+aggregated from the start — it joins the initial aggregate model exactly as if
+`api.setAggregates` had listed it, so group rows show its per-group values and the
+footer turns on at page scope — and it is the function the footer and the
+aggregate menu use for the column when nothing else is chosen, in place of the
+built-in rule (sum for numbers, count otherwise):
+
+```ts
+const columnDefs: ColDef[] = [
+  { colId: "region", key: "region" },
+  { colId: "revenue", key: "revenue", type: ColumnType.NUMBER, aggFunc: AggregateType.SUM },
+  { colId: "lastOrder", key: "lastOrder", type: ColumnType.DATE, aggFunc: AggregateType.LAST },
+];
+```
+
+The seeding happens once, with the first column definitions: removing the
+aggregate afterwards (from the menu, the column panel, or `api.setAggregates([])`)
+sticks. An unknown name warns once and the column keeps the built-in rule, and
+`aggFunc` on an `aggregatable: false` column is ignored with a warning.
+
+### Custom aggregate functions
+
+`aggFuncs` registers functions by name. A registered name is accepted wherever a
+built-in type is: `ColDef.aggFunc`, `api.setAggregates`, the aggregate menus
+(listed after the built-ins, labelled with the name as given), saved views, and
+pivot measures. A name that is neither built in nor registered warns once and the
+column's default function is used instead.
+
+A function receives `{ values, rows, colId }` for the rows it covers — a group's
+leaf descendants, or the footer's page or whole dataset — in display order.
+`values` are the raw cell values with blanks **included** (unlike the built-ins,
+your function decides what a blank means), and `rows` are the matching row nodes.
+Return the aggregate; the column's `valueFormatter` renders it, as it does a
+built-in's, and `null`/`undefined` leaves the cell empty:
+
+```ts
+const options = {
+  aggFuncs: {
+    // Units-weighted average price: what a plain average of prices gets wrong.
+    weightedPrice: ({ rows }) => {
+      let revenue = 0;
+      let units = 0;
+      for (const { data } of rows) {
+        revenue += data.price * data.units;
+        units += data.units;
+      }
+      return units === 0 ? null : revenue / units;
+    },
+    // The distinct non-blank values, joined.
+    distinctList: ({ values }) =>
+      [...new Set(values.filter(v => v != null && v !== ""))].join(", "),
+  },
+  columnDefs: [
+    { colId: "region", key: "region" },
+    { colId: "rep", key: "rep", aggFunc: "distinctList" },
+    { colId: "price", key: "price", type: ColumnType.CURRENCY, aggFunc: "weightedPrice" },
+    { colId: "units", key: "units", type: ColumnType.NUMBER },
+  ],
+} satisfies GridOptions;
+
+// Names type-check wherever a type does:
+api.setAggregates([
+  { colId: "price", type: "weightedPrice" },
+  { colId: "rep", type: AggregateType.FIRST },
+]);
+```
+
+Exports write a custom function's values (footer and group subtotals) as static
+cells — there is no formula to write. `aggFuncs` is read at creation. On the
+server-side row model the server computes every aggregate: any name travels to it
+unchanged in the request's `aggregates` (and needs no entry in `aggFuncs`, though
+registering one is what lists it in the menus).
 
 ## Group counts
 
@@ -159,6 +251,71 @@ api.setAggregates([{ colId: "headcount", type: AggregateType.SUM }]);
 
 Tree rows never show a count. `groupChildCount` is a live prop/input in both
 wrappers, and `api.updateGridOptions({ groupChildCount })` changes it in place.
+
+## Group footers
+
+A group header already carries its group's aggregates. `groupTotalRow` repeats
+them in a footer (subtotal) row of its own: `"bottom"` after the group's last row,
+`"top"` directly under its header. `grandTotalRow` adds one row of totals over
+every filtered row — not just the current page — at the start or end of the list:
+
+```ts
+const options = {
+  groupTotalRow: "bottom",
+  grandTotalRow: "bottom",
+  columnDefs: [
+    { colId: "region", key: "region" },
+    { colId: "rep", key: "rep" },
+    { colId: "units", key: "units", type: ColumnType.NUMBER },
+  ],
+} satisfies GridOptions;
+
+api.setRowGroupColumns(["region"]);
+api.setAggregates([{ colId: "units", type: AggregateType.SUM }]);
+```
+
+```text
+▾ EMEA (3)             42
+    Ann                10
+    Bob                20
+    Cid                12
+  Total EMEA           42
+▾ APAC (2)             15
+    …
+  Total APAC           15
+  Grand Total          57
+```
+
+- **Where the label goes.** The group column (`"singleColumn"`), the level's own
+  column (`"multipleColumns"`), or — under `"groupRows"`, where the header is one
+  spanning cell — the first column after the row-number and checkbox columns. In
+  `"groupRows"` the footer is an ordinary row of cells, so it is where the
+  per-column totals become visible. The label is `Total <group>` (without the
+  count) and `Grand Total`; `groupTotalRowLabel` replaces it, given the footer
+  `node`, its `groupNode`, `grandTotal`, the `groupLabel`, the `defaultLabel` and
+  the `aggregates` by colId.
+- **Cells.** Aggregate columns show the same formatted value as the header row —
+  custom functions, `groupValueGetter` and the group-row cell renderers included
+  (a renderer can tell a footer by `params.node.footer`). Other cells are blank.
+- **Rows of the view.** A collapsed group shows no footer. Footers move with
+  their groups when the groups sort or filter, count toward pagination, row
+  numbers and `aria-rowindex`, and `getDisplayedRowAtIndex` returns them. The
+  cell cursor stops on them where it stops on group rows (`groupRowsSelectable`),
+  and a copied footer cell is its shown text.
+- **Never data.** Footers are not selectable (their checkbox is hidden, and
+  `groupSelectsChildren` subtrees, select-all and `getSelectedRows()` skip them),
+  never editable, never docked by `groupRowsSticky` — though a docked header is
+  pushed out by its footer, the last row of its block — and never exported: the
+  Excel export writes its own `SUBTOTAL` rows, CSV writes leaf rows only.
+- **Styling.** Footer rows carry `pte-row-footer` (and the grand total also
+  `pte-row-grand-total`) on every section row, besides `pte-group-row`; the theme
+  draws a rule along their top. `IRowNode.footer`, `grandTotal` and `groupNode`
+  identify them in `getRowClass` and other callbacks.
+- **Scope.** Row grouping on the client-side row model only: tree data and pivot
+  mode ignore both options, and the server-side row model warns once and ignores
+  them. All three options are live (`api.updateGridOptions`, and props/inputs in
+  both wrappers); changing a position rebuilds the groups, keeping expansion and
+  the row selection.
 
 ## Server-side grouping and aggregation
 

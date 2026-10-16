@@ -43,7 +43,7 @@ import {
 } from "../interfaces/gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
-import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
+import { AggregateKind, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
@@ -329,7 +329,18 @@ export class GridAPI implements IGridAPI {
     if (has("groupRowsSelectable")) {
       this.core.setGroupRowsSelectable(options.groupRowsSelectable ?? false);
     }
+    if (has("groupSelectsChildren")) {
+      this.core.setGroupSelectsChildren(options.groupSelectsChildren ?? false);
+    }
     if (has("groupChildCount")) this.core.setGroupChildCount(options.groupChildCount);
+    // Both footer options share one rebuild of the group tree.
+    if (has("groupTotalRow") || has("grandTotalRow")) {
+      const footers: Parameters<IGridCore["setGroupTotalRows"]>[0] = {};
+      if (has("groupTotalRow")) footers.groupTotalRow = options.groupTotalRow;
+      if (has("grandTotalRow")) footers.grandTotalRow = options.grandTotalRow;
+      this.core.setGroupTotalRows(footers);
+    }
+    if (has("groupTotalRowLabel")) this.core.setGroupTotalRowLabel(options.groupTotalRowLabel);
     if (has("isRowSelectable")) this.core.setIsRowSelectable(options.isRowSelectable);
 
     // Caller-owned schema, same as `createGrid({ columnDefs })`.
@@ -1369,7 +1380,7 @@ export class GridAPI implements IGridAPI {
     if (state.aggregateModel) {
       this.dispatch({
         type: "aggregateModelSet",
-        aggregateModels: state.aggregateModel.map(a => ({ key: a.colId, type: a.type as AggregateType })),
+        aggregateModels: state.aggregateModel.map(a => ({ key: a.colId, type: a.type as AggregateKind })),
       });
     }
     if (state.pivotColumns) this.dispatch({ type: "pivotColumnsSet", colIds: state.pivotColumns });

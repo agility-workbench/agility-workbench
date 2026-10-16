@@ -18,6 +18,7 @@ types widen component slots to accept their native component classes.
 | `groupValueGetter` | The value on a group row when the column has no aggregate: receives `{ node, data, aggregates }` (`data` server-side only); never runs on a leaf |
 | `valueFormatter` / `formatterOptions` | Format display and export |
 | `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
+| `aggFunc` | The column's aggregate function — a built-in type (`"sum"`, `"first"`, …) or a name from `GridOptions.aggFuncs`. It is the column's default in the footer and the aggregate menu (instead of sum for numbers, count otherwise), and the column joins the initial aggregate model as if `setAggregates` had listed it. An unknown name warns once and is ignored; so is `aggFunc` on an `aggregatable: false` column. See [aggregates](../examples/grouping.mdx#aggregates) |
 
 ### Formatter options
 

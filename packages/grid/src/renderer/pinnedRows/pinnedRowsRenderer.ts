@@ -8,6 +8,7 @@ import type { RendererRecord } from "../renderer";
 import { BodyCellRenderer } from "../body/cellRenderer";
 import type { FindHighlightRenderer } from "../quickFilter/findHighlightRenderer";
 import { applyDynamicClasses, applyDynamicStyles } from "../body/dynamicStyle";
+import { paintSubtreeCheckbox } from "../selection/selectionRenderer";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import {
   mergeClassValues,
@@ -449,7 +450,12 @@ export class PinnedRowsRenderer implements PinnedRowsController {
         && rowIndex >= range.rowStart && rowIndex <= range.rowEnd
         && colIndex >= range.colStart && colIndex <= range.colEnd;
       const colSelected = colSelectedAt(colIndex);
-      const selected = rangeSelected || colSelected;
+      // A subtree checkbox on the mirror shows its subtree's state, the same paint as its body copy.
+      const subtreeState = cell.classList.contains("pte-checkbox-cell") && Number.isFinite(rowIndex)
+        ? core.getRowSelectionStateAtViewIndex(rowIndex)
+        : null;
+      if (subtreeState) paintSubtreeCheckbox(cell, subtreeState);
+      const selected = rangeSelected || colSelected || subtreeState === "all";
       const isActive = !!active
         && !active.rowPinned
         && active.row === rowIndex
@@ -671,7 +677,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     if (callback || this.manualPinned.size > 0) {
       for (let index = 0; index < model.getViewCount(); index++) {
         const source = model.getRowNodeAtViewIndex(index);
-        if (!source) continue;
+        // Footer rows only make sense under their group in the body; they never pin.
+        if (!source || source.footer) continue;
         const position = this.manualPinned.has(source.id)
           ? this.manualPinned.get(source.id)
           : callback?.({
@@ -836,6 +843,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
    * children live in lazy blocks) — a group without one still counts, and a server tree parent
    * declares itself through `expandable: true`, which is what the shared helper reads. */
   private isStickyParent(node: IRowNode): boolean {
+    // A footer row is a childless group node, but it closes a block rather than opening one: it
+    // never docks. Its parentId is its own group, so the group's block (and push-out) includes it.
+    if (node.footer) return false;
     if (node.isGroup) return node.children ? node.children.length > 0 : true;
     return !!node.isTreeData && isExpandableNode(node);
   }
@@ -1052,6 +1062,21 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       // The pinned/leading fragments stay in place, blank and at full row height, exactly like the
       // body pool's (they are never hidden: the band's rows lay out in flow). Same themeable class.
       for (const fragment of [leading, left, right]) fragment.classList.add("pte-full-width-fragment");
+      // A docked group whose checkbox selects its subtree keeps that checkbox, as the body row
+      // does: its pinned section is drawn with every other cell invisible (so the box keeps its
+      // column's x position), and refreshSelectionStyles paints its tri-state.
+      if (!pinned && this.isSubtreeMirror(center)) {
+        const sections: Array<[HTMLDivElement, Column[]]> = [
+          [leading, model.getLeadingLeaves()], [left, model.getLeftLeaves()], [right, model.getRightLeaves()],
+        ];
+        for (const [fragment, leaves] of sections) {
+          if (!leaves.some(leaf => !leaf.hidden && leaf.isSelectionCheckboxColumn())) continue;
+          this.renderCells(fragment, leaves, row, rendererMap, rowIndex, pinned, rowPresentation);
+          for (const cell of fragment.children as HTMLCollectionOf<HTMLElement>) {
+            if (!cell.classList.contains("pte-checkbox-cell")) cell.style.visibility = "hidden";
+          }
+        }
+      }
       this.params.bodyCellRenderer.renderFullWidthCell(
         cell, row, rendererMap, row.viewIndex, 0, rowPresentation,
       );
@@ -1193,11 +1218,26 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       );
       if (pinned && column.isRowNumberColumn()) cell.textContent = "";
       if (pinned && column.isSelectionCheckboxColumn()) cell.textContent = "";
+      // A docked group / tree parent whose checkbox selects its subtree (groupSelectsChildren)
+      // covers that checkbox, so the mirror carries the box too; refreshSelectionStyles paints it.
+      if (!pinned && column.isSelectionCheckboxColumn() && this.isSubtreeMirror(rowElement)) {
+        const box = document.createElement("span");
+        box.className = "pte-checkbox";
+        box.setAttribute("aria-hidden", "true");
+        cell.appendChild(box);
+      }
       width += column.computedWidth;
     }
     rowElement.style.width = `${width}px`;
   }
 
+
+  // Whether a sticky mirror row stands for a body row that selects as a subtree. A mirror of a row
+  // off the rendered page carries no view index, so it has no body row to resolve to.
+  private isSubtreeMirror(rowElement: HTMLElement): boolean {
+    const viewIdx = rowElement.dataset.viewIdx;
+    return viewIdx != null && this.params.core.isSubtreeSelectionRow(Number(viewIdx));
+  }
 
   private columnsWidth(columns: Column[]): number {
     return columns.reduce((sum, column) => sum + (column.hidden ? 0 : column.computedWidth), 0);

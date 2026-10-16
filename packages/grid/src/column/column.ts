@@ -8,6 +8,7 @@ import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameCompone
 import type { TooltipColumnOptions, ActionFrameOptions, RowPresentation } from "../interfaces/gridOptions";
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
+import type { AggregateKind } from "../interfaces/aggregate";
 import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType, GroupValueGetterParams } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
@@ -85,6 +86,8 @@ export class Column {
   filterParams?: FilterParams;
   groupable: boolean;
   aggregatable: boolean;
+  // ColDef.aggFunc as given; validated where it is used (see defaultAggregateType).
+  aggFunc?: AggregateKind;
   pivotable: boolean;
   // Orders this column's distinct values across the generated pivot header when pivoted on.
   // Undefined = the column's sort comparator (or type default); blanks always last.
@@ -211,6 +214,7 @@ export class Column {
     this.filterParams = col.filterParams;
     this.groupable = !isFalse(col.groupable);
     this.aggregatable = !isFalse(col.aggregatable);
+    this.aggFunc = col.aggFunc ?? undefined;
     this.pivotable = !isFalse(col.pivotable);
     this.pivotComparator = col.pivotComparator;
     this.resizable = !isFalse(col.resizable);

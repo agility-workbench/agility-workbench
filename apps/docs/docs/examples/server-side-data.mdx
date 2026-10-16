@@ -106,6 +106,40 @@ const grid = createGrid(el, {
 });
 ```
 
+### Cache size
+
+Loaded blocks stay in memory until a purge, a refresh, or a sort, filter or
+grouping change discards them. To bound memory on a long scroll, set
+`serverSideMaxBlocks` (creation-only):
+
+```ts
+const options = {
+  rowModelType: "serverSide",
+  serverSideBlockSize: 100,
+  serverSideMaxBlocks: 20, // at most ~2,000 rows held
+  serverSideDataSource,
+} satisfies GridOptions;
+```
+
+A block is one `serverSideBlockSize` range of one listing — the root rows, or
+one expanded parent's children. Whenever a block arrives and more than
+`serverSideMaxBlocks` are loaded across all listings, the grid evicts the least
+recently used ones (a block is used when it loads and whenever it is on screen)
+until the count fits. It never evicts:
+
+- a block in the viewport or one block either side of it;
+- a block whose request is still in flight;
+- a block holding an **expanded** group row or tree parent, or a parent whose
+  children are still loading — dropping that row would orphan its children, so
+  such blocks count toward the limit but stay.
+
+When nothing else can go, the cache holds more than the limit rather than drop
+one of these. Eviction removes rows only: row counts and the pager's total,
+expansion state, and the selection (kept by row id) are unchanged, and an
+evicted range is requested again when it is scrolled back into view. A collapsed
+parent's cached children leave with its row and reload on the next expand.
+Unset, nothing is evicted.
+
 ## Server-provided schema
 
 ```ts

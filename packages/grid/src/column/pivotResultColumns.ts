@@ -6,7 +6,7 @@ import {
   PivotValueEntry,
   pivotLeafColIdFromKey,
 } from "../interfaces/pivot";
-import { AggregateType } from "../interfaces/aggregate";
+import { AggregateType, isBuiltInAggregateType } from "../interfaces/aggregate";
 import { BLANK_GROUP_KEY } from "../csrm/rowGroup";
 
 export interface BuildPivotResultColDefsParams {
@@ -71,11 +71,16 @@ function forcedGroupDef(colId: string) {
 }
 
 // What a generated value cell holds: sums/averages/medians and counts are numbers regardless of
-// the source type; min/max surface source values unchanged.
+// the source type; min/max/first/last surface source values unchanged, and so (as far as the grid
+// can know) does a custom function — its result renders through the source column's formatter,
+// exactly as the same function's value does on a group row or in the footer.
 function aggregateOutputType(entry: PivotValueEntry): ColumnType {
+  if (!isBuiltInAggregateType(entry.type)) return entry.column.type;
   switch (entry.type) {
     case AggregateType.MIN:
     case AggregateType.MAX:
+    case AggregateType.FIRST:
+    case AggregateType.LAST:
       return entry.column.type;
     default:
       return ColumnType.NUMBER;

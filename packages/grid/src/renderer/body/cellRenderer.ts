@@ -150,9 +150,12 @@ export class BodyCellRenderer {
       // Content is the static decorative checkbox span created by the row pool; checked state is
       // CSS-driven from the "selected" class. The only per-row state is the app's isRowSelectable
       // gate: a disabled row keeps its checkbox visible but inert (toggled both ways — cells are
-      // pool-recycled across rows).
+      // pool-recycled across rows). A group / tree parent under groupSelectsChildren is repainted
+      // by the selection renderer, whose checkbox stands for the subtree (paintSubtreeCheckbox).
       cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
-      const disabled = this.api.getCore().getOptions().isRowSelectable?.(row) === false;
+      // A footer row is never selectable: its box is hidden by the theme and the cell reads as
+      // unavailable to AT.
+      const disabled = !!row.footer || this.api.getCore().getOptions().isRowSelectable?.(row) === false;
       cell.classList.toggle("pte-checkbox-cell-disabled", disabled);
       if (disabled) cell.setAttribute("aria-disabled", "true");
       else cell.removeAttribute("aria-disabled");
@@ -182,7 +185,8 @@ export class BodyCellRenderer {
       const renderer = col.cellRenderer;
       // Label columns never run a renderer on a group row: an app renderer written for the leaf
       // value cannot be expected to keep the chevron, indent and label the row depends on.
-      const isLabelColumn = col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel != null;
+      const isLabelColumn = col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel != null
+        || this.api.getCore().isGroupLabelColumn(col, row);
       if (isLabelColumn || !renderer) {
         cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
         const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
@@ -352,17 +356,16 @@ export class BodyCellRenderer {
   //    column if computed, else the column's groupValueGetter result.
   // Note: "groupRows" mode never reaches here — those group rows render as full-width rows and skip
   // per-column cell rendering entirely (see BodyWindowRenderer.applyFullWidthLayout).
+  // A footer row (groupTotalRow / grandTotalRow) takes the same path: its label column draws the
+  // "Total …" label behind a spacer (a footer is non-expandable, so no chevron), and under
+  // "groupRows" its label column is the nominal first column (see GridCore.isGroupLabelColumn).
   private renderGroupRowCell(cell: HTMLDivElement, row: IRowNode, col: Column) {
     cell.classList.add("pte-group-cell");
 
-    // singleColumn auto column, or a real grouped column in multipleColumns mode.
-    if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel != null) {
-      // A level-tagged column only labels its own level; other group rows leave it blank (but may
-      // still show an aggregate for that column below).
-      if (col.groupLevel != null && col.groupLevel !== row.level) {
-        this.renderGroupAggregateOrBlank(cell, row, col);
-        return;
-      }
+    // singleColumn auto column, a real grouped column in multipleColumns mode at its own level
+    // (other levels leave it blank, or show an aggregate for that column below), or a footer's
+    // groupRows label column.
+    if (this.api.getCore().isGroupLabelColumn(col, row)) {
       renderGroupCell(cell, row, this.api.getCore().getGroupRowLabel(row));
       return;
     }

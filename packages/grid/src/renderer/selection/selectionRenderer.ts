@@ -1,6 +1,7 @@
 import { Column } from "../../column/column";
 import { isBooleanToggleTarget } from "../../cellRenderers/booleanRenderer";
 import { GridCore } from "../../core/core";
+import type { SubtreeSelectionState } from "../../core/selectionModel";
 import { isTrue } from "../../misc";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
 import type { GridEventCellClickedParams, GridEventRowClickedParams } from "../../events/events";
@@ -75,7 +76,12 @@ export class SelectionRenderer {
     const rowId = viewIndex != null
       ? this.params.core.getRowIdAtViewIndex(viewIndex)
       : null;
-    const rowSelected = !!rowId && selectedRowIDs.has(rowId);
+    // groupSelectsChildren: a subtree-selecting row (group or tree parent) shows the derived state
+    // of its subtree on its checkbox — tick when all, dash when some. Null for every other row.
+    const subtreeState = viewIndex != null
+      ? this.params.core.getRowSelectionStateAtViewIndex(viewIndex)
+      : null;
+    const rowSelected = this.isViewIndexRowSelected(viewIndex, selectedRowIDs);
     const prevRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex - 1 : null, selectedRowIDs);
     const nextRowSelected = this.isViewIndexRowSelected(viewIndex != null ? viewIndex + 1 : null, selectedRowIDs);
 
@@ -109,7 +115,12 @@ export class SelectionRenderer {
         const rangeSelected = rowNumberRangeSelected
           || (!leafCol?.isLeadingUtilityColumn() && !!rangeRow && !!range && Number.isFinite(colIdx)
             && colIdx <= range.colEnd && colEnd >= range.colStart);
-        const selected = rangeSelected || colSelected || rowSelected;
+        const checkboxCell = !!leafCol?.isSelectionCheckboxColumn();
+        // A subtree row's checkbox follows its subtree, not the row's own id: a tree parent that is
+        // selected while a descendant is not shows the dash, though its data cells stay filled.
+        const selected = rangeSelected || colSelected
+          || (checkboxCell && subtreeState ? subtreeState === "all" : rowSelected);
+        if (checkboxCell) paintSubtreeCheckbox(cell, subtreeState);
 
         const prevColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colIdx - 1);
         const nextColSelected = this.neighborSelected(leaves, range, selectedColumnIDs, colEnd + 1);
@@ -231,11 +242,17 @@ export class SelectionRenderer {
     return isActive ? host : null;
   }
 
+  // Whether the row at `viewIndex` paints as row-selected. A group row is never stored in the
+  // selection, so under groupSelectsChildren it reads as selected exactly when its whole subtree is.
   private isViewIndexRowSelected(viewIndex: number | null, selectedRowIDs: Set<string>): boolean {
     if (viewIndex == null || viewIndex < 0) return false;
-    const id = this.params.core.getRowIdAtViewIndex(viewIndex);
-    return !!id && selectedRowIDs.has(id);
+    const core = this.params.core;
+    const id = core.getRowIdAtViewIndex(viewIndex);
+    if (!!id && selectedRowIDs.has(id)) return true;
+    return !!core.getRowModel().getRowNodeAtViewIndex(viewIndex)?.isGroup
+      && core.getRowSelectionStateAtViewIndex(viewIndex) === "all";
   }
+
 
   private neighborSelected(leaves: Column[], range: SelectionRange | null, selectedColumnIDs: Set<string>, colIdx: number): boolean {
     if (!Number.isFinite(colIdx) || colIdx < 0) return false;
@@ -967,4 +984,26 @@ type ClickTarget = Omit<GridEventRowClickedParams, "event"> & {
 // them; space (" ") is treated as printable so it can seed/replace a cell value.
 function isPrintableKey(key: string): boolean {
   return key.length === 1;
+}
+
+/**
+ * Paint a checkbox cell's subtree tri-state (groupSelectsChildren): the box's dash for a partial
+ * subtree and `aria-checked` on the cell (true / mixed / false). A row checked as itself (`state`
+ * null) clears both — pool cells are recycled across row kinds. The tick itself is the cell's
+ * `selected` class, set by the caller. Shared with the sticky mirrors, which paint the same cell.
+ */
+export function paintSubtreeCheckbox(cell: HTMLElement, state: SubtreeSelectionState | null): void {
+  cell.querySelector(".pte-checkbox")?.classList.toggle("pte-checkbox-indeterminate", state === "some");
+  const checked = state === "all" ? "true" : state === "some" ? "mixed" : state ? "false" : null;
+  if (checked == null) {
+    if (cell.hasAttribute("aria-checked")) cell.removeAttribute("aria-checked");
+    return;
+  }
+  if (cell.getAttribute("aria-checked") !== checked) cell.setAttribute("aria-checked", checked);
+  // The cell renderer paints the disabled gate from the app predicate on the row itself; a
+  // subtree checkbox is disabled only when nothing under it is selectable, so it wins here.
+  const disabled = state === "empty";
+  cell.classList.toggle("pte-checkbox-cell-disabled", disabled);
+  if (disabled) cell.setAttribute("aria-disabled", "true");
+  else cell.removeAttribute("aria-disabled");
 }

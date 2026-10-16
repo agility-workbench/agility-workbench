@@ -102,6 +102,45 @@ the row-number header click cover the whole **filtered set — all pages — by
 default**. Set `selectAllScope: "page"` for page-only select-all. On the
 server-side row model, "filtered" covers loaded rows.
 
+**Groups select their children.** By default a group row is not part of row
+selection: its checkbox is inert, and select-all covers the data rows only. Set
+`groupSelectsChildren: true` to make a group's checkbox stand for its subtree.
+Clicking it (or `Space`/`Enter` with the cursor on it) selects every selectable
+leaf under the group, collapsed ones included, or clears them all when all are
+already selected — so the first click on a partly selected group completes it.
+Nested groups follow, and a tree-data parent selects itself along with its
+descendants. The group's checkbox shows the derived state: ticked when all of
+its selectable rows are selected, a dash (`aria-checked="mixed"`) when some
+are, empty when none are, and disabled when nothing under it is selectable. A
+fully selected group row paints as selected.
+
+- **Storage stays data rows.** Group rows are never stored: `getSelectedRows()`,
+  `getSelectedNodes()` and `selectedRowIds` hold leaves (and tree parents) only,
+  even for a fully selected group. Select-all, the header tri-state and
+  `areAllRowsSelected()` cover those same rows.
+- **What counts.** Filtered-out rows never join, and rows your `isRowSelectable`
+  refuses are skipped and do not count toward the group's state. A tree parent
+  that is on screen only as the ancestor of a matching row is not selected.
+- **Ranges.** Shift+click unions the rows between the anchor and the clicked
+  row, and a group row inside the range contributes its whole subtree.
+  `selectAllScope: "page"` works the same way: a collapsed group on the page
+  brings its hidden leaves with it.
+- **Keyboard.** In the checkbox column the cursor stops on group rows, so
+  `Space`/`Enter` can toggle them; their other cells stay out of cell selection
+  unless `groupRowsSelectable` is on.
+- **Not the same as `groupRowsSelectable`.** That option makes group rows
+  cell-selection targets — the cursor, ranges and the clipboard — and, on its
+  own, lets a group row be checked as a row in itself. Under
+  `groupSelectsChildren` a group's checkbox always means its subtree; the two
+  options combine.
+- **Limits.** Applies in `mode: "multiple"` (single mode ignores it) and not in
+  pivot mode. On the server-side row model only loaded rows in the current view
+  are affected: a collapsed group selects nothing below it until its rows are
+  fetched. Under `groupDisplayType: "groupRows"` the full-width group row keeps
+  its checkbox beside the spanning label while the checkbox column is pinned (the
+  default, `rowSelection.checkboxColumnPinned: "left"`); an unpinned one sits under
+  the label, so select those rows with a Shift range instead.
+
 **Persistence.** By default a filter, sort, or quick-filter change clears the
 row selection. Set `selectionPersistence: "keep"` to retain selected row ids
 across model changes — selection is id-based, so it survives rows moving pages

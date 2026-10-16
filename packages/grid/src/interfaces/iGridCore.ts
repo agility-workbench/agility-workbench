@@ -222,13 +222,31 @@ export interface IGridCore {
   setGroupSortMode(groupSortMode: GroupSortMode): void;
   /** Change whether group rows can be selected without rebuilding the grid instance. */
   setGroupRowsSelectable(groupRowsSelectable: boolean): void;
+  /** Change whether a group row's checkbox selects its subtree (`groupSelectsChildren`). */
+  setGroupSelectsChildren(groupSelectsChildren: boolean): void;
   /** Change what group rows show as their count (`groupChildCount`); repaints the group rows. */
   setGroupChildCount(groupChildCount: GridOptions["groupChildCount"]): void;
   /**
+   * Change the footer rows of a grouped client-side view (`groupTotalRow` / `grandTotalRow`).
+   * Presence-based: a supplied key replaces that option (undefined removes those footers),
+   * omitted keys keep theirs. Rebuilds the group tree; clears the cell range, keeps row selection.
+   */
+  setGroupTotalRows(options: Pick<GridOptions, "groupTotalRow" | "grandTotalRow">): void;
+  /** Change the footer-row label callback (`groupTotalRowLabel`); repaints the rows. */
+  setGroupTotalRowLabel(groupTotalRowLabel: GridOptions["groupTotalRowLabel"]): void;
+  /**
    * The label a group row shows: its key, then the count `groupChildCount` resolves for it. The
-   * one owner for every surface that writes a group row. `rowCount` overrides the node's own.
+   * one owner for every surface that writes a group row. `rowCount` overrides the node's own. A
+   * footer row (`IRowNode.footer`) gets its footer label instead ("Total <group>", "Grand Total",
+   * or `groupTotalRowLabel`'s result) and never a count.
    */
   getGroupRowLabel(node: IRowNode, rowCount?: number): string;
+  /**
+   * Whether `col` holds the label of group row `node`: the auto-group / tree column, the level's
+   * own column under `"multipleColumns"`, and for a footer row under `"groupRows"` the first
+   * column after the row-number / checkbox columns.
+   */
+  isGroupLabelColumn(col: Column, node: IRowNode): boolean;
   /**
    * What a group row's cell holds for `col`: its aggregate for that column, else the group label
    * on the group's label column, else its `groupValueGetter` result, else nothing. Precondition:
@@ -278,6 +296,12 @@ export interface IGridCore {
   ): { node: import("./iRowNode").IRowNode; position: "top" | "bottom"; rowIndex: number } | null;
   /** Number of body-pinned rows displayed before `viewIndex` (used to offset body row positions). */
   getBodyPinnedRowCountBefore(viewIndex: number): number;
+  /**
+   * Tell the row model which rows the body renderer draws, `[start, end)` in view indices
+   * (page-local while paginating). The server-side model keeps the blocks around that window out
+   * of `serverSideMaxBlocks` eviction; the client-side model ignores it.
+   */
+  noteRenderedRowRange(start: number, end: number): void;
   /** Current pagination state (same payload the `paginationChanged` event carries). */
   getPaginationInfo(): GridEventPaginationChangedParams;
   getEditingCell(): CellRef | null;

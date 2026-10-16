@@ -4,7 +4,7 @@ import { Grid } from "@react-grid";
 import type { ReactColDef } from "@react-grid";
 import { ColumnType } from "@grid/interfaces/column";
 import { AggregateType } from "@grid/interfaces/aggregate";
-import type { ColumnPanelTrigger, GroupDisplayType, GroupSortMode } from "@grid";
+import type { ColumnPanelTrigger, GroupDisplayType, GroupSortMode, GroupTotalRowPosition } from "@grid";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 
 /**
@@ -84,6 +84,8 @@ export function GroupingDemo() {
   const [aggregate, setAggregate] = useState(true);
   const [groupRowsSelectable, setGroupRowsSelectable] = useState(true);
   const [groupSortMode, setGroupSortMode] = useState<GroupSortMode>("local");
+  const [groupTotalRow, setGroupTotalRow] = useState<GroupTotalRowPosition | undefined>(undefined);
+  const [grandTotal, setGrandTotal] = useState(false);
   const [columnPanelTrigger, setColumnPanelTrigger] = useState<ColumnPanelTrigger>("rail");
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -185,6 +187,26 @@ export function GroupingDemo() {
           </select>
         </label>
 
+        {/* Footer (subtotal) rows per expanded group, and one grand-total row at the end. */}
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          Group footers
+          <select
+            value={groupTotalRow ?? "none"}
+            onChange={(e) => setGroupTotalRow(
+              e.target.value === "none" ? undefined : e.target.value as GroupTotalRowPosition,
+            )}
+          >
+            <option value="none">None</option>
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="checkbox" checked={grandTotal} onChange={(e) => setGrandTotal(e.target.checked)} />
+          Grand total
+        </label>
+
         <button className="btn" type="button" onClick={() => { setGroupBy([]); applyGrouping([]); }}>
           Clear grouping
         </button>
@@ -217,6 +239,8 @@ export function GroupingDemo() {
           groupDefaultExpanded={1}
           groupSortMode={groupSortMode}
           groupRowsSelectable={groupRowsSelectable}
+          groupTotalRow={groupTotalRow}
+          grandTotalRow={grandTotal ? "bottom" : undefined}
           style={{ width: "100%", height: "100%" }}
           onGridReady={handleReady}
           columnPanel={{ trigger: columnPanelTrigger }}

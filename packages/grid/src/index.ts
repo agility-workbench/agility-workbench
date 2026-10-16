@@ -27,6 +27,8 @@ export type {
 export type { SortDir } from "./interfaces/sort";
 // The shape `api.getColumnState()` returns and `applyColumnState` accepts.
 export type { ColumnState } from "./interfaces/iGridCore";
+// The derived selection state of a group row's checkbox under `groupSelectsChildren`.
+export type { SubtreeSelectionState } from "./core/selectionModel";
 export type {
   CellPos,
   CellRef,
@@ -156,6 +158,8 @@ export type {
   BodyContextMenuGetter,
   GroupChildCountGetter,
   GroupChildCountParams,
+  GroupTotalRowPosition,
+  GroupTotalRowLabelParams,
   RowInsertionMenuOptions,
   RowInsertionMenuParams,
   QuickFilterOptions,
@@ -216,7 +220,10 @@ export type {
   CellRendererAlias, ColDef, ColumnMenuItemsGetter, DefaultColDef, GroupValueGetterParams,
 } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
-export type { AggregateModel, AggregateScope, ColumnAggregate } from "./interfaces/aggregate";
+export type {
+  AggregateFunction, AggregateFunctionParams, AggregateKind, AggregateModel, AggregateScope,
+  ColumnAggregate,
+} from "./interfaces/aggregate";
 export { FilterType } from "./interfaces/filter";
 export type {
   ComparatorFn,

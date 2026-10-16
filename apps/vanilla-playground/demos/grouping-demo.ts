@@ -6,6 +6,7 @@ import {
   type ColumnPanelTrigger,
   type GroupDisplayType,
   type GroupSortMode,
+  type GroupTotalRowPosition,
   type IGridAPI,
 } from "@grid";
 
@@ -121,6 +122,21 @@ export function mountGroupingDemo(container: HTMLElement): () => void {
         applyAggregates();
       })),
       field("Group rows selectable", checkbox(true, value => api.updateGridOptions({ groupRowsSelectable: value }))),
+      // Footer (subtotal) rows per expanded group, and one grand-total row at the end of the list.
+      field("Group footers", select(
+        [
+          { value: "none", label: "None" },
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ],
+        "none",
+        value => api.updateGridOptions({
+          groupTotalRow: value === "none" ? undefined : value as GroupTotalRowPosition,
+        }),
+      )),
+      field("Grand total", checkbox(false, value => api.updateGridOptions({
+        grandTotalRow: value ? "bottom" : undefined,
+      }))),
       field("Group sort mode", select(
         [
           { value: "local", label: "Local" },

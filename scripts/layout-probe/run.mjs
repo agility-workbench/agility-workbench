@@ -249,7 +249,7 @@ async function ensureHarness(page, harnessUrl) {
 
 function looksLikeReload(error) {
   const text = String(error?.message || error);
-  return /__layoutMatrix|__layoutInvariants|reading '(check|mount|setHostSize|settle|scroll|pin|hide|set|reveal|destroy)|navigated or closed|Inspected target/i.test(text);
+  return /__layoutMatrix|__layoutInvariants|reading '(check|mount|setHostSize|settle|scroll|pin|hide|set|reveal|destroy)|navigated or closed|Inspected target|no response after/i.test(text);
 }
 
 /**
@@ -257,21 +257,22 @@ function looksLikeReload(error) {
  * case that lost the page under it (dev-server reload) is retried on a fresh harness, up to three
  * attempts — reloads tend to come in bursts while files are being saved.
  */
-async function runCaseSafely(page, testCase, opts, harnessUrl, attempt = 1) {
+async function runCaseSafely(browser, pages, testCase, opts, harnessUrl, attempt = 1) {
   const partial = { name: testCase.name, config: testCase.config, steps: [] };
   try {
-    await ensureHarness(page, harnessUrl);
-    return await runCase(page, testCase, opts, partial.steps);
+    await ensureHarness(pages.current, harnessUrl);
+    return await runCase(pages.current, testCase, opts, partial.steps);
   } catch (error) {
     if (attempt < 3 && looksLikeReload(error)) {
-      console.log(`    (page reloaded under ${testCase.name}; re-attaching to the harness and retrying, attempt ${attempt + 1})`);
-      return runCaseSafely(page, testCase, opts, harnessUrl, attempt + 1);
+      console.log(`    (page reloaded under ${testCase.name}; opening a fresh page and retrying, attempt ${attempt + 1})`);
+      pages.current = await replacePage(browser, pages.current, opts);
+      return runCaseSafely(browser, pages, testCase, opts, harnessUrl, attempt + 1);
     }
     partial.steps.push({
       step: "harness",
       violations: [{ id: "harness-error", severity: "error", message: String(error.message || error), details: {} }],
       summary: {},
-      console: page.drainConsole(),
+      console: pages.current.drainConsole(),
     });
     // Leave the page in a known state for the next case.
     await page.evaluate("window.__layoutMatrix.destroy(); true", { timeout: 5000 }).catch(() => {});
@@ -314,18 +315,31 @@ async function runSmoke(page, baseUrl, id, invariantsSource, opts) {
 }
 
 /**
+ * A retry never reuses the page that failed: a session that died with a command in flight (the
+ * case that once froze a run for an hour) answers nothing, so the old target is closed without
+ * waiting on it and a fresh page takes its place.
+ */
+async function replacePage(browser, old, opts) {
+  old.close().catch(() => {});
+  const fresh = await browser.newPage();
+  await fresh.setViewport(WINDOW[0], WINDOW[1], opts.dpr);
+  return fresh;
+}
+
+/**
  * The smoke pass gets the same recovery as the matrix: a page that navigated under an in-flight
  * evaluate (a Vite dependency re-optimisation reloads the page the first time it meets a new
  * import; a stylesheet regeneration does the same) is retried up to three times, and any other
  * failure is reported as a `harness-error` step for that page instead of aborting the run.
  */
-async function runSmokeSafely(page, baseUrl, id, invariantsSource, opts, attempt = 1) {
+async function runSmokeSafely(browser, pages, baseUrl, id, invariantsSource, opts, attempt = 1) {
   try {
-    return await runSmoke(page, baseUrl, id, invariantsSource, opts);
+    return await runSmoke(pages.current, baseUrl, id, invariantsSource, opts);
   } catch (error) {
     if (attempt < 3 && looksLikeReload(error)) {
-      console.log(`    (page reloaded under ${id}; retrying, attempt ${attempt + 1})`);
-      return runSmokeSafely(page, baseUrl, id, invariantsSource, opts, attempt + 1);
+      console.log(`    (page reloaded under ${id}; opening a fresh page and retrying, attempt ${attempt + 1})`);
+      pages.current = await replacePage(browser, pages.current, opts);
+      return runSmokeSafely(browser, pages, baseUrl, id, invariantsSource, opts, attempt + 1);
     }
     return {
       name: id,
@@ -334,7 +348,7 @@ async function runSmokeSafely(page, baseUrl, id, invariantsSource, opts, attempt
         grids: 0,
         violations: [{ id: "harness-error", severity: "error", message: String(error.message || error), details: {} }],
         summary: [],
-        console: page.drainConsole(),
+        console: pages.current.drainConsole(),
       }],
     };
   }
@@ -421,6 +435,8 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport(WINDOW[0], WINDOW[1], opts.dpr);
+    // Retries may swap the page out from under the loops, so they read it through this holder.
+    const pages = { current: page };
     if (!opts.skipMatrix) {
       const harnessUrl = `${server.url}/layout-matrix.html`;
       await page.navigate(harnessUrl);
@@ -428,7 +444,7 @@ async function main() {
       console.log(`\nmatrix: ${cases.length} cases · widths ${opts.widths.join("/")} · heights ${opts.heights.join("/")}`);
       for (const testCase of cases) {
         if (opts.verbose) console.log(`\n▶ ${testCase.name} ${JSON.stringify(testCase.config)}`);
-        const run = await runCaseSafely(page, testCase, opts, harnessUrl);
+        const run = await runCaseSafely(browser, pages, testCase, opts, harnessUrl);
         report.cases.push(run);
         const { errors, warnings } = printRun(run, "case");
         if (errors) failed++;
@@ -439,7 +455,7 @@ async function main() {
       const ids = playgroundPageIds();
       console.log(`\nsmoke: ${ids.length} playground pages × widths ${opts.smokeWidths.join("/")}`);
       for (const id of ids) {
-        const run = await runSmokeSafely(page, server.url, id, invariantsSource, opts);
+        const run = await runSmokeSafely(browser, pages, server.url, id, invariantsSource, opts);
         report.smoke.push(run);
         const { errors, warnings } = printRun(run, "page");
         if (errors) failed++;

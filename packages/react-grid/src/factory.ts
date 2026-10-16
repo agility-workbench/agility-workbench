@@ -83,9 +83,13 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "pageSize", props.pageSize);
   setIfDefined(options, "pageSizes", props.pageSizes);
   setIfDefined(options, "serverSideBlockSize", props.serverSideBlockSize);
+  setIfDefined(options, "serverSideMaxBlocks", props.serverSideMaxBlocks);
   setIfDefined(options, "rowModelType", props.rowModelType);
   setIfDefined(options, "getGroupChildCount", props.getGroupChildCount);
   setIfDefined(options, "groupChildCount", props.groupChildCount);
+  setIfDefined(options, "groupTotalRow", props.groupTotalRow);
+  setIfDefined(options, "grandTotalRow", props.grandTotalRow);
+  setIfDefined(options, "groupTotalRowLabel", props.groupTotalRowLabel);
   setIfDefined(options, "paginationUnknownTotalTooltip", props.paginationUnknownTotalTooltip);
   setIfDefined(options, "undoLimit", props.undoLimit);
   setIfDefined(options, "editTrigger", props.editTrigger);
@@ -105,6 +109,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "groupSortMode", props.groupSortMode);
   setIfDefined(options, "treeData", props.treeData);
   setIfDefined(options, "groupRowsSelectable", props.groupRowsSelectable);
+  setIfDefined(options, "groupSelectsChildren", props.groupSelectsChildren);
+  setIfDefined(options, "aggFuncs", props.aggFuncs);
   setIfDefined(options, "isRowSelectable", props.isRowSelectable);
   setIfDefined(options, "isRowPinned", props.isRowPinned);
   setIfDefined(options, "groupRowsSticky", props.groupRowsSticky);

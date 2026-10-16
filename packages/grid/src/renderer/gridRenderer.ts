@@ -1,5 +1,5 @@
 import type { HeaderHeightOptions } from "../core/headerGeometry";
-import { AggregateType } from "../interfaces/aggregate";
+import { AggregateKind } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
 import { RowPoolDef } from "./types";
@@ -1790,11 +1790,11 @@ export class GridRenderer {
     this._rootAttachmentRenderer.destroy();
   }
 
-  _aggregate(colID: string, aggType?: AggregateType) {
+  _aggregate(colID: string, aggType?: AggregateKind) {
     this._aggregateModelController.aggregate(colID, aggType);
   }
 
-  _aggregateSelectedColumns(aggType: AggregateType) {
+  _aggregateSelectedColumns(aggType: AggregateKind) {
     this._aggregateModelController.aggregateSelectedColumns(aggType);
   }
 
@@ -1834,6 +1834,7 @@ export class GridRenderer {
       return;
     }
 
+    const typeFor = (col: Column) => this._aggregateModelController.getAggregateOpForColumn(col);
     const values = new Map<string, string>();
     const rawValues = this.rowModel.getAggregateValues();
     for (const col of this._leafColumns) {
@@ -1843,10 +1844,10 @@ export class GridRenderer {
       values.set(col.instanceID, display ?? "");
     }
 
-    this._aggregateRowRenderer.renderCells(this._aggregateLeadingCells, this._leadingLeafColumns, aggregateMap, values);
-    this._aggregateRowRenderer.renderCells(this._aggregateLeftCells, this._leftPinnedLeafColumns, aggregateMap, values);
-    this._aggregateRowRenderer.renderCells(this._aggregateCells, this._centerLeafColumns, aggregateMap, values);
-    this._aggregateRowRenderer.renderCells(this._aggregateRightCells, this._rightPinnedLeafColumns, aggregateMap, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateLeadingCells, this._leadingLeafColumns, typeFor, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateLeftCells, this._leftPinnedLeafColumns, typeFor, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateCells, this._centerLeafColumns, typeFor, values);
+    this._aggregateRowRenderer.renderCells(this._aggregateRightCells, this._rightPinnedLeafColumns, typeFor, values);
 
     if (wasVisible !== shouldShow) {
       this._columnLayoutRenderer.updateColumnWidths();

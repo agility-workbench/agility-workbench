@@ -17,6 +17,8 @@ import { mountGridHost, syncGridInputs } from "./test-utils";
       [groupDisplayType]="groupDisplayType"
       [groupRowsSelectable]="groupRowsSelectable"
       [groupRowsSticky]="groupRowsSticky"
+      [groupTotalRow]="groupTotalRow"
+      [grandTotalRow]="grandTotalRow"
       [treeData]="treeData"
       (gridReady)="api = $event"
     />
@@ -36,6 +38,8 @@ class GroupingHost {
   groupDisplayType: GridOptions["groupDisplayType"] = "singleColumn";
   groupRowsSelectable = false;
   groupRowsSticky = false;
+  groupTotalRow: GridOptions["groupTotalRow"] = undefined;
+  grandTotalRow: GridOptions["grandTotalRow"] = undefined;
   treeData: GridOptions["treeData"] = undefined;
 }
 
@@ -102,6 +106,26 @@ describe("AwbGrid grouping and tree data", () => {
     cell = gridEl.querySelector<HTMLElement>(".pte-full-width-row .pte-full-width-cell")!;
     cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     expect(core.getSelectionRange()).not.toBeNull();
+  });
+
+  it("adds and removes group footer rows live from inputs", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(GroupingHost);
+    const core = host.api!.getCore();
+    core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
+    host.api!.setAllGroupsExpanded(true);
+    const footers = () => gridEl.querySelectorAll(".pte-row.pte-row-footer[aria-rowindex]").length;
+    expect(footers()).toBe(0);
+
+    host.groupTotalRow = "top";
+    host.grandTotalRow = "bottom";
+    await syncGridInputs(fixture);
+    expect(core.getOptions().groupTotalRow).toBe("top");
+    expect(footers()).toBe(3); // APAC, EMEA and the grand total
+
+    host.groupTotalRow = undefined;
+    host.grandTotalRow = undefined;
+    await syncGridInputs(fixture);
+    expect(footers()).toBe(0);
   });
 
   it("renders and expands parent-mode tree data through the generated hierarchy column", async () => {
