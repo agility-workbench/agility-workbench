@@ -1,4 +1,5 @@
 import { IGridCore } from "../interfaces";
+import type { LocaleTextResolver } from "../interfaces/locale";
 import { staticSetValue } from "./setFilterCore";
 import { FilterInputType, FilterOption, FilterParams, FilterType } from "../interfaces/filter";
 import { ColumnFilterContext } from "./context";
@@ -13,14 +14,18 @@ import {
   SetFilterTreeSpec,
 } from "./setFilterTree";
 
-/** Offered last by every built-in operator list (set filters aside). */
-const BLANK_OPS: FilterOption[] = [
-  { value: FilterType.IS_BLANK, label: "Is blank" },
-  { value: FilterType.IS_NOT_BLANK, label: "Is not blank" },
-];
-
 export class ColumnFilterMenuService {
   constructor(private core: IGridCore) { }
+
+  private readonly t: LocaleTextResolver = (key, values) => this.core.getLocaleText(key, values);
+
+  /** Offered last by every built-in operator list (set filters aside). */
+  private blankOps(): FilterOption[] {
+    return [
+      { value: FilterType.IS_BLANK, label: this.t("filterIsBlank") },
+      { value: FilterType.IS_NOT_BLANK, label: this.t("filterIsNotBlank") },
+    ];
+  }
 
   buildFilterMenu(ctx: ColumnFilterContext): FilterPanelSpec {
     const filterParams = this.getFilterParams(ctx.targetCol);
@@ -60,6 +65,7 @@ export class ColumnFilterMenuService {
         : undefined,
       compare: isSetFilter ? filterParams.comparator : undefined,
       tree: filterType === "tree" ? this.buildTreeSpec(ctx.targetCol, filterParams, filterValueSource?.kind === "fromRows") : undefined,
+      localeText: this.t,
     };
   }
 
@@ -123,7 +129,7 @@ export class ColumnFilterMenuService {
         return { filterOptions: this.getDropdownFilterOps() };
       case "set":
       case "tree":
-        return { filterOptions: [{value: FilterType.NOT_IN, label: "Not in"}] };
+        return { filterOptions: [{ value: FilterType.NOT_IN, label: this.t("filterNotIn") }] };
     }
     return { filterOptions: this.getFilterOpsForType(false), debounceMs };
   }
@@ -134,7 +140,7 @@ export class ColumnFilterMenuService {
 
   private getFilterParamsByColType(column: Column): FilterParams {
     if (column.filter === "set" || column.filter === "tree") {
-      return { filterOptions: [{value: FilterType.NOT_IN, label: "Not in"}] };
+      return { filterOptions: [{ value: FilterType.NOT_IN, label: this.t("filterNotIn") }] };
     }
     const debounceMs = this.core.getOptions().filterDebounceMs;
     switch (column.type) {
@@ -153,35 +159,35 @@ export class ColumnFilterMenuService {
   private getFilterOpsForType(isComputable: boolean): FilterOption[] {
     if (isComputable) {
       return [
-        { value: FilterType.EQ, label: "Equal" },
-        { value: FilterType.NEQ, label: "Not equal" },
-        { value: FilterType.GT, label: "Greater than" },
-        { value: FilterType.GTE, label: "Greater than or equal" },
-        { value: FilterType.LT, label: "Less than" },
-        { value: FilterType.LTE, label: "Less than or equal" },
-        { value: FilterType.IN_RANGE, label: "Between" },
-        { value: FilterType.NOT_IN_RANGE, label: "Not between" },
-        ...BLANK_OPS,
+        { value: FilterType.EQ, label: this.t("filterEqual") },
+        { value: FilterType.NEQ, label: this.t("filterNotEqual") },
+        { value: FilterType.GT, label: this.t("filterGreaterThan") },
+        { value: FilterType.GTE, label: this.t("filterGreaterThanOrEqual") },
+        { value: FilterType.LT, label: this.t("filterLessThan") },
+        { value: FilterType.LTE, label: this.t("filterLessThanOrEqual") },
+        { value: FilterType.IN_RANGE, label: this.t("filterBetween") },
+        { value: FilterType.NOT_IN_RANGE, label: this.t("filterNotBetween") },
+        ...this.blankOps(),
       ];
     }
     // string
     return [
-      { value: FilterType.CONTAINS, label: "Contains" },
-      { value: FilterType.NOT_CONTAINS, label: "Excludes" },
-      { value: FilterType.EQ, label: "Equal" },
-      { value: FilterType.NEQ, label: "Not equal" },
-      { value: FilterType.STARTS_WITH, label: "Starts with" },
-      { value: FilterType.ENDS_WITH, label: "Ends with" },
-      ...BLANK_OPS,
+      { value: FilterType.CONTAINS, label: this.t("filterContains") },
+      { value: FilterType.NOT_CONTAINS, label: this.t("filterExcludes") },
+      { value: FilterType.EQ, label: this.t("filterEqual") },
+      { value: FilterType.NEQ, label: this.t("filterNotEqual") },
+      { value: FilterType.STARTS_WITH, label: this.t("filterStartsWith") },
+      { value: FilterType.ENDS_WITH, label: this.t("filterEndsWith") },
+      ...this.blankOps(),
     ];
   }
 
   /** A true / false choice: equality only, plus the blank checks. */
   private getBooleanFilterOps(): FilterOption[] {
     return [
-      { value: FilterType.EQ, label: "Equal" },
-      { value: FilterType.NEQ, label: "Not equal" },
-      ...BLANK_OPS,
+      { value: FilterType.EQ, label: this.t("filterEqual") },
+      { value: FilterType.NEQ, label: this.t("filterNotEqual") },
+      ...this.blankOps(),
     ];
   }
 

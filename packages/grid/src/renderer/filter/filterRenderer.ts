@@ -5,6 +5,15 @@ import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { BasicFilterRenderer } from "./basicFilterRenderer";
 import { SetFilterRenderer } from "./setFilterRenderer";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
+import { defaultLocaleText, type GridLocaleKey, type LocaleTextResolver } from "../../interfaces/locale";
+
+/** The built-in buttons' locale keys (an unknown entry renders as written). */
+const FILTER_BUTTON_KEYS: Record<string, GridLocaleKey> = {
+  apply: "filterApply",
+  cancel: "filterCancel",
+  clear: "filterClear",
+  reset: "filterReset",
+};
 
 export class FilterRenderer {
   private root!: HTMLElement;
@@ -12,6 +21,10 @@ export class FilterRenderer {
   private renderer: IFilterRenderer;
 
   private unsubscribeFn: (() => void);
+
+  private get t(): LocaleTextResolver {
+    return this.spec.localeText ?? defaultLocaleText;
+  }
 
   constructor(
     private controller: FilterController,
@@ -40,7 +53,7 @@ export class FilterRenderer {
   private createRoot() {
     this.root = div("pte-filter-root");
     this.root.setAttribute("role", "dialog");
-    this.root.setAttribute("aria-label", `Filter ${this.spec.column.label ?? this.spec.column.key}`);
+    this.root.setAttribute("aria-label", this.t("filterDialog", { column: this.spec.column.label ?? this.spec.column.key }));
   }
 
   private createFilter() {
@@ -54,7 +67,7 @@ export class FilterRenderer {
     const actionsRow = div("pte-filter-actions");
     for (const btn of buttons) {
       const button = createElement("button", "pte-filter-btn");
-      button.innerText = btn;
+      button.innerText = FILTER_BUTTON_KEYS[btn] ? this.t(FILTER_BUTTON_KEYS[btn]) : btn;
       button.addEventListener("click", () => {
         switch (btn) {
           case "apply": {

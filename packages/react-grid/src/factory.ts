@@ -125,6 +125,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "noRowsMessage", props.noRowsMessage);
   setIfDefined(options, "pivotNoValuesMessage", props.pivotNoValuesMessage);
   setIfDefined(options, "pivotEmptyMessage", props.pivotEmptyMessage);
+  setIfDefined(options, "localeText", props.localeText);
+  setIfDefined(options, "getLocaleText", props.getLocaleText);
   setIfDefined(options, "filterDebounceMs", props.filterDebounceMs);
   setIfDefined(options, "cellFlashDuration", props.cellFlashDuration);
   setIfDefined(options, "cellFadeDuration", props.cellFadeDuration);

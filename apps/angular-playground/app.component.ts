@@ -12,6 +12,7 @@ import { PivotDemoComponent } from "./pivot-demo.component";
 import { BlankPivotDemoComponent } from "./blank-pivot-demo.component";
 import { SheetsDemoComponent } from "./sheets-demo.component";
 import { HeaderComponentDemoComponent } from "./header-component-demo.component";
+import { HeaderWrapDemoComponent } from "./header-wrap-demo.component";
 import { HighFrequencyDemoComponent } from "./high-frequency-demo.component";
 import { IndexedInsertDemoComponent } from "./indexed-insert-demo.component";
 import { KitchenSinkDemoComponent } from "./kitchen-sink-demo.component";
@@ -27,6 +28,9 @@ import { ServerSideAggregateScopeDemoComponent } from "./server-side-aggregate-s
 import { ServerSideTreeDataDemoComponent } from "./server-side-tree-data-demo.component";
 import { ServerSideTreeDuplicateIdDemoComponent } from "./server-side-tree-duplicate-id-demo.component";
 import { SparklineDemoComponent } from "./sparkline-demo.component";
+import { CellRenderersDemoComponent } from "./cell-renderers-demo.component";
+import { TouchDemoComponent } from "./touch-demo.component";
+import { LocalizationDemoComponent } from "./localization-demo.component";
 import { StickyGroupRowsDemoComponent } from "./sticky-group-rows-demo.component";
 import { ToolbarDemoComponent } from "./toolbar-demo.component";
 import { TooltipDemoComponent } from "./tooltip-demo.component";
@@ -66,11 +70,15 @@ const PAGES = [
   { id: "quickFilter", label: "Quick filter" },
   { id: "setFilterComponents", label: "Set-filter components" },
   { id: "headerComponents", label: "Custom headers" },
+  { id: "headerWrap", label: "Header wrapping & locked columns" },
   { id: "tooltips", label: "Tooltips" },
   { id: "actionFrame", label: "ActionFrame" },
   { id: "kitchenSink", label: "Kitchen sink" },
   { id: "footerVisibility", label: "Footer visibility" },
   { id: "sparklines", label: "Sparklines" },
+  { id: "cellRenderers", label: "Built-in renderers" },
+  { id: "touch", label: "Touch & pointer" },
+  { id: "localization", label: "Localization" },
 ] as const;
 
 type PageId = (typeof PAGES)[number]["id"];
@@ -89,6 +97,7 @@ type PageId = (typeof PAGES)[number]["id"];
     GridDemoComponent,
     GroupingDemoComponent,
     HeaderComponentDemoComponent,
+    HeaderWrapDemoComponent,
     HighFrequencyDemoComponent,
     IndexedInsertDemoComponent,
     KitchenSinkDemoComponent,
@@ -107,6 +116,9 @@ type PageId = (typeof PAGES)[number]["id"];
     ServerSideTreeDataDemoComponent,
     ServerSideTreeDuplicateIdDemoComponent,
     SparklineDemoComponent,
+    CellRenderersDemoComponent,
+    TouchDemoComponent,
+    LocalizationDemoComponent,
     StickyGroupRowsDemoComponent,
     ToolbarDemoComponent,
     TooltipDemoComponent,
@@ -214,6 +226,9 @@ type PageId = (typeof PAGES)[number]["id"];
         @case ("headerComponents") {
           <header-component-demo />
         }
+        @case ("headerWrap") {
+          <header-wrap-demo />
+        }
         @case ("tooltips") {
           <tooltip-demo />
         }
@@ -228,6 +243,15 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("sparklines") {
           <sparkline-demo />
+        }
+        @case ("cellRenderers") {
+          <cell-renderers-demo />
+        }
+        @case ("touch") {
+          <touch-demo />
+        }
+        @case ("localization") {
+          <localization-demo />
         }
       }
     </div>

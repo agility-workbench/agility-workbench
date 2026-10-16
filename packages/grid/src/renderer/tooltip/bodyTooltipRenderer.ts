@@ -1,4 +1,5 @@
 import { findHeaderCell } from "../header/headerCellLookup";
+import { isCompatMouseEvent } from "../interaction/touchGestures";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { IGridAPI } from "../../interfaces/iGridAPI";
@@ -243,6 +244,8 @@ export class BodyTooltipRenderer {
   private handleMouseOver = (e: MouseEvent) => {
     const opts = this.params.options();
     if (!opts.enabled) return;
+    // Hover tooltips are mouse-only: the mouseover a tap leaves behind is not a hover.
+    if (isCompatMouseEvent(e)) return;
     const loc = this.locate(e.target, e.clientX, e.clientY);
     if (!loc) {
       this.scheduleHide();
@@ -315,6 +318,7 @@ export class BodyTooltipRenderer {
 
   private handleUiMouseOver = (e: MouseEvent) => {
     if (!this.params.options().enabled) return;
+    if (isCompatMouseEvent(e)) return;
     const target = this.locateUi(e.target, e.clientX, e.clientY);
     if (!target) return;
     if (sameTarget(this.active, target)) {

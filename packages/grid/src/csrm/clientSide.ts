@@ -1,5 +1,6 @@
 import { FilterModel } from "../interfaces/filter";
 import { SortModel } from "../interfaces/sort";
+import { resolveLocaleText } from "../interfaces/locale";
 import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
@@ -93,12 +94,16 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // Without this a diff would mint a fresh id for every cloned row and report "remove all, add all".
   private readonly hasStableRowId: boolean;
 
+  /** The label of the single group row an ungrouped pivot shows (creation-only, like the locale). */
+  private readonly pivotTotalLabel: string;
+
   constructor(opts: GridOptions, readonly listener: IRowModelListener) {
     this.getId = createRowIdFactory(opts);
     this.hasStableRowId = opts.getRowId != null || opts.rowIdKey != null;
     this.groupDefaultExpanded = opts.groupDefaultExpanded ?? 0;
     this.treeData = opts.treeData as TreeDataOptions<Row> | undefined;
     this.groupTotalRow = opts.groupTotalRow;
+    this.pivotTotalLabel = resolveLocaleText(opts, "pivotTotal");
     this.grandTotalRow = opts.grandTotalRow;
     // Custom aggregate functions are creation-only, so the registry is fixed for the model's life.
     this.aggregateCalculator = new AggregateCalculator(opts.aggFuncs ?? {});
@@ -450,7 +455,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
 
     if (this.groupColumns.length === 0) {
-      const root = buildPivotTotalRoot(leaves, computeAggregates(leaves));
+      const root = buildPivotTotalRoot(leaves, computeAggregates(leaves), this.pivotTotalLabel);
       this.groupRoots = [root];
       this.groupNodesMap = new Map([[root.id, root]]);
       return;

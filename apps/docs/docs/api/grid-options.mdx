@@ -290,6 +290,8 @@ grid.on("columnWidthsChanged", (event) => {
 | `noRowsMessage` | `string` | Empty-data copy (default "No rows to show"; updatable at runtime) |
 | `pivotNoValuesMessage` | `string` | Copy of the header hint shown while pivot mode has no aggregates |
 | `pivotEmptyMessage` | `string` | Copy of the empty state shown while pivot mode has no roles configured at all |
+| `localeText` | `Partial<GridLocaleText>` | Translations for the grid's own strings, by key; missing keys stay English (creation-only; see [Localization](../examples/localization.mdx)) |
+| `getLocaleText` | `(params: LocaleTextParams) => string` | Translate any grid string in code (plurals, ICU, a translation library); wins over `localeText` (creation-only) |
 
 ### Narrow bars
 

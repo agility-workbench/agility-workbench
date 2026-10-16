@@ -232,6 +232,7 @@ export const PIVOT_TOTAL_GROUP_ID = "g:__pivotTotal__";
 export function buildPivotTotalRoot<Row = any>(
   leaves: IRowNode<Row>[],
   aggregateValues: { [key: string]: any } | undefined,
+  label = "Total",
 ): IRowNode<Row> {
   return {
     id: PIVOT_TOTAL_GROUP_ID,
@@ -245,8 +246,8 @@ export function buildPivotTotalRoot<Row = any>(
     expandable: false,
     children: leaves,
     childCount: leaves.length,
-    groupKey: "Total",
-    groupValue: "Total",
+    groupKey: label,
+    groupValue: label,
     aggregateValues,
   };
 }

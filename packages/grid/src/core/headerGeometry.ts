@@ -52,7 +52,8 @@ export interface HeaderGeometry {
   readonly levelCount: number;
   /** Per-level pixel heights, top level first; the last entry is the leaf level. */
   readonly levels: readonly number[];
-  /** Height of the whole header: `(levelCount - 1) * parentHeaderHeight + leafHeaderHeight`. */
+  /** Height of the whole header: the sum of `levels` (`(levelCount - 1) * parentHeaderHeight +
+   * leafHeaderHeight` unless measured content raised a level). */
   readonly total: number;
   /** Sum of the levels `from`..`to`, inclusive (0 when the range is empty). */
   sumLevels(from: number, to: number): number;
@@ -66,15 +67,32 @@ export interface HeaderGeometry {
    * taller label rather than taller children.
    */
   cellHeights(depth: number, levelsBelow: number): HeaderCellHeights;
+  /**
+   * The levels a cell's own content row (its container) occupies, top level first: `top` is the
+   * cell's own level, `bottom` the lowest level above its children (the leaf level for a leaf).
+   * Same arguments as {@link cellHeights}.
+   */
+  containerLevels(depth: number, levelsBelow: number): { top: number; bottom: number };
 }
 
+/**
+ * `minLevelHeights` (top level first) raises individual levels above their configured height: a
+ * level is `max(configured, minLevelHeights[i])`. It is how measured content (`ColDef.
+ * autoHeaderHeight`, see {@link autoHeaderLevelHeights}) reaches the geometry, so every consumer —
+ * wrapper, sections, cells, body frame — still reads one set of numbers. Entries past `levelCount`
+ * are ignored; a missing or non-finite entry leaves its level at the configured height.
+ */
 export function headerGeometry(
   levelCount: number,
   heights: Pick<ResolvedHeaderHeights, "leafHeaderHeight" | "parentHeaderHeight">,
+  minLevelHeights?: readonly (number | undefined)[] | null,
 ): HeaderGeometry {
   const count = Math.max(0, Math.floor(levelCount));
-  const levels = Array.from({ length: count }, (_, i) =>
-    i === count - 1 ? heights.leafHeaderHeight : heights.parentHeaderHeight);
+  const levels = Array.from({ length: count }, (_, i) => {
+    const configured = i === count - 1 ? heights.leafHeaderHeight : heights.parentHeaderHeight;
+    const min = minLevelHeights?.[i];
+    return min != null && Number.isFinite(min) ? Math.max(configured, min) : configured;
+  });
   const sumLevels = (from: number, to: number): number => {
     let sum = 0;
     for (let i = Math.max(0, from); i <= Math.min(count - 1, to); i++) sum += levels[i];
@@ -94,5 +112,49 @@ export function headerGeometry(
       const container = sumLevels(start, count - 1 - childLevels);
       return { cell, container, childLevels };
     },
+    containerLevels(depth, levelsBelow) {
+      const span = Math.max(1, Math.min(count, levelsBelow));
+      const top = count - span;
+      const childLevels = Math.max(0, Math.min(span, depth) - 1);
+      return { top, bottom: count - 1 - childLevels };
+    },
   };
+}
+
+/** One measured header cell for {@link autoHeaderLevelHeights}. */
+export interface HeaderContentRequirement {
+  /** The cell's own level (see {@link HeaderGeometry.containerLevels}). */
+  top: number;
+  /** The lowest level its content row occupies; this is the level that grows. */
+  bottom: number;
+  /** The pixel height the cell's content row needs: content plus the container's padding/borders. */
+  height: number;
+}
+
+/**
+ * Per-level heights that fit measured header content (`ColDef.autoHeaderHeight`), top level
+ * first, for {@link headerGeometry}'s `minLevelHeights`.
+ *
+ * A cell's content row spans levels `top..bottom`; when it needs more than they add up to, the
+ * shortfall goes to `bottom` (the leaf level for a leaf, the group's own lowest level for a group).
+ * Levels resolve top-down, so a cell spanning several levels only grows its bottom one by what the
+ * (already resolved) levels above it leave short. A level never shrinks below its configured
+ * height: the result is `max(configured, tallest requirement)` per level. Returns `null` when no
+ * requirement is given, meaning "the configured heights".
+ */
+export function autoHeaderLevelHeights(
+  base: HeaderGeometry,
+  requirements: readonly HeaderContentRequirement[],
+): number[] | null {
+  if (requirements.length === 0) return null;
+  const levels = base.levels.slice();
+  for (let i = 0; i < levels.length; i++) {
+    for (const req of requirements) {
+      if (req.bottom !== i || !Number.isFinite(req.height)) continue;
+      let above = 0;
+      for (let j = Math.max(0, req.top); j < i; j++) above += levels[j];
+      levels[i] = Math.max(levels[i], Math.ceil(req.height - above));
+    }
+  }
+  return levels;
 }

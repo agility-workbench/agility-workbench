@@ -24,7 +24,9 @@ export type {
   RefreshCellsParams,
   SortModelItem,
 } from "./interfaces/iGridAPI";
-export type { SortDir } from "./interfaces/sort";
+export type { SortDir, SortItemUpdate } from "./interfaces/sort";
+// The column model behind `api.getColumnModel()`.
+export type { IColumnModel } from "./interfaces/iColumnModel";
 // The shape `api.getColumnState()` returns and `applyColumnState` accepts.
 export type { ColumnState } from "./interfaces/iGridCore";
 // The derived selection state of a group row's checkbox under `groupSelectsChildren`.
@@ -180,6 +182,7 @@ export type {
   GridPivotLayerState,
   GridPivotStateLayers,
   GridViewAggregateState,
+  GridViewColumnGroupState,
   GridViewFilterState,
   GridViewGroupExpansionState,
   GridViewPaginationState,
@@ -274,6 +277,7 @@ export type {
   GridEventEditingChangedParams,
   GridEventErrorParams,
   GridEventFocusChangedParams,
+  GridEventHeaderFocusChangedParams,
   GridEventHandler,
   GridEventMap,
   GridEventModelUpdatedParams,
@@ -347,6 +351,17 @@ export type {
 export { ChangeFlashCellRenderer } from "./cellRenderers/changeFlashRenderer";
 export { BooleanCellRenderer } from "./cellRenderers/booleanRenderer";
 export type { ChangeFlashParams, FlashDirection } from "./cellRenderers/changeFlashRenderer";
+// Built-in renderers reachable by alias (`cellRenderer: "link" | "image" | "progress" | "rating"`).
+export { LinkCellRenderer } from "./cellRenderers/linkRenderer";
+export type { LinkCellRendererParams } from "./cellRenderers/linkRenderer";
+export { ImageCellRenderer } from "./cellRenderers/imageRenderer";
+export type { ImageCellRendererParams } from "./cellRenderers/imageRenderer";
+export { ProgressCellRenderer } from "./cellRenderers/progressRenderer";
+export type {
+  ProgressCellRendererCallbackParams, ProgressCellRendererParams,
+} from "./cellRenderers/progressRenderer";
+export { RatingCellRenderer } from "./cellRenderers/ratingRenderer";
+export type { RatingCellRendererParams } from "./cellRenderers/ratingRenderer";
 
 // Keyboard chords: the display formatter for menu accelerators and shortcut references, and the
 // spec type application shortcuts are written against.
@@ -355,3 +370,8 @@ export type { ChordSpec, ModifierState } from "./renderer/interaction/keyChord";
 // Application shortcuts (api.registerShortcut) and the shortcut table (api.getKeyboardShortcuts).
 export type { GridShortcut } from "./renderer/interaction/shortcutPolicy";
 export type { KeyboardScope, KeyboardShortcutInfo } from "./renderer/interaction/keyboardRouter";
+
+// Localization: the typed key set, its English defaults, and the callback shape behind
+// `GridOptions.localeText` / `getLocaleText` and `api.getLocaleText`.
+export { DEFAULT_LOCALE_TEXT } from "./interfaces/locale";
+export type { GetLocaleText, GridLocaleKey, GridLocaleText, LocaleTextParams } from "./interfaces/locale";

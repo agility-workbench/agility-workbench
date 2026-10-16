@@ -74,6 +74,9 @@ which run before the adapter.
 | `autoSizeColumns(colIds)` / `autoSizeAllColumns()` | Fit columns to their content, dropping user widths, with one `columnWidthsChanged` for the batch |
 | `setColumnWidth(colId, widthPx)` / `setColumnWidths(widths)` | Set widths as a resize drag would (clamped to the column's bounds, kept across autosizes); one event per call |
 | `sizeColumnsToFit()` | Scale the visible unpinned columns to fill the centre viewport exactly (pinned, `resizable: false`, and utility columns keep their widths) |
+| `setColumnPinned(colIds, pinned)` | Pin one column (a colId) or several to `"left"` / `"right"`, or unpin with `null` — the column menu's Pin items; unpinnable columns are skipped; `columnsChanged` with `reason: "pin"` |
+| `setColumnsVisible(colIds, visible)` / `setColumnVisible(colId, visible)` | Show or hide columns; hiding skips `hideable: false` columns; `columnsChanged` with `reason: "visibility"`, none when nothing changes |
+| `moveColumn(colId, toIndex)` / `moveColumns(colIds, toIndex)` | Move columns (as a block, in the order given) to `toIndex` of `getColumnState()` order — every non-internal leaf, hidden included, left → centre → right. Each column stays in its section (the index is clamped to it); `lockPosition` and `movable: false` columns are skipped, locked columns keep their edge; a group's colId moves the group. One `columnsChanged` with `reason: "order"`, none when nothing moved |
 | `getColumnGroupState()` | Read every column group's expander state (open/closed) by colId, nested groups included |
 | `setColumnGroupState(groups)` | Open or close column groups by colId in one rebuild — what the header expander does; groups not named keep their state |
 | `getColumnModel()` | Read runtime columns and sections |
@@ -110,6 +113,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `checkSetFilterValue(colId, value)` / `uncheckSetFilterValue(colId, value)` | Toggle one value by intent |
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
+| `setGroupExpanded(groupIds, expanded)` | Expand/collapse the named group / tree nodes in one rebuild; unknown ids are ignored, nothing happens when they are already in that state |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
 | `getPaginationInfo()` | Current pagination state, the same object `paginationChanged` carries: `{ paginationEnabled, pageIndex, pageSize, totalRowCount, totalPageCount, totalRowCountKnown, pageSizes }` (`pageIndex` is 0-based); counts are over the filtered view, and `totalRowCountKnown` is `false` while a server-side total is still provisional |
@@ -340,6 +344,38 @@ their band: filtering, sorting, and pagination apply only to body rows. They
 are also outside row selection, so `selectAllRows()`, `selectRowsById()`, and
 the selected-row APIs do not include them. Pinned cells can still be focused,
 edited, and included in cell-range or column selections.
+
+## Overlays
+
+| Method | Purpose |
+| --- | --- |
+| `showLoadingOverlay()` | Show the loading overlay (spinner + `loadingMessage`) until `hideOverlay()`; holds the no-rows overlay back meanwhile |
+| `showNoRowsOverlay()` | Show the no-rows overlay now, whatever the row count; the next data change re-decides it |
+| `hideOverlay()` | Hide the loading overlay, and the no-rows overlay unless the view really is empty |
+
+```ts
+api.showLoadingOverlay();
+const rows = await fetchOrders();
+api.setRowData(rows);
+api.hideOverlay();
+```
+
+The React and Angular `loading` input drives the same overlay. See
+[Loading and empty overlays](../examples/rendering.mdx#loading-and-empty-overlays).
+
+## Localization
+
+| Method | Purpose |
+| --- | --- |
+| `getLocaleText(key, variableValues?)` | One of the grid's own strings, translated the way the grid translates it (`getLocaleText` option, else `localeText`, else English), with `{placeholder}`s filled |
+
+```ts
+api.getLocaleText("sortAscending");                      // "Sort Ascending"
+api.getLocaleText("pageOfTotal", { page: 2, total: 9 }); // "Page 2 of 9"
+```
+
+Use it in custom header components, cell renderers, and menu items so they read
+like the grid around them. See [Localization](../examples/localization.mdx).
 
 ## Export
 

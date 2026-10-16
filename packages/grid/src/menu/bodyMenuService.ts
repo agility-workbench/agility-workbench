@@ -1,4 +1,5 @@
 import { IGridCore } from "../interfaces";
+import type { LocaleTextResolver } from "../interfaces/locale";
 import { Column } from "../column/column";
 import { MenuItem } from "../interfaces/menuItem";
 import type { RowPinnedPosition } from "../interfaces/gridOptions";
@@ -51,6 +52,8 @@ interface BodyMenuServiceParams {
 export class BodyMenuService {
   constructor(private params: BodyMenuServiceParams) { }
 
+  private readonly t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
+
   buildDefaultBodyMenu(ctx: BodyMenuContext): MenuItem[] {
     const items: MenuItem[] = [];
 
@@ -61,40 +64,40 @@ export class BodyMenuService {
     const canEdit = this.params.clipboard.hasEditableCells();
 
     if (canEdit) {
-      items.push({ id: "cut", label: "Cut", left: "icon-cut", command: "body.cut" });
+      items.push({ id: "cut", label: this.t("cut"), left: "icon-cut", command: "body.cut" });
     }
-    items.push({ id: "copy", label: "Copy", left: "icon-copy", command: "body.copy" });
-    items.push({ id: "copyWithHeaders", label: "Copy with Headers", left: "icon-copy", command: "body.copyWithHeaders" });
+    items.push({ id: "copy", label: this.t("copy"), left: "icon-copy", command: "body.copy" });
+    items.push({ id: "copyWithHeaders", label: this.t("copyWithHeaders"), left: "icon-copy", command: "body.copyWithHeaders" });
     if (canEdit) {
-      items.push({ id: "paste", label: "Paste", left: "icon-paste", command: "body.paste" });
+      items.push({ id: "paste", label: this.t("paste"), left: "icon-paste", command: "body.paste" });
       // Fill down / right are copies of the selection's own first row / column — edit operations
       // like Paste, so they sit with it, and only when they would write something.
       if (this.params.clipboard.canFillDown?.()) {
-        items.push({ id: "fillDown", label: "Fill down", command: "body.fillDown" });
+        items.push({ id: "fillDown", label: this.t("fillDown"), command: "body.fillDown" });
       }
       if (this.params.clipboard.canFillRight?.()) {
-        items.push({ id: "fillRight", label: "Fill right", command: "body.fillRight" });
+        items.push({ id: "fillRight", label: this.t("fillRight"), command: "body.fillRight" });
       }
       // Right after a fill, the spreadsheet's "Copy Cells" / "Fill Series" choice, as items on the
       // cells the fill covered.
       for (const mode of this.params.clipboard.fillAlternatives?.(ctx) ?? []) {
         items.push(mode === "copy"
-          ? { id: "fillAsCopy", label: "Copy cells instead", command: "body.fillAsCopy" }
-          : { id: "fillAsSeries", label: "Fill series instead", command: "body.fillAsSeries" });
+          ? { id: "fillAsCopy", label: this.t("fillAsCopyInstead"), command: "body.fillAsCopy" }
+          : { id: "fillAsSeries", label: this.t("fillAsSeriesInstead"), command: "body.fillAsSeries" });
       }
     }
 
     const opts = this.params.core.getOptions();
     const exportItems: MenuItem[] = [];
     if (opts.allowExportAsCSV) {
-      exportItems.push({ id: "exportCSV", label: "CSV", command: "body.export.csv" });
+      exportItems.push({ id: "exportCSV", label: this.t("exportCsv"), command: "body.export.csv" });
     }
     if (opts.allowExportAsExcel) {
       exportItems.push(this.buildExcelExportItem(ctx));
     }
     if (exportItems.length > 0) {
       items.push({ isSeparator: true });
-      items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
+      items.push({ id: "export", label: this.t("export"), left: "icon-export", subMenu: exportItems });
     }
 
     const insertItem = this.buildRowInsertionItem(ctx);
@@ -124,13 +127,13 @@ export class BodyMenuService {
       if (!params || options.canInsert?.(params) === false) continue;
       entries.push({
         id: position === "above" ? "insertRowAbove" : "insertRowBelow",
-        label: position === "above" ? "1 row above" : "1 row below",
+        label: this.t(position === "above" ? "insertRowAbove" : "insertRowBelow"),
         command: position === "above" ? "body.row.insert.above" : "body.row.insert.below",
       });
     }
 
     return entries.length > 0
-      ? { id: "insertRow", label: "Insert", subMenu: entries }
+      ? { id: "insertRow", label: this.t("insert"), subMenu: entries }
       : null;
   }
 
@@ -188,13 +191,13 @@ export class BodyMenuService {
     const plural = targets.length > 1;
 
     const subMenu: MenuItem[] = [
-      { id: "pinTop", label: "Pin to top", command: "body.pin.top", disabled: allIn("top") },
-      { id: "pinBottom", label: "Pin to bottom", command: "body.pin.bottom", disabled: allIn("bottom") },
+      { id: "pinTop", label: this.t("pinToTop"), command: "body.pin.top", disabled: allIn("top") },
+      { id: "pinBottom", label: this.t("pinToBottom"), command: "body.pin.bottom", disabled: allIn("bottom") },
     ];
     if (positions.some(p => p !== null)) {
-      subMenu.push({ id: "unpin", label: plural ? "Unpin rows" : "Unpin row", command: "body.pin.none" });
+      subMenu.push({ id: "unpin", label: this.t(plural ? "unpinRows" : "unpinRow"), command: "body.pin.none" });
     }
-    return { id: "pinRow", label: plural ? "Pin rows" : "Pin row", left: "icon-pin", subMenu };
+    return { id: "pinRow", label: this.t(plural ? "pinRows" : "pinRow"), left: "icon-pin", subMenu };
   }
 
   // The model rows a pin/unpin acts on, per the selection snapshot: every row a cell range covers
@@ -242,23 +245,23 @@ export class BodyMenuService {
   // selected, with no surprise column appearing.
   private buildExcelExportItem(ctx: BodyMenuContext): MenuItem {
     if (!this.selectionCoversGroupRow(ctx)) {
-      return { id: "exportExcel", label: "Excel", command: "body.export.excel" };
+      return { id: "exportExcel", label: this.t("exportExcel"), command: "body.export.excel" };
     }
 
     const headingInRange = this.groupHeadingColumnInRange(ctx);
     const withGroups: MenuItem = {
       id: "exportExcelTree",
-      label: "Export with row groups",
+      label: this.t("exportWithRowGroups"),
       command: "body.export.excel.tree",
       disabled: !headingInRange,
-      title: headingInRange ? undefined : "The group heading column is not part of the selected range.",
+      title: headingInRange ? undefined : this.t("exportGroupHeadingNotInRange"),
     };
     const leavesOnly: MenuItem = {
       id: "exportExcelLeaves",
-      label: "Export leaf rows",
+      label: this.t("exportLeafRows"),
       command: "body.export.excel.leaves",
     };
-    return { id: "exportExcel", label: "Excel", subMenu: [withGroups, leavesOnly] };
+    return { id: "exportExcel", label: this.t("exportExcel"), subMenu: [withGroups, leavesOnly] };
   }
 
   // True when the active selection includes at least one group (header) row.

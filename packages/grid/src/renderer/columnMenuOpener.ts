@@ -61,7 +61,9 @@ export class ColumnMenuOpener {
 
   private columnMenuAriaLabel(targetColId: string, colIds: string[]): string {
     const count = colIds.includes(targetColId) ? colIds.length : colIds.length + 1;
-    return count > 1 ? `Column menu, ${count} columns` : "Column menu";
+    return count > 1
+      ? this.params.core.getLocaleText("columnMenuMultiple", { count })
+      : this.params.core.getLocaleText("columnMenu");
   }
 
   openFilterMenu(colID: string, anchorEl: HTMLElement) {
@@ -119,7 +121,7 @@ export class ColumnMenuOpener {
       clientY: rect.top - 4,
       items,
       position: "top-left",
-      ariaLabel: "Column menu",
+      ariaLabel: this.params.core.getLocaleText("columnMenu"),
       onItemClick: session.onItemClick,
       onClose: session.onClose,
     });

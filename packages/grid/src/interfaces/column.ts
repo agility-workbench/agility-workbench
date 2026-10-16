@@ -40,8 +40,14 @@ export type ColumnSection = "left" | "center" | "right";
  *
  * - `"text"` — plain formatted text, opting a column out of its type's default renderer (a
  *   `ColumnType.BOOLEAN` column otherwise draws `BooleanCellRenderer`'s checkbox).
+ * - `"link"` — `LinkCellRenderer`, an `<a>` to the value (`LinkCellRendererParams`).
+ * - `"image"` — `ImageCellRenderer`, an `<img>` of the value (`ImageCellRendererParams`).
+ * - `"progress"` — `ProgressCellRenderer`, a bar filled to the value (`ProgressCellRendererParams`).
+ * - `"rating"` — `RatingCellRenderer`, stars filled to the value (`RatingCellRendererParams`).
+ *
+ * Each built-in reads its options from `cellRendererParams`.
  */
-export type CellRendererAlias = "text";
+export type CellRendererAlias = "text" | "link" | "image" | "progress" | "rating";
 
 /** Context passed to the per-column cell styling callbacks (`cellClass` / `cellStyle`). */
 export interface CellClassParams {
@@ -231,12 +237,14 @@ export interface ColDef {
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   /**
    * What a data cell in this column shows: a renderer function, a renderer class, or a built-in
-   * name (`CellRendererAlias`). When omitted, a `ColumnType.BOOLEAN` column draws a checkbox
-   * (`BooleanCellRenderer`) and every other type shows the formatted value as text; set `"text"`
-   * to keep a boolean column as text. The renderer changes only what the cell shows: export, the
-   * clipboard, tooltips and quick-filter matching still read the formatted value.
+   * name (`CellRendererAlias`: `"link"`, `"image"`, `"progress"`, `"rating"`, `"text"`). When
+   * omitted, a `ColumnType.BOOLEAN` column draws a checkbox (`BooleanCellRenderer`) and every other
+   * type shows the formatted value as text; set `"text"` to keep a boolean column as text. The
+   * renderer changes only what the cell shows: export, the clipboard, tooltips and quick-filter
+   * matching still read the formatted value.
    */
   cellRenderer?: CellRenderer | CellRendererAlias;
+  /** Options for the renderer, e.g. `ProgressCellRendererParams` for `cellRenderer: "progress"`. */
   cellRendererParams?: any;
   /**
    * Extra CSS class(es) applied to every data cell in this column. A static class/array, or a
@@ -340,6 +348,33 @@ export interface ColDef {
   pivotComparator?: (a: any, b: any) => number;
   resizable?: boolean;
   movable?: boolean;
+  /**
+   * Keep this column at an edge of its section: `true` or `"left"` holds it at the left edge of
+   * its section's order (after the selection-checkbox column), `"right"` at the right edge. A
+   * locked column cannot be dragged or moved (header drag, column panel, `api.moveColumn`), columns
+   * dropped next to it never displace it, and `applyColumnState`, saved views and `setColumnDefs`
+   * put it back at its edge. Several columns locked to the same edge keep their relative order.
+   * Pinning still works and composes: a locked column pinned left sits at the edge of the left
+   * section. On a child of a column group the lock applies within the group (the group's edge);
+   * set it on the group definition to lock the whole group. Default `false`.
+   */
+  lockPosition?: boolean | "left" | "right";
+  /**
+   * Wrap a long header label onto several lines instead of truncating it on one; the sort icon,
+   * menu and expander keep their place beside it. Without {@link autoHeaderHeight} the header keeps
+   * its configured height and a label that wraps past it is clipped. Works on group definitions
+   * too, and in `defaultColDef`. Default `false`.
+   */
+  wrapHeaderText?: boolean;
+  /**
+   * Grow the header level this column's label sits on so the whole label fits: the level becomes
+   * as tall as the tallest such label on it (plus the cell's padding), never shorter than its
+   * configured `headerHeight` / `leafHeaderHeight` / `parentHeaderHeight`. Meant for use with
+   * {@link wrapHeaderText}; on a group definition it grows that group's level. Pinned sections grow
+   * together. Re-measured when widths, visible columns, labels, header heights, the theme or the
+   * loaded fonts change. Default `false`.
+   */
+  autoHeaderHeight?: boolean;
   hideable?: boolean;
   /**
    * Omit this column from the built-in column-management drawer while leaving it available in the

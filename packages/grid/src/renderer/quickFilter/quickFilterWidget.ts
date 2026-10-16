@@ -1,4 +1,5 @@
 import { IGridCore } from "../../interfaces/iGridCore";
+import { pluralLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 import { getIconClassName } from "../../theme/icons";
 import {
   QuickFilterBehavior,
@@ -107,6 +108,8 @@ export class QuickFilterWidget {
   private unsubscribeCore: (() => void) | null = null;
   private unsubscribePivot: (() => void) | null = null;
 
+  private readonly t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
+
   constructor(private params: QuickFilterWidgetParams) {
     this.opts = resolveQuickFilterOptions(params.options);
     // Match/case are per-session sticky: on a rebuild they carry over from the previous widget's
@@ -142,14 +145,14 @@ export class QuickFilterWidget {
     this.input.type = "text";
     this.input.className = "pte-quick-filter-input";
     // Wording follows the behavior (see syncBehaviorUI); seeded here for the filtering default.
-    this.input.placeholder = "Search…";
-    this.input.setAttribute("aria-label", "Search all columns");
+    this.input.placeholder = this.t("searchPlaceholder");
+    this.input.setAttribute("aria-label", this.t("searchAllColumns"));
     this.input.autocomplete = "off";
     this.input.spellcheck = false;
 
     this.clearBtn = button("pte-quick-filter-clear");
     this.clearBtn.type = "button";
-    this.clearBtn.setAttribute("aria-label", "Clear search");
+    this.clearBtn.setAttribute("aria-label", this.t("clearSearch"));
     this.clearBtn.textContent = "×";
     this.clearBtn.hidden = true;
 
@@ -177,7 +180,7 @@ export class QuickFilterWidget {
       // span (its own mask + fill) — otherwise the hover background would overwrite the icon fill.
       this.optionsBtn = button("pte-quick-filter-btn pte-quick-filter-options");
       this.optionsBtn.type = "button";
-      this.optionsBtn.setAttribute("aria-label", "Search options");
+      this.optionsBtn.setAttribute("aria-label", this.t("searchOptions"));
       this.optionsBtn.setAttribute("aria-haspopup", "true");
       this.optionsBtn.setAttribute("aria-expanded", "false");
       const optionsIcon = span(`pte-quick-filter-options-icon ${getIconClassName("search-options")}`);
@@ -191,8 +194,8 @@ export class QuickFilterWidget {
     if (!this.isPermanent()) {
       this.closeBtn = button("pte-quick-filter-btn pte-quick-filter-close");
       this.closeBtn.type = "button";
-      this.closeBtn.setAttribute("aria-label", "Close search");
-      this.closeBtn.title = "Close (Esc)";
+      this.closeBtn.setAttribute("aria-label", this.t("closeSearch"));
+      this.closeBtn.title = this.t("closeSearchHint");
       this.closeBtn.textContent = "✕";
       this.searchRow.appendChild(this.closeBtn);
     }
@@ -292,8 +295,8 @@ export class QuickFilterWidget {
       this.findNav!.appendChild(btn);
       return btn;
     };
-    this.findPrevBtn = stepper("Previous match", "Previous match (Shift+Enter)", "move-up", "previous");
-    this.findNextBtn = stepper("Next match", "Next match (Enter)", "move-down", "next");
+    this.findPrevBtn = stepper(this.t("previousMatch"), this.t("previousMatchHint"), "move-up", "previous");
+    this.findNextBtn = stepper(this.t("nextMatch"), this.t("nextMatchHint"), "move-down", "next");
     this.searchRow.appendChild(this.findNav);
   }
 
@@ -358,10 +361,10 @@ export class QuickFilterWidget {
     this.findCountSr.textContent = !searching
       ? ""
       : count === 0
-        ? "No matches"
+        ? this.t("findNoMatches")
         : state.activeIndex > 0
-          ? `Match ${state.activeIndex} of ${count}`
-          : `${count} ${count === 1 ? "match" : "matches"}`;
+          ? this.t("findMatchOfTotal", { index: state.activeIndex, total: count })
+          : pluralLocaleText(this.t, "findMatches", count);
     const stepsDisabled = !searching || count === 0;
     if (this.findPrevBtn) this.findPrevBtn.disabled = stepsDisabled;
     if (this.findNextBtn) this.findNextBtn.disabled = stepsDisabled;
@@ -387,13 +390,13 @@ export class QuickFilterWidget {
       this.behaviorSelect.title = available
         ? ""
         : this.params.core.getRowModel().getType() === "serverSide"
-          ? "Highlighting matches is not available when rows load from the server"
-          : "Highlighting matches is not available while the grid is pivoted";
+          ? this.t("findUnavailableServerSide")
+          : this.t("findUnavailablePivot");
     }
-    this.input.placeholder = finding ? "Find…" : "Search…";
+    this.input.placeholder = this.t(finding ? "findPlaceholder" : "searchPlaceholder");
     this.input.setAttribute(
       "aria-label",
-      finding ? "Find in all columns" : "Search all columns",
+      this.t(finding ? "findInAllColumns" : "searchAllColumns"),
     );
     this.syncFindState(this.params.core.getFindState());
   }
@@ -684,13 +687,13 @@ export class QuickFilterWidget {
       const modeRow = div("pte-quick-filter-option-row");
       const modeLabel = document.createElement("label");
       modeLabel.className = "pte-quick-filter-option-label";
-      modeLabel.textContent = "Match";
+      modeLabel.textContent = this.t("matchModeLabel");
       this.matchModeSelect = document.createElement("select");
       this.matchModeSelect.className = "pte-select pte-quick-filter-option-select";
       for (const [value, text] of [
-        ["multiTerm", "All words"],
-        ["substring", "Exact phrase"],
-        ["wholeCell", "Whole cell"],
+        ["multiTerm", this.t("matchAllWords")],
+        ["substring", this.t("matchExactPhrase")],
+        ["wholeCell", this.t("matchWholeCell")],
       ] as const) {
         const o = document.createElement("option");
         o.value = value;
@@ -717,7 +720,7 @@ export class QuickFilterWidget {
         this.commit(true);
       });
       caseLabel.appendChild(this.caseCheckbox);
-      caseLabel.appendChild(document.createTextNode(" Match case"));
+      caseLabel.appendChild(document.createTextNode(` ${this.t("matchCase")}`));
       caseRow.appendChild(caseLabel);
 
       if (this.opts.showBehaviorToggle) this.optionsPanel.appendChild(div("pte-quick-filter-option-sep"));
@@ -739,10 +742,10 @@ export class QuickFilterWidget {
     const row = div("pte-quick-filter-option-row");
     const label = document.createElement("label");
     label.className = "pte-quick-filter-option-label";
-    label.textContent = "Search";
+    label.textContent = this.t("search");
     this.behaviorSelect = document.createElement("select");
     this.behaviorSelect.className = "pte-select pte-quick-filter-option-select pte-quick-filter-behavior-select";
-    for (const [value, text] of [["filter", "Filter rows"], ["find", "Highlight matches"]] as const) {
+    for (const [value, text] of [["filter", this.t("behaviorFilterRows")], ["find", this.t("behaviorHighlightMatches")]] as const) {
       const o = document.createElement("option");
       o.value = value;
       o.textContent = text;
@@ -773,10 +776,10 @@ export class QuickFilterWidget {
     const anchorRow = div("pte-quick-filter-option-row");
     const anchorLabel = document.createElement("label");
     anchorLabel.className = "pte-quick-filter-option-label";
-    anchorLabel.textContent = "Anchor";
+    anchorLabel.textContent = this.t("anchorLabel");
     this.anchorSelect = document.createElement("select");
     this.anchorSelect.className = "pte-select pte-quick-filter-option-select pte-quick-filter-anchor-select";
-    for (const [value, text] of [["right", "Right"], ["left", "Left"]] as const) {
+    for (const [value, text] of [["right", this.t("anchorRight")], ["left", this.t("anchorLeft")]] as const) {
       const o = document.createElement("option");
       o.value = value;
       o.textContent = text;
@@ -807,7 +810,7 @@ export class QuickFilterWidget {
         this.clearOnClose = !this.keepOpenCheckbox!.checked;
       });
       keepLabel.appendChild(this.keepOpenCheckbox);
-      keepLabel.appendChild(document.createTextNode(" Keep filter when closed"));
+      keepLabel.appendChild(document.createTextNode(` ${this.t("keepFilterWhenClosed")}`));
       keepRow.appendChild(keepLabel);
       panel.appendChild(keepRow);
     }
@@ -840,7 +843,7 @@ export class QuickFilterWidget {
     this.indicatorPill = button("pte-quick-filter-pill");
     this.indicatorPill.type = "button";
     this.indicatorPill.hidden = true;
-    this.indicatorPill.setAttribute("aria-label", "Active search — click to edit");
+    this.indicatorPill.setAttribute("aria-label", this.t("activeSearchPill"));
     const pillIcon = span(`pte-quick-filter-pill-icon ${getIconClassName("filter")}`);
     pillIcon.setAttribute("aria-hidden", "true");
     this.indicatorLabel = span("pte-quick-filter-pill-label");

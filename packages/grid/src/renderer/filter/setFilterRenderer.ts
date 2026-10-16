@@ -6,6 +6,7 @@ import { createElement, div } from "../element";
 import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
 import { Overlay } from "../overlay";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
+import { defaultLocaleText, pluralLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 import {
   createSetFilterComponentRuntime,
 } from "./setFilterValueComponent";
@@ -48,6 +49,10 @@ export class SetFilterRenderer implements IFilterRenderer {
   /** Whether a mini filter is typed for the rows being painted: every group is then held open. */
   private miniFilterActive = false;
 
+  private get t(): LocaleTextResolver {
+    return this.spec.localeText ?? defaultLocaleText;
+  }
+
   constructor(
     private controller: FilterController,
     private spec: FilterPanelSpec,
@@ -84,12 +89,12 @@ export class SetFilterRenderer implements IFilterRenderer {
     if (uiState.error) {
       this.clearOptions();
       const error = div("pte-set-filter-error");
-      error.textContent = "Error loading values";
+      error.textContent = this.t("setFilterLoadError");
       this.conditionContainer.appendChild(error);
       return;
     } else if (uiState.loading) {
       if (!this.loader) {
-        this.loader = new Overlay("Loading values…");
+        this.loader = new Overlay(this.t("setFilterLoading"));
         this.root.appendChild(this.loader.getUi());
       }
       this.loader.show();
@@ -137,9 +142,10 @@ export class SetFilterRenderer implements IFilterRenderer {
   private setMiniFilterPlaceholder(options: SetFilterOption[] | undefined): void {
     let text = this.spec.params.miniFilterPlaceholder;
     if (text === undefined) {
-      text = "Type to filter values";
       const example = options?.find(o => o.type === "value" && o.matchText !== undefined)?.matchText;
-      if (example !== undefined) text += `, e.g. ${example}`;
+      text = example !== undefined
+        ? this.t("setFilterSearchPlaceholderWithExample", { example })
+        : this.t("setFilterSearchPlaceholder");
     }
     if (this.miniFilterInput.placeholder === text) return;
     this.miniFilterInput.placeholder = text;
@@ -266,7 +272,7 @@ export class SetFilterRenderer implements IFilterRenderer {
     this.miniFilterActive = miniFilterActive;
     // The flat list is a labelled group of checkboxes; the tree is a tree.
     this.conditionContainer.setAttribute("role", this.treeRows ? "tree" : "group");
-    this.conditionContainer.setAttribute("aria-label", "Filter values");
+    this.conditionContainer.setAttribute("aria-label", this.t("filterValues"));
 
     const rows = document.createDocumentFragment();
     let rowToFocus: HTMLLabelElement | null = null;
@@ -291,9 +297,9 @@ export class SetFilterRenderer implements IFilterRenderer {
       checkbox.name = `pte-set-filter-option-checkbox-${option.key}`;
       checkbox.type = "checkbox";
       if (option.type === "select_all") {
-        checkbox.setAttribute("aria-label", "Select all values");
+        checkbox.setAttribute("aria-label", this.t("selectAllValues"));
       } else if (option.type === "blanks") {
-        checkbox.setAttribute("aria-label", "Include blank values");
+        checkbox.setAttribute("aria-label", this.t("includeBlankValues"));
       } else {
         checkbox.setAttribute("aria-label", option.label);
       }
@@ -326,7 +332,7 @@ export class SetFilterRenderer implements IFilterRenderer {
           label.appendChild(count);
           // A sighted user reads the muted number as a count; a reader hears "3 rows", not "3".
           const unit = createElement("span", "pte-sr-only");
-          unit.textContent = option.count === 1 ? " row" : " rows";
+          unit.textContent = ` ${pluralLocaleText(this.t, "setFilterRowCountUnit", option.count)}`;
           label.appendChild(unit);
           if (!this.treeRows) {
             // The flat checkbox's name is the value's label by contract (`valueFormatter`); the

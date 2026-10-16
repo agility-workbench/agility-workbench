@@ -99,6 +99,16 @@ export type GridActionColumnMove = {
   toSection: "left" | "center" | "right";
 };
 
+/** `api.moveColumns`: see ColumnModel.moveColumnsToIndex for the `toIndex` semantics. */
+export type GridActionColumnsMove = {
+  type: "columnsMove";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
+  colIds: string[];
+  /** Index into the order `getColumnState()` returns, clamped to each column's own section. */
+  toIndex: number;
+};
+
 export type GridActionAddSparklineColumn = {
   type: "addSparklineColumn";
   /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
@@ -442,6 +452,7 @@ export type GridAction =
   | GridActionColumnPin
   | GridActionColumnVisibility
   | GridActionColumnMove
+  | GridActionColumnsMove
   | GridActionAddSparklineColumn
   | GridActionThemeFontSet
   | GridActionRowDataSet

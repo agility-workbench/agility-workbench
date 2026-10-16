@@ -5,9 +5,10 @@ import type { IGridCore } from "../interfaces";
 import type { ColDef } from "../interfaces/column";
 import { ColumnFilterMenuService } from "./filterMenuService";
 import { FilterType } from "../interfaces/filter";
+import { defaultLocaleText } from "../interfaces/locale";
 
 function buildSpec(colDef: ColDef) {
-  const core = { getOptions: () => ({ filterDebounceMs: 100 }) } as unknown as IGridCore;
+  const core = { getOptions: () => ({ filterDebounceMs: 100 }), getLocaleText: defaultLocaleText } as unknown as IGridCore;
   const column = new Column(colDef);
   return { column, spec: new ColumnFilterMenuService(core).buildFilterMenu({ trigger: "api", targetCol: column }) };
 }

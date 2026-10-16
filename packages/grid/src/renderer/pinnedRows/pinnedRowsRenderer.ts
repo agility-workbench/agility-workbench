@@ -139,7 +139,8 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       this.params.forwardWheel(event.deltaX, event.deltaY);
     }, { passive: false });
     // Captured ahead of the body handlers the gesture is routed to (see getInteractionRoots).
-    for (const type of ["mousedown", "click", "dblclick", "contextmenu"]) {
+    // pointerup: a touch tap runs the body's mousedown path from its pointerup (touchGestures.ts).
+    for (const type of ["mousedown", "pointerup", "click", "dblclick", "contextmenu"]) {
       this.sticky.root.addEventListener(type, this.notePointerOnMirror, true);
     }
   }

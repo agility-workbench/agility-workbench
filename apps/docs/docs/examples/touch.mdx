@@ -1,0 +1,94 @@
+---
+title: Touch and pointer
+sidebar_position: 22
+---
+
+# Touch and pointer
+
+On a phone or a tablet the grid takes the same gestures a mouse user makes, translated to
+fingers: tap to select, double tap to edit, long press for a menu, and drags for resizing,
+reordering and filling. There is nothing to configure. Mouse input is unchanged.
+
+## What a finger does
+
+| Gesture | Where | Same as |
+| --- | --- | --- |
+| Tap | a cell | click: focus and select the cell, tick a row checkbox, toggle a boolean box, open or close a group chevron, `editTrigger: "singleClick"` editing |
+| Tap | a header | click: sort, select the column, open the menu or filter button |
+| Double tap | a cell | double click: `editTrigger: "doubleClick"` editing, `cellDoubleClicked` |
+| Double tap | the resize handle | double click: autosize the column |
+| Double tap | the fill handle | double click: fill down to the end of the adjacent block |
+| Long press (500 ms) | a cell | right-click: the body context menu at the touch point |
+| Long press (500 ms) | a header | right-click: the column menu at the touch point |
+| Drag | the resize handle | resize drag, with the same `columnWidthsChanged` events (`final: false` while dragging, one `final: true` at the end) |
+| Drag sideways | a header | column move, with the same drag ghost and drop rules (non-movable columns stay put) |
+| Drag | the fill handle | fill drag |
+| Swipe | the body | native scrolling; nothing is selected |
+
+A tap is a press released within 10 px of where it started. Moving further turns it into a
+pan (the browser scrolls) or, on a header, a column drag. A long press on an editable boolean
+box, a link or a rating star does nothing extra: those controls take their own taps.
+
+`rowClicked` and `cellClicked` still carry the browser's `click`. In current browsers that is a
+`PointerEvent`, so `event.pointerType` tells a tap from a mouse click:
+
+```ts
+api.on("cellClicked", ({ event, colId }) => {
+  const viaTouch = (event as PointerEvent).pointerType === "touch";
+  console.log(colId, viaTouch ? "tapped" : "clicked");
+});
+```
+
+## What stays mouse-only
+
+- **Range selection by dragging across cells.** On a touch screen that drag is the scroll
+  gesture, and the grid leaves it to the browser. Select a range with the keyboard
+  (Shift+Arrow) on a tablet with a keyboard, or from code with `api.selectRange` and
+  `api.extendRangeTo`.
+- **Hover tooltips.** There is no hover on a touch screen; `api.showTooltip` still works.
+  `rowHover` and `columnHover` highlights are not applied after a tap either, and buttons that
+  `showColumnButtonsOnHover` hides are always shown under `(hover: none)`.
+
+## Pen
+
+A pen behaves like a finger: the same tap, long press and drag rules apply, and pen panning
+follows the same `touch-action` values. A pen does not drag out a cell range either.
+
+## touch-action
+
+The grid's stylesheet sets:
+
+```css
+.pte-root { touch-action: manipulation; }   /* native pan and pinch zoom, no double-tap zoom */
+.pte-hcell { touch-action: pan-y; }         /* horizontal drag moves the column, vertical scrolls the page */
+.pte-hcell-resize-handle,
+.pte-fill-handle { touch-action: none; }    /* the drag belongs to the grid from the first pixel */
+```
+
+`manipulation` on the root is what lets a tap act at once (no 300 ms delay) and lets a
+double tap reach the grid instead of zooming the page. The body inherits it, so swiping the
+body always scrolls.
+
+`pan-y` on header cells means a vertical swipe that starts on the header still scrolls the
+page, while a sideways drag reorders the column. The cost: a horizontal pan or a pinch zoom
+cannot start on a header cell. If your page needs that more than touch column moves, override
+it:
+
+```css
+.my-grid .pte-hcell { touch-action: manipulation; }
+```
+
+Column moves by touch then stop working (the browser takes the horizontal drag); resize, tap
+and long press are unaffected.
+
+Under `(pointer: coarse)` the resize handle, the fill handle, the header menu buttons, the
+group chevrons and the boolean box get hit areas of at least 24 px. A mouse layout is not
+affected.
+
+## Long press and the native menu
+
+Chrome on Android fires its own `contextmenu` on a long press; iOS Safari fires none, which is
+why the grid times the press itself. Either way exactly one menu opens. The `contextmenu` the
+grid dispatches for a long press reaches your own `contextmenu` listeners too. With
+`bodyContextMenu: false` (or `columnContextMenu: false` on a column) the grid does not claim
+the press and the browser does what it would do on its own.

@@ -57,6 +57,7 @@ import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChange
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
 import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
+import { createLocaleTextResolver, type GridLocaleKey, resolveLocaleText } from "../interfaces/locale";
 
 interface AppliedRowTransaction {
   result: RowTransactionResult;
@@ -307,12 +308,12 @@ export class GridCore implements IGridCore {
     this.find = new QuickFilterFind({
       getRowModel: () => this.rowModel,
       // The cells a find can highlight: visible data leaves. Internal columns (row numbers,
-      // checkboxes, the auto-group column), any tree column and a BOOLEAN column drawing the
-      // default checkbox are excluded because their cells do not render `formatValue` — the cell
-      // renderer draws a checkbox, a row number or a hierarchy label there, so matching their value
-      // would highlight text the user cannot see.
+      // checkboxes, the auto-group column), any tree column and a column whose built-in renderer
+      // draws no text (checkbox, image, rating, bare progress bar) are excluded because their cells
+      // do not render `formatValue` — the cell shows a checkbox, a row number, a hierarchy label or
+      // a picture there, so matching their value would highlight text the user cannot see.
       getColumns: () => this.columnModel.getLeaves()
-        .filter(col => !col.isInternal() && !col.isTreeColumn() && !col.usesDefaultCheckboxRenderer()),
+        .filter(col => !col.isInternal() && !col.isTreeColumn() && !col.rendersNoText()),
       canFind: () => this.isFindAvailable(),
     });
     this.selectionModel = new SelectionModel({
@@ -411,7 +412,7 @@ export class GridCore implements IGridCore {
       allowExportAsCSV: options.allowExportAsCSV ?? true,
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
-      paginationControls: resolvePaginationControlsOptions(options.paginationControls),
+      paginationControls: resolvePaginationControlsOptions(options.paginationControls, createLocaleTextResolver(options)),
       rowNumbers: isTrue(options.rowNumbers),
       rowHover: options.rowHover ?? true,
       columnHover: isTrue(options.columnHover),
@@ -475,7 +476,7 @@ export class GridCore implements IGridCore {
       getGroupChildCount: options.getGroupChildCount,
       groupChildCount: options.groupChildCount ?? true, // true (row count) | false | getter
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
-        ?? "More rows may exist on the server; the total updates as they load",
+        ?? resolveLocaleText(options, "paginationUnknownTotal"),
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
@@ -521,12 +522,12 @@ export class GridCore implements IGridCore {
       toolbar: options.toolbar ?? {},
       savedViews: options.savedViews,
       sheets: options.sheets,
-      loadingMessage: options.loadingMessage ?? "Loading data...",
-      noRowsMessage: options.noRowsMessage ?? "No rows to show",
+      loadingMessage: options.loadingMessage ?? resolveLocaleText(options, "loading"),
+      noRowsMessage: options.noRowsMessage ?? resolveLocaleText(options, "noRows"),
       pivotNoValuesMessage:
-        options.pivotNoValuesMessage ?? "Choose Aggregate on a column to add values",
+        options.pivotNoValuesMessage ?? resolveLocaleText(options, "pivotNoValues"),
       pivotEmptyMessage:
-        options.pivotEmptyMessage ?? "Add row groups, column labels or values to build the pivot",
+        options.pivotEmptyMessage ?? resolveLocaleText(options, "pivotEmpty"),
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
       cellFlashDuration: options.cellFlashDuration != null && options.cellFlashDuration >= 0 ? options.cellFlashDuration : 500,
       cellFadeDuration: options.cellFadeDuration != null && options.cellFadeDuration >= 0 ? options.cellFadeDuration : 1000,
@@ -534,11 +535,21 @@ export class GridCore implements IGridCore {
       theme: options.theme,
       suppressStyleInjection: options.suppressStyleInjection ?? false,
       styleNonce: options.styleNonce,
+      localeText: options.localeText,
+      getLocaleText: options.getLocaleText,
     };
   }
 
   getOptions(): Readonly<GridOptions> {
     return this.options;
+  }
+
+  /**
+   * One of the grid's user-visible strings: the `getLocaleText` callback, else the `localeText`
+   * entry, else the English default, with `{placeholder}`s filled from `variableValues`.
+   */
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string {
+    return resolveLocaleText(this.options, key, variableValues);
   }
 
   getSnapshot(): GridSnapshot {
@@ -2945,7 +2956,7 @@ export class GridCore implements IGridCore {
   private getGroupTotalRowLabel(node: IRowNode): string {
     const grandTotal = !!node.grandTotal;
     const groupLabel = grandTotal || !node.groupNode ? "" : groupRowLabel(node.groupNode, null);
-    const defaultLabel = grandTotal ? "Grand Total" : `Total ${groupLabel}`;
+    const defaultLabel = grandTotal ? this.getLocaleText("grandTotal") : this.getLocaleText("groupTotal", { group: groupLabel });
     const custom = this.options.groupTotalRowLabel;
     if (!custom) return defaultLabel;
     const label = custom({
@@ -4096,6 +4107,16 @@ export class GridCore implements IGridCore {
         }
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "columnsMove": {
+        // The batch form of columnMove: the same events, once, and none when nothing moved.
+        const movedIds = this.columnModel.moveColumnsToIndex(action.colIds, action.toIndex);
+        if (movedIds.length === 0) break;
+        this.clearSelectionForColumnChange();
+        const pair = this.eventColIds(movedIds.map(id => this.columnModel.getById(id)));
+        this.emitColumnsChanged({ reason: "order", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+        this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        break;
+      }
       case "addSparklineColumn": {
         const colId = action.newColId || `sparkline_${crypto.randomUUID()}`;
         const selectedColumns = action.colIds
@@ -4126,7 +4147,7 @@ export class GridCore implements IGridCore {
 
         const colDef: ColDef = {
           colId,
-          label: "Sparkline",
+          label: this.getLocaleText("sparklineColumn"),
           width: 120,
           sortable: false,
           filter: false,

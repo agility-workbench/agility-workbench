@@ -57,14 +57,12 @@ docks the active ancestor chain while the body scrolls — see
 
 The toolbar provides a grouping picker, ordered chips, drag insertion, keyboard
 reordering, and clear-all behavior. The API can replace grouped columns and
-expand or collapse all groups in one update, or toggle a single group:
+expand or collapse all groups in one update, or a named set of groups in one
+rebuild (ids come from `api.getGroupNodes()` or `api.getRowNode(id)`):
 
 ```ts
-api.dispatch({
-  type: "groupToggleExpand",
-  groupId: "the-stable-group-node-id",
-  expanded: true,
-});
+api.setAllGroupsExpanded(false);
+api.setGroupExpanded(["emea-group-id", "apac-group-id"], true);
 ```
 
 ## Group-row cells

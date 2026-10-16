@@ -2,6 +2,7 @@ import { FormatterOptions, FormatterOptionsParams, getFormatterByType, resolveFo
 import { parseTextByType } from "./parsers";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
+import { builtInRendererShowsNoText, resolveCellRendererAlias } from "../cellRenderers/aliases";
 import { HeaderComponent } from "../renderer/header/headerComponent";
 import { TooltipComponent, TooltipComponentParams } from "../renderer/tooltip/tooltipComponent";
 import { ActionFrameComponent } from "../renderer/actionFrame/actionFrameComponent";
@@ -47,7 +48,8 @@ export class Column {
   cellEditorParams?: any;
   editable: boolean = false;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
-  // The column's own renderer; a `"text"` alias is normalized away (see textRendererRequested).
+  // The column's own renderer; a built-in alias is resolved to its class and a `"text"` alias is
+  // normalized away (see textRendererRequested).
   cellRenderer?: CellRenderer;
   cellRendererParams?: any;
   // True when the definition asked for plain text (`cellRenderer: "text"`), which suppresses the
@@ -94,6 +96,12 @@ export class Column {
   pivotComparator?: (a: any, b: any) => number;
   resizable: boolean;
   movable: boolean;
+  /** `ColDef.lockPosition`, normalised: the section (or group) edge this column is held at. */
+  lockPosition: "left" | "right" | null = null;
+  /** `ColDef.wrapHeaderText`: the header label wraps instead of truncating. */
+  wrapHeaderText: boolean = false;
+  /** `ColDef.autoHeaderHeight`: the header level holding this column grows to fit its label. */
+  autoHeaderHeight: boolean = false;
   pinnable: boolean;
   hideable?: boolean;
   suppressColumnPanel: boolean = false;
@@ -181,7 +189,11 @@ export class Column {
     this.editable = isTrue(col.editable);
     this.formatterOptions = col.formatterOptions;
     this.textRendererRequested = col.cellRenderer === "text";
-    this.cellRenderer = typeof col.cellRenderer === "string" ? undefined : col.cellRenderer;
+    // A built-in alias ("link", "image", ...) resolves to its class; "text" (and an unknown name)
+    // leaves no renderer. `col.cellRenderer` keeps the alias string, so the defs round-trip.
+    this.cellRenderer = typeof col.cellRenderer === "string"
+      ? resolveCellRendererAlias(col.cellRenderer)
+      : col.cellRenderer;
     this.cellRendererParams = col.cellRendererParams;
     this.headerComponent = col.headerComponent;
     this.headerCellComponent = col.headerCellComponent;
@@ -219,6 +231,11 @@ export class Column {
     this.pivotComparator = col.pivotComparator;
     this.resizable = !isFalse(col.resizable);
     this.movable = !isFalse(col.movable);
+    this.lockPosition = col.lockPosition === "right" ? "right"
+      : col.lockPosition === true || col.lockPosition === "left" ? "left"
+        : null;
+    this.wrapHeaderText = isTrue(col.wrapHeaderText);
+    this.autoHeaderHeight = isTrue(col.autoHeaderHeight);
     this.pinnable = !isFalse((col as InternalColDef).__pinnable);
     this.hideable = !isFalse(col.hideable);
     this.suppressColumnPanel = isTrue(col.suppressColumnPanel);
@@ -395,7 +412,7 @@ export class Column {
   /**
    * Whether this column's data cells draw the built-in checkbox (`BooleanCellRenderer`) because it
    * is a `ColumnType.BOOLEAN` column with no renderer of its own and no `cellRenderer: "text"`.
-   * Such a cell shows no text, which is why the quick-filter find skips these columns.
+   * Such a cell shows no text (see rendersNoText).
    */
   usesDefaultCheckboxRenderer(): boolean {
     return this.type === ColumnType.BOOLEAN
@@ -403,6 +420,17 @@ export class Column {
       && !this.textRendererRequested
       && !this.isInternal()
       && !this.isTreeColumn();
+  }
+
+  /**
+   * Whether this column's data cells show no text because a built-in renderer draws something else:
+   * the default or explicit checkbox, an image, rating stars, or a progress bar without `showValue`.
+   * The quick-filter find skips these columns, since a match there would highlight text the user
+   * cannot see. App renderers are assumed to show text.
+   */
+  rendersNoText(): boolean {
+    return this.usesDefaultCheckboxRenderer()
+      || builtInRendererShowsNoText(this.cellRenderer, this.cellRendererParams);
   }
 
   // Whether a cell in this column may be edited. Internal columns (e.g. row numbers) are never

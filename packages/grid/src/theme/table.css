@@ -149,6 +149,11 @@
   --pte-not-allowed-icon-color: #ef4444;
   --pte-sparkline-stroke-color: #0ea5e9;
   --pte-sparkline-bar-color: #93c5fd;
+  --pte-progress-track-color: #e5e7eb;
+  --pte-progress-bar-color: #3b82f6;
+  --pte-rating-color: #f59e0b;
+  --pte-rating-empty-color: #d1d5db;
+  --pte-link-color: #2563eb;
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.45);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.45);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
@@ -225,6 +230,11 @@
   --pte-not-allowed-icon-color: #f87171;
   --pte-sparkline-stroke-color: #38bdf8;
   --pte-sparkline-bar-color: #60a5fa;
+  --pte-progress-track-color: #334155;
+  --pte-progress-bar-color: #60a5fa;
+  --pte-rating-color: #fbbf24;
+  --pte-rating-empty-color: #475569;
+  --pte-link-color: #93c5fd;
   --pte-cell-flash-up-bg-color: rgba(34, 197, 94, 0.55);
   --pte-cell-flash-down-bg-color: rgba(239, 68, 68, 0.55);
   --pte-cell-flash-neutral-bg-color: rgba(148, 163, 184, 0.45);
@@ -3919,6 +3929,21 @@
   gap: 8px;
 }
 
+/* ColDef.wrapHeaderText: the label breaks onto several lines (between words, and inside a word only
+   when one does not fit) instead of truncating. The sort icon, expander and menu are flex siblings
+   that do not shrink, so they keep their place beside it. On the container, not the cell, so a
+   wrapping group header does not make its children wrap. Without autoHeaderHeight the container
+   keeps its configured height and `.pte-hcell-content` clips what wraps past it. */
+.pte-hcell-container.pte-hcell-wrap-text .pte-hcell-content {
+  white-space: normal;
+}
+
+.pte-hcell-container.pte-hcell-wrap-text .pte-hcell-label {
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
 .pte-hcell-expander {
   cursor: pointer;
   flex-shrink: 0;
@@ -4542,6 +4567,91 @@
 .pte-root.pte-fill-dragging,
 .pte-root.pte-fill-dragging .pte-cell {
   cursor: crosshair;
+}
+
+/* Touch and pen (renderer/interaction/touchGestures.ts). The touch-action map:
+   - the root: manipulation — native panning and pinch zoom, no double-tap zoom, so a tap is not
+     delayed and a double tap reaches the grid. The body inherits it: swiping scrolls natively.
+   - header cells: pan-y — a horizontal drag reorders the column, a vertical swipe scrolls the page.
+     The cost: no horizontal pan or pinch zoom that starts on a header cell.
+   - the resize handle and the fill handle: none — the drag is the grid's from the first pixel.
+   Override any of them with a more specific rule in the host stylesheet. */
+.pte-root {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+.pte-hcell {
+  touch-action: pan-y;
+}
+
+.pte-hcell-resize-handle,
+.pte-fill-handle {
+  touch-action: none;
+}
+
+/* Hit targets of at least 24px for a finger; the mouse layout is untouched. */
+@media (pointer: coarse) {
+  /* Straddles the column edge (15px inside, 9px past it); the drawn line stays where it was. */
+  .pte-hcell-resize-handle {
+    width: 24px;
+    right: -9px;
+  }
+
+  .pte-hcell-resize-handle:after {
+    right: 12px;
+  }
+
+  /* A transparent 24px grip in the corner cell; the visible square is drawn inside it. */
+  .pte-fill-handle {
+    width: 24px;
+    height: 24px;
+    background-color: transparent;
+    border: none;
+  }
+
+  .pte-fill-handle::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    background-color: var(--pte-selected-border-color);
+    border: 1px solid var(--pte-root-bg-color);
+  }
+
+  .pte-hcell-menu-btn {
+    min-width: 24px;
+    min-height: 24px;
+    box-sizing: border-box;
+  }
+
+  .pte-group-toggle {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .pte-cell-boolean-box::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+}
+
+/* No hover on a touch screen: a tap must not leave a hover background behind, and buttons that
+   only appear on hover are always shown (a long press also opens the column menu). */
+@media (hover: none) {
+  .pte-group-toggle:hover,
+  .pte-hcell-menu-btn:hover {
+    background-color: transparent;
+  }
+
+  .pte-column-buttons-on-hover .pte-hcell-menu-btn {
+    visibility: inherit;
+  }
 }
 
 .pte-cell.pte-fill-preview {
@@ -5382,6 +5492,135 @@
 
 .pte-checkbox.pte-cell-boolean-readonly:not(.pte-checkbox-checked):not(.pte-checkbox-indeterminate) {
   background-color: var(--pte-header-background-color);
+}
+
+/* Built-in link, image, progress and rating renderers (cellRenderer: "link" | "image" |
+   "progress" | "rating"). Custom-renderer cells have no padding, so each root restores it. */
+.pte-cell-link,
+.pte-cell-image,
+.pte-cell-progress,
+.pte-cell-rating {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  box-sizing: border-box;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pte-cell-right-aligned .pte-cell-link,
+.pte-cell-right-aligned .pte-cell-image,
+.pte-cell-right-aligned .pte-cell-rating {
+  justify-content: flex-end;
+}
+
+.pte-cell-link {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pte-cell-link-anchor {
+  color: var(--pte-link-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pte-cell-link-anchor:hover {
+  text-decoration-thickness: 2px;
+}
+
+.pte-cell-image {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.pte-cell-image-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.pte-cell-image-broken {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--pte-muted-text-color);
+}
+
+.pte-cell-progress {
+  gap: 8px;
+}
+
+.pte-cell-progress-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--pte-progress-track-color);
+}
+
+.pte-cell-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background-color: var(--pte-progress-bar-color);
+}
+
+.pte-cell-progress-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pte-cell-rating {
+  gap: 1px;
+  line-height: 1;
+}
+
+.pte-cell-rating-star {
+  position: relative;
+  display: inline-block;
+  font-size: 1.1em;
+}
+
+.pte-cell-rating-star::before {
+  content: "\2605";
+  color: var(--pte-rating-empty-color);
+}
+
+.pte-cell-rating-star::after {
+  content: "\2605";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  overflow: hidden;
+  color: var(--pte-rating-color);
+}
+
+.pte-cell-rating-star-full::after {
+  width: 100%;
+}
+
+.pte-cell-rating-star-half::after {
+  width: 50%;
+}
+
+.pte-cell-rating-editable .pte-cell-rating-star {
+  cursor: pointer;
+}
+
+.pte-cell-rating-editable .pte-cell-rating-star:hover {
+  transform: scale(1.15);
 }
 
 .pte-hcell-checkbox .pte-hcell-container,

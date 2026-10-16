@@ -69,6 +69,12 @@ a user resize or an explicit fit-to-content replaces it.
 generated header. `suppressColumnPanel` omits a column only from the
 management drawer.
 
+| Field | Purpose |
+| --- | --- |
+| `lockPosition` | `true` / `"left"` holds the column at the left edge of its section, `"right"` at the right edge. It cannot be dragged or moved (header, column panel, `api.moveColumn`), other columns never displace it, and `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still applies (locked within the pinned section). On a group child it locks within the group; on a group definition it locks the group. See [Locking a column's position](../examples/columns.mdx#locking-a-columns-position) |
+| `wrapHeaderText` | The header label wraps onto several lines instead of being truncated; icons and menu keep their place. Without `autoHeaderHeight` a wrapped label is clipped at the configured height |
+| `autoHeaderHeight` | The header level holding this column (or group) grows to fit its label: the tallest such label on the level plus padding, never below the configured `headerHeight` / `leafHeaderHeight` / `parentHeaderHeight`. Re-measured on width, column, label, header-height, theme and font changes. See [Wrapping header text](../examples/columns.mdx#wrapping-header-text-and-auto-header-height) |
+
 ## Sort and filter
 
 Columns may define `sort`, `sortIndex`, `sortingOrder`, `sortIconVisibility`,
@@ -80,7 +86,7 @@ and a custom `comparator`. `filter` selects a built-in panel or custom matcher
 
 | Field | Content |
 | --- | --- |
-| `cellRenderer` / `cellEditor` | Cell presentation and editing; the renderer runs on group rows too (`isGroup: true`, `value` = the group cell value), except on label columns |
+| `cellRenderer` / `cellEditor` | Cell presentation and editing; the renderer runs on group rows too (`isGroup: true`, `value` = the group cell value), except on label columns. `cellRenderer` also takes a built-in name: `"link"`, `"image"`, `"progress"`, `"rating"` (options in `cellRendererParams`, see [Built-in renderers](../examples/rendering.mdx#built-in-renderers)) or `"text"` (plain text, opting a boolean column out of its checkbox) |
 | `headerComponent` | Header content while retaining controls |
 | `headerCellComponent` | Entire header cell except resize handle |
 | `tooltipComponent` / `headerTooltip` | Body and header floating content |
@@ -92,7 +98,8 @@ A header component is as tall as the header level it sits on: `leafHeaderHeight`
 for a leaf column, `parentHeaderHeight` for each group level (both default to
 `headerHeight`, 43px), plus any extra levels the cell spans. Taller content is
 clipped, so a component that needs more room needs a taller option, not CSS on
-the component. The header does not size itself to its content.
+the component — or `autoHeaderHeight` on the column, which measures the
+component's own elements (the children of its root) and grows the level to fit.
 
 ## Conditional presentation
 

@@ -73,6 +73,7 @@ import {
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
 import { GridHistoryState } from "../core/historyModel";
+import type { GridLocaleKey } from "../interfaces/locale";
 
 /** Export hooks provided by the renderer once it's attached (it owns the leaf columns + widths). */
 export interface GridApiExporter {
@@ -500,6 +501,22 @@ export class GridAPI implements IGridAPI {
     return this.core;
   }
 
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string {
+    return this.core.getLocaleText(key, variableValues);
+  }
+
+  showLoadingOverlay(): void {
+    this.core.dispatch({ type: "overlayShow", overlayType: "loading" });
+  }
+
+  showNoRowsOverlay(): void {
+    this.core.dispatch({ type: "overlayShow", overlayType: "noRows" });
+  }
+
+  hideOverlay(): void {
+    this.core.dispatch({ type: "overlayShow", overlayType: "none" });
+  }
+
   dispatch(action: any): void {
     this.core.dispatch(action);
   }
@@ -879,6 +896,45 @@ export class GridAPI implements IGridAPI {
     this.setColumnWidths(rounded.map(r => ({ colId: r.c.col.instanceID, widthPx: r.px })));
   }
 
+  // ---------------- Column pinning, visibility and order ----------------
+  // Thin typed wrappers over the actions the column menu, the column panel and the header drag
+  // dispatch, so a call emits exactly what the gesture would (stamped `source: "api"`).
+  setColumnPinned(colIds: string | string[], pinned: "left" | "right" | null): void {
+    const model = this.core.getColumnModel();
+    const ids = (typeof colIds === "string" ? [colIds] : colIds ?? [])
+      .map(id => model.resolve(id) ?? model.getAutoGroupColumnByColId(id))
+      .filter((col): col is Column => col != null && col.pinnable && !col.isRowNumberColumn())
+      .map(col => col.instanceID);
+    if (ids.length === 0) return;
+    this.dispatch({ type: "columnPin", source: "api", colIds: ids, pinned: pinned ?? null });
+  }
+
+  setColumnsVisible(colIds: string[], visible: boolean): void {
+    const model = this.core.getColumnModel();
+    const ids = (colIds ?? [])
+      .map(id => model.resolve(id) ?? model.getAutoGroupColumnByColId(id))
+      .filter((col): col is Column => col != null && !col.isLeadingUtilityColumn()
+        && (visible || col.hideable !== false)
+        // A leaf already in the requested state is left out; a group is passed on as the menu does.
+        && (col.children.length > 0 || col.hidden === visible))
+      .map(col => col.instanceID);
+    if (ids.length === 0) return;
+    this.dispatch({ type: "columnVisibility", source: "api", colIds: ids, hidden: !visible });
+  }
+
+  setColumnVisible(colId: string, visible: boolean): void {
+    this.setColumnsVisible([colId], visible);
+  }
+
+  moveColumn(colId: string, toIndex: number): void {
+    this.moveColumns([colId], toIndex);
+  }
+
+  moveColumns(colIds: string[], toIndex: number): void {
+    if (!colIds?.length) return;
+    this.dispatch({ type: "columnsMove", source: "api", colIds: [...colIds], toIndex });
+  }
+
   // One columnWidthsChanged for a batch, the payload the core's own width events carry. An empty
   // id list would read as "every visible column", so a batch that changed nothing emits nothing.
   private emitWidthsChanged(instanceIds: Set<string>): void {
@@ -1132,7 +1188,7 @@ export class GridAPI implements IGridAPI {
     }
     const keyFn = spec.valueKey ?? defaultValueKey;
     const values = await this.loadSetFilterSourceValues(spec);
-    const options = buildSetOptions(values, keyFn, spec.valueLabel);
+    const options = buildSetOptions(values, keyFn, spec.valueLabel, spec.localeText);
     if (!spec.tree) return { col, options, keyFn };
     const counted = spec.params.showValueCounts
       ? addSetOptionCounts(options, (callback) => this.core.getRowModel().forEachNode(callback), (row) => spec.column.getValue(row), keyFn)
@@ -1460,6 +1516,18 @@ export class GridAPI implements IGridAPI {
 
   setAllGroupsExpanded(expanded: boolean): void {
     this.dispatch({ type: "groupSetExpanded", expanded });
+  }
+
+  setGroupExpanded(groupIds: string | string[], expanded: boolean): void {
+    const wanted = new Set((Array.isArray(groupIds) ? groupIds : [groupIds]).map(String));
+    if (wanted.size === 0) return;
+    // Only nodes that exist and would change: the core's batch path always rebuilds and emits, so
+    // the filtering here is what keeps an unknown id or an already-expanded group silent.
+    const ids = this.core.getRowModel().getGroupNodes()
+      .filter(node => wanted.has(node.id) && node.isExpanded !== expanded)
+      .map(node => node.id);
+    if (ids.length === 0) return;
+    this.dispatch({ type: "groupSetExpanded", expanded, groupIds: ids });
   }
 
   // ---------------- Selection ----------------

@@ -1,5 +1,6 @@
 import { Column } from "../../column/column";
 import { ColumnType } from "../../interfaces/column";
+import { pluralLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 import {
   REJECT,
   resolveFillHandleOptions,
@@ -287,7 +288,7 @@ export class FillHandleController {
     };
     const end = adjacentBlockEnd(source, this.guideColumns(source), rowModel.getViewCount(), hasData);
     if (end === null) {
-      this.params.announce("Nothing to fill: no data beside the selection");
+      this.params.announce(core.getLocaleText("fillNothingNoAdjacentData"));
       return;
     }
     const target: FillTarget = { axis: "down", rect: { ...source, rowStart: source.rowEnd + 1, rowEnd: end } };
@@ -412,10 +413,10 @@ export class FillHandleController {
     if (edits.length > 0) {
       this.params.core.dispatch({ type: "cellsCommit", edits, reason: "fill" });
     }
-    const how = force === "copy" ? " as copies" : force === "series" ? " as a series" : "";
+    const t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
     this.params.announce(edits.length > 0
-      ? `Filled ${edits.length} ${edits.length === 1 ? "cell" : "cells"}${how}`
-      : "Nothing to fill: no editable cells");
+      ? pluralLocaleText(t, force === "copy" ? "filledCellsAsCopies" : force === "series" ? "filledCellsAsSeries" : "filledCells", edits.length)
+      : t("fillNothingNoEditableCells"));
     return edits.length;
   }
 

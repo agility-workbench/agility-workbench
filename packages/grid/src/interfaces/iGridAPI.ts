@@ -34,6 +34,7 @@ import { GridHistoryState } from "../core/historyModel";
 import type { SortDir } from "./sort";
 import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
 import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
+import type { GridLocaleKey } from "./locale";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -169,6 +170,41 @@ export interface GridApiShortcutController {
 export interface IGridAPI {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
+
+  /**
+   * One of the grid's own user-visible strings, translated the way the grid translates it: the
+   * `getLocaleText` option, else the `localeText` entry, else the English default
+   * (`DEFAULT_LOCALE_TEXT`), with `{placeholder}`s filled from `variableValues`. For custom header
+   * components, cell renderers and menu items that should read like the grid around them:
+   *
+   * ```ts
+   * api.getLocaleText("sortAscending");                     // "Sort Ascending"
+   * api.getLocaleText("pageOfTotal", { page: 2, total: 9 }); // "Page 2 of 9"
+   * ```
+   *
+   * For a `…One` / `…Other` pair, pick the key from the count yourself and pass `{ count }`.
+   */
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string;
+
+  /**
+   * Show the loading overlay (spinner + `loadingMessage`) until {@link hideOverlay} — the
+   * imperative form of the wrappers' `loading` input. The no-rows overlay is held back meanwhile.
+   */
+  showLoadingOverlay(): void;
+
+  /**
+   * Show the no-rows overlay now, whatever the row count, with the message the grid would choose
+   * (`noRowsMessage`, or the filtered-out wording while a filter or search is active). Hides the
+   * loading overlay. The next data change re-decides it: the overlay stays only while the view is
+   * really empty.
+   */
+  showNoRowsOverlay(): void;
+
+  /**
+   * Hide the loading overlay, and the no-rows overlay unless the view is actually empty (an empty
+   * view always shows it).
+   */
+  hideOverlay(): void;
 
   /**
    * Reconfigure a mounted grid in place. Only the properties present in `options` change; a property
@@ -324,6 +360,54 @@ export interface IGridAPI {
    * one batch: one `columnWidthsChanged`. No-op before the grid is rendered and laid out.
    */
   sizeColumnsToFit(): void;
+
+  /* ----- Column pinning, visibility and order ----- */
+  /**
+   * Pin one or more columns to the left or right section, or unpin them with `null` — what the
+   * column menu's Pin items do. A group pins as a whole. Columns that cannot be pinned (the
+   * row-number column, generated pivot columns, the selection-checkbox column unless
+   * `rowSelectionCheckboxColumnPinnable`) are skipped. A column with `lockPosition` can be pinned
+   * and lands at its edge of the new section. Emits `columnsChanged` with `reason: "pin"` and
+   * `source: "api"`; nothing when no column resolves.
+   */
+  setColumnPinned(colIds: string | string[], pinned: "left" | "right" | null): void;
+  /**
+   * Show or hide columns — what the column menu's Hide item and the column panel's checkboxes do.
+   * Hiding skips `hideable: false` columns (showing one always works) and the row-number /
+   * selection-checkbox columns. Emits `columnsChanged` with `reason: "visibility"` and
+   * `source: "api"`; nothing when no column is left to change.
+   */
+  setColumnsVisible(colIds: string[], visible: boolean): void;
+  /** {@link setColumnsVisible} for one column. */
+  setColumnVisible(colId: string, visible: boolean): void;
+  /**
+   * Move a column so it sits at `toIndex` of the order {@link getColumnState} returns — every
+   * non-internal leaf, hidden ones included, left section then centre then right. A shorthand for
+   * {@link moveColumns} with one column; the rules there apply.
+   */
+  moveColumn(colId: string, toIndex: number): void;
+  /**
+   * Move columns, in the order given, so they start at `toIndex` of the order
+   * {@link getColumnState} returns (every non-internal leaf, hidden ones included: left section,
+   * then centre, then right) — the API form of a header drag. Rules:
+   * - A column stays in its section: `toIndex` is clamped to that section's range (an index past
+   *   the centre section's end puts a centre column last in the centre). Pin with
+   *   {@link setColumnPinned} to move between sections.
+   * - Columns with their own `lockPosition`, `movable: false` columns, the row-number and selection
+   *   columns and generated pivot columns are skipped. Locked columns keep their edge, so an index
+   *   among them lands next to them.
+   * - A column inside a group leaves the group (it is split, as a drag does) when the target is
+   *   outside it; passing the group's colId moves the whole group.
+   * - No-op while pivot mode displays generated columns.
+   *
+   * Emits one `columnsChanged` with `reason: "order"` and `source: "api"`; nothing when no column
+   * moved.
+   *
+   * ```ts
+   * api.moveColumns(["price", "qty"], 0); // first two centre columns (when nothing is pinned left)
+   * ```
+   */
+  moveColumns(colIds: string[], toIndex: number): void;
 
   /**
    * Every column group's expander state (open or closed) by the group's colId — nested groups
@@ -538,6 +622,14 @@ export interface IGridAPI {
   /** Expand or collapse every group/tree node in one pass — a single view rebuild and repaint,
    * unlike dispatching one groupToggleExpand per node. No-op when the grid is not grouped. */
   setAllGroupsExpanded(expanded: boolean): void;
+
+  /**
+   * Expand or collapse the named group/tree nodes in one pass — a single view rebuild and repaint
+   * for the whole list, where `groupToggleExpand` costs one per node. Ids that name no group are
+   * ignored; nothing is rebuilt when every named node is already in the requested state. No-op
+   * when the grid is not grouped. Group ids come from `getGroupNodes()` / `getRowNode(id)`.
+   */
+  setGroupExpanded(groupIds: string | string[], expanded: boolean): void;
 
   /**
    * Every group / tree node currently in the model, at every level, in creation order. Empty when

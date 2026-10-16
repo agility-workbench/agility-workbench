@@ -4,6 +4,7 @@ import { button, createElement, div } from "../element";
 import { FilterDef, FilterType, valuesNeededFor } from "../../interfaces/filter";
 import { IFilterRenderer } from "../../interfaces/iFilterRenderer";
 import { staticSetValue } from "../../filter/setFilterCore";
+import { defaultLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 
 export class BasicFilterRenderer implements IFilterRenderer {
   private root: HTMLElement;
@@ -13,8 +14,10 @@ export class BasicFilterRenderer implements IFilterRenderer {
   private orCheckbox!: HTMLInputElement;
 
   private conditionsMap: Map<string, HTMLElement> = new Map();
+  private readonly t: LocaleTextResolver;
 
   constructor(private controller: FilterController, private spec: FilterPanelSpec) {
+    this.t = spec.localeText ?? defaultLocaleText;
     this.root = div("pte-filter-form");
     this.createFilter();
   }
@@ -77,7 +80,7 @@ export class BasicFilterRenderer implements IFilterRenderer {
     });
 
     const label = document.createElement("label");
-    label.textContent = join.toUpperCase();
+    label.textContent = this.t(join === "and" ? "filterJoinAnd" : "filterJoinOr");
     label.prepend(checkbox);
 
     this.joinToggle.appendChild(label);
@@ -163,7 +166,7 @@ export class BasicFilterRenderer implements IFilterRenderer {
     const clearBtn = button("pte-filter-input-clear");
     clearBtn.type = "button";
     clearBtn.tabIndex = -1;
-    clearBtn.setAttribute("aria-label", "Clear");
+    clearBtn.setAttribute("aria-label", this.t("clearFilterValue"));
     clearBtn.innerHTML = "&times;";
 
     const syncClear = () => wrap.classList.toggle("pte-filter-input-clear-visible", input.value !== "");
@@ -190,8 +193,8 @@ export class BasicFilterRenderer implements IFilterRenderer {
   private valueChoices(): { value: string; label: string }[] | null {
     if (this.spec.kind === "boolean") {
       return [
-        { value: "true", label: "True" },
-        { value: "false", label: "False" },
+        { value: "true", label: this.t("filterTrue") },
+        { value: "false", label: this.t("filterFalse") },
       ];
     }
     const values = this.spec.params.filterValues;
@@ -216,8 +219,8 @@ export class BasicFilterRenderer implements IFilterRenderer {
     select.className = "pte-select pte-filter-select pte-filter-value-select";
     select.name = `filter-value-${suffix}`;
     select.setAttribute("data-filter-value", String(valueIdx));
-    select.setAttribute("aria-label", "Filter value");
-    for (const choice of [{ value: "", label: "Any" }, ...choices]) {
+    select.setAttribute("aria-label", this.t("filterValue"));
+    for (const choice of [{ value: "", label: this.t("filterAny") }, ...choices]) {
       const opt = document.createElement("option");
       opt.value = choice.value;
       opt.textContent = choice.label;

@@ -27,6 +27,7 @@ import type {
   GridEventSelectionChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions, SheetsOptions } from "./gridView";
+import { DEFAULT_LOCALE_TEXT, defaultLocaleText, type GetLocaleText, type GridLocaleText, type LocaleTextResolver } from "./locale";
 
 /**
  * Payload for the `onCellValueChanged` option: a cell's stored value changed. Covers every write
@@ -657,8 +658,7 @@ export interface ResolvedAggregateScopeControlOptions {
   unavailableMessage: string;
 }
 
-export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE =
-  "Entire-dataset totals need a server aggregation source: the data source's getAggregates, or serverSideAggregationSource.";
+export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE = DEFAULT_LOCALE_TEXT.aggregateScopeEntireDatasetUnavailable;
 
 export interface ResolvedPaginationControlsOptions {
   pageSelection: PaginationPageSelection;
@@ -682,6 +682,7 @@ const PAGINATION_CONTROL_SET = new Set<PaginationControl>(DEFAULT_PAGINATION_CON
 
 export function resolvePaginationControlsOptions(
   options?: PaginationControlsOptions,
+  t: LocaleTextResolver = defaultLocaleText,
 ): ResolvedPaginationControlsOptions {
   const controls: PaginationControl[] = [];
   const seen = new Set<PaginationControl>();
@@ -702,7 +703,7 @@ export function resolvePaginationControlsOptions(
     maxPageButtons,
     aggregateScope: {
       whenUnavailable: options?.aggregateScope?.whenUnavailable === "hidden" ? "hidden" : "disabled",
-      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? t("aggregateScopeEntireDatasetUnavailable"),
     },
   };
 }
@@ -1884,6 +1885,31 @@ export interface GridOptions {
    */
   pivotEmptyMessage?: string;
   /**
+   * Translations for the grid's own user-visible strings — visible text, aria-labels, tooltips,
+   * placeholders, menu labels, filter operator names, screen-reader announcements and default
+   * column labels. Keys missing from the map fall back to the English defaults
+   * (`DEFAULT_LOCALE_TEXT`). Strings with variables use `{name}` placeholders
+   * (`"Page {page} of {total}"`); a count-dependent string has a `…One` and a `…Other` key.
+   *
+   * `getLocaleText` wins over this map, and the dedicated message options (`loadingMessage`,
+   * `noRowsMessage`, `pivotNoValuesMessage`, `pivotEmptyMessage`,
+   * `paginationUnknownTotalTooltip`) win over their matching keys. Number and date formatting is
+   * separate: it follows `formatterOptions.locale` on the column.
+   *
+   * Creation-only: the grid reads it once, so switching language means creating the grid again
+   * (in React, remount it with a new `key`; the framework bindings warn in development when this
+   * prop or input changes on a mounted grid).
+   */
+  localeText?: Partial<GridLocaleText>;
+  /**
+   * Translate any grid string in code — for plural rules beyond `…One` / `…Other`, ICU messages or
+   * a translation library. Called for every string with its key, the text the grid would otherwise
+   * use (`localeText` entry or English default, still uninterpolated) and the placeholder values;
+   * the returned text is interpolated afterwards. Wins over `localeText`. Creation-only, like
+   * `localeText`.
+   */
+  getLocaleText?: GetLocaleText;
+  /**
    * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
    * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
    * to 300.
@@ -2190,6 +2216,7 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   fullWidthCellRenderer: true, defaultColDef: true, tooltip: true, quickFilter: true,
   columnPanel: true, toolbar: true, savedViews: true, sheets: true, loadingMessage: true,
   noRowsMessage: true, pivotNoValuesMessage: true, pivotEmptyMessage: true,
+  localeText: true, getLocaleText: true,
   filterDebounceMs: true, cellFlashDuration: true, cellFadeDuration: true, icons: true,
   theme: true, suppressStyleInjection: true, styleNonce: true,
 };

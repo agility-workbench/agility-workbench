@@ -77,7 +77,48 @@ const columnDefs: ColDef[] = [
 ```
 
 Users pin and hide columns through the column menu or the
-[column panel](./toolbar-and-views.mdx).
+[column panel](./toolbar-and-views.mdx). The API does the same through typed
+methods, each emitting the `columnsChanged` the gesture would (with
+`source: "api"`):
+
+```ts
+api.setColumnPinned("id", "left");             // or ["id", "name"]; null unpins
+api.setColumnsVisible(["internal", "notes"], false);
+api.setColumnVisible("internal", true);
+
+// Indexes are positions in api.getColumnState() order: every non-internal leaf,
+// hidden ones included, left section, then centre, then right.
+api.moveColumn("name", 0);
+api.moveColumns(["price", "qty"], 3);          // a block, in the order given
+```
+
+Hiding skips `hideable: false` columns (showing one always works); pinning skips
+columns that cannot be pinned. A move keeps each column in its own section —
+the index is clamped to that section's range, so pin first to move a column
+across sections — and skips `movable: false` and `lockPosition` columns. A
+column inside a group leaves the group when the target is outside it, as a
+header drag does; pass the group's `colId` to move the whole group.
+
+## Locking a column's position
+
+```ts
+const columnDefs: ColDef[] = [
+  { key: "id", label: "ID", lockPosition: "left" },        // or true
+  { key: "name", label: "Name" },
+  { key: "amount", label: "Amount" },
+  { key: "actions", label: "Actions", lockPosition: "right" },
+];
+```
+
+`lockPosition` holds a column at an edge of its section: `true` or `"left"` at
+the left (after the selection-checkbox column), `"right"` at the right. A locked
+column cannot be dragged, moved from the column panel or moved with
+`api.moveColumn`, and a column dropped next to it lands beside it rather than
+displacing it. `applyColumnState`, saved views and `setColumnDefs` put locked
+columns back at their edge, whatever order they carry. Pinning still applies: a
+locked column pinned left sits at the edge of the left section. Inside a column
+group the lock holds the column at its group's edge; set `lockPosition` on the
+group definition to lock the whole group.
 
 ## Explicit width and automatic sizing
 
@@ -178,6 +219,38 @@ const columnDefs: ColDef[] = [
 `headerComponent` replaces header content while preserving grid controls.
 `headerCellComponent` replaces the whole header cell except its resize handle.
 The framework bindings accept React/Angular components in both slots.
+
+## Wrapping header text and auto header height
+
+```ts
+const options = {
+  defaultColDef: { wrapHeaderText: true, autoHeaderHeight: true },
+  columnDefs: [
+    {
+      label: "Commercial performance this fiscal year",
+      children: [
+        { key: "units", label: "Units shipped to date across all warehouses", width: 120 },
+        { key: "revenue", label: "Recognised revenue in reporting currency", width: 120 },
+      ],
+    },
+  ],
+} satisfies GridOptions;
+```
+
+`wrapHeaderText` lets a long label break onto several lines instead of being cut
+off with an ellipsis; the sort icon, menu button and group expander keep their
+place beside it. `autoHeaderHeight` grows the header level that label sits on
+until the whole label fits: the level becomes as tall as its tallest such label
+(plus the cell's padding), and never shorter than the configured `headerHeight`
+/ `leafHeaderHeight` / `parentHeaderHeight`. Leaf and group levels grow
+independently (put the flags on a group definition, or in `defaultColDef`, for
+the group level), and the pinned sections always grow together. The header
+re-measures when column widths settle (a resize, autosize or fit), when columns
+are shown, hidden, moved or pinned, when definitions or labels change, when the
+header heights or the theme change, and when a web font finishes loading.
+
+Without `autoHeaderHeight`, a wrapped label is clipped at the configured header
+height — set a taller `headerHeight` yourself, or turn auto height on.
 
 ## Column state
 

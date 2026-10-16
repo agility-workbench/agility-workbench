@@ -96,6 +96,16 @@ export interface GridThemeParams {
   sparklineStrokeColor?: string;
   /** Sparkline bar/fill color. */
   sparklineBarColor?: string;
+  /** Progress renderer (`cellRenderer: "progress"`) track color. */
+  progressTrackColor?: string;
+  /** Progress renderer bar color. */
+  progressBarColor?: string;
+  /** Rating renderer (`cellRenderer: "rating"`) filled-star color. */
+  ratingColor?: string;
+  /** Rating renderer empty-star color. */
+  ratingEmptyColor?: string;
+  /** Link renderer (`cellRenderer: "link"`) text color. */
+  linkColor?: string;
   /** ActionFrame border color (frame around a cell with an open popover). */
   actionFrameBorderColor?: string;
   /** ActionFrame border glow color. */
@@ -243,6 +253,11 @@ const FANOUT: Record<string, Fanout> = {
   },
   sparklineStrokeColor: { vars: ["--pte-sparkline-stroke-color"] },
   sparklineBarColor: { vars: ["--pte-sparkline-bar-color"] },
+  progressTrackColor: { vars: ["--pte-progress-track-color"] },
+  progressBarColor: { vars: ["--pte-progress-bar-color"] },
+  ratingColor: { vars: ["--pte-rating-color"] },
+  ratingEmptyColor: { vars: ["--pte-rating-empty-color"] },
+  linkColor: { vars: ["--pte-link-color"] },
   actionFrameBorderColor: { vars: ["--pte-action-frame-border-color"] },
   actionFrameGlowColor: { vars: ["--pte-action-frame-glow"] },
   actionFramePopoverBackgroundColor: { vars: ["--pte-action-frame-popover-bg"] },
@@ -547,6 +562,11 @@ export const themeDark: GridTheme = createTheme({
     "--pte-not-allowed-icon-color": "#f87171",
     "--pte-sparkline-stroke-color": "#38bdf8",
     "--pte-sparkline-bar-color": "#60a5fa",
+    "--pte-progress-track-color": "#334155",
+    "--pte-progress-bar-color": "#60a5fa",
+    "--pte-rating-color": "#fbbf24",
+    "--pte-rating-empty-color": "#475569",
+    "--pte-link-color": "#93c5fd",
     "--pte-cell-flash-up-bg-color": "rgba(34, 197, 94, 0.55)",
     "--pte-cell-flash-down-bg-color": "rgba(239, 68, 68, 0.55)",
     "--pte-cell-flash-neutral-bg-color": "rgba(148, 163, 184, 0.45)",

@@ -150,6 +150,24 @@ export class ColumnInteractionRenderer {
     return true;
   }
 
+  /** A resize drag is in progress (the touch path asks after handing it the pointerdown). */
+  isResizing(): boolean {
+    return this.resizingColumn !== "";
+  }
+
+  /**
+   * Tear down a column drag — armed or under way — without dropping it: the touch path's
+   * pointercancel, a long press, or a vertical pan on a header cell. No-op when none is active.
+   */
+  cancelColumnDrag(): void {
+    if (!this.draggingColumn) return;
+    const performedDrag = this.isDraggingColumn;
+    this.teardownColumnDrag();
+    if (!performedDrag) return;
+    this.suppressHeaderClick = true;
+    setTimeout(() => { this.suppressHeaderClick = false; }, 0);
+  }
+
   onHeaderMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
     const handle = (e.target as HTMLElement | null)?.closest(".pte-hcell-resize-handle") as HTMLElement | null;
@@ -180,7 +198,8 @@ export class ColumnInteractionRenderer {
     if ((e.target as HTMLElement | null)?.closest(".pte-hcell-menu-btn")) return;
     // Generated pivot columns are immovable, but dragging one reorders the measures (default) or
     // arranges the leaf order (pivotColumnMoveMode "free") — so they are drag sources anyway.
-    const allowDrop = col.movable || this.isPivotDraggable(col);
+    // `lockPosition` columns never move (the column model refuses too; this keeps the cursor honest).
+    const allowDrop = (col.movable && col.lockPosition == null) || this.isPivotDraggable(col);
     this.maybeStartColumnDrag(col, header, e, allowDrop);
   }
 
@@ -669,7 +688,8 @@ export class ColumnInteractionRenderer {
 
   private isDragSource(col: Column): boolean {
     if (!col) return false;
-    return !col.isRowNumberColumn() && (col.movable || this.isPivotDraggable(col)) && col.isVisible();
+    return !col.isRowNumberColumn()
+      && ((col.movable && col.lockPosition == null) || this.isPivotDraggable(col)) && col.isVisible();
   }
 
   private isDropAnchor(col: Column): boolean {

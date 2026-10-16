@@ -1,8 +1,9 @@
+import { DEFAULT_LOCALE_TEXT } from "../../interfaces/locale";
 // Empty-state overlay shown when the view has zero rows (no data, or every row filtered out).
 // Distinct from the loading spinner: the loading overlay covers "we're fetching", this covers
 // "there is nothing to show". The two are mutually exclusive — loading suppresses this one.
 /** The empty-state label shown when `noRowsMessage` is not set. */
-export const DEFAULT_NO_ROWS_MESSAGE = "No rows to show";
+export const DEFAULT_NO_ROWS_MESSAGE = DEFAULT_LOCALE_TEXT.noRows;
 
 export function createNoRowsOverlay(): HTMLDivElement {
   const overlay = document.createElement("div");

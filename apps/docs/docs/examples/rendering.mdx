@@ -52,7 +52,16 @@ Class renderers implement `init`, `getGui`, and optional `refresh`/`destroy`.
 The React and Angular bindings additionally accept framework components in the
 same `cellRenderer` slot, as the tabs above show.
 
-## Built-in renderers: checkbox, change flash and Sparkline
+## Built-in renderers
+
+The grid ships renderers for a change flash, sparklines, a boolean checkbox, links,
+images, progress bars and star ratings. The last four are also reachable by name
+(`cellRenderer: "link" | "image" | "progress" | "rating"`) and read their options
+from `cellRendererParams`; each is exported as a class (`LinkCellRenderer`, …)
+with a params type (`LinkCellRendererParams`, …). Like every renderer they change
+only what the cell shows: export, the clipboard, tooltips and quick-filter
+matching still read the formatted value, and group rows show the group cell value
+as text.
 
 ```ts
 const priceColumn = {
@@ -124,6 +133,139 @@ const activeColumn = {
 To keep a boolean column as text, set `cellRenderer: "text"`. Setting any other
 renderer (for example `ChangeFlashCellRenderer`) replaces the checkbox, and
 `cellRenderer: BooleanCellRenderer` draws the box on a column of another type.
+
+### Link
+
+`cellRenderer: "link"` draws an `<a>` to the cell value, with the formatted value
+as its text. It opens in a new tab by default, with `rel="noopener noreferrer"`.
+
+```ts
+const siteColumn = {
+  key: "site",
+  label: "Website",
+  cellRenderer: "link",
+  cellRendererParams: {
+    href: ({ value }) => `https://${value}`,
+    text: ({ node }) => node.data.company,
+  },
+} satisfies ColDef;
+```
+
+| Param | Default | Effect |
+| --- | --- | --- |
+| `href(params)` | the value | The URL. A blank result shows the text without a link |
+| `text(params)` | the formatted value | The link text |
+| `target` | `"_blank"` | Where the link opens; `"_blank"` adds `noopener noreferrer` |
+| `rel` | — | Extra `rel` tokens |
+| `download` | — | `true`, or a file name, sets the `download` attribute |
+
+A blank value renders nothing, and a `javascript:` or `vbscript:` URL is never
+linked (the text shows plain). A click on the link navigates and still selects the
+cell, but never opens the editor — neither `editTrigger: "singleClick"` nor a
+double-click on the link. Middle-, Ctrl- and Cmd-clicks behave as the browser's.
+The link takes no tab stop of its own, so keyboard users keep the grid's cell
+navigation.
+
+### Image
+
+`cellRenderer: "image"` draws an `<img loading="lazy">` of the cell value, scaled
+to fit the row (`object-fit: contain`).
+
+```ts
+const avatarColumn = {
+  key: "avatarUrl",
+  label: "Avatar",
+  width: 72,
+  cellRenderer: "image",
+  cellRendererParams: {
+    alt: ({ node }) => `${node.data.name}'s avatar`,
+    height: 28,
+  },
+} satisfies ColDef;
+```
+
+| Param | Default | Effect |
+| --- | --- | --- |
+| `src(params)` | the value | The image URL. A blank result renders nothing |
+| `alt(params)` | formatted value / column label | Alternative text, also shown when the image fails to load |
+| `width`, `height` | fit the cell | Size in pixels (a number) or any CSS length |
+
+Without `alt`, the alternative text is the formatted value when a
+`valueFormatter` turns the URL into words, otherwise the column's label. A blank
+value renders nothing, and a broken image shows its alt text instead of the
+browser's broken-image glyph. The quick-filter find skips image columns, since
+their cells show no text to highlight.
+
+### Progress
+
+`cellRenderer: "progress"` draws a track with a bar filled to the value. The value
+is a fraction from 0 to 1, or `value / max` when `max` is given.
+
+```ts
+const doneColumn = {
+  key: "percentDone",
+  label: "Done",
+  type: ColumnType.NUMBER,
+  valueFormatter: ({ value }) => (value == null ? "" : `${value}%`),
+  cellRenderer: "progress",
+  cellRendererParams: {
+    max: 100,
+    showValue: true,
+    color: ({ fraction }) =>
+      fraction == null ? undefined : fraction < 0.3 ? "#ef4444" : fraction < 0.7 ? "#f59e0b" : "#22c55e",
+  },
+} satisfies ColDef;
+```
+
+| Param | Default | Effect |
+| --- | --- | --- |
+| `max` | 1 (a fraction) | The value that fills the bar |
+| `showValue` | `false` | Print the formatted value beside the bar |
+| `color(params)` | theme colour | The bar's colour for this cell; `params.fraction` is the clamped fill (0–1) or `null` |
+| `className` | — | Extra class(es) on the renderer root, a string or `(params) => string` |
+
+Values outside the range clamp, and a blank or non-numeric value shows an empty
+track. The bar has `role="progressbar"` with `aria-valuemin` 0, `aria-valuemax`
+(`max`, else 1), `aria-valuenow`, `aria-valuetext` (the formatted value) and the
+column label as its `aria-label`. The theme parameters `progressTrackColor` and
+`progressBarColor` (`--pte-progress-track-color`, `--pte-progress-bar-color`) set
+the default colours. Without `showValue` the quick-filter find skips the column.
+
+### Rating
+
+`cellRenderer: "rating"` draws `max` stars (5 by default) filled to the value, with
+a half star for a fraction.
+
+```ts
+const ratingColumn = {
+  key: "rating",
+  label: "Rating",
+  type: ColumnType.NUMBER,
+  editable: true,
+  cellRenderer: "rating",
+  cellRendererParams: { max: 5, allowClear: true },
+} satisfies ColDef;
+```
+
+| Param | Default | Effect |
+| --- | --- | --- |
+| `max` | 5 | Number of stars |
+| `allowClear` | `false` | Clicking the current star clears the rating to 0 |
+
+- **Read-only by default.** The stars are one `role="img"` element labelled
+  "3 of 5"; a blank value shows empty stars.
+- **Click to rate.** When the cell is editable (the same rule as the boolean
+  checkbox), a plain click on star N writes N through `api.setCellValue`, so
+  `onBeforeCellCommit`, `cellValueChanged`, undo/redo and no-op suppression
+  apply. Clicking the current star writes nothing unless `allowClear` is set. The
+  click never opens the editor, not even with `editTrigger: "singleClick"`, and
+  modified clicks are left to selection.
+- **Keyboard.** Enter or F2 opens the column's editor as usual (the number
+  editor on a `ColumnType.NUMBER` column).
+
+The theme parameters `ratingColor` and `ratingEmptyColor` (`--pte-rating-color`,
+`--pte-rating-empty-color`) colour the stars, and `linkColor` (`--pte-link-color`)
+the link renderer's text. The quick-filter find skips rating columns.
 
 ## Group rows
 
@@ -250,12 +392,15 @@ const options = {
 For the framework-neutral API:
 
 ```ts
-api.dispatch({ type: "overlayShow", overlayType: "loading" });
-api.dispatch({ type: "overlayShow", overlayType: "none" });
+api.showLoadingOverlay();
+api.hideOverlay();
+api.showNoRowsOverlay(); // force the empty state, e.g. after a failed load
 ```
 
 The no-rows overlay appears automatically for an empty model and distinguishes
-an empty data set from a filtered-out result.
+an empty data set from a filtered-out result. `showNoRowsOverlay()` shows it over
+rows too, until the next data change re-decides it; `hideOverlay()` leaves it up
+on a grid that really is empty.
 
 Both messages are live: `api.updateGridOptions({ loadingMessage, noRowsMessage })`
 relabels the overlays on a mounted grid (passing `undefined` restores the

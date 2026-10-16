@@ -13,7 +13,7 @@ export class Overlay {
     if (text) {
       const label = document.createElement("div");
       label.className = "pte-loading-label";
-      label.textContent = "Loading data…";
+      label.textContent = text;
       this.overlayEl.appendChild(label);
     }
   }

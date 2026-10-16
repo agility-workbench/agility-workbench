@@ -4,13 +4,14 @@ import { Column } from "../../column/column";
 import { FilterController } from "../../filter/filterMenuController";
 import { ColumnFilterMenuService } from "../../filter/filterMenuService";
 import type { IGridCore } from "../../interfaces";
+import { defaultLocaleText } from "../../interfaces/locale";
 import { ColDef, ColumnType } from "../../interfaces/column";
 import { FilterItem, FilterType } from "../../interfaces/filter";
 import { BasicFilterRenderer } from "./basicFilterRenderer";
 
 /** A live (no Apply button, no debounce) filter panel over the real service, controller, and renderer. */
 function mount(colDef: ColDef) {
-  const core = { getOptions: () => ({ filterDebounceMs: 0 }) } as unknown as IGridCore;
+  const core = { getOptions: () => ({ filterDebounceMs: 0 }), getLocaleText: defaultLocaleText } as unknown as IGridCore;
   const column = new Column(colDef);
   const spec = new ColumnFilterMenuService(core).buildFilterMenu({ trigger: "api", targetCol: column });
   const applied: (FilterItem | null)[] = [];

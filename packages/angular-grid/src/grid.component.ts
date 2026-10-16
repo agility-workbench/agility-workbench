@@ -238,6 +238,12 @@ export class AwbGrid implements OnDestroy {
   readonly pivotNoValuesMessage = input<GridOptions["pivotNoValuesMessage"]>();
   readonly pivotEmptyMessage = input<GridOptions["pivotEmptyMessage"]>();
 
+  // --- localization (creation-only) ---
+  /** Translations for the grid's own strings; see `GridOptions.localeText`. */
+  readonly localeText = input<GridOptions["localeText"]>();
+  /** Translate any grid string in code; see `GridOptions.getLocaleText`. */
+  readonly getLocaleText = input<GridOptions["getLocaleText"]>();
+
   // --- menus ---
   /** Hook to customize column menu items (slots may be `TemplateRef`s). */
   readonly getColumnMenuItems = input<

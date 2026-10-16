@@ -11,6 +11,7 @@ import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { SavedGridView, SavedViewsOptions } from "../../interfaces/gridView";
 import { MenuItem } from "../../interfaces/menuItem";
 import { SortDir } from "../../interfaces/sort";
+import { pluralLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 import { createRecordId } from "../../misc";
 import { button, div, span } from "../element";
 import { canonicalKey, matchesAnyChord, matchesChord } from "../interaction/keyChord";
@@ -125,11 +126,13 @@ export class GridToolbarRenderer {
   private lastOverflowSignature = "";
   private chipEditorContent: HTMLElement | null = null;
   private unsubscribe: Unsubscribe;
+  private readonly t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
 
   constructor(private params: GridToolbarRendererParams) {
+    this.viewsLabel.textContent = this.t("views");
     this.viewsButton.type = "button";
     this.viewsButton.setAttribute("aria-haspopup", "menu");
-    this.viewsButton.setAttribute("aria-label", "Saved views");
+    this.viewsButton.setAttribute("aria-label", this.t("savedViews"));
     const viewsIcon = span("pte-grid-toolbar-views-icon", "▤");
     viewsIcon.setAttribute("aria-hidden", "true");
     this.viewsButton.append(viewsIcon, this.viewsLabel);
@@ -137,22 +140,22 @@ export class GridToolbarRenderer {
     this.viewsTooltipDisposer = registerRendererTooltipTarget(
       this.viewsButton,
       () => this.toolbar.classList.contains("pte-grid-toolbar-compact")
-        ? this.activeView()?.name ?? "Views"
+        ? this.activeView()?.name ?? this.t("views")
         : null,
     );
 
     this.exportButton.type = "button";
-    this.exportButton.setAttribute("aria-label", "Export table");
+    this.exportButton.setAttribute("aria-label", this.t("exportTable"));
     this.exportButton.setAttribute("aria-haspopup", "menu");
     const options = this.params.core.getOptions();
     this.exportButton.disabled = !options.allowExportAsCSV && !options.allowExportAsExcel;
     const icon = span("pte-grid-toolbar-export-icon icon-export");
     icon.setAttribute("aria-hidden", "true");
-    this.exportButton.append(icon, span("pte-grid-toolbar-export-label", "Export"));
+    this.exportButton.append(icon, span("pte-grid-toolbar-export-label", this.t("export")));
     this.exportButton.addEventListener("click", () => this.openExportMenu());
     this.exportTooltipDisposer = registerRendererTooltipTarget(
       this.exportButton,
-      () => this.toolbar.classList.contains("pte-grid-toolbar-compact") ? "Export" : null,
+      () => this.toolbar.classList.contains("pte-grid-toolbar-compact") ? this.t("export") : null,
       undefined,
       "left",
     );
@@ -160,22 +163,22 @@ export class GridToolbarRenderer {
     // Pivot indicator + toggle. Pressed state mirrors core pivot mode; kept in sync through the
     // pivotChanged event so API/menu toggles reflect here too.
     this.pivotButton.type = "button";
-    this.pivotButton.setAttribute("aria-label", "Toggle pivot mode");
+    this.pivotButton.setAttribute("aria-label", this.t("togglePivotMode"));
     const pivotIcon = span("pte-grid-toolbar-pivot-icon icon-pivot");
     pivotIcon.setAttribute("aria-hidden", "true");
-    this.pivotButton.append(pivotIcon, span("pte-grid-toolbar-pivot-label", "Pivot"));
+    this.pivotButton.append(pivotIcon, span("pte-grid-toolbar-pivot-label", this.t("pivot")));
     this.pivotButton.addEventListener("click", () => {
       this.params.core.dispatch({ type: "pivotModeSet", source: "user", on: !this.params.core.getPivotMode() });
     });
     this.pivotTooltipDisposer = registerRendererTooltipTarget(
       this.pivotButton,
-      () => this.params.core.getPivotMode() ? "Pivot mode on" : "Pivot mode off",
+      () => this.t(this.params.core.getPivotMode() ? "pivotModeOn" : "pivotModeOff"),
       undefined,
       "left",
     );
 
     this.moreButton.type = "button";
-    this.moreButton.setAttribute("aria-label", "More toolbar actions");
+    this.moreButton.setAttribute("aria-label", this.t("moreToolbarActions"));
     this.moreButton.setAttribute("aria-haspopup", "menu");
     const moreIcon = span("pte-grid-toolbar-more-icon pte-menu-icon");
     moreIcon.setAttribute("aria-hidden", "true");
@@ -183,13 +186,13 @@ export class GridToolbarRenderer {
     this.moreButton.addEventListener("click", () => this.openMoreMenu());
     this.moreTooltipDisposer = registerRendererTooltipTarget(
       this.moreButton,
-      () => "More actions",
+      () => this.t("moreActions"),
       undefined,
       "left",
     );
 
     this.quickFilterTrigger.type = "button";
-    this.quickFilterTrigger.setAttribute("aria-label", "Search");
+    this.quickFilterTrigger.setAttribute("aria-label", this.t("search"));
     this.quickFilterTrigger.setAttribute("aria-expanded", "false");
     const quickFilterIcon = span("pte-grid-toolbar-quick-filter-trigger-icon");
     quickFilterIcon.setAttribute("aria-hidden", "true");
@@ -365,11 +368,11 @@ export class GridToolbarRenderer {
 
   private updateViewsButton(): void {
     const active = this.activeView();
-    this.viewsLabel.textContent = active?.name ?? "Views";
+    this.viewsLabel.textContent = active?.name ?? this.t("views");
     this.viewsButton.classList.toggle("pte-grid-toolbar-views-active", !!active);
     this.viewsButton.setAttribute(
       "aria-label",
-      active ? `Saved view: ${active.name}` : "Saved views",
+      active ? this.t("savedViewNamed", { name: active.name }) : this.t("savedViews"),
     );
   }
 
@@ -421,7 +424,7 @@ export class GridToolbarRenderer {
         }))
       : [{
           id: "toolbarViewsEmpty",
-          label: "No saved views",
+          label: this.t("noSavedViews"),
           disabled: true,
         }];
 
@@ -429,24 +432,24 @@ export class GridToolbarRenderer {
       items.push({ isSeparator: true });
       items.push({
         id: "toolbarViewCreate",
-        label: "Save current view…",
+        label: this.t("saveCurrentViewMenu"),
         command: "toolbar.views.create",
       });
       if (active) {
         items.push(
           {
             id: "toolbarViewUpdate",
-            label: `Update “${active.name}”`,
+            label: this.t("updateView", { name: active.name }),
             command: "toolbar.views.update",
           },
           {
             id: "toolbarViewRename",
-            label: `Rename “${active.name}”…`,
+            label: this.t("renameViewMenu", { name: active.name }),
             command: "toolbar.views.rename",
           },
           {
             id: "toolbarViewDelete",
-            label: `Delete “${active.name}”…`,
+            label: this.t("deleteViewMenu", { name: active.name }),
             command: "toolbar.views.delete",
           },
         );
@@ -465,7 +468,7 @@ export class GridToolbarRenderer {
       return;
     }
     if (item.command === "toolbar.views.create") {
-      this.openViewNameEditor("Save current view", "", name => {
+      this.openViewNameEditor(this.t("saveCurrentView"), "", name => {
         const view: SavedGridView = {
           id: createRecordId("view"),
           name,
@@ -485,7 +488,7 @@ export class GridToolbarRenderer {
         : view);
       this.commitViews(next);
     } else if (item.command === "toolbar.views.rename") {
-      this.openViewNameEditor("Rename view", active.name, name => {
+      this.openViewNameEditor(this.t("renameView"), active.name, name => {
         this.commitViews(this.views.map(view => view.id === active.id
           ? { ...view, name }
           : view));
@@ -506,11 +509,11 @@ export class GridToolbarRenderer {
     input.className = "pte-grid-toolbar-view-input";
     input.type = "text";
     input.value = initialValue;
-    input.placeholder = "View name";
-    input.setAttribute("aria-label", "View name");
+    input.placeholder = this.t("viewName");
+    input.setAttribute("aria-label", this.t("viewName"));
     const actions = div("pte-grid-toolbar-view-form-actions");
-    const cancel = button("pte-grid-toolbar-view-form-cancel", "Cancel");
-    const save = button("pte-grid-toolbar-view-form-submit", "Save");
+    const cancel = button("pte-grid-toolbar-view-form-cancel", this.t("cancel"));
+    const save = button("pte-grid-toolbar-view-form-submit", this.t("save"));
     cancel.type = "button";
     save.type = "button";
     const submit = () => {
@@ -545,15 +548,15 @@ export class GridToolbarRenderer {
     const content = div("pte-grid-toolbar-view-form");
     content.appendChild(span(
       "pte-grid-toolbar-view-form-title",
-      `Delete “${view.name}”?`,
+      this.t("deleteViewConfirm", { name: view.name }),
     ));
     const message = span(
       "pte-grid-toolbar-view-form-message",
-      "This removes the view from the application-owned list.",
+      this.t("deleteViewMessage"),
     );
     const actions = div("pte-grid-toolbar-view-form-actions");
-    const cancel = button("pte-grid-toolbar-view-form-cancel", "Cancel");
-    const remove = button("pte-grid-toolbar-view-form-delete", "Delete");
+    const cancel = button("pte-grid-toolbar-view-form-cancel", this.t("cancel"));
+    const remove = button("pte-grid-toolbar-view-form-delete", this.t("delete"));
     cancel.type = "button";
     remove.type = "button";
     cancel.addEventListener("click", () => this.params.menuRenderer.close(0));
@@ -741,7 +744,7 @@ export class GridToolbarRenderer {
     this.moreButton.classList.toggle("pte-grid-toolbar-more-active", active);
     this.moreButton.setAttribute(
       "aria-label",
-      active ? "More toolbar actions (active)" : "More toolbar actions",
+      this.t(active ? "moreToolbarActionsActive" : "moreToolbarActions"),
     );
   }
 
@@ -841,10 +844,10 @@ export class GridToolbarRenderer {
     this.quickFilterTrigger.setAttribute(
       "aria-label",
       !active
-        ? "Search"
+        ? this.t("search")
         : find.behavior === "find"
-          ? `Search — highlighting “${term}”`
-          : `Search — filtering by “${term}”`,
+          ? this.t("searchHighlighting", { term })
+          : this.t("searchFiltering", { term }),
     );
   }
 
@@ -906,9 +909,7 @@ export class GridToolbarRenderer {
     if (more) {
       this.setDisplaced(more, folded === 0);
       more.textContent = `+${folded}`;
-      more.setAttribute("aria-label", section === "group"
-        ? `${folded} more grouping levels — open the grouping editor`
-        : `${folded} more sort columns — open the sort editor`);
+      more.setAttribute("aria-label", pluralLocaleText(this.t, section === "group" ? "moreGroupingLevels" : "moreSortColumns", folded));
     }
     this.updateSectionSummary(section);
   }
@@ -916,11 +917,11 @@ export class GridToolbarRenderer {
   private updateSectionSummary(section: ChipSection): void {
     const summary = this.summaryEl(section);
     const count = this.chipCount(section);
-    const caption = section === "group" ? "Grouped by" : "Sort by";
-    summary.textContent = count > 0 ? `${caption} ${count}` : caption;
+    const caption = this.t(section === "group" ? "groupedBy" : "sortBy");
+    summary.textContent = count > 0 ? this.t("sectionSummary", { caption, count }) : caption;
     summary.setAttribute("aria-label", count > 0
-      ? `${caption} ${count} ${count === 1 ? "column" : "columns"} — open the editor`
-      : `${caption} — open the editor`);
+      ? pluralLocaleText(this.t, "sectionSummaryEditor", count, { caption })
+      : this.t("sectionSummaryEditorEmpty", { caption }));
   }
 
   /** The `+N` fold, and the summary button's own affordance: both open the section's editor. */
@@ -952,7 +953,7 @@ export class GridToolbarRenderer {
       items: [],
       contentEl: content,
       position: "bottom-left",
-      ariaLabel: section === "group" ? "Row grouping" : "Column sorting",
+      ariaLabel: this.t(section === "group" ? "rowGrouping" : "columnSorting"),
       onClose: () => {
         if (this.chipEditorSection === section) this.chipEditorSection = null;
       },
@@ -964,9 +965,9 @@ export class GridToolbarRenderer {
   private buildChipEditorContent(section: ChipSection): HTMLElement {
     const list = div("pte-grid-toolbar-chip-editor-list");
     list.setAttribute("role", "list");
-    list.setAttribute("aria-label", section === "group"
-      ? "Row grouping order"
-      : "Column sort priority");
+    list.setAttribute("aria-label", this.t(section === "group"
+      ? "rowGroupingOrder"
+      : "columnSortPriority"));
     if (section === "group") {
       const groups = this.params.core.getRowGroupColumns();
       groups.forEach((col, index) => {
@@ -986,7 +987,7 @@ export class GridToolbarRenderer {
       : this.availableSortColumns();
     const add = button(
       "pte-grid-toolbar-chip-editor-add",
-      section === "group" ? "+ Add group" : "+ Add sort",
+      this.t(section === "group" ? "addGroupEditor" : "addSortEditor"),
     );
     add.type = "button";
     add.setAttribute("aria-haspopup", "menu");
@@ -1053,10 +1054,10 @@ export class GridToolbarRenderer {
     this.groupSection.replaceChildren();
     const groups = this.params.core.getRowGroupColumns();
     if (groups.length > 0) {
-      const label = span("pte-grid-toolbar-group-label", "Grouped by");
+      const label = span("pte-grid-toolbar-group-label", this.t("groupedBy"));
       const list = div("pte-grid-toolbar-group-list");
       list.setAttribute("role", "list");
-      list.setAttribute("aria-label", "Row grouping order");
+      list.setAttribute("aria-label", this.t("rowGroupingOrder"));
       groups.forEach((col, index) => {
         list.appendChild(this.buildGroupChip(col, index, groups.length, "x"));
       });
@@ -1064,7 +1065,7 @@ export class GridToolbarRenderer {
       this.groupSection.append(label, list);
     }
 
-    const addGroup = button("pte-grid-toolbar-group-add", "Add group");
+    const addGroup = button("pte-grid-toolbar-group-add", this.t("addGroup"));
     addGroup.type = "button";
     addGroup.setAttribute("aria-haspopup", "menu");
     addGroup.disabled = this.availableGroupColumns().length === 0;
@@ -1076,13 +1077,13 @@ export class GridToolbarRenderer {
     if (groups.length > 0) {
       const clear = button("pte-grid-toolbar-group-clear", "×");
       clear.type = "button";
-      clear.setAttribute("aria-label", "Clear row grouping");
+      clear.setAttribute("aria-label", this.t("clearRowGrouping"));
       clear.addEventListener("click", () => {
         this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds: [] });
       });
       this.groupChipTooltipDisposers.push(registerRendererTooltipTarget(
         clear,
-        () => "Clear grouping",
+        () => this.t("clearGrouping"),
       ));
       this.groupSection.appendChild(clear);
     }
@@ -1107,12 +1108,10 @@ export class GridToolbarRenderer {
     chip.draggable = true;
     chip.tabIndex = 0;
     chip.setAttribute("role", "listitem");
-    const reorderHint = axis === "x"
-      ? "Use Left and Right arrows to reorder."
-      : "Use Up and Down arrows to reorder.";
+    const reorderHint = this.t(axis === "x" ? "reorderHintHorizontal" : "reorderHintVertical");
     chip.setAttribute(
       "aria-label",
-      `${col.label}, grouping level ${index + 1} of ${total}. ${reorderHint}`,
+      this.t("groupChip", { column: col.label, index: index + 1, total, hint: reorderHint }),
     );
 
     const handle = span("pte-grid-toolbar-group-drag", "⠿");
@@ -1124,7 +1123,7 @@ export class GridToolbarRenderer {
     ));
     const remove = button("pte-grid-toolbar-group-remove", "×");
     remove.type = "button";
-    remove.setAttribute("aria-label", `Remove ${col.label} from row grouping`);
+    remove.setAttribute("aria-label", this.t("removeFromRowGrouping", { column: col.label }));
     remove.addEventListener("click", event => {
       event.stopPropagation();
       this.removeGroup(col.instanceID);
@@ -1207,10 +1206,10 @@ export class GridToolbarRenderer {
     this.sortSection.replaceChildren();
     const sorts = this.params.core.getSortModel().items;
     if (sorts.length > 0) {
-      const label = span("pte-grid-toolbar-sort-label", "Sort by");
+      const label = span("pte-grid-toolbar-sort-label", this.t("sortBy"));
       const list = div("pte-grid-toolbar-sort-list");
       list.setAttribute("role", "list");
-      list.setAttribute("aria-label", "Column sort priority");
+      list.setAttribute("aria-label", this.t("columnSortPriority"));
       sorts.forEach((sort, index) => {
         list.appendChild(this.buildSortChip(sort.col, sort.dir, index, sorts.length, "x"));
       });
@@ -1218,7 +1217,7 @@ export class GridToolbarRenderer {
       this.sortSection.append(label, list);
     }
 
-    const addSort = button("pte-grid-toolbar-sort-add", "Add sort");
+    const addSort = button("pte-grid-toolbar-sort-add", this.t("addSort"));
     addSort.type = "button";
     addSort.setAttribute("aria-haspopup", "menu");
     addSort.disabled = this.availableSortColumns().length === 0;
@@ -1230,11 +1229,11 @@ export class GridToolbarRenderer {
     if (sorts.length > 0) {
       const clear = button("pte-grid-toolbar-sort-clear", "×");
       clear.type = "button";
-      clear.setAttribute("aria-label", "Clear all sorting");
+      clear.setAttribute("aria-label", this.t("clearAllSorting"));
       clear.addEventListener("click", () => this.applySortModel([]));
       this.sortChipTooltipDisposers.push(registerRendererTooltipTarget(
         clear,
-        () => "Clear sorting",
+        () => this.t("clearSorting"),
       ));
       this.sortSection.appendChild(clear);
     }
@@ -1258,12 +1257,10 @@ export class GridToolbarRenderer {
     chip.draggable = true;
     chip.tabIndex = 0;
     chip.setAttribute("role", "listitem");
-    const reorderHint = axis === "x"
-      ? "Use Left and Right arrows to reorder."
-      : "Use Up and Down arrows to reorder.";
+    const reorderHint = this.t(axis === "x" ? "reorderHintHorizontal" : "reorderHintVertical");
     chip.setAttribute(
       "aria-label",
-      `${col.label}, sort priority ${index + 1} of ${total}, ${dir === "asc" ? "ascending" : "descending"}. ${reorderHint}`,
+      this.t(dir === "asc" ? "sortChipAscending" : "sortChipDescending", { column: col.label, index: index + 1, total, hint: reorderHint }),
     );
 
     const handle = span("pte-grid-toolbar-sort-drag", "⠿");
@@ -1278,8 +1275,8 @@ export class GridToolbarRenderer {
     direction.type = "button";
     direction.disabled = nextDirection == null;
     direction.setAttribute("aria-label", nextDirection == null
-      ? `${col.label} sort direction is fixed to ${dir === "asc" ? "ascending" : "descending"}`
-      : `Sort ${col.label} ${nextDirection === "asc" ? "ascending" : "descending"}`);
+      ? this.t(dir === "asc" ? "sortDirectionFixedAscending" : "sortDirectionFixedDescending", { column: col.label })
+      : this.t(nextDirection === "asc" ? "sortColumnAscending" : "sortColumnDescending", { column: col.label }));
     direction.addEventListener("click", event => {
       event.stopPropagation();
       if (nextDirection) this.setSortDirection(col.instanceID, nextDirection);
@@ -1291,7 +1288,7 @@ export class GridToolbarRenderer {
     direction.appendChild(directionIcon);
     const remove = button("pte-grid-toolbar-sort-remove", "×");
     remove.type = "button";
-    remove.setAttribute("aria-label", `Remove ${col.label} from sorting`);
+    remove.setAttribute("aria-label", this.t("removeFromSorting", { column: col.label }));
     remove.addEventListener("click", event => {
       event.stopPropagation();
       this.removeSort(col.instanceID);
@@ -1565,7 +1562,7 @@ export class GridToolbarRenderer {
           const active = this.activeView();
           items.push({
             id: "toolbarMoreViews",
-            label: active ? `View: ${active.name}` : "Views",
+            label: active ? this.t("viewNamed", { name: active.name }) : this.t("views"),
             subMenu: this.buildViewsMenuItems(),
           });
           break;
@@ -1573,7 +1570,7 @@ export class GridToolbarRenderer {
         case BAR_ITEMS.group:
           items.push({
             id: "toolbarMoreGroup",
-            label: `Grouped by (${this.chipCount("group")})…`,
+            label: this.t("groupedByCount", { count: this.chipCount("group") }),
             left: "icon-group",
             command: "toolbar.group.edit",
           });
@@ -1585,7 +1582,7 @@ export class GridToolbarRenderer {
           const primary = this.params.core.getSortModel().items[0];
           items.push({
             id: "toolbarMoreSort",
-            label: `Sort by (${this.chipCount("sort")})…`,
+            label: this.t("sortByCount", { count: this.chipCount("sort") }),
             left: primary?.dir === "desc" ? "icon-desc" : "icon-asc",
             command: "toolbar.sort.edit",
           });
@@ -1594,7 +1591,7 @@ export class GridToolbarRenderer {
         case BAR_ITEMS.pivot:
           items.push({
             id: "toolbarMorePivot",
-            label: "Pivot mode",
+            label: this.t("pivotMode"),
             left: this.params.core.getPivotMode() ? "icon-check" : "icon-pivot",
             command: "toolbar.pivot.toggle",
           });
@@ -1603,7 +1600,7 @@ export class GridToolbarRenderer {
           const exportItems = this.buildExportItems();
           items.push({
             id: "toolbarMoreExport",
-            label: "Export",
+            label: this.t("export"),
             left: "icon-export",
             disabled: exportItems.length === 0,
             subMenu: exportItems.length > 0 ? exportItems : undefined,
@@ -1613,7 +1610,7 @@ export class GridToolbarRenderer {
         case BAR_ITEMS.columns:
           items.push({
             id: "toolbarMoreColumns",
-            label: "Columns…",
+            label: this.t("columnsEllipsis"),
             command: "toolbar.columns.open",
           });
           break;
@@ -1626,7 +1623,7 @@ export class GridToolbarRenderer {
       clientY: rect.bottom,
       items,
       position: "bottom-right",
-      ariaLabel: "More toolbar actions",
+      ariaLabel: this.t("moreToolbarActions"),
       onItemClick: item => this.executeMoreCommand(item),
     });
   }
@@ -1668,29 +1665,29 @@ export class GridToolbarRenderer {
       ? [
           {
             id: "toolbarExportSelection",
-            label: "Selection",
+            label: this.t("exportSelection"),
             subMenu: this.formatItems("Selection", selectionScope),
           },
           {
             id: "toolbarExportAll",
-            label: "Entire table",
+            label: this.t("exportEntireTable"),
             subMenu: this.formatItems("All", "all"),
           },
         ]
-      : this.formatItems("All", "all", "Table as ");
+      : this.formatItems("All", "all", true);
   }
 
   private formatItems(
     prefix: "Selection" | "All",
     scope: ExportOptions["scope"],
-    labelPrefix = "",
+    asTable = false,
   ): MenuItem[] {
     const options = this.params.core.getOptions();
     const items: MenuItem[] = [];
     if (options.allowExportAsCSV) {
       items.push({
         id: `toolbarExport${prefix}CSV`,
-        label: `${labelPrefix}CSV`,
+        label: this.t(asTable ? "exportTableAsCsv" : "exportCsv"),
         command: "toolbar.export.csv",
         payload: { scope },
       });
@@ -1698,7 +1695,7 @@ export class GridToolbarRenderer {
     if (options.allowExportAsExcel) {
       items.push({
         id: `toolbarExport${prefix}Excel`,
-        label: `${labelPrefix}Excel`,
+        label: this.t(asTable ? "exportTableAsExcel" : "exportExcel"),
         command: "toolbar.export.excel",
         payload: { scope },
       });

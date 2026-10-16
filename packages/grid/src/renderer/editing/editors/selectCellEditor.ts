@@ -1,4 +1,5 @@
 import { ICellEditor, ICellEditorParams, SelectCellEditorParams, SelectEditorOption } from "../cellEditor";
+import { defaultLocaleText, localeTextFromApi, type LocaleTextResolver } from "../../../interfaces/locale";
 
 const SELECT_CLASS = "pte-cell-editor-select";
 
@@ -22,9 +23,11 @@ export class SelectCellEditor implements ICellEditor {
   private currentValue: any;
   private options: { value: any; label: string }[] = [];
   private abort = new AbortController();
+  private t: LocaleTextResolver = defaultLocaleText;
 
   init(params: ICellEditorParams): void {
     this.currentValue = params.value;
+    this.t = localeTextFromApi(params.api);
     const select = document.createElement("select");
     select.className = SELECT_CLASS;
     this.select = select;
@@ -63,7 +66,7 @@ export class SelectCellEditor implements ICellEditor {
   private renderLoading(): void {
     this.select.replaceChildren();
     const opt = document.createElement("option");
-    opt.textContent = "Loading…";
+    opt.textContent = this.t("selectEditorLoading");
     opt.disabled = true;
     opt.selected = true;
     this.select.appendChild(opt);

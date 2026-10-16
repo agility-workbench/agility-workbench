@@ -1,3 +1,5 @@
+import { isCompatMouseEvent } from "../interaction/touchGestures";
+
 /**
  * Highlights every body cell in the column under the pointer (adds `.pte-col-hover`). Opt-in via
  * the `columnHover` grid option — `bind()` is only wired when enabled, so this is inert otherwise.
@@ -6,6 +8,8 @@
 export class BodyColumnHoverRenderer {
   private handleMouseOver = (e: MouseEvent) => {
     this.body.querySelectorAll(".pte-col-hover").forEach(c => c.classList.remove("pte-col-hover"));
+    // A tap's compatibility mouseover: nothing hovers on touch, so nothing is highlighted.
+    if (isCompatMouseEvent(e)) return;
     const cell = (e.target as HTMLElement)?.closest(".pte-cell") as HTMLElement | null;
     const colIdx = cell?.dataset.colIdx;
     if (colIdx == null) return;

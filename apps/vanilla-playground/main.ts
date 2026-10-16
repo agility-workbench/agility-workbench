@@ -16,6 +16,7 @@ import { mountGroupingDemo } from "./demos/grouping-demo";
 import { mountPivotDemo } from "./demos/pivot-demo";
 import { mountBlankPivotDemo } from "./demos/blank-pivot-demo";
 import { mountHeaderComponentDemo } from "./demos/header-component-demo";
+import { mountHeaderWrapDemo } from "./demos/header-wrap-demo";
 import { mountHighFrequencyDemo } from "./demos/high-frequency-demo";
 import { mountIndexedInsertDemo } from "./demos/indexed-insert-demo";
 import { mountKitchenSinkDemo } from "./demos/kitchen-sink-demo";
@@ -31,10 +32,13 @@ import { mountServerSideTreeDataDemo } from "./demos/server-side-tree-data-demo"
 import { mountServerSideTreeDuplicateIdDemo } from "./demos/server-side-tree-duplicate-id-demo";
 import { mountSetFilterComponentsDemo } from "./demos/set-filter-components-demo";
 import { mountSparklineDemo } from "./demos/sparkline-demo";
+import { mountCellRenderersDemo } from "./demos/cell-renderers-demo";
 import { mountSheetsDemo } from "./demos/sheets-demo";
 import { mountStickyGroupRowsDemo } from "./demos/sticky-group-rows-demo";
 import { mountToolbarDemo } from "./demos/toolbar-demo";
 import { mountTooltipDemo } from "./demos/tooltip-demo";
+import { mountTouchDemo } from "./demos/touch-demo";
+import { mountLocalizationDemo } from "./demos/localization-demo";
 import { mountTreeDataDemo } from "./demos/tree-data-demo";
 import { mountVisualStatesDemo } from "./demos/visual-states-demo";
 
@@ -73,11 +77,15 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "quickFilter", label: "Quick filter", mount: mountQuickFilterDemo },
   { id: "setFilterComponents", label: "Set-filter components", mount: mountSetFilterComponentsDemo },
   { id: "headerComponents", label: "Custom headers", mount: mountHeaderComponentDemo },
+  { id: "headerWrap", label: "Header wrapping & locked columns", mount: mountHeaderWrapDemo },
   { id: "tooltips", label: "Tooltips", mount: mountTooltipDemo },
   { id: "actionFrame", label: "ActionFrame", mount: mountActionFrameDemo },
   { id: "kitchenSink", label: "Kitchen sink", mount: mountKitchenSinkDemo },
   { id: "footerVisibility", label: "Footer visibility", mount: mountFooterVisibilityDemo },
   { id: "sparklines", label: "Sparklines", mount: mountSparklineDemo },
+  { id: "cellRenderers", label: "Built-in renderers", mount: mountCellRenderersDemo },
+  { id: "touch", label: "Touch & pointer", mount: mountTouchDemo },
+  { id: "localization", label: "Localization", mount: mountLocalizationDemo },
 ];
 
 const root = document.getElementById("root")!;
