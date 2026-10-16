@@ -332,7 +332,7 @@ export class ColumnInteractionRenderer {
       if (!colIds.includes(col.instanceID)) {
         const insertAt = Math.max(0, Math.min(groupDropIndex ?? colIds.length, colIds.length));
         colIds.splice(insertAt, 0, col.instanceID);
-        this.params.core.dispatch({ type: "rowGroupSet", colIds });
+        this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds });
       }
       this.suppressHeaderClick = true;
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
@@ -355,7 +355,7 @@ export class ColumnInteractionRenderer {
       setTimeout(() => { this.suppressHeaderClick = false; }, 0);
       return;
     }
-    this.params.core.dispatch({ type: "columnMove", colId: col.instanceID, toIndex: targetIndex, toSection: section });
+    this.params.core.dispatch({ type: "columnMove", source: "user", colId: col.instanceID, toIndex: targetIndex, toSection: section });
     this.suppressHeaderClick = true;
     setTimeout(() => { this.suppressHeaderClick = false; }, 0);
   }
@@ -376,12 +376,12 @@ export class ColumnInteractionRenderer {
     if (this.params.core.getOptions().pivotColumnMoveMode === "free") {
       if (section !== "center") return;
       const order = computePivotArrangeOrder(this.params.core, col, targetIndex, this.getDropAnchorLeaves(section));
-      if (order) this.params.core.dispatch({ type: "pivotColumnOrderSet", order });
+      if (order) this.params.core.dispatch({ type: "pivotColumnOrderSet", source: "user", order });
       return;
     }
     if (!isPivotMeasureLeaf(col)) return;
     const next = computePivotMeasureReorder(this.params.core, col, targetIndex, this.getDropAnchorLeaves(section));
-    if (next) this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    if (next) this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
   }
 
   onHeaderDoubleClick(e: MouseEvent) {
@@ -393,6 +393,7 @@ export class ColumnInteractionRenderer {
     if (!col || col.isRowNumberColumn()) return;
     this.params.core.dispatch({
       type: "columnAutosize",
+      source: "user",
       colId: header.id,
     });
     e.preventDefault();
@@ -689,6 +690,7 @@ export class ColumnInteractionRenderer {
   private applyColumnResize(colId: string, rawWidth: number) {
     this.params.core.dispatch({
       type: "columnResize",
+      source: "user",
       colId: colId,
       widthPx: rawWidth,
     });

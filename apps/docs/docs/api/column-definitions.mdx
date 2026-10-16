@@ -19,6 +19,43 @@ types widen component slots to accept their native component classes.
 | `valueFormatter` / `formatterOptions` | Format display and export |
 | `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
 
+### Formatter options
+
+`formatterOptions` (an object, or a function of `{ col, row }` for per-row options) configures the
+built-in formatter for the column's `type`, and the built-in parser reads the same shape back, so
+copy, paste, fill and typed edits round-trip. Number options go through `Intl.NumberFormat`.
+
+| Option | Applies to | Purpose |
+| --- | --- | --- |
+| `locale` | all | BCP 47 locale for separators, symbols and month names. Default `"en-US"` |
+| `format` | date | Display pattern from `YYYY` `YY` `MMMM` `MMM` `MM` `M` `DD` `D`. Default `"YYYY-MM-DD"` |
+| `currency` | currency | ISO 4217 code. Default `"USD"` |
+| `style` | number | `"decimal"`, `"percent"` or `"unit"`. Default `"decimal"` (`"unit"` when only `unit` is set) |
+| `fractionDigits` | number, currency | Sets both minimum and maximum decimals |
+| `minimumFractionDigits` | number, currency | Decimals always shown. Default 0 (currency 2) |
+| `maximumFractionDigits` | number, currency | Decimals at most, rounded. Default 3 (currency 2) |
+| `useGrouping` | number, currency | Locale thousands grouping. Default `true` |
+| `unit` | number | An `Intl` unit identifier: `"kilogram"`, `"liter"`, `"kilometer-per-hour"` |
+| `unitDisplay` | number | `"short"` (`12 kg`, default), `"long"` (`12 kilograms`) or `"narrow"` (`12kg`) |
+| `notation` | number, currency | `"standard"` (default) or `"compact"` (`1.2K`, `3.4M`; rounds, display only) |
+
+A `number` column shows `String(value)` (`1234567.891`) until it sets one of the number options;
+`locale` alone does not switch formatting on, so existing grids keep their display. The smallest
+opt-in is `{ style: "decimal" }` (locale grouping, up to three decimals).
+
+```ts
+{ key: "revenue", type: ColumnType.NUMBER, formatterOptions: { fractionDigits: 2 } } // 1,234,567.89
+{ key: "margin", type: ColumnType.NUMBER, formatterOptions: { style: "percent" } } // 0.125 → 12.5%
+{ key: "weight", type: ColumnType.NUMBER, formatterOptions: { unit: "kilogram" } } // 12 kg
+```
+
+`style: "percent"` follows `Intl`: the stored value is a fraction, so `0.125` displays `12.5%`.
+Typing or pasting `12.5%` stores `0.125`; a bare number is taken as the fraction itself (`0.125`).
+A unit column accepts its own unit in any spelling (`12 kg`, `12 kilograms`) or none, and refuses
+another unit; a compact column reads `1.2K` back as `1200`. Grouping and decimal separators follow
+the column's locale (`1.234,5` in `de-DE`). A `formatterOptions` the platform's `Intl` rejects
+(an unknown unit) logs one warning and shows the raw value.
+
 ## Layout and capability
 
 `width`, `minWidth`, `maxWidth`, `pinned`, and `hidden` describe initial layout.

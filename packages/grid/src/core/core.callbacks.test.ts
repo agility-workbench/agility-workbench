@@ -13,6 +13,7 @@ import { describe, it, expect, vi } from "vitest";
 import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
+import type { GridEventMap } from "../events/events";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -157,7 +158,7 @@ describe("declarative on* callbacks", () => {
     const core = makeGrid({ onCellClicked, onRowClicked });
     const fakeEvent = {} as MouseEvent;
     core.emit("rowClicked", { rowId: "1", viewIdx: 0, data: { id: "1" }, isGroup: false, event: fakeEvent });
-    core.emit("cellClicked", { rowId: "1", colId: colId(core, "name"), viewIdx: 0, colIdx: 0, data: { id: "1" }, value: "alice", event: fakeEvent });
+    core.emit("cellClicked", { rowId: "1", colId: colId(core, "name"), viewIdx: 0, colIdx: 0, data: { id: "1" }, value: "alice", event: fakeEvent } as GridEventMap["cellClicked"]);
     expect(onRowClicked).toHaveBeenCalledTimes(1);
     expect(onCellClicked).toHaveBeenCalledTimes(1);
     expect(onCellClicked.mock.calls[0][0]).toMatchObject({ rowId: "1", value: "alice" });
@@ -170,7 +171,7 @@ describe("declarative on* callbacks", () => {
     const core = makeGrid({ onCellDoubleClicked, onRowDoubleClicked, onCellClicked });
     const fakeEvent = {} as MouseEvent;
     core.emit("rowDoubleClicked", { rowId: "1", viewIdx: 0, data: { id: "1" }, isGroup: false, event: fakeEvent });
-    core.emit("cellDoubleClicked", { rowId: "1", colId: colId(core, "name"), viewIdx: 0, colIdx: 0, data: { id: "1" }, value: "alice", event: fakeEvent });
+    core.emit("cellDoubleClicked", { rowId: "1", colId: colId(core, "name"), viewIdx: 0, colIdx: 0, data: { id: "1" }, value: "alice", event: fakeEvent } as GridEventMap["cellDoubleClicked"]);
     expect(onRowDoubleClicked).toHaveBeenCalledTimes(1);
     expect(onCellDoubleClicked).toHaveBeenCalledTimes(1);
     expect(onCellDoubleClicked.mock.calls[0][0]).toMatchObject({ rowId: "1", value: "alice" });

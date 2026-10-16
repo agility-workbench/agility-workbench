@@ -217,6 +217,57 @@ hosted in the [toolbar](#narrow-bars) is laid out by the bar instead.
 | `maxPivotColumns` | `number` | Cap on generated pivot columns (default 200; truncates + fires `pivotColumnLimitReached`). A target, not an exact ceiling — truncation is per pivot value, so the count can land under or over it |
 | `pivotColumnMoveMode` | `"measures" \| "free"` | What dragging a generated pivot column does: reorder the measures everywhere (default) or arrange leaves freely, splitting groups (updatable at runtime) |
 
+## Event callbacks
+
+Each `on*` option is a convenience over one core event — passing it is the same as
+`api.on(eventName, handler)` after creation, and neither replaces the other.
+
+| Option | Event | Fires when |
+| --- | --- | --- |
+| `onCellClicked` / `onRowClicked` | `cellClicked` / `rowClicked` | A body cell or row is clicked |
+| `onCellDoubleClicked` / `onRowDoubleClicked` | `cellDoubleClicked` / `rowDoubleClicked` | A body cell or row is double-clicked (not when it opened the editor) |
+| `onCellValueChanged` | `cellValueChanged` | A cell's stored value changes, on any write path |
+| `onSelectionChanged` | `selectionChanged` | The selection changes |
+| `onSortChanged` | `columnsChanged` (reason `"sort"`) | The sort changes |
+| `onFilterChanged` | `filterChanged` | The effective row filter changes |
+| `onQuickFilterFindChanged` | `quickFilterFindChanged` | The find match count or active match changes |
+| `onHistoryChanged` | `historyChanged` | The undo/redo stacks move |
+| `onColumnsChanged` | `columnsChanged` | Columns change: definitions, state restores, pin, visibility, order, sort, filter, grouping, pivot (`reason` says which) |
+| `onPaginationChanged` | `paginationChanged` | Page, page size or totals may have changed; the payload is `api.getPaginationInfo()` |
+| `onError` | `error` | A row-model request fails (`code: "row_model_error"`) |
+
+`onPaginationChanged` also fires after operations that leave every field as it was (a
+re-sort, a regroup), so compare with the previous payload when only real changes matter.
+`onError` is a notification only: the grid's handling of the failure is unchanged (see
+[Failed requests](../examples/server-side-data.mdx#failed-requests)).
+
+### Telling user changes from your own
+
+`columnsChanged`, `columnWidthsChanged` and `onSortChanged` carry `source`:
+
+- `"user"` — a gesture made through the grid's UI: a header click, drag, resize handle,
+  double-click autosize or header keyboard shortcut; a column-menu item; the column panel;
+  the toolbar's grouping, pivot and sort controls.
+- `"api"` — everything else: `IGridAPI` calls, saved-view and `applyColumnState` restores,
+  `columnDefs` updates, server-sent schemas, and the grid's own follow-up adjustments. A
+  custom menu item's `onClick` that calls the API reports `"api"` too: the source is the
+  path the change took, not what prompted it.
+
+Persist column state on `"user"` changes only, and restoring it never writes back:
+
+```ts
+const grid = createGrid(el, {
+  columnDefs,
+  onColumnsChanged: (event) => {
+    if (event.source === "user") saveLayout(grid.getColumnState());
+  },
+});
+grid.on("columnWidthsChanged", (event) => {
+  // `final` is false while a resize handle is still being dragged.
+  if (event.source === "user" && event.final) saveLayout(grid.getColumnState());
+});
+```
+
 ## Presentation and integration
 
 | Option | Type | Purpose |

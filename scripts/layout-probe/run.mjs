@@ -313,6 +313,33 @@ async function runSmoke(page, baseUrl, id, invariantsSource, opts) {
   return { name: id, steps };
 }
 
+/**
+ * The smoke pass gets the same recovery as the matrix: a page that navigated under an in-flight
+ * evaluate (a Vite dependency re-optimisation reloads the page the first time it meets a new
+ * import; a stylesheet regeneration does the same) is retried up to three times, and any other
+ * failure is reported as a `harness-error` step for that page instead of aborting the run.
+ */
+async function runSmokeSafely(page, baseUrl, id, invariantsSource, opts, attempt = 1) {
+  try {
+    return await runSmoke(page, baseUrl, id, invariantsSource, opts);
+  } catch (error) {
+    if (attempt < 3 && looksLikeReload(error)) {
+      console.log(`    (page reloaded under ${id}; retrying, attempt ${attempt + 1})`);
+      return runSmokeSafely(page, baseUrl, id, invariantsSource, opts, attempt + 1);
+    }
+    return {
+      name: id,
+      steps: [{
+        step: "harness",
+        grids: 0,
+        violations: [{ id: "harness-error", severity: "error", message: String(error.message || error), details: {} }],
+        summary: [],
+        console: page.drainConsole(),
+      }],
+    };
+  }
+}
+
 /* ------------------------------------------------------------------ report ----------------- */
 
 function isFailure(entry) {
@@ -412,7 +439,7 @@ async function main() {
       const ids = playgroundPageIds();
       console.log(`\nsmoke: ${ids.length} playground pages × widths ${opts.smokeWidths.join("/")}`);
       for (const id of ids) {
-        const run = await runSmoke(page, server.url, id, invariantsSource, opts);
+        const run = await runSmokeSafely(page, server.url, id, invariantsSource, opts);
         report.smoke.push(run);
         const { errors, warnings } = printRun(run, "page");
         if (errors) failed++;

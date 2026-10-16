@@ -60,6 +60,35 @@ api.exportDataAsCsv({ fileName: "orders.csv" });
 api.exportDataAsExcel({ fileName: "orders.xlsx" });
 ```
 
+## CSV options
+
+These options shape the CSV text only; the Excel export ignores them. They
+apply to every CSV path: the download, `getDataAsCsv()` (which returns exactly
+the text the download holds), body and pinned rows, and grouped grids, whose
+CSV is the flat list of leaf rows whatever the `groupMode`.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `columnSeparator` | `","` | Text between fields. `";"` suits Excel in locales whose decimal mark is a comma; `"\t"` writes tab-separated values. A field containing the separator is quoted. |
+| `lineEnding` | `"\n"` | Text between rows. RFC 4180 specifies `"\r\n"`, which some strict consumers require. |
+| `includeBom` | `false` | Start the file with a UTF-8 byte order mark. Without it Excel reads the file in the system's legacy code page and garbles non-ASCII text. |
+| `suppressQuotes` | `false` | Never quote fields; the caller guarantees no field contains the separator, a quote or a line break. |
+| `processCellForCsv` | | `(params) => string \| undefined`: replace a data cell's text. `params` is `{ value, formattedValue, data, rowIndex, rowType, column }`, the same shape `processCellForExcel` receives; `rowType` is `"body"`, `"pinnedTop"` or `"pinnedBottom"`, and `rowIndex` counts from 0 within it. Return `undefined` to keep the grid's text. |
+| `processHeaderForCsv` | | `({ column, label }) => string \| undefined`: replace a header label. On a grouped header, `column` is the column group for the group row's labels. |
+| `prependContent` / `appendContent` | | Content before the header or after the last row. A string is written verbatim as its own line(s); a 2-D array is written as CSV rows with the export's separator and quoting. |
+
+```ts
+// Excel in a comma-decimal locale, with accented names intact and card numbers masked.
+api.exportDataAsCsv({
+  fileName: "customers.csv",
+  columnSeparator: ";",
+  includeBom: true,
+  prependContent: [["Customer export", new Date().toLocaleDateString()]],
+  processCellForCsv: ({ column, formattedValue }) =>
+    column.colId === "cardNumber" ? `**** ${formattedValue.slice(-4)}` : undefined,
+});
+```
+
 ## Export a range or selected columns
 
 ```ts
@@ -98,7 +127,12 @@ A spreadsheet that opens a CSV evaluates any text cell starting with `=`, `+`,
 writes such text with a leading single quote (`=1+1` becomes `'=1+1`), in body
 cells, group and full-width labels, and header labels. Cells written as numbers
 (a numeric value, or a numeric value in a `NUMBER` / `CURRENCY` column) are left
-as they are, so `-5` stays `-5`. The guard is always on.
+as they are, so `-5` stays `-5`. The guard is always on, whatever the separator
+and even with `suppressQuotes`. Text returned by `processCellForCsv` or
+`processHeaderForCsv`, and the cells of a 2-D `prependContent` / `appendContent`,
+are guarded too; a cell result or extra-content cell that is a plain number such
+as `-5` is left as it is. A string `prependContent` / `appendContent` is the
+application's own text and is written verbatim.
 
 The Excel export needs no guard: text is written as string cells, which Excel
 never evaluates. The only formula cells are the aggregate and subtotal formulas

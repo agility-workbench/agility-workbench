@@ -185,8 +185,20 @@ splits its props the same way.
   (selectionChanged)="selectionChanged($event)"
   (sortChanged)="sortChanged($event)"
   (filterChanged)="filterChanged($event)"
+  (columnsChanged)="columnsChanged($event)"
+  (paginationChanged)="paginationChanged($event)"
+  (gridError)="gridError($event)"
 />
 ```
+
+`(columnsChanged)` reports every column change with `source: "user"` for gestures made
+through the grid's UI and `"api"` for API calls, restores and `columnDefs` updates — persist
+on `"user"` and restoring a saved layout never echoes back into storage (see
+[Telling user changes from your own](../api/grid-options.mdx#telling-user-changes-from-your-own)).
+The core's `error` event is the `(gridError)` output: Angular binds an `(error)` on the host
+as a native DOM listener as well as to the output, so a DOM `error` event on `<awb-grid>`
+would reach the handler too. It is an extra notification; the grid handles the failure as it
+would without it.
 
 Outputs re-enter Angular's zone even though the grid core and its
 high-frequency listeners run outside it. For other events, subscribe with

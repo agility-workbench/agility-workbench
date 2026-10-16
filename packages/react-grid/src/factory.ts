@@ -59,6 +59,9 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "onCellValueChanged", props.onCellValueChanged);
   setIfDefined(options, "onSelectionChanged", props.onSelectionChanged);
   setIfDefined(options, "onSortChanged", props.onSortChanged);
+  setIfDefined(options, "onColumnsChanged", props.onColumnsChanged);
+  setIfDefined(options, "onPaginationChanged", props.onPaginationChanged);
+  setIfDefined(options, "onError", props.onError);
   setIfDefined(options, "onFilterChanged", props.onFilterChanged);
   setIfDefined(options, "onQuickFilterFindChanged", props.onQuickFilterFindChanged);
   setIfDefined(options, "onHistoryChanged", props.onHistoryChanged);

@@ -52,7 +52,7 @@ Class renderers implement `init`, `getGui`, and optional `refresh`/`destroy`.
 The React and Angular bindings additionally accept framework components in the
 same `cellRenderer` slot, as the tabs above show.
 
-## Built-in renderers: change flash and Sparkline
+## Built-in renderers: checkbox, change flash and Sparkline
 
 ```ts
 const priceColumn = {
@@ -81,6 +81,49 @@ Grid-wide flash defaults are available as `cellFlashDuration` and
 supported visuals are line, area, and bar. The
 [Sparklines page](/docs/examples/sparklines) covers series shapes, tooltips,
 theming, and the built-in column generator in full.
+
+### Boolean checkbox
+
+A `ColumnType.BOOLEAN` column that sets no `cellRenderer` of its own draws a
+checkbox (`BooleanCellRenderer`) instead of the text "true" or "false". `true` is
+a ticked box, `false` an empty one, and a blank value (`null` or `undefined`) the
+same indeterminate dash as the header's select-all checkbox.
+
+```ts
+const activeColumn = {
+  key: "active",
+  label: "Active",
+  type: ColumnType.BOOLEAN,
+  editable: true,
+  valueFormatter: ({ value }) => (value == null ? "" : value ? "Yes" : "No"),
+} satisfies ColDef;
+```
+
+- **Read-only by default.** When the cell is not editable the box is shown but
+  inert, dimmed and marked `aria-readonly`.
+- **Click to toggle.** When the cell is editable — the column's `editable`, a
+  row presentation's `editable`, `pinnedRowsEditable` on pinned rows, and an
+  `editTrigger` other than `"none"` — a plain click on the box writes the
+  opposite value through `api.setCellValue`. `onBeforeCellCommit`,
+  `cellValueChanged`, undo/redo and no-op suppression all apply; a blank value
+  toggles to `true`. Clicking the box never opens the editor, not even with
+  `editTrigger: "singleClick"`, and a double-click on it is two toggles.
+  Shift/Ctrl/Cmd-clicks are left to selection, and a click elsewhere in the cell
+  focuses, selects and (per `editTrigger`) edits it as usual.
+- **Keyboard.** There is no extra key binding: Enter or F2 opens the built-in
+  `"boolean"` editor as before.
+- **Accessibility.** The box has `role="checkbox"` and `aria-checked`
+  (`"mixed"` for a blank value), and the cell keeps its `gridcell` role. Its
+  `aria-label` is the formatted value when a `valueFormatter` puts it into words
+  ("Yes"/"No"), otherwise the column's label.
+- **Text everywhere else.** Export, the clipboard and configured tooltips still
+  use the formatted value; only the cell shows the box. Group rows show the
+  group cell value as text. The quick-filter find skips these columns, since
+  their cells show no text to highlight.
+
+To keep a boolean column as text, set `cellRenderer: "text"`. Setting any other
+renderer (for example `ChangeFlashCellRenderer`) replaces the checkbox, and
+`cellRenderer: BooleanCellRenderer` draws the box on a column of another type.
 
 ## Group rows
 

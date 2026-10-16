@@ -30,6 +30,7 @@ export function applyOrderedSortItems(core: GridCore, next: OrderedSortItem[]): 
 
   core.dispatch({
     type: "sortModelSet",
+    source: "user",
     sortItems: [
       ...current.map(item => ({ key: item.key, dir: null })),
       ...next,

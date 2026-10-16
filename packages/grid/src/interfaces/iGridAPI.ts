@@ -31,7 +31,7 @@ import { SetFilterSelection } from "../filter/setFilterCore";
 import { SetFilterTreeNode } from "../filter/setFilterTree";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "./iRowModel";
 import { GridHistoryState } from "../core/historyModel";
-import type { Column } from "../column/column";
+import type { SortDir } from "./sort";
 import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
 import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
 
@@ -45,76 +45,91 @@ export type NavDir = "up" | "down" | "left" | "right";
 export type RowScrollPosition = "auto" | "top" | "middle" | "bottom";
 
 /** Which rows/columns an export covers. */
-export type ExportScope = "all" | "selection" | "selectedColumns";
-
-/** The data-row segment currently being written to an Excel workbook. */
-export type ExcelExportRowType = "body" | "pinnedTop" | "pinnedBottom";
+export type {
+  ExportScope,
+  ExcelExportRowType,
+  ExcelExportCellStyle,
+  ExcelExportCellParams,
+  ExcelExportCellResult,
+  ExcelExportCellProcessor,
+  ExportParams,
+  CsvExportRowType,
+  CsvExportCellParams,
+  CsvExportCellProcessor,
+  CsvExportHeaderParams,
+  CsvExportHeaderProcessor,
+  CsvExtraContent,
+} from "./exportParams";
+import type { ExportParams } from "./exportParams";
 
 /**
- * The intentionally small set of Excel cell styles supported by the built-in OOXML writer.
- * Colors, fills, borders, and arbitrary browser CSS are outside this contract.
+ * One entry of the grid's sort model. The model is a list in priority order: entry 0 sorts first,
+ * each later entry breaks the ties of the ones before it.
  */
-export interface ExcelExportCellStyle {
-  /** Excel number-format code (for example `0.00%` or `yyyy-mm-dd`). */
-  numFmt?: string;
-  bold?: boolean;
-  alignment?: {
-    horizontal?: "left" | "center" | "right";
-    vertical?: "top" | "middle" | "bottom";
-    wrapText?: boolean;
-  };
-}
-
-/** Context supplied for each real data cell written to an Excel workbook. */
-export interface ExcelExportCellParams {
-  /** Raw value resolved from the column before export customization. */
-  value: unknown;
-  /** Value after the column's value formatter, before export customization. */
-  formattedValue: string;
-  data: unknown;
-  /** Zero-based index within the row segment identified by `rowType`. */
-  rowIndex: number;
-  rowType: ExcelExportRowType;
-  column: Column;
-}
-
-/** A cell override returned by {@link ExportParams.processCellForExcel}. */
-export interface ExcelExportCellResult {
-  /** Replacement exported value. Omit to keep the grid-resolved value; `null` clears the cell. */
-  value?: unknown;
-  /** Style properties merge over the grid's default number format for this column. */
-  style?: ExcelExportCellStyle;
-}
-
-export type ExcelExportCellProcessor = (
-  params: ExcelExportCellParams,
-) => ExcelExportCellResult | undefined;
-
-/** Options for a programmatic CSV/Excel export (all optional). */
-export interface ExportParams {
-  /** "all" (default) exports the full view; "selection" a cell range; "selectedColumns" the picked columns. */
-  scope?: ExportScope;
-  /** Output filename. Auto-derived (e.g. "grid-all.xlsx") when omitted; the extension is enforced. */
-  fileName?: string;
-  /** Restrict the export to these column instanceIDs / colIds / keys. */
-  columnIds?: string[];
-  /** Include the (hierarchical) header rows. Defaults to true. */
-  includeHeaders?: boolean;
-  /** For a row-grouped grid: "tree" (group headers + subtotals, default) or "leaves" (flat rows). */
-  groupMode?: "tree" | "leaves";
+export interface SortModelItem {
   /**
-   * Customize real data cells in Excel exports without changing grid data. Supports replacement
-   * values plus number format, bold, and alignment. Applies to body and pinned rows; synthetic
-   * group headers/subtotals and CSV output are unchanged.
+   * The sorted column's public `ColDef.colId`. The auto-group column and generated pivot columns
+   * appear (and are addressed) by their own colIds.
    */
-  processCellForExcel?: ExcelExportCellProcessor;
+  colId: string;
+  dir: SortDir;
+}
+
+/** What {@link IGridAPI.refreshCells} repaints, and how. */
+export interface RefreshCellsParams {
+  /** Rows to repaint, by row id. Omitted = every rendered row (body, frozen bands, sticky rows). */
+  rowIds?: GridId[];
+  /** Columns to repaint, by colId (instance id and key also resolve). Omitted = every column. */
+  colIds?: string[];
+  /**
+   * Destroy and recreate each affected custom cell renderer instead of calling its `refresh()`.
+   * The grid does no change detection when it repaints (every affected cell is re-run), so this
+   * is only needed for a renderer whose `refresh()` would keep state it should not.
+   */
+  force?: boolean;
+}
+
+/** What {@link IGridAPI.redrawRows} rebuilds. */
+export interface RedrawRowsParams {
+  /** Rows to rebuild, by row id. Omitted = every rendered row. */
+  rowIds?: GridId[];
+}
+
+/** What {@link IGridAPI.flashCells} highlights, and for how long. */
+export interface FlashCellsParams {
+  /** Rows to flash, by row id. Omitted = every rendered row. */
+  rowIds?: GridId[];
+  /** Columns to flash, by colId (instance id and key also resolve). Omitted = every column. */
+  colIds?: string[];
+  /**
+   * How long the highlight holds before fading, in ms. Defaults to the `cellFlashDuration` grid
+   * option, else 500.
+   */
+  flashDuration?: number;
+  /** How long the fade takes, in ms. Defaults to the `cellFadeDuration` grid option, else 1000. */
+  fadeDuration?: number;
 }
 
 /**
- * Live-reconfiguration hooks provided by the renderer once it is attached (it owns the toolbar,
- * quick filter, tooltip layer, column panel, footer, pinned bands, and theme variables). Internal
- * wiring for {@link IGridAPI.updateGridOptions}: hosts call `updateGridOptions`, not this.
+ * A partial pagination change for {@link IGridAPI.setPagination}. Fields left out keep their
+ * current value, except that a new `pageSize` without a `pageIndex` returns to the first page (as
+ * the footer's page-size selector does).
  */
+export interface PaginationUpdate {
+  /** Turn pagination on or off. Turning it off (or leaving it off) always lands on page 0. */
+  enabled?: boolean;
+  /** 0-based page to show, clamped to the known page range. */
+  pageIndex?: number;
+  /** Rows per page; a positive integer. Need not be one of `pageSizes` (the selector lists those). */
+  pageSize?: number;
+}
+
+/** One entry of {@link IGridAPI.setColumnWidths}: the same shape as a `ColumnState` width. */
+export interface ColumnWidthItem {
+  colId: string;
+  widthPx: number;
+}
+
 export interface GridApiConfigController {
   setToolbarOptions: (options: GridOptions["toolbar"]) => void;
   setQuickFilterOptions: (options: GridOptions["quickFilter"]) => void;
@@ -230,17 +245,85 @@ export interface IGridAPI {
   /** Subscribe to core events. */
   on<E extends GridEventName>(event: E, handler: (ev: GridEventMap[E]) => void): Unsubscribe;
 
-  /** Get the current column state. */
+  /**
+   * The current column state: one entry per non-internal leaf in display order, with its width,
+   * pinning, visibility, order, and sort (`sort` is `null` and `sortIndex` is `null` for an
+   * unsorted column; `sortIndex` is the column's index in {@link getSortModel}).
+   */
   getColumnState(): ColumnState[];
 
   /**
-   * Restore a previously-captured column layout (widths / pinning / visibility / order). By default
-   * merges over the current columns: unknown colIds are ignored and columns absent from `state` keep
-   * their place. Pass `opts.defaultState` to apply a fallback to those absent columns instead — e.g.
-   * `{ hidden: true }` for an exact restore that hides everything not in the saved view (including
-   * columns added since it was captured).
+   * Restore a previously-captured column layout (widths / pinning / visibility / order / sort). By
+   * default merges over the current columns: unknown colIds are ignored and columns absent from
+   * `state` keep their place. Pass `opts.defaultState` to apply a fallback to those absent columns
+   * instead — e.g. `{ hidden: true }` for an exact restore that hides everything not in the saved
+   * view (including columns added since it was captured).
+   *
+   * Sort is applied only from entries that carry a `sort` field: a direction sorts the column at
+   * its `sortIndex` in the model (appended when it has none), `null` clears it, and columns whose
+   * entry has no `sort` keep theirs. `defaultState: { sort: null }` clears every other sort (the
+   * auto-group and pivot columns' included); a non-null `defaultState.sort` is ignored. The layout
+   * applies first and the sort second, so a call that changes both emits `columnsChanged` twice
+   * (`reason: "state"`, then `reason: "sort"`).
    */
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
+
+  /* ----- Sorting ----- */
+  /**
+   * The sort model: every sorted column with its direction, in priority order (entry 0 sorts
+   * first). A copy — mutating it changes nothing. Empty when nothing is sorted.
+   */
+  getSortModel(): SortModelItem[];
+  /**
+   * Replace the whole sort model with `items`, in priority order. `[]` clears every sort. Entries
+   * for unknown or non-sortable columns are skipped, as are repeats of a colId (the first wins) and
+   * entries whose `dir` is `null`, so a toggle can pass its result straight through. A model equal
+   * to the current one changes nothing and emits nothing; otherwise this behaves exactly like a
+   * header-click sort: `columnsChanged` with `reason: "sort"`, `onSortChanged`, the page follows
+   * `resetPageOn`, the cell range clears, and row selection follows `selectionPersistence`.
+   *
+   * ```ts
+   * api.setSortModel([{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }]);
+   * ```
+   */
+  setSortModel(items: ReadonlyArray<SortModelItem | { colId: string; dir: null }>): void;
+
+  /* ----- Column sizing ----- */
+  /**
+   * Fit the named columns to their content (header and cell values), dropping any width the user
+   * dragged — what double-clicking a resize handle does. A column group sizes each of its visible
+   * leaves. Unknown colIds are skipped. Emits ONE `columnWidthsChanged` (`final: true`) for the
+   * whole batch, and none when no column resolves.
+   */
+  autoSizeColumns(colIds: string[]): void;
+  /**
+   * {@link autoSizeColumns} for every visible column except the row-number and selection-checkbox
+   * columns (the auto-group column included).
+   */
+  autoSizeAllColumns(): void;
+  /**
+   * Set one column's width in pixels, as dragging its resize handle to that width would: clamped
+   * to the column's `minWidth` / `maxWidth` (falling back to the grid's `minResizeWidth` /
+   * `maxColumnWidth`, the floor applying either way), and kept across later
+   * autosizes. A column group spreads the width over its visible leaves. The row-number column is
+   * fixed. Emits one `columnWidthsChanged` (`final: true`) when the width changed.
+   */
+  setColumnWidth(colId: string, widthPx: number): void;
+  /**
+   * {@link setColumnWidth} for several columns in one pass: one `columnWidthsChanged` for the
+   * batch, one relayout. Unknown colIds and non-finite widths are skipped.
+   */
+  setColumnWidths(widths: ColumnWidthItem[]): void;
+  /**
+   * Resize the centre (unpinned) section's visible columns so together they fill its viewport
+   * exactly, keeping their relative widths. Pinned sections are left alone (they are width-clamped
+   * and never scroll), as are columns with `resizable: false` and the row-number / selection-
+   * checkbox columns; each fitted column stays within the bounds {@link setColumnWidth} applies, so
+   * the fit can fall short (or overflow) when those bounds cannot reach the
+   * viewport. The widths are recorded as user widths (they survive later autosizes) and applied in
+   * one batch: one `columnWidthsChanged`. No-op before the grid is rendered and laid out.
+   */
+  sizeColumnsToFit(): void;
 
   /**
    * Every column group's expander state (open or closed) by the group's colId — nested groups
@@ -278,6 +361,19 @@ export interface IGridAPI {
   /** Set the row data. */
   setRowData(rows: RowData[]): void;
 
+  /**
+   * Visit every node the row model holds, filtered out or collapsed included: every data row first
+   * (in source order client-side; loaded rows in server order server-side), then every group / tree
+   * group node (`getGroupNodes()` order). `idx` counts across both. Application-pinned band rows
+   * are not in the row model and are not visited.
+   */
+  forEachNode(callback: (node: IRowNode, idx: number) => void): void;
+  /**
+   * Visit every data row — every node that is not a group node (`isGroup` false), filtered out or
+   * collapsed included, in the order {@link forEachNode} visits them. A tree-data parent that
+   * carries its own data is a data row and is visited.
+   */
+  forEachLeafNode(callback: (node: IRowNode, idx: number) => void): void;
   /** Visit every row node that remains after filtering, before client-side sorting. */
   forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void;
   /** Visit every row node that remains after filtering in its final sorted order. */
@@ -606,6 +702,61 @@ export interface IGridAPI {
    * ```
    */
   getPaginationInfo(): GridEventPaginationChangedParams;
+  /**
+   * Change pagination: turn it on or off, go to a page, or change the page size — any mix, merged
+   * over the current state (see {@link PaginationUpdate}). `pageIndex` is clamped to
+   * `[0, totalPageCount - 1]` while the total is known; while a server-side total is still
+   * provisional (`totalRowCountKnown: false`) any page past the last loaded one is accepted, and
+   * the grid snaps back to the real last page once the count is pinned. A change that would leave
+   * the state as it is does nothing; otherwise `paginationChanged` fires once and the body scrolls
+   * back to the top. An invalid `pageSize` is refused with a warning.
+   */
+  setPagination(update: PaginationUpdate): void;
+  /** Go to a 0-based page (clamped as {@link setPagination} describes). No-op with pagination off. */
+  goToPage(pageIndex: number): void;
+  /** Go to the next page; no-op on the last known page or with pagination off. */
+  nextPage(): void;
+  /** Go to the previous page; no-op on the first page or with pagination off. */
+  previousPage(): void;
+  /** Go to the first page. No-op with pagination off. */
+  firstPage(): void;
+  /**
+   * Go to the last page — while a server-side total is provisional, the last page loaded so far.
+   * No-op with pagination off.
+   */
+  lastPage(): void;
+  /** Change the page size and return to the first page (same as `setPagination({ pageSize })`). */
+  setPageSize(pageSize: number): void;
+
+  /* ----- Displayed rows -----
+   * Indexes here are PAGE-RELATIVE view indexes, the space `selectRow`, `setFocusedCell` and the
+   * rendered rows use: 0 is the first row of the current page (of the whole view when pagination
+   * is off), counting group rows and the leaves of expanded groups in display order. Add
+   * `pageIndex * pageSize` from `getPaginationInfo()` for the position in the whole list. */
+  /**
+   * How many rows the current page displays (the whole filtered view with pagination off): group
+   * rows and the leaves of expanded groups, not rows inside collapsed groups. Application-pinned
+   * band rows are not counted. Server-side, unloaded rows of the page count too.
+   */
+  getDisplayedRowCount(): number;
+  /**
+   * The node displayed at a page-relative view index (see above), or `undefined` past the end —
+   * and server-side for a row that is not loaded yet.
+   */
+  getDisplayedRowAtIndex(viewIdx: number): IRowNode | undefined;
+  /**
+   * The page-relative view index of the first body row the grid has rendered, overscan rows
+   * included; -1 before the grid is rendered or when no row is rendered.
+   */
+  getFirstDisplayedRowIndex(): number;
+  /** The page-relative view index of the last rendered body row (overscan included); -1 when none. */
+  getLastDisplayedRowIndex(): number;
+  /**
+   * The nodes the grid has rendered right now, in display order: the frozen top band, the body's
+   * rendered window (overscan rows included; rows not loaded yet are skipped), the frozen bottom
+   * band. Empty before the grid is rendered.
+   */
+  getRenderedNodes(): IRowNode[];
 
   /* ----- Scrolling ----- */
   /**
@@ -646,6 +797,31 @@ export interface IGridAPI {
    * captured by the callback changes; row-data transactions already repaint affected rows.
    */
   refreshRowPresentation(): void;
+
+  /* ----- Repainting ----- */
+  /**
+   * Re-run the value getters, formatters, cell classes/styles and cell renderers of rendered cells
+   * — after something they read outside the row data changed (a lookup table, a locale, a flag a
+   * renderer closes over). The data is not touched and nothing is re-derived (no re-sort, no
+   * re-filter); rows scrolled out of view repaint when they scroll back in anyway. A custom renderer
+   * is handed new params through its `refresh()` (returning false rebuilds it); `force: true`
+   * rebuilds it outright. Cells of rows that are not rendered are skipped. No-op before render.
+   */
+  refreshCells(params?: RefreshCellsParams): void;
+  /**
+   * Rebuild rendered rows from scratch: destroy every cell renderer instance of each row and paint
+   * it anew, row styling included. Heavier than {@link refreshCells}; for when a renderer must start
+   * over. Rows that are not rendered are skipped. No-op before render.
+   */
+  redrawRows(params?: RedrawRowsParams): void;
+  /**
+   * Briefly highlight rendered cells — the change-flash renderer's neutral flash, without a value
+   * change (to draw the eye to rows a server push just touched, say). Cells that are not rendered
+   * are skipped; flashing a cell again restarts its flash. No new CSS: the highlight is the
+   * `pte-cell-flash-neutral` / `pte-cell-flash-fading` classes and their theme variables
+   * (`--pte-cell-flash-neutral-bg-color`, `--pte-cell-flash-fade-duration`). No-op before render.
+   */
+  flashCells(params?: FlashCellsParams): void;
 
   /* ----- ActionFrame ----- */
   /** Open the persistent ActionFrame (frame + form popover) on a body cell. Closes any open editor

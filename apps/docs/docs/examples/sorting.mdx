@@ -9,7 +9,7 @@ import { FrameworkCode } from "@site/src/components/FrameworkCode";
 # Sorting
 
 Sorting is type-aware and supports ordered multi-column models through headers,
-menus, the toolbar, initial options, and actions.
+menus, the toolbar, initial options, and the API.
 
 <LiveFeatureGrid feature="sorting" />
 
@@ -96,22 +96,41 @@ boolean, or currency comparison automatically.
 ## Set or toggle sorting through the API
 
 ```ts
-const model = api.getColumnModel();
-const region = model.getByColId("region")!;
-const revenue = model.getByColId("revenue")!;
+// Replace the whole sort model, in priority order (entry 0 sorts first).
+api.setSortModel([
+  { colId: "region", dir: "asc" },
+  { colId: "revenue", dir: "desc" },
+]);
 
-api.dispatch({
-  type: "sortModelSet",
-  sortItems: [
-    { key: region.instanceID, dir: "asc" },
-    { key: revenue.instanceID, dir: "desc" },
-  ],
-});
+api.getSortModel();
+// → [{ colId: "region", dir: "asc" }, { colId: "revenue", dir: "desc" }]
 
-api.dispatch({
-  type: "headerAction",
-  colId: "revenue",
-  action: "toggleSort",
-  additive: false,
-});
+// Cycle one column asc → desc → unsorted, keeping the other sorts (it moves to last priority).
+const toggle = (colId: string) => {
+  const model = api.getSortModel();
+  const current = model.find((item) => item.colId === colId)?.dir ?? null;
+  const next = current === null ? "asc" : current === "asc" ? "desc" : null;
+  api.setSortModel([
+    ...model.filter((item) => item.colId !== colId),
+    ...(next ? [{ colId, dir: next }] : []),
+  ]);
+};
+
+api.setSortModel([]); // clear every sort
+```
+
+Columns are addressed by their public `colId` — the auto-group column and generated pivot
+columns by theirs. `setSortModel` replaces the model; unknown and non-sortable columns are
+skipped, and a model equal to the current one does nothing. Otherwise it behaves exactly like a
+header click: `columnsChanged` (`reason: "sort"`) and `onSortChanged` fire, the page follows
+`resetPageOn`, and selection follows `selectionPersistence`.
+
+Sort also round-trips through column state: `getColumnState()` reports each column's `sort`
+(`null` when unsorted) and `sortIndex` (its position in the sort model), and `applyColumnState()`
+applies the entries that carry a `sort` field — `null` clears that column's sort, and
+`defaultState: { sort: null }` clears every column the state does not name.
+
+```ts
+api.applyColumnState([{ colId: "revenue", sort: "desc", sortIndex: 0 }]);
+api.applyColumnState([{ colId: "region", sort: "asc" }], { defaultState: { sort: null } });
 ```

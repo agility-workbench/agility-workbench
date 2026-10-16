@@ -1,12 +1,18 @@
 import { GridEventMap, GridEventPaginationChangedParams } from "../events/events";
 import { ColDef } from "../interfaces/column";
 import {
+  ColumnWidthItem,
   ExportParams,
+  FlashCellsParams,
   GridApiConfigController,
   GridApiShortcutController,
   IGridAPI,
   NavDir,
+  PaginationUpdate,
+  RedrawRowsParams,
+  RefreshCellsParams,
   RowScrollPosition,
+  SortModelItem,
 } from "../interfaces/iGridAPI";
 import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
 import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
@@ -86,6 +92,29 @@ export interface GridApiRowPresentationController {
   refreshRowPresentation: () => void;
 }
 
+/**
+ * Repaint and rendered-window hooks provided by the renderer once it's attached (it owns the row
+ * pool, the frozen bands and the body viewport). Ids arrive resolved: row ids as given, columns as
+ * the instance ids of visible leaves.
+ */
+export interface GridApiRenderController {
+  /** Repaint rendered cells; `undefined` sets mean "all". `rebuild` destroys renderer instances. */
+  refreshCells: (params: { rowIds?: Set<string>; colInstanceIds?: Set<string>; rebuild: boolean }) => void;
+  /** Destroy and repaint rendered rows; `undefined` means every rendered row. */
+  redrawRows: (rowIds?: Set<string>) => void;
+  /** Flash rendered cells; `undefined` sets mean "all". */
+  flashCells: (params: {
+    rowIds?: Set<string>;
+    colInstanceIds?: Set<string>;
+    flashMs: number;
+    fadeMs: number;
+  }) => void;
+  /** The page-relative view-index range of the rendered body window, or null when it is empty. */
+  getRenderedRange: () => { first: number; last: number } | null;
+  /** The centre section's visible width in px (0 while not laid out). */
+  getCenterViewportWidth: () => number;
+}
+
 /** Fill hooks provided by the renderer once it's attached (it owns the fill handle). */
 export interface GridApiFillController {
   canFillDown: () => boolean;
@@ -125,6 +154,7 @@ export class GridAPI implements IGridAPI {
   private _tooltip: GridApiTooltipController | null = null;
   private _fill: GridApiFillController | null = null;
   private _rowPresentation: GridApiRowPresentationController | null = null;
+  private _render: GridApiRenderController | null = null;
   private _scroll: GridApiScrollController | null = null;
   private _pinnedRows: GridApiPinnedRowsController | null = null;
   private _config: GridApiConfigController | null = null;
@@ -146,6 +176,12 @@ export class GridAPI implements IGridAPI {
 
   setRowPresentationController(controller: GridApiRowPresentationController): void {
     this._rowPresentation = controller;
+  }
+
+  /** Wire repaints and the rendered window. Called by the renderer on attach; before that the
+   * repaint methods are no-ops and the window reads report nothing rendered. */
+  setRenderController(controller: GridApiRenderController): void {
+    this._render = controller;
   }
 
   /** Wire the fill handle. Called by the renderer on attach; before that the fills warn and do nothing. */
@@ -390,6 +426,53 @@ export class GridAPI implements IGridAPI {
     this._rowPresentation?.refreshRowPresentation();
   }
 
+  // ---------------- Repainting ----------------
+  refreshCells(params?: RefreshCellsParams): void {
+    if (!this._render) return;
+    const colInstanceIds = this.resolveLeafInstanceIds(params?.colIds);
+    // Named columns that are all hidden or unknown: nothing to repaint (an empty set would read as
+    // "all" further down).
+    if (colInstanceIds && colInstanceIds.size === 0) return;
+    this._render.refreshCells({
+      rowIds: params?.rowIds ? new Set(params.rowIds.map(String)) : undefined,
+      colInstanceIds,
+      rebuild: params?.force === true,
+    });
+  }
+
+  redrawRows(params?: RedrawRowsParams): void {
+    if (!this._render) return;
+    this._render.redrawRows(params?.rowIds ? new Set(params.rowIds.map(String)) : undefined);
+  }
+
+  flashCells(params: FlashCellsParams = {}): void {
+    if (!this._render) return;
+    const colInstanceIds = this.resolveLeafInstanceIds(params.colIds);
+    if (colInstanceIds && colInstanceIds.size === 0) return;
+    const options = this.core.getOptions();
+    this._render.flashCells({
+      rowIds: params.rowIds ? new Set(params.rowIds.map(String)) : undefined,
+      colInstanceIds,
+      flashMs: nonNegative(params.flashDuration) ?? options.cellFlashDuration ?? 500,
+      fadeMs: nonNegative(params.fadeDuration) ?? options.cellFadeDuration ?? 1000,
+    });
+  }
+
+  /**
+   * The visible leaves the given column ids address (a group stands for its visible leaves), as
+   * instance ids; undefined when no list was given ("every column").
+   */
+  private resolveLeafInstanceIds(colIds: string[] | undefined): Set<string> | undefined {
+    if (!colIds) return undefined;
+    const model = this.core.getColumnModel();
+    const ids = new Set<string>();
+    for (const colId of colIds) {
+      const col = model.resolve(colId) ?? model.getAutoGroupColumnByColId(colId);
+      for (const leaf of col?.getVisibleLeaves() ?? []) ids.add(leaf.instanceID);
+    }
+    return ids;
+  }
+
   openActionFrame(cell: CellRef): void {
     this.core.dispatch({ type: "actionFrameOpen", cell, source: "api" });
   }
@@ -425,6 +508,29 @@ export class GridAPI implements IGridAPI {
     this.dispatch({ type: "rowDataSet", rows });
   }
 
+  forEachNode(callback: (node: IRowNode, idx: number) => void): void {
+    const rowModel = this.core.getRowModel();
+    let idx = 0;
+    // The row model's own walk visits data rows only (it skips synthetic group nodes); the group
+    // nodes follow, so "every node" holds for grouped and tree grids alike.
+    const seen = new Set<string>();
+    rowModel.forEachNode(node => {
+      seen.add(node.id);
+      callback(node, idx++);
+    });
+    for (const node of rowModel.getGroupNodes()) {
+      if (seen.has(node.id)) continue;
+      callback(node, idx++);
+    }
+  }
+
+  forEachLeafNode(callback: (node: IRowNode, idx: number) => void): void {
+    let idx = 0;
+    this.core.getRowModel().forEachNode(node => {
+      if (!node.isGroup) callback(node, idx++);
+    });
+  }
+
   forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void {
     this.core.getRowModel().forEachNodeAfterFilter(callback);
   }
@@ -439,6 +545,108 @@ export class GridAPI implements IGridAPI {
 
   getPaginationInfo(): GridEventPaginationChangedParams {
     return this.core.getPaginationInfo();
+  }
+
+  setPagination(update: PaginationUpdate): void {
+    const current = this.core.getPaginationInfo();
+    const enabled = update.enabled ?? current.paginationEnabled;
+    let pageSize = current.pageSize;
+    if (update.pageSize !== undefined) {
+      if (!Number.isInteger(update.pageSize) || update.pageSize <= 0) {
+        console.warn(`setPagination: pageSize must be a positive integer; got ${update.pageSize}. Ignoring.`);
+        return;
+      }
+      pageSize = update.pageSize;
+    }
+    // A new page size re-pages the rows, so the current index means nothing under it: back to the
+    // first page unless the caller says where to go, as the footer's size selector does.
+    let pageIndex = update.pageIndex ?? (pageSize !== current.pageSize ? 0 : current.pageIndex);
+    if (!Number.isFinite(pageIndex)) pageIndex = 0;
+    // With pagination off there is no page to be on; a stored index would resurface as a stale
+    // page when it is turned back on.
+    if (!enabled) pageIndex = 0;
+    // Clamp only while the total is known: a provisional server-side count is a floor, and the
+    // core snaps a page past the real end back once the count pins.
+    const lastPage = current.totalRowCountKnown
+      ? Math.max(0, Math.ceil(current.totalRowCount / pageSize) - 1)
+      : Number.POSITIVE_INFINITY;
+    pageIndex = Math.max(0, Math.min(Math.floor(pageIndex), lastPage));
+    if (
+      enabled === current.paginationEnabled
+      && pageSize === current.pageSize
+      && pageIndex === current.pageIndex
+    ) {
+      return;
+    }
+    this.dispatch({ type: "paginationSet", enabled, pageIndex, pageSize });
+  }
+
+  goToPage(pageIndex: number): void {
+    if (!this.core.getPaginationInfo().paginationEnabled) return;
+    this.setPagination({ pageIndex });
+  }
+
+  nextPage(): void {
+    this.goToPage(this.core.getPaginationInfo().pageIndex + 1);
+  }
+
+  previousPage(): void {
+    this.goToPage(this.core.getPaginationInfo().pageIndex - 1);
+  }
+
+  firstPage(): void {
+    this.goToPage(0);
+  }
+
+  lastPage(): void {
+    this.goToPage(this.core.getPaginationInfo().totalPageCount - 1);
+  }
+
+  setPageSize(pageSize: number): void {
+    this.setPagination({ pageSize });
+  }
+
+  // ---------------- Displayed rows ----------------
+  getDisplayedRowCount(): number {
+    return this.core.getRowModel().getViewCount();
+  }
+
+  getDisplayedRowAtIndex(viewIdx: number): IRowNode | undefined {
+    if (!Number.isInteger(viewIdx) || viewIdx < 0) return undefined;
+    return this.core.getRowModel().getRowNodeAtViewIndex(viewIdx) ?? undefined;
+  }
+
+  getFirstDisplayedRowIndex(): number {
+    return this._render?.getRenderedRange()?.first ?? -1;
+  }
+
+  getLastDisplayedRowIndex(): number {
+    return this._render?.getRenderedRange()?.last ?? -1;
+  }
+
+  getRenderedNodes(): IRowNode[] {
+    if (!this._render) return [];
+    const nodes: IRowNode[] = [];
+    const seen = new Set<string>();
+    const add = (node: IRowNode | null | undefined) => {
+      if (!node || seen.has(node.id)) return;
+      seen.add(node.id);
+      nodes.push(node);
+    };
+    const core = this.core;
+    for (let i = 0; i < core.getDisplayedPinnedRowCount("top"); i++) add(core.getDisplayedPinnedRow("top", i));
+    const range = this._render.getRenderedRange();
+    if (range) {
+      const rowModel = core.getRowModel();
+      for (let viewIdx = range.first; viewIdx <= range.last; viewIdx++) {
+        const node = rowModel.getRowNodeAtViewIndex(viewIdx);
+        // A row mirrored into a band is painted there (its body slot is hidden): it was listed
+        // with its band, so the dedupe drops it here.
+        add(node);
+      }
+    }
+    for (let i = 0; i < core.getDisplayedPinnedRowCount("bottom"); i++) add(core.getDisplayedPinnedRow("bottom", i));
+    return nodes;
   }
 
   getRowNode(rowId: GridId): IRowNode | undefined {
@@ -472,11 +680,208 @@ export class GridAPI implements IGridAPI {
   }
 
   getColumnState(): ColumnState[] {
-    return this.core.getColumnModel().getColumnState();
+    // Sort lives in the core's sort model, not on the columns, so it is joined in here by colId.
+    // The first sort entry for a colId wins (public colIds are not guaranteed unique).
+    const sorts = new Map<string, { dir: SortModelItem["dir"]; index: number }>();
+    this.getSortModel().forEach((item, index) => {
+      if (!sorts.has(item.colId)) sorts.set(item.colId, { dir: item.dir, index });
+    });
+    return this.core.getColumnModel().getColumnState().map(state => {
+      const sort = sorts.get(state.colId);
+      return { ...state, sort: sort?.dir ?? null, sortIndex: sort?.index ?? null };
+    });
   }
 
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void {
     this.dispatch({ type: "columnStateSet", state, defaultState: opts?.defaultState });
+    this.applyColumnStateSort(state, opts?.defaultState);
+  }
+
+  /**
+   * The sort half of `applyColumnState`, as one sort-model replacement. Entries without a `sort`
+   * field leave their column's sort alone; `defaultState.sort === null` clears every column the
+   * state does not name. Named sorts are placed at their `sortIndex` (ascending, so each lands at
+   * its absolute position), and those without one are appended — which makes a `getColumnState()`
+   * round trip reproduce the model exactly, internal columns' sorts included.
+   */
+  private applyColumnStateSort(state: ColumnState[], defaultState?: Partial<ColumnState>): void {
+    const touched = new Set(state.filter(s => s.sort !== undefined).map(s => s.colId));
+    const clearOthers = defaultState?.sort === null;
+    if (touched.size === 0 && !clearOthers) return;
+
+    const named = new Set(state.map(s => s.colId));
+    const next = this.getSortModel().filter(item => !touched.has(item.colId)
+      && !(clearOthers && !named.has(item.colId)));
+    const placed = state
+      .map((s, arrayIndex) => ({ s, arrayIndex }))
+      .filter(({ s }) => s.sort != null)
+      .sort((a, b) => (a.s.sortIndex ?? Infinity) - (b.s.sortIndex ?? Infinity)
+        || a.arrayIndex - b.arrayIndex);
+    for (const { s } of placed) {
+      const item = { colId: s.colId, dir: s.sort! };
+      if (s.sortIndex != null && Number.isFinite(s.sortIndex)) {
+        next.splice(Math.max(0, Math.min(Math.floor(s.sortIndex), next.length)), 0, item);
+      } else {
+        next.push(item);
+      }
+    }
+    this.setSortModel(next);
+  }
+
+  // ---------------- Sorting ----------------
+  getSortModel(): SortModelItem[] {
+    return this.core.getSortModel().items.map(item => ({ colId: item.col.colId, dir: item.dir }));
+  }
+
+  setSortModel(items: ReadonlyArray<SortModelItem | { colId: string; dir: null }>): void {
+    const wanted: SortModelItem[] = [];
+    const seen = new Set<string>();
+    for (const item of items ?? []) {
+      if (!item || item.dir == null || seen.has(item.colId)) continue;
+      seen.add(item.colId);
+      wanted.push({ colId: item.colId, dir: item.dir });
+    }
+    const current = this.getSortModel();
+    const unchanged = current.length === wanted.length
+      && current.every((item, i) => item.colId === wanted[i].colId && item.dir === wanted[i].dir);
+    // Skip the dispatch outright: even an all-equal replacement would re-sort, reset the page under
+    // resetPageOn and clear the range.
+    if (unchanged) return;
+    this.replaceSortModel(wanted);
+  }
+
+  /**
+   * Replace the whole sort model, in the given order, with one `sortModelSet` dispatch: every
+   * current entry is cleared and the new ones are added after, so position follows the list.
+   * Shared with `applyViewState`, whose captured sorts must replay in captured order.
+   */
+  private replaceSortModel(items: ReadonlyArray<SortModelItem>): void {
+    const clear: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
+      key: item.col.instanceID,
+      dir: null,
+    }));
+    this.dispatch({
+      type: "sortModelSet",
+      // `key` resolves instance id, then public colId, then field key, then the internal sortable
+      // columns (auto-group, generated pivot) by colId — so a public colId is all a caller needs.
+      sortItems: [...clear, ...items.map(item => ({ key: item.colId, dir: item.dir }))],
+    });
+  }
+
+  // ---------------- Column sizing ----------------
+  autoSizeColumns(colIds: string[]): void {
+    const model = this.core.getColumnModel();
+    const changed = new Set<string>();
+    for (const colId of colIds ?? []) {
+      const col = model.resolve(colId) ?? model.getAutoGroupColumnByColId(colId);
+      if (!col) continue;
+      // By instance id: the core's ancestor lookup matches instance ids only, and a public colId
+      // would leave it without a root to roll the new width up into.
+      for (const id of this.core.autosizeColumn(col.instanceID)) changed.add(id);
+    }
+    this.emitWidthsChanged(changed);
+  }
+
+  autoSizeAllColumns(): void {
+    const leaves = this.core.getColumnModel().getLeaves().filter(col => !col.isLeadingUtilityColumn());
+    this.autoSizeColumns(leaves.map(col => col.instanceID));
+  }
+
+  setColumnWidth(colId: string, widthPx: number): void {
+    this.setColumnWidths([{ colId, widthPx }]);
+  }
+
+  setColumnWidths(widths: ColumnWidthItem[]): void {
+    const model = this.core.getColumnModel();
+    const changed = new Set<string>();
+    for (const { colId, widthPx } of widths ?? []) {
+      if (typeof widthPx !== "number" || !Number.isFinite(widthPx)) continue;
+      const col = model.resolve(colId) ?? model.getAutoGroupColumnByColId(colId);
+      if (!col) continue;
+      const before = new Map(col.getVisibleLeaves().map(leaf => [leaf.instanceID, leaf.computedWidth]));
+      // The resize-handle path (clamping, group spreading, the user-width stamp). It reports every
+      // leaf it touched; only real changes are announced.
+      for (const id of model.resizeColumn(col.instanceID, widthPx)) {
+        if (model.getById(id)?.computedWidth !== before.get(id)) changed.add(id);
+      }
+    }
+    this.emitWidthsChanged(changed);
+  }
+
+  sizeColumnsToFit(): void {
+    const available = this._render?.getCenterViewportWidth() ?? 0;
+    if (available <= 0) return;
+    const model = this.core.getColumnModel();
+    // The bounds the resize-handle path clamps a leaf to (ColumnModel.resizeColumn), so the widths
+    // planned here are the widths it will accept.
+    const { minResizeWidth = 0, maxColumnWidth = Number.POSITIVE_INFINITY } = this.core.getOptions();
+    const leaves = model.getCenterLeaves().filter(col => col.isVisible() && !col.isLeadingUtilityColumn());
+    const fixed = leaves.filter(col => !col.resizable);
+    const flexible = leaves
+      .filter(col => col.resizable)
+      .map(col => ({
+        col,
+        width: col.computedWidth,
+        min: Math.max(minResizeWidth, col.minWidth ?? minResizeWidth),
+        max: col.maxWidth != null && Number.isFinite(col.maxWidth) ? col.maxWidth : maxColumnWidth,
+      }));
+    if (flexible.length === 0) return;
+    let remaining = available - fixed.reduce((sum, col) => sum + col.computedWidth, 0);
+
+    // Proportional scaling with bound pinning: a column the scale would push past its min/max is
+    // fixed at that bound and the rest re-scale over what is left, until no bound is violated.
+    const target = new Map<typeof flexible[number], number>();
+    let open = flexible.slice();
+    while (open.length > 0) {
+      const total = open.reduce((sum, c) => sum + Math.max(1, c.width), 0);
+      const scale = remaining / total;
+      const clamped = open.filter(c => {
+        const w = Math.max(1, c.width) * scale;
+        return w < c.min || w > c.max;
+      });
+      if (clamped.length === 0) {
+        for (const c of open) target.set(c, Math.max(1, c.width) * scale);
+        break;
+      }
+      for (const c of clamped) {
+        const bound = Math.max(1, c.width) * scale < c.min ? c.min : c.max;
+        target.set(c, bound);
+        remaining -= bound;
+      }
+      open = open.filter(c => !clamped.includes(c));
+    }
+
+    // Whole pixels that still sum to the viewport: floor each, then hand the lost pixels to the
+    // columns with the largest remainders (those under their max).
+    const rounded = flexible.map(c => {
+      const exact = target.get(c)!;
+      return { c, exact, px: Math.floor(exact) };
+    });
+    const sum = rounded.reduce((acc, r) => acc + r.px, 0) + fixed.reduce((acc, col) => acc + col.computedWidth, 0);
+    let spare = Math.round(available - sum);
+    for (const r of [...rounded].sort((a, b) => (b.exact - b.px) - (a.exact - a.px))) {
+      if (spare <= 0) break;
+      if (r.px + 1 > r.c.max) continue;
+      r.px += 1;
+      spare -= 1;
+    }
+    this.setColumnWidths(rounded.map(r => ({ colId: r.c.col.instanceID, widthPx: r.px })));
+  }
+
+  // One columnWidthsChanged for a batch, the payload the core's own width events carry. An empty
+  // id list would read as "every visible column", so a batch that changed nothing emits nothing.
+  private emitWidthsChanged(instanceIds: Set<string>): void {
+    if (instanceIds.size === 0) return;
+    const model = this.core.getColumnModel();
+    const cols = [...instanceIds].map(id => model.getById(id)).filter((col): col is Column => col != null);
+    if (cols.length === 0) return;
+    this.core.emit("columnWidthsChanged", {
+      changedColIds: [...new Set(cols.map(col => col.colId))],
+      changedColInstanceIds: cols.map(col => col.instanceID),
+      final: true,
+      // Every caller of this is an IGridAPI method, never a UI gesture.
+      source: "api",
+    });
   }
 
   getColumnGroupState(): GridViewColumnGroupState[] {
@@ -860,7 +1265,9 @@ export class GridAPI implements IGridAPI {
     const pivotLayers = this.core.getPivotStateLayers();
     return {
       version: 1,
-      columns: this.getColumnState().map(state => ({ ...state })),
+      // Layout only: the sort is captured once, in `sortModel` (which also holds the internal
+      // columns' sorts), so the column entries do not carry a second copy of it.
+      columns: this.core.getColumnModel().getColumnState().map(state => ({ ...state })),
       // Column-group expanders by the group's colId — the source groups while pivoted, like
       // `columns`.
       columnGroupState: this.getColumnGroupState(),
@@ -926,22 +1333,18 @@ export class GridAPI implements IGridAPI {
     if (state.columnGroupState) {
       this.dispatch({ type: "columnGroupStateSet", groups: state.columnGroupState });
     }
-    this.applyColumnState(
-      state.columns ?? [],
-      opts?.columns === "merge" ? undefined : { defaultState: { hidden: true } },
-    );
+    // Layout only, through the action rather than `applyColumnState`: `sortModel` owns the sort,
+    // so a hand-written state's per-column `sort` fields are dropped rather than applied twice.
+    this.dispatch({
+      type: "columnStateSet",
+      state: (state.columns ?? []).map(({ sort: _sort, sortIndex: _sortIndex, ...layout }) => layout),
+      defaultState: opts?.columns === "merge" ? undefined : { hidden: true },
+    });
 
     // Replace the whole sort model with the captured list, in captured order — position is
     // meaningful (a pivot-column sort and a group-column sort compete by it, first one winning).
     const replaySorts = (items: NonNullable<GridViewState["sortModel"]>): void => {
-      const clear: SortItemUpdate[] = this.core.getSortModel().items.map(item => ({
-        key: item.col.instanceID,
-        dir: null,
-      }));
-      this.dispatch({
-        type: "sortModelSet",
-        sortItems: [...clear, ...items.map(item => ({ key: item.colId, dir: item.dir }))],
-      });
+      this.replaceSortModel(items);
     };
     // Some captured sorts cannot be replayed here, because the column they address does not exist
     // yet: a GENERATED pivot column appears only when the mode toggle below runs its discovery, and
@@ -1265,6 +1668,11 @@ export class GridAPI implements IGridAPI {
   destroy(): void {
     // Cleanup if necessary
   }
+}
+
+/** A finite, non-negative number, else undefined (so a bad input falls back to the default). */
+function nonNegative(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function cloneViewValue<T>(value: T): T {

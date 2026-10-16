@@ -362,6 +362,7 @@ export class ColumnPanelRenderer {
     if (!this.initialState?.length) return;
     this.params.core.dispatch({
       type: "columnStateSet",
+      source: "user",
       state: this.initialState.map((item) => ({ ...item })),
       defaultState: { hidden: true, pinned: null },
     });
@@ -497,6 +498,7 @@ export class ColumnPanelRenderer {
     const hidden = !this.bulkVisibilityCheckbox.checked;
     this.params.core.dispatch({
       type: "columnVisibility",
+      source: "user",
       colIds: eligible.map(({ col }) => col.instanceID),
       hidden,
     });
@@ -638,6 +640,7 @@ export class ColumnPanelRenderer {
       const hidden = !checkbox.checked;
       this.params.core.dispatch({
         type: "columnVisibility",
+        source: "user",
         colIds: [col.instanceID],
         hidden,
       });
@@ -668,6 +671,7 @@ export class ColumnPanelRenderer {
       const pinned = pin.value === "left" ? "left" : pin.value === "right" ? "right" : null;
       this.params.core.dispatch({
         type: "columnPin",
+        source: "user",
         colIds: [col.instanceID],
         pinned,
       });
@@ -751,7 +755,7 @@ export class ColumnPanelRenderer {
     const next = this.params.core.getRowGroupColumns()
       .map(group => group.instanceID)
       .filter(id => id !== col.instanceID);
-    this.params.core.dispatch({ type: "rowGroupSet", colIds: next });
+    this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds: next });
     this.announce(`${col.label} removed from row groups`);
   }
 
@@ -761,7 +765,7 @@ export class ColumnPanelRenderer {
     const next = this.params.core.getPivotColumns()
       .map(pivot => pivot.instanceID)
       .filter(id => id !== col.instanceID);
-    this.params.core.dispatch({ type: "pivotColumnsSet", colIds: next });
+    this.params.core.dispatch({ type: "pivotColumnsSet", source: "user", colIds: next });
     this.announce(`${col.label} removed from pivot columns`);
   }
 
@@ -777,7 +781,7 @@ export class ColumnPanelRenderer {
       .map((other, at) => (at === index ? retyped : other))
       .filter((other, at) =>
         at === index || other.key !== retyped.key || other.type !== retyped.type);
-    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
     const label = this.params.core.getColumnModel().getById(entry.key)?.label ?? entry.key;
     this.announce(`${label} aggregate changed to ${AGGREGATE_TYPE_LABELS[type] ?? type}`);
   }
@@ -785,7 +789,7 @@ export class ColumnPanelRenderer {
   private removeValueRole(col: Column, type: AggregateType): void {
     const next = this.params.core.getAggregateModel()
       .filter(entry => !(entry.key === col.instanceID && entry.type === type));
-    this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
     this.announce(`${AGGREGATE_TYPE_LABELS[type] ?? type} aggregate removed from ${col.label}`);
   }
 
@@ -832,6 +836,7 @@ export class ColumnPanelRenderer {
       : visibleLeaves.length;
     this.params.core.dispatch({
       type: "columnMove",
+      source: "user",
       colId: moved.col.instanceID,
       toIndex: targetIndex,
       toSection: section,
@@ -1156,19 +1161,19 @@ export class ColumnPanelRenderer {
 
   private reorderGroupRoles(from: number, to: number): void {
     const next = this.reordered(this.params.core.getRowGroupColumns().map(col => col.instanceID), from, to);
-    if (next) this.params.core.dispatch({ type: "rowGroupSet", colIds: next });
+    if (next) this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds: next });
   }
 
   private reorderPivotRoles(from: number, to: number): void {
     const next = this.reordered(this.params.core.getPivotColumns().map(col => col.instanceID), from, to);
-    if (next) this.params.core.dispatch({ type: "pivotColumnsSet", colIds: next });
+    if (next) this.params.core.dispatch({ type: "pivotColumnsSet", source: "user", colIds: next });
   }
 
   private reorderValueRoles(from: number, to: number): void {
     // The values well reorders whole aggregate entries, not colIds — one column can appear in it
     // several times, once per aggregate type — but the move itself is the same move.
     const next = this.reordered(this.params.core.getAggregateModel(), from, to);
-    if (next) this.params.core.dispatch({ type: "aggregateModelSet", aggregateModels: next });
+    if (next) this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
   }
 
   /** A copy of `items` with one entry moved, or null when the indices make it a no-op. */

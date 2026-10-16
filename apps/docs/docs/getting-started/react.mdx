@@ -172,8 +172,20 @@ inputs the same way.
   onSelectionChanged={(event) => console.log(event.snapshot)}
   onSortChanged={(event) => console.log(event.changedColIds)}
   onFilterChanged={(event) => console.log(event.source, event.changedColIds)}
+  onColumnsChanged={(event) => {
+    if (event.source === "user") saveLayout(apiRef.current?.getColumnState());
+  }}
+  onPaginationChanged={(event) => setPage(event.pageIndex)}
+  onError={(event) => showToast(event.message)}
 />
 ```
+
+`onColumnsChanged` reports every column change with `source: "user"` for gestures made
+through the grid's UI and `"api"` for API calls, restores and `columnDefs` updates — persist
+on `"user"` and restoring a saved layout never echoes back into storage (see
+[Telling user changes from your own](../api/grid-options.mdx#telling-user-changes-from-your-own)).
+`onError` is an extra notification for failed row-model requests; the grid handles the failure
+as it would without it.
 
 For other events, subscribe with `api.on(eventName, handler)`.
 

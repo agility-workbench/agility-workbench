@@ -7,6 +7,7 @@ import {
   exportExcel as downloadExcel,
   buildCSV,
   buildXlsx,
+  CsvWriteOptions,
   ExportConfig,
   ExportOptions,
   ExportScope,
@@ -234,12 +235,21 @@ export class ExportRenderer {
   private commonExportConfig(options: ExportOptions): Pick<
     ExportConfig,
     "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths" | "groupLabel"
-    | "groupCellValue"
+    | "groupCellValue" | keyof CsvWriteOptions
   > {
     return {
       columnIds: options.columnIds,
       includeHeaders: options.includeHeaders,
       processCellForExcel: options.processCellForExcel,
+      // CSV-only output options; the Excel writer never reads them.
+      columnSeparator: options.columnSeparator,
+      lineEnding: options.lineEnding,
+      includeBom: options.includeBom,
+      suppressQuotes: options.suppressQuotes,
+      processCellForCsv: options.processCellForCsv,
+      processHeaderForCsv: options.processHeaderForCsv,
+      prependContent: options.prependContent,
+      appendContent: options.appendContent,
       columnTree: this.params.core.getColumnModel().getColumns(),
       columnWidths: this.params.columnWidths(),
       // Group header labels come from the grid's own resolver so the sheet shows the count the

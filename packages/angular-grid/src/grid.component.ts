@@ -29,7 +29,10 @@ import type {
   ColumnMenuContext,
   GridEventCellClickedParams,
   GridEventCellDoubleClickedParams,
+  GridEventColumnsChangedParams,
+  GridEventErrorParams,
   GridEventFilterChangedParams,
+  GridEventPaginationChangedParams,
   GridEventQuickFilterFindChangedParams,
   GridEventHistoryChangedParams,
   GridEventRowClickedParams,
@@ -270,6 +273,16 @@ export class AwbGrid implements OnDestroy {
   readonly cellValueChanged = output<CellValueChangedParams>();
   readonly selectionChanged = output<GridEventSelectionChangedParams>();
   readonly sortChanged = output<SortChangedParams>();
+  /** Every column layout/model change (core `columnsChanged`); `source` tells UI from API changes. */
+  readonly columnsChanged = output<GridEventColumnsChangedParams>();
+  /** Page, page size or total changes (core `paginationChanged`), with `getPaginationInfo()`. */
+  readonly paginationChanged = output<GridEventPaginationChangedParams>();
+  /**
+   * A failed row-model request (core `error`). Not named `error`: Angular binds `(error)` on the
+   * host as a native DOM listener as well as to the output, so any `error` event dispatched on
+   * `<awb-grid>` would reach the handler too, as a plain `Event`.
+   */
+  readonly gridError = output<GridEventErrorParams>();
   readonly filterChanged = output<GridEventFilterChangedParams>();
   readonly quickFilterFindChanged = output<GridEventQuickFilterFindChangedParams>();
   readonly historyChanged = output<GridEventHistoryChangedParams>();
@@ -311,6 +324,9 @@ export class AwbGrid implements OnDestroy {
       options.onCellValueChanged = (ev) => this.zone.run(() => this.cellValueChanged.emit(ev));
       options.onSelectionChanged = (ev) => this.zone.run(() => this.selectionChanged.emit(ev));
       options.onSortChanged = (ev) => this.zone.run(() => this.sortChanged.emit(ev));
+      options.onColumnsChanged = (ev) => this.zone.run(() => this.columnsChanged.emit(ev));
+      options.onPaginationChanged = (ev) => this.zone.run(() => this.paginationChanged.emit(ev));
+      options.onError = (ev) => this.zone.run(() => this.gridError.emit(ev));
       options.onFilterChanged = (ev) => this.zone.run(() => this.filterChanged.emit(ev));
       options.onQuickFilterFindChanged = (ev) =>
         this.zone.run(() => this.quickFilterFindChanged.emit(ev));

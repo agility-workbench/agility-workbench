@@ -1,3 +1,4 @@
+import { REJECT } from "../../../interfaces/gridOptions";
 import { canonicalKey, matchesAnyChord } from "../../interaction/keyChord";
 import { ICellEditor, ICellEditorParams } from "../cellEditor";
 
@@ -10,8 +11,14 @@ const INPUT_CLASS = "pte-cell-editor-input";
  * "$50") can be typed, which type="number" physically rejects.
  *
  * Two commit modes, decided by whether the column has a valueParser:
- *  - Without one: getValue() parses with Number() — a number clamped to min/max, or null when
- *    blank/invalid — and isParsed = true, so the value is stored directly.
+ *  - Without one: getValue() reads the text with the column's built-in parser for its type
+ *    (`Column.parseValue`, so `"1,234.5"`, `"12.5%"` in a percent column, `"12 kg"` in a unit
+ *    column) — a number clamped to min/max, or null when blank — and isParsed = true, so the value
+ *    is stored directly. Text the parser refuses (REJECT) is handed back raw with isParsed = false:
+ *    the commit path parses it again, gets the same REJECT, and reports a rejected edit, keeping
+ *    the cell's value — the outcome paste, fill and the API already have. The seed stays
+ *    `String(value)`, which the parser reads back unchanged (a percent column's bare fraction, a
+ *    unit column's bare number).
  *  - With one: the editor seeds from the column's formatted display value and getValue() returns
  *    the raw string with isParsed = false, so the commit path round-trips it through the parser
  *    (blank included — the parser decides what empty means). min/max then only bound arrow-key
@@ -23,6 +30,9 @@ export class NumberCellEditor implements ICellEditor {
   private input!: HTMLInputElement;
   private params!: ICellEditorParams;
   private charSeeded = false;
+  // Set by getValue() when the built-in parser refused the text: isParsed() then hands the raw
+  // text to the commit path, which owns reporting the rejection.
+  private deferToCommit = false;
 
   init(params: ICellEditorParams): void {
     this.params = params;
@@ -41,15 +51,20 @@ export class NumberCellEditor implements ICellEditor {
   }
 
   getValue(): unknown {
+    this.deferToCommit = false;
     if (this.hasParser()) return this.input.value;
     const raw = this.input.value.trim();
     if (raw === "") return null;
-    const n = Number(raw);
-    return Number.isNaN(n) ? null : this.clamp(n);
+    const parsed = this.builtInNumeric(raw);
+    if (parsed === REJECT) {
+      this.deferToCommit = true;
+      return this.input.value;
+    }
+    return parsed == null ? null : this.clamp(parsed);
   }
 
   isParsed(): boolean {
-    return !this.hasParser();
+    return !this.hasParser() && !this.deferToCommit;
   }
 
   focus(): void {
@@ -103,7 +118,20 @@ export class NumberCellEditor implements ICellEditor {
       const n = typeof parsed === "number" ? parsed : Number(parsed);
       return Number.isFinite(n) ? n : null;
     }
-    const n = Number(this.input.value.trim());
+    const parsed = this.builtInNumeric(this.input.value.trim());
+    return typeof parsed === "number" ? parsed : null;
+  }
+
+  // The column's built-in reading of `text` (no valueParser): a finite number, null, or REJECT.
+  // A column whose type does not parse to numbers (the editor set explicitly on a text column)
+  // keeps the editor's original Number() reading, where invalid text is null.
+  private builtInNumeric(text: string): number | null | typeof REJECT {
+    const { col, row, value } = this.params;
+    const parsed = col.parseValue(text, row, value);
+    if (parsed === REJECT) return REJECT;
+    if (parsed == null) return null;
+    if (typeof parsed === "number") return Number.isFinite(parsed) ? parsed : REJECT;
+    const n = Number(text);
     return Number.isFinite(n) ? n : null;
   }
 

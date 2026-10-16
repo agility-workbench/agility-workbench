@@ -45,13 +45,13 @@ import { ColDef, GroupValueGetterParams } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
 import { IColumnModel } from "../interfaces/iColumnModel";
-import { GridAction } from "../events/action";
+import { COLUMN_CHANGE_ACTION_TYPES, GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel } from "./selectionModel";
 import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
-import { GridEventFocusChangedParams } from "../events/events";
+import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
 import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
@@ -216,6 +216,9 @@ export class GridCore implements IGridCore {
   private dispatchDepth = 0;
   private pendingAfterDispatch = new Set<() => void>();
   private flushingAfterDispatch = false;
+  // Who is changing columns right now, stamped on columnsChanged / columnWidthsChanged. "api" except
+  // while a column action dispatched with source "user" (or a withColumnChangeSource scope) runs.
+  private columnChangeSource: ColumnChangeSource = "api";
   // Seeded with the measure-path fallback fonts so autosize is safe before the first header build
   // probes the real theme fonts (themeFontSet re-runs autosize, so these widths never survive).
   private textMeasureParams: TextMeasureParams = { headerFont: "500 14px Arial", cellFont: "14px Arial" };
@@ -279,11 +282,12 @@ export class GridCore implements IGridCore {
     this.find = new QuickFilterFind({
       getRowModel: () => this.rowModel,
       // The cells a find can highlight: visible data leaves. Internal columns (row numbers,
-      // checkboxes, the auto-group column) and any tree column are excluded because their cells do
-      // not render `formatValue` — the cell renderer draws a checkbox, a row number or a hierarchy
-      // label there, so matching their value would highlight text the user cannot see.
+      // checkboxes, the auto-group column), any tree column and a BOOLEAN column drawing the
+      // default checkbox are excluded because their cells do not render `formatValue` — the cell
+      // renderer draws a checkbox, a row number or a hierarchy label there, so matching their value
+      // would highlight text the user cannot see.
       getColumns: () => this.columnModel.getLeaves()
-        .filter(col => !col.isInternal() && !col.isTreeColumn()),
+        .filter(col => !col.isInternal() && !col.isTreeColumn() && !col.usesDefaultCheckboxRenderer()),
       canFind: () => this.isFindAvailable(),
     });
     this.selectionModel = new SelectionModel({
@@ -325,9 +329,13 @@ export class GridCore implements IGridCore {
         o.onSortChanged?.({
           changedColIds: ev.changedColIds,
           changedColInstanceIds: ev.changedColInstanceIds,
+          source: ev.source,
         });
       }
+      o.onColumnsChanged?.(ev);
     });
+    this.on("paginationChanged", (ev) => o.onPaginationChanged?.(ev));
+    this.on("error", (ev) => o.onError?.(ev));
     this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
     this.on("quickFilterFindChanged", (ev) => o.onQuickFilterFindChanged?.(ev));
     this.on("historyChanged", (ev) => o.onHistoryChanged?.(ev));
@@ -388,6 +396,9 @@ export class GridCore implements IGridCore {
       onCellValueChanged: options.onCellValueChanged,
       onSelectionChanged: options.onSelectionChanged,
       onSortChanged: options.onSortChanged,
+      onColumnsChanged: options.onColumnsChanged,
+      onPaginationChanged: options.onPaginationChanged,
+      onError: options.onError,
       onFilterChanged: options.onFilterChanged,
       onQuickFilterFindChanged: options.onQuickFilterFindChanged,
       onHistoryChanged: options.onHistoryChanged,
@@ -586,15 +597,15 @@ export class GridCore implements IGridCore {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
     this.reconcileSelectionAfterColumnDefs(rangeSnapshot, activeComparatorChanged, filtersDropped);
-    this.emit("columnsChanged", { reason: "defs" });
+    this.emitColumnsChanged({ reason: "defs" });
     if (changedSortColIds.length > 0) {
-      this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedSortColIds) });
+      this.emitColumnsChanged({ reason: "sort", ...this.columnsChangedIds(changedSortColIds) });
     }
     // Both the canonical and legacy filter signals describe an effective filter-model change, not
     // the internal re-binding of an unchanged filter to freshly-created Column instances.
     if (filtersDropped) {
       const pair = this.eventColIds(droppedFilterCols);
-      this.emit("columnsChanged", {
+      this.emitColumnsChanged({
         reason: "filter",
         changedColIds: pair.colIds,
         changedColInstanceIds: pair.colInstanceIds,
@@ -610,7 +621,7 @@ export class GridCore implements IGridCore {
   private applyColumnState(state: ColumnState[], defaultState?: Partial<ColumnState>): void {
     this.columnModel.applyColumnState(state, { defaultState });
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", {
+    this.emitColumnsChanged({
       reason: "state",
       ...(() => {
         const pair = this.eventColIds(state.map(s => this.columnModel.resolve(s.colId)));
@@ -864,7 +875,7 @@ export class GridCore implements IGridCore {
     return next;
   }
 
-  private autosizeColumns(identifyComparators: boolean = true): string[] {
+  autosizeColumns(identifyComparators: boolean = true): string[] {
     const allRows: IRowNode[] = [];
     this.rowModel.forEachNode((node: IRowNode) => {
       allRows.push(node);
@@ -924,7 +935,7 @@ export class GridCore implements IGridCore {
       this.applyAggregateRequest("aggregateModel", "columns");
     }
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", {
+    this.emitColumnsChanged({
       reason: "state",
       changedColIds: groups.map(col => col.colId),
       changedColInstanceIds: groups.map(col => col.instanceID),
@@ -932,7 +943,7 @@ export class GridCore implements IGridCore {
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
-  private autosizeColumn(colID: string): string[] {
+  autosizeColumn(colID: string): string[] {
     const col = this.columnModel.resolve(colID);
     if (!col) return [];
     if (col.children.length > 0) {
@@ -946,7 +957,9 @@ export class GridCore implements IGridCore {
     // Explicit fit-to-content: drop any prior manual width so measurement takes over.
     col.resizedWidth = undefined;
     this.columnModel.computeColumnWidth(col, this.measureCtx, this.textMeasureParams, allRows);
-    this.columnModel.updateParentColumnWidth(this.columnModel.getAncestors(colID)[0]);
+    // Ancestors are looked up by INSTANCE id (`colID` may be the public colId, which `resolve`
+    // accepted); the root of the path re-sums every group width above the leaf.
+    this.columnModel.updateParentColumnWidth(this.columnModel.getAncestors(col.instanceID)[0]);
     return col.getVisibleLeaves().map(c => c.instanceID);
   }
 
@@ -1293,7 +1306,7 @@ export class GridCore implements IGridCore {
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
-    this.emit("columnsChanged", { reason: "filter", ...this.columnsChangedIds(changedColIds) })
+    this.emitColumnsChanged({ reason: "filter", ...this.columnsChangedIds(changedColIds) })
     this.emit("filterChanged", { source: "filter", ...this.columnsChangedIds(changedColIds) });
   }
 
@@ -1545,7 +1558,7 @@ export class GridCore implements IGridCore {
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
-    this.emit("columnsChanged", { reason: "sort", ...this.columnsChangedIds(changedColIds) });
+    this.emitColumnsChanged({ reason: "sort", ...this.columnsChangedIds(changedColIds) });
   }
 
   // Replace the set of columns rows are grouped by (order = grouping level). An empty list clears
@@ -1567,7 +1580,7 @@ export class GridCore implements IGridCore {
     // Rebuild the row pool / header for the new column set (adds/removes the auto-group column)
     // BEFORE the grouped view repaints, so the pool has a cell per leaf column when rows paint.
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "group" });
+    this.emitColumnsChanged({ reason: "group" });
     this.applyRowModelRequest(() => this.createRowModelRequest("group", this.resetPageBlocks(), this.getInitialServerSideLoadRange()));
     // Autosize AFTER the group tree exists so columns fit their per-group aggregate values (which
     // live on the group nodes built during applyRequest).
@@ -1645,7 +1658,7 @@ export class GridCore implements IGridCore {
   private syncPivotConfigured(): void {
     if (!this.columnModel.setPivotConfigured(this.isPivotConfigured())) return;
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "pivot" });
+    this.emitColumnsChanged({ reason: "pivot" });
   }
 
   getPivotColumns(): Column[] {
@@ -1754,7 +1767,7 @@ export class GridCore implements IGridCore {
       // Rebuild the row pool / header for the restored column set BEFORE the repaint. Entering
       // pivot needs no such emit here: the layout swaps mid-request via onPivotResult, which
       // emits columnsChanged itself before rows paint.
-      this.emit("columnsChanged", { reason: "pivot" });
+      this.emitColumnsChanged({ reason: "pivot" });
     } else {
       this.basePivotLayer = this.capturePivotStateLayer();
       if (this.stashedPivotLayer) {
@@ -1855,7 +1868,7 @@ export class GridCore implements IGridCore {
     // setPivotLeafOrder already rebuilt the displayed layout; announce it like any other
     // pivot-driven column change so the header/rows repaint against the new tree.
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "pivot" });
+    this.emitColumnsChanged({ reason: "pivot" });
     this.emit("rowsChanged", { reason: "pivot", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
   }
 
@@ -1928,7 +1941,7 @@ export class GridCore implements IGridCore {
     // that is not there.
     this.reconcileSortModelColumns();
     this.clearSelectionForColumnChange();
-    this.emit("columnsChanged", { reason: "group" });
+    this.emitColumnsChanged({ reason: "group" });
 
     const changedColIds = this.autosizeColumns();
     if (changedColIds.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(changedColIds));
@@ -2033,7 +2046,7 @@ export class GridCore implements IGridCore {
 
     this.columnModel.updateSelectionCheckboxColumn();
     this.reconcileSelectionAfterColumnDefs(rangeSnapshot, false, false);
-    this.emit("columnsChanged", { reason: "defs" });
+    this.emitColumnsChanged({ reason: "defs" });
   }
 
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode {
@@ -3125,7 +3138,12 @@ export class GridCore implements IGridCore {
   // `final` is false only for the intermediate moves of a resize-handle drag.
   private widthsChangedPayload(instanceIds: string[], final = true): GridEventMap["columnWidthsChanged"] {
     const pair = this.eventColIds(instanceIds.map(id => this.columnModel.getById(id)));
-    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds, final };
+    return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds, final, source: this.columnChangeSource };
+  }
+
+  // Every columnsChanged goes through here so none can miss its `source`.
+  private emitColumnsChanged(params: Omit<GridEventColumnsChangedParams, "source">): void {
+    this.emit("columnsChanged", { ...params, source: this.columnChangeSource });
   }
 
   /**
@@ -3140,8 +3158,12 @@ export class GridCore implements IGridCore {
   endColumnResizeDrag(): void {
     const changed = this.columnResizeDragChanged;
     this.columnResizeDragChanged = null;
+    // Only the header's resize handle opens a drag, so its settling event is a user change even
+    // though it is emitted outside the dispatch of any one columnResize.
     if (changed && changed.size > 0) {
-      this.emit("columnWidthsChanged", this.widthsChangedPayload([...changed], true));
+      this.withColumnChangeSource("user", () => {
+        this.emit("columnWidthsChanged", this.widthsChangedPayload([...changed], true));
+      });
     }
   }
 
@@ -3373,14 +3395,36 @@ export class GridCore implements IGridCore {
 
   dispatch(action: GridAction): void {
     this.dispatchDepth++;
+    // A column action states its own source — omitted is "api", so an API call made from inside a
+    // user-gesture listener still reports "api". Other actions inherit the enclosing scope.
+    const prevSource = this.columnChangeSource;
+    if (COLUMN_CHANGE_ACTION_TYPES.has(action.type)) {
+      this.columnChangeSource = (action as { source?: ColumnChangeSource }).source ?? "api";
+    }
     try {
       this.dispatchAction(action);
     } finally {
       this.dispatchDepth--;
+      this.columnChangeSource = prevSource;
     }
     // Outside any enclosing dispatch now, so anything a listener deferred to the end of the burst
     // runs here — still synchronously, before this call returns.
     if (this.dispatchDepth === 0) this.flushAfterDispatch();
+  }
+
+  /**
+   * Run `fn` with `source` stamped on every `columnsChanged` / `columnWidthsChanged` it emits that
+   * is not under a column action stating its own source. For UI paths that change columns through
+   * core methods instead of a dispatch (the filter popup), so their events report `"user"`.
+   */
+  withColumnChangeSource<T>(source: ColumnChangeSource, fn: () => T): T {
+    const prev = this.columnChangeSource;
+    this.columnChangeSource = source;
+    try {
+      return fn();
+    } finally {
+      this.columnChangeSource = prev;
+    }
   }
 
   /**
@@ -3509,7 +3553,7 @@ export class GridCore implements IGridCore {
         this.columnModel.setPinneds(action.colIds, action.pinned);
         {
           const pair = this.eventColIds(action.colIds.map(id => this.columnModel.resolve(id)));
-          this.emit("columnsChanged", { reason: "pin", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+          this.emitColumnsChanged({ reason: "pin", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
         }
         this.emit("rowsChanged", { reason: "pin", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
@@ -3518,7 +3562,7 @@ export class GridCore implements IGridCore {
         this.clearSelectionForColumnChange();
         {
           const pair = this.eventColIds(action.colIds.map(id => this.columnModel.resolve(id)));
-          this.emit("columnsChanged", { reason: "visibility", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+          this.emitColumnsChanged({ reason: "visibility", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
         }
         this.emit("rowsChanged", { reason: "visibility", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
@@ -3527,7 +3571,7 @@ export class GridCore implements IGridCore {
         this.clearSelectionForColumnChange();
         {
           const pair = this.eventColIds([this.columnModel.resolve(action.colId)]);
-          this.emit("columnsChanged", { reason: "order", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+          this.emitColumnsChanged({ reason: "order", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
         }
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
@@ -3603,7 +3647,7 @@ export class GridCore implements IGridCore {
         const allRows: IRowNode[] = [];
         this.rowModel.forEachNode((node: IRowNode) => allRows.push(node));
         const instanceID = this.columnModel.addColumnDef(colDef, "center", this.measureCtx, this.textMeasureParams, allRows);
-        this.emit("columnsChanged", { reason: "add", ...this.columnsChangedIds([instanceID]) });
+        this.emitColumnsChanged({ reason: "add", ...this.columnsChangedIds([instanceID]) });
         this.emit("rowsChanged", { reason: "add", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
       }
@@ -4195,7 +4239,7 @@ export class GridCore implements IGridCore {
     this.emit("focusChanged", params);
   }
 
-  emit<E extends GridEventName>(eventType: GridEventName, args: GridEventMap[E]): void {
+  emit<E extends GridEventName>(eventType: E, args: GridEventMap[E]): void {
     // The find index is derived from the displayed rows and their values, so anything that changes
     // those invalidates it. Hooked here, ahead of the no-handlers bail-out, because this is the one
     // funnel every such change passes through — a row transaction, a sort, an expansion toggle, a
@@ -4296,7 +4340,7 @@ export class GridCore implements IGridCore {
       this.clearSelectionForColumnChange();
       // Rows paint right after this returns — the renderer rebuilds its pool/header on this event
       // first, so cells exist for every generated leaf.
-      this.emit("columnsChanged", { reason: "pivot" });
+      this.emitColumnsChanged({ reason: "pivot" });
     }
     this.setPivotColumnLimit(discovery.truncatedLeafCount);
     return resolution;

@@ -6,6 +6,7 @@ import { ColumnState } from "../interfaces/iGridCore";
 import { CellRef } from "../interfaces/selection";
 import { SortItemUpdate } from "../interfaces/sort";
 import { QuickFilterBehavior, QuickFilterMatchMode, TreeDataKeyboardNavigationMode } from "../interfaces/gridOptions";
+import type { ColumnChangeSource } from "./events";
 
 export type GridActionInit = {
   type: "init";
@@ -51,6 +52,8 @@ export type GridActionColumnDefsSet = {
 
 export type GridActionColumnStateSet = {
   type: "columnStateSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   state: ColumnState[];
   // Applied to columns absent from `state` (see ColumnModel.applyColumnState). Omit for a merge.
   defaultState?: Partial<ColumnState>;
@@ -58,29 +61,39 @@ export type GridActionColumnStateSet = {
 
 export type GridActionColumnAutosize = {
   type: "columnAutosize";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colId: string;
 };
 
 export type GridActionColumnResize = {
   type: "columnResize";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colId: string;
   widthPx: number;
 };
 
 export type GridActionColumnPin = {
   type: "columnPin";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colIds: string[];
   pinned: "left" | "right" | null;
 };
 
 export type GridActionColumnVisibility = {
   type: "columnVisibility";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colIds: string[];
   hidden: boolean;
 };
 
 export type GridActionColumnMove = {
   type: "columnMove";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colId: string;
   toIndex: number;
   toSection: "left" | "center" | "right";
@@ -88,6 +101,8 @@ export type GridActionColumnMove = {
 
 export type GridActionAddSparklineColumn = {
   type: "addSparklineColumn";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   /** Column whose menu opened the command; it has formatter precedence over the selection. */
   targetColId: string;
   colIds: string[];
@@ -127,11 +142,15 @@ export type GridActionPaginationSet = {
 // Sort/Filter actions
 export type GridActionSortModelSet = {
   type: "sortModelSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   sortItems: SortItemUpdate[];
 };
 
 export type GridActionFilterModelSet = {
   type: "filterModelSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   filterModel: FilterItem[];
 };
 
@@ -152,6 +171,8 @@ export type GridActionFindNavigate = {
 
 export type GridActionAggregateModelSet = {
   type: "aggregateModelSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   aggregateModels: AggregateModel[];
 }
 
@@ -160,6 +181,8 @@ export type GridActionAggregateModelSet = {
 // clears grouping. Client-side row model only.
 export type GridActionRowGroupSet = {
   type: "rowGroupSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colIds: string[];
 };
 
@@ -167,6 +190,8 @@ export type GridActionRowGroupSet = {
 // pivot header from the current pivot columns + aggregate model. Client-side row model only.
 export type GridActionPivotModeSet = {
   type: "pivotModeSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   on: boolean;
 };
 
@@ -175,6 +200,8 @@ export type GridActionPivotModeSet = {
 // mode alone (the degenerate grouped-aggregate view). Client-side row model only.
 export type GridActionPivotColumnsSet = {
   type: "pivotColumnsSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colIds: string[];
 };
 
@@ -185,6 +212,8 @@ export type GridActionPivotColumnsSet = {
 // filter-driven re-discoveries keep it. Client-side row model only.
 export type GridActionPivotColumnOrderSet = {
   type: "pivotColumnOrderSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   order: string[] | null;
 };
 
@@ -209,6 +238,8 @@ export type GridActionGroupSetExpanded = {
 // group are ignored, and nothing is rebuilt when no group changes.
 export type GridActionColumnGroupStateSet = {
   type: "columnGroupStateSet";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   groups: GridViewColumnGroupState[];
 };
 
@@ -244,6 +275,8 @@ export type HeaderActionKind = "toggleSort" | "toggleGroupExpand" | "filterClick
 
 export type GridActionHeaderAction = {
   type: "headerAction";
+  /** Who made the change, stamped on the column events it causes; omitted = `"api"`. */
+  source?: ColumnChangeSource;
   colId: string;
   action: HeaderActionKind;
   // For action "toggleSort": add the column to a multi-column sort instead of replacing it.
@@ -449,3 +482,29 @@ export type GridAction =
   | GridActionNavigateCorner
   | GridActionSelectAll
   | GridActionColumnGroupStateSet;
+
+/**
+ * The actions that can change columns and so carry an optional `source`, stamped on the
+ * `columnsChanged` / `columnWidthsChanged` events they cause. The renderer's gesture handlers
+ * dispatch them with `source: "user"`; every other dispatcher (the API, view restores) omits it,
+ * which reads as `"api"`. Listed at runtime because other actions use a `source` field with a
+ * different meaning (`keyboardNavigationModeSet`), so "has a source" is not the test.
+ */
+export const COLUMN_CHANGE_ACTION_TYPES: ReadonlySet<GridAction["type"]> = new Set<GridAction["type"]>([
+  "columnStateSet",
+  "columnAutosize",
+  "columnResize",
+  "columnPin",
+  "columnVisibility",
+  "columnMove",
+  "addSparklineColumn",
+  "sortModelSet",
+  "filterModelSet",
+  "aggregateModelSet",
+  "rowGroupSet",
+  "pivotModeSet",
+  "pivotColumnsSet",
+  "pivotColumnOrderSet",
+  "columnGroupStateSet",
+  "headerAction",
+]);

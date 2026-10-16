@@ -5261,14 +5261,18 @@
   position: relative;
 }
 
-.pte-cell.selected .pte-checkbox,
-.pte-checkbox.selected {
+/* Scoped to the row-selection column: a boolean data cell's box (below) sits inside a cell that
+   takes `.selected` from cell selection, which must not tick it. */
+.pte-checkbox-cell.selected .pte-checkbox,
+.pte-checkbox.selected,
+.pte-checkbox.pte-checkbox-checked {
   border-color: var(--pte-selected-border-color);
   background-color: var(--pte-selected-border-color);
 }
 
-.pte-cell.selected .pte-checkbox::after,
-.pte-checkbox.selected::after {
+.pte-checkbox-cell.selected .pte-checkbox::after,
+.pte-checkbox.selected::after,
+.pte-checkbox.pte-checkbox-checked::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -5310,6 +5314,37 @@
 
 .pte-checkbox-cell.pte-checkbox-cell-disabled .pte-checkbox {
   opacity: 0.45;
+  background-color: var(--pte-header-background-color);
+}
+
+/* Built-in boolean renderer (BooleanCellRenderer): the selection checkbox's box, tick and
+   indeterminate dash inside a data cell. The cell is a custom-renderer cell (no padding), so the
+   wrapper restores the cell padding. Read-only boxes take the disabled-row look. */
+.pte-cell-boolean {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--pte-cell-padding-left);
+  padding-right: var(--pte-cell-padding-right);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pte-cell-right-aligned .pte-cell-boolean {
+  justify-content: flex-end;
+}
+
+.pte-cell-boolean-box:not(.pte-cell-boolean-readonly) {
+  cursor: pointer;
+}
+
+.pte-checkbox.pte-cell-boolean-readonly {
+  opacity: 0.45;
+}
+
+.pte-checkbox.pte-cell-boolean-readonly:not(.pte-checkbox-checked):not(.pte-checkbox-indeterminate) {
   background-color: var(--pte-header-background-color);
 }
 

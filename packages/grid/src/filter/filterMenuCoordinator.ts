@@ -51,11 +51,15 @@ export class FilterMenuCoordinator {
       ) || null,
       {
         applyModel: (colId, model, meta) => {
-          if (model === null) {
-            this.core.removeFilterModel(colId);
-            return;
-          }
-          this.core.addFilterModel(model);
+          // The popup calls the core's filter methods directly rather than dispatching, so it has
+          // to declare the gesture itself for `columnsChanged { reason: "filter", source }`.
+          this.core.withColumnChangeSource("user", () => {
+            if (model === null) {
+              this.core.removeFilterModel(colId);
+              return;
+            }
+            this.core.addFilterModel(model);
+          });
         },
         getAllRows: this.core.getRowModel().forEachNode.bind(rowModel),        // for setFilter fromRows
         treeExpansion: panelSpec.tree ? this.treeExpansionFor(ctx.targetCol) : undefined,

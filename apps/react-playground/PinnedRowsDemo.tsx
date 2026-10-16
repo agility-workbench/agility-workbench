@@ -6,6 +6,7 @@ type Row = {
   id: string;
   team: string;
   owner: string;
+  active?: boolean;
   pipeline: number;
   closed: number;
 };
@@ -16,6 +17,7 @@ const ROWS: Row[] = Array.from({ length: 80 }, (_, index) => ({
   team: ["Enterprise", "Commercial", "Growth"][index % 3],
   country: ["USA", "Canada", "Brazil", "India", "France", "Denmark", "China", "Japan", "Australia", "Spain"][index % 10],
   owner: ["Ava", "Liam", "Mia", "Noah", "Emma", "Kent", "Duke", "Frank", "Will", "Smith", "Leo", "Brad", "Oliver", "Nick", "Romeo"][index % 15],
+  active: index % 4 !== 0,
   pipeline: 25_000 + ((index * 7_919) % 180_000),
   closed: 8_000 + ((index * 3_571) % 95_000),
 }));
@@ -30,6 +32,11 @@ export function PinnedRowsDemo() {
     { colId: "region", key: "region", label: "Region", width: 150 },
     { colId: "country", key: "country", label: "Country", width: 150 },
     { colId: "owner", key: "owner", label: "Owner", width: 140, editable: true },
+    // Built-in checkbox (default for BOOLEAN); editable, so a click on the box toggles it.
+    {
+      colId: "active", key: "active", label: "Active", width: 110, type: ColumnType.BOOLEAN,
+      editable: true, valueFormatter: ({ value }) => (value == null ? "" : value ? "Yes" : "No"),
+    },
     {
       colId: "pipeline",
       key: "pipeline",

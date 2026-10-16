@@ -10,6 +10,7 @@ import type {
 import { ManagedReactRoot } from "./managedReactRoot";
 import type {
   CellRenderer,
+  CellRendererAlias,
   CellRendererClass,
   CellRendererParams,
   ICellRenderer,
@@ -119,7 +120,7 @@ export type ReactColDef = Omit<
   | "headerComponent"
   | "headerCellComponent"
 > & {
-  cellRenderer?: CellRenderer | ReactCellRenderer;
+  cellRenderer?: CellRenderer | CellRendererAlias | ReactCellRenderer;
   cellEditor?: CellEditor | ReactCellEditor;
   tooltipComponent?: TooltipComponent | ReactTooltipComponent;
   headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
@@ -195,12 +196,23 @@ function createReactRendererClass(Renderer: ReactCellRenderer): CellRendererClas
   };
 }
 
-export function adaptCellRenderer(renderer: CellRenderer | ReactCellRenderer | undefined): CellRenderer | undefined {
+// Overloads: a plain renderer input (the full-width renderer, which has no alias) adapts to a
+// plain renderer, so callers assigning into `CellRenderer`-typed option fields stay typed.
+export function adaptCellRenderer(
+  renderer: CellRenderer | ReactCellRenderer | undefined,
+): CellRenderer | undefined;
+export function adaptCellRenderer(
+  renderer: CellRenderer | CellRendererAlias | ReactCellRenderer | undefined,
+): CellRenderer | CellRendererAlias | undefined;
+export function adaptCellRenderer(
+  renderer: CellRenderer | CellRendererAlias | ReactCellRenderer | undefined,
+): CellRenderer | CellRendererAlias | undefined {
   if (!renderer) return undefined;
   if (typeof renderer === "function" && isClassRenderer(renderer as CellRenderer)) {
     return renderer as CellRenderer;
   }
-  if (!isObjectRenderer(renderer)) return renderer as CellRenderer;
+  // A class, a plain function, or the `"text"` alias: all pass through unchanged.
+  if (!isObjectRenderer(renderer)) return renderer as CellRenderer | CellRendererAlias;
 
   const cached = reactRendererCache.get(renderer);
   if (cached) return cached;
