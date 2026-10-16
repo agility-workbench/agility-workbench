@@ -393,4 +393,63 @@ describe("server-side block cache cap (serverSideMaxBlocks)", () => {
     expect(core.getRowModel().getRowNodeAtViewIndex(45)!.id).toBe("r45");
     expectConsistentStore(core, (_l, idx) => `r${idx}`);
   });
+
+  // A cap smaller than the first load window (pageSize 100 = 10 blocks, cap 3): the fill must not
+  // evict blocks it is still loading, or each completion re-requests what its own pass dropped.
+  // The data source stops answering after a hard bound, so a regression fails instead of spinning
+  // the (synchronous) fetch chain in microtasks forever.
+  it("fills a load window larger than the cap without re-requesting evicted blocks", async () => {
+    const ds = makeDataSource("flat");
+    const inner = ds.source.getRows;
+    const LIMIT = 200;
+    ds.source.getRows = (params) => {
+      if (ds.requests.length >= LIMIT) return;
+      return inner(params);
+    };
+    const core = new GridCore(measurer, {
+      rowIdKey: "id",
+      rowModelType: "serverSide",
+      serverSideBlockSize: BLOCK,
+      pageSize: 100,
+      serverSideMaxBlocks: 3,
+    });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setColumnDefsFromProps([{ colId: "n", key: "n", label: "N", type: ColumnType.NUMBER }]);
+    core.setServerSideDataSource(ds.source);
+    await flush();
+
+    // Each of the window's 10 blocks was asked for exactly once: nothing evicted mid-fill came back.
+    const starts = ds.requests.map(r => r.startRow);
+    expect(ds.requests.length).toBeLessThan(LIMIT);
+    expect(starts.slice().sort((a, b) => a! - b!)).toEqual(Array.from({ length: 10 }, (_, i) => i * BLOCK));
+    // Once the window is satisfied the cap applies again: the viewport's blocks (0 and 10) plus
+    // the freshest one stay, the cold rest are evicted — and nothing refetches them.
+    expect(blockCount(core)).toBe(3);
+    expect(loadedBlocks(core).get("")).toEqual([0, 10, 90]);
+    await flush();
+    expect(ds.requests.length).toBe(10);
+    expectConsistentStore(core, (_l, idx) => `r${idx}`);
+
+    // Scrolling on keeps the cap, and the evicted rows refetch on demand.
+    scrollTo(core, 50);
+    await flush();
+    expect(core.getRowModel().getRowNodeAtViewIndex(50)!.id).toBe("r50");
+    expect(blockCount(core)).toBeLessThanOrEqual(3);
+    expect(ds.requests.length).toBeLessThan(LIMIT);
+  });
+
+  it("fills a large window with delayed, out-of-order responses and still settles", async () => {
+    const { core, ds } = makeGrid("flat", { pageSize: 100, serverSideMaxBlocks: 2 }, true);
+    // Release responses newest-first until the chain stops asking; bounded so a loop fails.
+    for (let i = 0; i < 100 && ds.pending.length > 0; i++) {
+      ds.pending.pop()!.respond();
+      await flush();
+    }
+    expect(ds.pending).toHaveLength(0);
+    const starts = ds.requests.map(r => r.startRow!);
+    expect(new Set(starts).size).toBe(starts.length);
+    expect(starts).toHaveLength(10);
+    expect(blockCount(core)).toBeLessThanOrEqual(3);
+    expectConsistentStore(core, (_l, idx) => `r${idx}`);
+  });
 });

@@ -291,14 +291,41 @@ describe("GridCore async row transactions", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("is an immediate all-zero no-op on the server-side row model", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const core = grid({ rowModelType: "serverSide" });
+  it("batches server-side transactions through the same deferred pass", async () => {
+    // The app has already removed bob and added carol on the server; the transactions mirror it.
+    const server: Row[] = [{ id: "1", name: "alice", qty: 3 }, { id: "3", name: "carol", qty: 5 }];
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "serverSide" });
+    cores.push(core);
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setColumnDefsFromProps([
+      { colId: "name", key: "name", label: "Name", type: ColumnType.STRING },
+      { colId: "qty", key: "qty", label: "Qty", type: ColumnType.NUMBER },
+    ]);
+    let answer: Row[] = [{ id: "1", name: "alice", qty: 3 }, { id: "2", name: "bob", qty: 7 }];
+    core.setServerSideDataSource({
+      getRows: ({ request, success }) => success({
+        rows: answer.slice(request.startRow ?? 0, request.endRow ?? answer.length).map(r => ({ ...r })),
+        totalRows: answer.length,
+      }),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(core.getRowModel().getRowCount()).toBe(2);
+    answer = server;
+    const rowsChanged = vi.fn();
+    core.on("rowsChanged", rowsChanged);
 
-    await expect(core.applyTransactionAsync({ add: [{ id: "3", name: "carol", qty: 5 }] }))
-      .resolves.toEqual({ added: 0, updated: 0, removed: 0 });
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("clientSide"));
-    expect(vi.getTimerCount()).toBe(0);
-    warn.mockRestore();
+    const removed = core.applyTransactionAsync({ remove: ["2"] });
+    const added = core.applyTransactionAsync({ add: [{ id: "3", name: "carol", qty: 5 }] });
+    // Mutated immediately; derived and announced once, after the window.
+    expect(core.getRowModel().getRowNode("2")).toBeUndefined();
+    expect(core.getRowModel().getRowNode("3")).toBeDefined();
+    expect(rowsChanged).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(16);
+
+    await expect(removed).resolves.toEqual({ added: 0, updated: 0, removed: 1 });
+    await expect(added).resolves.toEqual({ added: 1, updated: 0, removed: 0 });
+    expect(rowsChanged.mock.calls.filter(([p]) => p.reason === "transaction")).toHaveLength(1);
+    expect(core.getRowModel().getRowNodeAtViewIndex(1)?.id).toBe("3");
+    expect(core.getRowModel().getRowCount()).toBe(2);
   });
 });

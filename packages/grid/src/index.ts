@@ -30,11 +30,7 @@ export type { ColumnState } from "./interfaces/iGridCore";
 // The derived selection state of a group row's checkbox under `groupSelectsChildren`.
 export type { SubtreeSelectionState } from "./core/selectionModel";
 export type {
-  CellPos,
-  CellRef,
-  SelectionKind,
-  SelectionRange,
-  SelectionSnapshot,
+  CellPos, CellRef, RowSelectionState, SelectionKind, SelectionRange, SelectionSnapshot,
 } from "./interfaces/selection";
 // `Column` and `FilterModel` (below) are classes, but only their *shapes* are public
 // API: consumers receive instances from the grid and never construct them. Plain

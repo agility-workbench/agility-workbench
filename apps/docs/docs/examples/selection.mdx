@@ -100,7 +100,8 @@ selected ids for rows that no longer exist and report that delta as a model chan
 **Select-all scope.** `api.selectAllRows()`, `api.areAllRowsSelected()`, and
 the row-number header click cover the whole **filtered set — all pages — by
 default**. Set `selectAllScope: "page"` for page-only select-all. On the
-server-side row model, "filtered" covers loaded rows.
+server-side row model, "filtered" covers every row the server would return,
+loaded or not — see [Server-side select-all](#server-side-select-all).
 
 **Groups select their children.** By default a group row is not part of row
 selection: its checkbox is inert, and select-all covers the data rows only. Set
@@ -147,3 +148,53 @@ across model changes — selection is id-based, so it survives rows moving pages
 or temporarily leaving the filtered view (the cell range is still cleared, and
 a `selectionChanged` with `reason: "model"` still fires). Exports with
 `scope: "selection"` honor the full cross-page selection.
+
+### Server-side select-all
+
+The server-side row model cannot list rows it has not fetched, so select-all
+there is a **state**, not a list of ids: "every row of the current query,
+minus these exclusions".
+
+```ts
+api.selectAllRows();                       // or the header checkbox
+api.getRowSelectionState();                // { selectAll: true, toggledRowIds: [] }
+// the user un-checks two rows
+api.getRowSelectionState();                // { selectAll: true, toggledRowIds: ["r7", "r9"] }
+
+// Hand the server a bulk operation: it resolves "all" against the same
+// filter / quick filter it is answering rows requests with.
+await archiveRows({ ...api.getRowSelectionState(), filterModel: api.getFilterModel() });
+```
+
+- **Per-row rule.** A row is selected when `selectAll` is on and it is not in
+  `toggledRowIds`, or when `selectAll` is off and it is. Rows that load later —
+  scrolling, another page, expanding a group — paint selected without a new
+  `selectionChanged`. Rows your `isRowSelectable` refuses stay unchecked and are
+  never stored in `toggledRowIds`.
+- **Gestures.** A row checkbox (or `Space` on it) toggles the row into or out
+  of the exclusions; `Shift`+click on a checkbox takes a range out of them. A
+  gesture that replaces the selection (a plain row-number click),
+  `selectRowsById(ids)` (`"set"`), un-checking the header and
+  `deselectAllRows()` leave select-all for an explicit selection.
+  `selectRowsById(ids, "remove")` adds exclusions and `"add"` removes them.
+- **Header checkbox.** Checked under select-all with nothing excluded,
+  indeterminate with exclusions (or any explicit selection), empty otherwise.
+  `areAllRowsSelected()` is true only with nothing excluded.
+- **Reading ids.** `getSelectedRowIds()`, `getSelectedRows()`,
+  `getSelectedNodes()` and `getSelection().selectedRowIds` return the **loaded**
+  selected rows only; `getSelection()` also carries `selectAll: true` and
+  `toggledRowIds` while select-all is on (so does the `selectionChanged`
+  snapshot). Exports with `scope: "selection"` and copying write the loaded
+  selected rows, with a one-time console warning — run the operation on the
+  server from `getRowSelectionState()` instead.
+- **Restoring.** `api.setRowSelectionState(state)` puts a saved state back. On
+  the client-side row model (or with `selectAllScope: "page"`, or in single
+  mode) `selectAll: true` resolves at once to the scope's rows minus the
+  exclusions — those configurations keep explicit ids, as before.
+- **What ends it.** A filter or quick-filter change ends select-all even under
+  `selectionPersistence: "keep"` (the "all" set changed); a sort change follows
+  `selectionPersistence`; `refreshServerSideData()` (with or without `purge`)
+  keeps it, and so does paging. Replacing the data source ends it.
+- **Group rows** are never covered themselves. Under `groupSelectsChildren` a
+  group's checkbox still acts on its loaded rows only: un-checking it excludes
+  those rows, and its state is derived from them.

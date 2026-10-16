@@ -73,4 +73,28 @@ export interface SelectionSnapshot {
    * loaded cells only. `null` when there is no active range.
    */
   rangeCells?: CellRef[] | null;
+  /**
+   * Present (true) only while a server-side select-all is in force: the selection is every row the
+   * server's current query returns minus `toggledRowIds`. `selectedRowIds` then lists the LOADED
+   * selected rows only. Absent otherwise — `selectedRowIds` is then the whole selection.
+   */
+  selectAll?: boolean;
+  /** With `selectAll`: the rows excluded from it. Absent otherwise. */
+  toggledRowIds?: string[];
+}
+
+/**
+ * The row selection as a select-all flag plus the rows toggled away from it — the form a
+ * server-side bulk operation needs (`api.getRowSelectionState()`).
+ *
+ * - `selectAll: false` — `toggledRowIds` are the selected rows (an ordinary explicit selection).
+ * - `selectAll: true` — every row the server's current query returns is selected EXCEPT
+ *   `toggledRowIds`. Only the server-side row model holds this state; it cannot list the rows it
+ *   has not loaded, so the server resolves "all" against the same filter / sort it is asked for.
+ *
+ * The client-side row model always reports `selectAll: false` with the explicit ids.
+ */
+export interface RowSelectionState {
+  selectAll: boolean;
+  toggledRowIds: string[];
 }

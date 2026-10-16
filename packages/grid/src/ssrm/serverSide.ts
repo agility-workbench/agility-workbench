@@ -53,6 +53,9 @@ interface ChildListing<Row> {
   /** Block start → last-use stamp (see `serverSideMaxBlocks`). Stamped when a block's rows are
    * ingested and whenever a viewport scan touches it; read only by the eviction pass. */
   blockUse: Map<number, number>;
+  /** Bumped by a transaction that shifts this listing's child indices. A fetch started under an
+   * older value answers for pre-transaction indices, so its rows are discarded on arrival. */
+  epoch: number;
 }
 
 // One contiguous run of a listing's child indices in the flattened display list. Runs break only
@@ -66,6 +69,18 @@ interface FlatSegment {
 }
 
 const ROOT_LISTING_ID = "";
+
+/** How many entries of the ascending array `sorted` are below `value` (binary search). */
+function countBelow(sorted: number[], value: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
 
 export class ServerSideRowModel<Row extends object = any> implements IRowModel<Row> {
   private listings: Map<string, ChildListing<Row>> = new Map();
@@ -120,6 +135,18 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   // that block plus one block either side covers the window.
   private renderedRange: { start: number; end: number } | null = null;
   private lastViewportRange: { start: number; end: number } | null = null;
+  // The window the current fill is loading (flat range, before page clamping): set by every
+  // request that fills a target window (init, refresh, sort, filter, page, expand, transaction),
+  // cleared once a pass over it finds nothing left to fetch. Every chained completion fills THIS
+  // window, never the one its own (possibly superseded) request named, and eviction never drops a
+  // block inside it — otherwise a cap smaller than the window evicts what the chain re-requests
+  // next, without end.
+  private fillRange: { start: number; end: number } | null = null;
+  // Fetches started by a fill (non-viewport) still awaiting their response; a fill retires only
+  // when none remain and a pass issues nothing new.
+  private fillFetchesInFlight = 0;
+  // Bumped per dispatched fetch, so a fill pass can tell whether it asked for anything.
+  private fetchSeq = 0;
   private getId: (row: Row) => string;
   // Server-side tree data: the hierarchy is the rows' own (`hasChildren` per row, children fetched
   // per parent), not a column-value grouping. Fixed at construction — the relationship mode
@@ -148,10 +175,47 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return "serverSide";
   }
 
-  applyTransaction(_tx: RowTransaction<Row>): RowTransactionResult {
-    // The server owns its dataset; incremental client-side transactions aren't applied here.
-    // The core guards this path and warns, so this is an unreachable safety net.
-    return { added: 0, updated: 0, removed: 0 };
+  /**
+   * Mirror a change the application has already made on the server into the loaded store, without
+   * a refetch. The grid tells the server nothing: later block fetches must agree with the result.
+   *
+   * - remove: a loaded row leaves its listing, later child indices shift down and the listing's
+   *   count drops; a group row or tree parent takes its loaded subtree with it. Unloaded ids are
+   *   skipped and not counted (purge with `refreshServerSideData` to drop them from the server's
+   *   answer instead).
+   * - update: a loaded row's `data` is replaced on the same node (id, selection, focus, pins and
+   *   expansion stay). A group row re-reads its server-stamped aggregates and child count from the
+   *   new data; nothing else is recomputed — a leaf update does not touch its group's aggregates.
+   *   A row's place in the hierarchy never moves through an update (remove + add does that).
+   * - add: inserted into the one listing `tx.route` names, at `tx.addIndex` (append when omitted);
+   *   later indices shift up. An id already loaded is an update of that row, as client-side.
+   *
+   * A structural change discards fetches still in flight for the listings it shifted (their rows
+   * are at pre-transaction indices) and the follow-up "transaction" request re-requests whatever
+   * the view is missing. Pure updates leave in-flight fetches alone.
+   */
+  applyTransaction(tx: RowTransaction<Row>): RowTransactionResult {
+    const shifted = new Set<ChildListing<Row>>();
+    const removed = tx.remove?.length ? this.removeLoadedRows(tx.remove, shifted) : 0;
+    let updated = 0;
+    for (const { rowId, row } of tx.update ?? []) {
+      if (this.updateLoadedRow(rowId, row)) updated++;
+    }
+    let added = 0;
+    if (tx.add?.length) {
+      const result = this.addRowsToListing(tx, shifted);
+      added = result.added;
+      updated += result.updated;
+    }
+    if (shifted.size > 0) {
+      for (const listing of shifted) {
+        listing.epoch++;
+        // Clear the dedupe set so the re-request is not mistaken for the discarded fetch.
+        listing.inFlight.clear();
+      }
+      this.rebuildFlat();
+    }
+    return { added, updated, removed };
   }
 
   diffRows(_rows: Row[]): null {
@@ -402,7 +466,20 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       // Page moves reuse cached blocks; only missing ones are fetched.
       this.rebuildFlat();
       this.emitRows(params, params.reason);
-      this.ensureViewRange(params);
+      this.startFill(params);
+      void this.reAggregate(params.id, "aggregateModel", params.aggregateReason ?? "rows");
+      return;
+    }
+
+    if (params.reason === "transaction") {
+      // applyTransaction already edited the store in place; this request only re-derives and
+      // repaints. No purge — that would throw away exactly the rows the transaction kept — and the
+      // store generation stays put, so the core keeps the edit history (as client-side does).
+      this.rebuildFlat();
+      this.emitRows(params, "transaction");
+      // Refill where the user is looking, not the core's page range (row 0 when not paginating):
+      // the discarded in-flight blocks and any slot a removal pulled into view.
+      this.startFill(params, this.lookWindow(params.loadRange ?? params.range));
       void this.reAggregate(params.id, "aggregateModel", params.aggregateReason ?? "rows");
       return;
     }
@@ -417,7 +494,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       this.listener.onError(params.id, new Error("Server-side row model requires a data source."));
       return;
     }
-    this.ensureViewRange(params);
+    this.startFill(params);
   }
 
   /**
@@ -468,7 +545,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       this.emitRows({ id: requestId } as IRowModelRequestParams, "refresh");
       // "refresh" (not "viewport") so completed blocks chain ensureViewRange and expanded
       // subtrees reload without waiting for the renderer's missing-row scan.
-      this.ensureViewRange({ ...this.viewportParams(requestId), reason: "refresh" });
+      this.startFill({ ...this.viewportParams(requestId), reason: "refresh" });
       return true;
     }
 
@@ -579,6 +656,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       listing = {
         id, groupKeys, path, treeParent,
         nodes: new Map(), knownCount: 0, counted: false, inFlight: new Set(), blockUse: new Map(),
+        epoch: 0,
       };
       this.listings.set(id, listing);
       return listing;
@@ -598,6 +676,159 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   private sortedIndices(listing: ChildListing<Row>): number[] {
     return Array.from(listing.nodes.keys()).sort((a, b) => a - b);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Transactions (see applyTransaction)
+
+  /** Drop the loaded rows among `ids` from their listings and close the gaps. Returns how many
+   * were loaded (and so removed); descendants dropped with a removed parent are not counted. */
+  private removeLoadedRows(ids: string[], shifted: Set<ChildListing<Row>>): number {
+    // Resolve every slot before dropping anything: dropping a parent takes its child listing, and
+    // a row named alongside its own parent must still count as removed.
+    const byListing = new Map<ChildListing<Row>, number[]>();
+    const slotIndex = new Map<ChildListing<Row>, Map<IRowNode<Row>, number>>();
+    let removed = 0;
+    for (const id of new Set(ids)) {
+      const node = this.nodesMap.get(id);
+      if (!node) continue;
+      const listing = this.listings.get(node.parentId ?? ROOT_LISTING_ID);
+      if (!listing) continue;
+      let index = slotIndex.get(listing);
+      if (!index) {
+        index = new Map(Array.from(listing.nodes, ([childIdx, n]) => [n, childIdx] as const));
+        slotIndex.set(listing, index);
+      }
+      const childIdx = index.get(node);
+      if (childIdx == null) continue;
+      let slots = byListing.get(listing);
+      if (!slots) {
+        slots = [];
+        byListing.set(listing, slots);
+      }
+      slots.push(childIdx);
+      removed++;
+    }
+    for (const [listing, slots] of byListing) {
+      // Gone with a parent removed in this same transaction: nothing left to shift.
+      if (this.listings.get(listing.id) !== listing) continue;
+      slots.sort((a, b) => a - b);
+      for (const childIdx of slots) this.dropNodeAt(listing, childIdx);
+      this.reindexListing(listing, childIdx => childIdx - countBelow(slots, childIdx));
+      listing.knownCount = Math.max(0, listing.knownCount - slots.length);
+      shifted.add(listing);
+    }
+    return removed;
+  }
+
+  /** Replace a loaded row's data on its existing node. False when the id is not loaded. */
+  private updateLoadedRow(id: string, row: Row): boolean {
+    const node = this.nodesMap.get(id);
+    if (!node) return false;
+    node.data = row;
+    if (node.isGroup) {
+      // Server-stamped values ride on the group row's own data: re-read them, compute nothing.
+      node.aggregateValues = this.buildGroupAggregates(row);
+      node.childCount = this.opts.getGroupChildCount?.(row) ?? undefined;
+    } else if (this.treeOptions && node.isTreeData) {
+      node.treeKey = labelFor(this.treeOptions, { id, data: row });
+      // Later child-block requests carry the parent's row; send the current one.
+      const children = this.listings.get(id);
+      if (children?.treeParent) children.treeParent = { ...children.treeParent, data: row };
+    }
+    return true;
+  }
+
+  /** Insert `tx.add` into the listing `tx.route` names. Rows whose id is already loaded update that
+   * row instead (as client-side); a repeat within the batch updates the earlier entry. */
+  private addRowsToListing(
+    tx: RowTransaction<Row>,
+    shifted: Set<ChildListing<Row>>,
+  ): { added: number; updated: number } {
+    const listing = this.resolveRouteListing(tx.route);
+    if (!listing) return { added: 0, updated: 0 };
+    let updated = 0;
+    const fresh: Row[] = [];
+    const freshAt = new Map<string, number>();
+    for (const row of tx.add ?? []) {
+      const id = this.childRowId(listing, row);
+      if (this.updateLoadedRow(id, row)) {
+        updated++;
+      } else if (freshAt.has(id)) {
+        fresh[freshAt.get(id)!] = row;
+        updated++;
+      } else {
+        freshAt.set(id, fresh.length);
+        fresh.push(row);
+      }
+    }
+    if (fresh.length === 0) return { added: 0, updated };
+
+    const requested = tx.addIndex;
+    const explicit = requested != null && Number.isFinite(requested);
+    const at = explicit ? Math.max(Math.trunc(requested), 0) : listing.knownCount;
+    // An open-ended listing only knows its loaded frontier, not its end: rows placed at or past
+    // the frontier by an append would sit mid-dataset. They appear when scrolling reaches them.
+    if (!listing.counted && (!explicit || at > listing.knownCount)) return { added: 0, updated };
+    const insertAt = Math.min(at, listing.knownCount);
+
+    if (this.treeOptions) {
+      // The same id rules a fetched block obeys, checked before anything shifts so a refused
+      // batch leaves the listing exactly as it was.
+      try {
+        this.checkTreeRowIds(listing, fresh);
+      } catch (err) {
+        console.warn("applyTransaction: rows refused for server-side tree data.", err);
+        return { added: 0, updated };
+      }
+    }
+
+    const n = fresh.length;
+    this.reindexListing(listing, childIdx => (childIdx >= insertAt ? childIdx + n : childIdx));
+    listing.knownCount += n;
+    // The fetch path builds the nodes: ids, group/tree shape, aggregate stamping, parent links,
+    // expansion defaults, and a block-use stamp (an add is a use).
+    this.ingestRows(listing, fresh, insertAt, {});
+    shifted.add(listing);
+    return { added: n, updated };
+  }
+
+  /** The listing a transaction's `route` addresses, when it is loaded. */
+  private resolveRouteListing(route: any[] | undefined): ChildListing<Row> | undefined {
+    if (!route || route.length === 0) return this.listings.get(ROOT_LISTING_ID);
+    if (this.treeMode) return this.listings.get(String(route[route.length - 1]));
+    // Deeper than the grouping goes: there is no such listing.
+    if (route.length > this.groupBy.length) return undefined;
+    return this.listings.get(groupNodeId(route.map(value => this.toDisplayKey(value))));
+  }
+
+  /** The id a row would get as a child of `listing`, by the same rules `ingestRows` applies. */
+  private childRowId(listing: ChildListing<Row>, row: Row): string {
+    const groupCol = this.groupBy[listing.groupKeys.length];
+    if (this.isGroupLevel(listing) && groupCol) {
+      return groupNodeId([...listing.path, this.toDisplayKey((row as any)[groupCol.key])]);
+    }
+    return this.getId(row);
+  }
+
+  /**
+   * Move a listing's loaded nodes to new child indices. The cache cap's last-use stamps move with
+   * the rows: each new block takes the freshest stamp of the old blocks its rows came from, so a
+   * shift neither protects a cold block nor exposes a hot one to eviction.
+   */
+  private reindexListing(listing: ChildListing<Row>, nextIndex: (childIdx: number) => number): void {
+    const nodes = new Map<number, IRowNode<Row>>();
+    const blockUse = new Map<number, number>();
+    for (const [childIdx, node] of listing.nodes) {
+      const next = nextIndex(childIdx);
+      nodes.set(next, node);
+      const stamp = listing.blockUse.get(Math.floor(childIdx / this.blockSize) * this.blockSize);
+      if (stamp == null) continue;
+      const block = Math.floor(next / this.blockSize) * this.blockSize;
+      blockUse.set(block, Math.max(blockUse.get(block) ?? 0, stamp));
+    }
+    listing.nodes = nodes;
+    listing.blockUse = blockUse;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -715,7 +946,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     if (changed === 0) return;
     this.rebuildFlat();
     this.emitRows(params, "group");
-    if (anyExpanded) this.ensureViewRange(params);
+    if (anyExpanded) this.startFill(params);
     void this.reAggregate(params.id, "aggregateModel", params.aggregateReason ?? "rows");
   }
 
@@ -755,19 +986,45 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private ensureViewRange(params: IRowModelRequestParams): void {
-    const range = params.loadRange ?? params.range;
-    const start = this.paginate ? Math.max(range.start, this.viewStartRow) : range.start;
-    const end = this.paginate ? Math.min(range.end, this.viewEndRow) : range.end;
     if (this.flatTotal === 0 && !this.totalKnown) {
       // Nothing known yet (fresh store): the root listing's first block bootstraps everything.
       const root = this.getOrCreateListing(ROOT_LISTING_ID, [], []);
       this.fetchBlock(root, 0, params);
       return;
     }
-    // A page start beyond the known frontier (provisional "next" navigation) probes the tail
-    // phantom; each arrival re-enters here until the page fills or the count pins.
+    const { start, end } = this.fillBounds(params.loadRange ?? params.range);
+    this.ensureRange(params, start, end);
+  }
+
+  // The flat slots a fill of `range` scans: clamped to the page while paginating. A page start
+  // beyond the known frontier (provisional "next" navigation) probes the tail phantom; each arrival
+  // re-enters the fill until the page fills or the count pins.
+  private fillBounds(range: { start: number; end: number }): { start: number; end: number } {
+    const start = this.paginate ? Math.max(range.start, this.viewStartRow) : range.start;
+    const end = this.paginate ? Math.min(range.end, this.viewEndRow) : range.end;
     const probeStart = this.paginate && start >= this.flatTotal ? Math.max(0, this.flatTotal - 1) : start;
-    this.ensureRange(params, probeStart, Math.max(end, probeStart + 1));
+    return { start: probeStart, end: Math.max(end, probeStart + 1) };
+  }
+
+  /** Make `range` (default: the request's load range) the window being filled, and fill it. */
+  private startFill(params: IRowModelRequestParams, range = params.loadRange ?? params.range): void {
+    this.fillRange = { start: range.start, end: range.end };
+    this.continueFill(params);
+  }
+
+  /** One fill pass: fetch whatever the fill window still misses; retire the fill when nothing is
+   * missing and none of its fetches are outstanding (from then on the cap may evict there). */
+  private continueFill(params: IRowModelRequestParams): void {
+    if (!this.fillRange) return;
+    const before = this.fetchSeq;
+    this.ensureViewRange({ ...params, range: this.fillRange, loadRange: undefined });
+    if (this.fetchSeq === before && this.fillFetchesInFlight === 0) {
+      this.fillRange = null;
+      // The window no longer protects its blocks: bring a cache the fill pushed over the cap back
+      // down now rather than on some later completion. (Viewport blocks stay pinned, so nothing
+      // on screen goes, and nothing re-requests what this drops — the fill is over.)
+      this.enforceBlockLimit();
+    }
   }
 
   private fetchBlock(listing: ChildListing<Row>, blockStart: number, params: IRowModelRequestParams, force = false): void {
@@ -790,6 +1047,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
     this.warnIfNoRowIdStrategy();
     const generation = this.storeGeneration;
+    const epoch = listing.epoch;
+    const isFill = params.reason !== "viewport";
+    this.fetchSeq++;
+    if (isFill) this.fillFetchesInFlight++;
     listing.inFlight.add(blockStart);
     if (++this.loadingDepth === 1) {
       this.listener.onLoadingStart(this.latestRequestId);
@@ -826,9 +1087,14 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
             .catch(reject);
         });
 
-        listing.inFlight.delete(blockStart);
+        // A transaction cleared the dedupe set; a re-request may own this entry now.
+        if (listing.epoch === epoch) listing.inFlight.delete(blockStart);
+        if (isFill) this.fillFetchesInFlight--;
         const settled = --this.loadingDepth === 0;
-        if (generation !== this.storeGeneration) {
+        // A purge (generation), or a transaction that shifted this listing's indices (epoch): the
+        // rows answer for slots that no longer exist as asked. The transaction's own request
+        // re-asks for whatever the view is missing.
+        if (generation !== this.storeGeneration || epoch !== listing.epoch) {
           if (settled) this.listener.onLoadingEnd(this.latestRequestId);
           return;
         }
@@ -859,23 +1125,25 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         });
         this.rebuildFlat();
         // Only here — after a completion, on fresh segments — never mid-scan: a scan that evicted
-        // could drop a block it is about to read.
+        // could drop a block it is about to read. A fill still running keeps its window pinned.
         this.enforceBlockLimit();
         this.emitRows(params, params.reason);
         void this.reAggregate(this.latestRequestId, "aggregateModel", params.aggregateReason ?? "rows");
         // Keep filling the target window BEFORE deciding whether the overlay can hide: expansion
         // fan-out and provisional page jumps need more blocks than one response covers, and any
-        // chained fetch re-raises loadingDepth so the overlay stays up across the whole fill.
-        if (params.reason !== "viewport") {
-          this.ensureViewRange(params);
-        }
+        // chained fetch re-raises loadingDepth so the overlay stays up across the whole fill. After
+        // emitRows on purpose: the renderer's missing-row scan runs inside that emit and asks for
+        // what is on screen first; the fill then skips blocks already in flight.
+        if (isFill) this.continueFill(params);
         if (settled && this.loadingDepth === 0) {
           this.listener.onLoadingEnd(this.latestRequestId);
         }
       } catch (err) {
-        listing.inFlight.delete(blockStart);
+        if (listing.epoch === epoch) listing.inFlight.delete(blockStart);
+        if (isFill) this.fillFetchesInFlight--;
         const settled = --this.loadingDepth === 0;
-        if (generation !== this.storeGeneration) {
+        // A superseded fetch's failure is as stale as its rows would have been.
+        if (generation !== this.storeGeneration || epoch !== listing.epoch) {
           if (settled) this.listener.onLoadingEnd(this.latestRequestId);
           return;
         }
@@ -1150,9 +1418,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
    * Evict least-recently-used blocks until at most `serverSideMaxBlocks` are loaded across all
    * listings. A block is one `blockSize` range of one listing's child indices, loaded while it
    * holds at least one row. Never evicted (but counted toward the cap): blocks in or one block
-   * either side of the viewport, blocks with a fetch in flight, and blocks holding an expanded
-   * parent or a parent whose subtree has a fetch in flight — dropping that row would orphan a live
-   * child listing. With nothing evictable the cache stays over the cap.
+   * either side of the viewport, blocks inside the window a fill is still loading (see
+   * `fillRange` — a cap smaller than that window lets the cache exceed it until the fill is done,
+   * rather than evicting what the fill re-requests next), blocks with a fetch in flight, and
+   * blocks holding an expanded parent or a parent whose subtree has a fetch in flight — dropping
+   * that row would orphan a live child listing. With nothing evictable the cache stays over the
+   * cap; the completion that finishes the fill brings it back down.
    *
    * Eviction removes rows only. Counts (`knownCount`/`counted`), the expansion map, the flattened
    * layout and sticky spans (both derive from expanded rows and counts, and expanded rows are
@@ -1176,11 +1447,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     if (blocks.length <= max) return;
 
     const pinnedView = this.viewportBlocks();
+    const pinnedFill = this.fillBlocks();
     const busy = this.busyParents();
     for (const block of blocks) {
       const listing = this.listings.get(block.listingId)!;
       block.pinned = listing.inFlight.has(block.start)
         || pinnedView.get(block.listingId)?.has(block.start) === true
+        || pinnedFill.get(block.listingId)?.has(block.start) === true
         || this.holdsLiveParent(listing, block.start, busy);
     }
     for (const block of selectBlocksToEvict(blocks, max)) {
@@ -1200,13 +1473,29 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   // first visible child, the next sibling group below the last).
   private viewportBlocks(): Map<string, Set<number>> {
     const offset = this.paginate ? this.viewStartRow : 0;
-    const window = this.renderedRange
-      ? { start: offset + this.renderedRange.start, end: offset + this.renderedRange.end }
-      : this.lastViewportRange ?? { start: offset, end: offset + this.blockSize };
+    const window = this.lookWindow({ start: offset, end: offset + this.blockSize });
     return this.blocksInFlatRange(
       Math.max(0, window.start - this.blockSize),
       Math.max(window.start, window.end) + this.blockSize,
     );
+  }
+
+  // Blocks the running fill still needs (none once it retires). Evicting one would only have the
+  // fill's next pass fetch it again — the eviction/refetch loop a small cap would otherwise spin.
+  private fillBlocks(): Map<string, Set<number>> {
+    if (!this.fillRange) return new Map();
+    const { start, end } = this.fillBounds(this.fillRange);
+    return this.blocksInFlatRange(start, end);
+  }
+
+  // Flat window the user is looking at: the renderer's drawn window when it reports one, else the
+  // newest viewport request, else `fallback`.
+  private lookWindow(fallback: { start: number; end: number }): { start: number; end: number } {
+    const offset = this.paginate ? this.viewStartRow : 0;
+    if (this.renderedRange) {
+      return { start: offset + this.renderedRange.start, end: offset + this.renderedRange.end };
+    }
+    return this.lastViewportRange ?? fallback;
   }
 
   // Ids of rows whose child listing, or any listing below it, has a fetch in flight. Evicting such

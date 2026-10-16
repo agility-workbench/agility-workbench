@@ -321,6 +321,16 @@ export interface IGridCore {
   areAllRowsSelected(): boolean;
   selectAllRows(): void;
   deselectAllRows(): void;
+  /** Per-row selection membership (honours a server-side select-all's exclusions). */
+  isRowSelected(rowId: GridId): boolean;
+  /** Whether any row is (or, under a server-side select-all, may be) selected. */
+  hasRowSelection(): boolean;
+  /** The row selection as a select-all flag plus the ids toggled away from it. */
+  getRowSelectionState(): import("./selection").RowSelectionState;
+  /** Replace the row selection with a select-all state (see IGridAPI.setRowSelectionState). */
+  setRowSelectionState(state: import("./selection").RowSelectionState): void;
+  /** Warn once per surface that a server-side select-all is read as its loaded rows only. */
+  warnLoadedOnlySelection(surface: "export" | "clipboard"): void;
   /** Programmatic row selection by stable row id ("set" replaces, "add"/"remove" adjust). */
   selectRowsById(rowIds: GridId[], mode?: "set" | "add" | "remove"): void;
   isCellInActiveSelection(viewIdx: number, colIdx: number, rowId: string, colId: string, rowPinned?: "top" | "bottom"): boolean;

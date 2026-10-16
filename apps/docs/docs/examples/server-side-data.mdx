@@ -128,6 +128,10 @@ recently used ones (a block is used when it loads and whenever it is on screen)
 until the count fits. It never evicts:
 
 - a block in the viewport or one block either side of it;
+- a block inside the window the grid is still loading, such as the first page
+  of rows after a load, sort or filter, or the rows a page change or an expand
+  needs. When that window holds more blocks than the limit, the cache goes over
+  the limit until the window has loaded, then comes back down;
 - a block whose request is still in flight;
 - a block holding an **expanded** group row or tree parent, or a parent whose
   children are still loading — dropping that row would orphan its children, so
@@ -234,6 +238,16 @@ in the footer's overflow menu alike. `paginationControls.aggregateScope` tunes
 that: `whenUnavailable: "hidden"` drops the choice from both lists, and
 `unavailableMessage` replaces the tooltip with wording for your users.
 
+## Selecting all rows
+
+With row selection on, `api.selectAllRows()` and the header checkbox select every row the server's
+current query returns, including rows not fetched yet. The grid records this as
+`{ selectAll: true, toggledRowIds }`, where `toggledRowIds` lists the rows the user un-checked. Read
+it with `api.getRowSelectionState()` and send it, with the filter and quick filter, to run a bulk
+operation on the server. `getSelectedRows()` and exports only see loaded rows. A filter or
+quick-filter change ends the select-all; `refreshServerSideData()` and paging keep it. See
+[Server-side select-all](./selection.mdx#server-side-select-all).
+
 ## Export
 
 An export writes what the client holds, in the shape on screen: the loaded
@@ -286,3 +300,57 @@ const options = {
   serverSideDataSource,
 } satisfies GridOptions;
 ```
+
+## Transactions
+
+`applyTransaction` and `applyTransactionAsync` work on the server-side model.
+A transaction mirrors a change your application has **already made on the
+server** into the rows the grid has loaded, so they change without a refetch.
+The grid tells the server nothing. Every block fetched after the transaction
+must agree with it: same rows, same order, same counts.
+
+```ts
+// The server deleted order 17 and inserted order 90 at the top of the EMEA / UK group.
+api.applyTransaction({ remove: ["17"] });
+api.applyTransaction({
+  add: [{ id: "90", region: "EMEA", country: "UK", amount: 120 }],
+  route: ["EMEA", "UK"],
+  addIndex: 0,
+});
+// Server tree data: the route is the parent row IDs from the root down.
+api.applyTransaction({ add: [newFile], route: ["projects", "folder-42"] });
+```
+
+- **update** replaces a loaded row's `data` on the same node, so selection,
+  focus, pins and expansion stay. The row repaints in place, with no reorder and
+  no refetch. A group row reads its server-stamped aggregates and child count
+  again from the new data. Nothing is recomputed, though: updating a leaf does
+  not change its group's totals. Send the group row an update too, or refresh it.
+- **remove** takes a loaded row out of its listing. Later rows move up, and the
+  listing count and the pager total drop. Removing a group row or a tree parent
+  takes its loaded subtree with it. Removed rows leave the selection.
+- **add** inserts rows into one listing at `addIndex`, or appends them when
+  `addIndex` is omitted. Later rows move down. `route` picks the listing:
+  - omit it, or pass `[]`, for the root listing;
+  - with grouping, pass the group values from the top level down (a path
+    shorter than the grouping adds group rows at that level);
+  - with server tree data, pass the parent row IDs from the root down.
+
+  An ID that is already loaded updates that row instead, the same as on the
+  client-side model.
+
+Some things are skipped and not counted in the returned
+`{ added, updated, removed }`:
+
+- updates and removals of rows that are not loaded (to reload a range, use
+  `refreshServerSideData`);
+- additions under a parent that is not loaded or not expanded (the server
+  returns them when the parent is expanded);
+- additions to an open-ended listing (no `totalRows`, end not reached yet) that
+  append, or that give an `addIndex` past the loaded rows. The grid does not know
+  where that listing ends.
+
+A block requested before an add or remove answers for the old positions. When
+it arrives, the grid discards it and requests the visible part of that listing
+again. Pure updates keep their in-flight blocks. A transaction keeps the undo
+history, the same as on the client-side model.

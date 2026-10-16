@@ -368,6 +368,8 @@ export class ClipboardRenderer {
 
     const selectedRowIds = new Set(selection ? selection.rowIds : core.getSelectedRowIds());
     if (selectedRowIds.size > 0) {
+      // A server-side select-all copies its loaded rows only (and says so once).
+      if (!selection) core.warnLoadedOnlySelection("clipboard");
       const viewIdxs: number[] = [];
       for (let i = 0; i < rowModel.getViewCount(); i++) {
         const id = core.getRowIdAtViewIndex(i);

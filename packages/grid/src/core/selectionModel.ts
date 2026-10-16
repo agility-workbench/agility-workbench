@@ -48,6 +48,18 @@ interface SelectionModelDeps {
    * it, and the cursor cannot leave the checkbox cell sideways on such a row.
    */
   isCheckboxRowStop?: (viewIdx: number) => boolean;
+  /**
+   * Select-all mode only: whether the row with this id can count as selected — false for a loaded
+   * row the app (or the group-row rules) refuses, true for a row that is not loaded (it cannot be
+   * evaluated, and "all minus exclusions" covers it). Never consulted for navigation.
+   */
+  isRowIdCheckable?: (rowId: string) => boolean;
+  /**
+   * Select-all mode only: the ids of every LOADED checkable row, in document order. The selection
+   * cannot enumerate rows the server has not sent, so select-all resolves to these minus the
+   * exclusions wherever an id list is needed (snapshot, `getSelectedRowIds`).
+   */
+  getLoadedCheckableRowIds?: () => string[];
   // Row-number cells are keyboard stops only while row selection is enabled. Keep this dynamic so
   // a framework wrapper can change rowSelection without rebuilding the core/selection model.
   isRowNumberNavigable?: () => boolean;
@@ -72,7 +84,15 @@ export class SelectionModel {
   private active: CellPos | null = null;
   private range: SelectionRange | null = null;
   private selectedColumnIds: Set<string> = new Set();
+  /**
+   * The row ids toggled away from the baseline: with `selectAllMode` off (the baseline is
+   * "nothing") they are the selected rows; with it on (the baseline is "every row") they are the
+   * EXCLUSIONS. A row is selected iff `selectAllMode XOR toggled` — and, in select-all mode, it is
+   * checkable. Only the server-side row model ever turns select-all mode on; the client-side model
+   * can enumerate its rows, so its select-all always resolves to explicit ids.
+   */
   private selectedRowIds: Set<string> = new Set();
+  private selectAllMode = false;
   private rowAnchorViewIdx: number | null = null;
   /**
    * The column a `"range"` extension grows from — the counterpart of `rowAnchorViewIdx` for columns.
@@ -293,8 +313,40 @@ export class SelectionModel {
     return this.selectedColumnIds;
   }
 
+  /**
+   * The selected row ids. Outside select-all mode this is the stored set itself (callers must not
+   * mutate it); in select-all mode it is a fresh set of the LOADED checkable rows minus the
+   * exclusions — rows the server has not sent cannot be listed.
+   */
   getSelectedRowIds(): Set<string> {
+    if (!this.selectAllMode) return this.selectedRowIds;
+    const ids = new Set<string>();
+    for (const id of this.deps.getLoadedCheckableRowIds?.() ?? []) {
+      if (!this.selectedRowIds.has(id)) ids.add(id);
+    }
+    return ids;
+  }
+
+  /** The stored toggled ids: the selection outside select-all mode, the exclusions inside it. */
+  getToggledRowIds(): Set<string> {
     return this.selectedRowIds;
+  }
+
+  /** Whether row selection is in select-all ("every row minus the toggled ids") mode. */
+  isSelectAllMode(): boolean {
+    return this.selectAllMode;
+  }
+
+  /** Whether any row is selected, or may be: select-all mode always counts, even with every
+   * loaded row excluded, since rows not yet loaded are still covered. */
+  hasRowSelection(): boolean {
+    return this.selectAllMode || this.selectedRowIds.size > 0;
+  }
+
+  /** Per-row membership: `selectAllMode XOR toggled`, gated by checkability in select-all mode. */
+  isRowIdSelected(rowId: string): boolean {
+    if (!this.selectAllMode) return this.selectedRowIds.has(rowId);
+    return !this.selectedRowIds.has(rowId) && (this.deps.isRowIdCheckable?.(rowId) ?? true);
   }
 
   isCellInActiveSelection(
@@ -325,7 +377,7 @@ export class SelectionModel {
         return true;
       }
     }
-    if (this.selectedRowIds.has(rowId)) return true;
+    if (this.isRowIdSelected(rowId)) return true;
     if (this.selectedColumnIds.has(colId)) return true;
     return false;
   }
@@ -343,12 +395,18 @@ export class SelectionModel {
       range,
       anchor: this.anchor ? { ...this.anchor } : null,
       active: this.active ? { ...this.active } : null,
-      selectedRowIds: Array.from(this.selectedRowIds),
+      selectedRowIds: Array.from(this.getSelectedRowIds()),
       selectedColumnIds: Array.from(this.selectedColumnIds),
       selectedColIds: Array.from(this.selectedColumnIds)
         .map(id => this.deps.getColumnModel().getById(id)?.colId)
         .filter((id): id is string => id != null),
     };
+    // Only select-all mode carries the state fields: outside it `selectedRowIds` already IS the
+    // whole state, and leaving them off keeps every client-side snapshot exactly as it was.
+    if (this.selectAllMode) {
+      snapshot.selectAll = true;
+      snapshot.toggledRowIds = Array.from(this.selectedRowIds);
+    }
 
     if (resolveIds) {
       snapshot.rangeCells = range ? this.resolveRangeCells(range) : null;
@@ -358,7 +416,7 @@ export class SelectionModel {
   }
 
   private currentKind(range: SelectionRange | null): SelectionSnapshot["kind"] {
-    if (this.selectedRowIds.size > 0) return "row";
+    if (this.hasRowSelection()) return "row";
     if (this.selectedColumnIds.size > 0) return "column";
     if (range) {
       const rowCount = Math.max(0, range.rowEnd - range.rowStart + 1)
@@ -955,9 +1013,11 @@ export class SelectionModel {
       const anchorIdx = this.rowAnchorViewIdx;
       const start = Math.min(anchorIdx, viewIdx);
       const end = Math.max(anchorIdx, viewIdx);
-      if (mode === "range") this.selectedRowIds.clear();
+      // A replacing range leaves select-all mode: it IS the whole new selection. A union under
+      // select-all just takes the range's rows back out of the exclusions.
+      if (mode === "range") this.resetRowSelection();
       for (let i = start; i <= end; i++) {
-        for (const id of this.rowTargets(i)) this.selectedRowIds.add(id);
+        for (const id of this.rowTargets(i)) this.markRow(id, true);
       }
       this.clearRange();
       this.clearColumns();
@@ -966,12 +1026,10 @@ export class SelectionModel {
 
     if (mode === "toggle") {
       // One row is a plain flip; a subtree fills when any of it is unselected and clears when all
-      // of it is selected, so a partial group's first click completes it.
-      const allSelected = targets.every(id => this.selectedRowIds.has(id));
-      for (const id of targets) {
-        if (allSelected) this.selectedRowIds.delete(id);
-        else this.selectedRowIds.add(id);
-      }
+      // of it is selected, so a partial group's first click completes it. Under select-all the
+      // flip moves the row into or out of the exclusions.
+      const allSelected = targets.every(id => this.isRowIdSelected(id));
+      for (const id of targets) this.markRow(id, !allSelected);
       this.rowAnchorViewIdx = viewIdx;
       this.clearRange();
       this.clearColumns();
@@ -985,16 +1043,61 @@ export class SelectionModel {
    * Programmatic row selection by stable row id (ids are validated by the caller). "set"
    * replaces the selection, "add"/"remove" adjust it. Clears the other selection kinds
    * (mutually exclusive) and drops the range anchor — by-id selection has no view position.
+   * In select-all mode "set" leaves the mode (the ids become the whole selection), while "add"
+   * and "remove" take ids out of / put ids into the exclusions.
    */
   setSelectedRowIds(rowIds: Iterable<string>, mode: "set" | "add" | "remove"): void {
     this.clearRange();
     this.clearColumns();
-    if (mode === "set") this.selectedRowIds.clear();
-    for (const id of rowIds) {
-      if (mode === "remove") this.selectedRowIds.delete(id);
-      else this.selectedRowIds.add(id);
-    }
+    if (mode === "set") this.resetRowSelection();
+    for (const id of rowIds) this.markRow(id, mode !== "remove");
     this.rowAnchorViewIdx = null;
+  }
+
+  /**
+   * Replace the row selection with a select-all state: `selectAll` true makes `toggledRowIds` the
+   * exclusions from "every row", false makes them the selected rows. Ids are taken as given (the
+   * caller validates). Clears the other selection kinds and the range anchor.
+   */
+  setRowSelectionState(selectAll: boolean, toggledRowIds: Iterable<string>): void {
+    this.clearRange();
+    this.clearColumns();
+    this.selectedRowIds.clear();
+    for (const id of toggledRowIds) this.selectedRowIds.add(id);
+    this.selectAllMode = selectAll;
+    this.rowAnchorViewIdx = null;
+  }
+
+  /**
+   * End select-all mode without touching an explicit selection: a select-all selection becomes
+   * empty (its "all" no longer means the same rows, e.g. after a filter change). Returns whether
+   * anything changed.
+   */
+  leaveSelectAll(): boolean {
+    if (!this.selectAllMode) return false;
+    this.resetRowSelection();
+    this.rowAnchorViewIdx = null;
+    return true;
+  }
+
+  /** Remove ids from the stored toggled set (rows that no longer exist), in either mode. */
+  forgetRowIds(rowIds: Iterable<string>): boolean {
+    let changed = false;
+    for (const id of rowIds) changed = this.selectedRowIds.delete(id) || changed;
+    return changed;
+  }
+
+  // Select (true) or deselect (false) one row in the current mode: an explicit selection adds or
+  // deletes it, a select-all selection deletes it from or adds it to the exclusions.
+  private markRow(id: string, selected: boolean): void {
+    if (selected !== this.selectAllMode) this.selectedRowIds.add(id);
+    else this.selectedRowIds.delete(id);
+  }
+
+  // Back to the empty explicit selection.
+  private resetRowSelection(): void {
+    this.selectedRowIds.clear();
+    this.selectAllMode = false;
   }
 
   // Select every checkable data row in the current view (group rows are skipped unless
@@ -1003,7 +1106,7 @@ export class SelectionModel {
   selectAllRows() {
     this.clearRange();
     this.clearColumns();
-    this.selectedRowIds.clear();
+    this.resetRowSelection();
     const viewCount = this.deps.getRowModel().getViewCount();
     for (let i = 0; i < viewCount; i++) {
       if (!this.isRowCheckable(i)) continue;
@@ -1022,16 +1125,19 @@ export class SelectionModel {
       if (!this.isRowCheckable(i)) continue;
       selectable++;
       const id = this.deps.getRowIdAtViewIndex(i);
-      if (!id || !this.selectedRowIds.has(id)) return false;
+      if (!id || !this.isRowIdSelected(id)) return false;
     }
     return selectable > 0;
   }
 
   // Replace the selection with `rowIds`; replacing with exactly what is already selected clears it.
+  // A select-all selection is never "exactly these rows", so a replace there always leaves the mode
+  // with `rowIds` as the new explicit selection.
   private replaceRows(rowIds: string[], viewIdx: number) {
-    const wasOnlySelected = this.selectedRowIds.size === new Set(rowIds).size
+    const wasOnlySelected = !this.selectAllMode
+      && this.selectedRowIds.size === new Set(rowIds).size
       && rowIds.every(id => this.selectedRowIds.has(id));
-    this.selectedRowIds.clear();
+    this.resetRowSelection();
     if (!wasOnlySelected) {
       for (const id of rowIds) this.selectedRowIds.add(id);
       this.rowAnchorViewIdx = viewIdx;
@@ -1043,8 +1149,8 @@ export class SelectionModel {
   }
 
   clearRows() {
-    if (this.selectedRowIds.size === 0 && this.rowAnchorViewIdx == null) return;
-    this.selectedRowIds.clear();
+    if (!this.selectAllMode && this.selectedRowIds.size === 0 && this.rowAnchorViewIdx == null) return;
+    this.resetRowSelection();
     this.rowAnchorViewIdx = null;
   }
 

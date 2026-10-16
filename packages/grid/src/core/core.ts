@@ -52,7 +52,7 @@ import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interf
 import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel, SubtreeSelectionState } from "./selectionModel";
 import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
-import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
+import { CellPos, CellRef, RowSelectionState, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChangedParams } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
@@ -64,6 +64,9 @@ interface AppliedRowTransaction {
   startedEmpty: boolean;
   /** Input update ids, retained for the targeted repaint path when reevaluation is disabled. */
   updatedRowIds: GridId[];
+  /** Server-side only: stored selection ids whose loaded rows this transaction removed. The
+   * client-side prune ("no node = gone") cannot run there, where no node also means "not loaded". */
+  removedSelectionIds: GridId[];
 }
 
 interface PendingRowTransactionCall {
@@ -321,6 +324,8 @@ export class GridCore implements IGridCore {
       isRowCheckable: (viewIdx) => this.isViewRowCheckable(viewIdx),
       getRowSelectionTargets: (viewIdx) => this.getRowSelectionTargetsAtViewIndex(viewIdx),
       isCheckboxRowStop: (viewIdx) => this.isSubtreeSelectionRow(viewIdx),
+      isRowIdCheckable: (rowId) => this.isRowIdSelectAllCheckable(rowId),
+      getLoadedCheckableRowIds: () => this.getLoadedSelectAllRowIds(),
       isRowNumberNavigable: () => this.options.rowSelection,
       getPinnedRowCount: (position) => this.displayedPinnedRows[position].length,
       getPinnedRowNode: (position, rowIndex) =>
@@ -1176,6 +1181,9 @@ export class GridCore implements IGridCore {
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
     this.firstRefreshSeen = false;
+    // A replaced row model is a new dataset (and may not be server-side, where select-all mode
+    // cannot exist): a select-all over the old one ends.
+    if (this.selectionModel.leaveSelectAll()) this.emitSelectionChanged("model");
     this.warnIfFindUnavailableServerSide();
     const range = this.resetPageBlocks();
     this.applyRowModelRequest(() => this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
@@ -1253,9 +1261,15 @@ export class GridCore implements IGridCore {
     this.columnModel.identifyComparators(nodes);
   }
 
-  /** Mutate client-side row nodes without re-deriving or repainting the displayed view. */
+  /** Mutate row nodes without re-deriving or repainting the displayed view. */
   private mutateRowTransaction(tx: RowTransaction<RowData>): AppliedRowTransaction {
     const wasEmpty = this.rowModel.getRowCount() === 0;
+    // Server-side, a missing node usually means "not loaded", so the removed rows are found by
+    // difference: stored selection ids whose rows were loaded before and are gone after. A
+    // transaction never evicts, and a removed parent's loaded descendants are caught too.
+    const loadedSelectionIds = this.rowModel.getType() === "serverSide" && tx.remove?.length
+      ? [...this.selectionModel.getToggledRowIds()].filter(id => this.rowModel.getRowNode(id) != null)
+      : [];
     // Unlike setRowData, a transaction preserves edit history — undo/redo entries reference rows by
     // id and remain valid for rows that still exist.
     const result = this.rowModel.applyTransaction(tx);
@@ -1263,7 +1277,15 @@ export class GridCore implements IGridCore {
       result,
       startedEmpty: wasEmpty,
       updatedRowIds: tx.update?.map(update => update.rowId) ?? [],
+      removedSelectionIds: loadedSelectionIds.filter(id => this.rowModel.getRowNode(id) == null),
     };
+  }
+
+  /** Server-side: forget removed rows' ids in the stored selection (in either selection mode — an
+   * exclusion for a row that no longer exists would still be subtracted from select-all counts). */
+  private forgetTransactionRemovedRows(rowIds: GridId[]): void {
+    if (rowIds.length === 0) return;
+    if (this.selectionModel.forgetRowIds(rowIds)) this.emitSelectionChanged("model");
   }
 
   /** Re-derive and notify the view after one or more row-node mutations. */
@@ -1275,6 +1297,7 @@ export class GridCore implements IGridCore {
     if (result.removed > 0 || (result.updated > 0 && this.options.isRowSelectable)) {
       this.pruneRemovedRowSelection();
     }
+    this.forgetTransactionRemovedRows(applied.removedSelectionIds);
 
     // Comparators are derived from sample values, so a grid that had no rows until now has none
     // resolved and any seeded initial sort would be silently skipped. Resolve them before the
@@ -1285,8 +1308,11 @@ export class GridCore implements IGridCore {
     // Structural changes always reflow the view (membership + position). Pure updates only reorder
     // when reevaluateOnEdit is set; otherwise values change in place and rows keep their positions.
     // Pivot mode always reflows: the displayed rows are derived aggregates (see
-    // reevaluateAfterEdit for the same rule on the editing path).
-    const reevaluate = structural || this.options.reevaluateOnEdit || this.pivotMode;
+    // reevaluateAfterEdit for the same rule on the editing path). Server-side, the server owns
+    // order and membership, so — as on the editing path — a pure update has nothing local to
+    // re-derive and always repaints in place.
+    const reevaluate = structural || (this.rowModel.getType() === "clientSide"
+      && (this.options.reevaluateOnEdit || this.pivotMode));
 
     if (reevaluate) {
       this.applyRowModelRequest(() => this.createRowModelRequest(
@@ -1295,8 +1321,10 @@ export class GridCore implements IGridCore {
         this.getInitialServerSideLoadRange(),
       ));
       // Removing rows can shrink the view past the page the user is on, stranding them on a blank
-      // page. The filter/quick-filter/group paths already clamp for the same reason.
-      this.clampPageToLastPage();
+      // page. The filter/quick-filter/group paths already clamp for the same reason. Not
+      // server-side, where the total can be provisional ("N+"): its onRows snap-back clamps once
+      // the count is known, exactly as after a filter.
+      if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (applied.updatedRowIds.length > 0) {
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
       const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
@@ -1316,6 +1344,7 @@ export class GridCore implements IGridCore {
         result: { ...applied.result },
         startedEmpty: applied.startedEmpty,
         updatedRowIds: [...new Set(applied.updatedRowIds)],
+        removedSelectionIds: [...applied.removedSelectionIds],
       };
       return;
     }
@@ -1325,6 +1354,7 @@ export class GridCore implements IGridCore {
     const updated = new Set(pending.updatedRowIds);
     for (const rowId of applied.updatedRowIds) updated.add(rowId);
     pending.updatedRowIds = [...updated];
+    pending.removedSelectionIds = [...new Set([...pending.removedSelectionIds, ...applied.removedSelectionIds])];
   }
 
   private scheduleAsyncTransactionFlush(): void {
@@ -1361,12 +1391,9 @@ export class GridCore implements IGridCore {
     for (const call of batch.calls) call.resolve(call.result);
   }
 
+  // Both row models take transactions. Server-side, a transaction mirrors a change the app has
+  // already made on the server into the loaded rows (see ServerSideRowModel.applyTransaction).
   applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult> {
-    if (this.rowModel.getType() !== "clientSide") {
-      console.warn("applyTransactionAsync is only supported on the 'clientSide' row model; the server owns its data.");
-      return Promise.resolve({ added: 0, updated: 0, removed: 0 });
-    }
-
     const applied = this.mutateRowTransaction(tx);
     const { result } = applied;
     if (result.added === 0 && result.updated === 0 && result.removed === 0) {
@@ -1380,11 +1407,6 @@ export class GridCore implements IGridCore {
   }
 
   applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult {
-    if (this.rowModel.getType() !== "clientSide") {
-      console.warn("applyTransaction is only supported on the 'clientSide' row model; the server owns its data.");
-      return { added: 0, updated: 0, removed: 0 };
-    }
-
     const applied = this.mutateRowTransaction(tx);
     if (this.pendingRowTransactions) {
       this.accumulateRowTransaction(applied);
@@ -1428,7 +1450,7 @@ export class GridCore implements IGridCore {
     this.applyRowModelRequest(() => this.createRowModelRequest("filter", range, this.getInitialServerSideLoadRange()))
     if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
-    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+    this.clearRowSelectionForFilterChange();
     this.emitSelectionChanged("model");
     this.emitColumnsChanged({ reason: "filter", ...this.columnsChangedIds(changedColIds) })
     this.emit("filterChanged", { source: "filter", ...this.columnsChangedIds(changedColIds) });
@@ -1495,7 +1517,7 @@ export class GridCore implements IGridCore {
     // Server-side: the row count is provisional right after the purge (see clampPageToLastPage).
     if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
-    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+    this.clearRowSelectionForFilterChange();
     this.emitSelectionChanged("model");
     this.emit("modelUpdated", { reason: "filter", step: "all" });
     this.emit("filterChanged", { source: "quickFilter", changedColIds: [], changedColInstanceIds: [] });
@@ -2232,11 +2254,14 @@ export class GridCore implements IGridCore {
     this.options.rowSelectionCheckboxColumnPinnable = nextPinnable;
     this.options.rowSelectionCheckboxColumnPinned = nextPinned;
 
+    // Under a server-side select-all these are the loaded selected rows; single mode keeps the
+    // first of them as an explicit selection (single mode never holds a select-all).
     const selectedIds = [...this.selectionModel.getSelectedRowIds()];
-    if (!nextEnabled && selectedIds.length > 0) {
+    if (!nextEnabled && this.selectionModel.hasRowSelection()) {
       this.selectionModel.clearRows();
       this.emitSelectionChanged("model");
-    } else if (nextMode === "single" && selectedIds.length > 1) {
+    } else if (nextMode === "single"
+      && (selectedIds.length > 1 || this.selectionModel.isSelectAllMode())) {
       this.selectionModel.setSelectedRowIds(selectedIds.slice(0, 1), "set");
       this.emitSelectionChanged("model");
     }
@@ -2602,6 +2627,8 @@ export class GridCore implements IGridCore {
       return;
     }
     (this.rowModel as any).serverDataSource = callback;
+    // A new data source is a new dataset: a select-all over the old one means nothing here.
+    if (this.selectionModel.leaveSelectAll()) this.emitSelectionChanged("model");
     this.refreshRows("refresh");
     this.emit("modelUpdated", { reason: "api", step: "all" });
   }
@@ -2796,9 +2823,8 @@ export class GridCore implements IGridCore {
     const cached = this.groupSelectionStateCache.get(node.id);
     if (cached) return cached;
     const targets = this.getRowSelectionTargetsAtViewIndex(viewIdx) ?? [];
-    const selected = this.selectionModel.getSelectedRowIds();
     let count = 0;
-    for (const id of targets) if (selected.has(id)) count++;
+    for (const id of targets) if (this.selectionModel.isRowIdSelected(id)) count++;
     const state: SubtreeSelectionState = targets.length === 0
       ? "empty"
       : count === 0 ? "none" : count === targets.length ? "all" : "some";
@@ -2829,6 +2855,33 @@ export class GridCore implements IGridCore {
   private isViewRowCheckable(viewIdx: number): boolean {
     const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
     return !node || this.isNodeCheckable(node);
+  }
+
+  // Server-side select-all: the selection becomes "every row minus exclusions" rather than a list,
+  // because the grid cannot enumerate rows the server has not sent. Only the filtered scope in
+  // multiple mode uses it — a page is finite and single mode holds one row, so both stay explicit.
+  private usesServerSideSelectAll(): boolean {
+    return this.rowModel.getType() === "serverSide"
+      && this.options.selectAllScope !== "page"
+      && this.options.rowSelectionMode !== "single";
+  }
+
+  // Select-all membership gate for one id. A loaded row must be a checkable DATA row — group rows
+  // are never covered by select-all, the same rule as the client-side filtered scope; a row that
+  // is not loaded cannot be judged and counts as covered ("all minus exclusions").
+  private isRowIdSelectAllCheckable(rowId: string): boolean {
+    const node = this.rowModel.getRowNode(rowId);
+    return !node || (!node.isGroup && this.isNodeCheckable(node));
+  }
+
+  // The loaded rows a select-all covers, in document order: every loaded checkable data row,
+  // including rows under collapsed groups and rows cached from other pages.
+  private getLoadedSelectAllRowIds(): string[] {
+    const ids: string[] = [];
+    this.rowModel.forEachNode((node) => {
+      if (node && !node.isGroup && this.isNodeCheckable(node)) ids.push(node.id);
+    });
+    return ids;
   }
 
   // Ids of every checkable data row in the whole filtered/sorted set (all pages). Group nodes
@@ -3626,9 +3679,81 @@ export class GridCore implements IGridCore {
     return new Set(this.selectionModel.getSelectedColumnIds());
   }
 
-  /** Stable ids of the selected rows. Returns a COPY — mutating it never affects the grid. */
+  /**
+   * Stable ids of the selected rows. Returns a COPY — mutating it never affects the grid. Under a
+   * server-side select-all these are the LOADED selected rows only (see getRowSelectionState).
+   */
   getSelectedRowIds(): Set<string> {
     return new Set(this.selectionModel.getSelectedRowIds());
+  }
+
+  /**
+   * Whether the row with this id is row-selected — the per-row form of getSelectedRowIds, cheap
+   * enough for the paint path. Under a server-side select-all a row is selected unless excluded
+   * (or refused by `isRowSelectable`), which covers rows that load after the select-all.
+   */
+  isRowSelected(rowId: string): boolean {
+    return this.selectionModel.isRowIdSelected(rowId);
+  }
+
+  /**
+   * Whether any row is selected, or may be: a server-side select-all counts even when every loaded
+   * row is excluded, since rows not yet loaded are still covered. Drives the header's "some".
+   */
+  hasRowSelection(): boolean {
+    return this.selectionModel.hasRowSelection();
+  }
+
+  /**
+   * The row selection as `{ selectAll, toggledRowIds }`: with `selectAll` true, every row of the
+   * server's current query except `toggledRowIds`; with it false, exactly `toggledRowIds`. The
+   * client-side row model always reports the explicit form.
+   */
+  getRowSelectionState(): RowSelectionState {
+    return {
+      selectAll: this.selectionModel.isSelectAllMode(),
+      toggledRowIds: [...this.selectionModel.getToggledRowIds()],
+    };
+  }
+
+  /**
+   * Replace the row selection with a `{ selectAll, toggledRowIds }` state (e.g. one restored from
+   * the server). `selectAll: true` is kept as a select-all on the server-side row model in its
+   * default filtered multiple-selection setup; everywhere else it resolves at once to explicit ids
+   * — the select-all scope's selectable rows minus `toggledRowIds` (the first one in single mode).
+   * Ids of loaded rows the selection refuses (`isRowSelectable`, group rows) are dropped; on the
+   * client-side model unknown ids are dropped too. Emits selectionChanged reason "api".
+   */
+  setRowSelectionState(state: RowSelectionState): void {
+    const toggled = this.validateSelectionRowIds(state.toggledRowIds ?? []);
+    if (!state.selectAll) {
+      this.applySelectedRowIds(toggled, "set");
+    } else if (this.usesServerSideSelectAll()) {
+      this.selectionModel.setRowSelectionState(true, toggled);
+    } else {
+      const excluded = new Set(toggled);
+      const ids = this.getSelectAllScopeRowIds().filter(id => !excluded.has(id));
+      this.selectionModel.setSelectedRowIds(
+        this.options.rowSelectionMode === "single" ? ids.slice(0, 1) : ids,
+        "set",
+      );
+    }
+    this.emitSelectionChanged("api");
+  }
+
+  private warnedLoadedOnlySelection = new Set<string>();
+  /**
+   * Say once per surface that a server-side select-all is being read as its LOADED rows (an
+   * export or a copy can only write rows the grid holds). A no-op outside select-all mode.
+   */
+  warnLoadedOnlySelection(surface: "export" | "clipboard"): void {
+    if (!this.selectionModel.isSelectAllMode() || this.warnedLoadedOnlySelection.has(surface)) return;
+    this.warnedLoadedOnlySelection.add(surface);
+    console.warn(
+      `Server-side select-all: the ${surface === "export" ? "export" : "copy"} uses the loaded `
+      + "selected rows only; rows the server has not sent are not included. Use "
+      + "api.getRowSelectionState() to run the operation on the server.",
+    );
   }
 
   /** Currently-selected row nodes (unloaded / no-longer-present ids are omitted). */
@@ -3648,6 +3773,8 @@ export class GridCore implements IGridCore {
 
   /** Whether every selectable data row in the select-all scope (filtered set or page) is selected. */
   areAllRowsSelected(): boolean {
+    // A server-side select-all with nothing excluded covers every row, loaded or not.
+    if (this.selectionModel.isSelectAllMode()) return this.selectionModel.getToggledRowIds().size === 0;
     // A page holding a collapsed group also holds that group's hidden leaves under
     // groupSelectsChildren, which the view-row scan of the selection model cannot see.
     if (this.options.selectAllScope === "page" && !this.groupSelectsChildrenActive()) {
@@ -3675,9 +3802,14 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged(reason);
       return;
     }
-    const ids = this.options.selectAllScope === "page"
-      ? this.getPageSelectableRowIds()
-      : this.getFilteredSelectableRowIds();
+    // On the server-side model "filtered" means every row the server would return, not the rows
+    // that happen to be loaded: select-all mode with no exclusions.
+    if (this.usesServerSideSelectAll()) {
+      this.selectionModel.setRowSelectionState(true, []);
+      this.emitSelectionChanged(reason);
+      return;
+    }
+    const ids = this.getSelectAllScopeRowIds();
     this.selectionModel.setSelectedRowIds(
       this.options.rowSelectionMode === "single" ? ids.slice(0, 1) : ids,
       "set",
@@ -3685,17 +3817,42 @@ export class GridCore implements IGridCore {
     this.emitSelectionChanged(reason);
   }
 
+  // The select-all scope's selectable row ids as an explicit list (page or filtered set).
+  private getSelectAllScopeRowIds(): string[] {
+    return this.options.selectAllScope === "page"
+      ? this.getPageSelectableRowIds()
+      : this.getFilteredSelectableRowIds();
+  }
+
+  // Ids an API call may put into the stored selection. Client-side: known checkable rows only.
+  // Server-side: ids are taken verbatim (the row may not be loaded) unless the row IS loaded and
+  // refused — a refused row counts as unselected and is never stored, in either mode.
+  private validateSelectionRowIds(rowIds: GridId[]): GridId[] {
+    if (this.rowModel.getType() === "serverSide") {
+      return rowIds.filter(id => {
+        const node = this.rowModel.getRowNode(id);
+        return node == null || this.isNodeCheckable(node);
+      });
+    }
+    return rowIds.filter(id => {
+      const node = this.rowModel.getRowNode(id);
+      return node != null && this.isNodeCheckable(node);
+    });
+  }
+
   /**
    * Programmatic row selection by stable row id. Unknown / non-selectable ids are dropped on the
-   * client-side row model; the server-side model accepts ids verbatim (rows may not be loaded).
+   * client-side row model; the server-side model accepts ids verbatim (rows may not be loaded)
+   * except loaded rows the selection refuses. Under a server-side select-all "add" takes ids out
+   * of the exclusions, "remove" adds them, and "set" leaves select-all for exactly these ids.
    */
   selectRowsById(rowIds: GridId[], mode: "set" | "add" | "remove" = "set"): void {
-    const validated = this.rowModel.getType() === "serverSide"
-      ? rowIds
-      : rowIds.filter(id => {
-        const node = this.rowModel.getRowNode(id);
-        return node != null && this.isNodeCheckable(node);
-      });
+    this.applySelectedRowIds(this.validateSelectionRowIds(rowIds), mode);
+    this.emitSelectionChanged("api");
+  }
+
+  // The store half of selectRowsById (ids already validated), shared with setRowSelectionState.
+  private applySelectedRowIds(validated: GridId[], mode: "set" | "add" | "remove"): void {
     if (this.options.rowSelectionMode === "single" && mode !== "remove") {
       const first = validated[0];
       // An empty additive request is a no-op; an empty set request still clears the selection.
@@ -3704,7 +3861,6 @@ export class GridCore implements IGridCore {
     } else {
       this.selectionModel.setSelectedRowIds(validated, mode);
     }
-    this.emitSelectionChanged("api");
   }
 
   /** Clear the row selection. */
@@ -4490,8 +4646,23 @@ export class GridCore implements IGridCore {
   // rows the app's isRowSelectable predicate now disables (their data may have changed under the
   // selection). Skipped on the server-side model, where an absent node just means "not loaded".
   // Group ids go too under groupSelectsChildren, which never stores a group row as itself.
-  private pruneRemovedRowSelection(): void {
-    if (this.rowModel.getType() === "serverSide") return;
+  // A filter / quick-filter change discards the row selection per `selectionPersistence`. A
+  // server-side select-all ends either way: its "all" was the old query's rows, and carrying it
+  // over would silently select rows the user never saw. ("keep" keeps explicit ids only.)
+  private clearRowSelectionForFilterChange(): void {
+    if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+    else this.selectionModel.leaveSelectAll();
+  }
+
+  // A server-side caller that KNOWS rows were removed (a transaction) passes their ids: those
+  // leave the stored set in either mode — a removed row is no longer selected, nor excluded.
+  private pruneRemovedRowSelection(removedRowIds?: Iterable<GridId>): void {
+    if (this.rowModel.getType() === "serverSide") {
+      if (removedRowIds && this.selectionModel.forgetRowIds(removedRowIds)) {
+        this.emitSelectionChanged("model");
+      }
+      return;
+    }
     const groupsDerived = this.groupSelectsChildrenActive();
     const stale = [...this.selectionModel.getSelectedRowIds()]
       .filter(id => {
@@ -4546,7 +4717,7 @@ export class GridCore implements IGridCore {
 
     if (filterChanged) {
       this.selectionModel.clearRange();
-      if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
+      this.clearRowSelectionForFilterChange();
     }
 
     if (snapshot && !filterChanged) {

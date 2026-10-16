@@ -1476,7 +1476,8 @@ export interface GridOptions {
    * Scope of select-all operations (the row-number header click, `api.selectAllRows()`, and
    * `api.areAllRowsSelected()`): "filtered" (default) covers every selectable data row that
    * passes the current filters — all pages; "page" covers only the current page's view. On the
-   * server-side row model "filtered" covers loaded rows.
+   * server-side row model "filtered" selects every row the server's query returns, as a select-all
+   * state (see `api.getRowSelectionState()`).
    */
   selectAllScope?: "page" | "filtered";
   /**
@@ -1501,8 +1502,12 @@ export interface GridOptions {
    * Server-side row model: the most row blocks kept in memory. Blocks beyond that are evicted
    * least-recently-used first, never the ones in or next to the viewport, and are fetched again
    * when scrolled back to. Blocks holding an expanded group row or tree parent, or still loading,
-   * also stay (they count toward the limit), so the cache can briefly exceed it. A value below 1 is
-   * treated as 1. Unset (the default) keeps every block until a purge, as before. Creation-only.
+   * also stay (they count toward the limit), so the cache can briefly exceed it. Blocks the grid is
+   * still loading for the current request window are never evicted either: the first page after a
+   * load, sort or filter, or the rows a page change or an expand needs. When that window holds more
+   * blocks than the limit, the cache exceeds the limit until the window has loaded, then evicts back
+   * down. A value below 1 is treated as 1. Unset (the default) keeps every block until a purge, as
+   * before. Creation-only.
    */
   serverSideMaxBlocks?: number;
   rowModelType?: RowModelType;
