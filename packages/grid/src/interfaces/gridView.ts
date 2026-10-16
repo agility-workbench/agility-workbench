@@ -1,5 +1,6 @@
 import type { AggregateScope } from "./aggregate";
 import type { FilterDef } from "./filter";
+import type { QuickFilterBehavior, QuickFilterMatchMode, RowPinnedPosition } from "./gridOptions";
 import type { ColumnState } from "./iGridCore";
 import type { SortDir } from "./sort";
 
@@ -28,6 +29,26 @@ export interface GridViewPaginationState {
 export interface GridViewColumnGroupState {
   colId: string;
   open: boolean;
+}
+
+/**
+ * One runtime row pin (`api.setRowPinned`, the row-pinning menu), by row id. `position: null` is an
+ * explicit unpin that overrides a configured `isRowPinned` callback for that row. Rows pinned by
+ * the callback itself, `pinnedTopRowData`/`pinnedBottomRowData` and the ancestors a pinned row
+ * pulls into its band are derived, not stored, so they are not listed.
+ */
+export interface GridViewRowPinnedState {
+  rowId: string;
+  position: RowPinnedPosition | null;
+}
+
+/** The quick filter's match settings and behavior (its text is `GridViewState.quickFilterText`). */
+export interface GridViewQuickFilterSettings {
+  matchMode: QuickFilterMatchMode;
+  caseSensitive: boolean;
+  /** The behavior that was asked for — kept even where it cannot currently run (finding falls
+   * back to filtering while pivoted or on the server-side row model). */
+  behavior: QuickFilterBehavior;
 }
 
 /** One aggregate-model entry in serializable form (keyed by public colId, not instanceID). */
@@ -77,6 +98,18 @@ export interface GridViewState {
   sortModel: GridViewSortState[];
   filterModel: GridViewFilterState[];
   quickFilterText: string;
+  /** The quick filter's match mode, case sensitivity and behavior. Absent in states saved before
+   * this field existed; applyViewState then keeps the live settings and applies only the text. */
+  quickFilterSettings?: GridViewQuickFilterSettings;
+  /** The live aggregate scope (the footer's None / Current page / Entire dataset). Applied after the
+   * aggregate model and pivot layers, so it wins over the scope those imply. Absent = leave the
+   * live scope alone. "all" applies as "page" where the whole dataset cannot be aggregated (a
+   * server-side model without an aggregation source). */
+  aggregateScope?: AggregateScope;
+  /** Runtime row pins by row id. Present (even empty) = replaces every
+   * runtime pin; absent (states saved before this field existed) = leave the pins alone. A row id
+   * the current data does not hold is kept and takes effect if the row appears. */
+  rowPinning?: GridViewRowPinnedState[];
   groupExpansion: GridViewGroupExpansionState[];
   /** Present only when pagination is enabled at capture time. Absent in states saved before this
    * field existed; applyViewState leaves the page untouched when it's missing. */

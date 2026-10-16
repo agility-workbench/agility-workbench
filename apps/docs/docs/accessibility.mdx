@@ -42,6 +42,22 @@ The root element carries `role="grid"` with:
   the rendered window or the current page. Row indices (`aria-rowindex`) count
   absolutely across pages, so "row 412 of 6,000" stays true under pagination
   and virtualization.
+- Rows outside the body counted too. The header is row 1 and every body row
+  is its row number plus one, whatever is pinned around it. Rows from
+  `pinnedTopRowData` and `pinnedBottomRowData` and the aggregate row (while
+  shown) are numbered **after** the last body row: top band first, then the
+  bottom band, then the aggregate row. A grid with 2 top rows, 3 body rows,
+  1 bottom row and the aggregate row reads header 1, body 2–4, top 5–6,
+  bottom 7, aggregate 8, with `aria-rowcount="8"`. The numbers do not follow
+  visual order on purpose: putting the top band first would shift every body
+  row's number away from the row number the user sees. A body row pinned
+  into a band (`isRowPinned`, `api.setRowPinned`) keeps its body number.
+  While a server-side total is still an estimate, `aria-rowcount` is `-1` and
+  the rows after the body carry no index.
+- Sticky group headers are second copies of body rows that stay visible at
+  the top while you scroll. They are `aria-hidden`, so they get no index and
+  are not counted. Assistive technology reads each group row once, where it
+  sits in the body.
 - `aria-multiselectable` reflecting the selection configuration.
 - `aria-busy` while the loading overlay is up, so assistive technology can
   hold off describing rows that are about to be replaced.

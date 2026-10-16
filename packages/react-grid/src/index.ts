@@ -12,6 +12,8 @@ export type {
   ReactDefaultColDef,
   ReactTooltipComponent,
   ReactActionFrameComponent,
+  ReactHeaderComponent,
+  ReactPartialColDef,
   ReactRowTooltipPresentation,
   ReactRowPresentation,
   ReactGetRowPresentation,

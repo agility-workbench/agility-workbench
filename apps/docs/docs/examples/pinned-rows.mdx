@@ -82,6 +82,14 @@ const options = {
 Expanded ancestors stack below the header while scrolling, in client-side and
 server-side grouping alike, and with all group display modes.
 
+A docked header works like the group row it covers. A click selects its cell
+and opens a click-trigger ActionFrame, and a double-click fires
+`rowDoubleClicked` / `cellDoubleClicked` with the same node. Hovering it shows
+the same tooltip, the context menu works there, and the chevron collapses the
+group. These gestures leave the scroll position alone, because the docked
+header is already on screen. Keyboard navigation onto a docked row still
+scrolls to the row's own place in the body.
+
 ## Selection, navigation, and export across bands
 
 No extra option is required. Arrow navigation crosses top → body → bottom;

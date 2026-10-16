@@ -20,7 +20,8 @@ the data source instead of calculated over an incomplete browser cache.
 
 `getRows({ request })` receives `startRow`, `endRow`, active `filters`, ordered
 `sorts`, `groupBy`, the current `groupKeys` path, and requested `aggregates` —
-plus `treeParent` under [server-side tree data](#tree-requests). Return
+plus `treeParent` under [server-side tree data](#tree-requests) and
+`quickFilter` while the [quick filter](#quick-filter) holds a search. Return
 `{ rows, totalRows }`; root responses may also provide `columns` and a
 `schemaVersion` for server-driven schemas.
 
@@ -45,6 +46,35 @@ const options = {
   serverSideDataSource,
 } satisfies GridOptions;
 ```
+
+### Quick filter
+
+The quick filter (the floating search box, the toolbar's search, or
+`api.setQuickFilter`) works on the server-side row model by handing the search
+to the server. While the box holds text, every rows request — and every
+`getAggregates` request — carries it:
+
+```ts
+request.quickFilter; // { text: "acme corp", mode: "multiTerm", caseSensitive: false }
+```
+
+The field is absent while the box is empty (or holds only spaces). Apply it
+together with `filters` (both must pass) and before grouping, so group rows and
+their counts reflect it. `mode` is the end user's match mode:
+
+| `mode` | a row passes when |
+|---|---|
+| `multiTerm` (default) | every whitespace-separated word appears in some cell of the row |
+| `substring` | the whole text appears inside one cell |
+| `wholeCell` | one cell's entire text equals the text (both sides trimmed) |
+
+Matching ignores case unless `caseSensitive` is true. A change of text, mode or
+case discards the loaded blocks and refetches, as a column-filter change does,
+and fires `filterChanged` with `source: "quickFilter"`. The quick filter's
+**find** behavior (highlight matches without filtering) is not available here —
+the browser never holds the whole dataset to count or step through matches — so
+a requested `behavior: "find"` filters through the server instead, with one
+`console.warn`.
 
 ### Row identity
 
@@ -143,7 +173,8 @@ const serverSideDataSource: IServerSideDataSource = {
     /* … */
   },
   async getAggregates({ request }) {
-    // request.aggregates: [{ key: "total", type: "sum" }, …]; request.filters as in getRows
+    // request.aggregates: [{ key: "total", type: "sum" }, …]; request.filters and
+    // request.quickFilter as in getRows
     return { values: await loadTotals(request) }; // e.g. { total: 1234567 }
   },
 };

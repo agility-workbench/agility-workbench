@@ -139,9 +139,9 @@ const column = {
 ## Header content and whole-cell components
 
 ```ts
-const labelOnly = ({ colDef }) => {
+const labelOnly = ({ displayName }) => {
   const strong = document.createElement("strong");
-  strong.textContent = colDef.label;
+  strong.textContent = displayName;
   return strong;
 };
 

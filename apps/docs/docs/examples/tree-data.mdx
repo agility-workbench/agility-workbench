@@ -37,6 +37,21 @@ position never depends on its children — ascending, a parent `Z` with a child
 that stays only to reach a matching descendant) sits where its first child
 would.
 
+Bad relationships in client-side tree data degrade rather than take the grid
+down, each with one console warning per load (`setRowData` or transaction) that
+names the offending ids or paths and how many rows were affected:
+
+- **Duplicate id**: the first row with the id is kept and later ones are
+  dropped. In `children` mode a dropped row's own children stay, under the kept
+  row; the same row object listed twice counts once.
+- **Duplicate path** (`path` mode): the first row with the path owns it, and
+  every descendant path hangs under it; each later row is shown as a childless
+  leaf beside it.
+- **Missing parent**: the row is shown as a root.
+
+A parent cycle still throws. The server-side tree reports its own violations
+through `ServerSideDataError` (see below).
+
 A mode belongs to exactly one row model. Pairing a client-side mode with
 `rowModelType: "serverSide"` — or `mode: "server"` with the client-side model —
 logs a warning and drops the option rather than half-applying it.

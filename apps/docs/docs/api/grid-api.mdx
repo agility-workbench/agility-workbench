@@ -116,7 +116,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `setPivotColumns(colIds)` / `getPivotColumns()` | Replace/read the pivot columns (level order; stored even while mode is off) |
 | `getPivotResultColumns()` | Descriptors of the generated pivot value columns, in header order |
 | `setPivotColumnOrder(order)` / `getPivotColumnOrder()` | Replace/read the manual arrangement of the generated pivot columns (leaf order by generated colId; null = canonical). Role edits reset it |
-| `captureViewState()` | Capture columns, column-group expanders, groups, sort, filters, search, expansion, page, and the inactive pivot state layer |
+| `captureViewState()` | Capture columns, column-group expanders, groups, sort, filters, search (text and match settings), aggregate scope, runtime row pins, expansion, page, and the inactive pivot state layer |
 | `applyViewState(state, options?)` | Restore a captured view |
 | `setKeyboardNavigationMode(mode)` | Switch tree grid/hierarchy navigation imperatively (`source: "api"`) |
 | `setTreeDataKeyboardNavigationOptions(options)` | Reconfigure the mode and/or the Ctrl/Cmd+Shift+Space switch (`source: "options"`) |

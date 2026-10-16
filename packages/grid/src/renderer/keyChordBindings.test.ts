@@ -59,11 +59,26 @@ describe("exact chord matching frees supersets the grid used to swallow", () => 
     expect(press("c", { ...MOD, altKey: true })).toBe(false);
   });
 
-  it("cuts and pastes only on the bare mod chord", () => {
+  it("cuts and pastes only on the bare mod chord", async () => {
     expect(press("x", MOD)).toBe(true);
     expect(press("x", { ...MOD, shiftKey: true })).toBe(false);
-    expect(press("v", MOD)).toBe(true);
-    expect(press("v", { ...MOD, shiftKey: true })).toBe(false);
+    // Ctrl+V is claimed but left to the browser (no preventDefault) so it fires the `paste` event
+    // that carries the text; with no event (as here) the grid falls back to readText.
+    const readText = vi.fn(async () => "pasted");
+    const clipboard = (navigator as any).clipboard ?? {};
+    const original = Object.getOwnPropertyDescriptor(clipboard, "readText");
+    Object.defineProperty(clipboard, "readText", { value: readText, configurable: true });
+    if (!(navigator as any).clipboard) Object.defineProperty(navigator, "clipboard", { value: clipboard, configurable: true });
+    try {
+      expect(press("v", MOD)).toBe(false);
+      expect(press("v", { ...MOD, shiftKey: true })).toBe(false);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
+      expect(readText).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(clipboard, "readText", original);
+      else delete clipboard.readText;
+    }
   });
 
   it("selects all on Ctrl+A but not Ctrl+Shift+A", () => {

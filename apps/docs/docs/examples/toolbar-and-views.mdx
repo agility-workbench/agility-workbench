@@ -92,9 +92,13 @@ const options = {
 
 The application owns persistence; the grid supplies picker and CRUD behavior. A
 view contains column layout, column-group expanders (which groups are open or
-closed), grouping, sorting, filters, quick-filter text, and group expansion. A
-column group is matched by its `colId`, so give groups an explicit one for their
-expander state to survive a reload. (The live demo above persists its views to
+closed), grouping, sorting, filters, the quick filter (its text, match mode,
+match case and filter-or-find behavior), the footer's aggregate scope (None /
+Current page / Entire dataset), rows pinned at runtime (`api.setRowPinned` or
+the row menu's Pin, by row id), and group expansion. The row selection and the
+sheets list are deliberately not part of a view. A column group is matched by
+its `colId`, so give groups an explicit one for their expander state to survive
+a reload. (The live demo above persists its views to
 `localStorage` — shape the grid, open or close a group, save a view, and reload
 the page.)
 
@@ -107,3 +111,12 @@ localStorage.setItem("orders-view", JSON.stringify(state));
 api.applyViewState(state);                       // exact column restore
 api.applyViewState(state, { columns: "merge" }); // retain later columns
 ```
+
+Fields added after a view was saved are optional: a view captured before
+`quickFilterSettings`, `aggregateScope` or `rowPinning` existed applies its
+quick-filter text alone and leaves the live match settings, aggregate scope and
+runtime pins as they are. A present `rowPinning` replaces every runtime pin
+(an empty list unpins them all); rows pinned by an `isRowPinned` callback or
+supplied as `pinnedTopRowData` / `pinnedBottomRowData` are configuration, not
+view state, and are never captured. On a server-side grid without a server
+aggregation source a saved `"all"` scope applies as `"page"`.

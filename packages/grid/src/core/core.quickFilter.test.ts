@@ -92,11 +92,11 @@ describe("GridCore quick filter", () => {
     expect(viewIds(core)).toEqual(["1"]);
   });
 
-  it("is a no-op for the server-side row model", () => {
+  it("records the text on the server-side row model (the server applies it)", () => {
     const ss = new GridCore(measurer, { rowIdKey: "id", rowModelType: "serverSide", quickFilter: true });
     ss.dispatch({ type: "quickFilterSet", text: "acme" });
-    // Server-side ignores quick filter; the text is not recorded.
-    expect(ss.getQuickFilterText()).toBe("");
+    // The request side is covered in ssrm/serverSide.quickFilter.test.ts.
+    expect(ss.getQuickFilterText()).toBe("acme");
   });
 
   // Six rows so the filtered set ("acme" matches 1-4) still spans two pages at pageSize 2.

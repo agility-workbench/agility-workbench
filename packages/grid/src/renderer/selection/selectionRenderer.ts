@@ -543,7 +543,11 @@ export class SelectionRenderer {
         scope: "bodyCursor",
         label: "Paste",
         command: "body.paste",
-        run: () => void this.params.clipboard().paste(),
+        // Leave the key to the browser so it fires a `paste` event at the root, which carries the
+        // clipboard text without the async-clipboard permission; the clipboard renderer falls
+        // back to readText when no event arrives.
+        preventDefault: false,
+        run: () => this.params.clipboard().pasteFromShortcut(),
       },
       // Fill down / right: the spreadsheet chords for copying the selection's first row / column
       // across it. Declined while the fill handle is off (or that axis is), so the browser keeps

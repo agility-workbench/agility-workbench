@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { GridCore } from "./core";
 import { ColumnType } from "../interfaces/column";
 import { ITextMeasurer } from "../interfaces/iTextMeasure";
@@ -286,16 +286,27 @@ describe("GridCore quick-filter find behavior", () => {
     expect(grid.getPaginationInfo().pageIndex).toBe(1);
   });
 
-  it("is inert on the server-side row model", () => {
-    const grid = new GridCore(measurer, {
-      rowIdKey: "id",
-      rowModelType: "serverSide",
-      quickFilter: { behavior: "find" },
-      serverSideDataSource: { getRows: () => {} } as any,
-    });
-    grid.dispatch({ type: "quickFilterSet", text: "acme" });
-    expect(grid.getFindState().matchCount).toBe(0);
-    expect(grid.getQuickFilterText()).toBe("");
+  it("falls back to filtering on the server-side row model, warning once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const grid = new GridCore(measurer, {
+        rowIdKey: "id",
+        rowModelType: "serverSide",
+        quickFilter: { behavior: "find" },
+        serverSideDataSource: { getRows: () => {} } as any,
+      });
+      grid.dispatch({ type: "quickFilterSet", text: "acme" });
+      grid.dispatch({ type: "quickFilterSet", text: "acme corp" });
+      const state = grid.getFindState();
+      expect(state.available).toBe(false);
+      expect(state.behavior).toBe("filter");
+      expect(state.matchCount).toBe(0);
+      expect(grid.getQuickFilterText()).toBe("acme corp");
+      const findWarnings = warn.mock.calls.filter(args => String(args[0]).includes("\"find\""));
+      expect(findWarnings).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("defaults to the filter behavior when the option does not ask for find", () => {

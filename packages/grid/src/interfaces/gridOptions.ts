@@ -793,8 +793,11 @@ export interface TooltipOptions {
   placement?: TooltipPlacement;
   /** Positioning mode. Default "anchored". Ignored (forced to "anchored") when `interactive`. */
   mode?: TooltipMode;
-  /** Mount the tooltip in `document.body` instead of the grid root, to escape `.pte-root`
-   * overflow clipping near the grid edge. Default false. */
+  /** Mount the tooltip outside the grid root, to escape `.pte-root` overflow clipping near the
+   * grid edge: in `document.body`, or in the grid's shadow root when it is mounted in one. The
+   * layer carries a live copy of the root's theme variables, so theme params reach it; being
+   * `position: fixed`, it escapes overflow clips but not a `transform`, `filter` or `contain` on
+   * an ancestor, and it stacks inside that ancestor's stacking context. Default false. */
   escapeRootClip?: boolean;
   /** Disable the built-in auto-truncation tooltip (full value shown when a cell is clipped).
    * Default false (auto-truncation is on). */
@@ -814,7 +817,8 @@ export interface TooltipColumnOptions {
   placement?: TooltipPlacement;
   /** Whether this column's tooltip is interactive. Forces `anchored` mode. */
   interactive?: boolean;
-  /** Mount this column's tooltip in `document.body` to escape `.pte-root` overflow clipping. */
+  /** Mount this column's tooltip outside the grid root to escape `.pte-root` overflow clipping
+   * (see {@link TooltipOptions.escapeRootClip}). */
   escapeRootClip?: boolean;
 }
 
@@ -887,14 +891,15 @@ export interface ActionFrameOptions {
   /** Gap in px between the cell and the popover. Default 8. */
   offset?: number;
   /**
-   * Mount the popover in `document.body` to escape `.pte-root` overflow clipping near the grid
-   * edge. Default false.
+   * Mount the popover outside the grid root to escape `.pte-root` overflow clipping near the grid
+   * edge: in `document.body`, or in the grid's shadow root when it is mounted in one. Default false.
    *
-   * Trade-off: a body-mounted popover sits outside the grid root, and theme params are delivered as
-   * inline `--pte-*` properties **on that root**. So none of the `actionFramePopover*` theme params
-   * (`actionFramePopoverWidth`, `…BackgroundColor`, `…Radius`, `…Shadow`, …) reach it — it picks up
-   * the stylesheet's `:root` defaults instead (e.g. a 300px width). Style an escaped popover by
-   * setting the `--pte-action-frame-popover-*` variables at document scope, or leave this off.
+   * The escaped popover carries a live copy of the root's inline `--pte-*` theme properties, so
+   * the `actionFramePopover*` theme params (`actionFramePopoverWidth`, `…BackgroundColor`,
+   * `…Radius`, `…Shadow`, …) reach it exactly as they reach one inside the root, and a later theme
+   * change follows. Trade-off: a `position: fixed` layer escapes overflow clips but not a
+   * `transform`, `filter` or `contain` on an ancestor, and it stacks inside that ancestor's
+   * stacking context.
    */
   escapeRootClip?: boolean;
 }
@@ -2009,3 +2014,74 @@ export type UpdatableGridOptions =
      */
     columnDefs?: ColDef[] | null;
   };
+
+/**
+ * Options that seed model state the grid owns after construction: changing them later goes through
+ * a dedicated API setter (`IGridAPI.setPivotMode` / `setPivotColumns`), not `updateGridOptions`.
+ */
+export const MODEL_STATE_OPTION_KEYS = [
+  "pivotMode",
+  "pivotColumns",
+] as const satisfies readonly (keyof GridOptions)[];
+
+/**
+ * Every {@link GridOptions} key, as a value. A record rather than a list so the compiler checks it
+ * both ways: a key missing here, or one that is not a `GridOptions` key, fails to typecheck. Adding
+ * an option therefore forces a decision about which of the key lists above it belongs to (none of
+ * them = creation-only).
+ */
+const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true } = {
+  headerHeight: true, leafHeaderHeight: true, parentHeaderHeight: true, rowHeight: true,
+  pinnedTopRowData: true, pinnedBottomRowData: true, getRowId: true, rowIdKey: true,
+  rowDataMode: true, asyncTransactionWaitMs: true, overscanRowCount: true, minResizeWidth: true,
+  maxColumnWidth: true, allowExportAsCSV: true, allowExportAsExcel: true, pagination: true,
+  paginationControls: true, rowNumbers: true, rowHover: true, columnHover: true, zebraRows: true,
+  getRowClass: true, getRowStyle: true, getRowPresentation: true, onCellClicked: true,
+  onRowClicked: true, onCellDoubleClicked: true, onRowDoubleClicked: true,
+  onBeforeCellCommit: true, fillOperation: true, onCellValueChanged: true,
+  onSelectionChanged: true, onSortChanged: true, onFilterChanged: true,
+  onQuickFilterFindChanged: true, onHistoryChanged: true, ariaLabel: true, ariaLabelledBy: true,
+  highlightActiveCell: true, rowSelection: true, isRowSelectable: true, cellSelection: true,
+  rangeSelection: true, fillHandle: true, columnSelection: true, headerKeyboardNavigation: true,
+  showColumnButtonsOnHover: true, bodyContextMenu: true, multiColumnMenu: true,
+  selectAllRowsOnHeaderClick: true, selectAllScope: true, selectionPersistence: true,
+  resetPageOn: true, pageSize: true, pageSizes: true, serverSideBlockSize: true,
+  rowModelType: true, serverSideDataSource: true, serverSideAggregationSource: true,
+  getGroupChildCount: true, groupChildCount: true, paginationUnknownTotalTooltip: true,
+  autosizeColumnsOnDataChange: true, clearSelectionOnBodyClick: true, undoLimit: true,
+  editTrigger: true, readOnlyEdit: true, initialSort: true, showSortPriority: true,
+  pinnedRowsEditable: true, rowPinningMenu: true, rowInsertionMenu: true,
+  suppressKeyboardEdit: true, suppressTypeToEdit: true, moveAfterEdit: true, commitOnBlur: true,
+  reevaluateOnEdit: true, groupDisplayType: true, groupColumnDef: true,
+  groupDefaultExpanded: true, groupSortMode: true, pivotMode: true, pivotColumns: true,
+  pivotResultColumnDef: true, maxPivotColumns: true, pivotColumnMoveMode: true, treeData: true,
+  groupRowsSelectable: true, isRowPinned: true, groupRowsSticky: true, isFullWidthRow: true,
+  fullWidthCellRenderer: true, defaultColDef: true, tooltip: true, quickFilter: true,
+  columnPanel: true, toolbar: true, savedViews: true, sheets: true, loadingMessage: true,
+  noRowsMessage: true, pivotNoValuesMessage: true, pivotEmptyMessage: true,
+  filterDebounceMs: true, cellFlashDuration: true, cellFadeDuration: true, icons: true,
+  theme: true, suppressStyleInjection: true, styleNonce: true,
+};
+
+/**
+ * The grid options read only at construction: every {@link GridOptions} key that is neither in
+ * {@link UPDATABLE_OPTION_KEYS} nor in {@link MODEL_STATE_OPTION_KEYS}. Derived, not maintained, so
+ * it follows the live lists automatically. Changing one of these on a mounted grid has no effect;
+ * the grid must be created again.
+ *
+ * Event callbacks (`onCellClicked`, …), `onBeforeCellCommit`, `fillOperation` and `multiColumnMenu`
+ * are in this list because the core reads them once; the framework bindings bridge them so the
+ * latest prop/input is always called, and exempt them from their creation-only warning.
+ */
+export const CREATION_ONLY_OPTION_KEYS: readonly (keyof GridOptions)[] = (
+  Object.keys(ALL_GRID_OPTION_KEYS) as (keyof GridOptions)[]
+).filter(
+  (key) =>
+    !(UPDATABLE_OPTION_KEYS as readonly string[]).includes(key) &&
+    !(MODEL_STATE_OPTION_KEYS as readonly string[]).includes(key),
+);
+
+/** True when `key` names a grid option that is read only at construction (see {@link CREATION_ONLY_OPTION_KEYS}). */
+export function isCreationOnlyGridOption(key: string): key is keyof GridOptions {
+  return (CREATION_ONLY_OPTION_KEYS as readonly string[]).includes(key);
+}

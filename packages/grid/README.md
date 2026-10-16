@@ -745,8 +745,11 @@ block refetch (the grid warns once on the first load). Undo/redo history is clea
 loaded rows are discarded — a purge refresh, or the reload a sort, filter, or grouping change
 triggers; a soft refresh keeps it.
 
-Real rows remain data-bearing and editable even when they own children. Duplicate ids, duplicate
-paths, and relationship cycles throw descriptive errors. A missing parent-id reference is rendered
+Real rows remain data-bearing and editable even when they own children. Duplicate ids and duplicate
+paths never throw: the first row keeps the id or path, a later duplicate id is dropped (in
+nested-children mode its children stay, under the kept row), and a later duplicate path is shown as
+a childless leaf beside the first, with one console warning per load naming the ids or paths and
+the count. Relationship cycles throw a descriptive error. A missing parent-id reference is rendered
 as a root with a console diagnostic. In nested-children mode, transaction additions may add root
 subtrees and removing a parent removes its subtree; use `setRowData` when changing the parent of an
 existing nested row. Tree data uses one generated hierarchy column whose normal column definition
@@ -964,7 +967,7 @@ Nothing to do — the grid delivers its own stylesheet when it attaches, once pe
 document, and once per shadow root for grids inside one. There is no CSS import
 to remember and no unstyled-grid failure mode.
 
-Two cases need a little more:
+A few cases need a little more:
 
 **Strict Content Security Policy.** Injection into a document uses a `<style>`
 element, which needs `style-src 'unsafe-inline'` or a nonce. If your CSP has
@@ -977,6 +980,14 @@ neither, pass one:
 Nonces are page-global, so give every grid on the page the same value. Grids
 inside a shadow root need no nonce — those are styled via CSSOM, which CSP's
 `style-src` does not cover.
+
+**Shadow DOM.** A grid inside a shadow root gets its stylesheet in that shadow root, and the
+layers it has to portal out of its root — the column drag ghost, and tooltips / ActionFrame
+popovers with `escapeRootClip` — are mounted in the same shadow root rather than `document.body`,
+so they stay styled and nothing leaks into the page. Those layers also carry the grid's theme (its
+inline `--pte-*` variables are mirrored onto them, light DOM or shadow), so a dark or custom theme
+reaches them too. Being `position: fixed` inside the shadow tree, they escape any `overflow` clip but
+not a `transform` / `filter` / `contain` on the host or its ancestors.
 
 **Loading the stylesheet yourself.** Opt out and import it instead:
 

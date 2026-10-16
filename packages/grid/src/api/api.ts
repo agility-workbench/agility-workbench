@@ -29,7 +29,12 @@ import {
 } from "../interfaces/gridOptions";
 import { FilterDef, FilterItem, FilterType, SetFilterMode } from "../interfaces/filter";
 import { RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
-import { GridViewColumnGroupState, GridViewFilterState, GridViewState } from "../interfaces/gridView";
+import {
+  GridViewColumnGroupState,
+  GridViewFilterState,
+  GridViewRowPinnedState,
+  GridViewState,
+} from "../interfaces/gridView";
 import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateType, ColumnAggregate } from "../interfaces/aggregate";
@@ -99,6 +104,10 @@ export interface GridApiPinnedRowsController {
   setPinnedTopRowData: (rows: RowData[]) => void;
   setPinnedBottomRowData: (rows: RowData[]) => void;
   setRowPinned: (rowId: GridId, position: RowPinnedPosition | null) => void;
+  /** The runtime pin overrides (setRowPinned / the row-pinning menu), for saved views. */
+  getRowPinnedOverrides?: () => GridViewRowPinnedState[];
+  /** Replace every runtime pin override at once (a saved view's restore). */
+  setRowPinnedOverrides?: (overrides: GridViewRowPinnedState[]) => void;
 }
 
 /**
@@ -875,6 +884,16 @@ export class GridAPI implements IGridAPI {
       })),
       filterModel: this.getFilterModel(),
       quickFilterText: this.core.getQuickFilterText(),
+      quickFilterSettings: {
+        ...this.core.getQuickFilterMatchSettings(),
+        behavior: this.core.getQuickFilterBehavior(),
+      },
+      aggregateScope: this.core.getAggregateScope(),
+      // Only once the renderer has wired the pin controller: a headless API has no runtime pins to
+      // speak of, and an absent field restores as "leave the pins alone" rather than "unpin all".
+      ...(this._pinnedRows?.getRowPinnedOverrides
+        ? { rowPinning: this._pinnedRows.getRowPinnedOverrides().map(pin => ({ ...pin })) }
+        : {}),
       groupExpansion: this.core.getRowModel().getGroupNodes().map(node => ({
         groupId: node.id,
         expanded: node.isExpanded,
@@ -933,7 +952,14 @@ export class GridAPI implements IGridAPI {
     replaySorts(captured.filter(item => !deferred.includes(item)));
 
     this.dispatch({ type: "filterModelSet", filterModel: this.toFilterItems(state.filterModel ?? []) });
-    this.setQuickFilter(state.quickFilterText ?? "");
+    // Old captures carry the text only; the live match settings and behavior then stay as they are.
+    this.setQuickFilter(state.quickFilterText ?? "", state.quickFilterSettings
+      ? {
+          matchMode: state.quickFilterSettings.matchMode,
+          caseSensitive: state.quickFilterSettings.caseSensitive,
+          behavior: state.quickFilterSettings.behavior,
+        }
+      : undefined);
 
     // Aggregates and pivot columns before the mode toggle, so entering pivot derives with its
     // measures in place (one derive, not two).
@@ -963,6 +989,10 @@ export class GridAPI implements IGridAPI {
     // preserved. Still ahead of the pagination restore below, which must win over any
     // `resetPageOn: ["sort"]` reset this triggers.
     if (deferred.some(item => this.core.canResolveSortColId(item.colId))) replaySorts(captured);
+
+    // The live scope LAST of the aggregate state: assigning a first aggregate turns the footer on at
+    // page scope and a pivot layer carries its own scope, and the captured scope must win over both.
+    if (state.aggregateScope) this.core.setAggregateScope(state.aggregateScope);
 
     // Restore the page AFTER the filter/quick-filter dispatches above — depending on
     // `resetPageOn` they may reset to page 1 (or clamp), and the explicit restore must win.
@@ -994,6 +1024,24 @@ export class GridAPI implements IGridAPI {
     }
     if (toExpand.length > 0) this.dispatch({ type: "groupSetExpanded", expanded: true, groupIds: toExpand });
     if (toCollapse.length > 0) this.dispatch({ type: "groupSetExpanded", expanded: false, groupIds: toCollapse });
+
+    // Pins after expansion: a pinned row's band shows its ancestors, which follow the view.
+    if (state.rowPinning) this.applyRowPinning(state.rowPinning);
+  }
+
+  private applyRowPinning(pins: GridViewRowPinnedState[]): void {
+    const controller = this._pinnedRows;
+    if (!controller) return;
+    const next = pins.map(pin => ({ rowId: String(pin.rowId), position: pin.position ?? null }));
+    if (controller.setRowPinnedOverrides) {
+      controller.setRowPinnedOverrides(next);
+      return;
+    }
+    // A controller without the bulk setter: unpin what it reports, then pin the captured rows.
+    for (const pin of controller.getRowPinnedOverrides?.() ?? []) {
+      if (!next.some(item => item.rowId === pin.rowId)) controller.setRowPinned(pin.rowId, null);
+    }
+    for (const pin of next) controller.setRowPinned(pin.rowId, pin.position);
   }
 
   setAllGroupsExpanded(expanded: boolean): void {

@@ -32,7 +32,6 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
   setIfDefined(options, "pivotMode", grid.pivotMode());
   setIfDefined(options, "pivotColumns", grid.pivotColumns());
-  setIfDefined(options, "pivotResultColumnDef", grid.pivotResultColumnDef());
   setIfDefined(options, "maxPivotColumns", grid.maxPivotColumns());
   setIfDefined(options, "pivotColumnMoveMode", grid.pivotColumnMoveMode());
   setIfDefined(options, "autosizeColumnsOnDataChange", grid.autosizeColumnsOnDataChange());
@@ -87,7 +86,6 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "commitOnBlur", grid.commitOnBlur());
   setIfDefined(options, "reevaluateOnEdit", grid.reevaluateOnEdit());
   setIfDefined(options, "groupDisplayType", grid.groupDisplayType());
-  setIfDefined(options, "groupColumnDef", grid.groupColumnDef());
   setIfDefined(options, "groupDefaultExpanded", grid.groupDefaultExpanded());
   setIfDefined(options, "groupSortMode", grid.groupSortMode());
   setIfDefined(options, "treeData", grid.treeData());
@@ -120,6 +118,13 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   }
   const defaultColDef = grid.defaultColDef();
   if (defaultColDef != null) options.defaultColDef = adapters.adaptDefaultColDef(defaultColDef);
+  // The partial defs the grid layers over its synthesized columns carry component fields too.
+  const groupColumnDef = grid.groupColumnDef();
+  if (groupColumnDef != null) options.groupColumnDef = adapters.adaptPartialColDef(groupColumnDef);
+  const pivotResultColumnDef = grid.pivotResultColumnDef();
+  if (pivotResultColumnDef != null) {
+    options.pivotResultColumnDef = adapters.adaptPartialColDef(pivotResultColumnDef);
+  }
 
   // Forward only the boolean intent to core: false disables the menu (native menu shows);
   // everything else (true / omitted / a function) leaves core at its "show menu" default and lets

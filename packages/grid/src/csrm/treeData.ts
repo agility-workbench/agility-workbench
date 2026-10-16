@@ -36,6 +36,32 @@ export function labelFor<Row>(
   return pathLabel ?? defaultLabel(node.data, node.id);
 }
 
+/** How many offending ids/paths a duplicate warning names before it summarizes the rest. */
+const WARN_LIST_LIMIT = 5;
+
+function describeList(items: string[]): string {
+  const shown = items.slice(0, WARN_LIST_LIMIT).join(", ");
+  return items.length > WARN_LIST_LIMIT ? `${shown} and ${items.length - WARN_LIST_LIMIT} more` : shown;
+}
+
+/**
+ * The client tree's duplicate-row warning: one `console.warn` per load that names the offending
+ * ids (or paths) and how many rows were affected. Duplicates never throw — the first row keeps the
+ * id or path; see {@link prepareTreeRows} and {@link buildTreeData} for what happens to the rest.
+ */
+function warnDuplicateIds(ids: string[], count: number): void {
+  console.warn(
+    `Tree data contains ${count} row(s) with a duplicate id: ${describeList(ids.map(id => JSON.stringify(id)))}. `
+    + "The first row with each id is kept and later ones are dropped"
+    + " (a dropped nested row's children stay, under the kept row).",
+  );
+}
+
+// Duplicate-path rows already warned about, with the path they were warned for. A path-mode
+// rebuild runs on every filter, sort and expansion change over the same row nodes, so warning per
+// rebuild would repeat itself; a new load (new nodes) or a row whose path changed warns afresh.
+const warnedDuplicatePath = new WeakMap<object, string>();
+
 export interface PreparedTreeRows<Row> {
   rows: Row[];
   /** Direct parent relationships captured while flattening nested-children input. */
@@ -43,8 +69,14 @@ export interface PreparedTreeRows<Row> {
 }
 
 /**
- * Flatten nested-children input once at ingestion time. Path and parent-reference modes already
- * consume flat arrays and pass through unchanged.
+ * Prepare one load of tree rows (`setRowData`, or a nested-children transaction's `add`): flatten
+ * nested-children input, and drop duplicate ids in every mode.
+ *
+ * Duplicate ids never throw. The FIRST row with an id is kept and every later row with that id is
+ * dropped, with one warning per call naming the ids and the number of rows dropped. In
+ * nested-children mode a dropped row's own children are still visited, under the kept row (they
+ * name the same parent id); the same row object listed twice is one duplicate, and its subtree is
+ * not walked a second time. A parent cycle still throws — that is not a duplicate.
  */
 export function prepareTreeRows<Row extends object>(
   rows: Row[],
@@ -52,7 +84,25 @@ export function prepareTreeRows<Row extends object>(
   getId: (row: Row) => string,
 ): PreparedTreeRows<Row> {
   const nestedParents = new Map<string, string | undefined>();
-  if (options.mode !== "children") return { rows: rows.slice(), nestedParents };
+  const duplicateIds: string[] = [];
+  let dropped = 0;
+  const noteDuplicate = (id: string) => {
+    dropped++;
+    if (!duplicateIds.includes(id)) duplicateIds.push(id);
+  };
+
+  if (options.mode !== "children") {
+    const seen = new Set<string>();
+    const out: Row[] = [];
+    for (const row of rows) {
+      const id = getId(row);
+      if (seen.has(id)) { noteDuplicate(id); continue; }
+      seen.add(id);
+      out.push(row);
+    }
+    if (dropped > 0) warnDuplicateIds(duplicateIds, dropped);
+    return { rows: out, nestedParents };
+  }
 
   const out: Row[] = [];
   const seenObjects = new Set<object>();
@@ -61,15 +111,22 @@ export function prepareTreeRows<Row extends object>(
 
   const visit = (row: Row, parentId: string | undefined) => {
     if (active.has(row)) throw new Error("Tree data contains a cycle in nested children.");
-    if (seenObjects.has(row)) throw new Error("Tree data contains the same row object more than once.");
 
     const id = getId(row);
-    if (seenIds.has(id)) throw new Error(`Tree data contains duplicate row id "${id}".`);
-    seenIds.add(id);
+    // The same object again: its subtree was already taken the first time.
+    if (seenObjects.has(row)) { noteDuplicate(id); return; }
     seenObjects.add(row);
+
+    // A different row reusing an id: drop it, keep walking its children under the kept row.
+    const duplicate = seenIds.has(id);
+    if (duplicate) {
+      noteDuplicate(id);
+    } else {
+      seenIds.add(id);
+      out.push(row);
+      nestedParents.set(id, parentId);
+    }
     active.add(row);
-    out.push(row);
-    nestedParents.set(id, parentId);
 
     const children = options.getChildren(row);
     if (children != null && !Array.isArray(children)) {
@@ -80,6 +137,7 @@ export function prepareTreeRows<Row extends object>(
   };
 
   for (const root of rows) visit(root, undefined);
+  if (dropped > 0) warnDuplicateIds(duplicateIds, dropped);
   return { rows: out, nestedParents };
 }
 
@@ -126,10 +184,24 @@ export function buildTreeData<Row extends object>(
     onMissingParent,
   } = params;
 
+  // prepareTreeRows already drops duplicate ids, and the row model turns a colliding add into an
+  // update, so none should reach here; should one anyway, the first node keeps the id and the
+  // rest stay out of the tree rather than taking the grid down.
   const byId = new Map<string, IRowNode<Row>>();
+  const strayIds: string[] = [];
+  let strayCount = 0;
+  const unique: IRowNode<Row>[] = [];
   nodes.forEach(node => {
-    if (byId.has(node.id)) throw new Error(`Tree data contains duplicate row id "${node.id}".`);
+    if (byId.has(node.id)) {
+      strayCount++;
+      if (!warnedDuplicatePath.has(node)) {
+        warnedDuplicatePath.set(node, node.id);
+        if (!strayIds.includes(node.id)) strayIds.push(node.id);
+      }
+      return;
+    }
     byId.set(node.id, node);
+    unique.push(node);
     // Clear hierarchy fields from the previous build before rewiring the same stable data nodes.
     node.isTreeData = true;
     node.isGroup = false;
@@ -139,6 +211,7 @@ export function buildTreeData<Row extends object>(
     node.parentId = undefined;
     node.aggregateValues = undefined;
   });
+  if (strayIds.length > 0) warnDuplicateIds(strayIds, strayCount);
 
   const specs = new Map<string, TreeSpec<Row>>();
 
@@ -146,19 +219,38 @@ export function buildTreeData<Row extends object>(
     const ownerByPath = new Map<string, IRowNode<Row>>();
     const pathsById = new Map<string, string[]>();
 
-    nodes.forEach((node) => {
+    // A path names one row. A later row with a path already taken does not own it: it is shown as
+    // a leaf BESIDE the first row (same parent), and every descendant path hangs under the first.
+    const duplicatePaths: string[] = [];
+    let duplicateCount = 0;
+    let warnNeeded = false;
+    unique.forEach((node) => {
       const raw = options.getPath(node.data);
       if (!Array.isArray(raw) || raw.length === 0) {
         throw new TypeError(`treeData.getPath must return a non-empty array (row "${node.id}").`);
       }
       const path = raw.map(segment => String(segment));
       const key = pathKey(path);
-      if (ownerByPath.has(key)) {
-        throw new Error(`Tree data contains duplicate path ${key}.`);
+      pathsById.set(node.id, path);
+      const owner = ownerByPath.get(key);
+      if (owner) {
+        duplicateCount++;
+        const label = `${key} (row ${JSON.stringify(node.id)}, first held by row ${JSON.stringify(owner.id)})`;
+        if (!duplicatePaths.includes(label)) duplicatePaths.push(label);
+        if (warnedDuplicatePath.get(node) !== key) {
+          warnedDuplicatePath.set(node, key);
+          warnNeeded = true;
+        }
+        return;
       }
       ownerByPath.set(key, node);
-      pathsById.set(node.id, path);
     });
+    if (warnNeeded) {
+      console.warn(
+        `Tree data contains ${duplicateCount} row(s) with a duplicate path: ${describeList(duplicatePaths)}. `
+        + "The first row with a path keeps it (and its children); each later one is shown as a leaf beside it.",
+      );
+    }
 
     // Materialize missing prefixes as synthetic ancestors.
     for (const path of pathsById.values()) {
@@ -185,7 +277,7 @@ export function buildTreeData<Row extends object>(
       }
     }
 
-    nodes.forEach((node) => {
+    unique.forEach((node) => {
       const path = pathsById.get(node.id)!;
       node.treeKey = labelFor(options, node, path[path.length - 1]);
       const parentPath = path.slice(0, -1);
@@ -208,7 +300,7 @@ export function buildTreeData<Row extends object>(
         : owner?.id ?? syntheticPathId(parentPath);
     }
   } else {
-    nodes.forEach((node) => {
+    unique.forEach((node) => {
       node.treeKey = labelFor(options, node);
       const requestedParent = options.mode === "parent"
         ? options.getParentId(node.data)

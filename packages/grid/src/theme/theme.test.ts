@@ -75,3 +75,55 @@ describe("theme findMatchColor", () => {
     expect(vars["--pte-find-match-active-border-color"]).toBe("#38bdf8");
   });
 });
+
+describe("theme length params", () => {
+  it("gives a bare number a px unit on every length param", () => {
+    const vars = createTheme({
+      actionFramePopoverWidth: 420,
+      actionFramePopoverRadius: 6,
+      tooltipMaxWidth: 240,
+      tooltipRadius: 4,
+      scrollbarSize: 8,
+      paginationFooterHeight: 48,
+      columnPanelWidth: 320,
+    }).toCssVars();
+    expect(vars["--pte-action-frame-popover-width"]).toBe("420px");
+    expect(vars["--pte-action-frame-popover-radius"]).toBe("6px");
+    expect(vars["--pte-tooltip-max-width"]).toBe("240px");
+    expect(vars["--pte-tooltip-radius"]).toBe("4px");
+    expect(vars["--pte-scrollbar-size"]).toBe("8px");
+    expect(vars["--pte-pagination-footer-height"]).toBe("48px");
+    expect(vars["--pte-column-panel-width"]).toBe("320px");
+  });
+
+  it("passes a string length through untouched", () => {
+    const vars = createTheme({ tooltipMaxWidth: "20rem", actionFramePopoverWidth: "min(90vw, 420px)" }).toCssVars();
+    expect(vars["--pte-tooltip-max-width"]).toBe("20rem");
+    expect(vars["--pte-action-frame-popover-width"]).toBe("min(90vw, 420px)");
+  });
+});
+
+describe("withParams on a vars-based theme", () => {
+  it("lets a semantic param override the variables the base theme set through vars", () => {
+    const vars = themeDark.withParams({ actionFramePopoverBackgroundColor: "#123456", tooltipBackgroundColor: "#654321" }).toCssVars();
+    expect(vars["--pte-action-frame-popover-bg"]).toBe("#123456");
+    expect(vars["--pte-tooltip-bg"]).toBe("#654321");
+    // Everything else of the dark theme is still there, and the base is untouched.
+    expect(vars["--pte-root-bg-color"]).toBe("#0f172a");
+    expect(themeDark.toCssVars()["--pte-action-frame-popover-bg"]).toBe("#1e293b");
+  });
+
+  it("keeps raw vars in the same override above the semantic param", () => {
+    const vars = themeDark.withParams({
+      tooltipBackgroundColor: "#654321",
+      vars: { "--pte-tooltip-bg": "#abcdef" },
+    }).toCssVars();
+    expect(vars["--pte-tooltip-bg"]).toBe("#abcdef");
+  });
+
+  it("applies the same rule to the derived params", () => {
+    const vars = themeDark.withParams({ spacing: 20 }).toCssVars();
+    expect(vars["--pte-cell-padding-left"]).toBe("20px");
+    expect(vars["--pte-cell-padding-top"]).toBe("20px");
+  });
+});

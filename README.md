@@ -25,7 +25,8 @@ and repeated as the notes of every GitHub release.
 - Cell and row selection, clipboard operations, keyboard navigation, and editing
 - CSV and Excel export, including grouped data, selection, and cell spans
 - Column groups, resizing, reordering, visibility, pinning, and a column panel
-- Custom renderers, editors, headers, tooltips, menus, and full-width rows
+- Custom renderers, editors, headers, tooltips, menus, and full-width rows, as DOM components
+  or as React/Angular components through the bindings
 - Client-side pivot mode with spreadsheet-style sheet tabs over one row model
 - Responsive toolbar, saved views, sparklines, and light/dark theming
 - React 18+ and Angular 20.3–22 bindings with TypeScript types throughout

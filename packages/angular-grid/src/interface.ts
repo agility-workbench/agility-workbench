@@ -7,6 +7,8 @@ import type {
   CellRendererParams,
   ColDef,
   FilterParams,
+  HeaderComponent,
+  HeaderComponentParams,
   ICellEditorParams,
   TooltipComponent,
   TooltipComponentParams,
@@ -42,6 +44,16 @@ export interface ITooltipNgComp<P extends TooltipComponentParams = TooltipCompon
 
 /** Same contract as {@link ICellRendererNgComp}, for ActionFrame components. */
 export interface IActionFrameNgComp<P extends ActionFrameComponentParams = ActionFrameComponentParams> {
+  awbInit(params: P): void;
+  awbRefresh?(params: P): boolean;
+}
+
+/**
+ * Same contract as {@link ICellRendererNgComp}, for `headerComponent` / `headerCellComponent`.
+ * `awbRefresh` runs when the header's sort/filter state changes; without it the params are simply
+ * re-delivered.
+ */
+export interface IHeaderNgComp<P extends HeaderComponentParams = HeaderComponentParams> {
   awbInit(params: P): void;
   awbRefresh?(params: P): boolean;
 }
@@ -84,7 +96,7 @@ export interface ICellEditorNgComp<P extends ICellEditorParams = ICellEditorPara
   isCancelBeforeStart?(): boolean;
 }
 
-/** An Angular component class usable as a cell renderer / tooltip / ActionFrame / editor. */
+/** An Angular component class usable as a cell renderer / tooltip / ActionFrame / editor / header. */
 export type NgComponent = Type<unknown>;
 
 export type NgFilterParams = Omit<
@@ -111,13 +123,22 @@ export type NgGetRowPresentation = (
 
 /**
  * Angular-aware column definition: identical to the core {@link ColDef}, but every component slot
- * (cellRenderer, cellEditor, tooltipComponent, headerTooltip, actionFrameComponent) may also be an
+ * (cellRenderer, cellEditor, tooltipComponent, headerTooltip, actionFrameComponent, headerComponent,
+ * headerCellComponent, and the set-filter components in filterParams) may also be an
  * Angular component class. Angular components are wrapped in core adapter classes; core renderer
  * classes and string aliases pass through unchanged.
  */
 export type NgColDef = Omit<
   ColDef,
-  "cellRenderer" | "cellEditor" | "children" | "tooltipComponent" | "headerTooltip" | "actionFrameComponent" | "filterParams"
+  | "cellRenderer"
+  | "cellEditor"
+  | "children"
+  | "tooltipComponent"
+  | "headerTooltip"
+  | "actionFrameComponent"
+  | "filterParams"
+  | "headerComponent"
+  | "headerCellComponent"
 > & {
   cellRenderer?: CellRenderer | NgComponent;
   cellEditor?: CellEditor | NgComponent;
@@ -125,6 +146,8 @@ export type NgColDef = Omit<
   headerTooltip?: string | TooltipComponent | NgComponent;
   actionFrameComponent?: ActionFrameComponent | NgComponent;
   filterParams?: NgFilterParams;
+  headerComponent?: HeaderComponent | NgComponent;
+  headerCellComponent?: HeaderComponent | NgComponent;
   children?: NgColDef[];
 };
 
@@ -134,3 +157,10 @@ export type NgColDef = Omit<
  * `DefaultColDef`, but its component fields may be Angular components.
  */
 export type NgDefaultColDef = Omit<NgColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
+
+/**
+ * Angular-aware shape of the partial column defs the grid layers over a synthesized column
+ * (`groupColumnDef`, `pivotResultColumnDef`): a `Partial<NgColDef>`, so component fields may be
+ * Angular components.
+ */
+export type NgPartialColDef = Partial<Omit<NgColDef, "children">>;

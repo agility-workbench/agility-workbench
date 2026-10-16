@@ -20,7 +20,11 @@ import type {
   ColDef,
   DefaultColDef,
   FilterParams,
+  HeaderComponent,
+  HeaderComponentClass,
+  HeaderComponentParams,
   IActionFrameComponent,
+  IHeaderComponent,
   ICellEditor,
   ICellEditorParams,
   ICellRenderer,
@@ -36,6 +40,7 @@ import type {
 } from "@agility-workbench/grid";
 import {
   isClassActionFrameComponent,
+  isClassHeaderComponent,
   isClassRenderer,
   isClassTooltipComponent,
   isClassSetFilterComponent,
@@ -46,6 +51,7 @@ import type {
   NgDefaultColDef,
   NgGetRowPresentation,
   NgFilterParams,
+  NgPartialColDef,
 } from "./interface";
 
 /** True when `value` is a compiled Angular component class (vs a core class or plain function). */
@@ -97,6 +103,7 @@ export class NgAdapters {
   private readonly actionFrameCache = new WeakMap<object, ActionFrameComponentClass>();
   private readonly editorCache = new WeakMap<object, CellEditorClass>();
   private readonly setFilterComponentCache = new WeakMap<object, SetFilterComponentClass<any>>();
+  private readonly headerComponentCache = new WeakMap<object, HeaderComponentClass>();
 
   constructor(
     private readonly appRef: ApplicationRef,
@@ -307,6 +314,61 @@ export class NgAdapters {
     };
   }
 
+  // --- header components -----------------------------------------------------------------------
+
+  /**
+   * Adapt a `headerComponent` / `headerCellComponent`. Core class components and the core function
+   * form pass through; an Angular component is mounted into the header slot.
+   */
+  adaptHeaderComponent(comp: HeaderComponent | NgComponent | undefined): HeaderComponent | undefined {
+    if (!comp) return undefined;
+    if (typeof comp === "function" && isClassHeaderComponent(comp as HeaderComponent)) {
+      return comp as HeaderComponent;
+    }
+    if (!isNgComponent(comp)) return comp as HeaderComponent;
+
+    const cached = this.headerComponentCache.get(comp);
+    if (cached) return cached;
+
+    const adapted = this.createHeaderComponentClass(comp);
+    this.headerComponentCache.set(comp, adapted);
+    return adapted;
+  }
+
+  private createHeaderComponentClass(component: Type<unknown>): HeaderComponentClass {
+    const adapters = this;
+    return class NgHeaderComponentAdapter implements IHeaderComponent {
+      private el = document.createElement("div");
+      private mounted: MountedComponent | null = null;
+
+      init(params: HeaderComponentParams): void {
+        // Same box the core gives its function form, so an Angular header lays out like a native one.
+        this.el.className = "pte-hcell-custom-root";
+        this.el.style.display = "flex";
+        this.el.style.alignItems = "center";
+        this.el.style.width = "100%";
+        this.el.style.height = "100%";
+        this.el.style.overflow = "hidden";
+        // One component instance per header cell; sort/filter refreshes re-deliver params (an
+        // awbRefresh returning false asks the grid to recreate it). Header rebuilds destroy it.
+        this.mounted = adapters.mount(component, params, this.el, "headerComponent");
+      }
+
+      getGui(): HTMLElement {
+        return this.el;
+      }
+
+      refresh(params: HeaderComponentParams): boolean {
+        return this.mounted?.refresh(params) ?? false;
+      }
+
+      destroy(): void {
+        this.mounted?.destroy();
+        this.mounted = null;
+      }
+    };
+  }
+
   // --- cell editors ----------------------------------------------------------------------------
 
   adaptCellEditor(editor: CellEditor | NgComponent | undefined): CellEditor | undefined {
@@ -446,6 +508,8 @@ export class NgAdapters {
       headerTooltip: this.adaptHeaderTooltip(colDef.headerTooltip),
       actionFrameComponent: this.adaptActionFrame(colDef.actionFrameComponent),
       filterParams: this.adaptFilterParams(colDef.filterParams),
+      headerComponent: this.adaptHeaderComponent(colDef.headerComponent),
+      headerCellComponent: this.adaptHeaderComponent(colDef.headerCellComponent),
       children: colDef.children ? (this.adaptColumnDefs(colDef.children) ?? undefined) : undefined,
     };
   }
@@ -462,16 +526,32 @@ export class NgAdapters {
    */
   adaptDefaultColDef(defaultColDef?: NgDefaultColDef | null): DefaultColDef | undefined {
     if (defaultColDef == null) return undefined;
-    const next = { ...defaultColDef } as unknown as DefaultColDef;
-    if ("cellRenderer" in defaultColDef) next.cellRenderer = this.adaptCellRenderer(defaultColDef.cellRenderer);
-    if ("cellEditor" in defaultColDef) next.cellEditor = this.adaptCellEditor(defaultColDef.cellEditor);
-    if ("tooltipComponent" in defaultColDef) next.tooltipComponent = this.adaptTooltip(defaultColDef.tooltipComponent);
-    if ("headerTooltip" in defaultColDef) next.headerTooltip = this.adaptHeaderTooltip(defaultColDef.headerTooltip);
-    if ("actionFrameComponent" in defaultColDef) {
-      next.actionFrameComponent = this.adaptActionFrame(defaultColDef.actionFrameComponent);
+    return this.adaptPartial<DefaultColDef>(defaultColDef);
+  }
+
+  /**
+   * Adapt `groupColumnDef` / `pivotResultColumnDef`, the partial defs the grid layers over its
+   * synthesized columns. Present-fields-only, like {@link adaptDefaultColDef}: the core layers these
+   * with object spread, where an explicit `undefined` would clobber the layer beneath.
+   */
+  adaptPartialColDef(def?: NgPartialColDef | null): Partial<ColDef> | undefined {
+    if (def == null) return undefined;
+    return this.adaptPartial<Partial<ColDef>>(def);
+  }
+
+  private adaptPartial<T extends object>(def: NgPartialColDef): T {
+    const next = { ...def } as Record<string, unknown>;
+    if ("cellRenderer" in def) next.cellRenderer = this.adaptCellRenderer(def.cellRenderer);
+    if ("cellEditor" in def) next.cellEditor = this.adaptCellEditor(def.cellEditor);
+    if ("tooltipComponent" in def) next.tooltipComponent = this.adaptTooltip(def.tooltipComponent);
+    if ("headerTooltip" in def) next.headerTooltip = this.adaptHeaderTooltip(def.headerTooltip);
+    if ("actionFrameComponent" in def) next.actionFrameComponent = this.adaptActionFrame(def.actionFrameComponent);
+    if ("filterParams" in def) next.filterParams = this.adaptFilterParams(def.filterParams);
+    if ("headerComponent" in def) next.headerComponent = this.adaptHeaderComponent(def.headerComponent);
+    if ("headerCellComponent" in def) {
+      next.headerCellComponent = this.adaptHeaderComponent(def.headerCellComponent);
     }
-    if ("filterParams" in defaultColDef) next.filterParams = this.adaptFilterParams(defaultColDef.filterParams);
-    return next;
+    return next as T;
   }
 }
 

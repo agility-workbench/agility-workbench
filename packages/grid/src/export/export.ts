@@ -8,6 +8,7 @@ import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
 import { resolveColSpan } from "../renderer/body/colSpan";
+import { isoFromLocal, parseIsoDate, toLocalDate } from "../column/parsers";
 import type { GroupCellValue } from "../core/groupCellValue";
 import type {
   ExcelExportCellProcessor,
@@ -381,12 +382,36 @@ const getValueBundle = (row: any, col: Column, config: Pick<ExportConfig, "group
     return { raw, formatted: "" };
   }
   if (col.type === ColumnType.DATE) {
-    const date = raw instanceof Date ? raw : new Date(raw);
-    if (!Number.isNaN(date.getTime())) {
-      return { raw: date, formatted: date.toISOString() };
-    }
+    const date = toExportDate(raw);
+    if (date) return { raw: date, formatted: localDateText(date) };
   }
   return { raw, formatted };
+};
+
+/**
+ * A date cell's stored value (Date, epoch number, or date text) as a `Date` on the LOCAL wall
+ * clock — the one the cell displays and the Excel serial is built from. Date-only and zone-less
+ * ISO text is read as local (`new Date("2026-03-01")` is UTC midnight, the day before west of
+ * Greenwich); zoned ISO text and other strings are left to the platform. Null when unreadable.
+ */
+const toExportDate = (raw: unknown): Date | null => {
+  if (typeof raw === "string") return parseIsoDate(raw.trim()) ?? toLocalDate(raw);
+  return toLocalDate(raw);
+};
+
+/**
+ * A date with no column format to speak for it, as text: the LOCAL calendar date `YYYY-MM-DD` —
+ * what the default date format displays — plus a zone-less local `THH:mm:ss[.SSS]` only when the
+ * value carries a time of day. Never `toISOString`, which is UTC and moves a local-midnight date
+ * to the previous day east of Greenwich.
+ */
+const localDateText = (date: Date): string => {
+  const day = isoFromLocal(date);
+  const h = date.getHours(), m = date.getMinutes(), sec = date.getSeconds(), ms = date.getMilliseconds();
+  if (h === 0 && m === 0 && sec === 0 && ms === 0) return day;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const fraction = ms ? `.${String(ms).padStart(3, "0")}` : "";
+  return `${day}T${pad(h)}:${pad(m)}:${pad(sec)}${fraction}`;
 };
 
 // Which pinned section a column belongs to. Body spans (like on screen) never cross a section
@@ -659,8 +684,10 @@ const toCellValue = (bundle: ValueBundle, col: Column): CellValue => {
       return { kind: "string", value: formatted ?? String(raw) };
     }
     case ColumnType.DATE: {
-      const date = raw instanceof Date ? raw : new Date(raw);
-      if (!Number.isNaN(date.getTime())) return { kind: "date", value: date };
+      // Read text the way CSV and the cell do (date-only text is a LOCAL date), so the serial —
+      // built from local components — lands on the displayed day.
+      const date = toExportDate(raw);
+      if (date) return { kind: "date", value: date };
       return { kind: "string", value: formatted ?? String(raw) };
     }
     case ColumnType.BOOLEAN:

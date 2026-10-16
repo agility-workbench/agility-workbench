@@ -334,6 +334,7 @@ export class GridRenderer {
     });
     this._clipboardRenderer = new ClipboardRenderer({
       core: this.core,
+      root: this.root,
     });
     this._findHighlightRenderer = new FindHighlightRenderer({
       core: this.core,
@@ -532,6 +533,7 @@ export class GridRenderer {
         if (deltaX) bodyWrapper.centerSpacer.scrollLeft += deltaX;
       },
       onStickyRebuilt: () => this._actionFrameRenderer?.onWindowUpdate(),
+      onBandsRendered: () => this._refreshAriaCounts(),
     });
     const apiWithPinnedRows = this.api as unknown as {
       setPinnedRowsController?: (controller: {
@@ -601,6 +603,7 @@ export class GridRenderer {
       api: this.api,
       root: this.root,
       body: bodyWrapper.body,
+      stickyRows: this._pinnedRowsRenderer.getStickyRoot(),
       headerWrapper: headerRefs.wrapper,
       floating: this._tooltipFloating,
       leafColumns: () => this._leafColumns,
@@ -706,8 +709,9 @@ export class GridRenderer {
       root: this.root,
       headerWrapper: headerRefs.wrapper,
       body: bodyWrapper.body,
+      // Includes the sticky overlay: a docked group row takes clicks, double-clicks and the context
+      // menu exactly as the body row it covers.
       pinnedRowContainers: this._pinnedRowsRenderer.getInteractionRoots(),
-      stickyRowContainer: this._pinnedRowsRenderer.getStickyRoot(),
       onHeaderMouseDown: (e) => this._columnInteractionRenderer.onHeaderMouseDown(e),
       onHeaderContextMenu: (e) => this._headerInteractionHandler.onHeaderContextMenu(e),
       onHeaderDoubleClick: (e) => this._columnInteractionRenderer.onHeaderDoubleClick(e),
@@ -1051,7 +1055,8 @@ export class GridRenderer {
 
   // Build (or skip building) the quick-filter widget from the currently-stored options. A prior
   // widget, if any, must be destroyed by the caller first. `restore` carries live search state
-  // across a rebuild. The widget is only mounted when enabled and the row model is client-side.
+  // across a rebuild. The widget is mounted whenever it is enabled, on either row model: under the
+  // server-side model the search text travels to the server as `request.quickFilter`.
   private _buildQuickFilterWidget(restore?: QuickFilterRestoreState, restoreFocus = false): void {
     const inToolbar = resolveGridToolbarOptions(this._toolbarOptions).quickFilter;
     const widget = new QuickFilterWidget({
@@ -1062,7 +1067,7 @@ export class GridRenderer {
       presentation: inToolbar ? "toolbar" : "floating",
       restore,
     });
-    if (widget.isEnabled() && this.core.getRowModel().getType() !== "serverSide") {
+    if (widget.isEnabled()) {
       this._quickFilterWidget = widget;
       // A rebuild can happen before a pending debounce fires. Preserve the visible value as the
       // authoritative state instead of silently reverting the rows to the last committed query.
@@ -1098,7 +1103,7 @@ export class GridRenderer {
   // its DOM (popover, layout rows, indicator pill) and resolves its options once at construction,
   // a config change is applied by tearing the widget down and rebuilding it in place — carrying the
   // live search state over so an active filter isn't disturbed. This also handles the
-  // enabled↔disabled and (via the build guard) client-side↔serverSide transitions.
+  // enabled↔disabled transitions.
   /** Reconfigure tooltips live (mode, interactivity, delays, enable/disable) without remounting.
    * Any visible tooltip is dismissed so the next hover picks up the new config. */
   setTooltipOptions(options: boolean | TooltipOptions | undefined) {
@@ -1682,6 +1687,7 @@ export class GridRenderer {
     this._pivotHintDisposers = [];
     this._interactionEventBinder.destroy();
     this._fillHandle.destroy();
+    this._clipboardRenderer.destroy();
     this._bodyRowHoverRenderer.destroy();
     this._bodyColumnHoverRenderer.destroy();
     this._bodyTooltipRenderer.destroy();
@@ -1726,6 +1732,8 @@ export class GridRenderer {
     this._aggregateVisible = shouldShow;
 
     this._aggregateRowRenderer.setVisible(shouldShow);
+    // The aggregate row counts toward aria-rowcount while shown, and a rebuild replaces its element.
+    this._refreshAriaCounts();
 
     if (!shouldShow) {
       if (wasVisible !== shouldShow) {
@@ -1965,6 +1973,9 @@ export class GridRenderer {
     const st = refs.body.scrollTop;
 
     if (position === "auto") {
+      // A click, double-click or right-click on a docked group row's sticky mirror addresses the
+      // row the user sees, which is in view; its body copy above the viewport is not the target.
+      if (this._pinnedRowsRenderer.isDockedUnderPointer(viewIdx)) return;
       if (rowTop - clearance < st) {
         refs.body.scrollTop = Math.max(0, rowTop - clearance);
       } else if (rowTop + this.rowHeight > st + viewH) {
@@ -2021,9 +2032,15 @@ export class GridRenderer {
   }
 
   // Dataset-scoped ARIA dimensions: rowcount = header + full view row count
-  // (virtualization/pagination-independent); colcount = visible leaf columns. Band rows and
-  // the aggregate row are unindexed (they show blank row numbers by design), so they are
-  // not counted.
+  // (virtualization/pagination-independent) + data band rows + the aggregate row while shown;
+  // colcount = visible leaf columns.
+  //
+  // Row indexes: the header is 1 and a body row is its absolute display number + 1 (2..N+1, stamped
+  // by the body window). A model row pinned into a band keeps its body slot's index (it is one of
+  // the N). Data band rows (pinnedTop/BottomRowData) and the aggregate row are numbered AFTER the
+  // body — top band, bottom band, then the aggregate row — not in visual order: a body row's index
+  // is its visible row number, which must not shift when rows are pinned. The sticky overlay is
+  // aria-hidden (its rows are second copies of body rows) and is neither counted nor indexed.
   private _refreshAriaCounts() {
     const rowModel = this.core.getRowModel();
     // A grid can legitimately display no columns (every column hidden, or an unconfigured pivot).
@@ -2039,11 +2056,22 @@ export class GridRenderer {
     // -1 means "count unknown" and is the honest answer while the server-side model's total is
     // still an estimate; publishing the estimate as exact tells AT the last row is reachable when
     // it may not be.
+    //
+    // With the body's total unknown, the rows after it have no honest index either: bands and the
+    // aggregate row then carry none.
     const totalKnown = rowModel.isTotalRowCountKnown?.() ?? true;
-    this.root.setAttribute(
-      "aria-rowcount",
-      totalKnown ? String(rowModel.getViewTotalCount() + 1) : "-1",
-    );
+    const afterBody = totalKnown ? rowModel.getViewTotalCount() + 2 : null;
+    const afterBands = this._pinnedRowsRenderer?.stampAriaRowIndexes(afterBody) ?? afterBody;
+    const aggregateRow = this._aggregateRowRenderer?.getCenterRow();
+    if (aggregateRow) {
+      if (this._aggregateVisible && afterBands != null) {
+        aggregateRow.setAttribute("aria-rowindex", String(afterBands));
+      } else {
+        aggregateRow.removeAttribute("aria-rowindex");
+      }
+    }
+    const lastIndex = afterBands == null ? null : afterBands - (this._aggregateVisible ? 0 : 1);
+    this.root.setAttribute("aria-rowcount", lastIndex == null ? "-1" : String(lastIndex));
     // More than one thing can be selected at once when cells can be dragged into a range, row
     // selection is in multiple mode, or columns can be selected (column selection accumulates, and
     // selecting a column marks all of its cells selected). Cell selection set to "text"/false

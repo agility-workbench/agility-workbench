@@ -6,6 +6,13 @@ import { parseTSV, serializeNodesToTSV } from "./tsv";
 
 interface ClipboardRendererParams {
   core: IGridCore;
+  /**
+   * The grid root. When given, a `paste` listener on it feeds the browser's own paste event
+   * (Ctrl/Cmd+V on the focused grid) into the same pipeline as {@link ClipboardRenderer.paste} —
+   * the path that needs no clipboard permission. The API's renderer has no root and reads only
+   * through `readText`.
+   */
+  root?: HTMLElement;
   // Clipboard IO seams — default to the platform clipboard, overridable for tests / headless.
   writeText?: (text: string) => Promise<void>;
   readText?: () => Promise<string>;
@@ -49,7 +56,21 @@ interface SelectionBlock {
  * preserved. Cells that would fall outside the grid are clipped (no rows/columns are created).
  */
 export class ClipboardRenderer {
-  constructor(private params: ClipboardRendererParams) { }
+  // The readText fallback armed by the Ctrl/Cmd+V binding; a `paste` event that arrives first
+  // cancels it (see pasteFromShortcut).
+  private shortcutFallback: ReturnType<typeof setTimeout> | undefined;
+  // Whether the "clipboard could not be read" warning has been shown (once per renderer).
+  private readWarned = false;
+  private readonly onPasteEvent = (e: Event) => this.handlePasteEvent(e as ClipboardEvent);
+
+  constructor(private params: ClipboardRendererParams) {
+    params.root?.addEventListener("paste", this.onPasteEvent);
+  }
+
+  destroy(): void {
+    this.params.root?.removeEventListener("paste", this.onPasteEvent);
+    this.cancelShortcutFallback();
+  }
 
   /**
    * Copy the selection as TSV. The single copy path: Ctrl/Cmd+C, `api.copySelection()` and the
@@ -136,20 +157,94 @@ export class ClipboardRenderer {
     return edits;
   }
 
+  /**
+   * Paste from the async clipboard (`navigator.clipboard.readText`) — `api.paste()` and the body
+   * menu's Paste. When the read is unavailable or refused (Firefox without the async clipboard,
+   * insecure contexts, a denied permission) nothing is written and a one-time warning points at
+   * keyboard paste, which reaches the grid as a `paste` event and needs no permission.
+   */
   async paste(): Promise<void> {
-    const anchor = this.pasteAnchor();
-    if (!anchor) return;
+    await this.pasteViaReadText("api");
+  }
 
+  /**
+   * The Ctrl/Cmd+V binding. The binding leaves the key to the browser, which then fires a `paste`
+   * event at the focused grid root ({@link handlePasteEvent} applies it). A browser that fires no
+   * paste event on a non-editable element still pastes: when none has arrived by the next task,
+   * this falls back to {@link paste}'s `readText`.
+   */
+  pasteFromShortcut(): void {
+    this.cancelShortcutFallback();
+    this.shortcutFallback = setTimeout(() => {
+      this.shortcutFallback = undefined;
+      void this.pasteViaReadText("shortcut");
+    }, 0);
+  }
+
+  /**
+   * The browser's `paste` event on the grid root: read `text/plain` from the event and run the
+   * same pipeline as {@link paste}. Ignored — and left to its target — when an editor or another
+   * form control inside the grid has focus (they paste for themselves), when the target is outside
+   * the grid, and when cell selection is off (the keyboard cursor, and with it Ctrl/Cmd+V, is
+   * dark). `preventDefault` only when cells were written. Returns whether it was consumed.
+   */
+  handlePasteEvent(e: ClipboardEvent): boolean {
+    const core = this.params.core;
+    const root = this.params.root;
+    const target = e.target as Node | null;
+    if (root && (!target || !root.contains(target))) return false;
+    if (isFormControl(target)) return false;
+    if (core.getEditingCell() != null) return false;
+    if (core.getOptions().cellSelection === false || core.getOptions().cellSelection === "text") return false;
+    // The keyboard path's paste event arrived: the readText fallback is not needed.
+    this.cancelShortcutFallback();
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    const consumed = this.applyPasteText(text);
+    if (consumed) e.preventDefault();
+    return consumed;
+  }
+
+  private cancelShortcutFallback(): void {
+    if (this.shortcutFallback === undefined) return;
+    clearTimeout(this.shortcutFallback);
+    this.shortcutFallback = undefined;
+  }
+
+  private async pasteViaReadText(origin: "api" | "shortcut"): Promise<void> {
+    if (!this.pasteAnchor()) return;
     let text: string;
     try {
       text = await this.read();
     } catch (err) {
-      console.error("Failed to read from clipboard", err);
+      this.warnReadFailed(origin, err);
       return;
     }
+    this.applyPasteText(text);
+  }
+
+  private warnReadFailed(origin: "api" | "shortcut", err: unknown): void {
+    if (this.readWarned) return;
+    this.readWarned = true;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(origin === "api"
+      ? `Paste could not read the clipboard (${reason}): navigator.clipboard.readText is unavailable `
+        + `or was refused in this browser or context. Keyboard paste (Ctrl+V / Cmd+V) on the focused `
+        + `grid works without clipboard permission.`
+      : `Paste could not read the clipboard (${reason}): the browser fired no paste event for `
+        + `Ctrl+V / Cmd+V and navigator.clipboard.readText is unavailable or was refused.`);
+  }
+
+  /**
+   * The paste pipeline every path shares: parse the TSV, position it from the selection's anchor,
+   * commit the editable targets in one cellsCommit, then select the pasted rectangle. Returns
+   * whether any cell was written.
+   */
+  private applyPasteText(text: string): boolean {
+    const anchor = this.pasteAnchor();
+    if (!anchor) return false;
 
     const grid = parseTSV(text);
-    if (grid.length === 0) return;
+    if (grid.length === 0) return false;
 
     const core = this.params.core;
     const leaves = core.getColumnModel().getLeaves();
@@ -196,7 +291,7 @@ export class ClipboardRenderer {
     if (clipped > 0) {
       console.warn(`Paste clipped ${clipped} cell(s) that fell outside the grid.`);
     }
-    if (edits.length === 0) return;
+    if (edits.length === 0) return false;
 
     core.dispatch({ type: "cellsCommit", edits, reason: "paste" });
 
@@ -207,6 +302,7 @@ export class ClipboardRenderer {
     if (rowEnd > anchor.rowStart || colEnd > anchor.colStart) {
       core.dispatch({ type: "rangeSelectSet", viewIdx: rowEnd, colIdx: colEnd, mode: "extend" });
     }
+    return true;
   }
 
   // ---------------- Selection → block resolution ----------------
@@ -362,6 +458,13 @@ export class ClipboardRenderer {
     if (navigator?.clipboard?.readText) return navigator.clipboard.readText();
     return Promise.reject(new Error("Clipboard read not supported"));
   }
+}
+
+// An input, textarea, select or contenteditable — a control that handles its own paste.
+function isFormControl(target: Node | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || el.nodeType !== 1) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable === true;
 }
 
 function rangeToViewIdxs(start: number, end: number): number[] {

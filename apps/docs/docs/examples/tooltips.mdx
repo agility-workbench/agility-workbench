@@ -81,12 +81,12 @@ through `tooltipOptions`. Interactive content is always anchored;
 non-interactive content may use `mode: "follow"`.
 
 :::info escapeRootClip and theming
-`escapeRootClip: true` mounts the floating element in `document.body` so it is
-not clipped near the grid edge — but a body-mounted element is outside the grid
-root, where the theme's `--pte-*` custom properties are applied, so
-tooltip-related theme params do not reach it. Keep the tooltip inside the root,
-or set the variables at `:root` scope. [ActionFrames](./action-frames.mdx)
-behave the same way.
+`escapeRootClip: true` mounts the floating element outside the grid root so it
+is not clipped near the grid edge — in `document.body`, or in the grid's own
+shadow root when the grid is mounted inside one. It is still styled as if it
+were inside the root: the grid's theme variables are mirrored onto it (and
+follow a theme change while it is open), so every `tooltip*` theme param
+applies. See [Popups outside the grid root](./theming.mdx#popups-outside-the-grid-root).
 :::
 
 ## Tooltip API and events

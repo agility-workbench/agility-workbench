@@ -1039,6 +1039,7 @@ export class GridCore implements IGridCore {
   setRowModel(rowModel: IRowModel) {
     this.rowModel = rowModel;
     this.firstRefreshSeen = false;
+    this.warnIfFindUnavailableServerSide();
     const range = this.resetPageBlocks();
     this.applyRowModelRequest(() => this.createRowModelRequest("init", range, this.getInitialServerSideLoadRange()));
     this.emit("modelUpdated", { reason: "init", step: "all" });
@@ -1309,13 +1310,15 @@ export class GridCore implements IGridCore {
    * rows, the page and the selection are all left alone. Switching between the two behaviors while
    * a search is active therefore re-derives the view: the same text starts or stops filtering.
    *
-   * No-op for the server-side row model.
+   * Under the server-side row model the quick filter is the server's job: a change resets the
+   * block store and refetches, and every rows request carries `request.quickFilter` (see
+   * `IServerSideRequest.quickFilter`). Find cannot run there (the grid does not hold the rows), so a
+   * requested `"find"` behavior falls back to filtering, with a one-time console warning.
    */
   setQuickFilter(
     text: string,
     opts?: { matchMode?: QuickFilterMatchMode; caseSensitive?: boolean; behavior?: QuickFilterBehavior },
   ): void {
-    if (this.rowModel.getType() === "serverSide") return;
     const nextMode = opts?.matchMode ?? this.quickFilterMatchMode;
     const nextCase = opts?.caseSensitive ?? this.quickFilterCaseSensitive;
     const nextBehavior = opts?.behavior ?? this.quickFilterBehavior;
@@ -1336,6 +1339,7 @@ export class GridCore implements IGridCore {
     this.quickFilterMatchMode = nextMode;
     this.quickFilterCaseSensitive = nextCase;
     this.quickFilterBehavior = nextBehavior;
+    this.warnIfFindUnavailableServerSide();
     const rowSignatureAfter = this.quickFilterRowSignature();
 
     // Report unconditionally only when finding is involved on either side of the change — a purely
@@ -1351,7 +1355,8 @@ export class GridCore implements IGridCore {
     }
     const range = this.pageRangeFor("quickFilter");
     this.applyRowModelRequest(() => this.createRowModelRequest("quickFilter", range, this.getInitialServerSideLoadRange()));
-    this.clampPageToLastPage();
+    // Server-side: the row count is provisional right after the purge (see clampPageToLastPage).
+    if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     this.selectionModel.clearRange();
     if (this.options.selectionPersistence !== "keep") this.selectionModel.clearRows();
     this.emitSelectionChanged("model");
@@ -1361,6 +1366,10 @@ export class GridCore implements IGridCore {
 
   getQuickFilterText(): string {
     return this.quickFilterText;
+  }
+
+  getQuickFilterMatchSettings(): { matchMode: QuickFilterMatchMode; caseSensitive: boolean } {
+    return { matchMode: this.quickFilterMatchMode, caseSensitive: this.quickFilterCaseSensitive };
   }
 
   /** The behavior that was asked for, whether or not it can currently be honoured. */
@@ -1384,6 +1393,23 @@ export class GridCore implements IGridCore {
    */
   private effectiveQuickFilterBehavior(): QuickFilterBehavior {
     return this.quickFilterBehavior === "find" && this.isFindAvailable() ? "find" : "filter";
+  }
+
+  private findUnavailableWarned = false;
+
+  /**
+   * Find needs the rows in the browser; the server-side model only holds loaded blocks, so a
+   * requested find falls back to filtering there (the server receives the text). Said once per grid,
+   * because the end user's search box silently changing meaning would otherwise look like a bug.
+   */
+  private warnIfFindUnavailableServerSide(): void {
+    if (this.findUnavailableWarned) return;
+    if (this.quickFilterBehavior !== "find" || this.rowModel?.getType() !== "serverSide") return;
+    this.findUnavailableWarned = true;
+    console.warn(
+      "quickFilter behavior \"find\" is not available with the server-side row model; "
+      + "the quick filter filters instead and its text is sent to the server as request.quickFilter.",
+    );
   }
 
   /** The text the ROW MODEL filters by: the search text while filtering, nothing while finding. */
@@ -2235,6 +2261,31 @@ export class GridCore implements IGridCore {
       totalRowCountKnown: this.rowModel.isTotalRowCountKnown?.() ?? true,
       pageSizes: this.pageSizes,
     };
+  }
+
+  /**
+   * A row's index in the CURRENT PAGE's view space — the space of `getRowNodeAtViewIndex`, the body
+   * slots and `getViewCount` — whichever space the row model stamped on `node.viewIndex`. The two
+   * differ under pagination: the client-side model stamps grouped and tree views over the whole
+   * flattened list (pagination slices it afterwards), while flat and server-side views stamp the
+   * page. Anything that mixes a node's own `viewIndex` with page slots (the sticky ancestor stack)
+   * must translate through here.
+   *
+   * Negative for a row on an earlier page (a group header that scrolled off with the previous page
+   * while its children continue on this one), at or past `getViewCount()` for a later page, and
+   * undefined when the row holds no slot at all (filtered out, under a collapsed parent).
+   * {@link getViewIndexForRowId} is the on-page-only sibling (null for any row off this page).
+   */
+  getPageViewIndex(node: Pick<IRowNode, "id" | "viewIndex">): number | undefined {
+    // Fast path, and the common case: the stamped index already names this row's slot on the page.
+    // Negative indexes included — the server-side model stamps rows on earlier pages page-relative
+    // (below zero) and resolves them; the identity check keeps the `-1` "no slot" sentinel honest.
+    if (this.rowModel.getRowNodeAtViewIndex(node.viewIndex)?.id === node.id) {
+      return node.viewIndex;
+    }
+    const full = this.rowModel.getViewIndexInFullView?.(String(node.id));
+    if (full == null) return undefined;
+    return full - this.getPageStartIdx();
   }
 
   getRowNumberForViewIndex(viewIndex: number): number {

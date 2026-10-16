@@ -233,6 +233,16 @@ type — skipping cells that refuse the text, and Delete/Backspace clears
 contents (typed columns clear to `null`). A pasted block tiles across a larger
 selected range when its dimensions divide evenly.
 
+Ctrl/Cmd+V pastes through the browser's own `paste` event on the focused grid,
+which carries the clipboard text without asking for clipboard permission, so it
+works in every browser and in insecure (`http:`) contexts. A paste while a cell
+editor or another input inside the grid has focus belongs to that input.
+`api.paste()` and the body menu's Paste have no keyboard event to read from:
+they use `navigator.clipboard.readText()`, which some browsers refuse or do not
+offer (Firefox without the async clipboard, insecure contexts, a denied
+permission). In that case nothing is pasted and the grid logs one warning
+pointing at Ctrl/Cmd+V.
+
 Every edit, paste, cut, or batch clear that changes at least one stored value
 is one undo step — a batch's entry holds only the cells that actually changed,
 and a commit of an unchanged value records nothing (so Ctrl+Z always produces

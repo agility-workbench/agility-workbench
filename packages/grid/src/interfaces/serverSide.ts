@@ -1,6 +1,7 @@
 import { AggregateModel, AggregateScope } from "./aggregate";
 import { ColDef } from "./column";
 import { FilterType } from "./filter";
+import { QuickFilterMatchMode } from "./gridOptions";
 import { SortDir } from "./sort";
 
 export interface IServerSideFilter {
@@ -42,6 +43,20 @@ export interface IServerSideTreeParent {
   data: any;
 }
 
+/**
+ * The grid's quick filter (global search) as the server should apply it: keep only rows where the
+ * text matches the row's values, across the searchable columns, under `mode` — `"substring"` (the
+ * whole text appears inside some cell), `"multiTerm"` (every whitespace-separated term appears
+ * somewhere in the row) or `"wholeCell"` (some cell equals the text). Matching is case-insensitive
+ * unless `caseSensitive` is true. Applied together with `filters` (AND), before grouping.
+ */
+export interface IServerSideQuickFilter {
+  /** The search text exactly as typed (never empty or whitespace-only — then the field is absent). */
+  text: string;
+  mode: QuickFilterMatchMode;
+  caseSensitive: boolean;
+}
+
 export interface IServerSideRequest {
   /** Leaf-level column filters, applied before grouping at every level: a group exists only if it
    * has at least one matching leaf, and its aggregates/counts reflect filtered leaves only. */
@@ -69,6 +84,11 @@ export interface IServerSideRequest {
    * `groupBy`, `groupKeys`, and `aggregates` are always empty — the hierarchy is the rows'
    * own, not a column-value grouping. */
   treeParent?: IServerSideTreeParent;
+  /** The active quick filter; absent when the search box is empty. A change of text, mode or case
+   * sensitivity resets the block store and refetches, like a `filters` change. Under the
+   * server-side model the quick filter always filters: the `"find"` behavior (highlight without
+   * filtering) needs the rows in the browser and falls back to filtering here. */
+  quickFilter?: IServerSideQuickFilter;
 }
 
 export interface IServerSideResult {
@@ -89,6 +109,8 @@ export interface IServerSideAggregationRequest {
   aggregates: AggregateModel[];
   aggregateScope: AggregateScope;
   filters: IServerSideFilter[];
+  /** The active quick filter, as on {@link IServerSideRequest.quickFilter}; absent when empty. */
+  quickFilter?: IServerSideQuickFilter;
   sorts: IServerSideSort[];
   startRow: number | undefined;
   endRow: number | undefined;

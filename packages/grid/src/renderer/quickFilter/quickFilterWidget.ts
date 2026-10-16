@@ -212,6 +212,7 @@ export class QuickFilterWidget {
     this.unsubscribePivot = this.params.core.on("pivotChanged", () => this.syncBehaviorUI());
     this.unsubscribeCore = this.params.core.on("modelUpdated", event => {
       if (event.reason !== "filter") return;
+      this.adoptCoreMatchSettings();
       const text = this.params.core.getQuickFilterText();
       if (this.input.value === text) return;
       this.input.value = text;
@@ -311,6 +312,7 @@ export class QuickFilterWidget {
    */
   onFindChanged(state: QuickFilterFindState): void {
     this.behavior = this.params.core.getQuickFilterBehavior();
+    this.adoptCoreMatchSettings();
     // Not while a debounce is in flight: the box then holds newer text than the state being
     // reported, and adopting would undo the user's last keystrokes.
     if (this.debounceTimer == null && this.input.value !== state.text) {
@@ -324,6 +326,21 @@ export class QuickFilterWidget {
     // the field already reads the new behavior while the affordances still show the old one; a
     // field-vs-field check finds nothing to do and leaves the widget a flip behind for good.
     this.syncBehaviorUI();
+  }
+
+  /**
+   * Adopt the core's match mode and case sensitivity. Every commit sends the widget's own pair, so
+   * one changed behind its back (`api.setQuickFilter` with options, a restored view) must be taken
+   * up before the next keystroke, or typing would silently revert it. Skipped while a debounce is in
+   * flight: the pending commit already carries the user's latest choice.
+   */
+  private adoptCoreMatchSettings(): void {
+    if (this.debounceTimer != null) return;
+    const { matchMode, caseSensitive } = this.params.core.getQuickFilterMatchSettings();
+    this.matchMode = matchMode;
+    this.caseSensitive = caseSensitive;
+    if (this.matchModeSelect) this.matchModeSelect.value = matchMode;
+    if (this.caseCheckbox) this.caseCheckbox.checked = caseSensitive;
   }
 
   /** Reflect the core's find state in the counter and the steppers. */
@@ -369,7 +386,9 @@ export class QuickFilterWidget {
       this.behaviorSelect.disabled = !available;
       this.behaviorSelect.title = available
         ? ""
-        : "Highlighting matches is not available while the grid is pivoted";
+        : this.params.core.getRowModel().getType() === "serverSide"
+          ? "Highlighting matches is not available when rows load from the server"
+          : "Highlighting matches is not available while the grid is pivoted";
     }
     this.input.placeholder = finding ? "Find…" : "Search…";
     this.input.setAttribute(
@@ -583,6 +602,9 @@ export class QuickFilterWidget {
   }
 
   private bind(): void {
+    // A match-settings change with an empty box moves no rows and emits nothing the widget hears;
+    // focusing the box (the step before typing) is the last moment to catch up.
+    this.input.addEventListener("focus", () => this.adoptCoreMatchSettings());
     // Pointer tracking exists only for the deferred dodge: while the cursor is on the widget its
     // buttons must stay put, so a dodge asked for now is applied when the pointer leaves.
     this.wrapper.addEventListener("pointerenter", () => {
