@@ -1,6 +1,6 @@
 import { GridCore } from "../core/core";
 import { FilterMenuCoordinator } from "../filter/filterMenuCoordinator";
-import { AggregateType } from "../interfaces/aggregate";
+import { AggregateKind } from "../interfaces/aggregate";
 import { MenuCoordinator } from "../menu/coordinator";
 import type { InternalColumnMenuContext } from "../menu/context";
 import { MenuRenderer } from "./menuRenderer";
@@ -85,7 +85,7 @@ export class ColumnMenuOpener {
     });
   }
 
-  openAggregateMenu(colID: string, activeType: AggregateType, anchorEl: HTMLElement) {
+  openAggregateMenu(colID: string, activeType: AggregateKind, anchorEl: HTMLElement) {
     const session = this.params.menuCoordinator.openColumnMenu({
       trigger: "columnMenuButton",
       targetColId: colID,

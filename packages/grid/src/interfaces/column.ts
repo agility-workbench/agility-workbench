@@ -10,6 +10,7 @@ import type { SortingOrder, SortIconVisibility, TooltipColumnOptions, ActionFram
 import type { MenuItem } from "./menuItem";
 import type { ColumnMenuContext } from "../menu/context";
 import type { Column } from "../column/column";
+import type { AggregateKind } from "./aggregate";
 
 /**
  * Resolves the items shown in a single column's menu. Mirrors `BodyContextMenuGetter`, which does
@@ -309,6 +310,21 @@ export interface ColDef {
    * appear.
    */
   aggregatable?: boolean;
+  /**
+   * The column's aggregate function: a built-in {@link AggregateType} (`"sum"`, `"first"`, …) or
+   * the name of a function in `GridOptions.aggFuncs`. Two effects:
+   * - It is the column's DEFAULT function — what the footer, the aggregate menu and an aggregate
+   *   assignment without a type use — in place of the built-in rule (sum for numeric columns,
+   *   count otherwise).
+   * - The column is aggregated from the start: it joins the initial aggregate model exactly as if
+   *   `api.setAggregates` had listed it (so group rows show its per-group values and the footer
+   *   turns on at page scope). Removing it from the model afterwards — the menu, the column panel,
+   *   `setAggregates([])` — sticks; the seeding happens once, with the first column definitions.
+   *
+   * An unknown name warns once and the column keeps the built-in rule. Ignored, with a warning, on
+   * an `aggregatable: false` column. Read with the column definitions.
+   */
+  aggFunc?: AggregateKind;
   /**
    * When true (default), this column can be pivoted on: the column menu offers "Pivot on Column"
    * and `setPivotColumns` accepts it. For a multi-column selection, every selected column must be

@@ -81,10 +81,25 @@ class Connection {
     for (const fn of this.listeners.get(key) || []) fn(message.params);
   }
 
-  send(method, params = {}, sessionId) {
+  /**
+   * One protocol call. Every call is bounded: a session that died mid-navigation (renderer crash,
+   * target closed while a command was in flight) can leave a command with no response at all, and
+   * an unbounded await there froze a whole run once. The default is generous because screenshots
+   * and big evaluates are slow on a loaded machine.
+   */
+  send(method, params = {}, sessionId, { timeout = 30000 } = {}) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, method });
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) return;
+        this.pending.delete(id);
+        reject(new Error(`${method}: no response after ${timeout}ms (target gone?)`));
+      }, timeout);
+      this.pending.set(id, {
+        method,
+        resolve: value => { clearTimeout(timer); resolve(value); },
+        reject: error => { clearTimeout(timer); reject(error); },
+      });
       this.ws.send(JSON.stringify({ id, method, params, sessionId }));
     });
   }
@@ -179,9 +194,10 @@ export class Page {
   }
 
   async navigate(url, { timeout = 30000 } = {}) {
+    // Both legs are awaited together so a navigate command that never answers, or a load event
+    // that never fires, surfaces as a rejection instead of a hang or an unhandled rejection.
     const loaded = this.waitForEvent("Page.loadEventFired", timeout);
-    await this.send("Page.navigate", { url });
-    await loaded;
+    await Promise.all([this.send("Page.navigate", { url }), loaded]);
   }
 
   /**

@@ -255,6 +255,18 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ groupChildCount: props.groupChildCount });
     }, [props.groupChildCount]);
 
+    // Both footer options are restated together: the core rebuilds the group tree once.
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({
+        groupTotalRow: props.groupTotalRow,
+        grandTotalRow: props.grandTotalRow,
+      });
+    }, [props.groupTotalRow, props.grandTotalRow]);
+
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ groupTotalRowLabel: props.groupTotalRowLabel });
+    }, [props.groupTotalRowLabel]);
+
     // Header heights resolve against each other (an unset level height follows headerHeight), so
     // all three are restated together; an undefined prop falls back. Unchanged heights are a no-op.
     useLayoutEffect(() => {

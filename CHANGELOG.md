@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## 1.12.0 — 2026-10-16
+## Unreleased
 
 ### Features
 
@@ -79,6 +79,39 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   the boolean editor. The box carries `role="checkbox"` and `aria-checked`, export and the
   clipboard keep the formatted text, find skips the column, and `cellRenderer: "text"` keeps a
   column as text. `BooleanCellRenderer` is exported for use on other columns.
+- **Aggregates take custom functions, first/last, and a per-column default.** `aggFuncs` registers
+  functions by name, and a name works wherever a built-in type does: `ColDef.aggFunc`,
+  `api.setAggregates`, the aggregate menus (listed after the built-ins), saved views, pivot
+  measures, group rows and the footer at either scope. A function gets the raw values (blanks
+  included) and the rows, its result renders through the column's formatter, and exports write it
+  as a static value. The new `first` / `last` built-ins pick the first / last non-blank value in
+  display order. `ColDef.aggFunc` sets the column's default function (instead of sum/count) and
+  aggregates the column from the start, as if `setAggregates` had listed it. An unknown name warns
+  once and falls back to the column's default; on the server-side row model names travel to the
+  server unchanged. `AggregateKind`, `AggregateFunction` and `AggregateFunctionParams` are exported.
+- **Selecting a group now selects its rows, with `groupSelectsChildren: true`.** A group row's
+  checkbox stands for its subtree: a click (or Space/Enter on it) selects every selectable leaf
+  under it, collapsed ones included, and clears them once all are selected; nested groups follow
+  and a tree-data parent selects itself with its descendants. The checkbox shows the derived state
+  (tick, dash with `aria-checked="mixed"`, or empty) while the selection itself still holds data
+  rows only, so `getSelectedRows()`, select-all and the header tri-state are unchanged in shape.
+  Filtered-out rows and rows `isRowSelectable` refuses never count; `mode: "single"` and pivot mode
+  ignore the option; on the server-side model only loaded rows are affected. Live through
+  `updateGridOptions`; React prop and Angular input of the same name.
+- **The server-side block cache can be capped with `serverSideMaxBlocks`.** Past the limit, the
+  least recently used blocks are evicted after each block arrives and fetched again when scrolled
+  back to; row counts, the pager total, expansion and the selection are kept. Blocks in or one
+  block either side of the viewport, blocks still loading, and blocks holding an expanded group
+  row or tree parent are never evicted, so the cache can briefly hold more than the limit. Unset
+  (the default) keeps every block until a purge, as before.
+- **Grouped grids can show a footer (subtotal) row per group and a grand-total row.**
+  `groupTotalRow: "top" | "bottom"` repeats an expanded group's aggregates under a "Total <group>"
+  label, directly under its header or after its last row; `grandTotalRow` adds one row of totals
+  over every filtered row at the start or end of the list, and `groupTotalRowLabel` rewrites either
+  label. Footers are ordinary rows of cells in every display type (under `groupRows` they are where
+  the per-column totals become visible), count toward pagination and `aria-rowindex`, and carry
+  `pte-row-footer` / `pte-row-grand-total`; they are never selected, edited, docked or exported.
+  Client-side row grouping only; live through `updateGridOptions` and in both bindings.
 
 ### Fixes
 
@@ -92,14 +125,22 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   colId })` resolved the column by its public id but looked its ancestors up by instance id, so
   the lookup came back empty and the width update dereferenced `undefined`. The ancestor lookup
   now uses the resolved column; `api.autoSizeColumns` is the typed way to do this.
+- **A full-width group row keeps its checkbox under `groupSelectsChildren`.** With
+  `groupDisplayType: "groupRows"` the pinned checkbox now stays beside the spanning label, in the
+  body and on a docked sticky row, toggling the subtree and showing its mixed state.
+- **A capped server-side cache keeps the rows on screen.** The body now reports its drawn window to
+  the row model, so scrolling back over loaded rows while a far fetch is in flight no longer lets
+  that fetch evict the visible block under `serverSideMaxBlocks`.
 
 ### Tooling
 
-- **The layout probe's smoke pass survives a page reload.** A Vite dependency re-optimisation (or a
-  stylesheet regeneration) reloading a playground page under an in-flight check aborted the whole
-  run with "Inspected target navigated or closed". The smoke pass now retries that page up to three
-  times, as the matrix pass already did, and reports any other failure as a `harness-error` for
-  that page instead of exiting.
+- **The layout probe survives a page reload and can no longer hang.** A Vite dependency
+  re-optimisation (or a stylesheet regeneration) reloading a playground page under an in-flight
+  check aborted the whole run with "Inspected target navigated or closed", and a retry on the
+  session that died with a command in flight then waited forever, because protocol calls had no
+  timeout. Every DevTools call now gives up after 30 seconds, navigation surfaces either leg
+  failing, and both passes retry a failed case or page up to three times on a fresh page, reporting
+  anything else as a `harness-error` for that entry instead of exiting.
 
 ## 1.11.0 — 2026-10-16
 

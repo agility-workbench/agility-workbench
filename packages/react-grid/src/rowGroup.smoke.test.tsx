@@ -205,4 +205,43 @@ describe("row grouping end-to-end via Grid", () => {
     await unmountTestRoot(root);
     container.remove();
   });
+
+  it("adds and removes group footer rows live from props", async () => {
+    const { container, apiRef, root } = await mountGrid();
+    const api = apiRef.current!;
+    const render = async (props: { groupTotalRow?: "top" | "bottom"; grandTotalRow?: "top" | "bottom" }) => {
+      await act(async () => {
+        root.render(
+          <Grid
+            apiRef={apiRef}
+            data={ROWS}
+            columnDefs={[
+              { colId: "region", key: "region", label: "Region" },
+              { colId: "sales", key: "sales", label: "Sales" },
+            ]}
+            rowIdKey="id"
+            {...props}
+          />,
+        );
+      });
+    };
+    await render({});
+    await act(async () => {
+      api.setRowGroupColumns(["region"]);
+      api.setAllGroupsExpanded(true);
+    });
+    const footers = () => container.querySelectorAll(".pte-row.pte-row-footer[aria-rowindex]").length;
+    expect(footers()).toBe(0);
+
+    await render({ groupTotalRow: "bottom", grandTotalRow: "bottom" });
+    expect(apiRef.current).toBe(api);
+    expect(api.getCore().getOptions().groupTotalRow).toBe("bottom");
+    expect(footers()).toBe(3); // APAC, EMEA and the grand total
+
+    await render({});
+    expect(footers()).toBe(0);
+
+    await unmountTestRoot(root);
+    container.remove();
+  });
 });

@@ -4,7 +4,7 @@ import { FilterModel } from "./filter";
 import { IRowModelListener } from "./iRowModelListener";
 import { IRowNode } from "./iRowNode";
 import { SortModel } from "./sort";
-import { GroupSortMode, QuickFilterMatchMode } from "./gridOptions";
+import { GroupSortMode, GroupTotalRowPosition, QuickFilterMatchMode } from "./gridOptions";
 import { PivotRequestState } from "./pivot";
 
 export type RowModelType = "clientSide" | "serverSide";
@@ -70,6 +70,10 @@ export interface IRowModelRequestParams {
   readonly groupColumns: Column[];
   // Whether non-grouped sorts only order leaves within groups or also reorder the group buckets.
   readonly groupSortMode: GroupSortMode;
+  // Footer rows of a grouped client-side view (the `groupTotalRow` / `grandTotalRow` options).
+  // Undefined = none. The server-side model ignores both.
+  readonly groupTotalRow?: GroupTotalRowPosition;
+  readonly grandTotalRow?: GroupTotalRowPosition;
   // When present, this request is a pure expand/collapse — the model updates expansion state and
   // re-flattens the view once, without rebuilding the group tree. Target one node via `groupId`
   // (omitted `expanded` toggles), a batch via `groupIds`, or every group node via `all` (batch
@@ -201,6 +205,12 @@ export interface IRowModel<Row = any> {
   /** Server-side only: re-invoke the data source for the whole store or one group subtree.
    * `requestId` is a fresh core request id used for the resulting listener callbacks. */
   refreshServerSideData?(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean>;
+
+  /** The renderer's drawn window, in view indices (page-local while paginating). The server-side
+   * model keeps the blocks in it, and one block either side, out of `serverSideMaxBlocks`
+   * eviction; without it the model goes by its newest viewport request. Absent on models that
+   * hold every row. */
+  setRenderedRange?(range: { start: number; end: number }): void;
 
   /** Whether the model can answer footer totals over the entire dataset (aggregate scope "all").
    * Absent means yes — the client-side model holds every row. The server-side model says yes only

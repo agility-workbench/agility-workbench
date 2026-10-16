@@ -181,9 +181,14 @@ export class AwbGrid implements OnDestroy {
   readonly groupDefaultExpanded = input<GridOptions["groupDefaultExpanded"]>();
   readonly groupSortMode = input<GridOptions["groupSortMode"]>();
   readonly groupRowsSelectable = input<GridOptions["groupRowsSelectable"]>();
+  readonly groupSelectsChildren = input<GridOptions["groupSelectsChildren"]>();
+  readonly aggFuncs = input<GridOptions["aggFuncs"]>();
   readonly groupRowsSticky = input<GridOptions["groupRowsSticky"]>();
   readonly getGroupChildCount = input<GridOptions["getGroupChildCount"]>();
   readonly groupChildCount = input<GridOptions["groupChildCount"]>();
+  readonly groupTotalRow = input<GridOptions["groupTotalRow"]>();
+  readonly grandTotalRow = input<GridOptions["grandTotalRow"]>();
+  readonly groupTotalRowLabel = input<GridOptions["groupTotalRowLabel"]>();
   readonly treeData = input<GridOptions["treeData"]>();
 
   // --- pinned rows ---
@@ -210,6 +215,7 @@ export class AwbGrid implements OnDestroy {
   readonly serverSideDataSource = input<GridOptions["serverSideDataSource"]>();
   readonly serverSideAggregationSource = input<GridOptions["serverSideAggregationSource"]>();
   readonly serverSideBlockSize = input<GridOptions["serverSideBlockSize"]>();
+  readonly serverSideMaxBlocks = input<GridOptions["serverSideMaxBlocks"]>();
 
   // --- widgets / chrome ---
   readonly tooltip = input<GridOptions["tooltip"]>();
@@ -422,6 +428,18 @@ export class AwbGrid implements OnDestroy {
     this.syncEffect(() => {
       const v = this.groupChildCount();
       return () => api.updateGridOptions({ groupChildCount: v });
+    });
+
+    // Both footer options are restated together: the core rebuilds the group tree once.
+    this.syncEffect(() => {
+      const groupTotalRow = this.groupTotalRow();
+      const grandTotalRow = this.grandTotalRow();
+      return () => api.updateGridOptions({ groupTotalRow, grandTotalRow });
+    });
+
+    this.syncEffect(() => {
+      const v = this.groupTotalRowLabel();
+      return () => api.updateGridOptions({ groupTotalRowLabel: v });
     });
 
     // Header heights resolve against each other (an unset level height follows headerHeight), so

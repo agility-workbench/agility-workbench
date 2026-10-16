@@ -1,9 +1,9 @@
 import { Column } from "../column/column";
 import { ColumnType } from "../interfaces/column";
 import { groupRowLabel, IRowNode } from "../interfaces/iRowNode";
-import { AggregateModel, AggregateType } from "../interfaces/aggregate";
+import { AggregateKind, AggregateModel, AggregateType } from "../interfaces/aggregate";
 import { GroupDisplayType } from "../interfaces/gridOptions";
-import { AggregateCalculator } from "../aggregate/calculator";
+import { AggregateCalculator, AggregateRegistry } from "../aggregate/calculator";
 import { CellStyle } from "./xlsx/styleRegistry";
 import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/writeXlsx";
 import { columnName } from "./xlsx/xml";
@@ -69,6 +69,12 @@ export interface ExportConfig extends CsvWriteOptions {
    * COUNT otherwise), matching the grid's on-screen aggregate row.
    */
   aggregates?: AggregateModel[];
+  /**
+   * The grid's custom aggregate functions (`GridOptions.aggFuncs`), so an aggregate entry naming
+   * one computes it. Like `first` / `last`, a custom function has no Excel formula: its cells are
+   * written as static values.
+   */
+  aggFuncs?: AggregateRegistry;
   /**
    * Top-level (level-0) group nodes, each with nested `children`, when the grid is row-grouped.
    * When present, the Excel body is emitted with outline levels and per-group SUBTOTAL rows instead
@@ -963,7 +969,7 @@ const toExcelWidth = (col: Column, config: ExportConfig): number => {
  * Excel function name for an aggregate op that maps cleanly to a plain formula over a numeric range,
  * or null when it can't (text MIN/MAX, distinct count) and we must fall back to a static value.
  */
-const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null => {
+const excelAggregateFn = (op: AggregateKind, isNumeric: boolean): string | null => {
   switch (op) {
     case AggregateType.SUM:
       return "SUM";
@@ -979,6 +985,8 @@ const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null 
       return "COUNTA"; // counts non-blank cells, matching the grid's `count` aggregate (blanks are ignored)
     case AggregateType.DISTINCT_COUNT:
       return null; // no single portable Excel function
+    // FIRST / LAST (the grid's display order is not the sheet's formula semantics) and custom
+    // functions (no Excel equivalent) fall through to a static value.
     default:
       return null;
   }
@@ -990,7 +998,7 @@ const excelAggregateFn = (op: AggregateType, isNumeric: boolean): string | null 
  * while still *including* hidden rows (so collapsing a group leaves the totals unchanged). MEDIAN
  * and distinct-count have no SUBTOTAL equivalent.
  */
-const subtotalCode = (op: AggregateType, isNumeric: boolean): number | null => {
+const subtotalCode = (op: AggregateKind, isNumeric: boolean): number | null => {
   switch (op) {
     case AggregateType.AVG:
       return 1;
@@ -1016,7 +1024,7 @@ const subtotalCode = (op: AggregateType, isNumeric: boolean): number | null => {
 const aggregateCell = (
   col: Column,
   colIdx: number,
-  op: AggregateType,
+  op: AggregateKind,
   computed: any,
   rangeStart: number,
   rangeEnd: number,
@@ -1072,6 +1080,7 @@ const buildAggregateFooter = (
   dataEndRow: number,
   useSubtotal: boolean,
   displayed?: ReadonlyMap<string, any>,
+  aggFuncs?: AggregateRegistry,
 ): SheetCell[] | null => {
   if (!aggregates || aggregates.length === 0) return null;
   const opByCol = new Map(aggregates.map(a => [a.key, a.type]));
@@ -1086,7 +1095,7 @@ const buildAggregateFooter = (
   }
 
   if (rows.length === 0) return null;
-  const calculator = new AggregateCalculator();
+  const calculator = new AggregateCalculator(aggFuncs ?? {});
 
   return columns.map((col, colIdx) => {
     const op = opByCol.get(col.instanceID);
@@ -1140,7 +1149,7 @@ const buildGroupedBody = (
   config: ExportConfig,
 ): GroupedBody => {
   const opByCol = new Map((aggregates ?? []).map(a => [a.key, a.type]));
-  const calculator = new AggregateCalculator();
+  const calculator = new AggregateCalculator(config.aggFuncs ?? {});
   const rows: SheetCell[][] = [];
   const rowMeta: RowMeta[] = [];
   const merges: MergeRange[] = [];
@@ -1545,6 +1554,7 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
           dataEndRow,
           treeExport,
           config.serverSide?.aggregateValues,
+          config.aggFuncs,
         )
       : null;
     if (footer) {

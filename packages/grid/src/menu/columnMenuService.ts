@@ -1,5 +1,11 @@
 import { ColumnType } from "../interfaces/column";
-import { AggregateModel, AggregateType } from "../interfaces/aggregate";
+import {
+  AGGREGATE_TYPE_LABELS,
+  AggregateKind,
+  AggregateModel,
+  AggregateType,
+  aggregateTypeLabel,
+} from "../interfaces/aggregate";
 import { MenuItem } from "../interfaces/menuItem";
 import { ColumnMenuContext } from "./context";
 import { IGridCore } from "../interfaces";
@@ -25,7 +31,8 @@ type CapSummary = {
 export interface AggregateChoice {
   /** Menu item id, stable per type (`aggSum`, `aggAvg`, …). */
   id: string;
-  type: AggregateType;
+  /** A built-in type, or a custom function's name (`GridOptions.aggFuncs`). */
+  type: AggregateKind;
   icon?: string;
 }
 
@@ -34,16 +41,12 @@ type GroupMenuItem = MenuItem & {
   payload: { colIDs: string[] };
 };
 
-/** Display names for aggregate types, shared by the menus and the column panel's role chips. */
-export const AGGREGATE_TYPE_LABELS: Record<AggregateType, string> = {
-  [AggregateType.COUNT]: "Count",
-  [AggregateType.DISTINCT_COUNT]: "Distinct Count",
-  [AggregateType.SUM]: "Sum",
-  [AggregateType.AVG]: "Average",
-  [AggregateType.MIN]: "Min",
-  [AggregateType.MAX]: "Max",
-  [AggregateType.MEDIAN]: "Median",
-};
+/**
+ * Display names for the built-in aggregate types, shared by the menus and the column panel's role
+ * chips. Re-exported from `interfaces/aggregate`, which owns it; custom names label themselves
+ * (see `aggregateTypeLabel`).
+ */
+export { AGGREGATE_TYPE_LABELS };
 
 /** Column-scoped export hooks, injected once the renderer's ExportRenderer exists. */
 export interface ColumnMenuExportTarget {
@@ -202,6 +205,22 @@ export class ColumnMenuService {
    * function picker — the two differ in what a click DOES, never in what is on offer.
    */
   private aggregateChoicesFor(cap: CapSummary): AggregateChoice[] {
+    const builtIns = this.builtInAggregateChoicesFor(cap);
+    if (builtIns.length === 0) return [];
+    // First / last apply to any column; the app's own functions follow the built-ins, in the
+    // registry's key order, labelled with the name as given.
+    const custom = Object.keys(this.core.getOptions().aggFuncs ?? {})
+      .filter(name => typeof this.core.getOptions().aggFuncs?.[name] === "function")
+      .map((name): AggregateChoice => ({ id: `aggCustom:${name}`, type: name, icon: "icon-agg-custom" }));
+    return [
+      ...builtIns,
+      { id: "aggFirst", type: AggregateType.FIRST, icon: "icon-first" },
+      { id: "aggLast", type: AggregateType.LAST, icon: "icon-last" },
+      ...custom,
+    ];
+  }
+
+  private builtInAggregateChoicesFor(cap: CapSummary): AggregateChoice[] {
     if (cap.aggType === "numeric") {
       return [
         { id: "aggSum", type: AggregateType.SUM, icon: "icon-sum" },
@@ -236,7 +255,7 @@ export class ColumnMenuService {
     // carry several aggregates at once — each is a distinct pivot measure.
     item.subMenu = this.aggregateChoicesFor(cap).map(choice => ({
       id: choice.id,
-      label: AGGREGATE_TYPE_LABELS[choice.type],
+      label: aggregateTypeLabel(choice.type),
       ...(choice.icon ? { left: choice.icon } : {}),
       ...(this.aggregateTypeApplied(colIDs, choice.type) ? { right: "icon-check" } : {}),
       command: "aggregate.setMany",
@@ -625,7 +644,7 @@ export class ColumnMenuService {
    * otherwise the type is added to the columns missing it — a column accumulates types, each a
    * distinct pivot measure. `agg: null` clears every aggregate on the target columns.
    */
-  private getNextAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
+  private getNextAggregateModel(colIDs: string[], agg: AggregateKind | null): AggregateModel[] {
     const targetIds = this.expandAggregateColumnIds(colIDs);
     const model = this.core.getAggregateModel();
     if (agg == null) {
@@ -653,7 +672,7 @@ export class ColumnMenuService {
    */
   private getAggregateModelFor(
     colIDs: string[],
-    agg: AggregateType | null,
+    agg: AggregateKind | null,
     mode?: string,
   ): AggregateModel[] {
     if (mode === "replace") return this.getReplacementAggregateModel(colIDs, agg);
@@ -663,7 +682,7 @@ export class ColumnMenuService {
   }
 
   /** Single-choice semantics: drop every aggregate on the target columns, set the chosen type. */
-  private getReplacementAggregateModel(colIDs: string[], agg: AggregateType | null): AggregateModel[] {
+  private getReplacementAggregateModel(colIDs: string[], agg: AggregateKind | null): AggregateModel[] {
     const targetIds = this.expandAggregateColumnIds(colIDs);
     const selectedIds = new Set(targetIds);
     const next = this.core.getAggregateModel().filter(item => !selectedIds.has(item.key));
@@ -673,7 +692,7 @@ export class ColumnMenuService {
   }
 
   /** Whether every target column already carries this aggregate type (the menu checkmark). */
-  private aggregateTypeApplied(colIDs: string[], agg: AggregateType): boolean {
+  private aggregateTypeApplied(colIDs: string[], agg: AggregateKind): boolean {
     const targetIds = this.expandAggregateColumnIds(colIDs);
     if (targetIds.length === 0) return false;
     const model = this.core.getAggregateModel();

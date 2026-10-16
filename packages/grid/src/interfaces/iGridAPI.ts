@@ -615,10 +615,15 @@ export interface IGridAPI {
    * Replace the aggregate assignments (grid footer totals, group-row totals, and pivot measures),
    * by colId. A column may appear several times with different types — each is a distinct
    * measure; entry order sets the generated pivot column order. An empty array clears all
-   * aggregates. Unknown colIds are skipped.
+   * aggregates (including the ones `ColDef.aggFunc` seeded). Unknown colIds are skipped.
+   *
+   * `type` is a built-in `AggregateType` (`"first"` / `"last"` included) or the name of a function
+   * in `GridOptions.aggFuncs`; an unknown name warns once and the column's default function
+   * (`ColDef.aggFunc`, else sum/count) is used instead. On the server-side row model any name is
+   * accepted and travels to the server unchanged in the aggregate request — the server computes it.
    */
   setAggregates(aggregates: ColumnAggregate[]): void;
-  /** The current aggregate assignments by colId, in model order. */
+  /** The current aggregate assignments by colId, in model order (custom names as given). */
   getAggregates(): ColumnAggregate[];
 
   /** Capture serializable column, grouping, sorting, filtering, expansion, and page state. */
@@ -639,7 +644,11 @@ export interface IGridAPI {
   navigateToCorner(corner: "topLeft" | "bottomRight", opts?: { extend?: boolean }): void;
   /** Select the entire grid. */
   selectAll(): void;
-  /** Select/toggle a row by view index. */
+  /**
+   * Select/toggle a row by view index. Under `groupSelectsChildren` a group row (or tree parent)
+   * stands for its subtree: "toggle" fills it when any of it is unselected and clears it when all
+   * is, "replace" makes the subtree the whole selection, and a "range" over it takes its subtree.
+   */
   selectRow(viewIdx: number, mode?: "replace" | "toggle" | "range"): void;
   /** Select/toggle a column by colId. */
   selectColumn(colId: string, mode?: "replace" | "toggle"): void;
@@ -649,10 +658,15 @@ export interface IGridAPI {
   getSelection(): SelectionSnapshot;
   /** Underlying data objects of the currently-selected rows. */
   getSelectedRows(): unknown[];
-  /** Currently-selected row nodes (unloaded / no-longer-present rows are omitted). */
+  /**
+   * Currently-selected row nodes (unloaded / no-longer-present rows are omitted). Group rows are
+   * never included, even fully selected ones under `groupSelectsChildren` — the selection holds
+   * data rows only, so this always matches `getSelectedRows()` and `getSelection().selectedRowIds`.
+   */
   getSelectedNodes(): IRowNode[];
   /** Select every selectable data row in the select-all scope — the whole filtered set by
-   * default, or the current page under `selectAllScope: "page"`. Skips group rows. */
+   * default, or the current page under `selectAllScope: "page"`. Skips group rows (under
+   * `groupSelectsChildren` a group on the page contributes its leaves, collapsed ones included). */
   selectAllRows(): void;
   /** Clear the row selection. */
   deselectAllRows(): void;

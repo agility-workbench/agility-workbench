@@ -1,3 +1,4 @@
+import type { AggregateFunction } from "./aggregate";
 import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
 import { GridIconMap } from "../theme/icons";
@@ -208,6 +209,26 @@ export interface GroupChildCountParams extends GroupValueGetterParams {
  * no count for that group. A number or a string ("12.5 FTE") is written as given.
  */
 export type GroupChildCountGetter = (params: GroupChildCountParams) => number | string | null | undefined;
+
+/** Where a footer row sits: `"top"` under its group's header (or first in the list for the grand
+ * total), `"bottom"` after the group's last row (or last in the list). */
+export type GroupTotalRowPosition = "top" | "bottom";
+
+/** What a `groupTotalRowLabel` function is handed for one footer row. */
+export interface GroupTotalRowLabelParams {
+  /** The footer row (`footer: true`; `grandTotal: true` on the grand-total row). */
+  node: import("./iRowNode").IRowNode;
+  /** The group the footer totals; undefined on the grand-total row. */
+  groupNode: import("./iRowNode").IRowNode | undefined;
+  /** Whether this is the grand-total row. */
+  grandTotal: boolean;
+  /** The group's label without its count ("" on the grand-total row). */
+  groupLabel: string;
+  /** The label the grid shows by default: "Total <group label>", or "Grand Total". */
+  defaultLabel: string;
+  /** The footer's aggregate values by colId (the same values its group row shows). */
+  aggregates: Readonly<Record<string, unknown>>;
+}
 
 /**
  * Customizes the column menu opened for *several* selected columns at once, where the built-in
@@ -1476,6 +1497,14 @@ export interface GridOptions {
   pageSize?: number;
   pageSizes?: number[];
   serverSideBlockSize?: number;
+  /**
+   * Server-side row model: the most row blocks kept in memory. Blocks beyond that are evicted
+   * least-recently-used first, never the ones in or next to the viewport, and are fetched again
+   * when scrolled back to. Blocks holding an expanded group row or tree parent, or still loading,
+   * also stay (they count toward the limit), so the cache can briefly exceed it. A value below 1 is
+   * treated as 1. Unset (the default) keeps every block until a purge, as before. Creation-only.
+   */
+  serverSideMaxBlocks?: number;
   rowModelType?: RowModelType;
   serverSideDataSource?: IServerSideDataSource;
   /**
@@ -1501,6 +1530,44 @@ export interface GridOptions {
    * Live: `updateGridOptions({ groupChildCount })` repaints the group rows.
    */
   groupChildCount?: boolean | GroupChildCountGetter;
+  /**
+   * Adds a footer (subtotal) row to every expanded group: `"bottom"` after the group's last row,
+   * `"top"` directly under its header. The footer repeats the group's aggregates column by column
+   * under a "Total <group>" label, so in `groupDisplayType: "groupRows"` — where the header is one
+   * spanning cell — it is where the per-column totals become visible. A collapsed group shows no
+   * footer (its header already carries the totals). Footers are view rows: they count toward
+   * pagination and row numbers, and the cell cursor stops on them where it stops on group rows
+   * (`groupRowsSelectable`), but they are never selected, edited, docked by `groupRowsSticky`
+   * or exported (the Excel export writes its own SUBTOTAL rows; CSV writes leaves only).
+   * Undefined (default) adds none. Client-side row grouping only: tree data and pivot mode ignore
+   * it, and the server-side row model warns once and ignores it. Live:
+   * `updateGridOptions({ groupTotalRow })`.
+   */
+  groupTotalRow?: GroupTotalRowPosition;
+  /**
+   * Adds one grand-total row over every filtered row (not just the current page) at the start
+   * (`"top"`) or end (`"bottom"`) of a grouped view, labelled "Grand Total". It follows the same
+   * rules as `groupTotalRow` footers, scrolls with the body (the aggregate footer bar stays the
+   * pinned alternative) and needs a row grouping to appear. Undefined (default) adds none.
+   * Client-side row model only. Live: `updateGridOptions({ grandTotalRow })`.
+   */
+  grandTotalRow?: GroupTotalRowPosition;
+  /**
+   * The label of a footer row (`groupTotalRow`, `grandTotalRow`), shown in the group column — the
+   * auto-group column, the level's own column in `"multipleColumns"`, or the first column after
+   * the row-number / checkbox columns in `"groupRows"` — and written by copy. Defaults to
+   * "Total <group label>" (the group's label without its count) and "Grand Total". Live:
+   * `updateGridOptions({ groupTotalRowLabel })` repaints the rows.
+   */
+  groupTotalRowLabel?: (params: GroupTotalRowLabelParams) => string;
+  /**
+   * Custom aggregate functions by name. A name here can be used wherever an aggregate type is
+   * accepted: `ColDef.aggFunc`, `api.setAggregates`, the aggregate menus (which list them after
+   * the built-ins), saved views and pivot measures. On the server-side row model the server
+   * computes every aggregate, so any name is sent unchanged and an entry here only lists it in the
+   * menus. Read at creation.
+   */
+  aggFuncs?: Record<string, AggregateFunction>;
   /**
    * Tooltip shown on the pagination page selector while the total row count is provisional — when
    * a server-side listing has not reported `totalRows` and its end has not been reached yet, the
@@ -1704,6 +1771,15 @@ export interface GridOptions {
    */
   groupRowsSelectable?: boolean;
   /**
+   * Selecting a group row selects its descendants (leaf rows), and a group's checkbox shows the
+   * tri-state of its subtree: checked, unchecked or indeterminate. Applies to row groups and tree
+   * data. Group rows are never stored in the selection, so select-all, `getSelectedRows()` and the
+   * header tri-state still speak data rows only; `mode: "single"` and pivot mode ignore it.
+   * Defaults to false. On the server-side model only loaded descendants are affected. Live:
+   * `updateGridOptions({ groupSelectsChildren })`.
+   */
+  groupSelectsChildren?: boolean;
+  /**
    * Pins displayed row-model nodes into a frozen top or bottom band. This is primarily useful for
    * generated group nodes, which cannot be supplied through pinnedTopRowData/pinnedBottomRowData.
    * The live node moves out of the body section while pinned and retains group expansion and
@@ -1895,6 +1971,8 @@ export interface InternalGridOptions extends GridOptions {
   pageSize: number;
   pageSizes: number[];
   serverSideBlockSize: number;
+  serverSideMaxBlocks?: number;
+  aggFuncs: Record<string, AggregateFunction>;
   getGroupChildCount?: (row: any) => number | null | undefined;
   groupChildCount: boolean | GroupChildCountGetter;
   paginationUnknownTotalTooltip: string;
@@ -1923,6 +2001,10 @@ export interface InternalGridOptions extends GridOptions {
   pivotColumnMoveMode: "measures" | "free";
   treeData?: TreeDataOptions;
   groupRowsSelectable: boolean;
+  groupSelectsChildren: boolean;
+  groupTotalRow?: GroupTotalRowPosition;
+  grandTotalRow?: GroupTotalRowPosition;
+  groupTotalRowLabel?: (params: GroupTotalRowLabelParams) => string;
   isRowSelectable?: (node: IRowNode) => boolean;
   isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
   groupRowsSticky: boolean;
@@ -2018,7 +2100,11 @@ export const WIDGET_OPTION_KEYS = [
   "groupDisplayType",
   "groupSortMode",
   "groupRowsSelectable",
+  "groupSelectsChildren",
   "groupChildCount",
+  "groupTotalRow",
+  "grandTotalRow",
+  "groupTotalRowLabel",
   "pivotColumnMoveMode",
   "isRowSelectable",
   "serverSideDataSource",
@@ -2084,8 +2170,10 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   showColumnButtonsOnHover: true, bodyContextMenu: true, multiColumnMenu: true,
   selectAllRowsOnHeaderClick: true, selectAllScope: true, selectionPersistence: true,
   resetPageOn: true, pageSize: true, pageSizes: true, serverSideBlockSize: true,
+  serverSideMaxBlocks: true, aggFuncs: true, groupSelectsChildren: true,
   rowModelType: true, serverSideDataSource: true, serverSideAggregationSource: true,
-  getGroupChildCount: true, groupChildCount: true, paginationUnknownTotalTooltip: true,
+  getGroupChildCount: true, groupChildCount: true, groupTotalRow: true, grandTotalRow: true,
+  groupTotalRowLabel: true, paginationUnknownTotalTooltip: true,
   autosizeColumnsOnDataChange: true, clearSelectionOnBodyClick: true, undoLimit: true,
   editTrigger: true, readOnlyEdit: true, initialSort: true, showSortPriority: true,
   pinnedRowsEditable: true, rowPinningMenu: true, rowInsertionMenu: true,

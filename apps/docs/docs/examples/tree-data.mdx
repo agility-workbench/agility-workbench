@@ -37,6 +37,16 @@ position never depends on its children — ascending, a parent `Z` with a child
 that stays only to reach a matching descendant) sits where its first child
 would.
 
+**Selecting a branch.** A parent row is selected like any other row: alone. Set
+`groupSelectsChildren: true` to make its checkbox select the parent together
+with every selectable descendant, collapsed branches included, and clear them
+all again once all are selected. The parent's checkbox then reflects the branch:
+ticked when it and all its descendants are selected, a dash when only part of
+the branch is. Rows the filter removed — including an ancestor kept only to
+reach a match — and rows `isRowSelectable` refuses are left out. With
+`mode: "server"` only the children the grid has fetched are affected. See
+[Selection → Groups select their children](./selection.mdx).
+
 Bad relationships in client-side tree data degrade rather than take the grid
 down, each with one console warning per load (`setRowData` or transaction) that
 names the offending ids or paths and how many rows were affected:

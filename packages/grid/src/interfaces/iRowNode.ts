@@ -42,6 +42,24 @@ export interface IRowNode<Row = any> {
   parentId?: string;
   /** Set only on rows rendered in the frozen top/bottom bands. */
   rowPinned?: "top" | "bottom";
+  /**
+   * True on a group footer (subtotal) row and on the grand-total row — the rows the
+   * `groupTotalRow` / `grandTotalRow` options add to a client-side grouped view. A footer is a
+   * synthetic group node (`isGroup: true`, `expandable: false`, no `children`) at its group's
+   * `level`, sharing the group's `groupKey`, `groupValue` and the very same `aggregateValues`
+   * object, so a re-aggregation updates the header and the footer together. Footers are rows of
+   * the view (pagination, view indices, ARIA counts) but never data: they are not selectable,
+   * editable, sticky or exported, and `getGroupNodes` / `forEachLeafNode` never visit them.
+   */
+  footer?: boolean;
+  /** True on the one root-level grand-total row (`grandTotalRow`); it also has `footer: true`. */
+  grandTotal?: boolean;
+  /**
+   * The group a footer row totals, so a renderer or callback can read the header row's state (its
+   * `childCount`, `isExpanded`, `id`). Set on group footers only; absent on the grand-total row
+   * and on every other node.
+   */
+  groupNode?: IRowNode<Row>;
 }
 
 /**

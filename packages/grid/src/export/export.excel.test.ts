@@ -522,3 +522,62 @@ describe("zip writer", () => {
     expect(bytes.length).toBeLessThan(payload.length / 5);
   });
 });
+
+describe("first / last / custom aggregates (static values, no formula)", () => {
+  const leaf = (data: any): any => ({ id: "r" + Math.random(), data, isGroup: false, type: "leaf", level: 99 });
+  const group = (key: string, children: any[]): any => ({
+    id: "g:" + key, data: { __group: true }, isGroup: true, type: "group", level: 0, isExpanded: true,
+    children, childCount: children.length, groupKey: key, groupValue: key,
+  });
+  const spread = ({ values }: { values: unknown[] }) => {
+    const nums = values.filter((v): v is number => typeof v === "number");
+    return Math.max(...nums) - Math.min(...nums);
+  };
+
+  it("writes the footer's first / last / custom values as static cells while SUM keeps its formula", async () => {
+    const columns = [
+      col({ key: "name", label: "Name", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+      col({ key: "lot", label: "Lot", type: ColumnType.NUMBER }),
+      col({ key: "price", label: "Price", type: ColumnType.NUMBER }),
+    ];
+    const config: ExportConfig = {
+      columns,
+      rows: [
+        { name: "", qty: 10, lot: 1, price: 5 },
+        { name: "b", qty: 20, lot: 2, price: 9 },
+        { name: "c", qty: 30, lot: 3, price: 6 },
+      ],
+      aggregates: [
+        { key: columns[0].instanceID, type: AggregateType.FIRST },
+        { key: columns[1].instanceID, type: AggregateType.SUM },
+        { key: columns[2].instanceID, type: AggregateType.LAST },
+        { key: columns[3].instanceID, type: "spread" },
+      ],
+      aggFuncs: { spread },
+    };
+    await exportExcel(config);
+    const ws = await readBack(captured!);
+    expect(ws.getCell("A5").value).toBe("b"); // first NON-blank
+    expect((ws.getCell("B5").value as any).formula).toBe("SUM(B2:B4)");
+    expect(ws.getCell("C5").value).toBe(3);
+    expect(ws.getCell("D5").value).toBe(4);
+  });
+
+  it("writes a custom function's per-group value as a static subtotal cell", async () => {
+    const columns = [
+      col({ key: "dept", label: "Dept", type: ColumnType.STRING }),
+      col({ key: "qty", label: "Qty", type: ColumnType.NUMBER }),
+    ];
+    await exportExcel({
+      columns,
+      rows: [],
+      groupRoots: [group("Sales", [leaf({ dept: "Sales", qty: 10 }), leaf({ dept: "Sales", qty: 25 })])],
+      groupColumns: [columns[0]],
+      aggregates: [{ key: columns[1].instanceID, type: "spread" }],
+      aggFuncs: { spread },
+    });
+    const ws = await readBack(captured!);
+    expect(ws.getCell("B2").value).toBe(15);
+  });
+});

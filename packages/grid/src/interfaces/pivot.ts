@@ -1,4 +1,4 @@
-import { AggregateType } from "./aggregate";
+import { AggregateKind } from "./aggregate";
 import type { Column } from "../column/column";
 
 /**
@@ -15,7 +15,8 @@ export interface PivotValueEntry {
   colId: string;
   /** Header label of the source column, for generated leaf labels. */
   label: string;
-  type: AggregateType;
+  /** A built-in aggregate type or a custom function's name (`GridOptions.aggFuncs`). */
+  type: AggregateKind;
 }
 
 /** One distinct pivot value at one level of the discovered header structure. */
@@ -70,7 +71,8 @@ export interface PivotResultColumnDescriptor {
   groupPath: string[];
   /** colId of the source column this leaf aggregates. */
   valueColId: string;
-  aggregateType: AggregateType;
+  /** The measure's aggregate: a built-in type or a custom function's name. */
+  aggregateType: AggregateKind;
 }
 
 /**
@@ -97,14 +99,18 @@ export function pivotPathId(path: string[]): string {
   return "pv:" + path.map(encodeURIComponent).join("/");
 }
 
-/** Stable id for a generated value leaf: path + source colId + aggregate type. */
-export function pivotLeafColId(path: string[], valueColId: string, type: AggregateType): string {
+/**
+ * Stable id for a generated value leaf: path + source colId + aggregate type. The type is
+ * percent-encoded like the other parts, since a custom function's name may contain the "|"
+ * separator; the built-in names are plain words, so their ids are unchanged by the encoding.
+ */
+export function pivotLeafColId(path: string[], valueColId: string, type: AggregateKind): string {
   return pivotLeafColIdFromKey(path.map(encodeURIComponent).join("/"), valueColId, type);
 }
 
 /** Same as {@link pivotLeafColId}, from an already-encoded path key ("" = the root path). */
-export function pivotLeafColIdFromKey(pathKey: string, valueColId: string, type: AggregateType): string {
-  return "pv:" + pathKey + "|" + encodeURIComponent(valueColId) + "|" + type;
+export function pivotLeafColIdFromKey(pathKey: string, valueColId: string, type: AggregateKind): string {
+  return "pv:" + pathKey + "|" + encodeURIComponent(valueColId) + "|" + encodeURIComponent(type);
 }
 
 /** The parts a generated value leaf's colId is built from — see {@link parsePivotLeafColId}. */
@@ -115,7 +121,7 @@ export interface ParsedPivotLeafColId {
   path: string[];
   /** Decoded colId of the source column this leaf aggregates. */
   valueColId: string;
-  type: AggregateType;
+  type: AggregateKind;
 }
 
 /**
@@ -140,7 +146,7 @@ export function parsePivotLeafColId(colId: string): ParsedPivotLeafColId | null 
       pathKey,
       path: pathKey === "" ? [] : pathKey.split("/").map(decodeURIComponent),
       valueColId: decodeURIComponent(encodedValueColId),
-      type: type as AggregateType,
+      type: decodeURIComponent(type),
     };
   } catch {
     // Malformed percent-encoding — a hand-written id, not one this module produced.

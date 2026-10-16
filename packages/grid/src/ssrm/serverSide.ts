@@ -1,7 +1,8 @@
 import { ServerSideDataError, type ServerSideDataErrorReason } from "./serverSideDataError";
+import { CachedBlock, resolveMaxBlocks, selectBlocksToEvict } from "./blockCache";
 import { IRowModel, IRowModelRequestParams, RowModelType, RowTransaction, RowTransactionResult, ServerSideRefreshOptions } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
-import { AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
+import { AggregateKind, AggregateModel, AggregateScope, AggregateType } from "../interfaces/aggregate";
 import { GridOptions, TreeDataServerOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
@@ -49,6 +50,9 @@ interface ChildListing<Row> {
   counted: boolean;
   /** Block start indices with an in-flight request (dedupes concurrent fetches). */
   inFlight: Set<number>;
+  /** Block start → last-use stamp (see `serverSideMaxBlocks`). Stamped when a block's rows are
+   * ingested and whenever a viewport scan touches it; read only by the eviction pass. */
+  blockUse: Map<number, number>;
 }
 
 // One contiguous run of a listing's child indices in the flattened display list. Runs break only
@@ -106,6 +110,16 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   private warnedNoRowId = false;
 
   private readonly blockSize: number;
+  // Block cache cap (`serverSideMaxBlocks`); undefined keeps every block until a purge.
+  private readonly maxBlocks?: number;
+  // Monotonic clock behind the per-block last-use stamps.
+  private useClock = 0;
+  // Where the user is looking, for the eviction pass's "never in or next to the viewport" rule.
+  // The renderer's drawn window (view indices) when it reports one, else the flat range of the
+  // newest viewport request — the renderer asks for the first missing block inside its window, so
+  // that block plus one block either side covers the window.
+  private renderedRange: { start: number; end: number } | null = null;
+  private lastViewportRange: { start: number; end: number } | null = null;
   private getId: (row: Row) => string;
   // Server-side tree data: the hierarchy is the rows' own (`hasChildren` per row, children fetched
   // per parent), not a column-value grouping. Fixed at construction — the relationship mode
@@ -120,6 +134,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   ) {
     this.getId = createRowIdFactory(opts);
     this.blockSize = Math.max(1, opts.serverSideBlockSize ?? opts.pageSize ?? 100);
+    this.maxBlocks = resolveMaxBlocks(opts.serverSideMaxBlocks);
     this.treeOptions = opts.treeData?.mode === "server"
       ? opts.treeData as TreeDataServerOptions<Row>
       : undefined;
@@ -365,6 +380,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
     if (params.reason === "viewport") {
       this.paginate = params.paginate;
+      this.lastViewportRange = { start: params.range.start, end: params.range.end };
       const range = params.loadRange ?? params.range;
       this.ensureRange(params, range.start, range.end);
       return;
@@ -380,6 +396,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     }
 
     if (params.reason === "pagination" || params.reason === "page") {
+      // A new page opens at its top: the previous page's viewport request no longer says where the
+      // user is looking (the eviction pass falls back to the page's first block).
+      this.lastViewportRange = null;
       // Page moves reuse cached blocks; only missing ones are fetched.
       this.rebuildFlat();
       this.emitRows(params, params.reason);
@@ -557,7 +576,10 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   ): ChildListing<Row> {
     let listing = this.listings.get(id);
     if (!listing) {
-      listing = { id, groupKeys, path, treeParent, nodes: new Map(), knownCount: 0, counted: false, inFlight: new Set() };
+      listing = {
+        id, groupKeys, path, treeParent,
+        nodes: new Map(), knownCount: 0, counted: false, inFlight: new Set(), blockUse: new Map(),
+      };
       this.listings.set(id, listing);
       return listing;
     }
@@ -720,6 +742,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           blocks.add(Math.floor(childIdx / this.blockSize) * this.blockSize);
         }
       }
+      // A scan that touches a loaded block counts as a use: it is what the user is looking at.
+      if (this.maxBlocks != null) {
+        for (let b = Math.floor(fromChild / this.blockSize) * this.blockSize; b < toChild; b += this.blockSize) {
+          if (listing.blockUse.has(b)) listing.blockUse.set(b, ++this.useClock);
+        }
+      }
       for (const block of blocks) {
         this.fetchBlock(listing, block, params);
       }
@@ -804,7 +832,15 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           if (settled) this.listener.onLoadingEnd(this.latestRequestId);
           return;
         }
-        if (!this.listings.has(listing.id) && listing.id !== ROOT_LISTING_ID) {
+        // The listing was dropped (its parent row left the store — a soft refresh displaced it),
+        // or dropped and recreated by a later expand: this response belongs to an object nothing
+        // points at any more. (Block-cache eviction never causes this: a parent whose subtree has
+        // a fetch in flight is not evicted.) Ingesting it would
+        // resurrect the old listing over the live one, so it is dropped; the live listing fetches
+        // its own blocks. The root is exempt: only a purge replaces it, and that moves the
+        // generation.
+        const live = this.listings.get(listing.id);
+        if (live ? live !== listing : listing.id !== ROOT_LISTING_ID) {
           if (settled) this.listener.onLoadingEnd(this.latestRequestId);
           return;
         }
@@ -822,6 +858,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           requestedCount: requestedEnd - blockStart,
         });
         this.rebuildFlat();
+        // Only here — after a completion, on fresh segments — never mid-scan: a scan that evicted
+        // could drop a block it is about to read.
+        this.enforceBlockLimit();
         this.emitRows(params, params.reason);
         void this.reAggregate(this.latestRequestId, "aggregateModel", params.aggregateReason ?? "rows");
         // Keep filling the target window BEFORE deciding whether the overlay can hide: expansion
@@ -952,6 +991,15 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       this.nodesMap.set(node.id, node);
     });
 
+    // Stamp the blocks this response filled: a completed fetch is the block's freshest use.
+    for (
+      let b = Math.floor(startRow / this.blockSize) * this.blockSize;
+      b < startRow + rows.length;
+      b += this.blockSize
+    ) {
+      listing.blockUse.set(b, ++this.useClock);
+    }
+
     if (counts.totalRows != null) {
       listing.knownCount = counts.totalRows;
       listing.counted = true;
@@ -1060,9 +1108,14 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
   // Blocks (listing id → block starts) intersecting the current view window, for soft refresh.
   private collectViewBlocks(): Map<string, Set<number>> {
-    const out = new Map<string, Set<number>>();
     const start = this.paginate ? this.viewStartRow : 0;
     const end = this.paginate ? Math.min(this.viewEndRow, this.flatTotal) : this.flatTotal;
+    return this.blocksInFlatRange(start, end);
+  }
+
+  // Blocks (listing id → block starts) holding any slot of the flat range [start, end).
+  private blocksInFlatRange(start: number, end: number): Map<string, Set<number>> {
+    const out = new Map<string, Set<number>>();
     for (const seg of this.segments) {
       const segEnd = seg.flatStart + (seg.childEnd - seg.childStart);
       if (segEnd <= start || seg.flatStart >= end) continue;
@@ -1079,6 +1132,104 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       }
     }
     return out;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Block cache cap (serverSideMaxBlocks)
+
+  /**
+   * The rendered window in view indices (page-local while paginating), reported by the renderer.
+   * The eviction pass never drops a block in it or one block either side; without a report it
+   * falls back to the newest viewport request.
+   */
+  setRenderedRange(range: { start: number; end: number }): void {
+    this.renderedRange = { start: range.start, end: range.end };
+  }
+
+  /**
+   * Evict least-recently-used blocks until at most `serverSideMaxBlocks` are loaded across all
+   * listings. A block is one `blockSize` range of one listing's child indices, loaded while it
+   * holds at least one row. Never evicted (but counted toward the cap): blocks in or one block
+   * either side of the viewport, blocks with a fetch in flight, and blocks holding an expanded
+   * parent or a parent whose subtree has a fetch in flight — dropping that row would orphan a live
+   * child listing. With nothing evictable the cache stays over the cap.
+   *
+   * Eviction removes rows only. Counts (`knownCount`/`counted`), the expansion map, the flattened
+   * layout and sticky spans (both derive from expanded rows and counts, and expanded rows are
+   * never evicted), the pager total and the selection (kept by id in the core) are untouched, so
+   * an evicted range shows as missing rows and refetches through the renderer's missing-row scan.
+   * A collapsed parent's cached children go with its row and refetch on the next expand.
+   */
+  private enforceBlockLimit(): void {
+    const max = this.maxBlocks;
+    if (max == null) return;
+    const blocks: CachedBlock[] = [];
+    for (const listing of this.listings.values()) {
+      const starts = new Set<number>();
+      for (const childIdx of listing.nodes.keys()) {
+        starts.add(Math.floor(childIdx / this.blockSize) * this.blockSize);
+      }
+      for (const start of starts) {
+        blocks.push({ listingId: listing.id, start, lastUse: listing.blockUse.get(start) ?? 0, pinned: false });
+      }
+    }
+    if (blocks.length <= max) return;
+
+    const pinnedView = this.viewportBlocks();
+    const busy = this.busyParents();
+    for (const block of blocks) {
+      const listing = this.listings.get(block.listingId)!;
+      block.pinned = listing.inFlight.has(block.start)
+        || pinnedView.get(block.listingId)?.has(block.start) === true
+        || this.holdsLiveParent(listing, block.start, busy);
+    }
+    for (const block of selectBlocksToEvict(blocks, max)) {
+      const listing = this.listings.get(block.listingId);
+      // Evicting a collapsed parent takes its cached child listing along, so a block chosen later
+      // in this pass can already be gone.
+      if (!listing) continue;
+      for (let childIdx = block.start; childIdx < block.start + this.blockSize; childIdx++) {
+        this.dropNodeAt(listing, childIdx);
+      }
+      listing.blockUse.delete(block.start);
+    }
+  }
+
+  // Blocks in the viewport and one block either side: the flat window is widened by a block's
+  // worth of rows each way, which also reaches across a listing boundary (a parent's row above the
+  // first visible child, the next sibling group below the last).
+  private viewportBlocks(): Map<string, Set<number>> {
+    const offset = this.paginate ? this.viewStartRow : 0;
+    const window = this.renderedRange
+      ? { start: offset + this.renderedRange.start, end: offset + this.renderedRange.end }
+      : this.lastViewportRange ?? { start: offset, end: offset + this.blockSize };
+    return this.blocksInFlatRange(
+      Math.max(0, window.start - this.blockSize),
+      Math.max(window.start, window.end) + this.blockSize,
+    );
+  }
+
+  // Ids of rows whose child listing, or any listing below it, has a fetch in flight. Evicting such
+  // a row would drop the listing that fetch is filling.
+  private busyParents(): Set<string> {
+    const busy = new Set<string>();
+    for (const listing of this.listings.values()) {
+      if (listing.inFlight.size === 0) continue;
+      for (let id: string | undefined = listing.id || undefined; id && !busy.has(id);) {
+        busy.add(id);
+        id = this.nodesMap.get(id)?.parentId;
+      }
+    }
+    return busy;
+  }
+
+  private holdsLiveParent(listing: ChildListing<Row>, start: number, busy: Set<string>): boolean {
+    for (let childIdx = start; childIdx < start + this.blockSize; childIdx++) {
+      const node = listing.nodes.get(childIdx);
+      if (!node) continue;
+      if ((isExpandableNode(node) && node.isExpanded) || busy.has(node.id)) return true;
+    }
+    return false;
   }
 
   private toDisplayKey(value: any): string {
@@ -1269,8 +1420,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return aggregates;
   }
 
-  private getDefaultAggregateOp(col: { isComputableType(): boolean }): AggregateType {
-    return this.aggregateCalculator.getDefaultAggregateOp(col);
+  // The calculator has no registry here, so it trusts any name: the server computes aggregates.
+  private getDefaultAggregateOp(col: Column): AggregateKind {
+    return this.aggregateCalculator.getDefaultType(col);
   }
 
   private normalizeAggregateScope(scope: AggregateScope): AggregateScope {

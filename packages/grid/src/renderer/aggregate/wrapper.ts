@@ -1,5 +1,5 @@
 import { Column } from "../../column/column";
-import { AggregateType } from "../../interfaces/aggregate";
+import { AggregateKind, AggregateType, aggregateTypeLabel, isBuiltInAggregateType } from "../../interfaces/aggregate";
 import { markPresentational } from "../aria";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 
@@ -75,7 +75,7 @@ export class AggregateRowRenderer {
     onClose: (event: MouseEvent) => void,
     private onOpenAggregateMenu?: (
       column: Column,
-      activeType: AggregateType,
+      activeType: AggregateKind,
       anchorEl: HTMLElement,
     ) => void,
   ) {
@@ -106,10 +106,15 @@ export class AggregateRowRenderer {
     this.elements.row.style.maxHeight = `${rowHeight}px`;
   }
 
+  /**
+   * Paint one section's footer cells. `typeFor` is the function each column's cell shows — its
+   * entry in the aggregate model, else its default (`ColDef.aggFunc`, else sum/count): the same
+   * pick the computed value was made with, so the label never disagrees with the number.
+   */
   renderCells(
     cells: HTMLDivElement[],
     columns: Column[],
-    aggregateMap: Map<string, AggregateType>,
+    typeFor: (col: Column) => AggregateKind,
     values: Map<string, string>,
   ) {
     let idx = -1;
@@ -123,10 +128,8 @@ export class AggregateRowRenderer {
         cell.textContent = "";
         continue;
       }
-      const aggFn = aggregateMap.get(col.instanceID) || (col.isComputableType() ? AggregateType.SUM : AggregateType.COUNT);
-      const label = aggFn === AggregateType.DISTINCT_COUNT
-        ? "Distinct Count"
-        : aggFn[0].toUpperCase() + aggFn.substring(1);
+      const aggFn = typeFor(col);
+      const label = footerAggregateLabel(aggFn);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "pte-aggregate-menu-button";
@@ -140,11 +143,7 @@ export class AggregateRowRenderer {
 
       const icon = document.createElement("span");
       icon.className = "pte-aggregate-icon";
-      let suffix = "";
-      if ([AggregateType.MIN, AggregateType.MAX].includes(aggFn)) {
-        suffix = "-" + (col.isComputableType() ? "number" : "string");
-      }
-      icon.classList.add("icon-" + aggFn + suffix);
+      icon.classList.add(aggregateIconClass(aggFn, col.isComputableType()));
       button.appendChild(icon);
       cell.appendChild(button);
       const content = document.createElement("div");
@@ -156,4 +155,27 @@ export class AggregateRowRenderer {
       }
     }
   }
+}
+
+/**
+ * The footer's short name for an aggregate: the built-in type capitalised ("Avg", "First"), with
+ * distinct count spelled out; a custom function's name as given.
+ */
+function footerAggregateLabel(type: AggregateKind): string {
+  if (!isBuiltInAggregateType(type)) return type;
+  if (type === AggregateType.DISTINCT_COUNT) return aggregateTypeLabel(type);
+  return type[0].toUpperCase() + type.substring(1);
+}
+
+/**
+ * The footer button's icon class for an aggregate: `icon-<type>` for the built-ins (min/max split
+ * by whether they compare numbers or text), one generic `icon-agg-custom` for every custom name —
+ * a name is app text, not a class token.
+ */
+export function aggregateIconClass(type: AggregateKind, numeric: boolean): string {
+  if (!isBuiltInAggregateType(type)) return "icon-agg-custom";
+  if (type === AggregateType.MIN || type === AggregateType.MAX) {
+    return `icon-${type}-${numeric ? "number" : "string"}`;
+  }
+  return `icon-${type}`;
 }

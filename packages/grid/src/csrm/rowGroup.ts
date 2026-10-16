@@ -1,7 +1,7 @@
 import { Column } from "../column/column";
 import { IRowNode } from "../interfaces/iRowNode";
 import { SortModel } from "../interfaces/sort";
-import { GroupSortMode } from "../interfaces/gridOptions";
+import { GroupSortMode, GroupTotalRowPosition } from "../interfaces/gridOptions";
 
 // Placeholder group key used when a grouped column's value is null/undefined/empty.
 export const BLANK_GROUP_KEY = "(Blanks)";
@@ -22,6 +22,70 @@ export function groupKeyForValue(value: unknown): string {
 // collision with data-row ids.
 export function groupNodeId(path: string[]): string {
   return "g:" + path.map(encodeURIComponent).join("/");
+}
+
+// Footer ids hang a suffix off the group id. "#" is one of the characters encodeURIComponent always
+// escapes, so no group key can spell a suffix of its own and collide with a footer.
+/** Stable id of the footer (subtotal) row of the group whose id is `groupId`. */
+export function groupFooterNodeId(groupId: string): string {
+  return `${groupId}#footer`;
+}
+
+/** Stable id of the grand-total row (`grandTotalRow`). */
+export const GRAND_TOTAL_ROW_ID = "g:#grandTotal";
+
+/**
+ * The footer row of `group`: a synthetic, non-expandable group node at the group's level that
+ * repeats its key and shares its aggregate object (see `IRowNode.footer`). `parentId` is the group
+ * itself, not the group's parent, so everything that measures a group's block by ancestry — the
+ * sticky push-out above all — counts the footer as the block's last (or second) row.
+ */
+export function createGroupFooterNode<Row = any>(group: IRowNode<Row>): IRowNode<Row> {
+  return {
+    id: groupFooterNodeId(group.id),
+    data: { __group: true } as any,
+    viewIndex: -1,
+    selected: false,
+    type: "group",
+    isGroup: true,
+    footer: true,
+    groupNode: group,
+    level: group.level,
+    isExpanded: false,
+    expandable: false,
+    groupKey: group.groupKey,
+    groupValue: group.groupValue,
+    aggregateValues: group.aggregateValues,
+    parentId: group.id,
+  };
+}
+
+/** The root-level grand-total row, carrying the totals over every filtered leaf. */
+export function createGrandTotalNode<Row = any>(aggregateValues: IRowNode["aggregateValues"]): IRowNode<Row> {
+  return {
+    id: GRAND_TOTAL_ROW_ID,
+    data: { __group: true } as any,
+    viewIndex: -1,
+    selected: false,
+    type: "group",
+    isGroup: true,
+    footer: true,
+    grandTotal: true,
+    level: 0,
+    isExpanded: false,
+    expandable: false,
+    aggregateValues,
+  };
+}
+
+/** Where {@link flattenGroupTree} places footer rows; omitted = no footers. */
+export interface FlattenFooters<Row = any> {
+  /** Position of each expanded group's footer; undefined = no group footers. */
+  groupTotalRow?: GroupTotalRowPosition;
+  /** The footer node of a group (built once per tree rebuild, so its identity is stable). */
+  footerOf: (group: IRowNode<Row>) => IRowNode<Row> | undefined;
+  /** The grand-total row and where it goes; omitted = none. */
+  grandTotal?: { node: IRowNode<Row>; position: GroupTotalRowPosition };
 }
 
 export interface BuildGroupTreeParams<Row = any> {
@@ -199,17 +263,30 @@ export function buildGroupTree<Row = any>(params: BuildGroupTreeParams<Row>): Gr
 
 // Pre-order flatten of a group tree into the flat display list: each group node, then (if expanded)
 // its children. Collapsed subtrees are skipped. `viewIndex` is stamped as nodes are appended.
-export function flattenGroupTree<Row = any>(roots: IRowNode<Row>[]): IRowNode<Row>[] {
+// With `footers`, an expanded group's footer row goes directly under its header ("top") or after
+// its last visible descendant ("bottom"), and the grand total opens or closes the list. A collapsed
+// group shows no footer: its header row already carries the same totals.
+export function flattenGroupTree<Row = any>(roots: IRowNode<Row>[], footers?: FlattenFooters<Row>): IRowNode<Row>[] {
   const out: IRowNode<Row>[] = [];
+  const push = (node: IRowNode<Row>) => {
+    node.viewIndex = out.length;
+    out.push(node);
+  };
+  const position = footers?.groupTotalRow;
   const walk = (nodes: IRowNode<Row>[]) => {
     for (const node of nodes) {
-      node.viewIndex = out.length;
-      out.push(node);
+      push(node);
       if ((node.isGroup || node.isTreeData) && node.isExpanded && node.children) {
+        const footer = position && node.isGroup ? footers!.footerOf(node) : undefined;
+        if (footer && position === "top") push(footer);
         walk(node.children);
+        if (footer && position === "bottom") push(footer);
       }
     }
   };
+  const grandTotal = footers?.grandTotal;
+  if (grandTotal?.position === "top") push(grandTotal.node);
   walk(roots);
+  if (grandTotal?.position === "bottom") push(grandTotal.node);
   return out;
 }

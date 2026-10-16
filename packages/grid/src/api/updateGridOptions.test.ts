@@ -136,6 +136,12 @@ describe("api.updateGridOptions", () => {
     expect(api.getCore().getOptions().groupDisplayType).toBe("groupRows");
     expect(api.getCore().getOptions().groupRowsSelectable).toBe(true);
 
+    // groupSelectsChildren is live too: the core setter runs and the option reads back.
+    api.updateGridOptions({ groupSelectsChildren: true });
+    expect(api.getCore().getOptions().groupSelectsChildren).toBe(true);
+    api.updateGridOptions({ groupSelectsChildren: false });
+    expect(api.getCore().getOptions().groupSelectsChildren).toBe(false);
+
     api.updateGridOptions({ groupDisplayType: undefined });
     expect(api.getCore().getOptions().groupDisplayType).toBe("singleColumn");
 

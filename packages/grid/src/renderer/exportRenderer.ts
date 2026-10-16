@@ -235,7 +235,7 @@ export class ExportRenderer {
   private commonExportConfig(options: ExportOptions): Pick<
     ExportConfig,
     "columnIds" | "includeHeaders" | "processCellForExcel" | "columnTree" | "columnWidths" | "groupLabel"
-    | "groupCellValue" | keyof CsvWriteOptions
+    | "groupCellValue" | "aggFuncs" | keyof CsvWriteOptions
   > {
     return {
       columnIds: options.columnIds,
@@ -257,6 +257,8 @@ export class ExportRenderer {
       groupLabel: (node, rowCount) => this.params.core.getGroupRowLabel(node, rowCount),
       // Likewise the group cell value rule, for the header cells a `groupValueGetter` fills.
       groupCellValue: (col, node) => this.params.core.getGroupCellValue(col, node),
+      // Aggregate entries may name custom functions; the footer/subtotal cells compute them.
+      aggFuncs: this.params.core.getOptions().aggFuncs,
     };
   }
 

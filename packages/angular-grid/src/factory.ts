@@ -68,9 +68,13 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "pageSize", grid.pageSize());
   setIfDefined(options, "pageSizes", grid.pageSizes());
   setIfDefined(options, "serverSideBlockSize", grid.serverSideBlockSize());
+  setIfDefined(options, "serverSideMaxBlocks", grid.serverSideMaxBlocks());
   setIfDefined(options, "rowModelType", grid.rowModelType());
   setIfDefined(options, "getGroupChildCount", grid.getGroupChildCount());
   setIfDefined(options, "groupChildCount", grid.groupChildCount());
+  setIfDefined(options, "groupTotalRow", grid.groupTotalRow());
+  setIfDefined(options, "grandTotalRow", grid.grandTotalRow());
+  setIfDefined(options, "groupTotalRowLabel", grid.groupTotalRowLabel());
   setIfDefined(options, "paginationUnknownTotalTooltip", grid.paginationUnknownTotalTooltip());
   setIfDefined(options, "undoLimit", grid.undoLimit());
   setIfDefined(options, "editTrigger", grid.editTrigger());
@@ -90,6 +94,8 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "groupSortMode", grid.groupSortMode());
   setIfDefined(options, "treeData", grid.treeData());
   setIfDefined(options, "groupRowsSelectable", grid.groupRowsSelectable());
+  setIfDefined(options, "groupSelectsChildren", grid.groupSelectsChildren());
+  setIfDefined(options, "aggFuncs", grid.aggFuncs());
   setIfDefined(options, "isRowSelectable", grid.isRowSelectable());
   setIfDefined(options, "isRowPinned", grid.isRowPinned());
   setIfDefined(options, "groupRowsSticky", grid.groupRowsSticky());

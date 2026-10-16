@@ -4,11 +4,15 @@ import { AggregateModel, AggregateScope } from "../interfaces/aggregate";
 import { IRowModel, IRowModelRequestParams, RowDataChangeReason, RowDataDiff, RowModelType, RowTransaction, RowTransactionResult } from "../interfaces/iRowModel";
 import { createRowIdFactory, IRowNode } from "../interfaces/iRowNode";
 import { performFilter, performQuickFilter } from "../csrm/filter";
-import { GridOptions, GroupSortMode, QuickFilterMatchMode, TreeDataOptions } from "../interfaces/gridOptions";
+import {
+  GridOptions, GroupSortMode, GroupTotalRowPosition, QuickFilterMatchMode, TreeDataOptions,
+} from "../interfaces/gridOptions";
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
-import { buildGroupTree, flattenGroupTree } from "./rowGroup";
+import {
+  buildGroupTree, createGrandTotalNode, createGroupFooterNode, FlattenFooters, flattenGroupTree, groupFooterNodeId,
+} from "./rowGroup";
 import { buildTreeData, prepareTreeRows } from "./treeData";
 import { PivotRequestState } from "../interfaces/pivot";
 import {
@@ -35,7 +39,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private aggregates: AggregateModel[] = [];
   private leafColumns: Column[] = [];
   private aggregateValues: Map<string, any> = new Map();
-  private aggregateCalculator = new AggregateCalculator();
+  private aggregateCalculator: AggregateCalculator;
 
   // Quick-filter (global search) state. Applied as a second predicate ANDed with the column filters
   // inside applyFilters, so both the flat and grouped view paths pick it up. Empty text is a no-op.
@@ -67,6 +71,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   private pivotSignature = "";
   private groupRoots: IRowNode<Row>[] = [];
   private groupNodesMap: Map<string, IRowNode<Row>> = new Map();
+  // Footer rows (groupTotalRow / grandTotalRow), rebuilt with the tree so their identity holds
+  // across re-flattens. Keyed by footer id; never in groupNodesMap, which is the expandable set.
+  private groupTotalRow: GroupTotalRowPosition | undefined;
+  private grandTotalRow: GroupTotalRowPosition | undefined;
+  private footerNodesMap: Map<string, IRowNode<Row>> = new Map();
+  private grandTotalNode: IRowNode<Row> | null = null;
   private groupedFlatAll: IRowNode<Row>[] = [];
   private viewNodes: IRowNode<Row>[] = [];
   private readonly groupDefaultExpanded: number;
@@ -88,6 +98,10 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.hasStableRowId = opts.getRowId != null || opts.rowIdKey != null;
     this.groupDefaultExpanded = opts.groupDefaultExpanded ?? 0;
     this.treeData = opts.treeData as TreeDataOptions<Row> | undefined;
+    this.groupTotalRow = opts.groupTotalRow;
+    this.grandTotalRow = opts.grandTotalRow;
+    // Custom aggregate functions are creation-only, so the registry is fixed for the model's life.
+    this.aggregateCalculator = new AggregateCalculator(opts.aggFuncs ?? {});
   }
 
   private get grouped(): boolean {
@@ -322,6 +336,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   // groupExpansion, falling back to the default depth.
   private rebuildGroupTree(reuseDiscovery = false) {
     const leaves = this.sortedIdx.map(i => this.nodes[i]);
+    this.footerNodesMap = new Map();
+    this.grandTotalNode = null;
     if (this.pivot) {
       this.rebuildPivotTree(leaves, reuseDiscovery);
       return;
@@ -376,6 +392,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
     this.groupRoots = roots;
     this.groupNodesMap = groupNodesById;
+    this.rebuildFooterNodes(computeAggregates);
 
     // Drop expansion entries for groups that no longer exist to bound memory growth.
     if (this.groupExpansion.size > 0) {
@@ -460,11 +477,43 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
+  // Footer rows for the tree just built. Row grouping only: a tree-data parent is a data row (its
+  // own cells are data, not totals) and pivot mode has its own Total root. The grand total is
+  // computed over every filtered leaf — the footer aggregate row's "all" row set, whatever the
+  // page — with the same per-column rule as the group rows (configured aggregates only).
+  private rebuildFooterNodes(
+    computeAggregates: ((leaves: IRowNode<Row>[]) => { [key: string]: any } | undefined) | undefined,
+  ) {
+    this.footerNodesMap = new Map();
+    this.grandTotalNode = null;
+    if (this.treeData || this.pivot || this.groupRoots.length === 0) return;
+    if (this.groupTotalRow) {
+      for (const group of this.groupNodesMap.values()) {
+        const footer = createGroupFooterNode(group);
+        this.footerNodesMap.set(footer.id, footer);
+      }
+    }
+    if (this.grandTotalRow) {
+      const leaves = this.sortedIdx.map(i => this.nodes[i]);
+      this.grandTotalNode = createGrandTotalNode<Row>(computeAggregates?.(leaves));
+      this.footerNodesMap.set(this.grandTotalNode.id, this.grandTotalNode);
+    }
+  }
+
   // Flatten the group tree into the display list (pre-order, collapsed subtrees skipped), then apply
   // pagination. groupedFlatAll is the full flat list (used for pagination totals); viewNodes is the
   // paginated slice the viewport renders.
   private rebuildGroupedView() {
-    this.groupedFlatAll = flattenGroupTree(this.groupRoots);
+    const footers: FlattenFooters<Row> | undefined = this.footerNodesMap.size > 0
+      ? {
+          groupTotalRow: this.groupTotalRow,
+          footerOf: group => this.footerNodesMap.get(groupFooterNodeId(group.id)),
+          grandTotal: this.grandTotalNode && this.grandTotalRow
+            ? { node: this.grandTotalNode, position: this.grandTotalRow }
+            : undefined,
+        }
+      : undefined;
+    this.groupedFlatAll = flattenGroupTree(this.groupRoots, footers);
     this.sliceGroupedView();
   }
 
@@ -498,7 +547,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   getRowNode(id: string): IRowNode<Row> | undefined {
-    return this.nodesMap.get(id) ?? this.groupNodesMap.get(id);
+    return this.nodesMap.get(id) ?? this.groupNodesMap.get(id) ?? this.footerNodesMap.get(id);
   }
 
   getViewIndexInFullView(id: string): number | undefined {
@@ -655,6 +704,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     this.quickFilterColumns = params.quickFilterColumns?.slice() ?? null;
     this.sortModel = sortModel;
     this.groupSortMode = groupSortMode;
+    this.groupTotalRow = params.groupTotalRow;
+    this.grandTotalRow = params.grandTotalRow;
     if (params.quickFilter) {
       this.quickFilterText = params.quickFilter.text;
       this.quickFilterMatchMode = params.quickFilter.matchMode;
@@ -707,6 +758,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         for (const node of this.nodes) delete node.parentId;
         this.groupRoots = [];
         this.groupNodesMap = new Map();
+        this.footerNodesMap = new Map();
+        this.grandTotalNode = null;
         this.groupedFlatAll = [];
         this.viewNodes = [];
         this.rebuildView();
@@ -752,6 +805,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   destroy(): void {
     this.nodesMap.clear();
     this.groupNodesMap.clear();
+    this.footerNodesMap.clear();
     this.groupExpansion.clear();
     this.warnedMissingTreeParents.clear();
   }
@@ -778,6 +832,8 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       // produced, and the pivot tree never reads them anyway.
       this.pivot ? "" : columnSignature(this.leafColumns),
       this.aggregates.map(a => `${a.key}:${a.type}`).join(","),
+      // Footers are built with the tree, so a footer option change is a tree change.
+      `${this.groupTotalRow ?? ""}:${this.grandTotalRow ?? ""}`,
       this.pivotStateSignature(),
     ].join("\u0000");
   }

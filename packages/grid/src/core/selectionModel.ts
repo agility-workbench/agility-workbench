@@ -4,6 +4,14 @@ import { GridId } from "../interfaces/iGridCore";
 import { IRowModel } from "../interfaces/iRowModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 
+/**
+ * The derived check state of a row that selects as a subtree under `groupSelectsChildren` (a
+ * group row or a tree parent): every selectable row in it selected ("all"), part of them
+ * ("some"), none ("none"), or there is nothing selectable in it ("empty" — the checkbox is
+ * disabled).
+ */
+export type SubtreeSelectionState = "all" | "some" | "none" | "empty";
+
 export type NavDir = "up" | "down" | "left" | "right";
 /**
  * Step size for navigate():
@@ -26,6 +34,20 @@ interface SelectionModelDeps {
   // also drives navigation: an app-disabled row (GridOptions.isRowSelectable → false) stays a
   // cursor stop but is refused by every row-selection mutation. Falls back to isRowSelectable.
   isRowCheckable?: (viewIdx: number) => boolean;
+  /**
+   * The row ids a row-check gesture on `viewIdx` stands for, when that row selects as a subtree
+   * (`groupSelectsChildren`: a group row's checkable descendant leaves; a tree parent itself plus
+   * its checkable descendants). Null means the row is checked as itself — every row when the
+   * option is off. An empty array is a parent with nothing checkable under it: the gesture no-ops.
+   * Never consulted for navigation; isRowSelectable keeps that job alone.
+   */
+  getRowSelectionTargets?: (viewIdx: number) => string[] | null;
+  /**
+   * A body row that is not a cursor stop (isRowSelectable → false) but whose CHECKBOX cell is:
+   * a group row whose checkbox toggles its subtree. Vertical moves in the checkbox column stop on
+   * it, and the cursor cannot leave the checkbox cell sideways on such a row.
+   */
+  isCheckboxRowStop?: (viewIdx: number) => boolean;
   // Row-number cells are keyboard stops only while row selection is enabled. Keep this dynamic so
   // a framework wrapper can change rowSelection without rebuilding the core/selection model.
   isRowNumberNavigable?: () => boolean;
@@ -174,7 +196,7 @@ export class SelectionModel {
         return from;
       }
       if (!from.rowPinned) {
-        const previous = this.nearestSelectableRow(from.row - 1, -1);
+        const previous = this.nearestSelectableRow(from.row - 1, -1, from.colIdx);
         if (from.row > 0 && previous < from.row) return { row: previous, colIdx: from.colIdx };
         if (topCount > 0) return { row: topCount - 1, colIdx: from.colIdx, rowPinned: "top" };
         return from;
@@ -189,7 +211,7 @@ export class SelectionModel {
       return from;
     }
     if (!from.rowPinned) {
-      const next = this.nearestSelectableRow(from.row + 1, 1);
+      const next = this.nearestSelectableRow(from.row + 1, 1, from.colIdx);
       if (from.row + 1 < bodyCount && next > from.row) return { row: next, colIdx: from.colIdx };
       if (bottomCount > 0) return { row: 0, colIdx: from.colIdx, rowPinned: "bottom" };
       return from;
@@ -669,17 +691,29 @@ export class SelectionModel {
   // Scans in `preferDir` first (+1 down / -1 up), then the opposite direction as a fallback, so a
   // move never lands on a skipped row and never gets stuck. Returns the original row if nothing is
   // selectable (degenerate — all rows skipped).
-  private nearestSelectableRow(target: number, preferDir: 1 | -1): number {
+  // `colIdx`, when given, is the column the cursor moves in: in the checkbox column a row whose
+  // checkbox selects its subtree is a stop too (isCheckboxRowStop), though its other cells are not.
+  private nearestSelectableRow(target: number, preferDir: 1 | -1, colIdx?: number): number {
     const maxRow = this.maxRow();
     if (maxRow < 0) return target;
     const clamped = Math.min(Math.max(target, 0), maxRow);
-    if (this.deps.isRowSelectable(clamped)) return clamped;
+    const checkboxColumn = colIdx != null && this.isCheckboxColumn(this.leafColumns()[colIdx]);
+    const isStop = (row: number) => this.deps.isRowSelectable(row)
+      || (checkboxColumn && !!this.deps.isCheckboxRowStop?.(row));
+    if (isStop(clamped)) return clamped;
     for (const dir of [preferDir, -preferDir as 1 | -1]) {
       for (let r = clamped + dir; r >= 0 && r <= maxRow; r += dir) {
-        if (this.deps.isRowSelectable(r)) return r;
+        if (isStop(r)) return r;
       }
     }
     return clamped;
+  }
+
+  // A body row the cursor may hold only in its checkbox cell (see isCheckboxRowStop).
+  private isCheckboxOnlyStop(position: CellPos): boolean {
+    return !position.rowPinned
+      && !this.deps.isRowSelectable(position.row)
+      && !!this.deps.isCheckboxRowStop?.(position.row);
   }
 
   // Move the active cell to (row, col): extend the range from the existing anchor, or collapse
@@ -691,6 +725,9 @@ export class SelectionModel {
   private moveActiveToPosition(position: CellPos, extend: boolean): CellPos | null {
     const column = this.leafColumns()[position.colIdx];
     const utilityTarget = this.isRowNumberColumn(column) || this.isCheckboxColumn(column);
+    // A group row reached through its checkbox cell is not a cell-selection target: the cursor
+    // stays put rather than stepping onto its data or row-number cells.
+    if (!this.isCheckboxColumn(column) && this.isCheckboxOnlyStop(position)) return this.active;
     if (extend) {
       // Utility cells can hold the cursor but never belong to a data-cell range. A range gesture
       // stops at their boundary; plain navigation can still enter them.
@@ -897,22 +934,30 @@ export class SelectionModel {
     return (this.deps.isRowCheckable ?? this.deps.isRowSelectable)(viewIdx);
   }
 
+  // The ids a check gesture on `viewIdx` adds or removes: the row's subtree when it selects as one
+  // (groupSelectsChildren), else the row itself while it is checkable. Empty = nothing to do.
+  private rowTargets(viewIdx: number): string[] {
+    const subtree = this.deps.getRowSelectionTargets?.(viewIdx);
+    if (subtree) return subtree;
+    if (!this.isRowCheckable(viewIdx)) return [];
+    const id = this.deps.getRowIdAtViewIndex(viewIdx);
+    return id ? [id] : [];
+  }
+
   toggleRow(viewIdx: number, mode: "replace" | "toggle" | "range" | "rangeAdd") {
-    if (!this.isRowCheckable(viewIdx)) return;
-    const rowId = this.deps.getRowIdAtViewIndex(viewIdx);
-    if (!rowId) return;
+    const targets = this.rowTargets(viewIdx);
+    if (targets.length === 0) return;
 
     // "range" replaces the selection with anchor..row (Excel-style, the row-number gesture);
-    // "rangeAdd" unions it in (checkbox-style — shift-click never clears the rest).
+    // "rangeAdd" unions it in (checkbox-style — shift-click never clears the rest). A subtree row
+    // inside the range contributes its whole subtree, collapsed descendants included.
     if ((mode === "range" || mode === "rangeAdd") && this.rowAnchorViewIdx != null) {
       const anchorIdx = this.rowAnchorViewIdx;
       const start = Math.min(anchorIdx, viewIdx);
       const end = Math.max(anchorIdx, viewIdx);
       if (mode === "range") this.selectedRowIds.clear();
       for (let i = start; i <= end; i++) {
-        if (!this.isRowCheckable(i)) continue;
-        const id = this.deps.getRowIdAtViewIndex(i);
-        if (id) this.selectedRowIds.add(id);
+        for (const id of this.rowTargets(i)) this.selectedRowIds.add(id);
       }
       this.clearRange();
       this.clearColumns();
@@ -920,10 +965,12 @@ export class SelectionModel {
     }
 
     if (mode === "toggle") {
-      if (this.selectedRowIds.has(rowId)) {
-        this.selectedRowIds.delete(rowId);
-      } else {
-        this.selectedRowIds.add(rowId);
+      // One row is a plain flip; a subtree fills when any of it is unselected and clears when all
+      // of it is selected, so a partial group's first click completes it.
+      const allSelected = targets.every(id => this.selectedRowIds.has(id));
+      for (const id of targets) {
+        if (allSelected) this.selectedRowIds.delete(id);
+        else this.selectedRowIds.add(id);
       }
       this.rowAnchorViewIdx = viewIdx;
       this.clearRange();
@@ -931,7 +978,7 @@ export class SelectionModel {
       return;
     }
 
-    this.replaceRow(rowId, viewIdx);
+    this.replaceRows(targets, viewIdx);
   }
 
   /**
@@ -980,11 +1027,13 @@ export class SelectionModel {
     return selectable > 0;
   }
 
-  private replaceRow(rowId: string, viewIdx: number) {
-    const wasOnlySelected = this.selectedRowIds.size === 1 && this.selectedRowIds.has(rowId);
+  // Replace the selection with `rowIds`; replacing with exactly what is already selected clears it.
+  private replaceRows(rowIds: string[], viewIdx: number) {
+    const wasOnlySelected = this.selectedRowIds.size === new Set(rowIds).size
+      && rowIds.every(id => this.selectedRowIds.has(id));
     this.selectedRowIds.clear();
     if (!wasOnlySelected) {
-      this.selectedRowIds.add(rowId);
+      for (const id of rowIds) this.selectedRowIds.add(id);
       this.rowAnchorViewIdx = viewIdx;
     } else {
       this.rowAnchorViewIdx = null;

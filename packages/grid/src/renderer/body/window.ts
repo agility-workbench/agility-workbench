@@ -54,6 +54,9 @@ export class BodyWindowRenderer {
     );
     const endIndex = Math.min(total, startIndex + rowPool.length);
 
+    // The drawn window, so a capped server-side cache protects what is on screen even while no
+    // row in it is missing (it otherwise learns the viewport only from missing-row requests).
+    this.params.core.noteRenderedRowRange(startIndex, endIndex);
     this.requestMissingServerSideRows(startIndex, endIndex, total);
 
     // Scrolling within a row only moves the sections; the pooled rows still hold the right nodes, so
@@ -178,7 +181,7 @@ export class BodyWindowRenderer {
       const fullWidth = this.params.core.isFullWidthNode(row);
       if (fullWidth) {
         // Full-width rows own their layout: no per-column cells, one host cell spanning the body.
-        this.applyFullWidthLayout(slot, row);
+        this.applyFullWidthLayout(slot, row, viewIndex);
         this.params.renderFullWidthCell(slot, row, viewIndex, rowNumber, rowPresentation);
       } else {
         this.applyFullWidthLayout(slot, null);
@@ -220,7 +223,7 @@ export class BodyWindowRenderer {
   // host, and tags the center row. Group rows are constrained to the center columns' total width;
   // user-defined full-width rows continue to span the visible center body. Passing `null` reverses
   // all of that so a recycled slot returns to normal per-column rendering with the correct width.
-  private applyFullWidthLayout(slot: RowPoolDef, row: IRowNode | null) {
+  private applyFullWidthLayout(slot: RowPoolDef, row: IRowNode | null, viewIndex?: number) {
     if (row) {
       // Only on the transition into full-width layout: the hidden cells below the host would
       // otherwise keep the previous leaf's renderer instances alive. A slot already full-width
@@ -249,20 +252,38 @@ export class BodyWindowRenderer {
         delete slot.fullWidthCellEl.dataset.colIdx;
         delete slot.fullWidthCellEl.dataset.colId;
       }
-      // The host is now the row's only visible cell: it spans the full ARIA column range.
-      slot.fullWidthCellEl.setAttribute("aria-colindex", "1");
-      slot.fullWidthCellEl.setAttribute("aria-colspan", String(this.params.core.getColumnModel().leafColumnLookup.size));
+      // A group row whose checkbox selects its subtree (groupSelectsChildren) keeps that checkbox:
+      // it is the row's only selection control. The selection renderer paints its tri-state and a
+      // click routes by the fragment's data-view-idx like any checkbox cell.
+      const keepCheckbox = row.isGroup && viewIndex != null && this.params.core.isSubtreeSelectionRow(viewIndex);
       // The pinned/leading fragments keep their place and height: the sections lay their rows out
       // in flow, so removing a fragment would lift every pinned row below it by one row (A3.13).
-      // Their cells are hidden instead, so no pinned value bleeds through beside the host, and the
-      // blank fragment is hidden from AT (the host already spans the whole ARIA column range).
+      // Their cells are hidden instead, so no pinned value bleeds through beside the host, and a
+      // blank fragment is hidden from AT (the host already spans the whole ARIA column range). A
+      // checkbox in the centre section stays under the host: only a pinned one can be kept.
       const rowHeight = `${this.params.rowHeight()}px`;
+      let checkboxKept = false;
       for (const [el, cells] of this.pinnedFragments(slot)) {
         el.classList.add(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);
-        el.setAttribute("aria-hidden", "true");
         el.style.height = rowHeight;
-        for (const cell of cells) cell.style.display = "none";
+        // A fragment holding the kept checkbox keeps its other cells' boxes, invisible, so the
+        // checkbox stays in its column's x position (display: none would slide it left).
+        const exposed = keepCheckbox && cells.some(cell => cell.classList.contains("pte-checkbox-cell"));
+        for (const cell of cells) {
+          const isCheckbox = cell.classList.contains("pte-checkbox-cell");
+          cell.style.display = exposed ? "" : "none";
+          cell.style.visibility = exposed && !isCheckbox ? "hidden" : "";
+        }
+        if (exposed) el.removeAttribute("aria-hidden");
+        else el.setAttribute("aria-hidden", "true");
+        checkboxKept ||= exposed;
       }
+      // The host spans the full ARIA column range — or, beside a kept checkbox, the range after it.
+      const columnCount = this.params.core.getColumnModel().leafColumnLookup.size;
+      const checkboxIndex = checkboxKept ? this.checkboxColumnIndex() : null;
+      const hostStart = checkboxIndex != null ? checkboxIndex + 1 : 0;
+      slot.fullWidthCellEl.setAttribute("aria-colindex", String(hostStart + 1));
+      slot.fullWidthCellEl.setAttribute("aria-colspan", String(Math.max(1, columnCount - hostStart)));
       return;
     }
 
@@ -281,10 +302,21 @@ export class BodyWindowRenderer {
       el.classList.remove(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);
       el.removeAttribute("aria-hidden");
       // patchSection re-hides any colSpan-covered cell on the next patch.
-      for (const cell of cells) cell.style.display = "";
+      for (const cell of cells) {
+        cell.style.display = "";
+        cell.style.visibility = "";
+      }
     }
     slot.rowEl.style.width = `${this.centerTotalWidth()}px`;
     // Section-row display is owned by showSlot/hideSlot; full-width layout never changes it.
+  }
+
+  // Global leaf index of the row-selection checkbox column, or null when there is none.
+  private checkboxColumnIndex(): number | null {
+    const model = this.params.core.getColumnModel();
+    const col = model.getLeaves().find(leaf => leaf.isSelectionCheckboxColumn());
+    const meta = col ? model.leafColumnLookup.get(col.instanceID) : undefined;
+    return meta ? meta.globalIndex : null;
   }
 
   private pinnedFragments(slot: RowPoolDef): Array<[HTMLDivElement, HTMLDivElement[]]> {
@@ -316,11 +348,15 @@ export class BodyWindowRenderer {
 
   // Mark a slot as a group row (or clear the mark) across all four section row elements, and stamp
   // the group id so the chevron click handler can resolve which group to toggle.
+  // Footer rows (groupTotalRow / grandTotalRow) are group rows too, and carry their own classes
+  // for the theme's subtotal treatment.
   private markGroupRow(slot: RowPoolDef, row: IRowNode) {
     const isGroup = !!row.isGroup;
     for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
       if (!el) continue;
       el.classList.toggle("pte-group-row", isGroup);
+      el.classList.toggle("pte-row-footer", !!row.footer);
+      el.classList.toggle("pte-row-grand-total", !!row.grandTotal);
       if (isGroup) el.setAttribute("data-group-id", row.id);
       else el.removeAttribute("data-group-id");
     }
@@ -407,7 +443,7 @@ export class BodyWindowRenderer {
       // blank slot keeps claiming to be an expanded group.
       element.removeAttribute("aria-expanded");
       element.removeAttribute("aria-level");
-      element.classList.remove("pte-group-row");
+      element.classList.remove("pte-group-row", "pte-row-footer", "pte-row-grand-total");
     }
   }
 

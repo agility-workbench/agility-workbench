@@ -13,6 +13,9 @@ const EMPTY: GroupCellValue = { value: undefined, formatted: "" };
  * (whose `data` and colId-keyed `aggregates` depend on the row model and column model).
  */
 export type GroupCellValueResolvers = {
+  /** Whether `col` is the column that holds `node`'s label. Defaults to the auto-group / tree
+   * column and the level's own column; the core widens it for footers under "groupRows". */
+  isLabelColumn?: (col: Column, node: IRowNode) => boolean;
   groupLabel: (node: IRowNode) => string;
   groupValueParams: (node: IRowNode) => GroupValueGetterParams;
 };
@@ -33,9 +36,18 @@ export function groupCellValue(
   resolvers: GroupCellValueResolvers,
 ): GroupCellValue {
   if (!node.isGroup) return { ...EMPTY };
+  const isLabelColumn = resolvers.isLabelColumn
+    ? resolvers.isLabelColumn(col, node)
+    : col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level;
+  // A footer's label column always shows the label: under "groupRows" that column is an ordinary
+  // data column which may carry an aggregate, and a footer row with no "Total …" reads as a group.
+  if (node.footer && isLabelColumn) {
+    const label = resolvers.groupLabel(node);
+    return { value: label, formatted: label };
+  }
   const agg = node.aggregateValues?.[col.instanceID];
   if (agg != null && agg !== "") return { value: agg, formatted: col.formatValue(agg, node) };
-  if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level) {
+  if (isLabelColumn) {
     const label = resolvers.groupLabel(node);
     return { value: label, formatted: label };
   }

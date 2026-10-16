@@ -6,6 +6,7 @@ import {
   type ColumnPanelTrigger,
   type GroupDisplayType,
   type GroupSortMode,
+  type GroupTotalRowPosition,
   type IGridAPI,
   type NgColDef,
 } from "@agility-workbench/angular-grid";
@@ -128,6 +129,21 @@ function colInstance(api: IGridAPI, colId: string): string {
         </select>
       </label>
 
+      <!-- Footer (subtotal) rows per expanded group, and one grand-total row at the end. -->
+      <label class="grouping-check">
+        Group footers
+        <select [value]="groupTotalRow() ?? 'none'" (change)="onGroupTotalRowChange($event)">
+          <option value="none">None</option>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+        </select>
+      </label>
+
+      <label class="grouping-check">
+        <input type="checkbox" [checked]="grandTotal()" (change)="onGrandTotalChange($event)" />
+        Grand total
+      </label>
+
       <button class="btn" type="button" (click)="clearGrouping()">Clear grouping</button>
     </div>
 
@@ -152,6 +168,8 @@ function colInstance(api: IGridAPI, colId: string): string {
         [groupDefaultExpanded]="1"
         [groupSortMode]="groupSortMode()"
         [groupRowsSelectable]="groupRowsSelectable()"
+        [groupTotalRow]="groupTotalRow()"
+        [grandTotalRow]="grandTotal() ? 'bottom' : undefined"
         [columnPanel]="columnPanel()"
         (gridReady)="onReady($event)"
       />
@@ -205,6 +223,8 @@ export class GroupingDemoComponent {
   readonly aggregate = signal(true);
   readonly groupRowsSelectable = signal(true);
   readonly groupSortMode = signal<GroupSortMode>("local");
+  readonly groupTotalRow = signal<GroupTotalRowPosition | undefined>(undefined);
+  readonly grandTotal = signal(false);
   readonly columnPanelTrigger = signal<ColumnPanelTrigger>("rail");
   readonly columnPanel = computed(() => ({ trigger: this.columnPanelTrigger() }));
 
@@ -240,6 +260,15 @@ export class GroupingDemoComponent {
 
   onColumnPanelTriggerChange(event: Event): void {
     this.columnPanelTrigger.set((event.target as HTMLSelectElement).value as ColumnPanelTrigger);
+  }
+
+  onGroupTotalRowChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.groupTotalRow.set(value === "none" ? undefined : value as GroupTotalRowPosition);
+  }
+
+  onGrandTotalChange(event: Event): void {
+    this.grandTotal.set((event.target as HTMLInputElement).checked);
   }
 
   onGroupRowsSelectableChange(event: Event): void {

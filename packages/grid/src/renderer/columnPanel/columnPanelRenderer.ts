@@ -8,11 +8,11 @@ import {
   isColumnPanelAvailable,
   resolveColumnPanelOptions,
 } from "../../interfaces/gridOptions";
-import { AggregateType } from "../../interfaces/aggregate";
+import { AggregateKind, aggregateTypeLabel } from "../../interfaces/aggregate";
 import { MenuItem } from "../../interfaces/menuItem";
 import { Unsubscribe } from "../../events/events";
 import { MenuCoordinator } from "../../menu/coordinator";
-import { AggregateChoice, AGGREGATE_TYPE_LABELS } from "../../menu/columnMenuService";
+import { AggregateChoice } from "../../menu/columnMenuService";
 import { ColumnMenuContext } from "../../menu/context";
 import { MenuRenderer } from "../menuRenderer";
 import {
@@ -729,7 +729,7 @@ export class ColumnPanelRenderer {
 
     for (const entry of core.getAggregateModel()) {
       if (entry.key !== col.instanceID) continue;
-      const typeLabel = AGGREGATE_TYPE_LABELS[entry.type] ?? entry.type;
+      const typeLabel = aggregateTypeLabel(entry.type);
       strip.appendChild(this.roleChip(
         typeLabel,
         `Remove ${typeLabel} aggregate from ${col.label}`,
@@ -770,7 +770,7 @@ export class ColumnPanelRenderer {
   }
 
   /** Retype one Values entry in place, keeping its position in the generated column order. */
-  private setValueRoleType(index: number, type: AggregateType): void {
+  private setValueRoleType(index: number, type: AggregateKind): void {
     const model = this.params.core.getAggregateModel();
     const entry = model[index];
     if (!entry || entry.type === type) return;
@@ -783,14 +783,14 @@ export class ColumnPanelRenderer {
         at === index || other.key !== retyped.key || other.type !== retyped.type);
     this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
     const label = this.params.core.getColumnModel().getById(entry.key)?.label ?? entry.key;
-    this.announce(`${label} aggregate changed to ${AGGREGATE_TYPE_LABELS[type] ?? type}`);
+    this.announce(`${label} aggregate changed to ${aggregateTypeLabel(type)}`);
   }
 
-  private removeValueRole(col: Column, type: AggregateType): void {
+  private removeValueRole(col: Column, type: AggregateKind): void {
     const next = this.params.core.getAggregateModel()
       .filter(entry => !(entry.key === col.instanceID && entry.type === type));
     this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
-    this.announce(`${AGGREGATE_TYPE_LABELS[type] ?? type} aggregate removed from ${col.label}`);
+    this.announce(`${aggregateTypeLabel(type)} aggregate removed from ${col.label}`);
   }
 
   /**
@@ -891,7 +891,7 @@ export class ColumnPanelRenderer {
         addLabel: "Add value",
         entries: core.getAggregateModel().map((entry, index) => {
           const col = core.getColumnModel().getById(entry.key);
-          const typeLabel = AGGREGATE_TYPE_LABELS[entry.type] ?? entry.type;
+          const typeLabel = aggregateTypeLabel(entry.type);
           // Nothing to pick from when the column admits a single type — the row stays a plain label.
           const choices = col ? this.params.menuCoordinator.getAggregateChoices(col.instanceID) : [];
           return {
@@ -1082,18 +1082,18 @@ export class ColumnPanelRenderer {
     anchorEl: HTMLElement,
     index: number,
     col: Column,
-    current: AggregateType,
+    current: AggregateKind,
     choices: AggregateChoice[],
   ): void {
     const items: MenuItem[] = choices.map(choice => ({
       id: choice.id,
-      label: AGGREGATE_TYPE_LABELS[choice.type] ?? choice.type,
+      label: aggregateTypeLabel(choice.type),
       ...(choice.icon ? { left: choice.icon } : {}),
       ...(choice.type === current ? { right: "icon-check" } : {}),
       payload: { agg: choice.type },
     }));
     this.openWellMenu(anchorEl, `Aggregate function for ${col.label}`, items, (item) => {
-      const type = item.payload?.agg as AggregateType | undefined;
+      const type = item.payload?.agg as AggregateKind | undefined;
       if (type) this.setValueRoleType(index, type);
     });
   }

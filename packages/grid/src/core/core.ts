@@ -5,7 +5,8 @@ import { Column } from "../column/column";
 import { ClientSideRowModel } from "../csrm/clientSide";
 import { ServerSideRowModel } from "../ssrm/serverSide";
 import { nextSortDir, SortItem, SortItemUpdate, SortModel } from "../interfaces/sort";
-import { AggregateModel, AggregateScope, AggregateType, ColumnAggregate } from "../interfaces/aggregate";
+import { AggregateKind, AggregateModel, AggregateScope, ColumnAggregate } from "../interfaces/aggregate";
+import { AggregateRegistry, defaultAggregateType, isKnownAggregateType } from "../aggregate/calculator";
 import { isPivotResultColId, parsePivotLeafColId, PivotDiscovery, PivotResolution, PivotResultColumnDescriptor, PivotValueEntry } from "../interfaces/pivot";
 import { buildPivotResultColDefs } from "../column/pivotResultColumns";
 import {
@@ -13,6 +14,7 @@ import {
   GridOptions,
   GroupDisplayType,
   GroupSortMode,
+  GroupTotalRowPosition,
   InternalGridOptions,
   QuickFilterBehavior,
   QuickFilterMatchMode,
@@ -48,7 +50,7 @@ import { IColumnModel } from "../interfaces/iColumnModel";
 import { COLUMN_CHANGE_ACTION_TYPES, GridAction } from "../events/action";
 import { IRowModelOnAggregatesParams, IRowModelOnRowsParams } from "@grid/interfaces/iRowModelListener";
 import { IServerSideDataSource } from "../interfaces/serverSide";
-import { SelectionModel } from "./selectionModel";
+import { SelectionModel, SubtreeSelectionState } from "./selectionModel";
 import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
 import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChangedParams } from "../events/events";
@@ -70,6 +72,12 @@ interface PendingRowTransactionCall {
 }
 
 const DEFAULT_ASYNC_TRANSACTION_WAIT_MS = 16;
+
+// Footer-row positions: anything other than "top" / "bottom" (a JavaScript caller's typo, null)
+// means no footer rather than a footer in some fallback place.
+function resolveGroupTotalRowPosition(value: unknown): GroupTotalRowPosition | undefined {
+  return value === "top" || value === "bottom" ? value : undefined;
+}
 
 function resolveAsyncTransactionWaitMs(value: number | undefined): number {
   return value != null && Number.isFinite(value) && value >= 0
@@ -188,6 +196,11 @@ export class GridCore implements IGridCore {
 
   private aggregateScope: AggregateScope = "none";
   private aggregates: AggregateModel[] = [];
+  // One-time seeding of the aggregate model from ColDef.aggFunc (like initialSortSeeded).
+  private aggFuncSeeded = false;
+  // Aggregate configuration warnings already printed (unknown names, aggFunc on a non-aggregatable
+  // column), so a repeated setAggregates or colDef swap does not repeat them.
+  private readonly aggregateWarnings = new Set<string>();
 
   // Pivot state. `pivotColumns` persists while pivot mode is off (it applies when the mode turns
   // on). Client-side row model only.
@@ -226,6 +239,14 @@ export class GridCore implements IGridCore {
   private selectionModel: SelectionModel;
   /** Baseline for the row-id delta attached to selectionChanged events. */
   private lastEmittedSelectedRowIds = new Set<GridId>();
+  /**
+   * groupSelectsChildren paint caches: a parent row's derived check state by row id, and the
+   * filtered-in data row ids tree data needs to tell a matching parent from one kept only as the
+   * ancestor of a match. Both are read on the paint hot path; cleared on every selection emit and
+   * on any row / cell change (see invalidateGroupSelectionCaches).
+   */
+  private groupSelectionStateCache = new Map<string, SubtreeSelectionState>();
+  private filteredRowIdCache: Set<string> | null = null;
   private history: HistoryModel;
 
   // The cell currently being edited (inline editor open), or null when not editing.
@@ -272,6 +293,7 @@ export class GridCore implements IGridCore {
     this.rowModel = options.rowModelType === "serverSide"
       ? new ServerSideRowModel(options, this, options.serverSideDataSource, options.serverSideAggregationSource)
       : new ClientSideRowModel(options, this);
+    this.warnFooterRowsOnServerSide();
     this.paginationEnabled = this.options.pagination;
     this.pageEndIdx = this.options.pageSize;
     this.pageSizes = this.options.pageSizes;
@@ -297,11 +319,16 @@ export class GridCore implements IGridCore {
       getPageStartIdx: () => this.getPageStartIdx(),
       isRowSelectable: (viewIdx) => this.isViewRowSelectable(viewIdx),
       isRowCheckable: (viewIdx) => this.isViewRowCheckable(viewIdx),
+      getRowSelectionTargets: (viewIdx) => this.getRowSelectionTargetsAtViewIndex(viewIdx),
+      isCheckboxRowStop: (viewIdx) => this.isSubtreeSelectionRow(viewIdx),
       isRowNumberNavigable: () => this.options.rowSelection,
       getPinnedRowCount: (position) => this.displayedPinnedRows[position].length,
       getPinnedRowNode: (position, rowIndex) =>
         this.displayedPinnedRows[position][rowIndex] ?? null,
     });
+    // Registered first, so the caches are dropped before any renderer handler repaints from them.
+    this.on("rowsChanged", () => this.invalidateGroupSelectionCaches());
+    this.on("cellsChanged", () => this.invalidateGroupSelectionCaches());
     this.bindOptionCallbacks();
   }
 
@@ -438,6 +465,8 @@ export class GridCore implements IGridCore {
       pageSize,
       pageSizes,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
+      serverSideMaxBlocks: options.serverSideMaxBlocks,
+      aggFuncs: options.aggFuncs ?? {},
       getGroupChildCount: options.getGroupChildCount,
       groupChildCount: options.groupChildCount ?? true, // true (row count) | false | getter
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
@@ -471,6 +500,10 @@ export class GridCore implements IGridCore {
       // Keep runtime keyboard-mode changes internal; never mutate the client's treeData object.
       treeData: resolveTreeDataOption(options),
       groupRowsSelectable: options.groupRowsSelectable ?? false,
+      groupSelectsChildren: options.groupSelectsChildren ?? false,
+      groupTotalRow: resolveGroupTotalRowPosition(options.groupTotalRow),
+      grandTotalRow: resolveGroupTotalRowPosition(options.grandTotalRow),
+      groupTotalRowLabel: options.groupTotalRowLabel,
       isRowSelectable: options.isRowSelectable,
       isRowPinned: options.isRowPinned,
       groupRowsSticky: options.groupRowsSticky ?? false,
@@ -770,8 +803,83 @@ export class GridCore implements IGridCore {
   }
 
   private reconcileAggregateModelColumns(): void {
+    this.validateColumnAggFuncs();
+    if (this.seedAggregatesFromColDefs()) return;
     if (this.aggregates.length === 0) return;
     this.aggregates = this.resolveAggregateModels(this.aggregates);
+  }
+
+  /**
+   * The custom aggregate functions names are checked against. The server-side row model's server
+   * computes every aggregate, so there the client trusts any name (see isKnownAggregateType).
+   */
+  private getAggregateRegistry(): AggregateRegistry | undefined {
+    return this.rowModel.getType() === "serverSide" ? undefined : this.options.aggFuncs;
+  }
+
+  /**
+   * A column's default aggregate function — `ColDef.aggFunc` when usable, else sum for numeric
+   * columns and count otherwise. The single resolver behind the footer cell, the aggregate menu's
+   * current function and the fallback for an unknown name.
+   */
+  getDefaultAggregateType(col: Column): AggregateKind {
+    return defaultAggregateType(col, this.getAggregateRegistry());
+  }
+
+  private warnAggregateOnce(key: string, message: string): void {
+    if (this.aggregateWarnings.has(key)) return;
+    this.aggregateWarnings.add(key);
+    console.warn(message);
+  }
+
+  // Warn (once each) about ColDef.aggFunc values defaultAggregateType will ignore: a name that is
+  // neither built in nor registered, and an aggFunc on a column that opted out of aggregation.
+  private validateColumnAggFuncs(): void {
+    const registry = this.getAggregateRegistry();
+    for (const col of this.columnModel.getLeaves()) {
+      const name = col.aggFunc;
+      if (name == null || col.isInternal()) continue;
+      if (!col.aggregatable) {
+        this.warnAggregateOnce(
+          `aggregatable:${col.colId}`,
+          `Column "${col.colId}" sets aggFunc "${name}" but is not aggregatable; aggFunc is ignored.`,
+        );
+      } else if (!isKnownAggregateType(name, registry)) {
+        this.warnAggregateOnce(
+          `aggFunc:${name}`,
+          `Unknown aggregate function "${name}" (ColDef.aggFunc on "${col.colId}"): it is neither a ` +
+          "built-in type nor a key of GridOptions.aggFuncs; the column's default is used instead.",
+        );
+      }
+    }
+  }
+
+  /**
+   * Columns with a usable `ColDef.aggFunc` join the aggregate model once, with the first column
+   * definitions that have any — appended after entries already present, as if `setAggregates` had
+   * listed them, footer scope included. Later colDef swaps do not re-seed, so a removal sticks.
+   * Returns whether it seeded (the model is then already resolved).
+   */
+  private seedAggregatesFromColDefs(): boolean {
+    if (this.aggFuncSeeded) return false;
+    const leaves = this.columnModel.getLeaves().filter(col => !col.isInternal());
+    if (leaves.length === 0) return false;
+    this.aggFuncSeeded = true;
+    const registry = this.getAggregateRegistry();
+    const existing = this.resolveAggregateModels(this.aggregates);
+    // A column the model already aggregates keeps its explicit entries and gains no second one.
+    const covered = new Set(existing.map(agg => agg.key));
+    const seeded = leaves
+      .filter(col => col.aggFunc != null && col.aggregatable && !covered.has(col.instanceID)
+        && isKnownAggregateType(col.aggFunc, registry))
+      .map(col => ({ key: col.instanceID, type: col.aggFunc! }));
+    if (seeded.length === 0) return false;
+    this.aggregates = [...existing, ...this.resolveAggregateModels(seeded)];
+    if (this.aggregates.length > 0 && this.aggregateScope === "none") {
+      this.aggregateScope = this.normalizeAggregateScope("page");
+      this.rowModel.setAggregateScope(this.aggregateScope);
+    }
+    return true;
   }
 
   // Re-resolve grouped columns against the rebuilt column set (colDef replacement creates new
@@ -854,6 +962,7 @@ export class GridCore implements IGridCore {
   private resolveAggregateModels(aggregates: AggregateModel[]): AggregateModel[] {
     const next: AggregateModel[] = [];
     const seenColIds = new Set<string>();
+    const registry = this.getAggregateRegistry();
 
     for (const aggregate of aggregates) {
       const col = this.columnModel.getById(aggregate.key)
@@ -861,14 +970,27 @@ export class GridCore implements IGridCore {
         ?? this.columnModel.getByKey(aggregate.key);
       if (!col) continue;
 
+      // Every model write funnels through here (setAggregates, the menus, view-state and pivot
+      // layer restores, colDef reconciles), so this is the one place a name is checked: an unknown
+      // one warns once and the column's default function stands in for it.
+      const known = isKnownAggregateType(aggregate.type, registry);
+      if (!known) {
+        this.warnAggregateOnce(
+          `type:${aggregate.type}`,
+          `Unknown aggregate function "${aggregate.type}": it is neither a built-in type nor a key of ` +
+          "GridOptions.aggFuncs; the column's default function is used instead.",
+        );
+      }
+
       const leaves = col.children.length > 0 ? col.getVisibleLeaves() : [col];
       for (const leaf of leaves) {
+        const type = known ? aggregate.type : this.getDefaultAggregateType(leaf);
         // A column may carry several aggregates (distinct pivot measures; in the footer row the
         // last one wins) — only exact (column, type) duplicates collapse.
-        const seenKey = `${leaf.instanceID}|${aggregate.type}`;
+        const seenKey = `${leaf.instanceID}|${type}`;
         if (seenColIds.has(seenKey)) continue;
         seenColIds.add(seenKey);
-        next.push({ key: leaf.instanceID, type: aggregate.type });
+        next.push({ key: leaf.instanceID, type });
       }
     }
 
@@ -998,6 +1120,8 @@ export class GridCore implements IGridCore {
       leafColumns: this.columnModel.getLeaves().filter(col => !col.isInternal()),
       groupColumns: this.groupColumns.slice(),
       groupSortMode: this.options.groupSortMode,
+      groupTotalRow: this.options.groupTotalRow,
+      grandTotalRow: this.options.grandTotalRow,
       groupExpansion,
       quickFilter: {
         // Not `quickFilterText`: while the find behavior is on, the search highlights cells and
@@ -1679,7 +1803,7 @@ export class GridCore implements IGridCore {
         label: col.label,
         groupPath: path,
         valueColId: measure?.valueColId ?? "",
-        aggregateType: measure?.type as AggregateType,
+        aggregateType: measure?.type as AggregateKind,
       });
     };
     for (const root of this.columnModel.getPivotResultRoots()) walk(root, []);
@@ -1824,7 +1948,7 @@ export class GridCore implements IGridCore {
     this.groupColumns = this.resolveRoleColumns(layer.rowGroupColumns, "group");
     this.pivotColumns = this.resolveRoleColumns(layer.pivotColumns, "pivot");
     this.aggregates = this.resolveAggregateModels(
-      layer.aggregateModel.map(agg => ({ key: agg.colId, type: agg.type as AggregateType })),
+      layer.aggregateModel.map(agg => ({ key: agg.colId, type: agg.type as AggregateKind })),
     );
     this.columnModel.setPivotLeafOrder(layer.pivotColumnOrder ?? null);
     // A layer captured in this session carries its scope; a deserialized one may not (the view
@@ -1968,6 +2092,65 @@ export class GridCore implements IGridCore {
     this.emit("paginationChanged", this.getPaginationInfo());
   }
 
+  /**
+   * Change the footer rows of a grouped client-side view (`groupTotalRow` / `grandTotalRow`).
+   * Presence-based: a supplied key (even `undefined`, which removes those footers) replaces that
+   * option; omitted keys keep theirs. Footers are built with the group tree, so a change rebuilds
+   * it (expansion state is kept); the cell range is cleared because the rows under it moved, row
+   * selection is untouched. The server-side model warns once and ignores both.
+   */
+  setGroupTotalRows(options: Pick<GridOptions, "groupTotalRow" | "grandTotalRow">): void {
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(options, key);
+    const groupTotalRow = has("groupTotalRow")
+      ? resolveGroupTotalRowPosition(options.groupTotalRow)
+      : this.options.groupTotalRow;
+    const grandTotalRow = has("grandTotalRow")
+      ? resolveGroupTotalRowPosition(options.grandTotalRow)
+      : this.options.grandTotalRow;
+    if (groupTotalRow === this.options.groupTotalRow && grandTotalRow === this.options.grandTotalRow) return;
+    this.options.groupTotalRow = groupTotalRow;
+    this.options.grandTotalRow = grandTotalRow;
+    this.warnFooterRowsOnServerSide();
+    if (this.rowModel.getType() !== "clientSide" || this.groupColumns.length === 0) return;
+
+    this.applyRowModelRequest(() => this.createRowModelRequest(
+      "group",
+      { start: this.pageStartIdx, end: this.pageEndIdx },
+    ));
+    this.selectionModel.clearRange();
+    this.invalidateGroupSelectionCaches();
+    this.emitSelectionChanged("model");
+    this.emit("rowsChanged", {
+      reason: "group",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
+    this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  /** Change the footer-row label callback (`groupTotalRowLabel`); repaints the visible rows. */
+  setGroupTotalRowLabel(groupTotalRowLabel: GridOptions["groupTotalRowLabel"]): void {
+    if (this.options.groupTotalRowLabel === groupTotalRowLabel) return;
+    this.options.groupTotalRowLabel = groupTotalRowLabel;
+    this.emit("rowsChanged", {
+      reason: "refresh",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
+  }
+
+  // The server-side listing has no slot for synthetic footer rows yet, so the options are ignored
+  // there — said once per grid rather than on every request.
+  private warnedFooterRowsOnServerSide = false;
+  private warnFooterRowsOnServerSide(): void {
+    if (this.warnedFooterRowsOnServerSide || this.rowModel.getType() !== "serverSide") return;
+    if (this.options.groupTotalRow == null && this.options.grandTotalRow == null) return;
+    this.warnedFooterRowsOnServerSide = true;
+    console.warn("groupTotalRow / grandTotalRow are client-side row model options; the server-side row model ignores them.");
+  }
+
   /** Change what dragging a generated pivot column does. Read live at drag time — no rebuild. */
   setPivotColumnMoveMode(mode: "measures" | "free"): void {
     this.options.pivotColumnMoveMode = mode;
@@ -1984,6 +2167,25 @@ export class GridCore implements IGridCore {
       this.emitSelectionChanged("model");
       this.emitFocusChanged(null, "api");
     }
+  }
+
+  /**
+   * Turn `groupSelectsChildren` on or off on a mounted grid. Leaf selection is kept either way;
+   * turning it on drops any group row ids `groupRowsSelectable` had stored, since group rows are
+   * then never selected as themselves. Rebinds the rows so group checkboxes repaint their derived
+   * state (and the cursor stops on them in the checkbox column).
+   */
+  setGroupSelectsChildren(groupSelectsChildren: boolean): void {
+    if (this.options.groupSelectsChildren === groupSelectsChildren) return;
+    this.options.groupSelectsChildren = groupSelectsChildren;
+    this.invalidateGroupSelectionCaches();
+    this.pruneRemovedRowSelection();
+    this.emit("rowsChanged", {
+      reason: "refresh",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
   }
 
   setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void {
@@ -2519,8 +2721,107 @@ export class GridCore implements IGridCore {
   // becoming checkable.
   private isNodeCheckable(node: IRowNode): boolean {
     if (this.isBodyRowPinned(node.id)) return false;
-    if (node.isGroup && !this.options.groupRowsSelectable) return false;
+    // Under groupSelectsChildren a group row is never selected as itself — its check state is
+    // derived from its leaves — even where groupRowsSelectable makes it a cell-selection target.
+    if (node.isGroup && (!this.options.groupRowsSelectable || this.groupSelectsChildrenActive())) {
+      return false;
+    }
+    // A footer repeats its group's totals; it is never a row of the selection in any mode.
+    if (node.footer) return false;
     return this.options.isRowSelectable?.(node) !== false;
+  }
+
+  // groupSelectsChildren is in force: the option is on, rows select in "multiple" mode (a subtree
+  // is many rows, which single mode cannot hold) and the grid is not pivoted (pivot group rows are
+  // the data, and keep today's behaviour).
+  private groupSelectsChildrenActive(): boolean {
+    return this.options.groupSelectsChildren
+      && this.options.rowSelectionMode !== "single"
+      && !this.pivotMode;
+  }
+
+  // A row whose check gesture stands for a subtree: a group row, or a tree-data parent (a data row
+  // that owns children). Tree leaves and ordinary rows select as themselves.
+  private isSubtreeSelectionNode(node: IRowNode): boolean {
+    if (!this.groupSelectsChildrenActive() || node.footer) return false;
+    return node.isGroup || (!!node.isTreeData && isExpandableNode(node));
+  }
+
+  /** Whether the body row at `viewIdx` selects as a subtree under `groupSelectsChildren`. */
+  isSubtreeSelectionRow(viewIdx: number): boolean {
+    const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    return !!node && this.isSubtreeSelectionNode(node);
+  }
+
+  /**
+   * The row ids a check gesture on the body row at `viewIdx` adds or removes under
+   * `groupSelectsChildren`, or null when the row is checked as itself (the option is off, or the
+   * row is a leaf). A group contributes every checkable descendant leaf, collapsed ones included; a
+   * tree parent contributes itself (when checkable) and every checkable descendant. Filtered-out
+   * rows never count. The client-side model walks the node's children; the server-side model can
+   * only see LOADED rows in the current view, so it scans the group's visible span instead.
+   */
+  getRowSelectionTargetsAtViewIndex(viewIdx: number): string[] | null {
+    const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    if (!node || !this.isSubtreeSelectionNode(node)) return null;
+    const ids: string[] = [];
+    if (this.rowModel.getType() === "serverSide") {
+      const end = this.rowModel.getSubtreeEndViewIndex?.(node.id) ?? viewIdx;
+      for (let i = viewIdx; i <= end; i++) {
+        const row = this.rowModel.getRowNodeAtViewIndex(i);
+        if (row && !row.isGroup && this.isNodeCheckable(row)) ids.push(row.id);
+      }
+      return ids;
+    }
+    const visit = (row: IRowNode) => {
+      if (!row.isGroup && this.isNodeCheckable(row) && this.isFilteredInDataRow(row)) {
+        ids.push(row.id);
+      }
+      if (row.children) for (const child of row.children) visit(child);
+    };
+    visit(node);
+    return ids;
+  }
+
+  /**
+   * The derived check state of a subtree-selecting row (see getRowSelectionTargetsAtViewIndex):
+   * "all" when every one of its selectable rows is selected, "some" when part of them are, "none"
+   * when none are, and "empty" when it has no selectable row at all (its checkbox is disabled).
+   * Null for a row checked as itself. Drives the group checkbox's tick / dash / disabled paint and
+   * `aria-checked`; cached until the selection or the rows change.
+   */
+  getRowSelectionStateAtViewIndex(viewIdx: number): SubtreeSelectionState | null {
+    const node = this.rowModel.getRowNodeAtViewIndex(viewIdx);
+    if (!node || !this.isSubtreeSelectionNode(node)) return null;
+    const cached = this.groupSelectionStateCache.get(node.id);
+    if (cached) return cached;
+    const targets = this.getRowSelectionTargetsAtViewIndex(viewIdx) ?? [];
+    const selected = this.selectionModel.getSelectedRowIds();
+    let count = 0;
+    for (const id of targets) if (selected.has(id)) count++;
+    const state: SubtreeSelectionState = targets.length === 0
+      ? "empty"
+      : count === 0 ? "none" : count === targets.length ? "all" : "some";
+    this.groupSelectionStateCache.set(node.id, state);
+    return state;
+  }
+
+  // Grouped leaves are already the filtered rows (the tree is built from them), but a tree-data
+  // parent can be on screen only as the ancestor of a match; it must not join the selection, or it
+  // would sit outside what select-all covers. Only tree rows need the membership test.
+  private isFilteredInDataRow(node: IRowNode): boolean {
+    if (!node.isTreeData) return true;
+    if (!this.filteredRowIdCache) {
+      const ids = new Set<string>();
+      this.rowModel.forEachNodeAfterFilterAndSort(row => { if (row) ids.add(row.id); });
+      this.filteredRowIdCache = ids;
+    }
+    return this.filteredRowIdCache.has(node.id);
+  }
+
+  private invalidateGroupSelectionCaches(): void {
+    this.groupSelectionStateCache.clear();
+    this.filteredRowIdCache = null;
   }
 
   // View-index form of isNodeCheckable. Rows not present (e.g. unloaded server-side slots) cannot
@@ -2543,7 +2844,24 @@ export class GridCore implements IGridCore {
 
   // Ids of checkable rows in the current rendered page/view. Kept here (rather than relying on
   // SelectionModel.selectAllRows) so single-selection select-all can safely choose just one row.
+  // Under groupSelectsChildren a group row on the page contributes its subtree, collapsed leaves
+  // included — the same rule as a Shift range over it.
   private getPageSelectableRowIds(): string[] {
+    if (this.groupSelectsChildrenActive()) {
+      const ids = new Set<string>();
+      const viewCount = this.rowModel.getViewCount();
+      for (let i = 0; i < viewCount; i++) {
+        const subtree = this.getRowSelectionTargetsAtViewIndex(i);
+        if (subtree) {
+          for (const id of subtree) ids.add(id);
+          continue;
+        }
+        if (!this.isViewRowCheckable(i)) continue;
+        const id = this.getRowIdAtViewIndex(i);
+        if (id) ids.add(id);
+      }
+      return [...ids];
+    }
     const ids: string[] = [];
     const viewCount = this.rowModel.getViewCount();
     for (let i = 0; i < viewCount; i++) {
@@ -2562,9 +2880,45 @@ export class GridCore implements IGridCore {
    * pruned selection walks the leaves it is about to write).
    */
   getGroupRowLabel(node: IRowNode, rowCount: number | undefined = node.childCount): string {
+    if (node.footer) return this.getGroupTotalRowLabel(node);
     // `null`, not undefined: the helper's count parameter defaults to the node's own row count,
     // which would turn "no count" back into the badge this option just removed.
     return groupRowLabel(node, this.resolveGroupChildCount(node, rowCount) ?? null);
+  }
+
+  // A footer's label: "Total <group label>" / "Grand Total", or what `groupTotalRowLabel` says.
+  // The group's label is taken without its count — `groupChildCount` describes the header row, and
+  // a "Total EMEA (3)" would read as a fourth row of EMEA.
+  private getGroupTotalRowLabel(node: IRowNode): string {
+    const grandTotal = !!node.grandTotal;
+    const groupLabel = grandTotal || !node.groupNode ? "" : groupRowLabel(node.groupNode, null);
+    const defaultLabel = grandTotal ? "Grand Total" : `Total ${groupLabel}`;
+    const custom = this.options.groupTotalRowLabel;
+    if (!custom) return defaultLabel;
+    const label = custom({
+      node,
+      groupNode: node.groupNode,
+      grandTotal,
+      groupLabel,
+      defaultLabel,
+      aggregates: this.groupAggregatesByColId(node),
+    });
+    return label == null ? defaultLabel : String(label);
+  }
+
+  /**
+   * Whether `col` holds the label of the group row `node`: the auto-group or tree column, the
+   * level's own column under `"multipleColumns"`, and — for a footer row under `"groupRows"`, which
+   * has no group column — the full-width rows' nominal column (the first after the row-number /
+   * checkbox columns). Shared by the body cell, which draws the indented label there instead of
+   * running the column's renderer, and the group cell value rule, so copy writes what is shown.
+   */
+  isGroupLabelColumn(col: Column, node: IRowNode): boolean {
+    if (col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level) return true;
+    return !!node.footer
+      && !this.options.treeData
+      && this.options.groupDisplayType === "groupRows"
+      && this.columnModel.getFullWidthNominalLeaf()?.instanceID === col.instanceID;
   }
 
   /**
@@ -2576,6 +2930,7 @@ export class GridCore implements IGridCore {
    */
   getGroupCellValue(col: Column, node: IRowNode): GroupCellValue {
     return groupCellValue(col, node, {
+      isLabelColumn: (c, n) => this.isGroupLabelColumn(c, n),
       groupLabel: n => this.getGroupRowLabel(n),
       groupValueParams: n => this.groupValueGetterParams(n),
     });
@@ -2669,7 +3024,11 @@ export class GridCore implements IGridCore {
   // isFullWidthRow option opts in. Single source of truth for the renderer.
   isFullWidthNode(node: IRowNode | null | undefined): boolean {
     if (!node) return false;
-    if (!this.options.treeData && node.isGroup && this.options.groupDisplayType === "groupRows") return true;
+    // A footer is a multi-cell row in every display: under "groupRows" it is the only place the
+    // per-column totals show.
+    if (!this.options.treeData && node.isGroup && !node.footer && this.options.groupDisplayType === "groupRows") {
+      return true;
+    }
     return !!this.options.isFullWidthRow?.(node);
   }
 
@@ -3289,8 +3648,14 @@ export class GridCore implements IGridCore {
 
   /** Whether every selectable data row in the select-all scope (filtered set or page) is selected. */
   areAllRowsSelected(): boolean {
-    if (this.options.selectAllScope === "page") return this.selectionModel.areAllRowsSelected();
-    const ids = this.getFilteredSelectableRowIds();
+    // A page holding a collapsed group also holds that group's hidden leaves under
+    // groupSelectsChildren, which the view-row scan of the selection model cannot see.
+    if (this.options.selectAllScope === "page" && !this.groupSelectsChildrenActive()) {
+      return this.selectionModel.areAllRowsSelected();
+    }
+    const ids = this.options.selectAllScope === "page"
+      ? this.getPageSelectableRowIds()
+      : this.getFilteredSelectableRowIds();
     if (ids.length === 0) return false;
     const selected = this.selectionModel.getSelectedRowIds();
     return ids.every(id => selected.has(id));
@@ -4105,6 +4470,8 @@ export class GridCore implements IGridCore {
   }
 
   private emitSelectionChanged(reason: "mouse" | "keyboard" | "api" | "model"): void {
+    // Group check states derive from the selection; every selection mutation funnels through here.
+    this.groupSelectionStateCache.clear();
     const snapshot = this.selectionModel.getSnapshot();
     const current = new Set(snapshot.selectedRowIds);
     const added = snapshot.selectedRowIds.filter(id => !this.lastEmittedSelectedRowIds.has(id));
@@ -4122,12 +4489,16 @@ export class GridCore implements IGridCore {
   // Drop selected ids that no longer belong in the selection: rows removed from the model, and
   // rows the app's isRowSelectable predicate now disables (their data may have changed under the
   // selection). Skipped on the server-side model, where an absent node just means "not loaded".
+  // Group ids go too under groupSelectsChildren, which never stores a group row as itself.
   private pruneRemovedRowSelection(): void {
     if (this.rowModel.getType() === "serverSide") return;
+    const groupsDerived = this.groupSelectsChildrenActive();
     const stale = [...this.selectionModel.getSelectedRowIds()]
       .filter(id => {
         const node = this.rowModel.getRowNode(id);
-        return node == null || this.options.isRowSelectable?.(node) === false;
+        return node == null
+          || (groupsDerived && node.isGroup)
+          || this.options.isRowSelectable?.(node) === false;
       });
     if (stale.length === 0) return;
     this.selectionModel.setSelectedRowIds(stale, "remove");
@@ -4344,6 +4715,16 @@ export class GridCore implements IGridCore {
     }
     this.setPivotColumnLimit(discovery.truncatedLeafCount);
     return resolution;
+  }
+
+  /**
+   * The body renderer's drawn window, `[start, end)` in view indices (page-local while paginating,
+   * like every rendered-row coordinate). Forwarded to the row model's `setRenderedRange`, which only
+   * the server-side model implements: it keeps the blocks around the window out of its
+   * `serverSideMaxBlocks` eviction even when nothing in the window is missing.
+   */
+  noteRenderedRowRange(start: number, end: number): void {
+    this.rowModel.setRenderedRange?.({ start, end });
   }
 
   /**
