@@ -270,6 +270,7 @@ one, bump its toolchain, verify locally), add the major to the `consumer-angular
 | `npm run dev:angular` | Starts the Angular demo at `http://localhost:5180` (vite.angular.config.ts + analog Angular plugin). |
 | `npm run dev:vanilla` | Starts the framework-free demo at `http://localhost:5182` (vite.vanilla.config.ts). The same server serves `/layout-matrix.html`, the layout-probe harness. |
 | `npm run probe:layout` | Real-browser layout gate (see below): mounts grids in headless Chrome, resizes them through a width/height ladder and a set of runtime transitions, and asserts the layout invariants in `scripts/layout-probe/invariants.js` after every step; then smoke-checks every vanilla playground page at three widths. Exits 1 on any violation. |
+| `npm run probe:interactions` | Real-browser interaction gate (see below): drives grids in headless Chrome with trusted mouse, wheel, keyboard and touch input — column virtualization under horizontal scroll, keyboard navigation, editing, column resize and move, range selection and the fill handle, menus, pinned-row bands, touch — in LTR and RTL, asserting each interaction's outcome and the layout invariants after every step. Exits 1 on any failed check. |
 | `npm run clean` | Cleans every package's `dist/` plus root `dist-demo/`. |
 
 The root scripts are deliberately explicit (`build:grid`/`build:react`/`build:angular`,
@@ -308,6 +309,68 @@ Useful flags: `--only=<regex>` (case names, `--list` prints them), `--skip-smoke
 `--overlay-scrollbars` (Chromium's overlay scrollbars, gutter 0) and `--dpr=2`. Run it before a
 release alongside the other gates; it is the only automated check of what a person sees when a
 grid is resized.
+
+### The interaction probe (`npm run probe:interactions`)
+
+The layout probe changes sizes and options; the interaction probe does what a person does. It
+sends **trusted** input through the DevTools protocol (`Input.dispatchMouseEvent`,
+`Input.dispatchKeyEvent`, `Input.dispatchTouchEvent`), so events go through Chrome's own
+hit-testing, focus handling, default actions and compatibility mouse events — unlike a
+`dispatchEvent` in happy-dom. It shares the layout probe's Chrome launcher, Vite server and harness
+page:
+
+- `scripts/layout-probe/cdp.mjs` `Page` carries the input helpers: `click`/`dblclick`/`rightClick`
+  and `drag` between selectors, rects or points (`hold: true` keeps the button down to inspect
+  mid-drag state), `wheel`, `press(key, { modifiers })`, `type`, `insertText`, `touch`/`tap`
+  (`hold` ≥ 500 ms is a long press), `enableTouch`, and `rect(selector)`.
+- `scripts/interaction-probe/scenarios.mjs` declares the scenarios: a harness config, the frame
+  size, the directions to run (`["ltr", "rtl"]` makes `name-ltr` and `name-rtl`, the RTL one with
+  `rtl: true`), and `run(t)`, a sequence of `t.step(label, body)`. A body acts through `t.page`,
+  reads through `t.q("<helper>")` (geometry from `scripts/interaction-probe/page-helpers.js`,
+  injected into the harness: the visible centre box, the column-virtualization contract per row,
+  the active cell, menus, the editor, the fill handle, band scroll positions) and
+  `t.api("<expression over api>")` (the grid's `IGridAPI`), and asserts with `t.expect` /
+  `t.expectEqual`. Directional expectations are written once with `t.inl` (+1 towards the inline
+  end in physical x), so the RTL run asserts the mirrored behaviour of the same gesture. After every
+  step the runner also runs `__layoutInvariants.check`, so an interaction that breaks layout fails
+  that step. A thrown step ends its scenario.
+- `scripts/interaction-probe/run.mjs` runs each scenario on a fresh page (no input state leaks
+  between scenarios), retries a scenario whose page was lost (dev-server reload, dead target) up to
+  three times, bounds every evaluate, and prints one line per scenario, the failing steps, the
+  benchmark lines and a final `N checks · F failed · …` summary.
+
+Scenarios today: horizontal wheel scrolling across ~200 virtualized columns and back (rendered
+cells cover the visible centre with no gap, `.pte-col-gap` widths equal the unrendered columns,
+header and pinned sections untouched, cells per row bounded), the same walk with
+`columnVirtualization: false` as a baseline; 40 ArrowRight presses with the active cell rendered
+and visible after each, Home/End, back from the pinned edge into the centre, Shift+Arrow ranges;
+an editor whose column scrolls out and back, Enter commits and Escape cancels; resize-handle drags
+(direction-mirrored widths, the strip appearing and disappearing) including on a scrolled
+virtualized grid; header drags that reorder columns with the drop indicator inside the header;
+range drag, fill-handle drag and Ctrl+D; the body and column menus (inside the viewport, opening
+from the pointer towards the inline end, submenus opened with the inline-end arrow, Escape);
+pinned-row bands and the sticky overlay following horizontal scroll; touch tap, long press and a
+two-finger pan.
+
+To add a scenario, append an entry to `SCENARIOS`; when it needs a grid the harness cannot build,
+add a key to `LayoutMatrixConfig` in `apps/vanilla-playground/layout-matrix.ts` (with a default, so
+existing layout-probe cases are unchanged) and, for a new read, a function in `page-helpers.js`.
+The harness keys added for this probe are `editing` (every column editable) and
+`columnVirtualization` (false renders every centre cell); `window.__layoutMatrix.api()` returns the
+mounted grid's API.
+
+Benchmarks are reported, never asserted: main-thread task time per wheel step and per mount (from
+the DevTools `Performance` domain), scroll event to the second frame, and input to settled.
+Compare runs on the same machine only.
+
+Flags: `--only=<regex>` (scenario names; `--list` prints them), `--verbose` (a line per step
+with its duration), `--json=<path>`, `--shots=<dir>` (a PNG of the grid at each scenario's first
+failing step) and `--url=<vanilla dev server>`.
+
+**CI.** The `Browser probes` job in `.github/workflows/ci.yml` runs `npm ci`, `npm run build`,
+then both probes against the runner's preinstalled Google Chrome (`CHROME_BIN` from
+`which google-chrome || which chromium-browser`), and uploads `artifacts/probes/` (JSON reports and
+failure screenshots) when a probe fails. It is not part of `release.yml`.
 
 ## 6. Publishing to npm
 

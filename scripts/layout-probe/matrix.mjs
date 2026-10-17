@@ -23,6 +23,9 @@ export const CASES = [
   { name: "groups2-both", config: { columns: "groups2", pinned: "both" }, sequences: ["groupToggle", "hideToggle", "scrolled"] },
   { name: "groups3-both", config: { columns: "groups3", pinned: "both", headerHeight: 36 }, sequences: ["groupToggle", "headerHeight"] },
   { name: "many-both", config: { columns: "many", pinned: "both" }, sequences: ["scrolled", "hiddenMount"] },
+  // ~200 centre columns: column virtualization renders a window of them, so the body rows hold
+  // fewer cells than the header and every visible header cell still needs its body cell.
+  { name: "huge-both", config: { columns: "huge", pinned: "both" }, sequences: ["scrolled", "window"] },
   { name: "row-numbers-checkboxes-left", config: { pinned: "both", rowNumbers: true, checkboxes: "left" }, sequences: ["scrolled"] },
   { name: "checkboxes-right", config: { pinned: "both", checkboxes: "right" } },
   { name: "checkboxes-unpinned", config: { pinned: "left", checkboxes: "unpinned" } },
@@ -64,5 +67,30 @@ export const CASES = [
     // Two wrapped levels are ~200px of fixed chrome; at the two smallest heights the body keeps
     // its floor instead of the chrome yielding (the same A3.14 shape as the kitchen case).
     known: [{ steps: /^height@(320|180)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
+  },
+  // enableRtl: the same layout mirrored — pinned "left" at the right edge, the vertical scrollbar
+  // lane on the left, horizontal scroll from the right (scrollLeft runs negative). The invariants
+  // compare along the inline axis and read the lane as inline-end padding.
+  {
+    name: "rtl-flat-both",
+    config: { pinned: "both", rtl: true },
+    sequences: ["scrolled", "pinToggle", "hideToggle", "window", "bodyScroll"],
+  },
+  // Column virtualization mirrored: the rendered window is computed from the start-relative offset.
+  { name: "rtl-huge-both", config: { columns: "huge", pinned: "both", rtl: true }, sequences: ["scrolled", "window"] },
+  { name: "rtl-groups2-both", config: { columns: "groups2", pinned: "both", rtl: true }, sequences: ["groupToggle", "scrolled"] },
+  { name: "rtl-row-numbers-checkboxes-left", config: { pinned: "both", rowNumbers: true, checkboxes: "left", rtl: true }, sequences: ["scrolled"] },
+  { name: "rtl-aggregates", config: { pinned: "both", aggregates: true, rtl: true }, sequences: ["scrolled"] },
+  { name: "rtl-pinned-rows", config: { pinned: "both", pinnedRows: "both", rtl: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "rtl-grouping-both-sticky", config: { pinned: "both", grouping: "sticky", rtl: true }, sequences: ["bodyScroll", "scrolled"] },
+  {
+    name: "rtl-kitchen",
+    config: {
+      columns: "groups2", pinned: "both", rowNumbers: true, checkboxes: "left", aggregates: true,
+      pinnedRows: "both", pagination: true, toolbar: true, rtl: true,
+    },
+    sequences: ["scrolled", "themeSwap", "headerHeight", "hiddenMount", "window", "growTall"],
+    // The kitchen case's chrome, mirrored: same A3.14 known entry.
+    known: [{ steps: /^(height@(320|180)|growTall@300)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
   },
 ];

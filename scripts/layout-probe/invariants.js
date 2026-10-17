@@ -90,6 +90,10 @@
       el: el,
       left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height,
       padLeft: num(s.paddingLeft), padRight: num(s.paddingRight), padTop: num(s.paddingTop), padBottom: num(s.paddingBottom),
+      // The inline-axis paddings: the vertical-scrollbar lane is reserved at the inline END, which
+      // is the left edge in a right-to-left grid (its scrollbar sits on the left there).
+      padStart: s.direction === "rtl" ? num(s.paddingRight) : num(s.paddingLeft),
+      padEnd: s.direction === "rtl" ? num(s.paddingLeft) : num(s.paddingRight),
       bLeft: num(s.borderLeftWidth), bRight: num(s.borderRightWidth), bTop: num(s.borderTopWidth), bBottom: num(s.borderBottomWidth),
       position: s.position,
     };
@@ -239,22 +243,78 @@
       }
     }
 
+    /* Body rows are matched to the header by column id (`data-col-id` ↔ the leaf header cell's id),
+     * because column virtualization renders only the centre columns near the viewport: a body row
+     * may hold fewer cells than the header. Every header cell whose box intersects the section's
+     * visible area must have a body cell that lines up with it; columns outside it may be absent.
+     * A body cell with no header cell is always an error. Falls back to the positional comparison
+     * when the cells carry no ids. */
+    function compareBodyCells(s, headerCells, cells, rowIndex, visible) {
+      var byId = {};
+      for (var i = 0; i < cells.length; i++) {
+        var id = cells[i].dataset.colId;
+        if (!id) return compareCells(s, "body row", headerCells, cells, rowIndex);
+        byId[id] = cells[i];
+      }
+      var matched = 0;
+      for (var h = 0; h < headerCells.length; h++) {
+        var hcell = headerCells[h];
+        var hb = box(hcell);
+        var cell = byId[hcell.id];
+        if (!cell) {
+          var inView = hb.right > visible.left + CELL_TOL && hb.left < visible.right - CELL_TOL;
+          if (inView) {
+            err("cell-count", s + " body row has no cell for visible column (" + cellLabel(hcell) + ")", {
+              row: rowIndex, header: [r2(hb.left), r2(hb.width)], visible: [r2(visible.left), r2(visible.right)],
+            });
+            return;
+          }
+          continue;
+        }
+        matched++;
+        var cb = box(cell);
+        var drift = Math.max(Math.abs(hb.left - cb.left), Math.abs(hb.width - cb.width));
+        if (drift > maxDrift) maxDrift = drift;
+        if (drift > CELL_TOL) {
+          err("cell-x", s + " body row cell (" + cellLabel(hcell) + ") is off its header cell", {
+            header: [r2(hb.left), r2(hb.width)],
+            cell: [r2(cb.left), r2(cb.width)],
+            row: rowIndex,
+          });
+          return;
+        }
+      }
+      if (matched !== cells.length) {
+        err("cell-count", s + " body row has " + (cells.length - matched) + " cells with no header cell", { row: rowIndex });
+      }
+    }
+
     var rowsRendered = 0;
+    // Centre header leaves vs. the first centre body row's cells: under column virtualization the
+    // body holds a window of the columns.
+    var centerCells = { header: 0, body: 0 };
     SECTIONS.forEach(function (s) {
       if (!presentIn[s] || !header[s]) return;
       var headerCells = list(header[s].querySelectorAll(".pte-hcell-leaf"));
+      var headerById = {};
+      headerCells.forEach(function (h) { if (h.id) headerById[h.id] = h; });
       var rows = dataRows(viewport[s]);
-      if (s === "center") rowsRendered = rows.length;
+      if (s === "center") {
+        rowsRendered = rows.length;
+        centerCells = { header: headerCells.length, body: rows.length ? rowCells(rows[0]).length : 0 };
+      }
       if (rows.length) {
-        compareCells(s, "body row", headerCells, rowCells(rows[0]), Number(rows[0].dataset.viewIdx));
+        var visible = body[s] ? clientBox(body[s]) : { left: -Infinity, right: Infinity };
+        compareBodyCells(s, headerCells, rowCells(rows[0]), Number(rows[0].dataset.viewIdx), visible);
         // Every pooled row shares the column widths; one divergent row is a stale slot.
         for (var i = 1; i < rows.length; i++) {
           var cells = rowCells(rows[i]);
-          if (cells.length !== headerCells.length) continue; // reported for the first row already
           for (var c = 0; c < cells.length; c++) {
-            if (!near(box(cells[c]).width, box(headerCells[c]).width, CELL_TOL)) {
+            var hc = cells[c].dataset.colId ? headerById[cells[c].dataset.colId] : headerCells[c];
+            if (!hc) continue; // reported for the first row already
+            if (!near(box(cells[c]).width, box(hc).width, CELL_TOL)) {
               err("cell-width-row", s + " row " + rows[i].dataset.viewIdx + " cell " + c + " width differs from its header",
-                { header: r2(box(headerCells[c]).width), cell: r2(box(cells[c]).width) });
+                { header: r2(box(hc).width), cell: r2(box(cells[c]).width) });
               i = rows.length;
               break;
             }
@@ -411,28 +471,36 @@
     if (!near(activeVar, gutter, CELL_TOL)) {
       err("gutter-var", "--pte-scrollbar-gutter-active is " + activeVar + "px but the body's scrollbar takes " + gutter + "px");
     }
+    // Inline-END padding throughout: the lane is on the right in LTR and on the left in RTL.
     var headerPadBox = presentIn.right && header.right ? box(header.right) : box(header.center);
-    if (!near(headerPadBox.padRight, gutter, CELL_TOL)) {
-      err("gutter-header", "header reserves " + r2(headerPadBox.padRight) + "px for a " + gutter + "px body scrollbar",
+    if (!near(headerPadBox.padEnd, gutter, CELL_TOL)) {
+      err("gutter-header", "header reserves " + r2(headerPadBox.padEnd) + "px for a " + gutter + "px body scrollbar",
         { on: label(headerPadBox.el) });
     }
-    if (presentIn.right && header.center && box(header.center).padRight > CELL_TOL) {
+    if (presentIn.right && header.center && box(header.center).padEnd > CELL_TOL) {
       err("gutter-header", "centre header carries scrollbar padding although the right section owns the lane",
-        { padding: r2(box(header.center).padRight) });
+        { padding: r2(box(header.center).padEnd) });
     }
-    if (laneVisible && !near(box(lane.wrapper).padRight, gutter, CELL_TOL)) {
-      err("gutter-lane", "scrollbar strip reserves " + r2(box(lane.wrapper).padRight) + "px for a " + gutter + "px body scrollbar");
+    if (laneVisible && !near(box(lane.wrapper).padEnd, gutter, CELL_TOL)) {
+      err("gutter-lane", "scrollbar strip reserves " + r2(box(lane.wrapper).padEnd) + "px for a " + gutter + "px body scrollbar");
     }
-    if (aggVisible && !near(box(aggregate.wrapper).padRight, gutter, CELL_TOL)) {
-      err("gutter-aggregate", "aggregate row reserves " + r2(box(aggregate.wrapper).padRight) + "px for a " + gutter + "px body scrollbar");
+    if (aggVisible && !near(box(aggregate.wrapper).padEnd, gutter, CELL_TOL)) {
+      err("gutter-aggregate", "aggregate row reserves " + r2(box(aggregate.wrapper).padEnd) + "px for a " + gutter + "px body scrollbar");
     }
 
     /* ---- 7. each horizontal band is contiguous and fills its container ---- */
+    /* Compared along the inline axis, in DOM (= logical) order: in a right-to-left grid the first
+     * section is the rightmost, so x is mirrored (`-right` is the start edge) and the same "starts at
+     * the container's start, abuts its predecessor, ends at the container's end" rule applies. */
+    var rtlRoot = getComputedStyle(root).direction === "rtl";
+    function inlineBox(b) {
+      return rtlRoot ? { left: -b.right, right: -b.left } : { left: b.left, right: b.right };
+    }
     function checkRow(name, container, items) {
       if (!container || !present(container)) return;
-      var cb = clientBox(container);
+      var cb = inlineBox(clientBox(container));
       var shown = items.filter(function (i) { return i.el && present(i.el); }).map(function (i) {
-        return { name: i.name, b: box(i.el) };
+        return { name: i.name, b: inlineBox(box(i.el)) };
       });
       if (!shown.length) return;
       if (!near(shown[0].b.left, cb.left, BOX_TOL)) {
@@ -550,7 +618,8 @@
       if (box(body.right).width > cap + BOX_TOL) err("clamp-right", "right body section exceeds 35% of the root", { width: r2(box(body.right).width), cap: r2(cap) });
       if (header.right && present(header.right)) {
         var hr = box(header.right);
-        if (innerRight(hr) - hr.left > cap + BOX_TOL) err("clamp-right-header", "right header exceeds 35% of the root", { width: r2(innerRight(hr) - hr.left), cap: r2(cap) });
+        // Less the scrollbar lane it reserves, on whichever side that is (padEnd).
+        if (hr.width - hr.padEnd > cap + BOX_TOL) err("clamp-right-header", "right header exceeds 35% of the root", { width: r2(hr.width - hr.padEnd), cap: r2(cap) });
       }
     }
 
@@ -587,6 +656,7 @@
       aggregate: aggVisible,
       bands: bandHeights,
       rowsRendered: rowsRendered,
+      centerCells: centerCells,
       scrollLeft: r2(body.center.scrollLeft),
       maxCellDrift: r2(maxDrift),
     };

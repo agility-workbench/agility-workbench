@@ -36,7 +36,7 @@ import { mulberry32, picker } from "./helpers";
 /** Everything a case can vary. Every key has a default, so `{}` is a plain flat grid. */
 export interface LayoutMatrixConfig {
   /** Column preset: flat leaves, two header levels, three levels, or flat plus twenty more. */
-  columns?: "flat" | "groups2" | "groups3" | "many";
+  columns?: "flat" | "groups2" | "groups3" | "many" | "huge";
   /** Which edge columns (or groups) are pinned. */
   pinned?: "none" | "left" | "right" | "both";
   /** "wide" makes each pinned column 260px so the 35% clamp bites at every ladder width. */
@@ -62,6 +62,12 @@ export interface LayoutMatrixConfig {
   toolbar?: boolean;
   /** Long header labels with `wrapHeaderText` + `autoHeaderHeight` on every column and group. */
   headerWrap?: boolean;
+  /** `enableRtl: true`, with Arabic and Hebrew labels on a few columns and groups and in the data. */
+  rtl?: boolean;
+  /** Every column editable (`defaultColDef.editable`), for the interaction probe's edit and fill steps. */
+  editing?: boolean;
+  /** `columnVirtualization` (creation-only); false renders every centre cell, the benchmark baseline. */
+  columnVirtualization?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -81,6 +87,9 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   rowHeight: 0,
   toolbar: false,
   headerWrap: false,
+  rtl: false,
+  editing: false,
+  columnVirtualization: true,
 };
 
 export interface InvariantViolation {
@@ -154,7 +163,19 @@ const NOTES = [
   "Pilot converted to paid; onboarding scheduled.",
 ];
 
-function buildRows(count: number, many: boolean): Row[] {
+/** rtl: right-to-left labels for some headers (the rest stay Latin, as mixed data often is). */
+const RTL_LABELS: Record<string, string> = {
+  Region: "المنطقة", Country: "الدولة", Account: "חשבון", Owner: "בעלים", Location: "الموقع",
+  People: "אנשים", Other: "أخرى", Notes: "ملاحظات", Deal: "صفقة",
+};
+const RTL_OWNERS = ["أحمد", "فاطمة", "דוד", "שרה", "يوسف", "רחל"];
+
+/** Numeric filler columns c01…: 20 for "many", 200 for "huge" (column virtualization). */
+function extraColumnCount(columns: LayoutMatrixConfig["columns"]): number {
+  return columns === "huge" ? 200 : columns === "many" ? 20 : 0;
+}
+
+function buildRows(count: number, extraColumns: number): Row[] {
   const rand = mulberry32(42);
   const pick = picker(rand);
   return Array.from({ length: count }, (_, i) => {
@@ -172,9 +193,7 @@ function buildRows(count: number, many: boolean): Row[] {
       notes: pick(NOTES),
       fw: i % 7 === 3,
     };
-    if (many) {
-      for (let c = 1; c <= 20; c++) row[`c${String(c).padStart(2, "0")}`] = Math.floor(rand() * 1_000);
-    }
+    for (let c = 1; c <= extraColumns; c++) row[`c${String(c).padStart(2, "0")}`] = Math.floor(rand() * 1_000);
     return row;
   });
 }
@@ -194,7 +213,10 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
   const pinRight = config.pinned === "right" || config.pinned === "both";
   // headerWrap: labels long enough to wrap two to four times at these widths (the wrap flags come
   // from defaultColDef, see buildOptions).
-  const long = (label: string) => config.headerWrap ? `${label} — a long header label that wraps` : label;
+  const long = (label: string) => {
+    const text = config.rtl ? RTL_LABELS[label] ?? label : label;
+    return config.headerWrap ? `${text} — a long header label that wraps` : text;
+  };
   const leaf = (colId: string, label: string, width: number, extra: Partial<ColDef> = {}): ColDef =>
     ({ colId, key: colId, label: long(label), width, ...extra });
   const group = (colId: string, label: string, children: ColDef[], pinned?: "left" | "right"): ColDef =>
@@ -211,12 +233,10 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
   const revenue = leaf("revenue", "Revenue", 140, { type: ColumnType.CURRENCY });
   const margin = leaf("margin", "Margin %", wide ? 260 : 110, { type: ColumnType.NUMBER });
   const notes = leaf("notes", "Notes", wide ? 260 : 220);
-  const extras: ColDef[] = config.columns === "many"
-    ? Array.from({ length: 20 }, (_, c) => {
-      const id = `c${String(c + 1).padStart(2, "0")}`;
-      return leaf(id, id.toUpperCase(), 90, { type: ColumnType.NUMBER });
-    })
-    : [];
+  const extras: ColDef[] = Array.from({ length: extraColumnCount(config.columns) }, (_, c) => {
+    const id = `c${String(c + 1).padStart(2, "0")}`;
+    return leaf(id, id.toUpperCase(), 90, { type: ColumnType.NUMBER });
+  });
 
   switch (config.columns) {
     case "groups2":
@@ -272,9 +292,12 @@ function buildOptions(config: Required<LayoutMatrixConfig>, rows: Row[]): Create
     rowNumbers: config.rowNumbers,
     pagination: config.pagination,
   };
+  if (config.rtl) options.enableRtl = true;
   if (config.headerHeight > 0) options.headerHeight = config.headerHeight;
   if (config.rowHeight > 0) options.rowHeight = config.rowHeight;
   if (config.headerWrap) options.defaultColDef = { wrapHeaderText: true, autoHeaderHeight: true };
+  if (!config.columnVirtualization) options.columnVirtualization = false;
+  if (config.editing) options.defaultColDef = { ...options.defaultColDef, editable: true };
   if (config.toolbar) options.toolbar = { sorting: true, grouping: true, quickFilter: true };
   if (config.checkboxes !== "none") {
     options.rowSelection = {
@@ -342,7 +365,8 @@ async function mount(
   destroy();
   current = resolveConfig(config);
   frame.style.display = opts.hidden ? "none" : "";
-  const rows = buildRows(current.rows, current.columns === "many");
+  const rows = buildRows(current.rows, extraColumnCount(current.columns));
+  if (current.rtl) rows.forEach((row, i) => { row.owner = RTL_OWNERS[i % RTL_OWNERS.length]; });
   api = createGrid(host, buildOptions(current, rows));
   if (current.aggregates) {
     api.setAggregates([
@@ -384,9 +408,12 @@ async function scrollCenter(x: number | "max"): Promise<number> {
   const strip = root.querySelector<HTMLElement>(".pte-scroller-horizontal-container .pte-scroller-horizontal-spacer");
   const target = strip && strip.offsetParent !== null ? strip : root.querySelector<HTMLElement>(".pte-spacer");
   if (!target) return 0;
-  target.scrollLeft = x === "max" ? target.scrollWidth : x;
+  // `x` is measured from the inline-start edge; an RTL scroller's scrollLeft runs negative.
+  const rtl = root.getAttribute("dir") === "rtl";
+  const start = x === "max" ? target.scrollWidth : x;
+  target.scrollLeft = rtl ? -start : start;
   await settle();
-  return target.scrollLeft;
+  return Math.abs(target.scrollLeft);
 }
 
 async function scrollBody(y: number | "max"): Promise<number> {
@@ -466,7 +493,7 @@ type FieldSpec =
   | { key: keyof LayoutMatrixConfig; label: string; kind: "bool" };
 
 const FIELDS: FieldSpec[] = [
-  { key: "columns", label: "Columns", kind: "select", options: ["flat", "groups2", "groups3", "many"] },
+  { key: "columns", label: "Columns", kind: "select", options: ["flat", "groups2", "groups3", "many", "huge"] },
   { key: "pinned", label: "Pinned", kind: "select", options: ["none", "left", "right", "both"] },
   { key: "pinnedWidth", label: "Pinned width", kind: "select", options: ["normal", "wide"] },
   { key: "rows", label: "Rows", kind: "number" },
@@ -482,6 +509,9 @@ const FIELDS: FieldSpec[] = [
   { key: "rowHeight", label: "rowHeight", kind: "number" },
   { key: "toolbar", label: "Toolbar", kind: "bool" },
   { key: "headerWrap", label: "Wrapped headers", kind: "bool" },
+  { key: "rtl", label: "Right-to-left", kind: "bool" },
+  { key: "editing", label: "Editable", kind: "bool" },
+  { key: "columnVirtualization", label: "Column virtualization", kind: "bool" },
 ];
 
 const style = document.createElement("style");

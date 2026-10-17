@@ -55,6 +55,48 @@ jobs:
       - name: Vanilla playground production build
         run: ./node_modules/.bin/vite build -c vite.vanilla.config.ts
 
+  # Real-browser gates: the layout probe (resize ladder + layout invariants) and the interaction
+  # probe (trusted mouse/keyboard/wheel/touch input: virtualization, RTL, editing, resize, move,
+  # fill, menus). ubuntu-latest ships Google Chrome; the probes drive it over the DevTools protocol
+  # (no Playwright). Not a release gate in release.yml — release consumes this workflow's run.
+  browser-probes:
+    name: Browser probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Locate Chrome
+        run: |
+          bin="$(which google-chrome || which chromium-browser)"
+          echo "CHROME_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Layout probe
+        run: npm run probe:layout -- --json=artifacts/probes/layout.json --shots=artifacts/probes/layout-shots
+
+      - name: Interaction probe
+        if: ${{ !cancelled() }}
+        run: npm run probe:interactions -- --json=artifacts/probes/interactions.json --shots=artifacts/probes/interaction-shots
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: browser-probe-reports
+          path: artifacts/probes/
+          if-no-files-found: ignore
+
   package:
     name: Package artifacts
     runs-on: ubuntu-latest
