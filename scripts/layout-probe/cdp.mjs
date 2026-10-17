@@ -485,7 +485,13 @@ export async function launchBrowser({ bin = findChrome(), dpr = 1, overlayScroll
 export async function startViteServer({ repoRoot, config = "vite.vanilla.config.ts", port, probePath = "/layout-matrix.html", timeout = 90000 }) {
   const viteBin = path.join(repoRoot, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(viteBin)) throw new Error(`Vite not installed at ${viteBin}; run npm install first.`);
-  const child = spawn(process.execPath, [viteBin, "-c", config, "--port", String(port), "--strictPort", "--force"], {
+  // Bound to the IPv4 loopback explicitly. Vite's default host is "localhost", which Node resolves
+  // in the system's order; on a runner whose /etc/hosts lists "::1 localhost" first, Vite then
+  // listens on [::1] only and every poll of 127.0.0.1 below is refused until the timeout (the
+  // GitHub Actions failure of 2026-10-17: "ready in 226 ms" yet "did not serve /layout-matrix.html").
+  // Chrome is pointed at the same address, so the two can never disagree.
+  const host = "127.0.0.1";
+  const child = spawn(process.execPath, [viteBin, "-c", config, "--host", host, "--port", String(port), "--strictPort", "--force"], {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
@@ -494,7 +500,7 @@ export async function startViteServer({ repoRoot, config = "vite.vanilla.config.
   let log = "";
   child.stdout.on("data", chunk => { log += chunk; });
   child.stderr.on("data", chunk => { log += chunk; });
-  const url = `http://127.0.0.1:${port}`;
+  const url = `http://${host}:${port}`;
   const stop = () => {
     try {
       process.kill(-child.pid, "SIGTERM");
@@ -503,16 +509,20 @@ export async function startViteServer({ repoRoot, config = "vite.vanilla.config.
     }
   };
   const start = Date.now();
+  let lastProbe = "no response yet";
   while (Date.now() - start < timeout) {
     if (child.exitCode !== null) throw new Error(`Vite exited with ${child.exitCode}:\n${log}`);
     try {
       const response = await fetch(url + probePath);
-      if (response.ok && (await response.text()).includes("layout-matrix")) return { url, stop, child };
-    } catch {
-      // Not up yet.
+      const body = await response.text();
+      if (response.ok && body.includes("layout-matrix")) return { url, stop, child };
+      lastProbe = `HTTP ${response.status}, ${body.length} bytes${body.includes("layout-matrix") ? "" : " without the harness marker"}`;
+    } catch (error) {
+      // Not up yet — remembered so a timeout says what the poll saw, not just that it waited.
+      lastProbe = error?.cause?.code ?? error?.code ?? error?.message ?? String(error);
     }
     await sleep(250);
   }
   stop();
-  throw new Error(`Vite did not serve ${probePath} within ${timeout}ms:\n${log}`);
+  throw new Error(`Vite did not serve ${url}${probePath} within ${timeout}ms (last poll: ${lastProbe}):\n${log}`);
 }
