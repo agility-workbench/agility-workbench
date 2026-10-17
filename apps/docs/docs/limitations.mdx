@@ -71,7 +71,22 @@ the exported rows could not reproduce them.
 ## Layout
 
 All rows currently have one fixed height. Cell spans stop at pinned-section
-boundaries. A span that exists only on some rows can produce a visually
+boundaries.
+
+[Column virtualization](./examples/large-data.mdx#column-virtualization) covers
+the body's centre section only. The header renders a cell for every column (its
+cost is columns × header levels, and `autoHeaderHeight` measures every header
+cell), as do the pinned sections, the aggregate row and the pinned and sticky
+rows. While any centre column defines `colSpan`, the centre renders every column. A span that exists only on some rows can produce a visually
 non-rectangular selected region even though the selection model remains a
 rectangle.
 
+## Right-to-left
+
+[Right-to-left layout](./examples/rtl.mdx) is supported, with these exceptions:
+
+- Sparklines and charts render left-to-right in a right-to-left grid.
+- Exported files (CSV and Excel) are not mirrored: columns keep the grid's column order.
+- The direction is fixed when the grid is created. Changing `dir` on the page (or an ancestor)
+  later does not flip a live grid, and `enableRtl` cannot be updated at runtime; destroy the grid
+  and create it again.

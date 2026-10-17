@@ -1,3 +1,5 @@
+import { isRtl } from "../layout/direction";
+
 const CHIP_SELECTOR = ".pte-grid-toolbar-group-chip";
 const INDICATOR_CLASS = "pte-grid-toolbar-group-drop-indicator";
 
@@ -27,11 +29,14 @@ export function resolveGroupDropIndex(
   axis: ChipAxis = "x",
 ): number {
   const chips = visibleChips(zone, chipSelector);
+  // A row of chips runs along the inline axis: in RTL the first chip is the rightmost, so "before
+  // this chip" is the pointer being in its RIGHT half.
+  const rtl = axis === "x" && isRtl(zone);
   const before = chips.findIndex(chip => {
     const rect = chip.getBoundingClientRect();
-    return axis === "x"
-      ? pointer < rect.left + rect.width / 2
-      : pointer < rect.top + rect.height / 2;
+    if (axis === "y") return pointer < rect.top + rect.height / 2;
+    const middle = rect.left + rect.width / 2;
+    return rtl ? pointer > middle : pointer < middle;
   });
   return before < 0 ? chips.length : before;
 }
@@ -46,16 +51,19 @@ export function showGroupDropPosition(
   clearGroupDropPosition(zone, indicatorClass);
   const chips = visibleChips(zone, chipSelector);
   const zoneRect = zone.getBoundingClientRect();
+  // The marker is placed physically (`left`, centred by its own translate), at the target chip's
+  // inline-START edge or past the last chip's inline-END edge: the right/left edges in RTL.
+  const rtl = axis === "x" && isRtl(zone);
   const start = axis === "x" ? zoneRect.left : zoneRect.top;
-  let offset = start;
+  let offset = rtl ? zoneRect.right : start;
   if (index < chips.length) {
     chips[index].classList.add("drop-before");
     const rect = chips[index].getBoundingClientRect();
-    offset = axis === "x" ? rect.left : rect.top;
+    offset = axis === "x" ? (rtl ? rect.right : rect.left) : rect.top;
   } else if (chips.length > 0) {
     chips[chips.length - 1].classList.add("drop-after");
     const rect = chips[chips.length - 1].getBoundingClientRect();
-    offset = axis === "x" ? rect.right : rect.bottom;
+    offset = axis === "x" ? (rtl ? rect.left : rect.right) : rect.bottom;
   }
   const marker = document.createElement("span");
   marker.className = indicatorClass;

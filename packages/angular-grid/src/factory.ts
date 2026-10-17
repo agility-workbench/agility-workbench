@@ -28,6 +28,9 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "rowDataMode", grid.rowDataMode());
   setIfDefined(options, "asyncTransactionWaitMs", grid.asyncTransactionWaitMs());
   setIfDefined(options, "overscanRowCount", grid.overscanRowCount());
+  setIfDefined(options, "columnVirtualization", grid.columnVirtualization());
+  setIfDefined(options, "overscanColumnCount", grid.overscanColumnCount());
+  setIfDefined(options, "enableRtl", grid.enableRtl());
   setIfDefined(options, "minResizeWidth", grid.minResizeWidth());
   setIfDefined(options, "maxColumnWidth", grid.maxColumnWidth());
   setIfDefined(options, "pivotMode", grid.pivotMode());

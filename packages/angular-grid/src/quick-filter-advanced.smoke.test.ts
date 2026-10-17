@@ -174,10 +174,10 @@ describe("AwbGrid quick filter (advanced)", () => {
       instance.quickFilter = { mode: "always", position: { anchor: "left", offsetX: 16 } };
     });
     const w = widget(gridEl)!;
-    expect(w.style.left).toBe("16px");
+    expect(w.style.insetInlineStart).toBe("16px");
     // The opposite edge must be an explicit `auto`, not "" — clearing it would fall back to the
     // base stylesheet `right` rule, pinning both edges and stretching the panel to full width.
-    expect(w.style.right).toBe("auto");
+    expect(w.style.insetInlineEnd).toBe("auto");
   });
 
   it("anchors right by default, releasing the left edge to auto", async () => {
@@ -186,7 +186,7 @@ describe("AwbGrid quick filter (advanced)", () => {
     });
     // happy-dom drops `calc(var(...))` on assignment, so we can't read the `right` value back
     // here; the observable, env-robust signal for the right anchor is that `left` is auto.
-    expect(widget(gridEl)!.style.left).toBe("auto");
+    expect(widget(gridEl)!.style.insetInlineStart).toBe("auto");
   });
 
   it("offsets the top below the header by offsetTop", async () => {

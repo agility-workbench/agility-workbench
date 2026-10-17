@@ -7,6 +7,7 @@ import { matchesAnyChord, matchesChord } from "../interaction/keyChord";
 import { Overlay } from "../overlay";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import { defaultLocaleText, pluralLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
+import { isRtl } from "../layout/direction";
 import {
   createSetFilterComponentRuntime,
 } from "./setFilterValueComponent";
@@ -194,14 +195,17 @@ export class SetFilterRenderer implements IFilterRenderer {
       } else if (matchesChord(e, "end")) {
         e.preventDefault();
         this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
-      } else if (matchesChord(e, "arrowleft")) {
+      } else if (matchesChord(e, "arrowleft") || matchesChord(e, "arrowright")) {
         e.preventDefault();
-        if (this.treeRows) this.treeArrowLeft(focusableOptions, currentIndex);
+        // "Towards the inline end" opens a group (its chevron and its children's indent point that
+        // way): ArrowRight in LTR, ArrowLeft in RTL. The form lives inside the grid root, whose
+        // resolved `dir` says which.
+        const towardsEnd = matchesChord(e, "arrowright") !== isRtl(this.root);
+        if (towardsEnd) {
+          if (this.treeRows) this.treeArrowRight(focusableOptions, currentIndex);
+          else this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
+        } else if (this.treeRows) this.treeArrowLeft(focusableOptions, currentIndex);
         else this.focusOption(focusableOptions, currentIndex, 0);
-      } else if (matchesChord(e, "arrowright")) {
-        e.preventDefault();
-        if (this.treeRows) this.treeArrowRight(focusableOptions, currentIndex);
-        else this.focusOption(focusableOptions, currentIndex, focusableOptions.length - 1);
       } else if (matchesAnyChord(e, ["space", "enter"])) {
         // Flat layout: focus is on the native checkbox, and Space toggles it natively.
         if (activeElement instanceof HTMLInputElement && matchesChord(e, "space")) return;

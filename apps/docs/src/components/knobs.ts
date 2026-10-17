@@ -301,6 +301,42 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       ...onOff(v.highlightActiveCell, "highlightActiveCell"),
     }),
   },
+  rtl: {
+    knobs: [
+      // Creation-only: a change remounts the grid, exactly as an app has to recreate it.
+      { id: "enableRtl", label: "Right-to-left", kind: "toggle", default: true, structural: true },
+    ],
+    toProps: (v) => ({
+      // Printed as false when off: unset would follow the page's direction instead.
+      enableRtl: bool(v.enableRtl),
+      rowNumbers: true,
+      rowSelection: { mode: "multiple", checkboxes: true, headerCheckbox: true },
+      fillHandle: true,
+      pagination: true,
+      pageSize: 20,
+      groupDefaultExpanded: -1,
+    }),
+  },
+  "large-data": {
+    knobs: [
+      // Both creation-only: a change remounts the grid, exactly as an app has to recreate it.
+      { id: "columnVirtualization", label: "Column virtualization", kind: "toggle", default: true, structural: true },
+      {
+        id: "overscanColumnCount",
+        label: "Overscan columns",
+        kind: "select",
+        options: [{ value: "0" }, { value: "1" }, { value: "2" }, { value: "4" }, { value: "8" }],
+        default: "2",
+        structural: true,
+      },
+    ],
+    toProps: (v) => ({
+      // Printed as false when off; true is the default.
+      columnVirtualization: bool(v.columnVirtualization),
+      overscanColumnCount: num(v.overscanColumnCount),
+      rowSelection: { mode: "multiple", checkboxes: true },
+    }),
+  },
 };
 
 export function defaultKnobValues(feature: DemoFeature): KnobValues {

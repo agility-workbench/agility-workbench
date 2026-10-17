@@ -38,7 +38,9 @@ import { mountStickyGroupRowsDemo } from "./demos/sticky-group-rows-demo";
 import { mountToolbarDemo } from "./demos/toolbar-demo";
 import { mountTooltipDemo } from "./demos/tooltip-demo";
 import { mountTouchDemo } from "./demos/touch-demo";
+import { mountLargeDataDemo } from "./demos/large-data-demo";
 import { mountLocalizationDemo } from "./demos/localization-demo";
+import { mountRtlDemo } from "./demos/rtl-demo";
 import { mountTreeDataDemo } from "./demos/tree-data-demo";
 import { mountVisualStatesDemo } from "./demos/visual-states-demo";
 
@@ -86,6 +88,8 @@ const PAGES: Array<{ id: string; label: string; mount: DemoMount }> = [
   { id: "cellRenderers", label: "Built-in renderers", mount: mountCellRenderersDemo },
   { id: "touch", label: "Touch & pointer", mount: mountTouchDemo },
   { id: "localization", label: "Localization", mount: mountLocalizationDemo },
+  { id: "rtl", label: "Right-to-left", mount: mountRtlDemo },
+  { id: "largeData", label: "Large data set", mount: mountLargeDataDemo },
 ];
 
 const root = document.getElementById("root")!;

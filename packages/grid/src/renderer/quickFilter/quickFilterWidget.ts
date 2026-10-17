@@ -532,14 +532,16 @@ export class QuickFilterWidget {
     // Release the opposite edge with an explicit `auto` (not "") so the widget keeps its intrinsic
     // width. Clearing to "" would fall back to the stylesheet's base `right` rule, pinning *both*
     // edges and stretching the panel across the full width.
+    // `anchor` names the inline START ("left") or END ("right") edge, so the widget mirrors under
+    // `enableRtl` — where the vertical-scrollbar lane it clears is on the left, the inline end.
     if (this.effectiveAnchor() === "left") {
-      this.wrapper.style.left = `${offsetX}px`;
-      this.wrapper.style.right = "auto";
+      this.wrapper.style.insetInlineStart = `${offsetX}px`;
+      this.wrapper.style.insetInlineEnd = "auto";
     } else {
       // Clear the body's measured vertical-scrollbar lane (0 when the body does not scroll or the
       // platform overlays its scrollbars) so the widget sits just inside it, never over the thumb.
-      this.wrapper.style.right = `calc(var(--pte-scrollbar-gutter-active, 0px) + ${offsetX}px)`;
-      this.wrapper.style.left = "auto";
+      this.wrapper.style.insetInlineEnd = `calc(var(--pte-scrollbar-gutter-active, 0px) + ${offsetX}px)`;
+      this.wrapper.style.insetInlineStart = "auto";
     }
   }
 

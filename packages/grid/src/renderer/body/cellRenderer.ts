@@ -44,7 +44,7 @@ export class BodyCellRenderer {
       if (row.isGroup) {
         renderGroupCell(cell, row, this.api.getCore().getGroupRowLabel(row));
       } else {
-        cell.style.paddingLeft = "";
+        cell.style.paddingInlineStart = "";
         cell.replaceChildren();
       }
       return;
@@ -102,7 +102,7 @@ export class BodyCellRenderer {
   clearFullWidthCell(cell: HTMLDivElement, cellRendererMap: Map<string, RendererRecord>) {
     this.clearFullWidthRenderer(cellRendererMap);
     cell.classList.remove("pte-group-cell", "pte-action-frame-indicator");
-    cell.style.paddingLeft = "";
+    cell.style.paddingInlineStart = "";
     cell.replaceChildren();
   }
 
@@ -200,7 +200,7 @@ export class BodyCellRenderer {
       // pte-group-cell only sets flex layout; the row carries the group weight, so it stays on
       // whether or not a renderer paints the cell.
       cell.classList.add("pte-group-cell");
-      cell.style.paddingLeft = "";
+      cell.style.paddingInlineStart = "";
       const { value, formatted } = this.api.getCore().getGroupCellValue(col, row);
       const params = getCellRendererParams(
         value, formatted, row, viewIndex, col, cell, this.api, refreshReason, rowPresentation,
@@ -223,7 +223,7 @@ export class BodyCellRenderer {
       return;
     }
     cell.classList.remove("pte-group-cell");
-    cell.style.paddingLeft = "";
+    cell.style.paddingInlineStart = "";
 
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
@@ -377,7 +377,7 @@ export class BodyCellRenderer {
   // groupValueGetter result), otherwise blank. Read through the core's rule rather than the node's
   // aggregates so the screen cannot disagree with the clipboard or the click payloads.
   private renderGroupAggregateOrBlank(cell: HTMLDivElement, row: IRowNode, col: Column) {
-    cell.style.paddingLeft = "";
+    cell.style.paddingInlineStart = "";
     const text = this.api.getCore().getGroupCellValue(col, row).formatted;
     if (text) {
       cell.textContent = text;

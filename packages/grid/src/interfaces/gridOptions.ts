@@ -770,7 +770,9 @@ export interface QuickFilterOptions {
 /**
  * Placement of the floating quick-filter widget within the grid root.
  * - `anchor`: which horizontal edge the widget is pinned to. "right" (default) preserves the
- *   historical placement; "left" pins it to the left edge instead. While a find-mode search is
+ *   historical placement; "left" pins it to the left edge instead. Under `enableRtl` the edges
+ *   mirror: "right" is the inline end (the left edge, beside the vertical scrollbar) and "left" the
+ *   inline start. While a find-mode search is
  *   active the widget may transiently sit at the other edge, to uncover an active match that no
  *   scroll can move out from under it; that never rewrites this setting.
  * - `offsetX`: inset in px from the anchored edge. Defaults to 8. On the right edge this is added
@@ -1197,7 +1199,31 @@ export interface GridOptions<TData = any> {
    * later calls. Defaults to 16. Set to 0 to flush on the next macrotask.
    */
   asyncTransactionWaitMs?: number;
+  /** Rows rendered beyond each edge of the visible window, so a scroll has rows ready before the
+   * window advances. Defaults to 10. Set at construction only. */
   overscanRowCount?: number;
+  /**
+   * Render only the centre-section columns that are in or near the horizontal viewport, instead of
+   * a cell for every column in every row. On by default. Pinned and leading columns are always
+   * rendered, and so is every column while the grid has no measured width (a hidden container).
+   * When a centre column defines `colSpan`, the centre section renders every column. Set at
+   * construction only.
+   */
+  columnVirtualization?: boolean;
+  /**
+   * Columns rendered beyond each edge of the horizontal viewport when `columnVirtualization` is on,
+   * so a horizontal scroll has cells ready before the window moves. Defaults to 2. Set at
+   * construction only.
+   */
+  overscanColumnCount?: number;
+  /**
+   * Lay the grid out right-to-left: pinned-left columns and the row-start chrome sit at the right
+   * edge, horizontal scrolling starts from the right, `ArrowLeft` / `ArrowRight` move towards the
+   * visual left / right, and menus, resize handles and the fill handle mirror. `true` writes
+   * `dir="rtl"` on the grid root, `false` writes `dir="ltr"`, and leaving it unset follows the
+   * direction the root inherits from the page at creation. Set at construction only.
+   */
+  enableRtl?: boolean;
   /**
    * Minimum width (px) a column can be dragged down to with the resize handle. Also the floor for
    * content-based auto-sizing. Defaults to 75.
@@ -2131,6 +2157,10 @@ export interface InternalGridOptions extends GridOptions {
   rowDataMode: RowDataMode;
   asyncTransactionWaitMs: number;
   overscanRowCount: number;
+  columnVirtualization: boolean;
+  overscanColumnCount: number;
+  /** As supplied: `undefined` means "follow the direction the root inherits at creation". */
+  enableRtl: boolean | undefined;
   minResizeWidth: number;
   maxColumnWidth: number;
   allowExportAsCSV: boolean;
@@ -2354,6 +2384,7 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   headerHeight: true, leafHeaderHeight: true, parentHeaderHeight: true, rowHeight: true,
   pinnedTopRowData: true, pinnedBottomRowData: true, getRowId: true, rowIdKey: true,
   rowDataMode: true, asyncTransactionWaitMs: true, overscanRowCount: true, minResizeWidth: true,
+  columnVirtualization: true, overscanColumnCount: true, enableRtl: true,
   maxColumnWidth: true, allowExportAsCSV: true, allowExportAsExcel: true, pagination: true,
   paginationControls: true, rowNumbers: true, rowHover: true, columnHover: true, zebraRows: true,
   getRowClass: true, getRowStyle: true, getRowPresentation: true, onCellClicked: true,

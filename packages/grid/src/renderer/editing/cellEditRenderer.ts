@@ -4,7 +4,7 @@ import { CellRef } from "../../interfaces/selection";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { GridEventEditingChangedParams } from "../../events/events";
 import { anyModifiers, hasMod, matchesChord } from "../interaction/keyChord";
-import { RowPoolDef } from "../types";
+import { centerCellAt, RowPoolDef } from "../types";
 import { ICellEditor } from "./cellEditor";
 import { createEditorForColumn } from "./resolveEditor";
 
@@ -51,6 +51,17 @@ export class CellEditRenderer {
 
   isEditing(): boolean {
     return this.editingCell != null;
+  }
+
+  /**
+   * Instance id of the column whose body cell holds the open editor, or null (no editor, or one
+   * mounted in a pinned band). Column virtualization keeps that column rendered while it scrolls
+   * out of view, so the editor is neither destroyed nor committed by a horizontal scroll.
+   */
+  getBodyEditColumnId(): string | null {
+    const cell = this.editingCell;
+    if (!cell || cell.rowPinned || !this.cellEl) return null;
+    return this.cellEl.dataset.colId ?? null;
   }
 
   onEditingChanged(params: GridEventEditingChangedParams) {
@@ -244,9 +255,8 @@ export class CellEditRenderer {
   private findCellEl(viewIdx: number, section: "left" | "center" | "right", localIndex: number): HTMLDivElement | null {
     const slot = this.params.rowPool()[viewIdx - this.params.startIndex()];
     if (!slot) return null;
-    const cells = section === "left" ? slot.leftCellEls
-      : section === "right" ? slot.rightCellEls
-        : slot.cellEls;
+    if (section === "center") return centerCellAt(slot, localIndex);
+    const cells = section === "left" ? slot.leftCellEls : slot.rightCellEls;
     return cells?.[localIndex] ?? null;
   }
 }

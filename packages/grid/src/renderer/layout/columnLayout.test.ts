@@ -76,22 +76,22 @@ describe("vertical scrollbar compensation", () => {
   it("moves the live gutter between the center and right-pinned headers", () => {
     const centerOnly = createColumnLayout();
     centerOnly.renderer.setVerticalScrollbarVisible(true);
-    expect(centerOnly.centerHeader.style.paddingRight).toBe("15px");
-    expect(centerOnly.rightHeader.style.paddingRight).toBe("0px");
-    expect(centerOnly.hScrollContainer.style.paddingRight).toBe("15px");
+    expect(centerOnly.centerHeader.style.paddingInlineEnd).toBe("15px");
+    expect(centerOnly.rightHeader.style.paddingInlineEnd).toBe("0px");
+    expect(centerOnly.hScrollContainer.style.paddingInlineEnd).toBe("15px");
 
     centerOnly.renderer.setVerticalScrollbarVisible(false);
-    expect(centerOnly.centerHeader.style.paddingRight).toBe("0px");
-    expect(centerOnly.hScrollContainer.style.paddingRight).toBe("0px");
+    expect(centerOnly.centerHeader.style.paddingInlineEnd).toBe("0px");
+    expect(centerOnly.hScrollContainer.style.paddingInlineEnd).toBe("0px");
 
     const withRightPinned = createColumnLayout(120);
     withRightPinned.renderer.setVerticalScrollbarVisible(true);
-    expect(withRightPinned.centerHeader.style.paddingRight).toBe("0px");
-    expect(withRightPinned.rightHeader.style.paddingRight).toBe("15px");
+    expect(withRightPinned.centerHeader.style.paddingInlineEnd).toBe("0px");
+    expect(withRightPinned.rightHeader.style.paddingInlineEnd).toBe("15px");
     expect(withRightPinned.rightHeader.style.width).toBe("136px");
 
     withRightPinned.renderer.setVerticalScrollbarVisible(false);
-    expect(withRightPinned.rightHeader.style.paddingRight).toBe("0px");
+    expect(withRightPinned.rightHeader.style.paddingInlineEnd).toBe("0px");
     expect(withRightPinned.rightHeader.style.width).toBe("121px");
   });
 
@@ -106,9 +106,9 @@ describe("vertical scrollbar compensation", () => {
     const withRightPinned = createColumnLayout(120, scroller(11));
     withRightPinned.renderer.setVerticalScrollbarVisible(true);
 
-    expect(withRightPinned.rightHeader.style.paddingRight).toBe("11px");
+    expect(withRightPinned.rightHeader.style.paddingInlineEnd).toBe("11px");
     expect(withRightPinned.rightHeader.style.width).toBe("132px");
-    expect(withRightPinned.hScrollContainer.style.paddingRight).toBe("11px");
+    expect(withRightPinned.hScrollContainer.style.paddingInlineEnd).toBe("11px");
   });
 
   it("publishes the same number to CSS that it applies as padding", () => {
@@ -119,7 +119,7 @@ describe("vertical scrollbar compensation", () => {
 
     expect(grid.root.style.getPropertyValue("--pte-scrollbar-gutter")).toBe("11px");
     expect(grid.root.style.getPropertyValue("--pte-scrollbar-gutter-active")).toBe("11px");
-    expect(grid.rightHeader.style.paddingRight).toBe("11px");
+    expect(grid.rightHeader.style.paddingInlineEnd).toBe("11px");
 
     // With no scrollbar the compensation goes to zero, but the raw gutter stays — the pinned-row
     // lane still needs a width to reserve when a band scrolls on its own.
@@ -134,7 +134,7 @@ describe("vertical scrollbar compensation", () => {
     const grid = createColumnLayout(120, scroller(0));
     grid.renderer.setVerticalScrollbarVisible(true);
 
-    expect(grid.rightHeader.style.paddingRight).toBe("15px");
+    expect(grid.rightHeader.style.paddingInlineEnd).toBe("15px");
   });
 
   it("recomputes visibility when the rendered row content changes", () => {

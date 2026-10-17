@@ -434,6 +434,10 @@ export class GridCore implements IGridCore {
       rowDataMode: options.rowDataMode ?? "auto",
       asyncTransactionWaitMs: resolveAsyncTransactionWaitMs(options.asyncTransactionWaitMs),
       overscanRowCount: options.overscanRowCount ?? 10,
+      columnVirtualization: options.columnVirtualization ?? true,
+      overscanColumnCount: options.overscanColumnCount != null && options.overscanColumnCount >= 0
+        ? Math.floor(options.overscanColumnCount) : 2,
+      enableRtl: options.enableRtl,
       minResizeWidth: options.minResizeWidth != null && options.minResizeWidth > 0 ? options.minResizeWidth : 75,
       maxColumnWidth: options.maxColumnWidth != null && options.maxColumnWidth > 0 ? options.maxColumnWidth : 420,
       allowExportAsCSV: options.allowExportAsCSV ?? true,

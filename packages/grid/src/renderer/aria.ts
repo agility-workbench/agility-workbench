@@ -6,9 +6,12 @@
  * cells are stitched into it via `aria-owns`, listing every cell — the center row's own children
  * included — in visual order, which is the order Chrome reads.
  *
- * Stitching is creation-time only: pool slots and band rows pair the same physical elements across
- * sections for their whole lifetime, so ids and `aria-owns` are never touched in the scroll hot path.
- * Cells hidden by colSpan shadowing or full-width layout are `display:none` and leave the tree.
+ * Stitching is creation-time only for vertical scrolling: pool slots and band rows pair the same
+ * physical elements across sections for their whole lifetime. The one exception is column
+ * virtualization, where a horizontal scroll adds and removes a slot's centre cells; the pool then
+ * re-stitches that slot. Pooled cell ids are column-derived (`<slot prefix>-c<globalIndex>`), so a
+ * cell that stays rendered keeps its id. Cells hidden by colSpan shadowing or full-width layout are
+ * `display:none` and leave the tree; the centre's `.pte-col-gap` spacers are `aria-hidden`.
  */
 
 import { isExpandableNode } from "../interfaces/iRowNode";

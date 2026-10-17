@@ -31,6 +31,8 @@ import { SparklineDemoComponent } from "./sparkline-demo.component";
 import { CellRenderersDemoComponent } from "./cell-renderers-demo.component";
 import { TouchDemoComponent } from "./touch-demo.component";
 import { LocalizationDemoComponent } from "./localization-demo.component";
+import { RtlDemoComponent } from "./rtl-demo.component";
+import { LargeDataDemoComponent } from "./large-data-demo.component";
 import { StickyGroupRowsDemoComponent } from "./sticky-group-rows-demo.component";
 import { ToolbarDemoComponent } from "./toolbar-demo.component";
 import { TooltipDemoComponent } from "./tooltip-demo.component";
@@ -79,6 +81,8 @@ const PAGES = [
   { id: "cellRenderers", label: "Built-in renderers" },
   { id: "touch", label: "Touch & pointer" },
   { id: "localization", label: "Localization" },
+  { id: "rtl", label: "Right-to-left" },
+  { id: "largeData", label: "Large data set" },
 ] as const;
 
 type PageId = (typeof PAGES)[number]["id"];
@@ -119,6 +123,8 @@ type PageId = (typeof PAGES)[number]["id"];
     CellRenderersDemoComponent,
     TouchDemoComponent,
     LocalizationDemoComponent,
+    RtlDemoComponent,
+    LargeDataDemoComponent,
     StickyGroupRowsDemoComponent,
     ToolbarDemoComponent,
     TooltipDemoComponent,
@@ -252,6 +258,12 @@ type PageId = (typeof PAGES)[number]["id"];
         }
         @case ("localization") {
           <localization-demo />
+        }
+        @case ("rtl") {
+          <rtl-demo />
+        }
+        @case ("largeData") {
+          <large-data-demo />
         }
       }
     </div>

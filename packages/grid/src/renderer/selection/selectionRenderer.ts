@@ -9,6 +9,7 @@ import { ActiveDescendantTracker, setAriaSelected } from "../aria";
 import { ClipboardRenderer } from "../clipboard/clipboardRenderer";
 import type { FillHandleController } from "../fill/fillHandleController";
 import { hasMod } from "../interaction/keyChord";
+import { isRtl, mirrorHorizontal } from "../layout/direction";
 import type { KeyboardBinding } from "../interaction/keyboardRouter";
 import { RowPoolDef } from "../types";
 
@@ -418,6 +419,9 @@ export class SelectionRenderer {
     const extend = (e: KeyboardEvent) => e.shiftKey
       && !!core.options.rangeSelection
       && !activeColumn()?.isLeadingUtilityColumn();
+    // Read per keystroke from the root's resolved `dir` (an attribute, not a style flush): the
+    // bindings are built before the root is attached, when an inherited direction is not yet known.
+    const rtl = () => isRtl(this.params.root);
     const utilityActivation = (test: (col: Column) => boolean) => (): boolean => {
       const active = activeCell();
       const col = activeColumn();
@@ -452,9 +456,11 @@ export class SelectionRenderer {
         run: (): boolean | void => {
           const hierarchy = core.getColumnModel().getHierarchyColumn();
           if (!hierarchy || activeColumn()?.instanceID !== hierarchy.instanceID) return false;
+          // Expand points towards the inline end, where the children's indent goes: ArrowLeft in RTL.
+          const towards = key === "arrowup" ? "up" : mirrorHorizontal(key === "arrowright" ? "right" : "left", rtl());
           core.dispatch({
             type: "treeNavigate",
-            command: key === "arrowright" ? "expand" : key === "arrowleft" ? "collapse" : "parent",
+            command: towards === "right" ? "expand" : towards === "left" ? "collapse" : "parent",
           });
         },
       })),
@@ -672,6 +678,8 @@ export class SelectionRenderer {
       },
 
       // Arrow navigation. Mod jumps a block, Shift extends a range; Alt belongs to the browser.
+      // ArrowLeft/ArrowRight move towards the visual left/right, so in RTL ArrowLeft steps to the
+      // NEXT column; the model's "left"/"right" are previous/next, hence the mirror.
       ...(Object.entries({
         arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
       } as const)).map(([key, dir]) => ({
@@ -681,7 +689,7 @@ export class SelectionRenderer {
         label: core.getLocaleText(({ up: "shortcutMoveUp", down: "shortcutMoveDown", left: "shortcutMoveLeft", right: "shortcutMoveRight" } as const)[dir]),
         run: (e: KeyboardEvent) => core.dispatch({
           type: "navigate",
-          dir,
+          dir: mirrorHorizontal(dir, rtl()),
           extend: extend(e),
           jump: hasMod(e) ? "block" : undefined,
         }),

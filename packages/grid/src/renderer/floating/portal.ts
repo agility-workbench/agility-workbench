@@ -25,7 +25,7 @@
  *    does not. A consumer who needs to escape a transformed host can drop `escapeRootClip` or lift
  *    the transform.
  *
- * 2. **The per-grid theme.** A theme's `--pte-*` values (and icon overrides) are written as inline
+ * 2. **The per-grid theme and direction.** A theme's `--pte-*` values (and icon overrides) are written as inline
  *    custom properties on `.pte-root` (ThemeRenderer / IconRenderer); a portaled layer is not a
  *    descendant, so it would fall back to the stylesheet's `:root` / `:host` defaults (or whatever
  *    the page sets). {@link linkPortalTheme} copies every inline custom property of the root onto
@@ -35,7 +35,8 @@
  *    them from the theme means dark themes, `createTheme({...})` params, `withParams`, raw `vars`
  *    overrides and icon variables all carry with one mechanism and no access to the theme object.
  *    It also sets `font-family: var(--pte-font-family)`, the one typographic property every layer
- *    otherwise inherits from `.pte-root` and that no layer rule restates.
+ *    otherwise inherits from `.pte-root` and that no layer rule restates, and copies the root's
+ *    `dir` (the grid's resolved direction) so the layer lays out the way the grid does.
  */
 
 /** Where a layer leaving `root` should be appended. */
@@ -84,6 +85,12 @@ export function linkPortalTheme(root: HTMLElement, el: HTMLElement): () => void 
   const copied = new Set<string>();
   syncCustomProperties(root, el, copied);
   el.style.fontFamily = "var(--pte-font-family)";
+  // The grid's direction too: a layer under <body> or the shadow root inherits the PAGE's
+  // direction, not the grid's, so an `enableRtl` grid on an LTR page (or the reverse) would lay its
+  // tooltip or drag ghost out the wrong way round. The root carries the resolved value as `dir`
+  // (fixed at creation), so one copy is enough.
+  const dir = root.getAttribute("dir");
+  if (dir) el.setAttribute("dir", dir);
   // Some test rigs expose a MutationObserver global that is not the real thing (zone-patched or
   // stubbed); without a working observer the copy is simply not kept live.
   let observer: MutationObserver | null = null;

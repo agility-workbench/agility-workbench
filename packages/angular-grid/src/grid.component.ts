@@ -130,6 +130,12 @@ export class AwbGrid<TData = any> implements OnDestroy {
   readonly parentHeaderHeight = input<GridOptions["parentHeaderHeight"]>();
   readonly rowHeight = input<GridOptions["rowHeight"]>();
   readonly overscanRowCount = input<GridOptions["overscanRowCount"]>();
+  /** Render only the centre columns near the horizontal viewport; see `GridOptions.columnVirtualization`. */
+  readonly columnVirtualization = input<GridOptions["columnVirtualization"]>();
+  /** Columns rendered beyond the horizontal viewport; see `GridOptions.overscanColumnCount`. */
+  readonly overscanColumnCount = input<GridOptions["overscanColumnCount"]>();
+  /** Right-to-left layout; see `GridOptions.enableRtl`. */
+  readonly enableRtl = input<GridOptions["enableRtl"]>();
   readonly minResizeWidth = input<GridOptions["minResizeWidth"]>();
   readonly maxColumnWidth = input<GridOptions["maxColumnWidth"]>();
   readonly pivotMode = input<GridOptions["pivotMode"]>();

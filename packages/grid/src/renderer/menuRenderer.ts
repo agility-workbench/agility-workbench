@@ -2,6 +2,7 @@ import { MenuItem } from "../interfaces/menuItem";
 import { isTrue } from "../misc";
 import { defaultLocaleText, type LocaleTextResolver } from "../interfaces/locale";
 import { formatChord, type ChordSpec } from "./interaction/keyChord";
+import { isRtl, logicalArrowKey } from "./layout/direction";
 
 export interface MenuParams {
   anchorEl?: HTMLElement;
@@ -11,6 +12,11 @@ export interface MenuParams {
   level?: number;
   parentId?: string | null;
   parentEl?: HTMLElement | null;
+  /**
+   * Which corner of the anchor the menu hangs from. `left`/`right` name the inline START/END in the
+   * grid's direction: in RTL a `bottom-left` menu aligns its right edge with the anchor's right edge
+   * and grows leftwards, exactly mirroring the LTR layout.
+   */
   position?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
   onItemClick?: (item: MenuItem) => void;
   onOpen?: (renderer: MenuRenderer) => void;
@@ -115,13 +121,18 @@ export class MenuRenderer {
     menuOverlay.style.opacity = "1";
 
     const above = position.includes("top");
-    const alignRight = position.includes("right");
-    let left = alignRight ? clientX - W : clientX;
+    // "left"/"right" in `position` are the inline start/end. In RTL a start-aligned menu hangs from
+    // the anchor's (or pointer's) right edge and grows leftwards, so the physical alignment flips;
+    // its measured width (not the minimum) is what has to fit on that side.
+    const rtl = isRtl(this.root);
+    const alignRight = position.includes("right") !== rtl;
+    const width = rtl ? Math.max(W, menuRect.width) : W;
+    let left = alignRight ? clientX - width : clientX;
     let top = above ? clientY - menuRect.height : clientY;
 
     if (anchorEl) {
       const r = anchorEl.getBoundingClientRect();
-      left = alignRight ? r.right - W : r.left;
+      left = alignRight ? r.right - width : r.left;
       top = above ? r.top - 4 - menuRect.height : r.bottom + 4;
     }
 
@@ -278,23 +289,29 @@ export class MenuRenderer {
 
     const r = parentBtnEl.getBoundingClientRect();
     const W = 220;
+    const rtl = isRtl(this.root);
 
-    // Default: open to the right
-    let left = r.right;
     let top = r.top;
 
     const bounds = this.getMenuBounds();
-
-    // If would overflow right edge, open to the left
-    if (left + W > bounds.right) {
-      left = r.left - W;
-    }
 
     overlay.style.minWidth = `${W}px`;
     overlay.style.visibility = "hidden";
     overlay.style.display = "block";
     const submenuRect = overlay.getBoundingClientRect();
     overlay.style.opacity = "1";
+
+    // A submenu opens towards the inline end — to the right in LTR, to the left in RTL — and flips
+    // to the other side of its parent item when it would overflow the grid there.
+    let left: number;
+    if (!rtl) {
+      left = r.right;
+      if (left + W > bounds.right) left = r.left - W;
+    } else {
+      const width = Math.max(W, submenuRect.width);
+      left = r.left - width;
+      if (left < bounds.left) left = r.right;
+    }
 
     if (left + submenuRect.width > bounds.right) {
       left = bounds.right - submenuRect.width;
@@ -508,7 +525,10 @@ export class MenuRenderer {
    * Move within a level. Called from the document capture handler, so it works even when focus is
    * not (or no longer) inside the menu — `current` of -1 simply enters at an end.
    */
-  private navigateMenu(level: number, key: string) {
+  private navigateMenu(level: number, physicalKey: string) {
+    // ArrowRight opens a submenu and ArrowLeft closes one in LTR; the submenu opens towards the
+    // inline end, so in RTL the keys swap (ArrowLeft opens, ArrowRight closes).
+    const key = logicalArrowKey(physicalKey, isRtl(this.root));
     const items = this.focusableItems(level);
     if (items.length === 0) return;
     const current = items.indexOf(document.activeElement as HTMLElement);

@@ -1,4 +1,5 @@
 import { div } from "../element";
+import { isRtl } from "../layout/direction";
 import { portalOutOfRoot } from "./portal";
 
 /**
@@ -224,9 +225,12 @@ export class FloatingAnchor {
     let top: number;
     // Null in follow mode — placement (and the arrow) only make sense when pinned to an anchor.
     let placedSide: FloatingPlacement | null = null;
+    // The grid's direction (the root's resolved `dir`): a follower trails the pointer towards the
+    // inline end, and the side fallbacks try the inline end first.
+    const rtl = isRtl(this.root);
 
     if (opts.mode.kind === "follow") {
-      left = opts.mode.x + offset;
+      left = rtl ? opts.mode.x - offset - size.width : opts.mode.x + offset;
       top = opts.mode.y + offset;
     } else {
       const rect = opts.mode.getAnchorRect();
@@ -238,15 +242,22 @@ export class FloatingAnchor {
         return;
       }
       const placement = opts.mode.placement ?? "auto";
-      const resolved = this.resolveAnchored(rect, size, bounds, offset, placement);
+      const resolved = this.resolveAnchored(rect, size, bounds, offset, placement, rtl);
       left = resolved.left;
       top = resolved.top;
       placedSide = resolved.side;
     }
 
-    // Clamp to bounds (same order as MenuRenderer: right/left then bottom/top).
-    if (left + size.width > bounds.right) left = bounds.right - size.width;
-    if (left < bounds.left) left = bounds.left;
+    // Clamp to bounds (same order as MenuRenderer: right/left then bottom/top). The last clamp wins
+    // when the floater is wider than the bounds, so it keeps the inline-START edge in view: the left
+    // edge in LTR, the right edge in RTL.
+    if (rtl) {
+      if (left < bounds.left) left = bounds.left;
+      if (left + size.width > bounds.right) left = bounds.right - size.width;
+    } else {
+      if (left + size.width > bounds.right) left = bounds.right - size.width;
+      if (left < bounds.left) left = bounds.left;
+    }
     if (top + size.height > bounds.bottom) top = bounds.bottom - size.height;
     if (top < bounds.top) top = bounds.top;
 
@@ -262,13 +273,16 @@ export class FloatingAnchor {
   }
 
   /** Compute the top-left for an anchored placement. Preferred placements try their opposite side
-   * first, then the perpendicular axis; "auto" tries bottom → top → right → left. */
+   * first, then the perpendicular axis; "auto" tries bottom → top → inline end → inline start.
+   * `"left"`/`"right"` are physical sides (they name where the floater sits on screen); only the
+   * order of the perpendicular fallbacks follows the direction. */
   private resolveAnchored(
     rect: DOMRect,
     size: DOMRect,
     bounds: { left: number; top: number; right: number; bottom: number },
     offset: number,
     placement: FloatingPlacement,
+    rtl = false,
   ): { left: number; top: number; side: FloatingPlacement } {
     const fitsBottom = rect.bottom + offset + size.height <= bounds.bottom;
     const fitsTop = rect.top - offset - size.height >= bounds.top;
@@ -281,12 +295,13 @@ export class FloatingAnchor {
       right: fitsRight,
       left: fitsLeft,
     };
+    const [end, start] = rtl ? ["left", "right"] as const : ["right", "left"] as const;
     const candidates: Array<Exclude<FloatingPlacement, "auto">> = placement === "auto"
-      ? ["bottom", "top", "right", "left"]
+      ? ["bottom", "top", end, start]
       : placement === "bottom"
-        ? ["bottom", "top", "right", "left"]
+        ? ["bottom", "top", end, start]
         : placement === "top"
-          ? ["top", "bottom", "right", "left"]
+          ? ["top", "bottom", end, start]
           : placement === "right"
             ? ["right", "left", "bottom", "top"]
             : ["left", "right", "bottom", "top"];
