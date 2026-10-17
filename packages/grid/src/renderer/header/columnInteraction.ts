@@ -1,5 +1,6 @@
 import { findHeaderCell } from "./headerCellLookup";
 import { portalOutOfRoot } from "../floating/portal";
+import { inlineDelta, isRtl } from "../layout/direction";
 import { AggregateModel } from "../../interfaces/aggregate";
 import { parsePivotLeafColId } from "../../interfaces/pivot";
 import { ColumnSection } from "../../interfaces/column";
@@ -205,7 +206,9 @@ export class ColumnInteractionRenderer {
 
   onColumnResizeMouseMove(e: MouseEvent) {
     if (this.resizingColumn === "") return;
-    const delta = e.clientX - this.resizeStartX;
+    // The handle sits on the header cell's inline-END edge, so dragging towards the inline end
+    // widens: rightwards in LTR, leftwards in RTL.
+    const delta = inlineDelta(e.clientX - this.resizeStartX, isRtl(this.params.root));
     const nextWidth = this.resizeStartWidth + delta;
     this.applyColumnResize(this.resizingColumn, nextWidth);
     e.preventDefault();
@@ -233,14 +236,23 @@ export class ColumnInteractionRenderer {
       this.suppressHeaderClick = true;
     }
 
-    const drift = e.clientX - this.dragStartX;
+    // Everything below runs along the inline axis: `inl` maps a viewport x so that it grows towards
+    // the inline end, and a header's start/end are its inline edges. `dragDirection` "right"/"left"
+    // therefore mean towards the inline end/start (the next/previous column), in either direction.
+    const rtl = isRtl(this.params.root);
+    const inl = (x: number) => rtl ? -x : x;
+    const startOf = (rect: DOMRect) => rtl ? -rect.right : rect.left;
+    const drift = inlineDelta(e.clientX - this.dragStartX, rtl);
     if (Math.abs(drift) >= COLUMN_DRAG_THRESHOLD_PX) {
       const nextDir = drift >= 0 ? "right" : "left";
       this.dragDirection = nextDir;
     }
 
     if (this.dragGhostEl) {
-      this.dragGhostEl.style.left = `${e.clientX + 8}px`;
+      // Trails the pointer on its inline-end side, like a cursor tag in the reading direction.
+      this.dragGhostEl.style.left = rtl
+        ? `${e.clientX - 8 - this.dragGhostEl.offsetWidth}px`
+        : `${e.clientX + 8}px`;
       this.dragGhostEl.style.top = `${e.clientY + 8}px`;
     }
 
@@ -315,10 +327,11 @@ export class ColumnInteractionRenderer {
     });
 
     let targetIndex: number;
-    const movingRight = this.dragDirection === "right" || (this.dragDirection === null && e.clientX >= this.dragLastX);
+    const movingRight = this.dragDirection === "right"
+      || (this.dragDirection === null && inl(e.clientX) >= inl(this.dragLastX));
     if (hoverIndex === -1) {
       const firstRect = headers[0].el.getBoundingClientRect();
-      if (e.clientX < firstRect.left) {
+      if (inl(e.clientX) < startOf(firstRect)) {
         targetIndex = 0;
       } else {
         targetIndex = headers.length;
@@ -616,9 +629,17 @@ export class ColumnInteractionRenderer {
     const prev = targetIndex >= headers.length ? headers[headers.length - 1] : headers[hoverIndex];
     const ref = targetIndex >= headers.length ? headers[headers.length - 1] : headers[targetIndex];
     const rect = ref.el.getBoundingClientRect();
-    const x = targetIndex >= headers.length ? rect.right : rect.left;
+    // The gap is the target's inline-START edge, or the last header's inline-END edge past the end.
+    const rtl = isRtl(this.params.root);
+    const atEnd = targetIndex >= headers.length;
+    const x = atEnd !== rtl ? rect.right : rect.left;
+    // `left` of an absolutely positioned child is measured from the container's unscrolled padding
+    // box, which is the same formula in both directions (an RTL scrollLeft is negative). Only the
+    // range differs: an RTL container's overflow lies at negative offsets.
     const relativeX = x - containerRect.left + container.scrollLeft;
-    const clampedX = Math.max(0, Math.min(relativeX, Math.max(0, container.scrollWidth - 2)));
+    const minX = rtl ? Math.min(0, container.clientWidth - container.scrollWidth) : 0;
+    const maxX = rtl ? Math.max(0, container.clientWidth - 2) : Math.max(0, container.scrollWidth - 2);
+    const clampedX = Math.max(minX, Math.min(relativeX, maxX));
     this.dragIndicatorEl.style.left = `${clampedX}px`;
     this.dragIndicatorEl.style.display = "block";
     this.dragIndicatorEl.style.top = prev.el.offsetTop + "px";

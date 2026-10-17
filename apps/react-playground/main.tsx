@@ -40,6 +40,8 @@ import IndexedInsertDemo from "./IndexedInsertDemo";
 import SetFilterComponentsDemo from "./SetFilterComponentsDemo";
 import TouchDemo from "./TouchDemo";
 import LocalizationDemo from "./LocalizationDemo";
+import RtlDemo from "./RtlDemo";
+import LargeDataDemo from "./LargeDataDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -84,6 +86,8 @@ const PAGES = [
   { id: "cellRenderers", label: "Built-in renderers", render: () => <CellRenderersDemo /> },
   { id: "touch", label: "Touch & pointer", render: () => <TouchDemo /> },
   { id: "localization", label: "Localization", render: () => <LocalizationDemo /> },
+  { id: "rtl", label: "Right-to-left", render: () => <RtlDemo /> },
+  { id: "largeData", label: "Large data set", render: () => <LargeDataDemo /> },
 ] as const;
 
 function Root() {

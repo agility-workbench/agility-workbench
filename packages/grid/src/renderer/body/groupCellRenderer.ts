@@ -12,7 +12,7 @@ export const INDENT_PER_LEVEL = 20;
 // The DOM is rebuilt each call (cheap: three elements) rather than diffed — the body row pool
 // recycles cells across unrelated rows, so a stable structure can't be assumed.
 export function renderGroupCell(cell: HTMLDivElement, row: IRowNode, labelText: string): void {
-  cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
+  cell.style.paddingInlineStart = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
 
   const parts: HTMLElement[] = [];
   // A non-expandable group (pivot mode's deepest level, the pivot grand-total row) gets no
@@ -51,7 +51,7 @@ export function renderGroupCell(cell: HTMLDivElement, row: IRowNode, labelText: 
 
 /** Render a data-bearing tree row in the generated tree column. */
 export function renderTreeCell(cell: HTMLDivElement, row: IRowNode): void {
-  cell.style.paddingLeft = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
+  cell.style.paddingInlineStart = `calc(var(--pte-cell-padding-left) + ${row.level * INDENT_PER_LEVEL}px)`;
   const parts: HTMLElement[] = [];
 
   // Not `children.length`: a server-side tree parent declares itself expandable (`hasChildren`)

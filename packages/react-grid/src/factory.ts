@@ -34,6 +34,9 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "rowDataMode", props.rowDataMode);
   setIfDefined(options, "asyncTransactionWaitMs", props.asyncTransactionWaitMs);
   setIfDefined(options, "overscanRowCount", props.overscanRowCount);
+  setIfDefined(options, "columnVirtualization", props.columnVirtualization);
+  setIfDefined(options, "overscanColumnCount", props.overscanColumnCount);
+  setIfDefined(options, "enableRtl", props.enableRtl);
   setIfDefined(options, "minResizeWidth", props.minResizeWidth);
   setIfDefined(options, "maxColumnWidth", props.maxColumnWidth);
   setIfDefined(options, "pivotMode", props.pivotMode);

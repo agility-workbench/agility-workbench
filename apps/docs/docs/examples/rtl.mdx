@@ -1,0 +1,115 @@
+---
+title: Right-to-left
+sidebar_position: 24
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Right-to-left
+
+For Arabic, Hebrew, Persian and Urdu interfaces the grid lays itself out right-to-left: columns
+run from the right edge, pinned-left columns and the row-start chrome sit at the right, horizontal
+scrolling starts from the right, and the arrow keys, menus, resize handles, the fill handle and
+directional icons all mirror.
+
+<LiveFeatureGrid feature="rtl" />
+
+<FrameworkCode feature="rtl" />
+
+## Turning it on
+
+`enableRtl` sets the direction of one grid:
+
+| Value | Effect |
+| --- | --- |
+| `true` | Writes `dir="rtl"` on the grid root. The grid is right-to-left whatever the page says |
+| `false` | Writes `dir="ltr"` on the grid root. Forces a left-to-right grid inside a right-to-left page |
+| unset (default) | Follows the direction the grid root inherits from the page: `dir="rtl"` on `html`, `body` or any ancestor of the host element makes the grid right-to-left |
+
+```ts
+createGrid(host, { columnDefs, rowData, enableRtl: true });
+```
+
+```tsx
+<Grid columnDefs={columns} rowData={rows} enableRtl />
+```
+
+```html
+<awb-grid [columnDefs]="columns" [rowData]="rows" [enableRtl]="true" />
+```
+
+On a page that is already right-to-left (`<html dir="rtl">`) there is nothing to set; leave
+`enableRtl` out and the grid follows the page. Use `enableRtl: false` for a grid that must stay
+left-to-right on such a page, for example one holding code or Latin-only data.
+
+The direction is read once, when the grid is created. It is not one of the options
+`updateGridOptions` accepts, and changing `dir` on the page later does not flip a live grid.
+To switch direction, destroy the grid and create it again (in React, change the `<Grid>`'s
+`key`; the live demo above does exactly that when you flip its toggle).
+
+## Pinning means start and end
+
+`pinned: "left"` pins a column to the inline **start** of the grid and `pinned: "right"` to the
+inline **end**. In a left-to-right grid those are the left and right edges; in a right-to-left
+grid they swap:
+
+| Option | Left-to-right | Right-to-left |
+| --- | --- | --- |
+| `pinned: "left"` | left edge | right edge |
+| `pinned: "right"` | right edge | left edge |
+| Row numbers (`rowNumbers`) | left edge | right edge |
+| Checkbox column (`rowSelection.checkboxColumnPinned: "left"`) | left edge | right edge |
+
+The values do not change with the direction: `api.setColumnPinned(colId, "left")` and a saved
+column state carry `"left"` / `"right"` as start / end, so the same column definitions and saved
+views work in both directions.
+
+## Keyboard
+
+Arrow keys move the way they point on screen:
+
+| Key | Left-to-right | Right-to-left |
+| --- | --- | --- |
+| `ArrowRight` | next column | previous column |
+| `ArrowLeft` | previous column | next column |
+| `Shift+ArrowLeft` / `Shift+ArrowRight` | extends the range visually | extends the range visually |
+| `Ctrl/Cmd+ArrowLeft` / `Ctrl/Cmd+ArrowRight` | block jump towards the key's side | block jump towards the key's side |
+
+The same applies in the header (moving the header cursor, `Shift+Arrow` column ranges, and
+`Ctrl/Cmd+Arrow`, which there jumps to the visual edge), in the set filter's tree (the key
+pointing towards the inline end opens a group), in the sheet tab strip, and in
+menus, where the key that points towards the inline end opens a submenu: `ArrowRight` in a
+left-to-right grid, `ArrowLeft` in a right-to-left one, and the opposite key closes it.
+Submenus open towards the inline end too.
+
+Keys that are about order rather than direction stay logical: `Home` goes to the first column
+and `End` to the last (at the right and left edges respectively in a right-to-left grid), and
+`Tab` / `Shift+Tab` move to the next / previous column in column order.
+
+## Scroll position
+
+Horizontal offsets are measured from the start edge in both directions, so they are always zero
+or positive and code that stores or restores a scroll position works unchanged:
+
+- the `bodyScroll` event's `scrollLeftPx` is `0` with the first centre column fully in view,
+  and grows as the user scrolls towards the end (leftwards in a right-to-left grid);
+- `api.scrollTo({ leftPx })` takes the same measure: `api.scrollTo({ leftPx: 0 })` returns to the
+  start whatever the direction.
+
+Browsers report a right-to-left scroller's own `scrollLeft` as zero at the start and negative
+beyond it; the grid normalises that, so read the offset from `bodyScroll` rather than from the
+body element's `scrollLeft`.
+
+## What is not mirrored
+
+- **Sparklines and charts** draw left-to-right, with time or sequence running towards the
+  right, in either direction.
+- **Exported files** (CSV and Excel) keep the column order of the grid's columns, first column
+  first. Spreadsheet applications apply their own sheet direction.
+- **Your own renderers, editors, header components and icons** are yours to mirror. The grid
+  sets `dir` on its root, so they inherit the direction; write their CSS with logical properties
+  (`margin-inline-start`, `padding-inline-end`, `inset-inline-start`, `text-align: start`)
+  rather than `left` and `right`, and flip direction-bearing icons under `[dir="rtl"]`.
+
+See [Current limitations](../limitations.mdx#right-to-left) for what remains unsupported.

@@ -6,6 +6,8 @@ import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import { resolveColSpan } from "./colSpan";
+import { ColumnWindow, computeColumnWindow, sameColumns } from "./columnWindow";
+import { scrollStart } from "../layout/direction";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import {
   mergeClassValues,
@@ -32,6 +34,14 @@ interface BodyWindowRendererParams {
   releaseCellRenderers: (slot: RowPoolDef) => void;
   /** Per-slot cell state that is painted, not rendered: selection classes and find highlights. */
   applyCellStateToSlot: (slot: RowPoolDef, viewIndex: number | null) => void;
+  /** The grid's resolved inline direction (`GridRenderer.rtl`), for reading the centre scroll offset. */
+  rtl: () => boolean;
+  /** Centre leaf indexes that must stay rendered wherever the viewport is: an open editor's column. */
+  keepCenterColumns: () => number[];
+  /** Structural column-window change of one slot (BodyRowPoolRenderer.reconcileCenter). */
+  reconcileCenter: (slot: RowPoolDef, cols: number[]) => Array<{ cell: HTMLDivElement; index: number }>;
+  /** Re-seat the fill handle after cells were rendered outside the selection paint. */
+  restoreFillHandle: () => void;
 }
 
 export class BodyWindowRenderer {
@@ -41,6 +51,78 @@ export class BodyWindowRenderer {
   private seenRequestFailures = 0;
 
   constructor(private params: BodyWindowRendererParams) { }
+
+  /**
+   * The centre columns the viewport needs (column virtualization). Every column while the centre
+   * section is unmeasured (clientWidth 0), when `columnVirtualization` is false, or when a centre
+   * column defines colSpan.
+   */
+  computeColumnWindow(): ColumnWindow {
+    const core = this.params.core;
+    const leaves = core.getColumnModel().getCenterLeaves();
+    const spacer = this.params.centerSpacer;
+    const widths = new Array<number>(leaves.length);
+    let hasColSpan = false;
+    for (let i = 0; i < leaves.length; i++) {
+      widths[i] = leaves[i].computedWidth;
+      if (leaves[i].colSpan != null) hasColSpan = true;
+    }
+    return computeColumnWindow({
+      widths,
+      scrollStart: scrollStart(spacer, this.params.rtl()),
+      clientWidth: spacer.clientWidth,
+      overscan: core.options.overscanColumnCount ?? 2,
+      enabled: core.options.columnVirtualization !== false,
+      hasColSpan,
+      keep: this.params.keepCenterColumns(),
+    });
+  }
+
+  /**
+   * Bring every pooled slot's rendered centre columns in line with the viewport. Cells that stay
+   * are untouched; with `render`, the cells that entered are rendered for the rows the slots show
+   * and the slot's painted cell state (selection, focus, find) is re-applied. Without it the caller
+   * is about to patch every row anyway. Returns whether any slot changed.
+   *
+   * Runs on every window update (scroll, either axis), after every width pass and resize, and
+   * synchronously from ensureColumnVisible so keyboard navigation lands on a rendered cell.
+   */
+  syncColumns(render = true): boolean {
+    const rowPool = this.params.rowPool();
+    if (rowPool.length === 0) return false;
+    const target = this.computeColumnWindow();
+    let changed = false;
+    for (let i = 0; i < rowPool.length; i++) {
+      const slot = rowPool[i];
+      if (sameColumns(slot.centerCols, target.cols)) continue;
+      changed = true;
+      const entered = this.params.reconcileCenter(slot, target.cols);
+      if (render) this.paintEnteredCells(slot, i, entered);
+    }
+    if (changed && render) this.params.restoreFillHandle();
+    return changed;
+  }
+
+  private paintEnteredCells(slot: RowPoolDef, poolIndex: number, entered: Array<{ cell: HTMLDivElement; index: number }>) {
+    if (this.lastStartIndex == null) return;
+    if (slot.rowEl.style.display === "none") return;
+    const core = this.params.core;
+    const viewIndex = this.lastStartIndex + poolIndex;
+    const row = core.getRowModel().getRowNodeAtViewIndex(viewIndex);
+    if (!row || core.isBodyRowPinned(row.id)) return;
+    // A full-width slot's per-column cells stay hidden under its host and hold no renderers.
+    if (!slot.rowEl.classList.contains("pte-full-width-row") && entered.length > 0) {
+      const leaves = core.getColumnModel().getCenterLeaves();
+      const rowNumber = core.getRowNumberForViewIndex(viewIndex);
+      const rowPresentation = resolveRowPresentation(core, row, viewIndex);
+      for (const { cell, index } of entered) {
+        const col = leaves[index];
+        if (!col) continue;
+        this.params.renderCell(cell, row, col, slot.cellRendererInstances, viewIndex, rowNumber, rowPresentation);
+      }
+    }
+    this.params.applyCellStateToSlot(slot, viewIndex);
+  }
 
   update(forcePatch: boolean, scrollSrc?: HTMLDivElement) {
     const rowModel = this.params.core.getRowModel();
@@ -61,8 +143,13 @@ export class BodyWindowRenderer {
 
     // Scrolling within a row only moves the sections; the pooled rows still hold the right nodes, so
     // there is nothing to repaint until the window advances by a whole row. Every caller that
-    // changes what a slot should show (data, columns, pool rebuild) passes forcePatch.
-    if (!forcePatch && startIndex === this.lastStartIndex) {
+    // changes what a slot should show (data, columns, pool rebuild) passes forcePatch. The column
+    // window is reconciled either way: a horizontal scroll changes it without moving the rows, and
+    // then only the cells that entered are rendered. When the rows are about to be patched the
+    // reconcile is structural only and patchRows renders every cell.
+    const patch = forcePatch || startIndex !== this.lastStartIndex;
+    this.syncColumns(!patch);
+    if (!patch) {
       return;
     }
 
@@ -473,8 +560,12 @@ export class BodyWindowRenderer {
       this.patchSection(slot.leftCellEls, leftLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
     }
 
+    // The centre renders the slot's column window: cellEls[c] shows centre leaf centerCols[c].
     const centerLeaves = columnModel.getCenterLeaves();
-    this.patchSection(slot.cellEls, centerLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
+    const renderedLeaves = slot.centerCols.length === centerLeaves.length
+      ? centerLeaves
+      : slot.centerCols.map((index) => centerLeaves[index]);
+    this.patchSection(slot.cellEls, renderedLeaves, slot, row, viewIndex, rowNumber, rowPresentation);
 
     const rightLeaves = columnModel.getRightLeaves();
     if (rightLeaves.length > 0 && slot.rightCellEls) {

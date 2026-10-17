@@ -36,11 +36,14 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `leafHeaderHeight` | `number` | `headerHeight`. Height of the leaf level, the bottom header row of column labels. Wins over `headerHeight` (updatable at runtime) |
 | `parentHeaderHeight` | `number` | `headerHeight`. Height of each column-group level above the leaf level, so the header is `(levels - 1) × parentHeaderHeight + leafHeaderHeight` tall. Wins over `headerHeight` (updatable at runtime) |
 | `overscanRowCount` | `number` | Viewport-derived default |
+| `columnVirtualization` | `boolean` | `true`. Render only the centre (scrolling) columns near the horizontal viewport; pinned and leading columns, the header, the aggregate row and the pinned and sticky rows are always fully rendered, and every column is rendered while a centre column defines `colSpan` or the grid has no measured width. Creation-only; see [Large data sets](../examples/large-data.mdx) |
+| `overscanColumnCount` | `number` | `2`. Columns rendered beyond each edge of the horizontal viewport under `columnVirtualization`. Creation-only |
 | `rowNumbers` | `boolean` | `false` |
 | `defaultColDef` | `DefaultColDef` | `{}` |
 | `minResizeWidth` | `number` | `75`. Smallest width a resize drag reaches; also the floor for content autosize |
 | `maxColumnWidth` | `number` | `420`. Cap for content autosize (a declared `width`, a column's own `maxWidth`, or a user resize may exceed it) |
 | `columnPanel` | `boolean \| ColumnPanelOptions` | `false` |
+| `enableRtl` | `boolean` | Not set (follows the `dir` the grid root inherits from the page). `true` lays the grid out right-to-left, `false` forces left-to-right; `pinned: "left"` then means the inline start. Creation-only; see [Right-to-left](../examples/rtl.mdx) |
 
 ## Interaction
 

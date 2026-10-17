@@ -59,8 +59,12 @@ export interface KeyboardBinding {
    */
   pattern?: (e: KeyboardEvent) => boolean;
   scope: KeyboardScope;
-  /** Human-readable action, for the planned shortcut reference. */
-  label?: string;
+  /**
+   * Human-readable action, for the planned shortcut reference. A function is read each time the
+   * table is built — for bindings whose meaning depends on state resolved after construction, such
+   * as the grid's direction (ArrowLeft is "next column" in RTL).
+   */
+  label?: string | (() => string);
   /**
    * The menu command this binding is the accelerator for (`"body.copy"`). Menus render the
    * binding's chord beside the item carrying the same command, so the two cannot drift. Only
@@ -194,7 +198,7 @@ export class KeyboardRouter {
       id: binding.id,
       scope,
       chord: binding.spec ?? undefined,
-      label: binding.label,
+      label: typeof binding.label === "function" ? binding.label() : binding.label,
       command: binding.command,
     })));
   }

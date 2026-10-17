@@ -139,7 +139,10 @@ export interface ColumnWidthItem {
 export interface GridScrollPosition {
   /** The body's vertical offset (0 = first row at the top). */
   topPx?: number;
-  /** The centre section's horizontal offset (pinned sections never scroll). */
+  /**
+   * The centre section's horizontal offset (pinned sections never scroll), in pixels from the
+   * inline-START edge — the right edge under `enableRtl` — so it is never negative.
+   */
   leftPx?: number;
 }
 

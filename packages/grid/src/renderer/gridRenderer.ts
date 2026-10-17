@@ -2,7 +2,7 @@ import type { HeaderHeightOptions } from "../core/headerGeometry";
 import { AggregateKind } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
 import { ActiveDescendantTracker } from "./aria";
-import { RowPoolDef } from "./types";
+import { centerCellAt, RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
 import { ServerSideAggregationSource } from "../ssrm/serverSide";
@@ -66,6 +66,7 @@ import { AppShortcutRegistry } from "./interaction/shortcutPolicy";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
+import { inlineEnd, inlineOffset, inlineStart, resolveRtl, scrollStart, setScrollStart } from "./layout/direction";
 import { LoadingOverlayRenderer } from "./overlay/loading";
 import { NoRowsOverlayRenderer } from "./overlay/noRows";
 import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
@@ -228,6 +229,9 @@ export class GridRenderer {
     this.root.dataset.keyboardNavigationMode = this.core.getKeyboardNavigationMode();
     this.root.style.position = "relative";
     this.root.tabIndex = 0;
+    // A forced direction is written on the root now; an inherited one is read once the root is in
+    // a document (see the `rtl` getter), since a detached element has no computed direction.
+    if (this.core.options.enableRtl != null) this.root.dir = this.core.options.enableRtl ? "rtl" : "ltr";
     // ARIA: the root is the single focusable element and therefore THE grid — so it
     // is also where aria-activedescendant names the active cell. Counts are refreshed by
     // _refreshAriaCounts whenever data or columns change.
@@ -821,6 +825,9 @@ export class GridRenderer {
       updateVerticalScrollLayout: () => this._bodyViewportRenderer.recomputeView(),
       updatePinnedRowsLayout: () => this._pinnedRowsRenderer.updateLayout(),
       afterColumnWidths: () => {
+        // A width change (resize drag, autosize, flex) moves columns in or out of the viewport
+        // without a pool rebuild.
+        this._bodyWindowRenderer?.syncColumns();
         this._bodyWindowRenderer?.refreshFullWidthWidths();
         this._actionFrameRenderer?.onWindowUpdate();
       },
@@ -844,10 +851,15 @@ export class GridRenderer {
       // its cell last. Every step writes nothing when its inputs are unchanged, so the observer's
       // re-entry after the strip toggles settles in one pass.
       onResize: () => {
+        // A root attached while its container was still detached resolves an inherited direction
+        // here, the first time it has a size — i.e. once it is in a document.
+        void this.rtl;
         this._columnLayoutRenderer.updateScrollStrip();
         this._bodyViewportRenderer.recomputeView();
         // Before the core's first viewportChanged there is no pool to resize; that event sizes it.
         if (this._poolSize > 0) this._maybeUpdatePoolSize();
+        // A wider or narrower centre section shows more or fewer columns.
+        this._bodyWindowRenderer?.syncColumns();
         this._bodyWindowRenderer?.refreshFullWidthWidths();
         this._pinnedRowsRenderer.updateLayout();
         this._actionFrameRenderer?.onWindowUpdate();
@@ -870,6 +882,9 @@ export class GridRenderer {
       aggregateRight: aggregateRefs.right,
       onHorizontalSync: (left, center, right) => {
         this._pinnedRowsRenderer.syncHorizontal(left, center, right);
+        // Column virtualization: the centre's rendered columns follow its scroll offset, through the
+        // same frame-batched window update the vertical scroll uses (the echoes coalesce into it).
+        this._scrollSyncRenderer.scheduleWindowUpdate(bodyWrapper.body);
         // The ActionFrame popover is position: fixed; horizontal scroll moves its cell under it.
         this._actionFrameRenderer?.onWindowUpdate();
       },
@@ -878,7 +893,9 @@ export class GridRenderer {
       // a tick that moved neither offset is one of those echoes and is dropped.
       onScroll: () => {
         const top = bodyWrapper.body.scrollTop;
-        const left = bodyWrapper.centerSpacer.scrollLeft;
+        // Pixels from the inline-START edge (≥ 0 in either direction; an RTL scroller's own
+        // scrollLeft runs negative), which is what bodyScroll's scrollLeftPx documents.
+        const left = scrollStart(bodyWrapper.centerSpacer, this.rtl);
         const last = this._lastBodyScroll;
         const vertical = top !== last.top;
         const horizontal = left !== last.left;
@@ -934,6 +951,14 @@ export class GridRenderer {
         this._selectionRenderer.applySelectionToSlot(slot, viewIndex);
         this._findHighlightRenderer.applyToSlot(slot, viewIndex);
       },
+      rtl: () => this.rtl,
+      keepCenterColumns: () => {
+        const colId = this._cellEditRenderer?.getBodyEditColumnId();
+        const meta = colId ? this._leafColumnLookup.get(colId) : undefined;
+        return meta?.section === "center" ? [meta.localIndex] : [];
+      },
+      reconcileCenter: (slot, cols) => this._bodyRowPoolRenderer.reconcileCenter(slot, cols),
+      restoreFillHandle: () => this._fillHandle.restoreHandle(),
     });
 
     this._paginationRenderer = new PaginationRenderer({
@@ -1078,6 +1103,8 @@ export class GridRenderer {
 
   attach(container: HTMLElement) {
     this._rootAttachmentRenderer.attach(container);
+    // Resolve an inherited direction now that the root can compute one (and write it on the root).
+    void this.rtl;
     this._injectStyles();
   }
 
@@ -1587,7 +1614,7 @@ export class GridRenderer {
       // Only the center section scrolls horizontally, which is also the only case that reports a
       // movable horizontal axis.
       if (plan.scroll.axis === "vertical") refs.body.scrollTop = plan.scroll.offset;
-      else refs.centerSpacer.scrollLeft = plan.scroll.offset;
+      else setScrollStart(refs.centerSpacer, this.rtl, plan.scroll.offset);
       return;
     }
 
@@ -1667,17 +1694,20 @@ export class GridRenderer {
     let colLeft = 0;
     for (let i = 0; i < localIdx; i++) colLeft += leaves[i].computedWidth;
 
+    // Everything on this axis is measured along the inline axis from the section's start edge, so
+    // the planner's "start"/"end" are the same columns in either direction.
+    const rtl = this.rtl;
     const spacerRect = spacer.getBoundingClientRect();
     return {
-      targetStart: colLeft - spacer.scrollLeft,
+      targetStart: colLeft - scrollStart(spacer, rtl),
       targetSize: col.computedWidth,
       viewportSize: spacer.clientWidth,
-      occluderStart: occluder.left - spacerRect.left,
-      occluderEnd: occluder.right - spacerRect.left,
+      occluderStart: inlineOffset(inlineStart(occluder, rtl), spacerRect, rtl),
+      occluderEnd: inlineOffset(inlineEnd(occluder, rtl), spacerRect, rtl),
       // Pinned sections do not scroll at all (ensureColumnVisible declines them too), so an occluded
       // pinned cell goes straight to the dodge.
       scroll: meta.section !== "center" ? null : {
-        current: spacer.scrollLeft,
+        current: scrollStart(spacer, rtl),
         max: Math.max(0, spacer.scrollWidth - spacer.clientWidth),
       },
     };
@@ -1979,10 +2009,10 @@ export class GridRenderer {
     if (!col || !row) return;
     // A full-width row's per-column cells are hidden under its host; there is no cell to paint.
     if (this.core.isFullWidthNode(row)) return;
-    const cells = lookup.section === "left" ? slot.leftCellEls
-      : lookup.section === "right" ? slot.rightCellEls
-        : slot.cellEls;
-    const cell = cells?.[lookup.localIndex];
+    // A centre column outside the slot's column window has no cell; it renders when it scrolls in.
+    const cell = lookup.section === "center"
+      ? centerCellAt(slot, lookup.localIndex)
+      : (lookup.section === "left" ? slot.leftCellEls : slot.rightCellEls)?.[lookup.localIndex];
     if (!cell) return;
     this._bodyCellRenderer.renderCell(cell, row, col, slot.cellRendererInstances, viewIdx);
     // renderCell replaces the cell's children; the handle lives among them.
@@ -2082,11 +2112,16 @@ export class GridRenderer {
       for (const section of sections) {
         const cells = section.cells(slot);
         if (!cells) continue;
-        // Cell arrays only hold non-hidden leaves, in order — mirror that alignment.
+        // Cell arrays only hold non-hidden leaves, in order — mirror that alignment. The centre's
+        // holds only its column window: cells[c] is centre leaf centerCols[c], and a column
+        // outside the window has nothing to refresh.
+        const isCenter = cells === slot.cellEls;
+        const count = isCenter ? cells.length : section.leaves.length;
         let c = 0;
-        for (const col of section.leaves) {
-          if (col.hidden) continue;
-          const cell = cells[c++];
+        for (let k = 0; k < count; k++) {
+          const col = isCenter ? section.leaves[slot.centerCols[k]] : section.leaves[k];
+          if (!col || col.hidden) continue;
+          const cell = cells[isCenter ? k : c++];
           if (!cell) continue;
           if (changed && !changed.has(col.instanceID)) continue;
           this._bodyCellRenderer.renderCell(
@@ -2160,11 +2195,13 @@ export class GridRenderer {
    * Set the body's scroll offsets (`api.scrollTo`). The vertical one is the body scroller's, the
    * horizontal one the centre section's; the browser clamps each to its range, and the scroll
    * listeners that follow a user scroll (header sync, row-window repaint) take it from there.
+   * `leftPx` is measured from the inline-START edge (the right edge in RTL), like bodyScroll's
+   * `scrollLeftPx`, so the same value means the same columns in either direction.
    */
   scrollTo(position: { topPx?: number; leftPx?: number }) {
     const refs = this._bodyViewportRenderer.getRefs();
     if (position.topPx != null) refs.body.scrollTop = Math.max(0, position.topPx);
-    if (position.leftPx != null) refs.centerSpacer.scrollLeft = Math.max(0, position.leftPx);
+    if (position.leftPx != null) setScrollStart(refs.centerSpacer, this.rtl, position.leftPx);
   }
 
   /**
@@ -2180,24 +2217,60 @@ export class GridRenderer {
 
     const refs = this._bodyViewportRenderer.getRefs();
     const centerLeaves = this.core.getColumnModel().getCenterLeaves();
-    let colLeft = 0;
+    // Offsets from the section's inline-start edge (direction.ts), so this holds in RTL too.
+    let colStart = 0;
     for (let i = 0; i < col.centralPosition; i++) {
-      colLeft += centerLeaves[i].computedWidth;
+      colStart += centerLeaves[i].computedWidth;
     }
     const colWidth = col.computedWidth;
     const viewW = refs.centerSpacer.clientWidth;
-    const sl = refs.centerSpacer.scrollLeft;
-    if (colLeft < sl) {
-      refs.centerSpacer.scrollLeft = colLeft;
-    } else if (colLeft + colWidth > sl + viewW) {
-      refs.centerSpacer.scrollLeft = colLeft + colWidth - viewW;
+    const rtl = this.rtl;
+    const offset = scrollStart(refs.centerSpacer, rtl);
+    let moved = false;
+    if (colStart < offset) {
+      setScrollStart(refs.centerSpacer, rtl, colStart);
+      moved = true;
+    } else if (colStart + colWidth > offset + viewW) {
+      setScrollStart(refs.centerSpacer, rtl, colStart + colWidth - viewW);
+      moved = true;
     }
+    // Column virtualization: render the target column now rather than on the next frame, so a
+    // keyboard move or an editor opening on it finds its cell (and the root's
+    // aria-activedescendant resolves) straight away. The header/strip echo follows on the scroll
+    // events as usual.
+    if (moved) this._bodyWindowRenderer?.syncColumns();
   }
+
+  /**
+   * The grid's resolved inline direction, fixed for its life. `enableRtl` decides when set;
+   * otherwise it is the direction the root inherits from the page, read the first time it is asked
+   * for after the root is connected (a detached root reads as LTR and is not cached). Every
+   * horizontal offset the renderer reads or writes goes through renderer/layout/direction.ts with
+   * this flag, never through a bare `scrollLeft` or `rect.left` comparison.
+   */
+  get rtl(): boolean {
+    if (this._rtl !== null) return this._rtl;
+    const forced = this.core.options.enableRtl;
+    if (forced != null) return (this._rtl = forced);
+    if (!this.root.isConnected) return false;
+    this._rtl = resolveRtl(this.root, undefined);
+    // Frozen onto the root: the stylesheet's `[dir="rtl"]` rules, portaled layers and every
+    // sub-renderer (layout/direction.ts `isRtl`) read the attribute, and a page that flips its own
+    // `dir` later does not flip a live grid (the direction is creation-only, like `enableRtl`).
+    this.root.dir = this._rtl ? "rtl" : "ltr";
+    return this._rtl;
+  }
+  private _rtl: boolean | null = null;
 
   _buildRowPool() {
     this._syncLeafColumns();
     this._destroyRowPool();
-    this._rowPool = this._bodyRowPoolRenderer.build(this._poolSize);
+    // Built with the centre's current column window (every column while the body is unmeasured);
+    // later window updates and width passes reconcile it.
+    this._rowPool = this._bodyRowPoolRenderer.build(
+      this._poolSize,
+      this._bodyWindowRenderer?.computeColumnWindow().cols,
+    );
 
     this._buildAggregateRow();
     this._refreshAriaCounts();

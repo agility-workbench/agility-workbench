@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         "examples/column-groups",
         "examples/client-side-data",
         "examples/server-side-data",
+        "examples/large-data",
         "examples/filtering",
         "examples/sorting",
         "examples/selection",
@@ -36,6 +37,7 @@ const sidebars: SidebarsConfig = {
         "examples/export",
         "examples/theming",
         "examples/localization",
+        "examples/rtl",
       ],
     },
     {

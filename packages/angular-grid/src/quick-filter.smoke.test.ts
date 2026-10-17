@@ -130,13 +130,13 @@ describe("AwbGrid quick filter", () => {
     const { gridEl } = await mountGridHost(QuickFilterHost, 600, (instance) => {
       instance.quickFilter = { mode: "always", showLayoutOptions: true };
     });
-    expect(widget(gridEl)?.style.left).toBe("auto");
+    expect(widget(gridEl)?.style.insetInlineStart).toBe("auto");
     gridEl.querySelector<HTMLButtonElement>(".pte-quick-filter-options")!.click();
     const anchor = gridEl.querySelector<HTMLSelectElement>(".pte-quick-filter-anchor-select")!;
     anchor.value = "left";
     anchor.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(widget(gridEl)?.style.left).toBe("8px");
-    expect(widget(gridEl)?.style.right).toBe("auto");
+    expect(widget(gridEl)?.style.insetInlineStart).toBe("8px");
+    expect(widget(gridEl)?.style.insetInlineEnd).toBe("auto");
   });
 
   it("reconfigures live while preserving search text, focus, and the grid API", async () => {
@@ -159,7 +159,7 @@ describe("AwbGrid quick filter", () => {
     expect(input(gridEl)).not.toBe(previousInput);
     expect(input(gridEl).value).toBe("globex");
     expect(document.activeElement).toBe(input(gridEl));
-    expect(widget(gridEl)?.style.left).toBe("16px");
+    expect(widget(gridEl)?.style.insetInlineStart).toBe("16px");
     expect(api.getCore().getRowModel().getViewCount()).toBe(1);
   });
 

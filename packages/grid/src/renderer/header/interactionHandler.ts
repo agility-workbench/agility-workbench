@@ -4,6 +4,7 @@ import type { Column } from "../../column/column";
 import { DEFAULT_SORTING_ORDER, nextSortDir, type SortDir } from "../../interfaces/sort";
 import { hasMod } from "../interaction/keyChord";
 import type { KeyboardBinding } from "../interaction/keyboardRouter";
+import { isRtl, mirrorHorizontal } from "../layout/direction";
 
 type HeaderInteractionHandlerParams = {
   core: GridCore;
@@ -31,8 +32,26 @@ export class HeaderInteractionHandler {
    */
   keyboardBindings(): KeyboardBinding[] {
     const core = this.params.core;
+    // ArrowLeft/ArrowRight move the cursor towards the visual left/right, so in RTL ArrowLeft is
+    // the NEXT column and Ctrl+ArrowLeft the LAST one. The actions below stay logical (left =
+    // previous, home = first); the key's meaning is mirrored here, per keystroke, from the root's
+    // resolved `dir` — the bindings are built before an inherited direction is known.
+    const rtl = () => isRtl(this.params.root);
+    type Horizontal = "left" | "right" | "home" | "end";
+    const visual = (dir: Horizontal): Horizontal => {
+      if (!rtl()) return dir;
+      if (dir === "home") return "end";
+      if (dir === "end") return "home";
+      return mirrorHorizontal(dir, true);
+    };
+    // A label that names what the arrow does in the grid's direction.
+    const labelFor = (ltr: Parameters<typeof core.getLocaleText>[0], rtlKey: Parameters<typeof core.getLocaleText>[0]) =>
+      () => core.getLocaleText(rtl() ? rtlKey : ltr);
     const nav = (dir: "left" | "right" | "down" | "home" | "end") => () => {
       core.dispatch({ type: "headerNavigate", dir });
+    };
+    const arrowNav = (dir: Horizontal) => () => {
+      core.dispatch({ type: "headerNavigate", dir: visual(dir) });
     };
     // Shift is accepted on the vertical chords because it has no meaning of its own there: the body
     // clears the column selection as the cursor arrives, and declining would move the body cursor
@@ -64,29 +83,29 @@ export class HeaderInteractionHandler {
         id: "extendLeft",
         chord: { key: "arrowleft", shift: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutExtendColumnSelectionLeft"),
-        run: () => this.extendColumnSelection("left"),
+        label: labelFor("shortcutExtendColumnSelectionLeft", "shortcutExtendColumnSelectionRight"),
+        run: () => this.extendColumnSelection(visual("left")),
       },
       {
         id: "extendRight",
         chord: { key: "arrowright", shift: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutExtendColumnSelectionRight"),
-        run: () => this.extendColumnSelection("right"),
+        label: labelFor("shortcutExtendColumnSelectionRight", "shortcutExtendColumnSelectionLeft"),
+        run: () => this.extendColumnSelection(visual("right")),
       },
       {
         id: "extendToFirst",
         chord: { key: "arrowleft", mod: true, shift: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutExtendColumnSelectionFirst"),
-        run: () => this.extendColumnSelection("home"),
+        label: labelFor("shortcutExtendColumnSelectionFirst", "shortcutExtendColumnSelectionLast"),
+        run: () => this.extendColumnSelection(visual("home")),
       },
       {
         id: "extendToLast",
         chord: { key: "arrowright", mod: true, shift: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutExtendColumnSelectionLast"),
-        run: () => this.extendColumnSelection("end"),
+        label: labelFor("shortcutExtendColumnSelectionLast", "shortcutExtendColumnSelectionFirst"),
+        run: () => this.extendColumnSelection(visual("end")),
       },
       {
         id: "extendHome",
@@ -110,29 +129,29 @@ export class HeaderInteractionHandler {
         id: "firstColumn",
         chord: { key: "arrowleft", mod: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutFirstColumn"),
-        run: nav("home"),
+        label: labelFor("shortcutFirstColumn", "shortcutLastColumn"),
+        run: arrowNav("home"),
       },
       {
         id: "lastColumn",
         chord: { key: "arrowright", mod: true },
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutLastColumn"),
-        run: nav("end"),
+        label: labelFor("shortcutLastColumn", "shortcutFirstColumn"),
+        run: arrowNav("end"),
       },
       {
         id: "moveLeft",
         chord: "arrowleft",
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutPreviousColumn"),
-        run: nav("left"),
+        label: labelFor("shortcutPreviousColumn", "shortcutNextColumn"),
+        run: arrowNav("left"),
       },
       {
         id: "moveRight",
         chord: "arrowright",
         scope: "headerCursor",
-        label: core.getLocaleText("shortcutNextColumn"),
-        run: nav("right"),
+        label: labelFor("shortcutNextColumn", "shortcutPreviousColumn"),
+        run: arrowNav("right"),
       },
       // Only a *plain* arrow crosses the header/body boundary, in either direction: the body's
       // ArrowUp enters the header while its Ctrl+ArrowUp block-jumps within the body, so the header

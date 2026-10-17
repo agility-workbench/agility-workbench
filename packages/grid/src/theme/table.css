@@ -275,9 +275,13 @@
  * armor layer involved.
  *
  * Each value below IS the property's initial value, so on a host that sets nothing this rule
- * changes nothing. `direction` is deliberately absent, so the host's value still inherits — but the
- * grid does NOT support right-to-left layout: positioning, scrolling and keyboard navigation are
- * all physical left/right, so under an inherited `direction: rtl` only text alignment flips.
+ * changes nothing. `direction` is deliberately absent: the renderer resolves the grid's direction
+ * once (`enableRtl`, else the direction the root inherits at attach) and writes it on the root as
+ * `dir`, which sets `direction` for everything inside. The stylesheet is written in logical
+ * properties (`inset-inline-*`, `padding-inline-*`, `border-inline-*`, `text-align: start`) so the
+ * same rules lay the grid out either way; the few things that are physical by nature — a horizontal
+ * shadow offset, a directional icon, a gradient — flip through `--pte-dir` or a `[dir="rtl"]` rule
+ * (see "Right-to-left" below).
  *
  * `visibility` is deliberately absent too. A host that hides an ancestor — a tab panel, a collapsed
  * container, a print stylesheet's hidden region — means to hide the grid with it, and a `visible`
@@ -560,6 +564,9 @@
 }
 
 .pte-root {
+  /* +1 left-to-right, -1 right-to-left: multiplies a physical x offset (a shadow cast towards the
+     scrolling centre, a nudge) so it points the same way relative to the inline axis. */
+  --pte-dir: 1;
   /* Derived here rather than in the :root variable block on purpose. A custom property is resolved
    * against the element it is declared on, so a --pte-scrollbar-lane defined on :root would bake in
    * :root's fallback --pte-scrollbar-gutter and never see the measured value the runtime writes
@@ -578,30 +585,31 @@
   position: relative;
   background-color: var(--pte-root-bg-color);
   outline: none;
-  transition: padding-right 0.16s ease;
+  transition: padding-inline-end 0.16s ease;
 }
 
 .pte-root.pte-column-panel-enabled.pte-column-panel-trigger-rail {
-  padding-right: var(--pte-column-panel-gutter-width);
+  padding-inline-end: var(--pte-column-panel-gutter-width);
 }
 
 .pte-root.pte-column-panel-enabled.pte-column-panel-trigger-header,
 .pte-root.pte-column-panel-enabled.pte-column-panel-trigger-footer {
-  padding-right: var(--pte-column-panel-gutter-width);
+  padding-inline-end: var(--pte-column-panel-gutter-width);
 }
 
 .pte-root.pte-column-panel-enabled.pte-column-panel-open {
-  padding-right: var(--pte-column-panel-width, 304px);
+  padding-inline-end: var(--pte-column-panel-width, 304px);
 }
 
 .pte-column-panel {
   position: absolute;
-  inset: 0 0 0 auto;
+  inset-block: 0;
+  inset-inline: auto 0;
   width: 0;
   z-index: 9700;
   display: flex;
   background: var(--pte-surface-bg-color);
-  border-left: 0 solid var(--pte-frame-border-color);
+  border-inline-start: 0 solid var(--pte-frame-border-color);
   color: var(--pte-text-color);
   transition: width 0.16s ease;
   overflow: hidden;
@@ -609,19 +617,19 @@
 
 .pte-root.pte-column-panel-trigger-rail .pte-column-panel {
   width: var(--pte-column-panel-gutter-width);
-  border-left-width: 1px;
+  border-inline-start-width: 1px;
 }
 
 .pte-root.pte-column-panel-trigger-header .pte-column-panel,
 .pte-root.pte-column-panel-trigger-footer .pte-column-panel {
   width: var(--pte-column-panel-gutter-width);
-  border-left-width: 1px;
+  border-inline-start-width: 1px;
 }
 
 .pte-root.pte-column-panel-enabled .pte-column-panel.open {
   width: var(--pte-column-panel-width, 304px);
-  border-left-width: 1px;
-  box-shadow: -4px 0 14px var(--pte-shadow-color);
+  border-inline-start-width: 1px;
+  box-shadow: calc(var(--pte-dir, 1) * -4px) 0 14px var(--pte-shadow-color);
 }
 
 .pte-column-panel-rail {
@@ -683,7 +691,8 @@
 
 .pte-column-panel-trigger-header-button {
   position: absolute;
-  inset: 0 0 auto auto;
+  inset-block: 0 auto;
+  inset-inline: auto 0;
   width: calc(var(--pte-column-panel-gutter-width) - 1px);
   height: var(--pte-rendered-header-height, 43px);
   border-bottom: 1px solid var(--pte-frame-border-color);
@@ -746,7 +755,7 @@
 }
 
 .pte-grid-toolbar-group-section + .pte-grid-toolbar-sort-section {
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-grid-toolbar-group-dropzone.drag-over {
@@ -762,7 +771,7 @@
 .pte-grid-toolbar-group-label,
 .pte-grid-toolbar-sort-label {
   flex: 0 0 auto;
-  padding-left: 8px;
+  padding-inline-start: 8px;
   color: var(--pte-muted-text-color);
   font-size: 12px;
 }
@@ -782,7 +791,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding-left: 6px;
+  padding-inline-start: 6px;
   border: 1px solid var(--pte-frame-border-color);
   border-radius: 4px;
   background: var(--pte-root-bg-color);
@@ -876,7 +885,10 @@
   flex: 0 0 24px;
   padding: 0;
   border: 0;
-  border-radius: 0 3px 3px 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 3px;
+  border-end-end-radius: 3px;
+  border-end-start-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
   cursor: pointer;
@@ -907,7 +919,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  text-align: left;
+  text-align: start;
 }
 
 .pte-grid-toolbar-group-add:hover,
@@ -944,7 +956,7 @@
 
 .pte-grid-toolbar-group-add + .pte-grid-toolbar-group-clear,
 .pte-grid-toolbar-sort-add + .pte-grid-toolbar-sort-clear {
-  margin-left: -6px;
+  margin-inline-start: -6px;
 }
 
 .pte-grid-toolbar-group-clear:hover,
@@ -1065,7 +1077,7 @@
   gap: 6px;
   padding: 0 12px;
   border: 0;
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
   border-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
@@ -1100,7 +1112,7 @@
   display: flex;
   align-items: center;
   padding: 4px 8px;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-quick-filter.pte-quick-filter-toolbar {
@@ -1136,7 +1148,7 @@
   position: absolute;
   z-index: 31;
   top: calc(100% + 7px);
-  right: 0;
+  inset-inline-end: 0;
   width: 240px;
   box-sizing: border-box;
   padding: 10px;
@@ -1156,7 +1168,7 @@
   gap: 6px;
   padding: 0 12px;
   border: 0;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
   border-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
@@ -1174,7 +1186,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
   border-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
@@ -1191,7 +1203,7 @@
   gap: 6px;
   padding: 0 12px;
   border: 0;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
   border-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
@@ -1310,7 +1322,7 @@
 .pte-grid-toolbar-quick-filter.pte-bar-qf-summary.pte-bar-qf-expanded > .pte-quick-filter {
   position: absolute;
   top: 0;
-  right: 42px;
+  inset-inline-end: 42px;
   z-index: 3;
   height: 100%;
   display: inline-flex;
@@ -1326,7 +1338,7 @@
      250px bar hung off the side of the grid where nothing could reach it. */
   max-width: var(--pte-qf-overlay-room, 320px);
   background: var(--pte-surface-bg-color);
-  box-shadow: -8px 0 8px -8px rgb(0 0 0 / 25%);
+  box-shadow: calc(var(--pte-dir, 1) * -8px) 0 8px -8px rgb(0 0 0 / 25%);
 }
 
 /* Expanded over a bar this narrow, the field's own chrome is what there is no room for: the icon
@@ -1365,7 +1377,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
   border-radius: 0;
   background: transparent;
   color: var(--pte-muted-text-color);
@@ -1410,7 +1422,7 @@
   content: "";
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -1536,7 +1548,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  text-align: left;
+  text-align: start;
 }
 
 .pte-grid-toolbar-chip-editor-add:hover,
@@ -1562,7 +1574,7 @@
   content: "";
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -1643,13 +1655,14 @@
 .pte-column-panel-trigger-toolbar-button {
   min-width: 92px;
   padding: 0 12px;
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
   background: transparent;
 }
 
 .pte-column-panel-trigger-footer-button {
   position: absolute;
-  inset: auto 0 0 auto;
+  inset-block: auto 0;
+  inset-inline: auto 0;
   width: calc(var(--pte-column-panel-gutter-width) - 1px);
   height: var(--pte-pagination-footer-height);
   border-top: 1px solid var(--pte-frame-border-color);
@@ -1678,7 +1691,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 0 16px;
+  padding-block: 0 0;
+  padding-inline: 16px 12px;
   border-bottom: 1px solid var(--pte-border-color);
   background: var(--pte-header-background-color);
 }
@@ -1813,7 +1827,7 @@
   font: inherit;
   font-size: 12px;
   font-weight: 500;
-  text-align: left;
+  text-align: start;
 }
 
 .pte-column-panel-tree-group-header:hover {
@@ -1854,9 +1868,9 @@
 }
 
 .pte-column-panel-tree-children {
-  margin-left: 11px;
-  padding-left: 5px;
-  border-left: 1px solid var(--pte-border-color);
+  margin-inline-start: 11px;
+  padding-inline-start: 5px;
+  border-inline-start: 1px solid var(--pte-border-color);
 }
 
 .pte-column-panel-row {
@@ -1983,7 +1997,8 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 0 2px 3px 19px;
+  padding-block: 0 3px;
+  padding-inline: 19px 2px;
 }
 
 .pte-column-panel-role-chip {
@@ -2087,7 +2102,8 @@
   grid-template-columns: 14px minmax(50px, 1fr) 56px 24px;
   gap: 4px;
   align-items: center;
-  padding: 0 4px 0 2px;
+  padding-block: 0 0;
+  padding-inline: 2px 4px;
   border-radius: 5px;
 }
 
@@ -2108,8 +2124,8 @@
 .pte-column-panel-well-drop-indicator {
   position: absolute;
   z-index: 2;
-  left: 2px;
-  right: 4px;
+  inset-inline-start: 2px;
+  inset-inline-end: 4px;
   height: 3px;
   border-radius: 2px;
   background: var(--pte-selected-border-color);
@@ -2142,7 +2158,7 @@
   color: var(--pte-text-color);
   cursor: pointer;
   font: inherit;
-  text-align: left;
+  text-align: start;
 }
 
 .pte-column-panel-well-item-button .pte-column-panel-well-item-label {
@@ -2308,7 +2324,7 @@
   display: none;
   position: absolute;
   top: 50%;
-  right: 12px;
+  inset-inline-end: 12px;
   transform: translateY(-50%);
   font-size: 12px;
   font-style: italic;
@@ -2331,7 +2347,7 @@
 }
 
 .pte-header-leading.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 /* Pinned header sections are sized like the body spacers beneath them: inline `width`, no grow and
@@ -2341,7 +2357,7 @@
 .pte-header-left {
   display: flex;
   flex: 0 0 auto;
-  box-shadow: 2px 0 5px var(--pte-shadow-color);
+  box-shadow: calc(var(--pte-dir, 1) * 2px) 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -2349,7 +2365,7 @@
 }
 
 .pte-header-left.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 /* overflow-y is pinned on all three header mirrors, not left to compute: an `auto` on one axis
@@ -2360,7 +2376,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  padding-right: 0;
+  padding-inline-end: 0;
   flex: 1 1 auto;
   /* Like .pte-spacer: take whatever the pinned sections leave, never push them. */
   min-width: 0;
@@ -2370,7 +2386,7 @@
 .pte-header-right {
   display: flex;
   flex: 0 0 auto;
-  box-shadow: -2px 0 5px var(--pte-shadow-color);
+  box-shadow: calc(var(--pte-dir, 1) * -2px) 0 5px var(--pte-shadow-color);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -2378,7 +2394,7 @@
 }
 
 .pte-header-right.visible {
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
 }
 
 /* Non-scrolling positioning context. The sticky group-row overlay is absolutely positioned against
@@ -2511,17 +2527,17 @@
 
 .pte-pinned-rows-leading {
   background: var(--pte-header-background-color);
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-pinned-rows-left {
-  border-right: 1px solid var(--pte-frame-border-color);
-  box-shadow: 2px 0 5px var(--pte-shadow-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
+  box-shadow: calc(var(--pte-dir, 1) * 2px) 0 5px var(--pte-shadow-color);
 }
 
 .pte-pinned-rows-right {
-  border-left: 1px solid var(--pte-frame-border-color);
-  box-shadow: -2px 0 5px var(--pte-shadow-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
+  box-shadow: calc(var(--pte-dir, 1) * -2px) 0 5px var(--pte-shadow-color);
 }
 
 .pte-pinned-rows-host {
@@ -2556,8 +2572,8 @@
   display: none;
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   overflow: hidden;
   z-index: 5;
   box-sizing: border-box;
@@ -2592,7 +2608,7 @@
 .pte-row.pte-sticky-row {
   position: absolute;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
 }
 
 .pte-aggregate-row {
@@ -2605,7 +2621,7 @@
      variant so the row also reclaims the space when the body has nothing to scroll — the constant
      this replaces was unconditional, and left the aggregate row short of the header whenever the
      scrollbar was absent or overlaid. */
-  padding-right: var(--pte-scrollbar-gutter-active);
+  padding-inline-end: var(--pte-scrollbar-gutter-active);
 }
 
 .pte-aggregate-row.visible {
@@ -2625,14 +2641,14 @@
 .pte-aggregate-leading {
   flex: 0 0 auto;
   background: var(--pte-aggregate-row-bg-color);
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-aggregate-left,
 .pte-aggregate-right {
   flex: 0 0 auto;
-  box-shadow: 2px 0 5px var(--pte-shadow-color);
-  border-right: 1px solid var(--pte-frame-border-color);
+  box-shadow: calc(var(--pte-dir, 1) * 2px) 0 5px var(--pte-shadow-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-aggregate-center {
@@ -2640,9 +2656,9 @@
 }
 
 .pte-aggregate-right {
-  box-shadow: -2px 0 5px var(--pte-shadow-color);
-  border-left: 1px solid var(--pte-frame-border-color);
-  border-right: none;
+  box-shadow: calc(var(--pte-dir, 1) * -2px) 0 5px var(--pte-shadow-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
+  border-inline-end: none;
 }
 
 .pte-aggregate-row .pte-row {
@@ -2658,7 +2674,7 @@
 
 .pte-aggregate-close {
   position: absolute;
-  right: 8px;
+  inset-inline-end: 8px;
   top: 50%;
   transform: translateY(-50%);
   border: 1px solid var(--pte-border-color);
@@ -2688,7 +2704,7 @@
 
 .pte-scroller-horizontal-container-wrapper {
   display: flex;
-  padding-right: 0;
+  padding-inline-end: 0;
   overflow-x: auto;
   scrollbar-width: none;
   overflow-y: hidden;
@@ -2712,7 +2728,8 @@
      sits flush against the grid's edge. The end zone carries those 12px itself instead — an item's
      own padding IS part of the scrollable content — and it carries them in both states, so the
      footer's width does not change when the scroll class goes on and no measurement can latch. */
-  padding: 8px 0 8px 12px;
+  padding-block: 8px 8px;
+  padding-inline: 12px 0;
   border-top: 1px solid var(--pte-frame-border-color);
   background: var(--pte-surface-bg-color);
 }
@@ -2748,7 +2765,7 @@
      between the grid body and the footer. The left inset shrinks to 4px so the first tab sits near
      the grid's edge without running into the root's rounded corner. */
   margin-top: -9px;
-  margin-left: -8px;
+  margin-inline-start: -8px;
 }
 
 .pte-footer-tabs.pte-footer-tabs-enabled {
@@ -2803,7 +2820,7 @@
   content: "";
   position: absolute;
   top: 4px;
-  right: 4px;
+  inset-inline-end: 4px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -2828,7 +2845,7 @@
   justify-content: flex-end;
   gap: 12px;
   /* The footer's inline-end padding (see the wrapper's note). */
-  padding-right: 12px;
+  padding-inline-end: 12px;
 }
 
 /* Compact footer (PaginationRenderer measures the threshold): the text beside each control is what
@@ -2865,12 +2882,12 @@
 }
 
 .pte-sheet-scroll-wrap::before {
-  left: 0;
+  inset-inline-start: 0;
   background: linear-gradient(to right, var(--pte-surface-bg-color), transparent);
 }
 
 .pte-sheet-scroll-wrap::after {
-  right: 0;
+  inset-inline-end: 0;
   background: linear-gradient(to left, var(--pte-surface-bg-color), transparent);
 }
 
@@ -3326,7 +3343,7 @@
   top: 6px;
   /* Clear the body's measured vertical-scrollbar lane (0 when it does not scroll or scrollbars
      overlay) so the widget never sits over the scrollbar thumb. */
-  right: calc(var(--pte-scrollbar-gutter-active, 0px) + 8px);
+  inset-inline-end: calc(var(--pte-scrollbar-gutter-active, 0px) + 8px);
   z-index: 30;
   display: none;
   flex-direction: column;
@@ -3578,7 +3595,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 32px;
+  inset-inline-end: 32px;
   align-items: center;
   justify-content: flex-end;
   width: var(--pte-qf-count-width);
@@ -3602,7 +3619,7 @@
    carry a dead 52px at the end of the box; constant while finding, so typing the first character
    cannot yank the caret sideways. */
 .pte-quick-filter-finding .pte-quick-filter-input {
-  padding-right: var(--pte-qf-count-width);
+  padding-inline-end: var(--pte-qf-count-width);
 }
 
 .pte-quick-filter-find-step:disabled {
@@ -3746,7 +3763,7 @@
   overflow-y: hidden;
   overflow-anchor: none;
   scrollbar-width: none;
-  box-shadow: 2px 0 5px var(--pte-shadow-color);
+  box-shadow: calc(var(--pte-dir, 1) * 2px) 0 5px var(--pte-shadow-color);
 }
 
 .pte-spacer {
@@ -3766,19 +3783,19 @@
   overflow-y: hidden;
   overflow-anchor: none;
   scrollbar-width: none;
-  box-shadow: -2px 0 5px var(--pte-shadow-color);
+  box-shadow: calc(var(--pte-dir, 1) * -2px) 0 5px var(--pte-shadow-color);
 }
 
 .pte-spacer-leading.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-spacer-left.visible {
-  border-right: 1px solid var(--pte-frame-border-color);
+  border-inline-end: 1px solid var(--pte-frame-border-color);
 }
 
 .pte-spacer-right.visible {
-  border-left: 1px solid var(--pte-frame-border-color);
+  border-inline-start: 1px solid var(--pte-frame-border-color);
 }
 
 /* The 1px floor is what keeps a section's horizontal scroll position alive when the row window is
@@ -3799,8 +3816,8 @@
 
 .pte-viewport {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 0;
 }
 
@@ -3829,7 +3846,7 @@
 .pte-hcell-resize-handle {
   position: absolute;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   width: 8px;
   height: 100%;
   cursor: col-resize;
@@ -3840,7 +3857,7 @@
   content: " ";
   position: absolute;
   top: calc(50% - 40% / 2);
-  right: 3px;
+  inset-inline-end: 3px;
   height: 40%;
   width: 2px;
   background-color: var(--pte-resize-handle-color);
@@ -3859,8 +3876,8 @@
   justify-content: space-between;
   padding-top: var(--pte-cell-padding-top);
   padding-bottom: var(--pte-cell-padding-bottom);
-  padding-left: var(--pte-cell-padding-left);
-  padding-right: var(--pte-cell-padding-right);
+  padding-inline-start: var(--pte-cell-padding-left);
+  padding-inline-end: var(--pte-cell-padding-right);
   width: 100%;
   border: 1px solid transparent;
   border-bottom: none;
@@ -3898,19 +3915,19 @@
 }
 
 .pte-hcell.selected-left .pte-hcell-container {
-  border-left: 1px solid var(--pte-selected-border-color);
+  border-inline-start: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-hcell.not-selected-left .pte-hcell-container {
-  border-left: 1px solid transparent;
+  border-inline-start: 1px solid transparent;
 }
 
 .pte-hcell.selected-right .pte-hcell-container {
-  border-right: 1px solid var(--pte-selected-border-color);
+  border-inline-end: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-hcell.not-selected-right .pte-hcell-container {
-  border-right: 1px solid transparent;
+  border-inline-end: 1px solid transparent;
 }
 
 .pte-hcell-container.pte-hcell-computable {
@@ -3967,7 +3984,7 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 4px;
+  margin-inline-start: 4px;
   cursor: pointer;
 }
 
@@ -3977,8 +3994,8 @@
    clipped when the column is narrowed. */
 .pte-hcell-container.pte-hcell-computable .pte-hcell-sort {
   flex-direction: row-reverse;
-  margin-left: 0;
-  margin-right: 4px;
+  margin-inline-start: 0;
+  margin-inline-end: 4px;
 }
 
 .pte-hcell-sort-arrow {
@@ -4105,7 +4122,7 @@
   display: none;
   position: absolute;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   padding: 5px;
   background-color: var(--pte-hcell-filter-active-color);
   border-radius: 50%;
@@ -4249,8 +4266,8 @@
 .pte-cell {
   padding-top: var(--pte-cell-padding-top);
   padding-bottom: var(--pte-cell-padding-bottom);
-  padding-left: var(--pte-cell-padding-left);
-  padding-right: var(--pte-cell-padding-right);
+  padding-inline-start: var(--pte-cell-padding-left);
+  padding-inline-end: var(--pte-cell-padding-right);
   /* height: calc(var(--pte-row-height) - var(--pte-row-border-size)); */
   display: flex;
   align-items: center;
@@ -4339,7 +4356,7 @@
 
 .pte-cell.pte-full-width-cell {
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -4364,7 +4381,8 @@
   outline: none;
   margin: 0;
   /* Match the cell's own padding so text stays put when the editor opens. */
-  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  padding-block: var(--pte-cell-padding-top) var(--pte-cell-padding-bottom);
+  padding-inline: var(--pte-cell-padding-left) var(--pte-cell-padding-right);
   font: inherit;
   color: inherit;
   background: var(--pte-input-bg-color, #fff);
@@ -4379,7 +4397,8 @@
   border: none;
   outline: none;
   margin: 0;
-  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  padding-block: var(--pte-cell-padding-top) var(--pte-cell-padding-bottom);
+  padding-inline: var(--pte-cell-padding-left) var(--pte-cell-padding-right);
   font: inherit;
   color: inherit;
   background: var(--pte-input-bg-color, #fff);
@@ -4394,7 +4413,8 @@
   border: none;
   outline: none;
   margin: 0;
-  padding: var(--pte-cell-padding-top) var(--pte-cell-padding-right) var(--pte-cell-padding-bottom) var(--pte-cell-padding-left);
+  padding-block: var(--pte-cell-padding-top) var(--pte-cell-padding-bottom);
+  padding-inline: var(--pte-cell-padding-left) var(--pte-cell-padding-right);
   font: inherit;
   color: inherit;
   background: var(--pte-input-bg-color, #fff);
@@ -4439,8 +4459,8 @@
   align-items: center;
   width: 100%;
   height: 100%;
-  padding-left: var(--pte-cell-padding-left);
-  padding-right: var(--pte-cell-padding-right);
+  padding-inline-start: var(--pte-cell-padding-left);
+  padding-inline-end: var(--pte-cell-padding-right);
   box-sizing: border-box;
 }
 
@@ -4532,11 +4552,11 @@
 }
 
 .pte-cell.selected-left {
-  border-left: 1px solid var(--pte-selected-border-color);
+  border-inline-start: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-cell.selected-right {
-  border-right: 1px solid var(--pte-selected-border-color);
+  border-inline-end: 1px solid var(--pte-selected-border-color);
 }
 
 .pte-cell.pte-active-cell {
@@ -4553,7 +4573,7 @@
 
 .pte-fill-handle {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   bottom: 0;
   width: 7px;
   height: 7px;
@@ -4596,11 +4616,11 @@
   /* Straddles the column edge (15px inside, 9px past it); the drawn line stays where it was. */
   .pte-hcell-resize-handle {
     width: 24px;
-    right: -9px;
+    inset-inline-end: -9px;
   }
 
   .pte-hcell-resize-handle:after {
-    right: 12px;
+    inset-inline-end: 12px;
   }
 
   /* A transparent 24px grip in the corner cell; the visible square is drawn inside it. */
@@ -4614,7 +4634,7 @@
   .pte-fill-handle::after {
     content: "";
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     bottom: 0;
     width: 10px;
     height: 10px;
@@ -4667,11 +4687,11 @@
 }
 
 .pte-cell.pte-fill-preview-left {
-  border-left: 1px dashed var(--pte-selected-border-color);
+  border-inline-start: 1px dashed var(--pte-selected-border-color);
 }
 
 .pte-cell.pte-fill-preview-right {
-  border-right: 1px dashed var(--pte-selected-border-color);
+  border-inline-end: 1px dashed var(--pte-selected-border-color);
 }
 
 .pte-menu {
@@ -4688,7 +4708,7 @@
   cursor: pointer;
   border: none;
   background: none;
-  text-align: left;
+  text-align: start;
   font-size: 14px;
   padding: 8px 12px;
   cursor: pointer;
@@ -4733,7 +4753,7 @@
   mask-repeat: no-repeat;
   width: 22px;
   height: 22px;
-  margin-right: 12px;
+  margin-inline-end: 12px;
 }
 
 .pte-menu-item-icon-right {
@@ -4756,7 +4776,7 @@
    business, and the span is aria-hidden — AT users get the shortcut reference instead. */
 .pte-menu-item-shortcut {
   flex: 0 0 auto;
-  margin-left: 16px;
+  margin-inline-start: 16px;
   color: var(--pte-muted-text-color);
   font-size: 12px;
   white-space: nowrap;
@@ -4776,7 +4796,7 @@
 }
 
 .pte-menu-item:not(:has(.pte-menu-item-icon-left ~ .pte-menu-item-text)) .pte-menu-item-text {
-  margin-left: 34px;
+  margin-inline-start: 34px;
 }
 
 .pte-filter-root {
@@ -4840,7 +4860,7 @@
 .pte-set-filter-option-count {
   width: auto;
   flex: 0 0 auto;
-  margin-left: 12px;
+  margin-inline-start: 12px;
   color: var(--pte-muted-text-color);
   font-variant-numeric: tabular-nums;
 }
@@ -4863,7 +4883,7 @@
 
 .pte-filter-join-toggle {
   cursor: pointer;
-  margin-right: 8px;
+  margin-inline-end: 8px;
 }
 
 .pte-filter-condition-container {
@@ -4872,7 +4892,7 @@
   gap: 12px;
   max-height: calc(100vh - 400px);
   overflow-y: auto;
-  margin-right: -12px;
+  margin-inline-end: -12px;
   scrollbar-gutter: stable;
 }
 
@@ -4893,7 +4913,7 @@
 /* Tree layout (filter: "tree"): rows indent by level; a chevron leads each group and a spacer of the
    same width leads every other row, so the checkboxes of siblings line up. */
 .pte-set-filter-option-tree {
-  padding-left: calc(4px + var(--pte-set-filter-level, 0) * 16px);
+  padding-inline-start: calc(4px + var(--pte-set-filter-level, 0) * 16px);
 }
 
 .pte-set-filter-expander,
@@ -4965,13 +4985,13 @@
 
 /* Leave room for the clear button so long values don't run under it. */
 .pte-filter-input-wrap .pte-filter-input {
-  padding-right: 28px;
+  padding-inline-end: 28px;
 }
 
 .pte-filter-input-clear {
   position: absolute;
   top: 50%;
-  right: 6px;
+  inset-inline-end: 6px;
   transform: translateY(-50%);
   display: none;
   align-items: center;
@@ -5366,7 +5386,7 @@
   content: "";
   position: absolute;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   width: 0;
   height: 0;
   border-style: solid;
@@ -5471,8 +5491,8 @@
   align-items: center;
   width: 100%;
   height: 100%;
-  padding-left: var(--pte-cell-padding-left);
-  padding-right: var(--pte-cell-padding-right);
+  padding-inline-start: var(--pte-cell-padding-left);
+  padding-inline-end: var(--pte-cell-padding-right);
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5504,8 +5524,8 @@
   align-items: center;
   width: 100%;
   height: 100%;
-  padding-left: var(--pte-cell-padding-left);
-  padding-right: var(--pte-cell-padding-right);
+  padding-inline-start: var(--pte-cell-padding-left);
+  padding-inline-end: var(--pte-cell-padding-right);
   box-sizing: border-box;
   overflow: hidden;
   min-width: 0;
@@ -5570,7 +5590,8 @@
 
 .pte-cell-progress-bar {
   position: absolute;
-  inset: 0 auto 0 0;
+  inset-block: 0;
+  inset-inline: 0 auto;
   border-radius: inherit;
   background-color: var(--pte-progress-bar-color);
 }
@@ -5601,7 +5622,7 @@
   content: "\2605";
   position: absolute;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
   width: 0;
   overflow: hidden;
   color: var(--pte-rating-color);
@@ -5633,4 +5654,38 @@
 .pte-hcell-checkbox .pte-hcell-content {
   justify-content: center;
   gap: 0;
+}
+
+/* ---------------- Right-to-left ----------------
+ * The grid's direction is the root's `dir` attribute (written by the renderer from `enableRtl` or
+ * the inherited direction). Layout flips through the logical properties used throughout this file
+ * and the section containers' flex order: `pinned: "left"` is the inline-START side, so in RTL the
+ * pinned-left sections, row numbers and checkboxes sit at the right edge. What logical properties
+ * cannot express is here: the --pte-dir sign, icons that point along the inline axis, and physical
+ * drawings (gradients, CSS triangles). Arrows that point up/down (sort, expanded chevrons) do not
+ * mirror. Popups portaled out of the root carry the root's `dir` too (floating/portal.ts). */
+.pte-root[dir="rtl"],
+.pte-floating[dir="rtl"] {
+  --pte-dir: -1;
+}
+
+.pte-root[dir="rtl"] .icon-group-collapsed,
+.pte-root[dir="rtl"] .icon-arrow-right,
+.pte-root[dir="rtl"] .pte-pagination-btn-icon,
+.pte-root[dir="rtl"] .pte-column-panel-tree-group-chevron {
+  transform: scaleX(-1);
+}
+
+.pte-root[dir="rtl"] .pte-sheet-scroll-wrap::before {
+  background: linear-gradient(to left, var(--pte-surface-bg-color), transparent);
+}
+
+.pte-root[dir="rtl"] .pte-sheet-scroll-wrap::after {
+  background: linear-gradient(to right, var(--pte-surface-bg-color), transparent);
+}
+
+/* The "has content" marker sits in the cell's top inline-end corner: top-left in RTL. */
+.pte-root[dir="rtl"] .pte-cell.pte-action-frame-indicator::after {
+  border-width: 0 0 6px 6px;
+  border-color: transparent transparent transparent var(--pte-action-frame-border-color);
 }

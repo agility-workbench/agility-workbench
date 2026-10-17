@@ -1,0 +1,86 @@
+---
+title: Large data sets
+sidebar_position: 4
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Large data sets
+
+The grid keeps the DOM small however much data it shows. Rows are virtualized: only the rows in
+and near the viewport have elements. Columns are virtualized too: the scrolling centre section
+renders only the columns in and near its viewport. The demo below holds 5,000 rows × 150 columns;
+scroll it sideways, then turn **Column virtualization** off to compare.
+
+<LiveFeatureGrid feature="large-data" />
+
+<FrameworkCode feature="large-data" />
+
+## Row virtualization
+
+The body draws a fixed pool of row elements: enough rows to fill the viewport plus
+`overscanRowCount` rows (default 10) above and below it. Scrolling recycles the pool: a row that
+leaves the window is repainted with the row entering it, so the number of row elements depends
+on the height of the grid, never on the number of rows. Row virtualization is always on. All
+rows share one fixed height (`rowHeight`), which is what lets the grid compute the window from
+the scroll position alone.
+
+## Column virtualization
+
+Each pooled row renders a cell for every column of the pinned sections, but in the centre
+(scrolling) section only for the columns that intersect its viewport, plus `overscanColumnCount`
+columns on each side. A spacer element stands in for the columns before the first rendered one,
+so every rendered cell sits at its column's position and the row keeps its full scroll width.
+Scrolling sideways adds the cells of the columns coming into view and removes the cells of the
+columns leaving it; cells that stay are not re-rendered, so a custom cell renderer keeps its
+state while it is on screen.
+
+The DOM cost of the body is therefore about _pool rows × visible columns_ rather than
+_pool rows × all columns_, which is what makes wide pivots and grids with hundreds of columns
+scroll smoothly.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `columnVirtualization` | `boolean` | `true` | Render only the centre columns near the horizontal viewport. `false` renders every column of every pooled row |
+| `overscanColumnCount` | `number` | `2` | Columns rendered beyond each edge of the horizontal viewport, so a scroll has cells ready before the window moves |
+
+Both options are read once, when the grid is created. To change one, destroy the grid and create
+it again (in React, change the `<Grid>`'s `key`; the live demo above does exactly that).
+
+```ts
+createGrid(host, { columnDefs, rowData, columnVirtualization: true, overscanColumnCount: 4 });
+```
+
+### What is always fully rendered
+
+- **Pinned and leading columns.** The pinned-left, pinned-right and row-number sections are capped
+  at a fraction of the grid's width and every one of their columns is rendered.
+- **The header.** Header cells are rendered for every column. Their cost is columns × header
+  levels, not columns × rows, and `autoHeaderHeight` measures every header cell.
+- **The aggregate row, pinned rows and the sticky group rows.** These are a handful of rows and
+  render every column.
+- **Full-width rows** (`isFullWidthRow`, `groupDisplayType: "groupRows"` headings) render one cell
+  spanning the row, as before.
+
+### When every column is rendered anyway
+
+- **A centre column defines `colSpan`.** Spans are resolved across the whole centre section, so
+  while any centre column has a `colSpan` callback the centre renders every column.
+- **The grid has no measured width yet**, for example while it is mounted inside a hidden
+  (`display: none`) container. As soon as the grid is laid out the window shrinks to the viewport.
+- **`columnVirtualization: false`.**
+
+### Behaviour to know about
+
+- An open cell editor stays open while its column scrolls out of view: its column is kept
+  rendered until the edit ends.
+- Keyboard navigation, `api.ensureColumnVisible` and `api.setFocusedCell` scroll the target column
+  into view and render it immediately, so the focused cell exists (and is announced) at once.
+- Code that walks the DOM must not assume one `.pte-cell` per column in a body row. A centre row
+  starts with a `.pte-col-gap` spacer when columns before the window are not rendered, and holds
+  only the window's cells. Use the API (`api.getCellValue`, `api.forEachNode`, cell renderers)
+  rather than querying cells; `api.refreshCells` and `api.flashCells` simply skip columns that are
+  not rendered.
+- Cell element ids are derived from the column (`{grid id}-r{slot}-c{column index}`), so a cell
+  keeps its id, and the grid's `aria-activedescendant` keeps naming it, while it stays rendered.

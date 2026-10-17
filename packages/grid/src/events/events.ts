@@ -491,7 +491,12 @@ export type GridEventRowDataUpdatedParams = {
 export type GridEventBodyScrollParams = {
   /** Vertical scroll offset of the body. */
   scrollTopPx: number;
-  /** Horizontal scroll offset of the centre (unpinned) section. */
+  /**
+   * Horizontal scroll offset of the centre (unpinned) section, in pixels from its inline-START edge:
+   * always ≥ 0, growing as the user scrolls towards the inline end. Under `enableRtl` that is the
+   * distance scrolled leftwards from the right edge (the raw DOM `scrollLeft` of an RTL scroller is
+   * negative; this is not). Pass it back to `api.scrollTo({ leftPx })` unchanged.
+   */
   scrollLeftPx: number;
   /** Which offset moved since the previous `bodyScroll`. */
   direction: "vertical" | "horizontal" | "both";

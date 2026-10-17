@@ -129,12 +129,12 @@ function pointer(type: "pointerenter" | "pointerleave"): void {
 describe("revealing a find match from under the quick-filter widget", () => {
   it("flips to the far edge for the first row's last cell, which no scroll can clear", () => {
     const api = mount();
-    expect(widgetEl().style.left).toBe("auto");
+    expect(widgetEl().style.insetInlineStart).toBe("auto");
 
     findSignal();
 
-    expect(widgetEl().style.left).toBe(`${OFFSET_X}px`);
-    expect(widgetEl().style.right).toBe("auto");
+    expect(widgetEl().style.insetInlineStart).toBe(`${OFFSET_X}px`);
+    expect(widgetEl().style.insetInlineEnd).toBe("auto");
     api.destroy();
   });
 
@@ -147,7 +147,7 @@ describe("revealing a find match from under the quick-filter widget", () => {
     // widget occupies, inset included.
     expect(centerEl().scrollLeft).toBe(WIDGET_WIDTH + OFFSET_X);
     // And the widget stayed where the config put it.
-    expect(widgetEl().style.left).toBe("auto");
+    expect(widgetEl().style.insetInlineStart).toBe("auto");
     api.destroy();
   });
 
@@ -156,7 +156,7 @@ describe("revealing a find match from under the quick-filter widget", () => {
 
     findSignal();
 
-    expect(widgetEl().style.left).toBe(`${OFFSET_X}px`);
+    expect(widgetEl().style.insetInlineStart).toBe(`${OFFSET_X}px`);
     expect(host.querySelector<HTMLSelectElement>(".pte-quick-filter-anchor-select")!.value).toBe("right");
     api.destroy();
   });
@@ -167,10 +167,10 @@ describe("revealing a find match from under the quick-filter widget", () => {
     pointer("pointerenter");
     findSignal();
     // Clicking next/previous repeatedly must not move the button out from under the cursor.
-    expect(widgetEl().style.left).toBe("auto");
+    expect(widgetEl().style.insetInlineStart).toBe("auto");
 
     pointer("pointerleave");
-    expect(widgetEl().style.left).toBe(`${OFFSET_X}px`);
+    expect(widgetEl().style.insetInlineStart).toBe(`${OFFSET_X}px`);
     api.destroy();
   });
 
@@ -182,7 +182,7 @@ describe("revealing a find match from under the quick-filter widget", () => {
 
     findSignal();
 
-    expect(widgetEl().style.left).toBe("");
+    expect(widgetEl().style.insetInlineStart).toBe("");
     expect(widgetEl().classList.contains("pte-quick-filter-toolbar")).toBe(true);
     api.destroy();
   });
@@ -193,13 +193,13 @@ describe("revealing a find match from under the quick-filter widget", () => {
       new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
     );
     findSignal();
-    expect(widgetEl().style.left).toBe(`${OFFSET_X}px`);
+    expect(widgetEl().style.insetInlineStart).toBe(`${OFFSET_X}px`);
 
     input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
     // Left released, so it is anchored right again. (The right inset itself is a calc() with a
     // custom property, which this environment's CSS parser drops.)
-    expect(widgetEl().style.left).toBe("auto");
+    expect(widgetEl().style.insetInlineStart).toBe("auto");
     api.destroy();
   });
 });

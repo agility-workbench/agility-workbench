@@ -1,4 +1,5 @@
 import { Column } from "../../column/column";
+import { inlineStart, isRtl } from "../layout/direction";
 import { GridCore } from "../../core/core";
 import { Unsubscribe } from "../../events/events";
 import { ExportOptions } from "../../export/export";
@@ -826,8 +827,11 @@ export class GridToolbarRenderer {
    */
   private syncQuickFilterOverlayRoom(): void {
     if (!this.quickFilterExpanded) return;
-    const room = this.quickFilterHost.getBoundingClientRect().left
-      - this.toolbar.getBoundingClientRect().left;
+    // Towards the inline START: leftwards in LTR, rightwards in RTL (the overlay is placed with
+    // `inset-inline-end`, so it hangs off the icon's start side either way).
+    const hostRect = this.quickFilterHost.getBoundingClientRect();
+    const barRect = this.toolbar.getBoundingClientRect();
+    const room = isRtl(this.params.root) ? barRect.right - hostRect.right : hostRect.left - barRect.left;
     this.quickFilterHost.style.setProperty(
       "--pte-qf-overlay-room",
       `${Math.max(0, Math.round(room))}px`,
@@ -1379,7 +1383,7 @@ export class GridToolbarRenderer {
     }));
     const rect = anchor.getBoundingClientRect();
     this.params.menuRenderer.open({
-      clientX: pointerX ?? rect.left,
+      clientX: pointerX ?? inlineStart(rect, isRtl(this.params.root)),
       clientY: rect.bottom,
       items,
       position: "bottom-left",
@@ -1408,7 +1412,7 @@ export class GridToolbarRenderer {
     }));
     const rect = anchor.getBoundingClientRect();
     this.params.menuRenderer.open({
-      clientX: pointerX ?? rect.left,
+      clientX: pointerX ?? inlineStart(rect, isRtl(this.params.root)),
       clientY: rect.bottom,
       items,
       position: "bottom-left",

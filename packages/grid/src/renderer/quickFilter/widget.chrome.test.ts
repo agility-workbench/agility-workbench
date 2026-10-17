@@ -175,7 +175,7 @@ describe("quick-filter match counter", () => {
       .toBe("flex");
     // The input's reserve reads the same variable, so the counter's box and the room left for it
     // cannot drift apart — and a narrow toolbar rung shrinks both by overriding it once.
-    expect(cssRule(".pte-quick-filter-finding .pte-quick-filter-input")?.style.paddingRight)
+    expect(cssRule(".pte-quick-filter-finding .pte-quick-filter-input")?.style.paddingInlineEnd)
       .toBe("var(--pte-qf-count-width)");
     expect(
       cssRule(".pte-bar-qf-compact .pte-quick-filter-field, .pte-bar-qf-expanded .pte-quick-filter-field")
@@ -197,11 +197,12 @@ describe("quick-filter floating position", () => {
   // when nothing scrolls or scrollbars overlay), not --pte-scrollbar-size, which is only the themed
   // webkit thumb size and has no layout meaning. happy-dom's parser drops a calc() holding a
   // custom property, so the written value is captured at the setter instead of read back.
-  it("insets from the right edge by the measured scrollbar lane plus offsetX", () => {
+  it("insets from the inline-end edge by the measured scrollbar lane plus offsetX", () => {
+    // Logical, so the same write mirrors under enableRtl (the scrollbar lane is on the left there).
     const proto = Object.getPrototypeOf(document.createElement("div").style);
-    const desc = Object.getOwnPropertyDescriptor(proto, "right")!;
+    const desc = Object.getOwnPropertyDescriptor(proto, "insetInlineEnd")!;
     const written: string[] = [];
-    Object.defineProperty(proto, "right", {
+    Object.defineProperty(proto, "insetInlineEnd", {
       ...desc,
       set(value: string) {
         written.push(value);
@@ -211,7 +212,7 @@ describe("quick-filter floating position", () => {
     try {
       remount({ mode: "always", debounceMs: 0, position: { anchor: "right", offsetX: 12 } });
     } finally {
-      Object.defineProperty(proto, "right", desc);
+      Object.defineProperty(proto, "insetInlineEnd", desc);
     }
     expect(written).toContain("calc(var(--pte-scrollbar-gutter-active, 0px) + 12px)");
     expect(written.some(v => v.includes("--pte-scrollbar-size"))).toBe(false);
@@ -222,7 +223,7 @@ describe("quick-filter floating position", () => {
     // The base rule is the one whose whole selector is `.pte-quick-filter` at a line start.
     const css = GRID_STYLES.replace(/\/\*[\s\S]*?\*\//g, "");
     const body = /(?:^|\n)\.pte-quick-filter \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    const right = /(?:^|;)\s*right:\s*([^;]+);/.exec(body)?.[1]?.trim();
+    const right = /(?:^|;)\s*inset-inline-end:\s*([^;]+);/.exec(body)?.[1]?.trim();
     expect(right).toBe("calc(var(--pte-scrollbar-gutter-active, 0px) + 8px)");
   });
 });

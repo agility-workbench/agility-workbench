@@ -22,6 +22,9 @@ export class ThemeRenderer {
    * variables (e.g. a popup portaled to document.body). Idempotent. */
   registerTarget(el: HTMLElement) {
     this.externalTargets.add(el);
+    // Outside the root, the element would take the page's direction rather than the grid's.
+    const dir = this.root.getAttribute("dir");
+    if (dir) el.setAttribute("dir", dir);
     this.applyToElement(el, this.currentVars, this.appliedVarNames);
   }
 

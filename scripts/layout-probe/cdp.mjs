@@ -125,6 +125,28 @@ function describeArg(arg) {
   return arg.description || arg.type;
 }
 
+const MODIFIER_BITS = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
+
+const NAMED_KEYS = {
+  ArrowLeft: ["ArrowLeft", 37], ArrowUp: ["ArrowUp", 38], ArrowRight: ["ArrowRight", 39], ArrowDown: ["ArrowDown", 40],
+  Home: ["Home", 36], End: ["End", 35], PageUp: ["PageUp", 33], PageDown: ["PageDown", 34],
+  Enter: ["Enter", 13, "\r"], Escape: ["Escape", 27], Tab: ["Tab", 9], Backspace: ["Backspace", 8],
+  Delete: ["Delete", 46], F2: ["F2", 113], " ": ["Space", 32, " "], ContextMenu: ["ContextMenu", 93],
+};
+
+/** DOM key → { key, code, keyCode, text } for the keys the probes press. */
+export function keyInfo(key) {
+  const named = NAMED_KEYS[key];
+  if (named) return { key, code: named[0], keyCode: named[1], text: named[2] };
+  if (key.length !== 1) throw new Error(`keyInfo: no mapping for "${key}"`);
+  const upper = key.toUpperCase();
+  if (/[A-Z]/.test(upper)) return { key, code: `Key${upper}`, keyCode: upper.charCodeAt(0), text: key };
+  if (/[0-9]/.test(key)) return { key, code: `Digit${key}`, keyCode: key.charCodeAt(0), text: key };
+  const punct = { ".": ["Period", 190], ",": ["Comma", 188], "-": ["Minus", 189], "=": ["Equal", 187], "/": ["Slash", 191] };
+  const p = punct[key];
+  return { key, code: p ? p[0] : "", keyCode: p ? p[1] : 0, text: key };
+}
+
 export class Page {
   static async create(connection) {
     const { targetId } = await connection.send("Target.createTarget", { url: "about:blank" });
@@ -242,6 +264,135 @@ export class Page {
       writeFileSync(file, buffer);
     }
     return buffer;
+  }
+
+  /* ---------------------------------------------------------------- input ----------------- */
+  // Trusted input through the DevTools protocol: these go through the browser's input pipeline,
+  // so they fire pointer, mouse, touch, keyboard and wheel events exactly as a person's would
+  // (hit-testing, focus, default actions, compatibility mouse events) — unlike dispatchEvent.
+
+  /** The bounding rect of the first element matching `selector` (CSS px), or null. */
+  rect(selector) {
+    return this.evaluate(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return { x: b.x, y: b.y, width: b.width, height: b.height, left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+    })()`);
+  }
+
+  /** The centre of `target` (a selector, or a rect / {x, y} point), offset by `dx`/`dy`. */
+  async point(target, { dx = 0, dy = 0, fx = 0.5, fy = 0.5 } = {}) {
+    if (typeof target === "string") {
+      const r = await this.rect(target);
+      if (!r) throw new Error(`No element for ${target}`);
+      target = r;
+    }
+    if (target.width !== undefined) return { x: target.x + target.width * fx + dx, y: target.y + target.height * fy + dy };
+    return { x: target.x + dx, y: target.y + dy };
+  }
+
+  /** One `Input.dispatchMouseEvent`. `buttons` is derived from `button` for presses and drags. */
+  mouse(type, x, y, { button = "none", buttons, clickCount = 0, modifiers = 0, deltaX = 0, deltaY = 0 } = {}) {
+    const mask = { none: 0, left: 1, right: 2, middle: 4 };
+    const params = { type, x, y, button, modifiers, clickCount, buttons: buttons ?? mask[button] ?? 0 };
+    if (type === "mouseWheel") Object.assign(params, { deltaX, deltaY, button: "none", buttons: 0 });
+    return this.send("Input.dispatchMouseEvent", params);
+  }
+
+  /** Moves to the point, presses and releases; `clickCount: 2` sends the double-click pair. */
+  async click(target, { button = "left", clickCount = 1, modifiers = 0, ...offset } = {}) {
+    const { x, y } = await this.point(target, offset);
+    await this.mouse("mouseMoved", x, y, { modifiers });
+    for (let n = 1; n <= clickCount; n++) {
+      await this.mouse("mousePressed", x, y, { button, clickCount: n, modifiers });
+      await this.mouse("mouseReleased", x, y, { button, clickCount: n, modifiers });
+    }
+    return { x, y };
+  }
+
+  dblclick(target, opts = {}) {
+    return this.click(target, { ...opts, clickCount: 2 });
+  }
+
+  rightClick(target, opts = {}) {
+    return this.click(target, { ...opts, button: "right" });
+  }
+
+  /**
+   * Presses at `from`, moves to `to` in `steps` intermediate moves, releases. `from`/`to` are
+   * selectors, rects or points; `hold` keeps the button down at the end (call `mouse("mouseReleased")`
+   * yourself) so a caller can inspect mid-drag state.
+   */
+  async drag(from, to, { steps = 8, button = "left", modifiers = 0, hold = false, pause = 0, fromOffset = {}, toOffset = {} } = {}) {
+    const a = await this.point(from, fromOffset);
+    const b = await this.point(to, toOffset);
+    await this.mouse("mouseMoved", a.x, a.y, { modifiers });
+    await this.mouse("mousePressed", a.x, a.y, { button, clickCount: 1, modifiers });
+    for (let i = 1; i <= steps; i++) {
+      const x = a.x + ((b.x - a.x) * i) / steps;
+      const y = a.y + ((b.y - a.y) * i) / steps;
+      await this.mouse("mouseMoved", x, y, { button, modifiers });
+      if (pause) await sleep(pause);
+    }
+    if (!hold) await this.mouse("mouseReleased", b.x, b.y, { button, clickCount: 1, modifiers });
+    return { from: a, to: b };
+  }
+
+  /** A wheel tick at the point (positive deltaX scrolls towards the physical right). */
+  async wheel(target, { deltaX = 0, deltaY = 0, modifiers = 0, ...offset } = {}) {
+    const { x, y } = await this.point(target, offset);
+    await this.mouse("mouseMoved", x, y);
+    await this.mouse("mouseWheel", x, y, { deltaX, deltaY, modifiers });
+    return { x, y };
+  }
+
+  /**
+   * Presses a key: keyDown (rawKeyDown for keys that produce no text) then keyUp. `key` is a DOM
+   * key name ("ArrowRight", "Enter", "a"); modifiers is an array of "Alt" | "Control" | "Meta" |
+   * "Shift" or the protocol bitmask. Modifier keys themselves are not pressed: the bitmask is what
+   * the page's KeyboardEvent carries.
+   */
+  async press(key, { modifiers = [], text } = {}) {
+    const info = keyInfo(key);
+    const mask = Array.isArray(modifiers) ? modifiers.reduce((m, name) => m | (MODIFIER_BITS[name] || 0), 0) : modifiers;
+    const typed = text ?? (info.text && !(mask & (MODIFIER_BITS.Control | MODIFIER_BITS.Meta | MODIFIER_BITS.Alt)) ? info.text : undefined);
+    const base = { key: info.key, code: info.code, windowsVirtualKeyCode: info.keyCode, nativeVirtualKeyCode: info.keyCode, modifiers: mask };
+    await this.send("Input.dispatchKeyEvent", { ...base, type: typed ? "keyDown" : "rawKeyDown", ...(typed ? { text: typed, unmodifiedText: typed } : {}) });
+    await this.send("Input.dispatchKeyEvent", { ...base, type: "keyUp" });
+  }
+
+  /** Types `text` as key presses (printable ASCII) so keydown-driven start-editing paths see it. */
+  async type(text) {
+    for (const ch of text) await this.press(ch);
+  }
+
+  /** Inserts text into the focused element as an IME commit would (no key events). */
+  insertText(text) {
+    return this.send("Input.insertText", { text });
+  }
+
+  /** One `Input.dispatchTouchEvent`; `points` are {x, y, id?}. touchEnd/touchCancel take []. */
+  touch(type, points = [], { modifiers = 0 } = {}) {
+    return this.send("Input.dispatchTouchEvent", {
+      type,
+      modifiers,
+      touchPoints: points.map((p, i) => ({ x: p.x, y: p.y, id: p.id ?? i, radiusX: 1, radiusY: 1, force: 1 })),
+    });
+  }
+
+  /** A tap at the target; `hold` (ms) keeps the finger down — 500+ is a long press. */
+  async tap(target, { hold = 0, ...offset } = {}) {
+    const p = await this.point(target, offset);
+    await this.touch("touchStart", [p]);
+    if (hold) await sleep(hold);
+    await this.touch("touchEnd", []);
+    return p;
+  }
+
+  /** Touch emulation makes the page report touch support and route touches as pointerType "touch". */
+  enableTouch(enabled = true) {
+    return this.send("Emulation.setTouchEmulationEnabled", { enabled, maxTouchPoints: enabled ? 5 : 1 });
   }
 
   async close() {

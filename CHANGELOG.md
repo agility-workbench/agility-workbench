@@ -3,6 +3,48 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.14.0 — 2026-10-17
+
+### Features
+
+- **Wide grids render only the columns on screen.** The centre section of the body now creates
+  cells only for the columns in and near its horizontal viewport, plus `overscanColumnCount`
+  columns on each side (default 2), instead of a cell for every column in every row. A spacer
+  stands in for the columns before them, cells that stay are never re-rendered, and an open editor
+  keeps its column rendered while the grid scrolls away from it. Pinned and leading columns, the
+  header, the aggregate row and the pinned and sticky rows stay fully rendered, and every column
+  is rendered while a centre column defines `colSpan` or the grid has no measured width.
+  `columnVirtualization: false` turns it off; both options are creation-only. Code that counted
+  one `.pte-cell` per column in a body row must now look cells up by `data-col-id`.
+- **The grid lays out right-to-left with `enableRtl`, or by following an RTL page.**
+  `enableRtl: true` writes `dir="rtl"` on the grid root, `false` forces left-to-right inside an
+  RTL page, and leaving it unset follows the direction the root inherits when it is attached; the
+  root always carries the resolved `dir`, and the direction is fixed at creation. `pinned: "left"`
+  is the inline start, so pinned-left columns, row numbers and checkboxes sit at the right edge, the
+  vertical scrollbar lane moves to the left, and horizontal scrolling starts from the right.
+  ArrowLeft and ArrowRight move visually in the body, the header, the set-filter tree and the sheet
+  tabs, with their Shift and Ctrl variants; Home, End and Tab stay logical. Menus open submenus
+  towards the inline end with ArrowLeft. Column resize and drag, toolbar chip drops, the fill
+  handle, tooltips, menus and the quick-filter widget work from the inline start, directional icons
+  are mirrored, and popups portaled out of the root carry its direction. The stylesheet now uses
+  logical properties throughout. `bodyScroll`'s `scrollLeftPx` and `api.scrollTo({ leftPx })` are
+  measured from the start edge and never negative, and the quick filter's `anchor` names the
+  inline start and end. Sparklines, charts and exported files are not mirrored.
+
+### Tooling
+
+- **`npm run probe:interactions` drives real grids with trusted mouse, wheel, keyboard and touch
+  input, in both directions.** It shares the layout probe's headless Chrome, Vite server and
+  harness, sends input through the DevTools protocol, and asserts each interaction's outcome plus
+  the layout invariants after every step: wheel scrolling across about 200 virtualized columns
+  (cells cover the visible centre, gap spacers match the unrendered columns, cells per row stay
+  bounded), arrow-key navigation keeping the active cell rendered and visible, an editor that
+  survives its column scrolling away, resize and column-move drags, range selection with the fill
+  handle and Ctrl+D, body and column menus with keyboard submenus, pinned-row bands and sticky rows
+  under horizontal scroll, and touch tap, long press and pan. Scenarios run in LTR and RTL where
+  the direction matters, and scroll and mount timings are reported with virtualization on and off
+  without being asserted. A new `Browser probes` CI job runs it and the layout probe against the
+  runner's Chrome and uploads the JSON reports and failure screenshots when one fails.
 ## 1.13.0 — 2026-10-16
 
 ### Features

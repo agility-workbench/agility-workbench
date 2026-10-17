@@ -385,10 +385,10 @@ describe("quick filter: position", () => {
   it("anchors to the left edge when configured, releasing the right edge to auto", async () => {
     const { container, root } = await mountGrid({ mode: "always", position: { anchor: "left", offsetX: 16 } });
     const w = widget(container)!;
-    expect(w.style.left).toBe("16px");
+    expect(w.style.insetInlineStart).toBe("16px");
     // The opposite edge must be an explicit `auto`, not "" — clearing it would fall back to the base
     // stylesheet `right` rule, pinning both edges and stretching the panel to full width.
-    expect(w.style.right).toBe("auto");
+    expect(w.style.insetInlineEnd).toBe("auto");
     await unmountTestRoot(root);
   });
 
@@ -397,7 +397,7 @@ describe("quick filter: position", () => {
     const w = widget(container)!;
     // happy-dom drops `calc(var(...))` on assignment, so we can't read the `right` value back here;
     // the observable, env-robust signal for the right anchor is that `left` is released to auto.
-    expect(w.style.left).toBe("auto");
+    expect(w.style.insetInlineStart).toBe("auto");
     await unmountTestRoot(root);
   });
 
@@ -435,15 +435,15 @@ describe("quick filter: layout UI controls (showLayoutOptions)", () => {
   it("re-anchors the widget live when the anchor control changes", async () => {
     const { container, root } = await mountGrid({ mode: "always", showLayoutOptions: true });
     const w = widget(container)!;
-    expect(w.style.left).toBe("auto"); // right anchor default
+    expect(w.style.insetInlineStart).toBe("auto"); // right anchor default
 
     await act(async () => { optionsBtn(container).click(); });
     await act(async () => {
       anchorSelect(container)!.value = "left";
       anchorSelect(container)!.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(w.style.left).toBe("8px"); // default offsetX
-    expect(w.style.right).toBe("auto");
+    expect(w.style.insetInlineStart).toBe("8px"); // default offsetX
+    expect(w.style.insetInlineEnd).toBe("auto");
     await unmountTestRoot(root);
   });
 
@@ -486,7 +486,7 @@ describe("quick filter: live reconfigure (no remount)", () => {
 
     await setSearch(container, "globex");
     expect(core.getRowModel().getViewCount()).toBe(1);
-    expect(widget(container)!.style.left).toBe("auto"); // right anchor
+    expect(widget(container)!.style.insetInlineStart).toBe("auto"); // right anchor
     const previousInput = input(container);
     previousInput.focus();
 
@@ -498,7 +498,7 @@ describe("quick filter: live reconfigure (no remount)", () => {
     expect(input(container).value).toBe("globex"); // input text preserved
     expect(input(container)).not.toBe(previousInput); // widget DOM rebuilt
     expect(document.activeElement).toBe(input(container)); // focus restored
-    expect(widget(container)!.style.left).toBe("16px"); // re-anchored live
+    expect(widget(container)!.style.insetInlineStart).toBe("16px"); // re-anchored live
     await unmountTestRoot(root);
   });
 

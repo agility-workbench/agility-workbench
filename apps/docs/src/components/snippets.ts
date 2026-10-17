@@ -19,7 +19,9 @@ export type DemoFeature =
   | "menus"
   | "toolbar-and-views"
   | "export"
-  | "theming";
+  | "theming"
+  | "rtl"
+  | "large-data";
 
 type FrameworkSnippets = Record<"react" | "angular" | "core", string>;
 
@@ -912,6 +914,78 @@ api.applyViewState(state, { columns: "merge" });`,
 const core = new GridCore(measurer, {
   columnDefs,
   theme,
+  {{options}}
+});`,
+  },
+  rtl: {
+    react: String.raw`const columns: ReactColDef[] = [
+  { key: "id", label: "#", pinned: "left" },   // inline start: the right edge in RTL
+  { label: "الموظف", children: [
+    { key: "nameAr", label: "الاسم", editable: true, tooltipField: "nameEn" },
+    { key: "city", label: "עיר", editable: true },
+  ] },
+  { key: "amount", label: "المبلغ", type: ColumnType.CURRENCY, aggFunc: "sum", pinned: "right" },
+];
+
+<Grid
+  rowData={rows}
+  columnDefs={columns}
+  {{options}}
+/>`,
+    angular: String.raw`columns: NgColDef[] = [
+  { key: "id", label: "#", pinned: "left" },   // inline start: the right edge in RTL
+  { label: "الموظف", children: [
+    { key: "nameAr", label: "الاسم", editable: true, tooltipField: "nameEn" },
+    { key: "city", label: "עיר", editable: true },
+  ] },
+  { key: "amount", label: "المبلغ", type: ColumnType.CURRENCY, aggFunc: "sum", pinned: "right" },
+];
+
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  {{options}}
+/>`,
+    core: String.raw`// enableRtl is read once, at construction: to flip direction, destroy and create again.
+const api = createGrid(host, {
+  columnDefs,
+  rowData,
+  {{options}}
+});`,
+  },
+  "large-data": {
+    react: String.raw`// 5,000 rows × 150 columns: two pinned left, one pinned right, 147 in the centre.
+const columns: ReactColDef[] = [
+  { key: "id", label: "ID", pinned: "left", type: ColumnType.NUMBER },
+  { key: "name", label: "Account", pinned: "left", editable: true },
+  ...metrics.map((m) => ({ key: m, label: m, type: ColumnType.NUMBER, editable: true })),
+  { key: "total", label: "Total", pinned: "right", type: ColumnType.NUMBER },
+];
+
+// Both options are creation-only: change one by remounting (a new key).
+<Grid
+  key={` + "`${columnVirtualization}-${overscanColumnCount}`" + String.raw`}
+  rowData={rows}
+  columnDefs={columns}
+  {{options}}
+/>`,
+    angular: String.raw`columns: NgColDef[] = [
+  { key: "id", label: "ID", pinned: "left", type: ColumnType.NUMBER },
+  { key: "name", label: "Account", pinned: "left", editable: true },
+  ...metrics.map((m) => ({ key: m, label: m, type: ColumnType.NUMBER, editable: true })),
+  { key: "total", label: "Total", pinned: "right", type: ColumnType.NUMBER },
+];
+
+<!-- Creation-only options: recreate the grid to change them. -->
+<awb-grid
+  [rowData]="rows"
+  [columnDefs]="columns"
+  {{options}}
+/>`,
+    core: String.raw`// columnVirtualization and overscanColumnCount are read once, at construction.
+const api = createGrid(host, {
+  columnDefs,
+  rowData,
   {{options}}
 });`,
   },

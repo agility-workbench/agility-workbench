@@ -246,6 +246,48 @@ const baseColumns: ReactColDef[] = [
   { colId: "owner", key: "owner", label: "Owner", width: 145 },
 ];
 
+type StaffRow = {
+  id: number;
+  nameAr: string;
+  nameEn: string;
+  city: string;
+  department: string;
+  quantity: number;
+  amount: number;
+};
+
+const namesAr = ["أحمد", "فاطمة", "يوسف", "مريم", "خالد", "ليلى", "عمر", "نور"];
+const namesEn = ["Ahmad", "Fatima", "Yusuf", "Maryam", "Khalid", "Layla", "Omar", "Nour"];
+const citiesHe = ["ירושלים", "תל אביב", "חיפה", "באר שבע", "אילת"];
+const departmentsAr = ["المبيعات", "الهندسة", "المالية", "الدعم"];
+
+const rtlRows: StaffRow[] = Array.from({ length: 48 }, (_, index) => ({
+  id: index + 1,
+  nameAr: namesAr[index % namesAr.length],
+  nameEn: namesEn[index % namesEn.length],
+  city: citiesHe[(index * 7) % citiesHe.length],
+  department: departmentsAr[(index * 5) % departmentsAr.length],
+  quantity: 1 + ((index * 7) % 23),
+  amount: 120 + ((index * 137) % 4_800),
+}));
+
+const rtlColumns: ReactColDef[] = [
+  // `pinned: "left"` is the inline start: the right edge in RTL.
+  { colId: "id", key: "id", label: "#", width: 80, type: ColumnType.NUMBER, pinned: "left" },
+  {
+    colId: "employee",
+    label: "الموظف · עובד",
+    children: [
+      { colId: "nameAr", key: "nameAr", label: "الاسم", width: 130, editable: true, tooltipField: "nameEn" },
+      { colId: "city", key: "city", label: "עיר", width: 130, editable: true },
+    ],
+  },
+  { colId: "department", key: "department", label: "القسم", width: 130, groupable: true },
+  { colId: "quantity", key: "quantity", label: "الكمية", width: 110, type: ColumnType.NUMBER, editable: true, aggFunc: AggregateType.SUM },
+  // `pinned: "right"` is the inline end: the left edge in RTL.
+  { colId: "amount", key: "amount", label: "المبلغ", width: 140, type: ColumnType.CURRENCY, editable: true, aggFunc: AggregateType.SUM, pinned: "right" },
+];
+
 const labels: Record<DemoFeature, [string, string]> = {
   columns: ["Columns", "Drag headers, resize, pin, hide, and open Columns"],
   "column-groups": ["Column groups", "Expand Revenue and inspect nested headers"],
@@ -268,7 +310,39 @@ const labels: Record<DemoFeature, [string, string]> = {
   "toolbar-and-views": ["Toolbar & views", "Shape the grid, then save the layout as a view"],
   export: ["Export", "Select cells, then use the toolbar export menu"],
   theming: ["Theming", "A per-instance theme built from semantic parameters"],
+  rtl: ["Right-to-left", "Arrow keys move visually; open the القسم column menu to group by it"],
+  "large-data": ["Large data set", "5,000 rows × 150 columns — scroll sideways; toggle column virtualization"],
 };
+
+/** 5,000 rows × 150 columns for the large-data page, built on first use (never during SSR). */
+const LARGE_ROWS = 5_000;
+const LARGE_METRICS = 147;
+let largeDataSet: { rows: Record<string, number | string>[]; columns: ReactColDef[] } | null = null;
+function largeData() {
+  if (largeDataSet) return largeDataSet;
+  const metrics = Array.from({ length: LARGE_METRICS }, (_, c) => `m${c + 1}`);
+  const largeRows = Array.from({ length: LARGE_ROWS }, (_, r) => {
+    const row: Record<string, number | string> = { id: r + 1, name: `Account ${String(r + 1).padStart(5, "0")}` };
+    let total = 0;
+    metrics.forEach((key, c) => {
+      const value = (r * 31 + c * 17) % 1_000;
+      row[key] = value;
+      total += value;
+    });
+    row.total = total;
+    return row;
+  });
+  const columns: ReactColDef[] = [
+    { colId: "id", key: "id", label: "ID", width: 80, pinned: "left", type: ColumnType.NUMBER },
+    { colId: "name", key: "name", label: "Account", width: 150, pinned: "left", editable: true },
+    ...metrics.map((key, c): ReactColDef => ({
+      colId: key, key, label: `Metric ${c + 1}`, width: 110, type: ColumnType.NUMBER, editable: true,
+    })),
+    { colId: "total", key: "total", label: "Total", width: 120, pinned: "right", type: ColumnType.NUMBER },
+  ];
+  largeDataSet = { rows: largeRows, columns };
+  return largeDataSet;
+}
 
 const VIEWS_KEY = "awb-docs-demo-views";
 
@@ -550,6 +624,18 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
         },
       };
       break;
+    case "rtl":
+      // enableRtl and the rest come from the knobs; the direction toggle is structural (remount).
+      rowData = rtlRows;
+      columnDefs = rtlColumns;
+      break;
+    case "large-data": {
+      // columnVirtualization / overscanColumnCount come from the knobs (structural: remount).
+      const data = largeData();
+      rowData = data.rows;
+      columnDefs = data.columns;
+      break;
+    }
     case "export":
     case "theming":
       break;

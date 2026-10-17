@@ -1,4 +1,5 @@
 import { GridCore } from "../../core/core";
+import { inlineDelta, isRtl, logicalArrowKey, scrollStart, setScrollStart } from "../layout/direction";
 import type { LocaleTextResolver } from "../../interfaces/locale";
 import type { GridSheet, GridViewState, SheetsOptions, SheetTabColor } from "../../interfaces/gridView";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
@@ -634,8 +635,10 @@ export class SheetsRenderer {
     const currentIdx = tabs.findIndex(tab => tab === document.activeElement);
 
     let nextIdx: number | null = null;
-    if (e.key === "ArrowRight") nextIdx = Math.min(tabs.length - 1, Math.max(0, currentIdx) + 1);
-    else if (e.key === "ArrowLeft") nextIdx = Math.max(0, (currentIdx < 0 ? tabs.length : currentIdx) - 1);
+    // The arrows move focus visually: in RTL the next tab sits to the LEFT of the current one.
+    const key = logicalArrowKey(e.key, isRtl(this.params.host));
+    if (key === "ArrowRight") nextIdx = Math.min(tabs.length - 1, Math.max(0, currentIdx) + 1);
+    else if (key === "ArrowLeft") nextIdx = Math.max(0, (currentIdx < 0 ? tabs.length : currentIdx) - 1);
     else if (e.key === "Home") nextIdx = 0;
     else if (e.key === "End") nextIdx = tabs.length - 1;
     else if (e.key === "F2" && currentIdx >= 0) {
@@ -669,20 +672,26 @@ export class SheetsRenderer {
     const el = this.tablist;
     const max = el.scrollWidth - el.clientWidth;
     if (max <= 0) return;
-    const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-    const next = Math.max(0, Math.min(max, el.scrollLeft + delta));
-    if (next === el.scrollLeft) return;
+    // Measured from the inline-start edge (RTL scrollLeft runs negative). A vertical wheel moves
+    // towards the inline end, like reading on; a horizontal one moves the way the fingers went.
+    const rtl = isRtl(this.params.host);
+    const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : inlineDelta(e.deltaX, rtl);
+    const current = scrollStart(el, rtl);
+    const next = Math.max(0, Math.min(max, current + delta));
+    if (next === current) return;
     e.preventDefault();
-    el.scrollLeft = next;
+    setScrollStart(el, rtl, next);
   }
 
   private updateOverflowFades(): void {
     const el = this.tablist;
     const overflowing = el.scrollWidth > el.clientWidth + 1;
-    this.scrollWrap.classList.toggle("pte-sheet-overflow-left", overflowing && el.scrollLeft > 1);
+    // `-left`/`-right` are the inline START/END fades (the stylesheet places them logically).
+    const start = scrollStart(el, isRtl(this.params.host));
+    this.scrollWrap.classList.toggle("pte-sheet-overflow-left", overflowing && start > 1);
     this.scrollWrap.classList.toggle(
       "pte-sheet-overflow-right",
-      overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      overflowing && start + el.clientWidth < el.scrollWidth - 1,
     );
   }
 }

@@ -2,6 +2,7 @@ import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { RowPoolDef } from "../types";
 import { rootContentWidth } from "./pinnedSectionLayout";
+import { applyCenterGapWidths } from "../body/rowPool";
 
 interface ColumnLayoutRendererParams {
   core: GridCore;
@@ -104,7 +105,7 @@ export function measureVerticalScrollbarGutter(host?: HTMLElement): number {
 /** Write an inline style only when it differs, so a layout pass with unchanged inputs writes
  * nothing — the resize path runs from a ResizeObserver, and a pass that rewrites what it reads
  * is how a ResizeObserver loop starts. */
-function setStyle(el: HTMLElement, prop: "display" | "height" | "paddingRight" | "width", value: string): void {
+function setStyle(el: HTMLElement, prop: "display" | "height" | "paddingInlineEnd" | "width", value: string): void {
   if (el.style[prop] !== value) el.style[prop] = value;
 }
 
@@ -212,19 +213,25 @@ export class ColumnLayoutRenderer {
   }
 
   applyCenterColumnWidths(colIDs: string[] = []): number {
+    // The section's content width comes from the model, not from the cells: with column
+    // virtualization a slot renders only the columns near the viewport (renderer/body/columnWindow.ts)
+    // and gap spacers stand in for the rest, so the row keeps the full width either way.
+    const leaves = this.params.core.getColumnModel().getCenterLeaves();
+    const widths = leaves.map((col) => (col.hidden ? 0 : col.computedWidth));
+    let totalWidth = 0;
+    for (const w of widths) totalWidth += w;
+    const filter = colIDs.length > 0 ? new Set(colIDs) : null;
     let maxWidth = 0;
     for (const slot of this.params.rowPool()) {
-      let totalWidth = 0;
-      let c = 0;
-      for (const col of this.params.core.getColumnModel().getCenterLeaves()) {
-        if (col.hidden) continue;
-        const cell = slot.cellEls[c++];
-        if (!cell) continue;
-        totalWidth += col.computedWidth;
-        if (colIDs.length > 0 && !colIDs.includes(col.instanceID)) continue;
+      for (let c = 0; c < slot.cellEls.length; c++) {
+        const cell = slot.cellEls[c];
+        const col = leaves[slot.centerCols[c]];
+        if (!cell || !col) continue;
+        if (filter && !filter.has(col.instanceID)) continue;
         cell.style.flex = "0 0 auto";
         cell.style.width = `${col.computedWidth}px`;
       }
+      applyCenterGapWidths(slot, widths);
       // groupRows headings track the center columns' total width, including during a live column
       // resize. User-defined full-width rows are viewport-sized by the window renderer, so leave
       // those alone. The hidden data-cell widths above are harmless in either case.
@@ -234,7 +241,7 @@ export class ColumnLayoutRenderer {
       } else if (!slot.rowEl.classList.contains("pte-full-width-row")) {
         slot.rowEl.style.width = `${totalWidth}px`;
       }
-      maxWidth = Math.max(maxWidth, totalWidth);
+      maxWidth = totalWidth;
     }
     this.sectionContentWidths.center = maxWidth;
     this.params.hScroller.style.width = `${maxWidth}px`;
@@ -398,9 +405,9 @@ export class ColumnLayoutRenderer {
       rootStyle.setProperty("--pte-scrollbar-gutter-active", `${gutterWidth}px`);
     }
 
-    setStyle(this.params.centerHeader, "paddingRight", `${hasRightSection ? 0 : gutterWidth}px`);
-    setStyle(this.params.rightHeader, "paddingRight", `${hasRightSection ? gutterWidth : 0}px`);
-    setStyle(this.params.hScrollContainer, "paddingRight", `${gutterWidth}px`);
+    setStyle(this.params.centerHeader, "paddingInlineEnd", `${hasRightSection ? 0 : gutterWidth}px`);
+    setStyle(this.params.rightHeader, "paddingInlineEnd", `${hasRightSection ? gutterWidth : 0}px`);
+    setStyle(this.params.hScrollContainer, "paddingInlineEnd", `${gutterWidth}px`);
 
     if (hasRightSection) {
       // The extra pixel covers the pinned section's border; the remaining width is the live
